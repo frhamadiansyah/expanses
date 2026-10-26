@@ -1,4 +1,4 @@
-import { billDetail, bookMoneyFor, monthlyBills, yearlyBills } from '@expanses/db';
+import { billDetail, bookMoneyFor, monthlyBills, sinkingFundViews, yearlyBills } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -24,4 +24,10 @@ export function useBillDetail(billId: string, today: string) {
 export function useBillMoney() {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['book-money-bills', ws.workspaceId, ws.bookId ?? null], queryFn: () => bookMoneyFor(database, ws, { foreign: true }) });
+}
+
+/** Every yearly bill saving up, with what is set aside today. Local to the owner: never part of a shared workspace. */
+export function useSinkingFunds(today: string) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['sinking-funds', ws.workspaceId, today], queryFn: () => sinkingFundViews(database, ws, today) });
 }

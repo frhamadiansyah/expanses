@@ -1,10 +1,11 @@
-import { type AccountSetAside, type BorrowMark, fundingOrder, movedAmount, type SetAsideClaim, setAsideOn } from '@expanses/core';
+import { type AccountSetAside, type BorrowMark, type FundClaim, fundingOrder, isoDate, movedAmount, type SetAsideClaim, setAsideOn } from '@expanses/core';
 import { and, eq, inArray, lte, type SQL } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { goalDraws } from '../schema-goals';
 import { listEarmarks, listGoals } from './goals';
+import { sinkingFundViews } from './sinking-views';
 import { nativeBalances } from './ledger';
 import { type SetAsideChoice, setAsideChoiceOfTx, type SetAsideIntent, setAsideTablesExist } from './set-aside-tx';
 
@@ -70,7 +71,13 @@ export async function listDraws(database: Database, ws: WorkspaceContext, upTo?:
 /** Every account something is promised on, shared out (`setAsideOn`). Archived goals promise nothing. */
 export async function setAsideViews(database: Database, ws: WorkspaceContext, opts: SetAsideViewOptions = {}): Promise<Record<string, AccountSetAsideRow>> {
   const goals = await listGoals(database, ws);
-  if (goals.length === 0) return {};
+  // Yearly bills saving up (0101) promise money on an account exactly as a goal does, worked out from the day.
+  const fundClaims = new Map<string, FundClaim[]>();
+  for (const fund of await sinkingFundViews(database, ws, opts.date ?? isoDate())) {
+    if (fund.savedMinor <= 0) continue;
+    fundClaims.set(fund.accountId, [...(fundClaims.get(fund.accountId) ?? []), { billId: fund.billId, name: fund.name, promisedMinor: fund.savedMinor }]);
+  }
+  if (goals.length === 0 && fundClaims.size === 0) return {};
   const active = new Map(goals.map((goal) => [goal.id, goal]));
   // A shortage lands on the goals funded last: the compulsory ones (emergency, retirement) are funded first, whatever
   // rank an older goal list left them at (health-ratios' fundingOrder, ruling at the merge).
@@ -103,7 +110,7 @@ export async function setAsideViews(database: Database, ws: WorkspaceContext, op
       add(draw.accountId, draw.goalId, giveBack);
     }
   }
-  if (promised.size === 0) return {};
+  if (promised.size === 0 && fundClaims.size === 0) return {};
 
   const balances = await nativeBalances(database, ws, opts.date);
   if (excluded) {
@@ -122,10 +129,10 @@ export async function setAsideViews(database: Database, ws: WorkspaceContext, op
   const rows = await database.db
     .select({ id: accounts.id, name: accounts.name, currency: accounts.currency })
     .from(accounts)
-    .where(and(eq(accounts.workspaceId, ws.workspaceId), inArray(accounts.id, [...promised.keys()])));
+    .where(and(eq(accounts.workspaceId, ws.workspaceId), inArray(accounts.id, [...new Set([...promised.keys(), ...fundClaims.keys()])])));
   const views: Record<string, AccountSetAsideRow> = {};
   for (const account of rows) {
-    const claims: SetAsideClaim[] = [...promised.get(account.id)!].map(([goalId, minor]) => ({
+    const claims: SetAsideClaim[] = [...(promised.get(account.id) ?? [])].map(([goalId, minor]) => ({
       goalId,
       name: active.get(goalId)!.name,
       rank: priority.get(goalId)!,
@@ -138,7 +145,7 @@ export async function setAsideViews(database: Database, ws: WorkspaceContext, op
       accountId: account.id,
       name: account.name,
       currency: account.currency ?? ws.baseCurrency,
-      ...setAsideOn(balances[account.id] ?? 0, claims, borrows),
+      ...setAsideOn(balances[account.id] ?? 0, claims, borrows, fundClaims.get(account.id) ?? []),
     };
   }
   return views;

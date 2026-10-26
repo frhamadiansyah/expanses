@@ -1,4 +1,4 @@
-import { formatMinor, isoDate } from '@expanses/core';
+import { dayMonth, formatMinor, isoDate } from '@expanses/core';
 import { type MonthlyBill, skipBill, undoBillPayments, unskipBill } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { Check, ListChecks, Plus } from 'lucide-react';
@@ -14,7 +14,7 @@ import { MonthlyBuys } from './MonthlyBuys';
 import { amountOf, billCurrencyOf, billsInReadCurrency, type BillSummary, isToPay, paidText, pausedOf, sectionsOf, settledOf, skippedText, summaryOf } from './bill-view';
 import { PaySeveralSheet } from './PaySeveralSheet';
 import { PaySheet } from './PaySheet';
-import { useBillMoney, useMonthlyBills, useYearlyBills } from './queries';
+import { useBillMoney, useMonthlyBills, useSinkingFunds, useYearlyBills } from './queries';
 import { type DueFee, useUpcomingFees } from '../cards/fee-due';
 import { FeeAlert } from '../cards/FeeAlert';
 import { feeDateText } from '../cards/fee-line';
@@ -96,6 +96,7 @@ export function RecurringPage() {
   const backToCashflow = useBackToCashflow();
   const bills = useMonthlyBills(today);
   const yearly = useYearlyBills(today);
+  const funds = useSinkingFunds(today);
   const fees = useUpcomingFees(today);
   const [askingFee, setAskingFee] = useState<DueFee | null>(null);
   const accounts = useAccounts().data ?? [];
@@ -281,6 +282,23 @@ export function RecurringPage() {
       {(yearly.data?.length ?? 0) > 0 && (
         <InsetGroup>
           <InsetRow testId="yearly-bills-row" title="Yearly bills" value={String(yearly.data!.length)} to="/bills/yearly" search={from} />
+        </InsetGroup>
+      )}
+
+      {/* Money each yearly bill puts aside this month. Read-only, and not part of what is owed above. */}
+      {(funds.data?.length ?? 0) > 0 && (
+        <InsetGroup header="Set aside this month">
+          {funds.data!.map((fund) => (
+            <InsetRow
+              key={fund.billId}
+              testId="sinking-fund-row"
+              title={fund.name}
+              subtitle={`Saving for ${dayMonth(fund.dueOn)}`}
+              value={<Money minor={fund.monthlyMinor} currency={fund.currency} />}
+              valueTone="ink"
+              chevron={false}
+            />
+          ))}
         </InsetGroup>
       )}
 

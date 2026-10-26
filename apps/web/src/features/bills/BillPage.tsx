@@ -12,7 +12,8 @@ import { CategoryIcon } from '../categories/CategoryIcon';
 import { billCurrencyOf, pillOf } from './bill-view';
 import { PauseSheet } from './PauseSheet';
 import { PaySheet } from './PaySheet';
-import { useBillDetail } from './queries';
+import { SinkingFundGroup } from './SinkingFundGroup';
+import { useBillDetail, useSinkingFunds } from './queries';
 
 /** How many months the history shows before See all. */
 const HISTORY_SHOWN = 3;
@@ -50,6 +51,7 @@ export function BillPage({ billId }: { billId: string }) {
   const accounts = useAccounts().data ?? [];
   const today = isoDate();
   const detail = useBillDetail(billId, today);
+  const fund = (useSinkingFunds(today).data ?? []).find((f) => f.billId === billId);
 
   const [paying, setPaying] = useState(false);
   const [pausing, setPausing] = useState(false);
@@ -207,6 +209,8 @@ export function BillPage({ billId }: { billId: string }) {
         <ReadOnlyRow label="Category" value={category?.name ?? ''} />
         {bookName ? <ReadOnlyRow label="Workspace" value={bookName} /> : null}
       </InsetGroup>
+
+      {bill.repeat === 'yearly' && fund && <SinkingFundGroup fund={fund} />}
 
       <div data-testid="bill-history">
         <InsetGroup header="History">

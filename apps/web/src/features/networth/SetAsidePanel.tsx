@@ -13,6 +13,7 @@ export function SetAsidePanel({ accountId }: { accountId: string }) {
   const { currency } = view;
   const segments = [
     ...view.goals.map((goal, index) => ({ key: goal.goalId, label: goal.name, minor: goal.coveredMinor, className: GOAL_COLOURS[index % GOAL_COLOURS.length]! })),
+    ...view.funds.map((fund) => ({ key: `fund-${fund.billId}`, label: fund.name, minor: fund.coveredMinor, className: 'bg-amber-500' })),
     ...(view.shortMinor > 0 ? [{ key: 'short', label: 'Short', minor: view.shortMinor, className: 'bg-rose-500' }] : []),
   ];
   const total = Math.max(view.balanceMinor, view.setAsideMinor);
@@ -47,6 +48,21 @@ export function SetAsidePanel({ accountId }: { accountId: string }) {
           />
         ))}
       </InsetGroup>
+      {view.funds.length > 0 && (
+        <InsetGroup header="Saving for bills">
+          {view.funds.map((fund) => (
+            <InsetRow
+              key={fund.billId}
+              to="/bills/$billId"
+              params={{ billId: fund.billId }}
+              title={fund.name}
+              subtitle={fund.shortMinor > 0 ? <span className="text-[var(--ph-warn)]">Short by {formatMinor(fund.shortMinor, currency)}</span> : 'Covered'}
+              value={<Money minor={fund.promisedMinor} currency={currency} />}
+              valueTone="ink"
+            />
+          ))}
+        </InsetGroup>
+      )}
     </>
   );
 }

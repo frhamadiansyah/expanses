@@ -1,16 +1,26 @@
-import { categoryPath, CURRENCIES, monthName, ordinal, parseMajor } from '@expanses/core';
+import { categoryPath, CURRENCIES, isoDate, minorToMajorString, monthName, ordinal, parseMajor, sinkingPlan } from '@expanses/core';
 import { saveExpenseTemplate } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
-import { canPayWith } from '../../lib/account-types';
+import { canPayWith, SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, LargeTitle, PickerRow, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, LargeTitle, PickerRow, SCREEN, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { CategoryPicker } from '../transactions/CategoryPicker';
 import { useExpenseTemplates } from '../transactions/queries';
 import { amountInput } from './bill-view';
+import { useSinkingFunds } from './queries';
+
+const FUND_ACCOUNT_KEY = 'expanses.sinking-account';
+const lastFundAccount = (): string => {
+  try {
+    return localStorage.getItem(FUND_ACCOUNT_KEY) ?? '';
+  } catch {
+    return '';
+  }
+};
 const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
 
@@ -31,6 +41,7 @@ export function BillFormPage({ billId }: { billId?: string }) {
   const invalidate = useInvalidateAll();
   const accounts = useAccounts();
   const templates = useExpenseTemplates();
+  const funds = useSinkingFunds(isoDate());
 
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
@@ -41,6 +52,10 @@ export function BillFormPage({ billId }: { billId?: string }) {
   // Every month, or once a year in the month chosen below.
   const [repeat, setRepeat] = useState<'monthly' | 'yearly'>('monthly');
   const [month, setMonth] = useState('');
+  // A yearly bill can save up each month in an account already held; '' monthly follows the worked-out figure.
+  const [fundOn, setFundOn] = useState(false);
+  const [fundAccountId, setFundAccountId] = useState('');
+  const [fundMonthly, setFundMonthly] = useState('');
   const [outDay, setOutDay] = useState('');
   const [payBy, setPayBy] = useState('');
   const [error, setError] = useState<unknown>(null);
@@ -55,9 +70,26 @@ export function BillFormPage({ billId }: { billId?: string }) {
   const payerCurrency = (accounts.data ?? []).find((account) => account.id === moneyAccountId)?.currency ?? ws.baseCurrency;
   const billCurrency = currency || payerCurrency;
 
+  // Money the fund can be set aside in: spendable accounts (savings included) in the bill's money; the saved one is kept.
+  const fundAccounts = moneyHolders(accounts.data ?? []).filter(
+    (account) => account.id === fundAccountId || (account.kind === 'asset' && SPENDABLE_SUBTYPES.includes(account.subtype) && (account.currency ?? ws.baseCurrency) === billCurrency),
+  );
+  const parsedAmount = (() => {
+    try {
+      return amount.trim() ? parseMajor(amount.trim(), billCurrency) : null;
+    } catch {
+      return null;
+    }
+  })();
+  // What each month comes to, from the amount and the months left; the field shows it until another is typed.
+  const worked =
+    parsedAmount !== null && parsedAmount > 0 && month !== '' && outDay !== ''
+      ? sinkingPlan({ targetMinor: parsedAmount, today: isoDate(), repeatMonth: Number(month), dayOfMonth: Number(outDay), currency: billCurrency }).monthlyMinor
+      : null;
+
   // Filled once the bill being edited has arrived; not kept in sync after, so typing is never clobbered.
   useEffect(() => {
-    if (!billId || loaded || !accounts.data) return;
+    if (!billId || loaded || !accounts.data || funds.isPending) return;
     const bill = (templates.data ?? []).find((t) => t.id === billId);
     if (!bill) return;
     setName(bill.name);
@@ -71,8 +103,22 @@ export function BillFormPage({ billId }: { billId?: string }) {
     setMonth(bill.repeatMonth === null ? '' : String(bill.repeatMonth));
     setOutDay(String(bill.dayOfMonth));
     setPayBy(String(bill.payByDay ?? ''));
+    const fund = (funds.data ?? []).find((f) => f.billId === billId);
+    if (fund) {
+      setFundOn(true);
+      setFundAccountId(fund.accountId);
+      setFundMonthly(minorToMajorString(fund.monthlyMinor, fund.currency));
+    }
     setLoaded(true);
-  }, [billId, loaded, templates.data, accounts.data, ws.baseCurrency]);
+  }, [billId, loaded, templates.data, accounts.data, funds.data, ws.baseCurrency]);
+
+  // A new fund starts on the account last used, else the first savings account, else the first account that can hold it.
+  useEffect(() => {
+    if (!fundOn || fundAccountId || !accounts.data) return;
+    const saved = lastFundAccount();
+    const pick = fundAccounts.find((a) => a.id === saved) ?? fundAccounts.find((a) => a.subtype === 'savings') ?? fundAccounts[0];
+    if (pick) setFundAccountId(pick.id);
+  }, [fundOn, fundAccountId, accounts.data, fundAccounts]);
   // Until the bill has loaded there is nothing to type into: a field typed in first would be overwritten by the
   // bill as it lands, and a Save would write the blank form over it. A bill that is no longer there opens blank.
   const waiting = Boolean(billId) && !loaded && !templates.isError && !(templates.isSuccess && !(templates.data ?? []).some((t) => t.id === billId));
@@ -88,6 +134,11 @@ export function BillFormPage({ billId }: { billId?: string }) {
       setError(new Error('Choose the bill date'));
       return;
     }
+    const saving = repeat === 'yearly' && fundOn;
+    if (saving && parsedAmount === null) {
+      setError(new Error('A sinking fund needs a fixed amount'));
+      return;
+    }
     try {
       await saveExpenseTemplate(database, ws, {
         id: billId,
@@ -100,7 +151,15 @@ export function BillFormPage({ billId }: { billId?: string }) {
         repeatMonth: repeat === 'yearly' ? Number(month) : null,
         dayOfMonth: Number(outDay),
         payByDay: payBy === '' ? null : Number(payBy),
+        fund: saving ? { accountId: fundAccountId, monthlyMinor: fundMonthly.trim() === '' ? null : parseMajor(fundMonthly.trim(), billCurrency) } : null,
       });
+      if (saving) {
+        try {
+          localStorage.setItem(FUND_ACCOUNT_KEY, fundAccountId);
+        } catch {
+          // Private windows may refuse storage; the account is then simply not remembered.
+        }
+      }
       await invalidate();
       // A new bill has no page yet to land on; an edit came from one, so Save returns to it.
       if (billId) await navigate({ to: '/bills/$billId', params: { billId } });
@@ -203,6 +262,32 @@ export function BillFormPage({ billId }: { billId?: string }) {
               ))}
             </SelectRow>
           </InsetGroup>
+
+          {repeat === 'yearly' && (
+            <InsetGroup header="Sinking fund">
+              <SwitchRow label="Save up for it" checked={fundOn} onChange={setFundOn} />
+              {fundOn && (
+                <TextRow
+                  label="Each month"
+                  value={fundMonthly}
+                  onChange={(e) => setFundMonthly(e.target.value)}
+                  inputMode="decimal"
+                  placeholder={worked === null ? 'Amount' : minorToMajorString(worked, billCurrency)}
+                  info="Worked out from the amount and the months left. Type another amount to override."
+                />
+              )}
+              {fundOn && (
+                <SelectRow label="Set aside in" value={fundAccountId} onChange={(e) => setFundAccountId(e.target.value)}>
+                  <option value="">Choose an account</option>
+                  {fundAccounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+                </SelectRow>
+              )}
+            </InsetGroup>
+          )}
 
           <InsetGroup>
             <InsetRow title="Cancel" action to={backTo} params={backParams} />
