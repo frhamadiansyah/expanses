@@ -1,4 +1,4 @@
-import { linkHolding } from '@expanses/db';
+import { changeShare, linkHolding } from '@expanses/db';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useCallback, useState } from 'react';
 import { Check } from 'lucide-react';
@@ -9,7 +9,7 @@ import { Sheet } from '../../app/Sheet';
 import { useBack } from '../../app/BackHeader';
 import { PushedTitle, SCREEN } from '../../ui/native';
 import type { FormConfirm } from '../networth/AddAssetForm';
-import { usePositions } from '../networth/queries';
+import { useAssetProfile, usePositions } from '../networth/queries';
 import { asHeld, brokerChoices, type Picked, securityOf } from './add-holding';
 import { AddHoldingForm } from './AddHoldingForm';
 import { NameItForm } from './NameItForm';
@@ -25,6 +25,9 @@ export function AddHoldingPage() {
   const securities = useSecurities().data ?? [];
   const links = useHoldingLinks().data ?? [];
   const positions = usePositions().data ?? {};
+  // A listed share's ticker is set from its Settings, and its name follows; any other holding is only linked.
+  const linkedKind = useAssetProfile(link ?? '').data?.assetKind ?? null;
+  const toSettings = linkedKind === 'stock';
   const [query, setQuery] = useState('');
   /* The form first, as every other asset opens: its first row is the ticker, which opens the search. Linking a holding
      recorded before a ticker (spec §7.6) asks only for the ticker, so it starts at the search. */
@@ -56,9 +59,10 @@ export function AddHoldingPage() {
     }
     // Linking a holding recorded before this build (spec §7.6): the same search, a different last step.
     try {
-      await linkHolding(database, ws, { accountId: link, security: next.kind === 'held' ? { id: next.security.id } : securityOf(next) });
+      const security = next.kind === 'held' ? { id: next.security.id } : securityOf(next);
+      await (toSettings ? changeShare(database, ws, { accountId: link, security }) : linkHolding(database, ws, { accountId: link, security }));
       await invalidate();
-      await navigate({ to: '/net-worth/assets/$accountId', params: { accountId: link } });
+      await navigate({ to: toSettings ? '/net-worth/assets/$accountId/settings' : '/net-worth/assets/$accountId', params: { accountId: link } });
     } catch (e) {
       setError(e);
     }
@@ -66,9 +70,10 @@ export function AddHoldingPage() {
 
   // Opened from New asset or a stock's page, Back returns to whichever it was; opened cold, to Assets.
   const goBack = useBack('/net-worth/assets');
-  const leave = () => (link ? void navigate({ to: '/net-worth/assets/$accountId', params: { accountId: link } }) : goBack());
+  const leave = () =>
+    link ? void navigate({ to: toSettings ? '/net-worth/assets/$accountId/settings' : '/net-worth/assets/$accountId', params: { accountId: link } }) : goBack();
   const back = () => (link && step === 'name' ? setStep('search') : leave());
-  const backLabel = link ? (step === 'name' ? 'Search' : 'Asset') : 'Back';
+  const backLabel = link ? (step === 'name' ? 'Search' : toSettings ? 'Settings' : 'Asset') : 'Back';
   return (
     <div className={SCREEN}>
       <PushedTitle

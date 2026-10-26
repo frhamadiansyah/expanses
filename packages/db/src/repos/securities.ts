@@ -6,9 +6,9 @@ import { accounts } from '../schema';
 import { assetProfiles, prices } from '../schema-assets';
 import { holdingLinks, securities, securityPrices } from '../schema-securities';
 import { markAccountDirtyTx } from '../sync/capture';
-import { createAccountTx } from './accounts';
+import { createAccountTx, renameAccountTx } from './accounts';
 import { AssetError, saveAssetProfileTx } from './assets';
-import { type RecordTradeInput, type TradeResult, writeTradeTx } from './trades';
+import { activeTrades, type RecordTradeInput, type TradeResult, writeTradeTx } from './trades';
 
 /**
  * Whether migration 0051 has run. Every read and write of the three tables asks first, so a database stopped at an
@@ -51,6 +51,9 @@ const toSecurity = (row: typeof securities.$inferSelect): SecurityRow => ({
 });
 
 const labelOf = (security: SecurityRow) => security.ticker ?? security.name;
+
+/** A share's name, derived and never typed: "BBCA · Stockbit", or just the ticker when it is kept at no broker. */
+export const holdingName = (label: string, brokerName: string | null | undefined): string => (brokerName?.trim() ? `${label} · ${brokerName.trim()}` : label);
 
 /** The security for a market and ticker, recorded now if it is not yet. A ticker's facts are never rewritten. */
 export async function ensureSecurityTx(tx: Db, ws: WorkspaceContext, input: NewSecurity): Promise<SecurityRow> {
@@ -287,6 +290,47 @@ export function linkHolding(
   });
 }
 
+/**
+ * Changes the ticker or the broker of a listed share from its Settings. The share's name is derived from the two
+ * ("BBCA · Stockbit"), so it is rewritten whenever either changes and never disagrees with them. The ticker is fixed
+ * once the share has a trade (a trade is of that security); the broker can change at any time and only moves the
+ * label and the default paid-with of the next trades — past trades keep the account they were paid from.
+ * A share with no ticker yet (none, or a name typed by hand with no ticker) may still be given one, so a holding
+ * recorded before tickers is not stranded.
+ */
+export function changeShare(
+  database: Database,
+  ws: WorkspaceContext,
+  input: { accountId: string; security?: { id: string } | NewSecurity; brokerAccountId?: string | null },
+): Promise<void> {
+  return database.transaction(async (tx) => {
+    await requireTables(tx);
+    const [existing] = await tx
+      .select()
+      .from(holdingLinks)
+      .where(and(eq(holdingLinks.accountId, input.accountId), eq(holdingLinks.workspaceId, ws.workspaceId)));
+    const security = input.security ? ('id' in input.security ? await securityByIdTx(tx, ws, input.security.id) : await ensureSecurityTx(tx, ws, input.security)) : undefined;
+    const tickerChanges = security !== undefined && security.id !== (existing?.securityId ?? null);
+    if (tickerChanges && existing?.securityId) {
+      const current = await securityByIdTx(tx, ws, existing.securityId);
+      if (current.ticker && (await activeTrades(tx, ws, input.accountId)).length > 0) throw new AssetError('The ticker is fixed once a trade is recorded');
+    }
+    const brokerChanges = input.brokerAccountId !== undefined && input.brokerAccountId !== (existing?.brokerAccountId ?? null);
+    if (!tickerChanges && !brokerChanges) return;
+    await linkHoldingTx(tx, ws, { accountId: input.accountId, securityId: security?.id, brokerAccountId: input.brokerAccountId });
+    const [link] = await tx
+      .select({ securityId: holdingLinks.securityId, brokerAccountId: holdingLinks.brokerAccountId })
+      .from(holdingLinks)
+      .where(and(eq(holdingLinks.accountId, input.accountId), eq(holdingLinks.workspaceId, ws.workspaceId)));
+    if (!link?.securityId) return;
+    const linked = await securityByIdTx(tx, ws, link.securityId);
+    const [broker] = link.brokerAccountId
+      ? await tx.select({ name: accounts.name }).from(accounts).where(and(eq(accounts.id, link.brokerAccountId), eq(accounts.workspaceId, ws.workspaceId)))
+      : [];
+    await renameAccountTx(tx, ws, input.accountId, holdingName(labelOf(linked), broker?.name));
+  });
+}
+
 export async function upsertSecurityPriceTx(tx: Db, ws: WorkspaceContext, input: { securityId: string; onDate: string; priceMicro: number }): Promise<void> {
   if (!Number.isSafeInteger(input.priceMicro) || input.priceMicro < 0) throw new AssetError('A price cannot be negative');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.onDate)) throw new AssetError('Choose a date');
@@ -425,7 +469,7 @@ export function addHolding(database: Database, ws: WorkspaceContext, input: AddH
     let accountId = existing;
     if (!accountId) {
       const holding = await createAccountTx(tx, ws, {
-        name: brokerName ? `${labelOf(security)} · ${brokerName}` : labelOf(security),
+        name: holdingName(labelOf(security), brokerName),
         kind: 'asset',
         subtype: 'investment',
         currency: security.currency,

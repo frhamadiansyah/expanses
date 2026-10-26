@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  type AccountRow, archiveAccount, assetValuesAt, checkLedgerIntegrity, createAccount, createWorkspace, type Database, getAssetProfile, linkHolding,
+  type AccountRow, archiveAccount, changeShare, holdingName, listAccounts, assetValuesAt, checkLedgerIntegrity, createAccount, createWorkspace, type Database, getAssetProfile, linkHolding,
   listHoldingLinks, listPrices, listSecurities, listSecurityPrices, nativeBalances, type NewSecurity, positionsFor, recordTrade, saveAssetProfile,
   securitiesSchema, securityOfHolding, upsertPrice, upsertSecurityPrice, type WorkspaceContext,
 } from '../src/index';
@@ -261,5 +261,51 @@ describe('linkHolding', () => {
     await linkHolding(database, ws, { accountId: a.id, security: bbca });
     const [security] = await listSecurities(database, ws);
     await expect(upsertSecurityPrice(database, ws, { securityId: security!.id, onDate: '2026-09-19', priceMicro: -1 })).rejects.toThrow();
+  });
+});
+
+describe("changeShare: a share's name follows its ticker and broker", () => {
+  const nameOf = async (id: string) => (await listAccounts(database, ws)).find((a) => a.id === id)!.name;
+  const bbri: NewSecurity = { ticker: 'BBRI', name: 'BBRI name', market: 'IDX', currency: 'IDR', lotSize: 100, kind: 'share', source: 'catalogue' };
+
+  it('derives "TICKER · Broker", and the ticker alone with no broker', () => {
+    expect(holdingName('BBCA', 'Stockbit')).toBe('BBCA · Stockbit');
+    expect(holdingName('BBCA', null)).toBe('BBCA');
+    expect(holdingName('BBCA', '  ')).toBe('BBCA');
+  });
+
+  it('renames on a broker change and on a ticker change, and leaves a custom name alone otherwise', async () => {
+    const a = await holding('My favourite');
+    await linkHolding(database, ws, { accountId: a.id, security: bbca });
+    expect(await nameOf(a.id)).toBe('My favourite');
+    await changeShare(database, ws, { accountId: a.id, brokerAccountId: stockbit.id });
+    expect(await nameOf(a.id)).toBe('BBCA · Stockbit');
+    await changeShare(database, ws, { accountId: a.id, brokerAccountId: null });
+    expect(await nameOf(a.id)).toBe('BBCA');
+    await changeShare(database, ws, { accountId: a.id, brokerAccountId: stockbit.id, security: bbri });
+    expect(await nameOf(a.id)).toBe('BBRI · Stockbit');
+  });
+
+  it('locks the ticker once a trade is recorded, but not the broker, and past trades keep their account', async () => {
+    const a = await holding('A');
+    await linkHolding(database, ws, { accountId: a.id, security: bbca, brokerAccountId: stockbit.id });
+    await recordTrade(database, ws, { accountId: a.id, kind: 'buy', occurredOn: '2026-01-05', unitsMicro: 300_000_000, grossMinor: 2_625_000, feeMinor: 0, taxMinor: 0, cashAccountId: bank.id });
+    await expect(changeShare(database, ws, { accountId: a.id, security: bbri })).rejects.toThrow(/fixed once a trade/);
+    const other = await createAccount(database, ws, { name: 'Ajaib', kind: 'asset', subtype: 'fund', currency: 'IDR' });
+    const before = await ledger();
+    await changeShare(database, ws, { accountId: a.id, brokerAccountId: other.id });
+    expect(await nameOf(a.id)).toBe('BBCA · Ajaib');
+    expect(await ledger()).toEqual(before);
+    // Saving the same ticker again is no change, so it is not refused.
+    await changeShare(database, ws, { accountId: a.id, security: bbca });
+  });
+
+  it('lets a share named by hand with no ticker be given one after trading', async () => {
+    const a = await holding('BBCA old');
+    const byHand: NewSecurity = { ticker: null, name: 'BBCA old', market: '', currency: 'IDR', lotSize: null, kind: 'other', source: 'owner' };
+    await linkHolding(database, ws, { accountId: a.id, security: byHand, brokerAccountId: stockbit.id });
+    await recordTrade(database, ws, { accountId: a.id, kind: 'buy', occurredOn: '2026-01-05', unitsMicro: 300_000_000, grossMinor: 2_625_000, feeMinor: 0, taxMinor: 0, cashAccountId: bank.id });
+    await changeShare(database, ws, { accountId: a.id, security: bbca });
+    expect(await nameOf(a.id)).toBe('BBCA · Stockbit');
   });
 });

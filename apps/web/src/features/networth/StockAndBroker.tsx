@@ -1,4 +1,4 @@
-import { type AssetProfileRow, HELD_AT_SUBTYPES, linkHolding, sameFundAs, saveAssetProfile, openBroker } from '@expanses/db';
+import { type AssetProfileRow, changeShare, HELD_AT_SUBTYPES, linkHolding, sameFundAs, saveAssetProfile, openBroker } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
@@ -11,7 +11,7 @@ import { useHoldingLinks, useSecurities } from '../investments/queries';
  * A mutual fund (spec 2026-10-19-fund-by-amount) may also be held at a bank or a fund app, may name a place that is
  * not in the app, and may be the same fund as a holding at another place.
  */
-export function useStockAndBroker(accountId: string) {
+export function useStockAndBroker(accountId: string, opts: { share?: boolean } = {}) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const linksQuery = useHoldingLinks();
@@ -39,13 +39,16 @@ export function useStockAndBroker(accountId: string) {
     }
   }
 
-  const keptAt = (brokerAccountId: string) => run(() => linkHolding(database, ws, { accountId, brokerAccountId: brokerAccountId || null }));
+  // A listed share's name follows its broker ("BBCA · Stockbit"), so its change goes through changeShare, which renames.
+  const setBroker = (brokerAccountId: string | null) =>
+    opts.share ? changeShare(database, ws, { accountId, brokerAccountId }) : linkHolding(database, ws, { accountId, brokerAccountId });
+  const keptAt = (brokerAccountId: string) => run(() => setBroker(brokerAccountId || null));
   /** A broker not yet in the app, opened by name in the holding's own currency and picked at once. */
   const newBroker = (name: string) =>
     run(async () => {
       const currency = accounts.find((a) => a.id === accountId)?.currency ?? ws.baseCurrency;
       const broker = await openBroker(database, ws, { name, currency });
-      await linkHolding(database, ws, { accountId, brokerAccountId: broker.id });
+      await setBroker(broker.id);
     });
   const sameFund = (otherAccountId: string) => run(() => sameFundAs(database, ws, accountId, otherAccountId || null));
   /** A place not in the app, by name: it is the tax report's Nama institusi, written whole as the profile's other fields are. */

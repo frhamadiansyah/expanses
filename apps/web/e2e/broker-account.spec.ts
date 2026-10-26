@@ -45,9 +45,17 @@ test('a fund account names its broker and its RDN bank, lists what the broker ke
 
   await held.click();
   await expect(page.getByText('Value now')).toBeVisible();
+  // The share's page keeps no Ticker, Broker or Custodian row: they are in its Settings, with its derived name.
+  await expect(page.getByLabel('Broker', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('main')).not.toContainText('Custodian');
+  await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Broker', { exact: true })).toHaveValue(/.+/);
-  await expect(page.getByRole('main')).toContainText('Stockbit Sekuritas');
-  await expect(page.getByRole('main')).toContainText('CustodianCIMB Niaga');
+  await expect(page.getByRole('main')).toContainText('BBRI · Stockbit Sekuritas');
+  await expect(page.getByRole('main')).toContainText('CIMB Niaga');
+  // Custodian taps through to the broker's own Settings, where its bank is named.
+  await page.getByRole('link', { name: /Custodian/ }).click();
+  await expect(page.getByLabel('Nama bank/institusi')).toHaveValue('CIMB Niaga');
 });
 
 test('a fund account opened by a walk is called by the broker it names', async ({ page }) => {
