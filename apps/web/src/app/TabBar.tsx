@@ -32,7 +32,7 @@ export function TabBar({ onAdd }: { onAdd: () => void }) {
           </Link>
         ))}
         <button type="button" onClick={onAdd} aria-label="Add a transaction" className={cell}>
-          <span aria-hidden className="flex size-9 items-center justify-center rounded-full bg-[var(--ph-tint)] text-white">
+          <span aria-hidden className="flex size-9 items-center justify-center rounded-full bg-[var(--ph-ink)] text-[var(--ph-surface)]">
             <Plus size={20} strokeWidth={2.4} />
           </span>
         </button>
