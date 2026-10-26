@@ -5,20 +5,11 @@ import { useState, useSyncExternalStore } from 'react';
 import { useApp } from '../../app/context';
 import { saveBytes } from '../../lib/download';
 import { isMoneyAccount, useAccounts } from '../../lib/queries';
-import { Button, cx, ErrorBox } from '../../ui';
+import { ErrorBox } from '../../ui';
+import { NOTICE_BUTTON, Notice, NoticeButton } from '../../ui/native';
 import { afterUpdate, bannerStandsDown } from './after-update';
 import { type BackupSnooze, backupUrgency, bannerWords, daysSince, getLastBackupAt, reminderDue, setLastBackupAt, snoozeUntil } from './backupState';
 import { readSnooze, SNOOZE_KEY, subscribeToUpdateCard, updateCardDismissed } from './reminder-state';
-
-/*
- * Three tones, in the app's own colours: `overdue` is the loudest and wears a ring, `warn` is the same amber
- * without one, and `remind` is the kit's plain grey. A tinted panel needs its own ink, so the pair moves together.
- */
-const TONE: Record<string, string> = {
-  overdue: 'bg-[var(--ph-warn-panel)] text-[var(--ph-warn-ink)] ring-1 ring-[var(--ph-warn)]',
-  warn: 'bg-[var(--ph-warn-panel)] text-[var(--ph-warn-ink)]',
-  remind: 'bg-[var(--ph-fill)] text-[var(--ph-ink-2)]',
-};
 
 /**
  * The standing reminder to keep a copy of your own.
@@ -78,30 +69,26 @@ export function BackupBanner() {
     }
   };
 
+  const words = bannerWords(level, last.data ? daysSince(last.data) : null);
   return (
-    <div className={cx('mb-4 rounded-lg px-3 py-2 text-sm', TONE[level])} role="status">
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <span className="min-w-0 flex-1">{bannerWords(level, last.data ? daysSince(last.data) : null)}</span>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          {level === 'overdue' ? (
-            <Button className="min-h-11" disabled={busy} onClick={() => void onDownload()}>
-              Download backup
-            </Button>
-          ) : (
-            <Link to="/backup" className="inline-flex min-h-11 items-center px-1 font-medium whitespace-nowrap underline">
-              Back up now
-            </Link>
-          )}
-          <Button variant="ghost" className="min-h-11" disabled={busy} onClick={onDismiss}>
-            Not now
-          </Button>
-        </div>
-      </div>
-      {error != null && (
-        <div className="mt-2">
-          <ErrorBox error={error} />
-        </div>
-      )}
-    </div>
+    <Notice
+      kind="warning"
+      title={words.title}
+      line={words.line}
+      onDismiss={onDismiss}
+      actions={
+        level === 'overdue' ? (
+          <NoticeButton disabled={busy} onClick={() => void onDownload()}>
+            Download backup
+          </NoticeButton>
+        ) : (
+          <Link to="/backup" className={NOTICE_BUTTON}>
+            Back up now
+          </Link>
+        )
+      }
+    >
+      <ErrorBox error={error} />
+    </Notice>
   );
 }

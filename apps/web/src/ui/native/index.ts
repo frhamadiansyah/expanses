@@ -39,3 +39,5 @@ export { arriveFrom, flyInto, leaveFrom, reducedMotion } from './card-motion';
 export { CARD_H, CARD_W, DESKTOP_CARD_W, STRIP, cardFigure, cardHeightFor, cardsBeforeScrolling, stackLayout, type StackLayout, type StackedCard } from './card-stack';
 export { type TreePlace, TreeLines, TreeStem } from './TreeLines';
 export { iconCentre } from './metrics';
+export { Notice, NOTICE_BUTTON, NoticeButton } from './Notice';
+export { noticeLook, type NoticeKind, type NoticeLook } from './notice-look';

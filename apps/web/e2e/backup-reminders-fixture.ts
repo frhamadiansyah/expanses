@@ -49,7 +49,7 @@ export async function restoreAgedByDays(page: Page, target: string, days: number
 
 /** The banner, found by what it says rather than by where it sits. */
 export function overdueBanner(page: Page, days: number) {
-  return page.getByRole('status').filter({ hasText: `No backup in ${days} days.` });
+  return page.getByRole('status').filter({ hasText: `No backup in ${days} days` });
 }
 
 /** Winds a "Not now" back so the week it holds for has passed, as it will for the user a week later. */

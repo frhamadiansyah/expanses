@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useApp } from '../../../app/context';
 import { ErrorBox } from '../../../ui';
-import { InsetGroup, InsetRow, Panel, SwitchRow } from '../../../ui/native';
+import { InsetGroup, InsetRow, Notice, NoticeButton, SwitchRow } from '../../../ui/native';
 import { iCloudSettings, ICLOUD_KEY, ICLOUD_OFFER_KEY, ICLOUD_PHOTOS_KEY, putSetting } from './data';
 import { lastOwnCopy } from './names';
 import { hasICloud, ICloudBackup } from './plugin';
@@ -85,22 +85,18 @@ export function ICloudGroup({ blocked }: { blocked: boolean }) {
   return (
     <>
       {offer && !enabled && (
-        <>
-          <Panel header="New: iCloud backup">
-            <p className="text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
-              cicis can save an encrypted copy to iCloud Drive every day, so a new iPhone can pick up where this one left off.
-            </p>
-          </Panel>
-          <InsetGroup>
-            <InsetRow title={<span className="text-[var(--ph-tint)]">Turn on iCloud backup</span>} chevron={false} disabled={off} onClick={() => void setEnabled(true)} />
-            <InsetRow
-              title="Not now"
-              chevron={false}
-              disabled={off}
-              onClick={() => void putSetting(database, ICLOUD_OFFER_KEY, 'answered').then(refresh)}
-            />
-          </InsetGroup>
-        </>
+        <Notice
+          kind="info"
+          title="iCloud backup"
+          line="An encrypted copy every day"
+          body="cicis can save an encrypted copy to iCloud Drive every day, so a new iPhone can pick up where this one left off."
+          actions={
+            <NoticeButton disabled={off} onClick={() => void setEnabled(true)}>
+              Turn on iCloud backup
+            </NoticeButton>
+          }
+          onDismiss={() => void putSetting(database, ICLOUD_OFFER_KEY, 'answered').then(refresh)}
+        />
       )}
       <InsetGroup header="iCloud" info={ABOUT}>
         <SwitchRow label="Back up to iCloud" checked={enabled} disabled={off} onChange={(on) => void setEnabled(on)} />

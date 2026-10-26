@@ -63,9 +63,11 @@ export function daysSince(iso: string, now: Date = new Date()): number {
  * truth. Neither line mentions the safety copies the app takes for itself: those sit on this same
  * device, so they are not a backup, and saying so here would be the one comforting lie in the app.
  */
-export function bannerWords(urgency: BackupReminder, days: number | null): string {
-  const how = days === null ? 'Not backed up yet.' : `No backup in ${days} days.`;
-  return `${how} ${urgency === 'overdue' ? 'The only copy is on this device.' : 'Data exists only on this device.'}`;
+export function bannerWords(urgency: BackupReminder, days: number | null): { title: string; line: string } {
+  return {
+    title: days === null ? 'Not backed up' : `No backup in ${days} days`,
+    line: urgency === 'overdue' ? 'Only copy is on this device' : 'Data is only on this device',
+  };
 }
 
 /** A "Not now": the level that was put off, and the date it is put off until. */

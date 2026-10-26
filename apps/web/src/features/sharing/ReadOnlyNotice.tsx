@@ -1,4 +1,5 @@
 import { useApp } from '../../app/context';
+import { Notice } from '../../ui/native';
 import { useSharedBooks } from './queries';
 import { endedLine, READ_ONLY_NOTE } from './sharing-copy';
 
@@ -12,8 +13,12 @@ export function ReadOnlyNotice() {
   if (!book) return null;
   const byName = book.members.find((member) => member.memberId === book.unsharedBy)?.name ?? null;
   return (
-    <p role="status" data-testid="read-only-notice" className="mb-3 rounded-[10px] bg-[var(--ph-surface)] px-[13px] py-[10px] text-[13px] leading-[18px] text-[var(--ph-ink-2)]">
-      <span className="font-semibold text-[var(--ph-ink)]">{endedLine({ byName, byYou: book.unsharedBy !== null && book.unsharedBy === book.memberId, removed: book.unsharedReason === 'removed' })}.</span> {READ_ONLY_NOTE}
-    </p>
+    <Notice
+      testId="read-only-notice"
+      kind="info"
+      title={endedLine({ byName, byYou: book.unsharedBy !== null && book.unsharedBy === book.memberId, removed: book.unsharedReason === 'removed' })}
+      line="Kept read-only"
+      body={READ_ONLY_NOTE}
+    />
   );
 }

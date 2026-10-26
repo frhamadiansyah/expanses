@@ -1,6 +1,7 @@
 import { dismissWithdrawalRateNotice, withdrawalRateNoticeDue } from '@expanses/db';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
+import { Notice } from '../../ui/native';
 import { WITHDRAWAL_RATE_NOTICE } from '../../lib/withdrawal-rate';
 
 /** Said once, after the first run has recalculated every foreign account (§6, R18). OK puts it away for good. */
@@ -14,11 +15,14 @@ export function WithdrawalRateNotice() {
     await queryClient.invalidateQueries({ queryKey: ['withdrawal-rate-notice'] });
   };
   return (
-    <div role="status" data-testid="withdrawal-rate-notice" className="mb-4 flex items-start gap-3 rounded-[12px] bg-[var(--ph-surface)] p-4 text-[15px] leading-5 text-[var(--ph-ink)]">
-      <p className="flex-1">{WITHDRAWAL_RATE_NOTICE}</p>
-      <button type="button" onClick={() => void dismiss()} className="shrink-0 text-[15px] font-medium text-[var(--ph-tint)]">
-        OK
-      </button>
-    </div>
+    <Notice
+      testId="withdrawal-rate-notice"
+      kind="info"
+      title="Withdrawal rate now used"
+      line="Past months may change slightly"
+      body={WITHDRAWAL_RATE_NOTICE}
+      onDismiss={() => void dismiss()}
+      dismissLabel="OK"
+    />
   );
 }

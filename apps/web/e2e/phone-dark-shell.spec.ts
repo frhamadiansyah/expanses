@@ -49,15 +49,16 @@ test('the floating tab bar is the kit’s chrome, not a white capsule on a black
   expect(await painted(bar)).not.toBe('rgb(255, 255, 255)');
 });
 
-test('the install banner is a toned panel, not the light one', async ({ page }) => {
+test('the install notice is the kit’s surface row, not the light panel', async ({ page }) => {
   await page.goto('/transactions');
   const banner = page.getByRole('status').filter({ hasText: 'Install Expanses' });
   await expect(banner).toBeVisible();
 
-  expect(await painted(banner)).toBe(await tokenColour(page, '--ph-info-panel'));
+  const row = banner.locator('> div').first();
+  expect(await painted(row)).toBe(await tokenColour(page, '--ph-surface'));
   // The light banner was Tailwind's sky-50; it is what the audit found on a black page.
-  expect(await painted(banner)).not.toBe('rgb(240, 249, 255)');
-  expect(await inked(banner)).toBe(await tokenColour(page, '--ph-info-ink'));
+  expect(await painted(row)).not.toBe('rgb(240, 249, 255)');
+  expect(await inked(banner.getByText('Install Expanses', { exact: true }))).toBe(await tokenColour(page, '--ph-ink'));
 });
 
 test('the backup reminder, its button and its ink all move together', async ({ page }, testInfo) => {
@@ -65,10 +66,11 @@ test('the backup reminder, its button and its ink all move together', async ({ p
   await restoreAgedByDays(page, testInfo.outputPath('aged.sqlite3'), 31);
   await page.goto('/transactions');
 
-  const banner = page.getByRole('status').filter({ hasText: 'No backup in 31 days.' });
+  const banner = page.getByRole('status').filter({ hasText: 'No backup in 31 days' });
   await expect(banner).toBeVisible();
-  expect(await painted(banner)).toBe(await tokenColour(page, '--ph-warn-panel'));
-  expect(await inked(banner)).toBe(await tokenColour(page, '--ph-warn-ink'));
+  expect(await painted(banner.locator('> div').first())).toBe(await tokenColour(page, '--ph-surface'));
+  expect(await inked(banner.getByText(/No backup in 31 days/).first())).toBe(await tokenColour(page, '--ph-ink'));
+  await banner.getByRole('button', { name: /No backup in 31 days/ }).click();
 
   /*
    * The button inside it is the shared primitive, so this is the sweep as much as the banner: a `Button` used to

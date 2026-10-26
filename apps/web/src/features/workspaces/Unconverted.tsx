@@ -1,4 +1,5 @@
 import { isoDate } from '@expanses/core';
+import { Notice } from '../../ui/native';
 import { shortDate } from '../transactions/quick-row';
 
 export interface UnconvertedRow {
@@ -30,12 +31,16 @@ export function mergeUnconverted(...lists: readonly (readonly UnconvertedRow[])[
  */
 export function Unconverted({ missing, currency }: { missing: readonly UnconvertedRow[]; currency: string }) {
   if (missing.length === 0) return null;
+  // One entry per currency is what a read reports, so the currencies are named and the amounts are not counted:
+  // "3 amounts" would be a figure the screen has not been told and the user could not check.
+  const names = missing.map((m) => m.currency).join(', ');
   return (
-    // One entry per currency is what a read reports, so the currencies are named and the amounts are not counted:
-    // "3 amounts" would be a figure the screen has not been told and the user could not check.
-    <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="unconverted">
-      Amounts in {missing.map((m) => m.currency).join(', ')} are not counted: no {missing[0]!.currency}→{currency} rate for{' '}
-      {shortDate(missing[0]!.onDate, isoDate())} or earlier. Use Add transaction to enter one.
-    </p>
+    <Notice
+      testId="unconverted"
+      kind="warning"
+      title="Some amounts are not counted"
+      line={`No ${missing[0]!.currency}→${currency} rate`}
+      body={`Amounts in ${names} are not counted: no ${missing[0]!.currency}→${currency} rate for ${shortDate(missing[0]!.onDate, isoDate())} or earlier. Use Add transaction to enter one.`}
+    />
   );
 }

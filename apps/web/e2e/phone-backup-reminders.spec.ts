@@ -14,6 +14,9 @@ test('the overdue reminder fits a phone, and its buttons can be hit with a thumb
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 
+  await banner.getByRole('button', { name: 'Dismiss' }).waitFor();
+  expect((await banner.getByRole('button', { name: 'Dismiss' }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await banner.getByRole('button', { name: /No backup in 31 days/ }).click();
   for (const name of ['Download backup', 'Not now']) {
     const box = await banner.getByRole('button', { name }).boundingBox();
     expect(box, `${name} has no box`).not.toBeNull();

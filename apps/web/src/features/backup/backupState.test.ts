@@ -33,10 +33,9 @@ describe('daysSince', () => {
 
 describe('bannerWords', () => {
   it('says how long it has been, and what that means', () => {
-    expect(bannerWords('overdue', 31)).toBe('No backup in 31 days. The only copy is on this device.');
-    expect(bannerWords('overdue', null)).toBe('Not backed up yet. The only copy is on this device.');
-    expect(bannerWords('warn', 15)).toBe('No backup in 15 days. Data exists only on this device.');
-    expect(bannerWords('remind', 8)).toBe('No backup in 8 days. Data exists only on this device.');
+    expect(bannerWords('overdue', 31)).toEqual({ title: 'No backup in 31 days', line: 'Only copy is on this device' });
+    expect(bannerWords('overdue', null)).toEqual({ title: 'Not backed up', line: 'Only copy is on this device' });
+    expect(bannerWords('warn', 15)).toEqual({ title: 'No backup in 15 days', line: 'Data is only on this device' });
   });
 });
 
