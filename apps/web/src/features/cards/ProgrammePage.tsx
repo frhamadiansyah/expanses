@@ -294,8 +294,8 @@ function PointValues({
                   ))}
                 </SelectRow>,
               ],
-              [<SubmitRow label="Add value" />],
             ]}
+            submit={<SubmitRow label="Add value" />}
           />
         </form>
       )}

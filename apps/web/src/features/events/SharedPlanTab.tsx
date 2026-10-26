@@ -82,6 +82,8 @@ export function SharedPlanTab({ view }: { view: SharedEventView }) {
           <InsetGroup>
             <TextRow label="Thing to buy" value={name} onChange={(e) => setName(e.target.value)} />
             <TextRow label={`Price (${view.currency})`} inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
+          </InsetGroup>
+          <InsetGroup>
             <SubmitRow label="Add to the plan" disabled={!name.trim() || !price.trim()} />
           </InsetGroup>
           <ErrorBox error={error} />

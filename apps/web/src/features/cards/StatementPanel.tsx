@@ -643,8 +643,8 @@ export function StatementPanel({
                 </SelectRow>,
               ],
               [<TextRow label="Paid on" type="date" value={paidOn} onChange={(event) => setPaidOn(event.target.value)} required />],
-              [<SubmitRow label={`Pay ${money(chosenMinor)}`} disabled={busy || payers.length === 0 || !setAside.ready} />],
             ]}
+            submit={<SubmitRow label={`Pay ${money(chosenMinor)}`} disabled={busy || payers.length === 0 || !setAside.ready} />}
           />
           {setAside.node}
         </form>

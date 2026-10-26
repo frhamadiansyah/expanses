@@ -89,6 +89,10 @@ export function NetWorthSetup({
               onClick={() => setChosen((was) => toggleInvitee(was, member.memberId, mode))}
             />
           ))}
+        </InsetGroup>
+      ) : null}
+      {mode ? (
+        <InsetGroup wide>
           <SubmitRow label={busy ? 'Sending…' : 'Invite'} disabled={busy || !canInvite(chosen, mode)} />
         </InsetGroup>
       ) : null}

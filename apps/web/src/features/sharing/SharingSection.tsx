@@ -95,6 +95,8 @@ export function SharingSection({ book }: { book: BookRow }) {
         <ErrorBox error={error} />
         <InsetGroup wide header="Share this workspace" footer={EXPLAINER.map((line) => <span key={line} className="mb-[6px] block">{line}</span>)}>
           <TextRow label="Name" value={name} onChange={(event) => setName(event.target.value)} placeholder="As the others will see it" required autoComplete="name" />
+        </InsetGroup>
+        <InsetGroup wide>
           <SubmitRow label="Share" disabled={!name.trim()} />
         </InsetGroup>
         <InsetGroup wide>

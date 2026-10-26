@@ -48,7 +48,7 @@ export function EditEventForm({
   return (
     <form onSubmit={save} data-testid="edit-event">
       <ErrorBox error={error} />
-      <InsetGroup header="Edit event">
+      <InsetGroup header="Edit event" footer={setLocked ? 'Categories stay as they are once something is tagged or planned on the event.' : undefined}>
         <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
         {setLocked ? (
           <InsetRow title="Categories" value={setName_} chevron={false} />
@@ -65,8 +65,10 @@ export function EditEventForm({
         <TextRow label="Starts on" type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
         <TextRow label="Ends on" type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} />
       </InsetGroup>
-      <InsetGroup footer={setLocked ? 'Categories stay as they are once something is tagged or planned on the event.' : undefined}>
+      <InsetGroup>
         <SubmitRow label="Save changes" />
+      </InsetGroup>
+      <InsetGroup>
         <InsetRow title={<span className="font-normal text-[var(--ph-ink-2)]">Cancel</span>} label="Cancel" onClick={onDone} chevron={false} />
       </InsetGroup>
     </form>

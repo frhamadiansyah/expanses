@@ -111,6 +111,8 @@ export function InstallmentList({ cardAccountId, currency }: { cardAccountId: st
           <ErrorBox error={error} />
           <InsetGroup>
             <SubmitRow label="Save plan" disabled={busy} />
+          </InsetGroup>
+          <InsetGroup>
             <ActionRow label="Cancel" quiet onClick={() => setAdding(false)} />
           </InsetGroup>
         </form>
