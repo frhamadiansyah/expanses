@@ -34,17 +34,17 @@ test('phone: Trade keeps Net worth on the bar, has Buy and Sell tabs, and the + 
   // Buy shows the paid-from rows, Sell the proceeds rows; the tabs are the Add form's control, with no Expense / Income / Transfer.
   await expect(page.getByText('Trade', { exact: true }).first()).toBeVisible();
   await expect(form.getByRole('radio', { name: 'Expense' })).toHaveCount(0);
-  // Neither tab is chosen yet: no rows, and nothing to save.
+  // Neither tab is chosen yet, and the holding is not either; the rows are all there.
   await expect(form.getByRole('radio', { name: 'Buy' })).not.toBeChecked();
   await expect(form.getByRole('radio', { name: 'Sell' })).not.toBeChecked();
-  await expect(form.getByLabel('What was bought or sold')).toHaveCount(0);
+  await expect(form.getByLabel('What was bought or sold')).toBeVisible();
   await expect(form.getByText('Units are recorded')).toHaveCount(0);
   await form.getByRole('radio', { name: 'Buy' }).click();
   await expect(form.getByRole('radio', { name: 'Buy' })).toBeChecked();
-  // The holding is chosen by hand: until then there is the row for it and nothing else, not even Add more details.
+  // The holding is chosen by hand: the row waits on "Choose…" while every other row is already there.
   await expect(form.getByLabel('What was bought or sold')).toBeVisible();
-  await expect(form.getByLabel('Paid with')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Add more details' })).toHaveCount(0);
+  await expect(form.getByLabel('What was bought or sold')).toHaveValue('buy:');
+  await expect(form.getByLabel('Paid with')).toBeVisible();
   await form.getByLabel('What was bought or sold').selectOption({ index: 1 });
   await expect(form.getByLabel('Paid with')).toBeVisible();
   await expect(form.getByText('A credit card works')).toHaveCount(0);

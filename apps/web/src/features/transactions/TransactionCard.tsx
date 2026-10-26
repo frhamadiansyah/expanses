@@ -909,7 +909,7 @@ function CardBody({
             {nothingToSell && <RowHint>Nothing held can be sold yet.</RowHint>}
           </div>
         )}
-        {draft.mode === 'trade' && fixedMode && !kindPicked ? null : draft.mode === 'trade' ? (
+        {draft.mode === 'trade' ? (
           /*
            * §3.6, as rows: what · amount · units or lots · fee · Paid with / Proceeds into · Date, then a second
            * card for the goal and — only on a credit card — the two facts the points engine needs. There is no
@@ -944,7 +944,7 @@ function CardBody({
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </SelectFormRow>
-            {purchase.accountId !== '' && (
+            {(
             <>
             <MoneyFieldRow
               currency={purchaseCurrency}
@@ -1226,7 +1226,7 @@ function CardBody({
         </FormRows>
       )}
 
-      {draft.mode === 'trade' && (!fixedMode || (kindPicked && purchase.accountId !== '')) && (goals.length > 0 || (purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card')) && (
+      {draft.mode === 'trade' && (goals.length > 0 || (purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card')) && (
         <FormRows>
           {goals.length > 0 && (
             <FormRow
@@ -1321,7 +1321,7 @@ function CardBody({
         shadow — the secondary ink, so it follows the theme. It keeps the 44 pt reach the drawn 40 px does not
         have, and keeps `aria-expanded`, because the word is now the only thing that tells the two states apart.
       */}
-      {fixedMode && draft.mode === 'trade' && (!kindPicked || purchase.accountId === '') ? null : (
+      {(
       <button
         type="button"
         aria-expanded={detailsOpen}

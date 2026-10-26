@@ -48,8 +48,7 @@ export async function openBuyOrSell(page: Page, kind: 'buy' | 'sell' = 'buy'): P
   await page.goto('/net-worth');
   await page.getByRole('link', { name: 'Trade', exact: true }).first().click();
   const form = page.getByRole('form', { name: 'Trade' });
-  // Neither tab is chosen on opening, and the rows wait for one.
-  await expect(form.getByLabel('What was bought or sold')).toHaveCount(0);
+  // Neither tab is chosen on opening; every row is there already.
   await form.getByRole('radio', { name: kind === 'sell' ? 'Sell' : 'Buy' }).click();
   await expect(form.getByLabel('What was bought or sold')).toBeVisible();
   // The holding is chosen by hand too; a spec that names none takes the first one the tab offers.
