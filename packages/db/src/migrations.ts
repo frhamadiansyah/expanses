@@ -95,6 +95,7 @@ import sharedTransfers from '../migrations/0094_shared_transfers.sql?raw';
 import eventRefunds from '../migrations/0095_event_refunds.sql?raw';
 import splitLineExcluded from '../migrations/0096_split_line_excluded.sql?raw';
 import jointAccounts from '../migrations/0097_joint_accounts.sql?raw';
+import billCurrency from '../migrations/0098_bill_currency.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -200,6 +201,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 95, name: 'event_refunds', sql: eventRefunds },
   { version: 96, name: 'split_line_excluded', sql: splitLineExcluded },
   { version: 97, name: 'joint_accounts', sql: jointAccounts },
+  { version: 98, name: 'bill_currency', sql: billCurrency },
 ];
 
 /** The highest version this build of the app knows how to produce. */

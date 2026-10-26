@@ -1,5 +1,6 @@
 import {
   addMonths,
+  isSupportedCurrency,
   billStanding,
   type BillStateKind,
   billWindow,
@@ -20,6 +21,7 @@ import type { Database, Db } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { bookCategories, books } from '../schema-books';
 import { billPauses, billPayments, billSkips, billWindows, expenseTemplates } from '../schema-recurring';
+import { billCurrencies, writeBillCurrency } from './bill-currency';
 import { BILL_MONTH, billPausesExist, billTablesExist } from './bill-months';
 import { withCapture } from '../sync/capture';
 import { bookMoneyFor, type Unconverted } from './book-currency';
@@ -50,6 +52,11 @@ export interface ExpenseTemplateRow {
   payByDay: number | null;
   /** YYYY-MM: the first month this bill can be owed for. */
   startsMonth: string;
+  /**
+   * The currency the bill is written in (0098). Null while it follows the account that pays it, which is every bill
+   * made before: its amount is then in that account's currency.
+   */
+  currency: string | null;
 }
 
 export interface SaveExpenseTemplateInput {
@@ -63,9 +70,11 @@ export interface SaveExpenseTemplateInput {
   payByDay?: number | null;
   /** A new bill's first month; this month when absent. Ignored on an edit. */
   startsMonth?: string;
+  /** The bill's own currency; null follows the payer. Absent leaves an edited bill's as it was (a new bill follows). */
+  currency?: string | null;
 }
 
-const toRow = (row: typeof expenseTemplates.$inferSelect, window?: { payByDay: number | null; startsMonth: string }): ExpenseTemplateRow => ({
+const toRow = (row: typeof expenseTemplates.$inferSelect, window?: { payByDay: number | null; startsMonth: string }, currency: string | null = null): ExpenseTemplateRow => ({
   id: row.id,
   name: row.name,
   categoryAccountId: row.categoryAccountId,
@@ -76,6 +85,7 @@ const toRow = (row: typeof expenseTemplates.$inferSelect, window?: { payByDay: n
   payByDay: window?.payByDay ?? null,
   // An older database has no windows: the month the bill was made is the nearest honest answer.
   startsMonth: window?.startsMonth ?? row.createdAt.slice(0, 7),
+  currency,
 });
 
 async function accountKind(db: Db, ws: WorkspaceContext, accountId: string): Promise<string | undefined> {
@@ -103,6 +113,9 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
   }
   if (input.startsMonth !== undefined && !BILL_MONTH.test(input.startsMonth)) {
     throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
+  }
+  if (input.currency != null && !isSupportedCurrency(input.currency)) {
+    throw new RecurringError('CURRENCY', `Unsupported currency "${input.currency}"`);
   }
 
   // One write: a bill saved without its window would have no pay-by day and a first month guessed from createdAt.
@@ -157,6 +170,8 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
           .values({ templateId: id, workspaceId: ws.workspaceId, payByDay, startsMonth: input.startsMonth ?? isoDate().slice(0, 7) })
           .onConflictDoUpdate({ target: billWindows.templateId, set: { payByDay } });
       }
+      // Inside the capture, so a shared workspace sees the currency change with the rest of the bill.
+      if (input.currency !== undefined) await writeBillCurrency(tx, ws, id, input.currency);
     });
     return id;
   });
@@ -180,7 +195,8 @@ export async function listExpenseTemplates(database: Database, ws: WorkspaceCont
     ? await database.db.select().from(billWindows).where(eq(billWindows.workspaceId, ws.workspaceId))
     : [];
   const byTemplate = new Map(windows.map((w) => [w.templateId, w]));
-  return rows.map((row) => toRow(row, byTemplate.get(row.id)));
+  const currencies = await billCurrencies(database.db, ws);
+  return rows.map((row) => toRow(row, byTemplate.get(row.id), currencies.get(row.id) ?? null));
 }
 
 export async function deleteExpenseTemplate(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
@@ -199,7 +215,7 @@ export async function deleteExpenseTemplate(database: Database, ws: WorkspaceCon
  * What each category already owes to bills this month, so a budget can say how much of it is spoken
  * for. A bill with no fixed amount contributes nothing: guessing one would overstate the commitment.
  *
- * A bill's amount is in the currency of the account that pays it, so the sum is brought into the currency the
+ * A bill's amount is in its own currency when it has one, else in the currency of the account that pays it, so the sum is brought into the currency the
  * workspace reads in, at the rate on the day the bill comes out — the day the money actually leaves, and the same
  * day the bills screen converts it on. That is also what stops a dollar bill and a rupiah bill being added
  * together as though they were the same money. A bill no rate reaches is named in `missing` rather than only
@@ -210,7 +226,7 @@ export async function committedByCategory(
   ws: WorkspaceContext,
 ): Promise<{ committed: Record<string, number>; currency: string; missing: Unconverted[] }> {
   const templates = await listExpenseTemplates(database, ws);
-  const money = await bookMoneyFor(database, ws);
+  const money = await bookMoneyFor(database, ws, { foreign: true });
   const payers = new Map(
     (await database.db.select({ id: accounts.id, currency: accounts.currency }).from(accounts).where(eq(accounts.workspaceId, ws.workspaceId))).map((row) => [
       row.id,
@@ -235,7 +251,10 @@ export async function committedByCategory(
     // No rate reaching the bill's out day leaves it out rather than counting it as the wrong money — and says so
     // in `missing`, so the budget's "… of it is bills" line cannot quietly understate what is already spoken for.
     const outDay = billWindow(monthOf(today), template.dayOfMonth, template.payByDay).opensOn;
-    const amountMinor = money.convert(template.amountMinor, payers.get(template.moneyAccountId) ?? ws.baseCurrency, outDay);
+    // A bill written in its own currency is converted even where the workspace reads in the owner's money (an SGD bill in
+    // a rupiah one is the case this exists for); one that follows its payer is converted as it always was.
+    const convert = template.currency ? (money.convertForeign ?? money.convert) : money.convert;
+    const amountMinor = convert(template.amountMinor, template.currency ?? payers.get(template.moneyAccountId) ?? ws.baseCurrency, outDay);
     if (amountMinor === null) continue;
     committed[template.categoryAccountId] = (committed[template.categoryAccountId] ?? 0) + amountMinor;
   }
@@ -253,8 +272,13 @@ export interface MonthlyBill extends ExpenseTemplateRow {
   days: number;
   /** The day the payment for billMonth was made. Not the day it was due. */
   paidOn: string | null;
-  /** What it came to, which may differ from the template's amount. */
+  /** What it came to, which may differ from the template's amount. In `paidCurrency`. */
   paidMinor: number | null;
+  /** The currency `paidMinor` is in: the bill's own for a foreign payment, else the account's that paid. Null: unpaid. */
+  paidCurrency: string | null;
+  /** What a foreign payment was charged in the paying account's money, and that money; null when nothing was converted. */
+  chargedMinor: number | null;
+  chargedCurrency: string | null;
   paymentId: string | null;
   /** The fixed amount, else what it came to the last time it was paid, else null. */
   estimateMinor: number | null;
@@ -273,6 +297,9 @@ export interface BillHistoryRow {
   days: number;
   paidOn: string | null;
   paidMinor: number | null;
+  paidCurrency: string | null;
+  chargedMinor: number | null;
+  chargedCurrency: string | null;
   paymentId: string | null;
 }
 
@@ -288,7 +315,13 @@ interface PaymentFact {
   billMonth: string;
   transactionId: string;
   occurredOn: string;
+  /** What the category was charged, in the currency the payer holds. */
   amountMinor: number | null;
+  /** That charge's currency. */
+  currency: string | null;
+  /** The bill's own figure when the payment was a foreign one: the original amount and currency of the purchase. */
+  originalMinor: number | null;
+  originalCurrency: string | null;
 }
 
 interface BillFacts {
@@ -308,13 +341,26 @@ async function billFacts(database: Database, ws: WorkspaceContext, templates: Ex
 
   const rows = (await billTablesExist(database.db))
     ? await database.db
-        .select({ templateId: billPayments.templateId, billMonth: billPayments.billMonth, transactionId: transactions.id, occurredOn: transactions.occurredOn })
+        .select({
+          templateId: billPayments.templateId,
+          billMonth: billPayments.billMonth,
+          transactionId: transactions.id,
+          occurredOn: transactions.occurredOn,
+          originalMinor: transactions.originalAmountMinor,
+          originalCurrency: transactions.originalCurrency,
+        })
         .from(billPayments)
         .innerJoin(transactions, eq(transactions.id, billPayments.transactionId))
         .where(and(eq(billPayments.workspaceId, ws.workspaceId), eq(transactions.status, 'posted'), inArray(billPayments.templateId, ids)))
     : (
         await database.db
-          .select({ templateId: transactions.templateId, transactionId: transactions.id, occurredOn: transactions.occurredOn })
+          .select({
+            templateId: transactions.templateId,
+            transactionId: transactions.id,
+            occurredOn: transactions.occurredOn,
+            originalMinor: transactions.originalAmountMinor,
+            originalCurrency: transactions.originalCurrency,
+          })
           .from(transactions)
           .where(and(eq(transactions.workspaceId, ws.workspaceId), eq(transactions.status, 'posted'), inArray(transactions.templateId, ids)))
       ).map((row) => ({ ...row, templateId: row.templateId!, billMonth: row.occurredOn.slice(0, 7) }));
@@ -322,14 +368,14 @@ async function billFacts(database: Database, ws: WorkspaceContext, templates: Ex
   const lines = rows.length === 0
     ? []
     : await database.db
-        .select({ transactionId: entries.transactionId, accountId: entries.accountId, amountMinor: entries.amountMinor })
+        .select({ transactionId: entries.transactionId, accountId: entries.accountId, amountMinor: entries.amountMinor, currency: entries.currency })
         .from(entries)
         .where(and(eq(entries.workspaceId, ws.workspaceId), inArray(entries.transactionId, rows.map((row) => row.transactionId))));
   const categoryOf = new Map(templates.map((t) => [t.id, t.categoryAccountId]));
   for (const row of rows) {
     const line = lines.find((l) => l.transactionId === row.transactionId && l.accountId === categoryOf.get(row.templateId));
     const list = payments.get(row.templateId) ?? [];
-    list.push({ ...row, amountMinor: line ? Number(line.amountMinor) : null });
+    list.push({ ...row, amountMinor: line ? Number(line.amountMinor) : null, currency: line?.currency ?? null });
     payments.set(row.templateId, list);
   }
   for (const list of payments.values()) list.sort((a, b) => b.occurredOn.localeCompare(a.occurredOn));
@@ -367,13 +413,38 @@ function settledOf(template: ExpenseTemplateRow, facts: BillFacts): Record<strin
   return settled;
 }
 
+/**
+ * What a payment came to. A foreign one (a bill written in SGD, paid from a rupiah account) is posted in the payer's
+ * money with the bill's own figure as the purchase's original amount: it came to the original, and was charged the
+ * rest. Anything else came to what the category was charged, in the money that paid it.
+ */
+function paidFigures(payment: PaymentFact): { paidMinor: number | null; paidCurrency: string | null; chargedMinor: number | null; chargedCurrency: string | null } {
+  if (payment.originalMinor !== null && payment.originalCurrency !== null && payment.originalCurrency !== payment.currency) {
+    return { paidMinor: payment.originalMinor, paidCurrency: payment.originalCurrency, chargedMinor: payment.amountMinor, chargedCurrency: payment.currency };
+  }
+  return { paidMinor: payment.amountMinor, paidCurrency: payment.currency, chargedMinor: null, chargedCurrency: null };
+}
+
 function monthOfBill(template: ExpenseTemplateRow, facts: BillFacts, month: string, today: string): BillHistoryRow {
   const settled = settledOf(template, facts);
   const window = billWindow(month, template.dayOfMonth, template.payByDay);
   const payment = (facts.payments.get(template.id) ?? []).find((p) => p.billMonth === month) ?? null;
   const standing = billStanding(window, today, settled[month] ?? null);
-  return { month, window, ...standing, paidOn: payment?.occurredOn ?? null, paidMinor: payment?.amountMinor ?? null, paymentId: payment?.transactionId ?? null };
+  const paid = payment ? paidFigures(payment) : null;
+  return {
+    month,
+    window,
+    ...standing,
+    paidOn: payment?.occurredOn ?? null,
+    paidMinor: paid?.paidMinor ?? null,
+    paidCurrency: paid?.paidCurrency ?? null,
+    chargedMinor: paid?.chargedMinor ?? null,
+    chargedCurrency: paid?.chargedCurrency ?? null,
+    paymentId: payment?.transactionId ?? null,
+  };
 }
+
+const paidMinorOf = (payment: PaymentFact | undefined) => (payment ? paidFigures(payment).paidMinor : null);
 
 function billRow(template: ExpenseTemplateRow, facts: BillFacts, today: string): MonthlyBill {
   const settled = settledOf(template, facts);
@@ -383,7 +454,7 @@ function billRow(template: ExpenseTemplateRow, facts: BillFacts, today: string):
     ...template,
     billMonth: month,
     ...rest,
-    estimateMinor: template.amountMinor ?? facts.payments.get(template.id)?.[0]?.amountMinor ?? null,
+    estimateMinor: template.amountMinor ?? paidMinorOf(facts.payments.get(template.id)?.[0]) ?? null,
     payableMonths: payableBillMonths(input),
     pausedUntil: pausedUntil(facts.pauses.get(template.id) ?? [], today),
     pauseFrom: pauseStart(today, settled),
@@ -512,7 +583,14 @@ export interface BillPaymentInput {
   templateId: string;
   /** YYYY-MM: which month's bill this pays. */
   billMonth: string;
+  /** What the bill came to, in the bill's own currency (the paying account's, for a bill that follows its payer). */
   amountMinor: number;
+  /**
+   * What the paying account was charged, in its own currency. Required when the bill is written in another currency
+   * than the account's (an SGD bill paid from a rupiah account): the bank's figure, which is what leaves the account.
+   * Ignored when the two currencies match.
+   */
+  chargedMinor?: number | null;
   /** The account that paid; the bill's own when absent. */
   moneyAccountId?: string;
   /** Which goal the money came out of, when it took more than was free (spec §4.4). */
@@ -570,6 +648,11 @@ export function recordBillPayments(
         throw new RecurringError('ALREADY_SETTLED', `${template.name} is already settled for that month`);
       }
       const currency = wallet.currency ?? ws.baseCurrency;
+      const billCurrency = (await billCurrencies(tx, ws)).get(template.id) ?? currency;
+      const foreign = billCurrency !== currency;
+      if (foreign && !(Number.isSafeInteger(payment.chargedMinor) && payment.chargedMinor! > 0)) {
+        throw new RecurringError('CHARGED_REQUIRED', `Enter what the account was charged in ${currency}`);
+      }
       ids.push(
         await postTransactionTx(tx, ws, {
           occurredOn: input.paidOn,
@@ -578,7 +661,15 @@ export function recordBillPayments(
           billMonth: payment.billMonth,
           ratesToBase: input.ratesToBase,
           setAside: payment.setAside,
-          lines: expenseLines({ categoryAccountId: template.categoryAccountId, paymentAccountId: payment.moneyAccountId ?? template.moneyAccountId, amountMinor: payment.amountMinor, currency }),
+          // A foreign bill posts what the bank charged, in the payer's money, and keeps the bill's own figure as the
+          // original amount: the same shape as a purchase made abroad on a card (the rate is the ratio of the two).
+          lines: expenseLines({
+            categoryAccountId: template.categoryAccountId,
+            paymentAccountId: payment.moneyAccountId ?? template.moneyAccountId,
+            amountMinor: foreign ? payment.chargedMinor! : payment.amountMinor,
+            currency,
+          }),
+          ...(foreign ? { originalCurrency: billCurrency, originalAmountMinor: payment.amountMinor } : {}),
         }),
       );
     }

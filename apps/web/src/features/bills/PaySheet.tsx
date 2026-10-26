@@ -7,6 +7,8 @@ import { canPayWith } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox, Money } from '../../ui';
 import { InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
+import { billCurrencyOf } from './bill-view';
+import { chargedEstimateText, useChargedRates } from './charged';
 import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 
@@ -43,14 +45,19 @@ export function PaySheet({
   const wallets = moneyHolders(accounts).filter((account) => canPayWith(account));
   const currencyOf = (id: string) => accounts.find((account) => account.id === id)?.currency ?? ws.baseCurrency;
 
-  const [amount, setAmount] = useState(() => (bill.amountMinor === null ? '' : minorToMajorString(bill.amountMinor, currencyOf(bill.moneyAccountId))));
+  const [amount, setAmount] = useState(() => (bill.amountMinor === null ? '' : minorToMajorString(bill.amountMinor, billCurrencyOf(bill, accounts, ws.baseCurrency))));
   const [month, setMonth] = useState(bill.payableMonths[0] ?? bill.billMonth);
   const [payer, setPayer] = useState(bill.moneyAccountId);
   const [paidOn, setPaidOn] = useState(today);
   const [error, setError] = useState<unknown>(null);
   const [missing, setMissing] = useState(false);
   const [busy, setBusy] = useState(false);
-  const currency = currencyOf(payer);
+  // What the account was charged, once it has been typed in; null while the row still shows the estimate.
+  const [charged, setCharged] = useState<string | null>(null);
+  const payerCurrency = currencyOf(payer);
+  // The bill's own currency; a bill with none follows whichever account pays it, so choosing another here moves it along.
+  const currency = bill.currency ?? payerCurrency;
+  const foreign = currency !== payerCurrency;
   const months = bill.payableMonths.length > 0 ? bill.payableMonths : [bill.billMonth];
   /** The one reading of the typed figure: Save throws what it says, the question reads 0 until it parses. */
   const readAmount = () => (amount.trim() ? parseMajor(amount.trim(), currency) : 0);
@@ -61,7 +68,18 @@ export function PaySheet({
       return 0;
     }
   })();
-  const setAside = useSetAside(spendingDoor(payer, typedMinor));
+  const rates = useChargedRates(foreign ? [currency, payerCurrency] : [], paidOn);
+  const estimate = foreign ? chargedEstimateText({ amountMinor: typedMinor, billCurrency: currency, payerCurrency, rates, baseCurrency: ws.baseCurrency }) : '';
+  const chargedShown = charged ?? estimate;
+  /** The account is charged this in its own money: what the bank took, which is what the set-aside question is about. */
+  const chargedMinor = (() => {
+    try {
+      return chargedShown.trim() ? parseMajor(chargedShown.trim(), payerCurrency) : 0;
+    } catch {
+      return 0;
+    }
+  })();
+  const setAside = useSetAside(spendingDoor(payer, foreign ? chargedMinor : typedMinor));
 
   async function record(event: FormEvent) {
     event.preventDefault();
@@ -76,7 +94,19 @@ export function PaySheet({
         setMissing(true);
         return;
       }
-      const ids = await recordBillPayments(database, ws, { paidOn, payments: [{ templateId: bill.id, billMonth: month, amountMinor, moneyAccountId: payer, setAside: setAside.choice }] });
+      let chargedAmount: number | undefined;
+      if (foreign) {
+        // Parsed here so a figure that does not parse still says so; an empty row is asked for rather than guessed.
+        chargedAmount = chargedShown.trim() ? parseMajor(chargedShown.trim(), payerCurrency) : 0;
+        if (!(chargedAmount > 0)) {
+          setError(new Error(`Enter what the account was charged in ${payerCurrency}`));
+          return;
+        }
+      }
+      const ids = await recordBillPayments(database, ws, {
+        paidOn,
+        payments: [{ templateId: bill.id, billMonth: month, amountMinor, chargedMinor: chargedAmount, moneyAccountId: payer, setAside: setAside.choice }],
+      });
       await invalidate();
       onPaid(ids, amountMinor, paidOn, month);
     } catch (e) {
@@ -116,6 +146,11 @@ export function PaySheet({
             className={HERO}
             placeholder={bill.amountMinor === null ? 'What it came to' : undefined}
           />
+          {foreign && (
+            <p className="text-center text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="pay-bill-currency">
+              Amount in {currency}
+            </p>
+          )}
           {bill.amountMinor === null && (
             <p className="text-center text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
               {bill.estimateMinor === null ? (
@@ -145,6 +180,17 @@ export function PaySheet({
             ))}
           </SelectRow>
           <TextRow label="Paid on" id="pay-on" type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} />
+          {foreign && (
+            <TextRow
+              label={`Charged in ${payerCurrency}`}
+              id="pay-charged"
+              inputMode="decimal"
+              value={chargedShown}
+              onChange={(e) => setCharged(e.target.value)}
+              placeholder={`Charged in ${payerCurrency}`}
+              info={`What the account was charged, as its statement shows. It starts as an estimate at the latest rate known, and can be changed to the real figure.`}
+            />
+          )}
         </InsetGroup>
 
         {missing && (

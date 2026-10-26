@@ -19,6 +19,12 @@ export interface BookMoney {
   currency: string;
   /** Null when no rate exists for that currency on or before that date; the caller leaves the amount out. */
   convert(amountMinor: number, currency: string, onDate: string): number | null;
+  /**
+   * Like `convert`, but converting even where the workspace reads in the owner's own currency (where `convert` hands the
+   * figure back untouched). Present only when asked for (`bookMoneyFor(…, { foreign: true })`): a recurring bill
+   * written in a foreign currency is the one figure in such a workspace that is not already in its money.
+   */
+  convertForeign?(amountMinor: number, currency: string, onDate: string): number | null;
   /** What could not be converted, for the screen to say: one entry per currency, with its earliest date. */
   missing(): Unconverted[];
 }
@@ -40,10 +46,11 @@ async function bookCurrencyOf(database: Database, ws: WorkspaceContext, bookId: 
  * workspace whose currency is the owner's converts nothing — so a one-currency owner's figures are the same
  * numbers, down to the rupiah, that they were before workspaces existed.
  */
-export async function bookMoneyFor(database: Database, ws: WorkspaceContext): Promise<BookMoney> {
+export async function bookMoneyFor(database: Database, ws: WorkspaceContext, opts: { foreign?: boolean } = {}): Promise<BookMoney> {
   const currency = (ws.bookId && (await hasBooks(database.db)) ? await bookCurrencyOf(database, ws, ws.bookId) : undefined) ?? ws.baseCurrency;
   const missed = new Map<string, string>();
-  if (currency === ws.baseCurrency) {
+  const identity = currency === ws.baseCurrency;
+  if (identity && !opts.foreign) {
     return { converts: false, currency, convert: (amountMinor) => amountMinor, missing: () => [] };
   }
   // One snapshot: fx_rates holds a handful of rows per pair, and a month's list would otherwise be a query an
@@ -67,10 +74,7 @@ export async function bookMoneyFor(database: Database, ws: WorkspaceContext): Pr
     else side.set(key, [{ onDate: row.onDate, rate: row.rate }]);
   }
 
-  return {
-    converts: true,
-    currency,
-    convert(amountMinor, from, onDate) {
+  const convertReal = (amountMinor: number, from: string, onDate: string): number | null => {
       if (from === currency) return amountMinor;
       // The rate stored the way it is asked for first; the other direction, turned over, only when there is none.
       const found = pickRate(into.get(from) ?? [], onDate);
@@ -81,7 +85,13 @@ export async function bookMoneyFor(database: Database, ws: WorkspaceContext): Pr
         return null;
       }
       return convertMinor(amountMinor, from, currency, found ? found.rate : 1 / back!.rate);
-    },
+  };
+
+  return {
+    converts: !identity,
+    currency,
+    convert: identity ? (amountMinor) => amountMinor : convertReal,
+    ...(opts.foreign ? { convertForeign: convertReal } : {}),
     missing: () => [...missed].map(([currency, onDate]) => ({ currency, onDate })).sort((a, b) => a.currency.localeCompare(b.currency)),
   };
 }

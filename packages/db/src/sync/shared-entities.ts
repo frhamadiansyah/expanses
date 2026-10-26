@@ -237,6 +237,9 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
       dayOfMonth: 'day_of_month',
       active: 'active',
       archivedAt: 'archived_at',
+      // Optional (0098): the currency the bill is written in, null while it follows the payer. A build before 0098 never
+      // sends it and skips it when it arrives (apply writes only the fields it knows), so the two stay compatible.
+      currency: 'currency',
     },
     // `payer` = { memberId, label } stands for money_account_id, which names an owner-scope account (spec §4.4).
     derivedFields: { payer: ['money_account_id'] },

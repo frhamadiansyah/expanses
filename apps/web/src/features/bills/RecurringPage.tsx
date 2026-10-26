@@ -11,14 +11,13 @@ import { ErrorBox, Money } from '../../ui';
 import { type CornerAction, GROUP_GAP, GROUP_RADIUS, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, PushedTitle, SCREEN } from '../../ui/native';
 import { BillRow } from './BillRow';
 import { MonthlyBuys } from './MonthlyBuys';
-import { amountOf, billsInReadCurrency, type BillSummary, isToPay, paidText, pausedOf, sectionsOf, settledOf, skippedText, summaryOf } from './bill-view';
+import { amountOf, billCurrencyOf, billsInReadCurrency, type BillSummary, isToPay, paidText, pausedOf, sectionsOf, settledOf, skippedText, summaryOf } from './bill-view';
 import { PaySeveralSheet } from './PaySeveralSheet';
 import { PaySheet } from './PaySheet';
-import { useMonthlyBills } from './queries';
+import { useBillMoney, useMonthlyBills } from './queries';
 import { type DueFee, useUpcomingFees } from '../cards/fee-due';
 import { FeeAlert } from '../cards/FeeAlert';
 import { feeDateText } from '../cards/fee-line';
-import { useBookMoney } from '../workspaces/queries';
 import { Unconverted } from '../workspaces/Unconverted';
 import { UndoToast } from '../../ui/UndoToast';
 
@@ -127,12 +126,12 @@ export function RecurringPage() {
     setPicked(new Set());
   };
 
-  const currencyOf = (bill: MonthlyBill) => accounts.find((account) => account.id === bill.moneyAccountId)?.currency ?? ws.baseCurrency;
+  const currencyOf = (bill: MonthlyBill) => billCurrencyOf(bill, accounts, ws.baseCurrency);
 
   // Each row says what its own bill costs, in the money it is paid with. The totals add rows up, so they cannot:
   // every amount is brought into the currency this workspace reads in first, and what no rate reaches is left out
   // of the sum and named above it, rather than added in as though a dollar were a rupiah.
-  const money = useBookMoney().data;
+  const money = useBillMoney().data;
   const readCurrency = money?.currency ?? ws.baseCurrency;
   const { rows: readRows, unconverted } = billsInReadCurrency(rows, money, currencyOf);
 

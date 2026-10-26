@@ -1,4 +1,4 @@
-import { categoryPath, ordinal, parseMajor } from '@expanses/core';
+import { categoryPath, CURRENCIES, ordinal, parseMajor } from '@expanses/core';
 import { saveExpenseTemplate } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
@@ -35,6 +35,8 @@ export function BillFormPage({ billId }: { billId?: string }) {
   const [amount, setAmount] = useState('');
   const [categoryAccountId, setCategoryAccountId] = useState('');
   const [moneyAccountId, setMoneyAccountId] = useState('');
+  // '' follows the account that pays: the bill is then written in that account's money, as every bill was before this.
+  const [currency, setCurrency] = useState('');
   const [outDay, setOutDay] = useState('');
   const [payBy, setPayBy] = useState('');
   const [error, setError] = useState<unknown>(null);
@@ -45,6 +47,9 @@ export function BillFormPage({ billId }: { billId?: string }) {
   const chosen = (accounts.data ?? []).find((account) => account.id === categoryAccountId);
   // What a bill is paid with: money kept for spending, or a card — the same answer every "Paid with" gives.
   const wallets = moneyHolders(accounts.data ?? []).filter((account) => canPayWith(account));
+  // What the Currency row shows and the amount is read in: the one picked, else the payer's, else the workspace's.
+  const payerCurrency = (accounts.data ?? []).find((account) => account.id === moneyAccountId)?.currency ?? ws.baseCurrency;
+  const billCurrency = currency || payerCurrency;
 
   // Filled once the bill being edited has arrived; not kept in sync after, so typing is never clobbered.
   useEffect(() => {
@@ -52,9 +57,10 @@ export function BillFormPage({ billId }: { billId?: string }) {
     const bill = (templates.data ?? []).find((t) => t.id === billId);
     if (!bill) return;
     setName(bill.name);
-    // Written in the paying account's currency, the one save parses it back in: a USD bill must not read as rupiah.
+    // Written in the bill's own currency (else the paying account's), the one save parses it back in: a USD bill must not read as rupiah.
     const payer = accounts.data.find((account) => account.id === bill.moneyAccountId);
-    setAmount(amountInput(bill.amountMinor, payer?.currency ?? ws.baseCurrency));
+    setAmount(amountInput(bill.amountMinor, bill.currency ?? payer?.currency ?? ws.baseCurrency));
+    setCurrency(bill.currency ?? '');
     setCategoryAccountId(bill.categoryAccountId);
     setMoneyAccountId(bill.moneyAccountId);
     setOutDay(String(bill.dayOfMonth));
@@ -73,13 +79,13 @@ export function BillFormPage({ billId }: { billId?: string }) {
       return;
     }
     try {
-      const wallet = (accounts.data ?? []).find((account) => account.id === moneyAccountId);
       await saveExpenseTemplate(database, ws, {
         id: billId,
         name,
         categoryAccountId,
         moneyAccountId,
-        amountMinor: amount.trim() === '' ? null : parseMajor(amount.trim(), wallet?.currency ?? ws.baseCurrency),
+        amountMinor: amount.trim() === '' ? null : parseMajor(amount.trim(), billCurrency),
+        currency: currency || null,
         dayOfMonth: Number(outDay),
         payByDay: payBy === '' ? null : Number(payBy),
       });
@@ -117,6 +123,18 @@ export function BillFormPage({ billId }: { billId?: string }) {
           <ErrorBox error={error ?? templates.error} />
           <InsetGroup>
             <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Bill name" />
+            <SelectRow
+              label="Currency"
+              value={billCurrency}
+              // Picking the paying account's own currency goes back to following it, so a later change of account carries the bill along.
+              onChange={(e) => setCurrency(e.target.value === payerCurrency ? '' : e.target.value)}
+            >
+              {CURRENCIES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.code} — {c.name}
+                </option>
+              ))}
+            </SelectRow>
             <TextRow
               label="Amount"
               value={amount}

@@ -9,7 +9,8 @@ import { cx, ErrorBox, Money } from '../../ui';
 import { type GroupChild, InsetGroup, InsetRow, ROW_PAD_X, ROW_PAD_Y, rowHeight, TextRow } from '../../ui/native';
 import { payerChoices, spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
-import { pillOf } from './bill-view';
+import { billCurrencyOf, pillOf } from './bill-view';
+import { chargedEstimateText, useChargedRates } from './charged';
 
 interface PayerAnswer {
   choice: SetAsideChoice | null;
@@ -61,12 +62,17 @@ export function PaySeveralSheet({
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
   const currencyOf = (moneyAccountId: string) => accounts.find((account) => account.id === moneyAccountId)?.currency ?? ws.baseCurrency;
+  /** The money a bill is written in: its own, else its paying account's. A foreign one is charged in the account's. */
+  const billCurrency = (bill: MonthlyBill) => billCurrencyOf(bill, accounts, ws.baseCurrency);
+  const isForeign = (bill: MonthlyBill) => billCurrency(bill) !== currencyOf(bill.moneyAccountId);
 
   // The picked bills lead, since that is what was chosen on the list; the rest follow in the order they came in.
   const ordered = [...bills.filter((bill) => picked.has(bill.id)), ...bills.filter((bill) => !picked.has(bill.id))];
 
   const [ticked, setTicked] = useState<Set<string>>(() => new Set(picked));
   const [amounts, setAmounts] = useState<Record<string, string>>({});
+  // What each foreign bill's account was charged, once typed; a bill not in here still shows its estimate.
+  const [charges, setCharges] = useState<Record<string, string>>({});
   const [paidOn, setPaidOn] = useState(today);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -77,13 +83,32 @@ export function PaySeveralSheet({
   const amountOf = (bill: MonthlyBill) => {
     if (bill.amountMinor !== null) return bill.amountMinor;
     try {
-      return parseMajor(amounts[bill.id]?.trim() ?? '', currencyOf(bill.moneyAccountId));
+      return parseMajor(amounts[bill.id]?.trim() ?? '', billCurrency(bill));
     } catch {
       return 0;
     }
   };
+  const foreignChosen = chosen.filter(isForeign);
+  const rates = useChargedRates(
+    foreignChosen.flatMap((bill) => [billCurrency(bill), currencyOf(bill.moneyAccountId)]),
+    paidOn,
+  );
+  const estimateOf = (bill: MonthlyBill) =>
+    chargedEstimateText({ amountMinor: amountOf(bill), billCurrency: billCurrency(bill), payerCurrency: currencyOf(bill.moneyAccountId), rates, baseCurrency: ws.baseCurrency });
+  const chargeShown = (bill: MonthlyBill) => charges[bill.id] ?? estimateOf(bill);
+  /** What the account is charged, in its own money (0 until it parses). */
+  const chargedOf = (bill: MonthlyBill) => {
+    try {
+      const text = chargeShown(bill).trim();
+      return text ? parseMajor(text, currencyOf(bill.moneyAccountId)) : 0;
+    } catch {
+      return 0;
+    }
+  };
+  /** What leaves the paying account: the charge for a foreign bill, else the bill's own figure. */
+  const takenOf = (bill: MonthlyBill) => (isForeign(bill) ? chargedOf(bill) : amountOf(bill));
   const payers = [...new Set(chosen.map((bill) => bill.moneyAccountId))];
-  const totalFrom = (payer: string) => chosen.filter((bill) => bill.moneyAccountId === payer).reduce((sum, bill) => sum + amountOf(bill), 0);
+  const totalFrom = (payer: string) => chosen.filter((bill) => bill.moneyAccountId === payer).reduce((sum, bill) => sum + takenOf(bill), 0);
   const answered = payers.every((payer) => answers[payer]?.ready === true);
   const onAnswer = (accountId: string, answer: PayerAnswer) => setAnswers((current) => ({ ...current, [accountId]: answer }));
 
@@ -106,10 +131,10 @@ export function PaySeveralSheet({
       for (const payer of payers) {
         const answer = answers[payer];
         const mine = chosen.filter((bill) => bill.moneyAccountId === payer);
-        carried.set(payer, payerChoices(answer?.choice ?? null, mine.map(amountOf), answer?.freeMinor ?? null, answer?.promisedMinor ?? 0));
+        carried.set(payer, payerChoices(answer?.choice ?? null, mine.map(takenOf), answer?.freeMinor ?? null, answer?.promisedMinor ?? 0));
       }
       const payments = chosen.map((bill) => {
-        const currency = currencyOf(bill.moneyAccountId);
+        const currency = billCurrency(bill);
         const typed = amounts[bill.id]?.trim();
         const index = chosen.filter((other) => other.moneyAccountId === bill.moneyAccountId).indexOf(bill);
         return {
@@ -117,11 +142,17 @@ export function PaySeveralSheet({
           billMonth: bill.billMonth,
           // Parsed here as it always was, so a figure that does not parse still says so.
           amountMinor: bill.amountMinor ?? (typed ? parseMajor(typed, currency) : 0),
+          chargedMinor: isForeign(bill) ? chargedOf(bill) : undefined,
           setAside: carried.get(bill.moneyAccountId)![index] ?? null,
         };
       });
       if (payments.some((payment) => !(payment.amountMinor > 0))) {
         setError('Enter the amount of each ticked bill that varies');
+        return;
+      }
+      const unpriced = chosen.find((bill) => isForeign(bill) && !(chargedOf(bill) > 0));
+      if (unpriced) {
+        setError(`Enter what the account was charged in ${currencyOf(unpriced.moneyAccountId)} for ${unpriced.name}`);
         return;
       }
       const ids = await recordBillPayments(database, ws, { paidOn, payments });
@@ -146,7 +177,7 @@ export function PaySeveralSheet({
             onToggle={() => toggle(bill.id)}
             amount={
               bill.amountMinor !== null ? (
-                <Money minor={bill.amountMinor} currency={currencyOf(bill.moneyAccountId)} tone="none" />
+                <Money minor={bill.amountMinor} currency={billCurrency(bill)} tone="none" />
               ) : (
                 <input
                   className="ph-focus w-28 rounded bg-transparent text-right text-[17px] leading-[22px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] md:text-[15px] md:leading-[20px]"
@@ -165,6 +196,22 @@ export function PaySeveralSheet({
       <InsetGroup>
         <TextRow label="Paid on" id="several-on" type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} />
       </InsetGroup>
+
+      {foreignChosen.length > 0 && (
+        <InsetGroup header="Charged" info="What each account was charged, as its statement shows. It starts as an estimate at the latest rate known, and can be changed to the real figure.">
+          {foreignChosen.map((bill) => (
+            <TextRow
+              key={bill.id}
+              label={`${bill.name} in ${currencyOf(bill.moneyAccountId)}`}
+              inputMode="decimal"
+              aria-label={`Charged in ${currencyOf(bill.moneyAccountId)} for ${bill.name}`}
+              value={chargeShown(bill)}
+              onChange={(e) => setCharges((current) => ({ ...current, [bill.id]: e.target.value }))}
+              placeholder="Charged"
+            />
+          ))}
+        </InsetGroup>
+      )}
 
       {payers.map((payer) => (
         <PayerQuestion key={payer} accountId={payer} total={totalFrom(payer)} onChange={onAnswer} />

@@ -9,7 +9,7 @@ import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox, Money } from '../../ui';
 import { ActionButtons, GROUP_RADIUS, type GroupChild, InsetGroup, InsetRow, LargeTitle, Panel, PushedTitle, ReadOnlyRow, type RoundAction, SCREEN } from '../../ui/native';
 import { CategoryIcon } from '../categories/CategoryIcon';
-import { pillOf } from './bill-view';
+import { billCurrencyOf, pillOf } from './bill-view';
 import { PauseSheet } from './PauseSheet';
 import { PaySheet } from './PaySheet';
 import { useBillDetail } from './queries';
@@ -73,7 +73,7 @@ export function BillPage({ billId }: { billId: string }) {
 
   const { bill, history, bookName } = detail.data;
   const account = accounts.find((a) => a.id === bill.moneyAccountId);
-  const currency = account?.currency ?? ws.baseCurrency;
+  const currency = billCurrencyOf(bill, accounts, ws.baseCurrency);
   const pill = pillOf(bill);
   // The month just paid, which is not always the month the page now speaks for: paying last month's overdue bill, or
   // choosing another month in For, moves the bill on. The confirmation follows the payment, not the bill.
@@ -199,6 +199,7 @@ export function BillPage({ billId }: { billId: string }) {
         <ReadOnlyRow label="Repeats" value="Every month" />
         <ReadOnlyRow label="Out on" value={`The ${ordinal(bill.dayOfMonth)}`} />
         <ReadOnlyRow label="Due by" value={bill.payByDay === null ? 'The bill date' : `The ${ordinal(bill.payByDay)}`} />
+        {bill.currency ? <ReadOnlyRow label="Currency" value={bill.currency} /> : null}
         <ReadOnlyRow label="Paid from" value={account?.name ?? ''} />
         <ReadOnlyRow label="Category" value={category?.name ?? ''} />
         {bookName ? <ReadOnlyRow label="Workspace" value={bookName} /> : null}
@@ -215,7 +216,13 @@ export function BillPage({ billId }: { billId: string }) {
                 value={
                   row.state === 'paid' ? (
                     <>
-                      <Money minor={row.paidMinor ?? 0} currency={currency} /> · paid {dayMonth(row.paidOn!)}
+                      <Money minor={row.paidMinor ?? 0} currency={row.paidCurrency ?? currency} />
+                      {row.chargedMinor !== null && row.chargedCurrency && (
+                        <>
+                          , charged <Money minor={row.chargedMinor} currency={row.chargedCurrency} />
+                        </>
+                      )}{' '}
+                      · paid {dayMonth(row.paidOn!)}
                     </>
                   ) : (
                     pillOf({ ...row, paidOn: null }).text
