@@ -1,4 +1,4 @@
-import { billPill, type BillTone, dayMonth, minorToMajorString, monthName, monthYear } from '@expanses/core';
+import { billPill, type BillTone, convertMinor, dayMonth, minorToMajorString, monthName, monthYear } from '@expanses/core';
 import type { BookMoney, MonthlyBill } from '@expanses/db';
 import type { Tone } from '../../ui/native/row';
 import type { UnconvertedRow } from '../workspaces/Unconverted';
@@ -87,37 +87,81 @@ export function summaryOf(rows: readonly MonthlyBill[], today: string): BillSumm
 }
 
 /**
+ * The currency a bill's amount is written in: its own when it has one, else the money of the account that pays it —
+ * every bill made before bills had a currency of their own.
+ */
+export function billCurrencyOf(bill: Pick<MonthlyBill, 'currency' | 'moneyAccountId'>, accounts: readonly { id: string; currency: string | null }[], baseCurrency: string): string {
+  return bill.currency ?? accounts.find((account) => account.id === bill.moneyAccountId)?.currency ?? baseCurrency;
+}
+
+/**
  * Every bill in the currency the workspace reads in, so a total can add them up.
  *
- * A bill's amount is in the money of the account that pays it, and a workspace may be paid from accounts in
- * several currencies: added up raw, a dollar bill and a rupiah bill would make a figure that means nothing. Each
- * is converted from the payer's currency at the rate on the day the bill comes out — the day the money leaves —
- * and one no rate reaches counts as nothing and is named, rather than being added in as the wrong money.
+ * A bill's amount is in its own currency when it has one, else in the money of the account that pays it, and a
+ * workspace may be paid from accounts in several currencies: added up raw, a dollar bill and a rupiah bill would make a
+ * figure that means nothing. Each is converted from its currency (`currencyOf`) at the rate on the day the bill comes
+ * out — the day the money leaves — and one no rate reaches counts as nothing and is named, rather than being added in
+ * as the wrong money. A bill already paid counts for what the account was charged, when the payment was a foreign one.
  *
- * A workspace reading in the owner's own currency converts nothing and gets its rows back untouched.
+ * A workspace reading in the owner's own currency converts nothing and gets its rows back untouched — except a bill
+ * written in a currency of its own (`convertForeign`, when the money was asked for it): an SGD bill is the one figure
+ * there that is not already in the workspace's money.
  */
 export function billsInReadCurrency(
   rows: readonly MonthlyBill[],
   money: BookMoney | undefined,
   currencyOf: (bill: MonthlyBill) => string,
 ): { rows: MonthlyBill[]; unconverted: UnconvertedRow[] } {
-  if (!money?.converts) return { rows: [...rows], unconverted: [] };
+  if (!money || (!money.converts && !money.convertForeign)) return { rows: [...rows], unconverted: [] };
   const missed = new Map<string, string>();
   const converted = rows.map((bill) => {
     const from = currencyOf(bill);
+    // Reading in the owner's own money, only a bill with a currency of its own, other than that money, is converted.
+    if (!money.converts && (!bill.currency || bill.currency === money.currency)) return bill;
+    const convert = money.converts ? money.convert : money.convertForeign!;
     const onDate = bill.window.opensOn;
-    const at = (minor: number | null) => {
+    const at = (minor: number | null, currency: string = from) => {
       if (minor === null) return null;
-      const value = money.convert(minor, from, onDate);
+      const value = convert(minor, currency, onDate);
       if (value === null) {
-        const earliest = missed.get(from);
-        if (!earliest || onDate < earliest) missed.set(from, onDate);
+        const earliest = missed.get(currency);
+        if (!earliest || onDate < earliest) missed.set(currency, onDate);
       }
       return value ?? 0;
     };
-    return { ...bill, amountMinor: at(bill.amountMinor), paidMinor: at(bill.paidMinor), estimateMinor: at(bill.estimateMinor) };
+    const paidMinor =
+      bill.chargedMinor !== null && bill.chargedCurrency ? at(bill.chargedMinor, bill.chargedCurrency) : at(bill.paidMinor, bill.paidCurrency ?? from);
+    return { ...bill, amountMinor: at(bill.amountMinor), paidMinor, estimateMinor: at(bill.estimateMinor) };
   });
   return { rows: converted, unconverted: [...missed].map(([currency, onDate]) => ({ currency, onDate })).sort((a, b) => a.currency.localeCompare(b.currency)) };
+}
+
+/**
+ * What the account is charged for a bill written in another currency, as a figure for the "Charged in …" field: the bill's
+ * amount at the rate known for the day, in the account's own money. Null when there is nothing to convert, the two
+ * currencies match, or no rate is known — the field is then left to be typed, since a guess on a rate nobody has is worse
+ * than an empty field. `rates` are against the base currency, as `resolveRates` gives them.
+ */
+export function chargedEstimate({
+  amountMinor,
+  billCurrency,
+  payerCurrency,
+  rates,
+  baseCurrency,
+}: {
+  amountMinor: number;
+  billCurrency: string;
+  payerCurrency: string;
+  rates: Record<string, number>;
+  baseCurrency: string;
+}): number | null {
+  if (billCurrency === payerCurrency || !(amountMinor > 0)) return null;
+  const leg = (code: string) => (code === baseCurrency ? 1 : (rates[code] ?? null));
+  const from = leg(billCurrency);
+  const to = leg(payerCurrency);
+  if (from === null || to === null || !(to > 0)) return null;
+  const charged = convertMinor(amountMinor, billCurrency, payerCurrency, from / to);
+  return charged > 0 ? charged : null;
 }
 
 /** What the Cashflow card calls owed: every bill that is out and unpaid. */

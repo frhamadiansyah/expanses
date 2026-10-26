@@ -32,7 +32,7 @@ export function BillRow({
   bill: MonthlyBill;
   accounts: readonly AccountRow[];
   today: string;
-  /** The paying account's currency, which is what the bill's amounts are in. */
+  /** The currency the bill's amounts are in: its own, else the paying account's. */
   currency: string;
   onPay: (bill: MonthlyBill) => void;
   onSkip: (bill: MonthlyBill) => void;
@@ -123,7 +123,7 @@ export function BillRow({
             </span>
             <span className="tabular flex shrink-0 flex-col items-end text-[15px] leading-[20px] text-[var(--ph-ink)]">
               {bill.state === 'paid' ? (
-                <Money minor={bill.paidMinor ?? 0} currency={currency} />
+                <Money minor={bill.paidMinor ?? 0} currency={bill.paidCurrency ?? currency} />
               ) : bill.amountMinor !== null ? (
                 <Money minor={bill.amountMinor} currency={currency} />
               ) : bill.estimateMinor !== null ? (

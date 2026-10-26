@@ -270,6 +270,7 @@ describe('capture: rows edited in place', () => {
           dayOfMonth: 5,
           active: 1,
           archivedAt: null,
+          currency: null,
           payer: { memberId: 'member-me', label: 'BCA Tahapan' },
         },
       },
@@ -306,6 +307,19 @@ describe('capture: rows edited in place', () => {
       { entity: 'bill_pause', id: `${id}|2026-11`, op: 'upsert', fields: {} },
       { entity: 'bill_pause', id: `${id}|2026-11`, op: 'delete' },
     ]);
+  });
+
+  it('a bill’s own currency travels as an optional field, and going back to the payer’s says null', async () => {
+    const { database, ws, bca, groceries } = await sharedHousehold();
+    const id = await saveExpenseTemplate(database, ws, { name: 'Life cover', categoryAccountId: groceries.id, moneyAccountId: bca.id, amountMinor: 12_000, dayOfMonth: 5, startsMonth: '2026-09', currency: 'SGD' });
+    expect(((await outboxOps(database))[0] as { fields: Record<string, unknown> }).fields.currency).toBe('SGD');
+    await clearOutbox(database);
+    // An edit that does not mention the currency leaves it, and sends nothing about it.
+    await saveExpenseTemplate(database, ws, { id, name: 'Life cover', categoryAccountId: groceries.id, moneyAccountId: bca.id, amountMinor: 13_000, dayOfMonth: 5 });
+    expect(await outboxOps(database)).toEqual([{ entity: 'bill', id, op: 'upsert', fields: { amountMinor: 13_000 } }]);
+    await clearOutbox(database);
+    await saveExpenseTemplate(database, ws, { id, name: 'Life cover', categoryAccountId: groceries.id, moneyAccountId: bca.id, amountMinor: 13_000, dayOfMonth: 5, currency: null });
+    expect(await outboxOps(database)).toEqual([{ entity: 'bill', id, op: 'upsert', fields: { currency: null } }]);
   });
 
   it('a rolled-back write leaves nothing in the outbox', async () => {

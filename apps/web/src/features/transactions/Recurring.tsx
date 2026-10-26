@@ -4,10 +4,9 @@ import { Bell, ChevronRight } from 'lucide-react';
 import { useApp } from '../../app/context';
 import { Money } from '../../ui';
 import { useAccounts } from '../../lib/queries';
-import { billsInReadCurrency, isPaused, isSettled, owedNow } from '../bills/bill-view';
+import { billCurrencyOf, billsInReadCurrency, isPaused, isSettled, owedNow } from '../bills/bill-view';
 import type { MonthlyBill } from '@expanses/db';
-import { useMonthlyBills } from '../bills/queries';
-import { useBookMoney } from '../workspaces/queries';
+import { useBillMoney, useMonthlyBills } from '../bills/queries';
 
 /**
  * The month's recurring bills, as one line in the box above the transactions — beside the queue's own line.
@@ -23,8 +22,8 @@ export function Recurring({ today = isoDate() }: { today?: string }) {
   // The same conversion the Recurring screen does, so the two figures agree: each bill is brought into the money
   // this workspace reads in before they are added up. Until it arrives the figure is held back rather than shown
   // as a sum of several currencies labelled as one.
-  const money = useBookMoney();
-  const currencyOf = (bill: MonthlyBill) => accounts.find((account) => account.id === bill.moneyAccountId)?.currency ?? ws.baseCurrency;
+  const money = useBillMoney();
+  const currencyOf = (bill: MonthlyBill) => billCurrencyOf(bill, accounts, ws.baseCurrency);
   // A paused bill comes out for nothing this month, so it is in neither side of "x of y paid".
   const { rows: readRows } = billsInReadCurrency(
     rows.filter((bill) => !isPaused(bill)),
