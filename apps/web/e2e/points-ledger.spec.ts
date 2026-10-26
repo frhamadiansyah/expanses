@@ -69,6 +69,23 @@ test('typing what the bank gave moves points from estimated to posted', async ({
   await row.getByLabel('Actual points for Superindo').fill('120');
   await row.getByRole('button', { name: 'Save actual for Superindo' }).click();
   await expect(row).toContainText('Bank credited 120 points');
+  // The row's own figure is now the bank's, not the estimate, and the gap note does not read as a failed save.
+  await expect(row.getByTestId(/^estimate-/)).toHaveText('120 points');
+  await expect(row).toContainText('Saved. The bank\'s figure differs from the estimate.');
+
+  // Away and back: the field still holds what was saved, and the row still reads it.
+  await page.getByRole('button', { name: 'Points' }).click();
+  await cardPointsPage(page, 'Purchases');
+  const again = page.getByTestId('purchase').filter({ hasText: 'Superindo' });
+  await expect(again.getByLabel('Actual points for Superindo')).toHaveValue('120');
+  await expect(again.getByTestId(/^estimate-/)).toHaveText('120 points');
+  // Typing the estimate itself reads as matching the bank.
+  await again.getByLabel('Actual points for Superindo').fill('100');
+  await again.getByRole('button', { name: 'Save actual for Superindo' }).click();
+  await expect(again).toContainText('Matches the bank');
+  await again.getByLabel('Actual points for Superindo').fill('120');
+  await again.getByRole('button', { name: 'Save actual for Superindo' }).click();
+  await expect(again).toContainText('Bank credited 120 points');
 
   // Back to the summary and into Settings, where the balance the card earns into is read.
   await page.getByRole('button', { name: 'Points' }).click();

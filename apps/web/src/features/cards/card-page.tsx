@@ -91,6 +91,8 @@ export function useCardPage(cardId: string): { page: CardPage | null; gate: Reac
 /** Points for each purchase in the two cycles the card has worked out, shown beside the statement's own lines. */
 export function statementPointsOf(cp: CardPoints): Record<string, StatementPoints> {
   const points: Record<string, StatementPoints> = {};
+  // What the bank credited for a purchase stands in for the estimate, as it does in the card's running total.
+  const credited = new Map(cp.transactionActuals.map((actual) => [actual.transactionId, actual.actualPoints]));
   for (const result of [cp.previous, cp.current]) {
     if (!result) continue;
     const approximate = new Set(result.earn.approximateTransactionIds);
@@ -98,8 +100,8 @@ export function statementPointsOf(cp: CardPoints): Record<string, StatementPoint
       // Only an MCC the owner set is worth printing on the statement; a guessed one is checked on the points page.
       const known = purchase.mccSource === 'typed' || purchase.mccSource === 'memory';
       points[purchase.transactionId] = {
-        points: result.earn.pointsByTransaction[purchase.transactionId] ?? 0,
-        approximate: approximate.has(purchase.transactionId),
+        points: credited.get(purchase.transactionId) ?? result.earn.pointsByTransaction[purchase.transactionId] ?? 0,
+        approximate: !credited.has(purchase.transactionId) && approximate.has(purchase.transactionId),
         mcc: purchase.cardFee || !known ? null : purchase.mcc,
         cardFee: purchase.cardFee,
       };

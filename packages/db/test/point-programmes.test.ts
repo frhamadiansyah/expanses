@@ -5,6 +5,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   applyCatalogEntry,
   archiveProgramme,
+  cardSpendLines,
+  listTransactionPointActuals,
+  recordTransactionPointActual,
   cardYearRoi,
   createAccount,
   createDatabase,
@@ -183,6 +186,24 @@ describe('catalogue terms', () => {
 });
 
 describe('two cards earning into one programme', () => {
+  it("keeps a figure saved for a purchase under the card's own programme, and the shared balance counts it", async () => {
+    const { database, ws } = await setupDb();
+    const a = await cardEarning(database, ws, 'Mandiri Prioritas', 10_000_000);
+    const b = await cardEarning(database, ws, 'Mandiri Platinum', 5_000_000);
+    await setEarnsInto(database, ws, b.program.id, a.program.id);
+    const lines = await cardSpendLines(database, ws, b.card.id, CYCLE.start, CYCLE.end);
+    const transactionId = lines[0]!.transactionId;
+
+    await recordTransactionPointActual(database, ws, { programId: b.program.id, transactionId, actualPoints: 420.5 });
+    // Read back the way the page does: by the card's own program, whatever programme it earns into.
+    expect(await listTransactionPointActuals(database, ws, b.program.id)).toMatchObject([{ transactionId, actualPoints: 420.5, editedAfterCheck: false }]);
+    expect(await listTransactionPointActuals(database, ws, a.program.id)).toEqual([]);
+
+    await deriveCycleEntries(database, ws, a.program.id, CYCLE);
+    await deriveCycleEntries(database, ws, b.program.id, CYCLE);
+    expect(await total(database, ws, a.program.id)).toBe(1_000 + 420.5);
+  });
+
   it('add up in it, and working one card out again leaves the other card alone', async () => {
     const { database, ws } = await setupDb();
     const a = await cardEarning(database, ws, 'Mandiri Prioritas', 10_000_000);
