@@ -1,4 +1,4 @@
-import { convertMinor, eventCategoryIcon, expenseInEvent, rateString, SharedEventError, splitJsonOf, uuidv7 } from '@expanses/core';
+import { convertMinor, eventCategoryIcon, expenseInEvent, rateString, refundSplitLike, SharedEventError, sharesOf, type SplitInput, splitJsonOf, uuidv7 } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { ownerScope, type WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -9,7 +9,7 @@ import { eventOf } from './event-scope';
 import { listTransactions } from './ledger';
 import { addSharedItemPurchase, setSharedItemDone, saveSharedItem } from './shared-event-plan';
 import { ensureShareAccountTx, postEventRecordTx, rateToBaseTx } from './shared-event-postings';
-import { type EventBookRow, expenseRecordTx } from './shared-event-records';
+import { type EventBookRow, eventRecordsTx, expenseRecordTx, type StoredExpense } from './shared-event-records';
 import { openSharedEventTx, SharedEventDbError } from './shared-event-writes';
 
 /*
@@ -65,7 +65,9 @@ async function movableTx(tx: Db, ws: WorkspaceContext, transactionId: string): P
   if (categories.length !== 1 || money.length !== 1 || lines.length !== 2) return NOT_MOVABLE;
   const [category] = categories;
   const [paid] = money;
-  if (Number(category![1]) <= 0) return 'A refund stays where it is';
+  // A refund (the category line below zero, the account credited) moves too: it is an expense below zero in the event,
+  // sharing back what the purchase it undoes was shared. A line of nothing is no purchase at all.
+  if (Number(category![1]) === 0) return NOT_MOVABLE;
   // The original pair is the purchase's own figure only when it is another currency than the account was charged in.
   const original = head[3] !== null && head[4] !== null && head[3] !== paid![2];
   return {
@@ -80,6 +82,41 @@ async function movableTx(tx: Db, ws: WorkspaceContext, transactionId: string): P
     currency: original ? head[3]! : category![2],
     amountMinor: original ? Number(head[4]) : Number(category![1]),
   };
+}
+
+/** A refund's description with the words a refund wears stripped, lower-cased: what the purchase it undoes is called. */
+function itemOf(description: string): string {
+  return description
+    .trim()
+    .replace(/^refund\s*[·:\-–]?\s*/i, '')
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * The expense a refund most likely undoes, when it can be told: a live purchase in this event called the same (the
+ * latest such), else the only one of the same size in the same currency that is at least as large. Null when it cannot
+ * (the refund is then shared by its recorder alone, to be changed in the event). `likeId` names it outright.
+ */
+async function undoneByTx(tx: Db, book: EventBookRow, refund: Pick<Movable, 'description' | 'currency' | 'amountMinor'>, likeId: string | null): Promise<StoredExpense | null> {
+  const { expenses } = await eventRecordsTx(tx, book.bookId);
+  const readable = (e: StoredExpense) => {
+    try {
+      sharesOf(e);
+      return true;
+    } catch (error) {
+      if (error instanceof SharedEventError) return false;
+      throw error;
+    }
+  };
+  const live = expenses.filter((e) => !e.voided && e.amountMinor > 0 && readable(e));
+  if (likeId) return live.find((e) => e.id === likeId) ?? null;
+  const item = itemOf(refund.description);
+  const byName = item === '' ? [] : live.filter((e) => itemOf(e.note ?? '') === item);
+  const latest = (list: StoredExpense[]) => [...list].sort((a, b) => (a.occurredOn === b.occurredOn ? (a.id < b.id ? 1 : -1) : a.occurredOn < b.occurredOn ? 1 : -1))[0] ?? null;
+  if (byName.length > 0) return latest(byName);
+  const sized = live.filter((e) => e.currency === refund.currency && e.amountMinor >= -refund.amountMinor);
+  return sized.length === 1 ? sized[0]! : null;
 }
 
 /** The event category by this name, made (captured) when the event has none yet. */
@@ -131,6 +168,8 @@ export async function moveIntoSharedEvent(
   ws: WorkspaceContext,
   eventId: string,
   transactionIds: readonly string[],
+  /** A refund's purchase named outright (the event's expense id), by the refund's transaction id; else it is looked for. */
+  undoes: Readonly<Record<string, string>> = {},
 ): Promise<{ moved: { transactionId: string; expenseId: string }[]; kept: MoveRefusal[] }> {
   const moved: { transactionId: string; expenseId: string }[] = [];
   const kept: MoveRefusal[] = [];
@@ -149,6 +188,11 @@ export async function moveIntoSharedEvent(
         // R12: a card goes on earning by the category the purchase was filed under (kept the first time it is given).
         await ensureShareAccountTx(tx, book, categoryId, purchase.categoryId);
         const expenseId = uuidv7();
+        let split: SplitInput = { mode: 'equal', people: [book.me] };
+        if (purchase.amountMinor < 0) {
+          const undone = await undoneByTx(tx, book, purchase, undoes[transactionId] ?? null);
+          if (undone) split = refundSplitLike(sharesOf(undone), purchase.amountMinor);
+        }
         await withCapture(
           tx,
           [
@@ -161,7 +205,7 @@ export async function moveIntoSharedEvent(
               VALUES (${book.bookId}, ${expenseId}, ${purchase.occurredOn}, ${purchase.amountMinor}, ${purchase.currency}, ${rateToEvent}, ${book.me}, ${book.me}, NULL)`);
             await tx.run(sql`
               INSERT INTO event_expense_details (book_id, id, note, category_id, split_mode, split_json, recorded_by, updated_by)
-              VALUES (${book.bookId}, ${expenseId}, ${purchase.description.trim() || null}, ${categoryId}, 'equal', ${splitJsonOf({ mode: 'equal', people: [book.me] })}, ${book.me}, NULL)`);
+              VALUES (${book.bookId}, ${expenseId}, ${purchase.description.trim() || null}, ${categoryId}, ${split.mode}, ${splitJsonOf(split)}, ${book.me}, NULL)`);
           },
         );
         // The purchase itself becomes the expense's derived transaction: replaced in place, never posted twice. The

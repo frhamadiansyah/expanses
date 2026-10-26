@@ -34,8 +34,8 @@ export interface SplitRow {
   categoryId: string;
   amount: string;
   /**
-   * This row's part is left out of its workspace's reports (0090). A part is a workspace's share of the purchase, so
-   * every row in one workspace says the same (`withPartExcluded`). Never on a Not counted row, which no report reads.
+   * This row's line is left out of its workspace's reports (0090, 0096), on its own: another row in the same workspace
+   * counts unless it says so too (`withPartExcluded`). Never on a Not counted row, which no report reads.
    */
   excluded?: boolean;
 }
@@ -49,34 +49,28 @@ export const NOT_COUNTED = NOT_COUNTED_LINE;
 export const isNotCountedRow = (row: Pick<SplitRow, 'categoryId'>): boolean => row.categoryId === NOT_COUNTED;
 
 /**
- * The rows with row `index`'s part switched to `excluded`: every row filed in the same workspace with it, since the
- * part is that workspace's share of the purchase. `bookOf` names a category's workspace; one it cannot name (not
- * read yet) is its own part. A Not counted row is never excluded — it is in no report to leave.
+ * The rows with row `index` switched to `excluded`: that line alone, even beside another in the same workspace (Groceries
+ * and Gift are two switches). A Not counted row is never excluded — it is in no report to leave.
  */
-export function withPartExcluded(splits: readonly SplitRow[], index: number, excluded: boolean, bookOf: (categoryId: string) => string | null): SplitRow[] {
-  const target = splits[index];
-  if (!target || isNotCountedRow(target)) return [...splits];
-  const book = target.categoryId ? bookOf(target.categoryId) : null;
+export function withPartExcluded(splits: readonly SplitRow[], index: number, excluded: boolean): SplitRow[] {
   return splits.map((row, i) => {
-    if (isNotCountedRow(row)) return row;
-    const same = i === index || (book !== null && row.categoryId !== '' && bookOf(row.categoryId) === book);
-    return same ? { ...row, excluded } : row;
+    if (i !== index || isNotCountedRow(row)) return row;
+    const { excluded: _was, ...rest } = row;
+    void _was;
+    return excluded ? { ...rest, excluded: true } : rest;
   });
 }
 
 /**
- * The rows with row `index` given another category (or Not counted). A row that joins a workspace takes that workspace
- * part's Exclude from report, so one part never reads two ways; one that leaves for Not counted drops it.
+ * The rows with row `index` given another category (or Not counted). The line keeps its own Exclude from report; one that
+ * leaves for Not counted drops it, as no report reads that part.
  */
-export function withSplitCategory(splits: readonly SplitRow[], index: number, categoryId: string, bookOf: (categoryId: string) => string | null): SplitRow[] {
-  const book = categoryId && categoryId !== NOT_COUNTED ? bookOf(categoryId) : null;
-  const partner = book === null ? undefined : splits.find((row, i) => i !== index && row.categoryId && !isNotCountedRow(row) && bookOf(row.categoryId) === book);
+export function withSplitCategory(splits: readonly SplitRow[], index: number, categoryId: string): SplitRow[] {
   return splits.map((row, i) => {
     if (i !== index) return row;
     const { excluded: _was, ...rest } = row;
     void _was;
-    const excluded = categoryId === NOT_COUNTED ? false : partner ? (partner.excluded ?? false) : (row.excluded ?? false);
-    return { ...rest, categoryId, ...(excluded ? { excluded: true } : {}) };
+    return { ...rest, categoryId, ...(categoryId !== NOT_COUNTED && row.excluded ? { excluded: true } : {}) };
   });
 }
 
@@ -91,7 +85,7 @@ export function excludedWhole(draft: Pick<FormDraft, 'mode' | 'splits' | 'exclud
   return counted.length > 0 && counted.every((row) => row.excluded === true);
 }
 
-/** The draft with More details' Exclude from report switched: on a split, every part in a workspace with it. */
+/** The draft with More details' Exclude from report switched: on a split, every line with it. */
 export function withExcludedWhole(draft: FormDraft, excluded: boolean): FormDraft {
   if (draft.mode !== 'expense' || draft.splits.length === 0) return { ...draft, excluded };
   return {
@@ -106,7 +100,7 @@ export function withExcludedWhole(draft: FormDraft, excluded: boolean): FormDraf
   };
 }
 
-/** The categories of the rows whose part is left out of reports: what `excludedParts` names a part by. */
+/** The categories of the rows left out of reports, each on its own: what `excludedParts` names a line by. */
 export function excludedPartsOf(splits: readonly SplitRow[]): string[] {
   return [...new Set(splits.filter((row) => row.excluded && row.categoryId && !isNotCountedRow(row)).map((row) => row.categoryId))];
 }
@@ -1336,8 +1330,8 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
     // A part counted in no workspace (Not counted) is a row of the split too, on the Not counted account.
     const notCounted = c.type === 'expense' ? tx.entries.filter((e) => e.accountKind === 'equity' && isNotCountedKey(e.accountSystemKey)) : [];
     if (c.type === 'expense' && category.length + notCounted.length > 1) {
-      // Each workspace's part left out of its reports (0090); in one workspace, the purchase's own flag is its one part's.
-      const partOff = (e: (typeof category)[number]) => (tx.excluded ?? false) || (tx.splitBooks?.some((book) => book.id === e.bookId && book.excluded) ?? false);
+      // Each line left out of its workspace's reports (0090, 0096) says so itself; the purchase's own flag is every line's.
+      const partOff = (e: (typeof category)[number]) => (tx.excluded ?? false) || e.excluded === true || (tx.splitBooks?.some((book) => book.id === e.bookId && book.excluded) ?? false);
       const splits: SplitRow[] = [
         ...category.map((e) => ({ categoryId: e.accountId, amount: minorToMajorString(e.amountMinor, e.currency), ...(partOff(e) ? { excluded: true } : {}) })),
         ...notCounted.map((e) => ({ categoryId: NOT_COUNTED, amount: minorToMajorString(e.amountMinor, e.currency) })),

@@ -14,7 +14,7 @@ import { dayOrderExists } from './day-order-column';
 import { debitTotal, exactExists, exactFitsPosting, exactForLinesTx, isExactFigure } from './exact-column';
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, type BookKind, hasBooks } from './books';
-import { bookSplitsExist, excludedSplitBooksTx, splitBooksOfTx, splitHasPartIn, splitPartsOfMany, writeSplitBooksTx } from './book-splits';
+import { bookSplitsExist, excludedLinesTx, lineExclusionsOfMany, splitBooksOfTx, splitHasPartIn, splitPartsOfMany, writeLineExclusionsTx, writeSplitBooksTx } from './book-splits';
 import { categoryInBookTx, fileTransferTx, moneyInPartnerTx } from './move-group';
 import { jointRowRefusalTx } from './joint-account-rows';
 import { carrySharedTransferTx, sharedTransferBooksTx, voidSharedTransferTx } from './shared-transfers';
@@ -155,12 +155,12 @@ export interface PostTransactionInput {
    */
   acrossBooks?: boolean;
   /**
-   * The parts left out of their workspace's reports (0090) — the chart, the budgets, the category totals, Financial
-   * health, an event's spending — each named by a category line of the part, so a form that knows its rows and not
-   * their workspaces can say it. A part is a workspace's share of the purchase: naming one of its lines names all of
-   * them. On a purchase split across workspaces each part is its own; on one in a single workspace the one part is the
-   * whole purchase, and naming it is `excludedFromReport`. The card keeps the whole charge either way. On
-   * `replaceTransaction`, undefined carries the original's parts, workspace by workspace.
+   * The lines left out of their workspace's reports (0090, 0096) — the chart, the budgets, the category totals,
+   * Financial health, an event's spending — each named by its category, so a form that knows its rows and not their
+   * workspaces can say it. Each line is its own: naming Groceries leaves Gift (in the same workspace) counted. All the
+   * lines of a workspace named is that workspace's part excluded (a split's part flag, or `excludedFromReport` on a
+   * purchase in one workspace), which is how an older build reads it. The card keeps the whole charge either way. On
+   * `replaceTransaction`, undefined carries the original's lines, by category.
    */
   excludedParts?: readonly string[] | null;
   /**
@@ -316,16 +316,6 @@ async function refuseNotCountedTx(
   }
 }
 
-/** The workspaces whose part `excludedParts` names: each named line's workspace, among those the purchase is filed in. */
-async function excludedBooksOf(tx: Db, named: readonly string[] | null | undefined, bookIds: readonly string[]): Promise<Set<string>> {
-  const out = new Set<string>();
-  for (const categoryId of new Set(named ?? [])) {
-    const bookId = await bookOfCategory(tx, categoryId);
-    if (bookId && bookIds.includes(bookId)) out.add(bookId);
-  }
-  return out;
-}
-
 /** Posts inside an open transaction. Throws PostingError or LedgerError without writing on invalid input. */
 export async function postTransactionTx(tx: Db, ws: WorkspaceContext, given: PostTransactionInput): Promise<string> {
   const input = await withNotCountedTx(tx, ws, given);
@@ -394,13 +384,31 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, given: Pos
   if (bookIds.length > 1) await refuseSplitTx(tx, bookIds, found, input.replacesTransactionId ?? null);
   await refuseNotCountedTx(tx, found, input.lines, bookIds);
   const bookId = bookIds.length === 1 ? bookIds[0] : undefined;
-  // Which parts are left out of their workspace's reports (0090). Split across workspaces, each part says it for itself
-  // and "the whole purchase" is every part, so the purchase's own flag stays off; in one workspace the one part is the
-  // whole purchase, and a named part is the purchase's own flag.
+  // Which lines are left out of their workspace's reports (0090, 0096): each line says it for itself, named by its
+  // category, and "the whole purchase" is every line. A workspace whose every line is out is written the way 0090
+  // wrote it — a split's part flag, a single workspace's purchase flag — so an older build reads it as it always did;
+  // a line out beside lines that count is a row of its own.
   const categoryIds = new Set(found.filter((account) => account.kind === 'expense' || account.kind === 'income').map((account) => account.id));
-  const namedParts = (input.excludedParts ?? []).filter((id) => categoryIds.has(id));
-  const excludedBooks = bookIds.length > 1 ? (input.excludedFromReport ? new Set(bookIds) : await excludedBooksOf(tx, namedParts, bookIds)) : new Set<string>();
-  const excludedWhole = bookIds.length > 1 ? false : Boolean(input.excludedFromReport) || namedParts.length > 0;
+  const named = new Set((input.excludedParts ?? []).filter((id) => categoryIds.has(id)));
+  const off = input.excludedFromReport ? new Set(categoryIds) : named;
+  const excludedBooks = new Set<string>();
+  let excludedWhole = false;
+  const lineRows = new Set<string>();
+  if (bookIds.length > 1) {
+    // Split across workspaces: the purchase's own flag stays off; a part is out when every line of it is.
+    const linesOf = new Map<string, string[]>();
+    for (const categoryId of categoryIds) {
+      const filedIn = await bookOfCategory(tx, categoryId);
+      if (filedIn && bookIds.includes(filedIn)) linesOf.set(filedIn, [...(linesOf.get(filedIn) ?? []), categoryId]);
+    }
+    for (const [filedIn, list] of linesOf) {
+      if (list.every((categoryId) => off.has(categoryId))) excludedBooks.add(filedIn);
+      else for (const categoryId of list) if (off.has(categoryId)) lineRows.add(categoryId);
+    }
+  } else {
+    excludedWhole = Boolean(input.excludedFromReport) || (categoryIds.size > 0 && [...categoryIds].every((categoryId) => off.has(categoryId)));
+    if (!excludedWhole) for (const categoryId of off) lineRows.add(categoryId);
+  }
 
   const id = input.id ?? uuidv7();
   await tx.insert(transactions).values({
@@ -445,6 +453,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, given: Pos
   if (bookId) await tx.insert(bookTransactions).values({ transactionId: id, workspaceId: ws.workspaceId, bookId });
   else if (bookIds.length === 0 && input.fileTransfer && ws.bookId && (await hasBooks(tx)) && !input.replacesTransactionId) await fileTransferTx(tx, ws, id, ws.bookId);
   else if (bookIds.length > 1) await writeSplitBooksTx(tx, ws.workspaceId, id, bookIds, excludedBooks);
+  if (lineRows.size > 0) await writeLineExclusionsTx(tx, ws.workspaceId, id, lineRows);
   // A payment against a bill says which month's bill it settles, which is not always the month it was paid in.
   if (input.templateId && (await billTablesExist(tx))) {
     const [bill] = await tx
@@ -813,7 +822,7 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   const extras = (await extrasTablesExist(tx)) ? await extrasForTx(tx, ws, id) : null;
   // Which of a split's parts were left out of their workspace's reports (0090): carried workspace by workspace, as the
   // lines of the correction that are still in each such workspace.
-  const carriedParts = input.excludedParts === undefined ? await linesInBooksTx(tx, input.lines, await excludedSplitBooksTx(tx, id)) : undefined;
+  const carriedParts = input.excludedParts === undefined ? carriedLines(input.lines, await excludedLinesTx(tx, id)) : undefined;
   // Read before the void. An edit carries the saved answer by the difference, never by undoing and redoing it (rulings
   // I1, I2): an edit that does not mention it (a category re-file), or gives the same one again (an edit form), keeps
   // the draw, re-pointed to the replacement. A different answer, or none, undoes the saved one and applies afresh.
@@ -923,15 +932,9 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   return replacement;
 }
 
-/** The lines' accounts that are categories filed in one of these workspaces: how a carried part is named again. */
-async function linesInBooksTx(tx: Db, lines: readonly PostingLine[], bookIds: ReadonlySet<string>): Promise<string[]> {
-  if (bookIds.size === 0) return [];
-  const out: string[] = [];
-  for (const accountId of new Set(lines.map((line) => line.accountId))) {
-    const bookId = await bookOfCategory(tx, accountId);
-    if (bookId && bookIds.has(bookId)) out.push(accountId);
-  }
-  return out;
+/** The categories among these lines that the original had left out (0090, 0096): how a carried exclusion is named again. */
+function carriedLines(lines: readonly PostingLine[], was: ReadonlySet<string>): string[] {
+  return [...new Set(lines.map((line) => line.accountId))].filter((accountId) => was.has(accountId));
 }
 
 /**
@@ -1071,6 +1074,12 @@ export interface TransactionEntryView {
    * workspace's part from another's. Absent on every other line, and on every other transaction.
    */
   bookId?: string;
+  /**
+   * This category line is left out of its workspace's reports on its own (0096) — or its workspace's part of a split is
+   * (0090) — while the card keeps the whole charge. A purchase excluded whole is `TransactionView.excluded`, not marked
+   * here. Absent (counted) on a line view built by hand, on a database stopped before 0096, and on every non-category line.
+   */
+  excluded?: boolean;
 }
 
 /** A workspace a purchase split across workspaces has a part in. */
@@ -1259,11 +1268,18 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     if (bank) row.accountName = accountDisplayName({ name: row.accountName, subtype: row.accountSubtype, bank });
   }
 
+  // The lines left out of their workspace's reports on their own (0096), and those of a part left out whole (0090).
+  const lineOff = await lineExclusionsOfMany(database.db, txs.map((t) => t.id));
   const byTx = new Map<string, TransactionEntryView[]>();
   for (const { transactionId, ...entry } of rows) {
     const filedIn = splits.has(transactionId) ? splitBooks?.byCategory.get(entry.accountId) : undefined;
+    const isCategory = entry.accountKind === 'expense' || entry.accountKind === 'income';
+    const off =
+      isCategory &&
+      (lineOff.get(transactionId)?.has(entry.accountId) ||
+        (filedIn !== undefined && (parts.get(transactionId)?.some((part) => part.bookId === filedIn && part.excluded) ?? false)));
     const list = byTx.get(transactionId) ?? [];
-    list.push(filedIn ? { ...entry, bookId: filedIn } : entry);
+    list.push({ ...entry, ...(filedIn ? { bookId: filedIn } : {}), ...(off ? { excluded: true } : {}) });
     byTx.set(transactionId, list);
   }
   const views = txs.map((t) => ({
@@ -1289,7 +1305,11 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
       ? {
           splitBooks: splitBooks.books
             .filter((book) => splits.get(t.id)!.includes(book.id))
-            .map((book) => ({ ...book, excluded: parts.get(t.id)!.some((part) => part.bookId === book.id && part.excluded) })),
+            .map((book) => {
+              // A part is out when it is marked so whole, or when every one of its category lines is out on its own.
+              const lines = (byTx.get(t.id) ?? []).filter((entry) => entry.bookId === book.id && (entry.accountKind === 'expense' || entry.accountKind === 'income'));
+              return { ...book, excluded: parts.get(t.id)!.some((part) => part.bookId === book.id && part.excluded) || (lines.length > 0 && lines.every((entry) => entry.excluded === true)) };
+            }),
         }
       : {}),
     createdAt: t.createdAt,

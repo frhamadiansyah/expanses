@@ -191,3 +191,23 @@ export function recordLabel(total: number, gaps: number, wallets = 0): string {
 export function statementMonth(period: { start: string; end: string }): string {
   return new Date(`${period.start}T00:00:00`).toLocaleDateString('en-GB', { month: 'long' });
 }
+
+/** A plastic as the statement's card choice lists it: the primary first, with its digits. */
+export interface PlasticOption {
+  id: string;
+  label: string;
+}
+
+/**
+ * The plastics a statement can belong to, primary first, and the one chosen: the owner's pick when it is still among
+ * them, else the primary (the account's first when none is marked). With one plastic there is nothing to choose.
+ */
+export function plasticChoice(
+  plastics: readonly { id: string; last4: string | null; isPrimary: boolean }[],
+  picked: string | null | undefined,
+): { options: PlasticOption[]; chosen: string | null; choosable: boolean } {
+  const ordered = [...plastics].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
+  const options = ordered.map((p) => ({ id: p.id, label: `${p.isPrimary ? 'Primary' : 'Supplementary'}${p.last4 ? ` ···· ${p.last4}` : ''}` }));
+  const chosen = options.find((o) => o.id === picked)?.id ?? options[0]?.id ?? null;
+  return { options, chosen, choosable: options.length > 1 };
+}

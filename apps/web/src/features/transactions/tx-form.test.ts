@@ -1807,22 +1807,31 @@ describe('a split part left out of reports, or Not counted (0090)', () => {
   ];
   const splitDraft = (splits: FormDraft['splits']): FormDraft => ({ ...emptyForm('ws-1'), moneyId: 'acct-card', currency: 'IDR', splits });
 
-  it('switches a part as a whole: every row of its workspace, never a Not counted row', () => {
-    const off = withPartExcluded(rows, 0, true, bookOf);
-    expect(off.map((row) => row.excluded ?? false)).toEqual([true, false, true]);
-    expect(withPartExcluded(off, 2, false, bookOf).map((row) => row.excluded ?? false)).toEqual([false, false, false]);
+  it('switches one row on its own: two rows of one workspace are two switches, and a Not counted row has none', () => {
+    const off = withPartExcluded(rows, 0, true);
+    // Restaurants and groceries are both Personal, yet only the first row is out.
+    expect(bookOf(rows[0]!.categoryId)).toBe(bookOf(rows[2]!.categoryId));
+    expect(off.map((row) => row.excluded ?? false)).toEqual([true, false, false]);
+    expect(withPartExcluded(off, 2, true).map((row) => row.excluded ?? false)).toEqual([true, false, true]);
+    expect(withPartExcluded(off, 0, false).map((row) => row.excluded ?? false)).toEqual([false, false, false]);
     const withNotCounted = [...rows, { categoryId: NOT_COUNTED, amount: '0' }];
-    expect(withPartExcluded(withNotCounted, 3, true, bookOf)[3]!.excluded).toBeUndefined();
+    expect(withPartExcluded(withNotCounted, 3, true)[3]!.excluded).toBeUndefined();
   });
 
-  it('a row moved into a workspace takes its part’s switch; moved to Not counted it drops it', () => {
-    const off = withPartExcluded(rows, 1, true, bookOf);
-    expect(withSplitCategory(off, 0, 'cat-office', bookOf)[0]).toEqual({ categoryId: 'cat-office', amount: '300000', excluded: true });
-    expect(withSplitCategory(off, 1, NOT_COUNTED, bookOf)[1]).toEqual({ categoryId: NOT_COUNTED, amount: '4000000' });
+  it('a row given another category keeps its own switch; moved to Not counted it drops it', () => {
+    const off = withPartExcluded(rows, 1, true);
+    expect(withSplitCategory(off, 1, 'cat-groceries')[1]).toEqual({ categoryId: 'cat-groceries', amount: '4000000', excluded: true });
+    expect(withSplitCategory(off, 0, 'cat-office')[0]).toEqual({ categoryId: 'cat-office', amount: '300000' });
+    expect(withSplitCategory(off, 1, NOT_COUNTED)[1]).toEqual({ categoryId: NOT_COUNTED, amount: '4000000' });
   });
 
-  it('posts each excluded part by its categories, the purchase’s own flag off', () => {
-    const post = formToPost(splitDraft(withPartExcluded(rows, 1, true, bookOf)), accounts);
+  it('posts two excluded lines of one workspace each by its category, and one alone leaves the other out of the list', () => {
+    expect(excludedPartsOf(withPartExcluded(rows, 0, true))).toEqual(['cat-restaurants']);
+    expect(excludedPartsOf(withPartExcluded(withPartExcluded(rows, 0, true), 2, true))).toEqual(['cat-restaurants', 'cat-groceries']);
+  });
+
+  it('posts each excluded line by its category, the purchase’s own flag off', () => {
+    const post = formToPost(splitDraft(withPartExcluded(rows, 1, true)), accounts);
     expect(post).toMatchObject({ kind: 'post', input: { excludedFromReport: false, excludedParts: ['cat-office'], acrossBooks: true } });
     expect(excludedPartsOf(rows)).toEqual([]);
   });
@@ -1887,14 +1896,28 @@ describe('a split part left out of reports, or Not counted (0090)', () => {
     ]);
   });
 
-  it('More details’ switch on a split is read off its parts, and switches every part in a workspace', () => {
+  it('reopens a split with one line of a workspace left out and its sibling counted', () => {
+    const tx = view({
+      entries: [
+        paid(-500_000),
+        { ...spent('cat-restaurants', 300_000), excluded: true },
+        spent('cat-groceries', 200_000),
+      ] as TransactionView['entries'],
+    });
+    expect(formFromTransaction(tx, accounts).splits).toEqual([
+      { categoryId: 'cat-restaurants', amount: '300000', excluded: true },
+      { categoryId: 'cat-groceries', amount: '200000' },
+    ]);
+  });
+
+  it('More details’ switch on a split is read off its lines, and switches every line', () => {
     const withNotCounted = splitDraft([...rows, { categoryId: NOT_COUNTED, amount: '500000' }]);
     expect(excludedWhole(withNotCounted)).toBe(false);
     const all = withExcludedWhole(withNotCounted, true);
     expect(all.splits.map((row) => row.excluded ?? false)).toEqual([true, true, true, false]);
     expect(excludedWhole(all)).toBe(true);
     // One part switched back on its row: the whole is no longer excluded, and says so.
-    expect(excludedWhole({ ...all, splits: withPartExcluded(all.splits, 1, false, bookOf) })).toBe(false);
+    expect(excludedWhole({ ...all, splits: withPartExcluded(all.splits, 1, false) })).toBe(false);
     expect(withExcludedWhole(all, false).splits.map((row) => row.excluded ?? false)).toEqual([false, false, false, false]);
     // Not split: the purchase's own flag.
     expect(excludedWhole(withExcludedWhole({ ...draft }, true))).toBe(true);

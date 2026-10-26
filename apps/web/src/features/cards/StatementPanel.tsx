@@ -233,7 +233,7 @@ export function StatementPanel({
         onClick={() => setUnmarking(line)}
         className="ph-focus flex h-[44px] w-[32px] shrink-0 items-center justify-center"
       >
-        <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[var(--ph-tint)] text-[var(--ph-surface)]">
+        <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[var(--ph-up)] text-white">
           <Check size={11} strokeWidth={3.5} aria-hidden />
         </span>
       </button>
@@ -252,7 +252,11 @@ export function StatementPanel({
       />
       <span
         aria-hidden
-        className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] border-[var(--ph-ink-3)] text-transparent peer-checked:border-[var(--ph-ink)] peer-checked:bg-[var(--ph-ink)] peer-checked:text-[var(--ph-surface)] peer-disabled:opacity-60"
+        className={cx(
+          'flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] border-[var(--ph-ink-3)] text-transparent peer-disabled:opacity-60',
+          // Paid by a recorded payment is green, as a paid-off line is; a line picked to pay is an ink ring with a ✓, not filled.
+          line.paidBy ? 'peer-checked:border-[var(--ph-up)] peer-checked:bg-[var(--ph-up)] peer-checked:text-white' : 'peer-checked:border-[var(--ph-ink)] peer-checked:text-[var(--ph-ink)]',
+        )}
       >
         <Check size={11} strokeWidth={3.5} aria-hidden />
       </span>
@@ -308,7 +312,6 @@ export function StatementPanel({
    * drawn from the kit's parts rather than as an `InsetRow`, which holds one target and nothing inside it.
    */
   const statementRow = (line: StatementLine) => {
-    const late = lateOf(line);
     const extra = notes(line);
     const earned = points ? pointsOf(line) : '';
     return (
@@ -355,7 +358,6 @@ export function StatementPanel({
           </span>
         </span>
         <span className="shrink-0 text-right text-[15px] leading-[20px] text-[var(--ph-ink)]">{amount(line)}</span>
-        {fixes(line, late)}
         {/* The row's actions, found without a swipe: the ⋯ at its end lists what the swipe and the ✓ offer, and the receipt. */}
         <GlyphButton label={`Actions for ${line.description}`} glyph={<Ellipsis size={17} aria-hidden />} disabled={busy} onClick={() => setActing(line)} />
       </Line>
@@ -562,13 +564,25 @@ export function StatementPanel({
             )}
             {billableNext(acting) && (
               <ActionRow
-                label="Bill on next statement"
+                label="Billed next statement"
                 icon={<CalendarArrowUp size={16} aria-hidden />}
                 disabled={busy}
                 onClick={() => {
                   const line = acting;
                   setActing(null);
                   void run(() => billOnNextStatement(database, ws, card.id, line.transactionId));
+                }}
+              />
+            )}
+            {acting.postedOn && (
+              <ActionRow
+                label="Use purchase date"
+                icon={<Undo2 size={16} aria-hidden />}
+                disabled={busy}
+                onClick={() => {
+                  const line = acting;
+                  setActing(null);
+                  void run(() => setPostedOn(database, ws, line.transactionId, null));
                 }}
               />
             )}

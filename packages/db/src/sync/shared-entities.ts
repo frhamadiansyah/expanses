@@ -484,7 +484,7 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
     table: 'transactions',
     // 0084: a purchase split across workspaces is filed in book_transaction_splits instead, and travels in its one shared
     // workspace as its part there (capture.ts `projectPurchase`).
-    tables: ['transactions', 'entries', 'book_transactions', 'book_transaction_splits', 'transaction_flags', 'bill_payments'],
+    tables: ['transactions', 'entries', 'book_transactions', 'book_transaction_splits', 'transaction_flags', 'bill_payments', 'transaction_line_excluded'],
     scopeRule:
       "the lineage's head is in book_transactions for the book (the ledger files only rows with an income or expense entry), or has a part of a split across workspaces in it (book_transaction_splits)",
     scope: (bookId) =>
@@ -497,6 +497,9 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
       // 0090: a split's part in the book is excluded on its own; that part is all that travels, so its flag is the
       // purchase's (capture.ts `projectPurchase`, and apply writes it back to the part).
       excluded: ['transaction_flags.excluded', 'book_transaction_splits.excluded'],
+      // 0096: the lines left out one by one, by category (absent when none is). `excluded` is still 1 when every one is,
+      // so a phone a version behind reads a purchase excluded whole as before and drops this field on apply.
+      excludedLines: ['transaction_line_excluded.account_id'],
       // Both halves: the ledger writes transactions.template_id and the bill_payments row from one input.
       bill: ['transactions.template_id', 'bill_payments.template_id', 'bill_payments.bill_month'],
       money: [
@@ -526,6 +529,7 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
       'book_transaction_splits.transaction_id',
       'book_transaction_splits.book_id',
       'transaction_flags.transaction_id',
+      'transaction_line_excluded.transaction_id',
       'bill_payments.transaction_id',
     ],
   },
@@ -567,6 +571,7 @@ export const NEVER_SYNCED_COLUMNS: Readonly<Record<string, readonly string[]>> =
   book_transactions: ['workspace_id'],
   book_transaction_splits: ['workspace_id'],
   transaction_flags: ['workspace_id'],
+  transaction_line_excluded: ['workspace_id'],
   bill_payments: ['workspace_id'],
   // book_id is this row's own scope, not a synced field: apply writes it locally on insert (migration 0056).
   book_members: ['book_id'],

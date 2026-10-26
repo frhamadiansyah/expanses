@@ -305,7 +305,9 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className={cx('truncate', part.excluded && 'text-slate-500')}>{part.categoryName}</span>
                   <span className="truncate text-xs text-slate-500">
-                    {part.book ? [part.book.name, part.excluded ? 'Excluded from report' : null].filter(Boolean).join(' · ') : 'In no workspace and no report'}
+                    {part.book || part.categoryId
+                      ? [part.book?.name, part.excluded ? 'Excluded from report' : null].filter(Boolean).join(' · ')
+                      : 'In no workspace and no report'}
                   </span>
                 </span>
                 <span className={cx('tabular text-right', part.excluded && 'text-slate-500 line-through')}>{formatMinor(part.amountMinor, part.currency)}</span>

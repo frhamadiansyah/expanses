@@ -92,7 +92,9 @@ import goalCurrency from '../migrations/0091_goal_currency.sql?raw';
 import assetSales from '../migrations/0092_asset_sales.sql?raw';
 import cardFeeDate from '../migrations/0093_card_fee_date.sql?raw';
 import sharedTransfers from '../migrations/0094_shared_transfers.sql?raw';
-import jointAccounts from '../migrations/0095_joint_accounts.sql?raw';
+import eventRefunds from '../migrations/0095_event_refunds.sql?raw';
+import splitLineExcluded from '../migrations/0096_split_line_excluded.sql?raw';
+import jointAccounts from '../migrations/0097_joint_accounts.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -195,7 +197,9 @@ export const MIGRATIONS: Migration[] = [
   { version: 92, name: 'asset_sales', sql: assetSales },
   { version: 93, name: 'card_fee_date', sql: cardFeeDate },
   { version: 94, name: 'shared_transfers', sql: sharedTransfers },
-  { version: 95, name: 'joint_accounts', sql: jointAccounts },
+  { version: 95, name: 'event_refunds', sql: eventRefunds },
+  { version: 96, name: 'split_line_excluded', sql: splitLineExcluded },
+  { version: 97, name: 'joint_accounts', sql: jointAccounts },
 ];
 
 /** The highest version this build of the app knows how to produce. */

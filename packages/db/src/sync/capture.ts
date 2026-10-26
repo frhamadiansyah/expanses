@@ -1,7 +1,7 @@
 import { uuidv7 } from '@expanses/core';
 import { sql, type SQL } from 'drizzle-orm';
 import type { Database, Db, Tx } from '../database';
-import { bookSplitsExist, splitExclusionExists } from '../repos/book-splits';
+import { bookSplitsExist, excludedLinesTx, splitExclusionExists } from '../repos/book-splits';
 import { dayOrderExists } from '../repos/day-order-column';
 import { exactExists } from '../repos/exact-column';
 import { buildOpId, entityOf, parseOpId, SHARED_ENTITIES, type RowEntity } from './shared-entities';
@@ -155,6 +155,12 @@ export interface PurchaseFields {
   description: string;
   channel: 'online' | 'offline' | null;
   excluded: number;
+  /**
+   * The category lines of the purchase that travel and are left out of their workspace's reports, each on its own (0096):
+   * absent when none is. `excluded` stays what it was — 1 when every one is, or the purchase is excluded whole — so a build
+   * before this reads a purchase excluded whole as it always did and leaves a line excluded beside a counted one counted.
+   */
+  excludedLines?: string[];
   bill: { templateId: string; billMonth: string | null } | null;
   money: PurchaseMoney;
   /**
@@ -898,6 +904,8 @@ function diffFields(before: Record<string, unknown> | null, after: Record<string
   for (const [field, value] of Object.entries(after)) {
     if (!before || JSON.stringify(before[field]) !== JSON.stringify(value)) out[field] = value;
   }
+  // A list that is absent when empty (the lines left out, 0096) and was not: its going empty is a change, said as [].
+  if (before && Array.isArray(before.excludedLines) && before.excludedLines.length > 0 && after.excludedLines === undefined) out.excludedLines = [];
   return out;
 }
 
@@ -1116,6 +1124,14 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
     }
   }
 
+  // The lines left out on their own (0096): those of a part left out whole and those marked alone, or every line when the
+  // purchase is excluded whole. Sorted, so the same set always reads the same.
+  const wholeOut = Number(flags?.[1] ?? 0) === 1;
+  const lineOff = await excludedLinesTx(tx, transactionId);
+  const travelling = [...new Set(lines.map((line) => line.categoryId))];
+  const outLines = travelling.filter((categoryId) => wholeOut || partExcluded || lineOff.has(categoryId)).sort();
+  const allOut = travelling.length > 0 && outLines.length === travelling.length;
+
   let paidBy: string;
   let paidLabel: string;
   let paidFrom: PaidFrom | null = null;
@@ -1162,7 +1178,8 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
     occurredOn,
     description,
     channel: (flags?.[0] ?? null) as PurchaseFields['channel'],
-    excluded: Number(flags?.[1] ?? 0) === 1 || partExcluded ? 1 : 0,
+    excluded: Number(flags?.[1] ?? 0) === 1 || partExcluded || allOut ? 1 : 0,
+    ...(outLines.length > 0 ? { excludedLines: outLines } : {}),
     // A part never names a bill: the bill it pays may be the private workspace's, and its id is not the partner's to see.
     bill: templateId && !part ? { templateId: payment?.[0] ?? templateId, billMonth: payment?.[1] ?? null } : null,
     money: {

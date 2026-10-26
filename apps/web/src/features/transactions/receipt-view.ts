@@ -180,16 +180,19 @@ export interface SplitPart {
  */
 export function splitParts(tx: TransactionView, accounts: readonly AccountRow[], book: SplitBook | null = null): SplitPart[] {
   const notCounted = tx.entries.filter(isNotCountedLine);
-  if (!tx.splitBooks && notCounted.length === 0) return [];
-  const books: SplitBook[] = tx.splitBooks ?? (book ? [{ ...book, excluded: tx.excluded ?? false }] : []);
   const categoryLine = (entry: TransactionView['entries'][number]) => entry.accountKind === 'expense' || entry.accountKind === 'income';
+  // A split in one workspace shows its lines when one of them is left out on its own (0096): which one is the news.
+  const someLeftOut = tx.entries.filter(categoryLine).length > 1 && tx.entries.some((entry) => categoryLine(entry) && entry.excluded === true);
+  if (!tx.splitBooks && notCounted.length === 0 && !someLeftOut) return [];
+  const books: SplitBook[] = tx.splitBooks ?? (book ? [{ ...book, excluded: tx.excluded ?? false }] : []);
   const part = (entry: TransactionView['entries'][number], of: SplitBook | null): SplitPart => ({
     categoryId: entry.accountId,
     categoryName: accounts.find((account) => account.id === entry.accountId)?.name ?? entry.accountName,
     book: of,
     amountMinor: entry.accountKind === 'income' ? -entry.amountMinor : entry.amountMinor,
     currency: entry.currency,
-    excluded: (tx.excluded ?? false) || (of?.excluded ?? false),
+    // Each line says it itself (0096); a part left out whole is every line of it left out.
+    excluded: (tx.excluded ?? false) || entry.excluded === true || (of?.excluded ?? false),
   });
   const largestFirst = (a: { amountMinor: number }, b: { amountMinor: number }) => Math.abs(b.amountMinor) - Math.abs(a.amountMinor);
   const filed = tx.splitBooks

@@ -35,7 +35,7 @@ test('the statement page: a bar with two icons, and one box holding the stepper 
   await openStatement(page);
 
   await expect(page.getByRole('heading', { name: 'Statement', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'BCA Visa', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'BCA Visa', exact: true })).toBeVisible();
   await expect(page.getByTestId('check-statement')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Search statements' })).toBeVisible();
 
@@ -91,4 +91,16 @@ test('the check icon goes to the check page with the dates of the statement on s
   expect(start).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   expect(end).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   expect(end! > start!).toBe(true);
+});
+
+test('‹ never loops between the Statement and its check: Check goes to Statement, Statement to the card', async ({ page }) => {
+  await openStatement(page);
+  await page.getByTestId('check-statement').click();
+  await expect(page.getByRole('heading', { name: 'Check statement' })).toBeVisible();
+
+  await page.getByRole('link', { name: 'Statement' }).first().click();
+  await expect(page).toHaveURL(/\/cards\/[^/]+\/statement/);
+  await page.getByRole('link', { name: /BCA Visa/ }).first().click();
+  await expect(page).toHaveURL(/\/cards\/[^/]+$/);
+  await expect(page.getByRole('heading', { name: 'BCA Visa' })).toBeVisible();
 });
