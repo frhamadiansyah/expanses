@@ -132,6 +132,8 @@ export function RuleForm({
           <ErrorBox error={error} />
           <InsetGroup>
             <SubmitRow label="Save rule" />
+          </InsetGroup>
+          <InsetGroup>
             <ActionRow label="Cancel" quiet onClick={onDone} />
           </InsetGroup>
         </div>

@@ -2,7 +2,7 @@ import { Check, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { Children, cloneElement, type CSSProperties, isValidElement, type ReactElement, type ReactNode, type SelectHTMLAttributes, useId } from 'react';
 import { cx } from '../../ui';
 import { type SwipeAction, SwipeRow } from '../../ui/SwipeRow';
-import { GROUP_GAP, GROUP_RADIUS, type GroupChild, InsetRow, type InsetRowProps, PanelHeader, ROW_PAD_X, ROW_PAD_Y, rowHeight, rowPositions, TAP, toneClass, type Tone } from '../../ui/native';
+import { GROUP_GAP, GROUP_RADIUS, type GroupChild, InsetGroup, InsetRow, type InsetRowProps, PanelHeader, ROW_PAD_X, ROW_PAD_Y, rowHeight, rowPositions, TAP, toneClass, type Tone } from '../../ui/native';
 
 /**
  * The card page's shapes that the kit's rows cannot be, composed from the kit's own measurements.
@@ -382,6 +382,7 @@ export function ColumnGroup({
   trailing,
   footer,
   columns,
+  submit,
   testId,
 }: {
   header?: string;
@@ -389,12 +390,15 @@ export function ColumnGroup({
   footer?: ReactNode;
   /** Each column's rows, in the order a phone reads them. An empty column is left out. */
   columns: ReactNode[][];
+  /** A form's `SubmitRow`, drawn in a group of its own right below this one. */
+  submit?: ReactElement<GroupChild>;
   testId?: string;
 }) {
   const filled = columns
     .map((column) => Children.toArray(column).filter(isValidElement) as ReactElement<GroupChild>[])
     .filter((column) => column.length > 0);
   return (
+    <>
     <section className="w-full" style={{ marginBottom: GROUP_GAP }} data-testid={testId}>
       {header && <PanelHeader title={header} trailing={trailing} />}
       <div className={cx('overflow-hidden bg-[var(--ph-surface)] md:grid', COLUMNS[filled.length as keyof typeof COLUMNS])} style={{ borderRadius: GROUP_RADIUS }}>
@@ -415,6 +419,8 @@ export function ColumnGroup({
       </div>
       {footer && <p className="px-[4px] pt-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{footer}</p>}
     </section>
+    {submit && <InsetGroup>{submit}</InsetGroup>}
+    </>
   );
 }
 

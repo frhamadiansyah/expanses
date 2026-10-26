@@ -96,6 +96,8 @@ export function ShareEventSheet({ event, onClose }: { event: EventRow; onClose: 
               ))}
             </SelectRow>
             <TextRow label="Without the app" value={names} onChange={(e) => setNames(e.target.value)} placeholder="Names, with commas" />
+          </InsetGroup>
+          <InsetGroup>
             <SubmitRow label={busy ? 'Sharing…' : 'Share'} disabled={busy || !name.trim()} />
           </InsetGroup>
         </form>

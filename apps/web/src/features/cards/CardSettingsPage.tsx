@@ -70,9 +70,9 @@ function ProductSetup({ page, run, catalog }: { page: CardPage; run: Run; catalo
                 <option value="statement">Each statement cycle</option>
                 <option value="calendar">Each calendar month</option>
               </SelectRow>,
-              <SubmitRow label="Set up rewards" />,
             ],
           ]}
+          submit={<SubmitRow label="Set up rewards" />}
         />
       </form>
     </>
@@ -258,9 +258,9 @@ export function CardSettingsPage() {
               <TextRow label={`Annual fee (${currency})`} value={fee} onChange={(e) => setFee(e.target.value)} inputMode="decimal" />,
               // The balance and its share of the limit are read whole, so they share the wider second column.
               <ReadOnlyRow label="Current balance" value={`${formatMinor(owed, currency)}${cp.terms?.creditLimitMinor ? ` · ${Math.round((owed / cp.terms.creditLimitMinor) * 100)}% of limit` : ''}`} />,
-              <SubmitRow label="Save terms" />,
             ],
           ]}
+          submit={<SubmitRow label="Save terms" />}
         />
       </form>
     </>
@@ -355,8 +355,8 @@ export function CardSettingsPage() {
           columns={[
             [<TextRow label="Last 4 digits" value={newLast4} onChange={(e) => setNewLast4(e.target.value)} inputMode="numeric" maxLength={4} placeholder="Last digits" />],
             [<TextRow label="Whose card" hint="Optional. The account holder, or whoever holds the supplementary card." value={newHolder} onChange={(e) => setNewHolder(e.target.value)} placeholder="Spouse" />],
-            [<SubmitRow label="Add card" />],
           ]}
+          submit={<SubmitRow label="Add card" />}
         />
       </form>
 

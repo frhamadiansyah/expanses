@@ -56,6 +56,10 @@ export function JoinEvent({ code, preview, onJoined }: { code: string; preview: 
             choices.map((c) => <InsetRow key={c.key} title={c.label} value={choice === c.key ? '✓' : undefined} onClick={() => setChoice(c.key)} label={c.label} testId="join-choice" />)
           )}
           {!same && picked.personId === null ? <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="As the others will see it" /> : null}
+        </InsetGroup>
+      )}
+      {unusable ? null : (
+        <InsetGroup wide>
           <SubmitRow label={busy ? 'Joining…' : 'Join'} disabled={busy || (!same && picked.personId === null && !name.trim())} />
         </InsetGroup>
       )}

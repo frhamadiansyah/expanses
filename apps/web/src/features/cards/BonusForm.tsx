@@ -151,6 +151,8 @@ export function BonusForm({
           <ErrorBox error={error} />
           <InsetGroup>
             <SubmitRow label="Save bonus" />
+          </InsetGroup>
+          <InsetGroup>
             <ActionRow label="Cancel" quiet onClick={onDone} />
           </InsetGroup>
         </div>

@@ -132,8 +132,12 @@ export function JoinWorkspace({
             autoComplete="off"
             spellCheck={false}
           />
-          {preview ? null : <SubmitRow label={busy ? 'Looking…' : 'Continue'} disabled={busy || !code.trim()} />}
         </InsetGroup>
+        {preview ? null : (
+          <InsetGroup wide>
+            <SubmitRow label={busy ? 'Looking…' : 'Continue'} disabled={busy || !code.trim()} />
+          </InsetGroup>
+        )}
       </form>
 
       {preview?.event ? <JoinEvent code={code} preview={preview} onJoined={onJoinedEvent} /> : preview ? (
@@ -159,6 +163,10 @@ export function JoinWorkspace({
               {preview.terms.sameMember ? null : (
                 <TextRow label="Name" value={name} onChange={(event) => setName(event.target.value)} placeholder="As the others will see it" required autoComplete="name" />
               )}
+            </InsetGroup>
+          )}
+          {refusal || unusable ? null : (
+            <InsetGroup wide>
               <SubmitRow label={busy ? 'Joining…' : 'Join'} disabled={busy || (!preview.terms.sameMember && !name.trim())} />
             </InsetGroup>
           )}

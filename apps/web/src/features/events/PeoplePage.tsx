@@ -100,6 +100,8 @@ export function PeoplePage() {
           <form aria-label="Add a name" onSubmit={(event) => void addName(event)}>
             <InsetGroup footer="For someone without the app: anyone can record what they pay. They can claim the name when they join.">
               <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} />
+            </InsetGroup>
+            <InsetGroup>
               <SubmitRow label="Add a name" disabled={!name.trim()} />
             </InsetGroup>
           </form>

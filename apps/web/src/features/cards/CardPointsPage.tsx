@@ -349,6 +349,8 @@ function ActualForm({
             </TextLine>
           )}
           <TextRow label={perPurchase ? 'Bonus points credited' : `Actual ${unit} on statement`} value={value} onChange={(e) => setValue(e.target.value)} inputMode="decimal" required />
+        </InsetGroup>
+        <InsetGroup>
           <SubmitRow label="Save" />
         </InsetGroup>
       </form>
