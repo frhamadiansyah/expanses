@@ -2,9 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { adjustChoices, adjustDifference, adjustTitle, defaultAdjustAs, differenceWords } from './adjust-model';
 
 describe('adjusting a balance', () => {
-  it('counts cash, and adjusts anything else', () => {
-    expect(adjustTitle('cash')).toBe('Count cash');
-    expect(adjustTitle('ewallet')).toBe('Adjust balance');
+  it('names the sheet Adjust balance for every kind, and picks the likely cause by kind', () => {
+    expect(adjustTitle).toBe('Adjust balance');
     expect(defaultAdjustAs('cash')).toBe('cashflow');
     expect(defaultAdjustAs('bank')).toBe('correction');
   });

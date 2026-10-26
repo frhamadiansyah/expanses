@@ -1,11 +1,12 @@
 import { minorToMajorString, monthName, parseMajor } from '@expanses/core';
 import { type MonthlyBill, recordBillPayments, skipBill } from '@expanses/db';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
-import { Button, ErrorBox, InputRow, Money, RowGroup, SelectRow } from '../../ui';
+import { ErrorBox, Money } from '../../ui';
+import { InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
 import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 
@@ -14,7 +15,7 @@ import { useSetAside } from '../goals/SetAsideQuestion';
  * asking for, and a border would only make it look like the three quiet rows below.
  */
 const HERO =
-  'w-full rounded-lg bg-transparent py-1 text-center text-3xl font-semibold tabular text-slate-900 placeholder:text-slate-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900';
+  'w-full rounded-lg bg-transparent py-1 text-center text-3xl font-semibold tabular text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ph-ink)]';
 
 /**
  * Paying one bill: what it came to, which month's bill it settles, what paid it and when. A fixed bill comes filled in,
@@ -64,7 +65,7 @@ export function PaySheet({
 
   async function record(event: FormEvent) {
     event.preventDefault();
-    // Record is a submit button, so Enter records too: the question is a condition on both.
+    // The Record row submits the form, so Enter records too: the question is a condition on both.
     if (!setAside.ready) return;
     setError(null);
     setMissing(false);
@@ -99,10 +100,14 @@ export function PaySheet({
     }
   }
 
+  const form = useRef<HTMLFormElement>(null);
+  const submit = () => form.current?.requestSubmit();
+  const grey = '[&_span]:!text-[var(--ph-ink-3)]';
+
   return (
-    <Sheet title={`Pay ${bill.name}`} onClose={onClose}>
-      <form onSubmit={record} className="space-y-3">
-        <div className="space-y-1 pb-1">
+    <Sheet grouped title={`Pay ${bill.name}`} onClose={onClose}>
+      <form ref={form} onSubmit={record}>
+        <div className="space-y-1 pb-4 pt-1">
           <input
             aria-label="What it came to"
             inputMode="decimal"
@@ -112,19 +117,19 @@ export function PaySheet({
             placeholder={bill.amountMinor === null ? 'What it came to' : undefined}
           />
           {bill.amountMinor === null && (
-            <p className="text-center text-xs text-slate-500">
+            <p className="text-center text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
               {bill.estimateMinor === null ? (
                 'Amount varies'
               ) : (
                 <>
-                  Amount varies · last month <Money minor={bill.estimateMinor} currency={currency} />
+                  Amount varies, last month <Money minor={bill.estimateMinor} currency={currency} tone="none" />
                 </>
               )}
             </p>
           )}
         </div>
 
-        <RowGroup>
+        <InsetGroup>
           <SelectRow label="For" id="pay-for" value={month} onChange={(e) => setMonth(e.target.value)}>
             {months.map((m) => (
               <option key={m} value={m}>
@@ -139,32 +144,25 @@ export function PaySheet({
               </option>
             ))}
           </SelectRow>
-          <InputRow label="Paid on" id="pay-on" type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} />
-        </RowGroup>
+          <TextRow label="Paid on" id="pay-on" type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} />
+        </InsetGroup>
 
         {missing && (
-          <p role="alert" className="text-center text-sm text-red-700">
+          <p role="alert" className="pb-3 text-center text-sm text-[var(--ph-alarm)]">
             Enter what it came to
           </p>
         )}
         {setAside.node}
         <ErrorBox error={error} />
 
-        <Button type="submit" variant="success" className="w-full" disabled={busy || !setAside.ready}>
-          Record payment
-        </Button>
+        {/* Lets Enter in a field record, as the row below does; the row is the one the reader sees and taps. */}
+        <button type="submit" hidden aria-hidden tabIndex={-1} disabled={busy || !setAside.ready} />
 
-        {/* Quiet beside the green button: neither is the thing the sheet was opened to do. */}
-        <div className="flex items-center justify-between gap-3">
-          <button type="button" onClick={() => void skip()} disabled={busy} className="min-h-11 px-1 text-sm font-medium text-slate-600 disabled:opacity-50">
-            Skip this month
-          </button>
-          {onSeeBill && (
-            <button type="button" onClick={onSeeBill} className="min-h-11 px-1 text-sm font-medium text-slate-600">
-              See bill ›
-            </button>
-          )}
-        </div>
+        <InsetGroup>
+          <InsetRow action title="Record payment" disabled={busy || !setAside.ready} onClick={submit} />
+          <InsetRow action title="Skip this month" disabled={busy} onClick={() => void skip()} className={grey} />
+          {onSeeBill && <InsetRow action title="See bill" onClick={onSeeBill} className={grey} />}
+        </InsetGroup>
       </form>
     </Sheet>
   );

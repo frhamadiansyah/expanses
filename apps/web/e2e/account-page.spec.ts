@@ -141,10 +141,10 @@ test('cash is withdrawn into and counted: a short count is unrecorded spending, 
   await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000' });
   await openAccount(page, { subtype: 'cash', name: 'Pocket cash', balance: '932500' });
   await openMoney(page, 'Pocket cash');
-  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button')).toHaveText(['Spend', 'Receive', 'Withdraw', 'Count cash']);
+  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button')).toHaveText(['Spend', 'Receive', 'Withdraw', 'Adjust']);
 
-  await page.getByRole('button', { name: 'Count cash', exact: true }).click();
-  const sheet = page.getByRole('dialog', { name: 'Count cash' });
+  await page.getByRole('button', { name: 'Adjust', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Adjust balance' });
   await expect(sheet).toContainText('Rp 932.500');
   await expect(sheet.getByRole('button', { name: 'Save' })).toBeDisabled();
   await sheet.getByLabel('Actually have').fill('887500');

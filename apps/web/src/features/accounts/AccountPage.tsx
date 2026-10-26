@@ -254,7 +254,7 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
         <Sheet
           grouped
           tall
-          title={adjustTitle(account.subtype)}
+          title={adjustTitle}
           onClose={() => setAdjusting(false)}
           confirm={{ label: 'Save', disabled: !sheetReady, run: () => (document.getElementById(ADJUST_FORM) as HTMLFormElement | null)?.requestSubmit() }}
         >
@@ -287,9 +287,9 @@ function pageCorner(account: AccountRow): CornerAction[] {
 
 /**
  * What the account does, by kind. Spend comes first on everything that can be spent from; what follows is what that
- * kind of money is for. Cash is filled from a bank and counted: Withdraw, Count cash. A wallet is topped up — from a
+ * kind of money is for. Cash is filled from a bank and counted: Withdraw, Adjust. A wallet is topped up — from a
  * bank or a card — and paid into by others, so Top up comes before Receive. A bank or a saving account moves money
- * on. Anything but cash can be adjusted to what its bank or app says, which Count cash is for cash.
+ * on. Anything but cash can be adjusted to what its bank or app says, which cash does too.
  *
  * An RDN is only topped up from a current account and withdrawn to one, so both open a transfer with the RDN on the
  * side the words say — the pairing rule keeps the other side to current accounts. A deposit's one action is its own
@@ -335,7 +335,7 @@ function actionsFor(
   const receive = newTx('receive', 'Receive', <ArrowDownLeft size={20} aria-hidden />, { mode: 'income', account: id });
   const adjust = (label: string): RoundAction => ({ key: 'adjust', label, glyph: <SlidersHorizontal size={20} aria-hidden />, run: open.adjust });
   if (account.subtype === 'cash') {
-    return [spend, receive, { key: 'withdraw', label: 'Withdraw', glyph: <ArrowDownToLine size={20} aria-hidden />, run: () => open.moneyIn('withdraw') }, adjust('Count cash')];
+    return [spend, receive, { key: 'withdraw', label: 'Withdraw', glyph: <ArrowDownToLine size={20} aria-hidden />, run: () => open.moneyIn('withdraw') }, adjust('Adjust')];
   }
   if (account.subtype === 'ewallet' || account.subtype === 'emoney') {
     return [spend, { key: 'top-up', label: 'Top up', glyph: <Plus size={20} aria-hidden />, run: () => open.moneyIn('top-up') }, receive, adjust('Adjust')];

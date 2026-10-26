@@ -8,7 +8,7 @@ import { InsetGroup, ReadOnlyRow, TextRow } from '../../ui/native';
 import { adjustChoices, adjustDifference, defaultAdjustAs, differenceWords } from './adjust-model';
 
 /**
- * Count cash, or adjust any other balance: what the app holds, what is actually there, and — once the two differ —
+ * Adjust a balance, cash counted or any other: what the app holds, what is actually there, and — once the two differ —
  * what the difference was. Saved from the sheet's ✓, which stays dim until a figure that differs is typed.
  *
  * The app's figure is the balance on the day chosen, so a count dated last week is compared with last week.

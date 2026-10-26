@@ -1,10 +1,12 @@
 import { parseMajor } from '@expanses/core';
 import { type MonthlyBill, recordBillPayments, type SetAsideChoice } from '@expanses/db';
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { Button, Input, Money } from '../../ui';
+import { Check } from 'lucide-react';
+import { cx, ErrorBox, Money } from '../../ui';
+import { type GroupChild, InsetGroup, InsetRow, ROW_PAD_X, ROW_PAD_Y, rowHeight, TextRow } from '../../ui/native';
 import { payerChoices, spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { pillOf } from './bill-view';
@@ -133,59 +135,88 @@ export function PaySeveralSheet({
   }
 
   return (
-    <Sheet title="Pay several" onClose={onClose}>
-      <div className="space-y-3">
-        <div className="rounded-xl ring-1 ring-slate-200">
-          {ordered.map((bill) => (
-            <div key={bill.id} className="flex min-h-12 items-center gap-3 border-t border-slate-100 px-3 first:border-t-0">
-              <input
-                type="checkbox"
-                className="h-5 w-5"
-                aria-label={`Pay ${bill.name}`}
-                checked={ticked.has(bill.id)}
-                onChange={() => toggle(bill.id)}
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">{bill.name}</span>
-                <span className="block text-xs text-slate-500">{pillOf(bill).text}</span>
-              </span>
-              {bill.amountMinor !== null ? (
-                <Money minor={bill.amountMinor} currency={currencyOf(bill.moneyAccountId)} />
+    <Sheet grouped title="Pay several" onClose={onClose}>
+      <InsetGroup>
+        {ordered.map((bill) => (
+          <BillTick
+            key={bill.id}
+            name={bill.name}
+            status={pillOf(bill).text}
+            checked={ticked.has(bill.id)}
+            onToggle={() => toggle(bill.id)}
+            amount={
+              bill.amountMinor !== null ? (
+                <Money minor={bill.amountMinor} currency={currencyOf(bill.moneyAccountId)} tone="none" />
               ) : (
-                <Input
-                  className="w-32"
+                <input
+                  className="ph-focus w-28 rounded bg-transparent text-right text-[17px] leading-[22px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] md:text-[15px] md:leading-[20px]"
                   inputMode="decimal"
                   aria-label={`What ${bill.name} came to`}
                   placeholder="Amount"
                   value={amounts[bill.id] ?? ''}
                   onChange={(e) => setAmounts((current) => ({ ...current, [bill.id]: e.target.value }))}
                 />
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="flex items-center justify-between gap-3">
-          <label htmlFor="several-on" className="text-sm">
-            Paid on
-          </label>
-          <Input id="several-on" type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} className="w-auto" />
-        </div>
-
-        {payers.map((payer) => (
-          <PayerQuestion key={payer} accountId={payer} total={totalFrom(payer)} onChange={onAnswer} />
+              )
+            }
+          />
         ))}
+      </InsetGroup>
 
-        {error && (
-          <p role="alert" className="text-sm text-red-700">
-            {error}
-          </p>
-        )}
+      <InsetGroup>
+        <TextRow label="Paid on" id="several-on" type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} />
+      </InsetGroup>
 
-        <Button onClick={() => void record()} disabled={ticked.size === 0 || busy || !answered} className="w-full">
-          {ticked.size === 0 ? 'Record' : `Record ${ticked.size} ${ticked.size === 1 ? 'bill' : 'bills'}`}
-        </Button>
-      </div>
+      {payers.map((payer) => (
+        <PayerQuestion key={payer} accountId={payer} total={totalFrom(payer)} onChange={onAnswer} />
+      ))}
+
+      <ErrorBox error={error} />
+
+      <InsetGroup>
+        <InsetRow
+          action
+          title={ticked.size === 0 ? 'Record' : `Record ${ticked.size} ${ticked.size === 1 ? 'bill' : 'bills'}`}
+          disabled={ticked.size === 0 || busy || !answered}
+          onClick={() => void record()}
+        />
+      </InsetGroup>
     </Sheet>
+  );
+}
+
+/**
+ * One bill in the list: the statement's ring tick (an empty ring, an ink ring with a ✓ once picked — never filled), the
+ * name with its status under it, and the amount at the right. The checkbox is the real control, laid invisibly over the ring.
+ */
+function BillTick({ name, status, checked, onToggle, amount, position }: GroupChild & { name: string; status: string; checked: boolean; onToggle: () => void; amount: ReactNode }) {
+  return (
+    <div className="relative">
+      {position?.separator && <span aria-hidden className="pointer-events-none absolute top-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: ROW_PAD_X }} />}
+      <div className="flex items-center gap-3" style={{ minHeight: rowHeight(true), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}>
+        <label className="relative flex h-[44px] w-[32px] shrink-0 items-center justify-center">
+          <input
+            type="checkbox"
+            className="peer ph-focus absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            aria-label={`Pay ${name}`}
+            checked={checked}
+            onChange={onToggle}
+          />
+          <span
+            aria-hidden
+            className={cx(
+              'flex h-[20px] w-[20px] items-center justify-center rounded-full border-[1.5px] border-[var(--ph-ink-3)] text-transparent',
+              'peer-checked:border-[var(--ph-ink)] peer-checked:text-[var(--ph-ink)]',
+            )}
+          >
+            <Check size={12} strokeWidth={3.5} aria-hidden />
+          </span>
+        </label>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[17px] leading-[22px] font-medium text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">{name}</span>
+          <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{status}</span>
+        </span>
+        <span className="tabular shrink-0 whitespace-nowrap text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">{amount}</span>
+      </div>
+    </div>
   );
 }
