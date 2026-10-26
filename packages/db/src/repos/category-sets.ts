@@ -1,8 +1,13 @@
 import { uuidv7 } from '@expanses/core';
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { ownerScope, type WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
+import { books } from '../schema-books';
+import { categoryNeeds } from '../schema-health';
+import { categoryMccs } from '../schema-points';
+import { healthTablesExist } from './health-tables';
+import { isBookShared } from '../sync/placeholder';
 import { bookCategories, bookCategorySets } from '../schema-books';
 import { DEFAULT_CATEGORY_SETS, RETIRED_SET_CATEGORIES, SET_CATEGORY_ICONS } from '../seed';
 import { CategoryDeleteError, deleteCategory } from './category-delete';
@@ -228,4 +233,102 @@ export async function retireDefaultSetCategories(database: Database, ws: Workspa
     }
   }
   return removed;
+}
+
+/**
+ * Copies a set into another workspace (book) of the same owner: a new set of the same name (' 2', ' 3' on a clash)
+ * holding new copies of its live categories, each filed into the destination book. Parents, kind, icon, the
+ * typed MCC and essential/lifestyle travel; archived categories, transactions, budgets and events do not.
+ *
+ * A shared workspace is refused: set membership never syncs, so categories copied there would reach the other members
+ * as ordinary tree categories while the set stayed on this device alone.
+ */
+export async function copyCategorySet(
+  database: Database,
+  ws: WorkspaceContext,
+  input: { setId: string; toBookId: string },
+): Promise<{ id: string; name: string }> {
+  if (await isBookShared(database, input.toBookId)) {
+    throw new CategorySetError('SHARED_BOOK', 'A category set cannot be copied into a shared workspace, because sets are not shared');
+  }
+  return database.transaction((tx) => withCapture(tx, { entity: 'category' }, async () => {
+    if (!(await hasBooks(tx))) throw new CategorySetError('NO_BOOK', 'This database has no workspaces to copy into');
+    const [dest] = await tx
+      .select({ id: books.id })
+      .from(books)
+      .where(and(eq(books.id, input.toBookId), eq(books.workspaceId, ws.workspaceId), isNull(books.archivedAt)));
+    if (!dest) throw new CategorySetError('NO_DESTINATION', 'That workspace is not here, or is archived');
+    if (await isJoinedBookTx(tx, input.toBookId)) {
+      throw new CategorySetError('SHARED_BOOK', 'A category set cannot be copied into a shared workspace, because sets are not shared');
+    }
+    const [set] = await tx
+      .select({ id: categorySets.id, name: categorySets.name })
+      .from(categorySets)
+      .where(and(eq(categorySets.workspaceId, ws.workspaceId), eq(categorySets.id, input.setId), isNull(categorySets.archivedAt)));
+    if (!set) throw new CategorySetError('NOT_FOUND', 'That set is not in this workspace');
+    const [from] = await tx.select({ bookId: bookCategorySets.bookId }).from(bookCategorySets).where(eq(bookCategorySets.setId, set.id));
+    const fromBookId = from?.bookId ?? (await personalBookIdTx(tx, ws.workspaceId));
+    if (fromBookId === input.toBookId) throw new CategorySetError('SAME_BOOK', 'That set is already in this workspace');
+
+    // A free name in the destination: "Trip", then "Trip 2", "Trip 3".
+    const taken = new Set(
+      (
+        await tx
+          .select({ name: categorySets.name })
+          .from(categorySets)
+          .innerJoin(bookCategorySets, eq(bookCategorySets.setId, categorySets.id))
+          .where(and(eq(bookCategorySets.bookId, input.toBookId), isNull(categorySets.archivedAt)))
+      ).map((row) => row.name.toLowerCase()),
+    );
+    let name = set.name;
+    for (let n = 2; taken.has(name.toLowerCase()); n += 1) name = `${set.name} ${n}`;
+
+    const now = new Date().toISOString();
+    const newSetId = uuidv7();
+    await tx.insert(categorySets).values({ id: newSetId, workspaceId: ws.workspaceId, name, archivedAt: null, createdAt: now });
+    await tx.insert(bookCategorySets).values({ setId: newSetId, workspaceId: ws.workspaceId, bookId: input.toBookId });
+
+    const source = await tx
+      .select({ a: accounts })
+      .from(accounts)
+      .innerJoin(categorySetMembers, eq(categorySetMembers.categoryAccountId, accounts.id))
+      .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(categorySetMembers.setId, set.id), isNull(accounts.archivedAt)))
+      .orderBy(asc(accounts.sortOrder), asc(accounts.name));
+    const rows = source.map((r) => r.a);
+    const ids = new Set(rows.map((a) => a.id));
+    const newIds = new Map(rows.map((a) => [a.id, uuidv7()]));
+    // Parents first; a parent that is not copied (archived) leaves its child at the top level.
+    const remaining = [...rows];
+    const done = new Set<string>();
+    while (remaining.length) {
+      const index = remaining.findIndex((a) => !a.parentId || done.has(a.parentId) || !ids.has(a.parentId));
+      if (index === -1) throw new CategorySetError('CYCLE', 'The set has a category tree it cannot copy');
+      const a = remaining.splice(index, 1)[0]!;
+      const id = newIds.get(a.id)!;
+      await tx.insert(accounts).values({ ...a, id, workspaceId: ws.workspaceId, parentId: a.parentId ? (newIds.get(a.parentId) ?? null) : null, createdAt: now });
+      await tx.insert(categorySetMembers).values({ categoryAccountId: id, workspaceId: ws.workspaceId, setId: newSetId });
+      await tx.insert(bookCategories).values({ categoryAccountId: id, workspaceId: ws.workspaceId, bookId: input.toBookId });
+      done.add(a.id);
+    }
+    if (ids.size === 0) return { id: newSetId, name };
+    const oldIds = [...ids];
+
+    const typed = await tx
+      .select({ categoryId: categoryMccs.categoryId, mcc: categoryMccs.mcc })
+      .from(categoryMccs)
+      .where(and(eq(categoryMccs.workspaceId, ws.workspaceId), inArray(categoryMccs.categoryId, oldIds)));
+    for (const row of typed) {
+      await tx.insert(categoryMccs).values({ categoryId: newIds.get(row.categoryId)!, workspaceId: ws.workspaceId, mcc: row.mcc });
+    }
+    if (await healthTablesExist(tx)) {
+      const marks = await tx
+        .select({ categoryId: categoryNeeds.categoryAccountId, need: categoryNeeds.need })
+        .from(categoryNeeds)
+        .where(and(eq(categoryNeeds.workspaceId, ws.workspaceId), inArray(categoryNeeds.categoryAccountId, oldIds)));
+      for (const row of marks) {
+        await tx.insert(categoryNeeds).values({ categoryAccountId: newIds.get(row.categoryId)!, workspaceId: ws.workspaceId, need: row.need });
+      }
+    }
+    return { id: newSetId, name };
+  }));
 }
