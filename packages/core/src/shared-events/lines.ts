@@ -50,7 +50,7 @@ export function myExpenseLines(input: { expense: ExpenseRecord; eventCurrency: s
   if (expense.payerPersonId === me) {
     // Ruling R6: "I paid" lands on a money account only when this phone holds it.
     if (!paidFrom) return { kind: 'needs-account' };
-    if (!Number.isSafeInteger(paidFrom.chargedMinor) || paidFrom.chargedMinor <= 0) throw new SharedEventError('BAD_AMOUNT', 'What the account was charged is above zero');
+    if (!Number.isSafeInteger(paidFrom.chargedMinor) || paidFrom.chargedMinor === 0 || paidFrom.chargedMinor < 0 !== expense.amountMinor < 0) throw new SharedEventError('BAD_AMOUNT', 'What the account was charged is above zero, or below zero for a refund');
     lines.push({ accountId: paidFrom.accountId, amountMinor: -paidFrom.chargedMinor, currency: paidFrom.currency, ...(paidFrom.spendCategoryId ? { spendCategoryId: paidFrom.spendCategoryId } : {}) });
     lines.push({ accountId: accounts.shareAccountId, amountMinor: mine, currency: expense.currency });
     const others = shares.filter((share) => share.personId !== me).reduce((sum, share) => sum + toEvent(share.minor, expense.currency, expense.rateToEvent, eventCurrency), 0);

@@ -171,6 +171,27 @@ describe('the ring, the days and the bars of a shared event', () => {
     expect(spendingSlices({ categories, expenses: [] })).toEqual([]);
   });
 
+  it('takes a refund from its category’s slice and drops a category refunded to nothing', () => {
+    const slices = spendingSlices({
+      categories,
+      expenses: [
+        e({ expenseId: '1', categoryId: 'c-food', eventAmountMinor: 600 }),
+        e({ expenseId: '2', categoryId: 'c-food', eventAmountMinor: -200, amountMinor: -200 }),
+        e({ expenseId: '3', categoryId: 'c-stay', eventAmountMinor: 500 }),
+        e({ expenseId: '4', categoryId: 'c-stay', eventAmountMinor: -500, amountMinor: -500 }),
+      ],
+    });
+    expect(slices).toEqual([{ key: 'c-food', label: 'Food', totalMinor: 400 }]);
+  });
+
+  it('writes a refund row as "Refund · item", below zero, with a negative share', () => {
+    const row = expenseRow({ ...expense, amountMinor: -3_000, eventAmountMinor: -94_500, myShareMinor: -1_000, note: 'Fish dinner', unsent: false, payerOnly: false }, view());
+    expect(row.title).toBe('Refund · Fish dinner');
+    expect(row.amount).toBe(formatMinor(-3_000, 'EUR'));
+    expect(row.share).toBe(`share ${formatMinor(-1_000, 'EUR')}`);
+    expect(expenseRow({ ...expense, amountMinor: -3_000, note: 'Refund · Fish dinner' }, view()).title).toBe('Refund · Fish dinner');
+  });
+
   it('groups records by day, newest first, with the day spending and settle-ups after the spending', () => {
     const s = { settlementId: 's', occurredOn: '2026-10-07', fromPersonId: 'a', fromName: 'Lestari', toPersonId: 'b', toName: 'Maya', amountMinor: 10, voided: false, unsent: false, mine: true, posting: null };
     const days = dayGroups({
