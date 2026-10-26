@@ -177,7 +177,7 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
           <option value={NEW_BROKER}>Another broker…</option>
         </SelectRow>,
         brokerId ? (
-          <InsetRow key="custodian" title="Custodian" value={custodianLine(rdnBank)} to="/net-worth/assets/$accountId/settings" params={{ accountId: brokerId }} />
+          <PickerRow key="custodian" label="Custodian" value={custodianLine(rdnBank)} onOpen={() => void navigate({ to: '/net-worth/assets/$accountId/settings', params: { accountId: brokerId } })} />
         ) : null,
       ]
     : undefined;
