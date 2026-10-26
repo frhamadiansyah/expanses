@@ -13,7 +13,8 @@ import { useHoldingLinks, useSecurities } from '../investments/queries';
 import { ShareBoxes, ShowAll } from './ShareBoxes';
 import { assetSegments, heldShares, kindSegments } from './share-segments';
 import { type AssetDrawer, type AssetGroup, type AssetRow, groupAssets, liveGroups, rowSubtitle, soldRows, staleRows, totalOf } from './asset-rows';
-import { useAssetProfiles, useAssetValues, useDueDeposits, useGoneAssets, useTrades } from './queries';
+import { useAssetProfiles, useAssetValues, useDueDeposits, useGoneAssets, useSharedNetWorth, useTrades } from './queries';
+import { sharedAssetGroups } from './shared-assets';
 import { type ByStockInputs, linesByStock, type StockLine } from './stock-rows';
 
 /** The kinds of account whose whole story lives on their own page: money, not things. */
@@ -195,6 +196,9 @@ export function AssetsPage() {
     setKind(null);
   };
 
+  // What the other members share (read-only): a phone with no assets of its own still lists them here.
+  const sharedNw = useSharedNetWorth();
+  const sharedGroups = sharedAssetGroups(sharedNw.data);
   const due = useDueDeposits();
   const dueIds = new Set((due.data ?? []).map((proposal) => proposal.accountId));
   const baseCurrency = ws.baseCurrency;
@@ -260,7 +264,7 @@ export function AssetsPage() {
        * beside a total it was read as part of; here the page is about what is owned, and the chart is that page's
        * subject: one segment per section of the statement, in the catalogue's own words.
        */}
-      {total.totalMinor !== null && (
+      {total.totalMinor !== null && live.length > 0 && (
         <Panel wide className="mb-[18px] space-y-2">
           <div data-testid="assets-total">
             {/* What the list below comes to, in the page's ink: a red total warned about rows that warn about nothing. */}
@@ -298,7 +302,10 @@ export function AssetsPage() {
         </Panel>
       )}
 
-      {live.length === 0 && ready && <Empty>No assets yet. Add a bank account, fund, gold or property to see it here.</Empty>}
+      {/* Nothing of its own and nothing shared: said once every read has settled (done or failed), never left blank. */}
+      {live.length === 0 && sharedGroups.length === 0 && !values.isPending && !profiles.isPending && !accounts.isPending && !sharedNw.isPending && (
+        <Empty>No assets yet. Add a bank account, fund, gold or property to see it here.</Empty>
+      )}
       {active !== null && <ShowAll onClick={() => pick(null)} />}
       {live
         .filter((group) => active === null || group.group === active)
@@ -328,6 +335,22 @@ export function AssetsPage() {
             }
           />
         ))}
+
+      {sharedGroups.map((shared) => (
+        <InsetGroup key={shared.owner} header={shared.header}>
+          {shared.items.map((each) => (
+            <InsetRow
+              key={each.itemId}
+              to="/net-worth/shared/$itemId"
+              params={{ itemId: each.itemId }}
+              testId={`assets-shared-${each.itemId}`}
+              title={each.name}
+              value={<Money minor={each.balanceMinor} currency={each.currency} />}
+              valueTone="ink"
+            />
+          ))}
+        </InsetGroup>
+      ))}
 
       {sold.length > 0 && (
         <>
