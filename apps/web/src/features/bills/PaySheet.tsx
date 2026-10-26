@@ -6,9 +6,10 @@ import { Sheet } from '../../app/Sheet';
 import { canPayWith } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox, Money } from '../../ui';
-import { InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { billCurrencyOf } from './bill-view';
 import { chargedEstimateText, useChargedRates } from './charged';
+import { useSinkingFunds } from './queries';
 import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 
@@ -35,7 +36,9 @@ export function PaySheet({
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
-  const wallets = moneyHolders(accounts).filter((account) => canPayWith(account, bill.moneyAccountId));
+  const fund = (useSinkingFunds(today).data ?? []).find((f) => f.billId === bill.id) ?? null;
+  // The fund's own account always pays, whatever else is kept for spending.
+  const wallets = moneyHolders(accounts).filter((account) => canPayWith(account, bill.moneyAccountId) || account.id === fund?.accountId);
   const currencyOf = (id: string) => accounts.find((account) => account.id === id)?.currency ?? ws.baseCurrency;
 
   const [amount, setAmount] = useState(() => (bill.amountMinor === null ? '' : minorToMajorString(bill.amountMinor, billCurrencyOf(bill, accounts, ws.baseCurrency))));
@@ -72,7 +75,16 @@ export function PaySheet({
       return 0;
     }
   })();
-  const setAside = useSetAside(spendingDoor(payer, foreign ? chargedMinor : typedMinor));
+  // On a credit card, a bill that was saving up can also pay the card from the fund's account.
+  const [fromFund, setFromFund] = useState(true);
+  const payerAccount = accounts.find((account) => account.id === payer);
+  const cardFromFund = !!fund && payerAccount?.kind === 'liability' && payer !== fund.accountId && payerCurrency === fund.currency;
+  const payFromFund = cardFromFund && fromFund;
+  // The money that leaves is the fund account's when it pays the card, else the payer's. A bill paid out of its own
+  // fund's account has the fund's money as room: it is what was set aside for exactly this.
+  const spendingAccountId = payFromFund ? fund!.accountId : payer;
+  const door = spendingDoor(spendingAccountId, foreign ? chargedMinor : typedMinor);
+  const setAside = useSetAside(door && fund && spendingAccountId === fund.accountId ? { ...door, ownGoalId: bill.id } : door);
 
   async function record(event: FormEvent) {
     event.preventDefault();
@@ -98,7 +110,7 @@ export function PaySheet({
       }
       const ids = await recordBillPayments(database, ws, {
         paidOn,
-        payments: [{ templateId: bill.id, billMonth: month, amountMinor, chargedMinor: chargedAmount, moneyAccountId: payer, setAside: setAside.choice }],
+        payments: [{ templateId: bill.id, billMonth: month, amountMinor, chargedMinor: chargedAmount, moneyAccountId: payer, setAside: setAside.choice, payCardFromFund: payFromFund }],
       });
       await invalidate();
       onPaid(ids, amountMinor, paidOn, month);
@@ -166,6 +178,14 @@ export function PaySheet({
               </option>
             ))}
           </SelectRow>
+          {cardFromFund && (
+            <SwitchRow
+              label="Pay the card from the fund"
+              checked={fromFund}
+              onChange={setFromFund}
+              info={`Moves the same amount from ${fund!.accountName} to the card, and lets the fund go.`}
+            />
+          )}
           <TextRow label="Paid on" id="pay-on" type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} />
           {foreign && (
             <TextRow

@@ -97,6 +97,7 @@ import splitLineExcluded from '../migrations/0096_split_line_excluded.sql?raw';
 import jointAccounts from '../migrations/0097_joint_accounts.sql?raw';
 import billCurrency from '../migrations/0098_bill_currency.sql?raw';
 import billRepeat from '../migrations/0099_bill_repeat.sql?raw';
+import sinkingFunds from '../migrations/0101_sinking_funds.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -204,6 +205,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 97, name: 'joint_accounts', sql: jointAccounts },
   { version: 98, name: 'bill_currency', sql: billCurrency },
   { version: 99, name: 'bill_repeat', sql: billRepeat },
+  { version: 101, name: 'sinking_funds', sql: sinkingFunds },
 ];
 
 /** The highest version this build of the app knows how to produce. */

@@ -33,6 +33,22 @@ export interface GoalShare {
   borrowedShortMinor: number;
 }
 
+/** A yearly bill's sinking fund promised on an account (0101). Not a goal: it cannot be borrowed from or drawn on. */
+export interface FundClaim {
+  /** The bill's id. */
+  billId: string;
+  name: string;
+  promisedMinor: number;
+}
+
+export interface FundShare {
+  billId: string;
+  name: string;
+  promisedMinor: number;
+  coveredMinor: number;
+  shortMinor: number;
+}
+
 export type SetAsideState = 'none' | 'covered' | 'short';
 
 export interface AccountSetAside {
@@ -44,6 +60,8 @@ export interface AccountSetAside {
   state: SetAsideState;
   /** Every goal promised on the account, first-ranked first. */
   goals: GoalShare[];
+  /** Every sinking fund saved on the account. Counted in `setAsideMinor`; a shortage lands on them before any goal. */
+  funds: FundShare[];
 }
 
 /**
@@ -53,15 +71,32 @@ export interface AccountSetAside {
  * borrow first, each up to what it borrowed; then to the rest, lowest priority first. It is worked out fresh every
  * time, so a top-up shrinks a borrowed shortfall without anything being written.
  */
-export function setAsideOn(balanceMinor: number, claims: readonly SetAsideClaim[], borrows: readonly BorrowMark[]): AccountSetAside {
+export function setAsideOn(
+  balanceMinor: number,
+  claims: readonly SetAsideClaim[],
+  borrows: readonly BorrowMark[],
+  fundClaims: readonly FundClaim[] = [],
+): AccountSetAside {
   const live = claims.filter((claim) => claim.promisedMinor > 0);
-  const setAsideMinor = live.reduce((total, claim) => total + claim.promisedMinor, 0);
+  const liveFunds = fundClaims.filter((claim) => claim.promisedMinor > 0);
+  const goalsMinor = live.reduce((total, claim) => total + claim.promisedMinor, 0);
+  const fundsMinor = liveFunds.reduce((total, claim) => total + claim.promisedMinor, 0);
+  const setAsideMinor = goalsMinor + fundsMinor;
   const shortMinor = Math.max(0, setAsideMinor - Math.max(0, balanceMinor));
+  // A fund is a plan, not a promise anyone borrowed against: when the account holds too little, the funds give way
+  // first, the last one listed first, and goals are asked only for what is left.
+  const fundShort = new Map<string, number>();
+  let fundsLeft = Math.min(shortMinor, fundsMinor);
+  for (const claim of [...liveFunds].reverse()) {
+    const take = Math.min(fundsLeft, claim.promisedMinor);
+    fundShort.set(claim.billId, take);
+    fundsLeft -= take;
+  }
   const byPriority = [...live].sort((a, b) => a.rank - b.rank || a.goalId.localeCompare(b.goalId));
   const promised = new Map(live.map((claim) => [claim.goalId, claim.promisedMinor]));
   const short = new Map<string, number>();
   const borrowed = new Map<string, number>();
-  let left = shortMinor;
+  let left = shortMinor - Math.min(shortMinor, fundsMinor);
 
   const latest = new Map<string, string>();
   const lent = new Map<string, number>();
@@ -102,6 +137,13 @@ export function setAsideOn(balanceMinor: number, claims: readonly SetAsideClaim[
       shortMinor: short.get(claim.goalId) ?? 0,
       borrowedShortMinor: borrowed.get(claim.goalId) ?? 0,
     })),
+    funds: liveFunds.map((claim) => ({
+      billId: claim.billId,
+      name: claim.name,
+      promisedMinor: claim.promisedMinor,
+      coveredMinor: claim.promisedMinor - (fundShort.get(claim.billId) ?? 0),
+      shortMinor: fundShort.get(claim.billId) ?? 0,
+    })),
   };
 }
 
@@ -122,7 +164,10 @@ export function checkOutflow(view: AccountSetAside, outflowMinor: number, ownGoa
   if (view.state === 'short') return { kind: 'already-short', shortMinor: view.shortMinor };
   // A buy split between goals (0083) is for every goal in it: each one's own covered money pays its part.
   const owns = new Set(ownGoalId === null ? [] : typeof ownGoalId === 'string' ? [ownGoalId] : ownGoalId);
-  const own = view.goals.filter((goal) => owns.has(goal.goalId)).reduce((sum, goal) => sum + goal.coveredMinor, 0);
+  // A yearly bill paid out of its own sinking fund (named by the bill's id) uses what the fund set aside for it.
+  const own =
+    view.goals.filter((goal) => owns.has(goal.goalId)).reduce((sum, goal) => sum + goal.coveredMinor, 0) +
+    view.funds.filter((fund) => owns.has(fund.billId)).reduce((sum, fund) => sum + fund.coveredMinor, 0);
   const free = Math.max(0, view.freeMinor);
   if (outflowMinor <= free + own) return { kind: 'silent' };
   const goals = view.goals.filter((goal) => !owns.has(goal.goalId));

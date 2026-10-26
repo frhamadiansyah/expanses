@@ -9,6 +9,8 @@ import {
   firstYearlyMonth,
   isOwedMonth,
   expenseLines,
+  sinkingPlan,
+  transferLines,
   isoDate,
   monthOf,
   payableBillMonths,
@@ -26,6 +28,7 @@ import { bookCategories, books } from '../schema-books';
 import { billPauses, billPayments, billSkips, billWindows, expenseTemplates } from '../schema-recurring';
 import { billCurrencies, writeBillCurrency } from './bill-currency';
 import { billYearlyMonths, writeBillRepeat } from './bill-repeat';
+import { dropSinkingFund, getSinkingFund, writeSinkingFund } from './sinking-funds';
 import { BILL_MONTH, billPausesExist, billTablesExist } from './bill-months';
 import { withCapture } from '../sync/capture';
 import { bookMoneyFor, type Unconverted } from './book-currency';
@@ -84,6 +87,11 @@ export interface SaveExpenseTemplateInput {
   repeat?: 'monthly' | 'yearly';
   /** 1-12: required for a yearly bill. */
   repeatMonth?: number | null;
+  /**
+   * A yearly bill's sinking fund (0101): the account it is set aside in and the monthly figure (worked out from the
+   * amount and the months left when absent). Null turns the fund off; absent leaves an edited bill's as it was.
+   */
+  fund?: { accountId: string; monthlyMinor?: number | null } | null;
 }
 
 const toRow = (
@@ -106,6 +114,14 @@ const toRow = (
   repeat: yearlyMonth === null ? 'monthly' : 'yearly',
   repeatMonth: yearlyMonth,
 });
+
+async function accountCurrency(db: Db, ws: WorkspaceContext, accountId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ currency: accounts.currency })
+    .from(accounts)
+    .where(and(eq(accounts.id, accountId), eq(accounts.workspaceId, ws.workspaceId)));
+  return row?.currency ?? null;
+}
 
 async function accountKind(db: Db, ws: WorkspaceContext, accountId: string): Promise<string | undefined> {
   const [row] = await db
@@ -208,6 +224,28 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
       // Inside the capture, so a shared workspace sees the currency change with the rest of the bill.
       if (input.currency !== undefined) await writeBillCurrency(tx, ws, id, input.currency);
     });
+
+    // The fund is the owner's own and does not sync, so it is written outside the capture; a refusal still undoes the bill.
+    if (input.fund && yearlyMonth !== null) {
+      if (amountMinor === null) throw new RecurringError('FUND_AMOUNT', 'A sinking fund needs a fixed amount');
+      const [fundAccount] = await tx
+        .select({ kind: accounts.kind, currency: accounts.currency })
+        .from(accounts)
+        .where(and(eq(accounts.id, input.fund.accountId), eq(accounts.workspaceId, ws.workspaceId)));
+      if (!fundAccount || fundAccount.kind !== 'asset') throw new RecurringError('FUND_ACCOUNT', 'Choose an account to set the money aside in');
+      const fundCurrency = fundAccount.currency ?? ws.baseCurrency;
+      const own = input.currency !== undefined ? input.currency : (await billCurrencies(tx, ws)).get(id) ?? null;
+      const billCurrency = own ?? (await accountCurrency(tx, ws, input.moneyAccountId)) ?? ws.baseCurrency;
+      if (fundCurrency !== billCurrency) throw new RecurringError('FUND_CURRENCY', `Set the money aside in an account in ${billCurrency}`);
+      let monthlyMinor = input.fund.monthlyMinor ?? null;
+      if (monthlyMinor === null) {
+        monthlyMinor = sinkingPlan({ targetMinor: amountMinor, today, repeatMonth: yearlyMonth, dayOfMonth: input.dayOfMonth, currency: billCurrency }).monthlyMinor;
+      }
+      if (!(Number.isSafeInteger(monthlyMinor) && monthlyMinor > 0)) throw new RecurringError('FUND_MONTHLY', 'Enter the amount to set aside each month');
+      await writeSinkingFund(tx, ws, { billId: id, accountId: input.fund.accountId, monthlyMinor, startedMonth: today.slice(0, 7) });
+    } else if (input.fund === null || yearlyMonth === null) {
+      await dropSinkingFund(tx, ws, id);
+    }
     return id;
   });
 }
@@ -237,14 +275,16 @@ export async function listExpenseTemplates(database: Database, ws: WorkspaceCont
 
 export async function deleteExpenseTemplate(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
   // In a transaction of its own so household sharing's capture sees the archive (spec §6.3).
-  await database.transaction((tx) =>
-    withCapture(tx, { entity: 'bill', id }, () =>
+  await database.transaction(async (tx) => {
+    await withCapture(tx, { entity: 'bill', id }, () =>
       tx
         .update(expenseTemplates)
         .set({ archivedAt: new Date().toISOString() })
         .where(and(eq(expenseTemplates.workspaceId, ws.workspaceId), eq(expenseTemplates.id, id))),
-    ),
-  );
+    );
+    // Its saving is released with it.
+    await dropSinkingFund(tx, ws, id);
+  });
 }
 
 /**
@@ -652,6 +692,11 @@ export interface BillPaymentInput {
   moneyAccountId?: string;
   /** Which goal the money came out of, when it took more than was free (spec §4.4). */
   setAside?: SetAsideChoice | null;
+  /**
+   * A bill with a sinking fund, paid on a credit card: also pay the card from the fund's account, for the same amount.
+   * Either way the fund is released when the bill is paid.
+   */
+  payCardFromFund?: boolean;
 }
 
 async function isSettled(tx: Db, ws: WorkspaceContext, templateId: string, month: string): Promise<boolean> {
@@ -695,7 +740,7 @@ export function recordBillPayments(
         .where(and(eq(expenseTemplates.workspaceId, ws.workspaceId), eq(expenseTemplates.id, payment.templateId), sql`${expenseTemplates.archivedAt} IS NULL`));
       if (!template) throw new RecurringError('NOT_FOUND', 'That bill is not here');
       const [wallet] = await tx
-        .select({ kind: accounts.kind, currency: accounts.currency })
+        .select({ id: accounts.id, name: accounts.name, kind: accounts.kind, currency: accounts.currency })
         .from(accounts)
         .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.id, payment.moneyAccountId ?? template.moneyAccountId)));
       if (!wallet || (wallet.kind !== 'asset' && wallet.kind !== 'liability')) {
@@ -709,6 +754,13 @@ export function recordBillPayments(
       const foreign = billCurrency !== currency;
       if (foreign && !(Number.isSafeInteger(payment.chargedMinor) && payment.chargedMinor! > 0)) {
         throw new RecurringError('CHARGED_REQUIRED', `Enter what the account was charged in ${currency}`);
+      }
+      // Checked before anything is posted: the fund's account and the card must hold the same money.
+      const fund = await getSinkingFund(tx, ws, template.id);
+      let cardFromFund = false;
+      if (fund && payment.payCardFromFund && wallet.kind === 'liability' && wallet.id !== fund.accountId) {
+        if (((await accountCurrency(tx, ws, fund.accountId)) ?? ws.baseCurrency) !== currency) throw new RecurringError('FUND_CURRENCY', `The card is in ${currency}, the fund's account is not`);
+        cardFromFund = true;
       }
       ids.push(
         await postTransactionTx(tx, ws, {
@@ -729,6 +781,21 @@ export function recordBillPayments(
           ...(foreign ? { originalCurrency: billCurrency, originalAmountMinor: payment.amountMinor } : {}),
         }),
       );
+      // A bill that was saving up is paid: the money set aside for it is let go, and when it went on a card the card
+      // is paid from the fund's account for what it was charged — all in this one transaction.
+      if (fund) {
+        if (cardFromFund) {
+          ids.push(
+            await postTransactionTx(tx, ws, {
+              occurredOn: input.paidOn,
+              description: `${wallet.name} payment`,
+              lines: transferLines({ fromAccountId: fund.accountId, toAccountId: wallet.id, amountMinor: foreign ? payment.chargedMinor! : payment.amountMinor, currency }),
+              fileTransfer: true,
+            }),
+          );
+        }
+        await dropSinkingFund(tx, ws, template.id);
+      }
     }
     return ids;
   });

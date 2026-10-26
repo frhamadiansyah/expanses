@@ -142,7 +142,7 @@ describe('attentionItems with goals', () => {
 });
 
 describe('attentionItems with a short account', () => {
-  const short = { accountId: 'jenius', name: 'Jenius', currency: 'IDR', balanceMinor: 21_000_000, setAsideMinor: 37_500_000, freeMinor: -16_500_000, shortMinor: 16_500_000, state: 'short' as const, goals: [] };
+  const short = { accountId: 'jenius', name: 'Jenius', currency: 'IDR', balanceMinor: 21_000_000, setAsideMinor: 37_500_000, freeMinor: -16_500_000, shortMinor: 16_500_000, state: 'short' as const, goals: [], funds: [] };
   it('says it once for the account, not once per goal, and links to the account', () => {
     const plans = [goalPlanRow({ goalId: 'ef', status: 'funded', earmarkWarning: 'Jenius holds less than is set aside…', unconvertedWarning: null }), goalPlanRow({ goalId: 'umrah', status: 'funded', earmarkWarning: 'Jenius holds less…', unconvertedWarning: null })];
     const items = attentionItems([], [], plans, [], [], [], [short]);
