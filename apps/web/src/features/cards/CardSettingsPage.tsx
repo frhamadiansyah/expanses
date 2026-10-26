@@ -166,6 +166,7 @@ export function CardSettingsPage() {
   const [dueDay, setDueDay] = useState('');
   const [limit, setLimit] = useState('');
   const [fee, setFee] = useState('');
+  const [feeOn, setFeeOn] = useState('');
   const [newLast4, setNewLast4] = useState('');
   const [newHolder, setNewHolder] = useState('');
   const [loadedName, setLoadedName] = useState<string | null>(null);
@@ -198,6 +199,7 @@ export function CardSettingsPage() {
     setDueDay(saved.dueDay);
     setLimit(saved.limit);
     setFee(saved.fee);
+    setFeeOn(saved.feeOn);
   }
   // The name as typed: its issuer, shown in front of it everywhere else, is the Institution row's.
   if (loadedName !== `${card.id}:${typedNameOf(card)}`) {
@@ -207,9 +209,9 @@ export function CardSettingsPage() {
 
   const owed = isDebit ? 0 : owedMinor(balances.data ?? {}, card.id);
   const optionalMinor = (v: string) => (v.trim() ? parseMajor(v, currency) : null);
-  const termsTyped = statementDay !== saved.statementDay || dueDay !== saved.dueDay || limit !== saved.limit || fee !== saved.fee;
+  const termsTyped = statementDay !== saved.statementDay || dueDay !== saved.dueDay || limit !== saved.limit || fee !== saved.fee || feeOn !== saved.feeOn;
   const saveTerms = () =>
-    run(() => saveCardTerms(database, ws, { accountId: card.id, statementDay: Number(statementDay), dueDay: Number(dueDay), creditLimitMinor: optionalMinor(limit), annualFeeMinor: optionalMinor(fee) }));
+    run(() => saveCardTerms(database, ws, { accountId: card.id, statementDay: Number(statementDay), dueDay: Number(dueDay), creditLimitMinor: optionalMinor(limit), annualFeeMinor: optionalMinor(fee), annualFeeOn: feeOn || null }));
   const saveName = () => {
     if (!name.trim() || name.trim() === typedNameOf(card)) return;
     void run(() => renameAccount(database, ws, card.id, name));
@@ -256,6 +258,7 @@ export function CardSettingsPage() {
             [
               <TextRow label={`Credit limit (${currency})`} value={limit} onChange={(e) => setLimit(e.target.value)} inputMode="decimal" />,
               <TextRow label={`Annual fee (${currency})`} value={fee} onChange={(e) => setFee(e.target.value)} inputMode="decimal" />,
+              <TextRow label="Charged on" type="date" value={feeOn} onChange={(e) => setFeeOn(e.target.value)} />,
               // The balance and its share of the limit are read whole, so they share the wider second column.
               <ReadOnlyRow label="Current balance" value={`${formatMinor(owed, currency)}${cp.terms?.creditLimitMinor ? ` · ${Math.round((owed / cp.terms.creditLimitMinor) * 100)}% of limit` : ''}`} />,
             ],

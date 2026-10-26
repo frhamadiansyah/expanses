@@ -41,6 +41,7 @@ export * from './repos/fx-pending';
 export * from './repos/reports';
 export * as pointsSchema from './schema-points';
 export * from './repos/points';
+export * from './repos/card-fee';
 export * from './repos/imports';
 export * from './repos/catalog';
 export * as assetsSchema from './schema-assets';

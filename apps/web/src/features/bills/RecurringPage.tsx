@@ -1,4 +1,4 @@
-import { isoDate } from '@expanses/core';
+import { formatMinor, isoDate } from '@expanses/core';
 import { type MonthlyBill, skipBill, undoBillPayments, unskipBill } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { Check, ListChecks, Plus } from 'lucide-react';
@@ -15,6 +15,9 @@ import { amountOf, billsInReadCurrency, type BillSummary, isToPay, paidText, pau
 import { PaySeveralSheet } from './PaySeveralSheet';
 import { PaySheet } from './PaySheet';
 import { useMonthlyBills } from './queries';
+import { type DueFee, useUpcomingFees } from '../cards/fee-due';
+import { FeeAlert } from '../cards/FeeAlert';
+import { feeDateText } from '../cards/fee-line';
 import { useBookMoney } from '../workspaces/queries';
 import { Unconverted } from '../workspaces/Unconverted';
 import { UndoToast } from '../../ui/UndoToast';
@@ -93,6 +96,8 @@ export function RecurringPage() {
   const from = useFrom();
   const backToCashflow = useBackToCashflow();
   const bills = useMonthlyBills(today);
+  const fees = useUpcomingFees(today);
+  const [askingFee, setAskingFee] = useState<DueFee | null>(null);
   const accounts = useAccounts().data ?? [];
   const rows = bills.data ?? [];
 
@@ -216,15 +221,35 @@ export function RecurringPage() {
         </div>
       )}
 
-      {sectionsOf(rows).map((section) => (
-        <section key={section.key} className="md:max-w-2xl" style={{ marginBottom: GROUP_GAP }}>
-          <PanelHeader title={section.title} />
-          {/* The group's surface without its clipping: a row's ⋯ menu may hang below it. */}
-          <div className="bg-[var(--ph-surface)]" style={{ borderRadius: GROUP_RADIUS }}>
-            {section.rows.map(billRow)}
-          </div>
-        </section>
-      ))}
+      {/* A card's annual fee within 30 days sits with Due soon: read-only, no totals, nothing to pay here. */}
+      {(() => {
+        const sections = sectionsOf(rows);
+        const soon = sections.find((section) => section.key === 'dueSoon');
+        const feeRows = fees.map(({ card, on }, i) => (
+          <InsetRow
+            key={card.cardId}
+            testId="annual-fee-row"
+            title={`Annual fee · ${card.name}`}
+            subtitle={feeDateText(on)}
+            value={card.annualFeeMinor !== null ? formatMinor(card.annualFeeMinor, card.currency) : undefined}
+            valueTone="ink"
+            onClick={() => setAskingFee(card)}
+            position={{ first: false, last: false, separator: i > 0 || (soon?.rows.length ?? 0) > 0 }}
+          />
+        ));
+        const shown = feeRows.length > 0 && !soon ? [...sections, { key: 'dueSoon' as const, title: 'Due soon', rows: [] as MonthlyBill[] }] : sections;
+        return shown.map((section) => (
+          <section key={section.key} className="md:max-w-2xl" style={{ marginBottom: GROUP_GAP }}>
+            <PanelHeader title={section.title} />
+            {/* The group's surface without its clipping: a row's ⋯ menu may hang below it. */}
+            <div className="bg-[var(--ph-surface)]" style={{ borderRadius: GROUP_RADIUS }}>
+              {section.rows.map(billRow)}
+              {section.key === 'dueSoon' && feeRows}
+            </div>
+          </section>
+        ));
+      })()}
+      {askingFee && <FeeAlert fee={askingFee} today={today} onClose={() => setAskingFee(null)} />}
 
       {/* Paused bills come out for nothing this month: a group of their own, under the ones to pay. */}
       {pausedOf(rows).length > 0 && (

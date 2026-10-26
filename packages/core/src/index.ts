@@ -579,3 +579,4 @@ export {
 } from './fx/fifo';
 export { classifyInflow, type FxLine, type FxRole, type InflowCost, revalueTransaction, type Revalued, type RevalueInput, spreadBase } from './fx/revalue';
 export { COUPON_FREQUENCIES, type CouponsPerYear, couponDatesBetween, couponGrossMinor, couponTaxMinor, dueCouponDates, nextCouponOn, previousCouponOn } from './assets/coupons';
+export { chargeAfterWaiver, coveredCharge, FEE_SOON_DAYS, feeDaysAway, feeWaived, nextFeeDate, type UpcomingFee, upcomingFees } from './points/fee-date';
