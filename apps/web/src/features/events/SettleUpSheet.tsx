@@ -108,6 +108,8 @@ export function SettleUpSheet({ view, payment, onClose }: { view: SharedEventVie
               placeholder="At today’s rate"
             />
           ) : null}
+        </InsetGroup>
+        <InsetGroup>
           <SubmitRow label={busy ? 'Saving…' : 'Record'} disabled={busy} />
         </InsetGroup>
         <ErrorBox error={error} />

@@ -425,7 +425,7 @@ export function SwitchRow({
 }
 
 /**
- * A form's primary action as a row: the tint, the row's height, and a real submit button.
+ * A form's primary action as a row: centred, in ink, the row's height, and a real submit button. Drawn in a group of its own, as a Delete is.
  *
  * A real `submit`, not a row that calls the save itself: the browser still checks every `required` field before
  * anything is written, exactly as the dark rectangle it replaces did, and Enter in any field still submits.
@@ -437,7 +437,7 @@ export function SubmitRow({ label, disabled = false, position }: GroupChild & { 
       <button
         type="submit"
         disabled={disabled}
-        className="ph-focus-inset block w-full text-left text-[17px] leading-[22px] md:text-[15px] md:leading-[20px] font-semibold text-[var(--ph-tint)] disabled:text-[var(--ph-ink-3)]"
+        className="ph-focus-inset block w-full text-center text-[17px] leading-[22px] md:text-[15px] md:leading-[20px] font-semibold text-[var(--ph-ink)] disabled:text-[var(--ph-ink-3)]"
         style={shell(false)}
       >
         {label}
