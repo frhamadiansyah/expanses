@@ -16,8 +16,11 @@ const chooseWorkspace = async (page: Page, name: string) => {
 test('a set made in Personal moves to another workspace with its categories, and leaves Personal', async ({ page }) => {
   await page.goto('/categories/sets');
   await expect(page.getByTestId('set-Holiday')).toBeVisible();
-  // With one workspace there is nowhere to move to, so the row is not offered.
-  await expect(page.getByRole('button', { name: /^Move .* to another workspace$/ })).toHaveCount(0);
+  // With one workspace there is nowhere to move to, so the menu does not offer it.
+  await page.getByRole('button', { name: 'More for Holiday' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Rename Holiday' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: /^Move .* to another workspace$/ })).toHaveCount(0);
+  await page.keyboard.press('Escape');
 
   await page.goto('/');
   await workspaceButton(page).click();
@@ -37,7 +40,8 @@ test('a set made in Personal moves to another workspace with its categories, and
   await page.getByRole('button', { name: 'Add a category to Wedding' }).click();
   await expect(page.getByTestId('set-Wedding')).toContainText('Venue');
 
-  await page.getByRole('button', { name: 'Move Wedding to another workspace' }).click();
+  await page.getByRole('button', { name: 'More for Wedding' }).click();
+  await page.getByRole('menuitem', { name: 'Move Wedding to another workspace' }).click();
   const sheet = page.getByRole('dialog', { name: 'Move Wedding' });
   await expect(sheet.getByTestId('move-set-target')).toHaveCount(1);
   await sheet.getByTestId('move-set-target').filter({ hasText: 'Business' }).click();
@@ -48,7 +52,8 @@ test('a set made in Personal moves to another workspace with its categories, and
   await ask.getByRole('button', { name: 'Not now' }).click();
   await expect(page.getByTestId('set-Wedding')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Move Wedding to another workspace' }).click();
+  await page.getByRole('button', { name: 'More for Wedding' }).click();
+  await page.getByRole('menuitem', { name: 'Move Wedding to another workspace' }).click();
   await page.getByRole('dialog', { name: 'Move Wedding' }).getByTestId('move-set-target').filter({ hasText: 'Business' }).click();
   await page.getByRole('alertdialog', { name: 'Move set' }).getByRole('button', { name: 'Move', exact: true }).click();
   await expect(page.getByTestId('set-copied')).toHaveText('Moved to Business');

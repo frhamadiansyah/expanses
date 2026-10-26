@@ -13,6 +13,8 @@ export interface CornerAction {
   key: string;
   /** The accessible name. Corner buttons carry a glyph, never a word, so this is all a screen reader gets. */
   label: string;
+  /** What a screen reader says for a ⋯ menu line when the words shown are shorter than the whole name. */
+  name?: string;
   destructive?: boolean;
   /** The glyph inside the circle. A corner button never carries a word — that is what the `…` menu is for. */
   glyph?: ReactNode;

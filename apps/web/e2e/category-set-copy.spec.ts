@@ -8,9 +8,12 @@ function answerPrompts(page: Page, answers: string[]) {
 
 test('a set made in Personal can be copied to another workspace, where it shows with its categories', async ({ page }) => {
   await page.goto('/categories/sets');
-  // With one workspace there is nowhere to copy to, so the row is not offered.
+  // With one workspace there is nowhere to copy to, so the menu does not offer it.
   await expect(page.getByTestId('set-Holiday')).toBeVisible();
-  await expect(page.getByRole('button', { name: /^Copy .* to another workspace$/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'More for Holiday' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Rename Holiday' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: /^Copy .* to another workspace$/ })).toHaveCount(0);
+  await page.keyboard.press('Escape');
 
   await page.goto('/');
   await page.getByRole('button', { name: 'Workspace', exact: true }).click();
@@ -32,7 +35,8 @@ test('a set made in Personal can be copied to another workspace, where it shows 
   await page.getByRole('button', { name: 'Add a category to Wedding' }).click();
   await expect(page.getByTestId('set-Wedding')).toContainText('Venue');
 
-  await page.getByRole('button', { name: 'Copy Wedding to another workspace' }).click();
+  await page.getByRole('button', { name: 'More for Wedding' }).click();
+  await page.getByRole('menuitem', { name: 'Copy Wedding to another workspace' }).click();
   const sheet = page.getByRole('dialog', { name: 'Copy Wedding' });
   await expect(sheet.getByTestId('copy-set-target')).toHaveCount(1);
   await sheet.getByTestId('copy-set-target').filter({ hasText: 'Business' }).click();

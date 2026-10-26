@@ -53,6 +53,13 @@ test('a set of your own can be made, added to, and drawn on by an event', async 
   await expect(page.getByTestId('set-Wedding')).toContainText('Catering');
   await expect(page.getByTestId('set-Wedding')).toContainText('Venue');
 
+  // The set's own changes sit behind its •••, not as rows at the foot of the box.
+  const box = page.getByTestId('set-Wedding');
+  await expect(box.getByRole('button', { name: /^(Add category|Rename set|Remove set)$/ })).toHaveCount(0);
+  await box.getByRole('button', { name: 'More for Wedding' }).click();
+  await expect(page.getByRole('menuitem')).toHaveText(['Rename', 'Remove set']);
+  await page.keyboard.press('Escape');
+
   // Made here, usable there: the event draws on the set without any of it reaching the monthly tree.
   await addEvent(page, 'Nikahan', 'Wedding');
   await recordIntoEvent(page, { description: 'Katering Bu Tuti', category: 'Catering', amount: '12000000' });
