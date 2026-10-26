@@ -27,6 +27,7 @@ const LIST: CurrencyInfo[] = [
   { code: 'EUR', exponent: 2, symbol: '€', name: 'Euro', flag: '🇪🇺' },
   { code: 'GBP', exponent: 2, symbol: '£', name: 'British Pound', flag: '🇬🇧' },
   { code: 'TRY', exponent: 2, symbol: '₺', name: 'Turkish Lira', flag: '🇹🇷' },
+  { code: 'SAR', exponent: 2, symbol: 'SR', name: 'Saudi Riyal', flag: '🇸🇦' },
   { code: 'KWD', exponent: 3, symbol: 'KD', name: 'Kuwaiti Dinar', flag: '🇰🇼' },
 ];
 

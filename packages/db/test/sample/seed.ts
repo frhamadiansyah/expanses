@@ -266,6 +266,16 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
     stages: [{ name: 'Flights and ryokan', targetMinor: 38_000_000, targetMonths: null, dueOn: `${Number(today.slice(0, 4)) + 1}-09-15` }],
   });
 
+  // A goal counted in a currency of its own: a bag priced in euros.
+  await saveGoal(database, ws, {
+    name: 'Travel bag',
+    kind: 'other',
+    currency: 'EUR',
+    growthBps: 0,
+    returnBps: 300,
+    stages: [{ name: 'Bag', targetMinor: 85_000, targetMonths: null, dueOn: `${Number(today.slice(0, 4)) + 1}-03-31` }],
+  });
+
   // ---- Holdings, owned before the app ----
   /*
    * Each opened the way the Add asset form opens the item it names: the account and profile the catalogue item

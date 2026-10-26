@@ -100,6 +100,7 @@ const goalRow = (name: string): GoalRow => ({
   returnBps: 600,
   standingMonthlyMinor: 0,
   standingNote: null,
+  currency: 'IDR',
   status: 'active',
   createdAt: '2026-01-01T00:00:00Z',
   stages: [],
@@ -119,6 +120,11 @@ const goalPlanRow = (partial: Partial<GoalPlanRow> = {}): GoalPlanRow => ({
   links: [],
   earmarkWarning: null,
   unconvertedWarning: null,
+  currency: 'IDR',
+  requiredMonthlyBaseMinor: 1_000_000,
+  plannedMonthlyBaseMinor: 0,
+  currentBaseMinor: 1_000_000,
+  rateToBase: 1,
   ...partial,
 });
 

@@ -1,8 +1,8 @@
-import { bandHint, type GoalKind, isoDate, minorToMajorString, monthsUntil, parseMajor, returnBandFor } from '@expanses/core';
-import { type GoalRow, saveGoal } from '@expanses/db';
+import { bandHint, CURRENCIES, type GoalKind, isoDate, minorToMajorString, monthsUntil, parseMajor, returnBandFor } from '@expanses/core';
+import { type GoalRow, goalIsFunded, saveGoal } from '@expanses/db';
 import { useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
@@ -83,14 +83,21 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
   const [expectedReturn, setExpectedReturn] = useState(String((goal?.returnBps ?? starting!.returnBps) / 100));
   // A goal already saved keeps its return; a new one's follows its first stage's date until one is typed.
   const [returnTyped, setReturnTyped] = useState(!!goal);
-  const [standing, setStanding] = useState(goal ? minorToMajorString(goal.standingMonthlyMinor, ws.baseCurrency) : '0');
+  const [currency, setCurrency] = useState(goal?.currency ?? ws.baseCurrency);
+  // Money already counted toward a saved goal is in its currency, so the currency is shown but not changeable then.
+  const [funded, setFunded] = useState(false);
+  useEffect(() => {
+    if (!goal) return;
+    void goalIsFunded(database, goal.id).then(setFunded);
+  }, [database, goal]);
+  const [standing, setStanding] = useState(goal ? minorToMajorString(goal.standingMonthlyMinor, goal.currency) : '0');
   const [standingNote, setStandingNote] = useState(goal?.standingNote ?? '');
   const [stages, setStages] = useState<StageDraft[]>(
     goal
       ? goal.stages.map((stage) => ({
           id: stage.id,
           name: stage.name,
-          amount: stage.targetMinor === null ? '' : minorToMajorString(stage.targetMinor, ws.baseCurrency),
+          amount: stage.targetMinor === null ? '' : minorToMajorString(stage.targetMinor, goal.currency),
           months: stage.targetMonths === null ? '' : String(stage.targetMonths),
           dueOn: stage.dueOn,
           usesMonths: stage.targetMonths !== null,
@@ -138,12 +145,13 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
         kind,
         growthBps: Math.round(Number(growth.replace(',', '.')) * 100),
         returnBps: Math.round(Number(expectedReturn.replace(',', '.')) * 100),
-        standingMonthlyMinor: standing.trim() === '' ? 0 : parseMajor(standing, ws.baseCurrency),
+        standingMonthlyMinor: standing.trim() === '' ? 0 : parseMajor(standing, currency),
         standingNote: standingNote.trim() || null,
+        currency,
         stages: stages.map((stage) => ({
           id: stage.id,
           name: stage.name,
-          targetMinor: stage.usesMonths ? null : parseMajor(stage.amount, ws.baseCurrency),
+          targetMinor: stage.usesMonths ? null : parseMajor(stage.amount, currency),
           targetMonths: stage.usesMonths ? Number(stage.months) : null,
           dueOn: stage.dueOn,
           paidOn: stage.paidOn,
@@ -185,6 +193,19 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
             <option value="other">{GOAL_KIND_LABELS.other}</option>
           </SelectRow>
           <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Goal name" required />
+          <SelectRow
+            label="Currency"
+            info={funded ? 'Money is already counted toward this goal, so its currency is fixed.' : 'What the cost and the progress are counted in. Money in other currencies is converted at the day\'s rate.'}
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+            disabled={funded}
+          >
+            {CURRENCIES.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.code} — {c.name}
+              </option>
+            ))}
+          </SelectRow>
         </InsetGroup>
 
         {stages.map((stage, index) => (
@@ -196,7 +217,7 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
               ) : (
                 <TextRow
                   key="amount"
-                  label={`Cost in today's money (${ws.baseCurrency})`}
+                  label={`Cost in today's money (${currency})`}
                   value={stage.amount}
                   onChange={(e) => setStage(index, { amount: e.target.value })}
                   inputMode="decimal"
@@ -238,7 +259,7 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
         <InsetGroup header="Already moving">
           <TextRow
             label="Standing amount each month"
-            info={`A transfer already made for this goal, outside monthly buys. In ${ws.baseCurrency}.`}
+            info={`A transfer already made for this goal, outside monthly buys. In ${currency}.`}
             value={standing}
             onChange={(e) => setStanding(e.target.value)}
             inputMode="decimal"
@@ -250,7 +271,7 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
         <SetAsideGroup state={setAside} />
 
         {/* For the goals whose amount is worked out rather than typed: the working is part of editing them. */}
-        {goal && calculatorKindOf(kind) && (
+        {goal && calculatorKindOf(kind) && goal.currency === ws.baseCurrency && currency === ws.baseCurrency && (
           <InsetGroup>
             <InsetRow
               label="Calculator"

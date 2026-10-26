@@ -14,6 +14,7 @@ const goal = (partial: Partial<GoalRow> = {}): GoalRow => ({
   returnBps: 600,
   standingMonthlyMinor: 0,
   standingNote: null,
+  currency: 'IDR',
   status: 'active',
   createdAt: '2026-01-01T00:00:00Z',
   stages: [],
@@ -37,6 +38,11 @@ const plan = (partial: Partial<GoalPlanRow> = {}): GoalPlanRow => ({
   links: [],
   earmarkWarning: null,
   unconvertedWarning: null,
+  currency: 'IDR',
+  requiredMonthlyBaseMinor: 1_000_000,
+  plannedMonthlyBaseMinor: 600_000,
+  currentBaseMinor: 30_000_000,
+  rateToBase: 1,
   ...partial,
 });
 
@@ -176,12 +182,12 @@ describe('done and short', () => {
   });
 
   it('lists what each account is short, in that account\'s money', () => {
-    const card = goalCard(plan({ links: [{ goalId: 'g', accountId: 'wise', name: 'Wise USD', kind: 'earmark', unitsMicro: null, valueMinor: 5_000, currency: 'USD', baseMinor: null, risk: null, promisedMinor: 10_003, shortMinor: 5_003, overBalance: true }] }));
+    const card = goalCard(plan({ links: [{ goalId: 'g', accountId: 'wise', name: 'Wise USD', kind: 'earmark', unitsMicro: null, valueMinor: 5_000, currency: 'USD', baseMinor: null, goalMinor: null, risk: null, promisedMinor: 10_003, shortMinor: 5_003, overBalance: true }] }));
     expect(card.shortLines).toEqual([{ accountName: 'Wise USD', shortMinor: 5_003, currency: 'USD' }]);
   });
 
   it('leaves a covered link off the short lines', () => {
-    const card = goalCard(plan({ links: [{ goalId: 'g', accountId: 'bca', name: 'BCA', kind: 'earmark', unitsMicro: null, valueMinor: 5_000, currency: 'IDR', baseMinor: 5_000, risk: null, promisedMinor: 5_000, shortMinor: 0, overBalance: false }] }));
+    const card = goalCard(plan({ links: [{ goalId: 'g', accountId: 'bca', name: 'BCA', kind: 'earmark', unitsMicro: null, valueMinor: 5_000, currency: 'IDR', baseMinor: 5_000, goalMinor: 5_000, risk: null, promisedMinor: 5_000, shortMinor: 0, overBalance: false }] }));
     expect(card.shortLines).toEqual([]);
   });
 
@@ -341,5 +347,20 @@ describe('longDay', () => {
   it('writes the day, the three-letter month and the year', () => {
     expect(longDay('2026-09-02')).toBe('2 Sep 2026');
     expect(longDay('2026-03-12')).toBe('12 Mar 2026');
+  });
+});
+
+describe('goalsTotals across currencies', () => {
+  it('adds each goal in the base currency, and a goal with no rate adds nothing', () => {
+    const totals = goalsTotals([
+      { currentMinor: 1_000_000, currentBaseMinor: 1_000_000, done: false, statusLabel: 'On track' },
+      { currentMinor: 10_000, currentBaseMinor: 1_600_000, done: false, statusLabel: 'Behind' },
+      { currentMinor: 5_000, currentBaseMinor: null, done: false, statusLabel: 'Behind' },
+    ]);
+    expect(totals.savedMinor).toBe(2_600_000);
+  });
+
+  it('carries the goal currency on the card', () => {
+    expect(goalCard(plan({ currency: 'EUR' })).currency).toBe('EUR');
   });
 });

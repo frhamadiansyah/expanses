@@ -11,7 +11,7 @@ import { InsetGroup, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
 import { useHeldRates } from '../accounts/queries';
 import { CategoryOptions } from '../cards/options';
 import { useAssetProfiles, useTrades } from '../networth/queries';
-import { type GoalEarmark, leftForGoal, lowered, monthlyAfter, monthlyPrefill, movablePurchases, moved, purchaseShare, setAsideFirst, setAsideOf, setAsideOn, STATUS_WORDS } from './goal-actions';
+import { type GoalEarmark, inGoalMoney, leftForGoal, lowered, monthlyAfter, monthlyPrefill, movablePurchases, moved, purchaseShare, setAsideFirst, setAsideOf, setAsideOn, STATUS_WORDS } from './goal-actions';
 import { longDay } from './goal-cards';
 
 
@@ -159,7 +159,7 @@ export function UseSheet({ plan, earmarks, onClose }: { plan: GoalPlanRow; earma
 /** Monthly: what goes to the goal each month by standing arrangement. The amount is all a goal stores of it. */
 export function MonthlySheet({ plan, onClose }: { plan: GoalPlanRow; onClose: () => void }) {
   const { database, ws } = useApp();
-  const currency = ws.baseCurrency;
+  const currency = plan.currency;
   const standing = plan.goal.standingMonthlyMinor;
   const [amount, setAmount] = useState(() => {
     const opening = monthlyPrefill(plan.requiredMonthlyMinor, plan.plannedMonthlyMinor, standing);
@@ -327,8 +327,8 @@ export function MoveSheet({ plan, others, earmarks, onClose }: { plan: GoalPlanR
         </SelectRow>
       </InsetGroup>
       <InsetGroup>
-        <ReadOnlyRow label={`${plan.goal.name} after`} value={formatMinor(Math.max(0, plan.currentMinor - movedBase), ws.baseCurrency)} />
-        {target && <ReadOnlyRow label={`${target.goal.name} after`} value={formatMinor(target.currentMinor + movedBase, ws.baseCurrency)} />}
+        <ReadOnlyRow label={`${plan.goal.name} after`} value={formatMinor(Math.max(0, plan.currentMinor - inGoalMoney(movedBase, plan, ws.baseCurrency)), plan.currency)} />
+        {target && <ReadOnlyRow label={`${target.goal.name} after`} value={formatMinor(target.currentMinor + inGoalMoney(movedBase, target, ws.baseCurrency), target.currency)} />}
       </InsetGroup>
       <ErrorBox error={saving.error} />
     </Sheet>
