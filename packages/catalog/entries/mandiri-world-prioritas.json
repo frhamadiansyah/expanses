@@ -1,6 +1,6 @@
 {
   "id": "mandiri-world-prioritas",
-  "entryVersion": 9,
+  "entryVersion": 10,
   "bank": "Mandiri",
   "name": "Mandiri World Prioritas",
   "network": "mastercard",
@@ -121,6 +121,39 @@
             "merchantPatterns": [
               "axa",
               "power bill"
+            ]
+          }
+        },
+        {
+          "key": "domestic-marketplace",
+          "name": "Marketplace and catalogue purchases",
+          "rateNum": 3,
+          "rateDen": 20000,
+          "rounding": "per_increment",
+          "priority": 15,
+          "stackable": false,
+          "match": {
+            "excludeCategoryKeys": [
+              "donation.charity",
+              "donation.obligation",
+              "utilities",
+              "government_taxes",
+              "business",
+              "miscellaneous.fees_charges"
+            ],
+            "excludeMerchantPatterns": [
+              "cicilan",
+              "installment",
+              "power installment",
+              "power buy",
+              "power cash",
+              "pln",
+              "va",
+              "virtual account"
+            ],
+            "mccs": [
+              "5262",
+              "5964"
             ]
           }
         },
@@ -279,6 +312,7 @@
   "notes": [
     "Earning is per whole Rp 20.000 multiple (Rp 100.000 for reduced-rate transactions) of the rupiah amount billed.",
     "Overseas means a currency other than rupiah; exclusions and reduced rates take precedence over the overseas rate.",
+    "Merchant category codes 5262 (marketplaces) and 5964 (catalogue merchants) earn at the domestic rate even when billed in another currency. The cardholder gave this; the bank's page was not checked.",
     "Power Bills payments at PLN earn nothing, while Power Bills insurance earns the reduced rate.",
     "Converting a purchase to Power Installment or Power Buy deducts its points; add \"cicilan\" to the description to reflect it.",
     "QRIS, installments, and virtual account payments are recognised only when the description contains those words.",

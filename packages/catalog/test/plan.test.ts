@@ -37,7 +37,7 @@ describe('planCatalogApply', () => {
 
   it('leaves out a rule whose only category keys are unmapped instead of widening it to every category', () => {
     const none = planCatalogApply(entry('mandiri-world-prioritas'), idsExcept('transportation', 'property.real_estate', 'education'), '2026-09-11');
-    expect(none.rules.map((r) => r.catalogKey)).toEqual(['start:reduced-qris', 'start:reduced-insurance', 'start:foreign', 'start:domestic']);
+    expect(none.rules.map((r) => r.catalogKey)).toEqual(['start:reduced-qris', 'start:reduced-insurance', 'start:domestic-marketplace', 'start:foreign', 'start:domestic']);
     expect(none.unmappedKeys).toEqual(['education', 'property.real_estate', 'transportation']);
     const some = planCatalogApply(entry('mandiri-world-prioritas'), idsExcept('education'), '2026-09-11');
     expect(some.rules[0]!.match.categoryIds).toEqual(['id:transportation', 'id:property.real_estate']);
