@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
+import { pickBillCategory } from './bill-form';
 
 /** Anything a finger is meant to hit must be at least this tall or wide. */
 const TAP = 44;
@@ -16,9 +17,9 @@ async function addBill(page: Page, name: string, amount: string) {
   await page.goto('/bills/new');
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel('Amount', { exact: true }).fill(amount);
-  await page.getByLabel('Category').selectOption({ index: 1 });
+  await pickBillCategory(page);
   await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan' });
-  await page.getByLabel('Bill is out on').selectOption('1');
+  await page.getByLabel('Bill date').selectOption('1');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page).toHaveURL(/\/bills$/);
 }

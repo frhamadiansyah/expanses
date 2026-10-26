@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
+import { pickBillCategory } from './bill-form';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -15,10 +16,10 @@ async function addBill(page: Page, options: { name: string; amount?: string; out
   await page.getByLabel('Name', { exact: true }).fill(options.name);
   if (options.amount !== undefined) await page.getByLabel('Amount', { exact: true }).fill(options.amount);
   // Whichever category is first: the point is the bill, not which category it lands in.
-  await page.getByLabel('Category').selectOption({ index: 1 });
+  await pickBillCategory(page);
   await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan' });
-  await page.getByLabel('Bill is out on').selectOption(String(options.out ?? 1));
-  if (options.payBy !== undefined) await page.getByLabel('Pay by').selectOption(String(options.payBy));
+  await page.getByLabel('Bill date').selectOption(String(options.out ?? 1));
+  if (options.payBy !== undefined) await page.getByLabel('Due by').selectOption(String(options.payBy));
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page).toHaveURL(/\/bills$/);
   await expect(page.getByTestId('bill-row').filter({ hasText: options.name })).toBeVisible();
@@ -69,13 +70,13 @@ test('a bill keeps its pay-by day through an edit', async ({ page }) => {
   await row(page, 'Biznet Home').click();
   await action(page, 'Edit').click();
   await expect(page.getByRole('heading', { name: 'Edit bill' })).toBeVisible();
-  await expect(page.getByLabel('Bill is out on')).toHaveValue('28');
-  await expect(page.getByLabel('Pay by')).toHaveValue('5');
-  await page.getByLabel('Pay by').selectOption('');
+  await expect(page.getByLabel('Bill date')).toHaveValue('28');
+  await expect(page.getByLabel('Due by')).toHaveValue('5');
+  await page.getByLabel('Due by').selectOption('');
   await page.getByRole('button', { name: 'Save' }).click();
   // Save on an edit returns to the bill's own page, not the list — Edit bill is reached from there directly.
   await action(page, 'Edit').click();
-  await expect(page.getByLabel('Pay by')).toHaveValue('');
+  await expect(page.getByLabel('Due by')).toHaveValue('');
 });
 
 test('a bill’s page pays its month and stays, with the payment and an undo', async ({ page }) => {
@@ -85,7 +86,7 @@ test('a bill’s page pays its month and stays, with the payment and an undo', a
 
   await expect(page.getByRole('heading', { name: 'Biznet Home' })).toBeVisible();
   await expect(detail(page, 'Out on')).toContainText('The 1st');
-  await expect(detail(page, 'Pay by')).toContainText('The 28th');
+  await expect(detail(page, 'Due by')).toContainText('The 28th');
   await expect(detail(page, 'Repeats')).toContainText('Every month');
   await action(page, 'Pay').click();
   await page.getByRole('dialog', { name: 'Pay Biznet Home' }).getByRole('button', { name: 'Record payment' }).click();
@@ -114,9 +115,9 @@ test('from a bill’s page: skip its month, edit it, and stop it', async ({ page
   await expect(page.getByTestId('bill-hero')).toContainText('Skipped');
 
   await action(page, 'Edit').click();
-  await page.getByLabel('Pay by').selectOption('5');
+  await page.getByLabel('Due by').selectOption('5');
   await page.getByRole('button', { name: 'Save' }).click();
-  await expect(detail(page, 'Pay by')).toContainText('The 5th');
+  await expect(detail(page, 'Due by')).toContainText('The 5th');
 
   await page.getByRole('button', { name: 'More' }).click();
   await page.getByRole('menuitem', { name: 'Stop this bill' }).click();
@@ -347,8 +348,9 @@ test('a bill paid from a dollar account keeps its amount through an edit', async
   await page.goto('/bills/new');
   await page.getByLabel('Name', { exact: true }).fill('Cloud storage');
   await page.getByLabel('Amount', { exact: true }).fill('15');
-  await page.getByLabel('Category').selectOption({ index: 1 });
+  await pickBillCategory(page);
   await page.getByLabel('Paid from').selectOption({ label: 'Wise USD' });
+  await page.getByLabel('Bill date').selectOption('1');
   await page.getByRole('button', { name: 'Save' }).click();
   await row(page, 'Cloud storage').click();
 
@@ -357,4 +359,21 @@ test('a bill paid from a dollar account keeps its amount through an edit', async
   await page.getByRole('button', { name: 'Save' }).click();
   // Formatted the Indonesian way, "US$15,00"; the bug read it as rupiah and saved "US$1.500,00".
   await expect(page.getByTestId('bill-hero')).toContainText(/US\$\s?15,00/);
+});
+
+test('a new bill starts with no bill date, refuses to save without one, and picks its category in a sheet', async ({ page }) => {
+  await addWallet(page, 'BCA Tahapan');
+  await page.goto('/bills/new');
+  await expect(page.getByLabel('Bill date')).toHaveValue('');
+  await expect(page.getByLabel('Due by')).toHaveValue('');
+  await page.getByLabel('Name', { exact: true }).fill('Water');
+  await pickBillCategory(page);
+  await expect(page.getByRole('button', { name: /^Category/ })).toContainText('Restaurants');
+  await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan' });
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Choose the bill date')).toBeVisible();
+  await expect(page).toHaveURL(/\/bills\/new$/);
+  await page.getByLabel('Bill date').selectOption('1');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page).toHaveURL(/\/bills$/);
 });

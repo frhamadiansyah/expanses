@@ -1,13 +1,14 @@
-import { ordinal, parseMajor } from '@expanses/core';
+import { categoryPath, ordinal, parseMajor } from '@expanses/core';
 import { saveExpenseTemplate } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
-import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { canPayWith } from '../../lib/account-types';
-import { moneyHolders, useAccounts, useInOpenBook, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, LargeTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, LargeTitle, PickerRow, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { CategoryPicker } from '../transactions/CategoryPicker';
 import { useExpenseTemplates } from '../transactions/queries';
 import { amountInput } from './bill-view';
 const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
@@ -29,22 +30,19 @@ export function BillFormPage({ billId }: { billId?: string }) {
   const invalidate = useInvalidateAll();
   const accounts = useAccounts();
   const templates = useExpenseTemplates();
-  const inOpenBook = useInOpenBook();
 
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [categoryAccountId, setCategoryAccountId] = useState('');
   const [moneyAccountId, setMoneyAccountId] = useState('');
-  const [outDay, setOutDay] = useState('1');
+  const [outDay, setOutDay] = useState('');
   const [payBy, setPayBy] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [loaded, setLoaded] = useState(false);
-  // The amount's hint sits under the whole card, so the field has to say out loud which sentence explains it.
-  const amountHint = useId();
+  const [pickingCategory, setPickingCategory] = useState(false);
   const form = useRef<HTMLFormElement>(null);
 
-  // A bill is recorded into the open book, so it picks from that book's categories.
-  const categories = (accounts.data ?? []).filter((account) => account.kind === 'expense' && account.subtype === 'category' && inOpenBook(account));
+  const chosen = (accounts.data ?? []).find((account) => account.id === categoryAccountId);
   // What a bill is paid with: money kept for spending, or a card — the same answer every "Paid with" gives.
   const wallets = moneyHolders(accounts.data ?? []).filter((account) => canPayWith(account));
 
@@ -70,6 +68,10 @@ export function BillFormPage({ billId }: { billId?: string }) {
   async function save(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    if (outDay === '') {
+      setError(new Error('Choose the bill date'));
+      return;
+    }
     try {
       const wallet = (accounts.data ?? []).find((account) => account.id === moneyAccountId);
       await saveExpenseTemplate(database, ws, {
@@ -114,25 +116,21 @@ export function BillFormPage({ billId }: { billId?: string }) {
         <form ref={form} onSubmit={save}>
           <ErrorBox error={error ?? templates.error} />
           <InsetGroup>
-            <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Phone, water, gas" />
+            <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Bill name" />
             <TextRow
               label="Amount"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               inputMode="decimal"
               placeholder="Amount"
-              aria-describedby={amountHint}
-              /* The sentence keeps its id, so the box still says out loud which line explains it. */
-              hint={<span id={amountHint}>Leave it empty when it changes every month, like electricity. It will be asked for each time.</span>}
+              info="Leave it empty when it changes every month, like electricity. It will be asked for each time."
             />
-            <SelectRow label="Category" value={categoryAccountId} onChange={(e) => setCategoryAccountId(e.target.value)}>
-              <option value="">Choose a category</option>
-              {categories.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name}
-                </option>
-              ))}
-            </SelectRow>
+            <PickerRow
+              label="Category"
+              value={chosen ? categoryPath(accounts.data ?? [], chosen.id) : ''}
+              placeholder="Choose a category"
+              onOpen={() => setPickingCategory(true)}
+            />
             <SelectRow label="Paid from" value={moneyAccountId} onChange={(e) => setMoneyAccountId(e.target.value)}>
               <option value="">Choose an account</option>
               {wallets.map((account) => (
@@ -143,19 +141,20 @@ export function BillFormPage({ billId }: { billId?: string }) {
             </SelectRow>
           </InsetGroup>
 
-          <InsetGroup header="When" footer="Earlier than the out day means the next month: out on the 28th, pay by the 5th.">
+          <InsetGroup>
             <SelectRow label="Repeats" value="monthly" disabled>
               <option value="monthly">Every month</option>
             </SelectRow>
-            <SelectRow label="Bill is out on" value={outDay} onChange={(e) => setOutDay(e.target.value)}>
+            <SelectRow label="Bill date" value={outDay} onChange={(e) => setOutDay(e.target.value)}>
+              <option value="">Choose a day</option>
               {DAYS.map((day) => (
                 <option key={day} value={day}>
                   {ordinal(day)}
                 </option>
               ))}
             </SelectRow>
-            <SelectRow label="Pay by" value={payBy} onChange={(e) => setPayBy(e.target.value)}>
-              <option value="">No pay-by day</option>
+            <SelectRow label="Due by" value={payBy} onChange={(e) => setPayBy(e.target.value)}>
+              <option value="">No due day</option>
               {DAYS.map((day) => (
                 <option key={day} value={day}>
                   {ordinal(day)}
@@ -168,6 +167,10 @@ export function BillFormPage({ billId }: { billId?: string }) {
             <InsetRow title="Cancel" action to={backTo} params={backParams} />
           </InsetGroup>
         </form>
+      )}
+      {/* The same searchable tree as Add transaction; a bill is recorded into the open book, which the picker already honours. */}
+      {pickingCategory && (
+        <CategoryPicker kind="expense" lockKind title="Category" value={categoryAccountId || undefined} onPick={setCategoryAccountId} onClose={() => setPickingCategory(false)} />
       )}
     </div>
   );
