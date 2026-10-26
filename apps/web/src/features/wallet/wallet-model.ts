@@ -1,4 +1,4 @@
-import type { AccountRow } from '@expanses/db';
+import { type AccountRow, spendingSwitchOn } from '@expanses/db';
 import { keptForSpending } from '../../lib/account-types';
 import { spendingBook } from '../accounts/pockets';
 import type { FaceKind } from '../cards/debit-art/faces';
@@ -32,7 +32,7 @@ export function walletMoney(accounts: readonly AccountRow[]): AccountRow[] {
 
 /** The credit cards, still open, in the ledger's order. */
 export function walletCredit(accounts: readonly AccountRow[]): AccountRow[] {
-  return accounts.filter((a) => a.archivedAt === null && a.kind === 'liability' && a.subtype === 'credit_card');
+  return accounts.filter((a) => a.archivedAt === null && a.kind === 'liability' && a.subtype === 'credit_card' && spendingSwitchOn(a));
 }
 
 /**

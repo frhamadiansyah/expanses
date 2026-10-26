@@ -41,6 +41,10 @@ describe('the cards Wallet holds', () => {
     expect(walletMoney([cash, { ...idr, forSpending: 0 }, lira])).toEqual([]);
   });
 
+  it('leaves a credit card switched off "For spending" out of Wallet', () => {
+    expect(walletCredit([...book, row('rare', 'credit_card', { kind: 'liability', forSpending: 0 })]).map((a) => a.id)).toEqual(['blue']);
+  });
+
   it('holds credit cards only of what is owed: a loan and a person are read on Net worth', () => {
     expect(walletCredit(book).map((a) => a.id)).toEqual(['blue']);
   });

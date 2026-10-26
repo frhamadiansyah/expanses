@@ -1,5 +1,5 @@
 import { parseMajor } from '@expanses/core';
-import { addCard, archiveCard, createProgram, listProgrammes, renameAccount, type RewardProgramRow, saveCardIdentity, saveCardTerms, setEarnsInto, setProgramCrediting } from '@expanses/db';
+import { addCard, archiveCard, createProgram, listProgrammes, renameAccount, type RewardProgramRow, saveCardIdentity, saveCardTerms, setAccountForSpending, setEarnsInto, setProgramCrediting, spendingSwitchOn } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { Check, Trash2 } from 'lucide-react';
@@ -8,7 +8,7 @@ import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { typedNameOf } from '../../lib/account-name';
 import { cx, ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, PickerRow, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, PickerRow, ReadOnlyRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
 import { TrackPaymentsSetting } from '../statement-check/TrackPaymentsSetting';
 import { CardFace } from './CardFace';
@@ -312,6 +312,14 @@ export function CardSettingsPage() {
           />
         )}
         <PickerRow label="Card product" value={product} onOpen={() => void navigate({ to: '/cards/$cardId/settings/product', params: { cardId: card.id } })} />
+        {!isDebit && (
+          <SwitchRow
+            label="For spending"
+            checked={spendingSwitchOn(card)}
+            info="Off keeps the card out of Wallet and Paid with. It stays in Assets and Debts, and its own page keeps working."
+            onChange={(on) => void run(() => setAccountForSpending(database, ws, card.id, on))}
+          />
+        )}
       </InsetGroup>
 
       {step !== 1 && termsBlock}

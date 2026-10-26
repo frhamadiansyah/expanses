@@ -46,7 +46,7 @@ export function BillFormPage({ billId }: { billId?: string }) {
 
   const chosen = (accounts.data ?? []).find((account) => account.id === categoryAccountId);
   // What a bill is paid with: money kept for spending, or a card — the same answer every "Paid with" gives.
-  const wallets = moneyHolders(accounts.data ?? []).filter((account) => canPayWith(account));
+  const wallets = moneyHolders(accounts.data ?? []).filter((account) => canPayWith(account, moneyAccountId));
   // What the Currency row shows and the amount is read in: the one picked, else the payer's, else the workspace's.
   const payerCurrency = (accounts.data ?? []).find((account) => account.id === moneyAccountId)?.currency ?? ws.baseCurrency;
   const billCurrency = currency || payerCurrency;

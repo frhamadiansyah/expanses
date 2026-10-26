@@ -1,5 +1,5 @@
 import { type CompareTarget, CURRENCIES, formatMinor, isoDate, mccName, parseMajor, type Recommendation, recommendCards, resolveMcc } from '@expanses/core';
-import { mccSourcesFor } from '@expanses/db';
+import { mccSourcesFor, spendingSwitchOn } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -28,7 +28,7 @@ export function RecommendPage() {
 
   // An earning debit card competes for the same purchase, so it belongs in the comparison too.
   const earning = useProgramAccounts().data ?? new Set<string>();
-  const cards = all.filter((a) => a.archivedAt === null && (a.subtype === 'credit_card' || earning.has(a.id)));
+  const cards = all.filter((a) => a.archivedAt === null && ((a.subtype === 'credit_card' && spendingSwitchOn(a)) || earning.has(a.id)));
   const loadAll = (onDate: string) => Promise.all(cards.map((card) => loadCardPoints(database, ws, card, all, onDate)));
   const targets = useQuery({
     queryKey: ['recommend-targets', ws.workspaceId, cards.map((c) => c.id).join(',')],
