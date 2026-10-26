@@ -1,5 +1,5 @@
 import { CURRENCIES } from '@expanses/core';
-import { type BookKind, createBook } from '@expanses/db';
+import { applyCategoryStart, type BookKind, type CategoryStart, createBook } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -19,7 +19,8 @@ const KINDS: { value: BookKind; label: string }[] = [
  *
  * Categories are the only thing copied, and only when asked for. A workspace that starts empty is still given the
  * handful the app posts into by itself — loan interest, a realised gain — so its own records stay its own; the
- * rest are added from the picker as they are needed, which is why no kind comes with a list of its own.
+ * rest are added from the picker as they are needed. Only Business offers a list of its own (`BUSINESS_CATEGORIES`),
+ * chosen in Categories and applied right after the workspace is made.
  */
 export function NewWorkspaceSheet({ onClose }: { onClose: () => void }) {
   const { database, ws, switchBook } = useApp();
@@ -31,6 +32,10 @@ export function NewWorkspaceSheet({ onClose }: { onClose: () => void }) {
   const [chosenKind, setChosenKind] = useState<BookKind | null>(null);
   const kind = chosenKind ?? (hasPersonal ? 'business' : 'personal');
   const [copyFrom, setCopyFrom] = useState('');
+  // A Business workspace chooses its categories here instead of copying a tree: its own list, Personal's, or none.
+  const [chosenStart, setChosenStart] = useState<CategoryStart>('business');
+  const categoriesChoice = kind === 'business' && copyFrom === '';
+  const personalBookId = (books.data ?? []).find((book) => book.kind === 'personal')?.id ?? null;
   const [baseCurrency, setBaseCurrency] = useState(ws.baseCurrency);
   // Null while nobody has touched the switch: a business counts an event as spending like any other, where a
   // personal budget is usually kept for the ordinary month with the holiday counted apart.
@@ -43,7 +48,11 @@ export function NewWorkspaceSheet({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      const id = await createBook(database, ws, { name, kind, baseCurrency, countEventsInBudget, copyCategoriesFrom: copyFrom || null });
+      // 'Same as Personal' is a copy of Personal's tree; with no Personal to copy it starts empty, like Empty.
+      const copy = categoriesChoice ? (chosenStart === 'personal' ? personalBookId : null) : copyFrom || null;
+      const id = await createBook(database, ws, { name, kind, baseCurrency, countEventsInBudget, copyCategoriesFrom: copy });
+      // The workspace exists now; if the list cannot be added it can be, from its page, later.
+      if (categoriesChoice && chosenStart === 'business') await applyCategoryStart(database, ws, { bookId: id, start: 'business' }).catch(() => undefined);
       // Made to be used: the app lands in it rather than leaving it to be found in the list.
       await switchBook(id);
       onClose();
@@ -104,6 +113,14 @@ export function NewWorkspaceSheet({ onClose }: { onClose: () => void }) {
               </option>
             ))}
           </SelectRow>
+          {/* Only for a Business workspace that is not copying a tree: a copy already is its categories. */}
+          {categoriesChoice && (
+            <SelectRow label="Categories" value={chosenStart} onChange={(e) => setChosenStart(e.target.value as CategoryStart)}>
+              <option value="business">Business</option>
+              <option value="personal">Same as Personal</option>
+              <option value="empty">Empty</option>
+            </SelectRow>
+          )}
           <SelectRow label="Reads in" value={baseCurrency} onChange={(e) => setBaseCurrency(e.target.value)}>
             {CURRENCIES.map((currency) => (
               <option key={currency.code} value={currency.code}>
