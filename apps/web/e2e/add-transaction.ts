@@ -159,7 +159,12 @@ export async function addPurchase(
   if (trade.lots) await form.getByLabel('Lots').fill(trade.lots);
   // Whatever this holding calls its units — Grams for gold, Shares for a stock without lots.
   if (trade.units) await form.getByLabel(/^(Units|Shares|Grams)$/).fill(trade.units);
-  if (trade.fee) await form.getByLabel(/^Fee /).fill(trade.fee);
+  // A trade's Fee waits under Add more details.
+  if (trade.fee) {
+    const more = form.getByRole('button', { name: 'Add more details' });
+    if ((await more.count()) > 0 && (await more.getAttribute('aria-expanded')) !== 'true') await more.click();
+    await form.getByLabel(/^Fee /).fill(trade.fee);
+  }
   await form.getByLabel(sell ? 'Proceeds into' : 'Paid with').selectOption({ label: trade.paidWith });
   if (trade.charged) await form.getByLabel(/^Charged in /).pressSequentially(trade.charged);
   if (trade.date) await form.getByLabel('Date').fill(trade.date);

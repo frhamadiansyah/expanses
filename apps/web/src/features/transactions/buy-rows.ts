@@ -60,7 +60,8 @@ export function feeRowText(currency: string): BuyRowText {
 /** How much of the holding moved: lots where the holding trades in them, otherwise its own word for a unit. */
 export function unitsRowText({ useLots, lotSize, unitLabel }: { useLots: boolean; lotSize: number | null; unitLabel: string }): BuyRowText {
   const label = useLots ? 'Lots' : unitLabel;
-  return { label, caption: label, placeholder: 'How many', hint: useLots ? `${lotSize ?? 1} shares a lot.` : undefined };
+  // A lot's size rides on the right of the row, on its one line, with the word.
+  return { label, caption: useLots ? `${label} · ${lotSize ?? 1} shares` : label, placeholder: 'How many' };
 }
 
 /** Where the money came from, or where it landed. */

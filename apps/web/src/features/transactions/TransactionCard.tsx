@@ -970,15 +970,6 @@ function CardBody({
               value={purchase.useLots ? purchase.lots : purchase.units}
               onChange={(text) => setPurchase(purchase.useLots ? { lots: text } : { units: text })}
             />
-            <MoneyFieldRow
-              currency={purchaseCurrency}
-              flag={currencyFlag(purchaseCurrency)}
-              label={feeRow.label}
-              caption={feeRow.caption}
-              placeholder={feeRow.placeholder}
-              value={purchase.fee}
-              onChange={(fee) => setPurchase({ fee })}
-            />
             <SelectFormRow
               icon={<RowGlyph>{purchase.mode === 'buy' ? <CreditCard size={15} /> : <Landmark size={15} />}</RowGlyph>}
               label={payRow.label}
@@ -1312,6 +1303,19 @@ function CardBody({
             refuses to tag an edit, and a row that cannot be honoured is worse than no row.
           */}
           <MoreDetails
+            lead={
+              draft.mode === 'trade' ? (
+                <MoneyFieldRow
+                  currency={purchaseCurrency}
+                  flag={currencyFlag(purchaseCurrency)}
+                  label={feeRow.label}
+                  caption={feeRow.caption}
+                  placeholder={feeRow.placeholder}
+                  value={purchase.fee}
+                  onChange={(fee) => setPurchase({ fee })}
+                />
+              ) : undefined
+            }
             draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} omit={[...(finish ? DRAFT_OMITS : []), ...ON_CARD, ...(photosOnAmount ? (['photos'] as const) : [])]} opensSharedEvent={!finish} onPhotos={(files) => void readReceiptFrom(files)} />
         </section>
       )}

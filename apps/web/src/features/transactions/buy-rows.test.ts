@@ -36,12 +36,11 @@ describe('what each Buy / sell row says', () => {
       label: 'Grams',
       caption: 'Grams',
       placeholder: 'How many',
-      hint: undefined,
     });
     const lots = unitsRowText({ useLots: true, lotSize: 100, unitLabel: 'Shares' });
     expect(lots.label).toBe('Lots');
-    expect(lots.caption).toBe('Lots');
-    expect(lots.hint).toBe('100 shares a lot.');
+    expect(lots.caption).toBe('Lots · 100 shares');
+    expect(lots.hint).toBeUndefined();
   });
 
   it('says where the money comes from when buying, and where it lands when selling', () => {
