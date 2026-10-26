@@ -2,6 +2,8 @@ import { formatMinor } from '@expanses/core';
 import { useParams } from '@tanstack/react-router';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { Hero, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN } from '../../ui/native';
+import { JointRowsGroup } from '../sharing/JointAccountRows';
+import { useJointRows } from '../sharing/net-worth-queries';
 import { useHouseholdPurchases, useItemTransfers, useSharedNetWorth } from './queries';
 import { itemPage } from './shared-item';
 import { ValueChart } from './ValueChart';
@@ -21,6 +23,7 @@ export function SharedItemPage() {
   const found = shared.data?.items.find((each) => each.itemId === itemId) ?? null;
   const purchases = useHouseholdPurchases(group && found ? group.workspaceBookId : null, found ? found.period : null);
   const transfers = useItemTransfers(group && found ? group.groupBookId : null, found?.itemId ?? null, found ? found.period : null);
+  const jointRows = useJointRows(group && found?.joint ? { workspaceBookId: group.workspaceBookId, itemId: found.itemId, owner: found.owner } : null);
   // Either mode: Net worth's rows with one tax ID, Accounts' "Andi's, shared" with separate ones (itemPage, tested).
   const { item, view, back } = itemPage(shared.data, itemId, purchases.data ?? [], transfers.data ?? []);
   const owner = view?.details.owner ?? '';
@@ -34,7 +37,7 @@ export function SharedItemPage() {
 
       {view && item && (
         <>
-          <Hero label={item.kind === 'liability' ? 'Owed' : 'Balance'} minor={view.balance.minor} currency={view.balance.currency} />
+          <Hero label={item.joint ? 'Balance · Joint account' : item.kind === 'liability' ? 'Owed' : 'Balance'} minor={view.balance.minor} currency={view.balance.currency} />
 
           {view.bar && (
             <Panel header="Limit" className="space-y-2">
@@ -58,8 +61,10 @@ export function SharedItemPage() {
             </Panel>
           )}
 
+          {item.joint && jointRows.data && group ? <JointRowsGroup rows={jointRows.data.rows} me={group.me} names={jointRows.data.names} /> : null}
+
           <InsetGroup header="Lines visible here" footer={`Household purchases paid from it${withTransfers ? ' and transfers between partners' : ''}, ${DAY_LABEL(item.period.start)} to ${DAY_LABEL(item.period.end)}.`}>
-            {view.lines.map((line) => (
+            {(item.joint ? [] : view.lines).map((line) => (
               <InsetRow
                 key={line.lineageId}
                 title={line.description}

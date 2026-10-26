@@ -16,6 +16,7 @@ import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency'
 import { bookOfCategory, type BookKind, hasBooks } from './books';
 import { bookSplitsExist, excludedLinesTx, lineExclusionsOfMany, splitBooksOfTx, splitHasPartIn, splitPartsOfMany, writeLineExclusionsTx, writeSplitBooksTx } from './book-splits';
 import { categoryInBookTx, fileTransferTx, moneyInPartnerTx } from './move-group';
+import { jointRowRefusalTx } from './joint-account-rows';
 import { carrySharedTransferTx, sharedTransferBooksTx, voidSharedTransferTx } from './shared-transfers';
 import { followDepositEventTx, reopenDepositEventTx } from './deposit-event-log';
 import { markForeignDirtyTx } from './fx-pending';
@@ -83,7 +84,8 @@ export type LedgerErrorCode =
   | 'ASSET_SALE'
   | 'NOT_A_CARD_PURCHASE'
   | 'CARD_NOT_FOUND'
-  | 'NOT_ON_CARD';
+  | 'NOT_ON_CARD'
+  | 'JOINT_ROW';
 
 export class LedgerError extends Error {
   readonly code: LedgerErrorCode;
@@ -577,6 +579,11 @@ async function markVoidTx(tx: Db, ws: WorkspaceContext, id: string, keep: VoidKe
   if (!door.eventDerivation) await refuseEventPostingTx(tx, id);
   if (!door.fundSwitch) await guardFundSwitchTx(tx, ws, id, author);
   if (!door.assetSale) await guardAssetSaleTx(tx, ws, id);
+  // A person changing a row of a joint account that another member recorded (0097). Sync's own writes carry an author.
+  if (author === undefined) {
+    const why = await jointRowRefusalTx(tx, id);
+    if (why) throw new LedgerError('JOINT_ROW', why);
+  }
   const [row] = await tx
     .select({ status: transactions.status, goalId: transactions.goalId })
     .from(transactions)

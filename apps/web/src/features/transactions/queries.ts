@@ -1,5 +1,5 @@
 import { useOpenBookReadOnly } from '../sharing/queries';
-import { allPhotoRows, listExpenseTemplates, shareCategoryAccountIds, type TransactionView } from '@expanses/db';
+import { allPhotoRows, jointRowLocked, listExpenseTemplates, shareCategoryAccountIds, type TransactionView } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { editInsteadIn, type RowBook } from '../workspaces/filing';
@@ -104,7 +104,11 @@ export function useChangeable(tx: TransactionView | null): Changeable {
   const trades = useTrades();
   const badges = useWorkspaceBadges(tx ? [tx.id] : []);
   const readOnly = useOpenBookReadOnly();
+  const { database } = useApp();
+  // A row of a joint account that another member recorded is theirs to change, on this phone read only (0097).
+  const lockedByOther = useQuery({ queryKey: ['joint-row-locked', tx?.id ?? null], enabled: tx !== null, queryFn: () => jointRowLocked(database, tx!.id) }).data === true;
   if (!tx) return { changeable: false, elsewhere: null, isTrade: false, holdingId: null };
+  if (lockedByOther) return { changeable: false, elsewhere: null, isTrade: false, holdingId: null };
   const elsewhere = editInsteadIn(badges.of(tx.id), ws.bookId);
   // A share that ended here is read-only (§8.6): its own rows are read, never corrected or deleted.
   if (readOnly && !elsewhere) return { changeable: false, elsewhere, isTrade: false, holdingId: null };

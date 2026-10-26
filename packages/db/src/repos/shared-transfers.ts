@@ -24,7 +24,7 @@ async function memberOfTx(tx: Db, bookId: string): Promise<string | null> {
 }
 
 /** The figure a bare transfer moved: its positive leg. Null when it has a category line (that is a purchase) or no leg. */
-async function figureOfTx(tx: Db, transactionId: string): Promise<{ occurredOn: string; description: string; amountMinor: number; currency: string; fromName: string | null; toName: string | null } | null> {
+async function figureOfTx(tx: Db, transactionId: string): Promise<{ occurredOn: string; description: string; amountMinor: number; currency: string; fromName: string | null; toName: string | null; fromItem: string | null; toItem: string | null } | null> {
   const [head] = await tx.values<[string, string, string]>(sql`SELECT occurred_on, description, status FROM transactions WHERE id = ${transactionId}`);
   if (!head || head[2] !== 'posted') return null;
   const lines = await tx.values<[number, string, string, string, string]>(sql`
@@ -40,7 +40,23 @@ async function figureOfTx(tx: Db, transactionId: string): Promise<{ occurredOn: 
     currency: leg[1],
     fromName: out ? await sharedNameTx(tx, out[3], out[4]) : null,
     toName: await sharedNameTx(tx, leg[3], leg[4]),
+    fromItem: out ? await jointItemTx(tx, out[3]) : null,
+    toItem: await jointItemTx(tx, leg[3]),
   };
+}
+
+/**
+ * The item id of an account the holder made joint (0097), or null: a joint account is named on its transfers by the id
+ * its item goes by, so both phones can list the transfer on it. Any other account carries no id.
+ */
+async function jointItemTx(tx: Db, accountId: string): Promise<string | null> {
+  if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'nw_joint_accounts'`)).length === 0) return null;
+  const [row] = await tx.values<[string]>(sql`
+    SELECT m.item_id FROM nw_joint_accounts j
+    JOIN nw_share_settings s ON s.account_id = j.account_id AND s.setting = 'total'
+    JOIN nw_item_map m ON m.account_id = j.account_id
+    WHERE j.account_id = ${accountId}`);
+  return row?.[0] ?? null;
 }
 
 /**
@@ -64,11 +80,11 @@ export async function fileSharedTransferTx(tx: Db, ws: WorkspaceContext, transac
   const transferId = await lineageOfTransaction(tx, transactionId);
   await withCapture(tx, { entity: KEY, id: transferId, bookId }, () =>
     tx.run(sql`
-      INSERT INTO shared_transfers (book_id, transfer_id, occurred_on, amount_minor, currency, description, recorded_by, void, transaction_id, from_name, to_name)
-      VALUES (${bookId}, ${transferId}, ${figure.occurredOn}, ${figure.amountMinor}, ${figure.currency}, ${figure.description}, ${member}, 0, ${transactionId}, ${figure.fromName}, ${figure.toName})
+      INSERT INTO shared_transfers (book_id, transfer_id, occurred_on, amount_minor, currency, description, recorded_by, void, transaction_id, from_name, to_name, from_item, to_item)
+      VALUES (${bookId}, ${transferId}, ${figure.occurredOn}, ${figure.amountMinor}, ${figure.currency}, ${figure.description}, ${member}, 0, ${transactionId}, ${figure.fromName}, ${figure.toName}, ${figure.fromItem}, ${figure.toItem})
       ON CONFLICT (book_id, transfer_id) DO UPDATE SET occurred_on = excluded.occurred_on, amount_minor = excluded.amount_minor,
         currency = excluded.currency, description = excluded.description, void = 0, transaction_id = excluded.transaction_id,
-        from_name = excluded.from_name, to_name = excluded.to_name`),
+        from_name = excluded.from_name, to_name = excluded.to_name, from_item = excluded.from_item, to_item = excluded.to_item`),
   );
   return true;
 }

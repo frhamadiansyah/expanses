@@ -27,6 +27,12 @@ export interface ItemSummary {
    */
   transfers: { transferId: string; minor: number }[];
   monthEnds: { month: string; balanceMinor: number }[];
+  /**
+   * Present (true) only while the holder has the account's "Joint account" switch on: the partner's phone lists it in
+   * Paid with as joint and shows the account's rows recorded in the shared workspace. Absent = off, so a summary of an
+   * account never made joint is byte-for-byte what it was.
+   */
+  joint?: true;
   /** Only when the group's mode is joint (§8.4): this item's slice of the owner's tax inputs for the latest finished year. */
   tax: ItemTax;
 }

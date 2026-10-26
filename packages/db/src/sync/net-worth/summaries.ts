@@ -185,6 +185,7 @@ export async function computeItemSummary(
   const [primary] = await tx.values<[string | null]>(
     sql`SELECT last4 FROM cards WHERE account_id = ${accountId} AND archived_at IS NULL AND last4 IS NOT NULL ORDER BY is_primary DESC, created_at LIMIT 1`,
   );
+  const [jointRow] = await tx.values<[number]>(sql`SELECT 1 FROM nw_joint_accounts WHERE account_id = ${accountId}`);
   return {
     owner,
     kind,
@@ -203,6 +204,7 @@ export async function computeItemSummary(
     transfers: split.transfers,
     monthEnds,
     tax: taxGroup ? await itemTaxOf(tx, ws, accountId, taxGroup, workspaceBookId, today, taxSource) : null,
+    ...(jointRow ? { joint: true as const } : {}),
   };
 }
 
@@ -379,7 +381,11 @@ export async function receivedItems(database: Database, groupBookId: string): Pr
     try {
       const summary = JSON.parse(json) as ItemSummary | null;
       // The owner is the row's, which the writer rule vouches for; never what the summary's own text claims.
-      if (summary && typeof summary === 'object') out.push({ ...summary, ...transfersOf(summary), owner, itemId });
+      if (summary && typeof summary === 'object') {
+        const { joint, ...rest } = summary;
+        // Only a literal `true` makes an item joint; anything else a peer sends reads as off.
+        out.push({ ...rest, ...transfersOf(summary), ...(joint === true ? { joint: true as const } : {}), owner, itemId });
+      }
     } catch {
       // A summary that does not parse is shown as nothing, not as a wrong number.
     }

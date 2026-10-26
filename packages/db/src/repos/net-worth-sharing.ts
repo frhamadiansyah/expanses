@@ -190,6 +190,39 @@ async function writeSetting(db: Db, accountId: string, setting: ShareSetting): P
   await db.run(sql`
     INSERT INTO nw_share_settings (account_id, setting) VALUES (${accountId}, ${setting})
     ON CONFLICT (account_id) DO UPDATE SET setting = excluded.setting`);
+  // Not shared any more is not joint any more: the switch goes with the share, and a share made again starts it off.
+  if (setting !== 'total' && (await tableExists(db, 'nw_joint_accounts'))) await db.run(sql`DELETE FROM nw_joint_accounts WHERE account_id = ${accountId}`);
+}
+
+/** Whether the household may record into this account too (the "Joint account" switch). Only ever true while it is shared as `total`. */
+export async function getJointAccount(database: Database, accountId: string): Promise<boolean> {
+  return jointAccountTx(database.db, accountId);
+}
+
+/** `getJointAccount` inside a transaction. */
+export async function jointAccountTx(db: Db, accountId: string): Promise<boolean> {
+  if (!(await tableExists(db, 'nw_joint_accounts'))) return false;
+  const [row] = await db.values<[number]>(sql`
+    SELECT 1 FROM nw_joint_accounts j JOIN nw_share_settings s ON s.account_id = j.account_id AND s.setting = 'total' WHERE j.account_id = ${accountId}`);
+  return row !== undefined;
+}
+
+/**
+ * Turns the "Joint account" switch of a shared account on or off. Refused for an account that is not shared as `total`:
+ * the partner can neither see nor pay with an account that is not shared. The account is re-sent so the partner's phone
+ * learns the new state with the next sync.
+ */
+export async function setJointAccount(database: Database, accountId: string, on: boolean): Promise<void> {
+  await database.transaction(async (tx) => {
+    if (on) {
+      const [row] = await tx.values<[string]>(sql`SELECT setting FROM nw_share_settings WHERE account_id = ${accountId}`);
+      if (row?.[0] !== 'total') throw new NetWorthError('item-not-shared', 'Share the account with the household before making it joint.');
+      await tx.run(sql`INSERT INTO nw_joint_accounts (account_id) VALUES (${accountId}) ON CONFLICT (account_id) DO NOTHING`);
+    } else {
+      await tx.run(sql`DELETE FROM nw_joint_accounts WHERE account_id = ${accountId}`);
+    }
+    markAccountDirtyTx(tx, accountId);
+  });
 }
 
 /**
