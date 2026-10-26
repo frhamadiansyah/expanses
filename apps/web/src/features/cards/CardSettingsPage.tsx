@@ -1,8 +1,8 @@
 import { parseMajor } from '@expanses/core';
-import { addCard, archiveCard, createProgram, listProgrammes, renameAccount, type RewardProgramRow, saveCardIdentity, saveCardTerms, setAccountForSpending, setEarnsInto, setProgramCrediting, spendingSwitchOn } from '@expanses/db';
+import { type CardRow, createProgram, listProgrammes, renameAccount, type RewardProgramRow, saveCardIdentity, saveCardTerms, setAccountForSpending, setEarnsInto, setProgramCrediting, spendingSwitchOn } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
-import { Check, Trash2 } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { type KeyboardEvent, useState } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
@@ -12,6 +12,7 @@ import { InsetGroup, InsetRow, PickerRow, ReadOnlyRow, SelectRow, SwitchRow, Tex
 import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
 import { TrackPaymentsSetting } from '../statement-check/TrackPaymentsSetting';
 import { CardFace } from './CardFace';
+import { PlasticSheet } from './PlasticSheet';
 import { issuerChoices, useWorkspaceIssuers } from './card-queries';
 import { issuerMatches } from './issuer-match';
 import { SuggestRow } from '../ownables/CashAccountForm';
@@ -163,8 +164,7 @@ export function CardSettingsPage() {
   const [limit, setLimit] = useState('');
   const [fee, setFee] = useState('');
   const [feeOn, setFeeOn] = useState('');
-  const [newLast4, setNewLast4] = useState('');
-  const [newHolder, setNewHolder] = useState('');
+  const [plasticSheet, setPlasticSheet] = useState<CardRow | 'new' | null>(null);
   const [loadedName, setLoadedName] = useState<string | null>(null);
   const [loadedTerms, setLoadedTerms] = useState<string | null>(null);
   // Whether this visit began with setup unfinished: its last step's rules stay open once it is done, to add more.
@@ -330,39 +330,23 @@ export function CardSettingsPage() {
       >
         {[...plastic].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary)).map((piece) => (
           // The card's own face beside whose it is: a row with its art, and the way to take the card off.
-          <Line key={piece.id} testId="card-on-account" pad="8px 4px 8px 13px" className="flex items-center gap-[12px]">
-            <CardFace issuer={issuer} name={card.name} last4={piece.last4} holderName={piece.holderName} network={cp.catalog.entry?.network} look={cp.catalog.entry?.look} size="sm" />
-            <span className="min-w-0 flex-1">
-              <span className={cx('block truncate', TITLE)}>{piece.holderName ?? (piece.isPrimary ? 'Primary' : 'Supplementary')}</span>
-              <span className={cx('tabular block truncate', SUBTITLE)}>
-                ···· {piece.last4 ?? '····'}
-                {piece.isPrimary ? ' · primary' : ''}
+          <Line key={piece.id} testId="card-on-account" pad="0">
+            <button type="button" aria-label={`Edit card ending ${piece.last4 ?? 'unknown'}`} onClick={() => setPlasticSheet(piece)} className="flex w-full items-center gap-[12px] py-[8px] pl-[13px] pr-[13px] text-left" style={{ minHeight: 44 }}>
+              <CardFace issuer={issuer} name={card.name} last4={piece.last4} holderName={piece.holderName} network={cp.catalog.entry?.network} look={cp.catalog.entry?.look} size="sm" />
+              <span className="min-w-0 flex-1">
+                <span className={cx('block truncate', TITLE)}>{piece.holderName ?? (piece.isPrimary ? 'Primary' : 'Supplementary')}</span>
+                <span className={cx('tabular block truncate', SUBTITLE)}>
+                  ···· {piece.last4 ?? '····'}
+                  {piece.isPrimary ? ' · primary' : ''}
+                </span>
               </span>
-            </span>
-            <GlyphButton label={`Remove card ending ${piece.last4 ?? 'unknown'}`} glyph={<Trash2 size={17} aria-hidden />} destructive onClick={() => void run(() => archiveCard(database, ws, piece.id))} />
+            </button>
           </Line>
         ))}
         {plastic.length === 0 && <TextLine tone="ink-3">No card recorded on this account yet.</TextLine>}
+        <InsetRow title="Add a card" action testId="add-card" onClick={() => setPlasticSheet('new')} />
       </InsetGroup>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void run(async () => {
-            await addCard(database, ws, { accountId: card.id, last4: newLast4, holderName: newHolder, isPrimary: plastic.length === 0 });
-            setNewLast4('');
-            setNewHolder('');
-          });
-        }}
-      >
-        <ColumnGroup
-          header="Add a card"
-          columns={[
-            [<TextRow label="Last 4 digits" value={newLast4} onChange={(e) => setNewLast4(e.target.value)} inputMode="numeric" maxLength={4} placeholder="Last digits" />],
-            [<TextRow label="Whose card" hint="Optional. The account holder, or whoever holds the supplementary card." value={newHolder} onChange={(e) => setNewHolder(e.target.value)} placeholder="Spouse" />],
-          ]}
-          submit={<SubmitRow label="Add card" />}
-        />
-      </form>
+      {plasticSheet && <PlasticSheet accountId={card.id} piece={plasticSheet === 'new' ? undefined : plasticSheet} first={plastic.length === 0} run={run} onClose={() => setPlasticSheet(null)} />}
 
       <PointsGroup page={page} run={run} />
 

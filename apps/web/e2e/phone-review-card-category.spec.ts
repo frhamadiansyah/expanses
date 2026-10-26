@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openCard } from './accounts';
+import { addPlastic, openCard } from './accounts';
 import { addTransaction } from './add-transaction';
 import { cardPage } from './card-section';
 import { inject, notice } from './capture';
@@ -16,9 +16,7 @@ test('review opens on the card whose digits the message names, with the category
   await page.goto('/wallet');
   await page.getByRole('link', { name: /^Mandiri Prima Platinum(,|$)/ }).click();
   await cardPage(page, 'Settings');
-  await page.getByLabel('Last 4 digits').fill('9025');
-  await page.getByLabel('Whose card').fill('Partner');
-  await page.getByRole('button', { name: 'Add card' }).click();
+  await addPlastic(page, '9025', 'Partner');
   await expect(page.getByTestId('card-on-account')).toHaveCount(2);
 
   // A shop recorded before under a name sharing only its first word: the Add form guesses its category from that.
