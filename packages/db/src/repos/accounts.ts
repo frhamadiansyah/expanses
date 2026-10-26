@@ -422,7 +422,7 @@ export async function createAccountTx(tx: Db, ws: WorkspaceContext, input: Creat
  * Whether a money account is for spending (0086): on, it is offered under "Paid with" and every other pay-from list,
  * counted in Wallet's balance and a card in Wallet; off, it is kept as savings — still on Assets, still a transfer's
  * From or To, but asked for nowhere money is paid out of. Only a spendable kind of money has the switch: a deposit, a
- * broker's cash, a card or a thing owned cannot be paid from whatever it says.
+ * broker's cash or a thing owned cannot be paid from whatever it says. A credit card has it too (off: out of Wallet and every pay-from list).
  *
  * An account and each of its pockets have a switch of their own, read together by `spendingSwitchOn`: the account's
  * off keeps all its pockets out, and its on leaves each pocket to its own. So switching the account off writes
@@ -435,7 +435,7 @@ export async function setAccountForSpending(database: Database, ws: WorkspaceCon
   await database.transaction(async (tx) => {
     const [account] = await tx.select().from(accounts).where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
     if (!account) throw new AccountError('Account not found');
-    if (account.kind !== 'asset' || !SPENDABLE_SUBTYPES.includes(account.subtype)) throw new AccountError(`${account.name} is not money that can be spent from`);
+    if (!(account.kind === 'asset' && SPENDABLE_SUBTYPES.includes(account.subtype)) && account.subtype !== 'credit_card') throw new AccountError(`${account.name} is not money that can be spent from`);
     if (!(await spendingColumnExists(tx))) throw new AccountError('This database cannot keep that yet');
     await writeForSpendingTx(tx, id, on);
     if (on && account.parentId === null) {

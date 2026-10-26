@@ -157,8 +157,13 @@ describe('an account switched off "For spending"', () => {
     expect(canPayWith(off('savings'))).toBe(false);
     expect(canPayWith(off('bank'))).toBe(false);
     expect(canPayWith(off('savings'), 'savings')).toBe(true);
-    // A card is charged whatever its row says: the switch is a money account's.
-    expect(canPayWith(off('credit_card', 'liability'))).toBe(true);
+    // A credit card has the switch too: off, it is not charged from a new choice, but kept where a purchase names it.
+    expect(canPayWith(off('credit_card', 'liability'))).toBe(false);
+    expect(canPayWith(off('credit_card', 'liability'), 'credit_card')).toBe(true);
+    expect(canPayWith({ ...account('credit_card', 'liability'), forSpending: 1 })).toBe(true);
+    expect(canPayWith(account('credit_card', 'liability'))).toBe(true);
+    expect(canMoveMoneyIn(off('credit_card', 'liability'), account('ewallet'))).toBe(false);
+    expect(canMoveMoneyIn(account('credit_card', 'liability'), account('ewallet'))).toBe(true);
   });
 
   it('is still a transfer’s From or To, and still receives income', () => {

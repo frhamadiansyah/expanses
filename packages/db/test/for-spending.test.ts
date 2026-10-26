@@ -113,9 +113,21 @@ describe('for spending', () => {
     expect((await byId(plain.id)).forSpending).toBe(1);
   });
 
-  it('is only a question about money that can be spent from', async () => {
+  it('is on for a credit card until switched off, and the account list says so', async () => {
     const card = await createAccount(database, ws, { name: 'Blue Card', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
-    await expect(setAccountForSpending(database, ws, card.id, false)).rejects.toThrow('not money that can be spent from');
+    expect((await byId(card.id)).forSpending).toBe(1);
+    await setAccountForSpending(database, ws, card.id, false);
+    const off = await byId(card.id);
+    expect(off.forSpending).toBe(0);
+    expect(off.archivedAt).toBeNull();
+    expect(spendingSwitchOn(off)).toBe(false);
+    await setAccountForSpending(database, ws, card.id, true);
+    expect((await byId(card.id)).forSpending).toBe(1);
+    const loan = await createAccount(database, ws, { name: 'KPR', kind: 'liability', subtype: 'loan', currency: 'IDR' });
+    await expect(setAccountForSpending(database, ws, loan.id, false)).rejects.toThrow('not money that can be spent from');
+  });
+
+  it('is only a question about money that can be spent from', async () => {
     const deposit = await openCashAccount(database, ws, { item: 'time_deposit', name: 'Locked', currency: 'IDR', openingBalanceMinor: 1_000_000, openedOn: '2026-09-01', maturesOn: '2026-12-01' });
     await expect(setAccountForSpending(database, ws, deposit.id, false)).rejects.toThrow('not money that can be spent from');
     const gold = await createAccount(database, ws, { name: 'Gold bars', kind: 'asset', subtype: 'investment', currency: 'IDR' });

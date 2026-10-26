@@ -146,9 +146,9 @@ export function canTransferBetween(from: Pick<AccountRow, 'id' | 'subtype'>, to:
  * only, a credit card: GoPay, OVO and the rest take a card, and topping one up from it is the one time a card's money
  * goes anywhere but a purchase. That is allowed here and nowhere else — a transfer's From and To still never name a card.
  */
-export function canMoveMoneyIn(from: Pick<AccountRow, 'id' | 'kind' | 'subtype'>, into: Pick<AccountRow, 'id' | 'subtype'>): boolean {
+export function canMoveMoneyIn(from: Pick<AccountRow, 'id' | 'kind' | 'subtype'> & SpendingSwitch, into: Pick<AccountRow, 'id' | 'subtype'>): boolean {
   if (from.id === into.id) return false;
-  if (from.kind === 'liability') return from.subtype === 'credit_card' && (into.subtype === 'ewallet' || into.subtype === 'emoney');
+  if (from.kind === 'liability') return from.subtype === 'credit_card' && spendingSwitchOn(from) && (into.subtype === 'ewallet' || into.subtype === 'emoney');
   return from.kind === 'asset' && SPENDABLE_SUBTYPES.includes(from.subtype) && canTransferBetween(from, into);
 }
 
@@ -174,7 +174,7 @@ export function canPayWith(account: Pick<AccountRow, 'id' | 'kind' | 'subtype'> 
   // An asset has to be money you can spend from, and kept for spending; of the liabilities, only a card can be
   // charged. A loan and a person's account cannot pay for anything — an instalment is paid, and a person is settled,
   // through their own doors — and a transfer is asked of neither.
-  return account.kind === 'asset' ? keptForSpending(account) : account.subtype === 'credit_card';
+  return account.kind === 'asset' ? keptForSpending(account) : account.subtype === 'credit_card' && spendingSwitchOn(account);
 }
 
 /**

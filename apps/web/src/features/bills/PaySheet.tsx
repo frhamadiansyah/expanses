@@ -35,7 +35,7 @@ export function PaySheet({
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
-  const wallets = moneyHolders(accounts).filter((account) => canPayWith(account));
+  const wallets = moneyHolders(accounts).filter((account) => canPayWith(account, bill.moneyAccountId));
   const currencyOf = (id: string) => accounts.find((account) => account.id === id)?.currency ?? ws.baseCurrency;
 
   const [amount, setAmount] = useState(() => (bill.amountMinor === null ? '' : minorToMajorString(bill.amountMinor, billCurrencyOf(bill, accounts, ws.baseCurrency))));
