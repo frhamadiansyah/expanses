@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
+import { sql } from 'drizzle-orm';
 import { accounts, entries, transactions } from '../schema';
 import { goalEarmarks } from '../schema-goals';
 import { SYSTEM_ACCOUNTS } from '../seed';
@@ -47,5 +48,14 @@ export async function deleteUnusedAccount(database: Database, ws: WorkspaceConte
 
     if (posted.length === 1) await voidTransactionTx(tx, ws, posted[0]!.id);
     await archiveAccountTx(tx, ws, id);
+    // What was only ever opened leaves nothing behind that a list of gone assets could find it by: its profile, the day it
+    // was acquired, and its estimates go with it. (Tables an older database does not have yet are not there to clear.)
+    for (const table of ['asset_profiles', 'asset_acquired', 'valuations']) {
+      try {
+        await tx.run(sql`DELETE FROM ${sql.raw(table)} WHERE account_id = ${id} AND workspace_id = ${ws.workspaceId}`);
+      } catch {
+        // No such table on this schema version.
+      }
+    }
   });
 }

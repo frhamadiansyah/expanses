@@ -2,7 +2,7 @@ import { isoDate, presetFor, uuidv7 } from '@expanses/core';
 import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
-import { accounts, transactions } from '../schema';
+import { accounts, entries, transactions } from '../schema';
 import { assetAcquired, assetProfiles, assetSales, valuations } from '../schema-assets';
 import { goals } from '../schema-goals';
 import { SPENDABLE_SUBTYPES, systemAccountId, unarchiveAccountTx } from './accounts';
@@ -237,13 +237,16 @@ export async function goneAssets(database: Database, ws: WorkspaceContext): Prom
         .where(and(eq(valuations.workspaceId, ws.workspaceId), inArray(valuations.accountId, archivedIds)))
         .orderBy(desc(valuations.asOf), desc(valuations.createdAt))
     : [];
+  // An asset deleted as opened by mistake has its profile and estimates deleted with it (`deleteUnusedAccount`), so nothing is
+  // left to list: it is gone, not archived. One archived on purpose keeps its profile, and usually its estimates.
+  const traced = new Set<string>([...codeOf.keys(), ...estimates.map((estimate) => estimate.accountId)]);
   const lastEstimate = new Map<string, number>();
   // Newest first, so the first non-NJOP estimate seen for an account is its last: NJOP is the tax report's, never the value.
   for (const estimate of estimates) if (estimate.basis !== 'njop' && !lastEstimate.has(estimate.accountId)) lastEstimate.set(estimate.accountId, estimate.valueMinor);
   const out: GoneAsset[] = [];
   for (const row of rows) {
     const sale = saleOf.get(row.id);
-    if (!sale && row.archivedAt === null) continue;
+    if (!sale && (row.archivedAt === null || !traced.has(row.id))) continue;
     out.push({
       accountId: row.id,
       name: row.name,

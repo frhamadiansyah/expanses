@@ -238,6 +238,14 @@ describe('goal', () => {
 });
 
 describe('sold and archived assets', () => {
+  it('does not list an asset that was deleted as opened by mistake', async () => {
+    const { deleteUnusedAccount } = await import('../src/index');
+    const oops = await createAccount(database, ws, { name: 'Opened by mistake', kind: 'asset', subtype: 'vehicle', currency: 'IDR', openingBalanceMinor: 5_000_000, openedOn: '2025-01-01' });
+    await saveAssetProfile(database, ws, { accountId: oops.id, assetKind: 'vehicle' });
+    await deleteUnusedAccount(database, ws, oops.id);
+    expect((await goneAssets(database, ws)).map((row) => row.name)).not.toContain('Opened by mistake');
+  });
+
   it('lists a sold asset at its price and an archived one at its last estimate; neither counts', async () => {
     const vario = await createAccount(database, ws, { name: 'Honda Vario', kind: 'asset', subtype: 'vehicle', currency: 'IDR', openingBalanceMinor: 18_000_000, openedOn: '2019-01-01' });
     await saveAssetProfile(database, ws, { accountId: vario.id, assetKind: 'vehicle' });

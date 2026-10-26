@@ -5,7 +5,7 @@ import { useApp } from '../../app/context';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, Panel, PushedTitle, ReadOnlyRow, SCREEN } from '../../ui/native';
+import { DestructiveRow, InsetGroup, Panel, PushedTitle, ReadOnlyRow, SCREEN } from '../../ui/native';
 import { useOpenings } from '../accounts/queries';
 import { dayLabel } from './asset-page';
 import { heldFor, signedGain } from './sell-model';
@@ -96,13 +96,16 @@ export function GoneAssetPage({ accountId, pending, error: loadError }: { accoun
           {acquiredOn && <ReadOnlyRow label="Held for" value={heldFor(acquiredOn, sold.soldOn)} />}
         </InsetGroup>
         <InsetGroup>
-          <InsetRow
-            title="Undo sale"
-            testId="undo-sale"
-            onClick={() =>
-              act(`Undo the sale of ${name}? The money it brought in is taken out again and the asset is back on the list as it was.`, () => undoSale(database, ws, accountId))
-            }
-          />
+          {/* A centred ink row, as every other action row on a page is. */}
+          <div data-testid="undo-sale">
+            <DestructiveRow
+              calm
+              label="Undo sale"
+              onClick={() =>
+                act(`Undo the sale of ${name}? The money it brought in is taken out again and the asset is back on the list as it was.`, () => undoSale(database, ws, accountId))
+              }
+            />
+          </div>
         </InsetGroup>
         <ErrorBox error={error} />
       </div>
@@ -124,7 +127,9 @@ export function GoneAssetPage({ accountId, pending, error: loadError }: { accoun
         {acquiredOn && <ReadOnlyRow label="Acquired" value={dayLabel(acquiredOn)} />}
       </InsetGroup>
       <InsetGroup>
-        <InsetRow title="Restore" testId="restore-asset" onClick={() => act(null, () => restoreAsset(database, ws, accountId))} />
+        <div data-testid="restore-asset">
+          <DestructiveRow calm label="Restore" onClick={() => act(null, () => restoreAsset(database, ws, accountId))} />
+        </div>
       </InsetGroup>
       <ErrorBox error={error} />
     </div>
