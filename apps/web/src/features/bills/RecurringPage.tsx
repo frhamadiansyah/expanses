@@ -75,7 +75,6 @@ function StillToPay({ summary, currency }: { summary: BillSummary; currency: str
           </ul>
         </>
       )}
-      {summary.variesText && <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{summary.variesText}</p>}
     </Panel>
   );
 }

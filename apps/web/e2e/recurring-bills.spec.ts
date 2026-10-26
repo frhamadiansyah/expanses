@@ -188,7 +188,7 @@ test('a bill that varies asks what it came to', async ({ page }) => {
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Electricity' });
   await expect(row(page, 'Electricity')).toContainText('Amount varies');
-  await expect(page.getByTestId('bills-summary')).toContainText('1 amount varies');
+  await expect(page.getByTestId('bills-summary')).not.toContainText('vary');
 
   await rowAction(page, 'Electricity', /^Pay/);
   const sheet = page.getByRole('dialog', { name: 'Pay Electricity' });
