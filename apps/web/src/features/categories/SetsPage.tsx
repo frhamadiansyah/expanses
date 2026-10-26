@@ -1,10 +1,10 @@
-import { Plus } from 'lucide-react';
+import { MoreHorizontal, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { useAccounts } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, PushedTitle, SCREEN } from '../../ui/native';
+import { CornerButton, CornerMenu, InsetGroup, InsetRow, PushedTitle, SCREEN, type CornerAction, type GroupChild } from '../../ui/native';
 import { ALERT_ROW, NoticeAlert } from '../../ui/native/NoticeAlert';
 import { categoryMark } from './CategoryIcon';
 import { useBooks } from '../workspaces/queries';
@@ -13,7 +13,8 @@ import { useCategoryActions } from './use-category-actions';
 
 /**
  * The sets: categories an event draws on, kept out of the monthly tree. Each set is a group under its own name, its
- * categories rows that open their own page, and the set's own changes the last rows of the group.
+ * categories rows that open their own page. The box's first row names the set, with ＋ to add a category and ••• for
+ * the set's own changes.
  */
 export function SetsPage() {
   const accounts = useAccounts().data ?? [];
@@ -42,9 +43,6 @@ export function SetsPage() {
           {note}
         </p>
       )}
-      <p className="px-[4px] pb-[14px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)] md:max-w-2xl">
-        Categories an event draws on, kept out of the monthly list. A set is named once and used by any number of events.
-      </p>
 
       <div data-testid="category-sets">
         {sets.isSuccess && sets.data.length === 0 && <Empty>No sets yet.</Empty>}
@@ -52,7 +50,21 @@ export function SetsPage() {
           const inSet = accounts.filter((account) => membership[account.id] === set.id && account.archivedAt === null);
           return (
             <div key={set.id} data-testid={`set-${set.name}`}>
-              <InsetGroup header={set.name}>
+              <InsetGroup>
+                <SetHeader
+                  name={set.name}
+                  onAdd={() => actions.addToSet(set.id, set.name)}
+                  menu={[
+                    { key: 'rename', label: 'Rename', name: `Rename ${set.name}`, run: () => actions.renameSet(set.id, set.name) },
+                    ...(others.length > 0
+                      ? [
+                          { key: 'copy', label: 'Copy to another workspace', name: `Copy ${set.name} to another workspace`, run: () => setCopying({ id: set.id, name: set.name }) },
+                          { key: 'move', label: 'Move to another workspace', name: `Move ${set.name} to another workspace`, run: () => setMoving({ id: set.id, name: set.name }) },
+                        ]
+                      : []),
+                    { key: 'remove', label: 'Remove set', name: `Remove ${set.name}`, destructive: true, run: () => actions.removeSet(set.id, set.name) },
+                  ]}
+                />
                 {inSet.map((category) => {
                   const { Glyph, colour } = categoryMark(category.id, accounts);
                   return (
@@ -66,30 +78,6 @@ export function SetsPage() {
                     />
                   );
                 })}
-                <InsetRow
-                  title="Add category"
-                  label={`Add a category to ${set.name}`}
-                  action
-                  onClick={() => actions.addToSet(set.id, set.name)}
-                />
-                <InsetRow title="Rename set" label={`Rename ${set.name}`} action onClick={() => actions.renameSet(set.id, set.name)} />
-                {others.length > 0 && (
-                  <InsetRow
-                    title="Copy to another workspace"
-                    label={`Copy ${set.name} to another workspace`}
-                    action
-                    onClick={() => setCopying({ id: set.id, name: set.name })}
-                  />
-                )}
-                {others.length > 0 && (
-                  <InsetRow
-                    title="Move to another workspace"
-                    label={`Move ${set.name} to another workspace`}
-                    action
-                    onClick={() => setMoving({ id: set.id, name: set.name })}
-                  />
-                )}
-                <InsetRow title="Remove set" label={`Remove ${set.name}`} destructive onClick={() => actions.removeSet(set.id, set.name)} />
               </InsetGroup>
             </div>
           );
@@ -160,6 +148,20 @@ export function SetsPage() {
           </div>
         </Sheet>
       )}
+    </div>
+  );
+}
+
+/** A set's first row: its name, then the round ＋ and ••• at the right. Placed by `InsetGroup` like any row. */
+function SetHeader({ name, onAdd, menu, position }: GroupChild & { name: string; onAdd: () => void; menu: CornerAction[] }) {
+  return (
+    <div className="relative flex min-h-[52px] items-center gap-[8px] px-[16px]">
+      {position?.separator && <span aria-hidden className="pointer-events-none absolute top-0 right-[16px] left-[16px] h-[0.5px] bg-[var(--ph-hair)]" />}
+      <h2 className="min-w-0 flex-1 truncate text-[17px] leading-[22px] font-semibold text-[var(--ph-ink)]">{name}</h2>
+      <CornerButton label={`Add a category to ${name}`} onClick={onAdd} size={30} grey>
+        <Plus size={16} aria-hidden />
+      </CornerButton>
+      <CornerMenu label={`More for ${name}`} glyph={<MoreHorizontal size={16} aria-hidden />} actions={menu} size={30} grey float />
     </div>
   );
 }

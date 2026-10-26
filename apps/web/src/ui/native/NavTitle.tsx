@@ -41,7 +41,13 @@ export function CornerButton({
   expanded,
   className,
   testId,
+  size = 44,
+  grey = false,
 }: {
+  /** The round's width, 44 by default; a row inside a box takes a 30 one. */
+  size?: number;
+  /** Drawn in the grey fill rather than the corner white, for a button standing on a white box. */
+  grey?: boolean;
   label: string;
   onClick?: () => void;
   to?: LinkProps['to'];
@@ -60,19 +66,19 @@ export function CornerButton({
 }) {
   const shell = cx(
     'ph-focus flex shrink-0 items-center justify-center rounded-full',
-    pressed ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : destructive ? 'bg-[var(--ph-corner)] text-[var(--ph-alarm)]' : 'bg-[var(--ph-corner)] text-[var(--ph-ink)]',
+    pressed ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : destructive ? 'bg-[var(--ph-corner)] text-[var(--ph-alarm)]' : grey ? 'bg-[var(--ph-fill)] text-[var(--ph-ink)]' : 'bg-[var(--ph-corner)] text-[var(--ph-ink)]',
     disabled && 'opacity-40',
     className,
   );
   if (to && !disabled) {
     return (
-      <Link to={to} params={params} search={search} aria-label={label} data-testid={testId} className={shell} style={{ width: 44, height: 44 }}>
+      <Link to={to} params={params} search={search} aria-label={label} data-testid={testId} className={shell} style={{ width: size, height: size }}>
         {children}
       </Link>
     );
   }
   return (
-    <button type="button" onClick={onClick} disabled={disabled} aria-pressed={pressed} aria-expanded={expanded} aria-label={label} data-testid={testId} className={shell} style={{ width: 44, height: 44 }}>
+    <button type="button" onClick={onClick} disabled={disabled} aria-pressed={pressed} aria-expanded={expanded} aria-label={label} data-testid={testId} className={shell} style={{ width: size, height: size }}>
       {children}
     </button>
   );
@@ -115,24 +121,41 @@ function MenuLine({ action }: { action: CornerAction }) {
  * A corner button that opens a list of actions. The `…` is one; a + that offers two things to add is another.
  * One drawing for both, so a menu in the corner never looks two ways.
  */
-export function CornerMenu({ label, glyph, actions }: { label: string; glyph: ReactNode; actions: CornerAction[] }) {
+export function CornerMenu({
+  label,
+  glyph,
+  actions,
+  size,
+  grey,
+  float = false,
+}: {
+  label: string;
+  glyph: ReactNode;
+  actions: CornerAction[];
+  size?: number;
+  grey?: boolean;
+  /** Drawn on the body under the button, for a button inside a box that clips what hangs from it. */
+  float?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   // Where the menu hangs: under the button's own corner, read as the menu opens.
   // Set only for a button in the pinned bar (see below); everywhere else the menu hangs from the button itself.
-  const [at, setAt] = useState<{ top: number; right: number } | null>(null);
+  const [at, setAt] = useState<{ top?: number; bottom?: number; right: number } | null>(null);
   const anchor = useRef<HTMLSpanElement>(null);
   useEscape(() => setOpen(false), open);
   const toggle = () => {
     if (!open) {
       const node = anchor.current;
-      const rect = node?.closest('.ph-edge-glass') ? node.getBoundingClientRect() : null;
-      setAt(rect ? { top: rect.bottom + 6, right: Math.max(16, window.innerWidth - rect.right) } : null);
+      const rect = node && (float || node.closest('.ph-edge-glass')) ? node.getBoundingClientRect() : null;
+      // Hung above the button instead when the lines would run off the bottom of the screen.
+      const high = rect && rect.bottom + 6 + actions.length * 48 + 8 > window.innerHeight;
+      setAt(rect ? { ...(high ? { bottom: window.innerHeight - rect.top + 6 } : { top: rect.bottom + 6 }), right: Math.max(16, window.innerWidth - rect.right) } : null);
     }
     setOpen((was) => !was);
   };
   return (
     <span className="relative" ref={anchor}>
-      <CornerButton label={label} onClick={toggle} expanded={open}>
+      <CornerButton label={label} onClick={toggle} expanded={open} size={size} grey={grey}>
         {glyph}
       </CornerButton>
       {/*
@@ -147,7 +170,7 @@ export function CornerMenu({ label, glyph, actions }: { label: string; glyph: Re
           <span
             role="menu"
             aria-label={label}
-            style={at ? { top: at.top, right: at.right } : undefined}
+            style={at ? { top: at.top, bottom: at.bottom, right: at.right } : undefined}
             className={cx(
               'block w-max max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl bg-[var(--ph-surface)] shadow-xl ring-1 ring-[var(--ph-hair)]',
               at ? 'fixed z-[41]' : 'absolute right-0 z-20 mt-[6px]',
@@ -163,6 +186,7 @@ export function CornerMenu({ label, glyph, actions }: { label: string; glyph: Re
                 <Link
                   key={action.key}
                   role="menuitem"
+                  aria-label={action.name}
                   to={action.to}
                   params={action.params}
                   search={action.search}
@@ -178,6 +202,7 @@ export function CornerMenu({ label, glyph, actions }: { label: string; glyph: Re
                   // A choice between several is a radio line, and says which one is in force.
                   role={action.checked === undefined ? 'menuitem' : 'menuitemradio'}
                   aria-checked={action.checked}
+                  aria-label={action.name}
                   disabled={action.disabled}
                   aria-disabled={action.disabled}
                   onClick={() => {
