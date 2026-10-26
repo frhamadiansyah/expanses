@@ -245,7 +245,7 @@ export function ReviewPage() {
     { label: 'Discard', name: `Discard ${draft.description}`, icon: Trash2, tone: 'destructive', onPress: () => void discard(draft, true) },
   ];
   /** What the ground under a right drag shows: letting go past the threshold records the draft. */
-  const recordHint: SwipeHint = { label: 'Record', icon: Check };
+  const recordHint: SwipeHint = { label: 'Record', icon: Check, tone: 'positive' };
 
   const list = drafts.data ?? [];
   const editingDraft = list.find((draft) => draft.id === editing) ?? null;

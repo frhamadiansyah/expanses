@@ -17,13 +17,14 @@ const EDGE = 8;
  */
 const CIRCLE = { height: 'min(34px, calc(100% - 16px))', minHeight: 24 } as const;
 
-/** Destructive is the alarm red, primary the ink, neutral the grey Mail gives More. */
-export type SwipeTone = 'destructive' | 'primary' | 'neutral';
+/** Destructive is the alarm red, primary the ink, neutral the grey Mail gives More, positive the green of money in. */
+export type SwipeTone = 'destructive' | 'primary' | 'neutral' | 'positive';
 
 const TONE: Record<SwipeTone, string> = {
   destructive: 'bg-[var(--ph-alarm)] text-white',
   primary: 'bg-[var(--ph-tint)] text-[var(--ph-surface)]',
   neutral: 'bg-[#8e8e93] text-white',
+  positive: 'bg-[var(--ph-up)] text-white',
 };
 
 /** One action behind a row's left edge: a filled circle with a white icon. */
