@@ -125,6 +125,7 @@ export async function recordTaggedTransfer(database: Database, ws: WorkspaceCont
       occurredOn: input.occurredOn,
       description: input.description,
       lines,
+      fileTransfer: true,
       ratesToBase: input.ratesToBase,
       excludedFromReport: input.excludedFromReport,
       eventId: input.eventId,

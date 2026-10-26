@@ -1050,6 +1050,7 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
         occurredOn: draft.occurredOn,
         description: draft.description || 'Transfer',
         lines: transferPostingLines(draft, account, accounts, amountMinor),
+        fileTransfer: true,
         originalCurrency: null,
         originalAmountMinor: null,
         mcc: null,

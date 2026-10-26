@@ -29,4 +29,16 @@ describe('a category’s copy in another workspace', () => {
     const split = { ...emptyForm('P'), splits: [{ categoryId: 'p-rest', amount: '1' }, { categoryId: 'p-taxi', amount: '2' }] };
     expect(draftIn(split, 'B', accounts, books)).toMatchObject({ draft: { splits: [{ categoryId: 'b-rest' }, { categoryId: 'b-taxi' }] }, missing: [] });
   });
+
+  it('swaps a transfer’s fee category and a card top-up’s Top-ups for their copies', () => {
+    const more = [...accounts, cat('p-fee', 'Fees', { systemKey: 'miscellaneous.fees_charges' }), cat('b-fee', 'Bank charges', { systemKey: 'miscellaneous.fees_charges' }), cat('p-top', 'Top-ups', { systemKey: 'miscellaneous.top_ups' })];
+    const moreBooks = { ...books, 'p-fee': 'P', 'b-fee': 'B', 'p-top': 'P' };
+    const transfer = { ...emptyForm('P'), mode: 'transfer' as const, feeCategoryId: 'p-fee', topUpCategoryId: 'p-top' };
+    const moved = draftIn(transfer, 'B', more, moreBooks);
+    expect(moved.draft.feeCategoryId).toBe('b-fee');
+    // No Top-ups there yet: not missing, the save makes it in that workspace.
+    expect(moved.missing).toEqual([]);
+    expect(moved.draft.topUpCategoryId).toBe('');
+    expect(draftIn({ ...transfer, feeCategoryId: '' }, 'B', more, moreBooks).draft.feeCategoryId).toBe('');
+  });
 });

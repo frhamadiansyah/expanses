@@ -173,7 +173,7 @@ function PayForm({ card, accounts, amountMinor, today, onDone }: { card: Account
       const minor = parseMajor(amount, currency);
       if (!(minor > 0)) throw new Error('Enter the amount paid');
       if (!fromId) throw new Error(`Add a ${currency} bank account to pay the card from`);
-      await postTransaction(database, ws, { occurredOn: paidOn, description: `${card.name} payment`, lines: transferLines({ fromAccountId: fromId, toAccountId: card.id, amountMinor: minor, currency }), setAside: setAside.choice });
+      await postTransaction(database, ws, { occurredOn: paidOn, description: `${card.name} payment`, lines: transferLines({ fromAccountId: fromId, toAccountId: card.id, amountMinor: minor, currency }), setAside: setAside.choice, fileTransfer: true });
       await invalidate();
       onDone();
     } catch (e) {

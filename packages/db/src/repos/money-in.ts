@@ -134,6 +134,7 @@ export async function moveMoneyIn(database: Database, ws: WorkspaceContext, inpu
           feeCategoryId: feeCategory ?? null,
         }),
         ratesToBase,
+        fileTransfer: true,
       });
       return { transferId, feeId: null };
     }
@@ -146,6 +147,7 @@ export async function moveMoneyIn(database: Database, ws: WorkspaceContext, inpu
         { accountId: from.id, amountMinor: -input.amountMinor, currency },
       ],
       ratesToBase,
+      fileTransfer: true,
     });
     if (input.feeMinor === 0) return { transferId, feeId: null };
     const feeCategory = (await categoryIdsByKeyTx(tx, ws))[MONEY_IN_FEE_KEY];

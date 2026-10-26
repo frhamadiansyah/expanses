@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard, walletCard } from './accounts';
 import { addItem, moneyIn, planFor, showPlanCard } from './event-plan';
-import { addTransaction } from './add-transaction';
+import { addTransaction, addTransfer, saveButton } from './add-transaction';
 import { cardPage } from './card-section';
 import { workspaceLine } from './workspace-page';
 
@@ -563,4 +563,47 @@ test('the card names its workspace; only the sidebar offers to change it', async
   // Nothing opens, so the category is still the one that was chosen rather than cleared by a switch.
   await expect(page.getByRole('dialog', { name: 'Workspaces' })).toHaveCount(0);
   await expect(editing.getByRole('button', { name: 'Category' })).toContainText('Restaurants');
+});
+
+/** Opens the sidebar switcher, picks a workspace and lands on its Cashflow. */
+async function switchWorkspace(page: Page, name: string) {
+  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Workspaces' }).getByTestId('workspace-choice').filter({ hasText: name }).click();
+  await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText(name);
+  await page.goto('/transactions');
+  await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText(name);
+}
+
+/**
+ * A transfer belongs to the workspace it was recorded in, like any other transaction: an ATM withdrawal for a holiday
+ * shows in the holiday's history and not in Business's. Moving it, from its Edit screen, files it in the other one — and
+ * a top-up's fee, spending beside it, goes along.
+ */
+test('a transfer shows only in the workspace it was recorded in, and moves to another from its Edit screen', async ({ page }) => {
+  await addBank(page);
+  await openAccount(page, { subtype: 'ewallet', name: 'GoPay', balance: '0' });
+  await page.goto('/transactions');
+  await newWorkspace(page, 'Business', 'Copy from Personal');
+  await page.goto('/transactions');
+  await addTransfer(page, { from: 'BCA Tahapan', to: 'GoPay', amount: '300000', note: 'Holiday top up' });
+  await expect(page.getByText('Holiday top up').first()).toBeVisible();
+
+  // Personal never saw it.
+  await switchWorkspace(page, 'Personal');
+  await expect(page.getByText('Holiday top up')).toHaveCount(0);
+
+  // Back in Business, move it to Personal from its Edit screen.
+  await switchWorkspace(page, 'Business');
+  await page.getByRole('link', { name: 'Receipt for Holiday top up' }).click();
+  await page.getByRole('button', { name: 'Edit this transaction' }).click();
+  const edit = page.getByRole('dialog', { name: 'Edit transaction' });
+  await edit.getByRole('button', { name: 'Workspace for this transaction' }).click();
+  await page.getByRole('dialog', { name: 'Move to workspace' }).getByRole('button', { name: 'Personal' }).click();
+  await saveButton(edit).click();
+  await expect(edit).toHaveCount(0);
+  await page.goto('/transactions');
+  await expect(page.getByText('Holiday top up')).toHaveCount(0);
+
+  await switchWorkspace(page, 'Personal');
+  await expect(page.getByText('Holiday top up').first()).toBeVisible();
 });
