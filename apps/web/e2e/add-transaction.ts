@@ -129,8 +129,7 @@ export async function addTransfer(
 /**
  * Records a purchase or a sale through Trade's Buy or Sell tab.
  *
- * `what` is the holding's own name — the picker lists it by that name alone, under the Buy or Sell tab that
- * selling, and the helper builds that label rather than asking every caller to remember the prefix. None of these
+ * `what` is the holding's own name, as the picker lists it under the Buy or Sell tab: nothing is prefixed. None of these
  * figures goes near the keypad: the trade rows are plain inputs at every width, because the amount row and its dock
  * belong to `draft.amount`, and a trade's cost lives in `draft.purchase`.
  */
