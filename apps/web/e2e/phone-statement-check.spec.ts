@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { expectWalletFigure, openAccount, openCard } from './accounts';
+import { addPlastic, expectWalletFigure, openAccount, openCard } from './accounts';
 import { addTransaction } from './add-transaction';
 import { cardPage } from './card-section';
 import { screenshotFiles, setStatementImages, statementLines, summaryLines, twoDateLines } from './statement';
@@ -248,9 +248,7 @@ test('the check page shows a single plastic read-only and offers a choice betwee
   await page.goto('/wallet');
   await page.getByRole('link', { name: /^Mandiri Bonvoy/ }).first().click();
   await cardPage(page, 'Settings');
-  await page.getByLabel('Last 4 digits').fill('8802');
-  await page.getByLabel('Whose card').fill('Spouse');
-  await page.getByRole('button', { name: 'Add card' }).click();
+  await addPlastic(page, '8802', 'Spouse');
   await expect(page.getByTestId('card-on-account')).toHaveCount(2);
   await open();
   const row = page.getByRole('button', { name: /Last 4 digits/ });

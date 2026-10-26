@@ -303,6 +303,29 @@ export async function openValueSheet(page: Page) {
   await page.getByRole('button', { name: /^Value/ }).click();
 }
 
+/** A plastic on a card's Settings, through the Add a card row's sheet. */
+export async function addPlastic(page: Page, last4: string, holder?: string) {
+  await page.getByRole('button', { name: 'Add a card', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Add a card' });
+  await sheet.getByRole('textbox', { name: 'Last 4 digits' }).fill(last4);
+  if (holder) await sheet.getByRole('textbox', { name: 'Whose card' }).fill(holder);
+  await sheet.getByRole('button', { name: 'Add card', exact: true }).click();
+  await expect(sheet).toHaveCount(0);
+}
+
+/** Opens a plastic's Edit card sheet from its row on a card's Settings. */
+export async function editPlastic(page: Page, last4: string) {
+  await page.getByRole('button', { name: `Edit card ending ${last4}` }).click();
+  return page.getByRole('dialog', { name: 'Edit card' });
+}
+
+/** Removes a plastic from its Edit card sheet. */
+export async function removePlastic(page: Page, last4: string) {
+  const sheet = await editPlastic(page, last4);
+  await sheet.getByRole('button', { name: 'Remove card', exact: true }).click();
+  await expect(sheet).toHaveCount(0);
+}
+
 /** Leaves Settings for the page it was opened from, once the sheet is closed. */
 export async function backFromSettings(page: Page) {
   await page.getByRole('main').getByRole('link', { name: 'Save', exact: true }).or(page.getByRole('button', { name: 'Save', exact: true })).first().click();

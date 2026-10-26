@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { accountNumberLast4s, addCard, archiveCard, cardsSchema, createAccount, createCardAccount, listCards, listIssuers, listWalletLast4, saveCardIdentity, setAccountNumberLast4, setWalletLast4 } from '../src/index';
+import { accountNumberLast4s, addCard, archiveCard, cardsSchema, createAccount, createCardAccount, listCards, listIssuers, listWalletLast4, saveCardIdentity, updateCard, setAccountNumberLast4, setWalletLast4 } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
 let current: TestDb | undefined;
@@ -228,5 +228,32 @@ describe('a bank account’s number, by its last four digits (0080)', () => {
     await expect(setAccountNumberLast4(database, ws, wallet.id, '4321')).rejects.toThrow(/bank or savings/);
     await setAccountNumberLast4(database, ws, bank.id, '  ');
     expect(await accountNumberLast4s(database, ws)).toEqual({});
+  });
+});
+
+describe('putting a plastic right', () => {
+  it('changes the digits and whose card, leaving primary alone', async () => {
+    const { database, ws, card } = await workspace();
+    const bonvoy = await card('Mandiri Marriott Bonvoy', 'Mandiri');
+    const id = await addCard(database, ws, { accountId: bonvoy.id, last4: '1467', holderName: 'Fandrian', isPrimary: true });
+    await updateCard(database, ws, { cardId: id, last4: '1468', holderName: '  Spouse ' });
+    const row = (await listCards(database, ws, bonvoy.id))[0]!;
+    expect([row.last4, row.holderName, row.isPrimary]).toEqual(['1468', 'Spouse', true]);
+    await updateCard(database, ws, { cardId: id, last4: '1468', holderName: '' });
+    expect((await listCards(database, ws, bonvoy.id))[0]!.holderName).toBeNull();
+  });
+
+  it('refuses non-digits and a duplicate at the same bank, but not its own digits', async () => {
+    const { database, ws, card } = await workspace();
+    const a = await card('Mandiri A', 'Mandiri');
+    const b = await card('Mandiri B', 'Mandiri');
+    const bca = await card('BCA', 'BCA');
+    const first = await addCard(database, ws, { accountId: a.id, last4: '1111', isPrimary: true });
+    const second = await addCard(database, ws, { accountId: b.id, last4: '2222', isPrimary: true });
+    await addCard(database, ws, { accountId: bca.id, last4: '3333', isPrimary: true });
+    await expect(updateCard(database, ws, { cardId: second, last4: '12a4' })).rejects.toMatchObject({ code: 'LAST4' });
+    await expect(updateCard(database, ws, { cardId: second, last4: '1111' })).rejects.toMatchObject({ code: 'DUPLICATE' });
+    await updateCard(database, ws, { cardId: first, last4: '1111', holderName: 'Me' });
+    await updateCard(database, ws, { cardId: second, last4: '3333' });
   });
 });
