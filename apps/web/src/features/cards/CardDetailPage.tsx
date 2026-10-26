@@ -6,6 +6,7 @@ import { InsetGroup, InsetRow, LargeTitle, useWalletSlot } from '../../ui/native
 import { InstallmentList } from '../loans/InstallmentList';
 import { creditMinor, owedMinor } from '../networth/debt-rows';
 import { useCardPage } from './card-page';
+import { OwnJointRows } from '../sharing/JointAccountRows';
 import { CardHero } from './CardHero';
 
 // The card page hangs off Wallet's layout, which has an id and no path, so its route is named through it.
@@ -91,6 +92,7 @@ export function CardDetailPage() {
         instalments={<InstallmentList cardAccountId={card.id} currency={currency} />}
         lines={[...(cp.current?.lines ?? []), ...(cp.previous?.lines ?? [])]}
       />
+      {!isDebit && <OwnJointRows accountId={card.id} />}
     </Ground>
   );
 }

@@ -364,7 +364,7 @@ describe('who changed a joint row, and deleted rows', () => {
     await settle(s.home);
     for (const d of [s.rina, s.andi]) expect((await fullRows(d, s))[0]).toMatchObject({ d: 'Groceries, final', edited: null });
     const note = await jointRowNote(s.rina.database, (await headOf(s.rina.database, byAndi))!);
-    expect(note).toEqual({ recordedBy: s.andi.memberId, editedBy: null });
+    expect(note).toMatchObject({ recordedBy: s.andi.memberId, editedBy: null });
   });
 
   it('a deleted row stays listed as deleted on both phones, with who deleted it, and either person restores it', async () => {

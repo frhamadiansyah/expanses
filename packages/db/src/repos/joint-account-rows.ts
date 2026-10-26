@@ -161,13 +161,14 @@ export async function restoreJointRow(database: Database, ws: WorkspaceContext, 
  * What the receipt says under a row of a joint account: who recorded it and who changed it. Null for a transaction that
  * is no row of a joint account.
  */
-export async function jointRowNote(database: Database, transactionId: string): Promise<{ recordedBy: string; editedBy: string | null } | null> {
+export async function jointRowNote(database: Database, transactionId: string): Promise<{ recordedBy: string; editedBy: string | null; me: string; names: Record<string, string> } | null> {
   if (!(await jointTablesExist(database.db))) return null;
   const [lineage] = await database.db.values<[string, string | null, string | null, string]>(sql`
     SELECT paid_by, paid_from_owner, paid_from_item, book_id FROM sync_lineage WHERE head_transaction_id = ${transactionId}`);
   if (!lineage?.[1] || !lineage[2] || !(await isJointItemTx(database.db, lineage[1], lineage[2]))) return null;
   const me = (await memberOfBookTx(database.db, lineage[3])) ?? '';
-  return { recordedBy: lineage[0], editedBy: await editorOfTx(database.db, transactionId, lineage[0], me) };
+  const names = Object.fromEntries(await database.db.values<[string, string]>(sql`SELECT member_id, name FROM book_members WHERE book_id = ${lineage[3]}`));
+  return { recordedBy: lineage[0], editedBy: await editorOfTx(database.db, transactionId, lineage[0], me), me, names };
 }
 
 /**

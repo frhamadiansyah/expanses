@@ -57,6 +57,7 @@ describe('Transfer: what a transfer with a partner records', () => {
     expect(ownTransferAccountId(d)).toBe('a-bca');
     expect(memberTransferOf(d, accounts, 'm-rina', 'i-bca')).toEqual({
       occurredOn: '2026-09-30',
+      ownAccountId: 'a-bca',
       amountMinor: 5_000_000,
       currency: 'IDR',
       from: { owner: 'm-rina', itemId: 'i-bca' },
