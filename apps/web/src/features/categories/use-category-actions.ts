@@ -2,6 +2,7 @@ import type { CategoryNeed } from '@expanses/core';
 import {
   type AccountRow,
   addSetCategory,
+  copyCategorySet,
   archiveAccount,
   clearCategoryMcc,
   clearCategoryNeed,
@@ -81,6 +82,14 @@ export function useCategoryActions() {
     },
     removeSet: (id: string, name: string) => {
       if (window.confirm(`Remove the ${name} set? Its categories and what was spent on them stay.`)) void run(() => deleteCategorySet(database, ws, id));
+    },
+    /** Copies a set into another workspace; resolves the copy's set id and name, or null when it was refused (`error`). */
+    copySet: async (setId: string, toBookId: string): Promise<{ id: string; name: string } | null> => {
+      let copy: { id: string; name: string } | null = null;
+      await run(async () => {
+        copy = await copyCategorySet(database, ws, { setId, toBookId });
+      });
+      return copy;
     },
     addToSet: (id: string, name: string) => {
       const category = window.prompt(`New category in ${name}`);
