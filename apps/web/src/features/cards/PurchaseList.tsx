@@ -111,7 +111,7 @@ export function PurchaseList({ cp, run, currency, onlyNothing = false, onShowAll
   const totals = checkedTotals(result, cp.transactionActuals);
 
   /**
-   * One purchase: a row whose figure is the estimate, and — where the bank credits per purchase — the field for what
+   * One purchase: a row whose figure is the bank's once recorded, the estimate before, and — where the bank credits per purchase — the field for what
    * it really gave and that field's Save, beside it. Two controls, so it is drawn from the kit's parts.
    */
   const purchaseRow = (purchase: (typeof purchases)[number]) => {
@@ -135,8 +135,8 @@ export function PurchaseList({ cp, run, currency, onlyNothing = false, onShowAll
             </div>
           </div>
           <div className="tabular shrink-0 text-right text-[15px] leading-[20px] text-[var(--ph-ink-2)]" data-testid={`estimate-${purchase.transactionId}`}>
-            {approximate.has(purchase.transactionId) ? '≈ ' : ''}
-            {formatPoints(estimate)} {unit}
+            {approximate.has(purchase.transactionId) && !actual ? '≈ ' : ''}
+            {formatPoints(actual ? actual.actualPoints : estimate)} {unit}
           </div>
           {perPurchase && (
             <ActualCell
@@ -169,7 +169,7 @@ export function PurchaseList({ cp, run, currency, onlyNothing = false, onShowAll
             <SuggestionFixes suggestion={hint} description={purchase.description} occurredOn={purchase.occurredOn} run={run} />
           </Hint>
         ))}
-        {differs && hints.length === 0 && <p className={cx('mt-[4px]', SUBTITLE)}>No MCC in this card's rules explains the difference. Check the purchase's category or the card's rules.</p>}
+        {differs && hints.length === 0 && <p className={cx('mt-[4px]', SUBTITLE)}>Saved. The bank's figure differs from the estimate. No rule explains the gap. Check the purchase's category or MCC.</p>}
       </Line>
     );
   };
