@@ -22,7 +22,7 @@ export async function cardPage(page: Page, which: 'Statement' | 'Points' | 'Sett
 
 /** Open a page under the card's Settings — Card product, Earning rules, Spend bonuses — from the Settings page. */
 export async function cardSettingsPage(page: Page, which: 'Card product' | 'Earning rules' | 'Spend bonuses') {
-  await page.getByRole('main').getByRole('link', { name: new RegExp(`^${which}`) }).click();
+  await page.getByRole('main').getByRole('button', { name: new RegExp(`^${which}`) }).click();
   await expect(page.getByRole('heading', { name: which, exact: true }).first()).toBeVisible();
 }
 

@@ -36,7 +36,7 @@ async function cardWithAPurchase(page: Page, on?: string) {
 
 /** From the card's Settings back to its summary, and on to this statement's points. */
 async function toPoints(page: Page) {
-  await page.getByRole('button', { name: 'CIMB Octo' }).click();
+  await page.getByRole('button', { name: 'CIMB Octo', exact: true }).click();
   await cardPage(page, 'Points');
 }
 
@@ -71,7 +71,7 @@ test('typing what the bank gave moves points from estimated to posted', async ({
 
   // Back to the summary and into Settings, where the balance the card earns into is read.
   await page.getByRole('button', { name: 'Points' }).click();
-  await page.getByRole('button', { name: 'CIMB Octo' }).click();
+  await page.getByRole('button', { name: 'CIMB Octo', exact: true }).click();
   await cardPage(page, 'Settings');
   await expect(page.getByTestId('points-provenance')).toContainText('120 posted');
   await expect(page.getByTestId('points-provenance')).toContainText('0 estimated');
@@ -155,6 +155,6 @@ test('catches a card up without complaint', async ({ page }) => {
   await page.getByRole('button', { name: 'Catch up this card' }).click();
 
   // Nothing older exists here, so the balance is what this cycle earned and no error is shown.
-  await page.getByRole('button', { name: 'CIMB Octo' }).click();
+  await page.getByRole('button', { name: 'CIMB Octo', exact: true }).click();
   await expect(page.getByTestId('tile-points-balance')).toContainText('100 points');
 });

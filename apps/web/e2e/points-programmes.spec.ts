@@ -89,7 +89,7 @@ test('a second card of the bank joins its programme', async ({ page }) => {
   await cardPage(page, 'Settings');
   await page.getByLabel('Earns into', { exact: true }).selectOption({ label: "Livin' Poin" });
   await expect(page.getByTestId('points-balance')).toBeVisible();
-  await expect(page.getByRole('link', { name: /Livin' Poin/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Programme.*Livin' Poin/ })).toBeVisible();
 
   // One programme for the two cards; the second card's own was empty, so it is put away.
   await page.goto('/cards/points');

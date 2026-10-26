@@ -14,9 +14,10 @@ export function TrackPaymentsSetting({ cardAccountId }: { cardAccountId: string 
   const on = useQuery({ queryKey: ['track-payments', ws.workspaceId, cardAccountId], queryFn: () => getTrackPayments(database, cardAccountId) });
   return (
     <>
-      <InsetGroup header="Statement check" footer="Off: payments on a statement are kept as one line on the card, not as transfers.">
+      <InsetGroup header="Statement check">
         <SwitchRow
           label="Track card payments"
+          info="Off: payments on a statement are kept as one line on the card, not as transfers."
           checked={on.data ?? false}
           disabled={!on.isSuccess}
           onChange={(checked) => {
