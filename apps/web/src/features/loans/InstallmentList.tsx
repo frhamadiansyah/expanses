@@ -1,12 +1,13 @@
 import { formatMinor, installmentSplit, isoDate } from '@expanses/core';
 import { deleteInstallment, saveInstallment } from '@expanses/db';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
+import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll } from '../../lib/queries';
 import { Trash2 } from 'lucide-react';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, ProgressBar, SwitchRow, TextRow } from '../../ui/native';
-import { ActionRow, GlyphButton, Line, SubmitRow, SUBTITLE, TextLine, TITLE } from '../cards/rows';
+import { InsetGroup, InsetRow, ProgressBar, SwitchRow, TextRow } from '../../ui/native';
+import { ActionRow, GlyphButton, Line, SUBTITLE, TextLine, TITLE } from '../cards/rows';
 import { useInstallments } from './queries';
 
 /**
@@ -19,6 +20,7 @@ export function InstallmentList({ cardAccountId, currency }: { cardAccountId: st
   const invalidate = useInvalidateAll();
   const plans = useInstallments(cardAccountId);
   const today = isoDate();
+  const form = useRef<HTMLFormElement>(null);
   const [adding, setAdding] = useState(false);
   const [description, setDescription] = useState('');
   const [total, setTotal] = useState('');
@@ -68,7 +70,7 @@ export function InstallmentList({ cardAccountId, currency }: { cardAccountId: st
   return (
     <div data-testid="card-instalments">
       <InsetGroup header="Instalments" trailing={held > 0 ? `${formatMinor(held, currency)} held` : undefined}>
-        {plansNow.length === 0 && !adding && (
+        {plansNow.length === 0 && (
           <TextLine tone="ink-3">None yet. A purchase the issuer turns into cicilan is recorded here, so the card's debt splits into billed and unbilled.</TextLine>
         )}
         {plansNow.map(({ plan, split }) => {
@@ -95,27 +97,26 @@ export function InstallmentList({ cardAccountId, currency }: { cardAccountId: st
             </Line>
           );
         })}
-        {!adding && <ActionRow label="Add a plan" onClick={() => setAdding(true)} />}
+        <ActionRow label="Add a plan" onClick={() => setAdding(true)} />
       </InsetGroup>
 
       {adding && (
-        <form onSubmit={add}>
-          {/* Down the summary's column at every width: on a desktop it sits beside the card, not across the page. */}
-          <InsetGroup header="New instalment plan">
-            <TextRow label="What it was" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="iBox Grand Indonesia" />
-            <TextRow label={`Total (${currency})`} value={total} inputMode="decimal" onChange={(e) => setTotal(e.target.value)} placeholder="Amount" required />
-            <TextRow label="Over how many months" value={months} inputMode="numeric" onChange={(e) => setMonths(e.target.value)} />
-            <TextRow label="First billed" type="month" value={firstBilledMonth} onChange={(e) => setFirstBilledMonth(e.target.value)} />
-            <SwitchRow label="This still earns points" checked={earnsPoints} onChange={setEarnsPoints} />
-          </InsetGroup>
-          <ErrorBox error={error} />
-          <InsetGroup>
-            <SubmitRow label="Save plan" disabled={busy} />
-          </InsetGroup>
-          <InsetGroup>
-            <ActionRow label="Cancel" quiet onClick={() => setAdding(false)} />
-          </InsetGroup>
-        </form>
+        <Sheet grouped title="New instalment plan" onClose={() => setAdding(false)}>
+          <form ref={form} onSubmit={add}>
+            <InsetGroup>
+              <TextRow label="What it was" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Name" />
+              <TextRow label={`Total (${currency})`} value={total} inputMode="decimal" onChange={(e) => setTotal(e.target.value)} placeholder="Amount" required />
+              <TextRow label="Months" value={months} inputMode="numeric" onChange={(e) => setMonths(e.target.value)} />
+              <TextRow label="First billed" type="month" value={firstBilledMonth} onChange={(e) => setFirstBilledMonth(e.target.value)} />
+              <SwitchRow label="Earns points" checked={earnsPoints} onChange={setEarnsPoints} />
+            </InsetGroup>
+            <ErrorBox error={error} />
+            <input type="submit" hidden disabled={busy} />
+            <InsetGroup>
+              <InsetRow action title="Save plan" disabled={busy} onClick={() => form.current?.requestSubmit()} />
+            </InsetGroup>
+          </form>
+        </Sheet>
       )}
       {!adding && <ErrorBox error={error} />}
     </div>

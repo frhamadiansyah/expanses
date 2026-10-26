@@ -51,7 +51,7 @@ test('an SGD bill paid from a rupiah account: written in SGD, charged in rupiah'
   await page.getByRole('button', { name: 'Actions for Life cover' }).click();
   await page.getByRole('menuitem', { name: /^Pay/ }).click();
   const sheet = page.getByRole('dialog', { name: 'Pay Life cover' });
-  await expect(sheet.getByTestId('pay-bill-currency')).toHaveText('Amount in SGD');
+  await expect(sheet.getByText('Amount (SGD)')).toBeVisible();
   await expect(sheet.getByLabel('What it came to')).toHaveValue(/^120([.,]00)?$/);
   const charged = sheet.getByLabel('Charged in IDR', { exact: true });
   await expect(charged).toHaveValue(/^1[.,]?500[.,]?000/);
