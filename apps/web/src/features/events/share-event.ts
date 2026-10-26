@@ -75,7 +75,7 @@ export interface ConversionLeft {
 
 /**
  * Whether the page offers "Finish sharing": a conversion not marked done on this phone that left something behind.
- * What cannot move (a transfer, a refund, a split) stays tagged for good, so after one finished run the mark keeps the
+ * What cannot move (a transfer, a split) stays tagged for good, so after one finished run the mark keeps the
  * offer from coming back for it.
  */
 export function needsFinishing(left: ConversionLeft, converted: boolean): boolean {

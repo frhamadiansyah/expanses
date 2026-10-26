@@ -586,8 +586,8 @@ function CardBody({
           /*
            * Tagged into a shared event by the Event row: it moves there now (shared events §6, D2) — it leaves this
            * workspace and becomes this person's own expense on the event, keeping its card, MCC, photos and points.
-           * The edit is saved first, so what moves is the purchase as corrected; a purchase the move keeps (a refund,
-           * a split bill) stays here, saved, and the reason is shown.
+           * The edit is saved first, so what moves is the purchase as corrected; a purchase the move keeps
+           * (a split bill) stays here, saved, and the reason is shown.
            */
           if (draft.eventId && draft.eventId !== initial.eventId && sharedSummaries[draft.eventId]) {
             // The day's rates the move converts by: the purchase's currencies and the event's, each to the base.

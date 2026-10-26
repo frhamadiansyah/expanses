@@ -117,4 +117,20 @@ describe('the shared Add screen', () => {
     expect(splitPreview({ ...draft, splitMode: 'amounts', amounts: { 'p-rina': '40', 'p-andi': '' } })).toEqual({ shares: { 'p-rina': 4_000 }, leftMinor: 6_000 });
     expect(splitPreview({ ...draft, amount: '' })).toBeNull();
   });
+
+  it('opens a refund by its size and puts the sign back on save, in the amount and in an amounts split', () => {
+    const refund = {
+      expenseId: 'r1', occurredOn: '2026-10-09', amountMinor: -3_000, currency: 'TRY', rateToEvent: '1', eventAmountMinor: -3_000, payerPersonId: 'p-rina', payerName: 'Rina', payerHasAccount: true,
+      categoryId: null, categoryName: null, note: 'Refund · Fish dinner', split: { mode: 'amounts' as const, shares: [{ personId: 'p-rina', minor: -1_000 }, { personId: 'p-andi', minor: -2_000 }] },
+      splitText: 'By amount · 2 people', myShareMinor: -1_000, myShareEventMinor: -1_000, voided: false, unsent: false, payerOnly: false, posting: null,
+    } as unknown as SharedExpenseView;
+    const draft = draftFromExpense({ ...view, expenses: [refund] }, refund);
+    expect(draft.amount).toBe('30.00');
+    expect(draft.amounts).toEqual({ 'p-rina': '10.00', 'p-andi': '20.00' });
+    expect(sharedDraftToPatch(draft, { ...view, expenses: [refund] }, 'r1')).toEqual({});
+    expect(sharedDraftToPatch({ ...draft, amount: '15', amounts: { 'p-rina': '5', 'p-andi': '10' } }, { ...view, expenses: [refund] }, 'r1')).toEqual({
+      amountMinor: -1_500,
+      split: { mode: 'amounts', shares: [{ personId: 'p-rina', minor: -500 }, { personId: 'p-andi', minor: -1_000 }] },
+    });
+  });
 });

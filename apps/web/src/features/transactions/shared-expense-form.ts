@@ -1,4 +1,4 @@
-import { evaluateExact, formatMinor, isRateString, minorToMajorString, parseMajor, parseRate, rateString, sharesOf } from '@expanses/core';
+import { evaluateExact, formatMinor, isRateString, minorToMajorString, parseMajor, parseRate, rateString, sharesOf, type SplitInput } from '@expanses/core';
 import type { AccountRow, SharedEventView, SharedExpenseInput, SharedExpensePatch, SharedExpenseView } from '@expanses/db';
 import { moneyAccounts } from '../events/shared-view';
 
@@ -55,11 +55,12 @@ export function emptySharedDraft(view: SharedEventView, today: string): SharedEx
  */
 export function draftFromExpense(view: SharedEventView, e: SharedExpenseView): SharedExpenseDraft {
   const own = e.posting?.accountCurrency ?? null;
-  const charged = e.posting?.accountAmountMinor ?? null;
+  // A refund (below zero) is edited by its size, as a positive figure; the sign is put back on save.
+  const charged = e.posting?.accountAmountMinor == null ? null : Math.abs(e.posting.accountAmountMinor);
   return {
     occurredOn: e.occurredOn,
     note: e.note ?? '',
-    amount: minorToMajorString(e.amountMinor, e.currency),
+    amount: minorToMajorString(Math.abs(e.amountMinor), e.currency),
     currency: e.currency,
     rate: e.rateToEvent,
     payer: e.payerPersonId,
@@ -68,7 +69,7 @@ export function draftFromExpense(view: SharedEventView, e: SharedExpenseView): S
     charged: own && charged !== null ? minorToMajorString(charged, own) : '',
     splitMode: e.split.mode,
     ticked: e.split.mode === 'equal' ? [...e.split.people] : e.split.shares.map((s) => s.personId),
-    amounts: e.split.mode === 'amounts' ? Object.fromEntries(e.split.shares.map((s) => [s.personId, minorToMajorString(s.minor, e.currency)])) : {},
+    amounts: e.split.mode === 'amounts' ? Object.fromEntries(e.split.shares.map((s) => [s.personId, minorToMajorString(Math.abs(s.minor), e.currency)])) : {},
     categoryId: e.categoryId ?? '',
   };
 }
@@ -191,8 +192,12 @@ export function sharedDraftToInput(draft: SharedExpenseDraft, view: SharedEventV
 export function sharedDraftToPatch(draft: SharedExpenseDraft, view: SharedEventView, expenseId: string): SharedExpensePatch {
   const original = view.expenses.find((e) => e.expenseId === expenseId);
   if (!original) throw new Error('That expense was deleted');
-  const amountMinor = figure(draft.amount, draft.currency, 'Amount', true);
-  const split = splitOf(draft, amountMinor);
+  // A refund stays below zero: it is edited by its size and the sign put back here.
+  const sign = original.amountMinor < 0 ? -1 : 1;
+  const size = figure(draft.amount, draft.currency, 'Amount', true);
+  const amountMinor = sign * size;
+  const sized = splitOf(draft, size);
+  const split: SplitInput = sign === 1 || sized.mode === 'equal' ? sized : { mode: 'amounts', shares: sized.shares.map((s) => ({ personId: s.personId, minor: s.minor === 0 ? 0 : -s.minor })) };
   const patch: SharedExpensePatch = {};
   if (draft.occurredOn !== original.occurredOn) patch.occurredOn = draft.occurredOn;
   if (amountMinor !== original.amountMinor) patch.amountMinor = amountMinor;
@@ -207,7 +212,7 @@ export function sharedDraftToPatch(draft: SharedExpenseDraft, view: SharedEventV
   const own = original.posting?.accountCurrency ?? null;
   if (draft.charged.trim() && own && own !== draft.currency) {
     const charged = figure(draft.charged, own, `Charged in ${own}`, true);
-    if (charged !== (original.posting?.accountAmountMinor ?? null)) patch.chargedMinor = charged;
+    if (sign * charged !== (original.posting?.accountAmountMinor ?? null)) patch.chargedMinor = sign * charged;
   }
   return patch;
 }

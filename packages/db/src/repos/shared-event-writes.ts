@@ -80,14 +80,14 @@ async function chargedFor(tx: Db, ws: WorkspaceContext, accountId: string, curre
   const own = await accountCurrencyTx(tx, ws, accountId, held);
   if (own === currency) return null;
   const [named] = await tx.values<[string]>(sql`SELECT name FROM accounts WHERE id = ${accountId}`);
-  if (charged === null || charged === undefined || !Number.isSafeInteger(charged) || charged <= 0) throw invalid(`Enter what ${named?.[0] ?? 'the account'} was charged in ${own}`);
+  if (charged === null || charged === undefined || !Number.isSafeInteger(charged) || charged === 0) throw invalid(`Enter what ${named?.[0] ?? 'the account'} was charged in ${own}`);
   return charged;
 }
 
 /** The figures of an expense, checked as the screen should already have: date, amount, currency, rate, split, category. */
 async function checkExpenseTx(tx: Db, book: EventBookRow, people: Map<string, PersonRow>, e: { occurredOn: string; amountMinor: number; currency: string; rateToEvent: string; payerPersonId: string; split: SplitInput; categoryId: string | null }, kept: string | null = null): Promise<void> {
   if (!DATE.test(e.occurredOn)) throw invalid('Pick a date');
-  if (!Number.isSafeInteger(e.amountMinor) || e.amountMinor <= 0) throw invalid('Enter an amount above zero');
+  if (!Number.isSafeInteger(e.amountMinor) || e.amountMinor === 0) throw invalid('Enter an amount above zero');
   if (!isSupportedCurrency(e.currency)) throw invalid(`Unsupported currency ${e.currency}`);
   if (!isRateString(e.rateToEvent)) throw invalid(`Enter the rate to ${book.currency}`);
   if (e.currency === book.currency && Number(e.rateToEvent) !== 1) throw invalid(`An amount in ${book.currency} has rate 1`);
@@ -209,6 +209,8 @@ export async function editSharedExpense(database: Database, ws: WorkspaceContext
     };
     const money = next.occurredOn !== record.occurredOn || next.amountMinor !== record.amountMinor || next.currency !== record.currency || next.rateToEvent !== record.rateToEvent;
     if (money) refuseUnlessPayer(record, book, people);
+    // A refund stays money back and an expense stays money out: turning one into the other is a new record.
+    if (next.amountMinor < 0 !== record.amountMinor < 0) throw invalid('A refund stays a refund; record a new expense instead');
     await checkExpenseTx(tx, book, people, next, record.categoryId);
     const detail = splitJsonOf(next.split) !== splitJsonOf(record.split) || next.categoryId !== record.categoryId || next.note !== record.note;
     // Each half is captured only when it is written: capture judges every row it is pointed at by the writer rules

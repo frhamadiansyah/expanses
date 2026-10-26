@@ -34,7 +34,10 @@ export type SplitInput = { mode: 'equal'; people: readonly string[] } | { mode: 
 
 export interface ExpenseRecord {
   id: string;
-  /** In `currency`'s minor units, above zero. */
+  /**
+   * In `currency`'s minor units, above zero; below zero for a refund (money back from a shop: it takes the same shape
+   * as the purchase it undoes, signed). Every figure derived from it is signed alike, so an expense and its refund net.
+   */
   amountMinor: number;
   currency: string;
   /** Units of the event currency per one unit of `currency`, as a decimal string; '1' in the event currency. */
@@ -64,13 +67,16 @@ function refuseDuplicates(people: readonly string[]): void {
  */
 export function sharesOf(expense: Pick<ExpenseRecord, 'amountMinor' | 'payerPersonId' | 'split'>): PersonMinor[] {
   const total = expense.amountMinor;
-  if (!Number.isSafeInteger(total) || total <= 0) throw new SharedEventError('BAD_AMOUNT', 'An expense is a whole number of minor units above zero');
+  if (!Number.isSafeInteger(total) || total === 0) throw new SharedEventError('BAD_AMOUNT', 'An expense is a whole number of minor units, never nought');
+  // A refund (below zero) is shared the way an expense of the same size is, every figure signed.
+  const sign = total < 0 ? -1 : 1;
+  const signed = (minor: number) => (minor === 0 ? 0 : sign * minor);
   const split = expense.split;
   if (split.mode === 'amounts') {
     if (split.shares.length === 0) throw new SharedEventError('EMPTY_SPLIT', 'An expense is shared by at least one person');
     refuseDuplicates(split.shares.map((s) => s.personId));
     for (const share of split.shares) {
-      if (!Number.isSafeInteger(share.minor) || share.minor < 0) throw new SharedEventError('BAD_AMOUNT', 'A share is a whole number of minor units, zero or more');
+      if (!Number.isSafeInteger(share.minor) || share.minor * sign < 0) throw new SharedEventError('BAD_AMOUNT', 'A share is a whole number of minor units, zero or more');
     }
     const sum = split.shares.reduce((acc, s) => acc + s.minor, 0);
     if (sum !== total) throw new SharedEventError('SPLIT_MISMATCH', `The shares add up to ${sum}, the expense is ${total}`);
@@ -78,10 +84,40 @@ export function sharesOf(expense: Pick<ExpenseRecord, 'amountMinor' | 'payerPers
   }
   if (split.people.length === 0) throw new SharedEventError('EMPTY_SPLIT', 'An expense is shared by at least one person');
   refuseDuplicates(split.people);
-  const each = Math.floor(total / split.people.length);
-  const leftover = total - each * split.people.length;
+  const magnitude = Math.abs(total);
+  const each = Math.floor(magnitude / split.people.length);
+  const leftover = magnitude - each * split.people.length;
   const takes = split.people.includes(expense.payerPersonId) ? expense.payerPersonId : split.people[0]!;
-  return split.people.map((personId) => ({ personId, minor: each + (personId === takes ? leftover : 0) }));
+  return split.people.map((personId) => ({ personId, minor: signed(each + (personId === takes ? leftover : 0)) }));
+}
+
+/** Whether a record is a refund: money back, an expense below zero. */
+export const isRefundRecord = (expense: Pick<ExpenseRecord, 'amountMinor'>): boolean => expense.amountMinor < 0;
+
+/**
+ * The split of a refund that undoes (part of) an expense: each person gets back the same part of the refund as that
+ * person paid of the expense, the expense's shares scaled to the refund's size in whole units, the units left over going
+ * to the largest remainders (ties in the order listed), so the shares add up to the refund exactly. `refundMinor` is the
+ * refund's own (negative) figure; a refund larger than the expense divides in the same proportions.
+ */
+export function refundSplitLike(originalShares: readonly PersonMinor[], refundMinor: number): SplitInput {
+  if (!Number.isSafeInteger(refundMinor) || refundMinor >= 0) throw new SharedEventError('BAD_AMOUNT', 'A refund is below zero');
+  const paying = originalShares.filter((s) => Math.abs(s.minor) > 0).map((s) => ({ personId: s.personId, minor: Math.abs(s.minor) }));
+  const total = paying.reduce((sum, s) => sum + s.minor, 0);
+  if (total <= 0) throw new SharedEventError('EMPTY_SPLIT', 'An expense is shared by at least one person');
+  if (paying.length === 1) return { mode: 'amounts', shares: [{ personId: paying[0]!.personId, minor: refundMinor }] };
+  const back = -refundMinor;
+  const rows = paying.map((s, index) => {
+    const exact = BigInt(s.minor) * BigInt(back);
+    return { personId: s.personId, index, floor: Number(exact / BigInt(total)), rest: Number(exact % BigInt(total)) };
+  });
+  let left = back - rows.reduce((sum, r) => sum + r.floor, 0);
+  for (const r of [...rows].sort((x, y) => y.rest - x.rest || x.index - y.index)) {
+    if (left === 0) break;
+    r.floor += 1;
+    left -= 1;
+  }
+  return { mode: 'amounts', shares: rows.map((r) => ({ personId: r.personId, minor: r.floor === 0 ? 0 : -r.floor })) };
 }
 
 /** The rate format a record carries: digits, an optional point and more digits, above zero. Never an exponent. */

@@ -25,13 +25,14 @@ export function spendingSlices(view: Pick<SharedEventView, 'expenses' | 'categor
   const names = new Map(view.categories.map((c) => [c.categoryId, c.name]));
   const totals = new Map<string, SpendingSlice>();
   for (const e of view.expenses) {
-    if (!counted(e) || e.eventAmountMinor <= 0) continue;
+    if (!counted(e)) continue;
     const key = e.categoryId ?? 'none';
     const slice = totals.get(key) ?? { key, label: e.categoryId ? (names.get(e.categoryId) ?? e.categoryName ?? 'Other') : 'Other', totalMinor: 0 };
     slice.totalMinor += e.eventAmountMinor;
     totals.set(key, slice);
   }
-  return [...totals.values()].sort((a, b) => b.totalMinor - a.totalMinor);
+  // A refund takes from the slice of its category; a category refunded to nothing (or below) is no slice of the ring.
+  return [...totals.values()].filter((slice) => slice.totalMinor > 0).sort((a, b) => b.totalMinor - a.totalMinor);
 }
 
 export type DayItem = { kind: 'expense'; expense: SharedExpenseView } | { kind: 'settlement'; settlement: SharedSettlementView };
@@ -136,15 +137,21 @@ function postingFlags(posting: SharedExpenseView['posting'], view: SharedEventVi
   ].filter((flag): flag is string => flag !== null);
 }
 
+/** A refund (money back, below zero) reads "Refund · <what it undoes>" unless its note already says so. */
+function refundTitle(e: SharedExpenseView): string {
+  const name = e.note ?? e.categoryName ?? 'Shared spending';
+  return e.amountMinor < 0 && !/^refund\b/i.test(name) ? `Refund · ${name}` : name;
+}
+
 export function expenseRow(e: SharedExpenseView, view: SharedEventView): { title: string; detail: string; amount: string; share: string | null; flags: string[] } {
   return {
-    title: e.note ?? e.categoryName ?? 'Shared spending',
+    title: refundTitle(e),
     // The category is the row's glyph and the ring's slice, so the words are who paid and how it was split.
     detail: [`${e.payerName} paid`, e.splitText].filter(Boolean).join(' · '),
     // An unreadable record counts in no figure, so its amount is not shown either (no ₺0 that reads as a real figure):
     // the row says what is wrong, and a tap opens the card for whoever may fix it (I2).
     amount: e.unreadable ? '' : formatMinor(e.amountMinor, e.currency),
-    share: e.myShareMinor > 0 ? `share ${formatMinor(e.myShareMinor, e.currency)}` : null,
+    share: e.myShareMinor !== 0 ? `share ${formatMinor(e.myShareMinor, e.currency)}` : null,
     flags: [e.unreadable ? `Needs fixing: ${e.unreadable}` : null, e.voided ? 'Deleted' : null, e.unsent ? 'Not sent yet' : null, ...postingFlags(e.posting, view)].filter((flag): flag is string => flag !== null),
   };
 }
