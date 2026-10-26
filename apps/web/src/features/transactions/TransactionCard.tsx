@@ -798,9 +798,20 @@ function CardBody({
   const [kindPicked, setKindPicked] = useState(true);
   // A share kept at a broker pays from, and is paid into, that broker's cash: chosen with the holding, still changeable.
   const holdingLinks = useHoldingLinks();
+  // The cash account the form put there itself for a broker's share: when the next holding keeps none, it goes with it.
+  const autoCash = useRef('');
   const brokerCash = (accountId: string): { moneyId: string; moneyIsCard: boolean; charged: string } | Record<string, never> => {
     const broker = holdingLinks.data?.find((link) => link.accountId === accountId)?.brokerAccountId;
-    return broker ? { moneyId: broker, moneyIsCard: false, charged: '' } : {};
+    if (broker) {
+      autoCash.current = broker;
+      return { moneyId: broker, moneyIsCard: false, charged: '' };
+    }
+    // No broker for this one: a cash account chosen by the form for the last one is let go; one chosen by hand stays.
+    if (autoCash.current && purchase.moneyId === autoCash.current) {
+      autoCash.current = '';
+      return { moneyId: '', moneyIsCard: false, charged: '' };
+    }
+    return {};
   };
   const chooseTradeKind = (kind: 'buy' | 'sell') => {
     if (kindPicked && kind === purchase.mode) return;

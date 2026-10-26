@@ -72,12 +72,18 @@ test('phone: Trade keeps Net worth on the bar, has Buy and Sell tabs, and the + 
 test('phone: a share kept at a broker pays from, and is paid into, that broker on the Trade page', async ({ page }) => {
   await openBroker(page, 'Stockbit Sekuritas', '8000000');
   await bbcaAt(page, 'Stockbit Sekuritas');
+  await seed(page);
   await page.goto('/net-worth');
   await page.getByRole('link', { name: 'Trade', exact: true }).first().click();
   const form = page.getByRole('form', { name: 'Trade' });
   await form.getByRole('radio', { name: 'Buy' }).click();
   await form.getByLabel('Investment').selectOption({ label: 'Investments › BBCA · Stockbit Sekuritas' });
   // The broker's cash is already chosen: nothing to pick.
+  await expect(form.getByLabel('Paid with')).toContainText('Stockbit Sekuritas');
+  // A holding with no broker lets it go: the Stockbit cash does not stay stuck on Paid with.
+  await form.getByLabel('Investment').selectOption({ label: 'Investments › Antam gold bars' });
+  await expect(form.getByLabel('Paid with')).not.toContainText('Stockbit Sekuritas');
+  await form.getByLabel('Investment').selectOption({ label: 'Investments › BBCA · Stockbit Sekuritas' });
   await expect(form.getByLabel('Paid with')).toContainText('Stockbit Sekuritas');
   await form.getByRole('radio', { name: 'Sell' }).click();
   await expect(form.getByLabel('Proceeds into')).toContainText('Stockbit Sekuritas');
