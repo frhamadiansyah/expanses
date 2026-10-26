@@ -794,8 +794,8 @@ function CardBody({
   };
   /** Trade's Buy / Sell tabs: the kind changes and the holding moves to the first one of that kind, unless the same one can be traded either way. */
   const [nothingToSell, setNothingToSell] = useState(false);
-  // Neither tab is chosen when Trade opens: the rows wait for a tap on Buy or Sell (owner, 26 Oct).
-  const [kindPicked, setKindPicked] = useState(false);
+  // Trade opens on Buy, as Add opens on Expense; the holding is the one thing left to choose by hand (owner, 26 Oct).
+  const [kindPicked, setKindPicked] = useState(true);
   // A share kept at a broker pays from, and is paid into, that broker's cash: chosen with the holding, still changeable.
   const holdingLinks = useHoldingLinks();
   const brokerCash = (accountId: string): { moneyId: string; moneyIsCard: boolean; charged: string } | Record<string, never> => {

@@ -34,13 +34,11 @@ test('phone: Trade keeps Net worth on the bar, has Buy and Sell tabs, and the + 
   // Buy shows the paid-from rows, Sell the proceeds rows; the tabs are the Add form's control, with no Expense / Income / Transfer.
   await expect(page.getByText('Trade', { exact: true }).first()).toBeVisible();
   await expect(form.getByRole('radio', { name: 'Expense' })).toHaveCount(0);
-  // Neither tab is chosen yet, and the holding is not either; the rows are all there.
-  await expect(form.getByRole('radio', { name: 'Buy' })).not.toBeChecked();
+  // Opens on Buy, as Add opens on Expense; the holding is not chosen, and every row is there.
+  await expect(form.getByRole('radio', { name: 'Buy' })).toBeChecked();
   await expect(form.getByRole('radio', { name: 'Sell' })).not.toBeChecked();
   await expect(form.getByLabel('Investment')).toBeVisible();
   await expect(form.getByText('Units are recorded')).toHaveCount(0);
-  await form.getByRole('radio', { name: 'Buy' }).click();
-  await expect(form.getByRole('radio', { name: 'Buy' })).toBeChecked();
   // The holding is chosen by hand: the row waits on "Choose…" while every other row is already there.
   await expect(form.getByLabel('Investment')).toBeVisible();
   await expect(form.getByLabel('Investment')).toHaveValue('buy:');
