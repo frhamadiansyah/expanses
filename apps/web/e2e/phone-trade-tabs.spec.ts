@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { fillDay, openNewAsset } from './add-asset';
 import { openDrawers } from './drawers';
+import { bbcaAt, openBroker } from './listed-trade';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -33,8 +34,16 @@ test('phone: Trade keeps Net worth on the bar, has Buy and Sell tabs, and the + 
   // Buy shows the paid-from rows, Sell the proceeds rows; the tabs are the Add form's control, with no Expense / Income / Transfer.
   await expect(page.getByText('Trade', { exact: true }).first()).toBeVisible();
   await expect(form.getByRole('radio', { name: 'Expense' })).toHaveCount(0);
+  // Neither tab is chosen yet: no rows, and nothing to save.
+  await expect(form.getByRole('radio', { name: 'Buy' })).not.toBeChecked();
+  await expect(form.getByRole('radio', { name: 'Sell' })).not.toBeChecked();
+  await expect(form.getByLabel('What was bought or sold')).toHaveCount(0);
+  await expect(form.getByText('Units are recorded')).toHaveCount(0);
+  await form.getByRole('radio', { name: 'Buy' }).click();
   await expect(form.getByRole('radio', { name: 'Buy' })).toBeChecked();
   await expect(form.getByLabel('Paid with')).toBeVisible();
+  await expect(form.getByText('A credit card works')).toHaveCount(0);
+  await expect(form.getByText('Units are recorded')).toHaveCount(0);
   await expect(form.getByLabel('Proceeds into')).toHaveCount(0);
   await form.getByRole('radio', { name: 'Sell' }).click();
   await expect(form.getByRole('radio', { name: 'Sell' })).toBeChecked();
@@ -55,4 +64,18 @@ test('phone: Trade keeps Net worth on the bar, has Buy and Sell tabs, and the + 
   await expect(add.getByRole('radio', { name: 'Buy' })).toHaveCount(0);
   await expect(add.getByLabel('What was bought or sold')).toHaveCount(0);
   await expect(bar.getByRole('link', { name: 'Transactions' })).toHaveAttribute('aria-current', 'page');
+});
+
+test('phone: a share kept at a broker pays from, and is paid into, that broker on the Trade page', async ({ page }) => {
+  await openBroker(page, 'Stockbit Sekuritas', '8000000');
+  await bbcaAt(page, 'Stockbit Sekuritas');
+  await page.goto('/net-worth');
+  await page.getByRole('link', { name: 'Trade', exact: true }).first().click();
+  const form = page.getByRole('form', { name: 'Trade' });
+  await form.getByRole('radio', { name: 'Buy' }).click();
+  await form.getByLabel('What was bought or sold').selectOption({ label: 'Investments › BBCA · Stockbit Sekuritas' });
+  // The broker's cash is already chosen: nothing to pick.
+  await expect(form.getByLabel('Paid with')).toContainText('Stockbit Sekuritas');
+  await form.getByRole('radio', { name: 'Sell' }).click();
+  await expect(form.getByLabel('Proceeds into')).toContainText('Stockbit Sekuritas');
 });

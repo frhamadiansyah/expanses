@@ -25,12 +25,11 @@ export interface BuyRowText {
   hint?: string;
 }
 
-/** The holding row: what was bought or sold, and the reassurance that units are not spending. */
+/** The holding row: what was bought or sold. */
 export function holdingRowText(mode: BuyMode): BuyRowText {
   return {
     label: 'What was bought or sold',
     caption: mode === 'buy' ? 'Bought' : 'Sold',
-    hint: 'Units are recorded, so this never counts as spending.',
   };
 }
 
@@ -70,7 +69,6 @@ export function payRowText(mode: BuyMode): BuyRowText {
   return {
     label: 'Paid with',
     caption: 'Paid with',
-    hint: 'A credit card works: the card owes more, and the purchase still earns points.',
   };
 }
 

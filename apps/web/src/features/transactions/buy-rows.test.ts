@@ -48,7 +48,7 @@ describe('what each Buy / sell row says', () => {
     const buy = payRowText('buy');
     expect(buy.label).toBe('Paid with');
     expect(buy.caption).toBe('Paid with');
-    expect(buy.hint).toBe('A credit card works: the card owes more, and the purchase still earns points.');
+    expect(buy.hint).toBeUndefined();
     const sell = payRowText('sell');
     expect(sell.label).toBe('Proceeds into');
     expect(sell.caption).toBe('Proceeds into');
@@ -80,6 +80,6 @@ describe('what each Buy / sell row says', () => {
     expect(holdingRowText('buy').caption).toBe('Bought');
     expect(holdingRowText('sell').caption).toBe('Sold');
     expect(holdingRowText('buy').label).toBe('What was bought or sold');
-    expect(holdingRowText('buy').hint).toBe('Units are recorded, so this never counts as spending.');
+    expect(holdingRowText('buy').hint).toBeUndefined();
   });
 });

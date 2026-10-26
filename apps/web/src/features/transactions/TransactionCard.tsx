@@ -34,6 +34,7 @@ import { type CSSProperties, type FormEvent, type ReactNode, useEffect, useMemo,
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith, canReceiveInto, canTransferBetween, canTransferWith } from '../../lib/account-types';
+import { useHoldingLinks } from '../investments/queries';
 import { moneyHolders, useAccounts, useAccountsFor, useInvalidateAll, useIsBookShared, useResolveRates } from '../../lib/queries';
 import { Card, cx, ErrorBox, InputRow, RowHint } from '../../ui';
 import { PushedTitle, SegmentedControl } from '../../ui/native';
@@ -793,13 +794,22 @@ function CardBody({
   };
   /** Trade's Buy / Sell tabs: the kind changes and the holding moves to the first one of that kind, unless the same one can be traded either way. */
   const [nothingToSell, setNothingToSell] = useState(false);
+  // Neither tab is chosen when Trade opens: the rows wait for a tap on Buy or Sell (owner, 26 Oct).
+  const [kindPicked, setKindPicked] = useState(false);
+  // A share kept at a broker pays from, and is paid into, that broker's cash: chosen with the holding, still changeable.
+  const holdingLinks = useHoldingLinks();
+  const brokerCash = (accountId: string): { moneyId: string; moneyIsCard: boolean; charged: string } | Record<string, never> => {
+    const broker = holdingLinks.data?.find((link) => link.accountId === accountId)?.brokerAccountId;
+    return broker ? { moneyId: broker, moneyIsCard: false, charged: '' } : {};
+  };
   const chooseTradeKind = (kind: 'buy' | 'sell') => {
-    if (kind === purchase.mode) return;
+    if (kindPicked && kind === purchase.mode) return;
     const options = kind === 'buy' ? choices.buys : choices.sells;
     const option = options.find((row) => row.accountId === purchase.accountId) ?? options[0];
     setNothingToSell(!option);
     if (!option) return;
-    setPurchase({ mode: option.mode, accountId: option.accountId, lotSize: option.lotSize, useLots: (option.lotSize ?? 1) > 1 });
+    setKindPicked(true);
+    setPurchase({ mode: option.mode, accountId: option.accountId, lotSize: option.lotSize, useLots: (option.lotSize ?? 1) > 1, ...brokerCash(option.accountId) });
   };
   /** The trade rows, opened on the first holding there is to buy — as the Buy / sell tab opened them. */
   function startTrade() {
@@ -899,13 +909,13 @@ function CardBody({
             <SegmentedControl
               label="Kind of trade"
               segments={[{ key: 'buy', label: 'Buy' }, { key: 'sell', label: 'Sell' }]}
-              value={purchase.mode}
+              value={kindPicked ? purchase.mode : ''}
               onChange={(key) => chooseTradeKind(key as 'buy' | 'sell')}
             />
             {nothingToSell && <RowHint>Nothing held can be sold yet.</RowHint>}
           </div>
         )}
-        {draft.mode === 'trade' ? (
+        {draft.mode === 'trade' && fixedMode && !kindPicked ? null : draft.mode === 'trade' ? (
           /*
            * §3.6, as rows: what · amount · units or lots · fee · Paid with / Proceeds into · Date, then a second
            * card for the goal and — only on a credit card — the two facts the points engine needs. There is no
@@ -931,7 +941,7 @@ function CardBody({
               value={`${purchase.mode}:${purchase.accountId}`}
               onChange={(value) => {
                 const option = [...choices.buys, ...choices.sells].find((row) => row.value === value)!;
-                setPurchase({ mode: option.mode, accountId: option.accountId, lotSize: option.lotSize, useLots: (option.lotSize ?? 1) > 1 });
+                setPurchase({ mode: option.mode, accountId: option.accountId, lotSize: option.lotSize, useLots: (option.lotSize ?? 1) > 1, ...brokerCash(option.accountId) });
               }}
             >
               {/* Only the holdings of the tab on: Buy offers every holding, Sell the ones with units to sell. */}
@@ -1202,7 +1212,7 @@ function CardBody({
         )}
       </div>
 
-      {draft.mode === 'trade' && (goals.length > 0 || (purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card')) && (
+      {draft.mode === 'trade' && (!fixedMode || kindPicked) && (goals.length > 0 || (purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card')) && (
         <FormRows>
           {goals.length > 0 && (
             <SelectFormRow
@@ -1354,7 +1364,7 @@ function CardBody({
           </button>
           <button
             type="submit"
-            disabled={busy || !setAside.ready}
+            disabled={busy || !setAside.ready || (fixedMode && draft.mode === 'trade' && !kindPicked)}
             className="ph-focus min-h-11 flex-1 rounded-full bg-[var(--ph-ink)] text-[15px] font-semibold text-[var(--ph-surface)] disabled:opacity-50"
           >
             Save
