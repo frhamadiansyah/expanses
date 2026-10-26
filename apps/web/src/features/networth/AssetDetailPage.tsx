@@ -34,6 +34,7 @@ import { acquiredLabel } from './acquired';
 import { dayLabel, estimatedTiles, gainPill, heroLine, monthEnd, priceLine, pricedDaySeries, pricedTiles, type Tile, type TradeLine, tradeLine } from './asset-page';
 import { Sheet as SheetFrame } from '../../app/Sheet';
 import { institutionChoices } from './institutions';
+import { GoneAssetPage } from './GoneAssetPage';
 import { ListedTradeSheet } from './ListedTradeSheet';
 import { FundTradeSheet } from './FundTradeSheet';
 import { SwitchSheet } from './SwitchSheet';
@@ -130,15 +131,8 @@ export function AssetDetailPage() {
   if (!accounts.isSuccess) return <div className={SCREEN}>Loading…</div>;
   if (account && CASH_SUBTYPES.has(account.subtype)) return <AccountPage />;
   const value = values.data?.find((row) => row.accountId === accountId);
-  if (!value) {
-    return (
-      <div className={SCREEN}>
-        <PushedTitle title="Asset" back="Assets" backTo="/net-worth/assets" />
-        <ErrorBox error={values.error} />
-        {!values.isPending && <Empty>That asset is not in this workspace.</Empty>}
-      </div>
-    );
-  }
+  // Not among the live assets: sold or archived (read-only, with its way back), or not in this workspace at all.
+  if (!value) return <GoneAssetPage key={accountId} accountId={accountId} pending={values.isPending} error={values.error} />;
   // Keyed, so moving from one asset to another starts the page's own state (a sheet, an error) afresh.
   return <AssetBody key={accountId} value={value} />;
 }
