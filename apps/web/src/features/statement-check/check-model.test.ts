@@ -2,6 +2,7 @@ import { type AccountRow, type CheckDraftRow, fillSameMerchant, type PreparedChe
 import { describe, expect, it } from 'vitest';
 import {
   canRecordAll,
+  plasticChoice,
   corrected,
   isTopUpRow,
   mayBeOnNextStatement,
@@ -262,5 +263,22 @@ describe('a missing card row under Top-ups', () => {
     expect(recordLabel(3, 0, 1)).toBe('Record all 3 · 1 still needs a wallet');
     expect(recordLabel(3, 1, 1)).toBe('Record all 3 · 1 still needs a category');
     expect(recordLabel(3, 0, 0)).toBe('Record all 3');
+  });
+});
+
+describe('plasticChoice', () => {
+  const a = { id: 'a', last4: '1111', isPrimary: false };
+  const b = { id: 'b', last4: '2222', isPrimary: true };
+  it('lists the primary first and defaults to it', () => {
+    const r = plasticChoice([a, b], undefined);
+    expect(r.options.map((o) => o.id)).toEqual(['b', 'a']);
+    expect(r.chosen).toBe('b');
+    expect(r.choosable).toBe(true);
+  });
+  it('keeps a pick that is still there, and one plastic is not a choice', () => {
+    expect(plasticChoice([a, b], 'a').chosen).toBe('a');
+    expect(plasticChoice([a, b], 'gone').chosen).toBe('b');
+    expect(plasticChoice([b], undefined).choosable).toBe(false);
+    expect(plasticChoice([], undefined).chosen).toBeNull();
   });
 });

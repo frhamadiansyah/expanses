@@ -116,6 +116,7 @@ export function CardScreen({
   title,
   back,
   fallback,
+  backTo,
   actions,
   field,
   children,
@@ -125,6 +126,8 @@ export function CardScreen({
   back: string;
   /** Where ‹ goes when the page was opened with nothing behind it: a deep link, a reload. */
   fallback: LinkProps['to'];
+  /** An explicit target for ‹ with the card's id, for a page other pages link onward from (the Statement and its check), where history would loop. */
+  backTo?: { to: LinkProps['to']; cardId: string };
   actions?: CornerAction[];
   /** A search field that takes the whole bar while it is open, ‹ and name with it. */
   field?: ReactNode;
@@ -134,7 +137,13 @@ export function CardScreen({
   return (
     <div className={SCREEN}>
       <div className="mx-auto max-w-5xl">
-        <PushedTitle title={title} back={back} onBack={goBack} actions={actions} field={field} />
+        <PushedTitle
+          title={title}
+          back={back}
+          onBack={goBack}
+          backTo={backTo?.to}
+          backParams={backTo ? { cardId: backTo.cardId } : undefined}
+          actions={actions} field={field} />
         <WideColumn>{children}</WideColumn>
       </div>
     </div>

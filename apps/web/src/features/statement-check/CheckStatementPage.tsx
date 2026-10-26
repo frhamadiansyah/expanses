@@ -24,12 +24,12 @@ import { Sheet } from '../../app/Sheet';
 import { native } from '../../capture/native';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Empty, ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, LargeTitle, PickerRow, ReadOnlyRow, SCREEN, SwitchRow, TextRow } from '../../ui/native';
 import { useAccountNumberLast4, useCards, useWalletLast4 } from '../cards/card-queries';
 import { cycleBack } from '../cards/statement-dates';
 import { dropStatementBatch, setCheckedNote, statementBatch } from './batch';
 import { AskList, type CandidateInfo, type CheckList, CheckResult, DiffersList, FlaggedList, MatchedList, PaymentsList } from './CheckResult';
-import { canRecordAll, corrected, needsCategory, needsWallet, recordLabel, statementMonth, withTopUp } from './check-model';
+import { canRecordAll, corrected, needsCategory, needsWallet, plasticChoice, recordLabel, statementMonth, withTopUp } from './check-model';
 import { MissingRows } from './MissingRows';
 
 /** `/cards/$cardId/check?start&end&batch`: the period when the card page knows it, and lines already read (S2). */
@@ -107,6 +107,9 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
   // An account carrying more than one card asks which one the statement is for, so what it records sits under that
   // card's digits rather than "Card not recorded".
   const plastics = useCards(card.id).data ?? [];
+  const [pickedPlastic, setPickedPlastic] = useState<string | null>(null);
+  const [choosingPlastic, setChoosingPlastic] = useState(false);
+  const plastic = plasticChoice(plastics, pickedPlastic);
   // A top-up row's sides as Cashflow names them: the card with its digits, the wallet with its own.
   const walletNumbers = useWalletLast4().data;
   const accountNumbers = useAccountNumberLast4().data;
@@ -176,7 +179,7 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
       dropStatementBatch(batch);
       setPrepared(result);
       setRows(result.rows);
-      setDecisions(NO_DECISIONS);
+      setDecisions({ ...NO_DECISIONS, cardId: plastic.choosable ? plastic.chosen : null });
       setView('result');
       // S10: older than the card's start in cicis, and the summary says what was owed before it. Without it, recording
       // waits for that screenshot. Either way today's balance stays as it is.
@@ -223,16 +226,38 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
         <ErrorBox error={error} />
         <InsetGroup>
           <ReadOnlyRow label="Card" value={card.name} />
+          {plastic.choosable ? (
+            <PickerRow label="Last 4 digits" value={plastic.options.find((o) => o.id === plastic.chosen)?.label} onOpen={() => setChoosingPlastic(true)} />
+          ) : (
+            plastics[0]?.last4 && <ReadOnlyRow label="Last 4 digits" value={plastics[0].last4} />
+          )}
           <TextRow label="Statement from" type="date" value={start} onChange={(e) => setStart(e.target.value)} />
           <TextRow label="Statement to" type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
         </InsetGroup>
+        {choosingPlastic && (
+          <Sheet grouped title="Which card" onClose={() => setChoosingPlastic(false)}>
+            <InsetGroup wide>
+              {plastic.options.map((option) => (
+                <InsetRow
+                  key={option.id}
+                  title={option.label}
+                  value={option.id === plastic.chosen ? '✓' : undefined}
+                  onClick={() => {
+                    setPickedPlastic(option.id);
+                    setChoosingPlastic(false);
+                  }}
+                />
+              ))}
+            </InsetGroup>
+          </Sheet>
+        )}
         {held ? (
           <InsetGroup header="Screenshots" trailing={String(held.length)}>
             <InsetRow title={`${held.length} screenshot${held.length === 1 ? '' : 's'} read on this phone`} chevron={false} />
           </InsetGroup>
         ) : (
           <section className="mb-[18px]" aria-label="Screenshots">
-            <h2 className="mb-[6px] flex justify-between px-[16px] text-[12px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">
+            <h2 className="mb-[6px] flex justify-between px-[4px] text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">
               <span>Screenshots</span>
               <span>{shots.length}</span>
             </h2>
@@ -274,17 +299,17 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
           </section>
         )}
         <p className="mx-[4px] mb-[14px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-          Add every page of transactions, and the summary with the new balance. Overlapping screenshots are fine — a row seen twice counts once. Read on this phone; the
-          screenshots are deleted after the check.
+          Add every page of transactions. Add the summary with the new balance too. Overlapping screenshots are fine. A row seen twice counts once. The screenshots are
+          read on this phone and deleted after the check.
         </p>
         {progress && (
           <p role="status" className="mb-[10px] text-center text-[15px] text-[var(--ph-ink-2)]">
             Reading {progress.at} of {progress.of} on this phone…
           </p>
         )}
-        <Button className="min-h-12 w-full text-[17px]" disabled={busy || count === 0 || !periodValid} onClick={() => void check()}>
-          Check {count} screenshot{count === 1 ? '' : 's'}
-        </Button>
+        <InsetGroup>
+          <InsetRow action title={`Check ${count} screenshot${count === 1 ? '' : 's'}`} disabled={busy || count === 0 || !periodValid} onClick={() => void check()} />
+        </InsetGroup>
       </div>
     );
   }
@@ -293,8 +318,7 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
   const gaps = missing.filter((r) => needsCategory(r) && r.categoryId === null).length;
   const wallets = missing.filter((r) => needsWallet(r, accounts)).length;
   const asksOpen = rows.some((r) => r.outcome.status === 'ask' && decisions.ask[r.index] === undefined);
-  const asksCard = plastics.length > 1 && missing.some((r) => r.outcome.status === 'missing' && r.outcome.as !== 'payment');
-  const ready = canRecordAll(rows, decisions.ask, accounts) && (!prepared.needsPreviousBalance || decisions.paidOff === true) && (!asksCard || !!decisions.cardId);
+  const ready = canRecordAll(rows, decisions.ask, accounts) && (!prepared.needsPreviousBalance || decisions.paidOff === true);
   const footer = (
     <div className="mt-[6px] mb-[18px]">
       {/* Older than the card's start: its purchases can be recorded as already paid off, with no summary needed. */}
@@ -307,21 +331,6 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
           />
         </InsetGroup>
       )}
-      {asksCard && (
-        <InsetGroup footer="The purchases recorded from this statement are put under this card.">
-          <SelectRow label="Card" value={decisions.cardId ?? ''} onChange={(event) => setDecisions((d) => ({ ...d, cardId: event.target.value || null }))}>
-            <option value="">Choose</option>
-            {[...plastics]
-              .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary))
-              .map((plastic) => (
-                <option key={plastic.id} value={plastic.id}>
-                  {plastic.isPrimary ? 'Primary' : 'Supplementary'}
-                  {plastic.last4 ? ` ···· ${plastic.last4}` : ''}
-                </option>
-              ))}
-          </SelectRow>
-        </InsetGroup>
-      )}
       <Button data-testid="record-all" className="min-h-12 w-full text-[17px]" disabled={busy || !ready} onClick={() => void record()}>
         {missing.length === 0 ? 'Finish the check' : recordLabel(missing.length, gaps, wallets)}
       </Button>
@@ -330,7 +339,6 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
           {NO_PREVIOUS_BALANCE_MESSAGE}
         </p>
       )}
-      {asksCard && !decisions.cardId && <p className="mt-[6px] px-[4px] text-[12.5px] text-[var(--ph-warn)]">Choose which card the statement is for first.</p>}
       {asksOpen && <p className="mt-[6px] px-[4px] text-[12.5px] text-[var(--ph-warn)]">Choose the recorded transaction for each alike row first.</p>}
       {/* Once the statement is read, only recording sets an error: it shows by the button pressed. */}
       {error !== null && (
@@ -367,7 +375,7 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
           rows={rows}
           currency={currency}
           card={card}
-          cardLast4={plastics.find((plastic) => plastic.id === decisions.cardId)?.last4 ?? (plastics.length === 1 ? (plastics[0]!.last4 ?? null) : null)}
+          cardLast4={plastics.find((p) => p.id === (plastic.choosable ? plastic.chosen : plastics[0]?.id))?.last4 ?? null}
           walletDigits={{ ...(accountNumbers ?? {}), ...(walletNumbers ?? {}) }}
           accounts={accounts}
           onPick={(index, categoryId) => setRows((was) => fillSameMerchant(was, index, categoryId))}

@@ -71,7 +71,7 @@ test('a card purchase is marked paid off from its receipt, and from the ⋯ on i
   // The ⋯ lists what applies: the mark, the fix, the receipt — and not Assign card, with one card on the account.
   let sheet = await openActions(page, 'Hotel Mulia');
   await expect(sheet.getByRole('button', { name: 'Paid off', exact: true })).toBeVisible();
-  await expect(sheet.getByRole('button', { name: 'Bill on next statement' })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Billed next statement' })).toBeVisible();
   await expect(sheet.getByRole('button', { name: 'Open receipt' })).toBeVisible();
   await expect(sheet.getByRole('button', { name: 'Assign card' })).toHaveCount(0);
   await sheet.getByRole('button', { name: 'Paid off', exact: true }).click();
@@ -125,7 +125,7 @@ test('money back on the card reads Settled on its receipt and in its ⋯', async
   let sheet = await openActions(page, 'Hotel Mulia refund');
   await expect(sheet.getByRole('button', { name: 'Paid off', exact: true })).toHaveCount(0);
   // Nothing to move to a later statement on money back.
-  await expect(sheet.getByRole('button', { name: 'Bill on next statement' })).toHaveCount(0);
+  await expect(sheet.getByRole('button', { name: 'Billed next statement' })).toHaveCount(0);
   await sheet.getByRole('button', { name: 'Settled', exact: true }).click();
   await expect(refund.getByTestId('statement-paid-off')).toBeVisible();
   // The purchase and the refund: no balancing line is drawn.

@@ -225,3 +225,37 @@ test('a card row filed under Top-ups records as the top-up it was: what landed i
   await page.goto('/wallet');
   await expectWalletFigure(page, 'GoPay', '1.000.000');
 });
+
+test('the check page shows a single plastic read-only and offers a choice between two', async ({ page }) => {
+  await page.clock.setSystemTime(TODAY);
+  await openCard(page, { name: 'Mandiri Bonvoy', bank: 'Mandiri', last4: '1467', statementDay: '10', dueDay: '25' });
+  const open = async () => {
+    await page.goto('/wallet');
+    await page.getByRole('link', { name: /^Mandiri Bonvoy/ }).first().click();
+    await cardPage(page, 'Statement');
+    await page.getByRole('button', { name: 'Earlier statement' }).click();
+    await page.getByTestId('check-statement').click();
+  };
+
+  // One plastic: its digits read, nothing to choose. The check button is a disabled action row with no screenshots.
+  await open();
+  await expect(page.getByText('Last 4 digits')).toBeVisible();
+  await expect(page.getByText('1467')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Last 4 digits/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Check 0 screenshots' })).toBeDisabled();
+
+  // A second plastic: a picker, the primary chosen unless another is picked.
+  await page.goto('/wallet');
+  await page.getByRole('link', { name: /^Mandiri Bonvoy/ }).first().click();
+  await cardPage(page, 'Settings');
+  await page.getByLabel('Last 4 digits').fill('8802');
+  await page.getByLabel('Whose card').fill('Spouse');
+  await page.getByRole('button', { name: 'Add card' }).click();
+  await expect(page.getByTestId('card-on-account')).toHaveCount(2);
+  await open();
+  const row = page.getByRole('button', { name: /Last 4 digits/ });
+  await expect(row).toContainText('Primary ···· 1467');
+  await row.click();
+  await page.getByRole('dialog', { name: 'Which card' }).getByRole('button', { name: /Supplementary ···· 8802/ }).click();
+  await expect(row).toContainText('Supplementary ···· 8802');
+});

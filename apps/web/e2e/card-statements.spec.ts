@@ -60,7 +60,7 @@ test('a purchase the bank billed a statement late moves to the next one', async 
   // It sits on the later statement now, with the way back beside it.
   await expect(page.getByTestId('statement-line').filter({ hasText: 'Hotel Mulia' }).getByRole('button', { name: 'Use purchase date' })).toBeVisible();
   // And the card's summary has nothing billed on the statement it left.
-  await page.getByRole('button', { name: 'BCA Visa' }).click();
+  await page.getByRole('link', { name: 'BCA Visa' }).click();
   await expect(page.getByTestId('tile-left-to-pay')).toContainText('Nothing billed');
 });
 
