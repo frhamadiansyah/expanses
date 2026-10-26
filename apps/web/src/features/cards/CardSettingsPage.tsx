@@ -1,16 +1,14 @@
-import { formatMinor, parseMajor } from '@expanses/core';
+import { parseMajor } from '@expanses/core';
 import { addCard, archiveCard, createProgram, listProgrammes, renameAccount, type RewardProgramRow, saveCardIdentity, saveCardTerms, setEarnsInto, setProgramCrediting } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { getRouteApi } from '@tanstack/react-router';
+import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { Check, Trash2 } from 'lucide-react';
 import { type KeyboardEvent, useState } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { typedNameOf } from '../../lib/account-name';
-import { useBalances } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
-import { owedMinor } from '../networth/debt-rows';
+import { InsetGroup, InsetRow, PickerRow, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
 import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
 import { TrackPaymentsSetting } from '../statement-check/TrackPaymentsSetting';
 import { CardFace } from './CardFace';
@@ -89,16 +87,17 @@ function PointsGroup({ page, run }: { page: CardPage; run: Run }) {
   const { database, ws } = useApp();
   const { cp, card, ledger } = page;
   const programmes = useQuery({ queryKey: ['programmes-list', ws.workspaceId], queryFn: () => listProgrammes(database, ws) });
+  const navigate = useNavigate();
   const program = cp.program;
   if (!program) return null;
   const programme = cp.programme;
   const choices = programme ? [programme, ...(programmes.data ?? []).filter((other) => other.id !== programme.id)] : [];
   const balance = ledger.data?.balance;
+  const openProgramme = () => {
+    if (programme) void navigate({ to: '/cards/points/$programmeId', params: { programmeId: programme.id } });
+  };
   return (
-    <InsetGroup
-      header="Points"
-      footer="Posted points come from figures typed in. Estimated points are worked out from this card's rules, and become posted once what the bank actually gave is recorded."
-    >
+    <InsetGroup header="Points">
       {programme && (
         <SelectRow
           label="Earns into"
@@ -117,26 +116,23 @@ function PointsGroup({ page, run }: { page: CardPage; run: Run }) {
           ))}
         </SelectRow>
       )}
+      {programme && <PickerRow label="Programme" value={programme.name} onOpen={openProgramme} />}
       {programme && balance && (
-        <InsetRow
-          title={programme.name}
-          subtitle={
+        <PickerRow
+          label="Balance"
+          testId="points-balance"
+          value={balanceText(balance.total, programme.unit)}
+          detail={
             <span data-testid="points-provenance">
               {formatPoints(balance.postedTotal)} posted · {formatPoints(balance.projectedTotal)} estimated
             </span>
           }
-          value={
-            <span className="tabular" data-testid="points-balance">
-              {balanceText(balance.total, programme.unit)}
-            </span>
-          }
-          valueTone="ink"
-          to="/cards/points/$programmeId"
-          params={{ programmeId: programme.id }}
+          info="Posted points come from figures typed in. Estimated points are worked out from this card's rules, and become posted once what the bank actually gave is recorded."
+          onOpen={openProgramme}
         />
       )}
-      <InsetRow title="Earning rules" value={String(cp.rules.length)} to="/cards/$cardId/settings/rules" params={{ cardId: card.id }} />
-      <InsetRow title="Spend bonuses" value={String(cp.bonuses.length)} to="/cards/$cardId/settings/bonuses" params={{ cardId: card.id }} />
+      <PickerRow label="Earning rules" value={String(cp.rules.length)} onOpen={() => void navigate({ to: '/cards/$cardId/settings/rules', params: { cardId: card.id } })} />
+      <PickerRow label="Spend bonuses" value={String(cp.bonuses.length)} onOpen={() => void navigate({ to: '/cards/$cardId/settings/bonuses', params: { cardId: card.id } })} />
       <SelectRow label="Bank credits points" value={cp.crediting} onChange={(e) => void run(() => setProgramCrediting(database, ws, program.id, e.target.value as 'per_transaction' | 'per_statement'))}>
         <option value="per_statement">Per statement</option>
         <option value="per_transaction">Per purchase</option>
@@ -158,7 +154,7 @@ export function CardSettingsPage() {
   const { cardId } = settingsRoute.useParams();
   const { page, gate } = useCardPage(cardId);
   const { database, ws } = useApp();
-  const balances = useBalances();
+  const navigate = useNavigate();
   const { error, run } = useCardAction();
   const goBack = useBack(`/cards/${cardId}`);
   const [name, setName] = useState('');
@@ -207,7 +203,6 @@ export function CardSettingsPage() {
     setName(typedNameOf(card));
   }
 
-  const owed = isDebit ? 0 : owedMinor(balances.data ?? {}, card.id);
   const optionalMinor = (v: string) => (v.trim() ? parseMajor(v, currency) : null);
   const termsTyped = statementDay !== saved.statementDay || dueDay !== saved.dueDay || limit !== saved.limit || fee !== saved.fee || feeOn !== saved.feeOn;
   const saveTerms = () =>
@@ -252,15 +247,13 @@ export function CardSettingsPage() {
           footer={step === 1 ? 'Start with the billing date. It decides which purchases count toward each points cycle and when bonus caps reset.' : undefined}
           columns={[
             [
-              <TextRow label="Billing date" hint="Day of the month" value={statementDay} onChange={(e) => setStatementDay(e.target.value)} inputMode="numeric" placeholder="Day" required />,
-              <TextRow label="Due date" hint="Day of the month" value={dueDay} onChange={(e) => setDueDay(e.target.value)} inputMode="numeric" placeholder="Day" required />,
+              <TextRow label="Billing date"value={statementDay} onChange={(e) => setStatementDay(e.target.value)} inputMode="numeric" placeholder="Day" required />,
+              <TextRow label="Due date"value={dueDay} onChange={(e) => setDueDay(e.target.value)} inputMode="numeric" placeholder="Day" required />,
             ],
             [
               <TextRow label={`Credit limit (${currency})`} value={limit} onChange={(e) => setLimit(e.target.value)} inputMode="decimal" />,
               <TextRow label={`Annual fee (${currency})`} value={fee} onChange={(e) => setFee(e.target.value)} inputMode="decimal" />,
               <TextRow label="Charged on" type="date" value={feeOn} onChange={(e) => setFeeOn(e.target.value)} />,
-              // The balance and its share of the limit are read whole, so they share the wider second column.
-              <ReadOnlyRow label="Current balance" value={`${formatMinor(owed, currency)}${cp.terms?.creditLimitMinor ? ` · ${Math.round((owed / cp.terms.creditLimitMinor) * 100)}% of limit` : ''}`} />,
             ],
           ]}
           submit={<SubmitRow label="Save terms" />}
@@ -318,7 +311,7 @@ export function CardSettingsPage() {
             offers={(typed) => issuerMatches(typed, banks)}
           />
         )}
-        <InsetRow title="Card product" subtitle={product} to="/cards/$cardId/settings/product" params={{ cardId: card.id }} />
+        <PickerRow label="Card product" value={product} onOpen={() => void navigate({ to: '/cards/$cardId/settings/product', params: { cardId: card.id } })} />
       </InsetGroup>
 
       {step !== 1 && termsBlock}
