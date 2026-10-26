@@ -54,7 +54,7 @@ test('a fund account names its broker and its RDN bank, lists what the broker ke
   await expect(page.getByRole('main')).toContainText('BBRI · Stockbit Sekuritas');
   await expect(page.getByRole('main')).toContainText('CIMB Niaga');
   // Custodian taps through to the broker's own Settings, where its bank is named.
-  await page.getByRole('link', { name: /Custodian/ }).click();
+  await page.getByRole('button', { name: /Custodian/ }).click();
   await expect(page.getByLabel('Bank or institution')).toHaveValue('CIMB Niaga');
 });
 
