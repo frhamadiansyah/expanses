@@ -7,6 +7,7 @@ import {
   editDraft,
   guessCategoryFromHistory,
   inBook as workspaceInBook,
+  listSharedTransfers,
   listTransactionsIn,
   moveIntoSharedEvent,
   moveTransactionInDay,
@@ -57,7 +58,7 @@ import { AmountExtra, DraftSubtitle, PaidWith, TransactionRow, useRecategorise }
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
-import { amountExtraParts, billTagOf, buildRows, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, hasNotCountedPart, type ListFilters, type ListRow, type Sort, sortRows, totals } from './list-model';
+import { amountExtraParts, billTagOf, buildRows, sharedTransferRow, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, hasNotCountedPart, type ListFilters, type ListRow, type Sort, sortRows, totals } from './list-model';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
@@ -355,7 +356,16 @@ export function TransactionsPage() {
    * the work in progress that editor exists for.
    */
   // Narrowed to a workspace, a purchase split across workspaces reads as that workspace's part (`listWs.bookId`).
-  const rows = buildRows(recorded, view === 'table' || filters.onlyDrafts ? pending : [], accounts, everyCard, walletLast4, listWs.bookId);
+  // The other member's transfers in a shared workspace (0094): redacted rows, read only, beside this phone's own.
+  const partnerTransfers = useQuery({
+    queryKey: ['shared-transfers', ws.workspaceId, ws.bookId ?? null, month],
+    queryFn: () => listSharedTransfers(database, ws.bookId!, range),
+    enabled: shared && ws.bookId !== undefined && !scopeIds,
+  });
+  const rows = [
+    ...buildRows(recorded, view === 'table' || filters.onlyDrafts ? pending : [], accounts, everyCard, walletLast4, listWs.bookId),
+    ...(!shared || scopeIds || filters.onlyDrafts ? [] : (partnerTransfers.data ?? []).map(sharedTransferRow)),
+  ];
   /*
    * What still waits under Uncategorised — every one of them, whatever period is on show. Tapping the line lists them
    * all (the period goes to All while it does); once the last one has its category, the filter and the period go back.
@@ -1129,7 +1139,20 @@ export function TransactionsPage() {
     </div>
   );
 
-  const rowView = (row: ListRow, withDate = false) => (row.kind === 'draft' ? draftRow(row) : recordedRow(row, withDate));
+  // The partner's transfer: a plain row, nothing to tap, edit or delete from this phone.
+  function sharedTransferView(row: ListRow, withDate: boolean) {
+    return (
+      <li key={row.id} data-testid="shared-transfer-row" className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-2">
+        <CategoryIcon categoryId={null} accounts={accounts} transfer />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium">{row.description ? `Transfer · ${row.description}` : 'Transfer'}</div>
+          {(withDate || row.accountLabel) && <div className="truncate text-xs text-slate-500">{[withDate ? row.date : '', row.accountLabel].filter(Boolean).join(' · ')}</div>}
+        </div>
+        <div className="tabular text-sm font-semibold whitespace-nowrap text-slate-500">{formatMinor(row.amountMinor, row.currency)}</div>
+      </li>
+    );
+  }
+  const rowView = (row: ListRow, withDate = false) => (row.sharedTransfer ? sharedTransferView(row, withDate) : row.kind === 'draft' ? draftRow(row) : recordedRow(row, withDate));
 
   /**
    * Searching, on a phone: the kit's own pill, drawn in the title's row by `LargeTitle`'s `field` — a corner's 44 px
