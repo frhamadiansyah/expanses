@@ -233,7 +233,7 @@ export function StatementPanel({
         onClick={() => setUnmarking(line)}
         className="ph-focus flex h-[44px] w-[32px] shrink-0 items-center justify-center"
       >
-        <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[var(--ph-tint)] text-[var(--ph-surface)]">
+        <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[var(--ph-up)] text-white">
           <Check size={11} strokeWidth={3.5} aria-hidden />
         </span>
       </button>
@@ -252,7 +252,11 @@ export function StatementPanel({
       />
       <span
         aria-hidden
-        className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] border-[var(--ph-ink-3)] text-transparent peer-checked:border-[var(--ph-ink)] peer-checked:bg-[var(--ph-ink)] peer-checked:text-[var(--ph-surface)] peer-disabled:opacity-60"
+        className={cx(
+          'flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] border-[var(--ph-ink-3)] text-transparent peer-disabled:opacity-60',
+          // Paid by a recorded payment is green, as a paid-off line is; a line picked to pay is an ink ring with a ✓, not filled.
+          line.paidBy ? 'peer-checked:border-[var(--ph-up)] peer-checked:bg-[var(--ph-up)] peer-checked:text-white' : 'peer-checked:border-[var(--ph-ink)] peer-checked:text-[var(--ph-ink)]',
+        )}
       >
         <Check size={11} strokeWidth={3.5} aria-hidden />
       </span>
