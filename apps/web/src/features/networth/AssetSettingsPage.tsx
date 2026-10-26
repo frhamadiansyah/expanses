@@ -7,7 +7,7 @@ import { useApp } from '../../app/context';
 import { useInvalidateAll, useAccounts, useResolveRates } from '../../lib/queries';
 import { openingRateFor } from '../../lib/rates';
 import { Empty, ErrorBox } from '../../ui';
-import { DestructiveRow, InsetGroup, PickerRow, PushedTitle, SCREEN, TextRow } from '../../ui/native';
+import { DestructiveRow, InsetGroup, InsetRow, PickerRow, PushedTitle, ReadOnlyRow, SCREEN, SelectRow, TextRow } from '../../ui/native';
 import { typedNameOf } from '../../lib/account-name';
 import { useBack } from '../../app/BackHeader';
 import { useHoldingLinks } from '../investments/queries';
@@ -26,7 +26,10 @@ import { type AcquiredParts, acquiredOn, partsOf } from './acquired';
 import { AcquiredRow, MoneyRow } from './AssetRows';
 import { ValueSheet } from './AssetSheets';
 import { SellSheet } from './SellSheet';
-import { useAcquiredDates, useAssetProfile, useAssetValues } from './queries';
+import { useAcquiredDates, useAssetProfile, useAssetProfiles, useAssetValues, useTrades } from './queries';
+import { NEW_BROKER, NewBrokerSheet } from './NewBrokerSheet';
+import { custodianLine, tickerLocked } from './share-identity';
+import { useStockAndBroker } from './StockAndBroker';
 
 /** The day an acquired date posts on, or null while it is not one yet (a year half typed). */
 function tryAcquiredDay(parts: AcquiredParts): string | null {
@@ -72,6 +75,10 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
   const [selling, setSelling] = useState(false);
   // The original cost as typed while the row is being edited; null shows what is stored.
   const [costDraft, setCostDraft] = useState<string | null>(null);
+  const [newBrokerOpen, setNewBrokerOpen] = useState(false);
+  const stock = useStockAndBroker(accountId, { share: true });
+  const profiles = useAssetProfiles();
+  const trades = useTrades(accountId);
 
   const value = values.data?.find((row) => row.accountId === accountId);
   const account = (accounts.data ?? []).find((row) => row.id === accountId);
@@ -136,6 +143,44 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
   const heldFrom = profile.data?.assetKind === 'stock' ? 'the broker' : 'the Institution on its page';
   // Money kept for spending was a card in Wallet; anything else — savings put aside included — is listed on Assets.
   const list = () => navigate(money && account && spendsFrom(account, accounts.data ?? []) ? { to: '/wallet' } : { to: '/net-worth/assets' });
+  // A listed share: its name is derived from its ticker and broker, and the three are set here, not on its page.
+  const isShare = profile.data?.assetKind === 'stock';
+  const brokerId = stock.link?.brokerAccountId ?? null;
+  const rdnBank = brokerId ? (profiles.data ?? []).find((row) => row.accountId === brokerId)?.coretaxFields.inst : null;
+  const locked = tickerLocked(Boolean(stock.security?.ticker), trades.isSuccess ? trades.data.length : null);
+  const identity = isShare
+    ? [
+        <ReadOnlyRow key="name" label="Name" value={value?.name ?? account?.name} info="Set from the ticker and the broker." />,
+        locked ? (
+          <ReadOnlyRow key="ticker" label="Ticker" value={stock.security ? stock.security.ticker || stock.security.name : null} info="Fixed once a trade is recorded." />
+        ) : (
+          <PickerRow
+            key="ticker"
+            label="Ticker"
+            value={stock.security ? stock.security.ticker || stock.security.name : null}
+            placeholder="Not set"
+            onOpen={() => void navigate({ to: '/net-worth/investments/new', search: { link: accountId } })}
+          />
+        ),
+        <SelectRow
+          key="broker"
+          label="Broker"
+          value={brokerId ?? 'none'}
+          onChange={(e) => (e.target.value === NEW_BROKER ? setNewBrokerOpen(true) : void stock.keptAt(e.target.value === 'none' ? '' : e.target.value))}
+        >
+          {!brokerId ? <option value="none">No broker</option> : null}
+          {stock.brokers.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.name}
+            </option>
+          ))}
+          <option value={NEW_BROKER}>Another broker…</option>
+        </SelectRow>,
+        brokerId ? (
+          <InsetRow key="custodian" title="Custodian" value={custodianLine(rdnBank)} to="/net-worth/assets/$accountId/settings" params={{ accountId: brokerId }} />
+        ) : null,
+      ]
+    : undefined;
 
   async function leaveBy(ask: string, act: () => Promise<void>) {
     if (!window.confirm(ask)) return;
@@ -176,7 +221,7 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
         // to the account's or the asset's own page.
         onBack={goBack}
       />
-      <ErrorBox error={values.error ?? profile.error} />
+      <ErrorBox error={values.error ?? profile.error ?? stock.error} />
       {!value && !money && !values.isPending && <Empty>That asset is not in this workspace.</Empty>}
       {parentMoney && (
         <InsetGroup footer="Renaming it renames its pockets.">
@@ -219,7 +264,7 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
           coretaxCode={profile.data?.coretaxCode ?? null}
           // As the tax report reads it: a deposit nobody set shows final, the band its interest is reported in.
           taxTreatment={taxTreatmentOf(profile.data?.taxTreatment, account?.subtype)}
-          nameRow={account && (account.subtype === 'bank' || account.subtype === 'savings') && account.parentId === null ? <SettingsNameRow accountId={accountId} /> : undefined}
+          nameRow={identity ?? (account && (account.subtype === 'bank' || account.subtype === 'savings') && account.parentId === null ? <SettingsNameRow accountId={accountId} /> : undefined)}
           beforeTax={money && account ? <AccountSettingsBox account={account} onError={setError} /> : undefined}
           afterName={
             acquired
@@ -252,6 +297,8 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
           }
         />
       )}
+
+      {newBrokerOpen && <NewBrokerSheet onSave={(name) => void stock.newBroker(name).then(() => setNewBrokerOpen(false))} onClose={() => setNewBrokerOpen(false)} />}
 
       {/* A bond's coupon: its rate, how often and from when it pays, and whether the app records it on the day. */}
       {/*

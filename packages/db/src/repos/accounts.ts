@@ -449,30 +449,34 @@ export async function setAccountForSpending(database: Database, ws: WorkspaceCon
 }
 
 export async function renameAccount(database: Database, ws: WorkspaceContext, id: string, name: string): Promise<void> {
+  if (!name.trim()) throw new AccountError('Name is required');
+  await database.transaction((tx) => renameAccountTx(tx, ws, id, name));
+}
+
+/** The rename inside a transaction already open, for a change that renames as part of itself (a share's ticker or broker). */
+export async function renameAccountTx(tx: Db, ws: WorkspaceContext, id: string, name: string): Promise<void> {
   const trimmed = name.trim();
   if (!trimmed) throw new AccountError('Name is required');
-  await database.transaction(async (tx) => {
-    const [before] = await tx.select({ name: accounts.name }).from(accounts).where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
-    // A shared purchase paid from it names it (paidLabel): it goes out again under the new name.
-    if (before) await captureMoneyAccountRenamingTx(tx, id);
-    await withCapture(tx, { entity: 'category', id }, () =>
-      tx.update(accounts).set({ name: trimmed }).where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId))),
-    );
-    if (before) {
-      // Pockets still named after the account follow it; one the owner renamed keeps its own name.
-      const pockets = await tx
-        .select({ id: accounts.id, name: accounts.name, currency: accounts.currency })
-        .from(accounts)
-        .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.parentId, id), eq(accounts.kind, 'asset')));
-      for (const pocket of pockets) {
-        if (pocket.currency && pocket.name === pocketName(before.name, pocket.currency)) {
-          await captureMoneyAccountRenamingTx(tx, pocket.id);
-          await tx.update(accounts).set({ name: pocketName(trimmed, pocket.currency) }).where(eq(accounts.id, pocket.id));
-        }
+  const [before] = await tx.select({ name: accounts.name }).from(accounts).where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
+  // A shared purchase paid from it names it (paidLabel): it goes out again under the new name.
+  if (before) await captureMoneyAccountRenamingTx(tx, id);
+  await withCapture(tx, { entity: 'category', id }, () =>
+    tx.update(accounts).set({ name: trimmed }).where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId))),
+  );
+  if (before) {
+    // Pockets still named after the account follow it; one the owner renamed keeps its own name.
+    const pockets = await tx
+      .select({ id: accounts.id, name: accounts.name, currency: accounts.currency })
+      .from(accounts)
+      .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.parentId, id), eq(accounts.kind, 'asset')));
+    for (const pocket of pockets) {
+      if (pocket.currency && pocket.name === pocketName(before.name, pocket.currency)) {
+        await captureMoneyAccountRenamingTx(tx, pocket.id);
+        await tx.update(accounts).set({ name: pocketName(trimmed, pocket.currency) }).where(eq(accounts.id, pocket.id));
       }
     }
-    await writeAudit(tx, ws, 'rename', id, { name: trimmed });
-  });
+  }
+  await writeAudit(tx, ws, 'rename', id, { name: trimmed });
 }
 
 /**

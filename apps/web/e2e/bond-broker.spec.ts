@@ -39,6 +39,9 @@ test('a share’s Broker row opens a broker not yet in the app, by name, and kee
   await page.getByRole('button', { name: 'Add holding' }).click();
   // Held at one broker, the stock opens that holding's own page straight away.
   await expect(page).toHaveURL(/\/net-worth\/assets\/[^/]+$/);
+  // A share's broker is in its Settings, not in the Details of its page.
+  await expect(page.getByLabel('Broker', { exact: true })).toHaveCount(0);
+  await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
 
   const broker = page.getByLabel('Broker', { exact: true });
   await broker.selectOption({ label: 'Another broker…' });
@@ -47,4 +50,6 @@ test('a share’s Broker row opens a broker not yet in the app, by name, and kee
   await sheet.getByRole('button', { name: 'Add broker' }).click();
   await expect(sheet).toHaveCount(0);
   await expect(broker.locator('option:checked')).toHaveText('Ajaib');
+  // The name follows the broker.
+  await expect(page.getByRole('main')).toContainText('BBCA · Ajaib');
 });

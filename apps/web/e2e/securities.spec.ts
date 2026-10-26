@@ -126,13 +126,17 @@ test('11: a holding recorded before is given its ticker and broker; its lot sett
   await page.getByRole('button', { name: 'Add holding' }).click();
   // Held at one broker, it opens that holding's own page straight away.
   await expect(page).toHaveURL(/\/net-worth\/assets\/[^/]+$/);
-  await page.getByRole('link', { name: /Ticker/ }).click();
+  // The ticker and broker are in the share's Settings.
+  await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: /^Ticker/ }).click();
   await page.getByLabel('Ticker or name').pressSequentially('BBCA');
   // The list leads with what is held — which is this asset's own unlisted name — so the ticker to link to is the
   // listed BBCA, the only result with a market behind it.
   await page.getByRole('button', { name: /^BBCA\b.*IDX/ }).click();
+  // Linking returns to the Settings it was opened from, and the name follows the ticker and broker.
+  await expect(page.getByRole('main')).toContainText('BBCA · Ajaib');
   await page.getByLabel('Broker', { exact: true }).selectOption({ label: 'Stockbit' });
-  await expect(page.getByRole('link', { name: 'Ticker BBCA', exact: true })).toBeVisible();
+  await expect(page.getByRole('main')).toContainText('BBCA · Stockbit');
   await expect(page.getByLabel('Shares in a lot')).toHaveCount(0); // set by BBCA now
   // Stockbit's own account lists what it keeps now.
   await openAssets(page);
@@ -245,4 +249,16 @@ test('a share owned before the app reads as a past purchase in the transaction l
   await page.goto('/transactions');
   await expect(page.getByText('Past purchase').first()).toBeVisible();
   await expect(page.getByText('Opening balance', { exact: true })).toHaveCount(0);
+});
+
+test('a share’s Settings carry its derived name, ticker and broker; the ticker is fixed once it has a trade', async ({ page }) => {
+  await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '1', price: '8.750', paidFrom: 'Owned before this app' });
+  await page.getByRole('button', { name: 'Add holding' }).click();
+  await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('main')).toContainText('BBCA · Stockbit');
+  // The name is not typed into, and the ticker, with a trade behind it, opens no search: ⓘ says why.
+  await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Ticker/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'About Ticker' }).click();
+  await expect(page.getByText('Fixed once a trade is recorded.')).toBeVisible();
 });

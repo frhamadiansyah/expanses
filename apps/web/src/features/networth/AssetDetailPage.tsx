@@ -21,7 +21,6 @@ import {
   type RoundAction,
   SCREEN,
   SelectRow,
-  SubmitRow,
   TextRow,
 } from '../../ui/native';
 import { AccountPage } from '../accounts/AccountPage';
@@ -32,7 +31,6 @@ import { useGoalLinks, useGoals } from '../goals/queries';
 import { useLoans } from '../loans/queries';
 import { acquiredLabel } from './acquired';
 import { dayLabel, estimatedTiles, gainPill, heroLine, monthEnd, priceLine, pricedDaySeries, pricedTiles, type Tile, type TradeLine, tradeLine } from './asset-page';
-import { Sheet as SheetFrame } from '../../app/Sheet';
 import { institutionChoices } from './institutions';
 import { GoneAssetPage } from './GoneAssetPage';
 import { ListedTradeSheet } from './ListedTradeSheet';
@@ -46,6 +44,7 @@ import { PriceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSh
 import { ReinvestedSheet, TradeGoalsSheet } from './TradeTagSheets';
 import { BASIS_LABELS, UNIT_LABELS } from './labels';
 import { useAcquiredDates, useAssetProfile, useAssetProfiles, useAssetValues, useBondCoupons, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
+import { NEW_BROKER, NewBrokerSheet } from './NewBrokerSheet';
 import { useStockAndBroker } from './StockAndBroker';
 import { draftFromTrade, type TradeDraft } from './trade-form';
 import { useGoldPriceChoice, useWorldGoldPrice } from './world-gold';
@@ -69,30 +68,6 @@ const PRICE_TILE: Record<UnitKind, string> = { grams: 'Buyback today', shares: '
 /** The word for a payment a holding makes: a share's dividend, a bond's coupon. */
 const incomeWordOf = (kind: AssetKind | null) => (kind === 'stock' ? 'Dividend' : kind === 'bond' ? 'Coupon' : 'Income');
 
-/** The Broker row's choice that opens a broker by name rather than picking one. */
-const NEW_BROKER = 'new-broker';
-
-/** A broker not in the app yet, named and opened where a holding is kept. */
-function NewBrokerSheet({ onSave, onClose }: { onSave: (name: string) => void; onClose: () => void }) {
-  const [name, setName] = useState('');
-  return (
-    <SheetFrame grouped title="New broker" onClose={onClose}>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (name.trim()) onSave(name.trim());
-        }}
-      >
-        <InsetGroup footer="Opened as a broker's cash account, as Add a holding opens one. Its RDN bank is named in its Settings.">
-          <TextRow label="Broker name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Required" required />
-        </InsetGroup>
-        <InsetGroup>
-          <SubmitRow label="Add broker" disabled={!name.trim()} />
-        </InsetGroup>
-      </form>
-    </SheetFrame>
-  );
-}
 
 type Sheet =
   | { kind: 'price' }
@@ -176,6 +151,8 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   const [placeDraft, setPlaceDraft] = useState<string | null>(null);
 
   const kind = profile.data?.assetKind ?? null;
+  /** A listed share: its ticker, broker and custodian are changed in its Settings, not shown here. */
+  const isShare = kind === 'stock';
   const unitKind = profile.data?.unitKind ?? null;
   const priced = value.mode === 'market';
   const estimated = value.mode === 'snapshot';
@@ -591,7 +568,8 @@ function AssetBody({ value }: { value: AssetValueRow }) {
 
       <Details
         rows={[
-          priced && (kind === 'stock' || stock.security) ? (
+          // A listed share's ticker, broker and custodian are in its Settings; this box keeps the other kinds'.
+          priced && !isShare && stock.security ? (
             <InsetRow
               key="ticker"
               title="Ticker"
@@ -632,7 +610,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           ) : null,
           // The day the value was last set: the value itself is the hero's figure.
           byMoney && lastValued ? <ReadOnlyRow key="valued" label="Last updated" value={dayLabel(lastValued)} /> : null,
-          kind !== 'fund' && kind !== 'bond' && (priced || byMoney) && ((kind !== null && BROKER_KINDS.includes(kind)) || stock.security) ? (
+          !isShare && kind !== 'fund' && kind !== 'bond' && (priced || byMoney) && ((kind !== null && BROKER_KINDS.includes(kind)) || stock.security) ? (
             // "No broker" is an answer the row prints, so it has a value of its own rather than a prompt's empty one. A listed
             // share is always kept at a broker: it is offered only to a share recorded before one was named.
             <SelectRow
@@ -652,7 +630,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
             </SelectRow>
           ) : null,
           // The broker's cash is held by a custodian bank: buying takes it from there, and selling puts it back.
-          rdnBank ? <InsetRow key="cash" title="Custodian" value={rdnBank} chevron={false} /> : null,
+          rdnBank && !isShare ? <InsetRow key="cash" title="Custodian" value={rdnBank} chevron={false} /> : null,
           boughtWith ? (
             <InsetRow key="loan" title="Loan" value={`${boughtWith.lenderName} · See the loan`} to="/net-worth/loans/$accountId" params={{ accountId: boughtWith.accountId }} />
           ) : null,
