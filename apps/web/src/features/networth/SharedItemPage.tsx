@@ -61,7 +61,7 @@ export function SharedItemPage() {
             </Panel>
           )}
 
-          {item.joint && jointRows.data && group ? <JointRowsGroup rows={jointRows.data.rows} me={group.me} names={jointRows.data.names} /> : null}
+          {item.joint && jointRows.data && group ? <JointRowsGroup rows={jointRows.data.rows} me={group.me} names={jointRows.data.names} workspaceBookId={group.workspaceBookId} /> : null}
 
           <InsetGroup header="Lines visible here" footer={`Household purchases paid from it${withTransfers ? ' and transfers between partners' : ''}, ${DAY_LABEL(item.period.start)} to ${DAY_LABEL(item.period.end)}.`}>
             {(item.joint ? [] : view.lines).map((line) => (
@@ -74,7 +74,7 @@ export function SharedItemPage() {
                 chevron={false}
               />
             ))}
-            {view.transfers.map((line) => (
+            {(item.joint ? [] : view.transfers).map((line) => (
               <InsetRow
                 key={line.key}
                 title={line.title}

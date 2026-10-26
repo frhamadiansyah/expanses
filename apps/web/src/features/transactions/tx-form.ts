@@ -227,6 +227,7 @@ export function memberTransferOf(draft: FormDraft, accounts: readonly AccountRow
     from: partner.side === 'to' ? mine : theirs,
     to: partner.side === 'to' ? theirs : mine,
     description: draft.description.trim() || null,
+    ownAccountId: own.id,
   };
 }
 

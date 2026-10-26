@@ -1,5 +1,5 @@
 import { formatMinor, isoDate } from '@expanses/core';
-import { eventPostingOf, listPhotos, listTransactions, ownerScope, paidOffMarkOf, setSettledBeforeApp, type TransactionPhotoRow } from '@expanses/db';
+import { eventPostingOf, jointRowNote, listPhotos, listTransactions, ownerScope, paidOffMarkOf, setSettledBeforeApp, type TransactionPhotoRow } from '@expanses/db';
 import { deleteTransaction } from './member-transfer';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, Link, useNavigate } from '@tanstack/react-router';
@@ -28,6 +28,7 @@ import { useChangeable } from './queries';
 import { heroCaption, receiptLines, splitParts } from './receipt-view';
 import { TransactionCard } from './TransactionCard';
 import { useDuplicable } from './duplicable';
+import { rowByLine } from '../sharing/JointAccountRows';
 import { TwoTapDelete } from './TwoTapDelete';
 import { useWithdrawalsUsed } from '../../lib/withdrawal-queries';
 
@@ -94,6 +95,8 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
    * route asks the same hook, so the two can never answer differently.
    */
   const { changeable, elsewhere, isTrade, holdingId } = useChangeable(tx);
+  // A row of a joint account or card: who recorded it and who changed it.
+  const jointNote = useQuery({ queryKey: ['joint-row-note', transactionId], queryFn: () => jointRowNote(database, transactionId) }).data ?? null;
   /*
    * A transaction a shared event put here follows its record (shared events §5, §7): it is changed on the event — Edit
    * opens the expense's own card, or the event for a settle-up — never deleted or copied on its own (the ledger refuses
@@ -243,6 +246,11 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
           {[...categoryNames, book?.name].filter(Boolean).join(' · ')}
         </span>
         <span className="text-sm text-slate-500">{longDate(tx.occurredOn)}</span>
+        {jointNote && (
+          <span data-testid="joint-note" className="text-[13px] text-[var(--ph-ink-3)]">
+            {rowByLine({ recordedBy: jointNote.recordedBy, editedBy: jointNote.editedBy, deleted: false, deletedBy: null }, jointNote.me, jointNote.names)}
+          </span>
+        )}
         {tx.status === 'void' && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">Deleted</span>}
         {fromEvent && (
           <p className="text-[13px] leading-[17px] text-[var(--ph-ink-3)]" data-testid="from-event">
