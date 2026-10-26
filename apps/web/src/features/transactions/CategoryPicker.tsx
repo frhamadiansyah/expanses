@@ -2,7 +2,7 @@ import { categoryPath } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { Check, Shapes } from 'lucide-react';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Sheet, SheetAddButton, SheetSearchButton } from '../../app/Sheet';
 import { useAccounts, useInOpenBook } from '../../lib/queries';
 import { cx } from '../../ui';
@@ -161,6 +161,7 @@ export function CategoryPicker({
   onSplit,
   splitRefusal = null,
   bookId,
+  header,
 }: {
   /** The tab the form is on, which is the kind the sheet opens showing. */
   kind: 'expense' | 'income';
@@ -195,6 +196,8 @@ export function CategoryPicker({
    * workspace picks among that workspace's categories. No New category then — it would be made in the open one.
    */
   bookId?: string;
+  /** A row above the list (the split sheet's Workspace chooser), drawn only while the list is, not on New category. */
+  header?: ReactNode;
 }) {
   const accounts = useAccounts().data ?? [];
   const membership = useCategorySetMembership().data ?? {};
@@ -291,6 +294,7 @@ export function CategoryPicker({
     >
       {making ? newCategory.view : (
       <div className="flex flex-col gap-[10px]">
+        {header}
         {/* The tabs and the search that replaces them share one fixed 32 px row, so nothing below moves. With no
             tabs (a sheet locked to one kind), the search takes the title's place in the header instead. */}
         {!lockKind && (

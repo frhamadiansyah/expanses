@@ -8,7 +8,7 @@ import { openGoalForm } from './goals';
 import { cardPage, cardPurchases } from './card-section';
 import { todayIn } from './today';
 import { setCurrency } from './currency-field';
-import { openSplit, setChannel, splitRow } from './split-row';
+import { openSplit, pickPartCategory, setChannel, splitRow } from './split-row';
 
 /** The directory `photos/store.ts` keeps pictures in, a sibling of the database's `.expanses/` and never inside it. */
 const PHOTO_DIRECTORY = 'expanses-photos';
@@ -669,7 +669,7 @@ test('every extra survives the save, and leaving it out of the report leaves onl
   const split = page.getByRole('dialog', { name: 'Split' });
   await split.getByRole('button', { name: '+ Split' }).click();
   await split.getByLabel('Split 1 amount').fill('40000');
-  await split.getByLabel('Split 2 category').selectOption({ label: 'Restaurants' });
+  await pickPartCategory(page, 2, 'Restaurants');
   await split.getByLabel('Split 2 amount').fill('45000');
   await expect(split.getByText('Total Rp 85.000')).toBeVisible();
   await split.getByRole('button', { name: 'Close' }).click();
@@ -758,9 +758,9 @@ test('a split is read in the paying account’s own currency, exponent and all',
   await openSplit(page);
   const split = page.getByRole('dialog', { name: 'Split' });
   await split.getByRole('button', { name: '+ Split' }).click();
-  await split.getByLabel('Split 1 category').selectOption({ label: 'Groceries' });
+  await pickPartCategory(page, 1, 'Groceries');
   await split.getByLabel('Split 1 amount').fill('40.50');
-  await split.getByLabel('Split 2 category').selectOption({ label: 'Restaurants' });
+  await pickPartCategory(page, 2, 'Restaurants');
   await split.getByLabel('Split 2 amount').fill('44.50');
 
   // USD 85, not 8.500 and not 85.000: USD has two decimals, and a figure read at the wrong exponent on this
@@ -801,9 +801,9 @@ test('a split by category posts one line per category, each with its own figure'
   await openSplit(page);
   const split = page.getByRole('dialog', { name: 'Split' });
   await split.getByRole('button', { name: '+ Split' }).click();
-  await split.getByLabel('Split 1 category').selectOption({ label: 'Groceries' });
+  await pickPartCategory(page, 1, 'Groceries');
   await split.getByLabel('Split 1 amount').fill('40000');
-  await split.getByLabel('Split 2 category').selectOption({ label: 'Restaurants' });
+  await pickPartCategory(page, 2, 'Restaurants');
   await split.getByLabel('Split 2 amount').fill('45000');
   await split.getByRole('button', { name: 'Close' }).click();
   await form.getByRole('button', { name: 'Save' }).click();
@@ -853,7 +853,7 @@ test('Split by category and With refuse each other in words, before Save', async
   const split = page.getByRole('dialog', { name: 'Split' });
   await split.getByRole('button', { name: '+ Split' }).click();
   await split.getByLabel('Split 1 amount').fill('50000');
-  await split.getByLabel('Split 2 category').selectOption({ label: 'Groceries' });
+  await pickPartCategory(page, 2, 'Groceries');
   await split.getByLabel('Split 2 amount').fill('35000');
   await split.getByRole('button', { name: 'Close' }).click();
 
@@ -1347,9 +1347,9 @@ test('a split by category refuses a foreign amount in words, and the way out wor
   await openSplit(page);
   const split = page.getByRole('dialog', { name: 'Split' });
   await split.getByRole('button', { name: '+ Split' }).click();
-  await split.getByLabel('Split 1 category').selectOption({ label: 'Groceries' });
+  await pickPartCategory(page, 1, 'Groceries');
   await split.getByLabel('Split 1 amount').fill('600000');
-  await split.getByLabel('Split 2 category').selectOption({ label: 'Restaurants' });
+  await pickPartCategory(page, 2, 'Restaurants');
   await split.getByLabel('Split 2 amount').fill('1000000');
   await split.getByRole('button', { name: 'Close' }).click();
 

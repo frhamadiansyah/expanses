@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { choosePayment } from './add-transaction';
-import { openSplit } from './split-row';
+import { openSplit, pickPartCategory } from './split-row';
 
 /** Makes a workspace through the sidebar switcher and lands in it, as the sheet does on its own. */
 async function newWorkspace(page: Page, name: string, startsWith: string) {
@@ -39,12 +39,16 @@ test('a purchase split across workspaces lists each part in its workspace, and t
   await openSplit(page);
   const split = page.getByRole('dialog', { name: 'Split' });
   await split.getByRole('button', { name: '+ Split' }).click();
-  await split.getByLabel('Split 1 category').selectOption({ label: 'Groceries' });
+  await pickPartCategory(page, 1, 'Groceries');
   await split.getByLabel('Split 1 amount').fill('900000');
   // Business's categories come after this workspace's own, under its name; the line then wears its letter.
-  await split.getByLabel('Split 2 category').selectOption({ label: 'Food and beverage › Restaurants' });
+  await pickPartCategory(page, 2, 'Restaurants', 'Business');
   await split.getByLabel('Split 2 amount').fill('450000');
-  await expect(split.getByTestId('workspace-badge')).toHaveAttribute('title', 'Business');
+  for (const [n, name] of [[0, 'Personal'], [1, 'Business']] as const) {
+    const part = split.getByTestId('split-row').nth(n);
+    await expect(part.getByTestId('workspace-badge')).toHaveAttribute('title', name);
+    await expect(part.getByTestId('split-part-category')).toContainText(name);
+  }
   await split.getByRole('button', { name: 'Close' }).click();
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
