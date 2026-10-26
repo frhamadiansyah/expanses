@@ -1,15 +1,38 @@
-import { type Goal, type GoalKind, type GoalStage, uuidv7 } from '@expanses/core';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { currencyInfo, type Goal, type GoalKind, type GoalStage, uuidv7 } from '@expanses/core';
+import { and, asc, eq, getTableColumns, inArray, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { goalCalculators } from '../schema-budget';
-import { goalEarmarks, goalStages, goals } from '../schema-goals';
+import { goalEarmarks, goals, goalsBefore0091, goalStages } from '../schema-goals';
 import { goalStageTerms } from '../schema-health';
 import { MONEY_SUBTYPES } from './accounts';
 import { recordContributionTx } from './goal-contributions';
 import { healthTablesExist } from './health-tables';
 import { isPocketParentTx } from './set-aside-tx';
+
+const currencyColumn = new WeakMap<Db, boolean>();
+
+/**
+ * Whether migration 0091 has run on this database. A database stopped before it reads and writes goals without the
+ * currency, every goal in the base currency, as before. A positive answer is remembered per handle; a negative one
+ * is not, since migrate() may run later on the same handle.
+ */
+export async function goalCurrencyExists(db: Db): Promise<boolean> {
+  if (currencyColumn.get(db)) return true;
+  const rows = await db.values<[number]>(sql`SELECT 1 FROM pragma_table_info('goals') WHERE name = 'currency'`);
+  const exists = rows.length > 0;
+  if (exists) currencyColumn.set(db, true);
+  return exists;
+}
+
+/** The goals table's columns, without `currency` on a database that has not reached 0091 (the row then reads it as absent). */
+export async function goalColumns(db: Db): Promise<ReturnType<typeof getTableColumns<typeof goals>>> {
+  const full = getTableColumns(goals);
+  if (await goalCurrencyExists(db)) return full;
+  const { currency: _currency, ...rest } = full;
+  return rest as typeof full;
+}
 
 export class GoalDbError extends Error {
   constructor(message: string) {
@@ -20,6 +43,8 @@ export class GoalDbError extends Error {
 
 export interface GoalRow extends Goal {
   workspaceId: string;
+  /** Always set on a row read back: the goal's own currency, the workspace's base where none was written. */
+  currency: string;
   status: 'active' | 'achieved' | 'archived';
   createdAt: string;
 }
@@ -42,6 +67,8 @@ export interface SaveGoalInput {
   returnBps: number;
   standingMonthlyMinor?: number;
   standingNote?: string | null;
+  /** The goal's currency. Omitted keeps an existing goal's, and gives a new one the workspace's base. */
+  currency?: string;
   stages: SaveGoalStageInput[];
   /** Set only by a calculator writing its own working. Anything else typed here breaks the link. */
   derived?: boolean;
@@ -49,7 +76,7 @@ export interface SaveGoalInput {
 
 export async function listGoals(database: Database, ws: WorkspaceContext, opts: { includeArchived?: boolean } = {}): Promise<GoalRow[]> {
   const rows = await database.db
-    .select()
+    .select(await goalColumns(database.db))
     .from(goals)
     .where(eq(goals.workspaceId, ws.workspaceId))
     .orderBy(asc(goals.rank), asc(goals.createdAt));
@@ -86,6 +113,7 @@ export async function listGoals(database: Database, ws: WorkspaceContext, opts: 
     returnBps: row.returnBps,
     standingMonthlyMinor: row.standingMonthlyMinor,
     standingNote: row.standingNote,
+    currency: row.currency ?? ws.baseCurrency,
     status: row.status,
     createdAt: row.createdAt,
     stages: stageRows
@@ -133,8 +161,19 @@ function checkGoal(input: SaveGoalInput): void {
 export async function saveGoalTx(tx: Db, ws: WorkspaceContext, input: SaveGoalInput): Promise<{ goalId: string; stageIds: string[] }> {
   checkGoal(input);
   const id = input.id ?? uuidv7();
-  const existing = await tx.select().from(goals).where(and(eq(goals.id, id), eq(goals.workspaceId, ws.workspaceId)));
+  const existing = await tx.select(await goalColumns(tx)).from(goals).where(and(eq(goals.id, id), eq(goals.workspaceId, ws.workspaceId)));
   const rank = input.rank ?? existing[0]?.rank ?? (await nextRank(tx, ws));
+  const before = existing[0] ? (existing[0].currency ?? ws.baseCurrency) : null;
+  const currency = (input.currency ?? before ?? ws.baseCurrency).trim().toUpperCase();
+  try {
+    currencyInfo(currency);
+  } catch {
+    throw new GoalDbError('Pick a currency for this goal');
+  }
+  // Money already counted toward the goal is in the old currency: changing it would silently re-label that money.
+  if (before !== null && before !== currency && (await goalHasFunding(tx, id))) {
+    throw new GoalDbError('Money is already set aside or tagged for this goal, so its currency cannot change.');
+  }
   const row = {
     id,
     workspaceId: ws.workspaceId,
@@ -145,11 +184,18 @@ export async function saveGoalTx(tx: Db, ws: WorkspaceContext, input: SaveGoalIn
     returnBps: input.returnBps,
     standingMonthlyMinor: input.standingMonthlyMinor ?? 0,
     standingNote: input.standingNote ?? null,
+    currency,
     status: existing[0]?.status ?? ('active' as const),
     createdAt: existing[0]?.createdAt ?? new Date().toISOString(),
   };
   const { id: _id, createdAt: _createdAt, ...changes } = row;
-  await tx.insert(goals).values(row).onConflictDoUpdate({ target: goals.id, set: changes });
+  if (await goalCurrencyExists(tx)) {
+    await tx.insert(goals).values(row).onConflictDoUpdate({ target: goals.id, set: changes });
+  } else {
+    const { currency: _currency, ...older } = row;
+    const { currency: _changed, ...olderChanges } = changes;
+    await tx.insert(goalsBefore0091).values(older).onConflictDoUpdate({ target: goalsBefore0091.id, set: olderChanges });
+  }
 
   const keptIds = input.stages.map((stage) => stage.id).filter((stageId): stageId is string => !!stageId);
   const current = await tx.select({ id: goalStages.id, name: goalStages.name }).from(goalStages).where(eq(goalStages.goalId, id));
@@ -195,6 +241,33 @@ export async function saveGoalTx(tx: Db, ws: WorkspaceContext, input: SaveGoalIn
     await tx.delete(goalCalculators).where(and(eq(goalCalculators.goalId, id), eq(goalCalculators.workspaceId, ws.workspaceId)));
   }
   return { goalId: id, stageIds };
+}
+
+/**
+ * Whether anything is counted toward the goal: money set aside, a buy tagged to it (whole or in part), a monthly buy
+ * template, a draw or a recorded movement. Read with plain SQL so a database without a table reads it as none.
+ */
+export async function goalHasFunding(tx: Db, goalId: string): Promise<boolean> {
+  const tables = new Set((await tx.values<[string]>(sql`SELECT name FROM sqlite_master WHERE type = 'table'`)).map((row) => row[0]));
+  const checks: [string, string][] = [
+    ['goal_earmarks', 'goal_id'],
+    ['investment_trades', 'goal_id'],
+    ['trade_templates', 'goal_id'],
+    ['goal_draws', 'goal_id'],
+    ['trade_goal_parts', 'goal_id'],
+    ['goal_contributions', 'goal_id'],
+  ];
+  for (const [table, column] of checks) {
+    if (!tables.has(table)) continue;
+    const found = await tx.values<[number]>(sql.raw(`SELECT 1 FROM ${table} WHERE ${column} = '${goalId.replace(/'/g, "''")}' LIMIT 1`));
+    if (found.length > 0) return true;
+  }
+  return false;
+}
+
+/** `goalHasFunding` for a screen: whether the goal's currency can still be changed. */
+export async function goalIsFunded(database: Database, goalId: string): Promise<boolean> {
+  return database.transaction((tx) => goalHasFunding(tx, goalId));
 }
 
 /**

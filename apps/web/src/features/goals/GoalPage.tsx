@@ -147,7 +147,7 @@ export function GoalPage({ goalId }: { goalId: string }) {
   }
 
   const card = goalCard(plan);
-  const currency = ws.baseCurrency;
+  const currency = plan.currency;
   const warn = card.statusTone === 'warn';
   const derived = new Set((calculators.data ?? []).map((row) => row.goalId));
   const full = history[card.goalId] ?? [];
@@ -295,7 +295,7 @@ export function GoalPage({ goalId }: { goalId: string }) {
           {plan.links.length === 0 ? (
             <InsetRow title="Nothing yet" subtitle="Tag a purchase or set money aside." chevron={false} />
           ) : (
-            plan.links.map((link) => <FundingRow key={`${link.accountId}-${link.kind}`} link={link} />)
+            plan.links.map((link) => <FundingRow key={`${link.accountId}-${link.kind}`} link={link} goalCurrency={plan.currency} />)
           )}
         </InsetGroup>
       </section>

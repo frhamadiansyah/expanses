@@ -1,4 +1,4 @@
-import { type GoalStatus, goalStatusOf, retagFits, type TradeRecord } from '@expanses/core';
+import { convertMinor, type GoalStatus, goalStatusOf, retagFits, type TradeRecord } from '@expanses/core';
 
 /**
  * The arithmetic behind a goal page's Use, Take back, Move and Monthly: what each leaves set aside, and what the
@@ -112,4 +112,10 @@ export function movablePurchases<T extends TradeRecord & { status?: string }>(tr
   return active.filter(
     (trade) => trade.kind === 'buy' && trade.goalId === goalId && retagFits(active.filter((other) => other.accountId === trade.accountId), trade.id),
   );
+}
+
+/** An amount in the base currency, in a goal's own money at the day's rate. Without a rate it counts as nothing. */
+export function inGoalMoney(baseMinor: number, goal: { currency: string; rateToBase: number | null }, baseCurrency: string): number {
+  if (goal.currency === baseCurrency) return baseMinor;
+  return goal.rateToBase === null ? 0 : convertMinor(baseMinor, baseCurrency, goal.currency, 1 / goal.rateToBase);
 }

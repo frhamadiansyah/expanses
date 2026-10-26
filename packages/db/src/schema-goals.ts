@@ -12,6 +12,8 @@ export const goals = sqliteTable('goals', {
   returnBps: integer('return_bps').notNull(),
   standingMonthlyMinor: integer('standing_monthly_minor').notNull(),
   standingNote: text('standing_note'),
+  // Null on a row written before 0091: the workspace's base currency.
+  currency: text('currency'),
   status: text('status', { enum: ['active', 'achieved', 'archived'] }).notNull(),
   createdAt: text('created_at').notNull(),
 });
@@ -49,5 +51,22 @@ export const goalDraws = sqliteTable('goal_draws', {
   wasWhole: integer('was_whole').notNull(),
   wholeSince: text('whole_since'),
   occurredOn: text('occurred_on').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
+/** The goals table as it stood before 0091 (no currency), for writing to a database that has not reached it. */
+export const goalsBefore0091 = sqliteTable('goals', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  name: text('name').notNull(),
+  kind: text('kind', {
+    enum: ['emergency', 'hajj', 'umrah', 'education', 'retirement', 'home', 'wedding', 'vehicle', 'holiday', 'other'],
+  }).notNull(),
+  rank: integer('rank').notNull(),
+  growthBps: integer('growth_bps').notNull(),
+  returnBps: integer('return_bps').notNull(),
+  standingMonthlyMinor: integer('standing_monthly_minor').notNull(),
+  standingNote: text('standing_note'),
+  status: text('status', { enum: ['active', 'achieved', 'archived'] }).notNull(),
   createdAt: text('created_at').notNull(),
 });

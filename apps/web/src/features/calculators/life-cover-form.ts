@@ -1,4 +1,4 @@
-import { DEFAULT_INFLATION_BPS, DRAWDOWN_RETURN_BPS, type LifeCover, type LifeCoverInputs, lifeCoverMinor, type SheetTotals, type StagePlan } from '@expanses/core';
+import { convertMinor, DEFAULT_INFLATION_BPS, DRAWDOWN_RETURN_BPS, type LifeCover, type LifeCoverInputs, lifeCoverMinor, type SheetTotals, type StagePlan } from '@expanses/core';
 import type { LifeCoverSaved } from '@expanses/db';
 import { type Field, readMoney, readPercent, readWhole } from './fields';
 
@@ -32,14 +32,17 @@ export const LIFE_COVER_DEFAULTS: LifeCoverDraft = {
 /** Debts and liquid assets from the balance sheet; education from the stages of education goals not yet paid, in today's money. */
 export function lifeCoverPrefill(
   totals: SheetTotals | null,
-  plans: readonly { goal: { kind: string }; stages: readonly Pick<StagePlan, 'state' | 'todayMinor'>[] }[],
+  plans: readonly { goal: { kind: string }; currency?: string; rateToBase?: number | null; stages: readonly Pick<StagePlan, 'state' | 'todayMinor'>[] }[],
   missing: readonly string[] = [],
+  baseCurrency?: string,
 ): LifeCoverPrefill {
+  // A goal in another currency is counted in the base: at the day's rate, or not at all where none is stored.
+  const inBase = (plan: (typeof plans)[number], minor: number) =>
+    !baseCurrency || !plan.currency || plan.currency === baseCurrency ? minor : plan.rateToBase ? convertMinor(minor, plan.currency, baseCurrency, plan.rateToBase) : 0;
   const educationMinor = plans
     .filter((plan) => plan.goal.kind === 'education')
-    .flatMap((plan) => plan.stages)
-    .filter((stage) => stage.state !== 'paid')
-    .reduce((total, stage) => total + stage.todayMinor, 0);
+    .flatMap((plan) => plan.stages.filter((stage) => stage.state !== 'paid').map((stage) => inBase(plan, stage.todayMinor)))
+    .reduce((total, minor) => total + minor, 0);
   const known = totals !== null && missing.length === 0;
   return {
     debtsMinor: known ? totals.liabilitiesMinor : null,

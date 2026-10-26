@@ -27,6 +27,11 @@ export interface Goal {
   returnBps: number;
   standingMonthlyMinor: number;
   standingNote: string | null;
+  /**
+   * The currency every amount of the goal (stage targets, standing monthly, what the plan works out) is in. Absent
+   * means the workspace's base currency, as every goal was before goals had one.
+   */
+  currency?: string;
   stages: GoalStage[];
 }
 
@@ -53,6 +58,11 @@ export interface GoalLink {
    * out loud instead.
    */
   baseMinor: number | null;
+  /**
+   * `valueMinor` in the goal's own currency, or null when no rate is known. Absent means the goal is in the base
+   * currency, and `baseMinor` is what is counted.
+   */
+  goalMinor?: number | null;
   risk: Risk | null;
 }
 
@@ -130,7 +140,7 @@ export function goalPlan(goal: Goal, links: GoalLink[], plannedMonthlyMinor: num
   // summing a USD set-aside into an IDR total was adding 10_003 where Rp 1.600.480 belonged — or, on a
   // US$50.000 holding, Rp 5.000.000 where Rp 800.000.000 belonged. A link with no rate is excluded, and
   // `goalPlansFor` says so beside the goal rather than quietly under-reporting it.
-  const currentMinor = links.reduce((total, link) => total + (link.baseMinor ?? 0), 0);
+  const currentMinor = links.reduce((total, link) => total + ((link.goalMinor === undefined ? link.baseMinor : link.goalMinor) ?? 0), 0);
   const ordered = [...goal.stages].sort((a, b) => a.dueOn.localeCompare(b.dueOn) || a.id.localeCompare(b.id));
 
   let carryMinor = currentMinor;

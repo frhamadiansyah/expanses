@@ -144,7 +144,7 @@ export function GoalsPage() {
             {/* One row a goal: the figure is read at a glance here, and the goal itself opens on its own page. */}
             <InsetGroup>
               {inSection.map(({ card }) => (
-                <GoalListRow key={card.goalId} card={card} currency={currency} />
+                <GoalListRow key={card.goalId} card={card} currency={card.currency} />
               ))}
             </InsetGroup>
           </section>

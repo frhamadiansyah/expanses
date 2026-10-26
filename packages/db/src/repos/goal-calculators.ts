@@ -22,7 +22,7 @@ import type { Database, Db } from '../database';
 import { goalCalculators } from '../schema-budget';
 import { goalStages, goals as goalsTable } from '../schema-goals';
 import { goalStageTerms } from '../schema-health';
-import { drawnStageIds, GoalDbError, type GoalRow, listGoals, type SaveGoalStageInput, saveGoalTx } from './goals';
+import { drawnStageIds, GoalDbError, goalColumns, type GoalRow, listGoals, type SaveGoalStageInput, saveGoalTx } from './goals';
 import { healthTablesExist } from './health-tables';
 
 /**
@@ -252,7 +252,7 @@ async function writeCalculatorTx(
  */
 export async function saveGoalCalculator(database: Database, ws: WorkspaceContext, input: SaveGoalCalculatorInput): Promise<number> {
   return database.transaction(async (tx) => {
-    const [goal] = await tx.select().from(goalsTable).where(and(eq(goalsTable.id, input.goalId), eq(goalsTable.workspaceId, ws.workspaceId)));
+    const [goal] = await tx.select(await goalColumns(tx)).from(goalsTable).where(and(eq(goalsTable.id, input.goalId), eq(goalsTable.workspaceId, ws.workspaceId)));
     if (!goal) throw new GoalDbError('Goal not found in this workspace');
     // A goal's return is its owner's (spec §8): a retirement working that names no return while saving keeps it.
     const inputs =
@@ -294,7 +294,7 @@ export async function createGoalFromCalculator(database: Database, ws: Workspace
       stages: derived.stages.map(({ key: _key, returnBps: _returnBps, ...stage }) => stage),
       derived: true,
     });
-    const [goal] = await tx.select().from(goalsTable).where(eq(goalsTable.id, goalId));
+    const [goal] = await tx.select(await goalColumns(tx)).from(goalsTable).where(eq(goalsTable.id, goalId));
     await writeCalculatorTx(tx, ws, goal!, input.kind, derived);
     return goalId;
   });
@@ -425,7 +425,7 @@ export async function upgradeCalculatorGoals(database: Database, ws: WorkspaceCo
         }
         return false;
       }
-      const [goalRow] = await tx.select().from(goalsTable).where(and(eq(goalsTable.id, goal.id), eq(goalsTable.workspaceId, ws.workspaceId)));
+      const [goalRow] = await tx.select(await goalColumns(tx)).from(goalsTable).where(and(eq(goalsTable.id, goal.id), eq(goalsTable.workspaceId, ws.workspaceId)));
       // Keeps its computed_at: the working is re-stated, not redone on a new day.
       await writeCalculatorTx(tx, ws, goalRow!, row.kind, derived, row.computedAt);
       return true;

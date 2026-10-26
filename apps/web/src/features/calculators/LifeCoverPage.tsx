@@ -26,7 +26,7 @@ export function LifeCoverPage() {
   const remembered = useQuery({ queryKey: ['life-cover', ws.workspaceId], queryFn: () => getLifeCoverDraft(database, ws) });
   // The net-worth page's own reader: no totals, and the currencies named, while a row on the sheet has no rate.
   const { totals, missing } = ratioTotals(sheetInputs.data);
-  const prefill = lifeCoverPrefill(totals, goalPlans.data?.plans ?? [], missing);
+  const prefill = lifeCoverPrefill(totals, goalPlans.data?.plans ?? [], missing, ws.baseCurrency);
   return (
     <CalculatorPage entry={LIFE_COVER} error={error} saved={saved}>
       {remembered.isSuccess && (

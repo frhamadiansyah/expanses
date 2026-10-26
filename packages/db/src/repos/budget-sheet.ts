@@ -109,7 +109,7 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
     savings: goals.plans.map((plan) => ({
       goalId: plan.goalId,
       name: plan.goal.name,
-      planMinor: asOfMonthEnd(plan.requiredMonthlyMinor),
+      planMinor: asOfMonthEnd(plan.requiredMonthlyBaseMinor ?? 0),
       actualMinor: asOfMonthEnd(contributions[plan.goalId] ?? 0),
     })),
     eventSpendingMinor: eventSpending.amountMinor,

@@ -52,7 +52,11 @@ export interface GoalCard {
   monthsLeft: number | null;
   /** An emergency fund's measure in place of a date: "6 months of spending". Null for every other goal. */
   coverLabel: string | null;
+  /** The goal's own currency: every `…Minor` figure of the card, but `currentBaseMinor`, is in it. */
+  currency: string;
   currentMinor: number;
+  /** What is saved in the base currency, for adding goals together; null when no rate is stored for the goal's currency. */
+  currentBaseMinor: number | null;
   targetMinor: number;
   progressPercent: number;
   statusLabel: 'Done' | 'Funded' | 'On track' | 'Behind';
@@ -96,8 +100,11 @@ export const longDay = (iso: string) => `${Number(iso.slice(8, 10))} ${monthYear
  * left out of the figure (its stages are paid, so nothing is owed on it) but counts as on track: it is funded. The
  * figure is everything held, a funded goal's surplus included.
  */
-export function goalsTotals(cards: readonly Pick<GoalCard, 'currentMinor' | 'done' | 'statusLabel'>[]): { savedMinor: number; onTrack: number; count: number } {
-  const savedMinor = cards.filter((card) => !card.done).reduce((total, card) => total + card.currentMinor, 0);
+export function goalsTotals(
+  cards: readonly (Pick<GoalCard, 'currentMinor' | 'done' | 'statusLabel'> & { currentBaseMinor?: number | null })[],
+): { savedMinor: number; onTrack: number; count: number } {
+  // In the base currency: goals in other currencies are converted for this total only (a goal with no rate adds nothing).
+  const savedMinor = cards.filter((card) => !card.done).reduce((total, card) => total + (card.currentBaseMinor === undefined ? card.currentMinor : (card.currentBaseMinor ?? 0)), 0);
   const onTrack = cards.filter((card) => card.statusLabel !== 'Behind').length;
   return { savedMinor, onTrack, count: cards.length };
 }
@@ -176,7 +183,9 @@ export function goalCard(plan: GoalPlanRow): GoalCard {
     dueLabel: last ? monthYear(last.dueOn) : '—',
     monthsLeft: plan.goal.kind === 'emergency' || done || unpaid.length === 0 ? null : unpaid[unpaid.length - 1]!.months,
     coverLabel: plan.goal.kind === 'emergency' ? coverOf(plan) : null,
+    currency: plan.currency,
     currentMinor: plan.currentMinor,
+    currentBaseMinor: plan.currentBaseMinor,
     targetMinor: plan.totalTargetMinor,
     progressPercent: plan.totalTargetMinor > 0 ? Math.max(0, Math.min(100, (plan.currentMinor / plan.totalTargetMinor) * 100)) : 0,
     statusLabel,

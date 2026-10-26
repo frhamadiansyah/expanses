@@ -51,6 +51,8 @@ const SWITCH_NO_GOAL = 'A switch takes only money with no goal';
 
 export interface GoalLinkRow extends GoalLink {
   goalId: string;
+  /** `valueMinor` in the goal's own currency; null when no rate is known for the day. */
+  goalMinor: number | null;
   /** Set aside more than the account holds, so the link was capped at the balance. */
   overBalance: boolean;
   /** What the goal promised on this account, in its own money. Null for tagged units. */
@@ -65,10 +67,19 @@ export interface GoalPlanRow extends GoalPlan {
   earmarkWarning: string | null;
   /** The no-rate sentence alone, without the short-account one (spec §7.3). */
   unconvertedWarning: string | null;
+  /** The currency every `…Minor` figure of this plan is in: the goal's own. */
+  currency: string;
+  /** What this plan's monthly need, set-up amount and funds hold in the base currency; null when the goal's currency has no rate. */
+  requiredMonthlyBaseMinor: number | null;
+  plannedMonthlyBaseMinor: number | null;
+  currentBaseMinor: number | null;
+  /** Base currency per 1 major unit of `currency` on the day (1 for a base goal); null when no rate is stored. */
+  rateToBase: number | null;
 }
 
 export interface GoalSummary {
   plans: GoalPlanRow[];
+  /** Totals across goals, in the base currency: each goal's figure converted at the day's rate (a goal with no rate is left out). */
   neededMonthlyMinor: number;
   plannedMonthlyMinor: number;
   /** Take-home pay minus spending and loan principal, as a monthly figure. */
@@ -153,8 +164,29 @@ export async function retagTrade(database: Database, ws: WorkspaceContext, trade
 
 /** What funds each goal on a date: units tagged to it, and money set aside from savings. */
 export async function goalLinksFor(database: Database, ws: WorkspaceContext, date: string): Promise<GoalLinkRow[]> {
+  return (await goalLinksWithRates(database, ws, date)).links;
+}
+
+/**
+ * `amountMinor` of `from` in `to`, going through the base currency the stored rates are all against (`rates[c]` is
+ * base per 1 major unit of c). The same currency is returned as it is, exact; null where a rate is missing.
+ */
+export function viaBaseMinor(amountMinor: number, from: string, to: string, base: string, rates: Record<string, number>): number | null {
+  if (from === to) return amountMinor;
+  const fromRate = from === base ? 1 : rates[from];
+  const toRate = to === base ? 1 : rates[to];
+  if (fromRate === undefined || toRate === undefined) return null;
+  return convertMinor(amountMinor, from, to, fromRate / toRate);
+}
+
+interface LinksWithRates {
+  links: GoalLinkRow[];
+  rates: Record<string, number>;
+}
+
+async function goalLinksWithRates(database: Database, ws: WorkspaceContext, date: string): Promise<LinksWithRates> {
   const goalRows = await listGoals(database, ws);
-  if (goalRows.length === 0) return [];
+  if (goalRows.length === 0) return { links: [], rates: {} };
   const known = new Set(goalRows.map((goal) => goal.id));
 
   const trades = await listTrades(database, ws);
@@ -164,7 +196,7 @@ export async function goalLinksFor(database: Database, ws: WorkspaceContext, dat
   const unitsByAccount: Record<string, GoalUnits | null> = goalUnitsFor(trades.filter((trade) => !byMoney.has(trade.accountId)), date);
   for (const accountId of byMoney) if (trades.some((trade) => trade.accountId === accountId)) unitsByAccount[accountId] = null;
   const profiles = await listAssetProfiles(database, ws);
-  const links: Omit<GoalLinkRow, 'baseMinor'>[] = [];
+  const links: Omit<GoalLinkRow, 'baseMinor' | 'goalMinor'>[] = [];
 
   for (const [accountId, units] of Object.entries(unitsByAccount)) {
     const value = values.find((row) => row.accountId === accountId);
@@ -249,7 +281,7 @@ export async function goalLinksFor(database: Database, ws: WorkspaceContext, dat
     }
   }
 
-  return withBaseAmounts(database, ws, links, date);
+  return withBaseAmounts(database, ws, links, date, new Map(goalRows.map((goal) => [goal.id, goal.currency])));
 }
 
 /**
@@ -263,17 +295,23 @@ export async function goalLinksFor(database: Database, ws: WorkspaceContext, dat
 async function withBaseAmounts(
   database: Database,
   ws: WorkspaceContext,
-  links: Omit<GoalLinkRow, 'baseMinor'>[],
+  links: Omit<GoalLinkRow, 'baseMinor' | 'goalMinor'>[],
   date: string,
-): Promise<GoalLinkRow[]> {
-  const foreign = [...new Set(links.map((link) => link.currency).filter((currency) => currency !== ws.baseCurrency))];
+  goalCurrency: Map<string, string>,
+): Promise<LinksWithRates> {
+  // The goals' own currencies are wanted too: a link is counted in the goal's money, via the base.
+  const wanted = [...links.map((link) => link.currency), ...goalCurrency.values()];
+  const foreign = [...new Set(wanted.filter((currency) => currency !== ws.baseCurrency))];
   const rates: Record<string, number> =
     foreign.length > 0 ? (await resolveRates(database, { currencies: foreign, baseCurrency: ws.baseCurrency, onDate: date, today: isoDate() })).rates : {};
-  return links.map((link) => {
-    if (link.currency === ws.baseCurrency) return { ...link, baseMinor: link.valueMinor };
-    const rate = rates[link.currency];
-    return { ...link, baseMinor: rate === undefined ? null : convertMinor(link.valueMinor, link.currency, ws.baseCurrency, rate) };
-  });
+  return {
+    rates,
+    links: links.map((link) => {
+      const baseMinor = viaBaseMinor(link.valueMinor, link.currency, ws.baseCurrency, ws.baseCurrency, rates);
+      const goalMinor = viaBaseMinor(link.valueMinor, link.currency, goalCurrency.get(link.goalId) ?? ws.baseCurrency, ws.baseCurrency, rates);
+      return { ...link, baseMinor, goalMinor };
+    }),
+  };
 }
 
 const perMonth = (totalMinor: number, months: number) => (months > 0 ? roundHalfAwayFromZero(totalMinor / months) : 0);
@@ -281,7 +319,10 @@ const perMonth = (totalMinor: number, months: number) => (months > 0 ? roundHalf
 /** Every goal's plan, what they need together, and how they fit into what you can save. */
 export async function goalPlansFor(database: Database, ws: WorkspaceContext, date: string): Promise<GoalSummary> {
   const goalRows = await listGoals(database, ws);
-  const links = await goalLinksFor(database, ws, date);
+  const { links, rates } = await goalLinksWithRates(database, ws, date);
+  const base = ws.baseCurrency;
+  const inGoal = (goal: GoalRow, baseMinor: number) => viaBaseMinor(baseMinor, base, goal.currency, base, rates) ?? 0;
+  const inBase = (goal: GoalRow, goalMinor: number) => viaBaseMinor(goalMinor, goal.currency, base, base, rates);
   // What you can put away is yours, not one workspace's, and it is counted in your own currency.
   const flows = await periodFlows(database, ownerScope(ws), { from: `${addMonths(monthOf(date), -11)}-01`, to: date });
   // What an emergency goal's months multiply: the function the ratio card divides by, on the base the goal's own
@@ -301,6 +342,7 @@ export async function goalPlansFor(database: Database, ws: WorkspaceContext, dat
 
   const templates = (await listTradeTemplates(database, ws)).filter((template) => template.active && template.goalId);
   const values = await assetValuesAt(database, ws, date);
+  // A monthly buy is counted in the base currency (its amount is money paid from the owner's accounts).
   const monthlyFromTemplates = (goalId: string) =>
     templates
       .filter((template) => template.goalId === goalId)
@@ -313,28 +355,41 @@ export async function goalPlansFor(database: Database, ws: WorkspaceContext, dat
 
   const plans: GoalPlanRow[] = goalRows.map((goal) => {
     const mine = links.filter((link) => link.goalId === goal.id);
-    const plan = goalPlan(goal, mine, monthlyFromTemplates(goal.id), outgoingFor(goal.id), date);
+    const plan = goalPlan(goal, mine, inGoal(goal, monthlyFromTemplates(goal.id)), inGoal(goal, outgoingFor(goal.id)), date);
     // A link with no rate is left out of the total, so the total is honest; saying so is what keeps the
     // *goal* honest, and `earmarkWarning` is the slot the screen already paints for exactly this.
-    const unconverted = mine.filter((link) => link.baseMinor === null);
+    const unconverted = mine.filter((link) => link.goalMinor === null);
     const short = mine.filter((link) => link.shortMinor > 0);
     const shortWarning = short.length
       ? short.map((link) => `${link.name} holds less than is set aside, so this goal is short by ${formatMinor(link.shortMinor, link.currency)} there.`).join(' ')
       : null;
     const unconvertedWarning =
       unconverted.length > 0
-        ? `${unconverted.map((link) => formatMinor(link.valueMinor, link.currency)).join(', ')} is not counted here: no ${ws.baseCurrency} rate for ${date}.`
+        ? `${unconverted.map((link) => formatMinor(link.valueMinor, link.currency)).join(', ')} is not counted here: no ${goal.currency} rate for ${date}.`
         : null;
     const warnings = [shortWarning, unconvertedWarning].filter((warning): warning is string => warning !== null);
-    return { ...plan, goal, links: mine, earmarkWarning: warnings.length > 0 ? warnings.join(' ') : null, unconvertedWarning };
+    return {
+      ...plan,
+      goal,
+      links: mine,
+      earmarkWarning: warnings.length > 0 ? warnings.join(' ') : null,
+      unconvertedWarning,
+      currency: goal.currency,
+      requiredMonthlyBaseMinor: inBase(goal, plan.requiredMonthlyMinor),
+      plannedMonthlyBaseMinor: inBase(goal, plan.plannedMonthlyMinor),
+      currentBaseMinor: inBase(goal, plan.currentMinor),
+      rateToBase: goal.currency === base ? 1 : (rates[goal.currency] ?? null),
+    };
   });
 
+  // The totals and the fit against what can be saved are in the base currency, as that saving is.
+  const inBasePlan = (plan: GoalPlanRow) => ({ ...plan, requiredMonthlyMinor: plan.requiredMonthlyBaseMinor ?? 0, plannedMonthlyMinor: plan.plannedMonthlyBaseMinor ?? 0 });
   return {
     plans,
-    neededMonthlyMinor: plans.reduce((total, plan) => total + plan.requiredMonthlyMinor, 0),
-    plannedMonthlyMinor: plans.reduce((total, plan) => total + plan.plannedMonthlyMinor, 0),
+    neededMonthlyMinor: plans.reduce((total, plan) => total + (plan.requiredMonthlyBaseMinor ?? 0), 0),
+    plannedMonthlyMinor: plans.reduce((total, plan) => total + (plan.plannedMonthlyBaseMinor ?? 0), 0),
     capacityMonthlyMinor,
-    fits: fitByRank(plans, goalRows, capacityMonthlyMinor),
+    fits: fitByRank(plans.map(inBasePlan), goalRows, capacityMonthlyMinor),
   };
 }
 
@@ -353,7 +408,7 @@ export async function goalWholeness(database: Database, ws: WorkspaceContext, da
   for (const plan of summary.plans) {
     const whole = plan.totalTargetMinor > 0 && plan.currentMinor >= plan.totalTargetMinor && plan.links.every((link) => link.shortMinor === 0);
     // Only a goal held wholly in base-currency set-asides has a dated trail: units and foreign money move for reasons no log keeps.
-    const traceable = plan.links.length > 0 && plan.links.every((link) => link.kind === 'earmark' && link.currency === ws.baseCurrency);
+    const traceable = plan.goal.currency === ws.baseCurrency && plan.links.length > 0 && plan.links.every((link) => link.kind === 'earmark' && link.currency === ws.baseCurrency);
     if (!whole || !traceable) {
       out[plan.goalId] = { whole, since: null };
       continue;

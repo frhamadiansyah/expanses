@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { leftForGoal, lowered, monthlyAfter, monthlyPrefill, movablePurchases, moved, purchaseShare, setAsideFirst, setAsideOf, setAsideOn } from './goal-actions';
+import { inGoalMoney, leftForGoal, lowered, monthlyAfter, monthlyPrefill, movablePurchases, moved, purchaseShare, setAsideFirst, setAsideOf, setAsideOn } from './goal-actions';
 
 describe('lowering a set-aside (Use, Take back)', () => {
   it('takes what is asked and leaves the rest', () => {
@@ -127,5 +127,21 @@ describe('the purchases Move offers', () => {
       trade('x', 'buy', 1, 'umrah', { accountId: 'bbri' }),
     ];
     expect(movablePurchases(trades, 'umrah').map((row) => row.id)).toEqual(['bb', 'x']);
+  });
+});
+
+describe('inGoalMoney', () => {
+  it('leaves a base-currency goal exactly as it is', () => {
+    expect(inGoalMoney(1_234_567, { currency: 'IDR', rateToBase: 1 }, 'IDR')).toBe(1_234_567);
+  });
+
+  it('turns base money into a euro goal in cents, and a yen goal in whole yen', () => {
+    // Rp 1.800.000 at 18.000 a euro is EUR 100,00 = 10_000 cents (IDR has no minor unit).
+    expect(inGoalMoney(1_800_000, { currency: 'EUR', rateToBase: 18_000 }, 'IDR')).toBe(10_000);
+    expect(inGoalMoney(1_050_000, { currency: 'JPY', rateToBase: 105 }, 'IDR')).toBe(10_000);
+  });
+
+  it('counts nothing where no rate is stored', () => {
+    expect(inGoalMoney(1_800_000, { currency: 'EUR', rateToBase: null }, 'IDR')).toBe(0);
   });
 });

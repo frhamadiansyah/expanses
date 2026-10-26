@@ -12,18 +12,20 @@ import { type GroupChild, InsetRow } from '../../ui/native';
  * currency, with the base-currency translation beside it when a rate is known and a plain word when it is
  * not. There is one of these because there used to be two, and only one of them would ever have been fixed.
  */
-export function LinkAmount({ link }: { link: GoalLinkRow }) {
+export function LinkAmount({ link, goalCurrency }: { link: GoalLinkRow; goalCurrency?: string }) {
   const { ws } = useApp();
-  if (link.currency === ws.baseCurrency) return <Money minor={link.valueMinor} currency={link.currency} />;
+  // The translation is into the goal's own money, which is the base unless the goal has a currency of its own.
+  const into = goalCurrency ?? ws.baseCurrency;
+  if (link.currency === into) return <Money minor={link.valueMinor} currency={link.currency} />;
   return (
     <>
       <Money minor={link.valueMinor} currency={link.currency} />
-      {link.baseMinor === null ? (
-        <> · no {ws.baseCurrency} rate yet</>
+      {link.goalMinor === null ? (
+        <> · no {into} rate yet</>
       ) : (
         <>
           {' ('}
-          <Money minor={link.baseMinor} currency={ws.baseCurrency} />
+          <Money minor={link.goalMinor} currency={into} />
           {')'}
         </>
       )}
@@ -32,7 +34,7 @@ export function LinkAmount({ link }: { link: GoalLinkRow }) {
 }
 
 /** What funds a goal, as one row of its group, opening that account or holding. Named so the group can hand it its place and a test can name it. */
-export function FundingRow({ link, position }: GroupChild & { link: GoalLinkRow }) {
+export function FundingRow({ link, goalCurrency, position }: GroupChild & { link: GoalLinkRow; goalCurrency?: string }) {
   return (
     <div data-testid="goal-link">
       <InsetRow
@@ -51,7 +53,7 @@ export function FundingRow({ link, position }: GroupChild & { link: GoalLinkRow 
             'set aside'
           )
         }
-        value={<LinkAmount link={link} />}
+        value={<LinkAmount link={link} goalCurrency={goalCurrency} />}
         valueTone="ink"
         // The account or holding's own page: a money account's page is reached through the same address.
         to="/net-worth/assets/$accountId"
