@@ -72,7 +72,7 @@ export function heroChange(fromMinor: number, toMinor: number, currency: string)
     text: formatMinor(Math.abs(change), currency),
     percent: fromMinor === 0 ? null : `${((change / Math.abs(fromMinor)) * 100).toLocaleString('id-ID', { maximumFractionDigits: 2 })}%`,
     direction,
-    tone: direction === 'up' ? 'tint' : direction === 'down' ? 'alarm' : 'ink-3',
+    tone: direction === 'up' ? 'gain' : direction === 'down' ? 'alarm' : 'ink-3',
   };
 }
 
@@ -95,12 +95,12 @@ export function progressPercent(currentMinor: number, targetMinor: number): numb
 }
 
 /**
- * The bar's colour: the tint while there is room, alarm once the target is passed.
+ * The bar's colour: the gain green while there is room, alarm once the target is passed.
  *
  * A bar that fills to the end and stops is a bar that cannot say whether it stopped at the line or went
  * through it, which on a budget is the only thing worth knowing.
  */
 export function progressTone(currentMinor: number, targetMinor: number): Tone {
   if (targetMinor <= 0) return 'ink-3';
-  return currentMinor > targetMinor ? 'alarm' : 'tint';
+  return currentMinor > targetMinor ? 'alarm' : 'gain';
 }

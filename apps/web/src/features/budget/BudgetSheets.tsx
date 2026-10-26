@@ -96,7 +96,7 @@ export function SplitSheet({ sheet, currency, onClose }: { sheet: BudgetSheetRes
         <span aria-hidden className="flex h-[6px] w-full overflow-hidden rounded-full bg-[var(--ph-track)]">
           {spent > 0 && (
             <>
-              <span className="block h-full bg-[var(--ph-tint)]" style={{ width: `${essentialShare * 100}%` }} />
+              <span className="block h-full bg-[var(--ph-up)]" style={{ width: `${essentialShare * 100}%` }} />
               <span className="block h-full bg-[var(--ph-ink-3)]" style={{ width: `${(1 - essentialShare) * 100}%` }} />
             </>
           )}

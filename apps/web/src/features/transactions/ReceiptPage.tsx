@@ -112,7 +112,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
     return (
       <div className="flex flex-col items-center gap-2">
         <Empty>That transaction is not on this device.</Empty>
-        <Link to="/transactions" className="text-sm font-medium text-emerald-800">
+        <Link to="/transactions" className="text-sm font-medium text-[var(--ph-tint)]">
           Back to Transactions
         </Link>
       </div>

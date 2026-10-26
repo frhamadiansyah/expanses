@@ -106,7 +106,7 @@ export function MissingRows({
                         </span>
                       </span>
                       <span className="shrink-0 text-right">
-                        <span className={cx('tabular block text-sm font-semibold whitespace-nowrap', row.direction === 'out' ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-tint)]')}>
+                        <span className={cx('tabular block text-sm font-semibold whitespace-nowrap', row.direction === 'out' ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-up)]')}>
                           {formatMinor(row.amountMinor, currency)}
                         </span>
                         {original && (

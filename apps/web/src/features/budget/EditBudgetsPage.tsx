@@ -138,7 +138,7 @@ export function EditBudgetsPage() {
         <span aria-hidden className="flex h-[8px] w-full gap-[2px] overflow-hidden rounded-full bg-[var(--ph-track)]">
           <span className="block h-full bg-[var(--ph-ink-2)]" style={{ width: width(debt) }} />
           <span className="block h-full bg-[var(--ph-info-ink)]" style={{ width: width(goals) }} />
-          <span className="block h-full bg-[var(--ph-tint)]" style={{ width: width(budgeted) }} />
+          <span className="block h-full bg-[var(--ph-up)]" style={{ width: width(budgeted) }} />
         </span>
         <p className="text-[13px] leading-[18px] text-[var(--ph-ink-3)]" data-testid="edit-unplanned">
           Debt {formatMinor(debt, currency)} · Goals {formatMinor(goals, currency)} ·{' '}

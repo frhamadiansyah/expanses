@@ -172,7 +172,7 @@ export function UpdatePricesPage() {
         <button
           type="button"
           onClick={() => setChoosing(true)}
-          className="ph-focus mb-[18px] flex min-h-11 w-full items-center justify-center gap-2 rounded-[12px] bg-[var(--ph-tint)] px-4 text-[15px] font-semibold text-white md:max-w-2xl"
+          className="ph-focus mb-[18px] flex min-h-11 w-full items-center justify-center gap-2 rounded-[12px] bg-[var(--ph-tint)] px-4 text-[15px] font-semibold text-[var(--ph-surface)] md:max-w-2xl"
         >
           <Download size={18} aria-hidden />
           Import IDX daily file
@@ -282,7 +282,7 @@ function PreviewSheet({ preview, onClose }: { preview: IdxPreview; onClose: () =
                     : `${row.oldMicro === null ? 'No price' : formatUnits(row.oldMicro)} → ${formatUnits(row.newMicro)}`
                 }
                 value={row.keptMicro !== null ? 'Kept' : row.oldMicro === null ? undefined : change === 0 ? '0,0%' : percentLabel(change, row.oldMicro)}
-                valueTone={row.keptMicro !== null || change === 0 ? 'ink-3' : change > 0 ? 'tint' : 'alarm'}
+                valueTone={row.keptMicro !== null || change === 0 ? 'ink-3' : change > 0 ? 'gain' : 'alarm'}
                 chevron={false}
               />
             );
@@ -297,7 +297,7 @@ function PreviewSheet({ preview, onClose }: { preview: IdxPreview; onClose: () =
           type="button"
           disabled={busy}
           onClick={() => void save()}
-          className="ph-focus mb-2 flex min-h-11 w-full items-center justify-center rounded-[12px] bg-[var(--ph-tint)] px-4 text-[15px] font-semibold text-white disabled:opacity-40"
+          className="ph-focus mb-2 flex min-h-11 w-full items-center justify-center rounded-[12px] bg-[var(--ph-tint)] px-4 text-[15px] font-semibold text-[var(--ph-surface)] disabled:opacity-40"
         >
           Save {saving.length} {saving.length === 1 ? 'price' : 'prices'}
         </button>

@@ -202,7 +202,7 @@ export function KitPage() {
       </InsetGroup>
 
       <Note>6 · Form rows — label left, value right. No label above an outlined box, no bare select.</Note>
-      <InsetGroup header="What it was" footer="A picker's answer is green; a prompt waiting for one is grey.">
+      <InsetGroup header="What it was" footer="A picker's answer is ink; a prompt waiting for one is grey.">
         <TextRow label="Merchant" value={merchant} onChange={(event) => setMerchant(event.target.value)} />
         <PickerRow label="Category" value={category} placeholder="Choose a category" onOpen={() => setCategory('Transportasi')} />
         <PickerRow label="Event" value={null} placeholder="None" onOpen={() => {}} />

@@ -153,7 +153,7 @@ export function TrendBars({
               width={width}
               height={height(bar.totalMinor)}
               rx={Math.min(4, width / 3)}
-              fill={index === peakAt ? 'var(--ph-warn)' : 'var(--ph-tint)'}
+              fill={index === peakAt ? 'var(--ph-warn)' : 'var(--ph-up)'}
               fillOpacity={(index === peakAt ? 1 : bar.partial ? 0.3 : 0.6) * (picked >= 0 && picked !== index ? 0.45 : 1)}
             />
           ),
@@ -212,7 +212,7 @@ export function TrendUnder({
         <div className="grid auto-cols-fr grid-flow-col border-b border-slate-100 py-2.5" data-testid="trend-comparisons">
           {comparisons.map((comparison) => {
             const good = kind === 'expense' ? comparison.changePercent < 0 : comparison.changePercent > 0;
-            const tone = comparison.changePercent === 0 ? 'text-[var(--ph-ink-3)]' : good ? 'text-[var(--ph-tint)]' : 'text-[var(--ph-alarm)]';
+            const tone = comparison.changePercent === 0 ? 'text-[var(--ph-ink-3)]' : good ? 'text-[var(--ph-up)]' : 'text-[var(--ph-alarm)]';
             const figure = `${comparison.changePercent > 0 ? '▲' : comparison.changePercent < 0 ? '▼' : ''} ${Math.abs(comparison.changePercent)}%`.trim();
             const content = (
               <>

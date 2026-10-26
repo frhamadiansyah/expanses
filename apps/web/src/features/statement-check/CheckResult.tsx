@@ -53,7 +53,7 @@ export function CheckResult({
             <p className="text-[13px] text-[var(--ph-ink-3)]">New balance on the statement</p>
             <p className="tabular mt-[2px] text-[28px] leading-[34px] font-bold text-[var(--ph-ink)]">{money(prepared.closingMinor!)}</p>
             {headline.kind === 'reconciled' ? (
-              <p className="mt-[4px] text-[15px] font-semibold text-[var(--ph-tint)]">✓ Reconciled</p>
+              <p className="mt-[4px] text-[15px] font-semibold text-[var(--ph-up)]">✓ Reconciled</p>
             ) : (
               <>
                 <p className="mt-[4px] text-[15px] font-semibold text-[var(--ph-alarm)]">Differs by {money(Math.abs(headline.differenceMinor))}</p>

@@ -141,7 +141,7 @@ export function GoldTradeSheet({
 
       {gain !== null && (
         <InsetGroup>
-          <ResultRow testId="gold-gain" label="Gain" value={signedMinor(gain, currency)} valueClass={gain > 0 ? 'text-[var(--ph-tint)]' : 'text-[var(--ph-ink)]'} />
+          <ResultRow testId="gold-gain" label="Gain" value={signedMinor(gain, currency)} valueClass={gain > 0 ? 'text-[var(--ph-up)]' : 'text-[var(--ph-ink)]'} />
         </InsetGroup>
       )}
 

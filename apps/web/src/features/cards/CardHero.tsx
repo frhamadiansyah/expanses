@@ -345,7 +345,7 @@ export function CardHero({
           <div className="mt-2 flex h-[7px] overflow-hidden rounded-full bg-[var(--ph-track)]" data-testid="limit-bar">
             <div
               className="h-full"
-              style={{ width: `${usage.barUsedPct}%`, background: (usage.usedPct ?? 0) >= 80 ? 'var(--ph-warn)' : 'var(--ph-tint)' }}
+              style={{ width: `${usage.barUsedPct}%`, background: (usage.usedPct ?? 0) >= 80 ? 'var(--ph-warn)' : 'var(--ph-up)' }}
             />
             {usage.barHeldPct > 0 && (
               <div
@@ -538,7 +538,7 @@ export function CardHero({
             <InsetGroup header="Current bill" wide>
               <InsetRow title={<TileFigure>{cp.terms && lastCycle ? formatMinor(leftToPayMinor, currency) : '—'}</TileFigure>} subtitle={billCaption()} />
               {creditMinor > 0 && (
-                <InsetRow testId="tile-credit" title={<span className="text-[var(--ph-tint)]">{creditLine(creditMinor, currency)}</span>} subtitle="Paid past what was owed: the bank holds this as credit" />
+                <InsetRow testId="tile-credit" title={<span className="text-[var(--ph-up)]">{creditLine(creditMinor, currency)}</span>} subtitle="Paid past what was owed: the bank holds this as credit" />
               )}
               {!paying &&
                 (cp.terms && lastCycle ? (

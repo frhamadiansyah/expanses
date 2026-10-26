@@ -75,7 +75,7 @@ function StatusChip({ card, currency }: { card: GoalCard; currency: string }) {
       data-testid="goal-status"
       className={
         'inline-flex min-h-[26px] items-center rounded-full px-[10px] text-[13px] leading-[18px] font-medium ' +
-        (warn ? 'bg-[var(--ph-warn-panel)] text-[var(--ph-warn-ink)]' : 'bg-[var(--ph-tint-panel)] text-[var(--ph-tint-ink)]')
+        (warn ? 'bg-[var(--ph-warn-panel)] text-[var(--ph-warn-ink)]' : 'bg-[var(--ph-up-panel)] text-[var(--ph-up-ink)]')
       }
     >
       {warn && card.differenceMinor < 0 ? `${card.statusLabel} · ${formatMinor(-card.differenceMinor, currency)} a month short` : card.statusLabel}

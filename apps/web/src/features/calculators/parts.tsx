@@ -51,7 +51,7 @@ export function Answer({
         <Figure
           caption="Save each month"
           minor={answer.monthlyMinor}
-          note={answer.covered ? <p className="text-[12.5px] leading-[16px] text-[var(--ph-tint)]">What is held already covers it.</p> : undefined}
+          note={answer.covered ? <p className="text-[12.5px] leading-[16px] text-[var(--ph-up)]">What is held already covers it.</p> : undefined}
         />
       </div>
     </Panel>
@@ -74,7 +74,7 @@ export function SaveRow({ label, ready, onSave }: { label: string; ready: boolea
 
 /** The receipt for a kept answer, in the tint the kit uses for a thing that went well. */
 export function SavedLine({ text }: { text: string | null }) {
-  return text ? <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-tint)]">{text}</p> : null;
+  return text ? <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-up)]">{text}</p> : null;
 }
 
 /**

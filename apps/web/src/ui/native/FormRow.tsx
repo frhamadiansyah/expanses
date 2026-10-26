@@ -398,7 +398,7 @@ export function SwitchRow({
         <span
           className={cx(
             'ph-focus-within relative shrink-0 rounded-full transition-colors',
-            checked ? 'bg-[var(--ph-tint)]' : 'bg-[var(--ph-track)]',
+            checked ? 'bg-[var(--ph-switch-on)]' : 'bg-[var(--ph-track)]',
             disabled && 'opacity-40',
           )}
           style={{ height: SWITCH_H, width: SWITCH_W }}

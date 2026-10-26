@@ -103,7 +103,7 @@ export function ICloudWelcome({ copy, database, safety, onDone }: { copy: CloudC
           type="button"
           disabled={!contents || busy}
           onClick={() => void onRestore()}
-          className="ph-focus w-full rounded-[14px] bg-[var(--ph-tint)] p-[14px] text-[17px] font-semibold text-white disabled:opacity-40"
+          className="ph-focus w-full rounded-[14px] bg-[var(--ph-tint)] p-[14px] text-[17px] font-semibold text-[var(--ph-surface)] disabled:opacity-40"
         >
           {busy ? 'Restoring…' : 'Restore'}
         </button>

@@ -58,7 +58,7 @@ export function KmkRates({ taxYear }: { taxYear: number }) {
   return (
     <>
       <ErrorBox error={error ?? currencies.error ?? entered.error} />
-      {saved && <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-tint)]">{saved}</p>}
+      {saved && <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-up)]">{saved}</p>}
 
       {missing.length > 0 && (
         <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-warn)]">

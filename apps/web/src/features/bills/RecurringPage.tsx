@@ -37,7 +37,7 @@ function StillToPay({ summary, currency }: { summary: BillSummary; currency: str
   if (summary.allSettled) {
     return (
       <Panel>
-        <p className="text-[17px] leading-[22px] font-semibold text-[var(--ph-tint)]">
+        <p className="text-[17px] leading-[22px] font-semibold text-[var(--ph-up)]">
           All paid for {summary.monthLabel} <span aria-hidden>✓</span>
         </p>
       </Panel>
@@ -271,7 +271,7 @@ export function RecurringPage() {
           <button
             type="button"
             onClick={() => setPayingSeveral(true)}
-            className="ph-focus fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-30 mx-auto flex min-h-12 max-w-md items-center justify-between rounded-[14px] bg-[var(--ph-tint)] px-4 text-[15px] font-semibold text-white shadow-lg md:sticky md:bottom-6 md:mt-4 md:w-full"
+            className="ph-focus fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-30 mx-auto flex min-h-12 max-w-md items-center justify-between rounded-[14px] bg-[var(--ph-tint)] px-4 text-[15px] font-semibold text-[var(--ph-surface)] shadow-lg md:sticky md:bottom-6 md:mt-4 md:w-full"
           >
             <span>Pay {picked.size} selected</span>
             <span className="tabular">

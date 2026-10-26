@@ -137,7 +137,7 @@ export const PILL_CLASS: Record<BillTone, string> = {
   blue: 'bg-[var(--ph-info-panel)] text-[var(--ph-info-ink)]',
   amber: 'bg-[var(--ph-warn-panel)] text-[var(--ph-warn-ink)]',
   red: 'bg-[var(--ph-alarm-panel)] text-[var(--ph-alarm-ink)]',
-  green: 'bg-[var(--ph-tint-panel)] text-[var(--ph-tint-ink)]',
+  green: 'bg-[var(--ph-up-panel)] text-[var(--ph-up-ink)]',
 };
 
 export function pillOf(bill: Pick<MonthlyBill, 'state' | 'days' | 'window' | 'paidOn'>): { text: string; className: string } {
@@ -162,7 +162,7 @@ export function statusOf(bill: Pick<MonthlyBill, 'state' | 'days' | 'window' | '
       // A bill that comes out before it is due says when it comes out; one due the day it comes out, just the day.
       return { text: bill.window.opensOn === bill.window.payBy ? dayMonth(bill.window.payBy) : `Opens ${dayMonth(bill.window.opensOn)}`, tone: 'ink-3' };
     case 'paid':
-      return { text: bill.paidOn ? `Paid ${dayMonth(bill.paidOn)}` : 'Paid', tone: 'tint' };
+      return { text: bill.paidOn ? `Paid ${dayMonth(bill.paidOn)}` : 'Paid', tone: 'gain' };
     case 'skipped':
       return { text: 'Skipped', tone: 'ink-3' };
     case 'paused':

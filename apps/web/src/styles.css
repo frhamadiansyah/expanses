@@ -52,11 +52,11 @@
   --color-red-50: var(--ph-alarm-panel);
   --color-red-700: var(--ph-alarm);
 
-  /* Money coming in, a confirmation, the one green button. */
-  --color-emerald-50: var(--ph-tint-panel);
-  --color-emerald-100: var(--ph-tint-panel);
-  --color-emerald-700: var(--ph-tint);
-  --color-emerald-800: var(--ph-tint-ink);
+  /* Money coming in, a confirmation. */
+  --color-emerald-50: var(--ph-up-panel);
+  --color-emerald-100: var(--ph-up-panel);
+  --color-emerald-700: var(--ph-up);
+  --color-emerald-800: var(--ph-up-ink);
 }
 
 /*

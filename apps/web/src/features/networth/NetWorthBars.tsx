@@ -69,7 +69,7 @@ export function NetWorthBars({ months, keys, currency, height }: { months: reado
           ))}
           {chart.points.map((point, index) =>
             point === null ? null : (
-              <circle key={`dot-${index}`} cx={point.x} cy={point.y} r={3.5} fill={point.value < 0 ? 'var(--ph-alarm)' : 'var(--ph-tint)'} stroke="var(--ph-surface)" strokeWidth={1.5} />
+              <circle key={`dot-${index}`} cx={point.x} cy={point.y} r={3.5} fill={point.value < 0 ? 'var(--ph-alarm)' : 'var(--ph-up)'} stroke="var(--ph-surface)" strokeWidth={1.5} />
             ),
           )}
         </g>

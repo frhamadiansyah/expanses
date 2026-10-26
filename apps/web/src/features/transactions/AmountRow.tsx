@@ -338,7 +338,7 @@ export function AmountRow({
               onChange={(amount) => set({ amount })}
               onKeypad={() => toggle('amount')}
               typing={keypad === 'amount'}
-              className={cx(fieldBase, refund && 'text-[var(--ph-tint)]')}
+              className={cx(fieldBase, refund && 'text-[var(--ph-up)]')}
               selectOnOpen={selectOnOpen}
               refund={refundable}
               disabled={locked}
@@ -361,7 +361,7 @@ export function AmountRow({
                   onChange={other.onChange}
                   onKeypad={() => toggle('charged')}
                   typing={keypad === 'charged'}
-                  className={cx(fieldBase, refund && 'text-[var(--ph-tint)]')}
+                  className={cx(fieldBase, refund && 'text-[var(--ph-up)]')}
                   placeholder={other.placeholder}
                   refund={!second && refund}
                   disabled={locked}
@@ -400,7 +400,7 @@ export function AmountRow({
       </div>
 
       {refund && (
-        <p data-testid="refund-caption" className="pb-[6px] pl-[48px] text-[12.5px] leading-4 text-[var(--ph-tint)]">
+        <p data-testid="refund-caption" className="pb-[6px] pl-[48px] text-[12.5px] leading-4 text-[var(--ph-up)]">
           Refund: money back to {account?.name ?? 'the account'}
         </p>
       )}

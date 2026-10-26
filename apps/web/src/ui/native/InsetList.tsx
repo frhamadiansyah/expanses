@@ -24,6 +24,7 @@ const TONE: Record<Tone, string> = {
   alarm: 'text-[var(--ph-alarm)]',
   warn: 'text-[var(--ph-warn)]',
   tint: 'text-[var(--ph-tint)]',
+  gain: 'text-[var(--ph-up)]',
 };
 
 export function toneClass(tone: Tone): string {

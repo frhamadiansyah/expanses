@@ -9,7 +9,7 @@ describe('moneyTone', () => {
   });
 
   it('tints money that arrived', () => {
-    expect(moneyTone(18_500_000, 'in')).toBe('tint');
+    expect(moneyTone(18_500_000, 'in')).toBe('gain');
   });
 
   it('leaves a neutral figure in the label ink until it goes below zero', () => {

@@ -230,7 +230,7 @@ export function ImportPage() {
         />
       </InsetGroup>
 
-      {result && <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-tint)]">{result}</p>}
+      {result && <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-up)]">{result}</p>}
 
       {mapping && account && (
         <>

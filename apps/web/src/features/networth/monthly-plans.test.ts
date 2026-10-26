@@ -59,7 +59,7 @@ describe('planLines', () => {
 
   it('says a plan bought this month was bought, on which day, for what was paid', () => {
     const [line] = planLines([plan('a')], [{ templateId: 'a', occurredOn: '2026-10-03', grossMinor: 1_050_000 }], '2026-10-23', names);
-    expect(line).toMatchObject({ state: 'bought', subtitle: 'Bought · 3 Oct', tone: 'tint', figure: formatMinor(1_050_000, 'IDR') });
+    expect(line).toMatchObject({ state: 'bought', subtitle: 'Bought · 3 Oct', tone: 'gain', figure: formatMinor(1_050_000, 'IDR') });
   });
 
   it('never makes a paused plan or a monthly move due', () => {

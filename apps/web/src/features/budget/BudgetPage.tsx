@@ -64,7 +64,7 @@ function TintedGlyph({ icon, colour }: { icon: ReactNode; colour: string }) {
   );
 }
 
-const PLAN_COLOURS = { debt: 'var(--ph-ink-2)', goals: 'var(--ph-info-ink)', budgeted: 'var(--ph-tint)', unplanned: 'var(--ph-track)' } as const;
+const PLAN_COLOURS = { debt: 'var(--ph-ink-2)', goals: 'var(--ph-info-ink)', budgeted: 'var(--ph-up)', unplanned: 'var(--ph-track)' } as const;
 
 export function BudgetPage() {
   const { ws } = useApp();

@@ -15,8 +15,8 @@ const BUTTON = {
   primary: 'bg-[var(--ph-ink)] text-[var(--ph-surface)] hover:bg-[var(--ph-ink-2)]',
   secondary: 'bg-[var(--ph-surface)] text-[var(--ph-ink)] ring-1 ring-[var(--ph-track)] hover:bg-[var(--ph-fill)]',
   danger: 'bg-[var(--ph-surface)] text-[var(--ph-alarm)] ring-1 ring-[var(--ph-alarm)] hover:bg-[var(--ph-alarm-panel)]',
-  // Green, for the one button on a screen that settles money: recording a payment.
-  success: 'bg-[var(--ph-tint)] text-[var(--ph-surface)] hover:bg-[var(--ph-tint-ink)]',
+  // Ink, for the one button on a screen that settles money: recording a payment.
+  success: 'bg-[var(--ph-tint)] text-[var(--ph-surface)] hover:opacity-85',
   ghost: 'text-[var(--ph-ink-2)] hover:bg-[var(--ph-fill)]',
 };
 
@@ -93,7 +93,7 @@ export function Card({ children, className, id }: { children: ReactNode; classNa
 }
 
 export function Money({ minor, currency, className, tone }: { minor: number; currency: string; className?: string; tone?: 'auto' | 'none' }) {
-  const color = tone === 'auto' ? (minor < 0 ? 'text-[var(--ph-alarm)]' : minor > 0 ? 'text-[var(--ph-tint)]' : '') : '';
+  const color = tone === 'auto' ? (minor < 0 ? 'text-[var(--ph-alarm)]' : minor > 0 ? 'text-[var(--ph-up)]' : '') : '';
   return <span className={cx('tabular whitespace-nowrap', color, className)}>{formatMinor(minor, currency)}</span>;
 }
 

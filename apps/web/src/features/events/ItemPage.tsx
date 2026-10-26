@@ -12,7 +12,7 @@ import { differenceWords } from './plan-view';
 import { useEventHistory, useEventPlan } from './queries';
 
 /** The kit's tones for the three things a difference can be. The words themselves come from `differenceWords`. */
-const HERE: Record<'over' | 'under' | 'exact', 'alarm' | 'tint' | 'ink-3'> = { over: 'alarm', under: 'tint', exact: 'ink-3' };
+const HERE: Record<'over' | 'under' | 'exact', 'alarm' | 'gain' | 'ink-3'> = { over: 'alarm', under: 'gain', exact: 'ink-3' };
 
 /**
  * One thing the event means to buy: what it is, what it is expected to cost, and what actually bought it.

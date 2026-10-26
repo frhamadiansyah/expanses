@@ -75,7 +75,7 @@ export function GoldChartSheet({
               </div>
               <div className="mt-[10px] flex items-center justify-between gap-3 border-t-[1px] border-dashed border-[var(--ph-hair)] pt-[10px] text-[12px] leading-[16px] text-[var(--ph-ink-3)]">
                 <span data-testid="gold-chart-legend">
-                  <span aria-hidden className="text-[var(--ph-tint)]">●</span> bought · <span aria-hidden className="text-[var(--ph-alarm)]">●</span> sold
+                  <span aria-hidden className="text-[var(--ph-up)]">●</span> bought · <span aria-hidden className="text-[var(--ph-alarm)]">●</span> sold
                 </span>
                 <span>World gold price</span>
               </div>
@@ -131,7 +131,7 @@ function GoldLine({ series, dots, from, to, currency }: { series: readonly GoldD
             cx={x(dot.on)}
             cy={y(dot.minor)}
             r="4.5"
-            fill={dot.kind === 'buy' ? 'var(--ph-tint)' : 'var(--ph-alarm)'}
+            fill={dot.kind === 'buy' ? 'var(--ph-up)' : 'var(--ph-alarm)'}
             stroke="var(--ph-surface)"
             strokeWidth="1.5"
             data-testid="gold-dot"

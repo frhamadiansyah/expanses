@@ -7,13 +7,13 @@ import { useHealthSettings } from './health-settings';
 
 /** The status, in the kit's own inks rather than in four tinted pills. */
 const STATUS_INK: Record<RatioStatus, string> = {
-  good: 'text-[var(--ph-tint)]',
+  good: 'text-[var(--ph-up)]',
   watch: 'text-[var(--ph-warn)]',
   act: 'text-[var(--ph-alarm)]',
   unknown: 'text-[var(--ph-ink-3)]',
 };
 const STATUS_BAR: Record<RatioStatus, string> = {
-  good: 'bg-[var(--ph-tint)]',
+  good: 'bg-[var(--ph-up)]',
   watch: 'bg-[var(--ph-warn)]',
   act: 'bg-[var(--ph-alarm)]',
   unknown: 'bg-[var(--ph-chevron)]',

@@ -170,7 +170,7 @@ export function SwitchRow({
       aria-hidden
       className={cx(
         'flex h-[26px] w-[44px] shrink-0 items-center rounded-full p-[2px] transition-colors',
-        checked ? 'bg-[var(--ph-tint)]' : 'bg-[var(--ph-track)]',
+        checked ? 'bg-[var(--ph-switch-on)]' : 'bg-[var(--ph-track)]',
       )}
     >
       <span className={cx('h-[22px] w-[22px] rounded-full bg-[var(--ph-selected)] shadow-[0_1px_2px_rgb(0_0_0/0.25)] transition-transform', checked && 'translate-x-[18px]')} />

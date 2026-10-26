@@ -361,7 +361,7 @@ export function Meter({ fraction, tone = 'tint', label }: { fraction: number; to
       aria-valuemin={label ? 0 : undefined}
       aria-valuemax={label ? 100 : undefined}
     >
-      <div className="h-full" style={{ width: `${percent}%`, borderRadius: 99, background: tone === 'warn' ? 'var(--ph-warn)' : 'var(--ph-tint)' }} />
+      <div className="h-full" style={{ width: `${percent}%`, borderRadius: 99, background: tone === 'warn' ? 'var(--ph-warn)' : 'var(--ph-up)' }} />
     </div>
   );
 }

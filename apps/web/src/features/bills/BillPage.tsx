@@ -180,7 +180,7 @@ export function BillPage({ billId }: { billId: string }) {
         <div
           data-testid="just-paid"
           role="status"
-          className="mb-[18px] flex items-center justify-between gap-3 bg-[var(--ph-tint-panel)] pl-[13px] text-[15px] leading-[20px] text-[var(--ph-tint-ink)] md:max-w-2xl"
+          className="mb-[18px] flex items-center justify-between gap-3 bg-[var(--ph-up-panel)] pl-[13px] text-[15px] leading-[20px] text-[var(--ph-up-ink)] md:max-w-2xl"
           style={{ borderRadius: GROUP_RADIUS }}
         >
           <span className="tabular py-[11px]">

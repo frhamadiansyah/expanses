@@ -55,7 +55,7 @@ export function NetWorthChart({ values, labels, currency, height }: { values: re
          */}
         <ChartRuling guides={chart.guides} ticks={chart.ticks} width={chart.width} height={chart.height} />
         {[
-          { clip: above, colour: 'var(--ph-tint)' },
+          { clip: above, colour: 'var(--ph-up)' },
           { clip: below, colour: 'var(--ph-alarm)' },
         ].map((half) => (
           <g key={half.clip} clipPath={`url(#${half.clip})`}>

@@ -18,7 +18,7 @@ test('Chart: the world price a gram over a year, the buy on it, today’s price 
   const dots = sheet.getByTestId('gold-dot');
   await expect(dots).toHaveCount(1);
   await expect(dots.first()).toHaveAttribute('data-kind', 'buy');
-  await expect(dots.first()).toHaveAttribute('fill', 'var(--ph-tint)');
+  await expect(dots.first()).toHaveAttribute('fill', 'var(--ph-up)');
   await expect(sheet.getByTestId('gold-chart-legend')).toHaveText('● bought · ● sold');
   await expect(sheet).toContainText('World gold price');
 

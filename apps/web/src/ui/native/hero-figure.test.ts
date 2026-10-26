@@ -32,7 +32,7 @@ describe('heroFigure', () => {
   });
 
   it('draws money arriving in the tint', () => {
-    expect(heroFigure(18_500_000, 'IDR', 'in')).toEqual({ text: 'Rp 18.500.000', tone: 'tint' });
+    expect(heroFigure(18_500_000, 'IDR', 'in')).toEqual({ text: 'Rp 18.500.000', tone: 'gain' });
   });
 
   it('alarms a net worth that has gone below zero, and leaves a positive one alone', () => {
@@ -71,8 +71,8 @@ describe('progressPercent', () => {
 
 describe('progressTone', () => {
   it('stays in the tint while there is room left', () => {
-    expect(progressTone(12_400_000, 14_000_000)).toBe('tint');
-    expect(progressTone(14_000_000, 14_000_000)).toBe('tint');
+    expect(progressTone(12_400_000, 14_000_000)).toBe('gain');
+    expect(progressTone(14_000_000, 14_000_000)).toBe('gain');
   });
 
   it('turns to alarm the moment the target is passed, so a full bar still says which kind of full', () => {
@@ -90,7 +90,7 @@ describe('heroChange', () => {
       text: 'Rp\u00a08.400.000',
       percent: '16,8%',
       direction: 'up',
-      tone: 'tint',
+      tone: 'gain',
     });
     expect(heroChange(58_400_000, 50_000_000, 'IDR')).toEqual({
       text: 'Rp\u00a08.400.000',

@@ -303,7 +303,7 @@ export function BackupPage() {
         />
       </InsetGroup>
 
-      {done && <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-tint)]">{done}</p>}
+      {done && <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-up)]">{done}</p>}
       <ErrorBox error={error} />
 
       {/* Directly under the action that raised it: the second press must never be somewhere the user has to go looking for. */}

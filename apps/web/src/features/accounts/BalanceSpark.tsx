@@ -71,7 +71,7 @@ export function BalanceSpark({
   const flat = !crossed;
   const today = series.at(-1)!;
   /* One colour for a line that never crosses: the sign the figure above the chart is wearing. */
-  const colour = today.minor < 0 ? 'var(--ph-alarm)' : 'var(--ph-tint)';
+  const colour = today.minor < 0 ? 'var(--ph-alarm)' : 'var(--ph-up)';
   const price = formatMinor(today.minor, currency);
   const points = series.map((day, index) => ({ x: x(index), y: y(day.minor), value: day.minor, label: dayLabel(day.on) }));
   const { reading, svgProps } = useChartReading(points, width, { label: 'Balance over the last 30 days. Tap a day to read it, or use the arrow keys.', hover: true });
@@ -94,7 +94,7 @@ export function BalanceSpark({
           </>
         ) : (
           <>
-            <polyline fill="none" stroke="var(--ph-tint)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" points={green.join(' ')} />
+            <polyline fill="none" stroke="var(--ph-up)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" points={green.join(' ')} />
             <polyline fill="none" stroke="var(--ph-alarm)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" points={red.join(' ')} />
             <circle cx={crossed!.x} cy={crossed!.y} r="4" fill="var(--ph-alarm)" stroke="var(--ph-surface)" strokeWidth="1.5" />
             <text x={Math.min(Math.max(crossed!.x, 18), width - 18)} y={paper - 3} textAnchor="middle" fontSize="10.5" fontWeight="600" fill="var(--ph-alarm)">
