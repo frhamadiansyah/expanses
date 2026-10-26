@@ -34,9 +34,9 @@ test('by thumb: cash is counted and withdrawn into, a wallet topped up, and a cu
   await openAccount(page, { subtype: 'ewallet', name: 'GoPay', balance: '0' });
 
   await walletCard(page, 'Pocket cash').tap();
-  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button')).toHaveText(['Spend', 'Receive', 'Withdraw', 'Count cash']);
-  await page.getByRole('button', { name: 'Count cash', exact: true }).tap();
-  const count = page.getByRole('dialog', { name: 'Count cash' });
+  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button')).toHaveText(['Spend', 'Receive', 'Withdraw', 'Adjust']);
+  await page.getByRole('button', { name: 'Adjust', exact: true }).tap();
+  const count = page.getByRole('dialog', { name: 'Adjust balance' });
   await count.getByLabel('Actually have').fill('887500');
   await expect(count.getByRole('radio', { name: /Spending I didn’t record/ })).toBeChecked();
   await count.getByRole('button', { name: 'Save' }).tap();

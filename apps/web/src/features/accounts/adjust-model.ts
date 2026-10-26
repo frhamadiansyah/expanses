@@ -1,8 +1,7 @@
 import { formatMinor, parseMajor } from '@expanses/core';
 import type { AccountSubtype, AdjustAs } from '@expanses/db';
-
-/** The sheet's name: cash is counted; anything else has its balance adjusted to what the bank or the app says. */
-export const adjustTitle = (subtype: AccountSubtype): string => (subtype === 'cash' ? 'Count cash' : 'Adjust balance');
+/** The sheet's name, the same for every kind of account: cash counted or any other balance, it is an adjustment. */
+export const adjustTitle = 'Adjust balance';
 
 /**
  * What the difference most likely was. Cash that comes up short was nearly always spent without being written down,

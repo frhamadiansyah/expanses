@@ -46,7 +46,7 @@ test('swiping a bill right opens its payment, and recording it settles the month
   await swipe(page, row(page, 'Phone'), 140);
   const sheet = page.getByRole('dialog', { name: 'Pay Phone' });
   await expect(sheet).toBeVisible();
-  await expect(sheet.getByRole('button', { name: 'See bill ›' })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'See bill' })).toBeVisible();
   await sheet.getByRole('button', { name: 'Record payment' }).click();
   // Not any status: the install hint and the backup banner are statuses too (see recurring-bills.spec.ts's `toast`).
   await expect(page.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) })).toContainText('Paid Phone');
