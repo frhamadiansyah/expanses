@@ -2,6 +2,9 @@ import { findEntry } from '@expanses/catalog';
 import { assetItem, eventCategoryIcon, expenseLines, incomeLines, statementCycleFor, transferLines } from '@expanses/core';
 import {
   addCard,
+  archiveAccount,
+  changeOriginalCost,
+  sellAsset,
   addHolding,
   applyCatalogEntry,
   billOnNextStatement,
@@ -358,6 +361,14 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
   void gold;
   await own('gold_jewellery', 'Wedding jewellery', { buys: [{ on: `${year(6)}-06-18`, unitsMicro: units(18.5), costMinor: 14_800_000 }], priceMicro: units(1_710_000) });
   await own('electronics', 'MacBook Pro 14"', { boughtOn: `${year(1)}-04-05`, costMinor: 32_999_000, worthMinor: 24_500_000 });
+
+  // Two that have left the list: an old scooter put away (archived with nothing left in it) and a car sold at a gain,
+  // so the Sold and archived group at the foot of Assets has both a tag and a figure of each kind to show.
+  const oldScooter = await own('motorcycle', 'Honda Beat 2014', { boughtOn: `${year(9)}-02-05`, costMinor: 16_500_000, worthMinor: 4_800_000 });
+  await changeOriginalCost(database, ws, oldScooter.id, 0, today);
+  await archiveAccount(database, ws, oldScooter.id);
+  const oldCar = await own('vehicle', 'Toyota Avanza', { boughtOn: `${year(4)}-03-12`, costMinor: 210_000_000, worthMinor: 215_000_000 });
+  await sellAsset(database, ws, { accountId: oldCar.id, soldOn: addDays(today, -40), soldForMinor: 225_000_000, cashAccountId: bca.id }, today);
 
   if (has(51)) {
     // Listed shares, held at a broker whose cash account (RDN) is money of its own: the By stock and broker page.

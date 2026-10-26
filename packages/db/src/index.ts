@@ -53,6 +53,7 @@ export * from './repos/listed-prices';
 export * from './repos/broker-fees';
 export * from './repos/asset-acquired';
 export * from './repos/asset-values';
+export * from './repos/asset-sales';
 export * as securitiesSchema from './schema-securities';
 export * from './repos/securities';
 export * from './repos/idle-cash';
