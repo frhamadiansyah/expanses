@@ -339,6 +339,18 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
   },
   {
     kind: 'row',
+    entity: 'book_transfer',
+    table: 'shared_transfers',
+    scopeRule: 'book_id = bookId (a transfer recorded in the shared workspace, redacted: no accounts)',
+    scope: (bookId) => sql`t.book_id = ${bookId}`,
+    keyColumns: ['transfer_id'],
+    fields: { occurredOn: 'occurred_on', amountMinor: 'amount_minor', currency: 'currency', description: 'description', recordedBy: 'recorded_by', void: 'void', fromName: 'from_name', toName: 'to_name' },
+    localOnInsert: ['book_id'],
+    // Only the member who recorded it writes it.
+    writer: (fields) => (typeof fields.recordedBy === 'string' ? fields.recordedBy : null),
+  },
+  {
+    kind: 'row',
     entity: 'member_transfer',
     table: 'member_transfers',
     scopeRule: "book_id = bookId (the group log's local book id)",
@@ -566,6 +578,8 @@ export const NEVER_SYNCED_COLUMNS: Readonly<Record<string, readonly string[]>> =
   nw_items: ['book_id'],
   nw_pending: ['book_id'],
   member_transfers: ['book_id'],
+  // transaction_id is the recorder's own live transfer, local only.
+  shared_transfers: ['book_id', 'transaction_id'],
   // Shared events (migration 0069): book_id is the event book's local id, written on insert. shared_events is keyed
   // by it, so every one of its columns travels or is the key.
   event_people: ['book_id'],

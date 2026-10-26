@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
 import BetterSqlite3 from 'better-sqlite3';
 import { openAccount, openCard, walletCard } from './accounts';
-import { addForm, addTransaction, fillAmount, openAmount, saveButton } from './add-transaction';
+import { addForm, addTransaction, addTransfer, fillAmount, openAmount, saveButton } from './add-transaction';
 import { cardPage } from './card-section';
 import { openDrawers } from './drawers';
 import { openWorkspacePage } from './workspace-page';
@@ -625,4 +625,66 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   await expect(dewi.getByText('Dewi Bank').first()).toBeVisible();
   await expect(sharedRows).toHaveCount(0);
   await shot(dewi, info, '21-left-personal');
+});
+
+
+test('a transfer in a shared workspace shows on the partner’s list as "Transfer · …" with no account names, and goes when deleted', async ({ page, browser }, info) => {
+  const phone = phoneProject(info);
+  page.on('dialog', (dialog) => void dialog.accept());
+  const dewi = await secondDevice(browser, info);
+  await openAccount(page, { subtype: 'bank', name: 'Fandri Bank', balance: '10000000' });
+  await openAccount(page, { subtype: 'cash', name: 'Fandri Pocket', balance: '100000' });
+  await openWorkspaceSettings(page, 'Personal');
+  await page.getByLabel('Name', { exact: true }).fill('Home');
+  await page.getByRole('button', { name: 'Save name', exact: true }).click();
+  await expect(page.getByText('Now called Home.')).toBeVisible();
+  await page.getByRole('button', { name: /Share this workspace/ }).click();
+  const shareForm = page.getByRole('form', { name: 'Share this workspace' });
+  await shareForm.getByLabel('Name').fill('Fandri');
+  await shareForm.getByRole('button', { name: 'Share', exact: true }).click();
+  const code = (await page.getByTestId('invite-code').textContent({ timeout: 60_000 }))!.trim();
+  await openAccount(dewi, { subtype: 'bank', name: 'Dewi Bank', balance: '5000000' });
+  if (phone) {
+    await dewi.goto(`/join#${code}`);
+  } else {
+    await dewi.goto('/transactions');
+    await openSwitcher(dewi, false);
+    await dewi.getByRole('dialog', { name: 'Workspaces' }).getByRole('button', { name: 'Join a workspace' }).click();
+    const sheet = dewi.getByRole('dialog', { name: 'Join a workspace' });
+    await sheet.getByRole('textbox', { name: 'Code' }).fill(code.toLowerCase().replace(/-/g, ' '));
+    await sheet.getByRole('button', { name: 'Continue' }).click();
+  }
+  const join = dewi.getByTestId('join-workspace');
+  await expect(join.getByText('Home', { exact: true })).toBeVisible({ timeout: 30_000 });
+  await join.getByLabel('Name').fill('Dewi');
+  await join.getByRole('button', { name: 'Join', exact: true }).click();
+  await expect(join).toHaveCount(0, { timeout: 60_000 });
+
+  // Fandri moves money between his own accounts in the shared workspace.
+  await page.goto('/transactions');
+  await addTransfer(page, { from: 'Fandri Bank', to: 'Fandri Pocket', amount: '250000', note: 'Pocket money' });
+  await expect(page.getByText('Pocket money').first()).toBeVisible();
+  const shadow = dewi.getByTestId('shared-transfer-row');
+  await eventually(dewi, async () => {
+    await dewi.goto('/transactions');
+    await expect(shadow).toHaveCount(1, { timeout: 1_000 });
+  });
+  await expect(shadow).toContainText('Transfer · Pocket money');
+  await expect(shadow).toContainText('250.000');
+  // No account name reaches the partner, in the row or anywhere on the page.
+  await expect(dewi.locator('main')).not.toContainText('Fandri Pocket');
+  await expect(dewi.locator('main')).not.toContainText('Fandri Bank');
+  // The recorder sees its own transfer once, and no redacted copy.
+  await expect(page.getByTestId('shared-transfer-row')).toHaveCount(0);
+
+  // Deleted by its recorder, it goes from the partner's list.
+  await page.goto('/transactions');
+  await page.locator('li', { hasText: /Pocket money/ }).first().click();
+  await page.getByRole('button', { name: 'Delete this transaction' }).click();
+  await page.getByRole('button', { name: 'Click again to delete' }).click();
+  await expect(page.getByRole('button', { name: 'Click again to delete' })).toHaveCount(0);
+  await eventually(dewi, async () => {
+    await dewi.goto('/transactions');
+    await expect(shadow).toHaveCount(0, { timeout: 1_000 });
+  });
 });

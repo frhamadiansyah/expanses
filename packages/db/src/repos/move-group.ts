@@ -2,6 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Db } from '../database';
 import { bookTransactions } from '../schema-books';
+import { fileSharedTransferTx } from './shared-transfers';
 
 /*
  * A top-up or a withdrawal is one thing to the owner and, from a bank account or cash, two rows in the ledger: the
@@ -86,13 +87,13 @@ export async function bookIsSharedTx(tx: Db, bookId: string): Promise<boolean> {
 }
 
 /**
- * Files a category-less transfer in one workspace, so it shows there and in no other. Left unfiled (and so shown by
- * every workspace, as before) when that workspace is shared: a transfer between the owner's own accounts is not the
- * household's. Returns whether it was filed.
+ * Files a category-less transfer in one workspace, so it shows there and in no other. In a shared workspace it is not
+ * filed as a purchase (that would send account ids the partner does not have): it travels as a redacted row beside
+ * the real transfer (`fileSharedTransferTx`), and the real one is listed by that workspace alone. Returns whether it was filed.
  */
 export async function fileTransferTx(tx: Db, ws: WorkspaceContext, transactionId: string, bookId: string): Promise<boolean> {
   await tx.delete(bookTransactions).where(and(eq(bookTransactions.transactionId, transactionId), eq(bookTransactions.workspaceId, ws.workspaceId)));
-  if (await bookIsSharedTx(tx, bookId)) return false;
+  if (await bookIsSharedTx(tx, bookId)) return fileSharedTransferTx(tx, ws, transactionId, bookId);
   await tx.insert(bookTransactions).values({ transactionId, workspaceId: ws.workspaceId, bookId });
   return true;
 }

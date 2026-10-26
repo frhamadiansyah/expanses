@@ -1,5 +1,5 @@
 import { compareWithinDay, dayNet, formatMinor, isNotCountedKey, isUncategorisedKey, matchesSearch, monthName, parsePeriod } from '@expanses/core';
-import type { AccountRow, CardRow, DraftRow, TransactionEntryView, TransactionView } from '@expanses/db';
+import type { AccountRow, CardRow, DraftRow, SharedTransferRow, TransactionEntryView, TransactionView } from '@expanses/db';
 import type { PurchasePoints } from '../../lib/purchase-points';
 import { formatPoints } from '../cards/format-points';
 import { classify } from './classify';
@@ -96,6 +96,40 @@ export interface ListRow {
   splitPart?: TransactionEntryView[];
   tx?: TransactionView;
   draft?: DraftRow;
+  /** A transfer the other member recorded in this shared workspace: date, amount and label only, read only. */
+  sharedTransfer?: true;
+}
+
+/**
+ * A partner's transfer as a list row (0094): "Transfer · <label>", no accounts, no balance effect, neither spending
+ * nor income. It counts as a row in Recent and in the day's list like any other.
+ */
+export function sharedTransferRow(transfer: SharedTransferRow): ListRow {
+  return {
+    kind: 'tx',
+    id: `shared-transfer:${transfer.transferId}`,
+    date: transfer.occurredOn,
+    description: transfer.description,
+    amountMinor: transfer.amountMinor,
+    currency: transfer.currency,
+    baseMinor: 0,
+    spentMinor: 0,
+    earnedMinor: 0,
+    type: 'transfer',
+    categoryId: null,
+    categoryName: null,
+    parentName: null,
+    accountIds: [],
+    // Only an account its owner shares with the household is named; a private side is never.
+    accountLabel: transfer.fromName && transfer.toName ? `${transfer.fromName} → ${transfer.toName}` : transfer.fromName ? `From ${transfer.fromName}` : transfer.toName ? `To ${transfer.toName}` : '',
+    cardId: null,
+    last4: null,
+    holderName: null,
+    deleted: false,
+    excluded: false,
+    needs: [],
+    sharedTransfer: true,
+  };
 }
 
 export interface ListFilters {

@@ -16,6 +16,7 @@ import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency'
 import { bookOfCategory, type BookKind, hasBooks } from './books';
 import { bookSplitsExist, excludedSplitBooksTx, splitBooksOfTx, splitHasPartIn, splitPartsOfMany, writeSplitBooksTx } from './book-splits';
 import { categoryInBookTx, fileTransferTx, moneyInPartnerTx } from './move-group';
+import { carrySharedTransferTx, sharedTransferBooksTx, voidSharedTransferTx } from './shared-transfers';
 import { followDepositEventTx, reopenDepositEventTx } from './deposit-event-log';
 import { markForeignDirtyTx } from './fx-pending';
 import { eventOnlyExists, eventPostingOfTx, notEventOnly } from './event-only';
@@ -576,6 +577,7 @@ async function markVoidTx(tx: Db, ws: WorkspaceContext, id: string, keep: VoidKe
   // Household sharing: read the lineage before its head changes; the flush decides whether this is a void or a
   // correction (a replace posts the next head in the same transaction).
   await captureVoidingTx(tx, id);
+  if (!door.keepSharedTransfer) await voidSharedTransferTx(tx, id);
   await tx.update(transactions).set({ status: 'void' }).where(eq(transactions.id, id));
   // What this took out of (or put into) a foreign account is no longer there: its later outflows are recalculated (§6).
   // Every void and every replace's void comes through here, the event's derivation and an account's deletion included.
@@ -606,6 +608,8 @@ export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string
 
 /** Who is coming through a void or a replace. Only a shared event's derivation says `eventDerivation`. */
 export interface LedgerDoor {
+  /** An edit: a shared workspace's redacted transfer row follows the replacement instead of going void and back. */
+  keepSharedTransfer?: boolean;
   /**
    * The caller is `postEventRecordTx` (or a refused join taken back), bringing a derived transaction in line with its
    * record. Every other door is refused on a derived transaction.
@@ -830,8 +834,11 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   const partner = toBookId && moveToBook ? await moneyInPartnerTx(tx, ws, id) : null;
   const hadCategory = (await tx.values(sql`
     SELECT 1 FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = ${id} AND a.kind IN ('income', 'expense') LIMIT 1`)).length > 0;
+  // A transfer shown to a shared workspace's partner: its redacted row follows the edit (read before the void).
+  const sharedTransferBooks = await sharedTransferBooksTx(tx, id);
   // An edit voids without reopening a deposit event: the replacement carries on what the original was.
-  await markVoidTx(tx, ws, id, { answer: keepAnswer, tagged: keepTagged }, input.syncAuthor, door);
+  await markVoidTx(tx, ws, id, { answer: keepAnswer, tagged: keepTagged }, input.syncAuthor, { ...door, keepSharedTransfer: true });
+  if (moveToBook) await voidSharedTransferTx(tx, id);
   // The same spend answered afresh (from another account) stays on the stage it paid: never the next one.
   const setAside = keepAnswer ? null : withSavedStage(answered, saved);
   // Keep import identity so re-importing the same statement still recognises the row.
@@ -876,6 +883,7 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
     }
     if (partner && toBookId) await moveMemberTx(tx, ws, partner, toBookId);
   }
+  if (sharedTransferBooks.length > 0 && !moveToBook) await carrySharedTransferTx(tx, ws, sharedTransferBooks, replacement);
   if (keepAnswer) await carryAnswerTx(tx, ws, id, replacement, input.occurredOn, oldLines, input.lines, input.setAside ?? null);
   if (keepTagged) await carryTaggedTx(tx, ws, id, replacement, original!.goalId!, wasMove!, nextMove!);
   else if (nextMove) await parkForGoalTx(tx, ws, replacement, original!.goalId!, nextMove);
@@ -1176,6 +1184,10 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     // A purchase split across workspaces is filed in none of them by that table: it shows where it has a part (0084).
     if (await bookSplitsExist(database.db)) conds.push(splitHasPartIn(transactions.id, bookId));
     if (await eventOnlyExists(database.db)) conds.push(notEventOnly(transactions.id));
+    // A transfer recorded in a shared workspace (0094) is listed by that workspace alone, as one filed in a book is.
+    if ((await database.db.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'shared_transfers'`)).length > 0) {
+      conds.push(sql`${transactions.id} NOT IN (SELECT transaction_id FROM shared_transfers WHERE transaction_id IS NOT NULL AND void = 0 AND book_id <> ${bookId})`);
+    }
   }
   // Within a day (compareWithinDay): rows never moved first, newest first; then moved rows by their place. A database
   // stopped before 0067 has no places: every day reads newest first, as it always did.
