@@ -46,7 +46,7 @@ describe('migration 0050', () => {
   it('applies after migrations numbered above it, since the runner is set-based', async () => {
     executor = createNodeExecutor();
     const database = createDatabase(executor);
-    const later = { version: 99, name: 'later_test_only', sql: 'CREATE TABLE later_test_only (id TEXT PRIMARY KEY);' };
+    const later = { version: 9999, name: 'later_test_only', sql: 'CREATE TABLE later_test_only (id TEXT PRIMARY KEY);' };
     await migrate(database, [...MIGRATIONS.filter((m) => m.version !== 50), later]);
     expect(await migrate(database, [...MIGRATIONS, later])).toEqual([50]);
   });

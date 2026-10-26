@@ -240,6 +240,10 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
       // Optional (0098): the currency the bill is written in, null while it follows the payer. A build before 0098 never
       // sends it and skips it when it arrives (apply writes only the fields it knows), so the two stay compatible.
       currency: 'currency',
+      // Optional (0099): 'yearly' and its month of the year; null while the bill repeats every month. A build before 0099 skips
+      // both and would treat the bill as monthly, the one thing an older partner build gets wrong.
+      repeat: 'repeat',
+      repeatMonth: 'repeat_month',
     },
     // `payer` = { memberId, label } stands for money_account_id, which names an owner-scope account (spec §4.4).
     derivedFields: { payer: ['money_account_id'] },

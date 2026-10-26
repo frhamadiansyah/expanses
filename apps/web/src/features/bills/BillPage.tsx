@@ -1,4 +1,4 @@
-import { type BillWindow, dayMonth, isoDate, monthName, ordinal } from '@expanses/core';
+import { type BillWindow, dayMonth, isoDate, monthName, ordinal, yearlyRepeat } from '@expanses/core';
 import { deleteExpenseTemplate, RecurringError, resumeBill, skipBill, undoBillPayments } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check, MoreHorizontal, Pause, Pencil, Play, SkipForward } from 'lucide-react';
@@ -153,7 +153,10 @@ export function BillPage({ billId }: { billId: string }) {
       <Panel testId="bill-hero" className="space-y-[6px]">
         <div className="flex items-center gap-[10px]">
           <CategoryIcon categoryId={bill.categoryAccountId} accounts={accounts} size="row" />
-          <p className="flex-1 text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">{monthName(bill.billMonth, 'long')} bill</p>
+          <p className="flex-1 text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">
+            {monthName(bill.billMonth, 'long')}
+            {bill.repeat === 'yearly' && ` ${bill.billMonth.slice(0, 4)}`} bill
+          </p>
           <span className={cx('rounded-full px-[8px] py-[2px] text-[12px] leading-[16px] font-semibold', pill.className)} data-testid="bill-status">
             {pill.text}
           </span>
@@ -196,7 +199,7 @@ export function BillPage({ billId }: { billId: string }) {
       <ActionButtons actions={actions} />
 
       <InsetGroup>
-        <ReadOnlyRow label="Repeats" value="Every month" />
+        <ReadOnlyRow label="Repeats" value={bill.repeat === 'yearly' ? yearlyRepeat(bill.repeatMonth!, bill.dayOfMonth) : 'Every month'} />
         <ReadOnlyRow label="Out on" value={`The ${ordinal(bill.dayOfMonth)}`} />
         <ReadOnlyRow label="Due by" value={bill.payByDay === null ? 'The bill date' : `The ${ordinal(bill.payByDay)}`} />
         {bill.currency ? <ReadOnlyRow label="Currency" value={bill.currency} /> : null}
@@ -212,7 +215,13 @@ export function BillPage({ billId }: { billId: string }) {
               <HistoryRow
                 key={row.month}
                 fresh={paidMonth?.month === row.month}
-                title={`${monthName(row.month, 'long')} bill`}
+                title={
+                  bill.repeat === 'yearly'
+                    ? row.state === 'paid'
+                      ? `Paid in ${row.month.slice(0, 4)}`
+                      : `${row.month.slice(0, 4)} bill`
+                    : `${monthName(row.month, 'long')} bill`
+                }
                 value={
                   row.state === 'paid' ? (
                     <>

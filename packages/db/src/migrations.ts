@@ -96,6 +96,7 @@ import eventRefunds from '../migrations/0095_event_refunds.sql?raw';
 import splitLineExcluded from '../migrations/0096_split_line_excluded.sql?raw';
 import jointAccounts from '../migrations/0097_joint_accounts.sql?raw';
 import billCurrency from '../migrations/0098_bill_currency.sql?raw';
+import billRepeat from '../migrations/0099_bill_repeat.sql?raw';
 import memberTransferAccounts from '../migrations/0100_member_transfer_accounts.sql?raw';
 import type { Database } from './database';
 
@@ -203,6 +204,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 96, name: 'split_line_excluded', sql: splitLineExcluded },
   { version: 97, name: 'joint_accounts', sql: jointAccounts },
   { version: 98, name: 'bill_currency', sql: billCurrency },
+  { version: 99, name: 'bill_repeat', sql: billRepeat },
   { version: 100, name: 'member_transfer_accounts', sql: memberTransferAccounts },
 ];
 

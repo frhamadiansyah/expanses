@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount, openCard } from './accounts';
+import { addPlastic, openAccount, openCard } from './accounts';
 import { addTransaction } from './add-transaction';
 import { cardPage } from './card-section';
 
@@ -29,11 +29,9 @@ test('ticked purchases on one card account are set to one of its cards at once',
   await page.goto('/wallet');
   await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^Nusa Visa(,|$)/ }).click();
   await cardPage(page, 'Settings');
-  await page.getByLabel('Last 4 digits').fill('1467');
-  await page.getByRole('button', { name: 'Add card' }).click();
+  await addPlastic(page, '1467');
   await expect(page.getByTestId('card-on-account')).toHaveCount(1);
-  await page.getByLabel('Last 4 digits').fill('8820');
-  await page.getByRole('button', { name: 'Add card' }).click();
+  await addPlastic(page, '8820');
   await expect(page.getByTestId('card-on-account')).toHaveCount(2);
 
   await page.goto('/transactions');

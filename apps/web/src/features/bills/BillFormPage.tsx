@@ -1,4 +1,4 @@
-import { categoryPath, CURRENCIES, ordinal, parseMajor } from '@expanses/core';
+import { categoryPath, CURRENCIES, monthName, ordinal, parseMajor } from '@expanses/core';
 import { saveExpenseTemplate } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
@@ -12,6 +12,7 @@ import { CategoryPicker } from '../transactions/CategoryPicker';
 import { useExpenseTemplates } from '../transactions/queries';
 import { amountInput } from './bill-view';
 const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
+const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 export function EditBillRoute() {
   const { billId } = useParams({ from: '/bills/$billId/edit' });
@@ -37,6 +38,9 @@ export function BillFormPage({ billId }: { billId?: string }) {
   const [moneyAccountId, setMoneyAccountId] = useState('');
   // '' follows the account that pays: the bill is then written in that account's money, as every bill was before this.
   const [currency, setCurrency] = useState('');
+  // Every month, or once a year in the month chosen below.
+  const [repeat, setRepeat] = useState<'monthly' | 'yearly'>('monthly');
+  const [month, setMonth] = useState('');
   const [outDay, setOutDay] = useState('');
   const [payBy, setPayBy] = useState('');
   const [error, setError] = useState<unknown>(null);
@@ -63,6 +67,8 @@ export function BillFormPage({ billId }: { billId?: string }) {
     setCurrency(bill.currency ?? '');
     setCategoryAccountId(bill.categoryAccountId);
     setMoneyAccountId(bill.moneyAccountId);
+    setRepeat(bill.repeat);
+    setMonth(bill.repeatMonth === null ? '' : String(bill.repeatMonth));
     setOutDay(String(bill.dayOfMonth));
     setPayBy(String(bill.payByDay ?? ''));
     setLoaded(true);
@@ -74,6 +80,10 @@ export function BillFormPage({ billId }: { billId?: string }) {
   async function save(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    if (repeat === 'yearly' && month === '') {
+      setError(new Error('Choose the month'));
+      return;
+    }
     if (outDay === '') {
       setError(new Error('Choose the bill date'));
       return;
@@ -86,6 +96,8 @@ export function BillFormPage({ billId }: { billId?: string }) {
         moneyAccountId,
         amountMinor: amount.trim() === '' ? null : parseMajor(amount.trim(), billCurrency),
         currency: currency || null,
+        repeat,
+        repeatMonth: repeat === 'yearly' ? Number(month) : null,
         dayOfMonth: Number(outDay),
         payByDay: payBy === '' ? null : Number(payBy),
       });
@@ -160,9 +172,20 @@ export function BillFormPage({ billId }: { billId?: string }) {
           </InsetGroup>
 
           <InsetGroup>
-            <SelectRow label="Repeats" value="monthly" disabled>
+            <SelectRow label="Repeats" value={repeat} onChange={(e) => setRepeat(e.target.value === 'yearly' ? 'yearly' : 'monthly')}>
               <option value="monthly">Every month</option>
+              <option value="yearly">Every year</option>
             </SelectRow>
+            {repeat === 'yearly' && (
+              <SelectRow label="Month" value={month} onChange={(e) => setMonth(e.target.value)}>
+                <option value="">Choose a month</option>
+                {MONTHS.map((m) => (
+                  <option key={m} value={m}>
+                    {monthName(`2026-${String(m).padStart(2, '0')}`, 'long')}
+                  </option>
+                ))}
+              </SelectRow>
+            )}
             <SelectRow label="Bill date" value={outDay} onChange={(e) => setOutDay(e.target.value)}>
               <option value="">Choose a day</option>
               {DAYS.map((day) => (

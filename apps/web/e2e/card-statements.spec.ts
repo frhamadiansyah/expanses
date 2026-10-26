@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount, openCard } from './accounts';
+import { addPlastic, openAccount, openCard } from './accounts';
 import { addForm, addTransaction, choosePayment, fillAmount, saveButton } from './add-transaction';
 import { cardPage } from './card-section';
 
@@ -241,11 +241,9 @@ test('purchases under Card not recorded are set to one card at once with Assign 
   await buy(page, 'Ranch Market', '80000', TODAY);
   await openCardPage(page);
   await cardPage(page, 'Settings');
-  await page.getByLabel('Last 4 digits').fill('1467');
-  await page.getByRole('button', { name: 'Add card' }).click();
+  await addPlastic(page, '1467');
   await expect(page.getByTestId('card-on-account')).toHaveCount(1);
-  await page.getByLabel('Last 4 digits').fill('8820');
-  await page.getByRole('button', { name: 'Add card' }).click();
+  await addPlastic(page, '8820');
   await expect(page.getByTestId('card-on-account')).toHaveCount(2);
   await page.getByRole('button', { name: 'BCA Visa' }).click();
   await cardPage(page, 'Statement');

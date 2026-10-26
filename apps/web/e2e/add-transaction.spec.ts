@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { personRow } from './people';
-import { expectWalletFigure, openAccount } from './accounts';
+import { addPlastic, expectWalletFigure, openAccount, removePlastic } from './accounts';
 import { addCap } from './budget';
 import { addForm, addTransaction, addTransfer, attachPhoto, closeDetails, fillAmount, openAmount, saveButton, shareWith, chooseTo, choosePayment } from './add-transaction';
 import { addEvent } from './event-plan';
@@ -108,9 +108,7 @@ test('Paid with names each card by its digits, and choosing one sets the account
   await page.goto('/wallet');
   await page.getByRole('link', { name: /^BCA KrisFlyer(,|$)/ }).click();
   await cardPage(page, 'Settings');
-  await page.getByLabel('Last 4 digits').fill('8802');
-  await page.getByLabel('Whose card').fill('Spouse');
-  await page.getByRole('button', { name: 'Add card' }).click();
+  await addPlastic(page, '8802', 'Spouse');
   await expect(page.getByTestId('card-on-account')).toHaveCount(2);
 
   await page.goto('/transactions');
@@ -152,13 +150,11 @@ test('a card whose primary was removed and a primary and a supplementary added a
   await page.getByRole('link', { name: /^BCA KrisFlyer(,|$)/ }).click();
   await cardPage(page, 'Settings');
   // The primary goes, and the account carries no card for a moment.
-  await page.getByRole('button', { name: 'Remove card ending 1467' }).click();
+  await removePlastic(page, '1467');
   await expect(page.getByTestId('card-on-account')).toHaveCount(0);
   // Then a primary again, and a supplementary beside it.
   for (const [last4, holder, count] of [['4410', 'Fandrian', 1], ['7723', 'Spouse', 2]] as const) {
-    await page.getByLabel('Last 4 digits').fill(last4);
-    await page.getByLabel('Whose card').fill(holder);
-    await page.getByRole('button', { name: 'Add card' }).click();
+    await addPlastic(page, last4, holder);
     await expect(page.getByTestId('card-on-account')).toHaveCount(count);
   }
 
@@ -188,11 +184,9 @@ test('a purchase on the account’s only card keeps that card once it is removed
   await page.goto('/wallet');
   await page.getByRole('link', { name: /^BCA KrisFlyer(,|$)/ }).click();
   await cardPage(page, 'Settings');
-  await page.getByLabel('Last 4 digits').fill('8802');
-  await page.getByLabel('Whose card').fill('Spouse');
-  await page.getByRole('button', { name: 'Add card' }).click();
+  await addPlastic(page, '8802', 'Spouse');
   await expect(page.getByTestId('card-on-account')).toHaveCount(2);
-  await page.getByRole('button', { name: 'Remove card ending 1467' }).click();
+  await removePlastic(page, '1467');
   await expect(page.getByTestId('card-on-account')).toHaveCount(1);
 
   await page.goto('/transactions');
@@ -529,9 +523,7 @@ test('a shared bill keeps the card it was charged on, and what the merchant char
   await page.goto('/wallet');
   await page.getByRole('link', { name: /^BCA KF Signature(,|$)/ }).click();
   await cardPage(page, 'Settings');
-  await page.getByLabel('Last 4 digits').fill('8802');
-  await page.getByLabel('Whose card').fill('Spouse');
-  await page.getByRole('button', { name: 'Add card' }).click();
+  await addPlastic(page, '8802', 'Spouse');
   await expect(page.getByTestId('card-on-account')).toHaveCount(2);
 
   await page.goto('/transactions');
@@ -1224,9 +1216,7 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
   await page.goto('/wallet');
   await page.getByRole('link', { name: /^BCA KF Signature(,|$)/ }).click();
   await cardPage(page, 'Settings');
-  await page.getByLabel('Last 4 digits').fill('8802');
-  await page.getByLabel('Whose card').fill('Spouse');
-  await page.getByRole('button', { name: 'Add card' }).click();
+  await addPlastic(page, '8802', 'Spouse');
   await expect(page.getByTestId('card-on-account')).toHaveCount(2);
   // The 31st clamps to the end of the month, so this card's statement cycle IS the calendar month. With the
   // usual 25th the cycle runs 26th→25th, and `OTHER_DAY` — the 1st — falls into the *previous* cycle on every

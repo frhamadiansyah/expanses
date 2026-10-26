@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openCard } from './accounts';
+import { addPlastic, editPlastic, openCard, removePlastic } from './accounts';
 import { addTransaction } from './add-transaction';
 import { cardPage } from './card-section';
 
@@ -32,9 +32,7 @@ test('a second card joins the same statement, and a purchase records which one',
 
   // The supplementary card: same account, same statement, its own digits.
   await openTheCard(page);
-  await page.getByLabel('Last 4 digits').fill('8802');
-  await page.getByLabel('Whose card').fill('Spouse');
-  await page.getByRole('button', { name: 'Add card' }).click();
+  await addPlastic(page, '8802', 'Spouse');
   await expect(page.getByTestId('card-on-account')).toHaveCount(2);
 
   // Now each card is its own row, so choosing one answers both questions at once.
@@ -47,13 +45,57 @@ test('a second card joins the same statement, and a purchase records which one',
 test('removing a card leaves the account and its statement alone', async ({ page }) => {
   await addCardAccount(page);
   await openTheCard(page);
-  await page.getByLabel('Last 4 digits').fill('8802');
-  await page.getByRole('button', { name: 'Add card' }).click();
+  await addPlastic(page, '8802');
   await expect(page.getByTestId('card-on-account')).toHaveCount(2);
 
-  await page.getByRole('button', { name: 'Remove card ending 8802' }).click();
+  await removePlastic(page, '8802');
 
   await expect(page.getByTestId('card-on-account')).toHaveCount(1);
   await page.getByRole('button', { name: 'Mandiri Bonvoy' }).click();
   await expect(page.getByRole('heading', { name: 'Mandiri Bonvoy' })).toBeVisible();
+});
+
+test('a card is edited from its row: new digits and whose card show on the page and in Paid with', async ({ page }) => {
+  await addCardAccount(page);
+  await openTheCard(page);
+  await addPlastic(page, '8802', 'Spouse');
+
+  const sheet = await editPlastic(page, '8802');
+  await expect(sheet.getByRole('button', { name: 'Remove card', exact: true })).toBeVisible();
+  await sheet.getByRole('textbox', { name: 'Last 4 digits' }).fill('9915');
+  await sheet.getByRole('textbox', { name: 'Whose card' }).fill('Partner');
+  await sheet.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(sheet).toHaveCount(0);
+
+  const rows = page.getByTestId('card-on-account');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.filter({ hasText: 'Partner' })).toContainText('9915');
+  await expect(page.getByRole('button', { name: 'Edit card ending 8802' })).toHaveCount(0);
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  await page.getByRole('dialog', { name: 'Add a transaction' }).getByRole('button', { name: 'Paid with' }).click();
+  const paidWith = page.getByRole('dialog', { name: 'Paid with' });
+  await paidWith.getByRole('radio', { name: 'Credit cards' }).click();
+  await expect(paidWith.getByRole('button', { name: 'Mandiri Bonvoy ···· 9915', exact: true })).toBeVisible();
+});
+
+test('a card is refused digits that another card at the bank already has, inside the sheet', async ({ page }) => {
+  await addCardAccount(page);
+  await openTheCard(page);
+  await addPlastic(page, '8802');
+  const sheet = await editPlastic(page, '8802');
+  await sheet.getByRole('textbox', { name: 'Last 4 digits' }).fill('1467');
+  await sheet.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(sheet.getByRole('alert')).toContainText('1467');
+  await expect(sheet).toBeVisible();
+});
+
+test('Add a card is the last row of the Cards on this account box, and the old form is gone', async ({ page }) => {
+  await addCardAccount(page);
+  await openTheCard(page);
+  await expect(page.getByRole('button', { name: 'Add card', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Remove card ending/ })).toHaveCount(0);
+  await addPlastic(page, '8802', 'Spouse');
+  await expect(page.getByTestId('card-on-account')).toHaveCount(2);
 });

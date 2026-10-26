@@ -320,3 +320,36 @@ export async function archiveCard(database: Database, ws: WorkspaceContext, id: 
     .set({ archivedAt: new Date().toISOString() })
     .where(and(eq(cards.workspaceId, ws.workspaceId), eq(cards.id, id)));
 }
+
+/**
+ * Puts right a card's last four digits and whose card it is. Which plastic is primary is untouched. The digits are
+ * unique per issuer, as `addCard` keeps them; the card itself is not its own duplicate.
+ */
+export async function updateCard(
+  database: Database,
+  ws: WorkspaceContext,
+  input: { cardId: string; last4?: string | null; holderName?: string | null },
+): Promise<void> {
+  const last4 = input.last4?.trim() || null;
+  if (last4 !== null && !FOUR_DIGITS.test(last4)) throw new CardError('LAST4', 'Last four digits are four numbers, like 1467');
+  const [own] = await database.db
+    .select({ id: cards.id, accountId: cards.accountId })
+    .from(cards)
+    .where(and(eq(cards.id, input.cardId), eq(cards.workspaceId, ws.workspaceId), isNull(cards.archivedAt)));
+  if (!own) throw new CardError('NOT_FOUND', 'That card is not in this workspace');
+
+  if (last4 !== null) {
+    const issuerOf = new Map((await listCardIdentities(database, ws)).map((row) => [row.accountId, row.issuer]));
+    const issuer = issuerOf.get(own.accountId) ?? null;
+    for (const existing of await listCards(database, ws)) {
+      if (existing.id === own.id || existing.last4 !== last4) continue;
+      if ((issuerOf.get(existing.accountId) ?? null) === issuer) {
+        throw new CardError('DUPLICATE', `A card ending ${last4} is already recorded${issuer ? ` for ${issuer}` : ''}`);
+      }
+    }
+  }
+  await database.db
+    .update(cards)
+    .set({ last4, holderName: input.holderName?.trim() || null })
+    .where(and(eq(cards.workspaceId, ws.workspaceId), eq(cards.id, own.id)));
+}
