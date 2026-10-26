@@ -9,7 +9,7 @@ import { Capsule, Line, SUBTITLE, TITLE } from './rows';
 import { suggestPattern } from '../merchants/mcc-search';
 import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
 import { useWorkspaceBadges } from '../workspaces/queries';
-import { checkedTotals, describeSuggestion, purchasesOf } from './hint-text';
+import { checkedTotals, describeSuggestion, earnedNothing, purchasesOf } from './hint-text';
 import { type CardPoints, formatPoints, shortDate } from './useCardPoints';
 
 type Run = (fn: () => Promise<unknown>) => Promise<boolean>;
@@ -83,7 +83,7 @@ function ActualCell({ programId, transactionId, description, actual, unit, run }
 }
 
 /** Card purchases in this or the last cycle with estimated points, MCC and source, and per-purchase checking. */
-export function PurchaseList({ cp, run, currency }: { cp: CardPoints; run: Run; currency: string }) {
+export function PurchaseList({ cp, run, currency, onlyNothing = false, onShowAll }: { cp: CardPoints; run: Run; currency: string; onlyNothing?: boolean; onShowAll?: () => void }) {
   const [lastCycle, setLastCycle] = useState(false);
   const result = lastCycle ? cp.previous : cp.current;
   const program = cp.program;
@@ -99,7 +99,8 @@ export function PurchaseList({ cp, run, currency }: { cp: CardPoints; run: Run; 
     return hints;
   }, [result, cp.crediting, cp.transactionActuals]);
   // Worked out before the early return, since the badges are asked for with a hook and hooks cannot be skipped.
-  const purchases = result ? purchasesOf(result.lines) : [];
+  const all = result ? purchasesOf(result.lines) : [];
+  const purchases = result && onlyNothing ? earnedNothing(all, result.earn.pointsByTransaction) : all;
   // A card is yours, so its cycle holds every workspace's purchases; each says which it was filed in.
   const badgeOf = useWorkspaceBadges(purchases.map((purchase) => purchase.transactionId)).mark;
   if (!result || !program) return null;
@@ -175,6 +176,12 @@ export function PurchaseList({ cp, run, currency }: { cp: CardPoints; run: Run; 
 
   return (
     <>
+      {onlyNothing && onShowAll && (
+        <div className="mb-[12px] flex items-center gap-[10px] px-[4px]" data-testid="purchases-filter">
+          <p className="min-w-0 flex-1 text-[13px] leading-[18px] text-[var(--ph-ink-2)]">Showing purchases that earned nothing</p>
+          <Capsule onClick={onShowAll}>✕ Show all</Capsule>
+        </div>
+      )}
       <SegmentedControl
         segments={[
           { key: 'this', label: 'This cycle' },
@@ -189,7 +196,7 @@ export function PurchaseList({ cp, run, currency }: { cp: CardPoints; run: Run; 
         header={`Purchases ${lastCycle ? 'last' : 'this'} cycle: ${shortDate(result.cycle.start)} – ${shortDate(result.cycle.end)}`}
         footer={perPurchase ? `Checked ${totals.checked} of ${totals.purchases} · running total ${formatPoints(totals.total)} ${unit}` : undefined}
       >
-        {purchases.length === 0 ? <Line>{<span className="text-[15px] text-[var(--ph-ink-3)]">No card purchases in this cycle.</span>}</Line> : purchases.map(purchaseRow)}
+        {purchases.length === 0 ? <Line>{<span className="text-[15px] text-[var(--ph-ink-3)]">{onlyNothing ? 'No purchases earned nothing in this cycle.' : 'No card purchases in this cycle.'}</span>}</Line> : purchases.map(purchaseRow)}
       </InsetGroup>
     </>
   );

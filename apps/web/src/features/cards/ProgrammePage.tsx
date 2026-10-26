@@ -1,5 +1,6 @@
 import { CURRENCIES, formatMinor, isoDate, parseMajor } from '@expanses/core';
 import {
+  backfillCycles,
   deleteConversion,
   deleteRedemptionOption,
   getProgramme,
@@ -27,7 +28,8 @@ import { ActionButtons, InsetGroup, InsetRow, Panel, PushedTitle, type RoundActi
 import { formatPoints } from './format-points';
 import { balanceText, expiryNote, historyLine } from './programme-text';
 import { BalanceSheet, ConvertSheet, ProgrammeSettingsSheet, RedeemSheet } from './ProgrammeSheets';
-import { ColumnGroup, RowWithActions, SubmitRow, TextLine } from './rows';
+import { ActionRow, ColumnGroup, RowWithActions, SubmitRow, TextLine } from './rows';
+import { TransferEstimates } from './TransferEstimates';
 
 type SheetName = 'redeem' | 'convert' | 'balance' | 'settings';
 
@@ -36,6 +38,8 @@ type SheetName = 'redeem' | 'convert' | 'balance' | 'settings';
  * expire; under it the three things done with a balance — redeem it, convert it into another programme, set it to the
  * figure the issuer's app shows. Then the cards earning into it, each opening its card, and its history: each card's
  * earning per statement, redemptions, conversions in and out with both sides, corrections and expiries.
+ *
+ * Under them, what the cycle's points would transfer to and the catch-up per card for cycles from before the app.
  *
  * Opening it brings its ledger up to date first, as a card's page does: each earning card works out its open cycle and
  * the one before, and points past their date are written off.
@@ -95,6 +99,16 @@ export function ProgrammePage() {
     }
   };
 
+  const catchUp = async (programId: string) => {
+    setError(null);
+    try {
+      await backfillCycles(database, ws, programId, 24, today);
+      await invalidate();
+    } catch (e) {
+      setError(e);
+    }
+  };
+
   // This statement's points for each card: its earning in the cycle still open today.
   const thisStatement = (programId: string) =>
     history
@@ -148,6 +162,8 @@ export function ProgrammePage() {
         </InsetGroup>
       )}
 
+      <TransferEstimates partners={partners} points={earners.reduce((sum, earner) => sum + (thisStatement(earner.programId)?.quantity ?? 0), 0)} unit={unit} today={today} />
+
       <PointValues programme={programme} earners={earners} options={options} linked={linked} />
 
       <div data-testid="programme-history">
@@ -174,6 +190,17 @@ export function ProgrammePage() {
           )}
         </InsetGroup>
       </div>
+
+      {earners.length > 0 && (
+        <InsetGroup
+          header="Earlier cycles"
+          info="Works the last two years of cycles out from purchases already recorded here. Points earned before this app was used are not among them — set the programme's balance to the one the issuer shows instead."
+        >
+          {earners.map((earner) => (
+            <ActionRow key={earner.programId} label={`Catch up ${earner.cardName}`} onClick={() => void catchUp(earner.programId)} />
+          ))}
+        </InsetGroup>
+      )}
 
       {sheet === 'redeem' && <RedeemSheet programme={programme} options={options} today={today} onClose={() => setSheet(null)} />}
       {sheet === 'convert' && <ConvertSheet programme={programme} others={others} partners={partners} today={today} onClose={() => setSheet(null)} />}

@@ -275,7 +275,11 @@ const routeTree = rootRoute.addChildren([
   // and the spend bonuses under them. Static last segments, so none is read as the wallet's `$cardId`.
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/statement', component: CardStatementPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/points', component: CardPointsPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/points/purchases', component: CardPurchasesPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/points/purchases',
+    component: CardPurchasesPage,
+    // `filter=nothing` lists only the purchases that earned nothing, which the points page's amber line opens.
+    validateSearch: (search: Record<string, unknown>): { filter?: 'nothing' } => (search.filter === 'nothing' ? { filter: 'nothing' } : {}),
+  }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/points/check', component: CardPointsCheckPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings', component: CardSettingsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/product', component: CardProductPage }),

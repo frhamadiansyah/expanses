@@ -8,7 +8,7 @@ test.beforeEach(({ page }) => {
 });
 
 /** A card earning 1 point per Rp 2.500, with one purchase on it. Ends on the card's Settings, by its points. */
-async function cardWithAPurchase(page: Page, on?: string) {
+async function cardWithAPurchase(page: Page, on?: string, minimum?: string) {
   await openCard(page, { name: 'CIMB Octo' });
 
   await page.goto('/wallet');
@@ -23,6 +23,7 @@ async function cardWithAPurchase(page: Page, on?: string) {
   await page.getByLabel('Rule name').fill('Base');
   await page.getByLabel('Points', { exact: true }).fill('1');
   await page.getByLabel('Per spend (IDR)').fill('2500');
+  if (minimum) await page.getByLabel('Minimum transaction (IDR)').fill(minimum);
   await page.getByRole('button', { name: 'Save rule' }).click();
   await expect(page.getByText('1 per Rp')).toBeVisible();
 
@@ -148,13 +149,40 @@ test('spending points takes them off the balance, oldest first', async ({ page }
   await expect(page.getByTestId('programme-history')).toContainText('Statement credit');
 });
 
-test('catches a card up without complaint', async ({ page }) => {
+test('catches a card up from its programme page, without complaint; the card page has no Catch up', async ({ page }) => {
   await cardWithAPurchase(page);
   await toPoints(page);
+  await expect(page.getByRole('button', { name: /^Catch up/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'CIMB Octo', exact: true }).click();
+  await cardPage(page, 'Settings');
+  await openProgramme(page);
 
-  await page.getByRole('button', { name: 'Catch up this card' }).click();
+  // The action row is the programme's, one per card earning into it; its explanation sits behind an ⓘ.
+  await page.getByRole('button', { name: 'Catch up CIMB Octo' }).click();
 
   // Nothing older exists here, so the balance is what this cycle earned and no error is shown.
-  await page.getByRole('button', { name: 'CIMB Octo', exact: true }).click();
-  await expect(page.getByTestId('tile-points-balance')).toContainText('100 points');
+  await expect(page.getByTestId('programme-balance')).toHaveText('100 points');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test('the amber earned-nothing line opens only the purchases that earned nothing', async ({ page }) => {
+  await cardWithAPurchase(page, undefined, '100000');
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Kopi kecil', paidWith: 'CIMB Octo', category: 'Groceries', amount: '20000' });
+  await page.goto('/wallet');
+  await walletCard(page, 'CIMB Octo').click();
+  await cardPage(page, 'Points');
+
+  const nothing = page.getByTestId('earned-nothing');
+  await expect(nothing).toContainText('earned nothing');
+  await expect(nothing).toContainText('20.000');
+  await nothing.getByRole('link').click();
+  await expect(page).toHaveURL(/\/points\/purchases\?filter=nothing/);
+  await expect(page.getByTestId('purchases-filter')).toContainText('Showing purchases that earned nothing');
+  await expect(page.getByTestId('purchase')).toHaveCount(1);
+  await expect(page.getByTestId('purchase')).toContainText('Kopi kecil');
+
+  await page.getByRole('button', { name: /Show all/ }).click();
+  await expect(page.getByTestId('purchases-filter')).toHaveCount(0);
+  await expect(page.getByTestId('purchase')).toHaveCount(2);
 });
