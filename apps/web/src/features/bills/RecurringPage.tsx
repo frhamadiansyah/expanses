@@ -20,10 +20,10 @@ import { Unconverted } from '../workspaces/Unconverted';
 import { UndoToast } from '../../ui/UndoToast';
 
 /** The bar's three parts in the kit's own tones: late in alarm, soon in warning, the rest a quiet grey. */
-const PART_COLOUR: Record<BillSummary['parts'][number]['key'], string> = { overdue: 'var(--ph-alarm)', dueSoon: 'var(--ph-warn)', later: 'var(--ph-ink-3)' };
+const PART_COLOUR: Record<BillSummary['parts'][number]['key'], string> = { overdue: 'var(--ph-alarm)', dueSoon: 'var(--ph-warn)' };
 
 /**
- * The month's figure, in the box it is made of: what is still to pay, a bar dividing it into late, soon and later,
+ * The month's figure, in the box it is made of: what is still to pay, a bar dividing it into late and soon,
  * and the key under the bar naming each part's money. Once everything is dealt with it says so, and nothing more.
  */
 function StillToPay({ summary, currency }: { summary: BillSummary; currency: string }) {

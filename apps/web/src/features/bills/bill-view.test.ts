@@ -40,8 +40,7 @@ describe('the Recurring list', () => {
   it('groups what is still to pay by urgency', () => {
     expect(sectionsOf(rows).map((s) => [s.title, s.rows.map((r) => r.name)])).toEqual([
       ['Overdue', ['Biznet']],
-      ['Due soon', ['Tuition']],
-      ['Later', ['Telkomsel', 'PLN']],
+      ['Due soon', ['Tuition', 'Telkomsel', 'PLN']],
     ]);
   });
 
@@ -78,8 +77,7 @@ describe('the Recurring list', () => {
       variesText: '2 amounts vary',
       parts: [
         { key: 'overdue', label: 'Overdue', minor: 450_000, approximate: false },
-        { key: 'dueSoon', label: 'Due soon', minor: 3_500_000, approximate: false },
-        { key: 'later', label: 'Later', minor: 1_070_000, approximate: true },
+        { key: 'dueSoon', label: 'Due soon', minor: 3_500_000 + 1_070_000, approximate: true },
       ],
       allSettled: false,
       allPaused: false,

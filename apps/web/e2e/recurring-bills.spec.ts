@@ -258,13 +258,13 @@ test('unticking a bill in Pay several leaves it unpaid', async ({ page }) => {
   await expect(settledRow(page)).toContainText(/Paid in .*1 ·/);
 });
 
-test('a bill not out yet opens later, and can be paid early', async ({ page }) => {
+test('a bill not out yet is listed with those due soon, and can be paid early', async ({ page }) => {
   const now = new Date();
   const last = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   test.skip(now.getDate() >= last, 'Nothing is still to come on the last day of a month');
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Housing rent', amount: '5000000', out: 31 });
-  await expect(page.getByText('Later', { exact: true })).toBeVisible();
+  await expect(page.getByText('Later', { exact: true })).toHaveCount(0);
   // A plain day under the amount: not late, not soon.
   await expect(row(page, 'Housing rent').getByTestId('bill-status')).toHaveText(/^\d+ \w{3}$/);
   await rowAction(page, 'Housing rent', /^Pay/);

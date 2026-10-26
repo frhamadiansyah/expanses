@@ -16,7 +16,7 @@ export const amountOf = (bill: MonthlyBill) => (bill.state === 'paid' ? (bill.pa
 export const variesWords = (n: number) => (n === 1 ? '1 amount varies' : `${n} amounts vary`);
 
 export interface BillSection {
-  key: 'overdue' | 'dueSoon' | 'later';
+  key: 'overdue' | 'dueSoon';
   title: string;
   rows: MonthlyBill[];
 }
@@ -25,8 +25,8 @@ export interface BillSection {
 export function sectionsOf(rows: readonly MonthlyBill[]): BillSection[] {
   return [
     { key: 'overdue' as const, title: 'Overdue', rows: rows.filter((b) => b.state === 'overdue') },
-    { key: 'dueSoon' as const, title: 'Due soon', rows: rows.filter((b) => b.state === 'dueSoon') },
-    { key: 'later' as const, title: 'Later', rows: rows.filter((b) => b.state === 'open' || b.state === 'upcoming') },
+    // Two groups only: a bill not yet near is listed with the ones coming up, not under a header of its own.
+    { key: 'dueSoon' as const, title: 'Due soon', rows: rows.filter((b) => b.state === 'dueSoon' || b.state === 'open' || b.state === 'upcoming') },
   ].filter((section) => section.rows.length > 0);
 }
 
@@ -62,7 +62,7 @@ export interface BillSummary {
   approximate: boolean;
   variesText: string | null;
   /** What the total is made of, for the bar and its key: only the parts with money in them. */
-  parts: { key: 'overdue' | 'dueSoon' | 'later'; label: string; minor: number; approximate: boolean }[];
+  parts: { key: 'overdue' | 'dueSoon'; label: string; minor: number; approximate: boolean }[];
   allSettled: boolean;
   /** Nothing to pay because every bill is paused, which is not the same as all paid. */
   allPaused: boolean;
@@ -73,8 +73,7 @@ export function summaryOf(rows: readonly MonthlyBill[], today: string): BillSumm
   const varying = open.filter((b) => b.amountMinor === null).length;
   const groups = [
     { key: 'overdue' as const, label: 'Overdue', rows: open.filter((b) => b.state === 'overdue') },
-    { key: 'dueSoon' as const, label: 'Due soon', rows: open.filter((b) => b.state === 'dueSoon') },
-    { key: 'later' as const, label: 'Later', rows: open.filter((b) => b.state === 'open' || b.state === 'upcoming') },
+    { key: 'dueSoon' as const, label: 'Due soon', rows: open.filter((b) => b.state === 'dueSoon' || b.state === 'open' || b.state === 'upcoming') },
   ];
   return {
     monthLabel: monthName(today.slice(0, 7), 'long'),
