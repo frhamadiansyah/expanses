@@ -254,7 +254,6 @@ test('a share owned before the app reads as a past purchase in the transaction l
 test('a share’s Settings carry its derived name, ticker and broker; the ticker is fixed once it has a trade', async ({ page }) => {
   await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '1', price: '8.750', paidFrom: 'Owned before this app' });
   await page.getByRole('button', { name: 'Add holding' }).click();
-  await page.getByRole('link', { name: 'Stockbit', exact: true }).click();
   await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('main')).toContainText('BBCA · Stockbit');
   // The name is not typed into, and the ticker, with a trade behind it, opens no search: ⓘ says why.

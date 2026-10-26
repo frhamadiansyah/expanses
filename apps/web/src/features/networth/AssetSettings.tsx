@@ -62,7 +62,7 @@ export function AssetSettings({
   /** How its income is taxed. Null means the owner has not said. */
   taxTreatment: Treatment | null;
   /** Rows that stand for Name: a bank account's Bank › name, as Add account asked for it; a listed share's derived name with its ticker, broker and custodian. */
-  nameRow?: ReactElement | ReactElement[];
+  nameRow?: ReactNode;
   /** A row under Name: an asset's Acquired, which used to wait on an Edit screen of its own. */
   afterName?: ReactNode;
   /** A box between the thing's own settings and the Tax report: a money account's spending, digits and card. */
