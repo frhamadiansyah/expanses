@@ -68,13 +68,13 @@ describe('buyChoices', () => {
   it('offers every holding measured in units, and nothing else', () => {
     const { buys } = buyChoices(values, profiles);
     expect(buys.map((choice) => choice.accountId)).toEqual(['bbri', 'gold', 'tlkm']);
-    expect(buys[0]!.label).toBe('Investments › BBRI shares');
+    expect(buys[0]!.label).toBe('BBRI shares');
   });
 
   it('only offers to sell what is still held', () => {
     const { sells } = buyChoices(values, profiles);
     expect(sells.map((choice) => choice.accountId)).toEqual(['bbri', 'gold']);
-    expect(sells[0]!.label).toBe('Sell › BBRI shares');
+    expect(sells[0]!.label).toBe('BBRI shares');
   });
 
   it('carries the lot size and what the units are called', () => {

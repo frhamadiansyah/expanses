@@ -22,7 +22,8 @@ export function buyChoices(values: AssetValueRow[], profiles: AssetProfileRow[])
     const profile = profiles.find((row) => row.accountId === value.accountId);
     return {
       value: `${mode}:${value.accountId}`,
-      label: `${mode === 'buy' ? 'Investments' : 'Sell'} › ${value.name}`,
+      // The holding's own name: the tab already says Buy or Sell, so the list does not say it again.
+      label: value.name,
       accountId: value.accountId,
       mode,
       lotSize: profile?.lotSize ?? null,

@@ -70,7 +70,7 @@ describe('what each Buy / sell row says', () => {
   });
 
   it('draws the holding by its own name, with the picker’s group as the caption', () => {
-    // The picker's labels are "Investments › Antam" and "Sell › Antam": the group is a caption, not part of a name.
+    // Older labels carried a group — "Investments › Antam" — which is not part of a name.
     expect(holdingFace('Investments › Antam')).toBe('Antam');
     expect(holdingFace('Sell › BBRI shares')).toBe('BBRI shares');
     // A label with no group at all is still drawn whole rather than blanked.

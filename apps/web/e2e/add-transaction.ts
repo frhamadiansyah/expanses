@@ -129,7 +129,7 @@ export async function addTransfer(
 /**
  * Records a purchase or a sale through Trade's Buy or Sell tab.
  *
- * `what` is the holding's own name — the picker shows it under "Investments ›" when buying and "Sell ›" when
+ * `what` is the holding's own name — the picker lists it by that name alone, under the Buy or Sell tab that
  * selling, and the helper builds that label rather than asking every caller to remember the prefix. None of these
  * figures goes near the keypad: the trade rows are plain inputs at every width, because the amount row and its dock
  * belong to `draft.amount`, and a trade's cost lives in `draft.purchase`.
@@ -154,7 +154,7 @@ export async function addPurchase(
 ) {
   const sell = trade.mode === 'sell';
   const form = await openBuyOrSell(page, trade.mode);
-  await form.getByLabel('Investment').selectOption({ label: `${sell ? 'Sell' : 'Investments'} › ${trade.what}` });
+  await form.getByLabel('Investment').selectOption({ label: trade.what });
   await form.getByLabel(sell ? /^Proceeds, before fees/ : /^What it cost, before fees/).fill(trade.amount);
   if (trade.lots) await form.getByLabel('Lots').fill(trade.lots);
   // Whatever this holding calls its units — Grams for gold, Shares for a stock without lots.
