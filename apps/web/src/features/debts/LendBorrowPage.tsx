@@ -205,7 +205,7 @@ export function LendBorrowPage() {
       {settled.length > 0 && (
         <>
           <InsetGroup>
-            <InsetRow title={`${showSettled ? 'Hide' : 'Show'} settled (${settled.length})`} chevron={false} onClick={() => setShowSettled((open) => !open)} />
+            <InsetRow title={`${showSettled ? 'Hide' : 'Show'} settled (${settled.length})`} action onClick={() => setShowSettled((open) => !open)} />
           </InsetGroup>
           {showSettled && <PeopleRows people={settled} />}
         </>

@@ -73,7 +73,7 @@ export function ICloudGroup({ blocked }: { blocked: boolean }) {
     return (
       <InsetGroup header="iCloud" info={ABOUT}>
         <InsetRow title={<span className="text-[var(--ph-ink-3)]">Back up to iCloud</span>} subtitle="iCloud Drive is off for cicis. Turn it on in Settings." chevron={false} />
-        <InsetRow title={<span className="text-[var(--ph-tint)]">Open Settings</span>} chevron={false} onClick={() => void ICloudBackup.openSettings()} />
+        <InsetRow title="Open Settings" action onClick={() => void ICloudBackup.openSettings()} />
       </InsetGroup>
     );
   }
@@ -102,7 +102,7 @@ export function ICloudGroup({ blocked }: { blocked: boolean }) {
         <SwitchRow label="Back up to iCloud" checked={enabled} disabled={off} onChange={(on) => void setEnabled(on)} />
         <InsetRow title="Last backup" value={busy ? 'Backing up…' : last ? whenShort(last.takenAt) : 'Not yet'} valueTone="ink-3" chevron={false} />
         <SwitchRow label="Include photos" checked={withPhotos} disabled={off} onChange={(on) => void setPhotos(on)} />
-        <InsetRow title={<span className="text-[var(--ph-tint)]">Back up now</span>} chevron={false} disabled={off} onClick={() => void backUp(true)} />
+        <InsetRow title="Back up now" action disabled={off} onClick={() => void backUp(true)} />
         <InsetRow title="Restore from iCloud" value={copiesWord(listed.copies.length)} valueTone="ink-3" to="/backup/icloud" disabled={blocked} />
       </InsetGroup>
       <ErrorBox error={error} />

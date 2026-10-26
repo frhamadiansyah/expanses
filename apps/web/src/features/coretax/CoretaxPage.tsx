@@ -127,7 +127,7 @@ export function CoretaxPage() {
         <InsetGroup>
           <InsetRow
             title={`Start the ${taxYear} report`}
-            chevron={false}
+            action
             className={busy ? 'opacity-40' : undefined}
             onClick={() => !busy && void start()}
           />
@@ -223,7 +223,7 @@ export function CoretaxPage() {
               <InsetGroup>
                 <InsetRow
                   title="Save taxpayer details"
-                  chevron={false}
+                  action
                   className={busy ? 'opacity-40' : undefined}
                   onClick={() => !busy && void saveWho({ npwp: npwp.trim(), taxpayerName: taxpayerName.trim() })}
                 />

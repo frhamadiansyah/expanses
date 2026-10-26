@@ -73,8 +73,8 @@ export function TakeHomeSheet({
       {sheet.incomeOverridden && (
         <InsetGroup>
           <InsetRow
-            title={<span className="font-normal">Use the usual take-home</span>}
-            chevron={false}
+            title="Use the usual take-home"
+            action
             onClick={() => void run(() => clearIncomeOverride(database, ws, month))}
             label="Use the usual take-home"
           />

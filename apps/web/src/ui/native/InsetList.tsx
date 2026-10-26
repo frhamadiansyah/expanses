@@ -189,6 +189,8 @@ export interface InsetRowProps extends GroupChild {
   search?: LinkProps['search'];
   /** A destructive action in a group of its own: centred, in alarm, no icon. */
   destructive?: boolean;
+  /** A row that DOES something (Save, Add, Cancel, Share): title centred in ink, no chevron, no icon. Rows that open a page or show a value stay left. */
+  action?: boolean;
   /**
    * A row that cannot be taken *yet*.
    *
@@ -251,6 +253,7 @@ export function InsetRow({
   params,
   search,
   destructive = false,
+  action = false,
   disabled = false,
   label,
   testId,
@@ -258,12 +261,14 @@ export function InsetRow({
   className,
   tree,
 }: InsetRowProps) {
-  const points = chevron ?? Boolean(onClick ?? to);
+  const points = action ? false : (chevron ?? Boolean(onClick ?? to));
   const plan = planRow({ icon: Boolean(icon), title: String(title ?? ''), chevron: points });
   const tint = iconColour ? iconTint(iconColour) : null;
 
   const body = destructive ? (
     <span className="w-full text-center text-[17px] leading-[22px] md:text-[15px] md:leading-[20px] font-normal text-[var(--ph-alarm)]">{title}</span>
+  ) : action ? (
+    <span className="w-full text-center text-[17px] leading-[22px] md:text-[15px] md:leading-[20px] font-normal text-[var(--ph-ink)]">{title}</span>
   ) : (
     <>
       {icon && (
@@ -303,7 +308,7 @@ export function InsetRow({
     <span
       aria-hidden
       className="pointer-events-none absolute top-0 bg-[var(--ph-hair)]"
-      style={{ height: 0.5, left: destructive ? 0 : depth === 0 ? plan.separatorInset : nestedPad(depth) + (icon ? NESTED_ICON + ROW_ICON_GAP : 0), right: ROW_PAD_X }}
+      style={{ height: 0.5, left: destructive || action ? 0 : depth === 0 ? plan.separatorInset : nestedPad(depth) + (icon ? NESTED_ICON + ROW_ICON_GAP : 0), right: ROW_PAD_X }}
     />
   ) : null;
   const slides = !disabled && (onSwipeRight !== undefined || (leftActions?.length ?? 0) > 0);

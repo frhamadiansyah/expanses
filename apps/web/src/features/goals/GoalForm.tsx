@@ -235,8 +235,8 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
         <InsetGroup>
           <InsetRow
             label="Add a payment"
-            title={<span className="text-[var(--ph-tint)]">＋ Add a payment</span>}
-            chevron={false}
+            title="＋ Add a payment"
+            action
             onClick={() => setStages((rows) => [...rows, { name: '', amount: '', months: '', dueOn: today, usesMonths: false, paidOn: null }])}
           />
         </InsetGroup>
@@ -275,8 +275,8 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
           <InsetGroup>
             <InsetRow
               label="Calculator"
-              title={<span className="block w-full text-center">Calculator</span>}
-              chevron={false}
+              title="Calculator"
+              action
               onClick={() => setWorking(true)}
             />
           </InsetGroup>

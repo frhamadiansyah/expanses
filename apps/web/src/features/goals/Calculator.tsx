@@ -236,9 +236,9 @@ function CalculatorForm({ goal, saved, onDone, onCancel }: { goal: GoalRow; save
       <ErrorBox error={error} />
       {/* `requestSubmit` rather than calling `submit`: the browser still checks the required rows first. */}
       <InsetGroup>
-        <InsetRow title="Use this amount" chevron={false} disabled={busy} onClick={() => formRef.current?.requestSubmit()} />
+        <InsetRow title="Use this amount" action disabled={busy} onClick={() => formRef.current?.requestSubmit()} />
         {/* Back to the goal's fields when the working was opened from them: the same page, one step up. */}
-        <InsetRow title="Cancel" chevron={false} onClick={onCancel ?? onDone} />
+        <InsetRow title="Cancel" action onClick={onCancel ?? onDone} />
       </InsetGroup>
     </form>
   );

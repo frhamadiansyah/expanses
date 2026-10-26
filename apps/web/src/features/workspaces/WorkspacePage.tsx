@@ -256,7 +256,7 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
                 }
               >
                 {/* The guard is on the call rather than the row: a press while a change is in flight does nothing. */}
-                <InsetRow title="Change currency" chevron={false} onClick={() => !busy && void changeCurrency()} className={busy ? 'opacity-40' : undefined} />
+                <InsetRow title="Change currency" action onClick={() => !busy && void changeCurrency()} className={busy ? 'opacity-40' : undefined} />
               </InsetGroup>
             )}
 

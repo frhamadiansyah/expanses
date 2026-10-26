@@ -66,7 +66,7 @@ function HoldingArea() {
     <InsetGroup header="Waiting on the phone" footer={`Last check: ${reportLine(report)}`}>
       <InsetRow title="Waiting" value={status ? String(status.pending) : '–'} chevron={false} />
       <InsetRow title="Could not be opened" value={status ? String(status.broken) : '–'} chevron={false} />
-      <InsetRow title={busy ? 'Checking…' : 'Check now'} chevron={false} onClick={busy ? undefined : () => void check()} />
+      <InsetRow title={busy ? 'Checking…' : 'Check now'} action onClick={busy ? undefined : () => void check()} />
     </InsetGroup>
   );
 }

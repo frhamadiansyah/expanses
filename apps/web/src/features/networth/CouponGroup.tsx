@@ -155,7 +155,7 @@ function CouponRows({ accountId, saved, heldAt }: { accountId: string; saved: Bo
           <InsetRow
             plain
             title="Remove coupon terms"
-            chevron={false}
+            action
             onClick={() =>
               void (async () => {
                 await removeBondCoupon(database, ws, accountId);

@@ -221,9 +221,9 @@ function PaySheet({
           />,
         ])}
         <InsetRow
-          title={<span className="font-normal text-[var(--ph-tint)]">Add insurance or admin charge</span>}
+          title="Add insurance or admin charge"
           label="Add insurance or admin charge"
-          chevron={false}
+          action
           onClick={() => set({ extras: [...filled.extras, { categoryId: '', amount: '' }] })}
         />
       </InsetGroup>
@@ -526,9 +526,9 @@ function ScheduleSheet({ rows, currency, onClose }: { rows: { onDate: string; pa
       {rows.length > 12 && (
         <InsetGroup>
           <InsetRow
-            title={<span className="font-normal text-[var(--ph-tint)]">{showRows ? 'Show the next twelve' : 'Show every month'}</span>}
+            title={showRows ? 'Show the next twelve' : 'Show every month'}
             label={showRows ? 'Show the next twelve' : 'Show every month'}
-            chevron={false}
+            action
             onClick={() => setShowRows((shown) => !shown)}
           />
         </InsetGroup>
@@ -683,7 +683,7 @@ export function LoanDetailPage() {
         <>
           <Empty>This loan has no terms yet. Its schedule is worked out from them.</Empty>
           <InsetGroup>
-            <InsetRow title="Add loan terms" chevron={false} onClick={() => setAdding(true)} />
+            <InsetRow title="Add loan terms" action onClick={() => setAdding(true)} />
           </InsetGroup>
         </>
       ))}

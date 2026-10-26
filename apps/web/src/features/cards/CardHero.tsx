@@ -199,12 +199,12 @@ function PayForm({ card, accounts, amountMinor, today, onDone }: { card: Account
         <TextRow label={`Amount (${currency})`} value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" />
         <TextRow label="Paid on" type="date" value={paidOn} onChange={(event) => setPaidOn(event.target.value)} />
         <InsetRow
-          title={<span className={cx(busy ? 'text-[var(--ph-ink-3)]' : 'text-[var(--ph-tint)]')}>Record payment</span>}
+          title="Record payment"
           onClick={() => void pay()}
           disabled={busy || !setAside.ready}
-          chevron={false}
+          action
         />
-        <InsetRow title={<span className="text-[var(--ph-ink-2)]">Cancel</span>} onClick={onDone} chevron={false} />
+        <InsetRow title="Cancel" onClick={onDone} action />
       </InsetGroup>
       {/* Hidden, so Enter in any field still records the payment; a visible second button would be a second target. */}
       <input type="submit" hidden />
@@ -542,7 +542,7 @@ export function CardHero({
               )}
               {!paying &&
                 (cp.terms && lastCycle ? (
-                  <InsetRow title={<span className="text-[var(--ph-tint)]">Pay this bill</span>} onClick={() => setPaying(true)} />
+                  <InsetRow action title="Pay this bill" onClick={() => setPaying(true)} />
                 ) : (
                   <InsetRow title={<span className="text-[var(--ph-tint)]">Enter billing date</span>} {...toSettings} />
                 ))}

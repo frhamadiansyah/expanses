@@ -165,7 +165,7 @@ export function BillFormPage({ billId }: { billId?: string }) {
           </InsetGroup>
 
           <InsetGroup>
-            <InsetRow title="Cancel" chevron={false} to={backTo} params={backParams} />
+            <InsetRow title="Cancel" action to={backTo} params={backParams} />
           </InsetGroup>
         </form>
       )}

@@ -58,7 +58,7 @@ export function InviteCard({
       <InsetGroup wide header={header} footer={`${footer} Works once, until ${expires}.${note ? ` ${note}` : ''}`}>
         <CodeRow code={invite.code} />
         <InsetRow title="Link" subtitle={<span data-testid="invite-link">{invite.link}</span>} chevron={false} />
-        <InsetRow title="Share invite" icon={<Share2 size={15} aria-hidden />} chevron={false} onClick={() => void share()} />
+    <InsetRow title="Share invite" action onClick={() => void share()} />
       </InsetGroup>
     </div>
   );

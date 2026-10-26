@@ -230,9 +230,8 @@ export function LoanPage() {
           {loan.status === 'open' ? (
             <InsetRow
               key="record"
-              icon={<Plus size={16} strokeWidth={2.5} aria-hidden />}
               title={`Record ${repaymentWord(person.direction).toLowerCase()}`}
-              chevron={false}
+              action
               onClick={() => setRepaying(true)}
             />
           ) : null}

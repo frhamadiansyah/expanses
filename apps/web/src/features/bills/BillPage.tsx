@@ -224,7 +224,7 @@ export function BillPage({ billId }: { billId: string }) {
               />
             )),
             ...(history.length > shown.length
-              ? [<InsetRow key="all" title={<span className="text-[var(--ph-tint)]">See all</span>} label="See all" chevron={false} onClick={() => setAllHistory(true)} />]
+              ? [<InsetRow key="all" title="See all" label="See all" action onClick={() => setAllHistory(true)} />]
               : []),
           ]}
         </InsetGroup>

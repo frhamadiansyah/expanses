@@ -73,7 +73,7 @@ export function CardSearch({
               </>
             }
           >
-            <InsetRow title={`Use “${typed}” as the name`} chevron={false} onClick={() => onTyped(typed)} />
+            <InsetRow title={`Use “${typed}” as the name`} action onClick={() => onTyped(typed)} />
           </InsetGroup>
         )}
       </div>

@@ -50,13 +50,12 @@ export function SetsPage() {
                   );
                 })}
                 <InsetRow
-                  icon={<Plus size={16} aria-hidden />}
                   title="Add category"
                   label={`Add a category to ${set.name}`}
-                  chevron={false}
+                  action
                   onClick={() => actions.addToSet(set.id, set.name)}
                 />
-                <InsetRow title="Rename set" label={`Rename ${set.name}`} chevron={false} onClick={() => actions.renameSet(set.id, set.name)} />
+                <InsetRow title="Rename set" label={`Rename ${set.name}`} action onClick={() => actions.renameSet(set.id, set.name)} />
                 <InsetRow title="Remove set" label={`Remove ${set.name}`} destructive onClick={() => actions.removeSet(set.id, set.name)} />
               </InsetGroup>
             </div>

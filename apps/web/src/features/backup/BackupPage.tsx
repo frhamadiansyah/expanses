@@ -278,9 +278,9 @@ export function BackupPage() {
           onClick={() => !busy && !pending && void onExport()}
         />
         <InsetRow
-          title={<span className="text-[var(--ph-tint)]">Restore from file…</span>}
+          title="Restore from file…"
           label="Restore from file…"
-          chevron={false}
+          action
           className={busy || !!pending ? 'opacity-40' : undefined}
           onClick={() => !busy && !pending && sqliteInput.current?.click()}
         />
@@ -290,14 +290,14 @@ export function BackupPage() {
         {!!photoIndex.data?.length && (
           <InsetRow
             title={`Download photos (${photoIndex.data.length})`}
-            chevron={false}
+            action
             className={busy || !!pending ? 'opacity-40' : undefined}
             onClick={() => !busy && !pending && void onDownloadPhotos()}
           />
         )}
         <InsetRow
           title="Restore photos…"
-          chevron={false}
+          action
           className={busy || !!pending ? 'opacity-40' : undefined}
           onClick={() => !busy && !pending && zipInput.current?.click()}
         />
@@ -320,7 +320,7 @@ export function BackupPage() {
             <DestructiveRow label={`Replace my data with ${pending.name}`} onClick={() => !busy && void onConfirmRestore()} />
           </InsetGroup>
           <InsetGroup>
-            <InsetRow title="Cancel" chevron={false} className={busy ? 'opacity-40' : undefined} onClick={() => !busy && setPending(null)} />
+            <InsetRow title="Cancel" action className={busy ? 'opacity-40' : undefined} onClick={() => !busy && setPending(null)} />
           </InsetGroup>
         </>
       )}

@@ -122,7 +122,7 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
           <InsetRow testId="recorded-spread" title={line.title} value={`${line.figure} (${line.note})`} valueTone="ink" chevron={false} />
         </InsetGroup>
         <InsetGroup>
-          <InsetRow title="Done" chevron={false} onClick={() => void navigate({ to: '/accounts/$accountId', params: { accountId: parent.id } })} />
+          <InsetRow title="Done" action onClick={() => void navigate({ to: '/accounts/$accountId', params: { accountId: parent.id } })} />
         </InsetGroup>
       </div>
     );
@@ -181,7 +181,7 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
       )}
       {setAside.node}
       <InsetGroup>
-        <InsetRow title="Move it" chevron={false} onClick={() => !busy && setAside.ready && void save()} className={busy || !setAside.ready ? 'opacity-40' : undefined} />
+        <InsetRow title="Move it" action onClick={() => !busy && setAside.ready && void save()} className={busy || !setAside.ready ? 'opacity-40' : undefined} />
       </InsetGroup>
     </div>
   );

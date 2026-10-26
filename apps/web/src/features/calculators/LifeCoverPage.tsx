@@ -123,7 +123,7 @@ function LifeCoverForm({ initial, prefill, keep }: { initial: LifeCoverDraft; pr
         <Waiting />
       )}
       <InsetGroup footer="Kept on this device for this workspace. A box not typed in keeps following the balance sheet and goals.">
-        <InsetRow title="Keep these figures" chevron={false} onClick={() => void keep(cover)} />
+        <InsetRow title="Keep these figures" action onClick={() => void keep(cover)} />
       </InsetGroup>
     </>
   );

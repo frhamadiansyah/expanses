@@ -97,7 +97,7 @@ export function NetWorthSetup({
         </InsetGroup>
       ) : null}
       <InsetGroup wide>
-        <InsetRow title="Not now" chevron={false} onClick={onDone} />
+        <InsetRow title="Not now" action onClick={onDone} />
       </InsetGroup>
     </form>
   );

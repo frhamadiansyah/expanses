@@ -248,7 +248,7 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
             </InsetGroup>
           ))}
           <InsetGroup>
-            <InsetRow title="Add another purchase" chevron={false} onClick={() => change({ purchases: [...draft.purchases, emptyPurchase()] })} />
+            <InsetRow title="Add another purchase" action onClick={() => change({ purchases: [...draft.purchases, emptyPurchase()] })} />
           </InsetGroup>
         </>
       )}

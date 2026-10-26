@@ -332,7 +332,7 @@ export function AssetsPage() {
       {sold.length > 0 && (
         <>
           <InsetGroup>
-            <InsetRow title={`${showSold ? 'Hide' : 'Show'} sold holdings (${sold.length})`} onClick={() => setShowSold((open) => !open)} chevron={false} />
+            <InsetRow title={`${showSold ? 'Hide' : 'Show'} sold holdings (${sold.length})`} onClick={() => setShowSold((open) => !open)} action />
           </InsetGroup>
           {showSold && (
             <InsetGroup header="Sold">

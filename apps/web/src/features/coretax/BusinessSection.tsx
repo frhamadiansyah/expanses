@@ -226,7 +226,7 @@ export function BusinessSection({ taxYear }: { taxYear: number }) {
 
       {!open && (
         <InsetGroup>
-          <InsetRow title="Add a business" chevron={false} onClick={() => setOpen(true)} />
+          <InsetRow title="Add a business" action onClick={() => setOpen(true)} />
         </InsetGroup>
       )}
 
@@ -275,10 +275,10 @@ export function BusinessSection({ taxYear }: { taxYear: number }) {
 
           {/* Save is a row inside the form, so Enter in a field saves too; Cancel is in its own group, a row away. */}
           <InsetGroup>
-            <InsetRow title="Save business" chevron={false} onClick={() => void save()} />
+            <InsetRow title="Save business" action onClick={() => void save()} />
           </InsetGroup>
           <InsetGroup>
-            <InsetRow title="Cancel" chevron={false} onClick={reset} />
+            <InsetRow title="Cancel" action onClick={reset} />
           </InsetGroup>
         </form>
       )}

@@ -212,8 +212,8 @@ export function TradeActionsSheet({
         </InsetGroup>
       )}
       <InsetGroup>
-        <InsetRow title="Edit" chevron={false} onClick={onEdit} />
-        <InsetRow title="Delete" chevron={false} onClick={onDelete} />
+        <InsetRow title="Edit" action onClick={onEdit} />
+        <InsetRow title="Delete" destructive onClick={onDelete} />
       </InsetGroup>
     </Sheet>
   );

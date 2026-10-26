@@ -322,9 +322,9 @@ export function GoalPage({ goalId }: { goalId: string }) {
               ? [
                   <InsetRow
                     key="see-all"
-                    title={<span className="font-normal text-[var(--ph-tint)]">{allHistory ? 'Show fewer' : 'See all'}</span>}
+                    title={allHistory ? 'Show fewer' : 'See all'}
                     label={allHistory ? 'Show fewer' : 'See all'}
-                    chevron={false}
+                    action
                     onClick={() => setAllHistory((was) => !was)}
                   />,
                 ]

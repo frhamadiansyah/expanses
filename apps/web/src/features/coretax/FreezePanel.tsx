@@ -92,7 +92,7 @@ export function FreezePanel({
             </p>
           )}
           <InsetGroup>
-            <InsetRow title={`Freeze ${taxYear}`} chevron={false} disabled={busy} onClick={() => void run(() => freezeReport(database, ws, taxYear))} />
+            <InsetRow title={`Freeze ${taxYear}`} action disabled={busy} onClick={() => void run(() => freezeReport(database, ws, taxYear))} />
           </InsetGroup>
         </>
       )}
@@ -130,7 +130,7 @@ export function FreezePanel({
             <TextRow label="Filed on" type="date" value={filedOn} max={isoDate()} onChange={(e) => setFiledOn(e.target.value)} />
           </InsetGroup>
           <InsetGroup>
-            <InsetRow title="Mark as filed" chevron={false} disabled={busy} onClick={() => void run(() => markFiled(database, ws, taxYear, filedOn))} />
+            <InsetRow title="Mark as filed" action disabled={busy} onClick={() => void run(() => markFiled(database, ws, taxYear, filedOn))} />
           </InsetGroup>
           <p className="mb-[18px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">Marking it filed makes it read-only, and next year carries over from it.</p>
         </>

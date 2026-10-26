@@ -126,7 +126,7 @@ export function RecommendPage() {
 
         {/* The row is the action; the form around it is what makes Enter in a field compare as well. */}
         <InsetGroup>
-          <InsetRow title="Compare cards" chevron={false} className={busy ? 'opacity-40' : undefined} onClick={() => !busy && void compare()} />
+          <InsetRow title="Compare cards" action className={busy ? 'opacity-40' : undefined} onClick={() => !busy && void compare()} />
         </InsetGroup>
       </form>
 

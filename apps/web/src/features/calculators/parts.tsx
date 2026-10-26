@@ -67,7 +67,7 @@ export function Answer({
 export function SaveRow({ label, ready, onSave }: { label: string; ready: boolean; onSave: () => void }) {
   return (
     <InsetGroup>
-      <InsetRow title={label} chevron={false} onClick={() => ready && onSave()} className={ready ? undefined : 'opacity-40'} />
+      <InsetRow title={label} action onClick={() => ready && onSave()} className={ready ? undefined : 'opacity-40'} />
     </InsetGroup>
   );
 }

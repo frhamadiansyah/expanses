@@ -70,7 +70,7 @@ export function SecurityPricePage() {
       )}
       <ErrorBox error={error} />
       <InsetGroup>
-        <InsetRow title="Save price" onClick={() => void save()} chevron={false} disabled={busy || typed === null} />
+        <InsetRow title="Save price" onClick={() => void save()} action disabled={busy || typed === null} />
       </InsetGroup>
       {/* Enter in either box saves, as it would with one box: the form's default button, never drawn. */}
       <button type="submit" className="sr-only" tabIndex={-1} aria-hidden disabled={busy || typed === null} />

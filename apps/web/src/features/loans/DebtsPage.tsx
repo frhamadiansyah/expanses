@@ -294,7 +294,7 @@ export function DebtsPage() {
                 ];
               })}
               {debts.cleared.length > 0 && (
-                <InsetRow title={`${showCleared ? 'Hide' : 'Show'} paid-off loans (${debts.cleared.length})`} onClick={() => setShowCleared((was) => !was)} chevron={false} />
+                <InsetRow title={`${showCleared ? 'Hide' : 'Show'} paid-off loans (${debts.cleared.length})`} onClick={() => setShowCleared((was) => !was)} action />
               )}
             </InsetGroup>
           )}

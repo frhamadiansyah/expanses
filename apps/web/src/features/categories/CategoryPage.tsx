@@ -233,7 +233,7 @@ export function CategoryPage() {
             <NeedRow name={c.name} need={need} caption={needCaption(need.source, parent?.name ?? null)} onChoose={(chosen) => actions.markNeed(c, chosen)} />
           )}
           {need?.source === 'yours' && (
-            <InsetRow title={parent ? 'Follow parent' : 'Clear mark'} label={`Clear the mark on ${c.name}`} chevron={false} onClick={() => actions.clearNeed(c)} />
+            <InsetRow title={parent ? 'Follow parent' : 'Clear mark'} label={`Clear the mark on ${c.name}`} action onClick={() => actions.clearNeed(c)} />
           )}
           <MccRow
             name={c.name}
@@ -259,7 +259,7 @@ export function CategoryPage() {
               />
             );
           })}
-          <InsetRow icon={<Plus size={16} aria-hidden />} title="Add subcategory" chevron={false} onClick={() => actions.add(c.kind === 'income' ? 'income' : 'expense', c)} />
+     <InsetRow title="Add subcategory" action onClick={() => actions.add(c.kind === 'income' ? 'income' : 'expense', c)} />
         </InsetGroup>
       )}
     </div>

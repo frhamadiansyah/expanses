@@ -101,8 +101,8 @@ export function Notice({
             {onDismiss && (
               <InsetGroup>
                 <InsetRow
-                  title={<span className="block w-full text-center">{dismissLabel}</span>}
-                  chevron={false}
+                  title={dismissLabel}
+                  action
                   onClick={() => {
                     setOpen(false);
                     onDismiss();
