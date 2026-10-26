@@ -10,10 +10,10 @@ test('a month without a backup is one press from fixed, and can be put off witho
   await page.goto('/transactions');
   const banner = overdueBanner(page, 31);
   await expect(banner).toBeVisible();
-  await expect(banner).toContainText('The only copy is on this device.');
+  await expect(banner).toContainText('Only copy is on this device');
 
   // Always dismissible...
-  await banner.getByRole('button', { name: 'Not now' }).click();
+  await banner.getByRole('button', { name: 'Dismiss' }).click();
   await expect(banner).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Cashflow' })).toBeVisible();
@@ -26,6 +26,8 @@ test('a month without a backup is one press from fixed, and can be put off witho
   const again = overdueBanner(page, 31);
   await expect(again).toBeVisible();
 
+  // The row opens a sheet; the sheet holds the one action.
+  await again.getByRole('button', { name: /No backup in 31 days/ }).click();
   const download = page.waitForEvent('download');
   await again.getByRole('button', { name: 'Download backup' }).click();
   expect((await download).suggestedFilename()).toMatch(/^expanses-backup-\d{4}-\d{2}-\d{2}\.sqlite3$/);

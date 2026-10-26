@@ -5,6 +5,8 @@ export interface AfterUpdateNote {
   /** `updated`: the schema moved and the backup they hold is now old. `undone`: an update was put back. */
   kind: 'updated' | 'undone';
   headline: string;
+  /** The one grey line under the headline on the notice row. */
+  line: string;
   body: string;
   /** The version reached, or the one being skipped. Shown under "Details", never in the headline. */
   version: number;
@@ -32,6 +34,7 @@ export function afterUpdate(update: UpdateOutcome | undefined): AfterUpdateNote 
     return {
       kind: 'undone',
       headline: 'The update was undone',
+      line: 'Nothing was lost',
       /*
        * What the app knows here is that an update did not come out right and was put back — not which of
        * the checks said so, and not, after a run of several, which migration was at fault. The words stay
@@ -45,8 +48,9 @@ export function afterUpdate(update: UpdateOutcome | undefined): AfterUpdateNote 
     const version = Math.max(...update.applied);
     return {
       kind: 'updated',
-      headline: `Data was updated to version ${version}`,
-      body: 'A copy was taken before the update and it was checked afterwards. A backup kept off this device is still the only one — download one now?',
+      headline: `Data updated to version ${version}`,
+      line: 'Copy taken and checked',
+      body: 'A copy was taken before the update and checked afterwards. A backup kept off this device is older than the data now.',
       version,
     };
   }

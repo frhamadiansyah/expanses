@@ -3,7 +3,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useState, useSyncExternalStore } from 'react';
 import { useApp } from '../../app/context';
 import { saveBytes } from '../../lib/download';
-import { Button, ErrorBox } from '../../ui';
+import { ErrorBox } from '../../ui';
+import { Notice, NoticeButton } from '../../ui/native';
 import { afterUpdate } from './after-update';
 import { setLastBackupAt } from './backupState';
 import { dismissUpdateCard, subscribeToUpdateCard, updateCardDismissed } from './reminder-state';
@@ -64,37 +65,34 @@ export function AfterUpdateCard() {
   };
 
   const undone = note.kind === 'undone';
+  // Which step of a run of updates was at fault is not knowable once they have all been put back, so
+  // the detail names the point the app stops at rather than a culprit it would be guessing.
+  const detail = undone ? `Updates from ${note.version} onwards are being skipped until tried again.` : `Data is at update ${note.version}.`;
   return (
-    <div className={`mb-4 rounded-lg px-3 py-3 text-sm ${undone ? 'bg-[var(--ph-warn-panel)] text-[var(--ph-warn-ink)]' : 'bg-[var(--ph-fill)] text-[var(--ph-ink-2)]'}`} role="status">
-      <p className="font-medium">{note.headline}</p>
-      <p className="mt-1 leading-relaxed">{note.body}</p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <Button variant={undone ? 'secondary' : 'primary'} className="min-h-11" disabled={busy} onClick={() => void onBackup()}>
-          Download a backup
-        </Button>
-        {undone && (
-          <Button variant="secondary" className="min-h-11" disabled={busy || !safety} onClick={() => void onRetry()}>
-            Try the update again
-          </Button>
-        )}
-        {/* Every message in the app can be put away, this one included: a card that cannot be dismissed is
-            one the user learns to read past, and while it stands it is covering for the backup reminder. */}
-        <Button variant="ghost" className="min-h-11" disabled={busy} onClick={dismissUpdateCard}>
-          Not now
-        </Button>
-      </div>
-      {done && (
-        <p className="mt-2 text-xs">Backup downloaded. Keep it somewhere private — it is all of the data.</p>
-      )}
-      <div className="mt-2">
-        <ErrorBox error={error} />
-      </div>
-      <details className="mt-2 text-xs opacity-80">
-        <summary className="cursor-pointer py-1">Details</summary>
-        {/* Which step of a run of updates was at fault is not knowable once they have all been put back, so
-            this names the point the app stops at rather than a culprit it would be guessing. */}
-        <p className="mt-1">{undone ? `Updates from ${note.version} onwards are being skipped until tried again.` : `Data is at update ${note.version}.`}</p>
-      </details>
-    </div>
+    <Notice
+      kind={undone ? 'warning' : 'success'}
+      title={note.headline}
+      line={note.line}
+      body={note.body}
+      detail={detail}
+      // Every message in the app can be put away, this one included: a card that cannot be dismissed is
+      // one the user learns to read past, and while it stands it is covering for the backup reminder.
+      onDismiss={dismissUpdateCard}
+      actions={
+        <>
+          <NoticeButton disabled={busy} onClick={() => void onBackup()}>
+            Download backup
+          </NoticeButton>
+          {undone && (
+            <NoticeButton className="mt-2" disabled={busy || !safety} onClick={() => void onRetry()}>
+              Try again
+            </NoticeButton>
+          )}
+        </>
+      }
+    >
+      {done && <p className="text-[13px] text-[var(--ph-ink-2)]">Backup downloaded. Keep it somewhere private, as it is all of the data.</p>}
+      <ErrorBox error={error} />
+    </Notice>
   );
 }

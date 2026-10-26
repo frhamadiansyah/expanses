@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { isIos, isStandalone, requestPersistentStorage } from '../../lib/pwa';
-import { Button } from '../../ui';
+import { Notice, NoticeButton } from '../../ui/native';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -46,25 +46,29 @@ export function InstallHint() {
   };
 
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg bg-[var(--ph-info-panel)] px-3 py-2 text-sm text-[var(--ph-info-ink)]" role="status">
-      <span className="flex-1">
-        {ios
-          ? 'Install Expanses: tap Share, then “Add to Home Screen”. Otherwise Safari may delete the data after 7 days without a visit.'
-          : 'Install Expanses as an app so the browser keeps the data.'}
-      </span>
-      {installEvent && (
-        <Button
-          onClick={() => {
-            void installEvent.prompt();
-            setInstallEvent(null);
-          }}
-        >
-          Install
-        </Button>
-      )}
-      <Button variant="ghost" onClick={dismiss}>
-        Dismiss
-      </Button>
-    </div>
+    <Notice
+      kind="info"
+      title="Install Expanses"
+      line={ios ? 'Add it to the Home Screen' : 'So the browser keeps the data'}
+      body={
+        ios
+          ? 'Tap Share, then “Add to Home Screen”. Otherwise Safari may delete the data after 7 days without a visit.'
+          : 'Install Expanses as an app so the browser keeps the data.'
+      }
+      onDismiss={dismiss}
+      dismissLabel="Dismiss"
+      actions={
+        installEvent && (
+          <NoticeButton
+            onClick={() => {
+              void installEvent.prompt();
+              setInstallEvent(null);
+            }}
+          >
+            Install
+          </NoticeButton>
+        )
+      }
+    />
   );
 }

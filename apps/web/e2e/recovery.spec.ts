@@ -327,7 +327,7 @@ test('a long update says which step it is on, then offers a backup of the update
 
   await page.goto('/');
   // The card above the page is the proof the update finished, and it names the version it reached.
-  await expect(page.getByText(`Data was updated to version ${LATEST_VERSION}`)).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByText(`Data updated to version ${LATEST_VERSION}`)).toBeVisible({ timeout: 45_000 });
 
   const seen = await whatWasOnScreen(page);
   const updating = seen.filter((text) => text.includes('Updating the data…'));
@@ -340,7 +340,9 @@ test('a long update says which step it is on, then offers a backup of the update
   expect(updating.some((text) => text.includes('Do not close the app. The data was copied before this started.')), context).toBe(true);
 
   // A backup is offered because the one the user holds is now older than their data.
-  await expect(page.getByRole('button', { name: 'Download a backup' })).toBeEnabled();
+  await page.getByRole('button', { name: `Data updated to version ${LATEST_VERSION}` }).click();
+  await expect(page.getByRole('button', { name: 'Download backup' })).toBeEnabled();
+  await page.keyboard.press('Escape');
 
   /*
    * And the standing reminder stands down only for as long as that card is really there.
@@ -362,10 +364,11 @@ test('a long update says which step it is on, then offers a backup of the update
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page.getByRole('link', { name: 'Entered after the update', exact: true })).toBeVisible();
 
-  const reminder = page.getByText('Not backed up yet.');
+  const reminder = page.getByText('Not backed up', { exact: true });
   await expect(reminder).toHaveCount(0);
-  await page.getByRole('button', { name: 'Not now', exact: true }).click();
-  await expect(page.getByText(`Data was updated to version ${LATEST_VERSION}`)).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await page.getByRole('status').filter({ hasText: 'Data updated to version' }).getByRole('button', { name: 'Dismiss' }).click();
+  await expect(page.getByText(`Data updated to version ${LATEST_VERSION}`)).toHaveCount(0);
   await expect(reminder).toBeVisible();
 });
 
@@ -391,7 +394,7 @@ test('an open with nothing to update shows no progress screen', async ({ page })
   expect(seen.filter((text) => text.includes('Updating the data…')), `screens seen: ${seen.join(' | ')}`).toEqual([]);
   expect(seen.filter((text) => text.includes('Taking a copy first…'))).toEqual([]);
   expect(seen.filter((text) => text.includes('Checking the data…'))).toEqual([]);
-  await expect(page.getByText(/Data was updated to version/)).toHaveCount(0);
+  await expect(page.getByText(/Data updated to version/)).toHaveCount(0);
 });
 
 /*
