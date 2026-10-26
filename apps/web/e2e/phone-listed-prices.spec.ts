@@ -7,7 +7,7 @@ test.beforeEach(({ page }) => {
   void page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
 });
 
-test('phone: BBCA shows Yahoo Finance’s last close behind its ⓘ, and the Price source sheet offers three', async ({ page }) => {
+test('phone: BBCA shows Yahoo Finance’s last close behind its ⓘ, and the Price source picker offers three', async ({ page }) => {
   await routeYahoo(page, { close: 6_150 });
   await holdBbca(page);
   await openAsset(page, 'BBCA');
@@ -15,8 +15,7 @@ test('phone: BBCA shows Yahoo Finance’s last close behind its ⓘ, and the Pri
   await expect(page.getByText('Rp 6.150.000').first()).toBeVisible();
   // Price source and Update prices are in the holding's Settings.
   await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
-  await page.getByRole('button', { name: /^Price source/ }).click();
-  await expect(page.getByRole('dialog').getByRole('button')).toContainText([/Yahoo Finance/, /IDX daily file/, /I'll type it/]);
+  await expect(page.getByRole('combobox', { name: 'Price source' }).locator('option')).toHaveText(['Automatic', 'Import', 'Manual']);
 });
 
 test('phone: offline keeps the last close and asks nothing of the page', async ({ page }) => {

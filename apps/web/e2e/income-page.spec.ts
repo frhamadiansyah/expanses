@@ -73,7 +73,10 @@ test('a split is recorded from a share’s Settings, under Prices, and its line 
   await openAsset(page, 'BBRI');
   await openSettings(page);
   const row = page.getByRole('button', { name: /^Shares changed/ });
-  await expect(row).toContainText('A split or bonus shares');
+  // The sentence is behind the row's ⓘ, not under it.
+  await expect(page.getByText('A split or bonus shares')).toHaveCount(0);
+  await page.getByRole('button', { name: 'About Shares changed' }).click();
+  await expect(page.getByText('A split or bonus shares')).toBeVisible();
   await row.click();
 
   // The Units form, as Buy & sell's Units button opened it: a unit change, with no amount to type.
@@ -93,10 +96,13 @@ test('a split is recorded from a share’s Settings, under Prices, and its line 
   await expect(tradeRow(page, 'Units of BBRI')).toContainText('+10.000 shares');
 });
 
-test('gold changes its grams from the same row, in its own words', async ({ page }) => {
+test('gold has no changed-units row in Settings', async ({ page }) => {
   await addPriced(page, 'Gold bullion', 'Antam gold bars', [['2026-03-09', '10', '18000000']]);
   await openAsset(page, 'Antam gold bars');
   await openSettings(page);
-  await expect(page.getByRole('button', { name: /^Grams changed/ })).toContainText('Added or taken off, no money moving');
+  await expect(page.getByRole('link', { name: 'Update prices' })).toBeVisible();
+  // Gold counted in grams has no such change: grams move only by a buy or a sell.
+  await expect(page.getByRole('button', { name: /^Grams changed/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Units changed/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^Shares changed/ })).toHaveCount(0);
 });

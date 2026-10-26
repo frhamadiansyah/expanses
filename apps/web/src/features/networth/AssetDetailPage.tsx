@@ -1,5 +1,5 @@
 import { type AssetKind, assetItemOfCode, CASH_ITEMS, formatMinor, formatUnits, fundPlaceMatches, isoDate, lastNMonths, minorToMajorString, monthOf, isIdxListing, presetFor, type UnitKind } from '@expanses/core';
-import { type AssetValueRow, couponOn, deleteTrade, deleteValuation, type ValuationWithNote, setSecurityPriceChoice, switchOf, type TradeRow } from '@expanses/db';
+import { type AssetValueRow, couponOn, deleteTrade, deleteValuation, type ValuationWithNote, switchOf, type TradeRow } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { ArrowDownLeft, ArrowLeftRight, ChartLine, Info, Minus, MoreVertical, Plus, RotateCw, Settings, SquarePen } from 'lucide-react';
 import { type ReactElement, useEffect, useState } from 'react';
@@ -41,7 +41,7 @@ import { GoldChartSheet } from './GoldChartSheet';
 import { GoldTradeSheet } from './GoldTradeSheet';
 import { ASSET_TILES } from '../ownables/catalogue-view';
 import { SuggestRow } from '../ownables/CashAccountForm';
-import { PriceSheet, PriceSourceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSheets';
+import { PriceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSheets';
 import { ReinvestedSheet, TradeGoalsSheet } from './TradeTagSheets';
 import { BASIS_LABELS, UNIT_LABELS } from './labels';
 import { useAcquiredDates, useAssetProfile, useAssetProfiles, useAssetValues, useBondCoupons, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
@@ -49,7 +49,7 @@ import { useStockAndBroker } from './StockAndBroker';
 import { draftFromTrade, type TradeDraft } from './trade-form';
 import { useGoldPriceChoice, useWorldGoldPrice } from './world-gold';
 import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
-import { CHOICE_LABELS, listedChoiceOf, listedSourceOptions, SOURCE_LABELS } from '../prices/price-sources';
+import { listedChoiceOf, SOURCE_LABELS } from '../prices/price-sources';
 import { useSecurityPriceChoices } from '../prices/queries';
 import { useYahooClose } from '../prices/yahoo';
 
@@ -98,7 +98,6 @@ type Sheet =
   | { kind: 'value' }
   | { kind: 'estimate'; valuation: ValuationWithNote }
   | { kind: 'edit-value'; valuation: ValuationWithNote }
-  | { kind: 'listed-source' }
   | { kind: 'listed-trade'; trade: 'buy' | 'sell' }
   | { kind: 'fund-trade'; trade: 'buy' | 'sell' }
   | { kind: 'gold-trade'; trade: 'buy' | 'sell' }
@@ -367,7 +366,10 @@ function AssetBody({ value }: { value: AssetValueRow }) {
     if (!arriving || !known) return;
     const action =
       arriving === 'units'
-        ? trade('Units', { kind: 'unit_change' })
+        ? // Gold in grams has no such change (owner, 26 Oct): a link that asks for it opens nothing.
+          gold
+          ? undefined
+          : trade('Units', { kind: 'unit_change' })
         : actions.find((row) => row.key === arriving)?.run ?? (arriving === 'income' ? trade(incomeWordOf(kind), { kind: 'income' }) : buyOrSell(arriving, arriving === 'buy' ? 'Buy' : 'Sell'));
     action?.();
     void navigate({ to: '/net-worth/assets/$accountId', params: { accountId }, search: {}, replace: true });
@@ -693,24 +695,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
         />
       )}
       {sheet?.kind === 'new-broker' && <NewBrokerSheet onSave={(name) => void stock.newBroker(name).then(() => setSheet(null))} onClose={() => setSheet(null)} />}
-      {sheet?.kind === 'listed-source' && listedSecurity && listedChoice && (
-        <PriceSourceSheet
-          choice={listedChoice}
-          options={listedSourceOptions(listedSecurity)}
-          onPick={(next) => {
-            setSheet(null);
-            void (async () => {
-              try {
-                await setSecurityPriceChoice(database, ws, listedSecurity.id, next);
-                await invalidate();
-              } catch (e) {
-                setError(e);
-              }
-            })();
-          }}
-          onClose={() => setSheet(null)}
-        />
-      )}
       {sheet?.kind === 'listed-trade' && idxShare && (
         <ListedTradeSheet
           kind={sheet.trade}

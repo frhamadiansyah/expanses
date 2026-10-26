@@ -153,6 +153,7 @@ function CouponRows({ accountId, saved, heldAt }: { accountId: string; saved: Bo
       {saved && (
         <InsetGroup>
           <InsetRow
+            plain
             title="Remove coupon terms"
             chevron={false}
             onClick={() =>
