@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { InsetGroup, InsetRow } from '../../ui/native';
+import { InsetGroup, PickerRow } from '../../ui/native';
 import { planRowValue } from './monthly-plans';
 import { PlanSheet } from './PlanSheet';
 import { useAssetValues, useTradeTemplates } from './queries';
@@ -23,8 +23,14 @@ export function MonthlyPlanGroup({ accountId }: { accountId: string }) {
 
   return (
     <>
-      <InsetGroup footer="When its day comes, the buy is due on Recurring, under the bills.">
-        <InsetRow title="Monthly plan" value={planRowValue(plans, value.currency)} onClick={() => setOpen(true)} testId="monthly-plan" />
+      <InsetGroup>
+        <PickerRow
+          label="Monthly plan"
+          value={planRowValue(plans, value.currency)}
+          info="When its day comes, the buy is due on Recurring, under the bills."
+          onOpen={() => setOpen(true)}
+          testId="monthly-plan"
+        />
       </InsetGroup>
       {open && <PlanSheet holding={holding} plans={plans} defaultCashId={stock.link?.brokerAccountId ?? null} onClose={() => setOpen(false)} />}
     </>

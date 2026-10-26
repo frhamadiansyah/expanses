@@ -20,23 +20,30 @@ test('a BBCA holding follows Yahoo Finance: the last close, said by name with it
 
   // Price source and Update prices are in the holding's Settings.
   await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
-  await page.getByRole('button', { name: /^Price source/ }).click();
-  const sheet = page.getByRole('dialog');
-  await expect(sheet.getByRole('button', { name: /^Yahoo Finance/ })).toHaveAttribute('aria-pressed', 'true');
-  await expect(sheet.getByRole('button', { name: /^IDX daily file/ })).toBeVisible();
-  await expect(sheet.getByRole('button', { name: /^I'll type it/ })).toBeVisible();
+  const source = page.getByRole('combobox', { name: 'Price source' });
+  await expect(source).toHaveValue('yahoo');
+  await expect(source.locator('option')).toHaveText(['Automatic', 'Import', 'Manual']);
+  await expect(page.getByText('Automatic', { exact: true }).first()).toBeVisible();
+  // What each means is behind the ⓘ, and the word Yahoo is not on the page.
+  await expect(page.getByText(/fetched automatically, delayed/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'About Price source' }).click();
+  await expect(page.getByText(/Automatic: daily close, fetched automatically, delayed/)).toBeVisible();
+  await expect(page.getByRole('main')).not.toContainText('Yahoo');
+
+  // Update prices and Price source weigh the same as the form rows around them.
+  await expect(page.getByText('Update prices', { exact: true })).toHaveCSS('font-weight', '400');
+  await expect(page.getByText('Price source', { exact: true })).toHaveCSS('font-weight', '400');
 });
 
-test('a share set to “I’ll type it” never asks Yahoo, and keeps its price', async ({ page }) => {
+test('a share set to Manual never asks Yahoo, and keeps its price', async ({ page }) => {
   const yahoo = await routeYahoo(page, { close: 6_150 });
   await holdBbca(page);
   await openAsset(page, 'BBCA');
   await expect(page.getByText('Rp 6.150.000').first()).toBeVisible();
   // Price source and Update prices are in the holding's Settings.
   await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
-  await page.getByRole('button', { name: /^Price source/ }).click();
-  await page.getByRole('dialog').getByRole('button', { name: /^I'll type it/ }).click();
-  await expect(page.getByRole('button', { name: /^Price source/ })).toContainText("I'll type it");
+  await page.getByRole('combobox', { name: 'Price source' }).selectOption('typed');
+  await expect(page.getByText('Manual', { exact: true }).first()).toBeVisible();
   await page.goBack();
   await expect(page.getByRole('button', { name: 'Fetch the latest close' })).toHaveCount(0);
 

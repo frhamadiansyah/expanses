@@ -26,6 +26,11 @@ test('a monthly plan set on the holding comes due on Recurring, and Record there
   await expect(page.getByTestId('monthly-plan')).toHaveCount(0);
   await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(page.getByTestId('monthly-plan')).toContainText('None');
+  // The sentence about Recurring is behind the row's ⓘ, not under the group.
+  await expect(page.getByText('the buy is due on Recurring, under the bills.')).toHaveCount(0);
+  await page.getByRole('button', { name: 'About Monthly plan' }).click();
+  await expect(page.getByText('When its day comes, the buy is due on Recurring, under the bills.')).toBeVisible();
+  await page.getByRole('button', { name: 'About Monthly plan' }).click();
   await setPlan(page, '500000', '5');
   await expect(page.getByTestId('monthly-plan')).toContainText('Rp 500.000 · 5th');
 

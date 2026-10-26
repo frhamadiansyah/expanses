@@ -203,7 +203,8 @@ test('gold follows the world price: fetched as the page opens, said by name, and
   await expect(page.getByText(/buys gold back a few percent below it/)).toBeVisible();
   // Its price source is in Settings, under Prices.
   await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
-  await expect(page.getByRole('button', { name: /^Price source/ })).toContainText('World price');
+  await expect(page.getByRole('combobox', { name: 'Price source' })).toHaveValue('world');
+  await expect(page.getByText('Automatic', { exact: true }).first()).toBeVisible();
   await page.goBack();
 
   // A price typed for today is the day's price, and ↻ does not take it back.
@@ -217,7 +218,7 @@ test('gold follows the world price: fetched as the page opens, said by name, and
   await expect(page.getByText('Rp 49.700.000').first()).toBeVisible();
 });
 
-test('gold set to “I’ll type it” is never fetched, keeps its prices, and fetches again when set back', async ({ page }) => {
+test('gold set to Manual is never fetched, keeps its prices, and fetches again when set back', async ({ page }) => {
   let asked = 0;
   await page.route('https://api.frankfurter.dev/**', (route) => {
     asked += 1;
@@ -228,11 +229,12 @@ test('gold set to “I’ll type it” is never fetched, keeps its prices, and f
   await expect(await priceSaid(page, 'World price')).toHaveText(/^World price \(XAU\)/);
 
   await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
-  await page.getByRole('button', { name: /^Price source/ }).click();
-  await expect(page.getByRole('button', { name: /World price \(XAU\)/ })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByText('Updated daily · spot price, not buyback')).toBeVisible();
-  await page.getByRole('button', { name: /I'll type it/ }).click();
-  await expect(page.getByRole('button', { name: /^Price source/ })).toContainText("I'll type it");
+  const source = page.getByRole('combobox', { name: 'Price source' });
+  await expect(source).toHaveValue('world');
+  await page.getByRole('button', { name: 'About Price source' }).click();
+  await expect(page.getByText('Automatic: daily world gold price, spot, not a buyback price.')).toBeVisible();
+  await source.selectOption('typed');
+  await expect(page.getByText('Manual', { exact: true }).first()).toBeVisible();
   await page.goBack();
   // No ↻, and the price it has stays.
   await expect(page.getByRole('button', { name: 'Fetch today’s world price' })).toHaveCount(0);
@@ -246,8 +248,7 @@ test('gold set to “I’ll type it” is never fetched, keeps its prices, and f
   await expect(page.getByTestId('asset-grid')).toContainText('World price');
 
   await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
-  await page.getByRole('button', { name: /^Price source/ }).click();
-  await page.getByRole('button', { name: /World price \(XAU\)/ }).click();
+  await page.getByRole('combobox', { name: 'Price source' }).selectOption('world');
   await page.goBack();
   await priceSaid(page, 'World price');
   await expect(page.getByRole('button', { name: 'Fetch today’s world price' })).toBeVisible();

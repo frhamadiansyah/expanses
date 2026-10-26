@@ -54,10 +54,20 @@ export function PickerRow({
   disabled = false,
   detail,
   detailTone,
+  info,
+  testId,
 }: GroupChild & {
   label: string;
   value: string | null | undefined;
   placeholder?: string;
+  /**
+   * What the row means, behind an ⓘ beside the label and under the row only when asked for — as TextRow's `info`. The row is
+   * one button, which cannot hold another, so with an ⓘ the button is laid over the whole row and the label, answer and ⓘ are
+   * drawn above it: a tap anywhere but the ⓘ falls through to the button.
+   */
+  info?: ReactNode;
+  /** What a test names the row by; on the row's wrapper, so a click lands on the button and the text includes the answer. */
+  testId?: string;
   onOpen: () => void;
   hint?: ReactNode;
   /** Greyed and inert: the answer still reads, but nothing opens — a code while the thing is kept off the report. */
@@ -70,28 +80,54 @@ export function PickerRow({
   const plan = planFormRow('picker', value, placeholder);
   const answer = <span className={cx('truncate text-right text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', toneClass(plan.tone))}>{plan.text}</span>;
   const twoLines = Boolean(detail) && !plan.placeholder;
-  return (
-    <div className="relative">
-      <Separator show={Boolean(position?.separator)} />
-      <button type="button" onClick={onOpen} disabled={disabled} className="ph-focus-inset flex w-full items-center gap-3 disabled:opacity-40" style={shell(twoLines)}>
-        <span className={LABEL}>{label}</span>
-        <span className="flex min-w-0 flex-1 items-center justify-end gap-[6px]">
-          {twoLines ? (
-            <span className="flex min-w-0 flex-col items-end">
-              {answer}
-              <span className={cx('mt-[2px] max-w-full truncate text-right text-[12.5px] leading-[16px]', toneClass(detailTone ?? 'ink-3'))}>{detail}</span>
-            </span>
-          ) : (
-            answer
-          )}
-          {plan.chevron && (
-            <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
-              {'›'}
-            </span>
-          )}
+  const [explained, setExplained] = useState(false);
+  const right = (
+    <span className="flex min-w-0 flex-1 items-center justify-end gap-[6px]">
+      {twoLines ? (
+        <span className="flex min-w-0 flex-col items-end">
+          {answer}
+          <span className={cx('mt-[2px] max-w-full truncate text-right text-[12.5px] leading-[16px]', toneClass(detailTone ?? 'ink-3'))}>{detail}</span>
         </span>
-      </button>
+      ) : (
+        answer
+      )}
+      {plan.chevron && (
+        <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
+          {'›'}
+        </span>
+      )}
+    </span>
+  );
+  return (
+    <div className="relative" data-testid={testId}>
+      <Separator show={Boolean(position?.separator)} />
+      {info ? (
+        <div className="relative">
+          <button
+            type="button"
+            onClick={onOpen}
+            disabled={disabled}
+            aria-label={plan.placeholder ? label : `${label}, ${plan.text}`}
+            className="ph-focus-inset absolute inset-0 h-full w-full disabled:opacity-40"
+          />
+          <div className={cx('pointer-events-none relative flex w-full items-center gap-3', disabled && 'opacity-40')} style={shell(twoLines)}>
+            <span className="flex shrink-0 items-center gap-[6px]">
+              <span className={LABEL}>{label}</span>
+              <span className="pointer-events-auto relative z-10">
+                <InfoToggle label={label} explained={explained} onToggle={() => setExplained((was) => !was)} />
+              </span>
+            </span>
+            {right}
+          </div>
+        </div>
+      ) : (
+        <button type="button" onClick={onOpen} disabled={disabled} className="ph-focus-inset flex w-full items-center gap-3 disabled:opacity-40" style={shell(twoLines)}>
+          <span className={LABEL}>{label}</span>
+          {right}
+        </button>
+      )}
       {hint && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{hint}</p>}
+      {info && explained && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{info}</p>}
     </div>
   );
 }

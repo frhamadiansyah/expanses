@@ -159,6 +159,8 @@ export interface InsetRowProps extends GroupChild {
   iconRing?: string;
   title: ReactNode;
   subtitle?: ReactNode;
+  /** The title in the regular weight a form row's label has, for a row set among form rows (a Settings page); lists keep medium. */
+  plain?: boolean;
   /** How many levels down a tree the row sits: its start and its hairline move in, and its circle is smaller. */
   depth?: number;
   /** The trailing figure. Set in tabular numerals and never truncated — it is what the row is for. */
@@ -236,6 +238,7 @@ export function InsetRow({
   iconRing,
   title,
   subtitle,
+  plain = false,
   depth = 0,
   value,
   valueTone = 'ink-3',
@@ -270,7 +273,7 @@ export function InsetRow({
       )}
       <span className="min-w-0 flex-1 text-left">
         {/* A row down a tree is a size smaller than a row at the top, as a drawer's kinds are: a long name still fits. */}
-        <span className={cx('block truncate text-[var(--ph-ink)]', depth > 0 ? 'text-[15px] leading-[20px] font-normal' : 'text-[17px] leading-[22px] font-medium md:text-[15px] md:leading-[20px]')}>{title}</span>
+        <span className={cx('block truncate text-[var(--ph-ink)]', depth > 0 ? 'text-[15px] leading-[20px] font-normal' : 'text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', plain ? 'font-normal' : 'font-medium')}>{title}</span>
         {subtitle && <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{subtitle}</span>}
       </span>
       {value !== undefined && value !== null && (
