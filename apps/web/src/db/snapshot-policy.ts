@@ -6,7 +6,7 @@
  */
 
 /** Why a copy was taken. Only a copy taken for one of these reasons is ever written. */
-export type SnapshotReason = 'before-migration' | 'before-restore' | 'before-start-fresh' | 'daily';
+export type SnapshotReason = 'before-migration' | 'before-restore' | 'before-start-fresh' | 'before-delete' | 'daily';
 
 /** One copy in the store, as the store describes it. Task 7 writes the store that produces these. */
 export interface SnapshotInfo {
@@ -21,7 +21,7 @@ export interface SnapshotInfo {
   takenAt: string;
 }
 
-const REASONS: SnapshotReason[] = ['before-migration', 'before-restore', 'before-start-fresh', 'daily'];
+const REASONS: SnapshotReason[] = ['before-migration', 'before-restore', 'before-start-fresh', 'before-delete', 'daily'];
 
 const NAME_PATTERN = new RegExp(`^snapshot-(\\d{4})(\\d{2})(\\d{2})T(\\d{2})(\\d{2})(\\d{2})Z-v(\\d+)(?:-(${REASONS.join('|')}))?\\.sqlite3$`);
 
