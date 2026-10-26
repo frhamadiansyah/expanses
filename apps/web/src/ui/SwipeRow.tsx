@@ -50,7 +50,7 @@ export interface SwipeHint {
 function RoundFace({ icon: Icon, tone }: { icon: LucideIcon; tone: SwipeTone }) {
   return (
     <span aria-hidden className={cx('flex aspect-square shrink-0 items-center justify-center rounded-full', TONE[tone])} style={CIRCLE}>
-      <Icon size={18} strokeWidth={2.25} />
+      <Icon size={18} strokeWidth={1.5} />
     </span>
   );
 }
@@ -84,7 +84,7 @@ function FullBar({ action, x }: { action: SwipeAction; x: number }) {
         className={cx('swipe-snap flex w-full items-center rounded-full pl-[8px]', TONE[action.tone])}
         style={CIRCLE}
       >
-        <Icon size={18} strokeWidth={2.25} />
+        <Icon size={18} strokeWidth={1.5} />
       </span>
     </span>
   );
