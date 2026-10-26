@@ -116,8 +116,7 @@ function LatestTransactions({
   const latest = [...purchases.values()].sort((a, b) => (a.on < b.on ? 1 : a.on > b.on ? -1 : 0)).slice(0, 5);
   return (
     <section data-testid="latest-transactions" className="mt-[8px]">
-      <h2 className="mb-[8px] px-[4px] text-[22px] leading-[28px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]">Recent</h2>
-      <InsetGroup>
+      <InsetGroup header="Recent">
         {latest.length === 0 && <InsetRow title="No purchases this cycle" subtitle="What this card pays for shows here." />}
         {latest.map((purchase) => {
           const mark = categoryMark(purchase.categoryId, accounts, chosen);
