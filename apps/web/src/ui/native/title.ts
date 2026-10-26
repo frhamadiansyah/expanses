@@ -48,6 +48,8 @@ export interface CornerAction {
    * one of the two, gives a plain action instead.
    */
   menu?: CornerAction[];
+  /** A hook for tests, on the corner's button. */
+  testId?: string;
 }
 
 /** Two buttons on the right, counting the `…` itself. */

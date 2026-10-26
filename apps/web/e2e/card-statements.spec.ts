@@ -25,7 +25,7 @@ async function setUp(page: Page) {
   await expect(page.getByText('Step 2 of 3')).toBeVisible();
   await page.getByRole('button', { name: 'BCA Visa' }).click();
   await cardPage(page, 'Statement');
-  await expect(page.getByText('Statements')).toBeVisible();
+  await expect(page.getByTestId('statement-range')).toBeVisible();
 }
 
 async function buy(page: Page, description: string, amount: string, on: string) {
@@ -172,12 +172,13 @@ test('searching finds a purchase on an earlier statement and opens that statemen
   await buy(page, 'Superindo', '450000', TODAY);
   await openStatement(page);
 
-  await page.getByLabel('Search statements').fill('mulia');
+  await page.getByRole('button', { name: 'Search statements' }).click();
+  await page.getByRole('searchbox', { name: 'Search statements' }).fill('mulia');
   const results = page.getByTestId('statement-search-results');
   await expect(results.getByRole('button')).toHaveCount(1);
   await results.getByRole('button', { name: /Hotel Mulia/ }).click();
 
-  await expect(page.getByLabel('Search statements')).toHaveValue('');
+  await expect(page.getByRole('searchbox', { name: 'Search statements' })).toHaveCount(0);
   await expect(page.getByTestId('statement-line').filter({ hasText: 'Hotel Mulia' })).toBeVisible();
   await expect(page.getByTestId('statement-line').filter({ hasText: 'Superindo' })).toHaveCount(0);
 });
