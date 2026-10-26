@@ -1,6 +1,6 @@
 import { Link, type LinkProps } from '@tanstack/react-router';
 import { Check, ChevronLeft, MoreHorizontal } from 'lucide-react';
-import { isValidElement, type ReactNode, useRef, useState } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useEscape } from '../../app/use-escape';
 import { usePhone } from '../../app/use-phone';
@@ -38,7 +38,6 @@ export function CornerButton({
   destructive = false,
   disabled = false,
   pressed,
-  filled = false,
   expanded,
   className,
 }: {
@@ -53,15 +52,13 @@ export function CornerButton({
   disabled?: boolean;
   /** A switch that is on: filled with the ink, as the segmented control's chosen segment is its track's opposite. */
   pressed?: boolean;
-  /** The action confirms the screen (a ✓): a filled ink circle with a surface glyph, like the + on the tab bar. */
-  filled?: boolean;
   /** The action opens something, and says whether it is open. */
   expanded?: boolean;
   className?: string;
 }) {
   const shell = cx(
     'ph-focus flex shrink-0 items-center justify-center rounded-full',
-    pressed || filled ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : destructive ? 'bg-[var(--ph-corner)] text-[var(--ph-alarm)]' : 'bg-[var(--ph-corner)] text-[var(--ph-ink)]',
+    pressed ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : destructive ? 'bg-[var(--ph-corner)] text-[var(--ph-alarm)]' : 'bg-[var(--ph-corner)] text-[var(--ph-ink)]',
     disabled && 'opacity-40',
     className,
   );
@@ -77,11 +74,6 @@ export function CornerButton({
       {children}
     </button>
   );
-}
-
-/** A corner action whose glyph is the ✓ confirms the screen, so it is the one corner drawn filled. */
-function isConfirm(action: CornerAction): boolean {
-  return isValidElement(action.glyph) && action.glyph.type === Check;
 }
 
 /**
@@ -322,7 +314,6 @@ function SectionTitle({
             destructive={action.destructive}
             disabled={action.disabled}
             pressed={action.pressed}
-            filled={isConfirm(action)}
             expanded={action.expanded}
           >
             {action.glyph}
@@ -494,7 +485,6 @@ export function PushedTitle({
                   destructive={action.destructive}
                   disabled={action.disabled}
                   pressed={action.pressed}
-                  filled={isConfirm(action)}
                   expanded={action.expanded}
                 >
                   {action.glyph}

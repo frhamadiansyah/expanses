@@ -316,7 +316,7 @@ export function Sheet({
                 onClick={confirm.run}
                 disabled={confirm.disabled}
                 aria-label={confirm.label}
-                className="ph-focus flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ph-ink)] text-[var(--ph-surface)] disabled:opacity-40"
+                className="ph-focus flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ph-corner)] text-[var(--ph-ink)] disabled:opacity-40"
               >
                 <Check size={20} aria-hidden />
               </button>

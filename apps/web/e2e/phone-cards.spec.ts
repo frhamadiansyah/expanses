@@ -89,13 +89,13 @@ test('the stack overlaps real cards of one width, each band carrying what it owe
   // The front card is the last one, whole; the others are bands.
   await expect(cards.nth(2)).toHaveAttribute('data-front', '');
 
-  // Each covered band prints the card's own name and what it owes, without a tap.
+  // Each covered band prints the card's own name alone: no figure on the card.
   const bands = wall.getByTestId('card-band');
   await expect(bands).toHaveCount(2);
   for (const at of [0, 1]) {
     const band = cards.nth(at).getByTestId('card-band');
     await expect(band).toContainText(NAMES[at]!);
-    await expect(band).toContainText(/Rp\s*0/);
+    await expect(band).not.toContainText(/Rp\s*0/);
     await expect(band).toBeInViewport();
   }
   // Every card is one link named by the card and its figure.
@@ -230,7 +230,7 @@ test.describe('in the dark', () => {
     await expect(front).toBeVisible();
     expect(await front.evaluate((node) => getComputedStyle(node).color)).toBe('rgb(255, 255, 255)');
     const band = wall.getByTestId('card-band');
-    await expect(band).toContainText(/Rp\s*0/);
+    await expect(band).not.toContainText(/Rp\s*0/);
     expect(await band.evaluate((node) => getComputedStyle(node).color)).toBe('rgb(255, 255, 255)');
   });
 });

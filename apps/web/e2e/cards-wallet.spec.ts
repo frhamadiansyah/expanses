@@ -36,8 +36,9 @@ test('a desktop stacks cards of one fixed width and raises the one tapped, with 
   // Overlapping, back to front: the front card lies over the lower part of the one behind it.
   expect(front.y).toBeLessThan(back.y + back.height);
   expect(front.y).toBeGreaterThan(back.y);
-  // A covered card's band carries what it owes; its points are on the line beside the stack.
-  await expect(cards.nth(0).getByTestId('card-band')).toContainText(/Alpha Card.*Rp\s*0/);
+  // A covered card's band carries its name alone; what it owes is on its page.
+  await expect(cards.nth(0).getByTestId('card-band')).toContainText('Alpha Card');
+  await expect(cards.nth(0).getByTestId('card-band')).not.toContainText(/Rp\s*0/);
 
   // Tapping the covered card opens THAT card, raised at the same width, with its page's actions.
   await wall.getByRole('link', { name: /^Alpha Card, / }).click();

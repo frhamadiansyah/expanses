@@ -786,7 +786,7 @@ export function CardFace({
   behind?: boolean;
   /**
    * Drawn as a covered card in a Wallet stack: the card laid over it hides all but its top band, so the face prints
-   * that band alone — the bank's mark and the card's name on the left, this figure on the right — in the card's own
+   * that band alone — the bank's mark and the card's name on the left, this figure on the right (none when it is an empty string) — in the card's own
    * print, and nothing further down. Implies `behind` for everything below the band.
    */
   band?: string;
@@ -897,7 +897,7 @@ export function CardFace({
             {bank && <span className="shrink-0 font-bold tracking-wide">{bank}</span>}
             <span className="min-w-0 truncate text-[10.5px] font-semibold tracking-tight opacity-90">{cardName}</span>
           </div>
-          <div className="tabular shrink-0 text-[11px] font-bold whitespace-nowrap">{band}</div>
+          {band !== '' && <div className="tabular shrink-0 text-[11px] font-bold whitespace-nowrap">{band}</div>}
         </div>
       )}
       {!hidden && drawn && (

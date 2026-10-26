@@ -518,7 +518,8 @@ export function Face({ card, band, scale, figure = false }: { card: WalletCard; 
         kind={card.kind}
         face={card.face}
         size="md"
-        band={band ? card.figure : undefined}
+        // A covered card's band prints its bank and name only: the figure is on the card's page, and in the link's name for a reader.
+        band={band ? '' : undefined}
         figure={figure ? card.figure : undefined}
       />
     </span>
