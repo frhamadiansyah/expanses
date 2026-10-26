@@ -28,7 +28,7 @@ export interface BuyRowText {
 /** The holding row: what was bought or sold. */
 export function holdingRowText(mode: BuyMode): BuyRowText {
   return {
-    label: 'What was bought or sold',
+    label: 'Investment',
     caption: mode === 'buy' ? 'Bought' : 'Sold',
   };
 }

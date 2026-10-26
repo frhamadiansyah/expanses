@@ -37,15 +37,15 @@ test('phone: Trade keeps Net worth on the bar, has Buy and Sell tabs, and the + 
   // Neither tab is chosen yet, and the holding is not either; the rows are all there.
   await expect(form.getByRole('radio', { name: 'Buy' })).not.toBeChecked();
   await expect(form.getByRole('radio', { name: 'Sell' })).not.toBeChecked();
-  await expect(form.getByLabel('What was bought or sold')).toBeVisible();
+  await expect(form.getByLabel('Investment')).toBeVisible();
   await expect(form.getByText('Units are recorded')).toHaveCount(0);
   await form.getByRole('radio', { name: 'Buy' }).click();
   await expect(form.getByRole('radio', { name: 'Buy' })).toBeChecked();
   // The holding is chosen by hand: the row waits on "Choose…" while every other row is already there.
-  await expect(form.getByLabel('What was bought or sold')).toBeVisible();
-  await expect(form.getByLabel('What was bought or sold')).toHaveValue('buy:');
+  await expect(form.getByLabel('Investment')).toBeVisible();
+  await expect(form.getByLabel('Investment')).toHaveValue('buy:');
   await expect(form.getByLabel('Paid with')).toBeVisible();
-  await form.getByLabel('What was bought or sold').selectOption({ index: 1 });
+  await form.getByLabel('Investment').selectOption({ index: 1 });
   await expect(form.getByLabel('Paid with')).toBeVisible();
   await expect(form.getByText('A credit card works')).toHaveCount(0);
   await expect(form.getByText('Units are recorded')).toHaveCount(0);
@@ -67,7 +67,7 @@ test('phone: Trade keeps Net worth on the bar, has Buy and Sell tabs, and the + 
   await expect(add.getByRole('radio', { name: 'Income' })).toBeVisible();
   await expect(add.getByRole('radio', { name: 'Transfer' })).toBeVisible();
   await expect(add.getByRole('radio', { name: 'Buy' })).toHaveCount(0);
-  await expect(add.getByLabel('What was bought or sold')).toHaveCount(0);
+  await expect(add.getByLabel('Investment')).toHaveCount(0);
   await expect(bar.getByRole('link', { name: 'Transactions' })).toHaveAttribute('aria-current', 'page');
 });
 
@@ -78,7 +78,7 @@ test('phone: a share kept at a broker pays from, and is paid into, that broker o
   await page.getByRole('link', { name: 'Trade', exact: true }).first().click();
   const form = page.getByRole('form', { name: 'Trade' });
   await form.getByRole('radio', { name: 'Buy' }).click();
-  await form.getByLabel('What was bought or sold').selectOption({ label: 'Investments › BBCA · Stockbit Sekuritas' });
+  await form.getByLabel('Investment').selectOption({ label: 'Investments › BBCA · Stockbit Sekuritas' });
   // The broker's cash is already chosen: nothing to pick.
   await expect(form.getByLabel('Paid with')).toContainText('Stockbit Sekuritas');
   await form.getByRole('radio', { name: 'Sell' }).click();

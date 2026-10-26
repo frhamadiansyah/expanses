@@ -163,7 +163,7 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
 
   // One lot of 100 shares at Rp 9.889,81 leaves Rp 1.011.019 behind.
   const buying = await openBuyOrSell(page);
-  await buying.getByLabel('What was bought or sold').selectOption({ label: 'Investments › BBRI · Stockbit' });
+  await buying.getByLabel('Investment').selectOption({ label: 'Investments › BBRI · Stockbit' });
   await buying.getByLabel('Lots').fill('1');
   await buying.getByLabel(/What it cost, before fees/).fill('988981');
   await buying.getByLabel('Paid with').first().selectOption({ label: 'RDN Stockbit (IDR)' });

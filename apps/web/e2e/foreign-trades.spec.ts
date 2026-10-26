@@ -72,7 +72,7 @@ test('the Buy / sell tab also asks which goal paid for the rupiah that left, on 
   await jeniusWithTwoGoals(page); // Jenius Rp 42.500.000, Rp 37.500.000 promised: Rp 5.000.000 free
   await addUsdStock(page);
   const form = await openBuyOrSell(page);
-  await form.getByLabel('What was bought or sold').selectOption({ label: 'Investments › AAPL · Stockbit' });
+  await form.getByLabel('Investment').selectOption({ label: 'Investments › AAPL · Stockbit' });
   await form.getByLabel(/^What it cost, before fees/).fill('418,50');
   await form.getByLabel('Shares').fill('100'); // no lot size on a hand-named US stock: 100 shares, as before
   await form.getByLabel('Paid with').selectOption({ label: 'Jenius (IDR)' });
