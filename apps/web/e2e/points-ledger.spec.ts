@@ -148,31 +148,6 @@ test('spending points takes them off the balance, oldest first', async ({ page }
   await expect(page.getByTestId('programme-history')).toContainText('Statement credit');
 });
 
-test('says what the annual fee bought, and admits when it is guessing', async ({ page }) => {
-  await cardWithAPurchase(page);
-  await toPoints(page);
-
-  const roi = page.getByTestId('card-year-roi');
-  await expect(roi).toBeVisible();
-  // No fee charge on the ledger, and the points were worked out rather than confirmed.
-  await expect(page.getByText(/no fee charge is recorded/)).toBeVisible();
-  await expect(page.getByText(/estimated, because some points were worked out/)).toBeVisible();
-});
-
-test('says what the points really fetched, beside what the best option claims', async ({ page }) => {
-  await cardWithAPurchase(page);
-  await openProgramme(page);
-
-  await redeem(page, '40', '200');
-  await expect(page.getByTestId('programme-balance')).toHaveText('60 points');
-  await page.goBack();
-  await expect(page.getByTestId('points-balance')).toContainText('60');
-
-  // Rp 200 for 40 points is Rp 5 a point, whatever the best redemption option says.
-  await toPoints(page);
-  await expect(page.getByTestId('card-year-realised')).toContainText('net');
-});
-
 test('catches a card up without complaint', async ({ page }) => {
   await cardWithAPurchase(page);
   await toPoints(page);

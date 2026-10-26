@@ -12,7 +12,7 @@ import { CardScreen, type CardPage, useCardAction, useCardPage } from './card-pa
 import { activeDuring } from './catalog-panel';
 import { describeSuggestion, purchasesOf } from './hint-text';
 import { PurchaseList, SuggestionFixes } from './PurchaseList';
-import { ActionRow, Capsule, ColumnGroup, EARLIER, FigureRow, Line, Meter, StepperRow, SubmitRow, SUBTITLE, TextLine } from './rows';
+import { ActionRow, Capsule, EARLIER, FigureRow, Line, Meter, StepperRow, SubmitRow, SUBTITLE, TextLine } from './rows';
 import { TransferEstimates } from './TransferEstimates';
 import { refreshLedger } from './useCardLedger';
 import { type CardPoints, type CycleResult, formatPoints, loadCycleResult, pointsValue, shortDate } from './useCardPoints';
@@ -132,7 +132,6 @@ export function CardPointsPage() {
   }
   const { card, cp, ledger, currency, today } = page;
   const program = cp.program;
-  const roi = ledger.data?.roi;
   const purchases = cp.current ? purchasesOf(cp.current.lines).length : 0;
   return (
     <CardScreen title={TITLE} back={card.name} fallback={fallback}>
@@ -160,37 +159,6 @@ export function CardPointsPage() {
             />
           )}
         </InsetGroup>
-      )}
-
-      {program && roi && (
-        <>
-          <div data-testid="card-year-roi">
-            {/* Four figures, four columns on a desktop: the tiles the page had, as one group. */}
-            <ColumnGroup
-              header="What the annual fee bought"
-              footer={
-                <>
-                  {roi.from} to {roi.to} · {roi.anchoredOn === 'fee' ? 'from the day the fee was charged' : 'the last twelve months, since no fee charge is recorded'}
-                  {roi.estimated ? ' · estimated, because some points were worked out rather than confirmed' : ''}
-                </>
-              }
-              columns={[
-                [<InsetRow title="Earned" value={`${formatPoints(roi.pointsEarned)} ${program.unit}`} valueTone="ink" />],
-                [<InsetRow title="Worth" value={formatMinor(roi.valueMinor, currency)} valueTone="ink" />],
-                [<InsetRow title="Annual fee" value={formatMinor(roi.annualFeeMinor, currency)} valueTone="ink" />],
-                [<InsetRow title="Net" value={formatMinor(roi.netMinor, currency)} valueTone={roi.netMinor < 0 ? 'alarm' : 'gain'} />],
-              ]}
-            />
-          </div>
-          {roi.realised && (
-            <div data-testid="card-year-realised">
-              <InsetGroup header="At what these points have really fetched" footer="The figures above value points at the best option, which assumes the best use.">
-                <InsetRow title="Earned" value={`${formatMinor(roi.realised.valueMinor, currency)} earned`} valueTone="ink" />
-                <InsetRow title="Net" value={`${formatMinor(roi.realised.netMinor, currency)} net`} valueTone={roi.realised.netMinor < 0 ? 'alarm' : 'gain'} />
-              </InsetGroup>
-            </div>
-          )}
-        </>
       )}
 
       {program && ledger.data && cp.programme && (
