@@ -143,8 +143,10 @@ export function TradesSection({ book, query = '' }: { book: TradeBook; query?: s
 
   // The line says what it is by its round icon; the verb stays in the text for a screen reader and a search.
   const verbOf = (trade: TradeRow) => (trade.switchedWith ? (trade.kind === 'buy' ? 'Switched into ' : 'Switched out of ') : trade.kind === 'buy' ? 'Bought ' : trade.kind === 'sell' ? 'Sold ' : '');
+  // A holding is named "TICKER · broker" when it is kept at one; the second line says where, so the title is the ticker alone.
+  const nameOnly = (accountId: string) => book.nameOf(accountId).split(' · ')[0] ?? '';
   const titleOf = (trade: TradeRow) => {
-    const name = book.nameOf(trade.accountId);
+    const name = nameOnly(trade.accountId);
     if (trade.kind === 'income') return `${book.incomeWordOf(trade.accountId)} ${name}`;
     if (trade.kind === 'unit_change') return `Units of ${name}`;
     return name;
@@ -179,7 +181,7 @@ export function TradesSection({ book, query = '' }: { book: TradeBook; query?: s
               const reinvested = trade.kind === 'income' && (trade.reinvestedMinor ?? 0) > 0;
               const out = trade.kind === 'buy';
               // A switch moved no cash: it names the other fund instead, and its figure is the fund's own, + in and − out.
-              const other = trade.switchedWith ? `${trade.kind === 'buy' ? 'from' : 'into'} ${book.nameOf(trade.switchedWith.accountId)}` : null;
+              const other = trade.switchedWith ? `${trade.kind === 'buy' ? 'from' : 'into'} ${nameOnly(trade.switchedWith.accountId)}` : null;
               // The second line is the broker or account alone (an opening buy moved no cash, so it names where the holding is kept); the units ride under the amount.
               const sub = other ?? book.cashName(trade.cashAccountId) ?? book.brokerName(trade.accountId) ?? '';
               return (
