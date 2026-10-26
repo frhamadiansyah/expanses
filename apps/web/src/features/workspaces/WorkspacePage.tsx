@@ -1,5 +1,5 @@
 import { CURRENCIES, isoDate } from '@expanses/core';
-import { archiveBook, BookError, type BookDeletePlan, type BookKind, type BookRow, deleteBook, findRate, planBookDelete, renameBook, restoreBook, setBookBaseCurrency, setBookEventsInBudget, setBookKind } from '@expanses/db';
+import { applyCategoryStart, archiveBook, BookError, type BookDeletePlan, type BookKind, type BookRow, deleteBook, findRate, planBookDelete, renameBook, restoreBook, setBookBaseCurrency, setBookEventsInBudget, setBookKind } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
@@ -11,6 +11,7 @@ import { ErrorBox } from '../../ui';
 import { type CornerAction, DestructiveRow, InsetGroup, InsetRow, PickerRow, PushedTitle, ReadOnlyRow, SCREEN, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { useSharedBooks } from '../sharing/queries';
 import { SharingSection } from '../sharing/SharingSection';
+import { BusinessListAlert } from './BusinessListAlert';
 import { DeleteWorkspaceSheet } from './DeleteWorkspaceSheet';
 import { useArchivedBooks, useBooks } from './queries';
 
@@ -80,6 +81,7 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
   const [deleting, setDeleting] = useState<BookDeletePlan | null>(null);
   const [busy, setBusy] = useState(false);
   const [choosingType, setChoosingType] = useState(false);
+  const [offering, setOffering] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [note, setNote] = useState<string | null>(null);
   const isArchived = book.archivedAt !== null;
@@ -125,9 +127,17 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
     if (kind === book.kind || busy) return;
     void run(async () => {
       await setBookKind(database, ws, book.id, kind);
+      // Offered once, as the type becomes Business; Settings keeps the same action for later.
+      if (kind === 'business' && !shared) setOffering(true);
       return null;
     });
   };
+
+  const useBusinessList = () =>
+    run(async () => {
+      await applyCategoryStart(database, ws, { bookId: book.id, start: 'business' });
+      return 'Business list added';
+    });
 
   const changeCurrency = () =>
     run(async () => {
@@ -264,6 +274,12 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
               <SwitchRow label="Events count in the budget" checked={book.countEventsInBudget} onChange={(checked) => !busy && void setEvents(checked)} />
             </InsetGroup>
 
+            {book.kind === 'business' && !shared && (
+              <InsetGroup wide>
+                <InsetRow title="Use the Business list" action testId="use-business-list" onClick={() => !busy && setOffering(true)} className={busy ? 'opacity-40' : undefined} />
+              </InsetGroup>
+            )}
+
             {/* Household sharing (spec §11): Share this workspace, or, once shared, its status, members and devices. */}
             <SharingSection book={book} />
 
@@ -276,6 +292,7 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
         )}
       </div>
       {deleting && <DeleteWorkspaceSheet book={book} plan={deleting} onClose={() => setDeleting(null)} onDeleted={leave} />}
+      {offering && <BusinessListAlert onUse={() => void useBusinessList()} onClose={() => setOffering(false)} />}
       {choosingType && <TypeSheet current={book.kind} onChoose={changeKind} onClose={() => setChoosingType(false)} />}
     </div>
   );

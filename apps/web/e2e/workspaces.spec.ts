@@ -3,7 +3,7 @@ import { openAccount, openCard, walletCard } from './accounts';
 import { addItem, moneyIn, planFor, showPlanCard } from './event-plan';
 import { addTransaction, addTransfer, saveButton } from './add-transaction';
 import { cardPage } from './card-section';
-import { workspaceLine } from './workspace-page';
+import { openWorkspacePage, workspaceLine } from './workspace-page';
 
 /**
  * An account's history, reached the way a reader reaches it: its card on Wallet, which opens the account's own
@@ -103,6 +103,73 @@ test('a new workspace copies the categories, opens empty, and leaves the other a
   await page.getByRole('dialog', { name: 'Workspaces' }).getByTestId('workspace-choice').filter({ hasText: 'Personal' }).click();
   await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText('Personal');
   await expect(page.getByText('Supplier dinner')).toBeVisible();
+});
+
+/**
+ * A Business workspace made with the Business categories starts with the business list and none of Personal's;
+ * Personal itself is not touched.
+ */
+test('a Business workspace starts with the business categories, and Personal keeps its own', async ({ page }) => {
+  await addBank(page);
+  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
+  await page.getByRole('button', { name: 'New workspace' }).click();
+  const sheet = page.getByRole('dialog', { name: 'New workspace' });
+  await sheet.getByLabel('Name', { exact: true }).fill('Shop');
+  await expect(sheet.getByLabel('Categories')).toHaveValue('business');
+  await sheet.getByRole('button', { name: 'Create workspace' }).click();
+  await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText('Shop');
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const card = page.getByRole('dialog', { name: 'Add a transaction' });
+  await card.getByRole('button', { name: 'Category' }).click();
+  const picker = page.getByRole('dialog', { name: 'Select category' });
+  await expect(picker.getByRole('button', { name: 'Supplies', exact: true })).toHaveCount(1);
+  await expect(picker.getByRole('button', { name: 'Groceries', exact: true })).toHaveCount(0);
+  await picker.getByRole('button', { name: 'Close' }).click();
+  await card.getByRole('radio', { name: 'Income' }).click();
+  await card.getByRole('button', { name: /^Category/ }).click();
+  await expect(picker.getByRole('button', { name: 'Sales', exact: true })).toHaveCount(1);
+  await picker.getByRole('button', { name: 'Close' }).click();
+  await card.getByRole('button', { name: 'Cancel' }).click();
+
+  // Personal is as it was: its groceries are still there and the business list is not.
+  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Workspaces' }).getByTestId('workspace-choice').filter({ hasText: 'Personal' }).click();
+  await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText('Personal');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  await card.getByRole('button', { name: 'Category' }).click();
+  await expect(picker.getByRole('button', { name: 'Groceries', exact: true })).toHaveCount(1);
+  await expect(picker.getByRole('button', { name: 'Supplies', exact: true })).toHaveCount(1); // Household > Supplies
+  await expect(picker.getByRole('button', { name: 'Equipment', exact: true })).toHaveCount(0);
+});
+
+/** A Business workspace made with Empty categories can take the business list later, from its page, after agreeing to it. */
+test('a Business workspace’s page offers the Business list, and Not now changes nothing', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
+  await page.getByRole('button', { name: 'New workspace' }).click();
+  const sheet = page.getByRole('dialog', { name: 'New workspace' });
+  await sheet.getByLabel('Name', { exact: true }).fill('Shop');
+  await sheet.getByLabel('Categories').selectOption({ label: 'Empty' });
+  await sheet.getByRole('button', { name: 'Create workspace' }).click();
+  await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText('Shop');
+
+  await openWorkspacePage(page, 'Shop');
+  const alert = page.getByRole('alertdialog', { name: 'Use the Business list' });
+  await page.getByTestId('use-business-list').click();
+  await expect(alert).toContainText('Categories with transactions stay.');
+  await alert.getByRole('button', { name: 'Not now' }).click();
+  await expect(alert).toHaveCount(0);
+
+  await page.getByTestId('use-business-list').click();
+  await alert.getByRole('button', { name: 'Use the Business list' }).click();
+  await expect(page.getByText('Business list added')).toBeVisible();
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  await page.getByRole('dialog', { name: 'Add a transaction' }).getByRole('button', { name: 'Category' }).click();
+  await expect(page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Equipment', exact: true })).toHaveCount(1);
 });
 
 /**
