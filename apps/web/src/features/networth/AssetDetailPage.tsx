@@ -530,7 +530,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
               {gain && (
                 <>
                   {' · '}
-                  <span data-testid="asset-gain" data-tone={gain.tone} className={cx('tabular font-medium', gain.tone === 'gain' ? 'text-[var(--ph-tint)]' : 'text-[var(--ph-alarm)]')}>
+                  <span data-testid="asset-gain" data-tone={gain.tone} className={cx('tabular font-medium', gain.tone === 'gain' ? 'text-[var(--ph-up)]' : 'text-[var(--ph-alarm)]')}>
                     {gain.text}
                   </span>
                 </>
@@ -898,7 +898,7 @@ function HistoryRow({ line, onMore, position }: GroupChild & { line: TradeLine; 
             <span
               className={cx(
                 'block text-[12.5px] leading-[16px]',
-                line.tone === 'gain' ? 'text-[var(--ph-tint)]' : line.tone === 'loss' ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-ink-3)]',
+                line.tone === 'gain' ? 'text-[var(--ph-up)]' : line.tone === 'loss' ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-ink-3)]',
               )}
             >
               {line.note}

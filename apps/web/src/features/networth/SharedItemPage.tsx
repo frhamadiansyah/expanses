@@ -41,7 +41,7 @@ export function SharedItemPage() {
               {/* From earlier · Household · other use · available: the parts of the limit, so the bar always adds up (§8.3). */}
               <div role="img" aria-label={`${view.bar.openingPct > 0 ? `From earlier ${view.bar.openingPct}%, ` : ''}Household ${view.bar.householdPct}%, other use ${view.bar.otherPct}%, ${formatMinor(view.bar.availableMinor, item.currency)} available`} className="flex h-2 overflow-hidden rounded-full bg-[var(--ph-track)]">
                 <i className="block h-full bg-[var(--ph-chevron)]" style={{ width: `${view.bar.openingPct}%` }} />
-                <i className="block h-full bg-[var(--ph-tint)]" style={{ width: `${view.bar.householdPct}%` }} />
+                <i className="block h-full bg-[var(--ph-up)]" style={{ width: `${view.bar.householdPct}%` }} />
                 <i className="block h-full bg-[var(--ph-ink-3)]" style={{ width: `${view.bar.otherPct}%` }} />
               </div>
               <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
@@ -93,7 +93,7 @@ export function SharedItemPage() {
               title={view.otherUse.label}
               subtitle={view.otherUse.under}
               value={view.otherUse.text}
-              valueTone={view.otherUse.credit ? 'tint' : 'ink'}
+              valueTone={view.otherUse.credit ? 'gain' : 'ink'}
               chevron={false}
               testId="other-use"
             />

@@ -31,7 +31,7 @@ function minorOf(typed: string, currency: string): number {
 }
 
 /** The kit's tones for what a difference is. The words themselves are `differenceWords`'. */
-const HERE: Record<'over' | 'under' | 'exact', Tone> = { over: 'alarm', under: 'tint', exact: 'ink-3' };
+const HERE: Record<'over' | 'under' | 'exact', Tone> = { over: 'alarm', under: 'gain', exact: 'ink-3' };
 
 /**
  * A row with a tick on one side and a typed share on the other.

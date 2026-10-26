@@ -30,7 +30,7 @@ import type { Direction } from './row';
  * thing that says what it is.
  */
 
-/** The bar under a hero: 7 px, fully rounded, the tint while there is room and alarm once the target is passed. */
+/** The bar under a hero: 7 px, fully rounded, the gain green while there is room and alarm once the target is passed. */
 export function ProgressBar({
   currentMinor,
   targetMinor,
@@ -60,7 +60,7 @@ export function ProgressBar({
         style={{
           width: `${fraction * 100}%`,
           borderRadius: 99,
-          background: tone === 'alarm' ? 'var(--ph-alarm)' : tone === 'tint' ? 'var(--ph-tint)' : 'var(--ph-ink-3)',
+          background: tone === 'alarm' ? 'var(--ph-alarm)' : tone === 'gain' ? 'var(--ph-up)' : 'var(--ph-ink-3)',
         }}
       />
     </div>

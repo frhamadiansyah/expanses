@@ -23,7 +23,7 @@ const FLOW_GLYPH = {
   out: <ArrowUp size={15} strokeWidth={2.5} aria-hidden />,
   none: <Gift size={15} aria-hidden />,
 } as const;
-const FLOW_COLOUR = { in: 'var(--ph-tint)', out: 'var(--ph-alarm)', none: undefined } as const;
+const FLOW_COLOUR = { in: 'var(--ph-up)', out: 'var(--ph-alarm)', none: undefined } as const;
 
 /**
  * One loan, on a page of its own: what is left of it, the two things to do about it, what it is and what happened.

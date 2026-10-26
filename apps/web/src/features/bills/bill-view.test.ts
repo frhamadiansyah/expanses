@@ -66,7 +66,7 @@ describe('the Recurring list', () => {
     expect(statusOf({ ...rows[2]!, window: later })).toEqual({ text: '20 Sep', tone: 'ink-3' });
     expect(statusOf({ ...rows[3]!, window: later })).toEqual({ text: 'Opens 10 Sep', tone: 'ink-3' });
     expect(statusOf({ ...rows[3]!, window: billWindow('2026-09', 20, null) })).toEqual({ text: '20 Sep', tone: 'ink-3' });
-    expect(statusOf(rows[4]!)).toEqual({ text: 'Paid 1 Sep', tone: 'tint' });
+    expect(statusOf(rows[4]!)).toEqual({ text: 'Paid 1 Sep', tone: 'gain' });
     expect(statusOf(rows[5]!)).toEqual({ text: 'Skipped', tone: 'ink-3' });
   });
 

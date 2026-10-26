@@ -228,7 +228,7 @@ export function CoretaxPage() {
                   onClick={() => !busy && void saveWho({ npwp: npwp.trim(), taxpayerName: taxpayerName.trim() })}
                 />
               </InsetGroup>
-              {savedWho && <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-tint)]">Saved</p>}
+              {savedWho && <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-up)]">Saved</p>}
             </>
           )}
 

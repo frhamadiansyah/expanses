@@ -23,7 +23,7 @@ export function AllTradesPage() {
           <ReadOnlyRow
             label="Realized this year"
             value={realized}
-            tone={base > 0 ? 'tint' : base < 0 ? 'alarm' : undefined}
+            tone={base > 0 ? 'gain' : base < 0 ? 'alarm' : undefined}
             info="Gains and losses from sales this year, against what the units cost."
           />
         </InsetGroup>

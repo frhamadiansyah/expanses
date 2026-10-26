@@ -104,7 +104,7 @@ export function TypedRow({
             onClick={pill.run}
             className={cx(
               'ph-focus shrink-0 rounded-full px-[10px] py-[3px] text-[13px] leading-[18px] font-semibold',
-              pill.on ? 'bg-[var(--ph-tint)] text-white' : 'bg-[var(--ph-fill)] text-[var(--ph-tint)]',
+              pill.on ? 'bg-[var(--ph-tint)] text-[var(--ph-surface)]' : 'bg-[var(--ph-fill)] text-[var(--ph-tint)]',
             )}
           >
             {pill.label}

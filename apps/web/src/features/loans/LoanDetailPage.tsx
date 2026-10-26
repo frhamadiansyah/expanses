@@ -591,7 +591,7 @@ function RepaidBar({ percent, end }: { percent: number; end: string }) {
         className="w-full overflow-hidden rounded-full bg-[var(--ph-track)]"
         style={{ height: 6 }}
       >
-        <div className="h-full rounded-full bg-[var(--ph-tint)]" style={{ width: `${percent}%` }} />
+        <div className="h-full rounded-full bg-[var(--ph-up)]" style={{ width: `${percent}%` }} />
       </div>
       <div className="flex justify-between text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
         <span data-testid="loan-repaid">{percent}% repaid</span>

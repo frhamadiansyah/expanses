@@ -32,7 +32,7 @@ export interface FormRowPlan {
  * An unanswered picker shows its placeholder in the tertiary ink, and an answered one in the secondary ink — the
  * weight of the grey, with the chevron beside it, is the whole difference a one-line field has room for, and it is
  * what native does: a prompt is a light grey word, an answer a darker one. The tint is not spent here (a value is
- * not an action, and a page of green values reads as a page of links).
+ * not an action, and a page of ink values reads as a page of links).
  */
 export function planFormRow(kind: FormKind, value: string | null | undefined, placeholder = ''): FormRowPlan {
   const answered = value !== null && value !== undefined && value !== '';

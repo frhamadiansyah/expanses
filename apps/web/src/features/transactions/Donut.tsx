@@ -206,7 +206,7 @@ export function Donut({
           className="absolute top-1/2 left-1/2 flex aspect-square w-[38%] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full text-center leading-none"
         >
           <span className="flex max-w-full items-center text-[2.5cqw] text-slate-500">
-            <ChevronLeft aria-hidden className="-ml-[0.5em] h-[1.4em] w-[1.4em] shrink-0 text-emerald-800" />
+            <ChevronLeft aria-hidden className="-ml-[0.5em] h-[1.4em] w-[1.4em] shrink-0 text-[var(--ph-ink)]" />
             <span className="truncate">{label}</span>
           </span>
           <span className="mt-[1.1cqw] text-[4cqw] font-bold text-slate-900">{middle}</span>

@@ -151,7 +151,7 @@ export function FundTradeSheet({
             label="Gain"
             info={MONEY_SELL_INFO}
             value={signedMinor(gain, currency)}
-            valueClass={gain > 0 ? 'text-[var(--ph-tint)]' : 'text-[var(--ph-ink)]'}
+            valueClass={gain > 0 ? 'text-[var(--ph-up)]' : 'text-[var(--ph-ink)]'}
           />
         </InsetGroup>
       )}
@@ -174,7 +174,7 @@ export function FundTradeSheet({
               testId="fund-gain"
               label="Gain"
               value={signedMinor(gain, currency)}
-              valueClass={gain > 0 ? 'text-[var(--ph-tint)]' : 'text-[var(--ph-ink)]'}
+              valueClass={gain > 0 ? 'text-[var(--ph-up)]' : 'text-[var(--ph-ink)]'}
             />
           )}
         </InsetGroup>

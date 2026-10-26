@@ -178,7 +178,7 @@ export function CardPointsPage() {
                 [<InsetRow title="Earned" value={`${formatPoints(roi.pointsEarned)} ${program.unit}`} valueTone="ink" />],
                 [<InsetRow title="Worth" value={formatMinor(roi.valueMinor, currency)} valueTone="ink" />],
                 [<InsetRow title="Annual fee" value={formatMinor(roi.annualFeeMinor, currency)} valueTone="ink" />],
-                [<InsetRow title="Net" value={formatMinor(roi.netMinor, currency)} valueTone={roi.netMinor < 0 ? 'alarm' : 'tint'} />],
+                [<InsetRow title="Net" value={formatMinor(roi.netMinor, currency)} valueTone={roi.netMinor < 0 ? 'alarm' : 'gain'} />],
               ]}
             />
           </div>
@@ -186,7 +186,7 @@ export function CardPointsPage() {
             <div data-testid="card-year-realised">
               <InsetGroup header="At what these points have really fetched" footer="The figures above value points at the best option, which assumes the best use.">
                 <InsetRow title="Earned" value={`${formatMinor(roi.realised.valueMinor, currency)} earned`} valueTone="ink" />
-                <InsetRow title="Net" value={`${formatMinor(roi.realised.netMinor, currency)} net`} valueTone={roi.realised.netMinor < 0 ? 'alarm' : 'tint'} />
+                <InsetRow title="Net" value={`${formatMinor(roi.realised.netMinor, currency)} net`} valueTone={roi.realised.netMinor < 0 ? 'alarm' : 'gain'} />
               </InsetGroup>
             </div>
           )}

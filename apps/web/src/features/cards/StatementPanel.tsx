@@ -201,7 +201,7 @@ export function StatementPanel({
   /** A line's amount, signed the way a statement prints it: money back is green and has a minus. */
   const amount = (line: StatementLine) => (
     <>
-      <span className={cx('tabular block whitespace-nowrap', line.owedMinor < 0 && 'text-[var(--ph-tint)]', line.convertedTo && 'line-through')}>
+      <span className={cx('tabular block whitespace-nowrap', line.owedMinor < 0 && 'text-[var(--ph-up)]', line.convertedTo && 'line-through')}>
         {line.owedMinor < 0 ? `−${money(-line.owedMinor)}` : money(line.owedMinor)}
       </span>
       {line.originalCurrency && line.originalAmountMinor !== null && (
@@ -332,7 +332,7 @@ export function StatementPanel({
               <span key={index}> · {note}</span>
             ))}
             {points && earned && (
-              <span className="tabular text-[var(--ph-tint)]" data-testid="statement-points">
+              <span className="tabular text-[var(--ph-up)]" data-testid="statement-points">
                 {' · '}
                 {earned}
               </span>
@@ -392,7 +392,7 @@ export function StatementPanel({
                 )}
               </td>
               {points && (
-                <td className="tabular px-[8px] text-right align-middle text-[12.5px] whitespace-nowrap text-[var(--ph-tint)]" data-testid="statement-points">
+                <td className="tabular px-[8px] text-right align-middle text-[12.5px] whitespace-nowrap text-[var(--ph-up)]" data-testid="statement-points">
                   {pointsOf(line)}
                 </td>
               )}

@@ -48,7 +48,7 @@ export function CatalogPanel({ cp, today, run }: { cp: CardPoints; today: string
       >
         <InsetRow
           title={entry.name}
-          subtitle={<span className={linked ? 'text-[var(--ph-tint)]' : 'text-[var(--ph-warn)]'}>From catalogue · {linked ? 'Linked' : 'Customised'}</span>}
+          subtitle={<span className={linked ? 'text-[var(--ph-up)]' : 'text-[var(--ph-warn)]'}>From catalogue · {linked ? 'Linked' : 'Customised'}</span>}
         />
         {isStale(entry, today) && (
           <TextLine tone="warn">These terms were verified more than 180 days ago and may be out of date. Check the sources before relying on them.</TextLine>

@@ -72,7 +72,7 @@ export function AdjustBalanceForm({
       {differs && (
         <section className="rounded-[11px] bg-[var(--ph-surface)] px-[13px] py-[11px]" data-testid="adjust-difference">
           <p className="text-[15px] leading-[20px] text-[var(--ph-ink)]">
-            <span className={cx('font-semibold', difference < 0 ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-tint)]')}>{differenceWords(difference, currency)}</span>
+            <span className={cx('font-semibold', difference < 0 ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-up)]')}>{differenceWords(difference, currency)}</span>
             {' than the app says.'}
           </p>
           <div role="radiogroup" aria-label="What the difference was" className="mt-[10px] flex flex-col gap-[10px]">

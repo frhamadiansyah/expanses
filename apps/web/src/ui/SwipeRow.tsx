@@ -17,13 +17,13 @@ const EDGE = 8;
  */
 const CIRCLE = { height: 'min(34px, calc(100% - 16px))', minHeight: 24 } as const;
 
-/** Destructive is the alarm red, primary the app's tint, neutral the grey Mail gives More. */
+/** Destructive is the alarm red, primary the ink, neutral the grey Mail gives More. */
 export type SwipeTone = 'destructive' | 'primary' | 'neutral';
 
 const TONE: Record<SwipeTone, string> = {
-  destructive: 'bg-[var(--ph-alarm)]',
-  primary: 'bg-[var(--ph-tint)]',
-  neutral: 'bg-[#8e8e93]',
+  destructive: 'bg-[var(--ph-alarm)] text-white',
+  primary: 'bg-[var(--ph-tint)] text-[var(--ph-surface)]',
+  neutral: 'bg-[#8e8e93] text-white',
 };
 
 /** One action behind a row's left edge: a filled circle with a white icon. */
@@ -49,7 +49,7 @@ export interface SwipeHint {
 /** The circle: the face every swipe in the app shows, whichever way it was dragged. */
 function RoundFace({ icon: Icon, tone }: { icon: LucideIcon; tone: SwipeTone }) {
   return (
-    <span aria-hidden className={cx('flex aspect-square shrink-0 items-center justify-center rounded-full text-white', TONE[tone])} style={CIRCLE}>
+    <span aria-hidden className={cx('flex aspect-square shrink-0 items-center justify-center rounded-full', TONE[tone])} style={CIRCLE}>
       <Icon size={18} strokeWidth={2.25} />
     </span>
   );
@@ -81,7 +81,7 @@ function FullBar({ action, x }: { action: SwipeAction; x: number }) {
   return (
     <span aria-hidden data-testid="swipe-full" className="absolute inset-y-0 flex items-center" style={{ left: `calc(100% + ${x}px + 6px)`, right: EDGE }}>
       <span
-        className={cx('swipe-snap flex w-full items-center rounded-full pl-[8px] text-white', TONE[action.tone])}
+        className={cx('swipe-snap flex w-full items-center rounded-full pl-[8px]', TONE[action.tone])}
         style={CIRCLE}
       >
         <Icon size={18} strokeWidth={2.25} />

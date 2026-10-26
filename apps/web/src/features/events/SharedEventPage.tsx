@@ -221,10 +221,10 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
                     <span
                       className="block h-full rounded-full"
                       data-tone={bar.tone}
-                      style={{ width: `${bar.percent}%`, minWidth: bar.percent > 0 ? 6 : 0, background: bar.tone === 'owing' ? 'var(--ph-warn)' : 'var(--ph-tint)' }}
+                      style={{ width: `${bar.percent}%`, minWidth: bar.percent > 0 ? 6 : 0, background: bar.tone === 'owing' ? 'var(--ph-warn)' : 'var(--ph-up)' }}
                     />
                   </span>
-                  <span className={`tabular shrink-0 text-[15px] leading-[20px] ${bar.tone === 'owing' ? 'text-[var(--ph-warn)]' : bar.tone === 'ahead' ? 'text-[var(--ph-tint)]' : 'text-[var(--ph-ink-3)]'}`}>
+                  <span className={`tabular shrink-0 text-[15px] leading-[20px] ${bar.tone === 'owing' ? 'text-[var(--ph-warn)]' : bar.tone === 'ahead' ? 'text-[var(--ph-up)]' : 'text-[var(--ph-ink-3)]'}`}>
                     {signedBalance(bar.balanceMinor, view.currency)}
                   </span>
                 </div>

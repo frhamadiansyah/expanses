@@ -14,7 +14,7 @@ import { differenceWords, plannedLabel, planTotals, quantityWords } from './plan
 import { useEventItemsReady, useEventPlan, useEvents } from './queries';
 
 /** The kit's tones for what a difference is. The words themselves are `differenceWords`'. */
-const HERE: Record<'over' | 'under' | 'exact', Tone> = { over: 'alarm', under: 'tint', exact: 'ink-3' };
+const HERE: Record<'over' | 'under' | 'exact', Tone> = { over: 'alarm', under: 'gain', exact: 'ink-3' };
 
 /**
  * One thing on the plan, as a checklist line in the Cashflow history's size: an empty circle while it is still to
@@ -59,7 +59,7 @@ function PlanItemRow({
           aria-hidden
           className={cx(
             'flex h-6 w-6 items-center justify-center rounded-full',
-            done ? 'bg-[var(--ph-tint-panel)] text-[var(--ph-tint)]' : 'ring-[1.5px] ring-[var(--ph-chevron)] ring-inset',
+            done ? 'bg-[var(--ph-up-panel)] text-[var(--ph-up)]' : 'ring-[1.5px] ring-[var(--ph-chevron)] ring-inset',
           )}
         >
           {done && <Check size={14} strokeWidth={3} />}
@@ -241,7 +241,7 @@ export function PlanPage() {
                   </span>
                   <span className="mt-2 h-[7px] w-full overflow-hidden rounded-full bg-[var(--ph-track)]">
                     <span
-                      className="block h-full rounded-full bg-[var(--ph-tint)]"
+                      className="block h-full rounded-full bg-[var(--ph-up)]"
                       style={{ width: `${totals.plannedMinor > 0 ? Math.min(100, Math.round(((totals.plannedMinor - totals.toBuyMinor) / totals.plannedMinor) * 100)) : 0}%` }}
                     />
                   </span>

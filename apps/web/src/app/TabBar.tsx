@@ -6,7 +6,7 @@ import { ACCOUNT_TAB, TABS } from './nav';
  * The phone's tab bar: a capsule floating over the page rather than a strip welded to its foot.
  *
  * Icons alone, evenly spaced, names carried for screen readers rather than printed. The tab you are on
- * wears a filled pill behind its icon. The + is a filled circle in the app's green: recording a purchase is the
+ * wears a filled pill behind its icon. The + is a filled ink circle: recording a purchase is the
  * commonest thing done here, so the thumb finds it without looking, and everything else on the bar stays quiet.
  */
 export function TabBar({ onAdd }: { onAdd: () => void }) {

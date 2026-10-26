@@ -54,7 +54,7 @@ function InBaseGroup({ stock, base, fund }: { stock: StockRow; base: string; fun
   );
 }
 
-const TONE = { gain: 'text-[var(--ph-tint)]', loss: 'text-[var(--ph-alarm)]', flat: 'text-[var(--ph-ink-3)]' } as const;
+const TONE = { gain: 'text-[var(--ph-up)]', loss: 'text-[var(--ph-alarm)]', flat: 'text-[var(--ph-ink-3)]' } as const;
 
 /** A holding's figure on its row: its value, and its own gain under it in green or red. */
 function HoldingFigure({ h }: { h: HoldingLine }) {
@@ -186,7 +186,7 @@ function AcrossBrokers({
               {gain && (
                 <>
                   {' · '}
-                  <span data-testid="security-gain" data-tone={gain.tone} className={cx('tabular font-medium', gain.tone === 'gain' ? 'text-[var(--ph-tint)]' : 'text-[var(--ph-alarm)]')}>
+                  <span data-testid="security-gain" data-tone={gain.tone} className={cx('tabular font-medium', gain.tone === 'gain' ? 'text-[var(--ph-up)]' : 'text-[var(--ph-alarm)]')}>
                     {gain.text}
                   </span>
                 </>

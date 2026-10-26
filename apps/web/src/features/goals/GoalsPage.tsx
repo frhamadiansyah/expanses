@@ -50,7 +50,7 @@ function GoalListRow({ card, currency, position }: GroupChild & { card: GoalCard
       subtitle={
         <>
           <span className="block truncate">
-            by {card.dueLabel} · <span className={warn ? 'text-[var(--ph-warn)]' : 'text-[var(--ph-tint)]'}>{card.statusLabel}</span>
+            by {card.dueLabel} · <span className={warn ? 'text-[var(--ph-warn)]' : 'text-[var(--ph-up)]'}>{card.statusLabel}</span>
           </span>
           <span className="mt-[6px] block">
             <UseBar share={card.done ? 1 : card.progressPercent / 100} warn={warn} />

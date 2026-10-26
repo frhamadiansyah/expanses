@@ -109,7 +109,7 @@ export function FlowChart({
 
   const xs = [leftRoom, (width - bar) / 2, width - rightRoom - bar];
   const colourOf = (column: number, node: FlowNode): string => {
-    if (column === 0 || node.key === SAVED_KEY) return 'var(--ph-tint)';
+    if (column === 0 || node.key === SAVED_KEY) return 'var(--ph-up)';
     if (column === 1) return flow.accounts.find((account) => account.key === node.key)?.card ? 'var(--ph-alarm)' : 'var(--ph-ink-3)';
     if (node.key === OTHERS_KEY) return OTHER_COLOUR;
     return chartColour(node.key, chosen);
@@ -296,7 +296,7 @@ export function MoneyFlowBox({ month, onPick }: { month: string; onPick?: (categ
         {[
           ['In', flow.incomeMinor, 'text-[var(--ph-ink)]'],
           ['Out', flow.spentMinor, 'text-[var(--ph-ink)]'],
-          ...(flow.incomeMinor > flow.spentMinor ? [['Saved', flow.incomeMinor - flow.spentMinor, 'text-[var(--ph-tint)]'] as const] : []),
+          ...(flow.incomeMinor > flow.spentMinor ? [['Saved', flow.incomeMinor - flow.spentMinor, 'text-[var(--ph-up)]'] as const] : []),
         ].map(([label, minor, tone]) => (
           <div key={label} className="min-w-0 px-1 text-center [&+*]:border-l [&+*]:border-slate-100">
             <span className={`tabular block truncate text-[13px] font-semibold ${tone}`}>{formatMinor(minor as number, currency)}</span>

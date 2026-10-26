@@ -134,7 +134,7 @@ export function ListedTradeSheet({
       confirm={{ label: kind === 'buy' ? 'Record buy' : 'Record sell', disabled: !saving.canSave, run: () => void saving.save() }}
     >
       <div className="flex items-center gap-3 px-[4px] pb-3">
-        <span aria-hidden className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px] bg-[var(--ph-tint)] text-[11px] font-bold text-white">
+        <span aria-hidden className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px] bg-[var(--ph-tint)] text-[11px] font-bold text-[var(--ph-surface)]">
           {ticker.slice(0, 4)}
         </span>
         <span className="min-w-0">
@@ -194,7 +194,7 @@ export function ListedTradeSheet({
               ? `Total · ${formatUnits(shares * 1_000_000)} shares`
               : `Selling · ${formatUnits(shares * 1_000_000)} shares of ${formatUnits(position?.unitsMicro ?? 0)} held`}
           </p>
-          <p className={cx('tabular text-[22px] leading-[28px] font-bold', kind === 'buy' ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-tint)]')}>
+          <p className={cx('tabular text-[22px] leading-[28px] font-bold', kind === 'buy' ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-up)]')}>
             {formatMinor(totalMinor, 'IDR')}
           </p>
           <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
@@ -205,7 +205,7 @@ export function ListedTradeSheet({
           {sold && (
             <p className="mt-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="trade-gain">
               Gain on these {formatUnits(unitsMicro)}:{' '}
-              <span className={cx('font-semibold', grossMinor - feeMinor - sold.basis < 0 ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-tint)]')}>
+              <span className={cx('font-semibold', grossMinor - feeMinor - sold.basis < 0 ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-up)]')}>
                 {signed(grossMinor - feeMinor - sold.basis)}
               </span>
               {sold.average !== null && ` (bought at avg ${priceText(Math.round(sold.average / 1_000_000))})`}

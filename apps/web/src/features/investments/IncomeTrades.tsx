@@ -200,12 +200,12 @@ export function TradesSection({ book }: { book: TradeBook }) {
                             {label}
                           </span>
                         ))}
-                        {reinvested && <span className="ml-1.5 rounded bg-[var(--ph-tint-panel)] px-1.5 text-[11px] font-semibold text-[var(--ph-tint)]">Reinvested</span>}
+                        {reinvested && <span className="ml-1.5 rounded bg-[var(--ph-up-panel)] px-1.5 text-[11px] font-semibold text-[var(--ph-up)]">Reinvested</span>}
                       </span>
                       {sub && <span className="block truncate text-xs text-[var(--ph-ink-3)]">{sub}</span>}
                     </span>
                     {trade.kind === 'unit_change' ? null : (
-                      <span className={cx('tabular shrink-0 text-sm font-semibold whitespace-nowrap', other ? 'text-[var(--ph-ink)]' : out ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-tint)]')}>
+                      <span className={cx('tabular shrink-0 text-sm font-semibold whitespace-nowrap', other ? 'text-[var(--ph-ink)]' : out ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-up)]')}>
                         {other ? (out ? '+' : '−') : out ? '−' : '+'}
                         {formatMinor(trade.grossMinor, currency)}
                       </span>

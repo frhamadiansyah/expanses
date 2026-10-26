@@ -55,7 +55,7 @@ export function SharedPlanTab({ view, nameBox }: { view: SharedEventView; nameBo
             {`planned · ${formatMinor(view.spentMinor, view.currency)} spent · ${formatMinor(summary.leftMinor, view.currency)} left`}
           </div>
           <div className="h-[10px] overflow-hidden rounded-full bg-[var(--ph-track)]">
-            <div className="h-full rounded-full bg-[var(--ph-tint)]" style={{ width: `${summary.percent}%` }} />
+            <div className="h-full rounded-full bg-[var(--ph-up)]" style={{ width: `${summary.percent}%` }} />
           </div>
         </Panel>
       ) : null}

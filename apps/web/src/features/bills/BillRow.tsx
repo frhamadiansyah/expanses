@@ -111,7 +111,7 @@ export function BillRow({
                 className={cx(
                   'absolute inset-0 flex items-center justify-center rounded-full transition-opacity duration-150',
                   selecting && !settled ? 'opacity-100' : 'opacity-0',
-                  picked ? 'bg-[var(--ph-tint)] text-white' : 'ring-[1.5px] ring-[var(--ph-chevron)] ring-inset',
+                  picked ? 'bg-[var(--ph-tint)] text-[var(--ph-surface)]' : 'ring-[1.5px] ring-[var(--ph-chevron)] ring-inset',
                 )}
               >
                 {picked && <Check size={16} strokeWidth={2.5} />}

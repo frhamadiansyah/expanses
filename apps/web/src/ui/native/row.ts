@@ -7,7 +7,7 @@ import { CHEVRON, CHEVRON_GAP, MIN_TEXT, PHONE_WIDTH, ROW_ICON, ROW_ICON_GAP, RO
  * All of it is arithmetic, so all of it is tested here rather than inspected in a browser.
  */
 
-export type Tone = 'ink' | 'ink-2' | 'ink-3' | 'alarm' | 'warn' | 'tint';
+export type Tone = 'ink' | 'ink-2' | 'ink-3' | 'alarm' | 'warn' | 'tint' | 'gain';
 
 /** Which way money moved, said plainly, because a sign alone does not say it in every ledger. */
 export type Direction = 'out' | 'in' | 'neutral';
@@ -21,7 +21,7 @@ export type Direction = 'out' | 'in' | 'neutral';
  */
 export function moneyTone(minor: number, direction: Direction = 'neutral'): Tone {
   if (direction === 'out') return 'alarm';
-  if (direction === 'in') return 'tint';
+  if (direction === 'in') return 'gain';
   return minor < 0 ? 'alarm' : 'ink';
 }
 

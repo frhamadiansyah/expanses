@@ -236,7 +236,7 @@ export function WalletPage() {
             </div>
             {series && <BalanceSpark series={series} currency={ws.baseCurrency} crossing={crossed} className="pt-1" />}
             <div className="border-t-[0.5px] border-[var(--ph-hair)] pt-3">
-              <SpendRow colour="var(--ph-tint)" label="Spending money" value={unclaimed.freeMinor} currency={ws.baseCurrency} />
+              <SpendRow colour="var(--ph-up)" label="Spending money" value={unclaimed.freeMinor} currency={ws.baseCurrency} />
               <SpendRow separator colour="var(--ph-alarm)" label="Owed on cards" value={-(free.dueMinor ?? 0)} currency={ws.baseCurrency} />
             </div>
           </Panel>

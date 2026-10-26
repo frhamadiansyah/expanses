@@ -53,7 +53,7 @@ export function planLines(
       const currency = names.currency(template.accountId);
       const title = template.kind === 'move' ? `Move to ${names.cash(template.accountId)}` : names.holding(template.accountId);
       const buy = bought.find((row) => row.templateId === template.id);
-      if (buy) return { template, state: 'bought', title, subtitle: `Bought · ${dayMonth(buy.occurredOn)}`, tone: 'tint', figure: formatMinor(buy.grossMinor, currency) };
+      if (buy) return { template, state: 'bought', title, subtitle: `Bought · ${dayMonth(buy.occurredOn)}`, tone: 'gain', figure: formatMinor(buy.grossMinor, currency) };
       const figure = planFigure(template, currency);
       if (!template.active) return { template, state: 'paused', title, subtitle: `Paused · ${from}`, tone: 'ink-3', figure };
       if (template.kind === 'buy' && template.dayOfMonth <= day) {

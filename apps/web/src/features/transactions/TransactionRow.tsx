@@ -107,7 +107,7 @@ export function TransactionRow({
     iconMark ??
     (row.refund ? (
       <span
-        className="absolute -right-1 -bottom-1 flex h-[15px] w-[15px] items-center justify-center rounded-full bg-[var(--ph-tint)] text-white ring-2 ring-[var(--ph-surface)]"
+        className="absolute -right-1 -bottom-1 flex h-[15px] w-[15px] items-center justify-center rounded-full bg-[var(--ph-tint)] text-[var(--ph-surface)] ring-2 ring-[var(--ph-surface)]"
         title="Refund"
       >
         <Undo2 size={9} strokeWidth={3} aria-hidden />
@@ -146,7 +146,7 @@ export function TransactionRow({
           }}
           className={cx(
             'flex h-6 w-6 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-slate-900',
-            select.selected ? 'bg-[var(--ph-tint)] text-white' : 'ring-[1.5px] ring-slate-300 ring-inset',
+            select.selected ? 'bg-[var(--ph-tint)] text-[var(--ph-surface)]' : 'ring-[1.5px] ring-slate-300 ring-inset',
           )}
         >
           {select.selected && <Check size={15} strokeWidth={3} aria-hidden />}

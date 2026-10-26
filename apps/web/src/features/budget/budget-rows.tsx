@@ -24,7 +24,7 @@ export function UseBar({ share, height = 4, label, warn = false }: { share: numb
     >
       <span
         className="block h-full rounded-full"
-        style={{ width: `${Math.min(1, Math.max(0, share)) * 100}%`, background: over ? 'var(--ph-warn)' : 'var(--ph-tint)' }}
+        style={{ width: `${Math.min(1, Math.max(0, share)) * 100}%`, background: over ? 'var(--ph-warn)' : 'var(--ph-up)' }}
       />
     </span>
   );

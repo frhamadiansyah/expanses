@@ -78,7 +78,7 @@ export function GoalParts({
         <span className="text-[var(--ph-ink-3)]">
           {wholeValue !== null && !over && wholeValue > placedValue ? `Not for a goal: ${say(wholeValue - placedValue)}` : 'Placed'}
         </span>
-        <span className={cx('tabular font-semibold', over ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-tint)]')}>
+        <span className={cx('tabular font-semibold', over ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-up)]')}>
           {wholeValue === null ? say(placedValue) : `${say(placedValue)} of ${say(wholeValue)}`}
         </span>
       </div>

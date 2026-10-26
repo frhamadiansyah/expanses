@@ -106,7 +106,7 @@ export function ChartReading({ point, currency, width }: { point: ChartPoint; cu
     <g data-testid="net-worth-reading">
       {/* A hairline down to the month it belongs to, so a reading in the middle of a year says which month it is. */}
       <line x1={point.x} x2={point.x} y1={Math.min(point.y, y)} y2={Math.max(point.y, y)} stroke="var(--ph-hair)" strokeWidth={1} />
-      <circle cx={point.x} cy={point.y} r={4} fill={point.value < 0 ? 'var(--ph-alarm)' : 'var(--ph-tint)'} stroke="var(--ph-surface)" strokeWidth={2} />
+      <circle cx={point.x} cy={point.y} r={4} fill={point.value < 0 ? 'var(--ph-alarm)' : 'var(--ph-up)'} stroke="var(--ph-surface)" strokeWidth={2} />
       <rect x={x} y={y} width={box} height={PILL_HEIGHT} rx={9} fill="var(--ph-surface)" stroke="var(--ph-hair)" />
       <text x={x + box / 2} y={y + 18} textAnchor="middle" fontSize={12.5} fill="var(--ph-ink-3)">
         {point.label}

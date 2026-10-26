@@ -73,7 +73,7 @@ export function DepositMaturityBlock({ accountId, balanceMinor, currency }: { ac
         aria-valuemax={100}
         className="mt-[10px] h-[4px] w-full overflow-hidden rounded-full bg-[var(--ph-track)]"
       >
-        <div className="h-full rounded-full bg-[var(--ph-tint)]" style={{ width: `${progress.fraction * 100}%` }} />
+        <div className="h-full rounded-full bg-[var(--ph-up)]" style={{ width: `${progress.fraction * 100}%` }} />
       </div>
       <p className="tabular mt-[8px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{line.join(' · ')}</p>
       {sheet}

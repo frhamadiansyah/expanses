@@ -52,7 +52,7 @@ export function StatusChip({ status }: { status: 'Upcoming' | 'Now' | 'Done' }) 
         'rounded-full px-1.5 py-px text-[10.5px] font-bold tracking-wide uppercase',
         // The kit's panel pairs, so a chip keeps its meaning on a dark ground rather than turning into a pale smear.
         status === 'Now'
-          ? 'bg-[var(--ph-tint-panel)] text-[var(--ph-tint-ink)]'
+          ? 'bg-[var(--ph-up-panel)] text-[var(--ph-up-ink)]'
           : status === 'Upcoming'
             ? 'bg-[var(--ph-info-panel)] text-[var(--ph-info-ink)]'
             : 'bg-[var(--ph-fill)] text-[var(--ph-ink-3)]',
@@ -123,7 +123,7 @@ function EventListRow({ event, today, position, shared, ready }: GroupChild & { 
             {line && of !== null && <span className="block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{line.subline}</span>}
             {/* The figure on the right is clamped at nought, so what the clamp swallowed is said here rather than
                 left as a silent nought — the same both-sided rule the event's own screens keep under their ring. */}
-            {line?.backLine && <span className="block truncate text-[12.5px] leading-[16px] text-[var(--ph-tint)]">{line.backLine}</span>}
+            {line?.backLine && <span className="block truncate text-[12.5px] leading-[16px] text-[var(--ph-up)]">{line.backLine}</span>}
           </span>
           {line && (
             <span className="tabular shrink-0 text-right">

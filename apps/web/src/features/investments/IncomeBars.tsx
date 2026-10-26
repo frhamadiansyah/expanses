@@ -39,8 +39,8 @@ export function IncomeBars({ months, onOpen }: { months: readonly DividendMonth[
           const paid = height(m.paidMinor);
           return (
             <g key={m.month}>
-              {m.toComeMinor > 0 && <rect data-testid="income-month-due" x={x} y={base - whole} width={width} height={whole} rx={rx} fill="var(--ph-tint)" fillOpacity={TO_COME_OPACITY} />}
-              {m.paidMinor > 0 && <rect data-testid="income-month-paid" x={x} y={base - paid} width={width} height={paid} rx={rx} fill="var(--ph-tint)" />}
+              {m.toComeMinor > 0 && <rect data-testid="income-month-due" x={x} y={base - whole} width={width} height={whole} rx={rx} fill="var(--ph-up)" fillOpacity={TO_COME_OPACITY} />}
+              {m.paidMinor > 0 && <rect data-testid="income-month-paid" x={x} y={base - paid} width={width} height={paid} rx={rx} fill="var(--ph-up)" />}
             </g>
           );
         })}
