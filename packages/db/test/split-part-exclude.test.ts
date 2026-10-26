@@ -146,7 +146,7 @@ describe('A. a part excluded from its workspace’s reports', () => {
     ]);
   });
 
-  it('is named by any line of the part: two Family categories are one Family part', async () => {
+  it('is named by every line of the part: both Family categories out is the Family part excluded', async () => {
     const h = await books();
     const id = await postTransaction(h.database, inBook(h.ws, h.family), {
       ...purchase(h, [
@@ -154,7 +154,7 @@ describe('A. a part excluded from its workspace’s reports', () => {
         { categoryAccountId: h.groceries, amountMinor: 300_000 },
         { categoryAccountId: h.familyDining, amountMinor: 200_000 },
       ]),
-      excludedParts: [h.familyDining],
+      excludedParts: [h.groceries, h.familyDining],
     });
     expect(await partFlags(h, id)).toEqual([
       [h.business, 0],
@@ -208,14 +208,14 @@ describe('A. a part excluded from its workspace’s reports', () => {
     expect(await owed(h)).toBe(WHOLE);
   });
 
-  it('in one workspace, the one part is the whole purchase', async () => {
+  it('in one workspace, every line out is the whole purchase excluded', async () => {
     const h = await books();
     const id = await postTransaction(h.database, inBook(h.ws, h.family), {
       ...purchase(h, [
         { categoryAccountId: h.groceries, amountMinor: 300_000 },
         { categoryAccountId: h.familyDining, amountMinor: 200_000 },
       ]),
-      excludedParts: [h.groceries],
+      excludedParts: [h.groceries, h.familyDining],
     });
     expect(await partFlags(h, id)).toEqual([]);
     expect(await wholeFlag(h, id)).toBe(1);

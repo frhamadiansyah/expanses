@@ -475,6 +475,95 @@ describe('what a split with a shared workspace may be', () => {
   });
 });
 
+describe('a line of the shared part left out of reports on its own (0096)', () => {
+  const GROCERIES = 500_000;
+  const DINING = FAMILY_PART - GROCERIES;
+  const lines = (h: Home) => [
+    { categoryAccountId: h.groceries, amountMinor: GROCERIES },
+    { categoryAccountId: h.dining, amountMinor: DINING },
+    { categoryAccountId: h.office, amountMinor: PRIVATE_PART },
+  ];
+  /** The categories of the partner's copy left out on their own, by name. */
+  const partnerOut = async (h: Home, lineage: string) => {
+    const head = (await headOf(h.partner.database, lineage))!;
+    const rows = await h.partner.database.db.values<[string]>(sql`
+      SELECT a.name FROM transaction_line_excluded l JOIN accounts a ON a.id = l.account_id WHERE l.transaction_id = ${head}`);
+    return rows.map(([name]) => name).sort();
+  };
+  const partnerWhole = async (h: Home, lineage: string) => {
+    const head = (await headOf(h.partner.database, lineage))!;
+    return Number((await h.partner.database.db.values<[number]>(sql`SELECT excluded FROM transaction_flags WHERE transaction_id = ${head}`))[0]?.[0] ?? 0);
+  };
+  const sentFields = async (h: Home) =>
+    (await seenOutbox(h.owner.database)).flatMap((json) => {
+      const found = [...json.matchAll(/"excluded":(\d)/g)].map((match) => `excluded:${match[1]}`);
+      const named = json.includes('"excludedLines"');
+      return named ? [...found, 'excludedLines'] : found;
+    });
+
+  it('one Family line out reaches the partner as that line alone; the other counts on both phones', async () => {
+    const h = await household();
+    const id = await postTransaction(h.owner.database, inBook(h.owner.ws, h.family), { ...market(h, lines(h)), acrossBooks: true, excludedParts: [h.groceries] });
+    await h.home.settle();
+
+    expect(await spent(h.owner, h.family)).toBe(DINING);
+    expect(await spent(h.partner, h.family)).toBe(DINING);
+    expect(await spent(h.owner, h.business)).toBe(PRIVATE_PART);
+    expect(await partnerOut(h, id)).toEqual(['Groceries']);
+    // Not every line is out, so a build before this reads the purchase as counted, as it never heard of the line.
+    expect(await partnerWhole(h, id)).toBe(0);
+    expect(await sentFields(h)).toEqual(['excluded:0', 'excludedLines']);
+    expect((await nativeBalances(h.owner.database, h.owner.ws))[h.card]).toBe(-WHOLE);
+    await expectNothingPrivateSent(h);
+    await expectConverged(h);
+  });
+
+  it('every Family line out is still `excluded` on the wire, the way a build before this reads it', async () => {
+    const h = await household();
+    const id = await postTransaction(h.owner.database, inBook(h.owner.ws, h.family), {
+      ...market(h, lines(h)),
+      acrossBooks: true,
+      excludedParts: [h.groceries, h.dining],
+    });
+    await h.home.settle();
+    expect(await sentFields(h)).toEqual(['excluded:1', 'excludedLines']);
+    expect(await partnerWhole(h, id)).toBe(1);
+    expect(await spent(h.partner, h.family)).toBe(0);
+    expect(await spent(h.owner, h.family)).toBe(0);
+    expect(await spent(h.owner, h.business)).toBe(PRIVATE_PART);
+    await expectConverged(h);
+  });
+
+  it('the partner switches one line back on, and the owner’s phone follows it line by line', async () => {
+    const h = await household();
+    const id = await postTransaction(h.owner.database, inBook(h.owner.ws, h.family), {
+      ...market(h, lines(h)),
+      acrossBooks: true,
+      excludedParts: [h.groceries, h.dining, h.office],
+    });
+    await h.home.settle();
+    expect(await spent(h.partner, h.family)).toBe(0);
+
+    const head = (await headOf(h.partner.database, id))!;
+    const rows = await h.partner.database.db.values<[string, number]>(sql`SELECT account_id, amount_minor FROM entries WHERE transaction_id = ${head} ORDER BY rowid`);
+    await replaceTransaction(h.partner.database, inBook(h.partner.ws, h.family), head, {
+      occurredOn: '2026-09-12',
+      description: 'Toko Sumber Rejeki',
+      lines: rows.map(([accountId, amountMinor]) => ({ accountId, amountMinor: Number(amountMinor), currency: 'IDR' })),
+      excludedFromReport: false,
+      excludedParts: [h.groceries],
+    });
+    await h.home.settle();
+
+    expect(await spent(h.partner, h.family)).toBe(DINING);
+    expect(await spent(h.owner, h.family)).toBe(DINING);
+    // The private part was not the partner's to change: Business's part is still left out.
+    expect(await spent(h.owner, h.business)).toBe(0);
+    expect((await nativeBalances(h.owner.database, h.owner.ws))[h.card]).toBe(-WHOLE);
+    await expectConverged(h);
+  });
+});
+
 describe('a part of the split left out of reports (0090)', () => {
   /** The split's parts on the owner's phone and whether each is left out, Family first. */
   const partsOf = async (h: Home, lineage: string) => {

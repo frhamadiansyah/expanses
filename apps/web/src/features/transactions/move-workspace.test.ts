@@ -28,6 +28,12 @@ describe('a category’s copy in another workspace', () => {
     expect(draftIn(draft, 'B', accounts, books)).toMatchObject({ draft: { categoryId: '' }, missing: ['Client gifts'] });
     const split = { ...emptyForm('P'), splits: [{ categoryId: 'p-rest', amount: '1' }, { categoryId: 'p-taxi', amount: '2' }] };
     expect(draftIn(split, 'B', accounts, books)).toMatchObject({ draft: { splits: [{ categoryId: 'b-rest' }, { categoryId: 'b-taxi' }] }, missing: [] });
+    // Each line keeps its own Exclude from report across the move (0096).
+    const off = { ...split, splits: [{ categoryId: 'p-rest', amount: '1', excluded: true }, { categoryId: 'p-taxi', amount: '2' }] };
+    expect(draftIn(off, 'B', accounts, books).draft.splits).toEqual([
+      { categoryId: 'b-rest', amount: '1', excluded: true },
+      { categoryId: 'b-taxi', amount: '2' },
+    ]);
   });
 
   it('swaps a transfer’s fee category and a card top-up’s Top-ups for their copies', () => {
