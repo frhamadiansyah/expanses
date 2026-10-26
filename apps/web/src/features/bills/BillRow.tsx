@@ -81,7 +81,7 @@ export function BillRow({
         className="group-first:rounded-t-[11px] group-last:rounded-b-[11px]"
         enabled={!selecting && !settled}
         onSwipeRight={() => onPay(bill)}
-        rightHint={{ label: 'Pay', icon: Banknote }}
+        rightHint={{ label: 'Pay', icon: Banknote, tone: 'positive' }}
         actions={[{ label: 'Skip', name: `Skip ${bill.name}`, icon: SkipForward, tone: 'neutral', onPress: () => onSkip(bill) }]}
       >
         {(suppressClick) => (
