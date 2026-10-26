@@ -17,6 +17,7 @@ import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
+import { feeFieldsByCard, type FeeFields, NO_FEE_FIELDS, writeFeeFields } from './fee-columns';
 import { markAccountDirtyTx } from '../sync/capture';
 import { mccSourcesFor } from './mcc';
 import { openOwnProgrammeTx } from './programme-link';
@@ -33,7 +34,7 @@ export class PointsError extends Error {
   }
 }
 
-export type CardTermsRow = typeof cardTerms.$inferSelect;
+export type CardTermsRow = typeof cardTerms.$inferSelect & FeeFields;
 export type RewardProgramRow = typeof rewardPrograms.$inferSelect;
 export type RedemptionOptionRow = typeof redemptionOptions.$inferSelect;
 
@@ -101,19 +102,22 @@ export async function getCardTerms(database: Database, ws: WorkspaceContext, acc
     .select()
     .from(cardTerms)
     .where(and(eq(cardTerms.accountId, accountId), eq(cardTerms.workspaceId, ws.workspaceId)));
-  return row;
+  return row ? { ...row, ...((await feeFieldsByCard(database.db, ws)).get(accountId) ?? NO_FEE_FIELDS) } : undefined;
 }
 
 export async function listCardTerms(database: Database, ws: WorkspaceContext): Promise<CardTermsRow[]> {
-  return database.db.select().from(cardTerms).where(eq(cardTerms.workspaceId, ws.workspaceId));
+  const rows = await database.db.select().from(cardTerms).where(eq(cardTerms.workspaceId, ws.workspaceId));
+  const fees = await feeFieldsByCard(database.db, ws);
+  return rows.map((row) => ({ ...row, ...(fees.get(row.accountId) ?? NO_FEE_FIELDS) }));
 }
 
 export async function saveCardTerms(
   database: Database,
   ws: WorkspaceContext,
-  input: { accountId: string; statementDay: number; dueDay: number; creditLimitMinor: number | null; annualFeeMinor: number | null },
+  input: { accountId: string; statementDay: number; dueDay: number; creditLimitMinor: number | null; annualFeeMinor: number | null; annualFeeOn?: string | null },
 ): Promise<void> {
-  const row: CardTermsRow = {
+  if (input.annualFeeOn && !/^\d{4}-\d{2}-\d{2}$/.test(input.annualFeeOn)) throw new PointsError('Charged on must be a full date');
+  const row = {
     accountId: input.accountId,
     workspaceId: ws.workspaceId,
     statementDay: day(input.statementDay, 'Statement day'),
@@ -131,6 +135,7 @@ export async function saveCardTerms(
         target: cardTerms.accountId,
         set: { statementDay: row.statementDay, dueDay: row.dueDay, creditLimitMinor: row.creditLimitMinor, annualFeeMinor: row.annualFeeMinor },
       });
+    if (input.annualFeeOn !== undefined) await writeFeeFields(tx, ws, input.accountId, { annualFeeOn: input.annualFeeOn });
   });
 }
 

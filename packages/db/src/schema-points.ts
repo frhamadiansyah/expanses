@@ -7,6 +7,7 @@ export const cardTerms = sqliteTable('card_terms', {
   statementDay: integer('statement_day').notNull(),
   dueDay: integer('due_day').notNull(),
   annualFeeMinor: integer('annual_fee_minor'),
+  // annual_fee_on and annual_fee_waived_year (0093) are deliberately not declared here: see repos/fee-columns.ts.
 });
 
 export const rewardPrograms = sqliteTable('reward_programs', {

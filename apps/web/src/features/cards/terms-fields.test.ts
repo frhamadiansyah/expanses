@@ -11,16 +11,16 @@ const entryFor = (id: string) => {
 /** Published at Rp 125.000 a year, for the whole of its life so far. */
 const bca = entryFor('bca-unionpay');
 const TODAY = '2026-10-24';
-const terms = (patch: Partial<CardTermsRow> = {}): CardTermsRow => ({ accountId: 'card', workspaceId: 'ws', statementDay: 25, dueDay: 12, creditLimitMinor: null, annualFeeMinor: null, ...patch });
+const terms = (patch: Partial<CardTermsRow> = {}): CardTermsRow => ({ accountId: 'card', workspaceId: 'ws', statementDay: 25, dueDay: 12, creditLimitMinor: null, annualFeeMinor: null, annualFeeOn: null, annualFeeWaivedYear: null, ...patch });
 
 describe('the card terms form, as it opens', () => {
   it('offers the published fee beside empty days for a catalogue card opened without its dates', () => {
-    expect(termsFields(undefined, bca, TODAY, 'IDR')).toEqual({ statementDay: '', dueDay: '', limit: '', fee: '125000' });
+    expect(termsFields(undefined, bca, TODAY, 'IDR')).toEqual({ statementDay: '', dueDay: '', limit: '', fee: '125000', feeOn: '' });
   });
 
   it('reads saved terms as saved — an empty fee stays empty, a waived fee is not filled back in', () => {
-    expect(termsFields(terms(), bca, TODAY, 'IDR')).toEqual({ statementDay: '25', dueDay: '12', limit: '', fee: '' });
-    expect(termsFields(terms({ annualFeeMinor: 0, creditLimitMinor: 20_000_000 }), bca, TODAY, 'IDR')).toEqual({ statementDay: '25', dueDay: '12', limit: '20000000', fee: '0' });
+    expect(termsFields(terms(), bca, TODAY, 'IDR')).toEqual({ statementDay: '25', dueDay: '12', limit: '', fee: '', feeOn: '' });
+    expect(termsFields(terms({ annualFeeMinor: 0, creditLimitMinor: 20_000_000 }), bca, TODAY, 'IDR')).toEqual({ statementDay: '25', dueDay: '12', limit: '20000000', fee: '0', feeOn: '' });
   });
 
   it('offers nothing for a card with no entry, an entry with no fee, or a card in another currency', () => {

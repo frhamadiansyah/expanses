@@ -14,6 +14,8 @@ import { CardFace } from './CardFace';
 import { bonusStanding, activeDuring } from './catalog-panel';
 import { cycleBack, dueDateAfter, dueIn } from './statement-dates';
 import { limitUsage } from './limit-usage';
+import { FeeAlert } from './FeeAlert';
+import { feeLine } from './fee-line';
 import { pointsSummary } from './points-summary';
 import { useInstallments } from '../loans/queries';
 import { spendingDoor } from '../goals/set-aside-question';
@@ -301,6 +303,30 @@ export function CardHero({
   // Where the summary leads: the card's own pages, and the programme its points go into.
   const params = { cardId: card.id };
   const toSettings = { to: '/cards/$cardId/settings' as const, params };
+  // The annual fee and when it is next charged: one quiet row, in the due-soon warning inside 30 days. A tap asks
+  // whether it was waived.
+  const [askingFee, setAskingFee] = useState(false);
+  const fee = cp.terms ? feeLine(cp.terms.annualFeeMinor, cp.terms.annualFeeOn, cp.terms.annualFeeWaivedYear, currency, today) : null;
+  const feeRow = fee && cp.terms && (
+    <InsetGroup>
+      <InsetRow
+        testId="card-annual-fee"
+        title="Annual fee"
+        subtitle={fee.when ? <span className={cx(fee.soon && 'font-semibold text-[var(--ph-warn)]')}>{fee.when}</span> : undefined}
+        value={fee.amount ?? undefined}
+        valueTone="ink"
+        onClick={cp.terms.annualFeeOn ? () => setAskingFee(true) : undefined}
+        {...(cp.terms.annualFeeOn ? {} : toSettings)}
+      />
+      {askingFee && (
+        <FeeAlert
+          fee={{ cardId: card.id, name: card.name, currency, annualFeeMinor: cp.terms.annualFeeMinor, annualFeeOn: cp.terms.annualFeeOn, annualFeeWaivedYear: cp.terms.annualFeeWaivedYear }}
+          today={today}
+          onClose={() => setAskingFee(false)}
+        />
+      )}
+    </InsetGroup>
+  );
   const toPoints = { to: '/cards/$cardId/points' as const, params };
   const toStatement = { to: '/cards/$cardId/statement' as const, params };
   // A debit card has no statement: its See all is every transaction of the account it spends from.
@@ -486,6 +512,7 @@ export function CardHero({
           </div>
           <div className="-mt-[10px]">
             {setup}
+            {feeRow}
             <div data-testid="tile-points">
               <InsetGroup>
                 {cp.program ? (
@@ -606,6 +633,7 @@ export function CardHero({
     {!slot && (
       <div className="mt-[18px]">
         {setup}
+        {feeRow}
         {instalments}
         {recent}
       </div>
