@@ -3,7 +3,7 @@ import type { Database, Db } from '../database';
 import { householdPurchases } from './household-purchases';
 
 /*
- * A joint account's rows (0095). When the holder makes a shared account joint, the household records into it: the
+ * A joint account's rows (0097). When the holder makes a shared account joint, the household records into it: the
  * account's page, on both phones, lists the rows recorded in the SHARED workspace against it — purchases (the shared
  * book's lineage whose money side is on the item) and transfers (the shared book's redacted transfer rows that name the
  * item on a side) — each with who recorded it. A row recorded in any other workspace is not in the shared book, so it is
@@ -27,7 +27,7 @@ export interface JointRow {
   transactionId: string | null;
 }
 
-/** Whether `db` has the tables of a joint account (0095). */
+/** Whether `db` has the tables of a joint account (0097). */
 async function jointTablesExist(db: Db): Promise<boolean> {
   return (await db.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'nw_joint_accounts'`)).length > 0;
 }

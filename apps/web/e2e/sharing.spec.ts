@@ -698,7 +698,7 @@ test('a transfer in a shared workspace shows on the partner’s list as "Transfe
 });
 
 /*
- * A joint account (0095): Fandri shares his bank account and turns Joint account on. Dewi's Paid with lists it with a
+ * A joint account (0097): Fandri shares his bank account and turns Joint account on. Dewi's Paid with lists it with a
  * Joint tag and she pays from it; both phones list the rows recorded in the shared workspace against it, each saying who
  * recorded it. The row of the other is read only; switched off, the partner is back to the balance and the total.
  */
@@ -731,7 +731,7 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   const joint = page.getByRole('checkbox', { name: 'Joint account' });
   await expect(joint).not.toBeChecked();
   await expect(page.getByTestId('joint-row')).toHaveCount(0);
-  await joint.setChecked(true, { force: true });
+  await joint.click({ force: true });
   await expect(joint).toBeChecked();
   await shot(page, info, 'j2-switch-on');
 
@@ -772,6 +772,7 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   await expect(rowsOn(page).filter({ hasText: 'Fandri water' })).toContainText('by me');
   await shot(page, info, 'j3-holder-rows');
   await eventually(dewi, async () => {
+    await dewi.goto('/net-worth');
     await openDrawers(dewi);
     await dewi.getByRole('link', { name: /^Fandri's Fandri Bank, / }).click();
     await expect(rowsOn(dewi)).toHaveCount(2, { timeout: 2_000 });
@@ -793,9 +794,10 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   // Switched off, the partner is back to the balance and the total: no rows.
   await page.goto('/wallet');
   await walletCard(page, 'Fandri Bank').click();
-  await page.getByRole('checkbox', { name: 'Joint account' }).setChecked(false, { force: true });
+  await page.getByRole('checkbox', { name: 'Joint account' }).click({ force: true });
   await expect(rowsOn(page)).toHaveCount(0);
   await eventually(dewi, async () => {
+    await dewi.goto('/net-worth');
     await openDrawers(dewi);
     await dewi.getByRole('link', { name: /^Fandri's Fandri Bank, / }).click();
     await expect(rowsOn(dewi)).toHaveCount(0, { timeout: 1_000 });

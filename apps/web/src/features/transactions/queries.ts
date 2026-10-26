@@ -105,7 +105,7 @@ export function useChangeable(tx: TransactionView | null): Changeable {
   const badges = useWorkspaceBadges(tx ? [tx.id] : []);
   const readOnly = useOpenBookReadOnly();
   const { database } = useApp();
-  // A row of a joint account that another member recorded is theirs to change, on this phone read only (0095).
+  // A row of a joint account that another member recorded is theirs to change, on this phone read only (0097).
   const lockedByOther = useQuery({ queryKey: ['joint-row-locked', tx?.id ?? null], enabled: tx !== null, queryFn: () => jointRowLocked(database, tx!.id) }).data === true;
   if (!tx) return { changeable: false, elsewhere: null, isTrade: false, holdingId: null };
   if (lockedByOther) return { changeable: false, elsewhere: null, isTrade: false, holdingId: null };

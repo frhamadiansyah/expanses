@@ -46,7 +46,7 @@ async function figureOfTx(tx: Db, transactionId: string): Promise<{ occurredOn: 
 }
 
 /**
- * The item id of an account the holder made joint (0095), or null: a joint account is named on its transfers by the id
+ * The item id of an account the holder made joint (0097), or null: a joint account is named on its transfers by the id
  * its item goes by, so both phones can list the transfer on it. Any other account carries no id.
  */
 async function jointItemTx(tx: Db, accountId: string): Promise<string | null> {

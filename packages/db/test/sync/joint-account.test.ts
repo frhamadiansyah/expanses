@@ -22,7 +22,7 @@ import type { ChangeSet } from '../../src/sync/types';
 import { categoryOf, headOf, Household, skipsOf, type Device } from './household';
 
 /*
- * The Joint account switch (0095). Rina holds a bank account she shares with the household, and turns Joint on. Andi
+ * The Joint account switch (0097). Rina holds a bank account she shares with the household, and turns Joint on. Andi
  * (her partner) then pays from it in the shared workspace, both of them see the rows recorded in the shared workspace
  * against it with who recorded each, and only the person who recorded a row may change it.
  */

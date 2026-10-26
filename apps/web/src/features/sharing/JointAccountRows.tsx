@@ -5,7 +5,7 @@ import { memberName } from '../networth/joint-rows';
 import { useActiveNetWorthGroup, useJointAccount, useOwnJointRows } from './net-worth-queries';
 
 /*
- * A joint account's rows (0095): what the shared workspace recorded against the account, on the holder's page and the
+ * A joint account's rows (0097): what the shared workspace recorded against the account, on the holder's page and the
  * partner's alike, each with who recorded it. Rows recorded in any other workspace are not among them.
  */
 

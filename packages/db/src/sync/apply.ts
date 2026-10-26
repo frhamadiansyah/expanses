@@ -836,7 +836,7 @@ async function inPlaceOnly(tx: Db, winners: Record<string, unknown>): Promise<bo
 export type HeldOps = Map<string, { op: Extract<Op, { op: 'upsert' }>; changeSet: ChangeSet; seq: number; author: string }[]>;
 
 /**
- * A row on a joint account (0095) is changed by the member who recorded it, and nobody else. Judged from the log's own
+ * A row on a joint account (0097) is changed by the member who recorded it, and nobody else. Judged from the log's own
  * facts: the lineage's stored payer and item (or, for a new row, the op's), and the item's `joint` mark in the group log
  * as this phone holds it. A refusal is a recorded skip, like any other op a member may not write.
  */

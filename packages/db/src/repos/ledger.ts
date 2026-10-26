@@ -579,7 +579,7 @@ async function markVoidTx(tx: Db, ws: WorkspaceContext, id: string, keep: VoidKe
   if (!door.eventDerivation) await refuseEventPostingTx(tx, id);
   if (!door.fundSwitch) await guardFundSwitchTx(tx, ws, id, author);
   if (!door.assetSale) await guardAssetSaleTx(tx, ws, id);
-  // A person changing a row of a joint account that another member recorded (0095). Sync's own writes carry an author.
+  // A person changing a row of a joint account that another member recorded (0097). Sync's own writes carry an author.
   if (author === undefined) {
     const why = await jointRowRefusalTx(tx, id);
     if (why) throw new LedgerError('JOINT_ROW', why);
