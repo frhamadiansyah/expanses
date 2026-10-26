@@ -4,7 +4,7 @@ import { expect, type Page } from '@playwright/test';
  * A card on the wallet, by name. The Cards page also lists the points programmes, and a programme's row carries the
  * name of the card earning into it, so a card is looked for on the wallet itself.
  */
-export const walletCard = (page: Page, name: string) => page.getByRole('region', { name: 'Cards' }).getByRole('link', { name });
+export const walletCard = (page: Page, name: string | RegExp) => page.getByRole('region', { name: 'Cards' }).getByRole('link', { name });
 
 /**
  * Open one of the card's own pages from its summary. The four tabs it had are pages now: the statement (the round
