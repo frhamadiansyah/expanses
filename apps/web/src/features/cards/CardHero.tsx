@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight, Banknote, Gift, ReceiptText } from 'lucide-react';
 import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
+import { Sheet } from '../../app/Sheet';
 import { keptForSpending } from '../../lib/account-types';
 import { moneyHolders, useCategoryColours, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
@@ -141,8 +142,8 @@ function LatestTransactions({
   );
 }
 
-/** Pays the card in full or in part from a bank account: one transfer, the same as recording it by hand. */
-function PayForm({ card, accounts, amountMinor, today, onDone }: { card: AccountRow; accounts: readonly AccountRow[]; amountMinor: number; today: string; onDone: () => void }) {
+/** Pays the card in full or in part from a bank account, in a sheet: one transfer, the same as recording it by hand. */
+function PaySheet({ card, accounts, amountMinor, today, onDone }: { card: AccountRow; accounts: readonly AccountRow[]; amountMinor: number; today: string; onDone: () => void }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const currency = card.currency ?? ws.baseCurrency;
@@ -183,35 +184,33 @@ function PayForm({ card, accounts, amountMinor, today, onDone }: { card: Account
   }
 
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        void pay();
-      }}
-    >
-      <InsetGroup header="Pay this bill" wide>
-        <SelectRow label="Paid from" value={fromId} onChange={(event) => setFromId(event.target.value)}>
-          {payers.map((account) => (
-            <option key={account.id} value={account.id}>
-              {account.name}
-            </option>
-          ))}
-        </SelectRow>
-        <TextRow label={`Amount (${currency})`} value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" />
-        <TextRow label="Paid on" type="date" value={paidOn} onChange={(event) => setPaidOn(event.target.value)} />
-        <InsetRow
-          title="Record payment"
-          onClick={() => void pay()}
-          disabled={busy || !setAside.ready}
-          action
-        />
-        <InsetRow title="Cancel" onClick={onDone} action />
-      </InsetGroup>
-      {/* Hidden, so Enter in any field still records the payment; a visible second button would be a second target. */}
-      <input type="submit" hidden />
-      {setAside.node}
-      <ErrorBox error={error} />
-    </form>
+    <Sheet grouped title={`Pay ${card.name}`} onClose={onDone}>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void pay();
+        }}
+      >
+        <InsetGroup>
+          <TextRow label={`Amount (${currency})`} value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" />
+          <SelectRow label="Paid with" value={fromId} onChange={(event) => setFromId(event.target.value)}>
+            {payers.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </SelectRow>
+          <TextRow label="Paid on" type="date" value={paidOn} onChange={(event) => setPaidOn(event.target.value)} />
+        </InsetGroup>
+        {setAside.node}
+        <ErrorBox error={error} />
+        {/* Hidden, so Enter in any field still records the payment; the Record row is the one the reader sees and taps. */}
+        <input type="submit" hidden disabled={busy || !setAside.ready} />
+        <InsetGroup>
+          <InsetRow title="Record payment" onClick={() => void pay()} disabled={busy || !setAside.ready} action />
+        </InsetGroup>
+      </form>
+    </Sheet>
   );
 }
 
@@ -493,7 +492,6 @@ export function CardHero({
               note={creditMinor > 0 ? <span data-testid="tile-credit" title="Paid past what was owed: the bank holds this as credit">{creditLine(creditMinor, currency)}</span> : undefined}
             >
               {limitBlock(true)}
-              {paying && <PayForm card={card} accounts={accounts} amountMinor={leftToPayMinor || owedMinor} today={today} onDone={() => setPaying(false)} />}
             </WalletTile>
           )}
           <div className="mt-[6px]">
@@ -566,14 +564,12 @@ export function CardHero({
               {creditMinor > 0 && (
                 <InsetRow testId="tile-credit" title={<span className="text-[var(--ph-up)]">{creditLine(creditMinor, currency)}</span>} subtitle="Paid past what was owed: the bank holds this as credit" />
               )}
-              {!paying &&
-                (cp.terms && lastCycle ? (
-                  <InsetRow action title="Pay this bill" onClick={() => setPaying(true)} />
-                ) : (
-                  <InsetRow title={<span className="text-[var(--ph-tint)]">Enter billing date</span>} {...toSettings} />
-                ))}
+              {cp.terms && lastCycle ? (
+                <InsetRow action title="Pay this bill" onClick={() => setPaying(true)} />
+              ) : (
+                <InsetRow title={<span className="text-[var(--ph-tint)]">Enter billing date</span>} {...toSettings} />
+              )}
             </InsetGroup>
-            {paying && <PayForm card={card} accounts={accounts} amountMinor={leftToPayMinor || owedMinor} today={today} onDone={() => setPaying(false)} />}
           </div>
         )}
 
@@ -637,6 +633,7 @@ export function CardHero({
         {recent}
       </div>
     )}
+    {paying && <PaySheet card={card} accounts={accounts} amountMinor={leftToPayMinor || owedMinor} today={today} onDone={() => setPaying(false)} />}
     </>
   );
 }

@@ -13,13 +13,6 @@ import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 
 /**
- * What it came to, written big and bare in the middle of the sheet. No box around it: it is the one thing the sheet is
- * asking for, and a border would only make it look like the three quiet rows below.
- */
-const HERO =
-  'w-full rounded-lg bg-transparent py-1 text-center text-3xl font-semibold tabular text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ph-ink)]';
-
-/**
  * Paying one bill: what it came to, which month's bill it settles, what paid it and when. A fixed bill comes filled in,
  * so it is one press; one that varies starts empty, because a remembered figure would only be a guess.
  */
@@ -137,34 +130,27 @@ export function PaySheet({
   return (
     <Sheet grouped title={`Pay ${bill.name}`} onClose={onClose}>
       <form ref={form} onSubmit={record}>
-        <div className="space-y-1 pb-4 pt-1">
-          <input
+        <InsetGroup>
+          <TextRow
+            label={`Amount (${currency})`}
+            id="pay-amount"
             aria-label="What it came to"
             inputMode="decimal"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className={HERO}
-            placeholder={bill.amountMinor === null ? 'What it came to' : undefined}
+            placeholder={bill.amountMinor === null ? 'Amount' : undefined}
+            info={
+              bill.amountMinor === null ? (
+                bill.estimateMinor === null ? (
+                  'Amount varies'
+                ) : (
+                  <>
+                    Amount varies, last month <Money minor={bill.estimateMinor} currency={currency} tone="none" />
+                  </>
+                )
+              ) : undefined
+            }
           />
-          {foreign && (
-            <p className="text-center text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="pay-bill-currency">
-              Amount in {currency}
-            </p>
-          )}
-          {bill.amountMinor === null && (
-            <p className="text-center text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-              {bill.estimateMinor === null ? (
-                'Amount varies'
-              ) : (
-                <>
-                  Amount varies, last month <Money minor={bill.estimateMinor} currency={currency} tone="none" />
-                </>
-              )}
-            </p>
-          )}
-        </div>
-
-        <InsetGroup>
           <SelectRow label="For" id="pay-for" value={month} onChange={(e) => setMonth(e.target.value)}>
             {months.map((m) => (
               <option key={m} value={m}>

@@ -205,10 +205,12 @@ test('a card purchase turned into instalments splits into billed and unbilled', 
   await page.goto('/wallet');
   await page.getByRole('link', { name: 'BCA KrisFlyer' }).click();
   await page.getByRole('button', { name: 'Add a plan' }).click();
-  await page.getByLabel('What it was').fill('iBox Grand Indonesia');
-  await page.getByLabel(/^Total/).fill('12000000');
-  await page.getByLabel('Over how many months').fill('12');
-  await page.getByRole('button', { name: 'Save plan' }).click();
+  const sheet = page.getByRole('dialog', { name: 'New instalment plan' });
+  await sheet.getByLabel('What it was').fill('iBox Grand Indonesia');
+  await sheet.getByLabel(/^Total/).fill('12000000');
+  await sheet.getByLabel('Months').fill('12');
+  await sheet.getByRole('button', { name: 'Save plan' }).click();
+  await expect(sheet).toHaveCount(0);
 
   // The plan is managed where it is read: on the card's summary, a row per plan with its months and what it holds.
   const held = page.getByTestId('card-instalments');

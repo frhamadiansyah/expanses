@@ -77,13 +77,15 @@ test('paying the card bill from Jenius asks, and the Emergency fund lends the 1.
   await openCardPage(page);
 
   const tile = page.getByTestId('tile-left-to-pay');
-  // Opened from the Wallet stack, the round Pay opens the payment form inside the Owed now tile.
+  // The round Pay opens the payment sheet.
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();
-  await expect(tile.getByLabel('Amount (IDR)')).toHaveValue('6800000');
-  await expect(tile.getByText(/1\.800\.000 more than is free/)).toBeVisible();
-  await expect(tile.getByRole('button', { name: 'Record payment' })).toBeDisabled();
-  await borrowFromEmergencyFund(tile);
-  await tile.getByRole('button', { name: 'Record payment' }).click();
+  const sheet = page.getByRole('dialog', { name: /^Pay / });
+  await expect(sheet.getByLabel('Amount (IDR)')).toHaveValue('6800000');
+  await expect(sheet.getByText(/1\.800\.000 more than is free/)).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Record payment' })).toBeDisabled();
+  await borrowFromEmergencyFund(sheet);
+  await sheet.getByRole('button', { name: 'Record payment' }).click();
+  await expect(sheet).toHaveCount(0);
   await expect(tile).toContainText('Paid in full');
 
   await expectShort(page, 'Emergency fund', /short by Rp.1\.800\.000/i);
