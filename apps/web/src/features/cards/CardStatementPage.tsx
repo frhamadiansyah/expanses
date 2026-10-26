@@ -34,7 +34,7 @@ export function CardStatementPage() {
   const fallback = `/cards/${cardId}` as const;
   if (!page) {
     return (
-      <CardScreen title="Statement" back="Card" fallback={fallback}>
+      <CardScreen title="Statement" back="Card" fallback={fallback} backTo={{ to: '/cards/$cardId', cardId }}>
         {gate}
       </CardScreen>
     );
@@ -69,6 +69,7 @@ export function CardStatementPage() {
       title="Statement"
       back={card.name}
       fallback={fallback}
+      backTo={{ to: '/cards/$cardId', cardId }}
       actions={actions}
       field={
         searching ? (

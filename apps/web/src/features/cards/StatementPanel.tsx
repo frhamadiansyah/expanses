@@ -312,7 +312,6 @@ export function StatementPanel({
    * drawn from the kit's parts rather than as an `InsetRow`, which holds one target and nothing inside it.
    */
   const statementRow = (line: StatementLine) => {
-    const late = lateOf(line);
     const extra = notes(line);
     const earned = points ? pointsOf(line) : '';
     return (
@@ -359,7 +358,6 @@ export function StatementPanel({
           </span>
         </span>
         <span className="shrink-0 text-right text-[15px] leading-[20px] text-[var(--ph-ink)]">{amount(line)}</span>
-        {fixes(line, late)}
         {/* The row's actions, found without a swipe: the ⋯ at its end lists what the swipe and the ✓ offer, and the receipt. */}
         <GlyphButton label={`Actions for ${line.description}`} glyph={<Ellipsis size={17} aria-hidden />} disabled={busy} onClick={() => setActing(line)} />
       </Line>
@@ -566,13 +564,25 @@ export function StatementPanel({
             )}
             {billableNext(acting) && (
               <ActionRow
-                label="Bill on next statement"
+                label="Billed next statement"
                 icon={<CalendarArrowUp size={16} aria-hidden />}
                 disabled={busy}
                 onClick={() => {
                   const line = acting;
                   setActing(null);
                   void run(() => billOnNextStatement(database, ws, card.id, line.transactionId));
+                }}
+              />
+            )}
+            {acting.postedOn && (
+              <ActionRow
+                label="Use purchase date"
+                icon={<Undo2 size={16} aria-hidden />}
+                disabled={busy}
+                onClick={() => {
+                  const line = acting;
+                  setActing(null);
+                  void run(() => setPostedOn(database, ws, line.transactionId, null));
                 }}
               />
             )}
