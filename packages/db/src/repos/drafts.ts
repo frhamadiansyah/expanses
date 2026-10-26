@@ -393,6 +393,7 @@ export async function confirmDraftTx(
   const keptImage = opts.keepPhoto === true ? draft.imageFile : null;
   const now = new Date().toISOString();
   const transactionId = await postTransactionTx(tx, ws, {
+    fileTransfer: draft.kind === 'transfer',
     occurredOn: draft.occurredOn,
     description: draft.description,
     source: ledgerSourceOf(draft.source),

@@ -44,7 +44,9 @@ export function draftIn(
     return there ?? '';
   };
   return {
-    draft: { ...draft, categoryId: swap(draft.categoryId), splits: draft.splits.map((split) => ({ ...split, categoryId: swap(split.categoryId) })) },
+    // A transfer's fee category is spending too, and a card top-up's Top-ups: each is swapped for its copy there (a Top-ups with none there is not missing: the save makes it). A transfer
+    // with no fee has neither, and the fee's copy being missing is said, not left to file the fee in the old workspace.
+    draft: { ...draft, categoryId: swap(draft.categoryId), ...(draft.mode === 'transfer' && draft.feeCategoryId ? { feeCategoryId: swap(draft.feeCategoryId) } : {}), ...(draft.topUpCategoryId ? { topUpCategoryId: categoryIn(draft.topUpCategoryId, toBook, accounts, books) ?? '' } : {}), splits: draft.splits.map((split) => ({ ...split, categoryId: swap(split.categoryId) })) },
     missing,
   };
 }

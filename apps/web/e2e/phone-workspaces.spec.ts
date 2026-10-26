@@ -82,11 +82,11 @@ async function addAccount(page: Page, name: string, type: string, balance: strin
 }
 
 /**
- * Moving your own money between your own accounts is not spending, so it is filed in no workspace — and a row
- * filed nowhere has to be visible from everywhere, or the account it moved money out of stops adding up from
- * inside a workspace. It counts in nobody's figure, which is why the chart reads the same on both sides.
+ * Moving your own money between your own accounts is not spending, so it counts in nobody's figure — but it is
+ * filed in the workspace it was recorded in and listed there only, like any other transaction. The account it moved
+ * money out of is the owner's, so its own history still holds it whichever workspace is open.
  */
-test('a transfer is filed in no workspace, so every workspace shows it and none counts it', async ({ page }) => {
+test('a transfer is filed in the workspace it was recorded in, listed there only, and counted in none', async ({ page }) => {
   await page.goto('/wallet');
   await addAccount(page, 'BCA Tahapan', 'bank', '20000000');
   await addAccount(page, 'Jenius', 'savings', '0');
@@ -121,8 +121,8 @@ test('a transfer is filed in no workspace, so every workspace shows it and none 
   await expect(page.getByTestId('filters-menu').getByTestId('workspace-row')).toContainText('Business');
   await page.keyboard.press('Escape');
 
-  // Business: the same transfer, still there, and still counted in nothing.
-  await expect(page.getByText('Top up').first()).toBeVisible();
+  // Business: not its transfer, so not on its list, and nothing counted either way.
+  await expect(page.getByText('Top up')).toHaveCount(0);
   await expect(page.getByTestId('spending-report')).toContainText('Nothing recorded for');
 });
 

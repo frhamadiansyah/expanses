@@ -15,6 +15,7 @@ import { debitTotal, exactExists, exactFitsPosting, exactForLinesTx, isExactFigu
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, type BookKind, hasBooks } from './books';
 import { bookSplitsExist, excludedSplitBooksTx, splitBooksOfTx, splitHasPartIn, splitPartsOfMany, writeSplitBooksTx } from './book-splits';
+import { categoryInBookTx, fileTransferTx, moneyInPartnerTx } from './move-group';
 import { followDepositEventTx, reopenDepositEventTx } from './deposit-event-log';
 import { markForeignDirtyTx } from './fx-pending';
 import { eventOnlyExists, eventPostingOfTx, notEventOnly } from './event-only';
@@ -66,6 +67,7 @@ export type LedgerErrorCode =
   | 'INVALID_ORIGINAL'
   | 'INVALID_MCC'
   | 'TWO_BOOKS'
+  | 'NO_CATEGORY_THERE'
   | 'OTHER_BOOK'
   | 'SPLIT_SHARED'
   | 'SPLIT_MOVE'
@@ -128,6 +130,20 @@ export interface PostTransactionInput {
    * category from another workspace is refused, since an ordinary edit stays where it was filed. Never read by a post.
    */
   moveToBook?: boolean;
+  /**
+   * On `replaceTransaction`, with `moveToBook`: the workspace it moves to. A transfer has no category to say it, so this
+   * files the replacement there (a bare transfer then shows in that workspace only; left unfiled when the workspace is
+   * shared), and a withdrawal's or top-up's other half — its transfer, or its fee — moves with it in the same database
+   * transaction, wherever each half was filed. Moving a group that is already split reunites it.
+   */
+  toBookId?: string;
+  /**
+   * A transfer between the owner's own accounts that is recorded in the open workspace: it is filed there, so it shows in
+   * that workspace's lists and in no other's. Ignored when the posting has a category (that files it), when the open
+   * workspace is shared with a household, and on `replaceTransaction` (an edit keeps how the original was filed: one from
+   * before transfers were filed stays in every workspace until it is moved).
+   */
+  fileTransfer?: boolean;
   /**
    * Its category lines may come from several workspaces: one purchase split across workspaces (0084), each workspace
    * counting its own part. Without it, categories from two workspaces are refused (TWO_BOOKS), which is what a form
@@ -424,6 +440,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, given: Pos
     })),
   );
   if (bookId) await tx.insert(bookTransactions).values({ transactionId: id, workspaceId: ws.workspaceId, bookId });
+  else if (bookIds.length === 0 && input.fileTransfer && ws.bookId && (await hasBooks(tx)) && !input.replacesTransactionId) await fileTransferTx(tx, ws, id, ws.bookId);
   else if (bookIds.length > 1) await writeSplitBooksTx(tx, ws.workspaceId, id, bookIds, excludedBooks);
   // A payment against a bill says which month's bill it settles, which is not always the month it was paid in.
   if (input.templateId && (await billTablesExist(tx))) {
@@ -675,6 +692,49 @@ export function replaceTransaction(
 }
 
 /**
+ * One member of a group moved to a workspace: a spending row re-filed under the copies of its categories there, a bare
+ * transfer filed there. Already there is left alone. A category with no copy in the workspace refuses the whole move.
+ */
+async function moveMemberTx(tx: Tx, ws: WorkspaceContext, id: string, toBookId: string): Promise<void> {
+  const [row] = await tx.select({ occurredOn: transactions.occurredOn, description: transactions.description }).from(transactions).where(and(eq(transactions.id, id), eq(transactions.workspaceId, ws.workspaceId)));
+  if (!row) return;
+  const lines = await tx
+    .select({ accountId: entries.accountId, amountMinor: entries.amountMinor, currency: entries.currency, memo: entries.memo, spendCategoryId: entries.spendCategoryId, fxRateToBase: entries.fxRateToBase, kind: accounts.kind })
+    .from(entries)
+    .innerJoin(accounts, eq(accounts.id, entries.accountId))
+    .where(eq(entries.transactionId, id));
+  if (!lines.some((line) => line.kind === 'expense' || line.kind === 'income')) {
+    await fileTransferTx(tx, ws, id, toBookId);
+    return;
+  }
+  let changed = false;
+  const swap = async (categoryId: string): Promise<string> => {
+    const there = await categoryInBookTx(tx, ws, categoryId, toBookId);
+    if (!there) throw new LedgerError('NO_CATEGORY_THERE', 'That workspace has no matching category for the fee, so the transfer and its fee cannot move together.');
+    if (there !== categoryId) changed = true;
+    return there;
+  };
+  const moved: PostingLine[] = [];
+  for (const line of lines) {
+    moved.push({
+      accountId: line.kind === 'expense' || line.kind === 'income' ? await swap(line.accountId) : line.accountId,
+      amountMinor: line.amountMinor,
+      currency: line.currency,
+      memo: line.memo,
+      ...(line.spendCategoryId ? { spendCategoryId: await swap(line.spendCategoryId) } : {}),
+    });
+  }
+  if (!changed && (await filedBooksTx(tx, ws, id)).includes(toBookId)) return;
+  await replaceTransactionTx(tx, ws, id, {
+    occurredOn: row.occurredOn,
+    description: row.description,
+    lines: moved,
+    ratesToBase: Object.fromEntries(lines.map((line) => [line.currency, line.fxRateToBase])),
+    moveToBook: true,
+  });
+}
+
+/**
  * `replaceTransaction` inside a transaction already running (check #13: apply corrects a purchase inside its own db
  * transaction, and the mutex is not reentrant). The replacement always gets a fresh id: `input.id` is dropped.
  */
@@ -683,7 +743,8 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
    * An edit never posts a second settlement: the one a purchase paid off before the app has follows it below. Asked
    * outright (`settledBeforeApp` true or false), the edit adds the settlement or takes it away; left out, it follows.
    */
-  const { id: _ignored, settledBeforeApp: settle, moveToBook, acrossBooks, ...input } = withId;
+  const { id: _ignored, settledBeforeApp: settle, moveToBook, toBookId, fileTransfer: _file, acrossBooks, ...input } = withId;
+  void _file;
   void _ignored;
   // Before anything is read or written: a derived transaction is the event's to change (C1). `markVoidTx` says it again.
   if (!door.eventDerivation) await refuseEventPostingTx(tx, id);
@@ -713,8 +774,10 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   // A purchase split across workspaces stays one unless the edit says otherwise, and stays filed where it was so long as
   // a part is still there: splitting a purchase, or taking a split back to one of its workspaces, is an ordinary edit.
   let splitAcross = acrossBooks;
+  let filedBefore: string[] = [];
   if (await hasBooks(tx)) {
     const filed = await filedBooksTx(tx, ws, id);
+    filedBefore = filed;
     splitAcross = acrossBooks ?? filed.length > 1;
     if (filed.length > 0) {
       const lineIds = [...new Set(input.lines.map((line) => line.accountId))];
@@ -763,6 +826,10 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   const nextMove = taggedGoal ? await taggedMoveOfTx(tx, ws, input.occurredOn, input.lines) : null;
   const wasMove = nextMove ? await taggedMoveOfTx(tx, ws, input.occurredOn, oldLines) : null;
   const keepTagged = !!nextMove && !!wasMove && nextMove.fromAccountId === wasMove.fromAccountId && nextMove.toAccountId === wasMove.toAccountId;
+  // A withdrawal's or top-up's other half, found before the original is voided; it moves with this one (`toBookId`).
+  const partner = toBookId && moveToBook ? await moneyInPartnerTx(tx, ws, id) : null;
+  const hadCategory = (await tx.values(sql`
+    SELECT 1 FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = ${id} AND a.kind IN ('income', 'expense') LIMIT 1`)).length > 0;
   // An edit voids without reopening a deposit event: the replacement carries on what the original was.
   await markVoidTx(tx, ws, id, { answer: keepAnswer, tagged: keepTagged }, input.syncAuthor, door);
   // The same spend answered afresh (from another account) stays on the stage it paid: never the next one.
@@ -796,6 +863,19 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
     ...(input.exactHundredths === undefined ? { exactHundredths: await carriedExactTx(tx, typed?.[0] ?? null, oldLines, input.lines) } : {}),
     setAside,
   });
+  /*
+   * A transfer has no category to file it by. Moved, it is filed in the chosen workspace (and so leaves the others'
+   * lists); edited without a move, one that was filed stays filed. Its partner, a fee or a transfer, follows the move.
+   */
+  if (await hasBooks(tx)) {
+    const [hasRow] = await tx.values(sql`SELECT 1 FROM book_transactions WHERE transaction_id = ${replacement} LIMIT 1`);
+    const [hasSplit] = (await bookSplitsExist(tx)) ? await tx.values(sql`SELECT 1 FROM book_transaction_splits WHERE transaction_id = ${replacement} LIMIT 1`) : [];
+    if (!hasRow && !hasSplit) {
+      if (moveToBook && toBookId) await fileTransferTx(tx, ws, replacement, toBookId);
+      else if (!hadCategory && filedBefore.length === 1) await tx.insert(bookTransactions).values({ transactionId: replacement, workspaceId: ws.workspaceId, bookId: filedBefore[0]! });
+    }
+    if (partner && toBookId) await moveMemberTx(tx, ws, partner, toBookId);
+  }
   if (keepAnswer) await carryAnswerTx(tx, ws, id, replacement, input.occurredOn, oldLines, input.lines, input.setAside ?? null);
   if (keepTagged) await carryTaggedTx(tx, ws, id, replacement, original!.goalId!, wasMove!, nextMove!);
   else if (nextMove) await parkForGoalTx(tx, ws, replacement, original!.goalId!, nextMove);

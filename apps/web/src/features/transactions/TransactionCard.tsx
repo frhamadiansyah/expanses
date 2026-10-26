@@ -23,6 +23,7 @@ import {
   saveMerchantMcc,
   splitBill,
   cardTopsUpWallet,
+  inBook,
   TOP_UP_KEY,
   topUpsCategory,
   type TransactionView,
@@ -468,9 +469,11 @@ function CardBody({
   // Until both are read, an edit does not know which way it saves: From, To and Save wait (review round 1).
   const transferUnknown = !!initial && (!savedTransferQuery.isFetched || netWorthGroup.isPending);
   const accountsLocked = !!savedTransfer || transferUnknown;
-  // An expense or income, saved, can move to another workspace from its Workspace row; a transfer belongs to none, and
-  // a purchase split across workspaces keeps its parts where they are (its Split changes a part's category instead).
-  const canMove = !!initial && !finish && !accountsLocked && (draft.mode === 'expense' || draft.mode === 'income') && allBooks.length > 1 && !initial.splitBooks;
+  // An expense, income or transfer, saved, can move to another workspace from its Workspace row. A transfer is filed in
+  // the workspace it is moved to, its fee and a withdrawal's or top-up's other half going with it; a purchase split
+  // across workspaces keeps its parts where they are (its Split changes a part's category instead). A transfer to a
+  // goal or between partners keeps its own screen (`accountsLocked`, the goal's own door).
+  const canMove = !!initial && !finish && !accountsLocked && (draft.mode === 'expense' || draft.mode === 'income' || (draft.mode === 'transfer' && !draft.goalId)) && allBooks.length > 1 && !initial.splitBooks;
 
   /*
    * The workspace row and the open workspace are the same fact, so the row follows the app rather than keeping a
@@ -547,7 +550,8 @@ function CardBody({
       const from = accounts.find((account) => account.id === categorised.moneyId);
       const to = accounts.find((account) => account.id === categorised.toId);
       const topsUp = categorised.mode === 'transfer' && !!from && !!to && cardTopsUpWallet(from, to);
-      const filed = withTopUps(categorised, topsUp ? bookTopUps || (await topUpsCategory(database, ws)) : '');
+      // Moving a top-up to another workspace names that workspace's Top-ups, never the open one's.
+      const filed = withTopUps(categorised, topsUp ? (moveTo ? await topUpsCategory(database, inBook(ws, moveTo)) : bookTopUps || (await topUpsCategory(database, ws))) : '');
       const post = formToPost(filed, accounts);
       let posted: string | null = null;
       if (post.kind === 'trade') {
@@ -576,7 +580,7 @@ function CardBody({
             ...post.input,
             ratesToBase,
             setAside: setAside.choice,
-            ...(moveTo ? { moveToBook: true } : {}),
+            ...(moveTo ? { moveToBook: true, toBookId: moveTo } : {}),
             ...(offersAlreadyPaid && savedSettled.isSuccess ? { settledBeforeApp: paidOff } : {}),
           });
           /*
@@ -1028,7 +1032,7 @@ function CardBody({
               it would be offering something the save cannot honour.
             */}
             {/* A draft belongs to the workspace it was captured in: switching here would leave it behind. */}
-            {draft.mode !== 'transfer' && !finish && (
+            {(draft.mode !== 'transfer' || canMove) && !finish && (
               <FormRow
                 lead="value"
                 icon={
@@ -1559,7 +1563,8 @@ function CardBody({
           onPick={(bookId) => {
             const { draft: next } = draftIn(latest.current, bookId, accounts, categoryBooks);
             setDraft(next);
-            setMoveTo(bookId === ws.bookId ? null : bookId);
+            // A transfer is filed nowhere until moved, so choosing the open workspace files it here and gathers its fee.
+            setMoveTo(bookId === ws.bookId && draft.mode !== 'transfer' ? null : bookId);
           }}
           onClose={() => setSheet(null)}
         />

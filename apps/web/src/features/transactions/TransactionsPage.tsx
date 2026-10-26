@@ -1,10 +1,12 @@
 import { categoryPath, formatMinor, isoDate, monthOf, outflowFrom, parseLooseAmount, parseLooseDate, parsePeriod, periodLabel } from '@expanses/core';
 import {
+  cardTopsUpWallet,
   confirmDraft,
   createDraft,
   dismissDraft,
   editDraft,
   guessCategoryFromHistory,
+  inBook as workspaceInBook,
   listTransactionsIn,
   moveIntoSharedEvent,
   moveTransactionInDay,
@@ -16,6 +18,7 @@ import {
   setTransactionsCard,
   sharedEventOf,
   tagTransactions,
+  topUpsCategory,
   type TransactionView,
   uncategorisedTransactionIds,
 } from '@expanses/db';
@@ -527,8 +530,9 @@ export function TransactionsPage() {
       }
       try {
         const draft = formFromTransaction(tx, accounts, ws.bookId ?? '');
-        if (draft.mode !== 'expense' && draft.mode !== 'income') {
-          kept.push({ id: tx.id, why: `${what} is a transfer, which every workspace shows` });
+        // A transfer is filed in the workspace it moves to, with its fee and a withdrawal's or top-up's other half.
+        if (draft.mode !== 'expense' && draft.mode !== 'income' && draft.mode !== 'transfer') {
+          kept.push({ id: tx.id, why: `${what} moves from its own screen` });
           continue;
         }
         const { draft: next, missing } = draftIn(draft, toBook, accounts, categoryBooks);
@@ -536,7 +540,11 @@ export function TransactionsPage() {
           kept.push({ id: tx.id, why: `${where} has no ${missing[0]} for ${what}` });
           continue;
         }
-        const post = formToPost(next, accounts);
+        // A card top-up names its Top-ups category: the destination's, made there on first need.
+        const from = accounts.find((account) => account.id === next.moneyId);
+        const to = accounts.find((account) => account.id === next.toId);
+        const topsUp = next.mode === 'transfer' && !!from && !!to && cardTopsUpWallet(from, to);
+        const post = formToPost(topsUp ? { ...next, topUpCategoryId: await topUpsCategory(database, workspaceInBook(ws, toBook)) } : next, accounts);
         if (post.kind !== 'post') {
           kept.push({ id: tx.id, why: `${what} moves from its own screen` });
           continue;
@@ -545,7 +553,7 @@ export function TransactionsPage() {
           database, ws, draft: next, post, accounts, rateDate: tx.occurredOn > isoDate() ? isoDate() : tx.occurredOn, needsRate: null, resolveRates,
           onMissing: () => undefined, where: 'Edit',
         });
-        await replaceTransaction(database, ws, tx.id, { ...post.input, ratesToBase, moveToBook: true });
+        await replaceTransaction(database, ws, tx.id, { ...post.input, ratesToBase, moveToBook: true, toBookId: toBook });
       } catch (e) {
         kept.push({ id: tx.id, why: `${what}: ${e instanceof Error ? e.message : String(e)}` });
       }
