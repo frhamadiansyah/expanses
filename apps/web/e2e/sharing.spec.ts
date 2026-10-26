@@ -702,7 +702,7 @@ test('a transfer in a shared workspace shows on the partner’s list as "Transfe
  * Joint tag and she pays from it; both phones list the rows recorded in the shared workspace against it, each saying who
  * recorded it. The row of the other is read only; switched off, the partner is back to the balance and the total.
  */
-test('a joint account: the partner pays from it, both list the same rows with who recorded each, the other’s row is read only, off reverts', async ({ page, browser }, info) => {
+test('a joint account: the partner pays from it, both list the same rows with who recorded each, either can change or delete and restore any row, off reverts', async ({ page, browser }, info) => {
   test.setTimeout(900_000);
   page.on('dialog', (dialog) => void dialog.accept());
   const dewi = await secondDevice(browser, info);
@@ -782,14 +782,69 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   await expect(dewi.locator('main')).toContainText('9.770.000');
   await shot(dewi, info, 'j3-partner-rows');
 
-  // The other's row is read only on both phones; one's own is not.
+  // Equal rights: either person can change the other's row, on both phones.
   await openReceipt(page, phoneProject(info), 'Dewi groceries');
-  await expect(page.getByRole('button', { name: 'Edit this transaction' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Delete this transaction' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Edit this transaction' })).toBeVisible();
+  await expect(page.getByTestId('joint-note')).toContainText('by Dewi');
   await openReceipt(dewi, phoneProject(info), 'Fandri water');
-  await expect(dewi.getByRole('button', { name: 'Edit this transaction' })).toHaveCount(0);
-  await openReceipt(dewi, phoneProject(info), 'Dewi groceries');
   await expect(dewi.getByRole('button', { name: 'Edit this transaction' })).toBeVisible();
+
+  // Fandri deletes Dewi's row: it stays on both lists as deleted, with who deleted it, and either can restore it.
+  await openReceipt(page, phoneProject(info), 'Dewi groceries');
+  await page.getByRole('button', { name: 'Delete this transaction' }).click();
+  await page.getByRole('button', { name: 'Click again to delete' }).click();
+  await expect(page).toHaveURL(/\/transactions$/);
+  await page.goto('/wallet');
+  await walletCard(page, 'Fandri Bank').click();
+  await expect(page.getByTestId('joint-row-deleted')).toContainText('deleted by me');
+  await eventually(dewi, async () => {
+    await dewi.goto('/net-worth');
+    await openDrawers(dewi);
+    await dewi.getByRole('link', { name: /^Fandri's Fandri Bank, / }).click();
+    await expect(dewi.getByTestId('joint-row-deleted')).toContainText('deleted by Fandri', { timeout: 1_000 });
+  });
+  await dewi.getByTestId('joint-row-restore').click();
+  await expect(dewi.getByTestId('joint-row-deleted')).toHaveCount(0);
+  await expect(rowsOn(dewi)).toHaveCount(2);
+  await eventually(page, async () => {
+    await page.goto('/wallet');
+    await walletCard(page, 'Fandri Bank').click();
+    await expect(page.getByTestId('joint-row-deleted')).toHaveCount(0, { timeout: 1_000 });
+    await expect(rowsOn(page)).toHaveCount(2, { timeout: 1_000 });
+  });
+  await shot(page, info, 'j4-restored');
+
+  // Dewi withdraws 300.000 from the joint account to a cash account of hers that is not shared: it lands once on
+  // Fandri's balance, is listed on both pages, and Fandri's phone never names her account.
+  await openAccount(dewi, { subtype: 'cash', name: 'Dewi Cash', balance: '100000' });
+  await dewi.goto('/transactions');
+  await dewi.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const withdrawal = addForm(dewi);
+  await withdrawal.getByRole('radio', { name: 'Transfer', exact: true }).click();
+  await withdrawal.getByRole('button', { name: 'To' }).click();
+  await dewi.getByRole('dialog', { name: 'To', exact: true }).getByRole('button', { name: 'Dewi Cash' }).first().click();
+  await openAmount(withdrawal);
+  await fillAmount(dewi, withdrawal, '300000');
+  await withdrawal.getByRole('button', { name: /^From/ }).click();
+  const fromSheet = dewi.getByRole('dialog', { name: 'From', exact: true });
+  await fromSheet.getByRole('region', { name: /^Fandri’s, shared with/ }).getByRole('button', { name: /^Fandri Bank, Fandri’s, shared/ }).click();
+  await withdrawal.getByLabel('Note').fill('Cash withdrawal');
+  await saveButton(withdrawal).click();
+  await expect(withdrawal).toHaveCount(0);
+  await accountReads(page, 'Fandri Bank', '9.470.000');
+  await eventually(page, async () => {
+    await page.goto('/wallet');
+    await walletCard(page, 'Fandri Bank').click();
+    await expect(rowsOn(page).filter({ hasText: 'Cash withdrawal' })).toHaveCount(1, { timeout: 1_000 });
+  });
+  await expect(rowsOn(page).filter({ hasText: 'Cash withdrawal' })).toContainText('by Dewi');
+  await expect(rowsOn(page).filter({ hasText: 'Cash withdrawal' })).not.toContainText('Dewi Cash');
+  await eventually(dewi, async () => {
+    await dewi.goto('/net-worth');
+    await openDrawers(dewi);
+    await dewi.getByRole('link', { name: /^Fandri's Fandri Bank, / }).click();
+    await expect(rowsOn(dewi).filter({ hasText: 'Cash withdrawal' })).toHaveCount(1, { timeout: 1_000 });
+  });
 
   // Switched off, the partner is back to the balance and the total: no rows.
   await page.goto('/wallet');
@@ -802,5 +857,5 @@ test('a joint account: the partner pays from it, both list the same rows with wh
     await dewi.getByRole('link', { name: /^Fandri's Fandri Bank, / }).click();
     await expect(rowsOn(dewi)).toHaveCount(0, { timeout: 1_000 });
   });
-  await expect(dewi.locator('main')).toContainText('9.770.000');
+  await expect(dewi.locator('main')).toContainText('9.470.000');
 });

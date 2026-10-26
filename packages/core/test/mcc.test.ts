@@ -134,3 +134,10 @@ describe('searchMccs', () => {
     expect(searchMccs('5', 3)).toHaveLength(3);
   });
 });
+
+describe('codes added after the source table', () => {
+  it('names 5262 as Marketplaces and keeps 5964 as a catalogue merchant', () => {
+    expect(mccName('5262')).toBe('Marketplaces');
+    expect(mccName('5964')).toMatch(/Catalog/);
+  });
+});

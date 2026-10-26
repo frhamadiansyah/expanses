@@ -756,6 +756,8 @@ export const MCC_NAMES: Readonly<Record<string, string>> = {
   '5231': 'Glass, Paint, and Wallpaper Stores',
   '5251': 'Hardware Stores',
   '5261': 'Nurseries – Lawn and Garden Supply Store',
+  // Added by the card networks in 2019, after the table this list comes from was taken.
+  '5262': 'Marketplaces',
   '5271': 'Mobile Home Dealers',
   '5300': 'Wholesale Clubs',
   '5309': 'Duty Free Store',

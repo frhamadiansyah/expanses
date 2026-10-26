@@ -226,7 +226,7 @@ export {
   type UnpostedReason,
 } from './sync/net-worth/transfers';
 // Joint net worth (spec §8.3, task 9): the Household purchases of a period, with the shared item each was paid from.
-export { jointAccountRows, jointRowLocked, type JointRow, JOINT_ROW_MESSAGE } from './repos/joint-account-rows';
+export { jointAccountRows, jointRowNote, restoreJointRow, type JointRow } from './repos/joint-account-rows';
 export { householdPurchases, type HouseholdPurchase } from './repos/household-purchases';
 // Joint tax report (joint-net-worth §8.4, task 10): the report's inputs, with a joint group's received rows.
 export { type JointReport, reportInputsFor } from './repos/joint-tax';

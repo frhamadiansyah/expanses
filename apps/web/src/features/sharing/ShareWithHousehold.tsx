@@ -19,7 +19,7 @@ const SETTING_LABEL: Record<ShareSetting, string> = { total: 'Balance and one to
  * the item still hidden (D8) reads "Not yet shared" with Share; an item never reviewed reads "Not reviewed" until a
  * setting is chosen; `Don't share` is greyed out while the household files jointly.
  */
-export function ShareWithHouseholdRow({ accountId, jointSwitch = false }: { accountId: string; /** The account page of a money account: the Joint account switch sits under the share row, once it is shared. */ jointSwitch?: boolean }) {
+export function ShareWithHouseholdRow({ accountId, jointSwitch = false }: { accountId: string; /** The page of a money account or a credit card: the Joint switch sits under the share row, once it is shared. 'card' words it for a card. */ jointSwitch?: boolean | 'card' }) {
   const { database } = useApp();
   const invalidate = useInvalidateAll();
   const group = useActiveNetWorthGroup();
@@ -78,10 +78,10 @@ export function ShareWithHouseholdRow({ accountId, jointSwitch = false }: { acco
         </SelectRow>
         {jointSwitch && row.value === 'total' ? (
           <SwitchRow
-            label="Joint account"
+            label={jointSwitch === 'card' ? 'Joint card' : 'Joint account'}
             checked={jointAccount.data ?? false}
             onChange={(on) => void changeJoint(on)}
-            info="With it on, the others can record into this account and the rows recorded in the shared workspace show on both phones, each with who recorded it. Only the person who recorded a row can change it. The balance stays on this phone."
+            info={`With it on, the others can record into this ${jointSwitch === 'card' ? 'card' : 'account'} and the rows recorded in the shared workspace show on both phones, each with who recorded it. Either person can change or delete any of them. The ${jointSwitch === 'card' ? 'balance and statement stay' : 'balance stays'} on this phone.`}
           />
         ) : null}
       </InsetGroup>
