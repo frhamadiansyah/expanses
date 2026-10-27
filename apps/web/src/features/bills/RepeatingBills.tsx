@@ -17,7 +17,7 @@ export function RepeatingHero({ needs, currency }: { needs: RepeatingNeeds; curr
   return (
     <Panel className="space-y-3" testId="repeating-summary">
       <div>
-        <p className="text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">Needed · per month, from now</p>
+        <p className="text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">Needed · per month</p>
         <p className="tabular truncate text-[26px] leading-[32px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]" data-testid="needed-total">
           {needs.approximate && <span className="text-[var(--ph-ink-3)]">≈ </span>}
           <Money minor={totalMinor} currency={currency} />

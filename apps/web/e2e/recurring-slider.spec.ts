@@ -13,7 +13,7 @@ test('Recurring slides from Monthly to Repeating: its hero, and one list of the 
 
   await showRepeating(page);
   const hero = page.getByTestId('repeating-summary');
-  await expect(hero).toContainText('Needed · per month, from now');
+  await expect(hero).toContainText('Needed · per month');
   await expect(hero).toContainText('Not set aside');
   await expect(page.getByTestId('bill-row')).toHaveCount(0);
   const domain = page.getByTestId('yearly-bill-row').filter({ hasText: 'Domain' });

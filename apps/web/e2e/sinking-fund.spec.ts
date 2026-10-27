@@ -39,7 +39,7 @@ test('a yearly bill saves up in a savings account, and is paid by card from the 
 
   // Recurring's Repeating page sets the month's amount aside in its hero and lists the bill.
   await showRepeating(page);
-  await expect(page.getByTestId('repeating-summary')).toContainText('Needed · per month, from now');
+  await expect(page.getByTestId('repeating-summary')).toContainText('Needed · per month');
   await expect(page.getByTestId('repeating-summary')).toContainText('Set aside');
   await expect(page.getByTestId('yearly-bill-row').filter({ hasText: 'Car insurance' })).toBeVisible();
 
@@ -103,7 +103,7 @@ test('the Repeating hero adds up what each bill needs a month, with and without 
 
   await showRepeating(page);
   const hero = page.getByTestId('repeating-summary');
-  await expect(hero).toContainText('Needed · per month, from now');
+  await expect(hero).toContainText('Needed · per month');
   await expect(hero).toContainText('Set aside');
   await expect(hero).toContainText('Not set aside');
   const share = async (name: string) => {
