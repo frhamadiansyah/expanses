@@ -11,7 +11,7 @@ import {
   SprayCan, Stethoscope, Tent, Ticket, TrainFront, Trash2, TreePalm, TrendingUp, Trophy, Users, UsersRound, Utensils, UtensilsCrossed, Wallet,
   WashingMachine, Watch, Wifi, Wine, Wrench, Zap, Store, Milk, Egg, Fish, Beef, Drumstick, Apple, Carrot, Cookie, CookingPot, GlassWater, Tv, Refrigerator, Lamp, Armchair, Sprout, Plug, Syringe, Hospital, Glasses, Bandage, Coins, Target, MoonStar, Truck, Headphones, Popcorn, Guitar, ToyBrick, BrushCleaning, Motorbike, Toothbrush, Hamburger, Shrimp, Salad, Croissant, Donut, Cupcake, Candy, IceCreamBowl, Banana, Grape, Wheat, LeafyGreen, Martini, AirVent, Lightbulb, Fan, Heater, ShowerHead, Toilet, HousePlug, HouseWifi, Houses, PlantPot, Recycle, BroomSparkles, SoapDispenserDroplet, Microwave, Drill, PaintBucket, Fence, Key, Road, SquareParking, CarFront, CarBattery, TicketsPlane, Luggage, PlaneTakeoff, TramFront, Sailboat, Tablets, Thermometer, BriefcaseMedical, TestTube, Microscope, WalletCards, BanknoteArrowUp, BanknoteArrowDown, Vault, TicketPercent, Tags, ReceiptText, FileSignature, ScrollText, Backpack, NotebookPen, School2, Balloon, Ribbon, Medal, Handbag, BookHeart, Bone, Bird, Rabbit, Turtle, FerrisWheel, RollerCoaster, TentTree, Mountain, FishingRod, Piano, Drum, Dices, Puzzle, Volleyball, Radio, BriefcaseBusiness, HardHat, Laptop2, Printer, Router, TabletSmartphone, Newspaper, Mic,
 } from 'lucide-react';
-import { useCategoryColours } from '../../lib/queries';
+import { useAccounts, useCategoryColours } from '../../lib/queries';
 import { type ChosenColours, tintOf } from '../transactions/category-colours';
 
 /**
@@ -76,6 +76,21 @@ export function categoryMark(
   const category = categoryId ? accounts.find((a) => a.id === categoryId) : undefined;
   const base = categoryId ? categoryVisual(key, rootKey) : UNKNOWN_VISUAL;
   return { Glyph: ICONS[category?.icon ?? base.icon] ?? CircleHelp, colour: tintOf(rootId, chosen, base.colour), name: category?.name ?? null };
+}
+
+/**
+ * The colour a chart draws a category in: exactly its mark's, so a ring slice, its legend row and the category's mark
+ * always agree. A category of the owner's own takes its top-level parent's; none, or one not in the tree, is the slate.
+ */
+export function categoryMarkColour(categoryId: string | null | undefined, accounts: readonly AccountRow[], chosen?: ChosenColours): string {
+  return categoryMark(categoryId ?? null, accounts, chosen).colour;
+}
+
+/** `categoryMarkColour` ready to hand to a chart: reads the accounts and the picked colours once for all its slices. */
+export function useCategoryMarkColour(): (categoryId: string | null | undefined) => string {
+  const accounts = useAccounts().data ?? [];
+  const chosen = useCategoryColours().data;
+  return (categoryId) => categoryMarkColour(categoryId, accounts, chosen);
 }
 
 /** `row` is the kit's own lead circle, 28 px — what a form row's glyph sits in, so a category lines up with them. */

@@ -6,10 +6,11 @@ import { ChevronRight } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
-import { useAccounts, useCategoryColours } from '../../lib/queries';
+import { useAccounts } from '../../lib/queries';
 import { Empty } from '../../ui';
 import { Panel, PushedTitle, SCREEN } from '../../ui/native';
-import { chartColour, OTHER_COLOUR } from './category-colours';
+import { useCategoryMarkColour } from '../categories/CategoryIcon';
+import { OTHER_COLOUR } from './category-colours';
 import { compactMinor, type FlowNode, type MoneyFlow, moneyFlow, OTHERS_KEY, SAVED_KEY } from './money-flow';
 
 /** How many spending categories stand on their own in the box: the phone's three columns are tight, the ring shows eight. */
@@ -86,7 +87,7 @@ export function FlowChart({
   /** A tap on a category's bar or band, on either side. Others and Saved are nobody's category. */
   onCategory?: (categoryId: string) => void;
 }) {
-  const chosen = useCategoryColours().data;
+  const colourFor = useCategoryMarkColour();
   const font = full ? 12 : 11;
   const bar = full ? 10 : 8;
   const gap = full ? 8 : 5;
@@ -112,7 +113,7 @@ export function FlowChart({
     if (column === 0 || node.key === SAVED_KEY) return 'var(--ph-up)';
     if (column === 1) return flow.accounts.find((account) => account.key === node.key)?.card ? 'var(--ph-alarm)' : 'var(--ph-ink-3)';
     if (node.key === OTHERS_KEY) return OTHER_COLOUR;
-    return chartColour(node.key, chosen);
+    return colourFor(node.key);
   };
   const placed = new Map<string, Placed>();
   const order = new Map<string, number>();
