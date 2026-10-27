@@ -192,7 +192,7 @@ function PaySheet({ card, accounts, amountMinor, today, onDone }: { card: Accoun
         }}
       >
         <InsetGroup>
-          <TextRow label={`Amount (${currency})`} value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" />
+          <TextRow label="Amount" prefix={currency} value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" />
           <SelectRow label="Paid with" value={fromId} onChange={(event) => setFromId(event.target.value)}>
             {payers.map((account) => (
               <option key={account.id} value={account.id}>

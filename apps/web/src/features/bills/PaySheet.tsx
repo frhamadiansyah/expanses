@@ -144,7 +144,8 @@ export function PaySheet({
       <form ref={form} onSubmit={record}>
         <InsetGroup>
           <TextRow
-            label={`Amount (${currency})`}
+            label="Amount"
+            prefix={currency}
             id="pay-amount"
             aria-label="What it came to"
             inputMode="decimal"

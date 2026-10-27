@@ -144,6 +144,7 @@ export function TextRow({
   info,
   middle,
   suffix,
+  prefix,
   position,
   className,
   ...props
@@ -151,6 +152,8 @@ export function TextRow({
   label: string;
   /** The unit after the figure, in the figure's ink, once one is typed: "g" for grams. */
   suffix?: string;
+  /** The currency before the figure, at the right with it, always shown: "IDR" in front of 450.000, so the label stays "Amount". */
+  prefix?: string;
   /** Something between the label and the field, on the same line — a foreign balance's "@ rate". */
   middle?: ReactNode;
   /** A line always shown under the row: something the reader needs every time, such as what the row just decided. */
@@ -182,18 +185,42 @@ export function TextRow({
           </label>
         )}
         {middle}
-        <input
-          {...props}
-          id={id}
-          className={cx(
-            'ph-focus min-w-0 flex-1 rounded bg-transparent text-right text-[17px] leading-[22px] md:leading-[20px] text-[var(--ph-ink)] md:text-[15px]',
-            'placeholder:text-[var(--ph-ink-3)]',
-            // WebKit draws a date or time input at a height of its own, with a margin inside it, so on iOS every
-            // date row stood taller than the rows around it. Held to a text field's 20px, it lines up with them.
-            DATE_TYPES.has(props.type ?? '') && 'ph-date-input h-[20px] appearance-none',
-            className,
-          )}
-        />
+        {prefix ? (
+          // The figure sits right beside its currency: the field is as wide as the figure it holds (a hidden copy of the
+          // text sizes it), so "IDR" and the number read as one amount at the right of the row.
+          <span className="ml-auto flex min-w-0 items-baseline gap-[6px]">
+            <span aria-hidden className="shrink-0 text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">
+              {prefix}
+            </span>
+            <span className="relative inline-grid min-w-[3ch]">
+              <span aria-hidden className="invisible col-start-1 row-start-1 px-[1px] text-[17px] leading-[22px] whitespace-pre md:text-[15px] md:leading-[20px]">
+                {String(props.value ?? '') || String(props.placeholder ?? '') || ' '}
+              </span>
+              <input
+                {...props}
+                id={id}
+                className={cx(
+                  'ph-focus absolute inset-0 w-full min-w-0 rounded bg-transparent text-right text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]',
+                  'placeholder:text-[var(--ph-ink-3)]',
+                  className,
+                )}
+              />
+            </span>
+          </span>
+        ) : (
+          <input
+            {...props}
+            id={id}
+            className={cx(
+              'ph-focus min-w-0 flex-1 rounded bg-transparent text-right text-[17px] leading-[22px] md:leading-[20px] text-[var(--ph-ink)] md:text-[15px]',
+              'placeholder:text-[var(--ph-ink-3)]',
+              // WebKit draws a date or time input at a height of its own, with a margin inside it, so on iOS every
+              // date row stood taller than the rows around it. Held to a text field's 20px, it lines up with them.
+              DATE_TYPES.has(props.type ?? '') && 'ph-date-input h-[20px] appearance-none',
+              className,
+            )}
+          />
+        )}
         {suffix && String(props.value ?? '').trim() !== '' && (
           <span aria-hidden className="-ml-[8px] shrink-0 text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">
             {suffix}
