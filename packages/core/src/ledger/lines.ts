@@ -153,6 +153,37 @@ export function exchangeLines(p: {
   ];
 }
 
+/**
+ * A cross-currency movement with a fee beside it — a cash withdrawal into a foreign pocket, an ATM or bank fee on the
+ * way. The fee is in the From account's currency: what left is the amount and the fee together (the one line, as a
+ * statement prints it), the exchange account takes the amount alone, and the To account receives the converted
+ * amount only — the fee is never converted. Each currency balances by itself. A fee of 0 is the plain `exchangeLines`.
+ */
+export function exchangeWithFeeLines(p: {
+  fromAccountId: string;
+  fromAmountMinor: number;
+  fromCurrency: string;
+  toAccountId: string;
+  toAmountMinor: number;
+  toCurrency: string;
+  exchangeAccountId: string;
+  feeMinor: number;
+  /** Where the fee is spent; needed only when there is one. */
+  feeCategoryId?: string | null;
+  fromIsCard?: boolean;
+}): PostingLine[] {
+  if (!Number.isSafeInteger(p.feeMinor) || p.feeMinor < 0) throw new Error('A fee cannot be below zero');
+  if (p.feeMinor === 0) return exchangeLines(p);
+  if (!p.feeCategoryId) throw new Error('Choose a category for the fee');
+  return [
+    { accountId: p.fromAccountId, amountMinor: -(p.fromAmountMinor + p.feeMinor), currency: p.fromCurrency, ...(p.fromIsCard ? { spendCategoryId: p.feeCategoryId } : {}) },
+    { accountId: p.exchangeAccountId, amountMinor: p.fromAmountMinor, currency: p.fromCurrency },
+    { accountId: p.toAccountId, amountMinor: p.toAmountMinor, currency: p.toCurrency },
+    { accountId: p.exchangeAccountId, amountMinor: -p.toAmountMinor, currency: p.toCurrency },
+    { accountId: p.feeCategoryId, amountMinor: p.feeMinor, currency: p.fromCurrency },
+  ];
+}
+
 /** balanceMinor is natural: money held for assets, amount owed for liabilities. */
 export function openingBalanceLines(p: {
   accountId: string;

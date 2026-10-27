@@ -180,6 +180,28 @@ test('Withdraw brings cash in from a current account, with its ATM fee as spendi
   await expect(page.getByTestId('period-total')).toHaveText('Rp 7.500');
 });
 
+test('Withdraw into a dollar cash account from a rupiah bank: what left, the dollars landed, the ATM fee in rupiah', async ({ page }) => {
+  await mockRates(page, { USD: 16_000 });
+  await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000' });
+  await openAccount(page, { subtype: 'cash', name: 'Dollar cash', currency: 'USD', balance: '0', rate: '16000' });
+  await openMoney(page, 'Dollar cash');
+  await page.getByRole('button', { name: 'Withdraw', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Cash withdrawal' });
+  await sheet.getByLabel('From').selectOption({ label: 'Everyday' });
+  await sheet.getByRole('textbox', { name: 'Received (USD)' }).fill('100');
+  await sheet.getByLabel('Charged (IDR)').fill('1600000');
+  await sheet.getByLabel('ATM fee in IDR').fill('25000');
+  await sheet.getByRole('button', { name: 'Save' }).click();
+  await expect(sheet).toHaveCount(0);
+  await showBalance(page);
+  await expect(page.getByTestId('balance-card')).toContainText('100');
+  await openMoney(page, 'Everyday');
+  await showBalance(page);
+  await expect(page.getByTestId('balance-card')).toContainText('10.875.000');
+  await page.goto('/transactions');
+  await expect(page.getByTestId('period-total')).toHaveText('Rp 25.000');
+});
+
 test('a current account adjusted as just a correction moves its balance and nothing in Cashflow', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000' });
   await openMoney(page, 'Everyday');

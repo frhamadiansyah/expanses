@@ -76,6 +76,8 @@ export interface ListRow {
   sidesLast4?: string[];
   /** A transfer's fee in the row's currency, read under its amount ("+Rp 10.000"); absent on anything else. */
   feeMinor?: number;
+  /** The currency the fee was charged in, when it is not the row's (a transfer between two currencies). */
+  feeCurrency?: string;
   holderName: string | null;
   deleted: boolean;
   /** Marked "not my spending": still listed, faded and struck through, but out of every figure the list adds up. */
@@ -293,7 +295,7 @@ export function buildRows(
       // a pocket's row keeps its currency beside its digits, where another account shows its digits alone
       ...(!between && accountIds.length === 1 && pocketCode(accountIds[0]!) ? { pocketCurrency: pocketCode(accountIds[0]!)! } : {}),
       ...(sidesLast4.length > 0 ? { sidesLast4 } : {}),
-      ...(c.feeMinor ? { feeMinor: c.feeMinor } : {}),
+      ...(c.feeMinor ? { feeMinor: c.feeMinor, ...(c.feeCurrency ? { feeCurrency: c.feeCurrency } : {}) } : {}),
       holderName: card?.holderName ?? null,
       deleted: tx.status === 'void',
       excluded: excludedHere(whole, openBookId),
@@ -476,10 +478,10 @@ export interface AmountExtraPart {
 export function amountExtraParts(
   tx: Pick<TransactionView, 'originalCurrency' | 'originalAmountMinor'>,
   points: PurchasePoints | undefined,
-  fee?: Pick<ListRow, 'feeMinor' | 'currency'>,
+  fee?: Pick<ListRow, 'feeMinor' | 'currency'> & { feeCurrency?: string | undefined },
 ): AmountExtraPart[] {
   const parts: AmountExtraPart[] = [];
-  if (fee?.feeMinor) parts.push({ text: `+${formatMinor(fee.feeMinor, fee.currency)}`, tone: 'foreign' });
+  if (fee?.feeMinor) parts.push({ text: `+${formatMinor(fee.feeMinor, fee.feeCurrency ?? fee.currency)}`, tone: 'foreign' });
   if (tx.originalCurrency && tx.originalAmountMinor !== null) parts.push({ text: formatMinor(tx.originalAmountMinor, tx.originalCurrency), tone: 'foreign' });
   if (points) {
     const mark = points.points < 0 ? '−' : points.approximate ? '≈ ' : '+';

@@ -383,6 +383,45 @@ test('a transfer into a USD account asks for the received amount, and will not s
   await expectWalletFigure(page, 'BCA Tahapan', '18.400.000');
 });
 
+test('a transfer from a rupiah bank to a dollar account takes a fee in rupiah: the bank pays both, the dollars land alone', async ({ page }) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await addAccount(page, 'BCA Tahapan', 'bank', async () => {
+    await page.getByLabel('Current balance', { exact: true }).fill('20000000');
+  });
+  await addForeignAccount(page, 'Wise USD', 'USD', '10', '16000');
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
+  await form.getByRole('button', { name: 'From' }).click();
+  await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await chooseTo(form, 'Wise USD (USD)');
+  // Two currencies, and the fee is still offered: in the From account's.
+  await expect(form.getByLabel('Received amount (USD)')).toBeVisible();
+  await expect(form.getByLabel('Fee in IDR')).toBeVisible();
+  await form.getByRole('button', { name: 'Cancel' }).click();
+
+  await addTransfer(page, { from: 'BCA Tahapan', to: 'Wise USD (USD)', amount: '1600000', receivedAmount: '100', note: 'To Wise', fee: '25000' });
+
+  const row = page.getByTestId('transaction-row').filter({ hasText: 'To Wise' });
+  await expect(row).toHaveCount(1);
+  await expect(row.getByTestId('amount-extra')).toHaveText(/^\+Rp\s25\.000$/);
+  await page.goto('/wallet');
+  // Rp 1.600.000 and the fee left; US$ 100 landed, the fee never converted.
+  await expectWalletFigure(page, 'BCA Tahapan', '18.375.000');
+  await expectWalletFigure(page, 'Wise USD', '110,00');
+  await page.goto('/transactions');
+  await expect(page.getByTestId('period-total')).toHaveText('Rp 25.000');
+
+  // Reopened, the fee and both amounts are back in their rows.
+  await page.getByTestId('transaction-row').filter({ hasText: 'To Wise' }).getByRole('link').first().click();
+  await page.getByRole('button', { name: 'Edit this transaction' }).click();
+  const edit = page.getByRole('dialog', { name: 'Edit transaction' });
+  await expect(edit.getByLabel('Fee in IDR')).toHaveValue('25000');
+  await expect(edit.getByLabel('Received amount (USD)')).toHaveValue('100.00');
+});
+
 test('a transfer tagged For goal parks the money against the goal', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
     await page.getByLabel('Current balance', { exact: true }).fill('20000000');

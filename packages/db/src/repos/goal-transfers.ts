@@ -1,4 +1,4 @@
-import { exchangeLines, transferWithFeeLines } from '@expanses/core';
+import { exchangeWithFeeLines, transferWithFeeLines } from '@expanses/core';
 import { and, eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -28,7 +28,7 @@ export interface TaggedTransferInput {
   /** Null moves the money without attaching it to anything. */
   goalId: string | null;
   /**
-   * A fee charged beside the move, in the source's currency, within one currency only. Posted in the same transaction
+   * A fee charged beside the move, in the source's currency, between two currencies too (`exchangeWithFeeLines`). Posted in the same transaction
    * as a plain transfer's fee is (`transferWithFeeLines`): the source pays the transfer and the fee, the destination
    * takes the transfer alone, and the fee is spending under `feeCategoryId`. Never counted toward the goal.
    */
@@ -93,7 +93,6 @@ export async function recordTaggedTransfer(database: Database, ws: WorkspaceCont
     const landedMinor = crossCurrency ? input.toAmountMinor! : input.amountMinor;
     const feeMinor = input.feeMinor ?? 0;
     if (feeMinor > 0) {
-      if (crossCurrency) throw new AssetError('A fee goes on a transfer within one currency');
       if (!input.feeCategoryId) throw new AssetError('Choose a category for the fee');
       const [fee] = await tx
         .select({ kind: accounts.kind })
@@ -102,7 +101,7 @@ export async function recordTaggedTransfer(database: Database, ws: WorkspaceCont
       if (fee?.kind !== 'expense') throw new AssetError('Choose a category for the fee');
     }
     const lines = crossCurrency
-      ? exchangeLines({
+      ? exchangeWithFeeLines({
           fromAccountId: input.fromAccountId,
           fromAmountMinor: input.amountMinor,
           fromCurrency,
@@ -110,6 +109,9 @@ export async function recordTaggedTransfer(database: Database, ws: WorkspaceCont
           toAmountMinor: landedMinor,
           toCurrency,
           exchangeAccountId: await systemAccountId(tx, ws, 'currency_exchange'),
+          feeMinor,
+          feeCategoryId: input.feeCategoryId ?? null,
+          fromIsCard: from?.subtype === 'credit_card',
         })
       : transferWithFeeLines({
           fromAccountId: input.fromAccountId,

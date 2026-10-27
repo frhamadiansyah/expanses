@@ -44,21 +44,27 @@ export function MoneyInForm({
   const cards = useCards();
   const currency = into.currency!;
   const today = isoDate();
-  const sources = moneyHolders(accounts.data ?? []).filter((a) => a.currency === currency && canMoveMoneyIn(a, into));
+  // Money held in another currency may be the source too — dollars withdrawn from a rupiah account — which asks what left
+  // it and charges the fee in its currency. A card stays within one currency.
+  const sources = moneyHolders(accounts.data ?? []).filter((a) => canMoveMoneyIn(a, into) && (a.currency === currency || (a.kind === 'asset' && !!a.currency)));
   const options = paymentOptions(sources, (cards.data ?? []) as CardRow[]);
   const held = options.filter((o) => sources.find((a) => a.id === o.accountId)?.kind === 'asset');
   const owed = options.filter((o) => sources.find((a) => a.id === o.accountId)?.kind === 'liability');
-  const opening = options.find((o) => sources.find((a) => a.id === o.accountId)?.subtype === 'bank') ?? options[0];
+  const sameCurrency = (o: (typeof options)[number]) => sources.find((a) => a.id === o.accountId)?.currency === currency;
+  const opening = options.find((o) => sameCurrency(o) && sources.find((a) => a.id === o.accountId)?.subtype === 'bank') ?? options.find(sameCurrency) ?? options[0];
   const [picked, setPicked] = useState<string | null>(null);
   const fromKey = picked ?? (opening ? paymentKey(opening.accountId, opening.cardId) : '');
   const from = options.find((o) => paymentKey(o.accountId, o.cardId) === fromKey);
+  const fromCurrency = (from && sources.find((a) => a.id === from.accountId)?.currency) || currency;
+  const cross = fromCurrency !== currency;
   const [amount, setAmount] = useState('');
+  const [charged, setCharged] = useState('');
   const [fee, setFee] = useState('');
   const [occurredOn, setOccurredOn] = useState(today);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const words = MONEY_IN[mode];
-  const ready = Boolean(from) && amount.trim() !== '' && !busy;
+  const ready = Boolean(from) && amount.trim() !== '' && (!cross || charged.trim() !== '') && !busy;
   useEffect(() => onCanSave(ready), [onCanSave, ready]);
 
   async function submit(event: FormEvent) {
@@ -68,12 +74,16 @@ export function MoneyInForm({
     setBusy(true);
     try {
       const amountMinor = parseMajor(amount, currency);
-      const feeMinor = fee.trim() === '' ? 0 : parseMajor(fee, currency);
-      let rateToBase: number | undefined;
-      if (currency !== ws.baseCurrency) {
-        rateToBase = (await resolveRates([currency], occurredOn)).rates[currency];
-        if (rateToBase === undefined) throw new Error(`No ${currency}→${ws.baseCurrency} rate for ${occurredOn} yet.`);
-      }
+      const feeMinor = fee.trim() === '' ? 0 : parseMajor(fee, fromCurrency);
+      const fromAmountMinor = cross ? parseMajor(charged, fromCurrency) : undefined;
+      const rateOf = async (code: string) => {
+        if (code === ws.baseCurrency) return undefined;
+        const rate = (await resolveRates([code], occurredOn)).rates[code];
+        if (rate === undefined) throw new Error(`No ${code}→${ws.baseCurrency} rate for ${occurredOn} yet.`);
+        return rate;
+      };
+      const rateToBase = await rateOf(currency);
+      const fromRateToBase = cross ? await rateOf(fromCurrency) : undefined;
       await moveMoneyIn(database, ws, {
         toId: into.id,
         fromId: from.accountId,
@@ -84,6 +94,7 @@ export function MoneyInForm({
         description: words.title,
         feeDescription: words.fee,
         rateToBase,
+        ...(cross ? { fromAmountMinor, ...(fromRateToBase !== undefined ? { fromRateToBase } : {}) } : {}),
       });
       await invalidate();
       onDone();
@@ -119,8 +130,9 @@ export function MoneyInForm({
             : held.map(option)}
         </SelectRow>
         <ReadOnlyRow label="Into" value={into.name} />
-        <TextRow label="Amount" info={words.about} inputMode="decimal" placeholder="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} />
-        <TextRow label={words.fee} inputMode="decimal" placeholder="Optional" value={fee} onChange={(e) => setFee(e.target.value)} />
+        <TextRow label={cross ? `Received (${currency})` : 'Amount'} info={words.about} inputMode="decimal" placeholder="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        {cross && <TextRow label={`Charged (${fromCurrency})`} inputMode="decimal" placeholder="Amount" value={charged} onChange={(e) => setCharged(e.target.value)} />}
+        <TextRow label={cross ? `${words.fee} in ${fromCurrency}` : words.fee} inputMode="decimal" placeholder="Optional" value={fee} onChange={(e) => setFee(e.target.value)} />
         <TextRow label="Date" type="date" value={occurredOn} max={today} onChange={(e) => setOccurredOn(e.target.value)} />
       </InsetGroup>
     </form>

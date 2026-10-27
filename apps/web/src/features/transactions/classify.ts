@@ -17,6 +17,8 @@ export interface Classified {
   moneyAccountNames: string[];
   /** A transfer's fee, filed as spending beside it (a top-up paid by card); absent on anything else. */
   feeMinor?: number;
+  /** The currency the fee was charged in: the paying account's, which is not the landed figure's between two currencies. */
+  feeCurrency?: string;
 }
 
 /** Where money is held: what a transfer moves between, never a holding, a loan or a person. */
@@ -39,7 +41,7 @@ export function classify(tx: TransactionView): Classified {
    */
   const landed = money.find((e) => e.amountMinor > 0 && HOLDS_MONEY.has(e.accountSubtype ?? ''));
   const left = money.find((e) => e.amountMinor < 0 && e.accountId !== landed?.accountId);
-  if (expenses.length > 0 && incomes.length === 0 && equity.length === 0 && landed && left && money.length === 2) {
+  if (expenses.length > 0 && incomes.length === 0 && equity.every((e) => e.accountSystemKey === 'currency_exchange') && landed && left && money.length === 2) {
     return {
       type: 'transfer',
       amountMinor: landed.amountMinor,
@@ -47,6 +49,7 @@ export function classify(tx: TransactionView): Classified {
       categoryIds: expenses.map((e) => e.accountId),
       moneyAccountNames: names,
       feeMinor: expenses.reduce((s, e) => s + e.amountMinor, 0),
+      feeCurrency: left.currency,
     };
   }
   if (expenses.length > 0) {
