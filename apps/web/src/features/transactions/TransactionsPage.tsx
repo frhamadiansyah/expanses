@@ -74,7 +74,7 @@ import { useDeferredDeletes } from './deferred-delete';
 import { useDuplicable } from './duplicable';
 import { editInsteadIn, openToEditMessage } from '../workspaces/filing';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
-import { WorkspaceBadge, WorkspaceDot } from '../workspaces/WorkspaceBadge';
+import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
 import { Unconverted } from '../workspaces/Unconverted';
 import { UndoToast } from '../../ui/UndoToast';
 import { WorkspaceMenu } from '../workspaces/WorkspaceMenu';
@@ -1191,7 +1191,7 @@ export function TransactionsPage() {
           phone
             ? [
                 { key: 'search', label: 'Search', glyph: <Search size={20} aria-hidden />, pressed: showSearch, run: () => setShowSearch((was) => !was) },
-                { key: 'workspace', label: `Workspace, ${openBook?.name ?? workspaceName}`, glyph: <WorkspaceDot book={openBook} size={34} />, bare: true, run: () => setChoosingWorkspace(true) },
+                { key: 'workspace', label: `Workspace, ${openBook?.name ?? workspaceName}`, glyph: <span aria-hidden className="text-[18px] leading-none font-semibold uppercase">{(openBook?.name ?? workspaceName).trim().charAt(0) || '·'}</span>, run: () => setChoosingWorkspace(true) },
               ]
             : []
         }

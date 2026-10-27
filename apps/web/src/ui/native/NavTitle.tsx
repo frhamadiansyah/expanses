@@ -43,14 +43,11 @@ export function CornerButton({
   testId,
   size = 44,
   grey = false,
-  bare = false,
 }: {
   /** The round's width, 44 by default; a row inside a box takes a 30 one. */
   size?: number;
   /** Drawn in the grey fill rather than the corner white, for a button standing on a white box. */
   grey?: boolean;
-  /** No fill at all: the glyph is a round mark that needs no ring round it. */
-  bare?: boolean;
   label: string;
   onClick?: () => void;
   to?: LinkProps['to'];
@@ -69,7 +66,7 @@ export function CornerButton({
 }) {
   const shell = cx(
     'ph-focus flex shrink-0 items-center justify-center rounded-full',
-    bare ? 'bg-transparent' : pressed ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : destructive ? 'bg-[var(--ph-corner)] text-[var(--ph-alarm)]' : grey ? 'bg-[var(--ph-fill)] text-[var(--ph-ink)]' : 'bg-[var(--ph-corner)] text-[var(--ph-ink)]',
+    pressed ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : destructive ? 'bg-[var(--ph-corner)] text-[var(--ph-alarm)]' : grey ? 'bg-[var(--ph-fill)] text-[var(--ph-ink)]' : 'bg-[var(--ph-corner)] text-[var(--ph-ink)]',
     disabled && 'opacity-40',
     className,
   );
@@ -345,7 +342,6 @@ function SectionTitle({
             disabled={action.disabled}
             pressed={action.pressed}
             expanded={action.expanded}
-            bare={action.bare}
             testId={action.testId}
           >
             {action.glyph}
@@ -518,7 +514,6 @@ export function PushedTitle({
                   disabled={action.disabled}
                   pressed={action.pressed}
                   expanded={action.expanded}
-                  bare={action.bare}
                   testId={action.testId}
                 >
                   {action.glyph}
