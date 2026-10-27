@@ -248,7 +248,11 @@ function Recent({ card, accounts }: { card: WalletCard; accounts: readonly Accou
     .filter((row) => row.type !== 'opening')
     .slice(0, RECENT_LIMIT);
   return (
-    <Panel header="Recent" testId="wallet-recent" className="mt-4 px-[13px]" pad={false}>
+    // The air above sits outside the panel: `className` lands on the box, and a margin there pushed the box away from its own header.
+    <div className="mt-4">
+    <Panel header="Recent" testId="wallet-recent" pad={false}>
+      {/* The panel's own padding is off so the rows set their own height; the sides are given back here, which a class on the panel cannot do against its inline padding. */}
+      <div className="px-[13px]">
       <ErrorBox error={recent.error} />
       {recent.isSuccess && rows.length === 0 ? (
         <p className="py-3 text-[15px] leading-[20px] text-[var(--ph-ink-3)]">No transactions yet.</p>
@@ -272,6 +276,8 @@ function Recent({ card, accounts }: { card: WalletCard; accounts: readonly Accou
           </li>
         </ul>
       )}
+      </div>
     </Panel>
+    </div>
   );
 }
