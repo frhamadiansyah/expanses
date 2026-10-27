@@ -6,6 +6,7 @@ import { openSplit, pickPartCategory } from './split-row';
 /** Makes a workspace through the sidebar switcher and lands in it, as the sheet does on its own. */
 async function newWorkspace(page: Page, name: string, startsWith: string) {
   await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByTestId('add-workspace').click();
   await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill(name);

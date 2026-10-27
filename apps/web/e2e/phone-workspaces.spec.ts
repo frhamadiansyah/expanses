@@ -23,6 +23,7 @@ test('the Cashflow corner is the workspace, and opens the switcher', async ({ pa
 
 test('choosing another workspace in the switcher switches, and the corner shows its name', async ({ page }) => {
   await page.goto('/account');
+  await page.getByTestId('add-workspace').click();
   await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Business');
@@ -44,6 +45,7 @@ test('choosing another workspace in the switcher switches, and the corner shows 
  */
 test('a workspace is made from the Account page and starts with none of the other’s categories', async ({ page }) => {
   await page.goto('/account');
+  await page.getByTestId('add-workspace').click();
   await page.getByTestId('new-workspace').click();
 
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
@@ -125,6 +127,7 @@ test('a transfer is filed in the workspace it was recorded in, listed there only
   await expect(page.getByTestId('spending-report')).toContainText('Nothing recorded for');
 
   await page.goto('/account');
+  await page.getByTestId('add-workspace').click();
   await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Business');
@@ -151,6 +154,7 @@ const listRow = (page: Page, what: string) => page.getByTestId('transaction-row'
 test('a saved purchase moves to another workspace from its Edit screen, and several from Select', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
   await page.goto('/account');
+  await page.getByTestId('add-workspace').click();
   await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Business');

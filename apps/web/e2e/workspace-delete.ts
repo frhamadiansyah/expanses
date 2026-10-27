@@ -11,6 +11,7 @@ import { workspaceLine } from './workspace-page';
 /** Makes a workspace from the Account page's sheet, copying Personal's categories when asked. */
 export async function makeWorkspace(page: Page, name: string, copyPersonal: boolean) {
   await page.goto('/account');
+  await page.getByTestId('add-workspace').click();
   await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill(name);

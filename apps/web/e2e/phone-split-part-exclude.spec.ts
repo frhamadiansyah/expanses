@@ -13,6 +13,7 @@ import { openSplit, pickPartCategory } from './split-row';
 async function withBusiness(page: Page) {
   await openCard(page, { name: 'BCA Visa', statementDay: '31', dueDay: '15' });
   await page.goto('/account');
+  await page.getByTestId('add-workspace').click();
   await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Business');

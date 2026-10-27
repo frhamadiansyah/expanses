@@ -70,6 +70,7 @@ async function spend(page: Page, description: string, amount: string) {
 /** Makes a workspace through the sidebar switcher and lands in it, as the sheet does on its own. */
 async function newWorkspace(page: Page, name: string, startsWith: string) {
   await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByTestId('add-workspace').click();
   await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill(name);
@@ -112,6 +113,7 @@ test('a new workspace copies the categories, opens empty, and leaves the other a
 test('a Business workspace starts with the business categories, and Personal keeps its own', async ({ page }) => {
   await addBank(page);
   await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByTestId('add-workspace').click();
   await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Shop');
@@ -148,6 +150,7 @@ test('a Business workspace starts with the business categories, and Personal kee
 test('a Business workspace’s page offers the Business list, and Not now changes nothing', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByTestId('add-workspace').click();
   await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Shop');
@@ -345,7 +348,7 @@ test('the switcher only lists workspaces, and the Account page holds New', async
   await expect(page.getByRole('dialog', { name: 'Workspaces' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Account', exact: true })).toBeVisible();
   await expect(page.getByTestId('account-workspace')).toHaveCount(1);
-  await expect(page.getByTestId('new-workspace')).toBeVisible();
+  await expect(page.getByTestId('add-workspace')).toBeVisible();
   // The old address still arrives.
   await page.goto('/settings');
   await expect(page).toHaveURL(/\/account$/);

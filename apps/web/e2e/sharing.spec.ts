@@ -250,9 +250,32 @@ test('two people share a workspace: join, record on both, correct each other, re
   await cashflowTotal(dewi, 'Rp 110.000');
 });
 
+/** Account > Add workspace offers Join with a code; it opens the join sheet, and Cancel or the backdrop close the choices. */
+test('Add workspace offers New workspace or Join with a code, and Join opens the join sheet', async ({ page }) => {
+  await page.goto('/account');
+  await page.getByTestId('add-workspace').click();
+  const choices = page.getByTestId('add-workspace-sheet');
+  await expect(choices.getByTestId('new-workspace')).toBeVisible();
+  await expect(choices.getByTestId('join-workspace-choice')).toBeVisible();
+  await choices.getByRole('button', { name: 'Cancel' }).click();
+  await expect(choices).toHaveCount(0);
+
+  await page.getByTestId('add-workspace').click();
+  await choices.click({ position: { x: 4, y: 4 } });
+  await expect(choices).toHaveCount(0);
+
+  await page.getByTestId('add-workspace').click();
+  await page.getByTestId('join-workspace-choice').click();
+  await expect(choices).toHaveCount(0);
+  const join = page.getByTestId('join-workspace');
+  await expect(join).toBeVisible();
+  await expect(join.getByPlaceholder('XXXX-XXXX-…')).toBeVisible();
+});
+
 /** §6.5 step 0 (ruled O3): a workspace kept in another currency than yours is refused before anything is made. */
 test('a workspace in another currency than yours cannot be shared, and says why', async ({ page }, info) => {
   await page.goto('/account');
+  await page.getByTestId('add-workspace').click();
   await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Singapore');

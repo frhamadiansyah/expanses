@@ -24,6 +24,7 @@ test('a set made in Personal moves to another workspace with its categories, and
 
   await page.goto('/');
   await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByTestId('add-workspace').click();
   await page.getByTestId('new-workspace').click();
   const made = page.getByRole('dialog', { name: 'New workspace' });
   await made.getByLabel('Name', { exact: true }).fill('Business');
