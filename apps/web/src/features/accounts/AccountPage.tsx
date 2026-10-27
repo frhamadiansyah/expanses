@@ -8,6 +8,7 @@ import {
   ArrowUpFromLine,
   ArrowUpRight,
   ChevronRight,
+  PenLine,
   Plus,
   Repeat,
   Settings,
@@ -55,7 +56,7 @@ import { MONEY_IN, MoneyInForm, type MoneyInMode } from './MoneyInForm';
 import { BalanceCard } from './BalanceCard';
 import { BalanceHero } from './BalanceHero';
 import { balanceSeries, type DayBalance, pocketsSeries } from './balance-series';
-import { currencyName, parentTotal, pocketsOf } from './pockets';
+import { currencyName, parentActionKeys, parentTotal, pocketsOf } from './pockets';
 import { LINE_DAYS, RECENT_LIMIT, useAccountFlows, useHeldRates, useOpenings, useRecentTransactions } from './queries';
 import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
 import { OwnJointRows } from '../sharing/JointAccountRows';
@@ -106,6 +107,10 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
   const [currencyReady, setCurrencyReady] = useState(false);
   const [adjusting, setAdjusting] = useState(false);
   const [movingIn, setMovingIn] = useState<MoneyInMode | null>(null);
+  // An account with pockets adjusts, withdraws into and tops up one of them: the pocket the sheet is for.
+  const [pickingPocket, setPickingPocket] = useState(false);
+  const [sheetPocket, setSheetPocket] = useState<AccountRow | null>(null);
+  const basePocket = pockets ? (pockets.find((p) => p.currency === ws.baseCurrency) ?? pockets[0] ?? null) : null;
   const [sheetReady, setSheetReady] = useState(false);
   const pocketIds = pockets?.map((p) => p.id) ?? [];
   const currencies = pockets ? pockets.map((p) => p.currency!) : [account.currency!];
@@ -198,7 +203,7 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
         <DepositMoneyOut look="action" accountId={account.id} currency={account.currency!} balanceMinor={minor} onClosed={(archived) => archived && closedTo()} />
       ) : (
         <ActionButtons actions={actionsFor(account, pockets, ws.baseCurrency, { // Spend, Receive and Transfer open the Add screen itself with this account filled in, as ＋ opens it: one place to add.
-    newTx: (draft) => void navigate({ to: '/transactions/new', search: { mode: draft.mode, ...(draft.account ? { account: draft.account } : {}), ...(draft.to ? { to: draft.to } : {}) } }), moneyIn: setMovingIn, adjust: () => setAdjusting(true) })} />
+    newTx: (draft) => void navigate({ to: '/transactions/new', search: { mode: draft.mode, ...(draft.account ? { account: draft.account } : {}), ...(draft.to ? { to: draft.to } : {}) } }), moneyIn: (mode) => { setSheetPocket(basePocket); setMovingIn(mode); }, adjust: () => { if (pockets && pockets.length > 1) setPickingPocket(true); else { setSheetPocket(basePocket); setAdjusting(true); } } })} />
       )}
 
       {/* What is promised out of this account, what is free, and which goals claim it (B3). */}
@@ -252,6 +257,27 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
           />
         </Sheet>
       )}
+      {pickingPocket && pockets && (
+        <Sheet grouped title="Adjust which pocket" onClose={() => setPickingPocket(false)}>
+          <InsetGroup>
+            {pockets.map((pocket) => (
+              <InsetRow
+                key={pocket.id}
+                testId={`adjust-pocket-${pocket.currency}`}
+                icon={<span className="text-[17px] leading-none">{currencyFlag(pocket.currency!)}</span>}
+                title={currencyName(pocket.currency!)}
+                value={<Money minor={balances.data?.[pocket.id] ?? 0} currency={pocket.currency!} />}
+                valueTone="ink"
+                onClick={() => {
+                  setPickingPocket(false);
+                  setSheetPocket(pocket);
+                  setAdjusting(true);
+                }}
+              />
+            ))}
+          </InsetGroup>
+        </Sheet>
+      )}
       {adjusting && (
         <Sheet
           grouped
@@ -260,7 +286,7 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
           onClose={() => setAdjusting(false)}
           confirm={{ label: 'Save', disabled: !sheetReady, run: () => (document.getElementById(ADJUST_FORM) as HTMLFormElement | null)?.requestSubmit() }}
         >
-          <AdjustBalanceForm account={account} formId={ADJUST_FORM} onCanSave={setSheetReady} onDone={() => setAdjusting(false)} />
+          <AdjustBalanceForm account={sheetPocket ?? account} formId={ADJUST_FORM} onCanSave={setSheetReady} onDone={() => setAdjusting(false)} />
         </Sheet>
       )}
       {movingIn && (
@@ -271,7 +297,7 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
           onClose={() => setMovingIn(null)}
           confirm={{ label: 'Save', disabled: !sheetReady, run: () => (document.getElementById(MONEY_IN_FORM) as HTMLFormElement | null)?.requestSubmit() }}
         >
-          <MoneyInForm into={account} mode={movingIn} formId={MONEY_IN_FORM} onCanSave={setSheetReady} onDone={() => setMovingIn(null)} />
+          <MoneyInForm into={sheetPocket ?? account} mode={movingIn} formId={MONEY_IN_FORM} onCanSave={setSheetReady} onDone={() => setMovingIn(null)} />
         </Sheet>
       )}
     </div>
@@ -297,8 +323,9 @@ function pageCorner(account: AccountRow): CornerAction[] {
  * side the words say — the pairing rule keeps the other side to current accounts. A deposit's one action is its own
  * (`DepositMoneyOut`).
  *
- * An account with pockets is not itself somewhere money is paid from — each pocket is — so its Spend, Receive and
- * Transfer open with one of its pockets chosen, and it adds what only the parent can do: move between its pockets.
+ * An account with pockets is not itself somewhere money is paid from — each pocket is — so its Record (the Add screen,
+ * with Expense, Income and Transfer as tabs), Withdraw and Top up open with one of its pockets chosen, Adjust asks
+ * which, and it adds what only the parent can do: move between its pockets.
  * Adding another currency is the last row of its Pockets list. A pocket is an account, and has an account's actions.
  */
 function actionsFor(
@@ -312,19 +339,17 @@ function actionsFor(
   // closing lands back on it with its balance and Recent already showing the new row.
   const newTx = (key: string, label: string, glyph: RoundAction['glyph'], draft: NewTxDraft): RoundAction => ({ key, label, glyph, run: () => open.newTx(draft) });
   if (pockets) {
-    // Spent, received and moved from a pocket: the one in the workspace's own currency, or the first — the form's
-    // Paid with, Received into and From still switch to any other.
+    // Recorded, withdrawn into and topped up from a pocket: the one in the workspace's own currency, or the first —
+    // the form's Paid with, Received into and From still switch to any other.
     const pocket = (pockets.find((p) => p.currency === baseCurrency) ?? pockets[0])?.id;
-    return [
-      ...(pocket
-        ? [
-            newTx('spend', 'Spend', <ArrowUpRight size={20} aria-hidden />, { mode: 'expense', account: pocket }),
-            newTx('receive', 'Receive', <ArrowDownLeft size={20} aria-hidden />, { mode: 'income', account: pocket }),
-            newTx('transfer', 'Transfer', <ArrowLeftRight size={20} aria-hidden />, { mode: 'transfer', account: pocket }),
-          ]
-        : []),
-      ...(pockets.length >= 2 ? [{ key: 'move', label: 'Move', glyph: <Repeat size={20} aria-hidden />, to: '/accounts/$accountId/move' as const, params: { accountId: id } }] : []),
-    ];
+    const byKey: Record<string, RoundAction> = {
+      record: newTx('record', 'Record', <PenLine size={20} aria-hidden />, { mode: 'expense', ...(pocket ? { account: pocket } : {}) }),
+      move: { key: 'move', label: 'Move', glyph: <Repeat size={20} aria-hidden />, to: '/accounts/$accountId/move' as const, params: { accountId: id } },
+      withdraw: { key: 'withdraw', label: 'Withdraw', glyph: <ArrowDownToLine size={20} aria-hidden />, run: () => open.moneyIn('withdraw') },
+      'top-up': { key: 'top-up', label: 'Top up', glyph: <Plus size={20} aria-hidden />, run: () => open.moneyIn('top-up') },
+      adjust: { key: 'adjust', label: 'Adjust', glyph: <SlidersHorizontal size={20} aria-hidden />, run: open.adjust },
+    };
+    return parentActionKeys(account.subtype, pockets.length).map((key) => byKey[key]!);
   }
   if (account.subtype === 'fund') {
     return [

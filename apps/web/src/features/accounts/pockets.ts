@@ -253,3 +253,17 @@ export function moneySummary(accounts: readonly AccountRow[], balances: Readonly
   const converted = amounts.some((amount) => amount.currency !== baseCurrency);
   return { ...sumToBase({ amounts, baseCurrency, ratesToBase }), accounts: tops.length, currencies: new Set(amounts.map((a) => a.currency)).size, converted };
 }
+
+/**
+ * The round buttons on the page of an account with pockets, in order. Record is the Add screen (Expense, Income and
+ * Transfer are tabs in it); Move needs two pockets to move between; Withdraw is cash's and Top up a wallet's; a bank
+ * or saving account has neither; Adjust ends the row.
+ */
+export function parentActionKeys(subtype: string, pocketCount: number): ('record' | 'move' | 'withdraw' | 'top-up' | 'adjust')[] {
+  return [
+    'record',
+    ...(pocketCount >= 2 ? (['move'] as const) : []),
+    ...(subtype === 'cash' ? (['withdraw'] as const) : subtype === 'ewallet' || subtype === 'emoney' ? (['top-up'] as const) : []),
+    'adjust',
+  ];
+}
