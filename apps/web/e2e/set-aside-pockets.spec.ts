@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { walletCard } from './accounts';
-import { mockRates, openWithPockets } from './pockets';
+import { mockRates, openWithPockets, pickPocket } from './pockets';
 import { addGoal, goalCard, setAside } from './set-aside';
 
 test.beforeEach(({ page }) => {
@@ -27,8 +27,8 @@ test('moving between pockets asks only when it takes promised money, and the pro
   await page.goto('/wallet');
   await walletCard(page, 'Valas Plus').click();
   await page.getByRole('link', { name: 'Move', exact: true }).click();
-  await page.getByLabel('From').selectOption('USD');
-  await page.getByLabel('To').selectOption('SGD');
+  await pickPocket(page, 'From', 'USD');
+  await pickPocket(page, 'To', 'SGD');
   const leaves = page.getByLabel('Leaves USD');
   await leaves.pressSequentially('400');
   await expect(page.getByText(/more than is free/)).toHaveCount(0);
@@ -39,12 +39,12 @@ test('moving between pockets asks only when it takes promised money, and the pro
   await expect(page.getByText(/100,00 more than is free/)).toBeVisible();
   // A pocket parent is never offered as where the promise goes: only the pocket the money reaches.
   await expect(page.getByRole('button', { name: 'Move the promise to Valas Plus', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Move it' }).click();
+  await page.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Move between pockets' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Take from Umrah 2027' }).click();
   await page.getByRole('button', { name: 'Move the promise to Valas Plus · SGD' }).click();
-  await page.getByRole('button', { name: 'Move it' }).click();
+  await page.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(page.getByTestId('pocket-USD')).toContainText('1.900,00');
 
   await page.goto('/goals');

@@ -3,7 +3,7 @@ import { personRow } from './people';
 import { expectWalletFigure, openAccount, openSettings, walletCard, showBalance } from './accounts';
 import { openNewAsset } from './add-asset';
 import { openDrawers } from './drawers';
-import { ageRates, forgetRates, mockRates, openWithPockets } from './pockets';
+import { ageRates, forgetRates, mockRates, openWithPockets, pickPocket } from './pockets';
 import { chooseTo } from './add-transaction';
 import { setCurrency } from './currency-field';
 import { pickView } from './wallet';
@@ -97,9 +97,9 @@ test('moving between pockets moves what the screen shows and says what the bank�
   await walletCard(page, 'Bank One Valas Plus').click();
   await page.getByRole('link', { name: 'Move', exact: true }).click();
 
-  // Options are valued by currency code (one open pocket per currency); `selectOption({ label })` takes no RegExp.
-  await page.getByLabel('From').selectOption('USD');
-  await page.getByLabel('To').selectOption('SGD');
+  // The pocket picker lists one pocket per currency; the helper chooses by the currency's name.
+  await pickPocket(page, 'From', 'USD');
+  await pickPocket(page, 'To', 'SGD');
   await page.getByLabel('Leaves USD').pressSequentially('500');
   await page.getByLabel('Arrives SGD').pressSequentially('638');
   await expect(page.getByText('1 USD = 1,2760 SGD')).toBeVisible();
@@ -108,7 +108,7 @@ test('moving between pockets moves what the screen shows and says what the bank�
   await expect(page.getByTestId('exchange-cost')).toContainText('8.125.000');
   await expect(page.getByTestId('spread')).toContainText('Exchange loss');
   await expect(page.getByTestId('spread')).toContainText('35.160');
-  await page.getByRole('button', { name: 'Move it' }).click();
+  await page.getByRole('button', { name: 'Move', exact: true }).click();
 
   await expect(page.getByTestId('pocket-USD')).toContainText('1.900,00');
   await expect(page.getByTestId('pocket-SGD')).toContainText('1.788,00');
@@ -125,14 +125,14 @@ test('a spread shown at last-known rates says so, and the move shows the spread 
   await page.goto('/wallet');
   await walletCard(page, 'Bank One Valas Plus').click();
   await page.getByRole('link', { name: 'Move', exact: true }).click();
-  await page.getByLabel('From').selectOption('USD');
-  await page.getByLabel('To').selectOption('SGD');
+  await pickPocket(page, 'From', 'USD');
+  await pickPocket(page, 'To', 'SGD');
   await page.getByLabel('Leaves USD').pressSequentially('500');
   await page.getByLabel('Arrives SGD').pressSequentially('638');
   // 500 × 16.250 − 638 × 12.680: the held rates, and marked as such.
   await expect(page.getByTestId('spread')).toContainText('35.160');
   await expect(page.getByTestId('spread')).toContainText('last known');
-  await page.getByRole('button', { name: 'Move it' }).click();
+  await page.getByRole('button', { name: 'Move', exact: true }).click();
 
   // What the ledger records (withdrawal rate §5): the dollars still cost 8.125.000 — the day's 16.400 changes nothing
   // about what they cost — and 638 SGD at the day's 12.800 are 8.166.400: a gain of 41.400.
@@ -200,11 +200,11 @@ test('a rate missing only for an earlier month leaves today’s net worth standi
   await page.goto('/wallet');
   await walletCard(page, 'Old Valas').click();
   await page.getByRole('link', { name: 'Move', exact: true }).click();
-  await page.getByLabel('From').selectOption('USD');
-  await page.getByLabel('To').selectOption('IDR');
+  await pickPocket(page, 'From', 'USD');
+  await pickPocket(page, 'To', 'IDR');
   await page.getByLabel('Leaves USD').pressSequentially('100');
   await page.getByLabel('Arrives IDR').pressSequentially('1625000');
-  await page.getByRole('button', { name: 'Move it' }).click();
+  await page.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(page.getByTestId('pocket-IDR')).toContainText('7.025.000');
 
   await forgetRates(page, testInfo.outputPath('no-rates.sqlite3'));
@@ -333,11 +333,11 @@ test('USD → IDR between pockets reads each side at its own exponent, keystroke
   await openWithPockets(page, VALAS);
   await walletCard(page, 'Bank One Valas Plus').click();
   await page.getByRole('link', { name: 'Move', exact: true }).click();
-  await page.getByLabel('To').selectOption('IDR');
+  await pickPocket(page, 'To', 'IDR');
   await page.getByLabel('Leaves USD').pressSequentially('100.50');
   await page.getByLabel('Arrives IDR').pressSequentially('1.630.000');
   await expect(page.getByTestId('spread')).toContainText('3.125');
-  await page.getByRole('button', { name: 'Move it' }).click();
+  await page.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(page.getByTestId('pocket-USD')).toContainText('2.299,50');
   await expect(page.getByTestId('pocket-IDR')).toContainText('7.030.000');
 });
@@ -349,10 +349,10 @@ test('changing a pocket clears both figures, and choosing the same pocket swaps'
   await page.getByRole('link', { name: 'Move', exact: true }).click();
   await page.getByLabel('Leaves USD').pressSequentially('500');
   await page.getByLabel('Arrives SGD').pressSequentially('638');
-  await page.getByLabel('To').selectOption('IDR');
+  await pickPocket(page, 'To', 'IDR');
   await expect(page.getByLabel('Leaves USD')).toHaveValue('');
   await expect(page.getByLabel('Arrives IDR')).toHaveValue('');
-  await page.getByLabel('From').selectOption('IDR');
+  await pickPocket(page, 'From', 'IDR');
   await expect(page.getByLabel('Leaves IDR')).toBeVisible();
   await expect(page.getByLabel('Arrives USD')).toBeVisible();
 });
@@ -481,4 +481,46 @@ test('Add asset with a blank foreign rate takes the day’s rate', async ({ page
   // $10.000 at the mocked 16.250.
   await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('162.500.000');
+});
+
+test('the Move page: type what leaves, the arrives figure and the recorded line follow, the swap and the picker change the pockets', async ({ page }) => {
+  await mockRates(page, { SGD: 12_680 });
+  await openWithPockets(page, VALAS);
+  await walletCard(page, 'Bank One Valas Plus').click();
+  await page.getByRole('link', { name: 'Move', exact: true }).click();
+
+  // From USD to IDR through the pickers: each row names its pocket and what it holds.
+  await pickPocket(page, 'From', 'USD');
+  await pickPocket(page, 'To', 'IDR');
+  await expect(page.getByRole('button', { name: 'From, US Dollar' })).toContainText('available');
+  await expect(page.getByRole('button', { name: 'To, Indonesian Rupiah' })).toContainText('available');
+  await page.getByLabel('Leaves USD').pressSequentially('100');
+  await page.getByLabel('Arrives IDR').pressSequentially('1625000');
+  await expect(page.getByTestId('exchange-cost')).toContainText('1.625.000');
+  await expect(page.getByTestId('spread')).toBeVisible();
+  // The explanation is behind the info button, not a sentence under the rows.
+  await expect(page.getByText(/oldest first/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'About Cost' }).click();
+  await expect(page.getByText(/oldest first/)).toBeVisible();
+
+  // Swap trades the pockets and keeps the figure typed on the From side.
+  await page.getByRole('button', { name: 'Swap' }).click();
+  await expect(page.getByRole('button', { name: 'From, Indonesian Rupiah' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'To, US Dollar' })).toBeVisible();
+  await expect(page.getByLabel('Leaves IDR')).toHaveValue(/^100/);
+  await expect(page.getByLabel('Arrives USD')).toHaveValue('');
+  await page.getByRole('button', { name: 'Swap' }).click();
+  await expect(page.getByRole('button', { name: 'From, US Dollar' })).toBeVisible();
+
+  // The picker for To changes the To pocket (and clears the figures, as choosing always did).
+  await pickPocket(page, 'To', 'SGD');
+  await expect(page.getByRole('button', { name: 'To, Singapore Dollar' })).toBeVisible();
+  await expect(page.getByLabel('Arrives SGD')).toHaveValue('');
+
+  await pickPocket(page, 'To', 'IDR');
+  await page.getByLabel('Leaves USD').pressSequentially('100');
+  await page.getByLabel('Arrives IDR').pressSequentially('1625000');
+  await page.getByRole('button', { name: 'Move', exact: true }).click();
+  await expect(page.getByTestId('pocket-USD')).toContainText('2.300,00');
+  await expect(page.getByTestId('pocket-IDR')).toContainText('7.025.000');
 });

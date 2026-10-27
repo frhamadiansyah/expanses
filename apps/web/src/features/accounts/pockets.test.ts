@@ -2,7 +2,7 @@ import { evaluateAmount } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { formToPost } from '../transactions/tx-form';
-import { SPENDABLE_KINDS, bankRateText, choosePocketCurrency, freeOn, freeToSpend, spendingBook, spendingPocketsOf, spendsFrom, moneySummary, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketCount, pocketsOf, readPockets, withPockets } from './pockets';
+import { SPENDABLE_KINDS, bankRateText, choosePocketCurrency, freeOn, freeToSpend, spendingBook, spendingPocketsOf, spendsFrom, moneySummary, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketCount, pocketsOf, readPockets, swapPockets, withPockets } from './pockets';
 
 // Ids deliberately out of order: the pockets were made in one millisecond, so only sort_order says which came first.
 const accounts = [
@@ -346,5 +346,13 @@ describe('a pocket kept as savings', () => {
 
   it('reads a pocket off under an account switched off, whatever the pocket says', () => {
     expect(spendingBook([{ ...cash, forSpending: 0 }, idr, everyday]).map((a) => a.id)).toEqual(['everyday']);
+  });
+});
+
+describe('swapping the two pockets of a move', () => {
+  it('trades From and To, keeps the figure typed on the From side and clears the arrives figure and manual rate', () => {
+    const typed = { ...moveDraft('b', usd, sgd), amount: '500', toAmount: '638', manualRate: '1' };
+    expect(swapPockets(typed)).toMatchObject({ moneyId: sgd.id, toId: usd.id, amount: '500', toAmount: '', manualRate: '' });
+    expect(swapPockets(swapPockets(typed))).toMatchObject({ moneyId: usd.id, toId: sgd.id });
   });
 });

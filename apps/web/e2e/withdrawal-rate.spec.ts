@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { walletCard } from './accounts';
 import { addForm, choosePayment, fillAmount, openAmount, saveButton } from './add-transaction';
-import { mockRates, openWithPockets } from './pockets';
+import { mockRates, openWithPockets, pickPocket } from './pockets';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -17,8 +17,8 @@ async function move(page: Page, account: string, from: string, to: string, leave
   await page.goto('/wallet');
   await walletCard(page, account).click();
   await page.getByRole('link', { name: 'Move', exact: true }).click();
-  await page.getByLabel('From').selectOption(from);
-  await page.getByLabel('To').selectOption(to);
+  await pickPocket(page, 'From', from);
+  await pickPocket(page, 'To', to);
   await page.getByLabel(`Leaves ${from}`).pressSequentially(leaves);
   await page.getByLabel(`Arrives ${to}`).pressSequentially(arrives);
 }
@@ -56,7 +56,7 @@ test('lira withdrawn at 525 is spent at 525, the receipt names the withdrawal, a
   // has no market to compare with yet; the move back below has one.
   await move(page, TRAVEL.name, 'IDR', 'TRY', '5250000', '10000');
   await expect(page.getByText(/^Rp 525 per TRY/)).toBeVisible();
-  await page.getByRole('button', { name: 'Move it' }).click();
+  await page.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(page.getByTestId('pocket-TRY')).toContainText('10.000,00');
 
   // ₺450 for dinner: Rp 236.250 at the withdrawal rate, not the market's Rp 230.400.
@@ -82,7 +82,7 @@ test('lira withdrawn at 525 is spent at 525, the receipt names the withdrawal, a
   await expect(page.getByTestId('spread')).toContainText('Exchange loss');
   await expect(page.getByTestId('spread')).toContainText('12.500');
   await expect(page.getByTestId('spread')).toContainText('recorded as spending');
-  await page.getByRole('button', { name: 'Move it' }).click();
+  await page.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(page.getByTestId('pocket-TRY')).toContainText('9.050,00');
 });
 

@@ -1,19 +1,21 @@
 import { evaluateAmount, formatMinor, isoDate } from '@expanses/core';
 import { type AccountRow, exchangeResultOf, postTransaction } from '@expanses/db';
+import { ArrowUpDown } from 'lucide-react';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { exchangeResultLine } from '../../lib/withdrawal-rate';
 import { useAccounts, useBalances, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { GROUP_GAP, InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN, TextRow } from '../../ui/native';
 import { useCanHold } from '../goals/queries';
 import { doorOfForm, postForDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { useTransferPreview } from '../transactions/transfer-preview';
 import { formToPost, type MoneyFieldSpec, settledAmount } from '../transactions/tx-form';
 import { ratesForSave } from '../transactions/tx-save';
-import { bankRateText, currencyName, moveDescription, moveDraft, moveView, pocketsOf, withPockets } from './pockets';
+import { bankRateText, currencyName, moveDescription, moveDraft, moveView, pocketsOf, swapPockets, withPockets } from './pockets';
+import { MovePocketRow } from './MovePocketRow';
 import { useHeldRates } from './queries';
 
 /** Only reached once `moveView` has read both figures (it returns a cost only then): not a second reader. */
@@ -99,14 +101,8 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
     }
   }
 
-  // Valued by currency code: an account has one open pocket per currency, so the code names the pocket and a test
-  // can choose it without knowing an id. `idOf` turns it back into the pocket the draft holds.
-  const option = (p: AccountRow) => (
-    <option key={p.id} value={p.currency!}>
-      {`${currencyName(p.currency!)} · ${formatMinor(balances[p.id] ?? 0, p.currency!)} available`}
-    </option>
-  );
-  const idOf = (code: string) => pockets.find((p) => p.currency === code)!.id;
+  const choice = (p: AccountRow) => ({ id: p.id, name: currencyName(p.currency!), available: formatMinor(balances[p.id] ?? 0, p.currency!) });
+  const choices = pockets.map(choice);
   // A rate row asked for the old pair; the new pair asks again on Save if it needs one.
   const choose = (patch: { moneyId?: string; toId?: string }) => {
     setNeedsRate(null);
@@ -118,8 +114,14 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
     return (
       <div className={SCREEN}>
         <LargeTitle title="Moved" back={parent.name} backTo="/accounts/$accountId" backParams={{ accountId: parent.id }} />
-        <InsetGroup header="Recorded" footer={`The move was recorded at the rates for ${rateDate}, not the ones the screen showed, so this is the result the ledger holds.`}>
-          <InsetRow testId="recorded-spread" title={line.title} value={`${line.figure} (${line.note})`} valueTone="ink" chevron={false} />
+        <InsetGroup header="Recorded">
+          <ReadOnlyRow
+            testId="recorded-spread"
+            label={line.title}
+            value={`${line.figure} (${line.note})`}
+            tone="ink"
+            info={`The move was recorded at the rates for ${rateDate}, not the ones the screen showed, so this is the result the ledger holds.`}
+          />
         </InsetGroup>
         <InsetGroup>
           <InsetRow title="Done" action onClick={() => void navigate({ to: '/accounts/$accountId', params: { accountId: parent.id } })} />
@@ -132,44 +134,75 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
     <div className={SCREEN}>
       <LargeTitle title="Move between pockets" back={parent.name} backTo="/accounts/$accountId" backParams={{ accountId: parent.id }} />
       <ErrorBox error={error} />
-      <InsetGroup>
-        <SelectRow label="From" value={from.currency!} onChange={(e) => choose({ moneyId: idOf(e.target.value) })}>
-          {pockets.map(option)}
-        </SelectRow>
-        <SelectRow label="To" value={to.currency!} onChange={(e) => choose({ toId: idOf(e.target.value) })}>
-          {pockets.map(option)}
-        </SelectRow>
-        <TextRow
-          label={`Leaves ${view.leaves.currency}`}
-          value={view.leaves.value}
-          onChange={(e) => set({ amount: e.target.value })}
-          onBlur={() => settle('amount', view.leaves.value, view.leaves.currency)}
-          inputMode="decimal"
+      <InsetGroup header="From">
+        <MovePocketRow
+          word="From"
+          current={choice(from)}
+          choices={choices}
+          onPick={(id) => choose({ moneyId: id })}
+          figure={{
+            'aria-label': `Leaves ${view.leaves.currency}`,
+            value: view.leaves.value,
+            onChange: (e) => set({ amount: e.target.value }),
+            onBlur: () => settle('amount', view.leaves.value, view.leaves.currency),
+          }}
         />
-        {view.arrives && (
-          <TextRow
-            label={`Arrives ${view.arrives.currency}`}
-            value={view.arrives.value}
-            onChange={(e) => set({ toAmount: e.target.value })}
-            onBlur={() => settle('toAmount', view.arrives!.value, view.arrives!.currency)}
-            inputMode="decimal"
-          />
-        )}
-        <ReadOnlyRow label="Rate" value={preview.rateText ?? bankRateText(view.bankRate, view.leaves.currency, view.arrives?.currency ?? view.leaves.currency)} />
+      </InsetGroup>
+      <div className="relative z-10 flex h-0 justify-center" style={{ marginTop: -GROUP_GAP }}>
+        <button
+          type="button"
+          aria-label="Swap"
+          onClick={() => {
+            setNeedsRate(null);
+            setDraft(swapPockets);
+          }}
+          className="ph-focus ph-tap flex h-[30px] w-[30px] -translate-y-[28%] items-center justify-center rounded-full border-[3px] border-[var(--ph-ground)] bg-[var(--ph-fill)] text-[var(--ph-ink-2)]"
+        >
+          <ArrowUpDown size={15} aria-hidden />
+        </button>
+      </div>
+      <InsetGroup header="To">
+        <MovePocketRow
+          word="To"
+          current={choice(to)}
+          choices={choices}
+          onPick={(id) => choose({ toId: id })}
+          figure={
+            view.arrives
+              ? {
+                  'aria-label': `Arrives ${view.arrives.currency}`,
+                  value: view.arrives.value,
+                  onChange: (e) => set({ toAmount: e.target.value }),
+                  onBlur: () => settle('toAmount', view.arrives!.value, view.arrives!.currency),
+                }
+              : null
+          }
+        />
+      </InsetGroup>
+      <InsetGroup>
+        <ReadOnlyRow
+          label="Rate"
+          value={preview.rateText ?? bankRateText(view.bankRate, view.leaves.currency, view.arrives?.currency ?? view.leaves.currency)}
+          info="What arrives for one unit that leaves, from the two figures typed."
+        />
         <TextRow label="Date" type="date" value={draft.occurredOn} onChange={(e) => set({ occurredOn: e.target.value })} />
         {needsRate && (
           <TextRow label={`Rate: ${ws.baseCurrency} per 1 ${needsRate}`} value={draft.manualRate} onChange={(e) => set({ manualRate: e.target.value })} inputMode="decimal" />
         )}
       </InsetGroup>
       {preview.result && (
-        <InsetGroup
-          footer={
-            preview.stale
-              ? `At the last-known ${[view.leaves.currency, view.arrives?.currency].filter(Boolean).join(', ')} rates: moving it fetches the day’s rates and records the result at those, which may differ.`
-              : `Cost is what ${formatMinor(evaluateOrZero(view.leaves), view.leaves.currency)} cost when it came in, oldest first; what arrives is valued at the day’s rate.`
-          }
-        >
-          <InsetRow testId="exchange-cost" title="Cost" value={preview.costText ?? '—'} valueTone="ink" chevron={false} />
+        <InsetGroup>
+          <ReadOnlyRow
+            testId="exchange-cost"
+            label="Cost"
+            value={preview.costText ?? '—'}
+            tone="ink"
+            info={
+              preview.stale
+                ? `At the last-known ${[view.leaves.currency, view.arrives?.currency].filter(Boolean).join(', ')} rates: moving it fetches the day’s rates and records the result at those, which may differ. Cost is what ${formatMinor(evaluateOrZero(view.leaves), view.leaves.currency)} cost when it came in, oldest first.`
+                : `Cost is what ${formatMinor(evaluateOrZero(view.leaves), view.leaves.currency)} cost when it came in, oldest first; what arrives is valued at the day’s rate.`
+            }
+          />
           <InsetRow
             testId="spread"
             title={preview.stale ? `${preview.result.title} (last known)` : preview.result.title}
@@ -181,7 +214,7 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
       )}
       {setAside.node}
       <InsetGroup>
-        <InsetRow title="Move it" action onClick={() => !busy && setAside.ready && void save()} className={busy || !setAside.ready ? 'opacity-40' : undefined} />
+        <InsetRow title="Move" action onClick={() => !busy && setAside.ready && void save()} className={busy || !setAside.ready ? 'opacity-40' : undefined} />
       </InsetGroup>
     </div>
   );

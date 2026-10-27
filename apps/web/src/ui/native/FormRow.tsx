@@ -303,10 +303,13 @@ export function ReadOnlyRow({
   value,
   tone,
   info,
+  testId,
   position,
 }: GroupChild & {
   label: string;
   value: string | null | undefined;
+  /** What a test names the row by. */
+  testId?: string;
   /** The figure's ink when the quiet one would mislead: a gain in the tint, a loss in alarm. */
   tone?: Tone;
   /** What the figure is, behind an ⓘ beside the label and under the row only when asked for — as TextRow's `info`. */
@@ -317,7 +320,7 @@ export function ReadOnlyRow({
   const id = useId();
   const [explained, setExplained] = useState(false);
   return (
-    <div className="relative" style={{ minHeight: TAP }}>
+    <div className="relative" style={{ minHeight: TAP }} data-testid={testId}>
       <Separator show={Boolean(position?.separator)} />
       <div className="flex items-center gap-3" style={shell(false)}>
         <span className="flex shrink-0 items-center gap-[6px]">

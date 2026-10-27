@@ -71,6 +71,14 @@ export function withPockets(draft: FormDraft, patch: { moneyId?: string; toId?: 
   return { ...draft, moneyId, toId, amount: '', toAmount: '', manualRate: '' };
 }
 
+/**
+ * ⇅ between the boxes: the pocket money leaves and the one it arrives in change places. The figure typed on the From
+ * side stays as typed; the arrives figure and a manual rate belonged to the old pair, so they are cleared.
+ */
+export function swapPockets(draft: FormDraft): FormDraft {
+  return { ...draft, moneyId: draft.toId, toId: draft.moneyId, toAmount: '', manualRate: '' };
+}
+
 export interface MoveView {
   leaves: MoneyFieldSpec;
   arrives: MoneyFieldSpec | null;
