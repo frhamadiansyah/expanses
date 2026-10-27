@@ -5,7 +5,7 @@ import { type SwipeAction, type SwipeHint, SwipeRow } from '../../ui/SwipeRow';
 import { CategoryIcon, UnknownCategoryMark } from '../categories/CategoryIcon';
 import { DayHeader } from '../transactions/DayHeader';
 import { CaptureTypeMark } from './CaptureTypeMark';
-import { captureRowView, draftDays } from './capture-view';
+import { captureRowView, draftDays, effectiveCategory } from './capture-view';
 
 /**
  * The phone's queue, drawn the way Cashflow draws what is already recorded: a card per day headed by the day and
@@ -25,6 +25,7 @@ export function DraftDays({
   onSwipeRight,
   discardActions,
   recordHint,
+  guesses,
 }: {
   drafts: readonly DraftRow[];
   accounts: readonly AccountRow[];
@@ -37,6 +38,8 @@ export function DraftDays({
   discardActions: (draft: DraftRow) => readonly SwipeAction[];
   /** What the ground under a right drag shows. */
   recordHint: SwipeHint;
+  /** What the history of a merchant guesses for drafts with no category, by draft id: shown as if set. */
+  guesses?: Readonly<Record<string, string | null>>;
 }) {
   return (
     <>
@@ -62,7 +65,7 @@ export function DraftDays({
                       }}
                       className="block w-full bg-[var(--ph-surface)] text-left focus-visible:outline-2 focus-visible:outline-slate-900"
                     >
-                      <DraftFace draft={draft} accounts={accounts} source={sourceOf(draft)} />
+                      <DraftFace draft={draft} accounts={accounts} source={sourceOf(draft)} categoryId={effectiveCategory(draft, guesses)} />
                     </button>
                   )}
                 </SwipeRow>
@@ -76,10 +79,10 @@ export function DraftDays({
 }
 
 /** One capture's face: `TransactionRow`'s layout, with the questions still open said where their answers go. */
-function DraftFace({ draft, accounts, source }: { draft: DraftRow; accounts: readonly AccountRow[]; source: CaptureSource | null }) {
+function DraftFace({ draft, accounts, source, categoryId }: { draft: DraftRow; accounts: readonly AccountRow[]; source: CaptureSource | null; categoryId: string | null }) {
   const view = captureRowView(draft, source);
   const transfer = draft.kind === 'transfer';
-  const category = draft.categoryAccountId ? accounts.find((account) => account.id === draft.categoryAccountId) : undefined;
+  const category = categoryId ? accounts.find((account) => account.id === categoryId) : undefined;
   const nameOf = (id: string | null) => (id ? (accounts.find((account) => account.id === id)?.name ?? null) : null);
   const from = nameOf(draft.accountId);
   const to = nameOf(draft.toAccountId);
