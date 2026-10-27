@@ -367,6 +367,10 @@ function MoneyRow({
   );
 }
 
+/** The Type row's last entry where a credit card can be opened from the same page; it is not a money account kind. */
+export const CARD_KIND = 'credit_card';
+export const CARD_KIND_LABEL = 'Credit card';
+
 export function CashAccountForm({
   item,
   onCreated,
@@ -380,9 +384,10 @@ export function CashAccountForm({
   embedded?: EmbeddedForm;
   /**
    * The kinds this form may open, asked for in its first row — for a sheet, which has no picker screen in front of
-   * the form. The caller holds the answer and passes it back as `item`, so switching keeps what was typed.
+   * the form. The caller holds the answer and passes it back as `item`, so switching keeps what was typed. `card`
+   * adds Credit card as the last kind; choosing it is the caller's to answer, with a form of its own.
    */
-  kinds?: { items: readonly MoneyAccountSubtype[]; onChange: (item: MoneyAccountSubtype) => void };
+  kinds?: { items: readonly MoneyAccountSubtype[]; onChange: (item: MoneyAccountSubtype) => void; card?: () => void };
 }) {
   const { database, ws } = useApp();
   const navigate = useNavigate();
@@ -539,12 +544,17 @@ export function CashAccountForm({
       >
         {/* A sheet has no picker screen before the form, so the kind is its first row. */}
         {kinds && (
-          <SelectRow label="Type" value={item} onChange={(e) => kinds.onChange(e.target.value as MoneyAccountSubtype)}>
+          <SelectRow
+            label="Type"
+            value={item}
+            onChange={(e) => (e.target.value === CARD_KIND ? kinds.card?.() : kinds.onChange(e.target.value as MoneyAccountSubtype))}
+          >
             {kinds.items.map((kind) => (
               <option key={kind} value={kind}>
                 {cashItem(kind).label}
               </option>
             ))}
+            {kinds.card && <option value={CARD_KIND}>{CARD_KIND_LABEL}</option>}
           </SelectRow>
         )}
         {/* A fund account is one broker's cash: called by its broker, with whoever holds that cash. No name of its own. */}

@@ -38,20 +38,19 @@ test('the ⋯ menu opens where it can be seen with the page scrolled down, not o
   await expect(page).toHaveURL(/\/recommend$/);
 });
 
-test('Wallet’s + opens the credit card form straight away, with no debt to choose first', async ({ page }) => {
+test('Wallet’s + opens New account, and its Type row reaches the credit card form with no debt to choose first', async ({ page }) => {
   await page.goto('/wallet');
-  await page.getByRole('button', { name: 'Add', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Credit card' }).click();
-  await expect(page).toHaveURL(/\/cards\/new$/);
-  await expect(page.getByRole('heading', { name: 'New credit card' })).toBeVisible();
+  await page.getByRole('link', { name: 'Add', exact: true }).click();
+  await expect(page).toHaveURL(/\/accounts\/add$/);
+  await page.getByLabel('Type', { exact: true }).selectOption({ label: 'Credit card' });
+  await expect(page.getByRole('heading', { name: 'New account' })).toBeVisible();
   await expect(page.getByLabel('Name', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add card' })).toBeVisible();
 });
 
 test('Wallet’s + opens a money account form straight away as a current account, and its Type row changes the kind', async ({ page }) => {
   await page.goto('/wallet');
-  await page.getByRole('button', { name: 'Add', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Money account' }).click();
+  await page.getByRole('link', { name: 'Add', exact: true }).click();
   await expect(page).toHaveURL(/\/accounts\/add$/);
   await expect(page.getByRole('heading', { name: 'New account' })).toBeVisible();
   const type = page.getByLabel('Type', { exact: true });
