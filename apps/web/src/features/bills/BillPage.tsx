@@ -1,9 +1,10 @@
 import { type BillWindow, dayMonth, isoDate, monthName, ordinal, periodicRepeat, yearlyRepeat } from '@expanses/core';
-import { deleteExpenseTemplate, RecurringError, resumeBill, skipBill, undoBillPayments } from '@expanses/db';
+import { deleteExpenseTemplate, RecurringError, resumeBill, skipBill, undoBillPayments, unskipBill } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check, MoreHorizontal, Pause, Pencil, Play, SkipForward } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
+import { Sheet } from '../../app/Sheet';
 import { useFrom } from '../../app/from-search';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox, Money } from '../../ui';
@@ -56,6 +57,8 @@ export function BillPage({ billId }: { billId: string }) {
   const [paying, setPaying] = useState(false);
   const [pausing, setPausing] = useState(false);
   const [allHistory, setAllHistory] = useState(false);
+  // The skipped month whose sheet is open, with the title its row carries.
+  const [unskipping, setUnskipping] = useState<{ month: string; title: string } | null>(null);
   const [justPaid, setJustPaid] = useState<JustPaid | null>(null);
   const [error, setError] = useState<unknown>(null);
 
@@ -236,17 +239,19 @@ export function BillPage({ billId }: { billId: string }) {
       <div data-testid="bill-history">
         <InsetGroup header="History">
           {[
-            ...shown.map((row) => (
+            ...shown.map((row) => {
+              const title =
+                bill.repeat !== 'monthly'
+                  ? row.state === 'paid'
+                    ? `Paid in ${row.month.slice(0, 4)}`
+                    : `${row.month.slice(0, 4)} bill`
+                  : `${monthName(row.month, 'long')} bill`;
+              return (
               <HistoryRow
                 key={row.month}
                 fresh={paidMonth?.month === row.month}
-                title={
-                  bill.repeat !== 'monthly'
-                    ? row.state === 'paid'
-                      ? `Paid in ${row.month.slice(0, 4)}`
-                      : `${row.month.slice(0, 4)} bill`
-                    : `${monthName(row.month, 'long')} bill`
-                }
+                title={title}
+                onOpen={row.state === 'skipped' ? () => setUnskipping({ month: row.month, title }) : undefined}
                 value={
                   row.state === 'paid' ? (
                     <>
@@ -263,7 +268,8 @@ export function BillPage({ billId }: { billId: string }) {
                   )
                 }
               />
-            )),
+              );
+            }),
             ...(history.length > shown.length
               ? [<InsetRow key="all" title="See all" label="See all" action onClick={() => setAllHistory(true)} />]
               : []),
@@ -285,6 +291,23 @@ export function BillPage({ billId }: { billId: string }) {
         />
       )}
 
+      {unskipping && (
+        <Sheet grouped title={`${unskipping.title} · skipped`} onClose={() => setUnskipping(null)}>
+          <InsetGroup>
+            <InsetRow
+              action
+              title="Unskip"
+              onClick={() => {
+                const { month } = unskipping;
+                setUnskipping(null);
+                void act(() => unskipBill(database, ws, bill.id, month));
+              }}
+            />
+            <InsetRow action title="Cancel" onClick={() => setUnskipping(null)} />
+          </InsetGroup>
+        </Sheet>
+      )}
+
       {pausing && <PauseSheet bill={bill} onClose={() => setPausing(false)} onPaused={() => setPausing(false)} />}
     </div>
   );
@@ -292,13 +315,14 @@ export function BillPage({ billId }: { billId: string }) {
 
 /**
  * A month in the bill's history. The month just paid is washed in the tint and marked `data-new`, so the payment
- * that just happened is the row the eye lands on — the row itself stays the kit's.
+ * that just happened is the row the eye lands on — the row itself stays the kit's. A skipped month opens to be
+ * unskipped; paid and paused months are plain.
  */
-function HistoryRow({ position, fresh, title, value }: GroupChild & { fresh: boolean; title: string; value: ReactNode }) {
+function HistoryRow({ position, fresh, title, value, onOpen }: GroupChild & { fresh: boolean; title: string; value: ReactNode; onOpen?: () => void }) {
   return (
     // The wash sits on the wrapper: the row draws itself on a transparent ground, which would win over it.
     <div data-new={fresh} className={cx(fresh && 'bg-[var(--ph-tint-panel)]')}>
-      <InsetRow position={position} title={title} value={value} valueTone="ink-2" />
+      <InsetRow position={position} title={title} value={value} valueTone="ink-2" onClick={onOpen} />
     </div>
   );
 }
