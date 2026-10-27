@@ -28,7 +28,9 @@ export function AddAccountPage() {
   );
 }
 
-const KINDS = CASH_ITEMS.map((item) => item.id as MoneyAccountSubtype);
+/** Wallet's list leaves out the two kinds that are not carried or spent day to day: a time deposit and other cash equivalents are added from Assets. */
+const WALLET_LEFT_OUT = new Set<string>(['time_deposit', 'other_cash']);
+const KINDS = CASH_ITEMS.filter((item) => !WALLET_LEFT_OUT.has(item.id)).map((item) => item.id as MoneyAccountSubtype);
 
 /**
  * A money account added straight from Wallet's +, with no list of kinds to climb first: the form opens as a current
