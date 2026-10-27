@@ -2,7 +2,7 @@ import { evaluateAmount } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { formToPost } from '../transactions/tx-form';
-import { SPENDABLE_KINDS, bankRateText, choosePocketCurrency, freeOn, freeToSpend, spendingBook, spendingPocketsOf, spendsFrom, moneySummary, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketCount, pocketsOf, readPockets, swapPockets, withPockets } from './pockets';
+import { SPENDABLE_KINDS, bankRateText, choosePocketCurrency, freeOn, freeToSpend, spendingBook, spendingPocketsOf, spendsFrom, moneySummary, moveDraft, moveView, nextPocketCurrency, parentActionKeys, parentTotal, pocketCount, pocketsOf, readPockets, swapPockets, withPockets } from './pockets';
 
 // Ids deliberately out of order: the pockets were made in one millisecond, so only sort_order says which came first.
 const accounts = [
@@ -354,5 +354,19 @@ describe('swapping the two pockets of a move', () => {
     const typed = { ...moveDraft('b', usd, sgd), amount: '500', toAmount: '638', manualRate: '1' };
     expect(swapPockets(typed)).toMatchObject({ moneyId: sgd.id, toId: usd.id, amount: '500', toAmount: '', manualRate: '' });
     expect(swapPockets(swapPockets(typed))).toMatchObject({ moneyId: usd.id, toId: sgd.id });
+  });
+});
+
+describe('parentActionKeys', () => {
+  it('leads with Record, ends with Adjust and puts Move after it', () => {
+    expect(parentActionKeys('cash', 2)).toEqual(['record', 'move', 'withdraw', 'adjust']);
+    expect(parentActionKeys('ewallet', 3)).toEqual(['record', 'move', 'top-up', 'adjust']);
+    expect(parentActionKeys('emoney', 2)).toEqual(['record', 'move', 'top-up', 'adjust']);
+    expect(parentActionKeys('bank', 2)).toEqual(['record', 'move', 'adjust']);
+    expect(parentActionKeys('saving', 2)).toEqual(['record', 'move', 'adjust']);
+  });
+  it('has no Move with one pocket', () => {
+    expect(parentActionKeys('cash', 1)).toEqual(['record', 'withdraw', 'adjust']);
+    expect(parentActionKeys('bank', 1)).toEqual(['record', 'adjust']);
   });
 });
