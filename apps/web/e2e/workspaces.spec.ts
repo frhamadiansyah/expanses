@@ -69,8 +69,8 @@ async function spend(page: Page, description: string, amount: string) {
 
 /** Makes a workspace through the sidebar switcher and lands in it, as the sheet does on its own. */
 async function newWorkspace(page: Page, name: string, startsWith: string) {
-  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
-  await page.getByRole('button', { name: 'New workspace' }).click();
+  await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill(name);
   await sheet.getByLabel('Starts with').selectOption({ label: startsWith });
@@ -111,8 +111,8 @@ test('a new workspace copies the categories, opens empty, and leaves the other a
  */
 test('a Business workspace starts with the business categories, and Personal keeps its own', async ({ page }) => {
   await addBank(page);
-  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
-  await page.getByRole('button', { name: 'New workspace' }).click();
+  await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Shop');
   await expect(sheet.getByLabel('Categories')).toHaveValue('business');
@@ -147,8 +147,8 @@ test('a Business workspace starts with the business categories, and Personal kee
 /** A Business workspace made with Empty categories can take the business list later, from its page, after agreeing to it. */
 test('a Business workspace’s page offers the Business list, and Not now changes nothing', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
-  await page.getByRole('button', { name: 'New workspace' }).click();
+  await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Shop');
   await sheet.getByLabel('Categories').selectOption({ label: 'Empty' });
@@ -332,16 +332,20 @@ test('a card’s statement holds every workspace, and each row says which', asyn
   await expect(page.getByTestId('statement-total')).toContainText('770.000');
 });
 
-/** The switcher is where a workspace is chosen; the Account page is where one is changed, and it says so. */
-test('the switcher’s “Manage workspaces” lands on the Account page, and the sheet closes behind it', async ({ page }) => {
+/** The switcher only switches; the Account page is where one is made or changed. */
+test('the switcher only lists workspaces, and the Account page holds New', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Workspace', exact: true }).click();
-  await page.getByRole('dialog', { name: 'Workspaces' }).getByRole('link', { name: 'Manage workspaces' }).click();
-
+  const switcher = page.getByRole('dialog', { name: 'Workspaces' });
+  await expect(switcher.getByTestId('workspace-choice')).toHaveCount(1);
+  await expect(switcher.getByText(/New workspace|Join a workspace|Manage workspaces/)).toHaveCount(0);
+  await switcher.getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('link', { name: 'Account', exact: true }).click();
   await expect(page).toHaveURL(/\/account$/);
   await expect(page.getByRole('dialog', { name: 'Workspaces' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Account', exact: true })).toBeVisible();
   await expect(page.getByTestId('account-workspace')).toHaveCount(1);
+  await expect(page.getByTestId('new-workspace')).toBeVisible();
   // The old address still arrives.
   await page.goto('/settings');
   await expect(page).toHaveURL(/\/account$/);

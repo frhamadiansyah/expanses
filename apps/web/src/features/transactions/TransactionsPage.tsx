@@ -25,7 +25,7 @@ import {
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
-import { CalendarDays, ChevronDown, CircleAlert, CircleCheck, Ellipsis, Home, LayoutGrid, List, Pencil, Search, Table2, X } from 'lucide-react';
+import { CalendarDays, ChevronDown, CircleAlert, CircleCheck, Home, LayoutGrid, List, Pencil, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -77,7 +77,7 @@ import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { WorkspaceBadge, WorkspaceDot } from '../workspaces/WorkspaceBadge';
 import { Unconverted } from '../workspaces/Unconverted';
 import { UndoToast } from '../../ui/UndoToast';
-import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
+import { WorkspaceMenu } from '../workspaces/WorkspaceMenu';
 import { useBooks, useCategoryBooks, useOpenBook, useWorkspaceBadges } from '../workspaces/queries';
 import { ChoiceSheet } from './ChoiceSheet';
 import { CardSheet } from '../cards/CardSheet';
@@ -192,7 +192,6 @@ export function TransactionsPage() {
   const [pickingPaid, setPickingPaid] = useState(false);
   // One copy of the category gesture for the whole screen: the sheet it opens and the Undo toast it leaves.
   const recategorise = useRecategorise();
-  const [showFilters, setShowFilters] = useState(false);
   // The workspace switcher, reached from the ⋯ menu — the one thing in there that changes the whole app.
   const [choosingWorkspace, setChoosingWorkspace] = useState(false);
   const openBook = useOpenBook();
@@ -1192,7 +1191,7 @@ export function TransactionsPage() {
           phone
             ? [
                 { key: 'search', label: 'Search', glyph: <Search size={20} aria-hidden />, pressed: showSearch, run: () => setShowSearch((was) => !was) },
-                { key: 'filters', label: 'Filters', glyph: <Ellipsis size={20} aria-hidden />, pressed: showFilters, expanded: showFilters, run: () => setShowFilters((was) => !was) },
+                { key: 'workspace', label: `Workspace, ${openBook?.name ?? workspaceName}`, glyph: <WorkspaceDot book={openBook} />, run: () => setChoosingWorkspace(true) },
               ]
             : []
         }
@@ -1218,32 +1217,7 @@ export function TransactionsPage() {
           )}
         </div>
       )}
-      {phone && showFilters && (
-        <>
-          {/* Taps outside the menu close it, the way a pull-down menu behaves on iOS. */}
-          <button type="button" aria-label="Close filters" className="fixed inset-0 z-20 cursor-default" onClick={() => setShowFilters(false)} />
-          {/* Fixed under the title row's ⋯, wherever the page is scrolled: from far down the list the ⋯ tapped is the pinned
-              bar's, and a menu hung from the header up the page opened out of sight. */}
-          <div role="menu" className="fixed top-[calc(env(safe-area-inset-top)+60px)] right-4 z-30 w-max max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-slate-200" data-testid="filters-menu">
-            {/* First, and always here: it is how a second workspace is made, and how you move between them. */}
-            <button
-              type="button"
-              role="menuitem"
-              data-testid="workspace-row"
-              onClick={() => {
-                setShowFilters(false);
-                setChoosingWorkspace(true);
-              }}
-              className="flex min-h-12 w-full items-center gap-3 px-4 text-left text-sm"
-            >
-              <WorkspaceDot book={openBook} />
-              <span className="flex-1 truncate font-medium">{openBook?.name ?? workspaceName}</span>
-              <span className="text-xs text-slate-500">Workspace ›</span>
-            </button>
-          </div>
-        </>
-      )}
-      {choosingWorkspace && <WorkspaceSheet onClose={() => setChoosingWorkspace(false)} />}
+      {choosingWorkspace && <WorkspaceMenu onClose={() => setChoosingWorkspace(false)} />}
       {adding && (
         <Sheet grouped title="Add a transaction" onClose={() => setAdding(false)}>
           <TransactionCard onDone={() => setAdding(false)} />
@@ -1251,8 +1225,8 @@ export function TransactionsPage() {
       )}
 
       <div className="space-y-1">
-        {/* On a phone the filters are the ⋯ menu below; the row of chips is a wide screen's. */}
-        <div className={cx('flex flex-wrap items-center gap-2', (phone || !showFilters) && 'hidden md:flex')}>
+        {/* The row of chips is a wide screen's; a phone filters from the Sort and filter button. */}
+        <div className="hidden flex-wrap items-center gap-2 md:flex">
           {!phone && (
           <label className="relative min-w-52 flex-[1_1_280px]">
             <Search size={16} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-slate-400" aria-hidden />
@@ -1267,8 +1241,8 @@ export function TransactionsPage() {
             />
           </label>
           )}
-          {/* The filters sit behind the ⋯ button on a phone, and are simply there on a wide screen. */}
-          <div className={cx('flex flex-wrap items-center gap-2', !showFilters && 'hidden md:flex')}>
+          {/* Hidden on a phone, simply there on a wide screen. */}
+          <div className="hidden flex-wrap items-center gap-2 md:flex">
             {pending.length > 0 && (
               <button
                 type="button"
