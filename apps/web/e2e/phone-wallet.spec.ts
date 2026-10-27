@@ -47,3 +47,18 @@ test('Wallet’s + opens the credit card form straight away, with no debt to cho
   await expect(page.getByLabel('Name', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add card' })).toBeVisible();
 });
+
+test('Wallet’s + opens a money account form straight away as a current account, and its Type row changes the kind', async ({ page }) => {
+  await page.goto('/wallet');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Money account' }).click();
+  await expect(page).toHaveURL(/\/accounts\/add$/);
+  await expect(page.getByRole('heading', { name: 'New account' })).toBeVisible();
+  const type = page.getByLabel('Type', { exact: true });
+  await expect(type).toHaveValue('bank');
+  await type.selectOption({ label: 'Cash' });
+  await page.getByLabel('Name', { exact: true }).pressSequentially('Pocket money');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page).toHaveURL(/\/wallet$/);
+  await expect(page.getByText('Pocket money').first()).toBeVisible();
+});

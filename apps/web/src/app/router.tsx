@@ -44,7 +44,7 @@ import { CategoryPage } from '../features/categories/CategoryPage';
 import { SetsPage } from '../features/categories/SetsPage';
 import { KitPage } from '../features/design/KitPage';
 import { MerchantsPage } from '../features/merchants/MerchantsPage';
-import { AddAccountPage } from '../features/ownables/AddAccountPage';
+import { AddAccountPage, AddMoneyAccountPage } from '../features/ownables/AddAccountPage';
 import { IncomePage } from '../features/investments/IncomePage';
 import { AllTradesPage } from '../features/investments/AllTradesPage';
 import { AddAssetPage } from '../features/ownables/AddAssetPage';
@@ -239,6 +239,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators/life-cover', component: LifeCoverPage }),
   // Before /accounts only for reading: a route is ranked by how specific its path is, never by where it sits here.
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/new', component: AddAccountPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/accounts/add', component: AddMoneyAccountPage }),
   // The Accounts page and the Cards tab are Wallet now (owner, 23 Oct): an old link or bookmark lands there.
   createRoute({
     getParentRoute: () => rootRoute,

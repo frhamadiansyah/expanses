@@ -184,7 +184,7 @@ export function WalletPage() {
       label: 'Add',
       glyph: <Plus size={22} aria-hidden />,
       menu: [
-        { key: 'money', label: 'Money account', to: '/accounts/new' },
+        { key: 'money', label: 'Money account', to: '/accounts/add' },
         { key: 'card', label: 'Credit card', to: '/cards/new' },
       ],
     },

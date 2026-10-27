@@ -1,5 +1,6 @@
-import type { MoneyAccountSubtype } from '@expanses/core';
+import { CASH_ITEMS, type MoneyAccountSubtype } from '@expanses/core';
 import { useState } from 'react';
+import { PushedTitle, SCREEN } from '../../ui/native';
 import { CashAccountForm } from './CashAccountForm';
 import { handOverRows } from './catalogue-view';
 import { OwnablePicker } from './OwnablePicker';
@@ -24,5 +25,21 @@ export function AddAccountPage() {
     >
       {chosen && <CashAccountForm key={chosen} item={chosen as MoneyAccountSubtype} />}
     </OwnablePicker>
+  );
+}
+
+const KINDS = CASH_ITEMS.map((item) => item.id as MoneyAccountSubtype);
+
+/**
+ * A money account added straight from Wallet's +, with no list of kinds to climb first: the form opens as a current
+ * account, the commonest, and its Type row changes the kind, keeping whatever was typed.
+ */
+export function AddMoneyAccountPage() {
+  const [item, setItem] = useState<MoneyAccountSubtype>('bank');
+  return (
+    <div className={SCREEN}>
+      <PushedTitle title="New account" back="Wallet" backTo="/wallet" />
+      <CashAccountForm item={item} kinds={{ items: KINDS, onChange: setItem }} />
+    </div>
   );
 }
