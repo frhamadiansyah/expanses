@@ -91,7 +91,7 @@ test('a card is refused digits that another card at the bank already has, inside
   await expect(sheet).toBeVisible();
 });
 
-test('Add a card is the last row of the Cards on this account box, and the old form is gone', async ({ page }) => {
+test('Add a card is the last row of the Cardholders box, and the old form is gone', async ({ page }) => {
   await addCardAccount(page);
   await openTheCard(page);
   await expect(page.getByRole('button', { name: 'Add card', exact: true })).toHaveCount(0);

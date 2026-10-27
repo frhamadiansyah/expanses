@@ -326,7 +326,7 @@ export function CardSettingsPage() {
       {step !== 1 && termsBlock}
 
       <InsetGroup
-        header="Cards on this account"
+        header="Cardholders"
       >
         {[...plastic].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary)).map((piece) => (
           // The card's own face beside whose it is: a row with its art, and the way to take the card off.
