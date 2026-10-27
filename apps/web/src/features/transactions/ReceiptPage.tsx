@@ -2,7 +2,8 @@ import { formatMinor, isoDate } from '@expanses/core';
 import { eventPostingOf, jointRowNote, listPhotos, listTransactions, ownerScope, paidOffMarkOf, setSettledBeforeApp, type TransactionPhotoRow } from '@expanses/db';
 import { deleteTransaction } from './member-transfer';
 import { useQuery } from '@tanstack/react-query';
-import { getRouteApi, Link, useNavigate } from '@tanstack/react-router';
+import { getRouteApi, Link, useNavigate, useRouter } from '@tanstack/react-router';
+import { originHref } from '../../app/from-search';
 import { Copy, EyeOff, Pencil } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { BackButton, ROUND } from '../../app/BackHeader';
@@ -52,6 +53,7 @@ export function ReceiptRoute() {
  */
 export function ReceiptPage({ transactionId }: { transactionId: string }) {
   const { database, ws } = useApp();
+  const router = useRouter();
   const navigate = useNavigate();
   const phone = usePhone();
   const invalidate = useInvalidateAll();
@@ -175,7 +177,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
     try {
       await deleteTransaction(database, ws, transactionId);
       await invalidate();
-      await navigate({ to: '/transactions' });
+      router.history.push(originHref());
     } catch (e) {
       setError(e);
     } finally {
@@ -206,7 +208,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   async function afterEdit() {
     setEditing(false);
     const fresh = await receipt.refetch();
-    if (fresh.data?.status === 'void') await navigate({ to: '/transactions' });
+    if (fresh.data?.status === 'void') router.history.push(originHref());
   }
 
   return (

@@ -2,7 +2,8 @@ import { useOpenBookReadOnly } from '../sharing/queries';
 import { minorToMajorString } from '@expanses/core';
 import { eventPostingOf, linkEventItem, listTransactions, ownerScope } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { getRouteApi, useNavigate } from '@tanstack/react-router';
+import { getRouteApi, useNavigate, useRouter } from '@tanstack/react-router';
+import { originHref } from '../../app/from-search';
 import { useEffect, useRef } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
@@ -168,6 +169,7 @@ const route = getRouteApi('/transactions/$transactionId/edit');
  */
 export function EditTransactionRoute() {
   const { transactionId } = route.useParams();
+  const router = useRouter();
   const { database, ws } = useApp();
   const navigate = useNavigate();
   const back = useBack('/transactions');
@@ -223,7 +225,7 @@ export function EditTransactionRoute() {
         onSaveStart={() => {
           saving.current = true;
         }}
-        onDone={() => void navigate({ to: '/transactions', replace: true })}
+        onDone={() => router.history.replace(originHref())}
       />
     </div>
   );
@@ -240,6 +242,7 @@ const duplicateRoute = getRouteApi('/transactions/$transactionId/duplicate');
  */
 export function DuplicateTransactionRoute() {
   const { transactionId } = duplicateRoute.useParams();
+  const router = useRouter();
   const { database, ws } = useApp();
   const navigate = useNavigate();
   const back = useBack('/transactions');
@@ -259,7 +262,7 @@ export function DuplicateTransactionRoute() {
   if (!tx || !changeable || !duplicable.ready || !duplicable(tx)) return <Card>Loading…</Card>;
   return (
     <div className={SCREEN}>
-      <TransactionCard full title="Duplicate" label="Duplicate a transaction" duplicateOf={tx} onBack={back} onDone={() => void navigate({ to: '/transactions' })} />
+      <TransactionCard full title="Duplicate" label="Duplicate a transaction" duplicateOf={tx} onBack={back} onDone={() => router.history.push(originHref())} />
     </div>
   );
 }

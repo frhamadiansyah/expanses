@@ -26,7 +26,7 @@ import { CaptureSettingsPage } from '../features/capture/CaptureSettingsPage';
 import { SourcePage } from '../features/capture/SourcePage';
 import { ImportPage } from '../features/import/ImportPage';
 import { ReviewPage } from '../features/review/ReviewPage';
-import { fromSearch } from './from-search';
+import { fromSearch, trackOrigin } from './from-search';
 import { CardDetailPage } from '../features/cards/CardDetailPage';
 import { CardPointsCheckPage, CardPointsPage, CardPurchasesPage } from '../features/cards/CardPointsPage';
 import { EarnRulesPage, SpendBonusesPage } from '../features/cards/CardRulesPages';
@@ -431,6 +431,7 @@ const routeTree = rootRoute.addChildren([
 ]);
 
 export const router = createRouter({ routeTree });
+trackOrigin(router);
 
 declare module '@tanstack/react-router' {
   interface Register {
