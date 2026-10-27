@@ -100,6 +100,7 @@ import billRepeat from '../migrations/0099_bill_repeat.sql?raw';
 import memberTransferAccounts from '../migrations/0100_member_transfer_accounts.sql?raw';
 import sinkingFunds from '../migrations/0101_sinking_funds.sql?raw';
 import billRepeatEvery from '../migrations/0102_bill_repeat_every.sql?raw';
+import sinkingFundEntries from '../migrations/0103_sinking_fund_entries.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -210,6 +211,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 100, name: 'member_transfer_accounts', sql: memberTransferAccounts },
   { version: 101, name: 'sinking_funds', sql: sinkingFunds },
   { version: 102, name: 'bill_repeat_every', sql: billRepeatEvery },
+  { version: 103, name: 'sinking_fund_entries', sql: sinkingFundEntries },
 ];
 
 /** The highest version this build of the app knows how to produce. */

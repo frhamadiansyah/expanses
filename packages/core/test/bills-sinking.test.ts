@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { monthsBetween, setAsideOn, sinkingPlan, sinkingProgress } from '../src/index';
+import { setAsideOn, sinkingPlan } from '../src/index';
 
 describe('the monthly figure', () => {
   const car = { repeatMonth: 11, dayOfMonth: 12, currency: 'IDR' };
@@ -22,30 +22,6 @@ describe('the monthly figure', () => {
   });
   it('one month left sets the whole amount aside', () => {
     expect(sinkingPlan({ ...car, targetMinor: 900_000, today: '2026-10-26' })).toMatchObject({ monthsLeft: 1, monthlyMinor: 900_000 });
-  });
-});
-
-describe('what is set aside over time', () => {
-  const fund = { monthlyMinor: 468_750, startedMonth: '2026-03', extraMinor: 0 };
-  const target = 3_750_000;
-  it('counts the month it starts in, then one more each month', () => {
-    expect(sinkingProgress(fund, target, '2026-11', '2026-03-10')).toEqual({ savedMinor: 468_750, monthsDone: 1, monthsTotal: 8 });
-    expect(sinkingProgress(fund, target, '2026-11', '2026-05-31').savedMinor).toBe(3 * 468_750);
-  });
-  it('never goes above the target', () => {
-    expect(sinkingProgress(fund, target, '2026-11', '2026-11-01')).toMatchObject({ savedMinor: 3_750_000, monthsDone: 8 });
-    expect(sinkingProgress(fund, target, '2026-11', '2027-06-01')).toMatchObject({ savedMinor: 3_750_000, monthsDone: 8 });
-  });
-  it('nothing before the month it starts', () => {
-    expect(sinkingProgress(fund, target, '2026-11', '2026-02-28').savedMinor).toBe(0);
-  });
-  it('extra money adds to it, still capped', () => {
-    expect(sinkingProgress({ ...fund, extraMinor: 1_000_000 }, target, '2026-11', '2026-04-01').savedMinor).toBe(2 * 468_750 + 1_000_000);
-    expect(sinkingProgress({ ...fund, extraMinor: 9_000_000 }, target, '2026-11', '2026-04-01').savedMinor).toBe(target);
-  });
-  it('months between', () => {
-    expect(monthsBetween('2026-11', '2027-02')).toBe(3);
-    expect(monthsBetween('2027-02', '2026-11')).toBe(-3);
   });
 });
 

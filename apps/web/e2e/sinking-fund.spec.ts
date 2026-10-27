@@ -34,7 +34,7 @@ test('a yearly bill saves up in a savings account, and is paid by card from the 
   await expect(page.getByLabel('Set aside in')).toHaveValue(/.+/);
   await expect(page.getByLabel('Set aside in')).toContainText('BCA Savings');
   await page.getByLabel('Set aside in').selectOption({ label: 'BCA Savings' });
-  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page).toHaveURL(/\/bills$/);
 
   // Recurring's Repeating page sets the month's amount aside in its hero and lists the bill.
@@ -47,15 +47,18 @@ test('a yearly bill saves up in a savings account, and is paid by card from the 
   await page.getByTestId('yearly-bill-row').filter({ hasText: 'Car insurance' }).click();
   await expect(page.getByText('Sinking fund', { exact: true })).toBeVisible();
   await expect(page.getByTestId('sinking-saved')).toContainText('of Rp');
-  await expect(page.getByTestId('sinking-month')).toContainText('Done');
+  await expect(page.getByTestId('sinking-monthly')).toContainText('Rp');
+  await expect(page.getByTestId('sinking-history')).toContainText('1 entry');
   const before = await page.getByTestId('sinking-saved').innerText();
 
   await page.getByRole('button', { name: 'Put in extra' }).click();
   const extra = page.getByRole('dialog', { name: 'Put in extra' });
   await extra.getByLabel(/^Amount/).fill('100000');
-  await extra.getByRole('button', { name: 'Save' }).click();
+  await expect(extra.getByTestId('extra-after-monthly')).toContainText('months left');
+  await extra.getByRole('button', { name: 'Put in', exact: true }).click();
   await expect(extra).toHaveCount(0);
   await expect(page.getByTestId('sinking-saved')).not.toHaveText(before);
+  await expect(page.getByTestId('sinking-history')).toContainText('2 entries');
 
   // Pay it by credit card: the card is paid from the savings account too.
   await page.getByRole('button', { name: /^Pay/ }).first().click();

@@ -10,6 +10,9 @@ import {
   isOwedMonth,
   expenseLines,
   sinkingPlan,
+  sinkingProgress,
+  type SinkingSaveResult,
+  sinkingSavePlan,
   transferLines,
   isoDate,
   monthOf,
@@ -28,7 +31,9 @@ import { bookCategories, books } from '../schema-books';
 import { billPauses, billPayments, billSkips, billWindows, expenseTemplates } from '../schema-recurring';
 import { billCurrencies, writeBillCurrency } from './bill-currency';
 import { type BillRepeatFacts, billRepeats, writeBillRepeat } from './bill-repeat';
-import { dropSinkingFund, getSinkingFund, writeSinkingFund } from './sinking-funds';
+import { fundRoom, fundShortMessage } from './sinking-actions';
+import { dropSinkingFund, getSinkingFund, moveSinkingFund, type SinkingFundRow, setSinkingCustom, writeSinkingFund, writeSinkingOpening, writeSinkingPlan } from './sinking-funds';
+import { sinkingFactsOf } from './sinking-views';
 import { BILL_MONTH, billPausesExist, billTablesExist } from './bill-months';
 import { withCapture } from '../sync/capture';
 import { bookMoneyFor, type Unconverted } from './book-currency';
@@ -99,7 +104,12 @@ export interface SaveExpenseTemplateInput {
    * A yearly bill's sinking fund (0101): the account it is set aside in and the monthly figure (worked out from the
    * amount and the months left when absent). Null turns the fund off; absent leaves an edited bill's as it was.
    */
-  fund?: { accountId: string; monthlyMinor?: number | null } | null;
+  fund?: {
+    accountId: string;
+    monthlyMinor?: number | null;
+    /** 'Already saved': money put by before the fund was set up. Absent leaves it as it was; 0 or null clears it. */
+    alreadySavedMinor?: number | null;
+  } | null;
 }
 
 const toRow = (
@@ -140,6 +150,84 @@ async function accountKind(db: Db, ws: WorkspaceContext, accountId: string): Pro
   return row?.kind;
 }
 
+/** The month a bill's window starts, as stored; `fallback` for a bill without one. */
+async function storedStartsMonth(db: Db, id: string, fallback: string): Promise<string> {
+  if (!(await billTablesExist(db))) return fallback;
+  const [window] = await db.select({ startsMonth: billWindows.startsMonth }).from(billWindows).where(eq(billWindows.templateId, id));
+  return window?.startsMonth ?? fallback;
+}
+
+interface FundPlan {
+  accountId: string;
+  existing: SinkingFundRow | null;
+  result: SinkingSaveResult;
+}
+
+/**
+ * Works out what saving the form does to a yearly bill's sinking fund, and refuses it when the account cannot hold
+ * what the fund promises right now (already saved plus this month's amount): the account's free money (balance minus
+ * every other promise, this bill's own claim left out) must cover it. Only NOW is checked, never the months to come:
+ * later months are a plan, and a plan that outgrows the account shows as a shortage on the set-aside view.
+ */
+async function planFund(
+  database: Database,
+  ws: WorkspaceContext,
+  input: SaveExpenseTemplateInput,
+  ctx: { id: string; yearlyMonth: number; repeatNow: BillRepeatFacts | null; amountMinor: number | null; today: string; startsMonth: string; oldAmountMinor: number | null },
+): Promise<FundPlan> {
+  const fund = input.fund!;
+  const { amountMinor, today } = ctx;
+  if (amountMinor === null) throw new RecurringError('FUND_AMOUNT', 'A sinking fund needs a fixed amount');
+  const db = database.db;
+  const [fundAccount] = await db
+    .select({ kind: accounts.kind, currency: accounts.currency })
+    .from(accounts)
+    .where(and(eq(accounts.id, fund.accountId), eq(accounts.workspaceId, ws.workspaceId)));
+  if (!fundAccount || fundAccount.kind !== 'asset') throw new RecurringError('FUND_ACCOUNT', 'Choose an account to set the money aside in');
+  const fundCurrency = fundAccount.currency ?? ws.baseCurrency;
+  const own = input.currency !== undefined ? input.currency : ((await billCurrencies(db, ws)).get(ctx.id) ?? null);
+  const billCurrency = own ?? (await accountCurrency(db, ws, input.moneyAccountId)) ?? ws.baseCurrency;
+  if (fundCurrency !== billCurrency) throw new RecurringError('FUND_CURRENCY', `Set the money aside in an account in ${billCurrency}`);
+  if (fund.monthlyMinor != null && !(Number.isSafeInteger(fund.monthlyMinor) && fund.monthlyMinor > 0)) {
+    throw new RecurringError('FUND_MONTHLY', 'Enter the amount to set aside each month');
+  }
+  if (fund.alreadySavedMinor != null && !(Number.isSafeInteger(fund.alreadySavedMinor) && fund.alreadySavedMinor >= 0)) {
+    throw new RecurringError('FUND_OPENING', 'Enter the amount already saved');
+  }
+  const dueMonth = sinkingPlan({
+    targetMinor: amountMinor,
+    today,
+    repeatMonth: ctx.yearlyMonth,
+    dayOfMonth: input.dayOfMonth,
+    currency: billCurrency,
+    repeatEvery: ctx.repeatNow?.every,
+    startsMonth: ctx.startsMonth,
+  }).dueMonth;
+  const existing = await getSinkingFund(db, ws, ctx.id);
+  const result = sinkingSavePlan({
+    existing: existing ? sinkingFactsOf(existing) : null,
+    existingCustom: existing?.custom ?? false,
+    targetMinor: amountMinor,
+    oldTargetMinor: ctx.oldAmountMinor,
+    today,
+    dueMonth,
+    currency: billCurrency,
+    typedMonthlyMinor: fund.monthlyMinor ?? null,
+    openingMinor: fund.alreadySavedMinor,
+  });
+  const monthly = result.plan?.monthlyMinor ?? result.facts.monthlyMinor;
+  if (!(Number.isSafeInteger(monthly) && monthly > 0)) throw new RecurringError('FUND_MONTHLY', 'Enter the amount to set aside each month');
+
+  const promisedNow = sinkingProgress(result.facts, amountMinor, dueMonth, today).savedMinor;
+  const heldNow = existing && existing.accountId === fund.accountId ? sinkingProgress(sinkingFactsOf(existing), amountMinor, dueMonth, today).savedMinor : 0;
+  // Nothing new is promised, so an account already short for other reasons does not block an unrelated edit.
+  if (promisedNow > heldNow) {
+    const room = await fundRoom(database, ws, fund.accountId, today, ctx.id);
+    if (room && promisedNow > room.freeMinor) throw new RecurringError('FUND_SHORT', fundShortMessage(room, promisedNow));
+  }
+  return { accountId: fund.accountId, existing, result };
+}
+
 /** Adds or edits a recurring bill. */
 export async function saveExpenseTemplate(database: Database, ws: WorkspaceContext, input: SaveExpenseTemplateInput): Promise<string> {
   const name = input.name.trim();
@@ -171,6 +259,44 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
     }
   }
 
+  const id = input.id ?? uuidv7();
+  // How it repeated before this save, so a change of repeat, month or day can move the first month it is owed for.
+  const [before] = await database.db
+    .select({ dayOfMonth: expenseTemplates.dayOfMonth, amountMinor: expenseTemplates.amountMinor })
+    .from(expenseTemplates)
+    .where(and(eq(expenseTemplates.id, id), eq(expenseTemplates.workspaceId, ws.workspaceId)));
+  const beforeRepeat = (await billRepeats(database.db, ws)).get(id) ?? null;
+  // Absent leaves an edited bill as it was; a new bill is monthly.
+  const repeatNow: BillRepeatFacts | null =
+    input.repeat === undefined
+      ? beforeRepeat
+      : input.repeat === 'yearly'
+        ? { repeat: 'yearly', month: input.repeatMonth!, every: null }
+        : input.repeat === 'months'
+          ? { repeat: 'months', month: input.repeatMonth!, every: input.repeatEvery! }
+          : null;
+  const yearlyMonth: number | null = repeatNow?.month ?? null;
+  const sameRepeat = (repeatNow?.repeat ?? null) === (beforeRepeat?.repeat ?? null) && yearlyMonth === (beforeRepeat?.month ?? null) && (repeatNow?.every ?? null) === (beforeRepeat?.every ?? null);
+  const today = isoDate();
+  const repeatChanged = Boolean(before) && (!sameRepeat || (yearlyMonth !== null && before!.dayOfMonth !== input.dayOfMonth));
+  // The first occurrence on or after today, which an every-few-months bill counts its gaps from.
+  const startsMonth = input.startsMonth ?? (yearlyMonth === null ? today.slice(0, 7) : nextOccurrenceMonth(today, yearlyMonth, input.dayOfMonth));
+
+  // The sinking fund is worked out and checked BEFORE anything is written: a refusal leaves the bill as it was. (The
+  // free-money check reads the whole book, which cannot be done from inside the transaction below.)
+  const fundPlan =
+    input.fund && yearlyMonth !== null
+      ? await planFund(database, ws, input, {
+          id,
+          yearlyMonth,
+          repeatNow,
+          amountMinor,
+          today,
+          startsMonth: repeatChanged ? startsMonth : await storedStartsMonth(database.db, id, startsMonth),
+          oldAmountMinor: before?.amountMinor ?? null,
+        })
+      : null;
+
   // One write: a bill saved without its window would have no pay-by day and a first month guessed from createdAt.
   return database.transaction(async (tx) => {
     // A bill points at a spending category and at the money that pays it. Crossing the two would post
@@ -189,28 +315,6 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
       throw new RecurringError('NOT_A_WALLET', 'A bill needs an account or a card to pay it');
     }
 
-    const id = input.id ?? uuidv7();
-    // How it repeated before this save, so a change of repeat, month or day can move the first month it is owed for.
-    const [before] = await tx
-      .select({ dayOfMonth: expenseTemplates.dayOfMonth })
-      .from(expenseTemplates)
-      .where(and(eq(expenseTemplates.id, id), eq(expenseTemplates.workspaceId, ws.workspaceId)));
-    const beforeRepeat = (await billRepeats(tx, ws)).get(id) ?? null;
-    // Absent leaves an edited bill as it was; a new bill is monthly.
-    const repeatNow: BillRepeatFacts | null =
-      input.repeat === undefined
-        ? beforeRepeat
-        : input.repeat === 'yearly'
-          ? { repeat: 'yearly', month: input.repeatMonth!, every: null }
-          : input.repeat === 'months'
-            ? { repeat: 'months', month: input.repeatMonth!, every: input.repeatEvery! }
-            : null;
-    const yearlyMonth: number | null = repeatNow?.month ?? null;
-    const sameRepeat = (repeatNow?.repeat ?? null) === (beforeRepeat?.repeat ?? null) && yearlyMonth === (beforeRepeat?.month ?? null) && (repeatNow?.every ?? null) === (beforeRepeat?.every ?? null);
-    const today = isoDate();
-    const repeatChanged = Boolean(before) && (!sameRepeat || (yearlyMonth !== null && before!.dayOfMonth !== input.dayOfMonth));
-    // The first occurrence on or after today, which an every-few-months bill counts its gaps from.
-    const startsMonth = input.startsMonth ?? (yearlyMonth === null ? today.slice(0, 7) : nextOccurrenceMonth(today, yearlyMonth, input.dayOfMonth));
     await withCapture(tx, [{ entity: 'bill', id }, { entity: 'bill_window', id }], async () => {
       await tx
         .insert(expenseTemplates)
@@ -251,32 +355,16 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
     });
 
     // The fund is the owner's own and does not sync, so it is written outside the capture; a refusal still undoes the bill.
-    if (input.fund && yearlyMonth !== null) {
-      if (amountMinor === null) throw new RecurringError('FUND_AMOUNT', 'A sinking fund needs a fixed amount');
-      const [fundAccount] = await tx
-        .select({ kind: accounts.kind, currency: accounts.currency })
-        .from(accounts)
-        .where(and(eq(accounts.id, input.fund.accountId), eq(accounts.workspaceId, ws.workspaceId)));
-      if (!fundAccount || fundAccount.kind !== 'asset') throw new RecurringError('FUND_ACCOUNT', 'Choose an account to set the money aside in');
-      const fundCurrency = fundAccount.currency ?? ws.baseCurrency;
-      const own = input.currency !== undefined ? input.currency : (await billCurrencies(tx, ws)).get(id) ?? null;
-      const billCurrency = own ?? (await accountCurrency(tx, ws, input.moneyAccountId)) ?? ws.baseCurrency;
-      if (fundCurrency !== billCurrency) throw new RecurringError('FUND_CURRENCY', `Set the money aside in an account in ${billCurrency}`);
-      let monthlyMinor = input.fund.monthlyMinor ?? null;
-      if (monthlyMinor === null) {
-        const [window] = (await billTablesExist(tx)) ? await tx.select({ startsMonth: billWindows.startsMonth }).from(billWindows).where(eq(billWindows.templateId, id)) : [];
-        monthlyMinor = sinkingPlan({
-          targetMinor: amountMinor,
-          today,
-          repeatMonth: yearlyMonth,
-          dayOfMonth: input.dayOfMonth,
-          currency: billCurrency,
-          repeatEvery: repeatNow?.every,
-          startsMonth: window?.startsMonth,
-        }).monthlyMinor;
+    if (fundPlan) {
+      const { existing, result } = fundPlan;
+      if (!existing) {
+        await writeSinkingFund(tx, ws, { billId: id, accountId: fundPlan.accountId, monthlyMinor: result.facts.monthlyMinor, startedMonth: result.facts.startedMonth, custom: result.custom });
+      } else {
+        await moveSinkingFund(tx, ws, id, fundPlan.accountId);
       }
-      if (!(Number.isSafeInteger(monthlyMinor) && monthlyMinor > 0)) throw new RecurringError('FUND_MONTHLY', 'Enter the amount to set aside each month');
-      await writeSinkingFund(tx, ws, { billId: id, accountId: input.fund.accountId, monthlyMinor, startedMonth: today.slice(0, 7) });
+      if (result.openingMinor !== undefined) await writeSinkingOpening(tx, ws, id, result.openingMinor, today);
+      if (result.plan) await writeSinkingPlan(tx, ws, id, result.plan.from, result.plan.monthlyMinor, result.custom, today);
+      else if (existing) await setSinkingCustom(tx, ws, id, result.custom);
     } else if (input.fund === null || yearlyMonth === null) {
       await dropSinkingFund(tx, ws, id);
     }

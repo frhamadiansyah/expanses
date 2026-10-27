@@ -58,6 +58,8 @@ export function BillFormPage({ billId }: { billId?: string }) {
   const [fundOn, setFundOn] = useState(false);
   const [fundAccountId, setFundAccountId] = useState('');
   const [fundMonthly, setFundMonthly] = useState('');
+  // Money already put by for this bill before the fund was set up; optional.
+  const [fundSaved, setFundSaved] = useState('');
   // The day a monthly bill comes out; for a yearly or every-few-months bill the one date it has, which is its due-by day.
   const [outDay, setOutDay] = useState('');
   const [payBy, setPayBy] = useState('');
@@ -84,10 +86,17 @@ export function BillFormPage({ billId }: { billId?: string }) {
       return null;
     }
   })();
-  // What each month comes to, from the amount and the months left; the field shows it until another is typed.
+  const parsedSaved = (() => {
+    try {
+      return fundSaved.trim() ? parseMajor(fundSaved.trim(), billCurrency) : 0;
+    } catch {
+      return 0;
+    }
+  })();
+  // What each month comes to, from what is left after Already saved and the months left; the field shows it until another is typed.
   const worked =
     parsedAmount !== null && parsedAmount > 0 && month !== '' && outDay !== ''
-      ? sinkingPlan({ targetMinor: parsedAmount, today: isoDate(), repeatMonth: Number(month), dayOfMonth: Number(outDay), currency: billCurrency }).monthlyMinor
+      ? sinkingPlan({ targetMinor: Math.max(0, parsedAmount - parsedSaved), today: isoDate(), repeatMonth: Number(month), dayOfMonth: Number(outDay), currency: billCurrency }).monthlyMinor
       : null;
 
   // Filled once the bill being edited has arrived; not kept in sync after, so typing is never clobbered.
@@ -112,7 +121,10 @@ export function BillFormPage({ billId }: { billId?: string }) {
     if (fund) {
       setFundOn(true);
       setFundAccountId(fund.accountId);
-      setFundMonthly(minorToMajorString(fund.monthlyMinor, fund.currency));
+      // A typed figure shows as typed; a worked-out one stays the placeholder, so an edit recalculates it.
+      setFundMonthly(fund.custom ? minorToMajorString(fund.monthlyMinor, fund.currency) : '');
+      const opening = fund.entries.find((e) => e.kind === 'opening');
+      setFundSaved(opening ? minorToMajorString(opening.amountMinor, fund.currency) : '');
     }
     setLoaded(true);
   }, [billId, loaded, templates.data, accounts.data, funds.data, ws.baseCurrency]);
@@ -158,7 +170,13 @@ export function BillFormPage({ billId }: { billId?: string }) {
         // The one date of a yearly or every-few-months bill is both the day it comes out and the day it is due.
         dayOfMonth: Number(outDay),
         payByDay: repeat !== 'monthly' || payBy === '' ? null : Number(payBy),
-        fund: saving ? { accountId: fundAccountId, monthlyMinor: fundMonthly.trim() === '' ? null : parseMajor(fundMonthly.trim(), billCurrency) } : null,
+        fund: saving
+          ? {
+              accountId: fundAccountId,
+              monthlyMinor: fundMonthly.trim() === '' ? null : parseMajor(fundMonthly.trim(), billCurrency),
+              alreadySavedMinor: fundSaved.trim() === '' ? null : parseMajor(fundSaved.trim(), billCurrency),
+            }
+          : null,
       });
       if (saving) {
         try {
@@ -305,6 +323,16 @@ export function BillFormPage({ billId }: { billId?: string }) {
           {repeat !== 'monthly' && (
             <InsetGroup header="Sinking fund">
               <SwitchRow label="Save up for it" checked={fundOn} onChange={setFundOn} />
+              {fundOn && (
+                <TextRow
+                  label="Already saved"
+                  value={fundSaved}
+                  onChange={(e) => setFundSaved(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="Amount"
+                  info="Money already put by for this bill. It counts toward the amount and is set aside in the account chosen below."
+                />
+              )}
               {fundOn && (
                 <TextRow
                   label="Each month"

@@ -25,7 +25,7 @@ afterEach(() => {
 async function household() {
   current = await setupDb();
   const { database, ws } = current;
-  const bank = await createAccount(database, ws, { name: 'BCA Tahapan', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+  const bank = await createAccount(database, ws, { name: 'BCA Tahapan', kind: 'asset', subtype: 'bank', currency: 'IDR', openingBalanceMinor: 10_000_000, openedOn: '2026-01-01' });
   const category = (await listAccounts(database, ws)).find((a) => a.systemKey === 'personal_care.sports_fitness')!.id;
   const base = { categoryAccountId: category, moneyAccountId: bank.id };
   const gym = await saveExpenseTemplate(database, ws, { ...base, name: 'Gym', dayOfMonth: 5, amountMinor: 350_000, startsMonth: '2026-01' });
