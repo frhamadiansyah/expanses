@@ -201,3 +201,13 @@ export function fieldBoxes(reading: ReadingWithLines | null): FieldBox[] {
   }
   return boxes;
 }
+
+/**
+ * The category a draft is read as: its own, else the one the history of its merchant guesses (what the Add form
+ * opens on). A category the draft has is never replaced; transfers have none.
+ */
+export function effectiveCategory(draft: Pick<DraftRow, 'id' | 'kind' | 'categoryAccountId'>, guesses: Readonly<Record<string, string | null>> | undefined): string | null {
+  if (draft.categoryAccountId) return draft.categoryAccountId;
+  if (draft.kind !== 'expense' && draft.kind !== 'income') return null;
+  return guesses?.[draft.id] ?? null;
+}
