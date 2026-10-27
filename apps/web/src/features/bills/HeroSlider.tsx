@@ -107,8 +107,8 @@ export function HeroSlider({
         onTouchStart={() => (heading.current = null)}
         onWheel={() => (heading.current = null)}
         onKeyDown={onKeyDown}
-        className="ph-focus -mx-4 flex snap-x snap-mandatory gap-8 overflow-x-auto px-4 md:gap-2 [scrollbar-width:none] md:mx-0 md:px-0 [&::-webkit-scrollbar]:hidden"
-        style={{ overscrollBehaviorX: 'contain', scrollPaddingInline: 16 }}
+        className="ph-focus flex snap-x snap-mandatory gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        style={{ overscrollBehaviorX: 'contain' }}
       >
         {pages.map((card, index) => (
           <div
