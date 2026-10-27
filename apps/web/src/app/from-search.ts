@@ -30,3 +30,37 @@ export function useFrom(): FromSearch {
 export function useBackToCashflow(): { back: string; backTo: '/transactions' } | null {
   return useFrom().from === 'cashflow' ? { back: 'Cashflow', backTo: '/transactions' } : null;
 }
+
+/*
+ * The page a receipt, its Edit or its Duplicate was opened from.
+ *
+ * Rows open the receipt from everywhere — Cashflow, an event, a card's statement, a goal, a bill's history, the
+ * wallet, a search — and Edit and Delete used to land on Cashflow whichever it was. The last page that is not itself
+ * one of those three is remembered as the router resolves each location, so every row inherits the way back without
+ * each of them passing it on, and a Save or a Delete returns to the exact address (tab and all) it was opened at.
+ * Nothing remembered (a reload, a deep link) falls back to Cashflow, as before.
+ */
+let origin: string | null = null;
+
+/** A receipt (`/transactions/<id>`), its edit or its duplicate, and the Add screen, which no receipt is opened from; "flow" is a screen of its own. */
+export function isTransactionDetail(pathname: string): boolean {
+  return /^\/transactions\/(?!flow$)[^/]+(\/(edit|duplicate))?\/?$/.test(pathname);
+}
+
+/** Called once with the router: remembers each location that is not a transaction's own screen. */
+export function trackOrigin(router: {
+  subscribe: (event: 'onResolved', fn: () => void) => unknown;
+  state: { location: { pathname: string; href: string } };
+}): void {
+  const note = () => {
+    const { pathname, href } = router.state.location;
+    if (!isTransactionDetail(pathname)) origin = href;
+  };
+  note();
+  router.subscribe('onResolved', note);
+}
+
+/** Where a transaction's Save or Delete lands: the page its receipt was opened from, else Cashflow. */
+export function originHref(): string {
+  return origin ?? '/transactions';
+}
