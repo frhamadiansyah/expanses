@@ -1,13 +1,13 @@
 import { evaluateAmount, formatMinor, isoDate } from '@expanses/core';
 import { type AccountRow, exchangeResultOf, postTransaction } from '@expanses/db';
 import { ArrowUpDown } from 'lucide-react';
-import { useNavigate, useParams } from '@tanstack/react-router';
+import { useNavigate, useParams, useRouter } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { exchangeResultLine } from '../../lib/withdrawal-rate';
 import { useAccounts, useBalances, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
-import { GROUP_GAP, InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN, TextRow } from '../../ui/native';
 import { useCanHold } from '../goals/queries';
 import { doorOfForm, postForDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
@@ -46,8 +46,12 @@ export function MovePage() {
 function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: AccountRow[]; accounts: AccountRow[] }) {
   const { database, ws } = useApp();
   const navigate = useNavigate();
+  const router = useRouter();
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
+  // A step back in the history, not a new visit to the account: a link would stack the account page again on top of this
+  // one, and the account's ✕ would then step back into this page instead of out to Wallet.
+  const back = () => (router.history.canGoBack() ? router.history.back() : void navigate({ to: '/accounts/$accountId', params: { accountId: parent.id } }));
   const balances = useBalances().data ?? {};
   const [draft, setDraft] = useState(() => moveDraft(ws.bookId ?? '', pockets[0]!, pockets[1]!));
   const [needsRate, setNeedsRate] = useState<string | null>(null);
@@ -113,7 +117,7 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
     const line = exchangeResultLine(recorded, ws.baseCurrency);
     return (
       <div className={SCREEN}>
-        <LargeTitle title="Moved" back={parent.name} backTo="/accounts/$accountId" backParams={{ accountId: parent.id }} />
+        <LargeTitle title="Moved" back={parent.name} onBack={back} />
         <InsetGroup header="Recorded">
           <ReadOnlyRow
             testId="recorded-spread"
@@ -132,7 +136,7 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
 
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Move between pockets" back={parent.name} backTo="/accounts/$accountId" backParams={{ accountId: parent.id }} />
+      <LargeTitle title="Move between pockets" back={parent.name} onBack={back} />
       <ErrorBox error={error} />
       <InsetGroup header="From">
         <MovePocketRow
@@ -148,7 +152,7 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
           }}
         />
       </InsetGroup>
-      <div className="relative z-10 flex h-0 justify-center" style={{ marginTop: -GROUP_GAP }}>
+      <div className="flex justify-center pb-[2px]">
         <button
           type="button"
           aria-label="Swap"
@@ -156,7 +160,7 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
             setNeedsRate(null);
             setDraft(swapPockets);
           }}
-          className="ph-focus ph-tap flex h-[30px] w-[30px] -translate-y-[28%] items-center justify-center rounded-full border-[3px] border-[var(--ph-ground)] bg-[var(--ph-fill)] text-[var(--ph-ink-2)]"
+          className="ph-focus ph-tap flex h-[30px] w-[30px] items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink-2)]"
         >
           <ArrowUpDown size={15} aria-hidden />
         </button>
