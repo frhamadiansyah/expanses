@@ -3,14 +3,18 @@ import { type MonthlyBill, recordBillPayments, type SetAsideChoice } from '@expa
 import { type ReactNode, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
-import { useAccounts, useInvalidateAll } from '../../lib/queries';
+import { canPayWith } from '../../lib/account-types';
+import { moneyHolders, useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
+import { useCards } from '../cards/card-queries';
 import { Check } from 'lucide-react';
 import { cx, ErrorBox, Money } from '../../ui';
-import { type GroupChild, InsetGroup, InsetRow, ROW_PAD_X, ROW_PAD_Y, rowHeight, TextRow } from '../../ui/native';
+import { type GroupChild, InsetGroup, InsetRow, PickerRow, ROW_PAD_X, ROW_PAD_Y, rowHeight, SwitchRow, TextRow } from '../../ui/native';
 import { payerChoices, spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
-import { billCurrencyOf, pillOf } from './bill-view';
+import { payerPlan } from './bill-payer';
+import { pillOf } from './bill-view';
 import { chargedEstimateText, useChargedRates } from './charged';
+import { useSinkingFunds } from './queries';
 
 interface PayerAnswer {
   choice: SetAsideChoice | null;
@@ -25,8 +29,10 @@ interface PayerAnswer {
  * One paying account's question, asked about everything the sheet pays from it together: several bills from one
  * account can each fit what is free and still, added up, take more than is free.
  */
-function PayerQuestion({ accountId, total, onChange }: { accountId: string; total: number; onChange: (accountId: string, answer: PayerAnswer) => void }) {
-  const setAside = useSetAside(spendingDoor(accountId, total));
+function PayerQuestion({ accountId, total, ownGoalIds, onChange }: { accountId: string; total: number; ownGoalIds: string[]; onChange: (accountId: string, answer: PayerAnswer) => void }) {
+  const door = spendingDoor(accountId, total);
+  // A bill paid out of its own fund's account has the fund's money as room: it is what was set aside for exactly this.
+  const setAside = useSetAside(door && ownGoalIds.length > 0 ? { ...door, ownGoalId: ownGoalIds } : door);
   const freeMinor = setAside.check.kind === 'ask' ? setAside.check.freeMinor : null;
   const { choice, ready } = setAside;
   const promisedMinor = (setAside.check.kind === 'ask' && setAside.check.goals.find((goal) => goal.goalId === choice?.goalId)?.promisedMinor) || 0;
@@ -61,10 +67,21 @@ export function PaySeveralSheet({
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
-  const currencyOf = (moneyAccountId: string) => accounts.find((account) => account.id === moneyAccountId)?.currency ?? ws.baseCurrency;
+  const funds = useSinkingFunds(today).data ?? [];
+  const cards = useCards().data ?? [];
+  const balances = useBalances().data ?? {};
+  // The same list the single Pay sheet offers: money kept for spending, and the cards switched on for it.
+  const wallets = moneyHolders(accounts).filter((account) => canPayWith(account));
+  // The one account every ticked bill is paid with, or null for each bill's own.
+  const [override, setOverride] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
+  const overrideAccount = override ? accounts.find((account) => account.id === override) : undefined;
+  const planOf = (bill: MonthlyBill) => payerPlan(bill, accounts, overrideAccount ? override : null, ws.baseCurrency);
   /** The money a bill is written in: its own, else its paying account's. A foreign one is charged in the account's. */
-  const billCurrency = (bill: MonthlyBill) => billCurrencyOf(bill, accounts, ws.baseCurrency);
-  const isForeign = (bill: MonthlyBill) => billCurrency(bill) !== currencyOf(bill.moneyAccountId);
+  const billCurrency = (bill: MonthlyBill) => planOf(bill).billCurrency;
+  const payerOf = (bill: MonthlyBill) => planOf(bill).payerId;
+  const payerCurrencyOf = (bill: MonthlyBill) => planOf(bill).payerCurrency;
+  const isForeign = (bill: MonthlyBill) => planOf(bill).foreign;
 
   // The picked bills lead, since that is what was chosen on the list; the rest follow in the order they came in.
   const ordered = [...bills.filter((bill) => picked.has(bill.id)), ...bills.filter((bill) => !picked.has(bill.id))];
@@ -90,25 +107,40 @@ export function PaySeveralSheet({
   };
   const foreignChosen = chosen.filter(isForeign);
   const rates = useChargedRates(
-    foreignChosen.flatMap((bill) => [billCurrency(bill), currencyOf(bill.moneyAccountId)]),
+    foreignChosen.flatMap((bill) => [billCurrency(bill), payerCurrencyOf(bill)]),
     paidOn,
   );
   const estimateOf = (bill: MonthlyBill) =>
-    chargedEstimateText({ amountMinor: amountOf(bill), billCurrency: billCurrency(bill), payerCurrency: currencyOf(bill.moneyAccountId), rates, baseCurrency: ws.baseCurrency });
+    chargedEstimateText({ amountMinor: amountOf(bill), billCurrency: billCurrency(bill), payerCurrency: payerCurrencyOf(bill), rates, baseCurrency: ws.baseCurrency });
   const chargeShown = (bill: MonthlyBill) => charges[bill.id] ?? estimateOf(bill);
   /** What the account is charged, in its own money (0 until it parses). */
   const chargedOf = (bill: MonthlyBill) => {
     try {
       const text = chargeShown(bill).trim();
-      return text ? parseMajor(text, currencyOf(bill.moneyAccountId)) : 0;
+      return text ? parseMajor(text, payerCurrencyOf(bill)) : 0;
     } catch {
       return 0;
     }
   };
   /** What leaves the paying account: the charge for a foreign bill, else the bill's own figure. */
   const takenOf = (bill: MonthlyBill) => (isForeign(bill) ? chargedOf(bill) : amountOf(bill));
-  const payers = [...new Set(chosen.map((bill) => bill.moneyAccountId))];
-  const totalFrom = (payer: string) => chosen.filter((bill) => bill.moneyAccountId === payer).reduce((sum, bill) => sum + takenOf(bill), 0);
+  const refusals = chosen.map((bill) => planOf(bill).refusal).filter((text): text is string => text !== null);
+  // On a credit card, a bill that was saving up can also pay the card from the fund's account (as on the single Pay sheet).
+  const [fromFund, setFromFund] = useState(true);
+  const fundOf = (bill: MonthlyBill) => funds.find((fund) => fund.billId === bill.id) ?? null;
+  const cardFromFund = (bill: MonthlyBill) => {
+    const fund = fundOf(bill);
+    const payer = accounts.find((account) => account.id === payerOf(bill));
+    return !!fund && payer?.kind === 'liability' && payer.id !== fund.accountId && payerCurrencyOf(bill) === fund.currency;
+  };
+  const anyCardFromFund = chosen.some(cardFromFund);
+  const payFromFund = (bill: MonthlyBill) => cardFromFund(bill) && fromFund;
+  /** The account the money leaves: the fund's when it pays the card, else the payer's. */
+  const spenderOf = (bill: MonthlyBill) => (payFromFund(bill) ? fundOf(bill)!.accountId : payerOf(bill));
+  const payers = [...new Set(chosen.map(spenderOf))];
+  const billsFrom = (payer: string) => chosen.filter((bill) => spenderOf(bill) === payer);
+  const totalFrom = (payer: string) => billsFrom(payer).reduce((sum, bill) => sum + takenOf(bill), 0);
+  const ownGoalsFrom = (payer: string) => billsFrom(payer).filter((bill) => fundOf(bill)?.accountId === payer).map((bill) => bill.id);
   const answered = payers.every((payer) => answers[payer]?.ready === true);
   const onAnswer = (accountId: string, answer: PayerAnswer) => setAnswers((current) => ({ ...current, [accountId]: answer }));
 
@@ -121,7 +153,7 @@ export function PaySeveralSheet({
     });
 
   async function record() {
-    if (!answered) return;
+    if (!answered || refusals.length > 0) return;
     setError(null);
     setBusy(true);
     try {
@@ -130,20 +162,23 @@ export function PaySeveralSheet({
       const carried = new Map<string, (SetAsideChoice | null)[]>();
       for (const payer of payers) {
         const answer = answers[payer];
-        const mine = chosen.filter((bill) => bill.moneyAccountId === payer);
+        const mine = billsFrom(payer);
         carried.set(payer, payerChoices(answer?.choice ?? null, mine.map(takenOf), answer?.freeMinor ?? null, answer?.promisedMinor ?? 0));
       }
       const payments = chosen.map((bill) => {
         const currency = billCurrency(bill);
         const typed = amounts[bill.id]?.trim();
-        const index = chosen.filter((other) => other.moneyAccountId === bill.moneyAccountId).indexOf(bill);
+        const index = billsFrom(spenderOf(bill)).indexOf(bill);
         return {
           templateId: bill.id,
           billMonth: bill.billMonth,
           // Parsed here as it always was, so a figure that does not parse still says so.
           amountMinor: bill.amountMinor ?? (typed ? parseMajor(typed, currency) : 0),
           chargedMinor: isForeign(bill) ? chargedOf(bill) : undefined,
-          setAside: carried.get(bill.moneyAccountId)![index] ?? null,
+          // Named only when the sheet chose the account; otherwise the bill's own pays, as it always did.
+          ...(overrideAccount ? { moneyAccountId: overrideAccount.id } : {}),
+          setAside: carried.get(spenderOf(bill))![index] ?? null,
+          payCardFromFund: payFromFund(bill),
         };
       });
       if (payments.some((payment) => !(payment.amountMinor > 0))) {
@@ -152,7 +187,7 @@ export function PaySeveralSheet({
       }
       const unpriced = chosen.find((bill) => isForeign(bill) && !(chargedOf(bill) > 0));
       if (unpriced) {
-        setError(`Enter what the account was charged in ${currencyOf(unpriced.moneyAccountId)} for ${unpriced.name}`);
+        setError(`Enter what the account was charged in ${payerCurrencyOf(unpriced)} for ${unpriced.name}`);
         return;
       }
       const ids = await recordBillPayments(database, ws, { paidOn, payments });
@@ -194,6 +229,8 @@ export function PaySeveralSheet({
       </InsetGroup>
 
       <InsetGroup>
+        <PickerRow label="Paid with" testId="several-with" value={overrideAccount?.name ?? "Each bill's own account"} onOpen={() => setPicking(true)} />
+        {anyCardFromFund && <SwitchRow label="Pay the card from the fund" checked={fromFund} onChange={setFromFund} info="Moves the same amount from the fund's account to the card, and lets the fund go." />}
         <TextRow label="Paid on" id="several-on" type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} />
       </InsetGroup>
 
@@ -202,9 +239,9 @@ export function PaySeveralSheet({
           {foreignChosen.map((bill) => (
             <TextRow
               key={bill.id}
-              label={`${bill.name} in ${currencyOf(bill.moneyAccountId)}`}
+              label={`${bill.name} in ${payerCurrencyOf(bill)}`}
               inputMode="decimal"
-              aria-label={`Charged in ${currencyOf(bill.moneyAccountId)} for ${bill.name}`}
+              aria-label={`Charged in ${payerCurrencyOf(bill)} for ${bill.name}`}
               value={chargeShown(bill)}
               onChange={(e) => setCharges((current) => ({ ...current, [bill.id]: e.target.value }))}
               placeholder="Charged"
@@ -214,19 +251,101 @@ export function PaySeveralSheet({
       )}
 
       {payers.map((payer) => (
-        <PayerQuestion key={payer} accountId={payer} total={totalFrom(payer)} onChange={onAnswer} />
+        <PayerQuestion key={payer} accountId={payer} total={totalFrom(payer)} ownGoalIds={ownGoalsFrom(payer)} onChange={onAnswer} />
       ))}
 
+      {refusals.map((text) => (
+        <p key={text} role="alert" className="pb-3 text-center text-sm text-[var(--ph-alarm)]">
+          {text}
+        </p>
+      ))}
       <ErrorBox error={error} />
 
       <InsetGroup>
         <InsetRow
           action
           title={ticked.size === 0 ? 'Record' : `Record ${ticked.size} ${ticked.size === 1 ? 'bill' : 'bills'}`}
-          disabled={ticked.size === 0 || busy || !answered}
+          disabled={ticked.size === 0 || busy || !answered || refusals.length > 0}
           onClick={() => void record()}
         />
       </InsetGroup>
+
+      {picking && (
+        <PaidWithSheet
+          wallets={wallets}
+          chosen={overrideAccount?.id ?? null}
+          balances={balances}
+          digits={Object.fromEntries(cards.filter((card) => card.last4).map((card) => [card.accountId, card.last4!]))}
+          onPick={(id) => {
+            setOverride(id);
+            setPicking(false);
+          }}
+          onClose={() => setPicking(false)}
+        />
+      )}
+    </Sheet>
+  );
+}
+
+/** The accounts and cards that can pay, as the single Pay sheet lists them; the first row leaves each bill with its own. */
+function PaidWithSheet({
+  wallets,
+  chosen,
+  balances,
+  digits,
+  onPick,
+  onClose,
+}: {
+  wallets: { id: string; name: string; kind: string; currency: string | null }[];
+  chosen: string | null;
+  balances: Record<string, number>;
+  digits: Record<string, string>;
+  onPick: (id: string | null) => void;
+  onClose: () => void;
+}) {
+  const { ws } = useApp();
+  const tick = <Check size={18} aria-hidden />;
+  const spendable = wallets.filter((account) => account.kind === 'asset');
+  const cards = wallets.filter((account) => account.kind !== 'asset');
+  return (
+    <Sheet grouped title="Paid with" onClose={onClose}>
+      <InsetGroup>
+        <InsetRow title="Each bill's own account" subtitle="Keeps what each bill says" value={chosen === null ? tick : undefined} onClick={() => onPick(null)} testId="paid-with-own" />
+      </InsetGroup>
+      {spendable.length > 0 && (
+        <InsetGroup header="Accounts">
+          {spendable.map((account) => (
+            <InsetRow
+              key={account.id}
+              title={account.name}
+              value={
+                <span className="flex items-center gap-2">
+                  <Money minor={balances[account.id] ?? 0} currency={account.currency ?? ws.baseCurrency} tone="none" />
+                  {chosen === account.id && tick}
+                </span>
+              }
+              onClick={() => onPick(account.id)}
+            />
+          ))}
+        </InsetGroup>
+      )}
+      {cards.length > 0 && (
+        <InsetGroup header="Credit cards">
+          {cards.map((account) => (
+            <InsetRow
+              key={account.id}
+              title={account.name}
+              value={
+                <span className="flex items-center gap-2">
+                  {digits[account.id] ? `···· ${digits[account.id]}` : null}
+                  {chosen === account.id && tick}
+                </span>
+              }
+              onClick={() => onPick(account.id)}
+            />
+          ))}
+        </InsetGroup>
+      )}
     </Sheet>
   );
 }

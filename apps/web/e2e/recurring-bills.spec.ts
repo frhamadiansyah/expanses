@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount } from './accounts';
+import { openAccount, openTypes } from './accounts';
 import { pickBillCategory } from './bill-form';
 
 test.beforeEach(({ page }) => {
@@ -241,6 +241,36 @@ test('several bills are ticked and recorded together, on the day they were paid'
   await expect(page.getByRole('heading', { name: 'Recurring' })).toBeVisible();
   await page.goto('/transactions');
   await expect(page.getByTestId('recurring-card')).toContainText('2 of 2 bills paid');
+});
+
+test('Pay several: Paid with makes one account pay every ticked bill, and the default leaves each bill with its own', async ({ page }) => {
+  await addWallet(page, 'BCA Tahapan');
+  await openAccount(page, { subtype: 'bank', name: 'Jenius', balance: '20000000' });
+  await addBill(page, { name: 'Phone', amount: '150000' });
+  await addBill(page, { name: 'Electricity' });
+  await page.getByRole('button', { name: 'Select bills to pay' }).click();
+  await page.getByRole('checkbox', { name: 'Select Phone' }).click();
+  await page.getByRole('checkbox', { name: 'Select Electricity' }).click();
+  await page.getByRole('button', { name: /^Pay 2 selected/ }).click();
+  const sheet = page.getByRole('dialog', { name: 'Pay several' });
+  // Untouched, the row says every bill keeps its own account.
+  await expect(sheet.getByTestId('several-with')).toContainText("Each bill's own account");
+  await sheet.getByTestId('several-with').getByRole('button').click();
+  const list = page.getByRole('dialog', { name: 'Paid with' });
+  await expect(list.getByText("Each bill's own account")).toBeVisible();
+  await expect(list.getByText('Accounts', { exact: true })).toBeVisible();
+  await expect(list.getByRole('button', { name: /Jenius/ })).toBeVisible();
+  await list.getByRole('button', { name: /Jenius/ }).click();
+  await expect(list).toHaveCount(0);
+  await expect(sheet.getByTestId('several-with')).toContainText('Jenius');
+  await sheet.getByLabel('What Electricity came to').fill('432000');
+  await sheet.getByRole('button', { name: 'Record 2 bills' }).click();
+  await expect(sheet).toHaveCount(0);
+  // Both bills left Jenius; BCA, the bills' own account, was not touched.
+  await page.goto('/accounts');
+  await openTypes(page);
+  await expect(page.getByRole('link', { name: 'Jenius, Rp 19.418.000' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'BCA Tahapan, Rp 20.000.000' })).toBeVisible();
 });
 
 test('unticking a bill in Pay several leaves it unpaid', async ({ page }) => {

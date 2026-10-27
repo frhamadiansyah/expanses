@@ -93,6 +93,27 @@ test('Pay several asks what the account was charged for an SGD bill, and records
   await expect(line).toContainText(/120[.,]00/);
 });
 
+test('Pay several with another account: the SGD bill is charged in that account\'s money', async ({ page }) => {
+  await lifeCover(page);
+  await openAccount(page, { subtype: 'bank', name: 'Jenius', balance: '20000000' });
+  await page.goto('/bills');
+  await page.getByRole('button', { name: 'Select bills to pay' }).click();
+  await page.getByRole('checkbox', { name: 'Select Life cover' }).click();
+  await page.getByRole('button', { name: /^Pay 1 selected/ }).click();
+  const sheet = page.getByRole('dialog', { name: 'Pay several' });
+  await sheet.getByTestId('several-with').getByRole('button').click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: /Jenius/ }).click();
+  await expect(sheet.getByTestId('several-with')).toContainText('Jenius');
+  const charged = sheet.getByLabel('Charged in IDR for Life cover');
+  await expect(charged).toHaveValue(/^1[.,]?500[.,]?000/);
+  await charged.fill('1512000');
+  await sheet.getByRole('button', { name: 'Record 1 bill' }).click();
+  await expect(sheet).toHaveCount(0);
+  await page.goto('/transactions');
+  const line = page.locator('li, tr, [role="row"], [data-testid]').filter({ hasText: 'Life cover' }).filter({ hasText: /1\.512\.000/ }).first();
+  await expect(line).toContainText(/120[.,]00/);
+});
+
 test('an SGD bill keeps its currency through an edit, and a bill with none follows its payer', async ({ page }) => {
   await lifeCover(page);
   await row(page, 'Life cover').click();
