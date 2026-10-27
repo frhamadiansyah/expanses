@@ -1,4 +1,4 @@
-import { formatMinor, installmentSplit, isoDate } from '@expanses/core';
+import { formatMinor, installmentSplit, isoDate, monthYear } from '@expanses/core';
 import { type CardInstallmentRow, deleteInstallment, saveInstallment, updateInstallment } from '@expanses/db';
 import { ChevronRight } from 'lucide-react';
 import { type FormEvent, useRef, useState } from 'react';
@@ -6,7 +6,7 @@ import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { type GroupChild, InsetGroup, InsetRow, ProgressBar, SwitchRow, TextRow } from '../../ui/native';
+import { type GroupChild, InsetGroup, InsetRow, ProgressBar, ReadOnlyRow, SwitchRow, TextRow } from '../../ui/native';
 import { ALERT_ROW, NoticeAlert } from '../../ui/native/NoticeAlert';
 import { ActionRow, Line, SUBTITLE, TextLine, TITLE } from '../cards/rows';
 import { blankPlanForm, type PlanForm, planFields, planFormOf } from './plan-form';
@@ -33,16 +33,12 @@ function InstallmentRow({ plan, currency, today, position, onOpen }: GroupChild 
           <span className={`block ${TITLE}`}>{plan.description}</span>
           <ProgressBar className="my-[4px] w-full" currentMinor={paid} targetMinor={plan.months} label={`${plan.description}: ${paid} of ${plan.months} paid`} />
           <span className={`block ${SUBTITLE}`}>
-            {paid} of {plan.months} paid · {formatMinor(plan.monthlyMinor, currency)} a month
-          </span>
-          <span className={`block ${SUBTITLE}`}>
-            Billed {formatMinor(split.billedMinor, currency)} · ends {split.lastMonth}
-            {!plan.earnsPoints && ' · earns no points'}
+            {paid} of {plan.months} paid · ends {monthYear(split.lastMonth)}
           </span>
         </span>
         <span className="shrink-0 text-right">
           <span className="tabular block text-[15px] leading-[20px] text-[var(--ph-ink)]">{formatMinor(split.unbilledMinor, currency)}</span>
-          <span className="block text-[12px] leading-[16px] text-[var(--ph-ink-3)]">still held</span>
+          <span className="block text-[12px] leading-[16px] text-[var(--ph-ink-3)]">{formatMinor(plan.monthlyMinor, currency)} a month</span>
         </span>
         <ChevronRight size={16} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
       </button>
@@ -112,6 +108,7 @@ export function InstallmentList({ cardAccountId, currency }: { cardAccountId: st
   const list = plans.data ?? [];
   const held = list.reduce((sum, plan) => sum + installmentSplit(plan, today).unbilledMinor, 0);
   const editing = sheet !== null && sheet !== 'new';
+  const editSplit = sheet !== null && sheet !== 'new' ? installmentSplit(sheet, today) : null;
   return (
     <div data-testid="card-instalments">
       <InsetGroup header="Instalments" trailing={held > 0 ? `${formatMinor(held, currency)} held` : undefined}>
@@ -134,6 +131,14 @@ export function InstallmentList({ cardAccountId, currency }: { cardAccountId: st
               <TextRow label="First billed" type="month" value={form.firstBilledMonth} onChange={(e) => patch({ firstBilledMonth: e.target.value })} />
               <SwitchRow label="Earns points" checked={form.earnsPoints} onChange={(earnsPoints) => patch({ earnsPoints })} />
             </InsetGroup>
+            {editSplit && (
+              // What the row no longer spells out: how much is billed, what is still held and when it ends.
+              <InsetGroup header="So far">
+                <ReadOnlyRow label="Billed" value={formatMinor(editSplit.billedMinor, currency)} />
+                <ReadOnlyRow label="Still held" value={formatMinor(editSplit.unbilledMinor, currency)} />
+                <ReadOnlyRow label="Ends" value={monthYear(editSplit.lastMonth)} />
+              </InsetGroup>
+            )}
             <ErrorBox error={error} />
             <input type="submit" hidden disabled={busy} />
             <InsetGroup>

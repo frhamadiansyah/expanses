@@ -217,27 +217,31 @@ test('a card purchase turned into instalments splits into billed and unbilled', 
   await expect(held).toContainText(/Rp\s[\d.]+ held/);
   const plan = held.getByTestId('card-instalment');
   await expect(plan).toContainText('iBox Grand Indonesia');
-  await expect(plan).toContainText('earns no points');
-  await expect(plan).toContainText(/\d+ of 12 paid · Rp\s1\.000\.000 a month/);
-  await expect(plan).toContainText(/Billed Rp\s[\d.]+ · ends \d{4}-\d{2}/);
-  await expect(plan).toContainText('still held');
+  await expect(plan).toContainText(/\d+ of 12 paid · ends [A-Z][a-z]+ \d{4}/);
+  await expect(plan).toContainText(/Rp\s1\.000\.000 a month/);
 
   // The bin is gone: the row is the way in, and it carries a chevron.
   await expect(plan.getByRole('button', { name: 'Remove iBox Grand Indonesia' })).toHaveCount(0);
 
   // Tapping the row opens the plan; a new total and fewer months change its monthly figure and its last month.
-  const endsBefore = (await plan.textContent())!.match(/ends (\d{4}-\d{2})/)![1]!;
+  const endsBefore = (await plan.textContent())!.match(/ends ([A-Z][a-z]+ \d{4})/)![1]!;
   await plan.getByRole('button', { name: 'Edit iBox Grand Indonesia' }).click();
   const edit = page.getByRole('dialog', { name: 'Edit instalment plan' });
   await expect(edit.getByLabel('What it was')).toHaveValue('iBox Grand Indonesia');
+  // What the row no longer spells out is in the sheet: billed, still held and when it ends.
+  await expect(edit.getByText('So far')).toBeVisible();
+  await expect(edit.getByLabel('Billed', { exact: true }).first()).toBeVisible();
+  await expect(edit.getByLabel('Still held', { exact: true }).first()).toBeVisible();
+  await expect(edit.getByLabel('Ends', { exact: true }).first()).toBeVisible();
   await expect(edit.getByLabel(/^Total/)).toHaveValue('12000000');
   await expect(edit.getByLabel('Months')).toHaveValue('12');
   await edit.getByLabel(/^Total/).fill('9000000');
   await edit.getByLabel('Months').fill('6');
   await edit.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(edit).toHaveCount(0);
-  await expect(plan).toContainText(/\d+ of 6 paid · Rp\s1\.500\.000 a month/);
-  expect((await plan.textContent())!.match(/ends (\d{4}-\d{2})/)![1]).not.toBe(endsBefore);
+  await expect(plan).toContainText(/\d+ of 6 paid/);
+  await expect(plan).toContainText(/Rp\s1\.500\.000 a month/);
+  expect((await plan.textContent())!.match(/ends ([A-Z][a-z]+ \d{4})/)![1]).not.toBe(endsBefore);
 
   // Removing asks first, in an alert; Not now keeps it, Remove plan takes it away and leaves the purchase alone.
   await plan.getByRole('button', { name: 'Edit iBox Grand Indonesia' }).click();
