@@ -95,7 +95,7 @@ test('the Repeating hero adds up what each bill needs a month, with and without 
       await page.getByRole('checkbox', { name: 'Save up for it' }).check();
       await page.getByLabel('Set aside in').selectOption({ label: 'BCA Savings' });
     }
-    await page.getByRole('button', { name: 'Save' }).click();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page).toHaveURL(/\/bills$/);
   };
   await bill('Car insurance', 75, true);
