@@ -366,15 +366,16 @@ test('a workspace’s page renames it, archives it, keeps Personal, and restores
   // Personal first, then the one just made: the order the switcher shows them in.
   await expect(page.getByTestId('account-workspace')).toHaveCount(2);
   await workspaceLine(page, 'Business').getByTestId('workspace-open').click();
-  await page.getByLabel('Name', { exact: true }).fill('Consulting');
-  // The ✓ in the title bar saves the name: dim until there is a new name to save, and dim again once it is saved.
-  const save = page.getByRole('button', { name: 'Save name' });
-  await page.getByLabel('Name', { exact: true }).fill('Business');
+  // The Name row opens a small sheet; Save stays dim until there is a new name to save.
+  await page.getByTestId('ws-name-row').click();
+  const sheet = page.getByRole('dialog', { name: 'Name' });
+  const save = sheet.getByRole('button', { name: 'Save', exact: true });
   await expect(save).toBeDisabled();
-  await page.getByLabel('Name', { exact: true }).fill('Consulting');
+  await sheet.getByLabel('Name', { exact: true }).fill('');
+  await expect(save).toBeDisabled();
+  await sheet.getByLabel('Name', { exact: true }).fill('Consulting');
   await save.click();
   await expect(page.getByRole('heading', { name: 'Consulting' })).toBeVisible();
-  await expect(save).toBeDisabled();
   // The switcher follows: it is the same workspace, under the name it is now called.
   await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText('Consulting');
 
@@ -395,9 +396,10 @@ test('a workspace’s page renames it, archives it, keeps Personal, and restores
   await page.getByRole('button', { name: 'Click again to archive' }).click();
   await expect(page.getByRole('alert')).toContainText('Personal is where categories and expected income fall back to, so it stays');
 
-  // Pressing Enter in the name saves it too, as the ✓ does.
-  await page.getByLabel('Name', { exact: true }).fill('Home');
-  await page.getByLabel('Name', { exact: true }).press('Enter');
+  // Pressing Enter in the Name sheet saves it too.
+  await page.getByTestId('ws-name-row').click();
+  await page.getByRole('dialog', { name: 'Name' }).getByLabel('Name', { exact: true }).fill('Home');
+  await page.getByRole('dialog', { name: 'Name' }).getByLabel('Name', { exact: true }).press('Enter');
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText('Home');
 

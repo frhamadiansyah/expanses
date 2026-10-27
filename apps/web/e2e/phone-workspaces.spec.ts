@@ -77,17 +77,32 @@ test('a workspace is made from the Account page and starts with none of the othe
   await expect(picker.getByRole('button', { name: 'Realized Gains', exact: true })).toHaveCount(1);
 });
 
-/** A workspace is renamed from its own page, by the ✓ in the title bar rather than by a row under the field. */
-test('a workspace is renamed from its page’s ✓', async ({ page }) => {
+/** A workspace is renamed from its own page, through the Name row's small sheet; Budget and Currency sit beside it. */
+test('a workspace page renames through the Name sheet, toggles Budget and opens the Currency picker', async ({ page }) => {
   await openWorkspacePage(page, 'Personal');
-  const save = page.getByRole('button', { name: 'Save name', exact: true });
+  await page.getByTestId('ws-name-row').click();
+  const sheet = page.getByRole('dialog', { name: 'Name' });
+  const save = sheet.getByRole('button', { name: 'Save', exact: true });
   await expect(save).toBeDisabled();
-  await page.getByLabel('Name', { exact: true }).fill('');
+  await sheet.getByLabel('Name', { exact: true }).fill('');
   await expect(save).toBeDisabled();
-  await page.getByLabel('Name', { exact: true }).fill('Home');
+  await sheet.getByLabel('Name', { exact: true }).fill('Home');
   await save.click();
   await expect(page.getByText('Now called Home.')).toBeVisible();
-  await expect(save).toBeDisabled();
+  await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
+
+  const budget = page.getByLabel('Budget', { exact: true });
+  const was = await budget.isChecked();
+  await budget.click({ force: true });
+  await expect(budget).toBeChecked({ checked: !was });
+
+  await page.getByTestId('ws-currency-row').click();
+  const currencies = page.getByRole('dialog', { name: 'Currency' });
+  await expect(currencies.getByTestId('currency-IDR')).toBeVisible();
+  await currencies.getByTestId('currency-USD').click();
+  await expect(currencies).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Change currency' })).toBeVisible();
+
   await page.goto('/account');
   await expect(workspaceLine(page, 'Home')).toBeVisible();
 });

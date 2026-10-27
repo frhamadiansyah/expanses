@@ -6,7 +6,7 @@ import { openAccount, openCard, walletCard } from './accounts';
 import { addForm, addTransaction, addTransfer, fillAmount, openAmount, saveButton } from './add-transaction';
 import { cardPage, saveCardTerms } from './card-section';
 import { openDrawers } from './drawers';
-import { openWorkspacePage } from './workspace-page';
+import { openWorkspacePage, renameWorkspace } from './workspace-page';
 
 /*
  * Household sharing, end to end (spec §11, §13 `sharing.spec.ts`): two people, each in their own browser — two
@@ -137,13 +137,11 @@ test('two people share a workspace: join, record on both, correct each other, re
 
   // Named Home, so the joiner's own Personal and the shared one never read alike.
   await openWorkspaceSettings(page, 'Personal');
-  await page.getByLabel('Name', { exact: true }).fill('Home');
-  // The ✓ in the workspace page's title bar.
-  await page.getByRole('button', { name: 'Save name', exact: true }).click();
+  await renameWorkspace(page, 'Home');
   await expect(page.getByText('Now called Home.')).toBeVisible();
 
   // Share this workspace: the explainer, a name, then the invite once the history has gone up.
-  await page.getByRole('button', { name: /Share this workspace/ }).click();
+  await page.getByTestId('ws-share-row').click();
   const shareForm = page.getByRole('form', { name: 'Share this workspace' });
   await expect(shareForm).toContainText('A replaced or restored phone needs a new invite.');
   await shareForm.getByLabel('Name').fill('Fandri');
@@ -285,18 +283,16 @@ test('a workspace in another currency than yours cannot be shared, and says why'
 
   await openWorkspaceSettings(page, 'Singapore');
   await expect(page.getByText("This workspace keeps its money in SGD; this app's own accounts are kept in IDR. Sharing across currencies isn't supported yet.")).toBeVisible();
-  await expect(page.getByRole('button', { name: /Share this workspace/ })).toBeDisabled();
+  await expect(page.getByTestId('ws-share-row')).toBeDisabled();
   await shot(page, info, '7-currency-refusal');
 });
 
 /** Fandri shares a workspace called Home and Dewi joins it: the start of every edge below. */
 async function shareAndJoin(page: Page, dewi: Page) {
   await openWorkspaceSettings(page, 'Personal');
-  await page.getByLabel('Name', { exact: true }).fill('Home');
-  // The ✓ in the workspace page's title bar.
-  await page.getByRole('button', { name: 'Save name', exact: true }).click();
+  await renameWorkspace(page, 'Home');
   await expect(page.getByText('Now called Home.')).toBeVisible();
-  await page.getByRole('button', { name: /Share this workspace/ }).click();
+  await page.getByTestId('ws-share-row').click();
   const form = page.getByRole('form', { name: 'Share this workspace' });
   await form.getByLabel('Name').fill('Fandri');
   await form.getByRole('button', { name: 'Share', exact: true }).click();
@@ -370,7 +366,7 @@ test('an owner stops sharing: the other side says who stopped it, and can add no
   await openWorkspaceSettings(page, 'Home');
   await confirmDestructive(page, 'Stop sharing', 'Stop sharing?', 'Stop sharing');
   // On the owner's own device it is an ordinary workspace again, which could be shared anew.
-  await expect(page.getByRole('button', { name: /Share this workspace/ })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('ws-share-row')).toBeVisible({ timeout: 30_000 });
 
   await openWorkspaceSettings(dewi, 'Home');
   await eventually(dewi, () => expect(dewi.getByTestId('sharing-status')).toContainText('No longer shared by Fandri', { timeout: 1_000 }));
@@ -397,14 +393,14 @@ test("an owner stops and shares again: the member's read-only copy rejoins throu
   // Fandri stops sharing; Dewi's copy goes read-only.
   await openWorkspaceSettings(page, 'Home');
   await confirmDestructive(page, 'Stop sharing', 'Stop sharing?', 'Stop sharing');
-  await expect(page.getByRole('button', { name: /Share this workspace/ })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('ws-share-row')).toBeVisible({ timeout: 30_000 });
   await openWorkspaceSettings(dewi, 'Home');
   await eventually(dewi, () => expect(dewi.getByTestId('sharing-status')).toContainText('No longer shared by Fandri', { timeout: 1_000 }));
   await expectReadOnly(dewi, phone, 'No longer shared by Fandri');
 
   // Fandri shares it again, as the same person: the members are Fandri and the remembered Dewi, nobody twice.
   await openWorkspaceSettings(page, 'Home');
-  await page.getByRole('button', { name: /Share this workspace/ }).click();
+  await page.getByTestId('ws-share-row').click();
   const form = page.getByRole('form', { name: 'Share this workspace' });
   await form.getByLabel('Name').fill('Fandri');
   await form.getByRole('button', { name: 'Share', exact: true }).click();
@@ -660,10 +656,9 @@ test('a transfer in a shared workspace shows on the partner’s list as "Transfe
   await openAccount(page, { subtype: 'bank', name: 'Fandri Bank', balance: '10000000' });
   await openAccount(page, { subtype: 'cash', name: 'Fandri Pocket', balance: '100000' });
   await openWorkspaceSettings(page, 'Personal');
-  await page.getByLabel('Name', { exact: true }).fill('Home');
-  await page.getByRole('button', { name: 'Save name', exact: true }).click();
+  await renameWorkspace(page, 'Home');
   await expect(page.getByText('Now called Home.')).toBeVisible();
-  await page.getByRole('button', { name: /Share this workspace/ }).click();
+  await page.getByTestId('ws-share-row').click();
   const shareForm = page.getByRole('form', { name: 'Share this workspace' });
   await shareForm.getByLabel('Name').fill('Fandri');
   await shareForm.getByRole('button', { name: 'Share', exact: true }).click();

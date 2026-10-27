@@ -113,7 +113,9 @@ export function SharingSection({ book }: { book: BookRow }) {
       <InsetGroup wide header="Sharing" footer={refusal ?? 'Record into this workspace together with someone else, each from a phone of their own.'}>
         <InsetRow
           icon={<Users size={15} aria-hidden />}
-          title="Share this workspace"
+          testId="ws-share-row"
+          title="Share"
+          value="Off"
           disabled={refusal !== null}
           onClick={() => {
             setError(null);
