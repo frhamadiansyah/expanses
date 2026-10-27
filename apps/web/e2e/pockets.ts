@@ -68,3 +68,13 @@ async function rewriteRates(page: Page, target: string, statement: string) {
   await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: /Replace my data with/ }).click()]);
   await expect(page.getByRole('heading', { name: 'Backup', exact: true })).toBeVisible();
 }
+
+const POCKET_NAMES: Record<string, string> = { IDR: 'Indonesian Rupiah', USD: 'US Dollar', SGD: 'Singapore Dollar', JPY: 'Japanese Yen', EUR: 'Euro', TRY: 'Turkish Lira' };
+
+/** Move page: opens the From or To picker (the pocket's name on the left of its row) and chooses the pocket of this currency. */
+export async function pickPocket(page: Page, side: 'From' | 'To', code: string) {
+  await page.getByRole('button', { name: `${side}, ` }).click();
+  const sheet = page.getByRole('dialog');
+  await sheet.getByRole('button', { name: new RegExp(`^${POCKET_NAMES[code] ?? code}, `) }).click();
+  await expect(sheet).toHaveCount(0);
+}

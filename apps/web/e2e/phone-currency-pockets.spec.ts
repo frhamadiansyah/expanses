@@ -19,7 +19,7 @@ test('by thumb: open the account, a pocket, and move between pockets one key at 
   await page.getByLabel('Leaves USD').pressSequentially('500');
   await page.getByLabel('Arrives SGD').pressSequentially('638');
   await expect(page.getByTestId('spread')).toContainText('35.160');
-  await page.getByRole('button', { name: 'Move it' }).tap();
+  await page.getByRole('button', { name: 'Move', exact: true }).tap();
   await expect(page.getByTestId('pocket-USD')).toContainText('1.900,00');
   await expect(page.getByTestId('pocket-SGD')).toContainText('1.788,00');
   // No page scrolls sideways at 390px except the Accounts table's own scroller.
@@ -65,4 +65,31 @@ test('a saving account names its bank and itself on one row, and typing the bank
   await bank.fill('Bank Kecil');
   await page.getByLabel('Name', { exact: true }).fill('Emergency');
   await expect(bank).toHaveValue('Bank Kecil');
+});
+
+test('by thumb: the Move page swaps the pockets and picks one from the sheet', async ({ page }) => {
+  await mockRates(page, { SGD: 12_680 });
+  await openWithPockets(page, {
+    name: 'Valas Plus',
+    pockets: [
+      { currency: 'USD', balance: '2400.00', rate: '16250' },
+      { currency: 'SGD', balance: '1150.00' },
+      { currency: 'IDR', balance: '5400000' },
+    ],
+  });
+  await walletCard(page, 'Valas Plus').tap();
+  await page.getByRole('link', { name: 'Move', exact: true }).tap();
+  await expect(page.getByRole('button', { name: 'From, US Dollar' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'To, Singapore Dollar' })).toBeVisible();
+  await page.getByRole('button', { name: 'Swap' }).tap();
+  await expect(page.getByRole('button', { name: 'From, Singapore Dollar' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'To, US Dollar' })).toBeVisible();
+  await page.getByRole('button', { name: /^To, / }).tap();
+  await page.getByRole('dialog').getByRole('button', { name: /^Indonesian Rupiah, / }).tap();
+  await expect(page.getByRole('button', { name: 'To, Indonesian Rupiah' })).toBeVisible();
+  await page.getByLabel('Leaves SGD').pressSequentially('100');
+  await page.getByLabel('Arrives IDR').pressSequentially('1268000');
+  await page.getByRole('button', { name: 'Move', exact: true }).tap();
+  await expect(page.getByTestId('pocket-SGD')).toContainText('1.050,00');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
