@@ -192,6 +192,8 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
   const [picked, setPicked] = useState<string | null>(null);
   /* The rows under the ring, folded away until the chart is tapped — Cashflow's ring does the same. */
   const [showRows, setShowRows] = useState(false);
+  /* The plan under the gauge, folded away until the gauge is tapped — as the rows under the ring are. */
+  const [showPlan, setShowPlan] = useState(false);
   const [editing, setEditing] = useState(false);
   const historyRef = useRef<HTMLElement>(null);
   // Edit opens from the gear at the top, and its form sits at the foot of the page: taken there once, as it opens.
@@ -303,26 +305,28 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
   /*
    * The chart is the switch for its own rows, as Cashflow's is: one tap shows the categories, another folds them and
    * drops any category picked from them. A div rather than a button: the deck inside it scrolls sideways, which a
-   * button's content will not do on iOS. Against the plan there are no rows, so there the tap does nothing.
+   * button's content will not do on iOS. Against the plan the same tap shows or hides the plan's own list.
    */
   const fold = () => {
+    if (onPlan) return setShowPlan(!showPlan);
     if (showRows) setPicked(null);
     setShowRows(!showRows);
   };
+  const folded = onPlan ? showPlan : showRows;
   const chartFrame = (content: ReactNode) => (
     <div
       role="button"
       tabIndex={0}
-      onClick={onPlan ? undefined : fold}
+      onClick={fold}
       onKeyDown={(event) => {
-        if (!onPlan && (event.key === 'Enter' || event.key === ' ')) {
+        if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
           fold();
         }
       }}
-      aria-expanded={showRows}
-      aria-label={showRows ? 'Hide categories' : 'See all categories'}
-      data-testid={showRows ? 'hide-categories' : 'see-categories'}
+      aria-expanded={folded}
+      aria-label={onPlan ? (showPlan ? 'Hide the plan' : 'See the plan') : showRows ? 'Hide categories' : 'See all categories'}
+      data-testid={onPlan ? (showPlan ? 'hide-plan' : 'see-plan') : showRows ? 'hide-categories' : 'see-categories'}
       className="block w-full cursor-pointer"
     >
       {content}
@@ -530,7 +534,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
           )}
 
           {/* Against the plan's own list, in the gauge's card: no gap between the reading and what it reads. */}
-          {onPlan && data && <PlanCard eventId={eventId} plan={data} bookId={openTab} inPanel />}
+          {onPlan && showPlan && data && <PlanCard eventId={eventId} plan={data} bookId={openTab} inPanel />}
         </Panel>
       )}
 
