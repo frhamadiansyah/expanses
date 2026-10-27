@@ -11,8 +11,10 @@ import {
   listTransactions,
   postTransaction,
   saveInstallment,
+  updateInstallment,
   type WorkspaceContext,
 } from '../src/index';
+import { installmentSplit } from '@expanses/core';
 import { setupDb } from './helpers';
 
 const YEAR = { from: '2026-01-01', to: '2026-12-31' };
@@ -177,5 +179,61 @@ describe('points on a converted purchase', () => {
 
     const lines = await cardSpendLines(database, ws, card.id, YEAR.from, YEAR.to);
     expect(lines[0]!.cardFee).toBe(false);
+  });
+});
+
+describe('editing a plan', () => {
+  const plan = async () => {
+    const transactionId = await buyPhone();
+    const id = await saveInstallment(database, ws, {
+      cardAccountId: card.id,
+      description: 'iBox Grand Indonesia',
+      totalMinor: 12_000_000,
+      months: 12,
+      firstBilledMonth: '2026-09',
+      transactionId,
+    });
+    return { id, transactionId };
+  };
+  const edit = { description: 'iBox', totalMinor: 9_000_000, months: 6, firstBilledMonth: '2026-10', earnsPoints: false };
+
+  it('changes the total, months, first month, name and points, and the figures follow', async () => {
+    const { id } = await plan();
+    await updateInstallment(database, ws, { id, ...edit });
+
+    const [row] = await listInstallments(database, ws, card.id);
+    expect(row).toMatchObject({ id, description: 'iBox', totalMinor: 9_000_000, months: 6, monthlyMinor: 1_500_000, firstBilledMonth: '2026-10', earnsPoints: false });
+    const split = installmentSplit(row!, '2026-11-20');
+    expect(split).toMatchObject({ billedMinor: 3_000_000, unbilledMinor: 6_000_000, lastMonth: '2027-03' });
+  });
+
+  it('leaves the purchase and the card balance alone', async () => {
+    const { id, transactionId } = await plan();
+    const before = (await listTransactions(database, ws, {})).find((row) => row.id === transactionId);
+    await updateInstallment(database, ws, { id, ...edit });
+    const after = (await listTransactions(database, ws, {})).find((row) => row.id === transactionId);
+    expect(after).toEqual(before);
+    expect(before?.status).toBe('posted');
+  });
+
+  it('turns points on and off for the purchase it came from', async () => {
+    const { id } = await plan();
+    await updateInstallment(database, ws, { id, ...edit, earnsPoints: false });
+    expect((await cardSpendLines(database, ws, card.id, YEAR.from, YEAR.to))[0]!.cardFee).toBe(true);
+    await updateInstallment(database, ws, { id, ...edit, earnsPoints: true });
+    expect((await cardSpendLines(database, ws, card.id, YEAR.from, YEAR.to))[0]!.cardFee).toBe(false);
+  });
+
+  it('refuses months below one, a total that is not a whole amount above zero, and a bad month', async () => {
+    const { id } = await plan();
+    await expect(updateInstallment(database, ws, { id, ...edit, months: 0 })).rejects.toThrow(/at least one month/);
+    await expect(updateInstallment(database, ws, { id, ...edit, totalMinor: 0 })).rejects.toThrow(/greater than zero/);
+    await expect(updateInstallment(database, ws, { id, ...edit, totalMinor: 10.5 })).rejects.toThrow(/whole amount/);
+    await expect(updateInstallment(database, ws, { id, ...edit, firstBilledMonth: '2026-13' })).rejects.toThrow(/year and month/);
+    expect((await listInstallments(database, ws, card.id))[0]!.totalMinor).toBe(12_000_000);
+  });
+
+  it('refuses a plan that does not exist', async () => {
+    await expect(updateInstallment(database, ws, { id: 'nope', ...edit })).rejects.toThrow(/not found/);
   });
 });

@@ -222,8 +222,33 @@ test('a card purchase turned into instalments splits into billed and unbilled', 
   await expect(plan).toContainText(/Billed Rp\s[\d.]+ · ends \d{4}-\d{2}/);
   await expect(plan).toContainText('still held');
 
-  // And removed from there, leaving the purchase it came from alone.
-  await plan.getByRole('button', { name: 'Remove iBox Grand Indonesia' }).click();
+  // The bin is gone: the row is the way in, and it carries a chevron.
+  await expect(plan.getByRole('button', { name: 'Remove iBox Grand Indonesia' })).toHaveCount(0);
+
+  // Tapping the row opens the plan; a new total and fewer months change its monthly figure and its last month.
+  const endsBefore = (await plan.textContent())!.match(/ends (\d{4}-\d{2})/)![1]!;
+  await plan.getByRole('button', { name: 'Edit iBox Grand Indonesia' }).click();
+  const edit = page.getByRole('dialog', { name: 'Edit instalment plan' });
+  await expect(edit.getByLabel('What it was')).toHaveValue('iBox Grand Indonesia');
+  await expect(edit.getByLabel(/^Total/)).toHaveValue('12000000');
+  await expect(edit.getByLabel('Months')).toHaveValue('12');
+  await edit.getByLabel(/^Total/).fill('9000000');
+  await edit.getByLabel('Months').fill('6');
+  await edit.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(edit).toHaveCount(0);
+  await expect(plan).toContainText(/\d+ of 6 paid · Rp\s1\.500\.000 a month/);
+  expect((await plan.textContent())!.match(/ends (\d{4}-\d{2})/)![1]).not.toBe(endsBefore);
+
+  // Removing asks first, in an alert; Not now keeps it, Remove plan takes it away and leaves the purchase alone.
+  await plan.getByRole('button', { name: 'Edit iBox Grand Indonesia' }).click();
+  await edit.getByRole('button', { name: 'Remove plan' }).click();
+  const alert = page.getByRole('alertdialog', { name: 'Remove plan' });
+  await expect(alert).toContainText('The purchase it came from stays as it is.');
+  await alert.getByRole('button', { name: 'Not now' }).click();
+  await expect(held.getByTestId('card-instalment')).toHaveCount(1);
+  await edit.getByRole('button', { name: 'Remove plan' }).click();
+  await alert.getByRole('button', { name: 'Remove plan' }).click();
+  await expect(edit).toHaveCount(0);
   await expect(held.getByTestId('card-instalment')).toHaveCount(0);
   await expect(held.getByRole('button', { name: 'Add a plan' })).toBeVisible();
 });
