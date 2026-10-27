@@ -71,11 +71,11 @@ test('a current account takes a second currency and becomes one with pockets, ke
   await expect(page.getByTestId('account-recent')).toContainText('Groceries run');
 });
 
-test('Record on an account with pockets opens paid with the pocket in the workspace’s own currency', async ({ page }) => {
+test('Spend and Receive on a bank with pockets open the Add screen with the pocket in the workspace’s own currency', async ({ page }) => {
   await mockRates(page, { USD: 16_250 });
   await openWithPockets(page, { name: 'Valas Plus', pockets: [{ currency: 'USD', balance: '300.00', rate: '16250' }, { currency: 'IDR', balance: '5000000' }] });
   await openMoney(page, 'Valas Plus');
-  await page.getByRole('button', { name: 'Record', exact: true }).click();
+  await page.getByRole('button', { name: 'Spend', exact: true }).click();
   // The Add screen itself, as ＋ opens it, with the account filled in: its tabs are there, Expense on.
   await expect(page).toHaveURL(/\/transactions\/new\?.*mode=expense/);
   const form = addForm(page);
@@ -87,6 +87,12 @@ test('Record on an account with pockets opens paid with the pocket in the worksp
   await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
   await expect(form.getByRole('radio', { name: 'Transfer', exact: true })).toBeChecked();
   await expect(form.getByRole('button', { name: /^From/ })).toContainText('Valas Plus · IDR');
+  // Receive opens the same screen on Income, into the same pocket.
+  await page.goBack();
+  await page.getByRole('button', { name: 'Receive', exact: true }).click();
+  await expect(page).toHaveURL(/\/transactions\/new\?.*mode=income/);
+  await expect(addForm(page).getByRole('radio', { name: 'Income', exact: true })).toBeChecked();
+  await expect(addForm(page).getByRole('button', { name: /^Received into/ })).toContainText('Valas Plus · IDR');
 });
 
 test('a cash account with pockets: Record, Move, Withdraw, Adjust; Withdraw is into the rupiah pocket and Adjust asks which pocket', async ({ page }) => {
@@ -370,7 +376,8 @@ test('an account with pockets lists them, and a pocket opens its own page with t
   await expect(page.getByTestId('pocket-USD')).toContainText('2.400,00');
   await expect(page.getByTestId('pocket-USD')).not.toContainText('US Dollar');
   // Four actions in one row; adding a currency is the Pockets list's last row, not an action.
-  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Record', exact: true })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Spend', exact: true })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Receive', exact: true })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Adjust', exact: true })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Move', exact: true })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: /^Add (a )?currency$/ })).toHaveCount(0);

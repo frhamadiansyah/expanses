@@ -70,17 +70,17 @@ test('by thumb: cash is counted and withdrawn into, a wallet topped up, and a cu
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-test('by thumb: an account with pockets has Record, Move and Adjust; Adjust asks which pocket and Record opens Add with the tabs', async ({ page }) => {
+test('by thumb: a bank with pockets has Spend, Receive, Move and Adjust; Adjust asks which pocket and Spend opens Add with the tabs', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, { name: 'Valas Plus', pockets: [{ currency: 'USD', balance: '2400.00', rate: '16250' }, { currency: 'SGD', balance: '1150.00' }] });
   await walletCard(page, 'Valas Plus').tap();
-  await expect(page.getByRole('group', { name: 'Actions' }).locator('button, a')).toHaveText(['Record', 'Move', 'Adjust']);
+  await expect(page.getByRole('group', { name: 'Actions' }).locator('button, a')).toHaveText(['Spend', 'Receive', 'Move', 'Adjust']);
   await page.getByRole('button', { name: 'Adjust', exact: true }).tap();
   const which = page.getByRole('dialog', { name: 'Adjust which pocket' });
   await which.getByTestId('adjust-pocket-SGD').tap();
   await expect(page.getByRole('dialog', { name: 'Adjust balance' })).toContainText('1.150');
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Record', exact: true }).tap();
+  await page.getByRole('button', { name: 'Spend', exact: true }).tap();
   await expect(page).toHaveURL(/\/transactions\/new\?.*mode=expense/);
   const form = addForm(page);
   await expect(form.getByRole('radio', { name: 'Income', exact: true })).toBeVisible();
