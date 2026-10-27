@@ -33,6 +33,7 @@ async function eventually(page: Page, check: () => Promise<void>) {
 
 async function newWorkspace(page: Page, name: string, startsWith: string) {
   await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByTestId('add-workspace').click();
   await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill(name);

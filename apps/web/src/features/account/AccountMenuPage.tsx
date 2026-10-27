@@ -9,9 +9,11 @@ import { ErrorBox } from '../../ui';
 import { type GroupChild, InsetGroup, InsetRow, ROW_PAD_X, ROW_PAD_Y, SCREEN, TAP } from '../../ui/native';
 import { daysSince, getLastBackupAt } from '../backup/backupState';
 import { usePendingDraftCount } from '../review/queries';
+import { JoinSheet } from '../sharing/JoinSheet';
 import { NewWorkspaceSheet } from '../workspaces/NewWorkspaceSheet';
 import { useArchivedBooks, useBooks } from '../workspaces/queries';
 import { WorkspaceDot } from '../workspaces/WorkspaceBadge';
+import { AddWorkspaceSheet } from './AddWorkspaceSheet';
 
 /** How long ago the last backup was, in the fewest words that still answer "am I covered?". */
 function backupNote(last: string | null): string {
@@ -78,6 +80,8 @@ export function AccountMenuPage() {
   const archived = useArchivedBooks();
   const pending = usePendingDraftCount().data ?? 0;
   const lastBackup = useQuery({ queryKey: ['last-backup'], queryFn: () => getLastBackupAt(database) });
+  const [adding, setAdding] = useState(false);
+  const [joining, setJoining] = useState(false);
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -130,7 +134,7 @@ export function AccountMenuPage() {
               label={`Open ${book.name}, archived`}
             />
           )),
-          <InsetRow key="new" testId="new-workspace" icon={<Plus size={16} aria-hidden />} title="New workspace" chevron={false} onClick={() => setCreating(true)} />,
+          <InsetRow key="add" testId="add-workspace" icon={<Plus size={16} aria-hidden />} title="Add workspace" chevron={false} onClick={() => setAdding(true)} />,
         ]}
       </InsetGroup>
 
@@ -142,6 +146,20 @@ export function AccountMenuPage() {
         </InsetGroup>
       ))}
 
+      {adding && (
+        <AddWorkspaceSheet
+          onClose={() => setAdding(false)}
+          onNew={() => {
+            setAdding(false);
+            setCreating(true);
+          }}
+          onJoin={() => {
+            setAdding(false);
+            setJoining(true);
+          }}
+        />
+      )}
+      {joining && <JoinSheet onClose={() => setJoining(false)} />}
       {creating && <NewWorkspaceSheet onClose={() => setCreating(false)} />}
     </div>
   );
