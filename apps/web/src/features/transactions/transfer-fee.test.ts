@@ -1,7 +1,7 @@
 import type { AccountRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { classify } from './classify';
-import { emptyForm, type FormDraft, formFromTransaction, formToPost } from './tx-form';
+import { emptyForm, type FormDraft, formFromTransaction, formToPost, offersTransferFee } from './tx-form';
 
 const accounts = [
   { id: 'card', name: 'BCA Visa', kind: 'liability', subtype: 'credit_card', currency: 'IDR' },
@@ -11,6 +11,7 @@ const accounts = [
   { id: 'fees', name: 'Fees & charges', kind: 'expense', subtype: 'category', currency: null, systemKey: 'miscellaneous.fees_charges' },
   { id: 'topups', name: 'Top-ups', kind: 'expense', subtype: 'category', currency: null, systemKey: 'miscellaneous.top_ups' },
   { id: 'dining', name: 'Restaurants', kind: 'expense', subtype: 'category', currency: null, systemKey: 'food_beverage.restaurants' },
+  { id: 'fx', name: 'Currency exchange', kind: 'equity', subtype: 'system', currency: null, systemKey: 'currency_exchange' },
   { id: 'gold', name: 'Antam gold', kind: 'asset', subtype: 'investment', currency: 'IDR' },
 ] as AccountRow[];
 
@@ -94,9 +95,8 @@ describe('a transfer with a fee', () => {
     expect(post.input.lines[1]).toMatchObject({ spendCategoryId: 'fees' });
   });
 
-  it('refuses a fee without a category, and a fee across two currencies', () => {
+  it('refuses a fee without a category', () => {
     expect(() => formToPost({ ...topUp, feeCategoryId: '' }, accounts)).toThrow('Choose a category for the fee');
-    expect(() => formToPost({ ...topUp, toId: 'wise', toAmount: '60' }, accounts)).toThrow('A fee goes on a transfer within one currency');
   });
 
   it('reads back as a transfer of what landed, with its fee — never as Rp 10.000 of spending', () => {
@@ -108,5 +108,66 @@ describe('a transfer with a fee', () => {
   it('leaves a holding bought with a fee as it was: not a transfer', () => {
     const buy = view([entry('gold', 2_000_000), entry('bank', -2_010_000), entry('fees', 10_000)]);
     expect(classify(buy).type).toBe('expense');
+  });
+});
+
+describe('a transfer between two currencies with a fee', () => {
+  // Rp 1.600.000 leaves BCA for US$ 100 in Wise, the bank charging Rp 25.000.
+  const foreign: FormDraft = { ...emptyForm('b'), mode: 'transfer', moneyId: 'bank', toId: 'wise', amount: '1600000', toAmount: '100', fee: '25000', feeCategoryId: 'fees', occurredOn: '2026-10-22' };
+
+  it('charges the amount and the fee together in the From currency, lands the converted amount alone, files the fee in rupiah', () => {
+    const post = formToPost(foreign, accounts);
+    if (post.kind !== 'post') throw new Error('expected a post');
+    expect(post.input.lines).toEqual([
+      { accountId: 'bank', amountMinor: -1_625_000, currency: 'IDR' },
+      { accountId: 'fx', amountMinor: 1_600_000, currency: 'IDR' },
+      { accountId: 'wise', amountMinor: 10_000, currency: 'USD' },
+      { accountId: 'fx', amountMinor: -10_000, currency: 'USD' },
+      { accountId: 'fees', amountMinor: 25_000, currency: 'IDR' },
+    ]);
+    const sums = new Map<string, number>();
+    for (const l of post.input.lines) sums.set(l.currency, (sums.get(l.currency) ?? 0) + l.amountMinor);
+    expect([...sums.values()]).toEqual([0, 0]);
+  });
+
+  it('is the plain exchange with no fee, and refuses a fee without a category', () => {
+    const post = formToPost({ ...foreign, fee: '', feeCategoryId: '' }, accounts);
+    if (post.kind !== 'post') throw new Error('expected a post');
+    expect(post.input.lines).toHaveLength(4);
+    expect(() => formToPost({ ...foreign, feeCategoryId: '' }, accounts)).toThrow('Choose a category for the fee');
+  });
+
+  it('reads back as a transfer with the fee in the From currency, and round-trips through the form', () => {
+    const saved = view(
+      [
+        entry('bank', -1_625_000),
+        entry('fx', 1_600_000),
+        entry('wise', 10_000, { currency: 'USD' }),
+        entry('fx', -10_000, { currency: 'USD' }),
+        entry('fees', 25_000),
+      ].map((e) => (e.accountId === 'fx' ? { ...e, accountSystemKey: 'currency_exchange' } : e)),
+    );
+    expect(classify(saved)).toMatchObject({ type: 'transfer', amountMinor: 10_000, currency: 'USD', feeMinor: 25_000, feeCurrency: 'IDR' });
+    const form = formFromTransaction(saved, accounts);
+    expect(form).toMatchObject({ mode: 'transfer', moneyId: 'bank', toId: 'wise', amount: '1600000', toAmount: '100.00', fee: '25000', feeCategoryId: 'fees' });
+    const again = formToPost(form, accounts);
+    if (again.kind !== 'post') throw new Error('expected a post');
+    expect(again.input.lines.find((l) => l.accountId === 'bank')!.amountMinor).toBe(-1_625_000);
+  });
+});
+
+describe('offersTransferFee', () => {
+  const idr = { currency: 'IDR' };
+  const usd = { currency: 'USD' };
+  it('offers the fee within one currency and between two', () => {
+    expect(offersTransferFee(idr, idr, false)).toBe(true);
+    expect(offersTransferFee(idr, usd, false)).toBe(true);
+    expect(offersTransferFee(usd, idr, false)).toBe(true);
+    expect(offersTransferFee(idr, undefined, false)).toBe(true);
+    expect(offersTransferFee(undefined, undefined, false)).toBe(true);
+  });
+  it('offers none when the accounts are locked', () => {
+    expect(offersTransferFee(idr, usd, true)).toBe(false);
+    expect(offersTransferFee(idr, idr, true)).toBe(false);
   });
 });

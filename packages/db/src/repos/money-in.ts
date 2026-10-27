@@ -1,10 +1,10 @@
-import { cardTopUpLines } from '@expanses/core';
+import { cardTopUpLines, exchangeWithFeeLines } from '@expanses/core';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { cards } from '../schema-cards';
-import { type AccountRow, SPENDABLE_SUBTYPES } from './accounts';
+import { type AccountRow, SPENDABLE_SUBTYPES, systemAccountId } from './accounts';
 import { categoryIdsByKeyTx, ensureCategoryByKeyTx } from './categories';
 import { postTransactionTx } from './ledger';
 
@@ -63,6 +63,14 @@ export interface MoneyInInput {
   feeDescription: string;
   /** Units of base per one major unit of the money's currency, when that is not the base. */
   rateToBase?: number;
+  /**
+   * Between two currencies — a withdrawal of dollars from a rupiah account — what left the From account, in its own
+   * currency; `amountMinor` is then what landed, and `feeMinor` is in the From account's currency. Required when the
+   * currencies differ, refused when they do not.
+   */
+  fromAmountMinor?: number;
+  /** Units of base per one major unit of the From account's currency, when that is not the base. */
+  fromRateToBase?: number;
 }
 
 /**
@@ -95,7 +103,13 @@ export async function moveMoneyIn(database: Database, ws: WorkspaceContext, inpu
     if (from.id === to.id || !((from.kind === 'asset' && SPENDABLE_SUBTYPES.includes(from.subtype)) || cardTopsUpWallet(from, to))) {
       throw new MoneyInError('NOT_ALLOWED', `Money cannot come into ${to.name} from ${from.name}`);
     }
-    if (from.currency !== to.currency || !to.currency) throw new MoneyInError('CURRENCY', `${from.name} and ${to.name} hold different currencies`);
+    if (!to.currency || !from.currency) throw new MoneyInError('CURRENCY', `${from.name} and ${to.name} hold different currencies`);
+    const crossCurrency = from.currency !== to.currency;
+    // A card tops a wallet up within one currency; only money held can cross one.
+    if (crossCurrency && card) throw new MoneyInError('CURRENCY', `${from.name} and ${to.name} hold different currencies`);
+    if (crossCurrency && !(Number.isSafeInteger(input.fromAmountMinor) && input.fromAmountMinor! > 0)) {
+      throw new MoneyInError('BAD_INPUT', `Enter what left ${from.name}, in ${from.currency}`);
+    }
     const currency = to.currency;
     let cardId: string | null = null;
     if (input.cardId) {
@@ -106,7 +120,37 @@ export async function moveMoneyIn(database: Database, ws: WorkspaceContext, inpu
       if (!row) throw new MoneyInError('NOT_FOUND', `That card is not on ${from.name}`);
       cardId = row.id;
     }
-    const ratesToBase = input.rateToBase ? { [currency]: input.rateToBase } : {};
+    const ratesToBase = {
+      ...(input.rateToBase ? { [currency]: input.rateToBase } : {}),
+      ...(crossCurrency && input.fromRateToBase ? { [from.currency]: input.fromRateToBase } : {}),
+    };
+    /*
+     * Between two currencies it is one transaction, as the Transfer tab posts it: the From account pays what left and
+     * the fee together, the To account takes the converted amount alone, the fee is spending in the From currency.
+     */
+    if (crossCurrency) {
+      const feeCategory = input.feeMinor > 0 ? (await categoryIdsByKeyTx(tx, ws))[MONEY_IN_FEE_KEY] : undefined;
+      if (input.feeMinor > 0 && !feeCategory) throw new MoneyInError('NOT_FOUND', 'This workspace has no Fees & charges category');
+      const transferId = await postTransactionTx(tx, ws, {
+        occurredOn: input.occurredOn,
+        description: input.description,
+        cardId,
+        lines: exchangeWithFeeLines({
+          fromAccountId: from.id,
+          fromAmountMinor: input.fromAmountMinor!,
+          fromCurrency: from.currency,
+          toAccountId: to.id,
+          toAmountMinor: input.amountMinor,
+          toCurrency: currency,
+          exchangeAccountId: await systemAccountId(tx, ws, 'currency_exchange'),
+          feeMinor: input.feeMinor,
+          feeCategoryId: feeCategory ?? null,
+        }),
+        ratesToBase,
+        fileTransfer: true,
+      });
+      return { transferId, feeId: null };
+    }
     /*
      * Paid by card with a fee, it is one charge on the statement — Rp 1.010.000 for Rp 1.000.000 landing — so it is one
      * transaction: the wallet gets the amount, the card owes both, the fee is spending. The card's line names the fee's

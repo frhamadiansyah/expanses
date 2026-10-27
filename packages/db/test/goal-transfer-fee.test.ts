@@ -162,7 +162,7 @@ describe('a transfer for a goal with a fee', () => {
     await expect(goalValue()).resolves.toBe(1_500_000);
   });
 
-  it('refuses a fee with no category, a fee between two currencies, and writes nothing', async () => {
+  it('refuses a fee with no category, between two currencies too, and writes nothing', async () => {
     const usd = await createAccount(database, ws, { name: 'Account C', kind: 'asset', subtype: 'bank', currency: 'USD' });
     const before = (await listTransactions(database, ws)).length;
     await expect(
@@ -178,9 +178,8 @@ describe('a transfer for a goal with a fee', () => {
         toAccountId: usd.id,
         goalId,
         feeMinor: 2_500,
-        feeCategoryId: fees.id,
       }),
-    ).rejects.toThrow('A fee goes on a transfer within one currency');
+    ).rejects.toThrow('Choose a category for the fee');
     expect((await listTransactions(database, ws)).length).toBe(before);
     await expect(balances()).resolves.toEqual({ a: 20_000_000, b: 0, fees: 0 });
   });

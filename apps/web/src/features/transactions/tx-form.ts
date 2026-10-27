@@ -6,7 +6,7 @@ import {
   equalShares,
   evaluateAmount,
   evaluateExact,
-  exchangeLines,
+  exchangeWithFeeLines,
   expenseLines,
   incomeLines,
   isNotCountedKey,
@@ -540,6 +540,15 @@ export function receivedField(draft: FormDraft, accounts: readonly AccountRow[])
   return { which: 'received', label: `Received amount (${to.currency})`, value: draft.toAmount, currency: to.currency };
 }
 
+/**
+ * Whether a transfer offers a Fee row: always, between two currencies too — the fee is the From account's (an ATM or a
+ * bank fee charged in the currency the money leaves in), never converted. Only a locked transfer (a partner's side, whose
+ * accounts are not this device's to change) has none.
+ */
+export function offersTransferFee(_from: Pick<AccountRow, 'currency'> | undefined, _to: Pick<AccountRow, 'currency'> | undefined, locked: boolean): boolean {
+  return !locked;
+}
+
 export type ExtraRow = 'event' | 'split' | 'with' | 'mcc' | 'channel' | 'photos' | 'exclude' | 'rate';
 
 /**
@@ -873,10 +882,7 @@ function transferPostingLines(draft: FormDraft, account: AccountRow, accounts: r
   const currency = account.currency!;
   const feeMinor = draft.fee.trim() ? positive(draft.fee, currency, 'Fee') : 0;
   const topUps = to.currency === currency ? topUpsOf(draft, account, to.id, accounts) : undefined;
-  if (feeMinor > 0) {
-    if (to.currency !== currency) throw new Error('A fee goes on a transfer within one currency');
-    if (!draft.feeCategoryId) throw new Error('Choose a category for the fee');
-  }
+  if (feeMinor > 0 && !draft.feeCategoryId) throw new Error('Choose a category for the fee');
   // A card's top-up of a wallet: one charge of what landed and the fee, its card line under Top-ups, fee or not.
   if (topUps) {
     return cardTopUpLines({
@@ -898,7 +904,8 @@ function transferPostingLines(draft: FormDraft, account: AccountRow, accounts: r
   if (!exchange) throw new Error('Currency exchange account missing');
   // Non-null: both accounts have a currency and they differ, which is exactly when `receivedField` answers.
   const received = receivedField(draft, accounts)!;
-  return exchangeLines({
+  // Between two currencies the fee is still in the From account's: it is paid with the amount, never converted.
+  return exchangeWithFeeLines({
     fromAccountId: account.id,
     fromAmountMinor: amountMinor,
     fromCurrency: currency,
@@ -906,6 +913,9 @@ function transferPostingLines(draft: FormDraft, account: AccountRow, accounts: r
     toAmountMinor: positive(received.value, received.currency, 'Received amount'),
     toCurrency: received.currency,
     exchangeAccountId: exchange.id,
+    feeMinor,
+    feeCategoryId: draft.feeCategoryId || null,
+    fromIsCard: account.subtype === 'credit_card',
   });
 }
 
@@ -1009,10 +1019,7 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
       const to = toAccountOf(draft, accounts, account);
       // A fee rides along as on any transfer — spending beside the move, never counted toward the goal.
       const feeMinor = draft.fee.trim() ? positive(draft.fee, account.currency, 'Fee') : 0;
-      if (feeMinor > 0) {
-        if (to.currency !== account.currency) throw new Error('A fee goes on a transfer within one currency');
-        if (!draft.feeCategoryId) throw new Error('Choose a category for the fee');
-      }
+      if (feeMinor > 0 && !draft.feeCategoryId) throw new Error('Choose a category for the fee');
       return {
         kind: 'transfer-goal',
         input: {
@@ -1364,7 +1371,9 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
     moneyId: from?.accountId ?? '',
     toId: to?.accountId ?? '',
     currency: from ? settledOf(from) : '',
-    amount: fee && to ? minorToMajorString(to.amountMinor, to.currency) : from ? minorToMajorString(-from.amountMinor, from.currency) : '',
+    // The amount is what left less the fee, in the From account's currency: what landed within one currency, the figure
+    // that was converted between two.
+    amount: fee && to && from && to.currency !== from.currency ? minorToMajorString(-from.amountMinor - c.feeMinor!, from.currency) : fee && to ? minorToMajorString(to.amountMinor, to.currency) : from ? minorToMajorString(-from.amountMinor, from.currency) : '',
     ...(fee ?? {}),
     toAmount: to && from && to.currency !== from.currency ? minorToMajorString(to.amountMinor, to.currency) : '',
   }, tx, accounts);

@@ -158,7 +158,8 @@ describe('moveMoneyIn', () => {
     const rdn = await createAccount(database, ws, { name: 'RDN', kind: 'asset', subtype: 'fund', currency: 'IDR' });
     const base = { toId: cash.id, amountMinor: 1_000, feeMinor: 0, occurredOn: '2026-09-30', description: 'Cash withdrawal', feeDescription: 'ATM fee' };
     await expect(moveMoneyIn(database, ws, { ...base, fromId: card.id })).rejects.toThrow(/cannot come into/);
-    await expect(moveMoneyIn(database, ws, { ...base, fromId: usd.id })).rejects.toThrow(/different currencies/);
+    // Another currency is allowed now, but only with what left it said; a card stays within one currency.
+    await expect(moveMoneyIn(database, ws, { ...base, fromId: usd.id })).rejects.toThrow(/Enter what left/);
     await expect(moveMoneyIn(database, ws, { ...base, fromId: rdn.id })).rejects.toThrow(/cannot come into/);
   });
 });

@@ -71,7 +71,7 @@ import { WithdrawalLine } from './WithdrawalLine';
 import { PaymentSheet, chosenPayment, removedCardPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
-import { extraRowRefusal, extraRows, postingCurrency } from './tx-form';
+import { extraRowRefusal, extraRows, offersTransferFee, postingCurrency } from './tx-form';
 import { SplitSheet, splitSummary } from './SplitSheet';
 import { PhotosSheet } from './PhotosSheet';
 import { draftIn } from './move-workspace';
@@ -636,14 +636,14 @@ function CardBody({
   const offersSplit = offered.includes('split');
   const offersChannel = offered.includes('channel');
   /*
-   * A transfer's fee: within one currency (the From account's), a transfer for a goal included — the fee is spending
+   * A transfer's fee: in the From account's currency, between two currencies too, a transfer for a goal included — the fee is spending
    * beside the move, never counted toward the goal. Its category starts on the workspace's built-in Fees & charges, the
    * one a fee the app knows of is filed under.
    */
   const feeFrom = accounts.find((account) => account.id === draft.moneyId);
   const feeTo = accounts.find((account) => account.id === draft.toId);
   const feeCurrency = feeFrom?.currency ?? ws.baseCurrency;
-  const offersFee = draft.mode === 'transfer' && !accountsLocked && (!feeTo || !feeFrom || feeTo.currency === feeFrom.currency);
+  const offersFee = draft.mode === 'transfer' && offersTransferFee(feeFrom, feeTo, accountsLocked);
   const defaultFeeCategory =
     accounts.find((account) => account.systemKey === 'miscellaneous.fees_charges' && (allBooks.length < 2 || categoryBooks[account.id] === ws.bookId))?.id ?? '';
   /*
