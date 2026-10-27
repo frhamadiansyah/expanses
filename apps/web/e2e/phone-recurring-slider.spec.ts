@@ -10,8 +10,8 @@ test('on a phone, Recurring slides to Repeating by its dot, and a repeating row 
   await expect(page.getByTestId('yearly-bills-row')).toHaveCount(0);
 
   await showRepeating(page);
-  await expect(page.getByTestId('repeating-summary')).toContainText('Set aside · per month');
-  await expect(page.getByTestId('repeating-summary')).toContainText('No sinking funds yet');
+  await expect(page.getByTestId('repeating-summary')).toContainText('Needed · per month, from now');
+  await expect(page.getByTestId('repeating-summary')).toContainText('Not set aside');
   const domain = page.getByTestId('yearly-bill-row').filter({ hasText: 'Domain' });
   await expect(domain).toContainText('3.000.000');
   await expect(page.getByTestId('bill-row')).toHaveCount(0);

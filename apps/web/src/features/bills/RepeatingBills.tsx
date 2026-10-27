@@ -5,40 +5,53 @@ import { useApp } from '../../app/context';
 import { useFrom } from '../../app/from-search';
 import { useAccounts } from '../../lib/queries';
 import { cx, Money } from '../../ui';
-import { GROUP_RADIUS, InsetGroup, InsetRow, Panel, ProgressBar, ROW_PAD_X, ROW_PAD_Y, rowHeight, toneClass } from '../../ui/native';
+import { GROUP_RADIUS, InsetGroup, InsetRow, Panel, ROW_PAD_X, ROW_PAD_Y, rowHeight, toneClass } from '../../ui/native';
 import { CategoryIcon } from '../categories/CategoryIcon';
-import { shortMoney } from '../networth/value-chart';
 import { billCurrencyOf } from './bill-view';
-import type { SetAside } from './set-aside';
+import type { RepeatingNeeds } from './repeating-needs';
 import { nextDateOf } from './YearlyBillsPage';
 
-/** A figure in the caption: millions short, as the charts print them, else the whole amount. */
-function brief(minor: number, currency: string): string {
-  return currency === 'IDR' && Math.abs(minor) >= 1e6 ? `Rp ${shortMoney(minor, currency)}` : formatMinor(minor, currency);
-}
-
-/** The Repeating page's hero, in the Monthly hero's own box: what is set aside each month and how much of the targets is saved. */
-export function RepeatingHero({ setAside, currency }: { setAside: SetAside; currency: string }) {
+/** The Repeating page's hero, in the Monthly hero's own box: what the repeating bills need each month from now, and how much of it sinking funds already back. */
+export function RepeatingHero({ needs, currency }: { needs: RepeatingNeeds; currency: string }) {
+  const { fundedMinor, unfundedMinor, totalMinor } = needs;
   return (
     <Panel className="space-y-3" testId="repeating-summary">
       <div>
-        <p className="text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">Set aside · per month</p>
-        <p className="tabular truncate text-[26px] leading-[32px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]" data-testid="set-aside-total">
-          {setAside.approximate && <span className="text-[var(--ph-ink-3)]">≈ </span>}
-          <Money minor={setAside.monthlyMinor} currency={currency} />
+        <p className="text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">Needed · per month, from now</p>
+        <p className="tabular truncate text-[26px] leading-[32px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]" data-testid="needed-total">
+          {needs.approximate && <span className="text-[var(--ph-ink-3)]">≈ </span>}
+          <Money minor={totalMinor} currency={currency} />
         </p>
       </div>
-      {setAside.count === 0 ? (
-        <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">No sinking funds yet</p>
+      {needs.bills.length === 0 ? (
+        <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">No repeating bills yet</p>
       ) : (
-        <>
-          <ProgressBar currentMinor={setAside.savedMinor} targetMinor={setAside.targetMinor} label="Saved of the targets" />
-          <p className="tabular text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-            Saved {brief(setAside.savedMinor, currency)} of {brief(setAside.targetMinor, currency)} for {setAside.count} {setAside.count === 1 ? 'bill' : 'bills'}
-          </p>
-        </>
+        totalMinor > 0 && (
+          <>
+            <span aria-hidden className="flex w-full overflow-hidden rounded-full bg-[var(--ph-track)]" style={{ height: 8 }}>
+              <span className="block h-full" style={{ width: `${(fundedMinor / totalMinor) * 100}%`, background: 'var(--ph-up)' }} />
+              <span className="block h-full" style={{ width: `${(unfundedMinor / totalMinor) * 100}%`, background: 'var(--ph-warn)' }} />
+            </span>
+            <ul className="flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="repeating-legend">
+              {fundedMinor > 0 && <KeyItem colour="var(--ph-up)" label="Set aside" minor={fundedMinor} currency={currency} />}
+              {unfundedMinor > 0 && <KeyItem colour="var(--ph-warn)" label="Not set aside" minor={unfundedMinor} currency={currency} />}
+            </ul>
+          </>
+        )
       )}
     </Panel>
+  );
+}
+
+function KeyItem({ colour, label, minor, currency }: { colour: string; label: string; minor: number; currency: string }) {
+  return (
+    <li className="flex items-center gap-[6px]">
+      <span aria-hidden className="block h-2 w-2 rounded-full" style={{ background: colour }} />
+      {label}{' '}
+      <span className="tabular text-[var(--ph-ink-2)]">
+        <Money minor={minor} currency={currency} />
+      </span>
+    </li>
   );
 }
 
@@ -47,7 +60,7 @@ export function RepeatingHero({ setAside, currency }: { setAside: SetAside; curr
  * a Monthly bill is (BillRow): the category's round icon, the name with the paying account under it, the amount at the
  * right with when it falls due under that, and the chevron.
  */
-export function RepeatingList({ bills }: { bills: readonly MonthlyBill[] }) {
+export function RepeatingList({ bills, needs }: { bills: readonly MonthlyBill[]; needs: RepeatingNeeds }) {
   const { ws } = useApp();
   const from = useFrom();
   const navigate = useNavigate();
@@ -66,7 +79,7 @@ export function RepeatingList({ bills }: { bills: readonly MonthlyBill[] }) {
       {sorted.map(({ bill, next }, index) => {
         const amount = bill.amountMinor ?? bill.estimateMinor;
         const currency = billCurrencyOf(bill, accounts, ws.baseCurrency);
-        const account = accounts.find((row) => row.id === bill.moneyAccountId)?.name ?? '';
+        const need = needs.bills.find((row) => row.billId === bill.id);
         const soon = feeDaysAway(next, today) <= 30;
         return (
           <div key={bill.id} data-testid="yearly-bill-row" className="relative">
@@ -83,13 +96,15 @@ export function RepeatingList({ bills }: { bills: readonly MonthlyBill[] }) {
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{bill.name}</span>
                 <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-                  {account}
-                  {bill.repeat === 'months' ? `${account ? ' · ' : ''}every ${bill.repeatEvery} months` : ''}
+                  <span className={toneClass(soon ? 'warn' : 'ink-3')}>{`Due ${dayMonth(next)}`}</span>
+                  {bill.repeat === 'months' ? ` · every ${bill.repeatEvery} months` : ''}
                 </span>
               </span>
               <span className="tabular flex shrink-0 flex-col items-end text-[15px] leading-[20px] text-[var(--ph-ink)]">
                 {amount === null ? <span className="text-[var(--ph-ink-3)]">Amount varies</span> : <Money minor={amount} currency={currency} />}
-                <span className={cx('mt-[2px] text-[12.5px] leading-[16px]', toneClass(soon ? 'warn' : 'ink-3'))}>{`Due ${dayMonth(next)}`}</span>
+                {need && need.needMinor !== null && (
+                  <span className={cx('mt-[2px] text-[12.5px] leading-[16px]', toneClass(need.funded ? 'ink-3' : 'warn'))}>{`${formatMinor(need.needMinor, need.currency)} a month`}</span>
+                )}
               </span>
               <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
                 {'›'}

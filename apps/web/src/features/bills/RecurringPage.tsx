@@ -13,7 +13,8 @@ import { MonthlyBuys } from './MonthlyBuys';
 import { amountOf, billCurrencyOf, billsInReadCurrency, type BillSummary, isToPay, paidText, pausedOf, sectionsOf, settledOf, skippedText, summaryOf } from './bill-view';
 import { HeroSlider } from './HeroSlider';
 import { RepeatingHero, RepeatingList } from './RepeatingBills';
-import { setAsideOf } from './set-aside';
+import { nextDateOf } from './YearlyBillsPage';
+import { repeatingNeeds } from './repeating-needs';
 import { PaySeveralSheet } from './PaySeveralSheet';
 import { PaySheet } from './PaySheet';
 import { useBillMoney, useMonthlyBills, useSinkingFunds, useYearlyBills } from './queries';
@@ -187,7 +188,13 @@ export function RecurringPage() {
 
   const summary = summaryOf(readRows, today);
   const convertFund = money?.converts ? money.convert : money?.convertForeign;
-  const setAside = setAsideOf(funds.data ?? [], readCurrency, convertFund && ((minor, from) => convertFund(minor, from, today)));
+  const needs = repeatingNeeds(
+    (yearly.data ?? []).map((bill) => ({ id: bill.id, amountMinor: bill.amountMinor, estimateMinor: bill.estimateMinor, currency: currencyOf(bill), dueOn: nextDateOf(bill) })),
+    (funds.data ?? []).map((fund) => ({ billId: fund.billId, monthlyMinor: fund.monthlyMinor })),
+    today,
+    readCurrency,
+    convertFund && ((minor, from) => convertFund(minor, from, today)),
+  );
   const changePage = (next: number) => {
     setPage(next);
     if (next !== 0) doneSelecting();
@@ -239,11 +246,11 @@ export function RecurringPage() {
               <p className="text-[17px] leading-[22px] font-semibold text-[var(--ph-ink-2)]">No monthly bills yet</p>
             </Panel>
           ),
-          <RepeatingHero key="repeating" setAside={setAside} currency={readCurrency} />,
+          <RepeatingHero key="repeating" needs={needs} currency={readCurrency} />,
         ]}
       />
 
-      {page === 1 && <RepeatingList bills={yearly.data ?? []} />}
+      {page === 1 && <RepeatingList bills={yearly.data ?? []} needs={needs} />}
 
       {page === 0 && bills.isSuccess && rows.length === 0 && (
         <InsetGroup>
