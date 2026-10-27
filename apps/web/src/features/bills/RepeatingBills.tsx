@@ -1,11 +1,11 @@
-import { dayMonth, feeDaysAway, formatMinor, isoDate } from '@expanses/core';
+import { dayMonth, formatMinor } from '@expanses/core';
 import type { MonthlyBill } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { useApp } from '../../app/context';
 import { useFrom } from '../../app/from-search';
 import { useAccounts } from '../../lib/queries';
-import { cx, Money } from '../../ui';
-import { GROUP_GAP, GROUP_RADIUS, InsetGroup, InsetRow, Panel, PanelHeader, ROW_PAD_X, ROW_PAD_Y, rowHeight, toneClass } from '../../ui/native';
+import { Money } from '../../ui';
+import { GROUP_GAP, GROUP_RADIUS, InsetGroup, InsetRow, Panel, PanelHeader, ROW_PAD_X, ROW_PAD_Y, rowHeight } from '../../ui/native';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { billCurrencyOf } from './bill-view';
 import type { RepeatingNeeds } from './repeating-needs';
@@ -72,7 +72,6 @@ export function RepeatingList({ bills, needs }: { bills: readonly MonthlyBill[];
   const from = useFrom();
   const navigate = useNavigate();
   const accounts = useAccounts().data ?? [];
-  const today = isoDate();
   const sorted = bills.map((bill) => ({ bill, next: nextDateOf(bill) })).sort((a, b) => a.next.localeCompare(b.next));
   if (sorted.length === 0) {
     return (
@@ -90,7 +89,6 @@ export function RepeatingList({ bills, needs }: { bills: readonly MonthlyBill[];
         const amount = bill.amountMinor ?? bill.estimateMinor;
         const currency = billCurrencyOf(bill, accounts, ws.baseCurrency);
         const need = needs.bills.find((row) => row.billId === bill.id);
-        const soon = feeDaysAway(next, today) <= 30;
         return (
           <div key={bill.id} data-testid="yearly-bill-row" className="relative">
             {index > 0 && <span aria-hidden className="pointer-events-none absolute top-0 right-0 z-10 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X + 34 }} />}
@@ -106,14 +104,14 @@ export function RepeatingList({ bills, needs }: { bills: readonly MonthlyBill[];
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{bill.name}</span>
                 <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-                  <span className={toneClass(soon ? 'warn' : 'ink-3')}>{`Due ${dayMonth(next)}`}</span>
+                  {`Due ${dayMonth(next)}`}
                   {bill.repeat === 'months' ? ` · every ${bill.repeatEvery} months` : ''}
                 </span>
               </span>
               <span className="tabular flex shrink-0 flex-col items-end text-[15px] leading-[20px] text-[var(--ph-ink)]">
                 {amount === null ? <span className="text-[var(--ph-ink-3)]">Amount varies</span> : <Money minor={amount} currency={currency} />}
                 {need && need.needMinor !== null && (
-                  <span className={cx('mt-[2px] text-[12.5px] leading-[16px]', toneClass(need.funded ? 'ink-3' : 'warn'))}>{`${formatMinor(need.needMinor, need.currency)} a month`}</span>
+                  <span className="mt-[2px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{`${formatMinor(need.needMinor, need.currency)} a month`}</span>
                 )}
               </span>
               <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
