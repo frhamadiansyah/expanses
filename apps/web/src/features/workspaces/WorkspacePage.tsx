@@ -2,13 +2,13 @@ import { CURRENCIES, isoDate } from '@expanses/core';
 import { applyCategoryStart, archiveBook, BookError, type BookDeletePlan, type BookKind, type BookRow, deleteBook, findRate, planBookDelete, renameBook, restoreBook, setBookBaseCurrency, setBookEventsInBudget, setBookKind } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { Check } from 'lucide-react';
+import { Check, Coins, Layers, Pencil } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { type CornerAction, DestructiveRow, InsetGroup, InsetRow, PickerRow, PushedTitle, ReadOnlyRow, SCREEN, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { DestructiveRow, InsetGroup, InsetRow, PushedTitle, ReadOnlyRow, SCREEN, SubmitRow, SwitchRow, TextRow } from '../../ui/native';
 import { useSharedBooks } from '../sharing/queries';
 import { SharingSection } from '../sharing/SharingSection';
 import { BusinessListAlert } from './BusinessListAlert';
@@ -39,13 +39,59 @@ function TypeSheet({ current, onChoose, onClose }: { current: BookKind; onChoose
   );
 }
 
+/** The rename: one field and a Save, the same rules as before (not empty, changed, Enter submits). */
+function NameSheet({ current, busy, onSave, onClose }: { current: string; busy: boolean; onSave: (name: string) => void; onClose: () => void }) {
+  const [draft, setDraft] = useState(current);
+  const ok = !busy && draft.trim() !== '' && draft.trim() !== current;
+  return (
+    <Sheet title="Name" onClose={onClose} grouped>
+      <form
+        aria-label="Rename workspace"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (ok) onSave(draft);
+        }}
+      >
+        <InsetGroup wide>
+          <TextRow label="Name" value={draft} onChange={(event) => setDraft(event.target.value)} enterKeyHint="done" autoFocus />
+        </InsetGroup>
+        <InsetGroup wide>
+          <SubmitRow label="Save" disabled={!ok} />
+        </InsetGroup>
+      </form>
+    </Sheet>
+  );
+}
+
+/** The choice of currency: every code, the current one ticked. */
+function CurrencySheet({ current, onChoose, onClose }: { current: string; onChoose: (code: string) => void; onClose: () => void }) {
+  return (
+    <Sheet title="Currency" onClose={onClose} grouped>
+      <InsetGroup wide>
+        {CURRENCIES.map((option) => (
+          <InsetRow
+            key={option.code}
+            testId={`currency-${option.code}`}
+            title={option.code}
+            subtitle={option.name}
+            value={option.code === current ? <Check size={18} aria-label="Current" /> : undefined}
+            valueTone="ink"
+            chevron={false}
+            onClick={() => onChoose(option.code)}
+          />
+        ))}
+      </InsetGroup>
+    </Sheet>
+  );
+}
+
 /**
  * One workspace's own page: what it is called, its type, what it reads in, whether an event counts against its
  * budget, who it is shared with, and the way to put it away (or, once archived, to bring it back).
  *
  * Changing a currency is agreed to with the rate in front of the owner, because it rewrites every cap the workspace
  * holds; archiving asks twice, as deleting a row does, since the first press of a destructive button is as often a
- * mis-tap as it is a decision. The name is saved by the ✓ in the title bar (or Enter in the field).
+ * mis-tap as it is a decision. The name is changed in its own small sheet.
  */
 export function WorkspacePage() {
   const { bookId } = useParams({ from: '/account/workspaces/$bookId' });
@@ -73,7 +119,8 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
   const books = useBooks();
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
-  const [name, setName] = useState(book.name);
+  const [renaming, setRenaming] = useState(false);
+  const [choosingCurrency, setChoosingCurrency] = useState(false);
   const [currency, setCurrency] = useState(book.baseCurrency);
   const [armed, setArmed] = useState(false);
   // Delete asks once for an empty workspace (armed) and opens the typed-name sheet for one that holds transactions.
@@ -114,13 +161,13 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
     }
   }
 
-  // Dim until there is something to save: a name left as it was, or cleared, has nothing for the ✓ to do.
-  const renamable = !busy && !isArchived && name.trim() !== '' && name.trim() !== book.name;
-  const rename = () =>
-    run(async () => {
+  const rename = (name: string) => {
+    setRenaming(false);
+    void run(async () => {
       await renameBook(database, ws, book.id, name);
       return `Now called ${name.trim()}.`;
     });
+  };
 
   const changeKind = (kind: BookKind) => {
     setChoosingType(false);
@@ -196,13 +243,9 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
       return null;
     });
 
-  const actions: CornerAction[] = isArchived
-    ? []
-    : [{ key: 'save', label: 'Save name', glyph: <Check size={20} aria-hidden />, disabled: !renamable, run: () => void rename() }];
-
   return (
     <div className={SCREEN}>
-      <PushedTitle title={book.name} back="Account" backTo="/account" actions={actions} />
+      <PushedTitle title={book.name} back="Account" backTo="/account" />
       <div className="pt-[2px]">
         <ErrorBox error={error} />
         {note && <p className="pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-tint)]">{note}</p>}
@@ -223,32 +266,23 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
         ) : (
           <>
             <InsetGroup wide>
-              <TextRow
-                label="Name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== 'Enter') return;
-                  event.preventDefault();
-                  if (renamable) void rename();
-                }}
-                enterKeyHint="done"
+              <InsetRow
+                testId="ws-name-row"
+                icon={<Pencil size={15} aria-hidden />}
+                title="Name"
+                value={book.name}
+                disabled={busy}
+                onClick={() => setRenaming(true)}
               />
               {shared || onlyPersonal ? (
-                <ReadOnlyRow label="Type" value={KIND_LABEL[book.kind] ?? book.kind} />
+                <InsetRow icon={<Layers size={15} aria-hidden />} title="Type" value={KIND_LABEL[book.kind] ?? book.kind} chevron={false} />
               ) : (
-                <PickerRow label="Type" value={KIND_LABEL[book.kind] ?? book.kind} onOpen={() => setChoosingType(true)} />
+                <InsetRow testId="ws-type-row" icon={<Layers size={15} aria-hidden />} title="Type" value={KIND_LABEL[book.kind] ?? book.kind} onClick={() => setChoosingType(true)} />
               )}
               {shared ? (
-                <ReadOnlyRow label="Currency" value={book.baseCurrency} />
+                <InsetRow icon={<Coins size={15} aria-hidden />} title="Currency" value={book.baseCurrency} chevron={false} />
               ) : (
-                <SelectRow label="Currency" value={currency} onChange={(event) => setCurrency(event.target.value)}>
-                  {CURRENCIES.map((option) => (
-                    <option key={option.code} value={option.code}>
-                      {option.code} — {option.name}
-                    </option>
-                  ))}
-                </SelectRow>
+                <InsetRow testId="ws-currency-row" icon={<Coins size={15} aria-hidden />} title="Currency" value={currency} onClick={() => setChoosingCurrency(true)} />
               )}
             </InsetGroup>
 
@@ -271,7 +305,7 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
             )}
 
             <InsetGroup wide>
-              <SwitchRow label="Events count in the budget" checked={book.countEventsInBudget} onChange={(checked) => !busy && void setEvents(checked)} />
+              <SwitchRow label="Budget" info="Events count in the budget" checked={book.countEventsInBudget} onChange={(checked) => !busy && void setEvents(checked)} />
             </InsetGroup>
 
             {book.kind === 'business' && !shared && (
@@ -293,6 +327,17 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
       </div>
       {deleting && <DeleteWorkspaceSheet book={book} plan={deleting} onClose={() => setDeleting(null)} onDeleted={leave} />}
       {offering && <BusinessListAlert onUse={() => void useBusinessList()} onClose={() => setOffering(false)} />}
+      {renaming && <NameSheet current={book.name} busy={busy} onSave={rename} onClose={() => setRenaming(false)} />}
+      {choosingCurrency && (
+        <CurrencySheet
+          current={currency}
+          onChoose={(code) => {
+            setCurrency(code);
+            setChoosingCurrency(false);
+          }}
+          onClose={() => setChoosingCurrency(false)}
+        />
+      )}
       {choosingType && <TypeSheet current={book.kind} onChoose={changeKind} onClose={() => setChoosingType(false)} />}
     </div>
   );
