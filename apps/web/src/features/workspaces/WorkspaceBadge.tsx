@@ -3,14 +3,14 @@ import { cx } from '../../ui';
 /**
  * Whose spending a row is, on a list that holds every workspace — an account's history, a card's statement.
  *
- * Shaded by kind rather than by name, from near black to a mid grey, so the same kind reads the same way wherever it
+ * Shaded by kind rather than by name, from near black to a mid grey (the dark theme turns that round, `--ws-*`), so the same kind reads the same way wherever it
  * appears and no kind borrows a colour that means something else. An unknown kind falls back to the shared grey.
  */
 const TINT: Record<string, string> = {
-  personal: 'bg-[#1c1c1e] text-white',
-  family: 'bg-[#48484a] text-white',
-  business: 'bg-[#6c6c70] text-white',
-  shared: 'bg-[#8e8e93] text-white',
+  personal: 'bg-[var(--ws-personal)] text-[var(--ws-glyph)]',
+  family: 'bg-[var(--ws-family)] text-[var(--ws-glyph)]',
+  business: 'bg-[var(--ws-business)] text-[var(--ws-glyph)]',
+  shared: 'bg-[var(--ws-shared)] text-[var(--ws-glyph)]',
 };
 
 /**

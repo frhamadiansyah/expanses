@@ -28,6 +28,13 @@
    * control is `--ph-tint` ground with `--ph-surface` glyph, which stays legible in the dark where ink turns light.
    */
   --ph-tint: #1c1c1e;
+
+  /* A workspace's round, from near ink to a mid grey by kind; the dark theme runs it the other way so the first still stands off the ground. */
+  --ws-personal: #1c1c1e;
+  --ws-family: #48484a;
+  --ws-business: #6c6c70;
+  --ws-shared: #8e8e93;
+  --ws-glyph: #ffffff;
   /* Money that came in, a gain, progress and a chart's positive series: meaning, not a control. */
   --ph-up: #248a3d;
   /* The on state of a switch: iOS's own green. */
@@ -132,6 +139,12 @@
   :root {
     --ph-ground: #000000;
     --ph-surface: #1c1c1e;
+
+    --ws-personal: #f2f2f7;
+    --ws-family: #c7c7cc;
+    --ws-business: #98989d;
+    --ws-shared: #7c7c80;
+    --ws-glyph: #1c1c1e;
 
     --ph-ink: #ffffff;
     --ph-ink-2: #ebebf5;
