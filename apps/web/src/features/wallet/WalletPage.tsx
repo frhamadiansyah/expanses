@@ -166,7 +166,7 @@ export function WalletPage() {
 
   /*
    * The corners: the View button — a tap steps pile, grid, one at a time — the Points page,
-   * then ＋ (money to spend from, or a credit card, each through its own door), and the card tools the Cards tab had,
+   * then ＋ (the New account page, whose Type row also reaches a credit card), and the card tools the Cards tab had,
    * which wait behind the ⋯.
    */
   const actions: CornerAction[] = [
@@ -183,10 +183,7 @@ export function WalletPage() {
       key: 'add',
       label: 'Add',
       glyph: <Plus size={22} aria-hidden />,
-      menu: [
-        { key: 'money', label: 'Money account', to: '/accounts/add' },
-        { key: 'card', label: 'Credit card', to: '/cards/new' },
-      ],
+      to: '/accounts/add',
     },
     // The cards put in an order by hand: one list, money and credit cards mixed, read by all three views.
     { key: 'reorder', label: 'Reorder cards', glyph: <ArrowUpDown size={18} aria-hidden />, to: '/wallet/reorder' },

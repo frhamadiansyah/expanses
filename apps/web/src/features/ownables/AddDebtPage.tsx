@@ -3,7 +3,7 @@ import { CURRENCIES, debtItem, isoDate } from '@expanses/core';
 import { applyCatalogEntry, createAccount, createCardAccount, openDebtBalance, saveCardTerms, saveLoanTerms, setLoanItem } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { Search } from 'lucide-react';
-import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll, useResolveRates } from '../../lib/queries';
@@ -225,7 +225,10 @@ export interface CardFormEmbedding extends EmbeddedForm {
 export function NewCardForm({
   onCreated,
   embedded,
+  lead,
 }: {
+  /** A row ahead of the card's own, for a page that offers the card as one kind among others (New account's Type). */
+  lead?: ReactNode;
   /** Where saving goes instead of the card's own page, given the card account just made. */
   onCreated?: (accountId: string) => void;
   /** Drawn in a sheet: no heading line and no button — the sheet's ✓ saves it (see `CashAccountForm`). */
@@ -370,6 +373,7 @@ export function NewCardForm({
       <form ref={form} id={embedded?.formId} onSubmit={submit}>
         <ErrorBox error={error} />
         <InsetGroup header={embedded ? undefined : 'Credit card · filed as a debt, kept as a card'}>
+          {lead}
           {/* One row for which card it is, the New account form's own: the bank, then the name, offered the catalogue. */}
           <CardRow
             bank={bank}
