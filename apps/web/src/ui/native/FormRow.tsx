@@ -339,7 +339,7 @@ export function ReadOnlyRow({
  * The ⓘ beside a label: the one button every row with an `info` carries, 18 px round in the quiet ink, saying whether
  * its explanation is open. The row keeps the state and draws the explanation; this only asks.
  */
-function InfoToggle({ label, explained, onToggle }: { label: string; explained: boolean; onToggle: () => void }) {
+export function InfoToggle({ label, explained, onToggle }: { label: string; explained: boolean; onToggle: () => void }) {
   return (
     <button
       type="button"

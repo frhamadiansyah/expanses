@@ -3,13 +3,14 @@ import { NUMBERED_SUBTYPES, openCashAccount, openPocketedAccount, setAccountNumb
 import { last4Field, readAccountNumberLast4, readWalletLast4 } from '../accounts/wallet-last4';
 import { openOnce } from './open-once';
 import { useNavigate } from '@tanstack/react-router';
-import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { openingRateFor, ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
 import { CurrencyCode, type GroupChild, InsetGroup, InsetRow, ROW_PAD_X, SelectRow, SwitchRow, TAP, TextRow } from '../../ui/native';
+import { InfoToggle } from '../../ui/native/FormRow';
 import { KeyboardStrip } from '../../ui/native/KeyboardStrip';
 import { CurrencySheet } from '../transactions/CurrencySheet';
 import { currencyFlag } from '../transactions/tx-form';
@@ -53,6 +54,7 @@ export function BankNameRow({
   onName,
   offersBanks,
   namePlaceholder = 'Account name',
+  info,
   position,
 }: GroupChild & {
   bank: string;
@@ -62,8 +64,11 @@ export function BankNameRow({
   offersBanks: boolean;
   /** What the empty name half asks for: an account's name here, a card's on the new credit card form. */
   namePlaceholder?: string;
+  /** What the row is, behind an ⓘ after the bank and under the row only when asked for. */
+  info?: ReactNode;
 }) {
   const [typing, setTyping] = useState(false);
+  const [explained, setExplained] = useState(false);
   const offered = typing && offersBanks ? bankMatches(bank) : [];
   return (
     <div className="relative">
@@ -96,6 +101,7 @@ export function BankNameRow({
           <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
             {'›'}
           </span>
+          {info && <InfoToggle label="Bank and name" explained={explained} onToggle={() => setExplained((was) => !was)} />}
         </span>
         <input
           aria-label="Name"
@@ -106,6 +112,7 @@ export function BankNameRow({
           className="ph-focus min-w-0 flex-1 rounded bg-transparent text-right text-[17px] leading-[22px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
         />
       </div>
+      {info && explained && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{info}</p>}
       <KeyboardStrip
         label="Banks"
         cells={offered.map((choice) => ({
