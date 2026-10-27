@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { addTransaction, choosePayment } from './add-transaction';
-import { cardPage, cardPointsPage } from './card-section';
+import { cardPage, cardPointsPage, saveCardTerms } from './card-section';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -22,7 +22,7 @@ async function applyCatalogue(page: Page, card: string, search: string, entryNam
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
-  await page.getByRole('button', { name: 'Save terms' }).click();
+  await saveCardTerms(page);
   await page.getByLabel('Search catalogue').fill(search);
   await page.getByRole('button', { name: entryName, exact: true }).click();
   await page.getByRole('button', { name: 'Use these terms' }).click();

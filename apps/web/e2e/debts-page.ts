@@ -1,7 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import { addTransaction } from './add-transaction';
-import { cardPage } from './card-section';
+import { cardPage, saveCardTerms } from './card-section';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const local = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -46,7 +46,7 @@ export async function oneOfEach(page: Page) {
   // The 31st is clamped to each month's last day, so today is always inside the current statement.
   await type(page, 'Billing date', '31');
   await type(page, 'Due date', '15');
-  await page.getByRole('button', { name: 'Save terms' }).click();
+  await saveCardTerms(page);
   await expect(page.getByText('Step 2 of 3')).toBeVisible();
   for (const [description, amount, date] of [
     ['Hotel Mulia', '2000000', LAST_MONTH],

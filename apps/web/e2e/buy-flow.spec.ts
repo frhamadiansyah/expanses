@@ -2,7 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { expectWalletFigure, openAccount, openSettings } from './accounts';
 import { openNewAsset, fillDay } from './add-asset';
 import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal, openBuyOrSell, saveButton } from './add-transaction';
-import { cardPage, cardPointsPage } from './card-section';
+import { cardPage, cardPointsPage, saveCardTerms } from './card-section';
 import { openAssets, openDrawers } from './drawers';
 import { openGoalForm } from './goals';
 import { addHoldingFlow } from './securities';
@@ -284,7 +284,7 @@ test('a purchase paid by card reaches the points engine with the MCC and categor
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
-  await page.getByRole('button', { name: 'Save terms' }).click();
+  await saveCardTerms(page);
   await page.getByLabel('Search catalogue').fill('signature');
   await page.getByRole('button', { name: 'BCA Singapore Airlines KrisFlyer Visa Signature', exact: true }).click();
   await page.getByRole('button', { name: 'Use these terms' }).click();

@@ -5,7 +5,7 @@ import { addCap } from './budget';
 import { addForm, addTransaction, addTransfer, attachPhoto, closeDetails, fillAmount, openAmount, saveButton, shareWith, chooseTo, choosePayment } from './add-transaction';
 import { addEvent } from './event-plan';
 import { openGoalForm } from './goals';
-import { cardPage, cardPurchases } from './card-section';
+import { cardPage, cardPurchases, saveCardTerms } from './card-section';
 import { todayIn } from './today';
 import { setCurrency } from './currency-field';
 import { openSplit, pickPartCategory, setChannel, splitRow } from './split-row';
@@ -625,7 +625,7 @@ async function catalogueCard(page: Page, name: string, search: string, entryName
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill(billingDay);
   await page.getByLabel('Due date').fill('12');
-  await page.getByRole('button', { name: 'Save terms' }).click();
+  await saveCardTerms(page);
   await page.getByLabel('Search catalogue').fill(search);
   await page.getByRole('button', { name: entryName, exact: true }).click();
   await page.getByRole('button', { name: 'Use these terms' }).click();

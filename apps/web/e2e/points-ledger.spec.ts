@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { addTransaction } from './add-transaction';
-import { cardPage, cardPointsPage, walletCard } from './card-section';
+import { cardPage, cardPointsPage, walletCard, saveCardTerms } from './card-section';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -16,7 +16,7 @@ async function cardWithAPurchase(page: Page, on?: string, minimum?: string) {
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
-  await page.getByRole('button', { name: 'Save terms' }).click();
+  await saveCardTerms(page);
   await page.getByRole('button', { name: 'Set up rewards' }).click();
 
   await page.getByRole('button', { name: 'Add rule' }).click();

@@ -32,6 +32,17 @@ export async function cardPurchases(page: Page) {
   await cardPointsPage(page, 'Purchases');
 }
 
+/**
+ * Save the card's terms from its Settings page: Enter in a terms field (Due date unless given) is the form's own
+ * save, and the page stays. A card being set up then moves to its next step, so the first step's label is waited
+ * to go; the short wait lets the write settle before the spec moves on.
+ */
+export async function saveCardTerms(page: Page, field = 'Due date') {
+  await page.getByLabel(field, { exact: true }).press('Enter');
+  await expect(page.getByText('Step 1 of 3')).toHaveCount(0);
+  await page.waitForTimeout(300);
+}
+
 /** Open a page under this statement's points — the purchases, or the points the statement shows. */
 export async function cardPointsPage(page: Page, which: 'Purchases' | 'Points the statement shows') {
   await page.getByRole('main').getByRole('link', { name: new RegExp(`^${which}`) }).click();

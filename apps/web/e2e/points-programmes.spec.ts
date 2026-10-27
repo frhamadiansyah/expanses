@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
-import { cardPage, walletCard } from './card-section';
+import { cardPage, walletCard, saveCardTerms } from './card-section';
 import { programmeFaces } from './programme-faces';
 
 test.beforeEach(({ page }) => {
@@ -20,7 +20,7 @@ async function cardEarningInto(page: Page, card: string, programme: string) {
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
-  await page.getByRole('button', { name: 'Save terms' }).click();
+  await saveCardTerms(page);
   await page.getByLabel('Program name').fill(programme);
   await page.getByRole('button', { name: 'Set up rewards' }).click();
   await page.getByRole('button', { name: 'Add rule' }).click();

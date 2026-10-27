@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import { addTransaction } from './add-transaction';
-import { cardPage } from './card-section';
+import { cardPage, saveCardTerms } from './card-section';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const local = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -22,7 +22,7 @@ async function openStatement(page: Page) {
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('31');
   await page.getByLabel('Due date').fill('15');
-  await page.getByRole('button', { name: 'Save terms' }).click();
+  await saveCardTerms(page);
   await expect(page.getByText('Step 2 of 3')).toBeVisible();
   await buy(page, 'Hotel Mulia', '2000000', LAST_MONTH);
   await buy(page, 'Superindo', '450000', TODAY);
