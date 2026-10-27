@@ -2,7 +2,7 @@ import { type Browser, expect, type Page, test, type TestInfo } from '@playwrigh
 import { openAccount } from './accounts';
 import { choosePayment, saveButton } from './add-transaction';
 import { openSplit, pickPartCategory } from './split-row';
-import { openWorkspacePage, renameWorkspace } from './workspace-page';
+import { openSharePage, openWorkspacePage, renameWorkspace, shareWorkspace } from './workspace-page';
 
 /*
  * A purchase split between a workspace shared with a household and a private one (0084, household sharing): Fandri
@@ -53,11 +53,8 @@ async function shareHome(page: Page, dewi: Page) {
   await openWorkspacePage(page, 'Personal');
   await renameWorkspace(page, 'Home');
   await expect(page.getByText('Now called Home.')).toBeVisible();
-  await page.getByTestId('ws-share-row').click();
-  const form = page.getByRole('form', { name: 'Share this workspace' });
-  await form.getByLabel('Name').fill('Fandri');
-  await form.getByRole('button', { name: 'Share', exact: true }).click();
-  const code = (await page.getByTestId('invite-code').textContent({ timeout: 60_000 }))!.trim();
+  await openSharePage(page);
+  const code = await shareWorkspace(page, 'Fandri');
   await dewi.goto(`/join#${code}`);
   const join = dewi.getByTestId('join-workspace');
   await expect(join.getByText('Home', { exact: true })).toBeVisible({ timeout: 30_000 });

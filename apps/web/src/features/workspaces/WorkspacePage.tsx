@@ -10,7 +10,7 @@ import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { DestructiveRow, InsetGroup, InsetRow, PushedTitle, ReadOnlyRow, SCREEN, SubmitRow, SwitchRow, TextRow } from '../../ui/native';
 import { useSharedBooks } from '../sharing/queries';
-import { SharingSection } from '../sharing/SharingSection';
+import { ShareRow } from '../sharing/SharingSection';
 import { BusinessListAlert } from './BusinessListAlert';
 import { DeleteWorkspaceSheet } from './DeleteWorkspaceSheet';
 import { useArchivedBooks, useBooks } from './queries';
@@ -314,8 +314,8 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
               </InsetGroup>
             )}
 
-            {/* Household sharing (spec §11): Share this workspace, or, once shared, its status, members and devices. */}
-            <SharingSection book={book} />
+            {/* Household sharing (spec §11): one row, Off or On, into the Share page. */}
+            <ShareRow book={book} />
 
             {/* Its own group: the air between two groups is the only undo a finger gets before an archive. */}
             <InsetGroup wide>

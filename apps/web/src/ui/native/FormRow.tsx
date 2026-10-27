@@ -503,13 +503,14 @@ export function SwitchRow({
  * A real `submit`, not a row that calls the save itself: the browser still checks every `required` field before
  * anything is written, exactly as the dark rectangle it replaces did, and Enter in any field still submits.
  */
-export function SubmitRow({ label, disabled = false, position }: GroupChild & { label: string; disabled?: boolean }) {
+export function SubmitRow({ label, disabled = false, position, testId }: GroupChild & { label: string; disabled?: boolean; testId?: string }) {
   return (
     <div className="relative">
       <Separator show={Boolean(position?.separator)} />
       <button
         type="submit"
         disabled={disabled}
+        data-testid={testId}
         className="ph-focus-inset block w-full text-center text-[17px] leading-[22px] md:text-[15px] md:leading-[20px] font-semibold text-[var(--ph-ink)] disabled:text-[var(--ph-ink-3)]"
         style={shell(false)}
       >

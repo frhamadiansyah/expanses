@@ -87,6 +87,9 @@ import { SecurityPage } from '../features/investments/SecurityPage';
 import { SecurityPricePage } from '../features/investments/SecurityPricePage';
 import { DeveloperSettingsPage } from '../features/workspaces/DeveloperSettingsPage';
 import { WorkspacePage } from '../features/workspaces/WorkspacePage';
+import { MemberPage } from '../features/sharing/MemberPage';
+import { NetWorthPage } from '../features/sharing/NetWorthPage';
+import { SharePage } from '../features/sharing/SharePage';
 import { AccountMenuPage } from '../features/account/AccountMenuPage';
 import { JoinPage } from '../features/sharing/JoinPage';
 import { SharedItemPage } from '../features/networth/SharedItemPage';
@@ -410,6 +413,9 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/backup/icloud', component: ICloudRestorePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account', component: AccountMenuPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId', component: WorkspacePage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share', component: SharePage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/net-worth', component: NetWorthPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/members/$memberId', component: MemberPage }),
   // Settings was the page of workspaces; they live on the Account page now, so an old link lands there.
   createRoute({
     getParentRoute: () => rootRoute,
