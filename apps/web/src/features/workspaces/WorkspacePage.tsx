@@ -269,20 +269,20 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
               <InsetRow
                 testId="ws-name-row"
                 icon={<Pencil size={15} aria-hidden />}
-                title="Name"
+                title="Name" plain
                 value={book.name}
                 disabled={busy}
                 onClick={() => setRenaming(true)}
               />
               {shared || onlyPersonal ? (
-                <InsetRow icon={<Layers size={15} aria-hidden />} title="Type" value={KIND_LABEL[book.kind] ?? book.kind} chevron={false} />
+                <InsetRow icon={<Layers size={15} aria-hidden />} title="Type" plain value={KIND_LABEL[book.kind] ?? book.kind} chevron={false} />
               ) : (
-                <InsetRow testId="ws-type-row" icon={<Layers size={15} aria-hidden />} title="Type" value={KIND_LABEL[book.kind] ?? book.kind} onClick={() => setChoosingType(true)} />
+                <InsetRow testId="ws-type-row" icon={<Layers size={15} aria-hidden />} title="Type" plain value={KIND_LABEL[book.kind] ?? book.kind} onClick={() => setChoosingType(true)} />
               )}
               {shared ? (
-                <InsetRow icon={<Coins size={15} aria-hidden />} title="Currency" value={book.baseCurrency} chevron={false} />
+                <InsetRow icon={<Coins size={15} aria-hidden />} title="Currency" plain value={book.baseCurrency} chevron={false} />
               ) : (
-                <InsetRow testId="ws-currency-row" icon={<Coins size={15} aria-hidden />} title="Currency" value={currency} onClick={() => setChoosingCurrency(true)} />
+                <InsetRow testId="ws-currency-row" icon={<Coins size={15} aria-hidden />} title="Currency" plain value={currency} onClick={() => setChoosingCurrency(true)} />
               )}
             </InsetGroup>
 

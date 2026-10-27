@@ -39,6 +39,7 @@ export function ShareRow({ book }: { book: BookRow }) {
         icon={<Users size={15} aria-hidden />}
         testId="ws-share-row"
         title="Share"
+        plain
         value={detail.isPending ? undefined : detail.data ? 'On' : 'Off'}
         to="/account/workspaces/$bookId/share"
         params={{ bookId: book.id }}
