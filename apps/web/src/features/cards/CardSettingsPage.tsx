@@ -246,7 +246,6 @@ export function CardSettingsPage() {
   const onlyDates = step === 1 && cp.program !== undefined;
   const termsBlock = !isDebit && (
     <>
-      {step === 1 && !onlyDates && <Step>Step 1 of 3</Step>}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -284,30 +283,10 @@ export function CardSettingsPage() {
     >
       <ErrorBox error={error ?? (datesMissing ? new Error('Enter the billing date and the due date') : null)} />
 
-      {/* The step a card being set up is at comes first: the rest is there to change later. */}
-      {step === 1 && (
-        <>
-          {termsBlock}
-          {!onlyDates && (
-          <CatalogPicker
-            header="Is this card in the catalogue?"
-            today={today}
-            selectedId={catalog.catalogId}
-            onSelect={catalog.chooseEntry}
-            debit={isDebit}
-            applyHint="Save the card terms above, then use these terms in the next step."
-          />
-          )}
-        </>
-      )}
-      {step === 2 && (
-        <>
-          <Step>Step 2 of 3 · Rewards program</Step>
-          <ProductSetup page={page} run={run} catalog={catalog} />
-        </>
-      )}
+      {/* A card being set up has a caption on top; its boxes keep the places they have on a settled card. */}
+      {step === 1 && !onlyDates && <Step>Step 1 of 3</Step>}
+      {step === 2 && <Step>Step 2 of 3 · Rewards program</Step>}
       {step === 3 && <Step>Step 3 of 3</Step>}
-      {(step === 3 || (step === null && settingUp)) && <EarnRulesEditor page={page} run={run} />}
 
       <InsetGroup>
         <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} onBlur={saveName} onKeyDown={leave} placeholder="Name" />
@@ -333,7 +312,18 @@ export function CardSettingsPage() {
         )}
       </InsetGroup>
 
-      {step !== 1 && termsBlock}
+      {termsBlock}
+
+      {step === 1 && !onlyDates && (
+        <CatalogPicker
+          header="Is this card in the catalogue?"
+          today={today}
+          selectedId={catalog.catalogId}
+          onSelect={catalog.chooseEntry}
+          debit={isDebit}
+          applyHint="Save the card terms above, then use these terms in the next step."
+        />
+      )}
 
       <InsetGroup
         header="Cardholders"
@@ -359,6 +349,8 @@ export function CardSettingsPage() {
       {plasticSheet && <PlasticSheet accountId={card.id} piece={plasticSheet === 'new' ? undefined : plasticSheet} first={plastic.length === 0} run={run} onClose={() => setPlasticSheet(null)} />}
 
       <PointsGroup page={page} run={run} />
+      {step === 2 && <ProductSetup page={page} run={run} catalog={catalog} />}
+      {(step === 3 || (step === null && settingUp)) && <EarnRulesEditor page={page} run={run} />}
 
       {!isDebit && <TrackPaymentsSetting cardAccountId={card.id} />}
       <ShareWithHouseholdRow accountId={card.id} jointSwitch={!isDebit ? 'card' : false} />

@@ -167,10 +167,10 @@ test('a card page survives a reload, and a link to an old tab lands on its page'
   await openCardPage(page);
   const cardUrl = page.url();
   await cardPage(page, 'Settings');
-  await expect(page.getByRole('button', { name: 'Save terms' })).toBeVisible();
+  await expect(page.getByLabel('Billing date')).toBeVisible();
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Settings', exact: true }).first()).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Save terms' })).toBeVisible();
+  await expect(page.getByLabel('Billing date')).toBeVisible();
 
   // The tabs became pages: each old `?tab=` link is sent to the page holding what the tab did.
   for (const [tab, path, title] of [
