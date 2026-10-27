@@ -3,14 +3,14 @@ import { cx } from '../../ui';
 /**
  * Whose spending a row is, on a list that holds every workspace — an account's history, a card's statement.
  *
- * Tinted by kind rather than by name, so the same kind reads the same way wherever it appears. An unknown kind
- * falls back to the shared tint rather than losing its colour.
+ * Shaded by kind rather than by name, from near black to a mid grey, so the same kind reads the same way wherever it
+ * appears and no kind borrows a colour that means something else. An unknown kind falls back to the shared grey.
  */
 const TINT: Record<string, string> = {
-  personal: 'bg-sky-100 text-sky-800',
-  business: 'bg-violet-100 text-violet-800',
-  family: 'bg-amber-100 text-amber-800',
-  shared: 'bg-emerald-100 text-emerald-800',
+  personal: 'bg-[#1c1c1e] text-white',
+  family: 'bg-[#48484a] text-white',
+  business: 'bg-[#6c6c70] text-white',
+  shared: 'bg-[#8e8e93] text-white',
 };
 
 /**
@@ -42,14 +42,12 @@ export function WorkspaceBadge({ book, corner = false }: { book: { name: string;
  * The same tint, worn as a 22px round with the workspace's first letter — what a switcher row and the identity
  * block show, where there is room for a mark but not for a second copy of the name.
  */
-export function WorkspaceDot({ book }: { book: { name: string; kind: string } | null }) {
+export function WorkspaceDot({ book, size = 22 }: { book: { name: string; kind: string } | null; size?: number }) {
   return (
     <span
       aria-hidden
-      className={cx(
-        'flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full text-[11px] font-semibold uppercase',
-        TINT[book?.kind ?? ''] ?? TINT.shared,
-      )}
+      className={cx('flex shrink-0 items-center justify-center rounded-full font-semibold uppercase', TINT[book?.kind ?? ''] ?? TINT.shared)}
+      style={{ width: size, height: size, fontSize: size >= 30 ? 15 : 11 }}
     >
       {book?.name.trim().charAt(0) ?? '·'}
     </span>

@@ -1191,7 +1191,7 @@ export function TransactionsPage() {
           phone
             ? [
                 { key: 'search', label: 'Search', glyph: <Search size={20} aria-hidden />, pressed: showSearch, run: () => setShowSearch((was) => !was) },
-                { key: 'workspace', label: `Workspace, ${openBook?.name ?? workspaceName}`, glyph: <WorkspaceDot book={openBook} />, run: () => setChoosingWorkspace(true) },
+                { key: 'workspace', label: `Workspace, ${openBook?.name ?? workspaceName}`, glyph: <WorkspaceDot book={openBook} size={34} />, bare: true, run: () => setChoosingWorkspace(true) },
               ]
             : []
         }

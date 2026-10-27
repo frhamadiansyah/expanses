@@ -28,6 +28,8 @@ export interface CornerAction {
    * filled, and carried as `aria-pressed`, so the corner says what state it is in and not only what it does.
    */
   pressed?: boolean;
+  /** Drawn without the corner's white round, for a glyph that is a round mark of its own (a workspace's dot). */
+  bare?: boolean;
   /** The action opens something: carried as `aria-expanded`, for the corner that is a menu in disguise. */
   expanded?: boolean;
   /**

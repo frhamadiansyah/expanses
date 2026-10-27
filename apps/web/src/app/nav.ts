@@ -57,7 +57,7 @@ export const SETTINGS_ITEMS: readonly NavItem[] = [
   { to: '/settings/capture', label: 'Capture', icon: Smartphone },
   { to: '/backup', label: 'Backup', icon: ArrowDownToLine },
   { to: '/settings/activity', label: 'Activity', icon: History },
-  { to: '/import', label: 'Import CSV', icon: ArrowUpFromLine },
+  { to: '/import', label: 'Import', icon: ArrowUpFromLine },
 ] as const;
 
 /** The rest of the Account page, grouped the way it is looked for. */

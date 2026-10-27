@@ -3,7 +3,7 @@ import { Children, isValidElement, type InputHTMLAttributes, type ReactNode, typ
 import { cx } from '../index';
 import { currencyMatches, type FormKind, planFormRow, planSwitchRow } from './form-row';
 import { KeyboardStrip } from './KeyboardStrip';
-import { type GroupChild, toneClass } from './InsetList';
+import { type GroupChild, toneClass, RowIcon } from './InsetList';
 import { ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP } from './metrics';
 import type { Tone } from './row';
 /**
@@ -443,6 +443,7 @@ export function SwitchRow({
   disabled = false,
   hint,
   info,
+  icon,
   position,
   testId,
 }: GroupChild & {
@@ -455,6 +456,8 @@ export function SwitchRow({
   hint?: ReactNode;
   /** What the switch means, behind an ⓘ beside the label rather than a line always under it — as TextRow's `info`. */
   info?: ReactNode;
+  /** The round icon every row of a group with icons carries, so a switch among them does not stand out bare. */
+  icon?: ReactNode;
 }) {
   const id = useId();
   const [explained, setExplained] = useState(false);
@@ -465,6 +468,7 @@ export function SwitchRow({
       {/* The pill is the row's content, and 31 px of it inside the row's 44 leaves less air above and below than
           a line of text would: the padding is what keeps a switch row the height of every other row. */}
       <div className="flex items-center gap-3" style={{ minHeight: plan.minHeight, padding: `${(TAP - SWITCH_H) / 2}px ${ROW_PAD_X}px` }}>
+        {icon && <RowIcon>{icon}</RowIcon>}
         <span className="flex min-w-0 flex-1 items-center gap-[6px]">
           <label htmlFor={id} className={cx('min-w-0 text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', toneClass(plan.labelTone))}>
             {label}

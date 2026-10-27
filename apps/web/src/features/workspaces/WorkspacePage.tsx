@@ -2,7 +2,7 @@ import { CURRENCIES, isoDate } from '@expanses/core';
 import { applyCategoryStart, archiveBook, BookError, type BookDeletePlan, type BookKind, type BookRow, deleteBook, findRate, planBookDelete, renameBook, restoreBook, setBookBaseCurrency, setBookEventsInBudget, setBookKind } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { Check, Coins, Layers, Pencil } from 'lucide-react';
+import { Check, Coins, Layers, Pencil, PiggyBank } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -305,7 +305,7 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
             )}
 
             <InsetGroup wide>
-              <SwitchRow label="Budget" info="Events count in the budget" checked={book.countEventsInBudget} onChange={(checked) => !busy && void setEvents(checked)} />
+              <SwitchRow label="Budget" icon={<PiggyBank size={15} aria-hidden />} info="Events count in the budget" checked={book.countEventsInBudget} onChange={(checked) => !busy && void setEvents(checked)} />
             </InsetGroup>
 
             {book.kind === 'business' && !shared && (
