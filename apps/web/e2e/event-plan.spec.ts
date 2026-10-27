@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 import BetterSqlite3 from 'better-sqlite3';
 import { addForm, addTransaction, choosePayment, saveButton } from './add-transaction';
-import { addEvent, addItem, addWallet, buyItNow, expectCover, expectFigures, expectGauge, expectKitFigures, expectPlanHero, figures, fillItem, moneyIn, recordIntoEvent, spend, showPlanCard } from './event-plan';
+import { addEvent, addItem, addWallet, buyItNow, expectCover, expectFigures, expectGauge, expectKitFigures, expectPlanHero, figures, fillItem, moneyIn, recordIntoEvent, spend, showPlanCard, showPlan } from './event-plan';
 import { replaceTheDatabase } from './recovery-fixture';
 
 test.beforeEach(({ page }) => {
@@ -440,6 +440,7 @@ test('the figures agree with each other', async ({ page }) => {
   await expect(page.getByTestId('event-detail-sheet')).not.toContainText('14.700.000');
 
   await sheet.getByRole('button', { name: 'Against the plan' }).click();
+  await showPlan(page);
   await expect(page.getByTestId('event-detail-sheet')).toHaveCount(0);
   // The plan's own words on the arc — a card handed the Budget page's would say "Budgeted" with every figure right.
   await expectGauge(sheet, { Planned: 'Rp 14.700.000', Spent: 'Rp 8.100.000', 'Still to buy': 'Rp 7.200.000' });
@@ -533,6 +534,7 @@ test('money back is named with the rows it adds up, beside spending nobody plann
   await page.getByRole('link', { name: 'Back to the event' }).click();
   const sheet = page.getByTestId('event-sheet');
   await sheet.getByRole('button', { name: 'Against the plan' }).click();
+  await showPlan(page);
   await expectFigures(sheet, { 'Difference so far': 'exactly', 'Not planned': 'Rp 5.000.000', 'Money back': 'Rp 1.000.000' });
 });
 
@@ -571,6 +573,7 @@ test('an event whose refunds outran it says what came back, and shows no negativ
   await expect(sheet).not.toContainText(/[-−]Rp/);
 
   await sheet.getByRole('button', { name: 'Against the plan' }).click();
+  await showPlan(page);
   // The ring: Rp0, the very figure the Plan card prints for the very same quantity.
   await expectGauge(sheet, { 'Planned so far': 'Rp 5.000.000', Spent: 'Rp 0', 'Still to buy': 'Rp 5.000.000' });
   await showPlanCard(page);

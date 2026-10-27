@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 // The wallet, the spending and the event are shared with the plan specs, which drive the same three screens.
-import { addEvent, addWallet, fillItem, planFor, recordIntoEvent, spend, showPlanCard } from './event-plan';
+import { addEvent, addWallet, fillItem, planFor, recordIntoEvent, spend, showPlanCard, showPlan } from './event-plan';
 import { addCap, budgetTab, monthSoFar } from './budget';
 
 test.beforeEach(({ page }) => {
@@ -27,6 +27,7 @@ test('an event is planned as a list of things to buy, and suggests what to tag',
   await showPlanCard(page);
   await expect(page.getByTestId('event-plan-card')).toContainText('3.000.000');
   await page.getByTestId('event-sheet').getByRole('button', { name: 'Against the plan' }).click();
+  await showPlan(page);
   await expect(page.getByTestId('event-sheet')).toContainText('Over the plan by');
   await expect(page.getByTestId('event-sheet')).toContainText('Not planned');
 });
@@ -93,4 +94,29 @@ test('Edit event renames it and moves its dates; its categories stay once someth
   await page.getByRole('menuitem', { name: 'Edit event', exact: true }).click();
   await expect(page.getByTestId('edit-event').getByRole('combobox', { name: 'Categories' })).toHaveCount(0);
   await expect(page.getByTestId('edit-event')).toContainText('The monthly categories');
+});
+
+test('the plan under the gauge starts folded, and a tap on the gauge shows it and folds it again', async ({ page }) => {
+  await addWallet(page);
+  await addEvent(page, 'Lebaran');
+  await planFor(page, 'Food and beverage', '1000000');
+
+  // The plan card was opened to add the item, which leaves the plan shown: a fresh load starts it folded.
+  await page.reload();
+  const sheet = page.getByTestId('event-sheet');
+  await sheet.getByRole('button', { name: 'Against the plan' }).click();
+  // Swiped to the gauge: it is drawn, the plan rows are not.
+  await expect(page.getByTestId('see-plan')).toBeVisible();
+  await expect(page.getByTestId('event-plan-card')).toHaveCount(0);
+
+  // Through the helper, which waits out the swipe still settling: a tap that lands mid-swipe is lost to it.
+  await showPlan(page);
+  await expect(page.getByTestId('hide-plan')).toHaveAttribute('aria-label', 'Hide the plan');
+  await expect(page.getByTestId('event-plan-card')).toBeVisible();
+
+  await page.getByTestId('hide-plan').click();
+  await expect(page.getByTestId('see-plan')).toHaveAttribute('aria-label', 'See the plan');
+  await expect(page.getByTestId('event-plan-card')).toHaveCount(0);
+  // The gauge itself never goes: its frame is the thing tapped.
+  await expect(page.getByTestId('see-plan')).toBeVisible();
 });

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { addEvent, addWallet, buyItNow, expectFigures, fillItem, recordIntoEvent, showPlanCard } from './event-plan';
+import { addEvent, addWallet, buyItNow, expectFigures, fillItem, recordIntoEvent, showPlanCard, showPlan } from './event-plan';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -38,6 +38,7 @@ test('planning one category never calls the rest of the trip over plan', async (
 
   const sheet = page.getByTestId('event-sheet');
   await sheet.getByRole('button', { name: 'Against the plan' }).click();
+  await showPlan(page);
   // Rp9.200.000 of food nobody planned is not Rp5.700.000 over a Rp3.500.000 ticket plan.
   await expect(sheet).not.toContainText('Over the plan by');
   await expect(sheet).toContainText('Planned so far');
