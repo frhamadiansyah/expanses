@@ -19,7 +19,7 @@ export function adjustDifference(typed: string, currency: string, balanceMinor: 
   }
 }
 
-/** "Rp 45.000 less": the part of "… than the app says" set in the colour of the way it moved. */
+/** "Rp 45.000 less": the part of "… than the balance" set in the colour of the way it moved. */
 export function differenceWords(differenceMinor: number, currency: string): string {
   return `${formatMinor(Math.abs(differenceMinor), currency)} ${differenceMinor < 0 ? 'less' : 'more'}`;
 }

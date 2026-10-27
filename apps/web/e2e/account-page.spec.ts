@@ -116,7 +116,7 @@ test('a cash account with pockets: Record, Move, Withdraw, Adjust; Withdraw is i
   await which.getByTestId('adjust-pocket-TRY').click();
   const adjust = page.getByRole('dialog', { name: 'Adjust balance' });
   await expect(adjust).toContainText('1.000');
-  await adjust.getByLabel('Actually have').fill('900');
+  await adjust.getByLabel('Actual').fill('900');
   await adjust.getByRole('button', { name: 'Save' }).click();
   await expect(adjust).toHaveCount(0);
   await expect(page.getByTestId('pocket-TRY')).toContainText('900');
@@ -186,8 +186,8 @@ test('cash is withdrawn into and counted: a short count is unrecorded spending, 
   const sheet = page.getByRole('dialog', { name: 'Adjust balance' });
   await expect(sheet).toContainText('Rp 932.500');
   await expect(sheet.getByRole('button', { name: 'Save' })).toBeDisabled();
-  await sheet.getByLabel('Actually have').fill('887500');
-  await expect(sheet.getByTestId('adjust-difference')).toContainText('45.000 less than the app says.');
+  await sheet.getByLabel('Actual').fill('887500');
+  await expect(sheet.getByTestId('adjust-difference')).toContainText('45.000 less than the balance.');
   // Cash that comes up short was nearly always spent: that is the answer it starts on.
   await expect(sheet.getByRole('radio', { name: /Spending I didn’t record/ })).toBeChecked();
   await sheet.getByRole('button', { name: 'Save' }).click();
@@ -246,7 +246,7 @@ test('a current account adjusted as just a correction moves its balance and noth
   await openMoney(page, 'Everyday');
   await page.getByRole('button', { name: 'Adjust', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'Adjust balance' });
-  await sheet.getByLabel('Actually have').fill('12480000');
+  await sheet.getByLabel('Actual').fill('12480000');
   // Anything but cash starts on a correction.
   await expect(sheet.getByRole('radio', { name: /Just a correction/ })).toBeChecked();
   await sheet.getByRole('button', { name: 'Save' }).click();

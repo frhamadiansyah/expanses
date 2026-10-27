@@ -37,7 +37,7 @@ test('by thumb: cash is counted and withdrawn into, a wallet topped up, and a cu
   await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button')).toHaveText(['Spend', 'Receive', 'Withdraw', 'Adjust']);
   await page.getByRole('button', { name: 'Adjust', exact: true }).tap();
   const count = page.getByRole('dialog', { name: 'Adjust balance' });
-  await count.getByLabel('Actually have').fill('887500');
+  await count.getByLabel('Actual').fill('887500');
   await expect(count.getByRole('radio', { name: /Spending I didn’t record/ })).toBeChecked();
   await count.getByRole('button', { name: 'Save' }).tap();
   await expect(count).toHaveCount(0);

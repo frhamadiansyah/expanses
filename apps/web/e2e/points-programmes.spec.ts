@@ -46,7 +46,7 @@ test("converting Livin' Poin into KrisFlyer shows both balances", async ({ page 
 
   // Its balance set to the one the bank's app shows.
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Balance' }).click();
-  await page.getByLabel('Balance in the app').fill('20.000');
+  await page.getByLabel('Actual balance').fill('20.000');
   await page.getByRole('button', { name: 'Set balance' }).click();
   await expect(page.getByTestId('programme-balance')).toHaveText('20.000 points');
 

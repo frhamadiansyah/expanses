@@ -396,7 +396,7 @@ export function BalanceSheet({ programme, today, onClose }: { programme: Program
     >
       <ErrorBox error={error} />
       <InsetGroup footer="The difference from the balance here is recorded as one correction, so the history still shows what the cards earned.">
-        <TextRow label="Balance in the app" value={balance} onChange={(e) => setBalance(e.target.value)} inputMode="decimal" placeholder={unitWord(programme.unit)} required />
+        <TextRow label="Actual balance" value={balance} onChange={(e) => setBalance(e.target.value)} inputMode="decimal" placeholder={unitWord(programme.unit)} required />
         <TextRow
           label="Earned around"
           hint="Roughly when those points were earned, which decides when they expire. Empty counts them as earned today."

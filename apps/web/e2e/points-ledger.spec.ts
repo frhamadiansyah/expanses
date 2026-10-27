@@ -101,7 +101,7 @@ test('a balance read in the app anchors the ledger', async ({ page }) => {
   await openProgramme(page);
 
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Balance' }).click();
-  await page.getByLabel('Balance in the app').fill('500');
+  await page.getByLabel('Actual balance').fill('500');
   await page.getByRole('button', { name: 'Set balance' }).click();
 
   await expect(page.getByTestId('programme-balance')).toHaveText('500 points');
