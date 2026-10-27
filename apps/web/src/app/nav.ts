@@ -55,7 +55,7 @@ export const ACCOUNT_TAB: NavItem = { to: '/account', label: 'Account', icon: Us
 export const SETTINGS_ITEMS: readonly NavItem[] = [
   { to: '/settings/capture', label: 'Capture', icon: Smartphone },
   { to: '/backup', label: 'Backup', icon: ArrowDownToLine },
-  { to: '/settings/activity', label: 'Activity', icon: History, note: 'What was changed, and undo' },
+  { to: '/settings/activity', label: 'Activity', icon: History },
   { to: '/import', label: 'Import CSV', icon: ArrowUpFromLine },
 ] as const;
 

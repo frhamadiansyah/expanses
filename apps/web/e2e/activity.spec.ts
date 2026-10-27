@@ -4,7 +4,7 @@ import { addTransaction } from './add-transaction';
 
 test('Settings has Activity: empty at first, then a new purchase that Undo takes away', async ({ page }) => {
   await page.goto('/account');
-  await expect(page.getByRole('link', { name: /^Activity/ })).toContainText('What was changed, and undo');
+  await expect(page.getByRole('link', { name: /^Activity/ })).not.toContainText('What was changed');
   await page.getByRole('link', { name: /^Activity/ }).click();
   await expect(page).toHaveURL(/\/settings\/activity$/);
   await expect(page.getByText('Nothing changed yet')).toBeVisible();
