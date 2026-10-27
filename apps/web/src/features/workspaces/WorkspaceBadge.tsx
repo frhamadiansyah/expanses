@@ -47,7 +47,7 @@ export function WorkspaceDot({ book, size = 22 }: { book: { name: string; kind: 
     <span
       aria-hidden
       className={cx('flex shrink-0 items-center justify-center rounded-full font-semibold uppercase', TINT[book?.kind ?? ''] ?? TINT.shared)}
-      style={{ width: size, height: size, fontSize: size >= 30 ? 15 : 11 }}
+      style={{ width: size, height: size, fontSize: size >= 30 ? 15 : size >= 26 ? 13 : 11 }}
     >
       {book?.name.trim().charAt(0) ?? '·'}
     </span>

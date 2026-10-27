@@ -49,7 +49,7 @@ function WorkspaceLine({
         style={{ gap: 10, padding: `${ROW_PAD_Y}px 0 ${ROW_PAD_Y}px ${ROW_PAD_X}px` }}
       >
         <span className="flex w-7 shrink-0 justify-center">
-          <WorkspaceDot book={book} />
+          <WorkspaceDot book={book} size={28} />
         </span>
         <span className="block min-w-0 flex-1 truncate text-[17px] leading-[22px] font-medium text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">{book.name}</span>
         {current && <Check size={18} aria-label="Open" className="shrink-0 text-[var(--ph-tint)]" />}
@@ -126,7 +126,7 @@ export function AccountMenuPage() {
             <InsetRow
               key={book.id}
               testId="archived-workspace"
-              icon={<WorkspaceDot book={book} />}
+              icon={<WorkspaceDot book={book} size={28} />}
               title={<span className="text-[var(--ph-ink-3)]">{book.name}</span>}
               value="Archived"
               to="/account/workspaces/$bookId"

@@ -248,10 +248,10 @@ function Recent({ card, accounts }: { card: WalletCard; accounts: readonly Accou
     .filter((row) => row.type !== 'opening')
     .slice(0, RECENT_LIMIT);
   return (
-    <Panel header="Recent" testId="wallet-recent" className="mt-4">
+    <Panel header="Recent" testId="wallet-recent" className="mt-4 px-[13px]" pad={false}>
       <ErrorBox error={recent.error} />
       {recent.isSuccess && rows.length === 0 ? (
-        <p className="py-1 text-[15px] leading-[20px] text-[var(--ph-ink-3)]">No transactions yet.</p>
+        <p className="py-3 text-[15px] leading-[20px] text-[var(--ph-ink-3)]">No transactions yet.</p>
       ) : (
         <ul className="[&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
           {rows.map((row) => (
@@ -265,7 +265,7 @@ function Recent({ card, accounts }: { card: WalletCard; accounts: readonly Accou
             />
           ))}
           <li>
-            <Link to="/transactions" search={{ account: card.key }} className="ph-focus flex items-center justify-between pt-[10px] text-[15px] leading-[20px] text-[var(--ph-tint)]">
+            <Link to="/transactions" search={{ account: card.key }} className="ph-focus flex items-center justify-between py-[10px] text-[15px] leading-[20px] text-[var(--ph-tint)]">
               See all
               <ChevronRight size={16} aria-hidden className="text-[var(--ph-chevron)]" />
             </Link>
