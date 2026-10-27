@@ -95,7 +95,7 @@ describe('unarchiving', () => {
     await archiveAccount(database, ws, wallet.id);
     await database.transaction((tx) => unarchiveAccountTx(tx, ws, wallet.id));
     expect((await listAccounts(database, ws)).some((a) => a.id === wallet.id)).toBe(true);
-    expect(await database.db.values(sql`SELECT action FROM audit_log WHERE entity_id = ${wallet.id} AND action LIKE '%archive' ORDER BY rowid`)).toEqual([['archive'], ['unarchive']]);
+    expect(await database.db.values(sql`SELECT action FROM audit_log WHERE entity_id = ${wallet.id} AND entity = 'account' AND action LIKE '%archive' ORDER BY rowid`)).toEqual([['archive'], ['unarchive']]);
     await expect(database.transaction((tx) => unarchiveAccountTx(tx, { ...ws, workspaceId: 'elsewhere' }, wallet.id))).rejects.toThrow(AccountError);
   });
 });

@@ -101,7 +101,7 @@ export function AccountMenuPage() {
     return undefined;
   };
   const rows = (items: readonly NavItem[]) =>
-    items.map((item) => <InsetRow key={item.to} icon={<item.icon size={16} aria-hidden />} title={item.label} value={note(item.to)} to={item.to} />);
+    items.map((item) => <InsetRow key={item.to} icon={<item.icon size={16} aria-hidden />} title={item.label} subtitle={item.note} value={note(item.to)} to={item.to} />);
 
   return (
     <div className={SCREEN}>

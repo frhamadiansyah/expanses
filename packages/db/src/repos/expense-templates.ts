@@ -35,6 +35,7 @@ import { bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, hasBooks } from './books';
 import { postTransactionTx, voidTransactionTx } from './ledger';
 import type { SetAsideChoice } from './set-aside-tx';
+import { recordActivityTx } from './activity-log';
 
 export class RecurringError extends Error {
   constructor(
@@ -795,8 +796,7 @@ export function recordBillPayments(
         if (((await accountCurrency(tx, ws, fund.accountId)) ?? ws.baseCurrency) !== currency) throw new RecurringError('FUND_CURRENCY', `The card is in ${currency}, the fund's account is not`);
         cardFromFund = true;
       }
-      ids.push(
-        await postTransactionTx(tx, ws, {
+      const paid = await postTransactionTx(tx, ws, {
           occurredOn: input.paidOn,
           description: template.name,
           templateId: template.id,
@@ -812,8 +812,9 @@ export function recordBillPayments(
             currency,
           }),
           ...(foreign ? { originalCurrency: billCurrency, originalAmountMinor: payment.amountMinor } : {}),
-        }),
-      );
+        });
+      ids.push(paid);
+      await recordActivityTx(tx, ws, 'payment', paid, { templateId: template.id, billMonth: payment.billMonth });
       // A bill that was saving up is paid: the money set aside for it is let go, and when it went on a card the card
       // is paid from the fund's account for what it was charged — all in this one transaction.
       if (fund) {
