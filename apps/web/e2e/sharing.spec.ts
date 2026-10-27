@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
 import BetterSqlite3 from 'better-sqlite3';
 import { openAccount, openCard, walletCard } from './accounts';
+import { fillDay, openNewAsset } from './add-asset';
 import { addForm, addTransaction, addTransfer, fillAmount, openAmount, saveButton } from './add-transaction';
 import { cardPage, saveCardTerms } from './card-section';
 import { openDrawers } from './drawers';
@@ -478,12 +479,19 @@ async function netWorthSection(page: Page) {
 /** This person's review of their items, then Share: every activation asks for its own. */
 async function reviewAndShare(page: Page, info: TestInfo, name: string, says?: string) {
   const section = await netWorthSection(page);
-  const review = section.getByTestId('net-worth-review');
+  // The Shared row says Review until this person has pressed Share; the list opens with the Review items notice.
+  await eventually(page, () => expect(section.getByTestId('networth-shared-row')).toContainText('Review', { timeout: 1_000 }));
+  await section.getByTestId('networth-shared-row').click();
+  const review = page.getByTestId('net-worth-review');
   await eventually(page, () => expect(review).toBeVisible({ timeout: 1_000 }));
-  // What sharing sends is read whole, never cut off at the row's edge.
-  if (says) await expect(review.getByText(says)).toBeVisible();
+  // What sharing sends is read whole, never cut off at the row's edge: the notice opens it in full.
+  if (says) {
+    await review.getByRole('button').first().click();
+    await expect(page.getByRole('alertdialog').getByText(says)).toBeVisible();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Close' }).click();
+  }
   await shot(page, info, name);
-  await review.getByTestId('net-worth-share').click();
+  await page.getByTestId('net-worth-share').click();
   await expect(review).toHaveCount(0, { timeout: 30_000 });
 }
 
@@ -527,20 +535,18 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   // Fandri proposes one tax ID with Dewi.
   let section = await netWorthSection(page);
   await eventually(page, () => expect(section.getByTestId('share-net-worth')).toBeVisible({ timeout: 1_000 }));
-  await section.getByTestId('share-net-worth').click();
   const setup = page.getByTestId('net-worth-setup');
   await setup.getByTestId('filing-joint').click();
-  await setup.getByTestId('net-worth-invitee').filter({ hasText: 'Dewi' }).click();
   await shot(page, info, '13-net-worth-setup');
   await setup.getByRole('button', { name: 'Invite', exact: true }).click();
   await expect(section.getByTestId('net-worth-waiting')).toContainText('Waiting for Dewi', { timeout: 30_000 });
 
   // Dewi is asked, and confirms.
   let theirs = await netWorthSection(dewi);
-  await eventually(dewi, () => expect(theirs.getByTestId('net-worth-asked')).toContainText('Fandri set up household net worth: one tax ID.', { timeout: 1_000 }));
+  await eventually(dewi, () => expect(theirs.getByTestId('net-worth-asked')).toContainText('Fandri asks to share net worth', { timeout: 1_000 }));
   await shot(dewi, info, '14-net-worth-asked');
   await theirs.getByRole('button', { name: 'Confirm', exact: true }).click();
-  await eventually(dewi, () => expect(theirs.getByTestId('net-worth-status')).toContainText('Net worth shared · One tax ID', { timeout: 1_000 }));
+  await eventually(dewi, () => expect(theirs.getByTestId('net-worth-status')).toContainText('Shared with Fandri', { timeout: 1_000 }));
 
   // Each reviews their items and shares them.
   await reviewAndShare(dewi, info, '15-review-joint', 'For the joint tax return, each item also goes to Fandri with its row of the tax report');
@@ -623,13 +629,13 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
 
   // Fandri changes to separate tax IDs; Dewi confirms; each reviews again.
   section = await netWorthSection(page);
-  await section.getByRole('button', { name: 'Change filing' }).click();
+  await section.getByTestId('net-worth-filing').click();
   await setup.getByTestId('filing-separate').click();
   await setup.getByRole('button', { name: 'Invite', exact: true }).click();
   theirs = await netWorthSection(dewi);
-  await eventually(dewi, () => expect(theirs.getByTestId('net-worth-asked')).toContainText('separate tax IDs', { timeout: 1_000 }));
+  await eventually(dewi, () => expect(theirs.getByTestId('net-worth-asked')).toContainText('Separate', { timeout: 1_000 }));
   await theirs.getByRole('button', { name: 'Confirm', exact: true }).click();
-  await eventually(dewi, () => expect(theirs.getByTestId('net-worth-status')).toContainText('Net worth shared · Separate', { timeout: 1_000 }));
+  await eventually(dewi, () => expect(theirs.getByTestId('net-worth-filing')).toContainText('Filed separately', { timeout: 1_000 }));
   await reviewAndShare(dewi, info, '19-review-separate');
   await reviewAndShare(page, info, '19-review-separate');
 
@@ -733,15 +739,13 @@ test('a joint account: the partner pays from it, both list the same rows with wh
 
   const section = await netWorthSection(page);
   await eventually(page, () => expect(section.getByTestId('share-net-worth')).toBeVisible({ timeout: 1_000 }));
-  await section.getByTestId('share-net-worth').click();
   const setup = page.getByTestId('net-worth-setup');
   await setup.getByTestId('filing-joint').click();
-  await setup.getByTestId('net-worth-invitee').filter({ hasText: 'Dewi' }).click();
   await setup.getByRole('button', { name: 'Invite', exact: true }).click();
   const theirs = await netWorthSection(dewi);
-  await eventually(dewi, () => expect(theirs.getByTestId('net-worth-asked')).toContainText('Fandri set up household net worth: one tax ID.', { timeout: 1_000 }));
+  await eventually(dewi, () => expect(theirs.getByTestId('net-worth-asked')).toContainText('Fandri asks to share net worth', { timeout: 1_000 }));
   await theirs.getByRole('button', { name: 'Confirm', exact: true }).click();
-  await eventually(dewi, () => expect(theirs.getByTestId('net-worth-status')).toContainText('Net worth shared · One tax ID', { timeout: 1_000 }));
+  await eventually(dewi, () => expect(theirs.getByTestId('net-worth-status')).toContainText('Shared with Fandri', { timeout: 1_000 }));
   await reviewAndShare(dewi, info, 'j1-review');
   await reviewAndShare(page, info, 'j1-review');
 
@@ -878,4 +882,97 @@ test('a joint account: the partner pays from it, both list the same rows with wh
     await expect(rowsOn(dewi)).toHaveCount(0, { timeout: 1_000 });
   });
   await expect(dewi.locator('main')).toContainText('9.470.000');
+});
+
+/*
+ * The Net worth page is one list with switches: the setup carries the Shared row, the Shared list searches and switches
+ * each item, an activation asks for one review, and a new asset starts Shared while sharing is active (off makes it private).
+ */
+test('net worth sharing: one Shared list with switches, search, N of M, and a new asset starts Shared', async ({ page, browser }, info) => {
+  test.setTimeout(900_000);
+  page.on('dialog', (dialog) => void dialog.accept());
+  const dewi = await secondDevice(browser, info);
+  await openAccount(page, { subtype: 'bank', name: 'Fandri Bank', balance: '10000000' });
+  await openAccount(page, { subtype: 'cash', name: 'Fandri Wallet', balance: '100000' });
+  await openAccount(dewi, { subtype: 'bank', name: 'Dewi Bank', balance: '5000000' });
+  await page.goto('/transactions');
+  await shareAndJoin(page, dewi);
+
+  // Not shared yet: the Add asset form shows no Shared switch.
+  await openNewAsset(page, 'Gold bullion');
+  await expect(page.getByTestId('asset-shared-switch')).toHaveCount(0);
+
+  // The setup: filing, the Shared row (all on), and a list that searches and switches before anything is sent.
+  const section = await netWorthSection(page);
+  await expect(section.getByTestId('networth-shared-row')).toContainText('All 2');
+  await section.getByTestId('filing-separate').click();
+  await section.getByTestId('networth-shared-row').click();
+  await expect(page).toHaveURL(/\/share\/net-worth\/items$/);
+  const switches = page.getByTestId('networth-item-switch');
+  await expect(switches).toHaveCount(2);
+  await page.getByTestId('networth-items-search').fill('wall');
+  await expect(switches).toHaveCount(1);
+  await page.getByTestId('networth-items-search').fill('zzz');
+  await expect(switches).toHaveCount(0);
+  await page.getByTestId('networth-items-search').fill('WALLET');
+  await expect(switches).toHaveCount(1);
+  await expect(page.getByRole('checkbox', { name: 'Fandri Wallet' })).toBeChecked();
+  await page.getByRole('checkbox', { name: 'Fandri Wallet' }).click({ force: true });
+  await expect(page.getByRole('checkbox', { name: 'Fandri Wallet' })).not.toBeChecked();
+  await page.goBack();
+  // The filing answer survived the trip to the list.
+  await expect(section.getByTestId('networth-shared-row')).toContainText('1 of 2');
+  await section.getByRole('button', { name: 'Invite', exact: true }).click();
+  await expect(section.getByTestId('net-worth-waiting')).toContainText('Waiting for Dewi', { timeout: 30_000 });
+
+  // Dewi confirms; each reviews once. What was switched off stays off in Fandri's review.
+  const theirs = await netWorthSection(dewi);
+  await eventually(dewi, () => expect(theirs.getByTestId('net-worth-asked')).toContainText('Fandri asks to share net worth', { timeout: 1_000 }));
+  await theirs.getByRole('button', { name: 'Confirm', exact: true }).click();
+  await eventually(dewi, () => expect(theirs.getByTestId('net-worth-status')).toContainText('Shared with Fandri', { timeout: 1_000 }));
+  await reviewAndShare(dewi, info, 'nw-list-dewi');
+  await openWorkspaceSharePage(page, 'Home');
+  await openNetWorthPage(page);
+  await page.getByTestId('networth-shared-row').click();
+  await expect(page.getByTestId('net-worth-review')).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: 'Fandri Wallet' })).not.toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'Fandri Bank' })).toBeChecked();
+  await page.getByTestId('net-worth-share').click();
+  await expect(page.getByTestId('net-worth-review')).toHaveCount(0, { timeout: 30_000 });
+
+  // Active: the switches save at once, and the Net worth page reads N of M.
+  await page.getByRole('checkbox', { name: 'Fandri Wallet' }).click({ force: true });
+  await expect(page.getByRole('checkbox', { name: 'Fandri Wallet' })).toBeChecked();
+  await page.getByRole('checkbox', { name: 'Fandri Wallet' }).click({ force: true });
+  await expect(page.getByRole('checkbox', { name: 'Fandri Wallet' })).not.toBeChecked();
+  await page.goBack();
+  await expect(page.getByTestId('net-worth-filing')).toContainText('Filed separately');
+  await expect(page.getByTestId('networth-shared-row')).toContainText('1 of 2');
+
+  // A new asset starts Shared while sharing is active; the switch off makes it private.
+  await openNewAsset(page, 'Gold bullion');
+  await expect(page.getByTestId('asset-shared-switch')).toBeChecked();
+  await page.getByLabel('Name', { exact: true }).fill('Shared gold');
+  await fillDay(page, 'Bought', '2024-02-03');
+  await page.getByLabel('How much').fill('10');
+  await page.getByLabel('Total cost', { exact: true }).fill('13100000');
+  await page.getByRole('button', { name: 'Add asset' }).last().click();
+  await expect(page).toHaveURL(/\/net-worth\/assets$/);
+  await openNewAsset(page, 'Gold bullion');
+  await page.getByLabel('Name', { exact: true }).fill('Private gold');
+  await page.getByTestId('asset-shared-switch').click({ force: true });
+  await expect(page.getByTestId('asset-shared-switch')).not.toBeChecked();
+  await fillDay(page, 'Bought', '2024-02-03');
+  await page.getByLabel('How much').fill('10');
+  await page.getByLabel('Total cost', { exact: true }).fill('13100000');
+  await page.getByRole('button', { name: 'Add asset' }).last().click();
+  await expect(page).toHaveURL(/\/net-worth\/assets$/);
+
+  await openWorkspaceSharePage(page, 'Home');
+  await openNetWorthPage(page);
+  await expect(page.getByTestId('networth-shared-row')).toContainText('2 of 4');
+  await page.getByTestId('networth-shared-row').click();
+  await expect(page.getByRole('checkbox', { name: 'Shared gold' })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'Private gold' })).not.toBeChecked();
+  await shot(page, info, 'nw-list-active');
 });

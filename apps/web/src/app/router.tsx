@@ -89,6 +89,7 @@ import { DeveloperSettingsPage } from '../features/workspaces/DeveloperSettingsP
 import { WorkspacePage } from '../features/workspaces/WorkspacePage';
 import { MemberPage } from '../features/sharing/MemberPage';
 import { NetWorthPage } from '../features/sharing/NetWorthPage';
+import { NetWorthItemsPage } from '../features/sharing/NetWorthItemsPage';
 import { SharePage } from '../features/sharing/SharePage';
 import { AccountMenuPage } from '../features/account/AccountMenuPage';
 import { JoinPage } from '../features/sharing/JoinPage';
@@ -415,6 +416,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId', component: WorkspacePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share', component: SharePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/net-worth', component: NetWorthPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/net-worth/items', component: NetWorthItemsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/members/$memberId', component: MemberPage }),
   // Settings was the page of workspaces; they live on the Account page now, so an old link lands there.
   createRoute({
