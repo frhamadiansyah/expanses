@@ -28,8 +28,8 @@ export function AddAccountPage() {
   );
 }
 
-/** Wallet's list leaves out the two kinds that are not carried or spent day to day: a time deposit and other cash equivalents are added from Assets. */
-const WALLET_LEFT_OUT = new Set<string>(['time_deposit', 'other_cash']);
+/** Wallet's list leaves out the kinds that are not spent from: a fund account, a time deposit and other cash equivalents are added from Assets. */
+const WALLET_LEFT_OUT = new Set<string>(['fund', 'time_deposit', 'other_cash']);
 const KINDS = CASH_ITEMS.filter((item) => !WALLET_LEFT_OUT.has(item.id)).map((item) => item.id as MoneyAccountSubtype);
 
 /**
