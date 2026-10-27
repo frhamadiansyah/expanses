@@ -87,6 +87,46 @@ export async function saveInstallment(database: Database, ws: WorkspaceContext, 
   return id;
 }
 
+export interface UpdateInstallmentInput {
+  id: string;
+  description: string;
+  totalMinor: number;
+  months: number;
+  /** First month it appears on a statement, as YYYY-MM. */
+  firstBilledMonth: string;
+  earnsPoints: boolean;
+}
+
+/**
+ * Changes what a plan says about itself. Only the plan row moves: the purchase it came from and the card's balance
+ * stay as they were, and the billed, held and ending figures follow from the total, months and first month.
+ */
+export async function updateInstallment(database: Database, ws: WorkspaceContext, input: UpdateInstallmentInput): Promise<void> {
+  if (!Number.isInteger(input.months) || input.months < 1) throw new InstallmentDbError('A plan runs for at least one month');
+  if (!Number.isInteger(input.totalMinor) || !(input.totalMinor > 0)) throw new InstallmentDbError('A plan needs a whole amount greater than zero');
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(input.firstBilledMonth)) throw new InstallmentDbError('The first billed month is a year and month');
+
+  await database.transaction(async (tx) => {
+    const found = await tx
+      .select({ id: cardInstallments.id })
+      .from(cardInstallments)
+      .where(and(eq(cardInstallments.id, input.id), eq(cardInstallments.workspaceId, ws.workspaceId)));
+    if (found.length === 0) throw new InstallmentDbError('Plan not found in this workspace');
+    await tx
+      .update(cardInstallments)
+      .set({
+        description: input.description,
+        totalMinor: input.totalMinor,
+        months: input.months,
+        // The last instalment carries the rounding, as when the plan was saved.
+        monthlyMinor: roundHalfAwayFromZero(input.totalMinor / input.months),
+        firstBilledMonth: input.firstBilledMonth,
+        earnsPoints: input.earnsPoints ? 1 : 0,
+      })
+      .where(and(eq(cardInstallments.id, input.id), eq(cardInstallments.workspaceId, ws.workspaceId)));
+  });
+}
+
 export async function listInstallments(database: Database, ws: WorkspaceContext, cardAccountId?: string): Promise<CardInstallmentRow[]> {
   const where = cardAccountId
     ? and(eq(cardInstallments.workspaceId, ws.workspaceId), eq(cardInstallments.cardAccountId, cardAccountId))
