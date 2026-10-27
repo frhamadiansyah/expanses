@@ -46,6 +46,7 @@ describe('the Share net worth row (§6, §8.1)', () => {
       proposalId: 'p1',
       mode: 'joint',
       line: 'Rina set up household net worth: one tax ID.',
+      title: 'Rina asks to share net worth',
     });
     expect(netWorthRowOf(view('a', { pending: proposal({ mode: 'separate' }), waitingFor: ['a'] }), members).pending?.line).toBe(
       'Rina set up household net worth: separate tax IDs.',
@@ -55,7 +56,7 @@ describe('the Share net worth row (§6, §8.1)', () => {
   it('a change that leaves a current member out asks them too (review round 2, D6)', () => {
     const active = { proposalId: 'p0', mode: 'separate' as const, members: ['r', 'a', 's'] };
     const row = netWorthRowOf(view('a', { active, pending: proposal({ proposalId: 'p2', mode: 'separate', members: ['r', 's'] }), waitingFor: ['a'] }), members);
-    expect(row.pending).toEqual({ kind: 'asked', proposalId: 'p2', mode: 'separate', line: 'Rina proposes a group that leaves this member out: separate tax IDs.' });
+    expect(row.pending).toEqual({ kind: 'asked', proposalId: 'p2', mode: 'separate', line: 'Rina proposes a group that leaves this member out: separate tax IDs.', title: 'Rina proposes a group that leaves this member out: separate tax IDs.' });
     const answered = netWorthRowOf(view('a', { active, pending: proposal({ proposalId: 'p2', mode: 'separate', members: ['r', 's'] }), waitingFor: ['s'] }), members);
     expect(answered.pending).toEqual({ kind: 'waiting', proposalId: 'p2', line: 'Waiting for Sari', cancellable: false });
   });

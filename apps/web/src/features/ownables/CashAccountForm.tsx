@@ -649,6 +649,7 @@ export function CashAccountForm({
             }}
           />
         )}
+        {household.row}
       </InsetGroup>
       {/* A flat array of rows, not a fragment per pocket: `InsetGroup` hands each direct child its position. */}
       {pocketed && (
@@ -671,7 +672,6 @@ export function CashAccountForm({
           {pockets.length > 2 && <InsetRow title="Remove the last pocket" onClick={() => setPockets((rows) => rows.slice(0, -1))} />}
         </InsetGroup>
       )}
-      {household.element}
       {!embedded && (
         <InsetGroup>
           {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}

@@ -56,7 +56,7 @@ export function AddDebtPage() {
  */
 function DebtItemForm({ item }: { item: string }) {
   const { database, ws } = useApp();
-  const household = useShareOnAdd();
+  const household = useShareOnAdd('debt-shared-switch');
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
@@ -170,9 +170,9 @@ function DebtItemForm({ item }: { item: string }) {
         {asks.includes('person') && <TextRow label="Who" value={draft.person} onChange={(e) => set({ person: e.target.value })} placeholder="Name" required />}
         {asks.includes('rate') && <TextRow label="Interest rate" value={draft.rate} onChange={(e) => set({ rate: e.target.value })} inputMode="decimal" placeholder="% a year" />}
         {asks.includes('term') && <TextRow label="Months left" value={draft.term} onChange={(e) => set({ term: e.target.value })} inputMode="numeric" placeholder="Months" />}
+        {household.row}
         <TextRow label="Owed as of" type="date" value={draft.openedOn} max={today} onChange={(e) => set({ openedOn: e.target.value })} />
       </InsetGroup>
-      {household.element}
       <InsetGroup>
         {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
         <InsetRow title="Add debt" action onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
@@ -219,7 +219,7 @@ export function NewCardForm({
   embedded?: CardFormEmbedding;
 }) {
   const { database, ws } = useApp();
-  const household = useShareOnAdd();
+  const household = useShareOnAdd('debt-shared-switch');
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
@@ -381,6 +381,7 @@ export function NewCardForm({
           )}
           <TextRow label="Last 4 digits" value={last4} onChange={(e) => setLast4(e.target.value)} inputMode="numeric" maxLength={4} placeholder="••••" />
           <TextRow label="Current balance" value={owed} onChange={(e) => setOwed(e.target.value)} inputMode="decimal" placeholder="Amount" />
+          {household.row}
         </InsetGroup>
         {/*
           The rest is the fold's, as on the transaction form: a catalogue card already knows its currency, so only a
@@ -426,8 +427,7 @@ export function NewCardForm({
         >
           {detailsToggleLabel(detailsOpen)}
         </button>
-        {household.element}
-        {!embedded && (
+          {!embedded && (
           <InsetGroup>
             {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
             <InsetRow title="Add card" action onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />

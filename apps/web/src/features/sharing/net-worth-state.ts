@@ -24,7 +24,7 @@ export type PendingRow =
   /** This member proposed (or already confirmed) and waits for the others; the proposer may cancel. */
   | { kind: 'waiting'; proposalId: string; line: string; cancellable: boolean }
   /** This member is asked: "Rina set up household net worth: one tax ID." */
-  | { kind: 'asked'; proposalId: string; line: string; mode: FilingMode };
+  | { kind: 'asked'; proposalId: string; line: string; mode: FilingMode; /** The row's words: "Rina asks to share net worth", with the mode as its value. */ title: string };
 
 export interface NetWorthRow {
   /** The row is drawn at all: the workspace is shared with at least one other member. */
@@ -58,7 +58,7 @@ export function netWorthRowOf(group: NetWorthGroupView | null | undefined, membe
       const line = listed
         ? `${nameOf(p.proposedBy)} set up household net worth: ${modeWords(p.mode)}.`
         : `${nameOf(p.proposedBy)} proposes a group that leaves this member out: ${modeWords(p.mode)}.`;
-      pending = { kind: 'asked', proposalId: p.proposalId, mode: p.mode, line };
+      pending = { kind: 'asked', proposalId: p.proposalId, mode: p.mode, line, title: listed ? `${nameOf(p.proposedBy)} asks to share net worth` : line };
     } else if (listed || group.active?.members.includes(group.me)) {
       pending = { kind: 'waiting', proposalId: p.proposalId, line: `Waiting for ${namesOf(group.waitingFor.map(nameOf))}`, cancellable: p.proposedBy === group.me };
     }

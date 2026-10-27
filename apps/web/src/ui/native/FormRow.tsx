@@ -444,11 +444,14 @@ export function SwitchRow({
   hint,
   info,
   position,
+  testId,
 }: GroupChild & {
   label: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
   disabled?: boolean;
+  /** What a test names the switch by. */
+  testId?: string;
   hint?: ReactNode;
   /** What the switch means, behind an ⓘ beside the label rather than a line always under it — as TextRow's `info`. */
   info?: ReactNode;
@@ -484,6 +487,7 @@ export function SwitchRow({
           <input
             id={id}
             type="checkbox"
+            data-testid={testId}
             checked={checked}
             disabled={disabled}
             onChange={(event) => onChange(event.target.checked)}
