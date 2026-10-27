@@ -1,12 +1,18 @@
 import { type BookRow, LeaveIncompleteError, type SharingDetail } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { Landmark, RefreshCw, User } from 'lucide-react';
+import { CalendarDays, Landmark, RefreshCw, User } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
+import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { DestructiveRow, InsetGroup, InsetRow, PushedTitle, SCREEN, SubmitRow, TextRow } from '../../ui/native';
+import { DestructiveRow, type GroupChild, InsetGroup, InsetRow, PushedTitle, SCREEN, SubmitRow, TextRow } from '../../ui/native';
+import { useEvents } from '../events/queries';
+import { ShareEventSheet } from '../events/ShareEventSheet';
+import { useSharedEventSummaries, useSharedEventView } from '../events/shared-queries';
+import { pageLocks } from '../events/shared-view';
 import { InviteCard } from './InviteCard';
+import { type ShareEventRow, shareEventRows } from './share-events';
 import { useNetWorthGroup } from './net-worth-queries';
 import { netWorthRowOf, netWorthValue } from './net-worth-state';
 import { useBookStatus, useSharingDetail, useSyncStatus } from './queries';
@@ -36,8 +42,66 @@ export function SharePage() {
 function ShareBody({ book }: { book: BookRow }) {
   const detail = useSharingDetail(book.id);
   if (detail.isPending) return null;
-  if (!detail.data) return <ShareForm book={book} refetch={async () => void (await detail.refetch())} />;
-  return <Shared book={book} detail={detail.data} />;
+  return (
+    <>
+      {detail.data ? <Shared book={book} detail={detail.data} /> : <ShareForm book={book} refetch={async () => void (await detail.refetch())} />}
+      <ShareEvents />
+    </>
+  );
+}
+
+/** The owner's events, each shared from here or left from here: Share opens the event's own sheet, Leave is the event page's (D9). */
+function ShareEvents() {
+  const { sync } = useApp();
+  const invalidate = useInvalidateAll();
+  const events = useEvents();
+  const summaries = useSharedEventSummaries();
+  const [sharing, setSharing] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  if (!events.data || summaries.isPending) return null;
+  const rows = shareEventRows(events.data, summaries.data ?? {});
+  if (rows.length === 0) return null;
+  const sharingEvent = events.data.find((event) => event.id === sharing) ?? null;
+
+  async function leave(row: ShareEventRow, bookId: string) {
+    if (!window.confirm(`Leave ${row.name}? What was recorded stays with the others.`)) return;
+    setError(null);
+    try {
+      await sync.leaveEvent(bookId);
+      await invalidate();
+    } catch (failure) {
+      setError(sayError(failure));
+    }
+  }
+
+  return (
+    <>
+      <ErrorBox error={error} />
+      <InsetGroup wide header="Events">
+        {rows.map((row) => (
+          <ShareEventLine key={row.eventId} row={row} onShare={() => setSharing(row.eventId)} onLeave={(bookId) => void leave(row, bookId)} />
+        ))}
+      </InsetGroup>
+      {sharingEvent ? <ShareEventSheet event={sharingEvent} onClose={() => setSharing(null)} /> : null}
+    </>
+  );
+}
+
+/** One event. A shared one is read for its book and for whether this phone's person is still in it; one already left has nothing to leave. */
+function ShareEventLine({ row, onShare, onLeave, position }: GroupChild & { row: ShareEventRow; onShare: () => void; onLeave: (bookId: string) => void }) {
+  const view = useSharedEventView(row.shared ? row.eventId : null).data;
+  const leavable = view && !pageLocks(view).readOnly ? view : null;
+  return (
+    <InsetRow
+      position={position}
+      testId="share-event-row"
+      icon={<CalendarDays size={15} aria-hidden />}
+      title={row.name}
+      value={row.value}
+      label={row.shared ? `Leave ${row.name}` : `Share ${row.name}`}
+      onClick={row.shared ? (leavable ? () => onLeave(leavable.bookId) : undefined) : onShare}
+    />
+  );
 }
 
 /** Not shared yet: a Name and a Share button; the button becomes the progress while the history goes up. */
