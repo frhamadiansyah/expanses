@@ -94,6 +94,7 @@ export * from './repos/coretax-income';
 export * from './repos/business-income';
 export * from './repos/kmk-rates';
 export * from './repos/expense-templates';
+export * from './repos/activity';
 export * from './repos/sinking-funds';
 export * from './repos/sinking-views';
 export * from './repos/event-scope';

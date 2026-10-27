@@ -7,6 +7,7 @@ import {
   CalendarRange,
   CheckCheck,
   CreditCard,
+  History,
   FileSpreadsheet,
   PiggyBank,
   Smartphone,
@@ -22,6 +23,8 @@ export interface NavItem {
   to: string;
   label: string;
   icon: LucideIcon;
+  /** A short second line under the label, for a place whose name alone does not say what it holds. */
+  note?: string;
 }
 
 export interface NavGroup {
@@ -52,6 +55,7 @@ export const ACCOUNT_TAB: NavItem = { to: '/account', label: 'Account', icon: Us
 export const SETTINGS_ITEMS: readonly NavItem[] = [
   { to: '/settings/capture', label: 'Capture', icon: Smartphone },
   { to: '/backup', label: 'Backup', icon: ArrowDownToLine },
+  { to: '/settings/activity', label: 'Activity', icon: History, note: 'What was changed, and undo' },
   { to: '/import', label: 'Import CSV', icon: ArrowUpFromLine },
 ] as const;
 

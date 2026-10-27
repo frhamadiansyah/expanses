@@ -76,6 +76,8 @@ import { YearlyBillsPage } from '../features/bills/YearlyBillsPage';
 import { DuplicateTransactionRoute, EditTransactionRoute, NewTransactionRoute } from '../features/transactions/FormPage';
 import { newTransactionSearch } from '../features/transactions/new-search';
 import { MoneyFlowPage, moneyFlowSearch } from '../features/transactions/MoneyFlow';
+import { ActivityDetailPage } from '../features/activity/ActivityDetailPage';
+import { ActivityPage } from '../features/activity/ActivityPage';
 import { ReceiptRoute } from '../features/transactions/ReceiptPage';
 import { TransactionsPage } from '../features/transactions/TransactionsPage';
 import { AddHoldingPage } from '../features/investments/AddHoldingPage';
@@ -421,6 +423,8 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/developer', component: DeveloperSettingsPage }),
   // Capture: how to set the phone up, what it keeps, and what each source has learned. The row that reaches it is
   // iPhone-only (`isNative()`); the addresses themselves work everywhere, so the same pages can be shown on a desktop.
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings/activity', component: ActivityPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings/activity/$id', component: ActivityDetailPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/capture', component: CaptureSettingsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/capture/sources/$sourceId', component: SourcePage }),
   // The design kit's specimen sheet. Deliberately not in `nav.ts`: it is a place to look at the primitives

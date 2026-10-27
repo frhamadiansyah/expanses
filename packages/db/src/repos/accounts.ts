@@ -7,6 +7,7 @@ import { bookCategories } from '../schema-books';
 import { SYSTEM_ACCOUNTS, type SystemAccountKey } from '../seed';
 import { notPlaceholder, sharingTablesExist } from '../sync/placeholder';
 import { hasBooks, personalBookIdTx } from './books';
+import { recordActivityTx } from './activity-log';
 import { postTransactionTx } from './ledger';
 import { captureMoneyAccountRenamingTx, withCapture } from '../sync/capture';
 
@@ -573,7 +574,10 @@ export async function unarchiveAccountTx(tx: Db, ws: WorkspaceContext, id: strin
 }
 
 export async function archiveAccount(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
-  await database.transaction((tx) => archiveAccountTx(tx, ws, id));
+  await database.transaction(async (tx) => {
+    await archiveAccountTx(tx, ws, id);
+    await recordActivityTx(tx, ws, 'archive', id);
+  });
 }
 
 /** The account audit trail, for the repos that change an account outside this file (a category's place, its icon). */

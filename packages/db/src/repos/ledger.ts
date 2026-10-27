@@ -39,6 +39,7 @@ import {
   type VoidKeep,
   withSavedStage,
 } from './set-aside-tx';
+import { recordActivityTx } from './activity-log';
 import { extrasFor, extrasForTx, extrasTablesExist, movePhotosTx, writeExtrasTx } from './transaction-extras';
 
 export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email' | 'notification' | 'screen' | 'photo';
@@ -565,7 +566,12 @@ export function setSettledBeforeApp(database: Database, ws: WorkspaceContext, pu
 }
 
 export function postTransaction(database: Database, ws: WorkspaceContext, input: PostTransactionInput): Promise<string> {
-  return database.transaction((tx) => postTransactionTx(tx, ws, input));
+  return database.transaction(async (tx) => {
+    const id = await postTransactionTx(tx, ws, input);
+    // The plain door is the one a person uses; a post that corrects another row is an edit, written by `replaceTransaction`.
+    if (!input.replacesTransactionId) await recordActivityTx(tx, ws, 'create', id);
+    return id;
+  });
 }
 
 /**
@@ -691,7 +697,10 @@ async function refuseEventPostingTx(tx: Db, id: string): Promise<void> {
 }
 
 export function voidTransaction(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
-  return database.transaction((tx) => voidTransactionTx(tx, ws, id));
+  return database.transaction(async (tx) => {
+    await voidTransactionTx(tx, ws, id);
+    await recordActivityTx(tx, ws, 'delete', id);
+  });
 }
 
 /** Edit = void the original and post the replacement atomically. */
@@ -701,7 +710,11 @@ export function replaceTransaction(
   id: string,
   input: PostTransactionInput,
 ): Promise<string> {
-  return database.transaction((tx) => replaceTransactionTx(tx, ws, id, input));
+  return database.transaction(async (tx) => {
+    const replacement = await replaceTransactionTx(tx, ws, id, input);
+    await recordActivityTx(tx, ws, 'edit', replacement, { replaces: id });
+    return replacement;
+  });
 }
 
 /**
