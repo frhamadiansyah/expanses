@@ -207,7 +207,7 @@ test('on a desktop the settings lay their groups out in one column across the pa
   await openCardPage(page);
   await cardPage(page, 'Settings');
   const terms = await page.locator('section', { has: page.getByRole('heading', { name: 'Card terms' }) }).first().boundingBox();
-  const cards = await page.locator('section', { has: page.getByRole('heading', { name: 'Cards on this account' }) }).first().boundingBox();
+  const cards = await page.locator('section', { has: page.getByRole('heading', { name: 'Cardholders' }) }).first().boundingBox();
   expect(terms && cards).toBeTruthy();
   expect(Math.round(terms!.x)).toBe(Math.round(cards!.x));
   expect(Math.round(terms!.width)).toBe(Math.round(cards!.width));
