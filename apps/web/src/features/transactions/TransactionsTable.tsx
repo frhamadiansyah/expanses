@@ -260,7 +260,7 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
             </>
           )}
         </span>
-        <span className="truncate px-2 text-slate-600">{kind ? <span className="rounded bg-slate-100 px-1.5 text-xs text-slate-500">{kind}</span> : row.categoryName}</span>
+        <span className="truncate px-2 text-slate-600">{kind ? <span className="rounded bg-slate-100 px-1.5 text-xs text-slate-500">{kind}</span> : row.categoryName && row.moreCounted ? `${row.categoryName} +${row.moreCounted}` : row.categoryName}</span>
         <span className="flex items-center justify-end gap-1 pl-1">
           <ReceiptLink transactionId={tx.id} description={row.description} />
           {handlers.tradeHoldings.has(tx.id) ? (

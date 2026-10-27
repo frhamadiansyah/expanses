@@ -31,8 +31,8 @@ export function FeeRow({ fee, separator, onOpen }: { fee: UpcomingDue; separator
           <CreditCard size={15} />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{`Annual fee · ${card.name}`}</span>
-          <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Charged to the card</span>
+          <span className="block truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">Annual fee</span>
+          <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{card.name}</span>
         </span>
         <span className="tabular flex shrink-0 flex-col items-end text-[15px] leading-[20px] text-[var(--ph-ink)]">
           {card.annualFeeMinor !== null ? formatMinor(card.annualFeeMinor, card.currency) : <span className="text-[var(--ph-ink-3)]">Amount not set</span>}

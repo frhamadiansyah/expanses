@@ -34,7 +34,8 @@ test('a card’s annual fee date is saved in Settings, shown as the next charge,
   // Within 30 days it is also listed under Due soon in Recurring, read-only, and opens the card.
   await page.goto('/bills');
   const fee = page.getByTestId('annual-fee-row');
-  await expect(fee).toContainText('Annual fee · Fee Card');
+  await expect(fee).toContainText('Annual fee');
+  await expect(fee).toContainText('Fee Card');
   await expect(fee).toContainText(words(next));
   // A tap asks whether it was waived. Not now and Charged as normal only close the question.
   await fee.click();

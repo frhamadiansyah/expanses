@@ -31,7 +31,7 @@ export function DayHeader({ date, net, currency }: { date: string; net: number; 
       {/* From md a row ends with room for its edit pencil, so the day's total leaves the same room. */}
       {/* No sign and no red: the day's total sums the rows below it rather than adding anything to them. */}
       {net !== 0 && (
-        <span className={cx('tabular ml-auto text-sm font-semibold md:pr-7', net > 0 ? 'text-emerald-700' : 'text-slate-600')}>
+        <span data-testid="day-total" className={cx('tabular ml-auto text-sm font-semibold md:pr-7', net > 0 ? 'text-emerald-700' : 'text-slate-600')}>
           {formatMinor(Math.abs(net), currency)}
         </span>
       )}

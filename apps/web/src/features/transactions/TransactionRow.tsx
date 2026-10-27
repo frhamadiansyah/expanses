@@ -10,7 +10,7 @@ import { UndoToast } from '../../ui/UndoToast';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { CategoryPicker } from './CategoryPicker';
 import { isEditable } from './draft';
-import { type AmountExtraPart, amountLook, type ListRow, paidWithLook } from './list-model';
+import { type AmountExtraPart, amountExtraParts, amountLook, type ListRow, paidWithLook } from './list-model';
 import { canRefile, emptyForm, refiledPost } from './tx-form';
 import { ratesForSave } from './tx-save';
 
@@ -203,7 +203,7 @@ export function TransactionRow({
         className="block w-full min-w-0 text-left focus-visible:outline-2 focus-visible:outline-slate-900 disabled:cursor-default"
       >
         <span className="block truncate text-sm font-medium">
-          {label ?? (row.categoryName || (row.type === 'correction' ? 'Balance correction' : transfer ? 'Transfer' : 'Uncategorised'))}
+          {label ?? ((row.categoryName && row.moreCounted ? `${row.categoryName} +${row.moreCounted}` : row.categoryName) || (row.type === 'correction' ? 'Balance correction' : transfer ? 'Transfer' : 'Uncategorised'))}
           {/* §4.4: a purchase that is not this person's spending stays on the list, saying so. */}
           {row.excluded && <span className="ml-2 rounded bg-slate-100 px-1.5 text-xs font-normal text-slate-500">Excluded</span>}
         </span>
@@ -234,7 +234,7 @@ export function TransactionRow({
         >
           {money}
         </span>
-        {amountExtra}
+        {amountExtra ?? (row.leftOut ? <AmountExtra parts={amountExtraParts(row.tx ?? { originalCurrency: null, originalAmountMinor: null }, undefined, row)} /> : null)}
       </span>
       {trailing}
     </div>
@@ -330,7 +330,7 @@ export function AmountExtra({ parts }: { parts: readonly AmountExtraPart[] }) {
         >
           {/* No-break spaces: at the start of a flex item a plain one is dropped, and the dot would touch the figure. */}
           {i > 0 && <span className="text-slate-400">{' · '}</span>}
-          {part.text}
+          {part.label ? <span aria-label={part.label}>{part.text}</span> : part.text}
         </span>
       ))}
     </span>

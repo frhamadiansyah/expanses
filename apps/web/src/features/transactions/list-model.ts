@@ -1,4 +1,4 @@
-import { compareWithinDay, dayNet, formatMinor, isNotCountedKey, isUncategorisedKey, matchesSearch, monthName, parsePeriod } from '@expanses/core';
+import { compareWithinDay, dayNet, formatMinor, isExchangeResultKey, isNotCountedKey, isUncategorisedKey, matchesSearch, monthName, parsePeriod } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, SharedTransferRow, TransactionEntryView, TransactionView } from '@expanses/db';
 import type { PurchasePoints } from '../../lib/purchase-points';
 import { formatPoints } from '../cards/format-points';
@@ -96,10 +96,41 @@ export interface ListRow {
    * `tx` stays the whole purchase, which is what the receipt shows and an edit changes. Absent on anything else.
    */
   splitPart?: TransactionEntryView[];
+  /**
+   * A split purchase with a line left out of the report on its own (0096) and another still counted: the row is the
+   * counted part, and this names what was left out (its categories' names, and the sum in the row's currency). The
+   * row's category, figure and `spentMinor` are the counted lines'; the receipt and the card keep the whole purchase.
+   */
+  leftOut?: { names: string[]; amountMinor: number };
+  /** With `leftOut`: how many other categories are still counted beside the one the row is named for ("+1"). */
+  moreCounted?: number;
   tx?: TransactionView;
   draft?: DraftRow;
   /** A transfer the other member recorded in this shared workspace: date, amount and label only, read only. */
   sharedTransfer?: true;
+}
+
+/**
+ * The counted part of a purchase split with a line left out of the report: the largest counted category (by its
+ * line), how many other counted categories there are, the counted total and what was left out. Null for anything
+ * else — nothing left out, everything left out, or not spending.
+ */
+export function countedPartOf(
+  entries: readonly TransactionEntryView[],
+  nameOf: (accountId: string) => string,
+): { categoryId: string; more: number; amountMinor: number; currency: string; leftOut: { names: string[]; amountMinor: number } } | null {
+  const lines = entries.filter((e) => e.accountKind === 'expense' && !isExchangeResultKey(e.accountSystemKey));
+  const off = lines.filter((e) => e.excluded);
+  const on = lines.filter((e) => !e.excluded);
+  if (off.length === 0 || on.length === 0) return null;
+  const largest = on.reduce((best, e) => (Math.abs(e.amountMinor) > Math.abs(best.amountMinor) ? e : best));
+  return {
+    categoryId: largest.accountId,
+    more: new Set(on.map((e) => e.accountId)).size - 1,
+    amountMinor: on.reduce((sum, e) => sum + e.amountMinor, 0),
+    currency: largest.currency,
+    leftOut: { names: [...new Set(off.map((e) => nameOf(e.accountId)))], amountMinor: off.reduce((sum, e) => sum + e.amountMinor, 0) },
+  };
 }
 
 /**
@@ -256,7 +287,9 @@ export function buildRows(
     const tx = splitPart ? { ...whole, entries: splitPart } : whole;
     const c = classify(tx);
     // A transfer reads as one even with a fee beside it: the fee's category is in its grey line, never its title.
-    const categoryId = c.type === 'transfer' ? null : (c.categoryIds[0] ?? null);
+    // A split with a line left out of the report reads as the line that counts, naming what was left out (design A).
+    const part = c.type === 'expense' && !whole.excluded ? countedPartOf(tx.entries, (id) => byId.get(id)?.name ?? '') : null;
+    const categoryId = c.type === 'transfer' ? null : (part?.categoryId ?? c.categoryIds[0] ?? null);
     const card = tx.cardId ? cardById.get(tx.cardId) : undefined;
     const money = tx.entries.filter((e) => e.accountKind === 'asset' || e.accountKind === 'liability');
     const accountIds = [...new Set(money.map((e) => e.accountId))];
@@ -276,9 +309,9 @@ export function buildRows(
       id: tx.id,
       date: tx.occurredOn,
       description: tx.description,
-      amountMinor: c.amountMinor,
-      currency: c.currency,
-      baseMinor: type === 'expense' || type === 'income' ? baseOf(type) : 0,
+      amountMinor: part?.amountMinor ?? c.amountMinor,
+      currency: part?.currency ?? c.currency,
+      baseMinor: type === 'expense' || type === 'income' ? baseOf(type, !!part) : 0,
       // A transfer's fee is spending all the same: the day's total counts it, as Cashflow does.
       spentMinor: type === 'expense' || type === 'debt' || c.feeMinor ? baseOf('expense', true) : 0,
       earnedMinor: type === 'income' || type === 'debt' ? baseOf('income', true) : 0,
@@ -300,7 +333,8 @@ export function buildRows(
       deleted: tx.status === 'void',
       excluded: excludedHere(whole, openBookId),
       needs: [],
-      refund: c.type === 'expense' && c.amountMinor < 0,
+      refund: c.type === 'expense' && (part?.amountMinor ?? c.amountMinor) < 0,
+      ...(part ? { leftOut: part.leftOut, moreCounted: part.more } : {}),
       moneyIn: type === 'debt' && money.filter((e) => !isPerson(e.accountId)).reduce((sum, e) => sum + e.amountBaseMinor, 0) > 0,
       needsCategory: c.categoryIds.some((id) => isUncategorisedKey(byId.get(id)?.systemKey)),
       ...(splitPart ? { splitPart } : {}),
@@ -465,6 +499,8 @@ export function paidWithLook(row: Pick<ListRow, 'accountLabel' | 'accountIds' | 
 /** One piece of the line under a row's amount: a transfer's fee, what it cost in the currency it was charged in, or the points it earned. */
 export interface AmountExtraPart {
   text: string;
+  /** Read aloud in place of the text, where the glyph alone says too little. */
+  label?: string;
   /** `foreign` reads muted — the fee too; points read green when earned and red when taken back. */
   tone: 'foreign' | 'earned' | 'lost';
 }
@@ -478,11 +514,17 @@ export interface AmountExtraPart {
 export function amountExtraParts(
   tx: Pick<TransactionView, 'originalCurrency' | 'originalAmountMinor'>,
   points: PurchasePoints | undefined,
-  fee?: Pick<ListRow, 'feeMinor' | 'currency'> & { feeCurrency?: string | undefined },
+  fee?: Pick<ListRow, 'feeMinor' | 'currency'> & { feeCurrency?: string | undefined; leftOut?: ListRow['leftOut'] },
 ): AmountExtraPart[] {
   const parts: AmountExtraPart[] = [];
+  // A split with lines left out of the report: their sum, in the muted figure a transfer's fee is, so the row stays as tall.
+  if (fee?.leftOut) {
+    const sum = formatMinor(fee.leftOut.amountMinor, fee.currency);
+    parts.push({ text: `⊘ ${sum}`, label: `Excluded from report, ${sum}`, tone: 'foreign' });
+  }
   if (fee?.feeMinor) parts.push({ text: `+${formatMinor(fee.feeMinor, fee.feeCurrency ?? fee.currency)}`, tone: 'foreign' });
-  if (tx.originalCurrency && tx.originalAmountMinor !== null) parts.push({ text: formatMinor(tx.originalAmountMinor, tx.originalCurrency), tone: 'foreign' });
+  // The foreign figure is the whole charge: beside a counted part alone it would disagree with the row.
+  if (tx.originalCurrency && tx.originalAmountMinor !== null && !fee?.leftOut) parts.push({ text: formatMinor(tx.originalAmountMinor, tx.originalCurrency), tone: 'foreign' });
   if (points) {
     const mark = points.points < 0 ? '−' : points.approximate ? '≈ ' : '+';
     parts.push({ text: `${mark}${formatPoints(Math.abs(points.points))} ${points.unit}`, tone: points.points < 0 ? 'lost' : 'earned' });
