@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { addTransaction } from './add-transaction';
-import { cardPage } from './card-section';
+import { cardPage, saveCardTerms } from './card-section';
 
 async function addCard(page: Page, name: string) {
   await openCard(page, { name });
@@ -16,7 +16,7 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
-  await page.getByRole('button', { name: 'Save terms' }).click();
+  await saveCardTerms(page);
   await page.getByRole('button', { name: 'Set up rewards' }).click();
 
   await page.getByRole('button', { name: 'Add rule' }).click();

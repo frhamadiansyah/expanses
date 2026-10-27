@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
-import { cardPage } from './card-section';
+import { cardPage, saveCardTerms } from './card-section';
 
 async function addCard(page: Page, name: string) {
   await openCard(page, { name });
@@ -32,7 +32,7 @@ test('menu navigation between a card page and the cards list keeps working', asy
   await expect(page.getByText('Card terms')).toBeVisible();
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
-  await page.getByRole('button', { name: 'Save terms' }).click();
+  await saveCardTerms(page);
   await page.getByRole('button', { name: 'Set up rewards' }).click();
   await expect(page.getByRole('button', { name: 'Add rule' })).toBeVisible();
   await menu(page, 'Wallet');

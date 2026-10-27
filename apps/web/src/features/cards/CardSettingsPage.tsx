@@ -149,7 +149,7 @@ function PointsGroup({ page, run }: { page: CardPage; run: Run }) {
  * and whether it is shared with the household.
  *
  * A card still being set up does its next step here first, in order: the terms, then the card product, then its
- * earning rules. The ✓ keeps what was typed and goes back to the card.
+ * earning rules. The ✓ saves the terms: a card being set up stays for its next step, a settled one goes back to the card.
  */
 export function CardSettingsPage() {
   const { cardId } = settingsRoute.useParams();
@@ -172,6 +172,8 @@ export function CardSettingsPage() {
   // The bank behind a credit card, which its face and the tax report's list of debts read: set or put right here.
   const banks = issuerChoices(useWorkspaceIssuers().data ?? []);
   const [institution, setInstitution] = useState<string | null>(null);
+  // The ✓ found a date missing: said above the page, the typed values kept.
+  const [datesMissing, setDatesMissing] = useState(false);
   const catalog = useCatalogChoice(page, run, { onFixedStatementDay: (day) => setStatementDay((typed) => typed || String(day)) });
   const fallback = `/cards/${cardId}` as const;
   if (!page) {
@@ -221,10 +223,19 @@ export function CardSettingsPage() {
     if (next === issuer) return setInstitution(null);
     void run(() => saveCardIdentity(database, ws, { accountId: card.id, issuer: next })).then((saved) => saved && setInstitution(null));
   };
-  // The name is kept as it is left; terms typed and not saved yet are saved by the ✓ on the way back.
+  /*
+   * The name is kept as it is left. The terms are saved by the ✓ — also by Enter in a terms field. A card being set up
+   * stays on the page once they are in, for its next step; a settled card goes back. Terms that cannot be saved
+   * without both dates are never dropped quietly: the page says so and keeps what was typed.
+   */
   const done = async () => {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-    if (!isDebit && termsTyped && statementDay.trim() && dueDay.trim() && !(await saveTerms())) return;
+    setDatesMissing(false);
+    if (!isDebit && (step !== null || termsTyped)) {
+      if (!statementDay.trim() || !dueDay.trim()) return setDatesMissing(true);
+      if (!(await saveTerms())) return;
+      if (step !== null) return;
+    }
     window.setTimeout(goBack, 0);
   };
 
@@ -242,6 +253,7 @@ export function CardSettingsPage() {
           void saveTerms();
         }}
       >
+        <input type="submit" hidden />
         <ColumnGroup
           header="Card terms"
           footer={step === 1 ? 'Start with the billing date. It decides which purchases count toward each points cycle and when bonus caps reset.' : undefined}
@@ -256,8 +268,6 @@ export function CardSettingsPage() {
               <TextRow label="Charged on" type="date" value={feeOn} onChange={(e) => setFeeOn(e.target.value)} />,
             ],
           ]}
-          // A card being set up needs the button to move on. A settled card saves its terms with the corner ✓.
-          submit={step === null ? undefined : <SubmitRow label="Save terms" />}
         />
       </form>
     </>
@@ -272,7 +282,7 @@ export function CardSettingsPage() {
       fallback={fallback}
       actions={[{ key: 'save', label: 'Save', glyph: <Check size={20} aria-hidden />, run: () => void done() }]}
     >
-      <ErrorBox error={error} />
+      <ErrorBox error={error ?? (datesMissing ? new Error('Enter the billing date and the due date') : null)} />
 
       {/* The step a card being set up is at comes first: the rest is there to change later. */}
       {step === 1 && (

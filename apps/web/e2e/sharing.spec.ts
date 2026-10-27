@@ -4,7 +4,7 @@ import { type Browser, expect, type Page, test, type TestInfo } from '@playwrigh
 import BetterSqlite3 from 'better-sqlite3';
 import { openAccount, openCard, walletCard } from './accounts';
 import { addForm, addTransaction, addTransfer, fillAmount, openAmount, saveButton } from './add-transaction';
-import { cardPage } from './card-section';
+import { cardPage, saveCardTerms } from './card-section';
 import { openDrawers } from './drawers';
 import { openWorkspacePage } from './workspace-page';
 
@@ -489,7 +489,7 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('31');
   await page.getByLabel('Due date').fill('15');
-  await page.getByRole('button', { name: 'Save terms' }).click();
+  await saveCardTerms(page);
   await expect(page.getByText('Step 2 of 3')).toBeVisible();
   await openAccount(dewi, { subtype: 'bank', name: 'Dewi Bank', balance: '5000000' });
   await page.goto('/transactions');

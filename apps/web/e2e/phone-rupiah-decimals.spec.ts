@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import { addForm, choosePayment, saveButton } from './add-transaction';
-import { cardPage, cardPointsPage } from './card-section';
+import { cardPage, cardPointsPage, saveCardTerms } from './card-section';
 import { openSplit, pickPartCategory } from './split-row';
 
 /*
@@ -38,7 +38,7 @@ async function cardEarningPer12501(page: Page) {
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
-  await page.getByRole('button', { name: 'Save terms' }).click();
+  await saveCardTerms(page);
   await page.getByRole('button', { name: 'Set up rewards' }).click();
   await page.getByRole('button', { name: 'Add rule' }).click();
   await page.getByLabel('Rule name').fill('Base');

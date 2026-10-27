@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard, walletCard } from './accounts';
-import { cardPage } from './card-section';
+import { cardPage, saveCardTerms } from './card-section';
 
 test('the three card screens draw at 390px without scrolling sideways', async ({ page }) => {
   const crashes: string[] = [];
@@ -46,7 +46,7 @@ async function addEarningCard(page: Page, name: string) {
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
-  await page.getByRole('button', { name: 'Save terms' }).click();
+  await saveCardTerms(page);
   await page.getByRole('button', { name: 'Set up rewards' }).click();
   await expect(page.getByText('Step 3 of 3')).toBeVisible();
   // The suggested base rule, so the card is set up and opens on Wallet's summary from now on.

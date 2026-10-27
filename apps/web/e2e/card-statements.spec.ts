@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { addPlastic, openAccount, openCard } from './accounts';
 import { addForm, addTransaction, choosePayment, fillAmount, saveButton } from './add-transaction';
-import { cardPage } from './card-section';
+import { cardPage, saveCardTerms } from './card-section';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const local = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -20,7 +20,7 @@ async function setUp(page: Page) {
   // The 31st is clamped to each month's last day, so today is always inside the current statement.
   await page.getByLabel('Billing date').fill('31');
   await page.getByLabel('Due date').fill('15');
-  await page.getByRole('button', { name: 'Save terms' }).click();
+  await saveCardTerms(page);
   // Saving terms moves setup on to rewards; the statement is a page of its own, from the card.
   await expect(page.getByText('Step 2 of 3')).toBeVisible();
   await page.getByRole('button', { name: 'BCA Visa' }).click();

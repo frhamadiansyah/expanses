@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { cardPage } from './card-section';
+import { cardPage, saveCardTerms } from './card-section';
 import { nameCardByHand, openCard, pickCatalogueCard } from './accounts';
 import { openDrawers } from './drawers';
 
@@ -90,7 +90,7 @@ test('a catalogue card opens without its dates, and the fee is saved once they a
   await expect(page.getByLabel('Annual fee')).toHaveValue('125000');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
-  await page.getByRole('button', { name: 'Save terms' }).click();
+  await saveCardTerms(page);
   // Saved once the step's own words stand down: the dates were all this card's setup still asked for.
   await expect(page.getByText('Start with the billing date.', { exact: false })).toHaveCount(0);
   await page.reload();

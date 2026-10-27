@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openCard, walletCard } from './accounts';
-import { cardPage } from './card-section';
+import { cardPage, saveCardTerms } from './card-section';
 
 test('card setup guides billing date, then rewards, then a suggested base rule', async ({ page }) => {
   // The card's own page is where a card taken from the catalogue is finished; this one is typed by hand.
@@ -22,7 +22,7 @@ test('card setup guides billing date, then rewards, then a suggested base rule',
 
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
-  await page.getByRole('button', { name: 'Save terms' }).click();
+  await saveCardTerms(page);
 
   // Step 2: rewards program.
   await expect(page.getByText('Step 2 of 3')).toBeVisible();

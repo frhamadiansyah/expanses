@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard, openSettings, walletCard } from './accounts';
 import { addForm, addTransaction, choosePayment, saveButton } from './add-transaction';
-import { cardPage } from './card-section';
+import { cardPage, saveCardTerms } from './card-section';
 import { pasteInto } from './paste';
 
 const row = (page: Page, what: string) => page.getByTestId('transaction-row').filter({ hasText: what });
@@ -67,7 +67,7 @@ test('a foreign purchase that earns cashback shows the foreign amount alone unde
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
-  await page.getByRole('button', { name: 'Save terms' }).click();
+  await saveCardTerms(page);
   await page.getByLabel('Earns').selectOption({ label: 'Cashback' });
   await page.getByRole('button', { name: 'Set up rewards' }).click();
   await page.getByRole('button', { name: 'Add rule' }).click();

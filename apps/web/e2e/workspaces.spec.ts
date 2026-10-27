@@ -2,7 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard, walletCard } from './accounts';
 import { addItem, moneyIn, planFor, showPlanCard } from './event-plan';
 import { addTransaction, addTransfer, saveButton } from './add-transaction';
-import { cardPage } from './card-section';
+import { cardPage, saveCardTerms } from './card-section';
 import { openWorkspacePage, workspaceLine } from './workspace-page';
 
 /**
@@ -297,7 +297,7 @@ async function addCard(page: Page) {
   // The 31st is clamped to each month's last day, so today is always inside the current statement.
   await page.getByLabel('Billing date').fill('31');
   await page.getByLabel('Due date').fill('15');
-  await page.getByRole('button', { name: 'Save terms' }).click();
+  await saveCardTerms(page);
   await expect(page.getByText('Step 2 of 3')).toBeVisible();
 }
 
