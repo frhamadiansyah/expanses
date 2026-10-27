@@ -17,7 +17,7 @@ import { PaySheet } from './PaySheet';
 import { useBillMoney, useMonthlyBills, useSinkingFunds, useYearlyBills } from './queries';
 import { type DueFee, useUpcomingFees } from '../cards/fee-due';
 import { FeeAlert } from '../cards/FeeAlert';
-import { feeDateText } from '../cards/fee-line';
+import { FeeRow } from './FeeRow';
 import { Unconverted } from '../workspaces/Unconverted';
 import { UndoToast } from '../../ui/UndoToast';
 
@@ -226,17 +226,8 @@ export function RecurringPage() {
       {(() => {
         const sections = sectionsOf(rows);
         const soon = sections.find((section) => section.key === 'dueSoon');
-        const feeRows = fees.map(({ card, on }, i) => (
-          <InsetRow
-            key={card.cardId}
-            testId="annual-fee-row"
-            title={`Annual fee · ${card.name}`}
-            subtitle={feeDateText(on)}
-            value={card.annualFeeMinor !== null ? formatMinor(card.annualFeeMinor, card.currency) : undefined}
-            valueTone="ink"
-            onClick={() => setAskingFee(card)}
-            position={{ first: false, last: false, separator: i > 0 || (soon?.rows.length ?? 0) > 0 }}
-          />
+        const feeRows = fees.map((fee, i) => (
+          <FeeRow key={fee.card.cardId} fee={fee} separator={i > 0 || (soon?.rows.length ?? 0) > 0} onOpen={() => setAskingFee(fee.card)} />
         ));
         const shown = feeRows.length > 0 && !soon ? [...sections, { key: 'dueSoon' as const, title: 'Due soon', rows: [] as MonthlyBill[] }] : sections;
         return shown.map((section) => (
