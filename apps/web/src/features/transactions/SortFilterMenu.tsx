@@ -1,5 +1,5 @@
 import { searchTokens } from '@expanses/core';
-import { ArrowUpDown, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
+import { ArrowUpDown, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { cx } from '../../ui';
 import { type ChipOption, chipDot } from './ChipMenu';
@@ -14,7 +14,10 @@ export function sortFilterCount(p: { sortValue: string; paid: string }): number 
 /** What a phone's tab bar and home indicator take off the foot of the screen. */
 const BAR_ROOM = 96;
 
-const ROW = 'flex min-h-9 w-full items-center gap-2 rounded-lg px-2 text-left text-sm hover:bg-slate-100';
+/** The phone's list look: 15px ink rows, 44 tall, a hairline between each. No hover fill, so a touch leaves nothing lit. */
+const ROW = 'flex min-h-11 w-full items-center gap-2 border-t-[0.5px] border-[var(--ph-hair)] px-3.5 py-3 text-left text-[15px] text-[var(--ph-ink)] first:border-t-0 disabled:text-[var(--ph-ink-3)]';
+/** A tinted strip over a run of rows, edge to edge; the row under it needs no line of its own. */
+const HEAD = 'bg-[var(--ph-fill)] px-3.5 py-2 text-[11px] uppercase tracking-[0.05em] text-[var(--ph-ink-3)]';
 
 /**
  * One icon for the list's sort and its Paid with filter, in the grey capsule the other controls on the row wear. It
@@ -102,11 +105,14 @@ export function SortFilterMenu({
           role="menu"
           aria-label="Sort and filter"
           data-testid="sort-filter-menu"
-          className={cx('absolute right-0 z-20 w-[260px] max-w-[calc(100vw-2rem)] rounded-xl bg-white p-1 shadow-lg ring-1 ring-slate-200', above ? 'bottom-full mb-1' : 'mt-1')}
+          className={cx(
+            'absolute right-0 z-20 w-[230px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[14px] bg-[var(--ph-surface)] shadow-[0_8px_30px_rgba(0,0,0,0.27)]',
+            above ? 'bottom-full mb-1' : 'mt-1',
+          )}
         >
           {view === 'menu' ? (
             <>
-              <p className="px-2 pt-1.5 pb-0.5 text-xs font-semibold text-slate-500">Sort</p>
+              <p className={HEAD}>Sort</p>
               {sorts.map((sort) => (
                 <button
                   key={sort.value}
@@ -117,13 +123,13 @@ export function SortFilterMenu({
                     onSort(sort.value);
                     setOpen(false);
                   }}
-                  className={ROW}
+                  className={cx(ROW, 'justify-between', sort.value === sortValue && 'font-semibold')}
                 >
-                  <span className="w-3 text-xs">{sort.value === sortValue ? '✓' : ''}</span>
                   <span className="min-w-0 flex-1 truncate">{sort.label}</span>
+                  {sort.value === sortValue && <Check size={16} aria-hidden className="shrink-0" />}
                 </button>
               ))}
-              <p className="mt-1 border-t border-slate-100 px-2 pt-2 pb-0.5 text-xs font-semibold text-slate-500">Filter</p>
+              <p className={HEAD}>Filter</p>
               <button
                 type="button"
                 role="menuitem"
@@ -136,12 +142,13 @@ export function SortFilterMenu({
                     setQuery('');
                   }
                 }}
-                className={ROW}
+                className={cx(ROW, 'justify-between')}
               >
-                <span className="w-3" />
-                <span className="flex-1">Paid with</span>
-                <span className="max-w-28 truncate text-xs text-slate-500">{paidName ?? 'All'}</span>
-                <ChevronRight size={14} aria-hidden className="text-slate-400" />
+                <span>Paid with</span>
+                <span className="flex min-w-0 items-center gap-1 text-[var(--ph-ink-3)]">
+                  <span className="max-w-28 truncate">{paidName ?? 'All'}</span>
+                  <ChevronRight size={14} aria-hidden />
+                </span>
               </button>
               <button
                 type="button"
@@ -151,15 +158,14 @@ export function SortFilterMenu({
                   onReset();
                   setOpen(false);
                 }}
-                className={cx(ROW, 'disabled:text-slate-400 disabled:hover:bg-transparent')}
+                className={ROW}
               >
-                <RotateCcw size={13} aria-hidden className="w-3" />
-                <span className="flex-1">Reset</span>
+                Reset
               </button>
             </>
           ) : (
             <>
-              <button type="button" onClick={() => setView('menu')} className={cx(ROW, 'font-medium')}>
+              <button type="button" onClick={() => setView('menu')} className={cx(ROW, 'font-semibold')}>
                 <ChevronLeft size={14} aria-hidden />
                 Paid with
               </button>
@@ -170,10 +176,10 @@ export function SortFilterMenu({
                 placeholder="Type to find"
                 aria-label="Find in paid with"
                 aria-controls={listId}
-                className="mb-1 h-8 w-full rounded-lg border border-slate-300 px-2 text-sm focus:border-slate-900 focus:outline-none"
+                className="h-11 w-full border-t-[0.5px] border-[var(--ph-hair)] bg-transparent px-3.5 text-[15px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none"
               />
               <ul id={listId} role="listbox" aria-label="Paid with" className="max-h-64 overflow-y-auto">
-                {matching.length === 0 && <li className="px-2 py-2 text-xs text-slate-500">Nothing matches.</li>}
+                {matching.length === 0 && <li className="border-t-[0.5px] border-[var(--ph-hair)] px-3.5 py-3 text-[15px] text-[var(--ph-ink-3)]">Nothing matches.</li>}
                 {matching.map((option) => (
                   <li
                     key={option.value}
@@ -183,11 +189,11 @@ export function SortFilterMenu({
                       onPaid(option.value);
                       setOpen(false);
                     }}
-                    className={cx('flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-100', option.indent && 'pl-6')}
+                    className={cx('flex min-h-11 cursor-pointer items-center gap-2 border-t-[0.5px] border-[var(--ph-hair)] px-3.5 py-3 text-[15px] text-[var(--ph-ink)]', option.indent && 'pl-7', option.value === paid && 'font-semibold')}
                   >
-                    <span className="w-3 text-xs">{option.value === paid ? '✓' : ''}</span>
-                    <span className="min-w-0 truncate">{option.label}</span>
-                    {option.meta && <span className="tabular ml-auto whitespace-nowrap text-xs text-slate-500">{option.meta}</span>}
+                    <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                    {option.meta && <span className="tabular whitespace-nowrap text-xs text-[var(--ph-ink-3)]">{option.meta}</span>}
+                    {option.value === paid && <Check size={16} aria-hidden className="shrink-0" />}
                   </li>
                 ))}
               </ul>

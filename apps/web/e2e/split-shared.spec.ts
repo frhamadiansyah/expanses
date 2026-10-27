@@ -32,8 +32,8 @@ async function eventually(page: Page, check: () => Promise<void>) {
 }
 
 async function newWorkspace(page: Page, name: string, startsWith: string) {
-  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
-  await page.getByRole('button', { name: 'New workspace' }).click();
+  await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill(name);
   await sheet.getByLabel('Starts with').selectOption({ label: startsWith });

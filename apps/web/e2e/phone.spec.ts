@@ -94,26 +94,16 @@ test('the phone header adds, searches and filters from three round buttons', asy
   const fieldAt = (await page.getByLabel('Search transactions').locator('..').boundingBox())!;
   expect(Math.round(openHeader.height)).toBe(Math.round(restHeader.height));
   expect(Math.abs(fieldAt.y - titleAt.y)).toBeLessThanOrEqual(1);
-  await expect(page.getByRole('button', { name: 'Filters', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Workspace, / })).toHaveCount(0);
   await page.getByLabel('Search transactions').fill('nothing like it');
   await page.getByRole('button', { name: 'Close search' }).click();
   await expect(page.getByLabel('Search transactions')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Cashflow' })).toBeVisible();
 
-  // ⋯ is a short menu on a phone, and it is no longer a filter menu: the chart chooses the period, what paid is a
-  // filter beside the list's own Sort, what is not recorded has the review box above the rows, and revealing
-  // deleted rows is a wide screen's business. What is left is the one thing only this menu can do.
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  const menu = page.getByTestId('filters-menu');
-  await expect(menu.getByTestId('workspace-row')).toBeVisible();
-  await expect(menu.getByRole('menuitemcheckbox', { name: /Show deleted/ })).toHaveCount(0);
-  await expect(menu.getByRole('menuitem', { name: /Paid with/ })).toHaveCount(0);
-  await expect(menu.getByRole('menuitem', { name: /Lend & borrow/ })).toHaveCount(0);
-  await expect(menu.getByRole('menuitem', { name: 'Select' })).toHaveCount(0);
-  await expect(menu.getByRole('menuitem', { name: /Not recorded/ })).toHaveCount(0);
+  // The corner is the workspace, one tap from its switcher; the filters live in the Sort and filter menu.
+  await expect(page.getByRole('button', { name: /^Workspace, / })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Filters', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^Month/ })).toHaveCount(0);
-  // A tap outside the menu, low on the screen: the menu (with Select in it) now reaches past the middle.
-  await page.getByRole('button', { name: 'Close filters' }).click({ position: { x: 12, y: 600 } });
 
   // The header's + opens the same form the tab bar's does.
   await page.getByRole('button', { name: 'Add a transaction' }).first().click();

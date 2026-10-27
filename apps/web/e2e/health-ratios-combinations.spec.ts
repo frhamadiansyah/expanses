@@ -186,8 +186,8 @@ test('row 8 — five units, and the total is the sum of the converted lines', as
 });
 test('row 9 — a workspace that reads in dollars types and converts in cents', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
-  await page.getByRole('button', { name: 'New workspace' }).click();
+  await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Studio');
   await sheet.getByLabel('Starts with').selectOption({ label: 'Copy from Personal' });

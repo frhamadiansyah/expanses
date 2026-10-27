@@ -1,14 +1,11 @@
 import { formatMinor } from '@expanses/core';
-import { Link } from '@tanstack/react-router';
-import { Check, LogIn, Plus, Settings } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { cx, ErrorBox } from '../../ui';
-import { JoinSheet } from '../sharing/JoinSheet';
 import { useSharedBooks } from '../sharing/queries';
 import { endedLine, sharedWith } from '../sharing/sharing-copy';
-import { NewWorkspaceSheet } from './NewWorkspaceSheet';
 import { WorkspaceDot } from './WorkspaceBadge';
 import { useBooks, useSpentThisMonth } from './queries';
 
@@ -16,7 +13,7 @@ import { useBooks, useSpentThisMonth } from './queries';
  * The list of workspaces, and the way between them.
  *
  * Each row carries what that workspace spent this month, because the name alone rarely says which one you meant.
- * Choosing one changes what the whole app reads, so the sheet closes straight after: staying open over figures
+ * Switching only: making and joining a workspace live on the Account page. Choosing one changes what the whole app reads, so the sheet closes straight after: staying open over figures
  * that have just been thrown away would only invite a second tap on the row you already chose.
  */
 export function WorkspaceSheet({ onClose }: { onClose: () => void }) {
@@ -25,8 +22,6 @@ export function WorkspaceSheet({ onClose }: { onClose: () => void }) {
   const spent = useSpentThisMonth();
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [joining, setJoining] = useState(false);
   const shared = useSharedBooks();
   /** A shared book's subtitle (spec §11): who it is shared with, or that it no longer is. */
   const sharing = (bookId: string) => {
@@ -52,11 +47,6 @@ export function WorkspaceSheet({ onClose }: { onClose: () => void }) {
       setBusy(null);
     }
   }
-
-  // One sheet at a time: making a workspace ends in another one being open, so the list behind it would be
-  // answering about a workspace that is no longer the one on the screen.
-  if (creating) return <NewWorkspaceSheet onClose={onClose} />;
-  if (joining) return <JoinSheet onClose={onClose} />;
 
   return (
     <Sheet title="Workspaces" onClose={onClose}>
@@ -98,34 +88,6 @@ export function WorkspaceSheet({ onClose }: { onClose: () => void }) {
             );
           })}
         </ul>
-      </div>
-
-      <div className="mt-3 border-t border-slate-100 pt-3">
-        <button
-          type="button"
-          onClick={() => setCreating(true)}
-          className="flex min-h-11 w-full items-center gap-3 rounded-lg px-1 text-left text-sm font-medium hover:bg-slate-50"
-        >
-          <Plus size={18} aria-hidden className="shrink-0 text-slate-500" />
-          New workspace
-        </button>
-        {/* Household sharing (spec §11): someone else's workspace, by the code or link they sent. */}
-        <button
-          type="button"
-          onClick={() => setJoining(true)}
-          className="flex min-h-11 w-full items-center gap-3 rounded-lg px-1 text-left text-sm font-medium hover:bg-slate-50"
-        >
-          <LogIn size={18} aria-hidden className="shrink-0 text-slate-500" />
-          Join a workspace
-        </button>
-        <Link
-          to="/account"
-          onClick={onClose}
-          className="flex min-h-11 w-full items-center gap-3 rounded-lg px-1 text-sm text-slate-600 hover:bg-slate-50"
-        >
-          <Settings size={18} aria-hidden className="shrink-0 text-slate-500" />
-          Manage workspaces
-        </Link>
       </div>
     </Sheet>
   );

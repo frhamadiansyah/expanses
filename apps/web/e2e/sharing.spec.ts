@@ -58,12 +58,13 @@ async function openWorkspaceSettings(page: Page, name: string) {
 
 async function openSwitcher(page: Page, phone: boolean) {
   if (phone) {
+    // The Cashflow corner's menu is names only; the shared-with line is the sheet's, which the wide screen's sidebar opens.
     await page.goto('/transactions');
-    await page.getByRole('button', { name: 'Filters', exact: true }).click();
-    await page.getByTestId('filters-menu').getByTestId('workspace-row').click();
-  } else {
-    await page.getByRole('button', { name: 'Workspace', exact: true }).click();
+    await page.getByRole('button', { name: /^Workspace, / }).click();
+    await expect(page.getByTestId('workspace-menu').getByTestId('workspace-choice').filter({ hasText: 'Home' })).toBeVisible();
+    return;
   }
+  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Workspaces' })).toBeVisible();
 }
 
@@ -153,19 +154,14 @@ test('two people share a workspace: join, record on both, correct each other, re
   await expect(page.getByTestId('sharing-status')).toContainText('Up to date');
   await shot(page, info, '1-invite');
 
-  // Dewi joins on her own device: by the switcher's + on a wide screen, by the link on a phone.
+  // Dewi joins on her own device, by the link.
   await openAccount(dewi, { subtype: 'bank', name: 'Dewi Bank', balance: '5000000' });
   if (phone) {
     // The link's code rides in the fragment, which no server sees, and leaves the address as soon as it is read.
     await dewi.goto(`/join#${code}`);
     await expect(dewi).toHaveURL(/\/join$/);
   } else {
-    await dewi.goto('/transactions');
-    await openSwitcher(dewi, false);
-    await dewi.getByRole('dialog', { name: 'Workspaces' }).getByRole('button', { name: 'Join a workspace' }).click();
-    const sheet = dewi.getByRole('dialog', { name: 'Join a workspace' });
-    await sheet.getByRole('textbox', { name: 'Code' }).fill(code.toLowerCase().replace(/-/g, ' '));
-    await sheet.getByRole('button', { name: 'Continue' }).click();
+    await dewi.goto(`/join#${code}`);
   }
   const join = dewi.getByTestId('join-workspace');
   await expect(join.getByText('Home', { exact: true })).toBeVisible({ timeout: 30_000 });
@@ -182,7 +178,7 @@ test('two people share a workspace: join, record on both, correct each other, re
 
   // The switcher says who the workspace is shared with.
   await openSwitcher(dewi, phone);
-  await expect(dewi.getByRole('dialog', { name: 'Workspaces' }).getByTestId('workspace-choice').filter({ hasText: 'Home' })).toContainText('Shared with Fandri');
+  if (!phone) await expect(dewi.getByRole('dialog', { name: 'Workspaces' }).getByTestId('workspace-choice').filter({ hasText: 'Home' })).toContainText('Shared with Fandri');
   await dewi.keyboard.press('Escape');
 
   // The receipt of a purchase Fandri paid for says both what with and who, and nothing on it leads to the
@@ -256,10 +252,8 @@ test('two people share a workspace: join, record on both, correct each other, re
 
 /** §6.5 step 0 (ruled O3): a workspace kept in another currency than yours is refused before anything is made. */
 test('a workspace in another currency than yours cannot be shared, and says why', async ({ page }, info) => {
-  const phone = phoneProject(info);
-  await page.goto('/transactions');
-  await openSwitcher(page, phone);
-  await page.getByRole('dialog', { name: 'Workspaces' }).getByRole('button', { name: 'New workspace' }).click();
+  await page.goto('/account');
+  await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Singapore');
   await sheet.getByLabel('Reads in').selectOption('SGD');
@@ -360,7 +354,7 @@ test('an owner stops sharing: the other side says who stopped it, and can add no
   await shot(dewi, info, '10-stopped-status');
   await expectReadOnly(dewi, phone, 'No longer shared by Fandri');
   await openSwitcher(dewi, phone);
-  await expect(dewi.getByRole('dialog', { name: 'Workspaces' }).getByTestId('workspace-choice').filter({ hasText: 'Home' })).toContainText('No longer shared by Fandri');
+  if (!phone) await expect(dewi.getByRole('dialog', { name: 'Workspaces' }).getByTestId('workspace-choice').filter({ hasText: 'Home' })).toContainText('No longer shared by Fandri');
 });
 
 /** C1 (final review): a share the owner ended and made again is rejoined by the member's read-only copy, and both converge. */
@@ -655,12 +649,7 @@ test('a transfer in a shared workspace shows on the partner’s list as "Transfe
   if (phone) {
     await dewi.goto(`/join#${code}`);
   } else {
-    await dewi.goto('/transactions');
-    await openSwitcher(dewi, false);
-    await dewi.getByRole('dialog', { name: 'Workspaces' }).getByRole('button', { name: 'Join a workspace' }).click();
-    const sheet = dewi.getByRole('dialog', { name: 'Join a workspace' });
-    await sheet.getByRole('textbox', { name: 'Code' }).fill(code.toLowerCase().replace(/-/g, ' '));
-    await sheet.getByRole('button', { name: 'Continue' }).click();
+    await dewi.goto(`/join#${code}`);
   }
   const join = dewi.getByTestId('join-workspace');
   await expect(join.getByText('Home', { exact: true })).toBeVisible({ timeout: 30_000 });

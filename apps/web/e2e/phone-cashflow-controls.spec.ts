@@ -57,14 +57,10 @@ test('Select toggles select mode, and its actions stay in the select bar as befo
   await expect(bar).toHaveCount(0);
 });
 
-test('Lend & borrow is on the Account page, and the Cashflow ⋯ menu keeps only the workspace', async ({ page }) => {
+test('Lend & borrow is on the Account page, and the Cashflow corner is the workspace', async ({ page }) => {
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  const menu = page.getByTestId('filters-menu');
-  await expect(menu.getByTestId('workspace-row')).toBeVisible();
-  await expect(menu.getByRole('menuitem')).toHaveCount(1);
-  await expect(menu).not.toContainText('Lend');
-  await page.getByRole('button', { name: 'Close filters' }).click({ position: { x: 12, y: 600 } });
+  await expect(page.getByRole('button', { name: 'Filters', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Workspace, Personal/ })).toBeVisible();
 
   await page.goto('/account');
   await page.getByRole('link', { name: /^Lend & borrow/ }).click();

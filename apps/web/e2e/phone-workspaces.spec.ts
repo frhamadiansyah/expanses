@@ -4,20 +4,37 @@ import { addForm, addTransaction, saveButton, chooseTo } from './add-transaction
 import { openWorkspacePage, workspaceLine } from './workspace-page';
 
 /**
- * On a phone the ⋯ menu is the only room left for anything that is not the list itself, so the workspace sits
- * at the top of it: above the three filters, because it changes the whole app where they narrow one month.
+ * On a phone the Cashflow corner is the open workspace itself: its dot, named for it, one tap from the switcher.
+ * The switcher only switches; making and joining a workspace are on the Account page.
  */
-test('the workspace is the first thing under ⋯, and opens the switcher', async ({ page }) => {
+test('the Cashflow corner is the workspace, and opens the switcher', async ({ page }) => {
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  const menu = page.getByTestId('filters-menu');
-  await expect(menu.getByTestId('workspace-row')).toBeVisible();
-  // It comes before the three filters, because it changes the app rather than narrowing the list.
-  await expect(menu.getByRole('menuitem').first()).toHaveAttribute('data-testid', 'workspace-row');
-  await expect(menu.getByTestId('workspace-row')).toContainText('Personal');
-  await menu.getByTestId('workspace-row').click();
-  await expect(page.getByRole('dialog', { name: 'Workspaces' })).toBeVisible();
-  await expect(page.getByTestId('workspace-choice')).toHaveCount(1);
+  const corner = page.getByRole('button', { name: /^Workspace, / });
+  await expect(corner).toHaveAccessibleName('Workspace, Personal');
+  expect((await corner.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await corner.click();
+  const switcher = page.getByTestId('workspace-menu');
+  await expect(switcher).toBeVisible();
+  await expect(switcher.getByTestId('workspace-choice')).toHaveCount(1);
+  await expect(switcher.getByRole('menuitemradio', { name: 'Personal' })).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Escape');
+  await expect(switcher).toHaveCount(0);
+});
+
+test('choosing another workspace in the switcher switches, and the corner shows its name', async ({ page }) => {
+  await page.goto('/account');
+  await page.getByTestId('new-workspace').click();
+  const sheet = page.getByRole('dialog', { name: 'New workspace' });
+  await sheet.getByLabel('Name', { exact: true }).fill('Business');
+  await sheet.getByRole('button', { name: 'Create workspace' }).click();
+  await expect(sheet).toHaveCount(0);
+  await page.goto('/transactions');
+
+  await expect(page.getByRole('button', { name: /^Workspace, Business/ })).toBeVisible();
+  await page.getByRole('button', { name: /^Workspace, / }).click();
+  await page.getByTestId('workspace-menu').getByTestId('workspace-choice').filter({ hasText: 'Personal' }).click();
+  await expect(page.getByTestId('workspace-menu')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Workspace, Personal/ })).toBeVisible();
 });
 
 /**
@@ -25,11 +42,9 @@ test('the workspace is the first thing under ⋯, and opens the switcher', async
  * the picker fills as they are added. Only the handful the app posts into by itself — loan interest, a realised
  * gain — are made with it, so that a repayment recorded here is recorded here.
  */
-test('a workspace is made from ⋯ and starts with none of the other’s categories', async ({ page }) => {
-  await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await page.getByTestId('filters-menu').getByTestId('workspace-row').click();
-  await page.getByRole('dialog', { name: 'Workspaces' }).getByRole('button', { name: 'New workspace' }).click();
+test('a workspace is made from the Account page and starts with none of the other’s categories', async ({ page }) => {
+  await page.goto('/account');
+  await page.getByTestId('new-workspace').click();
 
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Business');
@@ -38,10 +53,9 @@ test('a workspace is made from ⋯ and starts with none of the other’s categor
   await expect(sheet.getByLabel('Starts with')).toHaveValue('');
   await sheet.getByRole('button', { name: 'Create workspace' }).click();
   await expect(sheet).toHaveCount(0);
+  await page.goto('/transactions');
 
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await expect(page.getByTestId('filters-menu').getByTestId('workspace-row')).toContainText('Business');
-  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: /^Workspace, Business/ })).toBeVisible();
 
   await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Add a transaction' }).click();
   const form = addForm(page);
@@ -110,16 +124,14 @@ test('a transfer is filed in the workspace it was recorded in, listed there only
   await expect(page.getByText('Top up').first()).toBeVisible();
   await expect(page.getByTestId('spending-report')).toContainText('Nothing recorded for');
 
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await page.getByTestId('filters-menu').getByTestId('workspace-row').click();
-  await page.getByRole('dialog', { name: 'Workspaces' }).getByRole('button', { name: 'New workspace' }).click();
+  await page.goto('/account');
+  await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Business');
   await sheet.getByRole('button', { name: 'Create workspace' }).click();
   await expect(sheet).toHaveCount(0);
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await expect(page.getByTestId('filters-menu').getByTestId('workspace-row')).toContainText('Business');
-  await page.keyboard.press('Escape');
+  await page.goto('/transactions');
+  await expect(page.getByRole('button', { name: /^Workspace, Business/ })).toBeVisible();
 
   // Business: not its transfer, so not on its list, and nothing counted either way.
   await expect(page.getByText('Top up')).toHaveCount(0);
@@ -129,25 +141,23 @@ test('a transfer is filed in the workspace it was recorded in, listed there only
 /** Opens the workspace switcher from ⋯ and picks one. */
 async function switchTo(page: Page, name: string) {
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await page.getByTestId('filters-menu').getByTestId('workspace-row').click();
-  await page.getByRole('dialog', { name: 'Workspaces' }).getByTestId('workspace-choice').filter({ hasText: name }).click();
-  await expect(page.getByRole('dialog', { name: 'Workspaces' })).toHaveCount(0);
+  await page.getByRole('button', { name: /^Workspace, / }).click();
+  await page.getByTestId('workspace-menu').getByTestId('workspace-choice').filter({ hasText: name }).click();
+  await expect(page.getByTestId('workspace-menu')).toHaveCount(0);
 }
 
 const listRow = (page: Page, what: string) => page.getByTestId('transaction-row').filter({ hasText: what });
 
 test('a saved purchase moves to another workspace from its Edit screen, and several from Select', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
-  await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await page.getByTestId('filters-menu').getByTestId('workspace-row').click();
-  await page.getByRole('dialog', { name: 'Workspaces' }).getByRole('button', { name: 'New workspace' }).click();
+  await page.goto('/account');
+  await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Business');
   await sheet.getByLabel('Starts with').selectOption({ label: 'Copy from Personal' });
   await sheet.getByRole('button', { name: 'Create workspace' }).click();
   await expect(sheet).toHaveCount(0);
+  await page.goto('/transactions');
   await switchTo(page, 'Personal');
 
   await addTransaction(page, { description: 'Supplier dinner', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '640000' });

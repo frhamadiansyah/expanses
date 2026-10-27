@@ -12,25 +12,23 @@ import { openSplit, pickPartCategory } from './split-row';
 /** Makes Business from ⋯, a copy of Personal's categories, and comes back to Personal. */
 async function withBusiness(page: Page) {
   await openCard(page, { name: 'BCA Visa', statementDay: '31', dueDay: '15' });
-  await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await page.getByTestId('filters-menu').getByTestId('workspace-row').click();
-  await page.getByRole('dialog', { name: 'Workspaces' }).getByRole('button', { name: 'New workspace' }).click();
+  await page.goto('/account');
+  await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Business');
   await sheet.getByLabel('Starts with').selectOption({ label: 'Copy from Personal' });
   await sheet.getByRole('button', { name: 'Create workspace' }).click();
   await expect(sheet).toHaveCount(0);
+  await page.goto('/transactions');
   await switchTo(page, 'Personal');
 }
 
 /** Opens the workspace switcher from ⋯ and picks one, landing on its Cashflow. */
 async function switchTo(page: Page, name: string) {
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await page.getByTestId('filters-menu').getByTestId('workspace-row').click();
-  await page.getByRole('dialog', { name: 'Workspaces' }).getByTestId('workspace-choice').filter({ hasText: name }).click();
-  await expect(page.getByRole('dialog', { name: 'Workspaces' })).toHaveCount(0);
+  await page.getByRole('button', { name: /^Workspace, / }).click();
+  await page.getByTestId('workspace-menu').getByTestId('workspace-choice').filter({ hasText: name }).click();
+  await expect(page.getByTestId('workspace-menu')).toHaveCount(0);
   await page.goto('/transactions');
 }
 
