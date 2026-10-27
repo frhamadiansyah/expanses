@@ -276,6 +276,16 @@ export async function buyItNow(page: Page, options: { paid?: string; paidWith?: 
   return form;
 }
 
+/** The plan list under the gauge starts folded: tap the gauge frame to show it. Idempotent, and a no-op off the gauge page. */
+export async function showPlan(page: Page) {
+  // Retried, because the swipe settles after the click that made it: until it has, the frame is still the ring's.
+  await expect(async () => {
+    const see = page.getByTestId('see-plan');
+    if ((await see.count()) > 0) await see.click();
+    await expect(page.getByTestId('hide-plan')).toBeVisible({ timeout: 1000 });
+  }).toPass();
+}
+
 /** The plan card sits under Against the plan, the chart that reads it: swipe there first when the event has a plan. */
 export async function showPlanCard(page: Page) {
   await expect(page.getByTestId('event-sheet')).toBeVisible();
@@ -286,6 +296,8 @@ export async function showPlanCard(page: Page) {
       const dot = page.getByRole('button', { name: 'Against the plan', exact: true });
       if ((await dot.count()) > 0) await dot.click();
     }
+    const see = page.getByTestId('see-plan');
+    if ((await see.count()) > 0) await see.click();
     await expect(card).toBeVisible({ timeout: 1000 });
   }).toPass();
 }
