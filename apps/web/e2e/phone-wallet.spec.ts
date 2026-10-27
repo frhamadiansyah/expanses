@@ -37,3 +37,13 @@ test('the ⋯ menu opens where it can be seen with the page scrolled down, not o
   await menu.getByRole('menuitem', { name: 'Which card?' }).click();
   await expect(page).toHaveURL(/\/recommend$/);
 });
+
+test('Wallet’s + opens the credit card form straight away, with no debt to choose first', async ({ page }) => {
+  await page.goto('/wallet');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Credit card' }).click();
+  await expect(page).toHaveURL(/\/cards\/new$/);
+  await expect(page.getByRole('heading', { name: 'New credit card' })).toBeVisible();
+  await expect(page.getByLabel('Name', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add card' })).toBeVisible();
+});

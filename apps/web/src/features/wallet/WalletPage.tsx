@@ -185,7 +185,7 @@ export function WalletPage() {
       glyph: <Plus size={22} aria-hidden />,
       menu: [
         { key: 'money', label: 'Money account', to: '/accounts/new' },
-        { key: 'card', label: 'Credit card', to: '/debts/new' },
+        { key: 'card', label: 'Credit card', to: '/cards/new' },
       ],
     },
     // The cards put in an order by hand: one list, money and credit cards mixed, read by all three views.

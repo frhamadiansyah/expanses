@@ -49,7 +49,7 @@ import { IncomePage } from '../features/investments/IncomePage';
 import { AllTradesPage } from '../features/investments/AllTradesPage';
 import { AddAssetPage } from '../features/ownables/AddAssetPage';
 import { addAssetSearch } from '../features/ownables/add-asset-search';
-import { AddDebtPage } from '../features/ownables/AddDebtPage';
+import { AddCardPage, AddDebtPage } from '../features/ownables/AddDebtPage';
 import { AssetDetailPage } from '../features/networth/AssetDetailPage';
 import { AssetSettingsRoute } from '../features/networth/AssetSettingsPage';
 import { EditAssetRoute } from '../features/networth/EditAssetPage';
@@ -403,6 +403,7 @@ const routeTree = rootRoute.addChildren([
   // The debt picker stands on its own path: a debt is a card, a loan or money owed to a person, and each of them
   // lands somewhere different.
   createRoute({ getParentRoute: () => rootRoute, path: '/debts/new', component: AddDebtPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/new', component: AddCardPage }),
   // Debts — everything owed — keeps the address the Loans page had, so a loan's own page stays where it was.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans', component: DebtsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans/$accountId', component: LoanDetailPage }),

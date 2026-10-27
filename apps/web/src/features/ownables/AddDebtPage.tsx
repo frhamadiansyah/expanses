@@ -9,7 +9,7 @@ import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { openingRateFor, ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
-import { type GroupChild, InsetGroup, InsetRow, SelectRow, TAP, TextRow } from '../../ui/native';
+import { type GroupChild, InsetGroup, InsetRow, PushedTitle, SCREEN, SelectRow, TAP, TextRow } from '../../ui/native';
 import { KeyboardStrip } from '../../ui/native/KeyboardStrip';
 import { issuerChoices, useWorkspaceIssuers } from '../cards/card-queries';
 import { memberLevelsOf } from '../cards/catalog-picker';
@@ -43,6 +43,19 @@ export function AddDebtPage() {
     >
       {chosen && (card ? <NewCardForm key={chosen} /> : <DebtItemForm key={chosen} item={chosen} />)}
     </OwnablePicker>
+  );
+}
+
+/**
+ * A credit card, added straight from Wallet's + with no debt to choose first: the same card form the debt picker hands
+ * over to, on a page of its own.
+ */
+export function AddCardPage() {
+  return (
+    <div className={SCREEN}>
+      <PushedTitle title="New credit card" back="Wallet" backTo="/wallet" />
+      <NewCardForm />
+    </div>
   );
 }
 
