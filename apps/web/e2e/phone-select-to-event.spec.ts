@@ -24,8 +24,7 @@ async function expectActionDisabled(page: Page, action: string) {
 }
 
 async function startSelecting(page: Page) {
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await page.getByTestId('filters-menu').getByRole('menuitem', { name: 'Select' }).click();
+  await page.getByRole('button', { name: 'Select', exact: true }).click();
   await expect(bar(page)).toBeVisible();
 }
 

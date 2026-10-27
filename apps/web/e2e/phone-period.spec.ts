@@ -37,8 +37,9 @@ test('the list narrows by what paid, beside the sort, and a chip takes it off ag
   await page.goto('/transactions');
   // The filter is a control of the list itself now: the icon beside the sort it shares a row with, offering only
   // what can pay — the account's own row is a choice, a locked deposit would not be.
-  await page.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('option', { name: /BCA Tahapan/ }).click();
+  await page.getByRole('button', { name: 'Sort and filter' }).click();
+  await page.getByRole('menuitem', { name: /^Paid with/ }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: /BCA Tahapan/ }).click();
 
   // And ⋯ is left with what only ⋯ can do: the workspace, and what the list reveals.
   await page.getByRole('button', { name: 'Filters', exact: true }).click();

@@ -73,8 +73,7 @@ test('a refund moved into a shared event shows on both phones with the same rows
   await expect(form).toHaveCount(0);
 
   // Select the refund, Add to event: it leaves the workspace and joins the event's spending below zero.
-  await rina.getByRole('button', { name: 'Filters', exact: true }).click();
-  await rina.getByTestId('filters-menu').getByRole('menuitem', { name: 'Select' }).click();
+  await rina.getByRole('button', { name: 'Select', exact: true }).click();
   const bar = rina.getByRole('toolbar', { name: 'Selected transactions' });
   await rina.getByRole('checkbox', { name: 'Select Refund · Fish dinner' }).click();
   await bar.getByRole('button', { name: 'Actions' }).click();

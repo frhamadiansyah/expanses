@@ -108,6 +108,8 @@ test('the phone header adds, searches and filters from three round buttons', asy
   await expect(menu.getByTestId('workspace-row')).toBeVisible();
   await expect(menu.getByRole('menuitemcheckbox', { name: /Show deleted/ })).toHaveCount(0);
   await expect(menu.getByRole('menuitem', { name: /Paid with/ })).toHaveCount(0);
+  await expect(menu.getByRole('menuitem', { name: /Lend & borrow/ })).toHaveCount(0);
+  await expect(menu.getByRole('menuitem', { name: 'Select' })).toHaveCount(0);
   await expect(menu.getByRole('menuitem', { name: /Not recorded/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^Month/ })).toHaveCount(0);
   // A tap outside the menu, low on the screen: the menu (with Select in it) now reaches past the middle.

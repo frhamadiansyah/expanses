@@ -35,8 +35,7 @@ test('ticked purchases on one card account are set to one of its cards at once',
   await expect(page.getByTestId('card-on-account')).toHaveCount(2);
 
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await page.getByTestId('filters-menu').getByRole('menuitem', { name: 'Select' }).click();
+  await page.getByRole('button', { name: 'Select', exact: true }).click();
   await expect(bar(page)).toBeVisible();
 
   // A row off the card among the ticked ones: nothing to set.

@@ -9,6 +9,7 @@ import {
   CreditCard,
   History,
   FileSpreadsheet,
+  HandCoins,
   PiggyBank,
   Smartphone,
   Sparkles,
@@ -71,6 +72,8 @@ export const MORE_GROUPS: readonly NavGroup[] = [
       // No "Add a debt" here. This page is a list of places, and a debt is added from the screens that list debts:
       // the Debts page's own +, and Lend & borrow's Add a loan. A door among the places made one line of this menu
       // open a form where every other line opens a screen.
+      // Money lent and borrowed lives here rather than in Cashflow's ⋯ menu, which is left to the workspace.
+      { to: '/net-worth/lend-borrow', label: 'Lend & borrow', icon: HandCoins },
       { to: '/categories', label: 'Categories', icon: Tags },
     ],
   },
