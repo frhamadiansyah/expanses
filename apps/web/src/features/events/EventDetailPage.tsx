@@ -25,8 +25,8 @@ import { ShareLine } from '../transactions/CategoryLines';
 import { chartColour } from '../transactions/category-colours';
 import { Deck } from '../transactions/Deck';
 import { Donut } from '../transactions/Donut';
-import { buildRows } from '../transactions/list-model';
-import { TransactionRow, useRecategorise } from '../transactions/TransactionRow';
+import { amountExtraParts, buildRows } from '../transactions/list-model';
+import { AmountExtra, TransactionRow, useRecategorise } from '../transactions/TransactionRow';
 import { EventNameBox } from './EventNameBox';
 import { eventDates } from './EventsPage';
 import { EditEventForm } from './EditEventForm';
@@ -603,6 +603,8 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
                         testId="event-history"
                         amountMinor={expense?.amountBaseMinor ?? 0}
                         currency={ws.baseCurrency}
+                        // The foreign figure under the amount, as every other list draws it.
+                        amountExtra={<AmountExtra parts={amountExtraParts(tx, undefined, listRow)} />}
                         className="py-2.5"
                         title="Open the receipt"
                         onOpen={() => void navigate({ to: '/transactions/$transactionId', params: { transactionId: tx.id } })}
