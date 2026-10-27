@@ -34,7 +34,7 @@ export function tintOf(topId: string | null | undefined, chosen: ChosenColours |
   return (topId && chosen?.[topId]) || automatic;
 }
 
-/** A top-level category's colour on a chart: the one picked for it, else the wheel's. */
+/** The wheel's colour, or the one picked: for a shared event's own categories, which have no mark in the tree. */
 export const chartColour = (id: string, chosen?: ChosenColours): string => tintOf(id, chosen, categoryColour(id));
 
 /**
@@ -63,24 +63,13 @@ export interface Slice<T> {
 export function ringSlices<T extends { id: string; totalMinor: number }>(
   items: readonly T[],
   limit = 8,
-  chosen?: ChosenColours,
+  colourOf: (id: string) => string = () => OTHER_COLOUR,
 ): { shown: Slice<T>[]; rest: T[] } {
   const sorted = [...items].filter((item) => item.totalMinor > 0).sort((a, b) => b.totalMinor - a.totalMinor);
   const total = sorted.reduce((sum, item) => sum + item.totalMinor, 0);
   const big = sorted.filter((item, index) => index < limit && item.totalMinor / total >= 0.025);
   const rest = sorted.slice(big.length);
-  // A category keeps a colour picked for it. Any other keeps the colour its id gives it, unless a picked one or a
-  // bigger one in this ring already has it.
-  const taken = new Set<string>(big.map((item) => chosen?.[item.id]).filter((colour): colour is string => Boolean(colour)));
-  const shown = big.map((item) => {
-    const picked = chosen?.[item.id];
-    if (picked) return { item, totalMinor: item.totalMinor, colour: picked };
-    let colour = categoryColour(item.id);
-    for (let step = 1; taken.has(colour) && step < WHEEL.length; step += 1) {
-      colour = WHEEL[(WHEEL.indexOf(colour as (typeof WHEEL)[number]) + step) % WHEEL.length]!;
-    }
-    taken.add(colour);
-    return { item, totalMinor: item.totalMinor, colour };
-  });
+  // Each slice is the colour the category's own mark is drawn in (`useCategoryMarkColour`), so the ring and the rows agree.
+  const shown = big.map((item) => ({ item, totalMinor: item.totalMinor, colour: colourOf(item.id) }));
   return { shown, rest };
 }

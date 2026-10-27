@@ -4,7 +4,7 @@ import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { MoreHorizontal, Plus } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
-import { useAccounts, useCategoryColours, useInvalidateAll } from '../../lib/queries';
+import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox, Money } from '../../ui';
 import {
   InsetGroup,
@@ -19,10 +19,10 @@ import {
   PushedTitle,
 } from '../../ui/native';
 import { addSpendingTarget } from './buy-item';
+import { useCategoryMarkColour } from '../categories/CategoryIcon';
 import { useCategorySets } from '../categories/set-queries';
 import { BudgetGauge } from '../transactions/BudgetGauge';
 import { ShareLine } from '../transactions/CategoryLines';
-import { chartColour } from '../transactions/category-colours';
 import { Deck } from '../transactions/Deck';
 import { Donut } from '../transactions/Donut';
 import { amountExtraParts, buildRows } from '../transactions/list-model';
@@ -170,7 +170,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
   const suggestions = useEventSuggestions(eventId, openTab);
   const history = useEventHistory(eventId, openTab);
   const accounts = useAccounts().data ?? [];
-  const chosenColours = useCategoryColours().data;
+  const colourFor = useCategoryMarkColour();
   const sets = useCategorySets({ ownerWide: true }).data ?? [];
   const today = isoDate();
   // One copy of the category gesture for this screen: the sheet it opens and the Undo toast it leaves.
@@ -289,7 +289,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
   const donut = (
     <div data-testid="event-total">
       <Donut
-        slices={spentLines.map((line) => ({ key: line.categoryId ?? 'none', label: line.name, totalMinor: line.actualMinor, colour: chartColour(line.categoryId ?? 'none', chosenColours) }))}
+        slices={spentLines.map((line) => ({ key: line.categoryId ?? 'none', label: line.name, totalMinor: line.actualMinor, colour: colourFor(line.categoryId) }))}
         // What went out, not the net: the slices are what the categories spent, and a slice may never be longer
         // than the ring it is drawn on. The middle stays the event's own total, with the difference said under it.
         totalMinor={whole}
@@ -519,7 +519,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
                   )}
                 >
                   <ShareLine
-                    colour={chartColour(row.categoryId ?? 'none', chosenColours)}
+                    colour={colourFor(row.categoryId)}
                     name={row.categoryId === null ? row.name : planName(row.categoryId)}
                     // Clamped: a category whose refunds outweigh its purchases still cannot have spent less than
                     // nothing. What came back is named under the ring, on the page that can explain it.

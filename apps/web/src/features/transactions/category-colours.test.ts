@@ -61,14 +61,14 @@ describe('a colour picked by hand', () => {
     expect(chartColour('rent', { food: '#dc2626' })).toBe(wheel('rent'));
   });
 
-  it('keeps its slice on the ring, and no other slice takes that colour', async () => {
-    const { ringSlices: slices, categoryColour: wheel } = await import('./category-colours');
+  it('draws each slice in the colour the caller gives its category', async () => {
+    const { ringSlices: slices } = await import('./category-colours');
     const items = [
       { id: 'a', totalMinor: 500 },
       { id: 'b', totalMinor: 400 },
     ];
-    const { shown } = slices(items, 8, { b: wheel('a') });
-    expect(shown.find((s) => s.item.id === 'b')!.colour).toBe(wheel('a'));
-    expect(shown.find((s) => s.item.id === 'a')!.colour).not.toBe(wheel('a'));
+    const { shown } = slices(items, 8, (id) => (id === 'b' ? '#112233' : '#445566'));
+    expect(shown.find((s) => s.item.id === 'b')!.colour).toBe('#112233');
+    expect(shown.find((s) => s.item.id === 'a')!.colour).toBe('#445566');
   });
 });
