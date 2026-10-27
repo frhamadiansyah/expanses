@@ -908,7 +908,8 @@ export function CardFace({
             {figure !== undefined && <FaceFigure figure={figure} md={md} />}
           </div>
           <div className="absolute" style={{ bottom: inset - 2, left: inset }}>
-            <span data-testid="card-kind" className={cx('tabular inline-block rounded-full bg-black/20 font-semibold whitespace-nowrap', md ? 'px-[9px] py-[2px] text-[11px]' : 'px-[5px] text-[7px]')}>
+            {/* Plain words, as a drawn wallet face prints E-WALLET: no pill, so every face names what it is the same way. */}
+            <span data-testid="card-kind" className={cx('tabular block truncate font-semibold tracking-[0.12em] whitespace-nowrap uppercase opacity-85', md ? 'text-[11px]' : 'text-[7px]')} style={{ textShadow: emboss }}>
               {kind}
             </span>
           </div>
@@ -925,7 +926,6 @@ export function CardFace({
             {/* A drawn face prints its bank in the bank's own colour where the drawing did, and nothing top-right. */}
             <div className="min-w-0 truncate font-bold tracking-wide" style={faced && art?.bank ? { color: art.bank, textShadow: 'none' } : undefined}>
               {bank}
-              {figure !== undefined && !faced && <span className="ml-[0.45em] text-[10.5px] font-semibold tracking-tight opacity-90">{cardName}</span>}
             </div>
             {figure !== undefined && <FaceFigure figure={figure} md={md} />}
             {!faced && figure === undefined && (
@@ -953,7 +953,13 @@ export function CardFace({
                   •••• {digits}
                 </div>
               )}
-              {holder && (
+              {/* A face with a figure (the grid's) names its type under the digits, as an account's product name sits under its figure; its holder stays on the card's own page. */}
+              {figure !== undefined && !faced && (
+                <div data-testid="face-type" className={cx('truncate font-semibold tracking-[0.12em] uppercase opacity-85', md ? 'text-[11px]' : 'text-[7px]')} style={{ textShadow: emboss }}>
+                  {cardName}
+                </div>
+              )}
+              {holder && !(figure !== undefined && !faced) && (
                 <div className="truncate tracking-[0.12em] uppercase opacity-85" style={{ textShadow: emboss }}>
                   {holder}
                 </div>
