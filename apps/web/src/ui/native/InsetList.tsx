@@ -1,6 +1,6 @@
 import { Link, type LinkProps } from '@tanstack/react-router';
 import { Info } from 'lucide-react';
-import { Children, cloneElement, createContext, isValidElement, type ReactElement, type ReactNode, useContext, useState } from 'react';
+import { Children, cloneElement, createContext, Fragment, isValidElement, type ReactElement, type ReactNode, useContext, useState } from 'react';
 import { cx } from '../index';
 import { type SwipeAction, type SwipeHint, SwipeRow } from '../SwipeRow';
 import { groupHeader, type HeaderProgress, type RowPosition, rowPositions } from './group';
@@ -102,6 +102,19 @@ export function useWide(wide: boolean): boolean {
 }
 
 /**
+ * The rows of a group, a fragment's rows counted as the group's own: a `<>` round two rows would otherwise be one
+ * child, and neither would get a position, so no hairline would be drawn between them.
+ */
+function rowsOf(children: ReactNode, prefix = ''): ReactElement<GroupChild>[] {
+  return Children.toArray(children).flatMap((child, index) => {
+    if (!isValidElement(child)) return [];
+    const key = `${prefix}${child.key ?? index}`;
+    if (child.type === Fragment) return rowsOf((child.props as { children?: ReactNode }).children, `${key}/`);
+    return [cloneElement(child as ReactElement<GroupChild>, { key })];
+  });
+}
+
+/**
  * A grouped inset list.
  *
  * The group hands each child its place — first, last, and whether a hairline is drawn above it — so a row never
@@ -132,7 +145,7 @@ export function InsetGroup({
   className?: string;
   children: ReactNode;
 }) {
-  const items = Children.toArray(children).filter(isValidElement) as ReactElement<GroupChild>[];
+  const items = rowsOf(children);
   const positions = rowPositions(items.length);
   const full = useWide(wide);
   return (
