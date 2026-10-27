@@ -5,7 +5,7 @@ import { useApp } from '../../app/context';
 import { useFrom } from '../../app/from-search';
 import { useAccounts } from '../../lib/queries';
 import { cx, Money } from '../../ui';
-import { GROUP_RADIUS, InsetGroup, InsetRow, Panel, ROW_PAD_X, ROW_PAD_Y, rowHeight, toneClass } from '../../ui/native';
+import { GROUP_GAP, GROUP_RADIUS, InsetGroup, InsetRow, Panel, PanelHeader, ROW_PAD_X, ROW_PAD_Y, rowHeight, toneClass } from '../../ui/native';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { billCurrencyOf } from './bill-view';
 import type { RepeatingNeeds } from './repeating-needs';
@@ -82,7 +82,10 @@ export function RepeatingList({ bills, needs }: { bills: readonly MonthlyBill[];
     );
   }
   return (
-    <div className="bg-[var(--ph-surface)]" style={{ borderRadius: GROUP_RADIUS, overflow: 'hidden' }}>
+    <section className="md:max-w-2xl" style={{ marginBottom: GROUP_GAP }}>
+      {/* Yearly bills and every-few-months bills together, in the order they fall due: the hero's "a year" adds all of them. */}
+      <PanelHeader title="Through the year" />
+      <div className="bg-[var(--ph-surface)]" style={{ borderRadius: GROUP_RADIUS, overflow: 'hidden' }}>
       {sorted.map(({ bill, next }, index) => {
         const amount = bill.amountMinor ?? bill.estimateMinor;
         const currency = billCurrencyOf(bill, accounts, ws.baseCurrency);
@@ -120,6 +123,7 @@ export function RepeatingList({ bills, needs }: { bills: readonly MonthlyBill[];
           </div>
         );
       })}
-    </div>
+      </div>
+    </section>
   );
 }
