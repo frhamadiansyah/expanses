@@ -25,7 +25,7 @@ test('a yearly bill saves up in a savings account, and is paid by card from the 
   await expect(page.getByText('Sinking fund', { exact: true })).toHaveCount(0);
   await page.getByLabel('Repeats').selectOption('yearly');
   await page.getByLabel('Month', { exact: true }).selectOption(String(at.getMonth() + 1));
-  await page.getByLabel('Bill date').selectOption(String(at.getDate()));
+  await page.getByLabel('Due by').selectOption(String(at.getDate()));
 
   await expect(page.getByText('Sinking fund', { exact: true })).toBeVisible();
   await page.getByRole('checkbox', { name: 'Save up for it' }).check();

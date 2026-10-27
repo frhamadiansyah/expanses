@@ -273,6 +273,7 @@ describe('capture: rows edited in place', () => {
           currency: null,
           repeat: null,
           repeatMonth: null,
+          repeatEvery: null,
           payer: { memberId: 'member-me', label: 'BCA Tahapan' },
         },
       },
@@ -330,6 +331,7 @@ describe('capture: rows edited in place', () => {
     const fields = ((await outboxOps(database))[0] as { fields: Record<string, unknown> }).fields;
     expect(fields.repeat).toBe('yearly');
     expect(fields.repeatMonth).toBe(3);
+    expect(fields.repeatEvery).toBeNull();
     await clearOutbox(database);
     // An edit that does not mention the repeat sends nothing about it.
     await saveExpenseTemplate(database, ws, { id, name: 'Car tax', categoryAccountId: groceries.id, moneyAccountId: bca.id, amountMinor: 3_100_000, dayOfMonth: 12 });
@@ -337,6 +339,13 @@ describe('capture: rows edited in place', () => {
     await clearOutbox(database);
     await saveExpenseTemplate(database, ws, { id, name: 'Car tax', categoryAccountId: groceries.id, moneyAccountId: bca.id, amountMinor: 3_100_000, dayOfMonth: 12, repeat: 'monthly' });
     expect(((await outboxOps(database)).find((op) => (op as { entity: string }).entity === 'bill') as { fields: Record<string, unknown> }).fields).toMatchObject({ repeat: null, repeatMonth: null });
+  });
+
+  it('an every-few-months bill travels its gap as repeatEvery', async () => {
+    const { database, ws, bca, groceries } = await sharedHousehold();
+    await saveExpenseTemplate(database, ws, { name: 'Water', categoryAccountId: groceries.id, moneyAccountId: bca.id, amountMinor: 300_000, dayOfMonth: 12, startsMonth: '2026-08', repeat: 'months', repeatMonth: 8, repeatEvery: 3 });
+    const fields = ((await outboxOps(database))[0] as { fields: Record<string, unknown> }).fields;
+    expect(fields).toMatchObject({ repeat: 'months', repeatMonth: 8, repeatEvery: 3 });
   });
 
   it('a rolled-back write leaves nothing in the outbox', async () => {

@@ -1,4 +1,4 @@
-import { type BillWindow, dayMonth, isoDate, monthName, ordinal, yearlyRepeat } from '@expanses/core';
+import { type BillWindow, dayMonth, isoDate, monthName, ordinal, periodicRepeat, yearlyRepeat } from '@expanses/core';
 import { deleteExpenseTemplate, RecurringError, resumeBill, skipBill, undoBillPayments } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check, MoreHorizontal, Pause, Pencil, Play, SkipForward } from 'lucide-react';
@@ -157,7 +157,7 @@ export function BillPage({ billId }: { billId: string }) {
           <CategoryIcon categoryId={bill.categoryAccountId} accounts={accounts} size="row" />
           <p className="flex-1 text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">
             {monthName(bill.billMonth, 'long')}
-            {bill.repeat === 'yearly' && ` ${bill.billMonth.slice(0, 4)}`} bill
+            {bill.repeat !== 'monthly' && ` ${bill.billMonth.slice(0, 4)}`} bill
           </p>
           <span className={cx('rounded-full px-[8px] py-[2px] text-[12px] leading-[16px] font-semibold', pill.className)} data-testid="bill-status">
             {pill.text}
@@ -201,17 +201,38 @@ export function BillPage({ billId }: { billId: string }) {
       <ActionButtons actions={actions} />
 
       <InsetGroup>
-        <ReadOnlyRow label="Repeats" value={bill.repeat === 'yearly' ? yearlyRepeat(bill.repeatMonth!, bill.dayOfMonth) : 'Every month'} />
-        <ReadOnlyRow label="Out on" value={`The ${ordinal(bill.dayOfMonth)}`} />
-        <ReadOnlyRow label="Due by" value={bill.payByDay === null ? 'The bill date' : `The ${ordinal(bill.payByDay)}`} />
+        <ReadOnlyRow
+          label="Repeats"
+          value={
+            bill.repeat === 'yearly'
+              ? yearlyRepeat(bill.repeatMonth!, bill.dayOfMonth)
+              : bill.repeat === 'months'
+                ? periodicRepeat(bill.repeatEvery!, bill.repeatMonth!, bill.dayOfMonth)
+                : 'Every month'
+          }
+        />
+        {/* A yearly or every-few-months bill has the one date, the day it is due by. */}
+        {bill.repeat === 'monthly' && <ReadOnlyRow label="Out on" value={`The ${ordinal(bill.dayOfMonth)}`} />}
+        <ReadOnlyRow
+          label="Due by"
+          value={
+            bill.repeat !== 'monthly'
+              ? `The ${ordinal(bill.payByDay ?? bill.dayOfMonth)}`
+              : bill.payByDay === null
+                ? 'The bill date'
+                : `The ${ordinal(bill.payByDay)}`
+          }
+        />
         {bill.currency ? <ReadOnlyRow label="Currency" value={bill.currency} /> : null}
         <ReadOnlyRow label="Paid from" value={account?.name ?? ''} />
         <ReadOnlyRow label="Category" value={category?.name ?? ''} />
         {bookName ? <ReadOnlyRow label="Workspace" value={bookName} /> : null}
       </InsetGroup>
 
-      {bill.repeat === 'yearly' && fund && <SinkingFundGroup fund={fund} />}
+      {bill.repeat !== 'monthly' && fund && <SinkingFundGroup fund={fund} />}
 
+      {/* Nothing to show until a month has been paid, skipped or paused: no empty group, no placeholder. */}
+      {history.some((row) => row.state === 'paid' || row.state === 'skipped' || row.state === 'paused') && (
       <div data-testid="bill-history">
         <InsetGroup header="History">
           {[
@@ -220,7 +241,7 @@ export function BillPage({ billId }: { billId: string }) {
                 key={row.month}
                 fresh={paidMonth?.month === row.month}
                 title={
-                  bill.repeat === 'yearly'
+                  bill.repeat !== 'monthly'
                     ? row.state === 'paid'
                       ? `Paid in ${row.month.slice(0, 4)}`
                       : `${row.month.slice(0, 4)} bill`
@@ -249,6 +270,7 @@ export function BillPage({ billId }: { billId: string }) {
           ]}
         </InsetGroup>
       </div>
+      )}
 
       {paying && (
         <PaySheet

@@ -30,21 +30,52 @@ export interface BillMonthsInput {
   payByDay: number | null;
   /** Months already dealt with, or paused. */
   settled: Readonly<Record<string, 'paid' | 'skipped' | 'paused'>>;
-  /** 1-12 for a yearly bill: owed only in that month of each year. Absent or null: owed every month. */
+  /**
+   * 1-12 for a bill that is not monthly: the month of the year a yearly bill comes out, or the month the first
+   * occurrence of an every-few-months bill falls in. Absent or null: owed every month.
+   */
   yearlyMonth?: number | null;
+  /** Months between occurrences of a bill that comes out every few months (2-11); null or 12 for a yearly one. */
+  repeatEvery?: number | null;
 }
 
-export type BillRepeat = 'monthly' | 'yearly';
+export type BillRepeat = 'monthly' | 'yearly' | 'months';
 
-/** Whether a bill with this yearly month (null: monthly) is owed in `month`. */
-export const isOwedMonth = (month: string, yearlyMonth: number | null | undefined): boolean =>
-  yearlyMonth == null || Number(month.slice(5, 7)) === yearlyMonth;
+const monthIndex = (month: string) => Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1;
 
-/** The first month on or after `from` that a bill with this yearly month falls in. */
-export function nextOwedMonth(from: string, yearlyMonth: number): string {
-  const year = Number(from.slice(0, 4));
-  const month = Number(from.slice(5, 7));
-  return `${month <= yearlyMonth ? year : year + 1}-${pad(yearlyMonth)}`;
+/**
+ * Whether a bill is owed in `month`. `yearlyMonth` null: monthly, every month. A yearly bill (`every` null or 12) is
+ * owed in that month of each year. Every N months it is owed each N months counted from its first occurrence
+ * (`startsMonth`), which wraps over the year end whether or not N divides twelve.
+ */
+export function isOwedMonth(month: string, yearlyMonth: number | null | undefined, every?: number | null, startsMonth?: string): boolean {
+  if (yearlyMonth == null) return true;
+  if (every == null || every === 12) return Number(month.slice(5, 7)) === yearlyMonth;
+  const anchor = startsMonth ?? `${month.slice(0, 4)}-${pad(yearlyMonth)}`;
+  return (((monthIndex(month) - monthIndex(anchor)) % every) + every) % every === 0;
+}
+
+/** The first month on or after `from` that a bill with this schedule is owed in. */
+export function nextOwedMonth(from: string, yearlyMonth: number, every?: number | null, startsMonth?: string): string {
+  if (every == null || every === 12) {
+    const year = Number(from.slice(0, 4));
+    const month = Number(from.slice(5, 7));
+    return `${month <= yearlyMonth ? year : year + 1}-${pad(yearlyMonth)}`;
+  }
+  let month = startsMonth && from < startsMonth ? startsMonth : from;
+  for (let i = 0; i < every; i += 1, month = addMonths(month, 1)) if (isOwedMonth(month, yearlyMonth, every, startsMonth)) return month;
+  return month;
+}
+
+/**
+ * The month of the next occurrence of a bill made or edited today, on or after today: this one when its day has not
+ * passed yet. For an every-few-months bill with a known first month, the occurrences count from it.
+ */
+export function nextOccurrenceMonth(today: string, yearlyMonth: number, outDay: number, every?: number | null, startsMonth?: string): string {
+  if (every == null || every === 12 || !startsMonth) return firstYearlyMonth(today, yearlyMonth, outDay);
+  let month = nextOwedMonth(today.slice(0, 7), yearlyMonth, every, startsMonth);
+  if (dayIn(month, outDay) < today) month = nextOwedMonth(addMonths(month, 1), yearlyMonth, every, startsMonth);
+  return month;
 }
 
 /**
@@ -56,7 +87,7 @@ export function firstYearlyMonth(today: string, yearlyMonth: number, outDay: num
   return dayIn(thisYear, outDay) >= today ? thisYear : addMonths(thisYear, 12);
 }
 
-/** How many days ahead a yearly bill starts to show in the Recurring list. */
+/** How many days ahead a yearly or periodic bill starts to show in the Recurring list. */
 export const YEARLY_LIST_DAYS = 30;
 
 /**
@@ -111,24 +142,24 @@ export function billStanding(window: BillWindow, today: string, settled: BillSet
  * The month a bill's row speaks for today: last month while that is still unsettled (it has always come out by now),
  * otherwise this month. One month back only, and never before the bill was tracked.
  */
-export function currentBillMonth({ today, startsMonth, settled, yearlyMonth }: BillMonthsInput): string {
+export function currentBillMonth({ today, startsMonth, settled, yearlyMonth, repeatEvery }: BillMonthsInput): string {
   const month = monthOf(today);
   const previous = addMonths(month, -1);
-  if (previous >= startsMonth && !settled[previous] && isOwedMonth(previous, yearlyMonth)) return previous;
+  if (previous >= startsMonth && !settled[previous] && isOwedMonth(previous, yearlyMonth, repeatEvery, startsMonth)) return previous;
   // A yearly bill speaks for its next occurrence: this month's when it falls in it, else the next one, never before it began.
-  return yearlyMonth == null ? month : nextOwedMonth(month > startsMonth ? month : startsMonth, yearlyMonth);
+  return yearlyMonth == null ? month : nextOwedMonth(month > startsMonth ? month : startsMonth, yearlyMonth, repeatEvery, startsMonth);
 }
 
 /**
  * Months a payment can be recorded for, oldest first; the first is the default. A paused month can still be paid on
  * purpose, so it is offered too — after every month that is owed, so it is never the one picked for a payment.
  */
-export function payableBillMonths({ today, startsMonth, settled, yearlyMonth }: BillMonthsInput): string[] {
+export function payableBillMonths({ today, startsMonth, settled, yearlyMonth, repeatEvery }: BillMonthsInput): string[] {
   const month = monthOf(today);
   const candidates =
     yearlyMonth == null
       ? [addMonths(month, -1), month, addMonths(month, 1)]
-      : [...new Set([addMonths(month, -1), nextOwedMonth(month > startsMonth ? month : startsMonth, yearlyMonth)])].filter((m) => isOwedMonth(m, yearlyMonth));
+      : [...new Set([addMonths(month, -1), nextOwedMonth(month > startsMonth ? month : startsMonth, yearlyMonth, repeatEvery, startsMonth)])].filter((m) => isOwedMonth(m, yearlyMonth, repeatEvery, startsMonth));
   const open = candidates.filter((m) => m >= startsMonth && settled[m] !== 'paid' && settled[m] !== 'skipped');
   return [...open.filter((m) => settled[m] !== 'paused'), ...open.filter((m) => settled[m] === 'paused')];
 }
@@ -185,6 +216,11 @@ export function ordinal(n: number): string {
 /** "Every year · March 12": a yearly bill's repeat, by the month and the day it comes out. */
 export function yearlyRepeat(yearlyMonth: number, outDay: number): string {
   return `Every year · ${MONTHS_LONG[yearlyMonth - 1]} ${outDay}`;
+}
+
+/** "Every 3 months · from March, the 12th": an every-few-months bill's repeat, by its first month and the day. */
+export function periodicRepeat(every: number, startMonth: number, outDay: number): string {
+  return `Every ${every} months · from ${MONTHS_LONG[startMonth - 1]}, the ${ordinal(outDay)}`;
 }
 
 /** "Every month · out on the 28th · pay by the 5th". */

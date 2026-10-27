@@ -26,12 +26,12 @@ async function addYearlyBill(page: Page, name: string, at: { month: number; day:
   await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan' });
   await page.getByLabel('Repeats').selectOption('yearly');
   await page.getByLabel('Month', { exact: true }).selectOption(String(at.month));
-  await page.getByLabel('Bill date').selectOption(String(at.day));
+  await page.getByLabel('Due by').selectOption(String(at.day));
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page).toHaveURL(/\/bills$/);
 }
 
-test('on a phone, a yearly bill far from its date is under Yearly bills', async ({ page }) => {
+test('on a phone, a yearly bill far from its date is under Repeating bills', async ({ page }) => {
   const at = await daysAhead(page, 180);
   await addYearlyBill(page, 'Domain', at);
 

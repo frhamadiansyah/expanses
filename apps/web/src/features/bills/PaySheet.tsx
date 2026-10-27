@@ -167,7 +167,7 @@ export function PaySheet({
             {months.map((m) => (
               <option key={m} value={m}>
                 {monthName(m, 'long')}
-                {bill.repeat === 'yearly' && ` ${m.slice(0, 4)}`} bill
+                {bill.repeat !== 'monthly' && ` ${m.slice(0, 4)}`} bill
               </option>
             ))}
           </SelectRow>
