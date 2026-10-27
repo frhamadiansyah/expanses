@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { pickBillCategory } from './bill-form';
+import { pickBillCategory, showMonthly, showRepeating } from './bill-form';
 import { localIsoDate, todayIn } from './today';
 
 test.beforeEach(({ page }) => {
@@ -48,10 +48,9 @@ test('a yearly bill 20 days ahead shows under Due soon, and paying it takes it o
   await sheet.getByRole('button', { name: 'Record payment' }).click();
   await expect(sheet).toHaveCount(0);
 
-  // Paid, it leaves Recurring; the Repeating bills page still has it, next date a year on.
+  // Paid, it leaves Monthly; the Repeating page still has it, next date a year on.
   await expect(row(page, 'Car tax')).toHaveCount(0);
-  await page.getByTestId('yearly-bills-row').click();
-  await expect(page).toHaveURL(/\/bills\/yearly/);
+  await showRepeating(page);
   await expect(page.getByTestId('yearly-bill-row').filter({ hasText: 'Car tax' })).toContainText(`Due ${Number(at.iso.slice(8))} `);
 
   // Its page reads the repeat and the history by year.
@@ -71,8 +70,7 @@ test('a yearly bill far from its date is not on Recurring, but is under Repeatin
   await expect(page.getByTestId('recurring-card')).toHaveCount(0);
 
   await page.goto('/bills');
-  await expect(page.getByTestId('yearly-bills-row')).toContainText('1');
-  await page.getByTestId('yearly-bills-row').click();
+  await showRepeating(page);
   const yearly = page.getByTestId('yearly-bill-row').filter({ hasText: 'Domain' });
   await expect(yearly).toContainText('3.000.000');
   await yearly.click();
@@ -112,7 +110,7 @@ test('a bill switches between monthly and yearly in Edit', async ({ page }) => {
   await expect(row(page, 'Gym')).toHaveCount(0);
 
   // And back: Edit loads it as yearly, switching to monthly puts it on the list again.
-  await page.getByTestId('yearly-bills-row').click();
+  await showRepeating(page);
   await page.getByTestId('yearly-bill-row').click();
   await page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Edit' }).click();
   await expect(page.getByLabel('Repeats')).toHaveValue('yearly');
@@ -122,5 +120,6 @@ test('a bill switches between monthly and yearly in Edit', async ({ page }) => {
   await expect(page).toHaveURL(/\/bills\/[^/]+$/);
   await expect(page.getByText('Every month')).toBeVisible();
   await page.goto('/bills');
+  await showMonthly(page);
   await expect(row(page, 'Gym')).toBeVisible();
 });

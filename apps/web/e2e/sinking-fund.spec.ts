@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { expectWalletFigure, openAccount } from './accounts';
-import { pickBillCategory } from './bill-form';
+import { pickBillCategory, showRepeating } from './bill-form';
 import { localIsoDate, todayIn } from './today';
 
 test.beforeEach(({ page }) => {
@@ -37,13 +37,13 @@ test('a yearly bill saves up in a savings account, and is paid by card from the 
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page).toHaveURL(/\/bills$/);
 
-  // Recurring lists it under Set aside this month, read-only.
-  const group = page.locator('section').filter({ has: page.getByText('Set aside this month', { exact: true }) });
-  await expect(group.getByTestId('sinking-fund-row')).toContainText('Car insurance');
-  await expect(group.getByTestId('sinking-fund-row')).toContainText('Saving for');
+  // Recurring's Repeating page sets the month's amount aside in its hero and lists the bill.
+  await showRepeating(page);
+  await expect(page.getByTestId('repeating-summary')).toContainText('Set aside · per month');
+  await expect(page.getByTestId('repeating-summary')).toContainText('for 1 bill');
+  await expect(page.getByTestId('yearly-bill-row').filter({ hasText: 'Car insurance' })).toBeVisible();
 
   // Its page.
-  await page.getByTestId('yearly-bills-row').click();
   await page.getByTestId('yearly-bill-row').filter({ hasText: 'Car insurance' }).click();
   await expect(page.getByText('Sinking fund', { exact: true })).toBeVisible();
   await expect(page.getByTestId('sinking-saved')).toContainText('of Rp');
@@ -70,5 +70,6 @@ test('a yearly bill saves up in a savings account, and is paid by card from the 
   await page.goto('/wallet');
   await expectWalletFigure(page, 'BCA Savings', '17.000.000');
   await page.goto('/bills');
-  await expect(page.getByText('Set aside this month', { exact: true })).toHaveCount(0);
+  await showRepeating(page);
+  await expect(page.getByTestId('repeating-summary')).toContainText('No sinking funds yet');
 });

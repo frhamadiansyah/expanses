@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { pickBillCategory } from './bill-form';
+import { pickBillCategory, showRepeating } from './bill-form';
 import { localIsoDate, todayIn } from './today';
 
 test.beforeEach(({ page }) => {
@@ -42,8 +42,7 @@ test('on a phone, a yearly bill far from its date is under Repeating bills', asy
   await expect(page.getByTestId('recurring-card')).toHaveCount(0);
 
   await page.goto('/bills');
-  await expect(page.getByTestId('yearly-bills-row')).toContainText('1');
-  await page.getByTestId('yearly-bills-row').click();
+  await showRepeating(page);
   const yearly = page.getByTestId('yearly-bill-row').filter({ hasText: 'Domain' });
   await expect(yearly).toContainText('3.000.000');
   await yearly.click();
