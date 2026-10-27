@@ -256,7 +256,8 @@ export function CardSettingsPage() {
               <TextRow label="Charged on" type="date" value={feeOn} onChange={(e) => setFeeOn(e.target.value)} />,
             ],
           ]}
-          submit={<SubmitRow label="Save terms" />}
+          // A card being set up needs the button to move on. A settled card saves its terms with the corner ✓.
+          submit={step === null ? undefined : <SubmitRow label="Save terms" />}
         />
       </form>
     </>
