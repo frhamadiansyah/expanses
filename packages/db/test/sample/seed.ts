@@ -1,7 +1,8 @@
 import { findEntry } from '@expanses/catalog';
-import { assetItem, eventCategoryIcon, expenseLines, incomeLines, statementCycleFor, transferLines } from '@expanses/core';
+import { assetItem, eventCategoryIcon, expenseLines, incomeLines, sinkingPlan, statementCycleFor, transferLines } from '@expanses/core';
 import {
   addCard,
+  addSinkingExtra,
   archiveAccount,
   changeOriginalCost,
   sellAsset,
@@ -52,12 +53,15 @@ import {
   saveInstallment,
   saveLoanTerms,
   saveMerchantMcc,
+  setAccountForSpending,
   setLoanItem,
   splitBill,
   tagTransaction,
   upsertPrice,
   upsertRate,
   upsertSecurityPrice,
+  waiveAnnualFee,
+  writeSinkingFund,
   type WorkspaceContext,
 } from '../../src/index';
 import { shareBookForTest } from '../sync/sync-helpers';
@@ -181,21 +185,30 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
   // A client's cheque not yet cleared: money, but not money that can be spent from.
   if (has(47)) await openCashAccount(database, ws, { item: 'other_cash', name: 'Cheque from PT Sinar Kreatif', currency: 'IDR', openingBalanceMinor: 4_500_000, openedOn: addDays(today, -6) });
 
+  // Money kept apart for the yearly bills below: a savings account switched off For spending, so it is not counted as spendable.
+  const sinking = has(101)
+    ? await openCashAccount(database, ws, { item: 'savings', name: 'Sinking fund', bank: 'BCA', currency: 'IDR', openingBalanceMinor: 9_500_000, openedOn: held })
+    : null;
+  if (sinking) await setAccountForSpending(database, ws, sinking.id, false);
+
   // ---- Cards ----
   const krisflyer = await createCardAccount(database, ws, { name: 'BCA KrisFlyer Visa Signature', subtype: 'credit_card', currency: 'IDR', issuer: 'BCA', last4: '4417' });
-  await saveCardTerms(database, ws, { accountId: krisflyer.id, statementDay: 18, dueDay: 3, creditLimitMinor: 60_000_000, annualFeeMinor: 1_000_000 });
+  await saveCardTerms(database, ws, { accountId: krisflyer.id, statementDay: 18, dueDay: 3, creditLimitMinor: 60_000_000, annualFeeMinor: 1_000_000, ...(has(93) ? { annualFeeOn: addDays(today, 20) } : {}) });
   await applyCatalogEntry(database, ws, { cardAccountId: krisflyer.id, entry: findEntry('bca-sq-krisflyer-visa-signature')!, today: start, replaceManual: false });
 
   const bonvoy = await createCardAccount(database, ws, { name: 'Mandiri Marriott Bonvoy', subtype: 'credit_card', currency: 'IDR', issuer: 'Mandiri', last4: '1467', holderName: 'Rizky' });
   const spouseCard = await addCard(database, ws, { accountId: bonvoy.id, last4: '8802', holderName: 'Dewi', isPrimary: false });
   const primaryCard = (await listCards(database, ws, bonvoy.id)).find((c) => c.isPrimary)!.id;
-  await saveCardTerms(database, ws, { accountId: bonvoy.id, statementDay: 20, dueDay: 5, creditLimitMinor: 80_000_000, annualFeeMinor: 1_500_000 });
+  await saveCardTerms(database, ws, { accountId: bonvoy.id, statementDay: 20, dueDay: 5, creditLimitMinor: 80_000_000, annualFeeMinor: 1_500_000, ...(has(93) ? { annualFeeOn: addDays(today, 9) } : {}) });
   await applyCatalogEntry(database, ws, { cardAccountId: bonvoy.id, entry: findEntry('mandiri-marriott-bonvoy')!, today: start, replaceManual: false });
 
   const accor = await createCardAccount(database, ws, { name: 'CIMB Niaga World ALL Accor', subtype: 'credit_card', currency: 'IDR', issuer: 'CIMB Niaga', last4: '3091' });
-  await saveCardTerms(database, ws, { accountId: accor.id, statementDay: 22, dueDay: 7, creditLimitMinor: 40_000_000, annualFeeMinor: null });
+  await saveCardTerms(database, ws, { accountId: accor.id, statementDay: 22, dueDay: 7, creditLimitMinor: 40_000_000, annualFeeMinor: has(93) ? 750_000 : null, ...(has(93) ? { annualFeeOn: addDays(today, 210) } : {}) });
   await applyCatalogEntry(database, ws, { cardAccountId: accor.id, entry: findEntry('cimb-niaga-world-all-accor')!, today: start, replaceManual: false });
   const bonvoyPlastic = [primaryCard, spouseCard];
+  // Three annual fees: KrisFlyer's is charged in 20 days (Due soon), Bonvoy's the bank agreed to waive this year, and
+  // Accor's is far off (shown on its card page only).
+  if (has(93)) await waiveAnnualFee(database, ws, { cardId: bonvoy.id, today });
 
   await saveMerchantMcc(database, ws, { pattern: 'kopi kenangan', mcc: '5814' });
 
@@ -234,6 +247,38 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
   const billIds = new Map<string, string>();
   for (const bill of bills) {
     billIds.set(bill.name, await saveExpenseTemplate(database, ws, { name: bill.name, categoryAccountId: await cat(bill.key), moneyAccountId: bill.money, amountMinor: bill.amount, dayOfMonth: bill.day }));
+  }
+
+  // Yearly bills: one due soon with a sinking fund, one months off with a fund of its own in the same account, and a
+  // licence in dollars with no fund. Days are capped at the 28th so the date lands in every month.
+  if (has(99)) {
+    const yearly = async (name: string, key: string, dueOn: string, amountMinor: number, currency: string | null) =>
+      saveExpenseTemplate(database, ws, {
+        name,
+        categoryAccountId: await cat(key),
+        moneyAccountId: bca.id,
+        amountMinor,
+        dayOfMonth: Math.min(28, Number(dueOn.slice(8))),
+        repeat: 'yearly',
+        repeatMonth: Number(dueOn.slice(5, 7)),
+        startsMonth: today.slice(0, 7),
+        ...(currency && has(98) ? { currency } : {}),
+      });
+    const insuranceOn = addDays(today, 18);
+    const taxOn = addDays(today, 150);
+    const insurance = await yearly('Car insurance', 'transportation.vehicle_maintenance', insuranceOn, 4_800_000, null);
+    const propertyTax = await yearly('Property tax', 'property.real_estate', taxOn, 6_000_000, null);
+    await yearly('Software licence', 'entertainment.subscriptions', addDays(today, 21), 11_900, has(98) ? 'USD' : null);
+    if (sinking) {
+      const plan = (target: number, on: string, from: string) =>
+        sinkingPlan({ targetMinor: target, today: from, repeatMonth: Number(on.slice(5, 7)), dayOfMonth: Math.min(28, Number(on.slice(8))), currency: 'IDR' }).monthlyMinor;
+      // The insurance fund began nine months ago on a plan made eleven months before it falls due: about nine tenths saved.
+      await writeSinkingFund(database.db, ws, { billId: insurance, accountId: sinking.id, monthlyMinor: plan(4_800_000, insuranceOn, monthStart(insuranceOn, 11)), startedMonth: monthStart(today, 9).slice(0, 7) });
+      // The property tax fund began three months ago, with 500,000 put in extra: about half saved.
+      const taxStart = monthStart(today, 3);
+      await writeSinkingFund(database.db, ws, { billId: propertyTax, accountId: sinking.id, monthlyMinor: plan(6_000_000, taxOn, taxStart), startedMonth: taxStart.slice(0, 7) });
+      await addSinkingExtra(database.db, ws, propertyTax, 500_000);
+    }
   }
 
   // ---- Budgets ----
