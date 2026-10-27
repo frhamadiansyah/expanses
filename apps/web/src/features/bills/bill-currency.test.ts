@@ -83,7 +83,7 @@ describe('a bill in a currency of its own', () => {
     });
     const { rows } = billsInReadCurrency([paid], idrMoney(false, true), currencyOf);
     expect(rows[0]!.paidMinor).toBe(1_510_000);
-    expect(settledOf(rows, '2026-09-08')?.paidMinor).toBe(1_510_000);
+    expect(settledOf(rows)[0]?.paidMinor).toBe(1_510_000);
   });
 
   it('estimates the charge at the day’s rate, crossing the base when neither side is it', () => {

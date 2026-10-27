@@ -51,16 +51,9 @@ describe('the Recurring list', () => {
     ]);
   });
 
-  it('folds what is paid and skipped into one row, counting what was paid', () => {
-    expect(settledOf(rows, '2026-09-08')).toEqual({
-      title: 'Paid and skipped in September',
-      count: 2,
-      paidMinor: 6_000_000,
-      rows: [rows[4], rows[5]],
-    });
-    expect(settledOf([rows[4]!], '2026-09-08')).toMatchObject({ title: 'Paid in September', count: 1 });
-    expect(settledOf([rows[5]!], '2026-09-08')).toMatchObject({ title: 'Skipped in September', paidMinor: 0 });
-    expect(settledOf(rows.slice(0, 4), '2026-09-08')).toBeNull();
+  it('lists what is paid and skipped apart, in order', () => {
+    expect(settledOf(rows)).toEqual([rows[4], rows[5]]);
+    expect(settledOf(rows.slice(0, 4))).toEqual([]);
   });
 
   it('says under each amount how late, how soon, or which day', () => {

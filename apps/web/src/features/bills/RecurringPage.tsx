@@ -2,11 +2,10 @@ import { dayMonth, formatMinor, isoDate } from '@expanses/core';
 import { type MonthlyBill, skipBill, undoBillPayments, unskipBill } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { Check, ListChecks, Plus } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useBackToCashflow, useFrom } from '../../app/from-search';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { Sheet } from '../../app/Sheet';
 import { ErrorBox, Money } from '../../ui';
 import { type CornerAction, GROUP_GAP, GROUP_RADIUS, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, PushedTitle, SCREEN } from '../../ui/native';
 import { BillRow } from './BillRow';
@@ -106,14 +105,12 @@ export function RecurringPage() {
   const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [payingSeveral, setPayingSeveral] = useState(false);
-  const [showSettled, setShowSettled] = useState(false);
   const [toast, setToast] = useState<{ text: string; undo: () => Promise<void> } | null>(null);
   const [error, setError] = useState<unknown>(null);
   const clearToast = useCallback(() => setToast(null), []);
   // Stable, so the sheet does not re-run its open effect (and take focus back) whenever the list refreshes.
   const closeSheet = useCallback(() => setPaying(null), []);
   const closeSeveral = useCallback(() => setPayingSeveral(false), []);
-  const closeSettled = useCallback(() => setShowSettled(false), []);
 
   const toggle = (bill: MonthlyBill) =>
     setPicked((current) => {
@@ -169,15 +166,6 @@ export function RecurringPage() {
   }
 
   const summary = summaryOf(readRows, today);
-  // The rows in their own money, the figure in the money the workspace reads in.
-  const settled = settledOf(rows, today);
-  const settledMinor = settledOf(readRows, today)?.paidMinor ?? 0;
-  // An undo can empty the fold under its open sheet; it stays shut rather than springing open at the next payment.
-  const noneSettled = settled === null;
-  useEffect(() => {
-    if (noneSettled) setShowSettled(false);
-  }, [noneSettled]);
-
   const billRow = (bill: MonthlyBill, index: number) => (
     <BillRow
       key={bill.id}
@@ -253,20 +241,14 @@ export function RecurringPage() {
         </section>
       )}
 
-      {/* What is paid or skipped is done with: one row says how many and what they came to, and opens them. */}
-      {settled && (
-        <InsetGroup>
-          <InsetRow
-            testId="bills-settled"
-            title={settled.title}
-            value={
-              <>
-                {settled.count} · <Money minor={settledMinor} currency={readCurrency} />
-              </>
-            }
-            onClick={() => setShowSettled(true)}
-          />
-        </InsetGroup>
+      {/* What is paid or skipped is done with: a group of its own, after the ones to pay. Rows open the bill; none swipe. */}
+      {settledOf(rows).length > 0 && (
+        <section className="md:max-w-2xl" style={{ marginBottom: GROUP_GAP }} data-testid="bills-paid">
+          <PanelHeader title="Paid" />
+          <div className="bg-[var(--ph-surface)]" style={{ borderRadius: GROUP_RADIUS }}>
+            {settledOf(rows).map(billRow)}
+          </div>
+        </section>
       )}
 
       {/* A yearly or every-few-months bill is listed only in the weeks before its date; this keeps all of them reachable the rest of the year. */}
@@ -295,14 +277,6 @@ export function RecurringPage() {
 
       {/* The month's regular buys, set on each holding's own page: due ones with Record, bought ones with the day. */}
       <MonthlyBuys />
-
-      {showSettled && settled && (
-        <Sheet grouped tall title={settled.title} onClose={closeSettled}>
-          <div className="bg-[var(--ph-surface)]" style={{ borderRadius: GROUP_RADIUS }}>
-            {settled.rows.map(billRow)}
-          </div>
-        </Sheet>
-      )}
 
       {selecting && picked.size > 0 && (() => {
         const chosen = readRows.filter((b) => picked.has(b.id));
