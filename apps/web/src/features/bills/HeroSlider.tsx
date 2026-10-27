@@ -117,13 +117,13 @@ export function HeroSlider({
             aria-roledescription="slide"
             aria-label={names[index]}
             aria-hidden={index === page ? undefined : true}
-            className="w-full shrink-0 snap-start"
+            className="w-full shrink-0 snap-start [&_section]:mb-0!"
           >
             {card}
           </div>
         ))}
       </div>
-      <div role="group" aria-label="Page" className="flex justify-center" style={{ marginBottom: 12 }}>
+      <div role="group" aria-label="Page" className="flex justify-center" style={{ marginBottom: 8 }}>
         {names.map((name, index) => (
           <button
             key={name}
@@ -131,7 +131,7 @@ export function HeroSlider({
             aria-label={name}
             aria-current={index === page ? 'true' : undefined}
             onClick={() => go(index)}
-            className="ph-focus flex h-8 w-6 items-center justify-center"
+            className="ph-focus flex h-6 w-6 items-center justify-center"
           >
             <span aria-hidden className={`block h-[7px] w-[7px] rounded-full ${index === page ? 'bg-[var(--ph-ink)]' : 'bg-[var(--ph-track)]'}`} />
           </button>
