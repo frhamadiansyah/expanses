@@ -13,8 +13,8 @@ export const MODE_LABEL: Record<FilingMode, string> = { joint: 'One tax ID', sep
 /** What the setup asks, and each answer's words. */
 export const FILING_QUESTION = 'How does the household file tax?';
 export const FILING_CHOICES: Record<FilingMode, string> = {
-  joint: 'One tax ID for both of us',
-  separate: 'Each of us has our own tax ID',
+  joint: 'Filed together',
+  separate: 'Filed separately',
 };
 
 /** The line under a joint review and a joint item's setting (§8.1). */
@@ -147,4 +147,10 @@ export const ADD_SOMEONE_LINE = 'To add someone, stop sharing net worth and set 
  */
 export function inviteesFor<T extends { memberId: string }>(others: readonly T[], activeMembers: readonly string[] | null): T[] {
   return activeMembers === null ? [...others] : others.filter((member) => activeMembers.includes(member.memberId));
+}
+
+/** The Net worth row's value on the Share page: On once a group is active, Waiting while a proposal waits on someone. */
+export function netWorthValue(row: Pick<NetWorthRow, 'active' | 'pending'>): 'On' | 'Waiting' | 'Off' {
+  if (row.active) return 'On';
+  return row.pending ? 'Waiting' : 'Off';
 }

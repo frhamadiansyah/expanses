@@ -1,6 +1,6 @@
 import { NetWorthError, type NetWorthGroupView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { canInvite, jointTaxLine, netWorthRowOf, notReadyLine, pendingPrompt, ADD_SOMEONE_LINE, inviteesFor, needsReview, sayNetWorthError, settingOnAdd, shareRowOf, toggleInvitee } from './net-worth-state';
+import { canInvite, jointTaxLine, netWorthRowOf, notReadyLine, pendingPrompt, ADD_SOMEONE_LINE, FILING_CHOICES, netWorthValue, inviteesFor, needsReview, sayNetWorthError, settingOnAdd, shareRowOf, toggleInvitee } from './net-worth-state';
 
 const rina = { memberId: 'r', name: 'Rina', role: 'owner' as const };
 const andi = { memberId: 'a', name: 'Andi', role: 'member' as const };
@@ -150,5 +150,19 @@ describe('jointTaxLine', () => {
     expect(jointTaxLine(['Andi'])).toBe(
       'For the joint tax return, each item also goes to Andi with its row of the tax report: its code, its figures and the details its table asks for, such as an account number.',
     );
+  });
+});
+
+describe('the Net worth row on the Share page', () => {
+  const active = { mode: 'joint' as const, line: 'x', members: [] };
+  const waiting = { kind: 'waiting' as const, proposalId: 'p', line: 'x', cancellable: true };
+  it('reads Off, Waiting or On', () => {
+    expect(netWorthValue({ active: null, pending: null })).toBe('Off');
+    expect(netWorthValue({ active: null, pending: waiting })).toBe('Waiting');
+    expect(netWorthValue({ active, pending: null })).toBe('On');
+    expect(netWorthValue({ active, pending: waiting })).toBe('On');
+  });
+  it('words the two ways of filing', () => {
+    expect(FILING_CHOICES).toEqual({ joint: 'Filed together', separate: 'Filed separately' });
   });
 });
