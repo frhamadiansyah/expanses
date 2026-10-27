@@ -327,7 +327,6 @@ export function CardSettingsPage() {
 
       <InsetGroup
         header="Cards on this account"
-        footer="One statement, one limit — and sometimes more than one card. A supplementary card spends against this same account, so recording its last four digits is what tells whose spending is whose."
       >
         {[...plastic].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary)).map((piece) => (
           // The card's own face beside whose it is: a row with its art, and the way to take the card off.
