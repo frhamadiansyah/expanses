@@ -1,6 +1,6 @@
 import { roundUpToMajor } from '../money/money';
 import { monthOf } from '../reports/periods';
-import { firstYearlyMonth } from './schedule';
+import { nextOccurrenceMonth } from './schedule';
 
 /*
  * A sinking fund: money put aside each month for a yearly bill. Nothing is recorded month by month — the figure set
@@ -25,8 +25,8 @@ export interface SinkingPlan {
  * What to set aside each month for a yearly bill made today. A date already past this month means next year's, and a
  * bill due this month or next leaves one month, so the whole amount is set aside at once.
  */
-export function sinkingPlan(input: { targetMinor: number; today: string; repeatMonth: number; dayOfMonth: number; currency: string }): SinkingPlan {
-  const dueMonth = firstYearlyMonth(input.today, input.repeatMonth, input.dayOfMonth);
+export function sinkingPlan(input: { targetMinor: number; today: string; repeatMonth: number; dayOfMonth: number; currency: string; repeatEvery?: number | null; startsMonth?: string }): SinkingPlan {
+  const dueMonth = nextOccurrenceMonth(input.today, input.repeatMonth, input.dayOfMonth, input.repeatEvery, input.startsMonth);
   const monthsLeft = Math.max(1, monthsBetween(monthOf(input.today), dueMonth));
   const monthlyMinor = roundUpToMajor(Math.ceil(input.targetMinor / monthsLeft), input.currency);
   return { dueMonth, monthsLeft, monthlyMinor };

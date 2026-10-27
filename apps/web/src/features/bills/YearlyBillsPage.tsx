@@ -1,4 +1,4 @@
-import { addMonths, billWindow, dayMonth, isoDate, monthName } from '@expanses/core';
+import { addMonths, billWindow, dayMonth, isoDate } from '@expanses/core';
 import type { MonthlyBill } from '@expanses/db';
 import { useApp } from '../../app/context';
 import { useFrom } from '../../app/from-search';
@@ -8,13 +8,13 @@ import { InsetGroup, InsetRow, LargeTitle, SCREEN } from '../../ui/native';
 import { billCurrencyOf } from './bill-view';
 import { useYearlyBills } from './queries';
 
-/** The date a yearly bill comes out next: this year's while it is still to come or unpaid, else the one a year on. */
+/** The date a yearly or every-few-months bill comes out next: the one it speaks for while still to come or unpaid, else the occurrence after it. */
 export function nextDateOf(bill: MonthlyBill): string {
   const settled = bill.state === 'paid' || bill.state === 'skipped' || bill.state === 'paused';
-  return settled ? billWindow(addMonths(bill.billMonth, 12), bill.dayOfMonth, bill.payByDay).opensOn : bill.window.opensOn;
+  return settled ? billWindow(addMonths(bill.billMonth, bill.repeat === 'months' ? bill.repeatEvery! : 12), bill.dayOfMonth, bill.payByDay).opensOn : bill.window.opensOn;
 }
 
-/** Every yearly bill, all year round: Recurring lists one only in the weeks before its date. */
+/** Every yearly and every-few-months bill, all year round: Recurring lists one only in the weeks before its date. */
 export function YearlyBillsPage() {
   const { ws } = useApp();
   const today = isoDate();
@@ -24,7 +24,7 @@ export function YearlyBillsPage() {
   const rows = bills.data ?? [];
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Yearly bills" back="Recurring" backTo="/bills" backSearch={from} />
+      <LargeTitle title="Repeating bills" back="Recurring" backTo="/bills" backSearch={from} />
       <ErrorBox error={bills.error} />
       {bills.isSuccess && rows.length === 0 && (
         <InsetGroup>
@@ -41,7 +41,7 @@ export function YearlyBillsPage() {
                 key={bill.id}
                 testId="yearly-bill-row"
                 title={bill.name}
-                subtitle={`${monthName(`2026-${String(bill.repeatMonth).padStart(2, '0')}`, 'long')} ${bill.dayOfMonth} · next ${dayMonth(next)} ${next.slice(0, 4)}`}
+                subtitle={`Due ${dayMonth(next)}${bill.repeat === 'months' ? ` · every ${bill.repeatEvery} months` : ''}`}
                 value={amount === null ? 'Varies' : <Money minor={amount} currency={billCurrencyOf(bill, accounts, ws.baseCurrency)} />}
                 valueTone="ink"
                 to="/bills/$billId"

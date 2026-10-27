@@ -16,6 +16,7 @@ const bill = (over: Partial<MonthlyBill>): MonthlyBill => ({
   currency: null,
   repeat: 'monthly',
   repeatMonth: null,
+  repeatEvery: null,
   billMonth: '2026-09',
   window: billWindow('2026-09', 1, null),
   state: 'open',

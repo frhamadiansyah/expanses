@@ -244,6 +244,8 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
       // both and would treat the bill as monthly, the one thing an older partner build gets wrong.
       repeat: 'repeat',
       repeatMonth: 'repeat_month',
+      // Optional (0102): months between occurrences of a repeat = 'months' bill. Older builds skip it and read the bill as monthly.
+      repeatEvery: 'repeat_every',
     },
     // `payer` = { memberId, label } stands for money_account_id, which names an owner-scope account (spec §4.4).
     derivedFields: { payer: ['money_account_id'] },

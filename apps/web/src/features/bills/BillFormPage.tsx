@@ -22,6 +22,7 @@ const lastFundAccount = (): string => {
   }
 };
 const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
+const EVERY = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 export function EditBillRoute() {
@@ -49,13 +50,15 @@ export function BillFormPage({ billId }: { billId?: string }) {
   const [moneyAccountId, setMoneyAccountId] = useState('');
   // '' follows the account that pays: the bill is then written in that account's money, as every bill was before this.
   const [currency, setCurrency] = useState('');
-  // Every month, or once a year in the month chosen below.
-  const [repeat, setRepeat] = useState<'monthly' | 'yearly'>('monthly');
+  // Every month, every few months from the month chosen below, or once a year in it.
+  const [repeat, setRepeat] = useState<'monthly' | 'months' | 'yearly'>('monthly');
   const [month, setMonth] = useState('');
+  const [every, setEvery] = useState('3');
   // A yearly bill can save up each month in an account already held; '' monthly follows the worked-out figure.
   const [fundOn, setFundOn] = useState(false);
   const [fundAccountId, setFundAccountId] = useState('');
   const [fundMonthly, setFundMonthly] = useState('');
+  // The day a monthly bill comes out; for a yearly or every-few-months bill the one date it has, which is its due-by day.
   const [outDay, setOutDay] = useState('');
   const [payBy, setPayBy] = useState('');
   const [error, setError] = useState<unknown>(null);
@@ -101,8 +104,10 @@ export function BillFormPage({ billId }: { billId?: string }) {
     setMoneyAccountId(bill.moneyAccountId);
     setRepeat(bill.repeat);
     setMonth(bill.repeatMonth === null ? '' : String(bill.repeatMonth));
-    setOutDay(String(bill.dayOfMonth));
-    setPayBy(String(bill.payByDay ?? ''));
+    setEvery(String(bill.repeatEvery ?? 3));
+    // A bill that is not monthly has one date, the day it is due by: an older yearly bill with a later due-by day shows that day.
+    setOutDay(String(bill.repeat !== 'monthly' && bill.payByDay !== null && bill.payByDay >= bill.dayOfMonth ? bill.payByDay : bill.dayOfMonth));
+    setPayBy(bill.repeat === 'monthly' ? String(bill.payByDay ?? '') : '');
     const fund = (funds.data ?? []).find((f) => f.billId === billId);
     if (fund) {
       setFundOn(true);
@@ -126,15 +131,15 @@ export function BillFormPage({ billId }: { billId?: string }) {
   async function save(event: FormEvent) {
     event.preventDefault();
     setError(null);
-    if (repeat === 'yearly' && month === '') {
-      setError(new Error('Choose the month'));
+    if (repeat !== 'monthly' && month === '') {
+      setError(new Error(repeat === 'yearly' ? 'Choose the month' : 'Choose the starting month'));
       return;
     }
     if (outDay === '') {
-      setError(new Error('Choose the bill date'));
+      setError(new Error(repeat === 'monthly' ? 'Choose the bill date' : 'Choose the due day'));
       return;
     }
-    const saving = repeat === 'yearly' && fundOn;
+    const saving = repeat !== 'monthly' && fundOn;
     if (saving && parsedAmount === null) {
       setError(new Error('A sinking fund needs a fixed amount'));
       return;
@@ -148,9 +153,11 @@ export function BillFormPage({ billId }: { billId?: string }) {
         amountMinor: amount.trim() === '' ? null : parseMajor(amount.trim(), billCurrency),
         currency: currency || null,
         repeat,
-        repeatMonth: repeat === 'yearly' ? Number(month) : null,
+        repeatMonth: repeat === 'monthly' ? null : Number(month),
+        repeatEvery: repeat === 'months' ? Number(every) : null,
+        // The one date of a yearly or every-few-months bill is both the day it comes out and the day it is due.
         dayOfMonth: Number(outDay),
-        payByDay: payBy === '' ? null : Number(payBy),
+        payByDay: repeat !== 'monthly' || payBy === '' ? null : Number(payBy),
         fund: saving ? { accountId: fundAccountId, monthlyMinor: fundMonthly.trim() === '' ? null : parseMajor(fundMonthly.trim(), billCurrency) } : null,
       });
       if (saving) {
@@ -231,12 +238,31 @@ export function BillFormPage({ billId }: { billId?: string }) {
           </InsetGroup>
 
           <InsetGroup>
-            <SelectRow label="Repeats" value={repeat} onChange={(e) => setRepeat(e.target.value === 'yearly' ? 'yearly' : 'monthly')}>
+            <SelectRow
+              label="Repeats"
+              value={repeat}
+              onChange={(e) => {
+                const next = e.target.value === 'yearly' ? 'yearly' : e.target.value === 'months' ? 'months' : 'monthly';
+                setRepeat(next);
+                // Every few months starts from this month unless another is chosen.
+                if (next === 'months' && month === '') setMonth(String(Number(isoDate().slice(5, 7))));
+              }}
+            >
               <option value="monthly">Every month</option>
+              <option value="months">Every few months</option>
               <option value="yearly">Every year</option>
             </SelectRow>
-            {repeat === 'yearly' && (
-              <SelectRow label="Month" value={month} onChange={(e) => setMonth(e.target.value)}>
+            {repeat === 'months' && (
+              <SelectRow label="Months" value={every} onChange={(e) => setEvery(e.target.value)}>
+                {EVERY.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </SelectRow>
+            )}
+            {repeat !== 'monthly' && (
+              <SelectRow label={repeat === 'yearly' ? 'Month' : 'Starting'} value={month} onChange={(e) => setMonth(e.target.value)}>
                 <option value="">Choose a month</option>
                 {MONTHS.map((m) => (
                   <option key={m} value={m}>
@@ -245,25 +271,38 @@ export function BillFormPage({ billId }: { billId?: string }) {
                 ))}
               </SelectRow>
             )}
-            <SelectRow label="Bill date" value={outDay} onChange={(e) => setOutDay(e.target.value)}>
-              <option value="">Choose a day</option>
-              {DAYS.map((day) => (
-                <option key={day} value={day}>
-                  {ordinal(day)}
-                </option>
-              ))}
-            </SelectRow>
-            <SelectRow label="Due by" value={payBy} onChange={(e) => setPayBy(e.target.value)}>
-              <option value="">No due day</option>
-              {DAYS.map((day) => (
-                <option key={day} value={day}>
-                  {ordinal(day)}
-                </option>
-              ))}
-            </SelectRow>
+            {repeat === 'monthly' ? (
+              <>
+                <SelectRow label="Bill date" value={outDay} onChange={(e) => setOutDay(e.target.value)}>
+                  <option value="">Choose a day</option>
+                  {DAYS.map((day) => (
+                    <option key={day} value={day}>
+                      {ordinal(day)}
+                    </option>
+                  ))}
+                </SelectRow>
+                <SelectRow label="Due by" value={payBy} onChange={(e) => setPayBy(e.target.value)}>
+                  <option value="">No due day</option>
+                  {DAYS.map((day) => (
+                    <option key={day} value={day}>
+                      {ordinal(day)}
+                    </option>
+                  ))}
+                </SelectRow>
+              </>
+            ) : (
+              <SelectRow label="Due by" value={outDay} onChange={(e) => setOutDay(e.target.value)}>
+                <option value="">Choose a day</option>
+                {DAYS.map((day) => (
+                  <option key={day} value={day}>
+                    {ordinal(day)}
+                  </option>
+                ))}
+              </SelectRow>
+            )}
           </InsetGroup>
 
-          {repeat === 'yearly' && (
+          {repeat !== 'monthly' && (
             <InsetGroup header="Sinking fund">
               <SwitchRow label="Save up for it" checked={fundOn} onChange={setFundOn} />
               {fundOn && (

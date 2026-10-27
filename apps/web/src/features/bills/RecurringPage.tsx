@@ -278,10 +278,10 @@ export function RecurringPage() {
         </InsetGroup>
       )}
 
-      {/* A yearly bill is listed only in the weeks before its date; this keeps all of them reachable the rest of the year. */}
+      {/* A yearly or every-few-months bill is listed only in the weeks before its date; this keeps all of them reachable the rest of the year. */}
       {(yearly.data?.length ?? 0) > 0 && (
         <InsetGroup>
-          <InsetRow testId="yearly-bills-row" title="Yearly bills" value={String(yearly.data!.length)} to="/bills/yearly" search={from} />
+          <InsetRow testId="yearly-bills-row" title="Repeating bills" value={String(yearly.data!.length)} to="/bills/yearly" search={from} />
         </InsetGroup>
       )}
 

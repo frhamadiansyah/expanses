@@ -26,7 +26,7 @@ async function addYearlyBill(page: Page, name: string, at: { month: number; day:
   await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan' });
   await page.getByLabel('Repeats').selectOption('yearly');
   await page.getByLabel('Month', { exact: true }).selectOption(String(at.month));
-  await page.getByLabel('Bill date').selectOption(String(at.day));
+  await page.getByLabel('Due by').selectOption(String(at.day));
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page).toHaveURL(/\/bills$/);
 }
@@ -48,13 +48,11 @@ test('a yearly bill 20 days ahead shows under Due soon, and paying it takes it o
   await sheet.getByRole('button', { name: 'Record payment' }).click();
   await expect(sheet).toHaveCount(0);
 
-  // Paid, it leaves Recurring; the Yearly bills page still has it, next date a year on.
+  // Paid, it leaves Recurring; the Repeating bills page still has it, next date a year on.
   await expect(row(page, 'Car tax')).toHaveCount(0);
   await page.getByTestId('yearly-bills-row').click();
   await expect(page).toHaveURL(/\/bills\/yearly/);
-  const next = String(Number(at.iso.slice(0, 4)) + 1);
-  await expect(page.getByTestId('yearly-bill-row').filter({ hasText: 'Car tax' })).toContainText(`next ${Number(at.iso.slice(8))} `);
-  await expect(page.getByTestId('yearly-bill-row').filter({ hasText: 'Car tax' })).toContainText(next);
+  await expect(page.getByTestId('yearly-bill-row').filter({ hasText: 'Car tax' })).toContainText(`Due ${Number(at.iso.slice(8))} `);
 
   // Its page reads the repeat and the history by year.
   await page.getByTestId('yearly-bill-row').click();
@@ -62,7 +60,7 @@ test('a yearly bill 20 days ahead shows under Due soon, and paying it takes it o
   await expect(page.getByTestId('bill-history')).toContainText(`Paid in ${at.iso.slice(0, 4)}`);
 });
 
-test('a yearly bill far from its date is not on Recurring, but is under Yearly bills', async ({ page }) => {
+test('a yearly bill far from its date is not on Recurring, but is under Repeating bills', async ({ page }) => {
   const at = await daysAhead(page, 180);
   await addYearlyBill(page, 'Domain', at);
 
@@ -101,6 +99,9 @@ test('a bill switches between monthly and yearly in Edit', async ({ page }) => {
   await row(page, 'Gym').click();
   await page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Edit' }).click();
   await page.getByLabel('Repeats').selectOption('yearly');
+  // A yearly bill has the one date: Due by, with no Bill date beside it.
+  await expect(page.getByLabel('Bill date')).toHaveCount(0);
+  await expect(page.getByLabel('Due by')).toHaveValue('1');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('Choose the month')).toBeVisible();
   await page.getByLabel('Month', { exact: true }).selectOption(String(far.month));

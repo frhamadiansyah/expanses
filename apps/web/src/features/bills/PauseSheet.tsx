@@ -32,7 +32,7 @@ export function PauseSheet({ bill, onClose, onPaused }: { bill: MonthlyBill; onC
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const span = SPANS.find((n) => addMonths(from, n) === until);
-  const comebacks = Array.from({ length: bill.repeat === 'yearly' ? 24 : 12 }, (_, i) => addMonths(from, i + 1));
+  const comebacks = Array.from({ length: bill.repeat !== 'monthly' ? 24 : 12 }, (_, i) => addMonths(from, i + 1));
 
   async function save() {
     setBusy(true);

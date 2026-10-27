@@ -6,7 +6,7 @@ import {
   billWindow,
   type BillWindow,
   currentBillMonth,
-  firstYearlyMonth,
+  nextOccurrenceMonth,
   isOwedMonth,
   expenseLines,
   sinkingPlan,
@@ -27,7 +27,7 @@ import { accounts, entries, transactions } from '../schema';
 import { bookCategories, books } from '../schema-books';
 import { billPauses, billPayments, billSkips, billWindows, expenseTemplates } from '../schema-recurring';
 import { billCurrencies, writeBillCurrency } from './bill-currency';
-import { billYearlyMonths, writeBillRepeat } from './bill-repeat';
+import { type BillRepeatFacts, billRepeats, writeBillRepeat } from './bill-repeat';
 import { dropSinkingFund, getSinkingFund, writeSinkingFund } from './sinking-funds';
 import { BILL_MONTH, billPausesExist, billTablesExist } from './bill-months';
 import { withCapture } from '../sync/capture';
@@ -64,10 +64,15 @@ export interface ExpenseTemplateRow {
    * made before: its amount is then in that account's currency.
    */
   currency: string | null;
-  /** 'yearly' for a bill owed once a year, in `repeatMonth`; 'monthly' for every other bill (0099). */
-  repeat: 'monthly' | 'yearly';
-  /** 1-12: the month of the year a yearly bill comes out; null for a monthly bill. */
+  /**
+   * 'yearly' for a bill owed once a year, in `repeatMonth` (0099); 'months' for one owed every `repeatEvery` months from
+   * the month `repeatMonth` (0102); 'monthly' for every other bill.
+   */
+  repeat: 'monthly' | 'yearly' | 'months';
+  /** 1-12: the month of the year a yearly bill comes out, or an every-few-months bill's first month; null when monthly. */
   repeatMonth: number | null;
+  /** 2-11: months between occurrences of an every-few-months bill; null otherwise. */
+  repeatEvery: number | null;
 }
 
 export interface SaveExpenseTemplateInput {
@@ -84,9 +89,11 @@ export interface SaveExpenseTemplateInput {
   /** The bill's own currency; null follows the payer. Absent leaves an edited bill's as it was (a new bill follows). */
   currency?: string | null;
   /** How often it comes out. Absent leaves an edited bill's as it was (a new bill is monthly). */
-  repeat?: 'monthly' | 'yearly';
-  /** 1-12: required for a yearly bill. */
+  repeat?: 'monthly' | 'yearly' | 'months';
+  /** 1-12: required for a yearly or every-few-months bill (for the latter, the month of its first occurrence). */
   repeatMonth?: number | null;
+  /** 2-11: required for an every-few-months bill. */
+  repeatEvery?: number | null;
   /**
    * A yearly bill's sinking fund (0101): the account it is set aside in and the monthly figure (worked out from the
    * amount and the months left when absent). Null turns the fund off; absent leaves an edited bill's as it was.
@@ -98,7 +105,7 @@ const toRow = (
   row: typeof expenseTemplates.$inferSelect,
   window?: { payByDay: number | null; startsMonth: string },
   currency: string | null = null,
-  yearlyMonth: number | null = null,
+  repeatFacts: BillRepeatFacts | null = null,
 ): ExpenseTemplateRow => ({
   id: row.id,
   name: row.name,
@@ -111,8 +118,9 @@ const toRow = (
   // An older database has no windows: the month the bill was made is the nearest honest answer.
   startsMonth: window?.startsMonth ?? row.createdAt.slice(0, 7),
   currency,
-  repeat: yearlyMonth === null ? 'monthly' : 'yearly',
-  repeatMonth: yearlyMonth,
+  repeat: repeatFacts?.repeat ?? 'monthly',
+  repeatMonth: repeatFacts?.month ?? null,
+  repeatEvery: repeatFacts?.every ?? null,
 });
 
 async function accountCurrency(db: Db, ws: WorkspaceContext, accountId: string): Promise<string | null> {
@@ -155,6 +163,12 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
   if (input.repeat === 'yearly' && !(Number.isInteger(input.repeatMonth) && input.repeatMonth! >= 1 && input.repeatMonth! <= 12)) {
     throw new RecurringError('MONTH_REQUIRED', 'Choose the month');
   }
+  if (input.repeat === 'months') {
+    if (!(Number.isInteger(input.repeatMonth) && input.repeatMonth! >= 1 && input.repeatMonth! <= 12)) throw new RecurringError('MONTH_REQUIRED', 'Choose the starting month');
+    if (!(Number.isInteger(input.repeatEvery) && input.repeatEvery! >= 2 && input.repeatEvery! <= 11)) {
+      throw new RecurringError('EVERY_RANGE', 'The months between must be a whole number from 2 to 11');
+    }
+  }
 
   // One write: a bill saved without its window would have no pay-by day and a first month guessed from createdAt.
   return database.transaction(async (tx) => {
@@ -180,12 +194,22 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
       .select({ dayOfMonth: expenseTemplates.dayOfMonth })
       .from(expenseTemplates)
       .where(and(eq(expenseTemplates.id, id), eq(expenseTemplates.workspaceId, ws.workspaceId)));
-    const beforeYearly = (await billYearlyMonths(tx, ws)).get(id) ?? null;
+    const beforeRepeat = (await billRepeats(tx, ws)).get(id) ?? null;
     // Absent leaves an edited bill as it was; a new bill is monthly.
-    const yearlyMonth: number | null = input.repeat === undefined ? beforeYearly : input.repeat === 'yearly' ? input.repeatMonth! : null;
+    const repeatNow: BillRepeatFacts | null =
+      input.repeat === undefined
+        ? beforeRepeat
+        : input.repeat === 'yearly'
+          ? { repeat: 'yearly', month: input.repeatMonth!, every: null }
+          : input.repeat === 'months'
+            ? { repeat: 'months', month: input.repeatMonth!, every: input.repeatEvery! }
+            : null;
+    const yearlyMonth: number | null = repeatNow?.month ?? null;
+    const sameRepeat = (repeatNow?.repeat ?? null) === (beforeRepeat?.repeat ?? null) && yearlyMonth === (beforeRepeat?.month ?? null) && (repeatNow?.every ?? null) === (beforeRepeat?.every ?? null);
     const today = isoDate();
-    const repeatChanged = Boolean(before) && (yearlyMonth !== beforeYearly || (yearlyMonth !== null && before!.dayOfMonth !== input.dayOfMonth));
-    const startsMonth = input.startsMonth ?? (yearlyMonth === null ? today.slice(0, 7) : firstYearlyMonth(today, yearlyMonth, input.dayOfMonth));
+    const repeatChanged = Boolean(before) && (!sameRepeat || (yearlyMonth !== null && before!.dayOfMonth !== input.dayOfMonth));
+    // The first occurrence on or after today, which an every-few-months bill counts its gaps from.
+    const startsMonth = input.startsMonth ?? (yearlyMonth === null ? today.slice(0, 7) : nextOccurrenceMonth(today, yearlyMonth, input.dayOfMonth));
     await withCapture(tx, [{ entity: 'bill', id }, { entity: 'bill_window', id }], async () => {
       await tx
         .insert(expenseTemplates)
@@ -220,7 +244,7 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
           // Changing how often it comes out starts the new schedule from today; any other edit leaves the first month alone.
           .onConflictDoUpdate({ target: billWindows.templateId, set: repeatChanged ? { payByDay, startsMonth } : { payByDay } });
       }
-      if (input.repeat !== undefined) await writeBillRepeat(tx, ws, id, yearlyMonth);
+      if (input.repeat !== undefined) await writeBillRepeat(tx, ws, id, repeatNow);
       // Inside the capture, so a shared workspace sees the currency change with the rest of the bill.
       if (input.currency !== undefined) await writeBillCurrency(tx, ws, id, input.currency);
     });
@@ -239,7 +263,16 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
       if (fundCurrency !== billCurrency) throw new RecurringError('FUND_CURRENCY', `Set the money aside in an account in ${billCurrency}`);
       let monthlyMinor = input.fund.monthlyMinor ?? null;
       if (monthlyMinor === null) {
-        monthlyMinor = sinkingPlan({ targetMinor: amountMinor, today, repeatMonth: yearlyMonth, dayOfMonth: input.dayOfMonth, currency: billCurrency }).monthlyMinor;
+        const [window] = (await billTablesExist(tx)) ? await tx.select({ startsMonth: billWindows.startsMonth }).from(billWindows).where(eq(billWindows.templateId, id)) : [];
+        monthlyMinor = sinkingPlan({
+          targetMinor: amountMinor,
+          today,
+          repeatMonth: yearlyMonth,
+          dayOfMonth: input.dayOfMonth,
+          currency: billCurrency,
+          repeatEvery: repeatNow?.every,
+          startsMonth: window?.startsMonth,
+        }).monthlyMinor;
       }
       if (!(Number.isSafeInteger(monthlyMinor) && monthlyMinor > 0)) throw new RecurringError('FUND_MONTHLY', 'Enter the amount to set aside each month');
       await writeSinkingFund(tx, ws, { billId: id, accountId: input.fund.accountId, monthlyMinor, startedMonth: today.slice(0, 7) });
@@ -269,8 +302,8 @@ export async function listExpenseTemplates(database: Database, ws: WorkspaceCont
     : [];
   const byTemplate = new Map(windows.map((w) => [w.templateId, w]));
   const currencies = await billCurrencies(database.db, ws);
-  const yearly = await billYearlyMonths(database.db, ws);
-  return rows.map((row) => toRow(row, byTemplate.get(row.id), currencies.get(row.id) ?? null, yearly.get(row.id) ?? null));
+  const repeats = await billRepeats(database.db, ws);
+  return rows.map((row) => toRow(row, byTemplate.get(row.id), currencies.get(row.id) ?? null, repeats.get(row.id) ?? null));
 }
 
 export async function deleteExpenseTemplate(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
@@ -324,8 +357,8 @@ export async function committedByCategory(
   const committed: Record<string, number> = {};
   for (const template of templates) {
     if (!template.active || template.amountMinor === null || pausedNow.has(template.id)) continue;
-    // A yearly bill is spoken for only in the month it comes out, and only once it has begun.
-    if (template.repeat === 'yearly' && (template.repeatMonth !== Number(today.slice(5, 7)) || monthOf(today) < template.startsMonth)) continue;
+    // A yearly or every-few-months bill is spoken for only in a month it comes out, and only once it has begun.
+    if (template.repeat !== 'monthly' && (!isOwedMonth(monthOf(today), template.repeatMonth, template.repeatEvery, template.startsMonth) || monthOf(today) < template.startsMonth)) continue;
     // No rate reaching the bill's out day leaves it out rather than counting it as the wrong money — and says so
     // in `missing`, so the budget's "… of it is bills" line cannot quietly understate what is already spoken for.
     const outDay = billWindow(monthOf(today), template.dayOfMonth, template.payByDay).opensOn;
@@ -526,7 +559,7 @@ const paidMinorOf = (payment: PaymentFact | undefined) => (payment ? paidFigures
 
 function billRow(template: ExpenseTemplateRow, facts: BillFacts, today: string): MonthlyBill {
   const settled = settledOf(template, facts);
-  const input = { today, startsMonth: template.startsMonth, outDay: template.dayOfMonth, payByDay: template.payByDay, settled, yearlyMonth: template.repeatMonth };
+  const input = { today, startsMonth: template.startsMonth, outDay: template.dayOfMonth, payByDay: template.payByDay, settled, yearlyMonth: template.repeatMonth, repeatEvery: template.repeatEvery };
   const { month, ...rest } = monthOfBill(template, facts, currentBillMonth(input), today);
   return {
     ...template,
@@ -551,10 +584,10 @@ export async function monthlyBills(database: Database, ws: WorkspaceContext, onD
   return (await allBills(database, ws, onDate)).filter((bill) => bill.repeat === 'monthly' || yearlyListed(bill, bill.window, onDate));
 }
 
-/** Every active yearly bill, listed or not, with its next occurrence: the page that keeps them reachable all year. */
+/** Every active yearly or every-few-months bill, listed or not, with its next occurrence: the page that keeps them reachable all year. */
 export async function yearlyBills(database: Database, ws: WorkspaceContext, onDate: string): Promise<MonthlyBill[]> {
   return (await allBills(database, ws, onDate))
-    .filter((bill) => bill.repeat === 'yearly')
+    .filter((bill) => bill.repeat !== 'monthly')
     .sort((a, b) => a.window.opensOn.localeCompare(b.window.opensOn) || a.name.localeCompare(b.name));
 }
 
@@ -579,10 +612,10 @@ export async function billDetail(database: Database, ws: WorkspaceContext, templ
       ...(facts.skips.get(template.id) ?? []),
       ...(facts.pauses.get(template.id) ?? []),
       ...(facts.payments.get(template.id) ?? []).map((p) => p.billMonth),
-    ].filter((month) => isOwedMonth(month, yearlyMonth)),
+    ].filter((month) => isOwedMonth(month, yearlyMonth, template.repeatEvery, template.startsMonth)),
   );
   for (let month = template.startsMonth; month <= monthOf(onDate); month = addMonths(month, 1)) {
-    if (isOwedMonth(month, yearlyMonth)) months.add(month);
+    if (isOwedMonth(month, yearlyMonth, template.repeatEvery, template.startsMonth)) months.add(month);
   }
   const history = [...months]
     .sort((a, b) => b.localeCompare(a))
