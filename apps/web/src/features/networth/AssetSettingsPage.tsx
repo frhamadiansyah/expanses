@@ -12,6 +12,7 @@ import { typedNameOf } from '../../lib/account-name';
 import { useBack } from '../../app/BackHeader';
 import { useHoldingLinks } from '../investments/queries';
 import { AssetSettings } from './AssetSettings';
+import { PocketedIdentityGroup } from './PocketedIdentityGroup';
 import { CouponGroup } from './CouponGroup';
 import { SameFundGroup } from './SameFundGroup';
 import { PricesGroup } from './PricesGroup';
@@ -86,6 +87,10 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
   // An account with pockets holds nothing itself, so it is no asset and has no value row: its settings are its name
   // and the way out, and its pockets' are their own.
   const parentMoney = money && value === undefined && !values.isPending;
+  // A bank or saving account with pockets is named, grouped and described as a plain one is (Bank › name, Group, Description).
+  const bankParent = parentMoney && (account?.subtype === 'bank' || account?.subtype === 'savings') && account.parentId === null;
+  // A pocket's name is its account's and its currency, so its settings send to the account's for the name, bank, Group and Description.
+  const parentOfPocket = account?.parentId ? (accounts.data ?? []).find((row) => row.id === account.parentId) : undefined;
   // A holding linked to a security takes its lot size from the security, so the row is not offered.
   const linkedToSecurity = (links.data ?? []).some((link) => link.accountId === accountId && link.securityId !== null);
   const name = value?.name ?? account?.name ?? 'Asset';
@@ -223,13 +228,15 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
       />
       <ErrorBox error={values.error ?? profile.error ?? stock.error} />
       {!value && !money && !values.isPending && <Empty>That asset is not in this workspace.</Empty>}
-      {parentMoney && (
-        <InsetGroup footer="Renaming it renames its pockets.">
+      {parentMoney && account && bankParent && <PocketedIdentityGroup accountId={accountId} subtype={account.subtype} />}
+      {parentMoney && !bankParent && (
+        <InsetGroup>
           <TextRow
             label="Name"
             // The name as typed: the bank shown in front of it on every other screen is not part of it.
             defaultValue={typedNameOf(account!)}
             placeholder="Name"
+            info="Renaming it renames its pockets."
             onBlur={(e) => {
               const next = e.target.value.trim();
               if (next === '' || next === typedNameOf(account!)) return;
@@ -264,7 +271,16 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
           coretaxCode={profile.data?.coretaxCode ?? null}
           // As the tax report reads it: a deposit nobody set shows final, the band its interest is reported in.
           taxTreatment={taxTreatmentOf(profile.data?.taxTreatment, account?.subtype)}
-          nameRow={identity ?? (account && (account.subtype === 'bank' || account.subtype === 'savings') && account.parentId === null ? <SettingsNameRow accountId={accountId} /> : undefined)}
+          pocketed={Boolean(money && parentOfPocket)}
+          nameRow={identity ?? (money && parentOfPocket ? ([
+            <PickerRow
+              key="account"
+              label="Account"
+              value={parentOfPocket.name}
+              onOpen={() => void navigate({ to: '/net-worth/assets/$accountId/settings', params: { accountId: parentOfPocket.id } })}
+            />,
+            <ReadOnlyRow key="currency" label="Currency" value={value.currency} />,
+          ]) : account && (account.subtype === 'bank' || account.subtype === 'savings') && account.parentId === null ? <SettingsNameRow accountId={accountId} /> : undefined)}
           beforeTax={money && account ? <AccountSettingsBox account={account} onError={setError} /> : undefined}
           afterName={
             acquired
@@ -332,6 +348,8 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
           key={`fields-${accountId}`}
           profile={profile.data ?? { ...profileDefaults('cash'), coretaxSection: 'kas', coretaxCode: cashCodeFor(account?.subtype), accountId, workspaceId: ws.workspaceId, updatedAt: '' }}
           section={profile.data?.coretaxSection ?? 'kas'}
+          // The bank is asked in the name row, and the number in the box above: as on a plain bank account.
+          hide={bankParent ? ['acct', 'inst'] : undefined}
         />
       )}
 

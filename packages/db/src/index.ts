@@ -20,6 +20,7 @@ export * from './repos/account-delete';
 export * from './repos/category-delete';
 export * from './repos/cash-accounts';
 export * from './repos/pockets';
+export * from './repos/pocketed-identity';
 export * from './repos/deposit-terms';
 export * from './repos/deposit-automation';
 export * from './repos/categories';

@@ -1,11 +1,12 @@
-import { renameAccount } from '@expanses/db';
-import { useState } from 'react';
+import { renameAccount, setPocketedIdentity } from '@expanses/db';
+import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { typedNameOf } from '../../lib/account-name';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import type { GroupChild } from '../../ui/native';
 import { errorHint } from '../networth/AssetSettings';
-import { useAssetProfile } from '../networth/queries';
+import { useAssetProfile, useAssetProfiles } from '../networth/queries';
+import { bankOf } from '../wallet/wallet-model';
 import { BankNameRow } from '../ownables/CashAccountForm';
 import { setKasField } from './kas-fields';
 
@@ -14,13 +15,16 @@ import { setKasField } from './kas-fields';
  * row, so what is edited is plain. The bank is the tax report's Nama institusi, kept in the same place, so the tax
  * report does not ask for it again. Saved when focus leaves the row: a name emptied is not taken.
  */
-export function SettingsNameRow({ accountId, position }: GroupChild & { accountId: string }) {
+export function SettingsNameRow({ accountId, info, position }: GroupChild & { accountId: string; info?: ReactNode }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts();
   const profile = useAssetProfile(accountId);
   const account = (accounts.data ?? []).find((row) => row.id === accountId);
-  const savedBank = profile.data?.coretaxFields.inst ?? '';
+  const profiles = useAssetProfiles();
+  // An account with pockets keeps its bank on them (the reports read the pockets), so the bank shown is theirs.
+  const pocketed = (accounts.data ?? []).some((row) => row.parentId === accountId);
+  const savedBank = pocketed ? (bankOf(accountId, accounts.data ?? [], profiles.data ?? []) ?? '') : (profile.data?.coretaxFields.inst ?? '');
   const [bank, setBank] = useState<string | null>(null);
   const [name, setName] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
@@ -34,7 +38,8 @@ export function SettingsNameRow({ accountId, position }: GroupChild & { accountI
       try {
         const nextName = shownName.trim();
         if (nextName !== '' && nextName !== typedNameOf(account)) await renameAccount(database, ws, accountId, nextName);
-        await setKasField(database, ws, account, 'inst', shownBank);
+        if (pocketed) await setPocketedIdentity(database, ws, accountId, { inst: shownBank });
+        else await setKasField(database, ws, account, 'inst', shownBank);
         await invalidate();
         setBank(null);
         setName(null);
@@ -52,7 +57,7 @@ export function SettingsNameRow({ accountId, position }: GroupChild & { accountI
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) save();
       }}
     >
-      <BankNameRow bank={shownBank} onBank={setBank} name={shownName} onName={setName} offersBanks={ws.baseCurrency === 'IDR'} position={position} />
+      <BankNameRow bank={shownBank} onBank={setBank} name={shownName} onName={setName} offersBanks={ws.baseCurrency === 'IDR'} info={info} position={position} />
       {error ? <div className="px-4 pb-2 text-[13px]">{errorHint(error)}</div> : null}
     </div>
   );
