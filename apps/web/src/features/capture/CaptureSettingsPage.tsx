@@ -4,20 +4,18 @@ import { useCallback, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { type DrainReport, drainNow, lastDrain } from '../../capture/drain';
 import { native } from '../../capture/native';
-import { useScanReceipt } from '../../capture/use-scan';
 import { useAccounts } from '../../lib/queries';
-import { Button, ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, LargeTitle, SCREEN, SegmentedControl } from '../../ui/native';
+import { ErrorBox } from '../../ui';
+import { InsetGroup, InsetRow, LargeTitle, PickerRow, SCREEN, SelectRow } from '../../ui/native';
 import { useCaptureSources } from '../review/queries';
-import { CAPTURE_GUIDES, isShortcutLink, SCREEN_SCANNER_SHORTCUT_URL } from './guides';
+import { CAPTURE_GUIDES } from './guides';
 
 /**
- * Settings → Capture: how to make capture happen, what it is allowed to keep, and what it has learned.
+ * Settings → Capture: what it is allowed to keep, what it has learned, and where to start.
  *
- * The guides are data (`guides.ts`) and open in place, one at a time, because they are read with the phone in the
- * other hand — a step list behind a navigation push would be one flick too many. The one control is the scope:
- * everything, or only money going out. Below, every source the phone has recognised, with the account it files
- * into and whether it has learned a layout yet.
+ * Top to bottom: the scope (everything, or only money going out), every source the phone has recognised with the
+ * account it files into, the ways to capture — each a page of its own, with the steps (`guides.ts`) and its button —
+ * and what waits on the phone, as one row that checks when tapped. What a row means is behind its ⓘ, not under it.
  */
 /** A drain's report in a line: what the phone handed over and what came of it, or why it failed. */
 export function reportLine(report: DrainReport | null): string {
@@ -30,8 +28,9 @@ export function reportLine(report: DrainReport | null): string {
 }
 
 /**
- * What waits on the phone for the app, and what the last drain made of it. A shortcut says "Saved to review" the
- * moment it writes; this is where the other half — the app taking it in — can be seen, and asked for again.
+ * What waits on the phone for the app, as one row: the count, and a tap to take it in now. A shortcut says "Saved to
+ * review" the moment it writes; this is where the other half — the app taking it in — is asked for again, and the
+ * last drain's report is behind the ⓘ. Items the phone could not open appear only when there are some.
  */
 function HoldingArea() {
   const { database, ws } = useApp();
@@ -62,11 +61,20 @@ function HoldingArea() {
     }
   }
 
+  const count = status ? String(status.pending) : '–';
   return (
-    <InsetGroup header="Waiting on the phone" footer={`Last check: ${reportLine(report)}`}>
-      <InsetRow title="Waiting" value={status ? String(status.pending) : '–'} chevron={false} />
-      <InsetRow title="Could not be opened" value={status ? String(status.broken) : '–'} chevron={false} />
-      <InsetRow title={busy ? 'Checking…' : 'Check now'} action onClick={busy ? undefined : () => void check()} />
+    <InsetGroup header="On the phone">
+      <PickerRow
+        label="Waiting"
+        value={`${count} · ${busy ? 'Checking…' : 'Check now'}`}
+        info={`Last check: ${reportLine(report)}`}
+        chevron={false}
+        onOpen={() => {
+          if (!busy) void check();
+        }}
+        testId="capture-waiting"
+      />
+      {status && status.broken > 0 && <InsetRow plain title="Could not be opened" value={String(status.broken)} chevron={false} />}
     </InsetGroup>
   );
 }
@@ -75,9 +83,7 @@ export function CaptureSettingsPage() {
   const { database } = useApp();
   const accounts = useAccounts().data ?? [];
   const sources = useCaptureSources();
-  const scan = useScanReceipt();
   const [scope, setScope] = useState<CaptureScope>('everything');
-  const [open, setOpen] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
 
   useEffect(() => {
@@ -101,86 +107,21 @@ export function CaptureSettingsPage() {
   return (
     <div className={SCREEN}>
       <LargeTitle title="Capture" back="Account" backTo="/account" />
-      <ErrorBox error={error ?? scan.error ?? sources.error} />
+      <ErrorBox error={error ?? sources.error} />
 
-      {CAPTURE_GUIDES.map((guide) => {
-        const shown = open === guide.key;
-        return (
-          <InsetGroup
-            key={guide.key}
-            header={guide.title}
-            footer={
-              shown ? (
-                <span className="block">
-                  {guide.note && <span className="block pb-2">{guide.note}</span>}
-                  <ol className="list-decimal space-y-1 pl-5">
-                    {guide.steps.map((step) => (
-                      <li key={step}>{step}</li>
-                    ))}
-                  </ol>
-                </span>
-              ) : (
-                guide.blurb
-              )
-            }
-          >
-            <InsetRow
-              title={shown ? 'Hide the steps' : 'Show the steps'}
-              chevron={!shown}
-              onClick={() => setOpen(shown ? null : guide.key)}
-            />
-          </InsetGroup>
-        );
-      })}
-
-      {open === 'receipt' && (
-        <Button className="w-full" disabled={scan.busy} onClick={() => void scan.scan()}>
-          {scan.busy ? 'Reading the receipt…' : 'Scan a receipt now'}
-        </Button>
-      )}
-
-      {open === 'screen-scanner' && SCREEN_SCANNER_SHORTCUT_URL && isShortcutLink(SCREEN_SCANNER_SHORTCUT_URL) && (
-        <Button className="w-full" onClick={() => window.open(SCREEN_SCANNER_SHORTCUT_URL!, '_system')}>
-          Add Screen scanner
-        </Button>
-      )}
-
-      {(open === 'notifications' || open === 'screen-scanner') && (
-        <Button
-          className="w-full"
-          onClick={() => {
-            // The shell may open it directly; a browser tab cannot, and a dead button would be a lie, so the
-            // window is asked and failure is silent.
-            window.open('shortcuts://', '_system');
-          }}
+      <InsetGroup>
+        <SelectRow
+          label="What to capture"
+          info="“Expenses only” skips money in, top-ups and offers; anything skipped waits in the Skipped list either way."
+          value={scope}
+          onChange={(e) => void chooseScope(e.target.value as CaptureScope)}
         >
-          Open Shortcuts
-        </Button>
-      )}
-
-      <InsetGroup
-        header="What to capture"
-        footer="“Expenses only” skips money in, top-ups and offers; anything skipped waits in the Skipped list either way."
-      >
-        <div className="px-3 py-2.5">
-          <SegmentedControl
-            segments={[
-              { key: 'everything', label: 'Everything' },
-              { key: 'expenses-only', label: 'Expenses only' },
-            ]}
-            value={scope}
-            onChange={(key) => void chooseScope(key as CaptureScope)}
-            label="What to capture"
-          />
-        </div>
+          <option value="everything">Everything</option>
+          <option value="expenses-only">Expenses only</option>
+        </SelectRow>
       </InsetGroup>
 
-      <HoldingArea />
-
-      <InsetGroup
-        header="Capture sources"
-        footer="What each source has learned: the account it files into, and the layout of a screen. Tap one to change it."
-      >
+      <InsetGroup header="Sources">
         {(sources.data ?? []).map((source) => (
           <InsetRow
             key={source.id}
@@ -190,10 +131,16 @@ export function CaptureSettingsPage() {
             params={{ sourceId: source.id }}
           />
         ))}
-        {sources.isSuccess && sources.data.length === 0 && (
-          <InsetRow title="Nothing captured yet." chevron={false} />
-        )}
+        {sources.isSuccess && sources.data.length === 0 && <InsetRow title="Nothing captured yet." chevron={false} />}
       </InsetGroup>
+
+      <InsetGroup header="Ways to capture">
+        {CAPTURE_GUIDES.map((guide) => (
+          <InsetRow plain key={guide.key} title={guide.title} to="/settings/capture/ways/$way" params={{ way: guide.key }} />
+        ))}
+      </InsetGroup>
+
+      <HoldingArea />
     </div>
   );
 }

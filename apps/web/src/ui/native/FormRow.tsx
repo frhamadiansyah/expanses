@@ -56,10 +56,13 @@ export function PickerRow({
   detailTone,
   info,
   testId,
+  chevron,
 }: GroupChild & {
   label: string;
   value: string | null | undefined;
   placeholder?: string;
+  /** Whether the › is drawn; by default it is, with an answer or without. False for a row that does something rather than opens something. */
+  chevron?: boolean;
   /**
    * What the row means, behind an ⓘ beside the label and under the row only when asked for — as TextRow's `info`. The row is
    * one button, which cannot hold another, so with an ⓘ the button is laid over the whole row and the label, answer and ⓘ are
@@ -91,7 +94,7 @@ export function PickerRow({
       ) : (
         answer
       )}
-      {plan.chevron && (
+      {(chevron ?? plan.chevron) && (
         <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
           {'›'}
         </span>
