@@ -127,9 +127,15 @@ function LatestTransactions({
               key={purchase.id}
               icon={<mark.Glyph size={16} strokeWidth={2.2} />}
               iconColour={mark.colour}
-              title={purchase.description || mark.name || 'Purchase'}
-              subtitle={[mark.name, shortDate(purchase.on), earned ? `+${formatPoints(earned)} ${unit}` : null].filter(Boolean).join(' · ')}
-              value={formatMinor(purchase.amountMinor, currency)}
+              // The category is the first line, as on Cashflow; the note and the day are the second; the points sit under the amount.
+              title={mark.name || purchase.description || 'Purchase'}
+              subtitle={[purchase.description, shortDate(purchase.on)].filter(Boolean).join(' · ')}
+              value={
+                <span className="flex flex-col items-end">
+                  <span>{formatMinor(purchase.amountMinor, currency)}</span>
+                  {earned ? <span className="text-[12.5px] leading-[16px] font-normal text-[var(--ph-ink-3)]">{`+${formatPoints(earned)} ${unit}`}</span> : null}
+                </span>
+              }
               valueTone="ink"
               to="/transactions/$transactionId"
               params={{ transactionId: purchase.id }}
