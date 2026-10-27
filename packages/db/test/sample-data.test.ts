@@ -52,7 +52,7 @@ describe('sample data', () => {
     const funds = await listSinkingFunds(database.db, ws);
     expect(funds.map((f) => f.billId).sort()).toEqual(yearly.filter((b) => b.name !== 'Software licence').map((b) => b.id).sort());
     expect(funds.every((f) => f.accountId === sinkingAccount.id && f.monthlyMinor > 0)).toBe(true);
-    expect(funds.filter((f) => f.extraMinor > 0)).toHaveLength(1);
+    expect(funds.filter((f) => f.entries.some((e) => e.kind === 'extra'))).toHaveLength(1);
     expect((await setAsideView(database, ws, sinkingAccount.id, { date: today }))?.setAsideMinor).toBeGreaterThan(0);
 
     // Card annual fees: KrisFlyer in 20 days, Bonvoy waived this year, Accor far ahead.

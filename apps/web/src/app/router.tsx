@@ -71,6 +71,7 @@ import { OverviewPage } from '../features/networth/OverviewPage';
 import { UpdatePricesPage } from '../features/prices/UpdatePricesPage';
 import { BillFormPage, EditBillRoute } from '../features/bills/BillFormPage';
 import { BillRoute } from '../features/bills/BillPage';
+import { FundHistoryRoute } from '../features/bills/FundHistoryPage';
 import { RecurringPage } from '../features/bills/RecurringPage';
 import { YearlyBillsPage } from '../features/bills/YearlyBillsPage';
 import { DuplicateTransactionRoute, EditTransactionRoute, NewTransactionRoute } from '../features/transactions/FormPage';
@@ -211,6 +212,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/new', component: () => <BillFormPage /> }),
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId', component: BillRoute, validateSearch: fromSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId/edit', component: EditBillRoute }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId/fund-history', component: FundHistoryRoute }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events', component: EventsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId', component: EventDetailPage, validateSearch: eventSearch }),
   // The plan and its items: six screens, every one of them a real route, so a desktop reaches each by URL and by

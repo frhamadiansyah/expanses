@@ -52,7 +52,7 @@ const setAsideOf = async (h: House, date: string, accountId = h.savings.id) => (
 
 it('works the monthly figure out from the amount and the months left, and starts the fund this month', async () => {
   const h = await household();
-  expect(await listSinkingFunds(h.database.db, h.ws)).toEqual([{ billId: h.insurance, accountId: h.savings.id, monthlyMinor: 468_750, startedMonth: '2026-03', extraMinor: 0 }]);
+  expect(await listSinkingFunds(h.database.db, h.ws)).toMatchObject([{ billId: h.insurance, accountId: h.savings.id, monthlyMinor: 468_750, startedMonth: '2026-03', entries: [] }]);
 });
 
 it('keeps a monthly figure the owner typed', async () => {
@@ -112,7 +112,9 @@ it('an edit keeps the start and the extras, and can change the account and the f
   await addSinkingExtra(h.database.db, h.ws, h.insurance, 100_000);
   vi.setSystemTime(new Date('2026-06-02T12:00:00'));
   await saveExpenseTemplate(h.database, h.ws, { ...h.base, id: h.insurance, name: 'Car insurance', dayOfMonth: 12, amountMinor: 3_750_000, fund: { accountId: h.bank.id, monthlyMinor: 500_000 } });
-  expect(await listSinkingFunds(h.database.db, h.ws)).toEqual([{ billId: h.insurance, accountId: h.bank.id, monthlyMinor: 500_000, startedMonth: '2026-03', extraMinor: 100_000 }]);
+  const [fund] = await listSinkingFunds(h.database.db, h.ws);
+  expect(fund).toMatchObject({ billId: h.insurance, accountId: h.bank.id, baseMonthlyMinor: 468_750, currentMonthlyMinor: 500_000, startedMonth: '2026-03', custom: true });
+  expect(fund!.entries.filter((e) => e.kind === 'extra').map((e) => e.amountMinor)).toEqual([100_000]);
   // Leaving the fund out of an edit leaves it as it was.
   await saveExpenseTemplate(h.database, h.ws, { ...h.base, id: h.insurance, name: 'Car insurance', dayOfMonth: 12, amountMinor: 3_750_000 });
   expect(await listSinkingFunds(h.database.db, h.ws)).toHaveLength(1);

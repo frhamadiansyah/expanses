@@ -318,7 +318,28 @@ export {
   spreadOver,
   wholeSince,
 } from './goals/set-aside';
-export { monthsBetween, type SinkingFundFacts, type SinkingPlan, type SinkingProgress, sinkingPlan, sinkingProgress } from './bills/sinking';
+export {
+  monthlyAt,
+  monthsBetween,
+  recalcMonthly,
+  type SinkingEntry,
+  type SinkingEntryKind,
+  type SinkingExtraPreview,
+  type SinkingFundFacts,
+  type SinkingHistoryRow,
+  type SinkingMonth,
+  type SinkingPlan,
+  type SinkingProgress,
+  type SinkingSaveInput,
+  type SinkingSaveResult,
+  sinkingExtraPreview,
+  sinkingHistory,
+  sinkingPlan,
+  sinkingProgress,
+  sinkingRecalc,
+  sinkingSavePlan,
+  withPlan,
+} from './bills/sinking';
 export { formatLots, lotsOf, unitsFromLots } from './assets/units';
 export { type GoldPriceChoice, GRAMS_PER_TROY_OUNCE, gramPriceMicroFromOunce, type PriceSource, wantsWorldPrice } from './assets/world-gold';
 export {
