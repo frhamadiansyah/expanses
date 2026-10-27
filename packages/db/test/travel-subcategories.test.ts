@@ -126,8 +126,8 @@ describe('Travel sub-categories', () => {
     await archiveBook(database, ws, archived);
 
     const result = await ensureCategoryKeys(database, ws);
-    // The empty book has the Miscellaneous its Fees & charges was made under, so it gets Top-ups there — no Travel.
-    expect(result.created).toEqual([...ADDED, ...ADDED, 'miscellaneous.top_ups']);
+    // The empty book has the Miscellaneous its Fees & charges was made under, so it gets Top-ups and Platform fee there — no Travel.
+    expect(result.created).toEqual([...ADDED, ...ADDED, 'miscellaneous.top_ups', 'miscellaneous.platform_fee']);
 
     for (const bookId of [personal.id, business]) {
       const rows = await categoriesOf(database, bookId);

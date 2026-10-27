@@ -52,6 +52,16 @@ describe('default categories', () => {
     expect(CATEGORY_ICONS['miscellaneous.top_ups']).toBe('wallet-cards');
   });
 
+  it('offers Platform fee under Miscellaneous, with an icon and no MCC, and every default key unique with a parent that exists', () => {
+    const miscellaneous = DEFAULT_CATEGORIES.find((category) => category.key === 'miscellaneous')!;
+    expect(miscellaneous.children!.filter((child) => child.key === 'miscellaneous.platform_fee')).toEqual([{ key: 'miscellaneous.platform_fee', name: 'Platform fee' }]);
+    expect(DEFAULT_CATEGORY_MCCS['miscellaneous.platform_fee']).toBeUndefined();
+    expect(CATEGORY_ICONS['miscellaneous.platform_fee']).toBe('receipt-text');
+    const keys = DEFAULT_CATEGORIES.flatMap((category) => [category.key, ...(category.children ?? []).map((child) => child.key)]);
+    expect(new Set(keys).size).toBe(keys.length);
+    for (const category of DEFAULT_CATEGORIES) for (const child of category.children ?? []) expect(child.key.startsWith(`${category.key}.`), child.key).toBe(true);
+  });
+
   it('keeps only Refunds made on first need, and never a key that is also a default', () => {
     expect([...ON_DEMAND_CATEGORY_KEYS]).toEqual(['miscellaneous.refunds']);
     for (const key of ON_DEMAND_CATEGORY_KEYS) expect(DEFAULT_CATEGORY_KEYS.has(key), key).toBe(false);

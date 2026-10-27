@@ -123,7 +123,7 @@ async function ensurePersonalKeys(database: Database, ws: WorkspaceContext): Pro
  * Top-ups was made on first need (a card's top-up of a wallet, `ensureCategoryByKeyTx`) before it became an ordinary
  * child of Miscellaneous: a book that already holds it under that key, made that way, keeps its own and gets no second.
  */
-const ADDED_CHILDREN: readonly string[] = ['travel.transport', 'travel.souvenirs', 'travel.meals', 'travel.others', 'miscellaneous.top_ups'];
+const ADDED_CHILDREN: readonly string[] = ['travel.transport', 'travel.souvenirs', 'travel.meals', 'travel.others', 'miscellaneous.top_ups', 'miscellaneous.platform_fee'];
 
 /**
  * A child that belongs before a sibling an earlier build already added, where appending it would put it after. It takes
