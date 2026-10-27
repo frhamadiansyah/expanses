@@ -25,7 +25,8 @@ async function addBill(page: Page, options: { name: string; amount?: string; out
   await expect(page.getByTestId('bill-row').filter({ hasText: options.name })).toBeVisible();
 }
 
-const row = (page: Page, name: string) => page.getByTestId('bill-row').filter({ hasText: name });
+/** A row among the bills still to deal with: not one in the Paid group. */
+const row = (page: Page, name: string) => page.locator('[data-testid="bill-row"]:not([data-testid="bills-paid"] *)').filter({ hasText: name });
 
 /** The bill page's round buttons. */
 const action = (page: Page, name: string | RegExp) => page.getByRole('group', { name: 'Actions' }).getByRole(typeof name === 'string' && name === 'Edit' ? 'link' : 'button', { name });
@@ -33,16 +34,8 @@ const action = (page: Page, name: string | RegExp) => page.getByRole('group', { 
 /** A line of the bill page's details: its label and what it says. */
 const detail = (page: Page, label: string) => page.locator('div').filter({ hasText: new RegExp(`^${label}`) }).last();
 
-/** The one row the month's paid and skipped bills fold into. */
-const settledRow = (page: Page) => page.getByTestId('bills-settled');
-
-/** Opens the fold, and gives back the sheet that lists what it holds. */
-async function openSettled(page: Page) {
-  await settledRow(page).click();
-  const sheet = page.getByRole('dialog', { name: /^(Paid|Skipped|Paid and skipped) in \w+$/ });
-  await expect(sheet).toBeVisible();
-  return sheet;
-}
+/** The Paid group: the month's paid and skipped bills, listed as ordinary rows. */
+const paidGroup = (page: Page) => page.getByTestId('bills-paid');
 
 /** The undo toast. Not any status: the install hint and the backup banner are statuses too. */
 const toast = (page: Page) => page.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) });
@@ -129,8 +122,8 @@ test('a skipped row’s ⋯ menu still opens the bill’s page', async ({ page }
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Netflix', amount: '120000' });
   await rowAction(page, 'Netflix', /^Skip/);
-  await expect(settledRow(page)).toContainText('Skipped in');
-  const sheet = await openSettled(page);
+  await expect(paidGroup(page).getByRole('heading', { name: 'Paid' })).toBeVisible();
+  const sheet = paidGroup(page);
   const skipped = sheet.getByTestId('bill-row').filter({ hasText: 'Netflix' });
   await expect(skipped).toContainText('Skipped');
   await skipped.hover();
@@ -159,10 +152,10 @@ test('a bill that is out is paid from its row, and the month is settled', async 
   await expect(toast(page)).toContainText('Paid Phone');
   // Paid, it leaves the list for the one row that counts what is done.
   await expect(row(page, 'Phone')).toHaveCount(0);
-  await expect(settledRow(page)).toContainText('Paid in');
-  await expect(settledRow(page)).toContainText(/1 · .*150\.000/);
+  await expect(paidGroup(page)).toContainText('Phone');
+  await expect(paidGroup(page)).toContainText('150.000');
   await expect(page.getByTestId('bills-summary')).toContainText('All paid for');
-  const sheet2 = await openSettled(page);
+  const sheet2 = paidGroup(page);
   await expect(sheet2.getByTestId('bill-row').filter({ hasText: 'Phone' })).toContainText(/Paid \d+ \w{3}/);
   // A tap on a paid bill opens its page.
   await sheet2.getByTestId('bill-row').filter({ hasText: 'Phone' }).click();
@@ -178,9 +171,9 @@ test('undo takes a payment back', async ({ page }) => {
   await addBill(page, { name: 'Phone', amount: '150000' });
   await rowAction(page, 'Phone', /^Pay/);
   await page.getByRole('dialog', { name: 'Pay Phone' }).getByRole('button', { name: 'Record payment' }).click();
-  await expect(settledRow(page)).toBeVisible();
+  await expect(paidGroup(page)).toBeVisible();
   await toast(page).getByRole('button', { name: 'Undo' }).click();
-  await expect(settledRow(page)).toHaveCount(0);
+  await expect(paidGroup(page)).toHaveCount(0);
   await expect(row(page, 'Phone')).toBeVisible();
 });
 
@@ -209,10 +202,10 @@ test('a month can be skipped, and the skip undone', async ({ page }) => {
   await rowAction(page, 'Fitness First', /^Skip/);
   await expect(toast(page)).toContainText('Skipped Fitness First this month');
   await expect(row(page, 'Fitness First')).toHaveCount(0);
-  await expect(settledRow(page)).toContainText('Skipped in');
+  await expect(paidGroup(page).getByTestId('bill-row').filter({ hasText: 'Fitness First' })).toContainText('Skipped');
   await toast(page).getByRole('button', { name: 'Undo' }).click();
   await expect(row(page, 'Fitness First')).toBeVisible();
-  await expect(settledRow(page)).toHaveCount(0);
+  await expect(paidGroup(page)).toHaveCount(0);
 });
 
 test('several bills are ticked and recorded together, on the day they were paid', async ({ page }) => {
@@ -256,7 +249,8 @@ test('unticking a bill in Pay several leaves it unpaid', async ({ page }) => {
   await sheet.getByRole('button', { name: 'Record 1 bill' }).click();
   await expect(row(page, 'Internet')).toBeVisible();
   await expect(row(page, 'Phone')).toHaveCount(0);
-  await expect(settledRow(page)).toContainText(/Paid in .*1 ·/);
+  await expect(paidGroup(page).getByTestId('bill-row')).toHaveCount(1);
+  await expect(paidGroup(page)).toContainText('Phone');
 });
 
 test('a bill not out yet is listed with those due soon, and can be paid early', async ({ page }) => {
@@ -338,7 +332,7 @@ test('Pay several names the bill it recorded, not the one first picked', async (
   await expect(row(page, 'Phone')).toBeVisible();
   await toast(page).getByRole('button', { name: 'Undo' }).click();
   await expect(row(page, 'Internet')).toBeVisible();
-  await expect(settledRow(page)).toHaveCount(0);
+  await expect(paidGroup(page)).toHaveCount(0);
 });
 
 test('a bill paid from a dollar account keeps its amount through an edit', async ({ page }) => {

@@ -24,7 +24,8 @@ async function addBill(page: Page, name: string, amount: string) {
   await expect(page).toHaveURL(/\/bills$/);
 }
 
-const row = (page: Page, name: string) => page.getByTestId('bill-row').filter({ hasText: name });
+/** A row among the bills still to deal with: not one in the Paid group. */
+const row = (page: Page, name: string) => page.locator('[data-testid="bill-row"]:not([data-testid="bills-paid"] *)').filter({ hasText: name });
 
 /** A horizontal drag across the row, in small steps, the way a thumb moves. */
 async function swipe(page: Page, target: Locator, dx: number) {
@@ -51,7 +52,7 @@ test('swiping a bill right opens its payment, and recording it settles the month
   // Not any status: the install hint and the backup banner are statuses too (see recurring-bills.spec.ts's `toast`).
   await expect(page.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) })).toContainText('Paid Phone');
   await expect(row(page, 'Phone')).toHaveCount(0);
-  await expect(page.getByTestId('bills-settled')).toContainText('Paid in');
+  await expect(page.getByTestId('bills-paid')).toContainText('Phone');
 });
 
 test('swiping a bill left reveals Skip', async ({ page }) => {
@@ -63,8 +64,7 @@ test('swiping a bill left reveals Skip', async ({ page }) => {
   expect((await skip.boundingBox())!.height).toBeGreaterThanOrEqual(TAP);
   await skip.click();
   await expect(row(page, 'Gym')).toHaveCount(0);
-  await page.getByTestId('bills-settled').click();
-  const settled = page.getByRole('dialog', { name: 'Skipped in ' + new Date().toLocaleString('en-GB', { month: 'long' }) });
+  const settled = page.getByTestId('bills-paid');
   await expect(settled.getByTestId('bill-row').filter({ hasText: 'Gym' })).toContainText('Skipped');
   // A settled row does not swipe open again.
   await swipe(page, settled.getByTestId('bill-row').filter({ hasText: 'Gym' }), -120);

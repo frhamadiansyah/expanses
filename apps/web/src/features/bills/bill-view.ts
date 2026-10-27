@@ -21,7 +21,7 @@ export interface BillSection {
   rows: MonthlyBill[];
 }
 
-/** The bills still to deal with, most urgent first. What is paid or skipped is folded away by `settledOf`. */
+/** The bills still to deal with, most urgent first. What is paid or skipped is listed apart by `settledOf`. */
 export function sectionsOf(rows: readonly MonthlyBill[]): BillSection[] {
   return [
     { key: 'overdue' as const, title: 'Overdue', rows: rows.filter((b) => b.state === 'overdue') },
@@ -35,22 +35,9 @@ export function pausedOf(rows: readonly MonthlyBill[]): MonthlyBill[] {
   return rows.filter(isPaused);
 }
 
-export interface SettledFold {
-  /** "Paid in October", or "Skipped in October", or "Paid and skipped in October" when it holds both. */
-  title: string;
-  count: number;
-  /** What the paid ones came to; a skip costs nothing. */
-  paidMinor: number;
-  rows: MonthlyBill[];
-}
-
-/** The month's paid and skipped bills, folded into one row; null while there are none. */
-export function settledOf(rows: readonly MonthlyBill[], today: string): SettledFold | null {
-  const settled = rows.filter(isSettled);
-  if (settled.length === 0) return null;
-  const paid = settled.filter((b) => b.state === 'paid');
-  const what = paid.length === settled.length ? 'Paid' : paid.length === 0 ? 'Skipped' : 'Paid and skipped';
-  return { title: `${what} in ${monthName(today.slice(0, 7), 'long')}`, count: settled.length, paidMinor: sum(paid), rows: settled };
+/** The month's paid and skipped bills, for the Paid group under the ones to pay. */
+export function settledOf(rows: readonly MonthlyBill[]): MonthlyBill[] {
+  return rows.filter(isSettled);
 }
 
 const sum = (rows: readonly MonthlyBill[]) => rows.reduce((total, b) => total + amountOf(b), 0);
