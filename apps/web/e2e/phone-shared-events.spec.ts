@@ -165,8 +165,7 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   // A purchase that already exists moves in with Select → Add to event: it leaves Cashflow and joins the trip's spending.
   await rina.goto('/transactions');
   await addTransaction(rina, { description: 'Taxi', paidWith: 'Rina Bank', category: 'Transport', amount: '120000' });
-  await rina.getByRole('button', { name: 'Filters', exact: true }).click();
-  await rina.getByTestId('filters-menu').getByRole('menuitem', { name: 'Select' }).click();
+  await rina.getByRole('button', { name: 'Select', exact: true }).click();
   const bar = rina.getByRole('toolbar', { name: 'Selected transactions' });
   await expect(bar).toBeVisible();
   await rina.getByRole('checkbox', { name: 'Select Taxi' }).click();

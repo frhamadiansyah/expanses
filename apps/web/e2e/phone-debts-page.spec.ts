@@ -85,9 +85,9 @@ test('by thumb: the sections are behind the corner, and Lend & borrow is not one
   await page.getByRole('link', { name: 'Liabilities', exact: true }).tap();
   await expect(page.getByRole('heading', { name: 'Liabilities', level: 1 })).toBeVisible();
 
-  await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Filters', exact: true }).tap();
-  await page.getByTestId('lend-borrow-row').tap();
+  // It is on the Account page, under Money; Cashflow's ⋯ is left to the workspace.
+  await page.goto('/account');
+  await page.getByRole('link', { name: /^Lend & borrow/ }).tap();
   await expect(page).toHaveURL(/\/net-worth\/lend-borrow$/);
   await expect(page.getByRole('heading', { name: 'Lend & borrow', level: 1 })).toBeVisible();
 

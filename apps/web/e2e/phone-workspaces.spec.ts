@@ -170,8 +170,7 @@ test('a saved purchase moves to another workspace from its Edit screen, and seve
   await expect(listRow(page, 'Supplier dinner')).toHaveCount(0);
 
   // Several, from Select.
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await page.getByTestId('filters-menu').getByRole('menuitem', { name: 'Select' }).click();
+  await page.getByRole('button', { name: 'Select', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Select Client lunch' }).click();
   const bar = page.getByRole('toolbar', { name: 'Selected transactions' });
   await bar.getByRole('button', { name: 'Actions' }).click();

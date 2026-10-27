@@ -18,9 +18,13 @@ test('Paid with is a sheet with a search; "48" leaves 4821, the pick marks the i
   const rows = page.getByTestId('transaction-row');
   await expect(rows).toHaveCount(2);
 
-  const icon = page.getByRole('button', { name: 'Paid with:' });
+  const icon = page.getByRole('button', { name: 'Sort and filter' });
+  const openSheet = async () => {
+    await icon.click();
+    await page.getByRole('menuitem', { name: /^Paid with/ }).click();
+  };
   await expect(page.getByTestId('filter-on')).toHaveCount(0);
-  await icon.click();
+  await openSheet();
   const sheet = page.getByRole('dialog', { name: 'Paid with' });
   await expect(sheet.getByRole('button', { name: 'All', exact: true })).toBeVisible();
   // Each card is named by its name and its digits, the digits leading on screen.
@@ -45,7 +49,7 @@ test('Paid with is a sheet with a search; "48" leaves 4821, the pick marks the i
   await expect(page.getByRole('button', { name: 'Clear paid with' })).toHaveCount(0);
 
   // All takes the filter off again, dot and all.
-  await icon.click();
+  await openSheet();
   await sheet.getByRole('button', { name: 'All', exact: true }).click();
   await expect(rows).toHaveCount(2);
   await expect(page.getByTestId('filter-on')).toHaveCount(0);

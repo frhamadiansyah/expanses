@@ -25,7 +25,7 @@ import {
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
-import { ArrowUpDown, CalendarDays, ChevronDown, CircleAlert, CircleCheck, Ellipsis, HandCoins, Home, LayoutGrid, List, ListFilter, Pencil, Search, Table2, X } from 'lucide-react';
+import { CalendarDays, ChevronDown, CircleAlert, CircleCheck, Ellipsis, Home, LayoutGrid, List, Pencil, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -43,6 +43,7 @@ import { useEvents } from '../events/queries';
 import { useSharedEventSummaries } from '../events/shared-queries';
 import { Button, Card, cx, Empty, ErrorBox, Money } from '../../ui';
 import { LargeTitle, SearchPill } from '../../ui/native';
+import { SortFilterMenu } from './SortFilterMenu';
 import { ChipMenu, type ChipOption } from './ChipMenu';
 import { type PaidChoice, PaidWithSheet } from './PaidWithSheet';
 import { ConvertForm } from './ConvertForm';
@@ -110,8 +111,8 @@ const ALL_TIME_LIMIT = 5000;
 const SORTS: { value: string; label: string; short: string }[] = [
   { value: 'date:desc', label: 'Newest first', short: 'Newest' },
   { value: 'date:asc', label: 'Oldest first', short: 'Oldest' },
-  { value: 'amount:desc', label: 'Largest amount', short: 'Largest' },
-  { value: 'amount:asc', label: 'Smallest amount', short: 'Smallest' },
+  { value: 'amount:desc', label: 'Largest first', short: 'Largest' },
+  { value: 'amount:asc', label: 'Smallest first', short: 'Smallest' },
 ];
 
 const TYPES: { value: ListFilters['type']; label: string }[] = [
@@ -1215,12 +1216,6 @@ export function TransactionsPage() {
               {scan.busy ? 'Reading the receipt…' : 'Scan a receipt'}
             </Button>
           )}
-          {/* Ticking rows to put into an event: the list's, so the table — the editor — does not offer it. */}
-          {view === 'list' && !readOnly && (
-            <Button variant="secondary" aria-pressed={selecting} onClick={() => (selecting ? stopSelecting() : startSelecting())}>
-              {selecting ? 'Done' : 'Select'}
-            </Button>
-          )}
         </div>
       )}
       {phone && showFilters && (
@@ -1239,44 +1234,12 @@ export function TransactionsPage() {
                 setShowFilters(false);
                 setChoosingWorkspace(true);
               }}
-              // A gap, not a divider: this changes the whole app, where the three below it narrow one list.
-              className="flex min-h-12 w-full items-center gap-3 border-b-6 border-slate-100 px-4 text-left text-sm"
+              className="flex min-h-12 w-full items-center gap-3 px-4 text-left text-sm"
             >
               <WorkspaceDot book={openBook} />
               <span className="flex-1 truncate font-medium">{openBook?.name ?? workspaceName}</span>
               <span className="text-xs text-slate-500">Workspace ›</span>
             </button>
-            {/* Two things, and neither is a filter of this list: what the whole app reads and writes through, and the
-             * one place money lent and borrowed lives — which on a wide screen is under Net worth's Debts, among the
-             * people it names. What the list narrows itself by is on the list's own controls — the period on the
-             * chart, what paid beside the Sort, what is not recorded in the review box above the rows — and revealing
-             * deleted rows waits on the filter bar on a wide screen. */}
-            <Link
-              to="/net-worth/lend-borrow"
-              role="menuitem"
-              data-testid="lend-borrow-row"
-              onClick={() => setShowFilters(false)}
-              className="flex min-h-12 w-full items-center gap-3 px-4 text-left text-sm"
-            >
-              <HandCoins size={17} aria-hidden className="text-slate-500" />
-              <span className="flex-1">Lend &amp; borrow</span>
-              <span className="text-xs text-slate-500">›</span>
-            </Link>
-            {/* Ticking rows, to put a run of them into an event at once — whatever their dates and categories. */}
-            {view === 'list' && !readOnly && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setShowFilters(false);
-                  startSelecting();
-                }}
-                className="flex min-h-12 w-full items-center gap-3 border-t border-slate-100 px-4 text-left text-sm"
-              >
-                <CircleCheck size={17} aria-hidden className="text-slate-500" />
-                <span className="flex-1">Select</span>
-              </button>
-            )}
           </div>
         </>
       )}
@@ -1473,35 +1436,39 @@ export function TransactionsPage() {
                   </button>
                 ))}
               </div>
-              {/* What the list was paid with — the list's own filter, beside the sort it shares a row with. On, the icon
-                  goes dark with a dot; the same icon opens a sheet on a phone and a fixed-width searchable menu elsewhere. */}
-              <ChipMenu
-                name="Paid with"
-                value={filters.paid}
-                active={Boolean(paidPicked)}
-                count={paidPicked ? 1 : 0}
-                searchable
-                wideMenu
-                options={paidOptions}
-                onPick={(value) => setFilter('paid', value)}
-                onOpen={phone ? () => setPickingPaid(true) : undefined}
-                shown={<ListFilter size={15} aria-hidden />}
-                iconOnly
-              />
-              {pickingPaid && <PaidWithSheet choices={paidChoices} value={filters.paid} onPick={(value) => setFilter('paid', value)} onClose={() => setPickingPaid(false)} />}
-              {/* Sorting says itself with an arrow rather than a word, so the two controls read as a pair. */}
-              <ChipMenu
-                name="Sort"
-                value={sortValue}
-                active={sortValue !== 'date:desc'}
-                options={SORTS}
-                onPick={(value) => {
+              {/* Ticking rows, to put a run of them into an event at once: a square button beside the others, dark while it is on.
+                  The count and the Add to event / Done actions stay in the select bar. */}
+              {view === 'list' && !readOnly && (
+                <div className="inline-flex items-center rounded-lg bg-slate-200 p-0.5">
+                  <button
+                    type="button"
+                    aria-label="Select"
+                    aria-pressed={selecting}
+                    onClick={() => (selecting ? stopSelecting() : startSelecting())}
+                    className={cx('flex h-7 w-8 items-center justify-center rounded-md', selecting ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900')}
+                  >
+                    <CircleCheck size={15} aria-hidden />
+                  </button>
+                </div>
+              )}
+              {/* Sort and what the list was paid with, one icon and one menu. On a phone Paid with opens its sheet. */}
+              <SortFilterMenu
+                sorts={SORTS}
+                sortValue={sortValue}
+                onSort={(value) => {
                   const [key, dir] = value.split(':') as [Sort['key'], Sort['dir']];
                   setSort({ key, dir });
                 }}
-                shown={<ArrowUpDown size={15} aria-hidden />}
-                iconOnly
+                paid={filters.paid}
+                paidOptions={paidOptions}
+                onPaid={(value) => setFilter('paid', value)}
+                onOpenPaid={phone ? () => setPickingPaid(true) : undefined}
+                onReset={() => {
+                  setSort({ key: 'date', dir: 'desc' });
+                  setFilter('paid', '');
+                }}
               />
+              {pickingPaid && <PaidWithSheet choices={paidChoices} value={filters.paid} onPick={(value) => setFilter('paid', value)} onClose={() => setPickingPaid(false)} />}
             </div>
           )}
 
