@@ -1,4 +1,4 @@
-import { dayMonth, formatMinor, isoDate } from '@expanses/core';
+import { isoDate } from '@expanses/core';
 import { type MonthlyBill, skipBill, undoBillPayments, unskipBill } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { Check, ListChecks, Plus } from 'lucide-react';
@@ -11,6 +11,9 @@ import { type CornerAction, GROUP_GAP, GROUP_RADIUS, InsetGroup, InsetRow, Large
 import { BillRow } from './BillRow';
 import { MonthlyBuys } from './MonthlyBuys';
 import { amountOf, billCurrencyOf, billsInReadCurrency, type BillSummary, isToPay, paidText, pausedOf, sectionsOf, settledOf, skippedText, summaryOf } from './bill-view';
+import { HeroSlider } from './HeroSlider';
+import { RepeatingHero, RepeatingList } from './RepeatingBills';
+import { setAsideOf } from './set-aside';
 import { PaySeveralSheet } from './PaySeveralSheet';
 import { PaySheet } from './PaySheet';
 import { useBillMoney, useMonthlyBills, useSinkingFunds, useYearlyBills } from './queries';
@@ -19,6 +22,8 @@ import { FeeAlert } from '../cards/FeeAlert';
 import { FeeRow } from './FeeRow';
 import { Unconverted } from '../workspaces/Unconverted';
 import { UndoToast } from '../../ui/UndoToast';
+
+const PAGE_KEY = 'recurring-page';
 
 /** The bar's three parts in the kit's own tones: late in alarm, soon in warning, the rest a quiet grey. */
 const PART_COLOUR: Record<BillSummary['parts'][number]['key'], string> = { overdue: 'var(--ph-alarm)', dueSoon: 'var(--ph-warn)' };
@@ -101,6 +106,21 @@ export function RecurringPage() {
   const accounts = useAccounts().data ?? [];
   const rows = bills.data ?? [];
 
+  const [page, setPageState] = useState(() => {
+    try {
+      return sessionStorage.getItem(PAGE_KEY) === '1' ? 1 : 0;
+    } catch {
+      return 0;
+    }
+  });
+  const setPage = useCallback((next: number) => {
+    setPageState(next);
+    try {
+      sessionStorage.setItem(PAGE_KEY, String(next));
+    } catch {
+      // Remembering the page is a convenience.
+    }
+  }, []);
   const [paying, setPaying] = useState<MonthlyBill | null>(null);
   const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -166,6 +186,12 @@ export function RecurringPage() {
   }
 
   const summary = summaryOf(readRows, today);
+  const convertFund = money?.converts ? money.convert : money?.convertForeign;
+  const setAside = setAsideOf(funds.data ?? [], readCurrency, convertFund && ((minor, from) => convertFund(minor, from, today)));
+  const changePage = (next: number) => {
+    setPage(next);
+    if (next !== 0) doneSelecting();
+  };
   const billRow = (bill: MonthlyBill, index: number) => (
     <BillRow
       key={bill.id}
@@ -187,7 +213,7 @@ export function RecurringPage() {
   const actions: CornerAction[] = selecting
     ? [{ key: 'done', label: 'Done', glyph: <Check size={22} aria-hidden />, run: doneSelecting }]
     : [
-        { key: 'select', label: 'Select bills to pay', glyph: <ListChecks size={20} aria-hidden />, run: () => setSelecting(true) },
+        ...(page === 0 ? [{ key: 'select', label: 'Select bills to pay', glyph: <ListChecks size={20} aria-hidden />, run: () => setSelecting(true) }] : []),
         { key: 'new', label: 'New bill', glyph: <Plus size={22} aria-hidden />, to: '/bills/new' },
       ];
 
@@ -197,19 +223,36 @@ export function RecurringPage() {
 
       <ErrorBox error={error ?? bills.error} />
 
-      {bills.isSuccess && rows.length === 0 && (
+      <HeroSlider
+        label="Recurring"
+        names={['Monthly', 'Repeating']}
+        page={page}
+        onPage={changePage}
+        pages={[
+          rows.length > 0 ? (
+            <div data-testid="bills-summary">
+              <Unconverted missing={unconverted} currency={readCurrency} />
+              <StillToPay summary={summary} currency={readCurrency} />
+            </div>
+          ) : (
+            <Panel>
+              <p className="text-[17px] leading-[22px] font-semibold text-[var(--ph-ink-2)]">No monthly bills yet</p>
+            </Panel>
+          ),
+          <RepeatingHero key="repeating" setAside={setAside} currency={readCurrency} />,
+        ]}
+      />
+
+      {page === 1 && <RepeatingList bills={yearly.data ?? []} />}
+
+      {page === 0 && bills.isSuccess && rows.length === 0 && (
         <InsetGroup>
           <InsetRow title={<span className="text-[var(--ph-tint)]">New bill</span>} label="New bill" to="/bills/new" />
         </InsetGroup>
       )}
 
-      {rows.length > 0 && (
-        <div data-testid="bills-summary" className="md:max-w-2xl">
-          <Unconverted missing={unconverted} currency={readCurrency} />
-          <StillToPay summary={summary} currency={readCurrency} />
-        </div>
-      )}
-
+      {page === 0 && (
+        <>
       {/* A card's annual fee within 30 days sits with Due soon: read-only, no totals, nothing to pay here. */}
       {(() => {
         const sections = sectionsOf(rows);
@@ -251,34 +294,13 @@ export function RecurringPage() {
         </section>
       )}
 
-      {/* A yearly or every-few-months bill is listed only in the weeks before its date; this keeps all of them reachable the rest of the year. */}
-      {(yearly.data?.length ?? 0) > 0 && (
-        <InsetGroup>
-          <InsetRow testId="yearly-bills-row" title="Repeating bills" value={String(yearly.data!.length)} to="/bills/yearly" search={from} />
-        </InsetGroup>
-      )}
-
-      {/* Money each yearly bill puts aside this month. Read-only, and not part of what is owed above. */}
-      {(funds.data?.length ?? 0) > 0 && (
-        <InsetGroup header="Set aside this month">
-          {funds.data!.map((fund) => (
-            <InsetRow
-              key={fund.billId}
-              testId="sinking-fund-row"
-              title={fund.name}
-              subtitle={`Saving for ${dayMonth(fund.dueOn)}`}
-              value={<Money minor={fund.monthlyMinor} currency={fund.currency} />}
-              valueTone="ink"
-              chevron={false}
-            />
-          ))}
-        </InsetGroup>
-      )}
-
       {/* The month's regular buys, set on each holding's own page: due ones with Record, bought ones with the day. */}
       <MonthlyBuys />
 
-      {selecting && picked.size > 0 && (() => {
+        </>
+      )}
+
+      {page === 0 && selecting && picked.size > 0 && (() => {
         const chosen = readRows.filter((b) => picked.has(b.id));
         const approximate = chosen.some((b) => b.amountMinor === null);
         return (

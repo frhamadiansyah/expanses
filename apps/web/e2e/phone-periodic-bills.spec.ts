@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { pickBillCategory } from './bill-form';
+import { pickBillCategory, showRepeating } from './bill-form';
 import { localIsoDate, todayIn } from './today';
 
 test.beforeEach(({ page }) => {
@@ -62,8 +62,7 @@ test('an every-3-months bill far from its date is under Repeating bills, due on 
   const at = await daysAhead(page, 75);
   await addEveryThreeMonths(page, 'Rubbish', at);
   await expect(row(page, 'Rubbish')).toHaveCount(0);
-  await page.getByTestId('yearly-bills-row').click();
-  await expect(page.getByRole('heading', { name: 'Repeating bills' })).toBeVisible();
+  await showRepeating(page);
   const rubbish = page.getByTestId('yearly-bill-row').filter({ hasText: 'Rubbish' });
   await expect(rubbish).toContainText(`Due ${at.day} `);
   await expect(rubbish).toContainText('every 3 months');

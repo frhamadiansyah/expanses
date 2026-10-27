@@ -1,7 +1,19 @@
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
 /** Chooses a bill's category in the picker sheet the Category row opens. Restaurants unless told otherwise. */
 export async function pickBillCategory(page: Page, name = 'Restaurants') {
   await page.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Category', exact: true }).getByRole('button', { name, exact: true }).click();
+}
+
+/** Slides Recurring's hero to its Repeating page (the second dot), where the repeating bills and the set-aside figure are. */
+export async function showRepeating(page: Page) {
+  await page.getByRole('group', { name: 'Page' }).getByRole('button', { name: 'Repeating' }).click();
+  await expect(page.getByTestId('repeating-summary')).toBeVisible();
+}
+
+/** Slides Recurring's hero back to its Monthly page (the first dot). */
+export async function showMonthly(page: Page) {
+  await page.getByRole('group', { name: 'Page' }).getByRole('button', { name: 'Monthly' }).click();
+  await expect(page.getByTestId('bills-summary').or(page.getByText('No monthly bills yet'))).toBeVisible();
 }
