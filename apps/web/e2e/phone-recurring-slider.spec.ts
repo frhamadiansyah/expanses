@@ -19,16 +19,15 @@ test('on a phone, Recurring slides to Repeating by its dot, and a repeating row 
   await expect(page.getByRole('heading', { name: 'Domain' })).toBeVisible();
 });
 
-test('on a phone, swiping the hero moves the page, and the next card peeks in at the edge', async ({ page }) => {
+test('on a phone, swiping the hero moves the page, and the card fills the width with no peek', async ({ page }) => {
   await addFarYearlyBill(page, 'Domain');
   await addMonthlyBill(page, 'Water');
   await showMonthly(page);
   const slider = page.getByRole('group', { name: 'Recurring', exact: true });
   const box = await slider.boundingBox();
   const next = await page.locator('[aria-roledescription=slide][aria-label=Repeating]').boundingBox();
-  // The second card starts inside the slider's width: a peek.
-  expect(next!.x).toBeLessThan(box!.x + box!.width);
-  expect(next!.x).toBeGreaterThan(box!.x + box!.width * 0.8);
+  // The second card starts where the slider ends: the dots say there is another page, the card shows no edge of it.
+  expect(next!.x).toBeGreaterThanOrEqual(box!.x + box!.width - 1);
 
   await slider.evaluate((el) => el.scrollTo({ left: el.scrollWidth, behavior: 'instant' }));
   await expect(page.getByTestId('repeating-summary')).toBeVisible();

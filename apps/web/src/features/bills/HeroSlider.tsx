@@ -3,7 +3,7 @@ import { type KeyboardEvent, type ReactNode, useCallback, useEffect, useLayoutEf
 const reduced = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /**
- * A hero that slides: each card takes most of the width so the next one peeks in at the right edge, and the dots under
+ * A hero that slides: each card takes the whole width, and the dots under
  * it say which page is showing. Swiping, the dots and the arrow keys all move it; the page under it follows `page`.
  */
 export function HeroSlider({
@@ -107,7 +107,7 @@ export function HeroSlider({
         onTouchStart={() => (heading.current = null)}
         onWheel={() => (heading.current = null)}
         onKeyDown={onKeyDown}
-        className="ph-focus -mx-4 flex snap-x snap-mandatory gap-2 overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:px-0 [&::-webkit-scrollbar]:hidden"
+        className="ph-focus -mx-4 flex snap-x snap-mandatory gap-8 overflow-x-auto px-4 md:gap-2 [scrollbar-width:none] md:mx-0 md:px-0 [&::-webkit-scrollbar]:hidden"
         style={{ overscrollBehaviorX: 'contain', scrollPaddingInline: 16 }}
       >
         {pages.map((card, index) => (
@@ -117,7 +117,7 @@ export function HeroSlider({
             aria-roledescription="slide"
             aria-label={names[index]}
             aria-hidden={index === page ? undefined : true}
-            className="w-[92%] shrink-0 snap-start md:w-[98%]"
+            className="w-full shrink-0 snap-start"
           >
             {card}
           </div>
