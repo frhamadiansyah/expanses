@@ -624,3 +624,72 @@ describe('currency pockets on a row', () => {
     expect(paidWithLook(byId.get('t2')!)).toEqual({ name: 'USD', last4: '0917' });
   });
 });
+
+describe('a split with a line left out of the report (0096)', () => {
+  const school = [
+    ...accounts,
+    account('tuition', 'expense', 'category', { name: 'Tuition fees' }),
+    account('platform', 'expense', 'category', { name: 'Platform fee' }),
+    account('books', 'expense', 'category', { name: 'Books' }),
+  ];
+  for (const a of school) byId.set(a.id, a);
+  const mark = (t: TransactionView, ...ids: string[]): TransactionView => ({ ...t, entries: t.entries.map((e) => (ids.includes(e.accountId) ? { ...e, excluded: true } : e)) });
+  // Invented: Rp 2.025.000 on the card, Rp 2.000.000 tuition left out of the report and Rp 25.000 platform fee counted.
+  const fees = mark(tx('2026-09-20', 'School', [['tuition', 200_000_000], ['platform', 2_500_000], ['octo', -202_500_000]], { cardId: 'c1' }), 'tuition');
+
+  it('reads as the counted line: its category, its amount, and the sum left out under it', () => {
+    const [row] = buildRows([fees], [], school, cards);
+    expect(row).toMatchObject({ categoryId: 'platform', categoryName: 'Platform fee', amountMinor: 2_500_000, spentMinor: 2_500_000, baseMinor: 2_500_000, excluded: false, description: 'School' });
+    expect(row!.leftOut).toEqual({ names: ['Tuition fees'], amountMinor: 200_000_000 });
+    expect(row!.moreCounted).toBe(0);
+    expect(amountExtraParts(fees, undefined, row)).toEqual([{ text: '⊘ Rp 200.000.000', label: 'Excluded from report, Rp 200.000.000', tone: 'foreign' }]);
+    expect(dayTotal([row!])).toBe(-2_500_000);
+    expect(row!.tx).toBe(fees);
+  });
+
+  it('names the largest counted category and counts the others, summing every line left out', () => {
+    const three = mark(tx('2026-09-20', 'School', [['tuition', 200_000_000], ['platform', 2_500_000], ['books', 30_000_000], ['electronics', 5_000_000], ['octo', -237_500_000]]), 'tuition', 'electronics');
+    const [row] = buildRows([three], [], school, cards);
+    expect(row).toMatchObject({ categoryName: 'Books', moreCounted: 1, amountMinor: 32_500_000, spentMinor: 32_500_000 });
+    expect(row!.leftOut).toEqual({ names: ['Tuition fees', 'Electronics'], amountMinor: 205_000_000 });
+    expect(amountExtraParts(three, undefined, row).map((p) => p.text)).toEqual(['⊘ Rp 205.000.000']);
+  });
+
+  it('keeps today’s look when every line is left out, or none is', () => {
+    const all = mark(fees, 'platform');
+    const [allRow] = buildRows([all], [], school, cards);
+    expect(allRow!.leftOut).toBeUndefined();
+    expect(allRow).toMatchObject({ amountMinor: 202_500_000, spentMinor: 0 });
+    const whole = { ...fees, entries: fees.entries.map((e) => ({ ...e, excluded: undefined })), excluded: true };
+    const [wholeRow] = buildRows([whole], [], school, cards);
+    expect(wholeRow).toMatchObject({ excluded: true, amountMinor: 202_500_000 });
+    expect(wholeRow!.leftOut).toBeUndefined();
+    const none = tx('2026-09-20', 'School', [['tuition', 200_000_000], ['platform', 2_500_000], ['octo', -202_500_000]]);
+    const [noneRow] = buildRows([none], [], school, cards);
+    expect(noneRow).toMatchObject({ amountMinor: 202_500_000, categoryName: 'Tuition fees' });
+    expect(noneRow!.leftOut).toBeUndefined();
+  });
+
+  it('reads the lines in their own currency, and hides the whole-charge foreign figure', () => {
+    const usd = mark(tx('2026-09-20', 'Course', [['tuition', 10_000, 160_000_000], ['platform', 500, 8_000_000], ['octo', -10_500, -168_000_000]], { originalCurrency: 'USD', originalAmountMinor: 10_500 }), 'tuition');
+    usd.entries = usd.entries.map((e) => ({ ...e, currency: 'USD' }));
+    const [row] = buildRows([usd], [], school, cards);
+    expect(row).toMatchObject({ currency: 'USD', amountMinor: 500, spentMinor: 8_000_000 });
+    expect(row!.leftOut!.amountMinor).toBe(10_000);
+    expect(amountExtraParts(usd, undefined, row).map((p) => p.text)).toEqual(['⊘ US$100,00']);
+  });
+
+  it('a line in another workspace stays that workspace’s part, and a line left out here still tags', () => {
+    const two = [{ id: 'family', name: 'Family', kind: 'family' as const }, { id: 'business', name: 'Business', kind: 'business' as const }];
+    const mixed = tx('2026-09-20', 'School', [['tuition', 200_000_000], ['platform', 2_500_000], ['books', 30_000_000], ['octo', -232_500_000]], { splitBooks: two });
+    mixed.entries[0] = { ...mixed.entries[0]!, bookId: 'family', excluded: true };
+    mixed.entries[1] = { ...mixed.entries[1]!, bookId: 'family' };
+    mixed.entries[2] = { ...mixed.entries[2]!, bookId: 'business' };
+    const [family] = buildRows([mixed], [], school, cards, {}, 'family');
+    expect(family).toMatchObject({ categoryName: 'Platform fee', amountMinor: 2_500_000, spentMinor: 2_500_000 });
+    expect(family!.leftOut!.names).toEqual(['Tuition fees']);
+    const [business] = buildRows([mixed], [], school, cards, {}, 'business');
+    expect(business).toMatchObject({ categoryName: 'Books', amountMinor: 30_000_000 });
+    expect(business!.leftOut).toBeUndefined();
+  });
+});

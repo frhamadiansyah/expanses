@@ -973,7 +973,10 @@ export function TransactionsPage() {
               : 'Opening balance'
             : row.type === 'correction'
               ? 'Balance correction'
-              : (row.splitPart ?? tx.entries)
+              : row.leftOut
+                ? // The part that counts: its largest category, and how many others are counted beside it.
+                  `${row.categoryName ?? ''}${row.moreCounted ? ` +${row.moreCounted}` : ''}`
+                : (row.splitPart ?? tx.entries)
                   .filter((e) => e.accountKind === row.type)
                   // The subcategory alone: "Parking & tolls" says Transportation without repeating it.
                   .map((e) => accounts.find((a) => a.id === e.accountId)?.name ?? categoryPath(accounts, e.accountId))

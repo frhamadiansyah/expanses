@@ -160,9 +160,18 @@ test('two lines of one workspace switch on their own: Exclude on Groceries leave
   await page.goto('/transactions');
   await expect(periodTotal(page)).toHaveText('Rp 200.000');
   await expect(row(page)).not.toContainText('Excluded');
+  // The row is the part that counts: Restaurants, its Rp 200.000, and the left-out Rp 300.000 under the amount.
+  await expect(row(page)).toContainText('Restaurants');
+  await expect(row(page)).toContainText('200.000');
+  await expect(row(page)).not.toContainText('500.000');
+  await expect(row(page).getByTestId('amount-extra')).toHaveText('⊘ Rp 300.000');
+  await expect(row(page).getByLabel(/^Excluded from report, Rp.300\.000$/)).toBeVisible();
+  // The day's total is the sum of the rows.
+  await expect(page.getByTestId('day-total').first()).toContainText('200.000');
 
   // The receipt says which line is out; the card owes the whole charge.
-  await row(page).getByRole('button', { name: /^Groceries/ }).click();
+  await row(page).getByRole('button', { name: /^Restaurants/ }).click();
+  await expect(page.getByTestId('hero-amount')).toContainText('500.000');
   const receiptParts = page.getByTestId('split-part');
   await expect(receiptParts).toHaveCount(2);
   await expect(receiptParts.filter({ hasText: 'Groceries' })).toHaveAttribute('data-excluded', 'true');
