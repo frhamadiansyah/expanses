@@ -152,6 +152,12 @@ describe('holderLine', () => {
 });
 
 describe('nameBesideMark', () => {
+  it('drops the bank however the name writes it: its short name under its full-name face', () => {
+    expect(nameBesideMark('CIMB Octo Savers', 'CIMB Niaga')).toBe('Octo Savers');
+    expect(nameBesideMark('CIMB Niaga Octo Savers', 'CIMB Niaga')).toBe('Octo Savers');
+    expect(nameBesideMark('CIMB', 'CIMB Niaga')).toBe('CIMB');
+  });
+
   it('drops the bank a face already prints', () => {
     expect(nameBesideMark('BCA Xpresi', 'BCA')).toBe('Xpresi');
     expect(nameBesideMark('bca xpresi', 'BCA')).toBe('xpresi');

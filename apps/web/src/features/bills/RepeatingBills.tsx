@@ -22,13 +22,20 @@ export function RepeatingHero({ needs, currency }: { needs: RepeatingNeeds; curr
           {needs.approximate && <span className="text-[var(--ph-ink-3)]">≈ </span>}
           <Money minor={totalMinor} currency={currency} />
         </p>
+        {/* The second line the Monthly hero has too, so the two cards are the same shape when the slider moves. */}
+        {needs.bills.length > 0 && totalMinor > 0 && (
+          <p className="tabular text-[13px] leading-[17px] text-[var(--ph-ink-3)]" data-testid="needed-year">
+            {needs.approximate && '≈ '}
+            <Money minor={totalMinor * 12} currency={currency} /> a year
+          </p>
+        )}
       </div>
       {needs.bills.length === 0 ? (
         <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">No repeating bills yet</p>
       ) : (
         totalMinor > 0 && (
           <>
-            <span aria-hidden className="flex w-full overflow-hidden rounded-full bg-[var(--ph-track)]" style={{ height: 8 }}>
+            <span aria-hidden className="flex w-full gap-[2px] overflow-hidden rounded-full bg-[var(--ph-track)]" style={{ height: 8 }}>
               <span className="block h-full" style={{ width: `${(fundedMinor / totalMinor) * 100}%`, background: 'var(--ph-up)' }} />
               <span className="block h-full" style={{ width: `${(unfundedMinor / totalMinor) * 100}%`, background: 'var(--ph-warn)' }} />
             </span>

@@ -50,6 +50,9 @@ export interface BillSummary {
   variesText: string | null;
   /** What the total is made of, for the bar and its key: only the parts with money in them. */
   parts: { key: 'overdue' | 'dueSoon'; label: string; minor: number; approximate: boolean }[];
+  /** What was paid this month, and so what the whole month came to once the rest is added: skipped and paused bills count for nothing. */
+  paidMinor: number;
+  monthTotalMinor: number;
   allSettled: boolean;
   /** Nothing to pay because every bill is paused, which is not the same as all paid. */
   allPaused: boolean;
@@ -68,6 +71,8 @@ export function summaryOf(rows: readonly MonthlyBill[], today: string): BillSumm
     approximate: varying > 0,
     variesText: varying > 0 ? variesWords(varying) : null,
     parts: groups.filter((g) => sum(g.rows) > 0).map((g) => ({ key: g.key, label: g.label, minor: sum(g.rows), approximate: anyVaries(g.rows) })),
+    paidMinor: sum(rows.filter((b) => b.state === 'paid')),
+    monthTotalMinor: sum(open) + sum(rows.filter((b) => b.state === 'paid')),
     allSettled: open.length === 0,
     allPaused: open.length === 0 && rows.length > 0 && rows.every(isPaused),
   };

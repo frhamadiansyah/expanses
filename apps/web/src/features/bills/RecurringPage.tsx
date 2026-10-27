@@ -28,6 +28,8 @@ const PAGE_KEY = 'recurring-page';
 
 /** The bar's three parts in the kit's own tones: late in alarm, soon in warning, the rest a quiet grey. */
 const PART_COLOUR: Record<BillSummary['parts'][number]['key'], string> = { overdue: 'var(--ph-alarm)', dueSoon: 'var(--ph-warn)' };
+/** What is already paid, in the green of money settled. */
+const PAID_COLOUR = 'var(--ph-up)';
 
 /**
  * The month's figure, in the box it is made of: what is still to pay, a bar dividing it into late and soon,
@@ -50,7 +52,7 @@ function StillToPay({ summary, currency }: { summary: BillSummary; currency: str
       </Panel>
     );
   }
-  const total = summary.parts.reduce((sum, part) => sum + part.minor, 0);
+  const total = summary.parts.reduce((sum, part) => sum + part.minor, 0) + summary.paidMinor;
   return (
     <Panel className="space-y-3">
       <div>
@@ -60,10 +62,16 @@ function StillToPay({ summary, currency }: { summary: BillSummary; currency: str
           {summary.approximate && <span className="text-[var(--ph-ink-3)]">≈ </span>}
           <Money minor={summary.totalMinor} currency={currency} />
         </p>
+        {summary.paidMinor > 0 && (
+          <p className="tabular text-[13px] leading-[17px] text-[var(--ph-ink-3)]" data-testid="bills-month-total">
+            of <Money minor={summary.monthTotalMinor} currency={currency} /> this month
+          </p>
+        )}
       </div>
       {total > 0 && (
         <>
-          <span aria-hidden className="flex w-full gap-[2px] overflow-hidden rounded-full bg-[var(--ph-track)]" style={{ height: 6 }}>
+          <span aria-hidden className="flex w-full gap-[2px] overflow-hidden rounded-full bg-[var(--ph-track)]" style={{ height: 8 }}>
+            {summary.paidMinor > 0 && <span className="block h-full" style={{ width: `${(summary.paidMinor / total) * 100}%`, background: PAID_COLOUR }} />}
             {summary.parts.map((part) => (
               <span key={part.key} className="block h-full" style={{ width: `${(part.minor / total) * 100}%`, background: PART_COLOUR[part.key] }} />
             ))}
@@ -79,6 +87,15 @@ function StillToPay({ summary, currency }: { summary: BillSummary; currency: str
                 </span>
               </li>
             ))}
+            {summary.paidMinor > 0 && (
+              <li className="flex items-center gap-[6px]">
+                <span aria-hidden className="block h-2 w-2 rounded-full" style={{ background: PAID_COLOUR }} />
+                Paid{' '}
+                <span className="tabular text-[var(--ph-ink-2)]">
+                  <Money minor={summary.paidMinor} currency={currency} />
+                </span>
+              </li>
+            )}
           </ul>
         </>
       )}

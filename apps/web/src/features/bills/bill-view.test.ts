@@ -79,10 +79,17 @@ describe('the Recurring list', () => {
         { key: 'overdue', label: 'Overdue', minor: 450_000, approximate: false },
         { key: 'dueSoon', label: 'Due soon', minor: 3_500_000 + 1_070_000, approximate: true },
       ],
+      paidMinor: 6_000_000,
+      monthTotalMinor: 450_000 + 3_500_000 + 290_000 + 780_000 + 6_000_000,
       allSettled: false,
       allPaused: false,
     });
     expect(summaryOf([rows[4]!], '2026-09-08')).toMatchObject({ totalMinor: 0, parts: [], allSettled: true, allPaused: false });
+  });
+
+  it('counts only paid money in the month, not skipped bills, and adds none when nothing is paid', () => {
+    expect(summaryOf([rows[0]!, rows[5]!], '2026-09-08')).toMatchObject({ paidMinor: 0, monthTotalMinor: 450_000 });
+    expect(summaryOf([rows[4]!], '2026-09-08')).toMatchObject({ paidMinor: 6_000_000, totalMinor: 0, monthTotalMinor: 6_000_000 });
   });
 
   it('leaves a paused bill out of what is still to pay, and says until when under its amount', () => {

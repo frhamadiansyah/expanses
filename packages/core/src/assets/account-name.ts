@@ -39,7 +39,7 @@ export function shortBankName(bank: string): string {
  * name and every short one — so "Jenius Platinum" at Bank SMBC Indonesia, whose short names include Jenius, is
  * already named by its bank.
  */
-function bankWords(bank: string): string[] {
+export function bankNameWords(bank: string): string[] {
   const typed = bank.trim();
   const known = knownBank(typed);
   return [typed, ...(known ? [known.name, ...known.also] : [])].filter((word) => word !== '');
@@ -61,6 +61,6 @@ export function accountDisplayName(account: { name: string; subtype: string; ban
   const bank = account.bank?.trim();
   if (!bank || !BANK_NAMED_SUBTYPES.includes(account.subtype)) return account.name;
   const name = account.name.trim();
-  if (bankWords(bank).some((word) => opensWith(name, word))) return account.name;
+  if (bankNameWords(bank).some((word) => opensWith(name, word))) return account.name;
   return `${shortBankName(bank)} ${name}`;
 }
