@@ -251,7 +251,7 @@ test('a card paid past its bill holds the surplus: Unpaid at nothing, and the cr
   await expect(tile.getByTestId('tile-unpaid-balance')).toHaveText('Rp 100.000');
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: /^Pay / });
-  await sheet.getByLabel('Amount (IDR)').fill('350000');
+  await sheet.getByLabel('Amount', { exact: true }).fill('350000');
   await sheet.getByRole('button', { name: 'Record payment' }).click();
   await expect(sheet).toHaveCount(0);
 

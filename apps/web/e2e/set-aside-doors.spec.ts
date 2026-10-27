@@ -80,7 +80,7 @@ test('paying the card bill from Jenius asks, and the Emergency fund lends the 1.
   // The round Pay opens the payment sheet.
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: /^Pay / });
-  await expect(sheet.getByLabel('Amount (IDR)')).toHaveValue('6800000');
+  await expect(sheet.getByLabel('Amount', { exact: true })).toHaveValue('6800000');
   await expect(sheet.getByText(/1\.800\.000 more than is free/)).toBeVisible();
   await expect(sheet.getByRole('button', { name: 'Record payment' })).toBeDisabled();
   await borrowFromEmergencyFund(sheet);
