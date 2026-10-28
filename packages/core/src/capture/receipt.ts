@@ -73,7 +73,11 @@ function totalOf(texts: readonly string[], currency: string): number | null {
 function figureOf(text: string, currency: string): number | null {
   const found = text.match(/\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?/g);
   if (!found) return null;
-  const raw = found[found.length - 1]!;
+  return figureMinor(found[found.length - 1]!, currency);
+}
+
+/** One printed figure (`41.300`, `12,50`, `1.250.000,00`) in minor units; see `figureOf`. */
+export function figureMinor(raw: string, currency: string): number {
   const cents = /[.,]\d{1,2}$/.exec(raw);
   const whole = Number((cents ? raw.slice(0, cents.index) : raw).replace(/[.,]/g, ''));
   const hundredths = cents ? Number(cents[0].slice(1).padEnd(2, '0')) : 0;
@@ -83,7 +87,7 @@ function figureOf(text: string, currency: string): number | null {
 }
 
 /** The shop's name: the first line at the top that reads as words, not as an address, a date or a figure. */
-function merchantOf(texts: readonly string[]): string | null {
+export function merchantOf(texts: readonly string[]): string | null {
   for (const text of texts.slice(0, 4)) {
     const letters = text.replace(/[^\p{L}]/gu, '').length;
     if (letters < 3 || /^(jl\.?|jalan|telp|tel|npwp|no\.?)\b/i.test(text) || /\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}/.test(text)) continue;

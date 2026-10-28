@@ -1,3 +1,4 @@
+import type { ReceiptMemo } from './receipt-split-model';
 import {
   cardTopUpLines,
   convertMinor,
@@ -158,6 +159,8 @@ export interface FormDraft {
   photoIds: string[];
   with: WithRow[];
   withEqually: boolean;
+  /** The restaurant bill the With amounts were worked out from (With → By receipt), kept so Edit can reopen it. */
+  receiptSplit?: ReceiptMemo;
   goalId: string;
   manualRate: string;
   /** True while correcting a transaction rather than adding one: With is not offered on an edit (§15.6). */

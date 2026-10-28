@@ -1,3 +1,4 @@
+import { readReceiptLines } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { Camera, EyeOff, Hash, Plane, ShoppingCart, Split, Users } from 'lucide-react';
@@ -13,6 +14,8 @@ import { ChannelSheet } from './ChannelSheet';
 import { FormRow, FormRows, RowGlyph, SwitchRow } from './FormRow';
 import { McSheet } from './McSheet';
 import { PhotosSheet, photosSummary } from './PhotosSheet';
+import { recognizePhotos } from './receipt-fill';
+import { holdForm } from './receipt-split-hold';
 import { SplitSheet, splitSummary } from './SplitSheet';
 import { EventSheet } from './EventSheet';
 import { moveHint } from './shared-move';
@@ -51,6 +54,8 @@ export function MoreDetails({
   opensSharedEvent = true,
   onPhotos,
   lead,
+  receiptSplit = false,
+  openWith = false,
 }: {
   draft: FormDraft;
   onChange: (draft: FormDraft) => void;
@@ -67,9 +72,13 @@ export function MoreDetails({
   onPhotos?: (files: readonly File[]) => void;
   /** A row of the caller's own drawn first in the same group — a transfer's For goal — so it reads as one of these. */
   lead?: ReactNode;
+  /** Whether With may divide a bill by its photo: the form leaves for the receipt page and comes back, so only a screen of its own can. */
+  receiptSplit?: boolean;
+  /** Open With at once: the form has just come back from the receipt page. */
+  openWith?: boolean;
 }) {
   const { ws } = useApp();
-  const [sheet, setSheet] = useState<null | 'event' | 'split' | 'with' | 'mcc' | 'channel' | 'photos'>(null);
+  const [sheet, setSheet] = useState<null | 'event' | 'split' | 'with' | 'mcc' | 'channel' | 'photos'>(openWith ? 'with' : null);
   const set = (patch: Partial<FormDraft>) => onChange({ ...draft, ...patch });
   const sharedBook = useIsBookShared();
   const rows = extraRows(draft, accounts, { missingRate, sharedBook }).filter((row) => !omit.includes(row));
@@ -100,6 +109,25 @@ export function MoreDetails({
   // Only said here while the Split row is: drawn on the card instead, its refusal stands in the category picker.
   const splitRefusal = rows.includes('split') ? extraRowRefusal('split', draft) : null;
   const withRefusal = extraRowRefusal('with', draft);
+
+  // With → By receipt: the photo is read here, then the form waits while the receipt page divides the bill.
+  const byReceipt = receiptSplit
+    ? {
+        read: async (files: File[]): Promise<string | null> => {
+          const lines = await recognizePhotos(files);
+          if (!lines) return 'That photo could not be read';
+          const reading = readReceiptLines(lines, currency);
+          if (reading.items.length === 0 && reading.total === null) return 'Nothing could be read from that photo';
+          holdForm({ draft, currency, reading });
+          await navigate({ to: '/transactions/receipt-split' });
+          return null;
+        },
+        edit: () => {
+          holdForm({ draft, currency, reading: null });
+          void navigate({ to: '/transactions/receipt-split' });
+        },
+      }
+    : undefined;
 
   return (
     <>
@@ -167,7 +195,7 @@ export function MoreDetails({
         />
       )}
       {sheet === 'split' && <SplitSheet draft={draft} onChange={onChange} accounts={accounts} currency={currency} onClose={() => setSheet(null)} />}
-      {sheet === 'with' && <WithSheet draft={draft} onChange={onChange} accounts={accounts} currency={currency} onClose={() => setSheet(null)} />}
+      {sheet === 'with' && <WithSheet draft={draft} onChange={onChange} accounts={accounts} currency={currency} onClose={() => setSheet(null)} {...(byReceipt ? { receipt: byReceipt } : {})} />}
       {sheet === 'photos' && <PhotosSheet draft={draft} onChange={onChange} onClose={() => setSheet(null)} onAttached={onPhotos} />}
       {sheet === 'mcc' && <McSheet draft={draft} onChange={onChange} accounts={accounts} onClose={() => setSheet(null)} />}
       {sheet === 'channel' && <ChannelSheet value={draft.channel} onPick={(channel) => set({ channel })} onClose={() => setSheet(null)} />}
