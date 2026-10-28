@@ -13,8 +13,8 @@ import { blankPlanForm, type PlanForm, planFields, planFormOf } from './plan-for
 import { useInstallments } from './queries';
 
 /**
- * One plan on the card page: its name, how far through its months it is, what it bills a month and what it still
- * holds. The whole row is the tap target; it opens the plan to edit.
+ * One plan on the card page: its name and what it still holds on the top line, then how far through its months it is and
+ * what it bills a month, and the bar under them across the whole row. The whole row is the tap target; it opens the plan to edit.
  */
 function InstallmentRow({ plan, currency, today, position, onOpen }: GroupChild & { plan: CardInstallmentRow; currency: string; today: string; onOpen: () => void }) {
   const split = installmentSplit(plan, today);
@@ -26,21 +26,21 @@ function InstallmentRow({ plan, currency, today, position, onOpen }: GroupChild 
         type="button"
         onClick={onOpen}
         aria-label={`Edit ${plan.description}`}
-        className="ph-focus-inset flex w-full items-center gap-[8px] bg-transparent text-left"
-        style={{ padding: '11px 8px 11px 13px' }}
+        className="ph-focus-inset block w-full bg-transparent text-left"
+        style={{ padding: '11px 12px 11px 13px' }}
       >
-        <span className="min-w-0 flex-1">
-          <span className={`block ${TITLE}`}>{plan.description}</span>
-          <ProgressBar className="my-[4px] w-full" currentMinor={paid} targetMinor={plan.months} label={`${plan.description}: ${paid} of ${plan.months} paid`} />
-          <span className={`block ${SUBTITLE}`}>
-            {paid} of {plan.months} paid · ends {monthYear(split.lastMonth)}
+        <span className="flex w-full items-center gap-[6px]">
+          <span className={`min-w-0 flex-1 ${TITLE}`}>{plan.description}</span>
+          <span className="tabular shrink-0 text-[15px] leading-[20px] text-[var(--ph-ink)]">{formatMinor(split.unbilledMinor, currency)}</span>
+          <ChevronRight size={16} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
+        </span>
+        <ProgressBar className="my-[4px] w-full" currentMinor={paid} targetMinor={plan.months} label={`${plan.description}: ${paid} of ${plan.months} paid`} />
+        <span className={`flex w-full justify-between gap-[8px] ${SUBTITLE}`}>
+          <span>
+            {paid} of {plan.months} paid
           </span>
+          <span className="shrink-0">{formatMinor(plan.monthlyMinor, currency)} a month</span>
         </span>
-        <span className="shrink-0 text-right">
-          <span className="tabular block text-[15px] leading-[20px] text-[var(--ph-ink)]">{formatMinor(split.unbilledMinor, currency)}</span>
-          <span className="block text-[12px] leading-[16px] text-[var(--ph-ink-3)]">{formatMinor(plan.monthlyMinor, currency)} a month</span>
-        </span>
-        <ChevronRight size={16} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
       </button>
     </Line>
   );

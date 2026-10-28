@@ -250,22 +250,22 @@ test('an instalment plan opens from its row to be changed or removed; the bin is
   await expect(sheet).toHaveCount(0);
 
   const plan = held.getByTestId('card-instalment');
-  await expect(plan).toContainText(/\d+ of 12 paid · ends [A-Z][a-z]+ \d{4}/);
+  await expect(plan).toContainText(/\d+ of 12 paid/);
   await expect(plan).toContainText(/Rp\s1\.000\.000 a month/);
   await expect(plan.getByRole('button', { name: 'Remove Sofa' })).toHaveCount(0);
-  const endsBefore = (await plan.textContent())!.match(/ends ([A-Z][a-z]+ \d{4})/)![1];
-
+  // The end month is the plan's own sheet's to say, no longer the row's.
   await plan.getByRole('button', { name: 'Edit Sofa' }).click();
   const edit = page.getByRole('dialog', { name: 'Edit instalment plan' });
+  const endsBefore = (await edit.textContent())!.match(/Ends\s*([A-Z][a-z]+ \d{4})/)![1];
   await edit.getByLabel(/^Total/).fill('9000000');
   await edit.getByLabel('Months').fill('6');
   await edit.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(edit).toHaveCount(0);
   await expect(plan).toContainText(/\d+ of 6 paid/);
   await expect(plan).toContainText(/Rp\s1\.500\.000 a month/);
-  expect((await plan.textContent())!.match(/ends ([A-Z][a-z]+ \d{4})/)![1]).not.toBe(endsBefore);
 
   await plan.getByRole('button', { name: 'Edit Sofa' }).click();
+  expect((await edit.textContent())!.match(/Ends\s*([A-Z][a-z]+ \d{4})/)![1]).not.toBe(endsBefore);
   await edit.getByRole('button', { name: 'Remove plan' }).click();
   await page.getByRole('alertdialog', { name: 'Remove plan' }).getByRole('button', { name: 'Remove plan' }).click();
   await expect(held.getByTestId('card-instalment')).toHaveCount(0);

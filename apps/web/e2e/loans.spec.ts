@@ -217,16 +217,16 @@ test('a card purchase turned into instalments splits into billed and unbilled', 
   await expect(held).toContainText(/Rp\s[\d.]+ held/);
   const plan = held.getByTestId('card-instalment');
   await expect(plan).toContainText('iBox Grand Indonesia');
-  await expect(plan).toContainText(/\d+ of 12 paid · ends [A-Z][a-z]+ \d{4}/);
+  await expect(plan).toContainText(/\d+ of 12 paid/);
   await expect(plan).toContainText(/Rp\s1\.000\.000 a month/);
 
   // The bin is gone: the row is the way in, and it carries a chevron.
   await expect(plan.getByRole('button', { name: 'Remove iBox Grand Indonesia' })).toHaveCount(0);
 
   // Tapping the row opens the plan; a new total and fewer months change its monthly figure and its last month.
-  const endsBefore = (await plan.textContent())!.match(/ends ([A-Z][a-z]+ \d{4})/)![1]!;
   await plan.getByRole('button', { name: 'Edit iBox Grand Indonesia' }).click();
   const edit = page.getByRole('dialog', { name: 'Edit instalment plan' });
+  const endsBefore = (await edit.textContent())!.match(/Ends\s*([A-Z][a-z]+ \d{4})/)![1]!;
   await expect(edit.getByLabel('What it was')).toHaveValue('iBox Grand Indonesia');
   // What the row no longer spells out is in the sheet: billed, still held and when it ends.
   await expect(edit.getByText('So far')).toBeVisible();
@@ -241,7 +241,9 @@ test('a card purchase turned into instalments splits into billed and unbilled', 
   await expect(edit).toHaveCount(0);
   await expect(plan).toContainText(/\d+ of 6 paid/);
   await expect(plan).toContainText(/Rp\s1\.500\.000 a month/);
-  expect((await plan.textContent())!.match(/ends ([A-Z][a-z]+ \d{4})/)![1]).not.toBe(endsBefore);
+  await plan.getByRole('button', { name: 'Edit iBox Grand Indonesia' }).click();
+  expect((await edit.textContent())!.match(/Ends\s*([A-Z][a-z]+ \d{4})/)![1]).not.toBe(endsBefore);
+  await edit.getByRole('button', { name: 'Close' }).click();
 
   // Removing asks first, in an alert; Not now keeps it, Remove plan takes it away and leaves the purchase alone.
   await plan.getByRole('button', { name: 'Edit iBox Grand Indonesia' }).click();
