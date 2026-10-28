@@ -110,12 +110,16 @@ export function differenceWords(minor: number, currency = 'IDR'): { text: string
 }
 
 /**
- * The plan hero's difference line, in words with the hero's own wording: over or under the estimate, or on it.
- * The tones are `differenceWords`': over is alarm, under is the gain, exact is quiet.
+ * The plan hero's status line: what the paid costs came to against their estimates.
+ *
+ * Positive is over, as `differenceWords` reads it. With nothing paid there is no gap to speak of, so the line says so
+ * rather than going missing: the hero's height then holds still from one state to the next. The amount is the size of
+ * the gap and never signed; the screen adds the arrow and the words.
  */
-export function differenceFoot(minor: number, currency = 'IDR'): { text: string; tone: 'over' | 'under' | 'exact' } {
-  if (minor === 0) return { text: 'On the estimate', tone: 'exact' };
-  return { text: `${formatMinor(Math.abs(minor), currency)} ${minor > 0 ? 'over' : 'under'} the estimate`, tone: minor > 0 ? 'over' : 'under' };
+export function planStatus(paidCount: number, differenceMinor: number): { kind: 'none' | 'saved' | 'over' | 'exact'; amountMinor: number } {
+  if (paidCount <= 0) return { kind: 'none', amountMinor: 0 };
+  if (differenceMinor === 0) return { kind: 'exact', amountMinor: 0 };
+  return { kind: differenceMinor > 0 ? 'over' : 'saved', amountMinor: Math.abs(differenceMinor) };
 }
 
 /** How much of the plan the ring shows as done, 0 to 100: what was planned less what is still to pay, as a share of what was planned. Nought when nothing is planned. */

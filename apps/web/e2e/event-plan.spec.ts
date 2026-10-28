@@ -421,7 +421,7 @@ test('the figures agree with each other', async ({ page }) => {
    * are both Rp7.200.000 — and a pair of figures that are equal cannot tell which label belongs to which. Here they
    * are Rp0 and the whole plan, so the two are pinned to their own words and a swap of the two fails.
    */
-  await expectPlanHero(page, { count: '0 of 3 paid', toPay: 'Rp 14.700.000 to pay', planned: 'Estimate Rp 14.700.000', actual: 'Actual Rp 0', difference: null });
+  await expectPlanHero(page, { count: '0 of 3 paid', toPay: 'Rp 14.700.000 to pay', planned: 'Estimate Rp 14.700.000', actual: 'Actual Rp 0', status: 'Nothing paid yet' });
 
   await page.getByRole('link', { name: 'Back to the event' }).click();
   // Tagged, and nothing on the plan claims it: Rp900.000 of spending nobody planned.
@@ -431,7 +431,7 @@ test('the figures agree with each other', async ({ page }) => {
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
   await buyItNow(page, { paid: '7200000' });
 
-  await expectPlanHero(page, { count: '1 of 3 paid', toPay: 'Rp 7.200.000 to pay', planned: 'Estimate Rp 14.700.000', actual: 'Actual Rp 7.200.000', difference: 'Rp 300.000 under the estimate' });
+  await expectPlanHero(page, { count: '1 of 3 paid', toPay: 'Rp 7.200.000 to pay', planned: 'Estimate Rp 14.700.000', actual: 'Actual Rp 7.200.000', status: '▼ Rp 300.000 saved' });
 
   await page.getByRole('link', { name: 'Back to the event' }).click();
   const sheet = page.getByTestId('event-sheet');
@@ -534,7 +534,7 @@ test('money back is named with the rows it adds up, beside spending nobody plann
   await showPlanCard(page);
   await page.getByRole('link', { name: 'See the whole plan' }).click();
   // "Planned so far", not "Planned": a refund answers no item, so the plan is not the whole account of the money.
-  await expectPlanHero(page, { count: '1 of 1 paid', toPay: 'All paid', planned: 'Estimate so far Rp 3.000.000', actual: 'Actual Rp 3.000.000', difference: 'On the estimate' });
+  await expectPlanHero(page, { count: '1 of 1 paid', toPay: 'All paid', planned: 'Estimate so far Rp 3.000.000', actual: 'Actual Rp 3.000.000', status: 'On the estimate' });
   // The plan is the list of things to pay: the hampers and the refunds are not lines on it.
   await expect(page.getByTestId('plan-item')).toHaveCount(1);
 
@@ -613,7 +613,7 @@ test('a purchase can be unticked from either screen, and the item itself removed
     await buyItNow(page, { paid });
     await expect(page.getByRole('button', { name: `Reopen ${name}` })).toBeVisible();
   }
-  await expectPlanHero(page, { count: '2 of 2 paid', toPay: 'All paid', planned: 'Estimate Rp 14.000.000', actual: 'Actual Rp 13.700.000', difference: 'Rp 300.000 under the estimate' });
+  await expectPlanHero(page, { count: '2 of 2 paid', toPay: 'All paid', planned: 'Estimate Rp 14.000.000', actual: 'Actual Rp 13.700.000', status: '▼ Rp 300.000 saved' });
 
   // What paid it, on the item's own page: the payment, the day, and the two ways out.
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
@@ -630,14 +630,14 @@ test('a purchase can be unticked from either screen, and the item itself removed
   await page.getByRole('link', { name: 'Back to the plan' }).click();
   await page.getByRole('button', { name: 'Reopen Car seat' }).click();
   await expect(page.getByRole('button', { name: 'Settle Car seat' })).toBeVisible();
-  await expectPlanHero(page, { count: '0 of 2 paid', toPay: 'Rp 7.500.000 to pay', planned: 'Estimate Rp 14.000.000', actual: 'Actual Rp 6.500.000', difference: null });
+  await expectPlanHero(page, { count: '0 of 2 paid', toPay: 'Rp 7.500.000 to pay', planned: 'Estimate Rp 14.000.000', actual: 'Actual Rp 6.500.000', status: 'Nothing paid yet' });
 
   // And removing an item leaves its purchase exactly where it is.
   await page.getByTestId('plan-item').filter({ hasText: 'Car seat' }).getByRole('link').click();
   await page.getByRole('link', { name: 'Edit' }).click();
   await page.getByRole('button', { name: 'Delete' }).click();
   await expect(page.getByTestId('plan-item').filter({ hasText: 'Car seat' })).toHaveCount(0);
-  await expectPlanHero(page, { count: '0 of 1 paid', toPay: 'Rp 7.500.000 to pay', planned: 'Estimate Rp 7.500.000', actual: 'Actual Rp 0', difference: null });
+  await expectPlanHero(page, { count: '0 of 1 paid', toPay: 'Rp 7.500.000 to pay', planned: 'Estimate Rp 7.500.000', actual: 'Actual Rp 0', status: 'Nothing paid yet' });
   // Both payments are still on the event, answering nothing: the event says so under the plan's ring.
   await page.getByRole('link', { name: 'Back to the event' }).click();
   await showPlanCard(page);
@@ -765,13 +765,13 @@ test('souvenirs bought at two shops: one item, two payments, open until marked d
   await expect(page.getByRole('button', { name: 'Add payment' })).toBeVisible();
   await buyItNow(page, { paid: '250000', done: false });
   await expect(souvenirs).toContainText('of Rp 1.000.000 · 2 payments');
-  await expectPlanHero(page, { count: '0 of 1 paid', toPay: 'Rp 550.000 to pay', planned: 'Estimate Rp 1.000.000', actual: 'Actual Rp 450.000', difference: null });
+  await expectPlanHero(page, { count: '0 of 1 paid', toPay: 'Rp 550.000 to pay', planned: 'Estimate Rp 1.000.000', actual: 'Actual Rp 450.000', status: 'Nothing paid yet' });
 
   await souvenirs.getByRole('link').click();
   await expect(page.getByTestId('item-payment')).toHaveCount(2);
   await page.getByRole('checkbox', { name: 'Settled' }).click();
   await page.getByRole('link', { name: 'Back to the plan' }).click();
-  await expectPlanHero(page, { count: '1 of 1 paid', toPay: 'All paid', planned: 'Estimate Rp 1.000.000', actual: 'Actual Rp 450.000', difference: 'Rp 550.000 under the estimate' });
+  await expectPlanHero(page, { count: '1 of 1 paid', toPay: 'All paid', planned: 'Estimate Rp 1.000.000', actual: 'Actual Rp 450.000', status: '▼ Rp 550.000 saved' });
 });
 
 test('the plan reads by category: a group each on the whole plan, and each opens in place on the event', async ({ page }) => {

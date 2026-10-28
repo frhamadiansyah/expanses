@@ -6,15 +6,13 @@ import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, toneClass, type CornerAction, type Tone, PushedTitle } from '../../ui/native';
+import { InsetGroup, InsetRow, type CornerAction, PushedTitle } from '../../ui/native';
 import { GROUP_RADIUS } from '../../ui/native/metrics';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { buyTarget } from './buy-item';
-import { differenceFoot, estimateLabel, itemFigure, itemPaidAgainst, itemSubtitle, planDonePercent, planInEvent } from './plan-view';
+import { estimateLabel, itemFigure, itemPaidAgainst, itemSubtitle, planDonePercent, planInEvent, planStatus } from './plan-view';
 import { useEventItemsReady, useEventPlan, useEvents } from './queries';
 
-/** The kit's tones for what a difference is. The words themselves are `differenceFoot`'. */
-const HERE: Record<'over' | 'under' | 'exact', Tone> = { over: 'alarm', under: 'gain', exact: 'ink-3' };
 
 /**
  * One thing on the plan, as a checklist line in the Cashflow history's size: an empty circle while it is still to
@@ -103,18 +101,22 @@ function PlanItemRow({
   );
 }
 
+const hereStatus = (status: ReturnType<typeof planStatus>, rp: (minor: number) => string) => ({ kind: status.kind, amount: rp(status.amountMinor) });
+
 /**
- * The plan's top card: a ring of how much is paid beside the count, what is left to pay, and the estimate against
- * the actual; and, under a hairline, how the two compare.
+ * The plan's top card: a ring of how much is paid with the count under its percentage, beside a status line (what the
+ * paid costs saved or went over), what is left to pay, and the estimate against the actual.
  *
  * The ring is exactly as tall as the text beside it, so the text is measured and the SVG sized to it (a ring of its own
  * size beside text of another would leave one of them floating). The ring is drawn on a 100 unit square and scaled, so
- * its stroke and its percentage grow with it. Nothing in the text wraps: the figures are small enough to share the row.
+ * its stroke and its words grow with it; the count never renders under 8px. The status line is always there, so the
+ * height holds from one state to the next. Nothing in the text wraps: the figures are small enough to share the row.
  * When the event's currency is not the base, each of the three figures has its base equivalent under it.
  */
 function PlanHero({
   percent,
   count,
+  status,
   toPay,
   toPayBase,
   estimateWord,
@@ -122,10 +124,10 @@ function PlanHero({
   estimateBase,
   actual,
   actualBase,
-  foot,
 }: {
   percent: number;
   count: string;
+  status: { kind: 'none' | 'saved' | 'over' | 'exact'; amount: string };
   toPay: string;
   toPayBase: string | null;
   estimateWord: string;
@@ -133,7 +135,6 @@ function PlanHero({
   estimateBase: string | null;
   actual: string;
   actualBase: string | null;
-  foot: { text: string; tone: 'over' | 'under' | 'exact' } | null;
 }) {
   const block = useRef<HTMLDivElement>(null);
   // Before it is measured, and where nothing can be: about the height the text comes to.
@@ -154,6 +155,8 @@ function PlanHero({
     return () => observer.disconnect();
   });
   const circumference = 2 * Math.PI * 45;
+  // 9 of the ring's 100 units, but never fewer than 8 rendered pixels: a small ring scales the text up.
+  const countSize = Math.max(9, 800 / size);
   const base = (text: string | null, id: string) =>
     text && (
       <span data-testid={id} className="tabular block text-[10px] leading-[13px] whitespace-nowrap text-[var(--ph-ink-3)]">
@@ -165,7 +168,7 @@ function PlanHero({
       <InsetGroup>
         <div className="px-[14px] py-[14px]">
           <div className="flex items-start gap-[14px]">
-            <svg data-testid="plan-ring" role="img" aria-label={`${percent} percent paid`} width={size} height={size} viewBox="0 0 100 100" className="shrink-0">
+            <svg data-testid="plan-ring" role="img" aria-label={`${percent} percent paid, ${count}`} width={size} height={size} viewBox="0 0 100 100" className="shrink-0">
               <circle cx="50" cy="50" r="45" fill="none" stroke="var(--ph-track)" strokeWidth="10" />
               {percent > 0 && (
                 <circle
@@ -181,14 +184,30 @@ function PlanHero({
                   transform="rotate(-90 50 50)"
                 />
               )}
-              <text x="50%" y="50%" textAnchor="middle" dominantBaseline="central" fontSize="22" fontWeight="700" fill="var(--ph-ink)">
+              <text x="50" y="44" textAnchor="middle" dominantBaseline="central" fontSize="21" fontWeight="700" fill="var(--ph-ink)">
                 {percent}%
+              </text>
+              <text data-testid="plan-count" x="50" y="62" textAnchor="middle" dominantBaseline="central" fontSize={countSize} fontWeight="500" fill="var(--ph-ink-3)">
+                {count}
               </text>
             </svg>
             <div ref={block} className="min-w-0 flex-1">
-              <div data-testid="plan-count" className="text-xs leading-[15px] font-semibold whitespace-nowrap text-[var(--ph-ink-2)]">
-                {count}
-              </div>
+              {status.kind === 'none' || status.kind === 'exact' ? (
+                <div data-testid="plan-status" className="text-xs leading-[15px] font-medium whitespace-nowrap text-[var(--ph-ink-3)]">
+                  {status.kind === 'none' ? 'Nothing paid yet' : 'On the estimate'}
+                </div>
+              ) : (
+                <div
+                  data-testid="plan-status"
+                  aria-label={status.kind === 'saved' ? `Saved ${status.amount} against the estimate` : `Over the estimate by ${status.amount}`}
+                  className={cx(
+                    'tabular text-xs leading-[15px] font-semibold whitespace-nowrap',
+                    status.kind === 'saved' ? 'text-[var(--ph-up)]' : 'text-[var(--ph-alarm)]',
+                  )}
+                >
+                  <span aria-hidden>{status.kind === 'saved' ? '▼' : '▲'}</span> {status.amount} {status.kind === 'saved' ? 'saved' : 'over'}
+                </div>
+              )}
               <div data-testid="plan-to-go" className="tabular mt-px text-base leading-5 font-extrabold whitespace-nowrap text-[var(--ph-ink)]">
                 {toPay}
               </div>
@@ -198,28 +217,20 @@ function PlanHero({
                 <div>
                   <div data-testid="plan-planned" className="whitespace-nowrap">
                     <span className="block text-[10.5px] leading-[13px] text-[var(--ph-ink-3)]">{estimateWord}</span>
-                    <span className="tabular text-[13px] leading-4 font-semibold text-[var(--ph-ink)]">{estimate}</span>
+                    <span className="tabular text-xs leading-4 font-semibold text-[var(--ph-ink)]">{estimate}</span>
                   </div>
                   {base(estimateBase, 'plan-planned-base')}
                 </div>
                 <div className="text-right">
                   <div data-testid="plan-actual" className="whitespace-nowrap">
                     <span className="block text-[10.5px] leading-[13px] text-[var(--ph-ink-3)]">Actual</span>
-                    <span className="tabular text-[13px] leading-4 font-semibold text-[var(--ph-ink)]">{actual}</span>
+                    <span className="tabular text-xs leading-4 font-semibold text-[var(--ph-ink)]">{actual}</span>
                   </div>
                   {base(actualBase, 'plan-actual-base')}
                 </div>
               </div>
             </div>
           </div>
-          {foot && (
-            <div
-              data-testid="plan-difference"
-              className={cx('tabular mt-[10px] border-t-[0.5px] border-[var(--ph-hair)] pt-2 text-center text-[12.5px] whitespace-nowrap', toneClass(HERE[foot.tone]))}
-            >
-              {foot.text}
-            </div>
-          )}
         </div>
       </InsetGroup>
     </div>
@@ -329,7 +340,6 @@ export function PlanPage() {
   const data = plan.data;
   const home = eventCurrency(event?.currency, ws.baseCurrency);
   const totals = data ? planInEvent(data, home, ws.baseCurrency) : null;
-  const difference = data && data.boughtCount > 0 ? differenceFoot(totals!.differenceMinor, home) : null;
   const search = { ws: tab };
   const addLabel = 'Add a cost';
   const add: CornerAction = {
@@ -381,6 +391,7 @@ export function PlanPage() {
             <PlanHero
               percent={planDonePercent(totals.plannedMinor, totals.toBuyMinor)}
               count={`${data.boughtCount} of ${data.itemCount} paid`}
+              status={hereStatus(planStatus(data.boughtCount, totals.differenceMinor), rp)}
               // "All paid" only once every cost is done: an open item paid in full still has Rp0 to pay.
               toPay={totals.toBuyMinor > 0 || data.boughtCount < data.itemCount ? `${rp(totals.toBuyMinor)} to pay` : 'All paid'}
               toPayBase={totals.base && formatMinor(totals.base.toBuyMinor, ws.baseCurrency)}
@@ -389,7 +400,6 @@ export function PlanPage() {
               estimateBase={totals.base && formatMinor(totals.base.plannedMinor, ws.baseCurrency)}
               actual={rp(totals.boughtMinor)}
               actualBase={totals.base && formatMinor(totals.base.boughtMinor, ws.baseCurrency)}
-              foot={difference}
             />
 
             {/*
