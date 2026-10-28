@@ -502,6 +502,14 @@ export async function recordCycleActual(
   });
 }
 
+/** Takes a typed statement figure back: the cycle's points are the app's own working again once it is derived. */
+export async function clearCycleActual(database: Database, ws: WorkspaceContext, input: { programId: string; cycleStart: string }): Promise<void> {
+  await database.transaction(async (tx) => {
+    await requireProgram(tx, ws, input.programId);
+    await tx.delete(cycleActuals).where(and(eq(cycleActuals.programId, input.programId), eq(cycleActuals.workspaceId, ws.workspaceId), eq(cycleActuals.cycleStart, input.cycleStart)));
+  });
+}
+
 export async function listCycleActuals(database: Database, ws: WorkspaceContext, programId: string) {
   return database.db
     .select({ cycleStart: cycleActuals.cycleStart, actualPoints: cycleActuals.actualPoints, recordedAt: cycleActuals.recordedAt })

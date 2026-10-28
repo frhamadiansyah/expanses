@@ -125,3 +125,35 @@ test('Expiry holds the policy; with points that can die it lists what dies when'
   await page.goBack();
   await expect(page.getByTestId('programme-balance')).toBeVisible();
 });
+
+/** A day this many whole months back, on the 15th. */
+function monthsAgo(months: number): string {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - months, 15)).toISOString().slice(0, 10);
+}
+
+test('a card first used years ago lists its statements by year, two years first, Show earlier years adding one at a time', async ({ page }) => {
+  await openProgramme(page);
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Old shop', paidWith: 'CIMB Octo', category: 'Groceries', amount: '500000', date: monthsAgo(40) });
+  await page.goto('/wallet');
+  await walletCard(page, 'CIMB Octo').click();
+  await cardPage(page, 'Points');
+  await page.getByTestId('statement-points-programme').click();
+  await actions(page).getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('dialog').getByRole('link', { name: /CIMB Octo/ }).click();
+
+  const thisYear = new Date().getUTCFullYear();
+  await expect(page.getByTestId('programme-show-earlier')).toBeVisible();
+  await expect(page.getByTestId('programme-show-earlier')).toContainText('the first purchase on this card');
+  await expect(page.getByRole('heading', { name: String(thisYear - 1) })).toBeVisible();
+  await expect(page.getByRole('heading', { name: String(thisYear - 2) })).toHaveCount(0);
+  await page.screenshot({ path: `${SHOTS}/programme-catchup-3.png`, fullPage: true });
+
+  for (let n = 2; n <= 4; n += 1) {
+    if ((await page.getByTestId('programme-show-earlier').count()) === 0) break;
+    await page.getByTestId('programme-show-earlier').click();
+  }
+  await expect(page.getByTestId('programme-show-earlier')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: String(thisYear - 3) })).toBeVisible();
+});

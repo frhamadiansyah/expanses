@@ -116,6 +116,8 @@ test('a balance read in the app anchors the ledger', async ({ page }) => {
   await expect(page.getByTestId('statement-points-balance')).toContainText('500');
 });
 
+const SHOTS = '/private/tmp/claude-501/-Users-frhamadiansyah-Documents-Projects-Expanses/17ecd7cc-b713-4f21-b1a9-9a90ded56208/scratchpad';
+
 /** A date far enough back that a two-year policy kills the points within the sixty-day window. */
 function monthsAgo(months: number): string {
   const now = new Date();
@@ -184,16 +186,14 @@ test('catches a card up from its programme page, without complaint; the card pag
   // Catch up is on the card's own page, behind the card's row in Settings.
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Settings' }).click();
   await page.getByRole('dialog').getByRole('link', { name: /CIMB Octo/ }).click();
+  // Nothing older than this statement: the one month is listed, there is no Catch up row, and no error.
   await expect(page.getByTestId('programme-card-statement')).toHaveCount(1);
-  await page.getByTestId('programme-catch-up').click();
-
-  // Nothing older exists here: it says so, the list is as it was and no error is shown.
-  await expect(page.getByTestId('programme-catch-up')).toContainText('Nothing to add');
-  await expect(page.getByTestId('programme-card-statement')).toHaveCount(1);
+  await expect(page.getByText('Catch up earlier cycles')).toHaveCount(0);
+  await expect(page.getByTestId('programme-show-earlier')).toHaveCount(0);
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
-test('Catch up finds a statement from before the app was opened and says how many it added', async ({ page }) => {
+test('the card page already lists a statement from before the app was opened, and a typed figure makes it Posted', async ({ page }) => {
   // Two purchases: this cycle's, and one four months back that opening the programme does not reach.
   await cardWithAPurchase(page);
   await page.goto('/transactions');
@@ -206,11 +206,31 @@ test('Catch up finds a statement from before the app was opened and says how man
 
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Settings' }).click();
   await page.getByRole('dialog').getByRole('link', { name: /CIMB Octo/ }).click();
-  await expect(page.getByTestId('programme-card-statement')).toHaveCount(1);
-  await page.getByTestId('programme-catch-up').click();
-  await expect(page.getByTestId('programme-catch-up')).toContainText('Added 1 statement');
-  await expect(page.getByTestId('programme-card-statement')).toHaveCount(2);
-  await expect(page.getByTestId('programme-card-statements')).toContainText('Estimated');
+  // No tap: the older month is worked out as the page opens.
+  // Every statement from the first purchase to now is listed, the empty ones with nothing.
+  await expect(page.getByTestId('programme-card-statement').first()).toBeVisible();
+  expect(await page.getByTestId('programme-card-statement').count()).toBeGreaterThanOrEqual(4);
+  const old = page.getByTestId('programme-card-statement').filter({ hasText: '200' });
+  await expect(old).toHaveCount(1);
+  await expect(old).toContainText('Estimated');
+  await page.screenshot({ path: `${SHOTS}/programme-catchup-1.png`, fullPage: true });
+
+  // Tap a month, type what the statement shows, save: it is Posted.
+  await old.click();
+  const sheet = page.getByRole('dialog');
+  await expect(sheet.getByText('Statement closed')).toBeVisible();
+  await expect(sheet.getByText('Estimated from purchases')).toBeVisible();
+  await expect(sheet.getByText('Clear typed points')).toHaveCount(0);
+  await sheet.getByLabel('Points on the statement').fill('260');
+  await page.screenshot({ path: `${SHOTS}/programme-catchup-2.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Save statement points' }).click();
+  await expect(page.getByTestId('programme-card-statement').filter({ hasText: '260' })).toContainText('Posted');
+
+  // Typed points can be cleared, which brings the estimate back.
+  await page.getByTestId('programme-card-statement').filter({ hasText: '260' }).click();
+  await page.getByRole('dialog').getByText('Clear typed points').click();
+  await expect(page.getByTestId('programme-card-statement').filter({ hasText: 'Posted' })).toHaveCount(0);
+  await expect(page.getByTestId('programme-card-statement').filter({ hasText: '200' })).toContainText('Estimated');
 
   // Back lands in Settings, and the balance behind it has the older points.
   await page.getByRole('button', { name: 'Settings' }).first().click();
