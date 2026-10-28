@@ -1,5 +1,6 @@
-import { formatMinor, type EventPlanItemView, parseMajor } from '@expanses/core';
+import { type EventPlan, formatMinor, type EventPlanItemView, parseMajor } from '@expanses/core';
 import type { SharedEventView, SharedItemInput } from '@expanses/db';
+import { planDonePercent, planInEvent, planStatus } from './plan-view';
 
 /*
  * An item of the shared plan, opened (D7, I10): its name and price put right, and the tick — the expense that bought
@@ -61,5 +62,26 @@ export function planSummary(items: readonly Pick<SharedPlanItem, 'estimateMinor'
     plannedMinor,
     leftMinor: Math.max(0, plannedMinor - spentMinor),
     percent: plannedMinor > 0 ? Math.min(100, Math.round((Math.max(0, spentMinor) / plannedMinor) * 100)) : 0,
+  };
+}
+
+/**
+ * The figures of the plan hero for a shared trip, the private plan's card fed from the shared items. A shared trip has
+ * one currency, so there are no base equivalents; "All paid" only once every item is done.
+ */
+export function sharedPlanHero(plan: EventPlan, currency: string) {
+  const totals = planInEvent(plan, currency, currency);
+  const status = planStatus(plan.lines.flatMap((line) => line.items));
+  return {
+    percent: planDonePercent(totals.plannedMinor, totals.toBuyMinor),
+    count: `${plan.boughtCount} of ${plan.itemCount} paid`,
+    status: { kind: status.kind, amount: formatMinor(status.amountMinor, currency) },
+    toPay: totals.toBuyMinor > 0 || plan.boughtCount < plan.itemCount ? `${formatMinor(totals.toBuyMinor, currency)} to pay` : 'All paid',
+    toPayBase: null,
+    estimateWord: 'Estimate',
+    estimate: formatMinor(totals.plannedMinor, currency),
+    estimateBase: null,
+    actual: formatMinor(totals.boughtMinor, currency),
+    actualBase: null,
   };
 }

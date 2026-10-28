@@ -45,10 +45,23 @@ export async function newEvent(page: Page, name: string) {
 /** A row of the trip's Spending list, by its note. */
 export const spendingRow = (page: Page, text: string) => page.getByTestId('shared-expense-row').filter({ hasText: text });
 
-/** The Balances section of the trip page (a radio of the segmented control). */
-export async function showBalances(page: Page) {
-  await page.getByRole('radio', { name: 'Balances' }).click();
+/** Shows a card of the trip page's swipeable hero by its dot: Spending, Balances or Plan. */
+export async function showCard(page: Page, name: 'Spending' | 'Balances' | 'Plan') {
+  await page.getByTestId('hero-dots').getByRole('button', { name, exact: true }).click();
+  await expect(page.getByTestId('hero-dots').getByRole('button', { name, exact: true })).toHaveAttribute('aria-current', 'true');
+  // The swipe has come to rest: the scroller's left edge is the card's.
+  await expect(async () => {
+    const index = ['Spending', 'Balances', 'Plan'].indexOf(name);
+    const gap = await page.evaluate((i) => {
+      const el = document.querySelector('[data-testid="hero-swipe"]')!;
+      return Math.abs(el.scrollLeft - i * el.clientWidth);
+    }, index);
+    expect(gap).toBeLessThan(1);
+  }).toPass({ timeout: 5_000 });
 }
+
+/** The Balances card of the trip page, and the To settle up list under it. */
+export const showBalances = (page: Page) => showCard(page, 'Balances');
 
 /** The shared Add screen, whichever way it is drawn. */
 export const sharedCard = (page: Page): Locator => page.getByTestId('shared-expense-card');
