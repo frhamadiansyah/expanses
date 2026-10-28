@@ -78,6 +78,7 @@ import { SplitSheet, splitSummary } from './SplitSheet';
 import { PhotosSheet, usePhotoAttach } from './PhotosSheet';
 import { draftIn } from './move-workspace';
 import { useBooks, useCategoryBooks } from '../workspaces/queries';
+import { heldForm, releaseForm } from './receipt-split-hold';
 import { applyReceipt, filledLine, type ReceiptFilled, readReceiptPhoto } from './receipt-fill';
 import { autoCategoryOutOfSet, categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, isExpenseTopUp, memberTransferOf, topUpWallets, typedCurrency, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
@@ -291,8 +292,13 @@ function CardBody({
   // The placeholders among `accounts`: what the edited purchase names that this device's own list leaves out (§4.4).
   const placeholders = new Set(accounts.filter((a) => !listedIds.has(a.id)).map((a) => a.id));
   const assetProfiles = useAssetProfiles();
+  // Back from the receipt page: the form as it was left, with the amounts the receipt gave, and the With sheet open on them.
+  const [held] = useState(() => (full && !initial && !duplicateOf && !finish ? heldForm() : null));
+  useEffect(() => releaseForm(), []);
   const [draft, setDraft] = useState<FormDraft>(() =>
-    initial
+    held
+      ? held.draft
+      : initial
       ? formFromTransaction(initial, accounts, bookId, photoIds)
       : duplicateOf
         ? duplicateDraft(duplicateOf, accounts, bookId)
@@ -373,7 +379,7 @@ function CardBody({
   const withTopUps = (d: FormDraft, id = bookTopUps): FormDraft => (d.mode === 'transfer' && id ? { ...d, topUpCategoryId: id } : d);
   // Add more details opens in place, under the card, rather than over it: the extras are part of the one form.
   // Opened from an event it starts open, because the Event row it fills in lives there and should be seen set.
-  const [detailsOpen, setDetailsOpen] = useState(() => !!draft.eventId && !!seed?.eventId);
+  const [detailsOpen, setDetailsOpen] = useState(() => !!held || (!!draft.eventId && !!seed?.eventId));
   const formRef = useRef<HTMLFormElement>(null);
   const [needsRate, setNeedsRate] = useState<string | null>(null);
   /*
@@ -1360,6 +1366,8 @@ function CardBody({
             refuses to tag an edit, and a row that cannot be honoured is worse than no row.
           */}
           <MoreDetails
+            receiptSplit={full && !initial && !duplicateOf && !finish && draft.mode === 'expense'}
+            openWith={!!held}
             lead={
               draft.mode === 'trade' ? (
                 <MoneyFieldRow

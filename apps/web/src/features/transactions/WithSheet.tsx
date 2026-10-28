@@ -1,10 +1,12 @@
 import { formatMinor } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
-import { Check, Smile, X } from 'lucide-react';
+import { Camera, Smile, X } from 'lucide-react';
 import { SearchPill, SegmentedControl } from '../../ui/native';
 import { useRecentPeople } from '../debts/queries';
+import { FormRow, RowGlyph } from './FormRow';
+import { PeopleRow } from './PeopleRow';
 import { billMinor, type FormDraft, peopleOn, type WithRow, withShares } from './tx-form';
 
 /**
@@ -40,14 +42,27 @@ export function WithSheet({
   accounts,
   currency,
   onClose,
+  receipt,
 }: {
   draft: FormDraft;
   onChange: (draft: FormDraft) => void;
   accounts: readonly AccountRow[];
   currency: string;
   onClose: () => void;
+  /**
+   * Dividing by the bill's photo (a third way to split, offered only where the form can leave for the receipt page and
+   * come back): `read` takes the pictures and opens the page, answering with what went wrong; `edit` reopens a bill
+   * already worked out.
+   */
+  receipt?: { read: (files: File[]) => Promise<string | null>; edit: () => void };
 }) {
   const [search, setSearch] = useState('');
+  const [byReceipt, setByReceipt] = useState(() => !!receipt && !!draft.receiptSplit);
+  const [reading, setReading] = useState(false);
+  const [readError, setReadError] = useState<string | null>(null);
+  const photoInput = useRef<HTMLInputElement>(null);
+  const memo = draft.receiptSplit;
+  const fixedAmounts = draft.withEqually || (byReceipt && !!memo);
   const recent = useRecentPeople().data ?? [];
   const people = draft.with;
   const bill = billMinor(draft, accounts) ?? 0;
@@ -74,6 +89,7 @@ export function WithSheet({
     onChange({
       ...draft,
       with: [...people, row],
+      receiptSplit: undefined,
       // The first person turns the sheet on at Split equally. An empty box per friend, which Save then refuses
       // with "Share 1 amount must be greater than zero", is not a starting point; whatever is chosen after
       // that is left exactly as chosen.
@@ -83,7 +99,7 @@ export function WithSheet({
 
   function toggle(person: { accountId: string; name: string }) {
     const at = rowOf(person);
-    if (at >= 0) onChange({ ...draft, with: people.filter((_, j) => j !== at) });
+    if (at >= 0) onChange({ ...draft, with: people.filter((_, j) => j !== at), receiptSplit: undefined });
     else add({ debtAccountId: person.accountId, name: person.name, amount: '' });
   }
 
@@ -103,45 +119,19 @@ export function WithSheet({
       <div className="flex flex-col gap-[10px]">
         <SearchPill value={search} onChange={setSearch} onClose={() => setSearch('')} placeholder="Search or add a person" label="Search or add a person" onEnter={addTyped} enterKeyHint="done" />
 
-        {/* One row, sideways: no wrapping, no scrollbar, a soft fade where it runs on. */}
-        <div
-          className="-mx-1 flex snap-x gap-[14px] overflow-x-auto px-1 pb-1 [mask-image:linear-gradient(90deg,#000_calc(100%-34px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          data-testid="with-people"
-        >
-          {typed && !exact && (
-            <button type="button" aria-label={`New person ${typed}`} onClick={addTyped} className="ph-tap w-[62px] shrink-0 snap-start text-center">
-              <span className="mx-auto flex h-[54px] w-[54px] items-center justify-center rounded-full border-[1.5px] border-dashed border-[#0a84ff] text-[20px] font-semibold text-[#0a84ff]">
-                {typed.charAt(0).toUpperCase()}
-              </span>
-              <span className="mt-1 block truncate text-[12.5px] leading-4 text-[#0a84ff]">{typed}</span>
-            </button>
-          )}
-          {shown.map((person) => {
-            const picked = rowOf(person) >= 0;
-            return (
-              <button
-                key={person.accountId || `name:${person.name}`}
-                type="button"
-                aria-label={person.name}
-                aria-pressed={picked}
-                onClick={() => toggle(person)}
-                className="ph-tap w-[62px] shrink-0 snap-start text-center"
-              >
-                <span
-                  className={`relative mx-auto flex h-[54px] w-[54px] items-center justify-center rounded-full text-[20px] font-semibold ${picked ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : 'bg-[var(--ph-fill)] text-[var(--ph-ink-2)]'}`}
-                >
-                  {person.name.trim().charAt(0).toUpperCase() || '?'}
-                  {picked && (
-                    <span aria-hidden className="absolute -bottom-0.5 -right-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[var(--ph-surface)] text-[var(--ph-ink)] ring-[1.5px] ring-[var(--ph-ink)]">
-                      <Check size={11} strokeWidth={3} />
-                    </span>
-                  )}
-                </span>
-                <span className="mt-1 block truncate text-[12.5px] leading-4 text-[var(--ph-ink)]">{person.name}</span>
-              </button>
-            );
-          })}
-        </div>
+        <PeopleRow
+          testId="with-people"
+          people={shown.map((person) => ({ key: person.accountId || `name:${person.name}`, name: person.name }))}
+          picked={(key) => {
+            const person = shown.find((p) => (p.accountId || `name:${p.name}`) === key);
+            return !!person && rowOf(person) >= 0;
+          }}
+          onToggle={(key) => {
+            const person = shown.find((p) => (p.accountId || `name:${p.name}`) === key);
+            if (person) toggle(person);
+          }}
+          {...(typed && !exact ? { newName: typed, onAddNew: addTyped } : {})}
+        />
 
         {people.length > 0 && (
           <>
@@ -150,11 +140,70 @@ export function WithSheet({
               segments={[
                 { key: 'equally', label: 'Split equally' },
                 { key: 'custom', label: 'Custom amounts' },
+                ...(receipt ? [{ key: 'receipt', label: 'By receipt' }] : []),
               ]}
-              value={draft.withEqually ? 'equally' : 'custom'}
-              onChange={(key) => onChange({ ...draft, withEqually: key === 'equally' })}
+              value={draft.withEqually ? 'equally' : byReceipt ? 'receipt' : 'custom'}
+              onChange={(key) => {
+                setByReceipt(key === 'receipt');
+                setReadError(null);
+                if (key === 'receipt') return;
+                onChange({ ...draft, withEqually: key === 'equally', receiptSplit: undefined });
+              }}
             />
 
+            {byReceipt && receipt && (
+              <div className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)]">
+                {memo ? (
+                  <div className="flex min-h-12 items-center gap-3 px-[13px]" data-testid="with-receipt">
+                    <span className="min-w-0 flex-1 text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px]">Receipt</span>
+                    <span className="tabular shrink-0 text-[15px] text-[var(--ph-ink-3)]">{formatMinor(bill, currency)}</span>
+                    <button type="button" onClick={receipt.edit} className="ph-focus ph-tap shrink-0 text-[15px] font-semibold text-[var(--ph-tint)]">
+                      Edit
+                    </button>
+                  </div>
+                ) : (
+                  <FormRow
+                    icon={
+                      <RowGlyph>
+                        <Camera size={15} />
+                      </RowGlyph>
+                    }
+                    label={reading ? 'Reading the receipt…' : 'Choose a photo of the receipt'}
+                    name="Choose a photo of the receipt"
+                    chevron={false}
+                    disabled={reading}
+                    onClick={() => photoInput.current?.click()}
+                  />
+                )}
+              </div>
+            )}
+            {readError && byReceipt && (
+              <p role="alert" className="px-[13px] text-[13px] leading-4 text-[var(--ph-alarm-ink)]">
+                {readError}
+              </p>
+            )}
+            <input
+              ref={photoInput}
+              data-testid="receipt-split-input"
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              onChange={(e) => {
+                const files = [...(e.target.files ?? [])];
+                e.target.value = '';
+                if (files.length === 0 || !receipt) return;
+                setReading(true);
+                setReadError(null);
+                void receipt.read(files).then((failed) => {
+                  setReading(false);
+                  setReadError(failed);
+                });
+              }}
+            />
+
+            {!(byReceipt && !memo) && (
+            <>
             <ul className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)] [&>li+li>.ph-row-body]:border-t-[0.5px] [&>li+li>.ph-row-body]:border-[var(--ph-hair)]">
               <li className="flex items-center gap-[10px] pl-[12px]">
                 <span aria-hidden className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--ph-tint-panel)] text-[var(--ph-tint)]">
@@ -180,7 +229,7 @@ export function WithSheet({
                       <span className="block truncate text-[15px] leading-5 text-[var(--ph-ink)]">{row.name || 'Someone'}</span>
                       <span className="block text-[12.5px] leading-4 text-[var(--ph-ink-3)]">Owes</span>
                     </span>
-                    {draft.withEqually ? (
+                    {fixedAmounts ? (
                       <span className="tabular shrink-0 text-right text-[15px] text-[var(--ph-ink-3)]">{formatMinor(each[i] ?? 0, currency)}</span>
                     ) : (
                       <input
@@ -194,7 +243,7 @@ export function WithSheet({
                     <button
                       type="button"
                       aria-label={`Remove ${row.name || `person ${i + 1}`}`}
-                      onClick={() => onChange({ ...draft, with: people.filter((_, j) => j !== i) })}
+                      onClick={() => onChange({ ...draft, with: people.filter((_, j) => j !== i), receiptSplit: undefined })}
                       className="ph-focus-inset flex h-11 w-11 shrink-0 items-center justify-center text-[var(--ph-ink-3)]"
                     >
                       <X size={16} aria-hidden />
@@ -223,6 +272,8 @@ export function WithSheet({
                 </span>
               </div>
             </div>
+            </>
+            )}
           </>
         )}
       </div>
