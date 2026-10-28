@@ -20,14 +20,12 @@ import { CardScreen, type CardPage, type Run, useCardAction, useCardPage } from 
 import { CatalogPanel } from './CatalogPanel';
 import { CatalogPicker } from './CatalogPicker';
 import { EarnRulesEditor } from './CardRulesPages';
-import { balanceText } from './programme-text';
 import { ColumnGroup, GlyphButton, Line, Step, SubmitRow, SUBTITLE, TextLine, TITLE } from './rows';
 import { termsFields } from './terms-fields';
 import { useCatalogChoice } from './useCatalogChoice';
 import { FeeAlert } from './FeeAlert';
 import { feeLine } from './fee-line';
 import { useInstallments } from '../loans/queries';
-import { formatPoints } from './useCardPoints';
 
 const settingsRoute = getRouteApi('/cards/$cardId/settings');
 const productRoute = getRouteApi('/cards/$cardId/settings/product');
@@ -83,23 +81,21 @@ function ProductSetup({ page, run, catalog }: { page: CardPage; run: Run; catalo
 
 /**
  * The card's points settings: which programme they go into — two cards of one bank are joined by choosing the
- * bank's one programme for both, and a co-brand card earns straight into the airline's or hotel's — with that
- * programme's balance opening its page, then the card's earning rules and spend bonuses, how the bank credits its
- * points, and when its caps reset.
+ * bank's one programme for both, and a co-brand card earns straight into the airline's or hotel's — then, for a card
+ * not on the catalogue, its earning rules and spend bonuses, and for every card how the bank credits its points and
+ * when its caps reset. The balance lives on the programme's page.
  */
 function PointsGroup({ page, run }: { page: CardPage; run: Run }) {
   const { database, ws } = useApp();
-  const { cp, card, ledger } = page;
+  const { cp, card } = page;
   const programmes = useQuery({ queryKey: ['programmes-list', ws.workspaceId], queryFn: () => listProgrammes(database, ws) });
   const navigate = useNavigate();
   const program = cp.program;
   if (!program) return null;
   const programme = cp.programme;
   const choices = programme ? [programme, ...(programmes.data ?? []).filter((other) => other.id !== programme.id)] : [];
-  const balance = ledger.data?.balance;
-  const openProgramme = () => {
-    if (programme) void navigate({ to: '/cards/points/$programmeId', params: { programmeId: programme.id } });
-  };
+  // A card on the catalogue follows its rules; they are shown, and edited, only once it is set up by hand or customised.
+  const linked = cp.catalog.status === 'linked';
   return (
     <InsetGroup header="Points">
       {programme && (
@@ -120,23 +116,12 @@ function PointsGroup({ page, run }: { page: CardPage; run: Run }) {
           ))}
         </SelectRow>
       )}
-      {programme && <PickerRow label="Programme" value={programme.name} onOpen={openProgramme} />}
-      {programme && balance && (
-        <PickerRow
-          label="Balance"
-          testId="points-balance"
-          value={balanceText(balance.total, programme.unit)}
-          detail={
-            <span data-testid="points-provenance">
-              {formatPoints(balance.postedTotal)} posted · {formatPoints(balance.projectedTotal)} estimated
-            </span>
-          }
-          info="Posted points come from figures typed in. Estimated points are worked out from this card's rules, and become posted once what the bank actually gave is recorded."
-          onOpen={openProgramme}
-        />
+      {!linked && (
+        <>
+          <PickerRow label="Earning rules" value={String(cp.rules.length)} onOpen={() => void navigate({ to: '/cards/$cardId/settings/rules', params: { cardId: card.id } })} />
+          <PickerRow label="Spend bonuses" value={String(cp.bonuses.length)} onOpen={() => void navigate({ to: '/cards/$cardId/settings/bonuses', params: { cardId: card.id } })} />
+        </>
       )}
-      <PickerRow label="Earning rules" value={String(cp.rules.length)} onOpen={() => void navigate({ to: '/cards/$cardId/settings/rules', params: { cardId: card.id } })} />
-      <PickerRow label="Spend bonuses" value={String(cp.bonuses.length)} onOpen={() => void navigate({ to: '/cards/$cardId/settings/bonuses', params: { cardId: card.id } })} />
       <SelectRow label="Bank credits points" value={cp.crediting} onChange={(e) => void run(() => setProgramCrediting(database, ws, program.id, e.target.value as 'per_transaction' | 'per_statement'))}>
         <option value="per_statement">Per statement</option>
         <option value="per_transaction">Per purchase</option>

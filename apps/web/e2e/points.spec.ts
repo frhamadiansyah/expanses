@@ -37,7 +37,9 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
   await expect(page.getByText('5 per Rp')).toBeVisible();
 
   // What a point fetches is the programme's, set on its page.
-  await page.getByRole('button', { name: /^Programme.*CIMB Octo rewards/ }).click();
+  await page.getByRole('button', { name: 'CIMB Octo', exact: true }).click();
+  await cardPage(page, 'Points');
+  await page.getByTestId('statement-points-programme').click();
   await page.getByLabel('Points redeemed').fill('1');
   await page.getByLabel('Worth').fill('25');
   await page.getByRole('button', { name: 'Add value' }).click();

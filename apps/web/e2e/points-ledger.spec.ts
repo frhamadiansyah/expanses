@@ -41,26 +41,33 @@ async function toPoints(page: Page) {
   await cardPage(page, 'Points');
 }
 
-/** From the card's Settings to the programme it earns into, where its balance is worked with. */
+/** From the card's Settings to the programme it earns into, where its balance is worked with: summary, Points, the programme row. */
 async function openProgramme(page: Page) {
-  await page.getByTestId('points-balance').click();
+  await toPoints(page);
+  await openProgrammeFromPoints(page);
+}
+
+/** From this statement's points to the programme row at its top. */
+async function openProgrammeFromPoints(page: Page) {
+  await page.getByTestId('statement-points-programme').click();
   await expect(page.getByTestId('programme-balance')).toBeVisible();
 }
 
 test('a balance says how much of it the app only worked out', async ({ page }) => {
   await cardWithAPurchase(page);
+  await openProgramme(page);
 
   // 250.000 at 1 per 2.500 is 100 points, and nobody has confirmed them.
-  await expect(page.getByTestId('points-balance')).toContainText('100');
-  await expect(page.getByTestId('points-provenance')).toContainText('0 posted');
-  await expect(page.getByTestId('points-provenance')).toContainText('100 estimated');
+  await expect(page.getByTestId('programme-balance')).toContainText('100');
+  await expect(page.getByTestId('programme-provenance')).toContainText('0 posted');
+  await expect(page.getByTestId('programme-provenance')).toContainText('100 estimated');
 });
 
 test('typing what the bank gave moves points from estimated to posted', async ({ page }) => {
   await cardWithAPurchase(page);
 
   // Per-purchase figures only exist for a card that credits that way — Jenius and Mandiri do.
-  await expect(page.getByTestId('points-balance')).toBeVisible();
+  await expect(page.getByLabel('Bank credits points')).toBeVisible();
   await page.getByLabel('Bank credits points').selectOption('per_transaction');
   await expect(page.getByLabel('Bank credits points')).toHaveValue('per_transaction');
   await toPoints(page);
@@ -87,13 +94,12 @@ test('typing what the bank gave moves points from estimated to posted', async ({
   await again.getByRole('button', { name: 'Save actual for Superindo' }).click();
   await expect(again).toContainText('Bank credited 120 points');
 
-  // Back to the summary and into Settings, where the balance the card earns into is read.
+  // Back to this statement's points and into the programme, where the balance the card earns into is read.
   await page.getByRole('button', { name: 'Points' }).click();
-  await page.getByRole('button', { name: 'CIMB Octo', exact: true }).click();
-  await cardPage(page, 'Settings');
-  await expect(page.getByTestId('points-provenance')).toContainText('120 posted');
-  await expect(page.getByTestId('points-provenance')).toContainText('0 estimated');
-  await expect(page.getByTestId('points-balance')).toContainText('120');
+  await openProgrammeFromPoints(page);
+  await expect(page.getByTestId('programme-provenance')).toContainText('120 posted');
+  await expect(page.getByTestId('programme-provenance')).toContainText('0 estimated');
+  await expect(page.getByTestId('programme-balance')).toContainText('120');
 });
 
 test('a balance read in the app anchors the ledger', async ({ page }) => {
@@ -105,9 +111,9 @@ test('a balance read in the app anchors the ledger', async ({ page }) => {
   await page.getByRole('button', { name: 'Set balance' }).click();
 
   await expect(page.getByTestId('programme-balance')).toHaveText('500 points');
-  // The card's Settings read the same balance: the programme's it earns into.
+  // The card's points page reads the same balance: the programme's it earns into.
   await page.goBack();
-  await expect(page.getByTestId('points-balance')).toContainText('500');
+  await expect(page.getByTestId('statement-points-balance')).toContainText('500');
 });
 
 /** A date far enough back that a two-year policy kills the points within the sixty-day window. */
@@ -119,7 +125,6 @@ function monthsAgo(months: number): string {
 
 /** How the points die is the programme's, set in its settings. */
 async function setExpiry(page: Page, months: string) {
-  await openProgramme(page);
   await page.getByRole('button', { name: 'Programme settings' }).click();
   await page.getByLabel('Points expire').selectOption('months_from_earn');
   await page.getByLabel('Months they last').fill(months);
@@ -131,7 +136,7 @@ test('warns on the dashboard about points that are about to die', async ({ page 
   // In the previous cycle, so the card page derives it. Points earned before the cycles on screen are
   // not in the ledger at all, which is why this date is recent rather than years back.
   await cardWithAPurchase(page, monthsAgo(1));
-  await expect(page.getByTestId('points-balance')).toContainText('100');
+  await openProgramme(page);
 
   // Two months from a purchase one month ago: it dies inside the sixty-day window.
   await setExpiry(page, '2');
@@ -157,8 +162,8 @@ async function redeem(page: Page, points: string, fetched: string) {
 
 test('spending points takes them off the balance, oldest first', async ({ page }) => {
   await cardWithAPurchase(page);
-  await expect(page.getByTestId('points-balance')).toContainText('100');
   await openProgramme(page);
+  await expect(page.getByTestId('programme-balance')).toContainText('100');
 
   await redeem(page, '40', '1000');
 

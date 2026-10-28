@@ -306,6 +306,31 @@ export function resetToCatalog(database: Database, ws: WorkspaceContext, program
 }
 
 /**
+ * Takes a linked program off the catalogue for good: its rules, bonuses, partners, and catalogue cash value are removed
+ * and the entry link is cut, leaving a blank program set up by hand. The program row, its name, unit, and cycle anchor
+ * stay, and so does every points entry already posted. Only a linked program can be customised.
+ */
+export function customiseFromScratch(database: Database, ws: WorkspaceContext, programId: string): Promise<void> {
+  return database.transaction(async (tx) => {
+    const program = await programById(tx, ws, programId);
+    if (program.catalogStatus !== 'linked') throw new CatalogError('This program is not linked to the catalogue');
+    await clearRows(tx, ws, program.id, true);
+    await tx.delete(catalogCategoryChoices).where(and(eq(catalogCategoryChoices.programId, program.id), eq(catalogCategoryChoices.workspaceId, ws.workspaceId)));
+    await tx
+      .update(rewardPrograms)
+      .set({
+        catalogEntryId: null,
+        catalogEntryVersion: null,
+        catalogStatus: null,
+        catalogDismissedVersion: null,
+        catalogMemberLevel: null,
+        catalogSnapshotJson: null,
+      })
+      .where(eq(rewardPrograms.id, program.id));
+  });
+}
+
+/**
  * Moves a linked program to another published member level — the holder's standing with the bank changed.
  * Re-applies the entry at that level, so the rules and transfer ratios follow.
  */
