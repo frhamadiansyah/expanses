@@ -34,13 +34,16 @@ async function openProgramme(page: Page) {
   await expect(page.getByTestId('programme-balance')).toBeVisible();
 }
 
-test('the programme page keeps the balance, four buttons and History; the rest moved to Worth, Convert and Settings', async ({ page }) => {
+test('the programme page keeps the balance, four buttons and History; the rest is in Convert, Expiry and Settings', async ({ page }) => {
   await openProgramme(page);
   const buttons = page.getByRole('group', { name: 'Actions' });
-  await expect(buttons.getByRole('button', { name: 'Redeem' })).toBeVisible();
   await expect(buttons.getByRole('button', { name: 'Convert' })).toBeVisible();
-  await expect(buttons.getByRole('button', { name: 'Set balance' })).toBeVisible();
-  await expect(buttons.getByRole('link', { name: 'Worth' })).toBeVisible();
+  await expect(buttons.getByRole('button', { name: 'Adjust' })).toBeVisible();
+  await expect(buttons.getByRole('button', { name: 'Settings' })).toBeVisible();
+  await expect(buttons.getByRole('link', { name: 'Expiry' })).toBeVisible();
+  await expect(buttons.getByRole('button')).toHaveCount(3);
+  await expect(buttons.getByText('Redeem')).toHaveCount(0);
+  await expect(buttons.getByText('Worth')).toHaveCount(0);
   const main = page.getByRole('main');
   await expect(main.getByText('Earned by')).toHaveCount(0);
   await expect(main.getByText('If transferred')).toHaveCount(0);
@@ -55,30 +58,20 @@ test('the programme page keeps the balance, four buttons and History; the rest m
   await page.goBack();
   await expect(page.getByTestId('programme-balance')).toBeVisible();
 
-  // Worth opens the list; the ＋ adds a value in a sheet.
-  await buttons.getByRole('link', { name: 'Worth' }).click();
-  await expect(page.getByTestId('point-values')).toContainText('No values yet');
-  await page.screenshot({ path: `${SHOTS}/programme-new-2.png`, fullPage: true });
-  await page.getByRole('button', { name: 'Add a value' }).click();
-  await page.getByRole('dialog', { name: 'Add a value' }).getByLabel('Redemption', { exact: true }).fill('Statement credit');
-  await page.getByRole('dialog', { name: 'Add a value' }).getByLabel('Points redeemed', { exact: true }).fill('1');
-  await page.getByRole('dialog', { name: 'Add a value' }).getByLabel('Worth', { exact: true }).fill('25');
-  await page.getByRole('dialog', { name: 'Add a value' }).getByRole('button', { name: 'Add value' }).click();
-  await expect(page.getByTestId('point-values')).toContainText(/Statement credit: 1 points = Rp\s25/);
-  await page.goBack();
-  await expect(page.getByTestId('programme-balance')).toBeVisible();
-
-  // Settings: the cards earning here, the value count, the catch-up and Archive.
-  await page.getByRole('button', { name: 'Programme settings' }).click();
+  // Settings: the cards earning here, the value per point, the catch-up and Archive.
+  await buttons.getByRole('button', { name: 'Settings' }).click();
   const settings = page.getByRole('dialog');
   await expect(settings.getByText('Cards earning here')).toBeVisible();
   await expect(settings.getByRole('link', { name: /CIMB Octo/ })).toBeVisible();
-  await expect(settings.getByRole('link', { name: /What points are worth/ })).toContainText('1 value');
-  await expect(settings.getByRole('button', { name: 'Catch up earlier cycles' })).toBeVisible();
+  await expect(settings.getByRole('button', { name: /Value per point/ })).toContainText('Not set');
+  await expect(settings.getByRole('button', { name: 'Catch up earlier cycles' })).toHaveCount(0);
   await expect(settings.getByRole('button', { name: 'Archive programme' })).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/programme-new-3.png`, fullPage: true });
-  await settings.getByRole('button', { name: 'Catch up earlier cycles' }).click();
-  await settings.getByRole('button', { name: 'Catch up CIMB Octo' }).click();
+  // The card's row opens its own Catch up page, not the statement points page.
+  await settings.getByRole('link', { name: /CIMB Octo/ }).click();
+  await expect(page.getByTestId('programme-card-statements')).toBeVisible();
+  await page.getByTestId('programme-catch-up').click();
+  await expect(page.getByTestId('programme-catch-up')).toContainText(/Added \d+ statements?|Nothing to add/);
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
@@ -103,6 +96,7 @@ test('the Convert sheet shows what this statement would convert to at each partn
   await cardPage(page, 'Points');
   await page.getByTestId('statement-points-programme').click();
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Convert' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'KrisFlyer' }).click();
   await expect(page.getByRole('dialog')).toContainText(/If this statement's \d+ points were converted/i);
   await expect(page.getByRole('dialog')).toContainText('KrisFlyer');
 });

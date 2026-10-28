@@ -96,7 +96,7 @@ export function useWalletCards() {
   const creditCards: WalletCard[] = (data.data ?? []).map((cp) => {
     const own = [...plastic.filter((card) => card.accountId === cp.card.id)].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
     const points = cp.current?.earn.totalPoints ?? 0;
-    const value = pointsValue(points, cp.best);
+    const value = pointsValue(points, cp);
     // Every card on this account, so a supplementary card is still named where the wall can see it.
     const named = own.filter((card) => card.last4 !== null).map((card) => `···· ${card.last4}${card.holderName ? ` ${card.holderName}` : ''}`);
     const cycle = !cp.terms
@@ -106,7 +106,7 @@ export function useWalletCards() {
         : 'Rewards not set up';
     // Points are a count, not money: they keep their own unit and never go through a currency formatter.
     const earned = cp.current && cp.program ? `${formatPoints(points)} ${unitOf(cp)}` : null;
-    const worth = value !== null && cp.best ? `≈ ${formatMinor(value, cp.best.currency)}` : null;
+    const worth = value ? `≈ ${formatMinor(value.valueMinor, value.currency)}` : null;
     return {
       key: cp.card.id,
       issuer: identities[cp.card.id]?.issuer ?? null,

@@ -20,7 +20,7 @@ import { useInstallments } from '../loans/queries';
 import { spendingDoor } from '../goals/set-aside-question';
 import { creditLine } from '../networth/debt-rows';
 import { useSetAside } from '../goals/SetAsideQuestion';
-import { type CardPoints, formatPoints, pointsValue, shortDate } from './useCardPoints';
+import { type CardPoints, formatPoints, shortDate } from './useCardPoints';
 
 /** A figure that is the point of its tile: 22 px, tabular, and never money that a caller formatted itself. */
 function TileFigure({ children, testId }: { children: ReactNode; testId?: string }) {
@@ -297,7 +297,6 @@ export function CardHero({
   const activeBonuses = result ? cp.bonuses.filter((b) => activeDuring(b, result.cycle.end, result.cycle.end)) : [];
   const standingOf = (b: (typeof activeBonuses)[number]) => bonusStanding(b, result!.earn.eligibleSpendByBonus[b.id] ?? 0, result!.earn.bonusById[b.id] ?? 0);
   const bonus = activeBonuses.filter((b) => standingOf(b).next).sort((a, b) => standingOf(a).remainingMinor - standingOf(b).remainingMinor)[0] ?? activeBonuses[0];
-  const worth = cp.program ? pointsValue(pointsBalance?.total ?? 0, cp.best) : null;
   /** What one purchase earned, by this cycle's or the last one's rules; nothing when the card earns nothing. */
   const pointsOf = (transactionId: string): number | null =>
     cp.program ? (cp.current?.earn.pointsByTransaction[transactionId] ?? cp.previous?.earn.pointsByTransaction[transactionId] ?? null) : null;

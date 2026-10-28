@@ -103,6 +103,16 @@ export function balanceOf(entries: PointEntry[], today: string, soonDays: number
   return { total: postedTotal + projectedTotal, postedTotal, projectedTotal, expiringSoon, nextExpiryOn };
 }
 
+/** What is left to expire on each date, earliest first: the batches still holding points, those dying on one day added. */
+export function expiryLots(entries: PointEntry[]): { expiresOn: string; remaining: number }[] {
+  const byDate = new Map<string, number>();
+  for (const batch of remainingByBatch(entries).values()) {
+    if (batch.expiresOn === null || batch.remaining <= 0) continue;
+    byDate.set(batch.expiresOn, (byDate.get(batch.expiresOn) ?? 0) + batch.remaining);
+  }
+  return [...byDate.entries()].map(([expiresOn, remaining]) => ({ expiresOn, remaining })).sort((a, b) => a.expiresOn.localeCompare(b.expiresOn));
+}
+
 /** When points earned on a day die under a policy. Null when they do not. */
 export function expiresOn(earnedOn: string, policy: ExpiryPolicy, months: number | null): string | null {
   if (policy === 'none') return null;

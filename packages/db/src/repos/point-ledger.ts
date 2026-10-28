@@ -23,7 +23,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts } from '../schema';
 import { earnsInto, pointEntries, pointProgrammes, pointSnapshots, rewardPrograms } from '../schema-points';
-import { findProgramme, programmeIdOf, programmesExist } from './programme-link';
+import { findProgramme, programmeIdOf, programmesExist, readProgrammeValues } from './programme-link';
 import { listAccounts } from './accounts';
 import { listTransactionPointActuals } from './point-actuals';
 import { categoryIdsByKeyAll } from './categories';
@@ -427,13 +427,21 @@ export interface CardYearRoi extends FeeRoi {
  * It invents nothing: the same rules over purchases already recorded. A card whose history was never
  * entered has nothing to find, and a balance read from the issuer's app is the answer there instead.
  */
-export async function backfillCycles(
-  database: Database,
-  ws: WorkspaceContext,
-  programId: string,
-  cycles: number,
-  today: string,
-): Promise<number> {
+export async function backfillCycles(database: Database, ws: WorkspaceContext, programId: string, cycles: number, today: string): Promise<number> {
+  return (await walkCycles(database, ws, programId, cycles, today)).walked;
+}
+
+/**
+ * Catch-up as the owner sees it: the same walk back, reporting how many statements it added — cycles that held no earning
+ * for this card before and hold some now. A cycle already worked out, or one with no purchases on the card, adds none,
+ * so a second run, or a card with nothing older than its first statement, reports nothing.
+ */
+export async function catchUpCard(database: Database, ws: WorkspaceContext, programId: string, cycles: number, today: string): Promise<{ added: number }> {
+  const { added } = await walkCycles(database, ws, programId, cycles, today);
+  return { added };
+}
+
+async function walkCycles(database: Database, ws: WorkspaceContext, programId: string, cycles: number, today: string): Promise<{ walked: number; added: number }> {
   const [program] = await database.db
     .select()
     .from(rewardPrograms)
@@ -446,13 +454,27 @@ export async function backfillCycles(
 
   const statementDay = terms?.statementDay ?? 1;
   let cycle = cycleFor(today, program.cycleAnchor, statementDay);
-  let done = 0;
+  let walked = 0;
+  let added = 0;
   for (let index = 0; index < Math.max(0, Math.floor(cycles)); index += 1) {
-    await deriveCycleEntries(database, ws, programId, cycle);
-    done += 1;
+    const [before] = await database.db
+      .select({ n: sql<number>`count(*)` })
+      .from(pointEntries)
+      .where(
+        and(
+          eq(pointEntries.workspaceId, ws.workspaceId),
+          eq(pointEntries.earnedById, programId),
+          eq(pointEntries.kind, 'earn'),
+          gte(pointEntries.occurredOn, cycle.start),
+          lte(pointEntries.occurredOn, cycle.end),
+        ),
+      );
+    const wrote = await deriveCycleEntries(database, ws, programId, cycle);
+    walked += 1;
+    if (Number(before?.n ?? 0) === 0 && wrote > 0) added += 1;
     cycle = previousCycle(cycle, program.cycleAnchor, statementDay);
   }
-  return done;
+  return { walked, added };
 }
 
 const shiftDate = (date: string, years: number, days: number): string => {
@@ -501,8 +523,10 @@ export async function cardYearRoi(database: Database, ws: WorkspaceContext, prog
   const to = charge ? shiftDate(String(charge[0]), 1, -1) : today;
   const annualFeeMinor = charge ? Number(charge[1]) : (terms?.annualFeeMinor ?? 0);
 
+  // The programme's value per point (0105) when set, else the best option the card lists.
+  const valueScaled = (await readProgrammeValues(database, ws))[await programmeIdOf(database.db, ws, programId)] ?? null;
   const best = bestRedemption((await listRedemptionOptions(database, ws, programId)).map(toRedemption));
-  const valuePerPointMicro = best ? Math.round((best.valueMinor * 1_000_000) / best.perPoints) : 0;
+  const valuePerPointMicro = valueScaled !== null ? valueScaled * 100 : best ? Math.round((best.valueMinor * 1_000_000) / best.perPoints) : 0;
 
   // The card's year is the card's own earning: in a programme other cards also earn into, only this card's points
   // count. Spending, expiry and conversions are the programme's, and feeRoi leaves them out anyway.

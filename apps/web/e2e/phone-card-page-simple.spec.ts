@@ -80,10 +80,12 @@ test('the card page keeps the tile, the buttons and the latest; fee, rewards and
   await row.click();
   await expect(page.getByTestId('programme-hero')).toBeVisible();
   const buttons = page.getByRole('group', { name: 'Actions' });
-  await expect(buttons.getByText('Redeem')).toBeVisible();
   await expect(buttons.getByText('Convert')).toBeVisible();
-  await expect(buttons.getByText('Set balance')).toBeVisible();
-  await expect(buttons.getByText('Worth')).toBeVisible();
+  await expect(buttons.getByText('Adjust')).toBeVisible();
+  await expect(buttons.getByText('Expiry')).toBeVisible();
+  await expect(buttons.getByText('Settings')).toBeVisible();
+  await expect(buttons.getByText('Redeem')).toHaveCount(0);
+  await expect(buttons.getByText('Worth')).toHaveCount(0);
   await page.getByRole('button', { name: 'Points', exact: true }).click();
   await expect(page.getByRole('heading', { name: "This statement's points", exact: true }).first()).toBeVisible();
 });
