@@ -45,9 +45,9 @@ test("converting Livin' Poin into KrisFlyer shows both balances", async ({ page 
   await expect(page.getByTestId('programme-balance')).toHaveText('0 points');
 
   // Its balance set to the one the bank's app shows.
-  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Balance' }).click();
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Set balance' }).click();
   await page.getByLabel('Actual balance').fill('20.000');
-  await page.getByRole('button', { name: 'Set balance' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Set balance' }).click();
   await expect(page.getByTestId('programme-balance')).toHaveText('20.000 points');
 
   // Converted into an airline programme that does not exist yet, made in the same step.
@@ -95,16 +95,21 @@ test('a second card of the bank joins its programme', async ({ page }) => {
   await expect(programmeRow(page, "Livin' Poin")).toHaveAccessibleName(new RegExp('2 cards earn here'));
   await expect(programmeRow(page, 'Platinum points')).toHaveCount(0);
   await programmeRow(page, "Livin' Poin").click();
+  // The cards earning here are in the programme's settings.
+  await page.getByRole('button', { name: 'Programme settings' }).click();
   await expect(page.getByRole('link', { name: /Mandiri Prioritas/ })).toBeVisible();
   await expect(page.getByRole('link', { name: /Mandiri Platinum/ })).toBeVisible();
+  await page.keyboard.press('Escape');
 
-  // What a point fetches is set here too, for the card whose terms list it.
+  // What a point fetches is on its own page, for the card whose terms list it.
+  await page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Worth' }).click();
   const values = page.getByTestId('point-values');
-  await values.getByLabel('Card').selectOption({ label: 'Mandiri Platinum' });
-  await values.getByLabel('Redemption').fill('Statement credit');
-  await values.getByLabel('Points redeemed').fill('1');
-  await values.getByLabel('Worth').fill('25');
-  await values.getByRole('button', { name: 'Add value' }).click();
+  await page.getByRole('button', { name: 'Add a value' }).click();
+  await page.getByRole('dialog', { name: 'Add a value' }).getByLabel('Card', { exact: true }).selectOption({ label: 'Mandiri Platinum' });
+  await page.getByRole('dialog', { name: 'Add a value' }).getByLabel('Redemption', { exact: true }).fill('Statement credit');
+  await page.getByRole('dialog', { name: 'Add a value' }).getByLabel('Points redeemed', { exact: true }).fill('1');
+  await page.getByRole('dialog', { name: 'Add a value' }).getByLabel('Worth', { exact: true }).fill('25');
+  await page.getByRole('dialog', { name: 'Add a value' }).getByRole('button', { name: 'Add value' }).click();
   await expect(values).toContainText(/Statement credit: 1 points = Rp\s25/);
   await expect(values).toContainText('Mandiri Platinum');
   await values.getByRole('button', { name: 'Remove Statement credit' }).click();

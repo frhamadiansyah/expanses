@@ -39,6 +39,7 @@ import { CardStatementPage } from '../features/cards/CardStatementPage';
 import { WalletPage } from '../features/wallet/WalletPage';
 import { WalletReorderPage } from '../features/wallet/WalletReorderPage';
 import { ProgrammePage } from '../features/cards/ProgrammePage';
+import { ProgrammeWorthPage } from '../features/cards/ProgrammeWorthPage';
 import { PointsPage } from '../features/cards/PointsPage';
 import { RecommendPage } from '../features/cards/RecommendPage';
 import { CheckStatementPage, checkSearch } from '../features/statement-check/CheckStatementPage';
@@ -318,6 +319,7 @@ const routeTree = rootRoute.addChildren([
   // The programmes, listed: opened from Wallet's corner. Static, so it outranks the wallet's `$cardId` as well.
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/points', component: PointsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/points/$programmeId', component: ProgrammePage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/points/$programmeId/worth', component: ProgrammeWorthPage }),
   // A card's statement checked from screenshots (statement-check spec §3.4): a screen of its own over the wallet, as
   // Move is over an account. `batch` enters with screenshots the share sheet already read.
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/check', component: CheckStatementPage, validateSearch: checkSearch }),

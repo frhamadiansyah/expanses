@@ -96,8 +96,9 @@ test('BCA UnionPay doubles points on an SGD purchase billed in rupiah', async ({
   await expect(cycle).toContainText('108');
   // What the 108 would transfer to is the programme's, on its own page.
   await page.getByTestId('statement-points-programme').click();
-  await expect(page.getByText('If transferred')).toBeVisible();
-  await expect(page.getByRole('main')).toContainText('50 KrisFlyer');
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Convert' }).click();
+  await expect(page.getByText(/If this statement's 108 points were converted/i)).toBeVisible();
+  await expect(page.getByRole('dialog')).toContainText('50 KrisFlyer');
 });
 
 test('editing a catalogue rule makes the card customised', async ({ page }) => {
