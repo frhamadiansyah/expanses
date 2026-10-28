@@ -501,6 +501,8 @@ export interface BillHistoryRow {
   chargedMinor: number | null;
   chargedCurrency: string | null;
   paymentId: string | null;
+  /** Every posted payment of the month, newest first: a month may hold more than one. */
+  payments: { id: string; paidMinor: number | null; paidCurrency: string | null }[];
 }
 
 export interface BillDetail {
@@ -641,6 +643,9 @@ function monthOfBill(template: ExpenseTemplateRow, facts: BillFacts, month: stri
     chargedMinor: paid?.chargedMinor ?? null,
     chargedCurrency: paid?.chargedCurrency ?? null,
     paymentId: payment?.transactionId ?? null,
+    payments: (facts.payments.get(template.id) ?? [])
+      .filter((p) => p.billMonth === month)
+      .map((p) => ({ id: p.transactionId, paidMinor: paidFigures(p).paidMinor, paidCurrency: paidFigures(p).paidCurrency })),
   };
 }
 
