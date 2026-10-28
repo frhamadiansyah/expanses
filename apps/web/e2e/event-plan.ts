@@ -196,8 +196,8 @@ export async function fillItem(page: Page, options: ItemFields) {
   if (options.quantity) await page.getByLabel('How many').fill(options.quantity);
   await page.getByLabel('Price each').fill(options.price);
   if (options.category) await chooseCategory(page, options.category);
-  if (options.link) await page.getByLabel('Link').fill(options.link);
-  if (options.note) await page.getByLabel('Note').fill(options.note);
+  if (options.link) await page.getByLabel('Purchase link').fill(options.link);
+  if (options.note) await page.getByLabel('Remarks').fill(options.note);
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByTestId('plan-item').filter({ hasText: options.name })).toBeVisible();
 }

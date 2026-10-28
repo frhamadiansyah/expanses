@@ -139,7 +139,7 @@ export function ItemPage() {
             {/* The one value that is itself a control: an address goes out to the web, which no route can do. */}
             {item.link ? (
               <InsetRow
-                title="Link"
+                title="Purchase link"
                 plain
                 value={
                   <a href={item.link} target="_blank" rel="noreferrer noopener" className="inline-flex max-w-[55vw] items-center md:max-w-[26rem]">
@@ -165,12 +165,12 @@ export function ItemPage() {
                   title={tx ? `${dayMonth(tx.occurredOn)} · ${tx.description || 'Another payment'}` : 'Another payment'}
                   value={shown(purchase.shareMinor, tx?.occurredOn)}
                   valueTone="ink"
-                  {...(item.purchases.length > 1 ? coverTarget(eventId, purchase.transactionId, { item: item.id, ws: tab }) : {})}
+                  // One receipt often answers several costs; a tap on its payment is where its shares are set side by side.
+                  chevron
+                  {...coverTarget(eventId, purchase.transactionId, { item: item.id, ws: tab })}
                 />
               );
             })}
-            {/* One receipt often answers several costs; this is where its shares are set side by side. */}
-            {item.purchases.length === 1 && <InsetRow title="Say what it covers" plain {...coverTarget(eventId, item.purchases[0]!.transactionId, { item: item.id, ws: tab })} />}
             <InsetRow
               title={item.purchases.length === 1 ? 'Unlink payment' : 'Unlink every payment'}
               // Every payment off puts the cost back on the list: nothing is left to say it was paid.
@@ -194,8 +194,8 @@ export function ItemPage() {
              * on the event — a shopping trip that answered three costs goes that way, through the screen where the
              * three shares are typed together. Either adds to what the cost already holds.
              */}
-            <InsetRow title={paid ? 'Add payment' : 'Pay now'} plain onClick={() => void navigate(buyTarget(eventId, item.id, tab))} chevron />
-            <InsetRow title="Link a payment" plain to="/events/$eventId/plan/link" params={{ eventId }} search={{ ws: tab, item: item.id }} />
+            <InsetRow title={paid ? 'Add payment' : 'Pay now'} onClick={() => void navigate(buyTarget(eventId, item.id, tab))} action />
+            <InsetRow title="Link a payment" to="/events/$eventId/plan/link" params={{ eventId }} search={{ ws: tab, item: item.id }} action />
           </InsetGroup>
         )}
 

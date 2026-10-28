@@ -346,7 +346,7 @@ test('a receipt that is already spoken for is shown as fully accounted for, not 
   await page.getByRole('link', { name: 'Back to the cost' }).click();
   await page.getByRole('link', { name: 'Back to the plan' }).click();
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
-  await page.getByRole('link', { name: 'Say what it covers' }).click();
+  await page.getByTestId('item-payment').click();
   await expect(page.getByRole('heading', { name: 'What it covers' })).toBeVisible();
   await page.getByRole('checkbox', { name: 'Muslin wraps' }).check();
   await expect(page.getByTestId('cover-totals')).toContainText('that is more than the receipt');
@@ -620,7 +620,11 @@ test('a purchase can be unticked from either screen, and the item itself removed
   const bought = page.locator('section', { has: page.getByRole('heading', { name: 'Paid', exact: true }) });
   await expect(bought).toContainText('Crib');
   expect(await moneyIn(bought)).toEqual([7_200_000]);
-  await expect(bought.getByRole('link', { name: 'Say what it covers' })).toBeVisible();
+  // One payment has no separate "Say what it covers" row: the payment itself opens the screen.
+  await expect(bought).not.toContainText('Say what it covers');
+  await bought.getByTestId('item-payment').click();
+  await expect(page.getByRole('heading', { name: 'What it covers' })).toBeVisible();
+  await page.goBack();
   await bought.getByRole('button', { name: 'Unlink payment' }).click();
   // The link is gone and the purchase is not: the page turns back into the one that offers to pay it.
   await expect(page.getByRole('button', { name: 'Pay now' })).toBeVisible();

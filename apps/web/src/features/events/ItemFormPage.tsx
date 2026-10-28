@@ -1,4 +1,4 @@
-import { CURRENCIES, eventCurrency, formatMinor, isoDate, minorToMajorString, parseMajor } from '@expanses/core';
+import { CURRENCIES, eventCurrency, groupTypedAmount, isoDate, minorToMajorString, parseMajor } from '@expanses/core';
 import { type AccountRow, listEventItems, removeEventItem, saveEventItem } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
@@ -13,6 +13,7 @@ import { CategoryIcon } from '../categories/CategoryIcon';
 import { CurrencySheet } from '../transactions/CurrencySheet';
 import { useCategorySetMembership, useSetCategories } from '../categories/set-queries';
 import { useCategoryWorkspaces } from '../workspaces/queries';
+import { spacedMinor } from './amount-text';
 import { itemFormGate } from './plan-view';
 import { useEventItemsReady, useEventPlan, useEvents, usePlanConverter } from './queries';
 
@@ -47,7 +48,8 @@ function minorOf(typed: string, currency: string): number {
 const wholeOf = (typed: string) => (/^\d+$/.test(typed.trim()) ? Number(typed.trim()) : 0);
 
 /**
- * The estimate, as a total rather than a field: a heavier hairline above it, its label small and quiet, its figure in the same regular weight as the fields above.
+ * The estimate, as a total rather than a field: a heavier hairline above it, its label small and quiet, its figure drawn as Price each's is: regular weight, the same size and ink,
+ * the symbol a space before a grouped number ("Rp 9.800.000").
  * It is still an input — read-only, out of the tab order — so it keeps the label it is found by and a figure a test can
  * read off the form, but nothing about it invites typing.
  */
@@ -62,7 +64,7 @@ function EstimateRow({ value }: GroupChild & { value: string }) {
         value={value}
         readOnly
         tabIndex={-1}
-        className="tabular min-w-0 flex-1 cursor-default border-0 bg-transparent p-0 text-right text-[17px] leading-[22px] font-normal text-[var(--ph-ink)] outline-none"
+        className="tabular min-w-0 flex-1 cursor-default border-0 bg-transparent p-0 text-right text-[17px] leading-[22px] font-normal text-[var(--ph-ink)] outline-none md:text-[15px] md:leading-[20px]"
       />
     </div>
   );
@@ -186,9 +188,10 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
     if (!itemId || loaded || !existing) return;
     setName(existing.name);
     setQuantity(String(existing.quantity));
-    // Written the way save parses it back, so a two-decimal currency reads 15.00 and saves as 15.00.
-    setPicked(existing.currency ?? ws.baseCurrency);
-    setPrice(minorToMajorString(existing.unitPriceMinor, existing.currency ?? ws.baseCurrency));
+    // Written the way save parses it back, grouped as it is typed: a two-decimal currency reads 15,00 and saves as 15,00.
+    const own = existing.currency ?? ws.baseCurrency;
+    setPicked(own);
+    setPrice(groupTypedAmount(minorToMajorString(existing.unitPriceMinor, own).replace('.', ','), own));
     setCategoryId(existing.categoryId ?? '');
     setLink(existing.link ?? '');
     setNote(existing.note ?? '');
@@ -212,7 +215,14 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
   // At the day's rate where one is stored: the estimate on this form is read before anything is saved.
   const converter = usePlanConverter(currency === home ? [] : [currency, home]).data;
   const inHome = currency === home ? estimateMinor : (converter?.convert(estimateMinor, currency, home, isoDate()) ?? null);
-  const estimateText = currency === home ? formatMinor(estimateMinor, currency) : inHome === null ? formatMinor(estimateMinor, currency) : `≈ ${formatMinor(inHome, home)}`;
+  const estimateText = currency === home ? spacedMinor(estimateMinor, currency) : inHome === null ? spacedMinor(estimateMinor, currency) : `≈ ${spacedMinor(inHome, home)}`;
+  // A price typed in cents is regrouped for the currency picked, so its decimal comma never outlives a currency without cents.
+  const pickCurrency = (code: string) => {
+    setPicked(code);
+    const regrouped = groupTypedAmount(price, code);
+    // Cents dropped with the comma, not folded into the whole: 95,50 in rupiah is 95, not 9.550.
+    setPrice(price.includes(',') && !regrouped.includes(',') ? groupTypedAmount(price.split(',')[0] ?? '', code) : regrouped);
+  };
   const chosen = planCategories.find((account) => account.id === categoryId);
   const chosenName = chosen ? planName(chosen.id, chosen.name) : null;
   const search = { ws: tab };
@@ -327,7 +337,7 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
           <TextRow
             label="Price each"
             value={price}
-            onChange={(e) => setPrice(e.target.value)}
+            onChange={(e) => setPrice(groupTypedAmount(e.target.value, currency))}
             inputMode="decimal"
             placeholder="Amount"
             prefix={CURRENCIES.find((c) => c.code === currency)?.symbol ?? currency}
@@ -342,8 +352,8 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
         </InsetGroup>
         <InsetGroup>
           <CategoryPickRow categoryId={categoryId} name={chosenName} accounts={accounts} onOpen={() => setPickingCategory(true)} />
-          <TextRow label="Link" value={link} onChange={(e) => setLink(e.target.value)} inputMode="url" placeholder="Web address" />
-          <TextRow label="Note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Remarks" />
+          <TextRow label="Purchase link"value={link} onChange={(e) => setLink(e.target.value)} inputMode="url" placeholder="Web address" />
+          <TextRow label="Remarks" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note" />
         </InsetGroup>
       </form>
       {/* Only on an edit, and a group of its own at the foot: the air round it is the only undo a finger gets. */}
@@ -352,7 +362,7 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
           <DestructiveRow label="Delete" onClick={() => void remove(existing)} />
         </InsetGroup>
       )}
-      {pickingCurrency && <CurrencySheet value={currency} accountCurrency={home} baseCurrency={ws.baseCurrency} onPick={setPicked} onClose={() => setPickingCurrency(false)} />}
+      {pickingCurrency && <CurrencySheet value={currency} accountCurrency={home} baseCurrency={ws.baseCurrency} onPick={pickCurrency} onClose={() => setPickingCurrency(false)} />}
       {pickingCategory && (
         <CategorySheet
           options={planCategories.map((account) => ({ id: account.id, name: planName(account.id, account.name) }))}
