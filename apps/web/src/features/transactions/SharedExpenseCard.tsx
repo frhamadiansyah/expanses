@@ -1,6 +1,6 @@
 import { CASH_ITEMS, isoDate, type MoneyAccountSubtype } from '@expanses/core';
 import { editSharedExpense, addSharedItemPurchase, ownerScope, recordSharedExpense, type SharedEventView, sharedEventView, voidSharedExpense } from '@expanses/db';
-import { Check, CreditCard, Percent, Plane, Shapes, Split, Users } from 'lucide-react';
+import { Check, CreditCard, Percent, Plane, Tag, Split, Users } from 'lucide-react';
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { canPayWith } from '../../lib/account-types';
@@ -287,7 +287,7 @@ export function SharedExpenseCard({
                   <EventCategoryGlyph icon={category.icon} />
                 ) : (
                   <RowGlyph>
-                    <Shapes size={15} />
+                    <Tag size={15} />
                   </RowGlyph>
                 )
               }

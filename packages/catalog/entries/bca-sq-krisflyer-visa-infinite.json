@@ -2,7 +2,7 @@
   "id": "bca-sq-krisflyer-visa-infinite",
   "entryVersion": 2,
   "bank": "BCA",
-  "name": "BCA Singapore Airlines KrisFlyer Visa Infinite",
+  "name": "BCA KrisFlyer Visa Infinite",
   "network": "visa",
   "currency": "IDR",
   "program": {

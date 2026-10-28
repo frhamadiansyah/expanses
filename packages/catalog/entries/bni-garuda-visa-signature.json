@@ -2,7 +2,7 @@
   "id": "bni-garuda-visa-signature",
   "entryVersion": 1,
   "bank": "Bank BNI",
-  "name": "Kartu Kredit BNI Garuda Indonesia Visa Signature",
+  "name": "BNI Garuda Indonesia Visa Signature",
   "network": "visa",
   "currency": "IDR",
   "program": {

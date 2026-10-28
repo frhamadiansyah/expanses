@@ -2,7 +2,7 @@
   "id": "maybank-u-debit",
   "entryVersion": 1,
   "bank": "Maybank",
-  "name": "Maybank U",
+  "name": "Maybank U Debit",
   "network": "mastercard",
   "cardType": "debit",
   "currency": "IDR",

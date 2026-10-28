@@ -1,7 +1,7 @@
 {
   "id": "maybank-jcb-platinum",
   "bank": "Maybank",
-  "name": "Maybank Kartu Kredit JCB Platinum",
+  "name": "Maybank JCB Platinum",
   "network": "jcb",
   "program": {
     "unit": "points",

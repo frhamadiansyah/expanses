@@ -130,7 +130,7 @@ test('Paid with names each card by its digits, and choosing one sets the account
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')).filter((label) => label?.includes('BCA KrisFlyer')));
   expect([...offered].sort()).toEqual(['BCA KrisFlyer ···· 1467', 'BCA KrisFlyer ···· 8802']);
 
-  await sheet.getByRole('button', { name: 'Close' }).click();
+  await sheet.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('dialog', { name: 'Add a transaction' }).getByRole('button', { name: 'Cancel' }).click();
 
   await addTransaction(page, { description: 'Ranch Market', paidWith: 'BCA KrisFlyer ···· 8802', category: 'Groceries', amount: '450000' });
@@ -675,7 +675,7 @@ test('every extra survives the save, and leaving it out of the report leaves onl
   await addAccount(page, 'BCA KF Signature', 'credit_card', async () => {
     await page.getByLabel('Current balance').fill('0');
   });
-  await catalogueCard(page, 'BCA KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  await catalogueCard(page, 'BCA KF Signature', 'signature', 'BCA KrisFlyer Visa Signature');
   await addEvent(page, 'Lebaran');
 
   await page.goto('/transactions');
@@ -908,9 +908,10 @@ test('Split by category and With refuse each other in words, before Save', async
   // And the refusal goes the other way round too: a person on the bill shuts Split.
   await more.getByRole('button', { name: 'With', exact: true }).click();
   const withSheet = page.getByRole('dialog', { name: 'With', exact: true });
-  await withSheet.getByLabel('Add a person').fill('Andi');
-  await withSheet.getByRole('button', { name: 'Add', exact: true }).click();
-  await withSheet.getByRole('button', { name: 'Close' }).click();
+  await withSheet.getByLabel('Search or add a person').fill('Andi');
+  await withSheet.getByRole('button', { name: 'New person Andi' }).click();
+  await expect(withSheet.getByRole('button', { name: 'Andi', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await withSheet.getByRole('button', { name: 'Close', exact: true }).click();
   await form.getByRole('button', { name: 'Category', exact: true }).click();
   const picker = page.getByRole('dialog', { name: 'Select category' });
   await expect(picker.getByRole('button', { name: 'Split between categories' })).toBeDisabled();
@@ -995,7 +996,7 @@ test('a bill split equally between three people leaves each of them owing their 
   await expect(sheet.getByTestId('with-your-share')).toHaveText('Rp 100.000');
 
   // Shut, the row underneath reads back what was decided — the summary Task 14's edit sheet will show too.
-  await sheet.getByRole('button', { name: 'Close' }).click();
+  await sheet.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(more.getByRole('button', { name: 'With', exact: true })).toContainText('3 people · Owed Rp 300.000');
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
@@ -1264,7 +1265,7 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
   // The 31st clamps to the end of the month, so this card's statement cycle IS the calendar month. With the
   // usual 25th the cycle runs 26th→25th, and `OTHER_DAY` — the 1st — falls into the *previous* cycle on every
   // day from the 26th onwards, which took the purchase off "This cycle" and out of the list read at the end.
-  await catalogueCard(page, 'BCA KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature', '31');
+  await catalogueCard(page, 'BCA KF Signature', 'signature', 'BCA KrisFlyer Visa Signature', '31');
   await addEvent(page, 'Lebaran');
 
   await page.goto('/transactions');
@@ -1419,7 +1420,7 @@ test('an excluded purchase leaves the chart and the budget, keeps the statement 
   await addAccount(page, 'BCA KF Signature', 'credit_card', async () => {
     await page.getByLabel('Current balance').fill('0');
   });
-  await catalogueCard(page, 'BCA KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  await catalogueCard(page, 'BCA KF Signature', 'signature', 'BCA KrisFlyer Visa Signature');
 
   const spend = async (note: string, amount: string, exclude: boolean) => {
     await page.goto('/transactions');
@@ -1562,7 +1563,7 @@ test('an event, a photograph and the exclusion survive one save together', async
   await form.getByLabel('Note').fill('Superindo');
 
   const { more, sheet } = await attachPhoto(page, form, { name: 'receipt.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('a Lebaran receipt') });
-  await sheet.getByRole('button', { name: 'Close' }).click();
+  await sheet.getByRole('button', { name: 'Close', exact: true }).click();
   await more.getByRole('button', { name: 'Event' }).click();
   await page.getByRole('dialog', { name: 'Event' }).getByRole('button', { name: 'Lebaran' }).click();
   await more.getByRole('switch', { name: 'Exclude from report' }).click();
@@ -1593,7 +1594,7 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
     await page.getByLabel('Current balance').fill('0');
   });
   // Real terms, so the Points tab has a scheme to list the purchase against — and so the MCC is readable there.
-  await catalogueCard(page, 'BCA KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  await catalogueCard(page, 'BCA KF Signature', 'signature', 'BCA KrisFlyer Visa Signature');
   await addEvent(page, 'Lebaran');
 
   await page.goto('/transactions');

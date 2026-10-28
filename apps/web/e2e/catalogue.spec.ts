@@ -67,7 +67,7 @@ const thisCycle = (page: Page) => page.getByRole('main');
 
 test('BCA KrisFlyer Visa Signature earns base miles and the cycle bonus with full progress', async ({ page }) => {
   await addCard(page, 'BCA KF Signature');
-  await applyCatalogue(page, 'BCA KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  await applyCatalogue(page, 'BCA KF Signature', 'signature', 'BCA KrisFlyer Visa Signature');
   await buy(page, { card: 'BCA KF Signature', description: 'Anniversary dinner', category: 'Restaurants', amount: '21000000' });
 
   await openCardPage(page, 'BCA KF Signature');
@@ -104,7 +104,7 @@ test('BCA UnionPay doubles points on an SGD purchase billed in rupiah', async ({
 
 test('editing a catalogue rule makes the card customised', async ({ page }) => {
   await addCard(page, 'BCA KF Infinite');
-  await applyCatalogue(page, 'BCA KF Infinite', 'infinite', 'BCA Singapore Airlines KrisFlyer Visa Infinite');
+  await applyCatalogue(page, 'BCA KF Infinite', 'infinite', 'BCA KrisFlyer Visa Infinite');
   await cardSettingsPage(page, 'Earning rules');
   const rules = page.locator('section', { has: page.getByRole('heading', { name: 'Earn rules' }) });
   await rules.getByRole('button', { name: 'Edit' }).first().click();
@@ -120,7 +120,7 @@ test('comparing in KrisFlyer ranks UnionPay converted miles above Signature mile
   await addCard(page, 'BCA UnionPay Card');
   await applyCatalogue(page, 'BCA UnionPay Card', 'unionpay', 'BCA UnionPay');
   await addCard(page, 'BCA KF Signature');
-  await applyCatalogue(page, 'BCA KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  await applyCatalogue(page, 'BCA KF Signature', 'signature', 'BCA KrisFlyer Visa Signature');
 
   await page.goto('/recommend');
   await page.getByLabel('Amount', { exact: true }).fill('540000');
@@ -157,7 +157,7 @@ test('CIMB Niaga World ALL Accor pre-fills billing date 22 and earns 2,5 points 
   await openCardPage(page, 'CIMB Accor');
   await cardPage(page, 'Settings');
   await page.getByLabel('Search catalogue').fill('accor');
-  await page.getByRole('button', { name: 'CIMB Niaga World ALL Accor Live Limitless', exact: true }).click();
+  await page.getByRole('button', { name: 'CIMB Niaga World All Accor', exact: true }).click();
   await expect(page.getByLabel('Billing date')).toHaveValue('22');
   await page.getByLabel('Due date').fill('12');
   await saveCardTerms(page);
@@ -173,7 +173,7 @@ test('CIMB Niaga World ALL Accor pre-fills billing date 22 and earns 2,5 points 
 
 test('a spend bonus can be added by hand, and a catalogue one keeps what the form never shows', async ({ page }) => {
   await addCard(page, 'BCA KrisFlyer');
-  await applyCatalogue(page, 'BCA KrisFlyer', 'krisflyer', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  await applyCatalogue(page, 'BCA KrisFlyer', 'krisflyer', 'BCA KrisFlyer Visa Signature');
   await cardSettingsPage(page, 'Spend bonuses');
 
   // The catalogue's own bonus is listed, which the owner could never see before. The entry carries one
@@ -196,7 +196,7 @@ test('a spend bonus can be added by hand, and a catalogue one keeps what the for
 
 test('adds a second tier to a card that pays more for spending more', async ({ page }) => {
   await addCard(page, 'BCA KrisFlyer');
-  await applyCatalogue(page, 'BCA KrisFlyer', 'krisflyer', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  await applyCatalogue(page, 'BCA KrisFlyer', 'krisflyer', 'BCA KrisFlyer Visa Signature');
   await cardSettingsPage(page, 'Spend bonuses');
 
   const bonuses = page.locator('section', { has: page.getByRole('heading', { name: 'Spend bonuses' }) });
@@ -213,7 +213,7 @@ test('adds a second tier to a card that pays more for spending more', async ({ p
 
 test('editing a rule or a bonus opens its form where its row stood, not below the list', async ({ page }) => {
   await addCard(page, 'BCA KrisFlyer');
-  await applyCatalogue(page, 'BCA KrisFlyer', 'krisflyer', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  await applyCatalogue(page, 'BCA KrisFlyer', 'krisflyer', 'BCA KrisFlyer Visa Signature');
   await cardSettingsPage(page, 'Earning rules');
 
   // Every rule row on the page, in reading order.

@@ -2,8 +2,8 @@ import { formatMinor } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { useState } from 'react';
 import { Sheet } from '../../app/Sheet';
-import { Search, Smile, X } from 'lucide-react';
-import { SegmentedControl } from '../../ui/native';
+import { Check, Smile, X } from 'lucide-react';
+import { SearchPill, SegmentedControl } from '../../ui/native';
 import { useRecentPeople } from '../debts/queries';
 import { billMinor, type FormDraft, peopleOn, type WithRow, withShares } from './tx-form';
 
@@ -56,11 +56,19 @@ export function WithSheet({
   const categoryName = accounts.find((account) => account.id === draft.categoryId)?.name ?? '';
 
   const typed = search.trim();
-  const taken = new Set(people.map((row) => row.debtAccountId).filter(Boolean));
-  const offered = recent.filter((person) => !taken.has(person.accountId) && person.personName.toLowerCase().includes(typed.toLowerCase()));
-  // Somebody already on the books, spelled out in full, is that person rather than a second account of the
-  // same name — which is what typing "Andi" and pressing Add would otherwise make.
-  const onTheBooks = recent.find((person) => person.personName.toLowerCase() === typed.toLowerCase());
+  const needle = typed.toLowerCase();
+  // Everybody that can be picked: the people on the books, then anybody put on this bill by name alone (not yet on
+  // the books — `splitBill` opens them on saving), so a person just added stays in the row to be un-picked.
+  const known = recent.map((person) => ({ accountId: person.accountId, name: person.personName }));
+  const extras = people
+    .filter((row) => !row.debtAccountId && !known.some((k) => k.name.toLowerCase() === row.name.trim().toLowerCase()))
+    .map((row) => ({ accountId: '', name: row.name.trim() }));
+  const everyone = [...known, ...extras];
+  const shown = needle ? everyone.filter((person) => person.name.toLowerCase().includes(needle)) : everyone;
+  const rowOf = (person: { accountId: string; name: string }) =>
+    people.findIndex((row) => (person.accountId ? row.debtAccountId === person.accountId : !row.debtAccountId && row.name.trim().toLowerCase() === person.name.toLowerCase()));
+  // Somebody already in the row, spelled out in full, is that person rather than a second account of the same name.
+  const exact = everyone.find((person) => person.name.toLowerCase() === needle);
 
   function add(row: WithRow) {
     onChange({
@@ -71,62 +79,69 @@ export function WithSheet({
       // that is left exactly as chosen.
       withEqually: people.length === 0 ? true : draft.withEqually,
     });
-    setSearch('');
   }
 
+  function toggle(person: { accountId: string; name: string }) {
+    const at = rowOf(person);
+    if (at >= 0) onChange({ ...draft, with: people.filter((_, j) => j !== at) });
+    else add({ debtAccountId: person.accountId, name: person.name, amount: '' });
+  }
+
+  // Enter, or the dashed circle: the typed name is added and picked. A name already in the row is picked, not made twice.
   const addTyped = () => {
     if (!typed) return;
-    add(onTheBooks ? { debtAccountId: onTheBooks.accountId, name: onTheBooks.personName, amount: '' } : { debtAccountId: '', name: typed, amount: '' });
+    setSearch('');
+    if (exact) {
+      if (rowOf(exact) < 0) add({ debtAccountId: exact.accountId, name: exact.name, amount: '' });
+      return;
+    }
+    add({ debtAccountId: '', name: typed, amount: '' });
   };
 
   return (
     <Sheet grouped title="With" onClose={onClose}>
       <div className="flex flex-col gap-[10px]">
-        {/* D4's search field. Add stays beside it: a name nobody has met yet is added by it, not only by Enter. */}
-        <div className="flex items-center gap-2">
-          <label className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-[10px] bg-[var(--ph-track)] px-3">
-            <Search size={16} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
-            <input
-              aria-label="Add a person"
-              value={search}
-              placeholder="Add a person"
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key !== 'Enter') return;
-                // Enter means Add here, and nothing else. `Sheet` is not a portal, so this input is not inside
-                // the card's `<form>` — but the Add button is `type="button"` for the same reason, and an Enter
-                // left to the browser in a box beside it would do nothing at all.
-                e.preventDefault();
-                addTyped();
-              }}
-              className="min-w-0 flex-1 bg-transparent text-base text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none md:text-[15px]"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={addTyped}
-            disabled={!typed}
-            className="ph-focus min-h-10 shrink-0 rounded-full px-3 text-[15px] font-medium text-[var(--ph-tint)] disabled:opacity-40"
-          >
-            Add
-          </button>
-        </div>
+        <SearchPill value={search} onChange={setSearch} onClose={() => setSearch('')} placeholder="Search or add a person" label="Search or add a person" onEnter={addTyped} enterKeyHint="done" />
 
-        {offered.length > 0 && (
-          <div className="flex flex-wrap gap-[6px]">
-            {offered.map((person) => (
+        {/* One row, sideways: no wrapping, no scrollbar, a soft fade where it runs on. */}
+        <div
+          className="-mx-1 flex snap-x gap-[14px] overflow-x-auto px-1 pb-1 [mask-image:linear-gradient(90deg,#000_calc(100%-34px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          data-testid="with-people"
+        >
+          {typed && !exact && (
+            <button type="button" aria-label={`New person ${typed}`} onClick={addTyped} className="ph-tap w-[62px] shrink-0 snap-start text-center">
+              <span className="mx-auto flex h-[54px] w-[54px] items-center justify-center rounded-full border-[1.5px] border-dashed border-[#0a84ff] text-[20px] font-semibold text-[#0a84ff]">
+                {typed.charAt(0).toUpperCase()}
+              </span>
+              <span className="mt-1 block truncate text-[12.5px] leading-4 text-[#0a84ff]">{typed}</span>
+            </button>
+          )}
+          {shown.map((person) => {
+            const picked = rowOf(person) >= 0;
+            return (
               <button
-                key={person.accountId}
+                key={person.accountId || `name:${person.name}`}
                 type="button"
-                aria-label={person.personName}
-                onClick={() => add({ debtAccountId: person.accountId, name: person.personName, amount: '' })}
-                className="ph-focus min-h-9 rounded-full bg-[var(--ph-surface)] px-3 text-[13px] text-[var(--ph-ink)] ring-[0.5px] ring-[var(--ph-hair)] active:bg-[var(--ph-fill)]"
+                aria-label={person.name}
+                aria-pressed={picked}
+                onClick={() => toggle(person)}
+                className="ph-tap w-[62px] shrink-0 snap-start text-center"
               >
-                + {person.personName}
+                <span
+                  className={`relative mx-auto flex h-[54px] w-[54px] items-center justify-center rounded-full text-[20px] font-semibold ${picked ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : 'bg-[var(--ph-fill)] text-[var(--ph-ink-2)]'}`}
+                >
+                  {person.name.trim().charAt(0).toUpperCase() || '?'}
+                  {picked && (
+                    <span aria-hidden className="absolute -bottom-0.5 -right-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[var(--ph-surface)] text-[var(--ph-ink)] ring-[1.5px] ring-[var(--ph-ink)]">
+                      <Check size={11} strokeWidth={3} />
+                    </span>
+                  )}
+                </span>
+                <span className="mt-1 block truncate text-[12.5px] leading-4 text-[var(--ph-ink)]">{person.name}</span>
               </button>
-            ))}
-          </div>
-        )}
+            );
+          })}
+        </div>
 
         {people.length > 0 && (
           <>

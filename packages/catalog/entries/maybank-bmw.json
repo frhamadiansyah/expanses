@@ -2,7 +2,7 @@
   "id": "maybank-bmw",
   "entryVersion": 3,
   "bank": "Maybank",
-  "name": "BMW Maybank Kartu Kredit",
+  "name": "Maybank BMW",
   "network": "visa",
   "currency": "IDR",
   "program": {

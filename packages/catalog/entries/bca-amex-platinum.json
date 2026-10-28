@@ -2,7 +2,7 @@
   "id": "bca-amex-platinum",
   "entryVersion": 1,
   "bank": "BCA",
-  "name": "BCA American Express Platinum Card",
+  "name": "BCA American Express Platinum",
   "network": "amex",
   "currency": "IDR",
   "program": {

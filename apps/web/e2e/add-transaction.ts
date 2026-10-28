@@ -193,8 +193,11 @@ export async function shareWith(page: Page, form: Locator, people: readonly { na
   await more.getByRole('button', { name: 'With', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'With', exact: true });
   for (const person of people) {
-    await sheet.getByLabel('Add a person').fill(person.name);
-    await sheet.getByRole('button', { name: 'Add', exact: true }).click();
+    await sheet.getByLabel('Search or add a person').fill(person.name);
+    // A name nobody has met is a dashed "New person" circle; one already on the books is its own circle in the row.
+    const fresh = sheet.getByRole('button', { name: `New person ${person.name}` });
+    if (await fresh.count()) await fresh.click();
+    else await sheet.getByRole('button', { name: person.name, exact: true }).click();
   }
   if (people.some((person) => person.owes !== undefined)) {
     await sheet.getByRole('radio', { name: 'Custom amounts' }).click();
@@ -212,7 +215,7 @@ export async function shareWith(page: Page, form: Locator, people: readonly { na
  * under the card: they are part of the form now rather than a sheet over it, so there is nothing else to close.
  */
 export async function closeDetails(more: Locator, sheet: Locator) {
-  await sheet.getByRole('button', { name: 'Close' }).click();
+  await sheet.getByRole('button', { name: 'Close', exact: true }).click();
 }
 
 /**

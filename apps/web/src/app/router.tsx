@@ -85,6 +85,7 @@ import { newTransactionSearch } from '../features/transactions/new-search';
 import { MoneyFlowPage, moneyFlowSearch } from '../features/transactions/MoneyFlow';
 import { PasteListPage } from '../features/transactions/PasteListPage';
 import { ActivityDetailPage } from '../features/activity/ActivityDetailPage';
+import { DefaultPaidWithPage } from '../features/account/DefaultPaidWithPage';
 import { ActivityPage } from '../features/activity/ActivityPage';
 import { ReceiptRoute } from '../features/transactions/ReceiptPage';
 import { TransactionsPage } from '../features/transactions/TransactionsPage';
@@ -465,6 +466,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/developer', component: DeveloperSettingsPage }),
   // Capture: how to set the phone up, what it keeps, and what each source has learned. The row that reaches it is
   // iPhone-only (`isNative()`); the addresses themselves work everywhere, so the same pages can be shown on a desktop.
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings/default', component: DefaultPaidWithPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/activity', component: ActivityPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/activity/$id', component: ActivityDetailPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/capture', component: CaptureSettingsPage }),

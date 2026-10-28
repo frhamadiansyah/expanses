@@ -29,7 +29,7 @@ import {
   type TransactionView,
   uncategorisedCategory,
 } from '@expanses/db';
-import { ArrowDownLeft, ArrowUpRight, Check, CreditCard, Hash, Home, Landmark, Layers, Shapes, Split, Target } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Check, CreditCard, Hash, Home, Landmark, Layers, Tag, Split, Target } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { type CSSProperties, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
@@ -41,6 +41,7 @@ import { moneyHolders, useAccounts, useAccountsFor, useInvalidateAll, useIsBookS
 import { Card, cx, ErrorBox, InputRow, RowHint } from '../../ui';
 import { PushedTitle, SegmentedControl } from '../../ui/native';
 import { useCards, useCardsWithArchived } from '../cards/card-queries';
+import { payableOptions, resolveDefaultPaidWith, useStoredDefaultPaidWith } from '../account/default-paid-with';
 import { useEvents } from '../events/queries';
 import { useSharedEventSummaries } from '../events/shared-queries';
 import { CategoryOptions } from '../cards/options';
@@ -201,6 +202,11 @@ export function TransactionCard(props: {
    * which reads that transaction, has to know the void is its own doing and not a reason to send anyone away.
    */
   onSaveStart?: () => void;
+  /**
+   * A plain blank form, which opens with Paid with on the Default set in Account (when it is still a way to pay).
+   * Left off by every opener that brings an account of its own, and by edits, duplicates and captures.
+   */
+  defaultPaidWith?: boolean;
 }) {
   // An edit can read a placeholder the purchase is already posted against: one another member paid for (§4.4).
   const accounts = useAccountsFor(props.initial ?? props.duplicateOf);
@@ -210,8 +216,12 @@ export function TransactionCard(props: {
   // The draft is built from the accounts once, so it must not be built before they are here: `formFromTransaction`
   // reads each account's currency, and a draft seeded from an empty list opens a foreign purchase with no currency.
   // The same holds for the photo rows: a draft seeded before they arrive opens an edit with none of them.
-  if (!accounts.isSuccess || !photos.ready) return <Card>Loading…</Card>;
-  return <CardBody {...props} accounts={accounts.data} photoIds={photos.ids} />;
+  const wantsDefault = !!props.defaultPaidWith && !props.initial && !props.duplicateOf && !props.finish && (props.mode ?? 'expense') === 'expense';
+  const storedDefault = useStoredDefaultPaidWith();
+  const defaultCards = useCards();
+  if (!accounts.isSuccess || !photos.ready || (wantsDefault && (storedDefault.isPending || defaultCards.isPending))) return <Card>Loading…</Card>;
+  const fallback = wantsDefault ? resolveDefaultPaidWith(storedDefault.data, payableOptions(accounts.data, (defaultCards.data ?? []) as CardRow[])) : null;
+  return <CardBody {...props} accounts={accounts.data} photoIds={photos.ids} defaultPay={fallback ? { moneyId: fallback.accountId, cardId: fallback.cardId ?? '' } : undefined} />;
 }
 
 function CardBody({
@@ -231,6 +241,7 @@ function CardBody({
   onSaveStart,
   accounts: ownAccounts,
   photoIds,
+  defaultPay,
 }: {
   initial?: TransactionView;
   duplicateOf?: TransactionView;
@@ -249,6 +260,8 @@ function CardBody({
   onSaveStart?: () => void;
   accounts: AccountRow[];
   photoIds: string[];
+  /** The Default Paid with, already checked against what can pay: the blank form opens on it. */
+  defaultPay?: { moneyId: string; cardId: string };
 }) {
   const { database, ws } = useApp();
   const navigate = useNavigate();
@@ -283,7 +296,12 @@ function CardBody({
       ? formFromTransaction(initial, accounts, bookId, photoIds)
       : duplicateOf
         ? duplicateDraft(duplicateOf, accounts, bookId)
-        : { ...emptyForm(bookId), mode: mode ?? 'expense', ...seeded(seed, accounts), ...finish?.prefill },
+        : ((blank) => (defaultPay && !blank.moneyId ? { ...blank, ...defaultPay } : blank))({
+            ...emptyForm(bookId),
+            mode: mode ?? 'expense',
+            ...seeded(seed, accounts),
+            ...finish?.prefill,
+          }),
   );
   /*
    * Who filled Category. One the form opened with — an edit, a duplicate, a capture already filed — counts as chosen
@@ -730,7 +748,7 @@ function CardBody({
     <CategoryIcon categoryId={draft.categoryId} accounts={accounts} size="row" />
   ) : (
     <RowGlyph>
-      <Shapes size={15} />
+      <Tag size={15} />
     </RowGlyph>
   );
   // What the bar's ✓ answers: whether this would post as it stands — the same question Save asks, asked early.
@@ -1275,7 +1293,7 @@ function CardBody({
               <SelectFormRow
                 icon={
                   <RowGlyph>
-                    <Shapes size={15} />
+                    <Tag size={15} />
                   </RowGlyph>
                 }
                 label="Category for points"
