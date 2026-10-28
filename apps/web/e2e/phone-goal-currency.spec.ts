@@ -14,8 +14,8 @@ test('a goal is added in euros: the amount rows name the currency and the list s
   await expect(page.getByLabel(/Cost in today's money/).first()).toBeVisible();
 
   await page.getByLabel('Currency', { exact: true }).selectOption('EUR');
-  await expect(page.getByLabel("Cost in today's money (EUR)")).toBeVisible();
-  await page.getByLabel("Cost in today's money (EUR)").fill('1250.50');
+  await expect(page.getByLabel("Cost in today's money")).toBeVisible();
+  await page.getByLabel("Cost in today's money").fill('1250,50');
   await page.getByRole('button', { name: 'Save goal' }).click();
 
   await expect(page).toHaveURL(/\/goals$/);
@@ -30,7 +30,7 @@ test('a zero-decimal currency takes whole units', async ({ page }) => {
   await openGoalForm(page, 'Holiday');
   await page.getByLabel('Name', { exact: true }).fill('Kyoto trip');
   await page.getByLabel('Currency', { exact: true }).selectOption('JPY');
-  await page.getByLabel("Cost in today's money (JPY)").fill('300000');
+  await page.getByLabel("Cost in today's money").fill('300000');
   await page.getByRole('button', { name: 'Save goal' }).click();
 
   await expect(page).toHaveURL(/\/goals$/);
@@ -44,7 +44,7 @@ test('the saved goal reopens with its currency', async ({ page }) => {
   await openGoalForm(page, 'Education');
   await page.getByLabel('Name', { exact: true }).fill('Tuition abroad');
   await page.getByLabel('Currency', { exact: true }).selectOption('USD');
-  await page.getByLabel("Cost in today's money (USD)").fill('20000');
+  await page.getByLabel("Cost in today's money").fill('20000');
   await page.getByRole('button', { name: 'Save goal' }).click();
   await expect(page).toHaveURL(/\/goals$/);
 
@@ -52,5 +52,5 @@ test('the saved goal reopens with its currency', async ({ page }) => {
   await page.getByRole('button', { name: 'More', exact: true }).first().click();
   await page.getByRole('menuitem', { name: /^Edit$/ }).first().click();
   await expect(page.getByLabel('Currency', { exact: true })).toHaveValue('USD');
-  await expect(page.getByLabel("Cost in today's money (USD)")).toHaveValue('20000.00');
+  await expect(page.getByLabel("Cost in today's money")).toHaveValue('20.000,00');
 });

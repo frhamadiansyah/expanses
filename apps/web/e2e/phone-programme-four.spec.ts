@@ -22,7 +22,7 @@ async function openProgramme(page: Page) {
   await page.getByRole('button', { name: 'Add rule' }).click();
   await page.getByLabel('Rule name').fill('Base');
   await page.getByLabel('Points', { exact: true }).fill('1');
-  await page.getByLabel('Per spend (IDR)').fill('2500');
+  await page.getByLabel('Per spend').fill('2500');
   await page.getByRole('button', { name: 'Save rule' }).click();
   await expect(page.getByText('1 per Rp')).toBeVisible();
   await page.goto('/transactions');
@@ -58,7 +58,7 @@ test('Convert spends points on a use, and the History row says what for', async 
   await sheet.getByRole('button', { name: 'Flight' }).click();
   await expect(sheet.getByText('Use on Flight')).toBeVisible();
   await sheet.getByLabel('Points used').fill('40');
-  await sheet.getByLabel('What it fetched (IDR)').fill('1000');
+  await sheet.getByLabel('What it fetched').fill('1000');
   await page.getByRole('button', { name: 'Save redemption' }).click();
 
   await expect(page.getByTestId('programme-balance')).toHaveText('60 points');

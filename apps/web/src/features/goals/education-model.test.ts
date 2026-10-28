@@ -77,8 +77,8 @@ describe('the education draft', () => {
       ['University', '18', '22', '', false],
     ]);
     expect(draft.levels[0]!.fees.map((fee) => [fee.name, fee.amount, fee.charged])).toEqual([
-      ['Enrollment', '45000000', 'once'],
-      ['Academic', '20000000', 'yearly'],
+      ['Enrollment', '45.000.000', 'once'],
+      ['Academic', '20.000.000', 'yearly'],
     ]);
     // And back again, unchanged: ids kept, so a re-work finds the same stages and their paid marks.
     expect(educationInputsOf(draft, 'IDR')).toEqual(saved);
@@ -92,7 +92,7 @@ describe('the education draft', () => {
       levels: [{ id: 'l', name: 'College', startAge: null, untilAge: null, startYear: 2030, untilYear: 2034, returnBps: null, fees: [{ id: 'f', name: 'Tuition', amountTodayMinor: 1_200_050, charged: 'yearly' }] }],
     };
     const draft = educationDraftFrom(saved, 'USD');
-    expect(draft.levels[0]!.fees[0]!.amount).toBe('12000.50');
+    expect(draft.levels[0]!.fees[0]!.amount).toBe('12.000,50');
     expect(educationInputsOf(draft, 'USD')).toEqual(saved);
     // "12.000,50" typed the local way is 1.200.050 cents too, not 12.000,50 dollars read as whole.
     draft.levels[0]!.fees[0]!.amount = '12.000,50';

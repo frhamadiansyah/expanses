@@ -14,7 +14,7 @@ async function type(page: Page, label: string, text: string) {
 }
 
 async function retirementFigures(page: Page) {
-  await type(page, 'Yearly spending in retirement (IDR)', '120000000');
+  await type(page, 'Yearly spending in retirement', '120000000');
   await type(page, 'Age now', '35');
   await type(page, 'Retirement age', '55');
 }
@@ -23,7 +23,7 @@ test('the catalogue says what each calculator answers, and opens its own page', 
   await page.goto('/calculators');
   // A row carries the sentence its page repeats, and no fields: choosing happens here, working out happens there.
   await expect(page.getByRole('link', { name: /Emergency fund/ })).toContainText('Months of outgoings, loan principal included');
-  await expect(page.getByLabel('What goes out a month (IDR)')).toHaveCount(0);
+  await expect(page.getByLabel('What goes out a month')).toHaveCount(0);
 
   await page.getByRole('link', { name: /Retirement fund/ }).click();
   await expect(page).toHaveURL(/\/calculators\/retirement$/);
@@ -38,7 +38,7 @@ test('the catalogue says what each calculator answers, and opens its own page', 
 
 test('an emergency fund is saved over a horizon and a rate you set, not a buried assumption', async ({ page }) => {
   await page.goto('/calculators/emergency');
-  await type(page, 'What goes out a month (IDR)', '1000000');
+  await type(page, 'What goes out a month', '1000000');
 
   // Three months of outgoings — the prefill for single, salaried — make the pot.
   await expect(page.getByTestId('answer-emergency')).toContainText('3.000.000');
@@ -133,7 +133,7 @@ test('says what the levels will cost when the time comes, and saves them as a go
   // The page opens with one level to fill in.
   await type(page, 'Starts in year', '2036');
   await type(page, 'Until year', '2040');
-  await type(page, 'Academic today (IDR)', '100000000');
+  await type(page, 'Academic today', '100000000');
   await expect(page.getByText('2036 to 2040 · due 1 January each year')).toBeVisible();
 
   // Four years at today's 100 juta, each inflated once to its own year, is far more than 400 juta.

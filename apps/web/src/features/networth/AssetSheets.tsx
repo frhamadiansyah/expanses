@@ -1,4 +1,4 @@
-import { formatMinor, formatPriceMicro, formatUnits, groupTypedAmount, isoDate, minorToMajorString, parseMajor, parsePriceMicro, type UnitKind, unitsValueMinor } from '@expanses/core';
+import { formatMinor, formatPriceMicro, formatUnits, groupedMajorString, groupTypedAmount, isoDate, parseGroupedMajor, parsePriceMicro, type UnitKind, unitsValueMinor } from '@expanses/core';
 import { editValuation, recordValuation, type TradeRow, upsertPrice, type ValuationWithNote } from '@expanses/db';
 import { useState } from 'react';
 import { Sheet } from '../../app/Sheet';
@@ -105,7 +105,7 @@ export function PriceSheet({
 export function ValueSheet({ accountId, currency, editing, onClose }: { accountId: string; currency: string; editing?: ValuationWithNote; onClose: () => void }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
-  const [value, setValue] = useState(editing ? groupTypedAmount(minorToMajorString(editing.valueMinor, currency), currency) : '');
+  const [value, setValue] = useState(editing ? groupedMajorString(editing.valueMinor, currency) : '');
   const [asOf, setAsOf] = useState(editing?.asOf ?? isoDate());
   const [note, setNote] = useState(editing?.note ?? '');
   const [error, setError] = useState<unknown>(null);
@@ -115,7 +115,7 @@ export function ValueSheet({ accountId, currency, editing, onClose }: { accountI
     setError(null);
     setBusy(true);
     try {
-      const valueMinor = parseMajor(value, currency);
+      const valueMinor = parseGroupedMajor(value, currency);
       if (editing) await editValuation(database, ws, editing.id, { asOf, valueMinor, note: note.trim() || null });
       else await recordValuation(database, ws, { accountId, asOf, valueMinor, basis: 'estimate', note: note.trim() || null });
       await invalidate();
@@ -130,7 +130,7 @@ export function ValueSheet({ accountId, currency, editing, onClose }: { accountI
   return (
     <Sheet grouped title={editing ? 'Edit value' : 'Update value'} onClose={onClose} confirm={{ label: 'Save value', disabled: busy || value.trim() === '', run: () => void save() }}>
       <InsetGroup>
-        <TextRow label={`Value (${currency})`} value={value} onChange={(e) => setValue(e.target.value)} inputMode="decimal" placeholder="Amount" />
+        <TextRow label="Value" prefix={currency} value={value} onChange={(e) => setValue(groupTypedAmount(e.target.value, currency))} inputMode="decimal" placeholder="Amount" />
         <TextRow label="Date" type="date" value={asOf} max={isoDate()} onChange={(e) => setAsOf(e.target.value)} />
         <TextRow label="Note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" />
       </InsetGroup>

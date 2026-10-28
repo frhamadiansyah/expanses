@@ -1,4 +1,4 @@
-import { bandHint, levelStartsOn, monthsUntil, type ReturnBand, returnBandFor } from '@expanses/core';
+import { bandHint, groupTypedAmount, levelStartsOn, monthsUntil, type ReturnBand, returnBandFor } from '@expanses/core';
 import type { ReactElement } from 'react';
 import { DestructiveRow, InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
 import { readPercent, readWhole } from '../calculators/fields';
@@ -70,10 +70,12 @@ export function EducationEditor({
             <TextRow key={`${fee.id}-name`} label="Cost name" value={fee.name} onChange={(e) => setFee(level, fee.id, { name: e.target.value })} />,
             <TextRow
               key={`${fee.id}-amount`}
-              label={`${cost} today (${currency})`}
+              label={`${cost} today`}
+              prefix={currency}
               value={fee.amount}
-              onChange={(e) => setFee(level, fee.id, { amount: e.target.value })}
+              onChange={(e) => setFee(level, fee.id, { amount: groupTypedAmount(e.target.value, currency) })}
               inputMode="decimal"
+              placeholder="Amount"
             />,
             <SelectRow
               key={`${fee.id}-charged`}

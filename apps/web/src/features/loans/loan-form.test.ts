@@ -91,9 +91,9 @@ describe('paymentDraftFrom', () => {
 
     // The row falls due later; the money moves now, so the date is today and the split is the row's.
     expect(filled).toMatchObject({ occurredOn: TODAY, moneyId: 'bca' });
-    // Plain figures: the box has to be readable back by parseMajor when it is saved.
-    expect(filled.principal).toBe('1849866');
-    expect(filled.interest).toBe('5250000');
+    // Grouped as the box shows them; parseGroupedMajor reads them back when it is saved.
+    expect(filled.principal).toBe('1.849.866');
+    expect(filled.interest).toBe('5.250.000');
   });
 
   it('keeps the date of a payment that was already due, so a late one records truthfully', () => {
@@ -166,9 +166,9 @@ describe('extraPaymentMinor', () => {
 
   it('reads a dollar figure with a comma for its cents as cents, not as nothing', () => {
     // 12,50 was `Number('12,50')` before this: NaN, so a penalty the bank charged reached the ledger as no penalty.
-    expect(extraPaymentMinor('12,50', 'USD')).toBe(1_250);
-    expect(extraPaymentMinor('12.50', 'USD')).toBe(1_250);
-    expect(extraPaymentMinor('500.00', 'USD')).toBe(50_000);
+    expect(extraPaymentMinor('1.250', 'USD')).toBe(125_000);
+    expect(extraPaymentMinor('1.250', 'USD')).toBe(125_000);
+    expect(extraPaymentMinor('500,00', 'USD')).toBe(50_000);
   });
 
   it('is nothing for an empty box: no penalty is a real answer', () => {
@@ -215,16 +215,23 @@ describe('loanTermsDraftFromTerms', () => {
     expect(opened).toMatchObject({
       accountId: 'kpr',
       lenderName: 'BCA',
-      originalAmount: '900000000',
+      originalAmount: '900.000.000',
       firstPaymentOn: '2026-01-05',
       tenorMonths: '180',
       paymentDay: '5',
       rate: '6,9',
-      payment: '6400000',
+      payment: '6.400.000',
       rateKind: 'floating',
       assetAccountId: 'house',
       purpose: 'House in Bintaro',
     });
+  });
+
+  it('opens a dollar loan grouped and saves it back to the same figure', () => {
+    const opened = loanTermsDraftFromTerms({ ...terms(), originalMinor: 1_250_075 }, 'USD', '2026-09-12');
+
+    expect(opened.originalAmount).toBe('12.500,75');
+    expect(loanTermsDraftToInput(opened, 'USD').originalMinor).toBe(1_250_075);
   });
 
   it('round-trips: saving what it opened with writes the same terms back', () => {
@@ -249,5 +256,21 @@ describe('loanTermsDraftFromTerms', () => {
     const periods = terms().periods.map((period) => ({ ...period, paymentMinor: 0 }));
 
     expect(loanTermsDraftFromTerms({ ...terms(), periods }, 'IDR', '2026-09-12').payment).toBe('');
+  });
+});
+
+describe('grouped amounts in the loan forms', () => {
+  it('reads the amount borrowed and the payment as the grouped boxes hold them', () => {
+    const input = loanTermsDraftToInput({ ...emptyLoanTermsDraft('kpr', '2026-09-12'), lenderName: 'BCA', originalAmount: '900.000.000', payment: '6.400.000', tenorMonths: '180' }, 'IDR');
+
+    expect(input).toMatchObject({ originalMinor: 900_000_000, paymentMinor: 6_400_000 });
+  });
+
+  it('reads a dollar loan with cents after a comma, and a dinar loan 1.234 as a thousand', () => {
+    const usd = loanTermsDraftToInput({ ...emptyLoanTermsDraft('l', '2026-09-12'), lenderName: 'X', originalAmount: '12.500,75', tenorMonths: '12' }, 'USD');
+    const kwd = loanTermsDraftToInput({ ...emptyLoanTermsDraft('l', '2026-09-12'), lenderName: 'X', originalAmount: '1.234', tenorMonths: '12' }, 'KWD');
+
+    expect(usd.originalMinor).toBe(1_250_075);
+    expect(kwd.originalMinor).toBe(1_234_000);
   });
 });

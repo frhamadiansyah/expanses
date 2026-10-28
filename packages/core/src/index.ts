@@ -38,6 +38,7 @@ export {
   wholeFromHundredths,
 } from './money/money';
 export { type AmountOptions, evaluateAmount, evaluateExact } from './money/keypad';
+export { groupedMajorString, parseGroupedMajor } from './money/grouped';
 export { exchangeCost, type ExchangeCost, impliedRate, sumToBase } from './money/exchange';
 export { zipStore, unzipStore } from './backup/zip';
 export {

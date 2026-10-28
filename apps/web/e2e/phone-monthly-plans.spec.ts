@@ -12,7 +12,7 @@ test('phone: a plan set on the holding is due on Recurring, recorded there, and 
   await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await page.getByTestId('monthly-plan').click();
   const sheet = page.getByRole('dialog');
-  await sheet.getByLabel('Amount (IDR)').fill('500000');
+  await sheet.getByLabel('Amount', { exact: true }).fill('500000');
   await sheet.getByLabel('Every month on').selectOption('5');
   await sheet.getByRole('button', { name: 'Save plan' }).click();
   await expect(page.getByTestId('monthly-plan')).toContainText('Rp 500.000 · 5th');

@@ -1,4 +1,4 @@
-import { formatMinor, installmentSplit, isoDate, monthYear } from '@expanses/core';
+import { formatMinor, groupTypedAmount, installmentSplit, isoDate, monthYear } from '@expanses/core';
 import { type CardInstallmentRow, deleteInstallment, saveInstallment, updateInstallment } from '@expanses/db';
 import { ChevronRight } from 'lucide-react';
 import { type FormEvent, useRef, useState } from 'react';
@@ -65,7 +65,7 @@ export function usePlanEditor(cardAccountId: string, currency: string) {
 
   const open = (target: 'new' | CardInstallmentRow) => {
     setError(null);
-    setForm(target === 'new' ? blankPlanForm(today) : planFormOf(target));
+    setForm(target === 'new' ? blankPlanForm(today) : planFormOf(target, currency));
     setSheet(target);
   };
   const close = () => {
@@ -79,8 +79,8 @@ export function usePlanEditor(cardAccountId: string, currency: string) {
     setError(null);
     setBusy(true);
     try {
-      if (sheet === 'new') await saveInstallment(database, ws, { cardAccountId, ...planFields(form) });
-      else await updateInstallment(database, ws, { id: sheet.id, ...planFields(form) });
+      if (sheet === 'new') await saveInstallment(database, ws, { cardAccountId, ...planFields(form, currency) });
+      else await updateInstallment(database, ws, { id: sheet.id, ...planFields(form, currency) });
       await invalidate();
       close();
     } catch (e) {
@@ -112,7 +112,7 @@ export function usePlanEditor(cardAccountId: string, currency: string) {
           <form ref={formEl} onSubmit={save}>
             <InsetGroup>
               <TextRow label="What it was" value={form.description} onChange={(e) => patch({ description: e.target.value })} placeholder="Name" />
-              <TextRow label={`Total (${currency})`} value={form.total} inputMode="decimal" onChange={(e) => patch({ total: e.target.value })} placeholder="Amount" required />
+              <TextRow label="Total" prefix={currency} value={form.total} inputMode="decimal" onChange={(e) => patch({ total: groupTypedAmount(e.target.value, currency) })} placeholder="Amount" required />
               <TextRow label="Months" value={form.months} inputMode="numeric" onChange={(e) => patch({ months: e.target.value })} />
               <TextRow label="First billed" type="month" value={form.firstBilledMonth} onChange={(e) => patch({ firstBilledMonth: e.target.value })} />
               <SwitchRow label="Earns points" checked={form.earnsPoints} onChange={(earnsPoints) => patch({ earnsPoints })} />

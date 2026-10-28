@@ -1,4 +1,4 @@
-import { type EarnRule, minorToMajorString, parseMajor } from '@expanses/core';
+import { type EarnRule, groupedMajorString, groupTypedAmount, parseGroupedMajor } from '@expanses/core';
 import { type AccountRow, saveEarnRule } from '@expanses/db';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -9,7 +9,7 @@ import { ActionRow, GroupColumns, MultiSelectRow, SubmitRow } from './rows';
 import { CategoryOptions } from './options';
 import { mergeMatch, parseRulePoints } from './rule-values';
 
-const optionalMinor = (value: string, currency: string) => (value.trim() ? parseMajor(value, currency) : null);
+const optionalMinor = (value: string, currency: string) => (value.trim() ? parseGroupedMajor(value, currency) : null);
 const optionalInt = (value: string) => {
   if (!value.trim()) return null;
   const n = Number(value);
@@ -39,10 +39,10 @@ export function RuleForm({
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
-  const major = (minor: number | null | undefined) => (minor == null ? '' : minorToMajorString(minor, currency));
+  const major = (minor: number | null | undefined) => (minor == null ? '' : groupedMajorString(minor, currency));
   const [name, setName] = useState(initial?.name ?? (suggestBase ? 'Base' : ''));
   const [points, setPoints] = useState(String(initial?.rateNum ?? 1));
-  const [per, setPer] = useState(initial ? major(initial.rateDen) : suggestBase ? (currency === 'IDR' ? '2500' : '1') : '');
+  const [per, setPer] = useState(initial ? major(initial.rateDen) : suggestBase ? (currency === 'IDR' ? '2.500' : '1') : '');
   const [categoryIds, setCategoryIds] = useState<string[]>(initial?.match.categoryIds ?? []);
   const [excludeIds, setExcludeIds] = useState<string[]>(initial?.match.excludeCategoryIds ?? []);
   const [merchants, setMerchants] = useState((initial?.match.merchantPatterns ?? []).join(', '));
@@ -97,7 +97,7 @@ export function RuleForm({
           <InsetGroup header={initial ? `Edit rule · ${initial.name}` : 'New rule'}>
             <TextRow label="Rule name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" required />
             <TextRow label="Points" value={points} onChange={(e) => setPoints(e.target.value)} inputMode="decimal" required />
-            <TextRow label={`Per spend (${currency})`} value={per} onChange={(e) => setPer(e.target.value)} inputMode="decimal" placeholder="Amount" required />
+            <TextRow label="Per spend" prefix={currency} value={per} onChange={(e) => setPer(groupTypedAmount(e.target.value, currency))} inputMode="decimal" placeholder="Amount" required />
           </InsetGroup>
 
           <InsetGroup header="Where it applies">
@@ -114,9 +114,9 @@ export function RuleForm({
         <div className="min-w-0">
           <InsetGroup header="Limits and validity">
             <TextRow label="Priority" hint="Higher runs first. Put bonus rules above the base rule." value={priority} onChange={(e) => setPriority(e.target.value)} inputMode="numeric" />
-            <TextRow label={`Bonus cap: spend per cycle (${currency})`} hint="Spend beyond this falls through to lower rules." value={capSpend} onChange={(e) => setCapSpend(e.target.value)} inputMode="decimal" />
+            <TextRow label="Bonus cap: spend per cycle" prefix={currency} hint="Spend beyond this falls through to lower rules." value={capSpend} onChange={(e) => setCapSpend(groupTypedAmount(e.target.value, currency))} inputMode="decimal" placeholder="Amount" />
             <TextRow label="Cap: points per cycle" value={capPoints} onChange={(e) => setCapPoints(e.target.value)} inputMode="numeric" />
-            <TextRow label={`Minimum transaction (${currency})`} value={minTx} onChange={(e) => setMinTx(e.target.value)} inputMode="decimal" />
+            <TextRow label="Minimum transaction" prefix={currency} value={minTx} onChange={(e) => setMinTx(groupTypedAmount(e.target.value, currency))} inputMode="decimal" placeholder="Amount" />
             <SelectRow label="Rounding" hint="Check the card terms: most floor each transaction." value={rounding} onChange={(e) => setRounding(e.target.value as EarnRule['rounding'])}>
               <option value="per_transaction_floor">Round down each transaction</option>
               <option value="per_cycle_sum">Sum the cycle, then round down</option>

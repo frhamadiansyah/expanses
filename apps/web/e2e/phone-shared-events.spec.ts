@@ -144,7 +144,7 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   await andi.getByTestId('shared-payment-row').filter({ hasText: 'Andi pays Rina' }).click();
   const settle = andi.getByTestId('settle-up');
   await settle.getByLabel('Paid from').selectOption({ label: 'Andi Bank · IDR' });
-  await expect(settle.getByLabel('In IDR')).not.toHaveValue('');
+  await expect(settle.getByLabel('In account currency')).not.toHaveValue('');
   await settle.getByRole('button', { name: 'Record', exact: true }).click();
   await expect(andi.getByTestId('shared-balance-row').filter({ hasText: 'Andi' })).toContainText('Settled', { timeout: 30_000 });
 

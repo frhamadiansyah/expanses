@@ -1,4 +1,4 @@
-import { formatMinor, isoDate, parseMajor, sinkingExtraPreview, sinkingHistory } from '@expanses/core';
+import { formatMinor, groupTypedAmount, isoDate, parseGroupedMajor, sinkingExtraPreview, sinkingHistory } from '@expanses/core';
 import { fundRoom, fundShortMessage, putInSinkingExtra, type SinkingFundView, sinkingFactsOf } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { type FormEvent, useRef, useState } from 'react';
@@ -57,7 +57,7 @@ function PutInExtraSheet({ fund, onClose }: { fund: SinkingFundView; onClose: ()
 
   const minor = (() => {
     try {
-      return amount.trim() ? parseMajor(amount.trim(), fund.currency) : 0;
+      return amount.trim() ? parseGroupedMajor(amount.trim(), fund.currency) : 0;
     } catch {
       return 0;
     }
@@ -86,11 +86,12 @@ function PutInExtraSheet({ fund, onClose }: { fund: SinkingFundView; onClose: ()
       <form ref={form} onSubmit={save}>
         <InsetGroup>
           <TextRow
-            label={`Amount (${fund.currency})`}
+            label="Amount"
+            prefix={fund.currency}
             id="extra-amount"
             inputMode="decimal"
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={(e) => setAmount(groupTypedAmount(e.target.value, fund.currency))}
             placeholder="Amount"
             autoFocus
           />

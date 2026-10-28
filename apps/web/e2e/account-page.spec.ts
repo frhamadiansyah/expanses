@@ -233,9 +233,9 @@ test('Withdraw into a dollar cash account from a rupiah bank: what left, the dol
   await page.getByRole('button', { name: 'Withdraw', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'Cash withdrawal' });
   await sheet.getByLabel('From').selectOption({ label: 'Everyday' });
-  await sheet.getByRole('textbox', { name: 'Received (USD)' }).fill('100');
-  await sheet.getByLabel('Charged (IDR)').fill('1600000');
-  await sheet.getByLabel('ATM fee in IDR').fill('25000');
+  await sheet.getByRole('textbox', { name: 'Received' }).fill('100');
+  await sheet.getByLabel('Charged').fill('1600000');
+  await sheet.getByLabel('ATM fee').fill('25000');
   await sheet.getByRole('button', { name: 'Save' }).click();
   await expect(sheet).toHaveCount(0);
   await showBalance(page);

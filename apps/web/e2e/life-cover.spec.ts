@@ -16,15 +16,15 @@ test('life cover adds every need once and takes off what is already there', asyn
   // The method and its sources are named; no link is fetched.
   await expect(page.getByText(/^Capital needs analysis:.*CFP Board.*Insurance Information Institute/)).toBeVisible();
 
-  await type(page, 'Yearly amount the family needs (IDR)', '120000000');
-  await type(page, 'Debts to clear (IDR)', '300000000');
-  await type(page, 'Education still to fund (IDR)', '150000000');
-  await type(page, 'Final expenses (IDR)', '25000000');
-  await type(page, 'Liquid assets (IDR)', '200000000');
-  await type(page, 'Cover already in force (IDR)', '500000000');
+  await type(page, 'Yearly amount the family needs', '120000000');
+  await type(page, 'Debts to clear', '300000000');
+  await type(page, 'Education still to fund', '150000000');
+  await type(page, 'Final expenses', '25000000');
+  await type(page, 'Liquid assets', '200000000');
+  await type(page, 'Cover already in force', '500000000');
   await expect(page.getByTestId('answer-life-cover')).toContainText('884.641.927');
 
-  await type(page, 'Liquid assets (IDR)', '2000000000');
+  await type(page, 'Liquid assets', '2000000000');
   await expect(page.getByTestId('answer-life-cover')).toContainText('No further cover needed');
   await expect(page.getByTestId('answer-life-cover')).toContainText('915.358.073');
 
@@ -32,19 +32,19 @@ test('life cover adds every need once and takes off what is already there', asyn
   await page.getByRole('button', { name: 'Keep these figures' }).click();
   await expect(page.getByText('Kept the life cover figures.')).toBeVisible();
   await page.reload();
-  await expect(page.getByLabel('Liquid assets (IDR)', { exact: true })).toHaveValue('2000000000');
-  await expect(page.getByLabel('Yearly amount the family needs (IDR)', { exact: true })).toHaveValue('120000000');
+  await expect(page.getByLabel('Liquid assets', { exact: true })).toHaveValue('2.000.000.000');
+  await expect(page.getByLabel('Yearly amount the family needs', { exact: true })).toHaveValue('120.000.000');
   await expect(page.getByTestId('answer-life-cover')).toContainText('915.358.073');
 });
 
 test('a half-typed rate is refused on its own row, and the page stays up', async ({ page }) => {
   await page.goto('/calculators/life-cover');
-  await type(page, 'Yearly amount the family needs (IDR)', '120000000');
-  await type(page, 'Debts to clear (IDR)', '300000000');
-  await type(page, 'Education still to fund (IDR)', '150000000');
-  await type(page, 'Final expenses (IDR)', '25000000');
-  await type(page, 'Liquid assets (IDR)', '200000000');
-  await type(page, 'Cover already in force (IDR)', '500000000');
+  await type(page, 'Yearly amount the family needs', '120000000');
+  await type(page, 'Debts to clear', '300000000');
+  await type(page, 'Education still to fund', '150000000');
+  await type(page, 'Final expenses', '25000000');
+  await type(page, 'Liquid assets', '200000000');
+  await type(page, 'Cover already in force', '500000000');
   await expect(page.getByTestId('answer-life-cover')).toContainText('884.641.927');
 
   await type(page, 'Return on the payout (%)', '-');

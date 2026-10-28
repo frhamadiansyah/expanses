@@ -1,4 +1,4 @@
-import { isoDate, minorToMajorString, parseMajor } from '@expanses/core';
+import { groupedMajorString, groupTypedAmount, isoDate, parseGroupedMajor } from '@expanses/core';
 import { type NamedPayment, ownerScope, recordSettlement, type SharedEventView } from '@expanses/db';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -20,7 +20,7 @@ export function SettleUpSheet({ view, payment, onClose }: { view: SharedEventVie
   const resolveRates = useResolveRates();
   const accounts = moneyAccounts(useAccounts().data ?? []);
   const party = payment.fromPersonId === view.me || payment.toPersonId === view.me;
-  const [amount, setAmount] = useState(minorToMajorString(payment.amountMinor, view.currency));
+  const [amount, setAmount] = useState(groupedMajorString(payment.amountMinor, view.currency));
   const [accountId, setAccountId] = useState('');
   // The rate held for the account picked, and the figure typed over the suggestion (null until typed): the suggestion
   // follows the amount as it is edited, and Save works it out again from the amount it saves (I3).
@@ -58,7 +58,7 @@ export function SettleUpSheet({ view, payment, onClose }: { view: SharedEventVie
     setError(null);
     try {
       if (party && !account) throw new Error(`Choose the account ${possessive(view.myName)} money ${payment.fromPersonId === view.me ? 'left' : 'arrived in'}`);
-      const amountMinor = parseMajor(amount, view.currency);
+      const amountMinor = parseGroupedMajor(amount, view.currency);
       let figure: number | null = null;
       if (party && account && foreign) {
         const currency = account.currency!;
@@ -88,7 +88,7 @@ export function SettleUpSheet({ view, payment, onClose }: { view: SharedEventVie
       <form aria-label="Settle up" onSubmit={(event) => void save(event)} data-testid="settle-up">
         <InsetGroup>
           <ReadOnlyRow label="Payment" value={paymentLine(payment, view.currency)} />
-          <TextRow label={`Amount (${view.currency})`} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <TextRow label="Amount" prefix={view.currency} inputMode="decimal" placeholder="Amount" value={amount} onChange={(e) => setAmount(groupTypedAmount(e.target.value, view.currency))} />
           {party ? (
             <SelectRow label={payment.fromPersonId === view.me ? 'Paid from' : 'Received into'} value={accountId} onChange={(e) => void pick(e.target.value)}>
               <option value="">Choose…</option>
@@ -101,11 +101,12 @@ export function SettleUpSheet({ view, payment, onClose }: { view: SharedEventVie
           ) : null}
           {foreign ? (
             <TextRow
-              label={`In ${account!.currency}`}
+              label="In account currency"
+              prefix={account!.currency!}
               inputMode="decimal"
               value={typed ?? suggestedFigure(amount, view.currency, account!.currency!, held)}
-              onChange={(e) => setTyped(e.target.value)}
-              placeholder="At today’s rate"
+              onChange={(e) => setTyped(groupTypedAmount(e.target.value, account!.currency!))}
+              placeholder="Amount"
             />
           ) : null}
         </InsetGroup>

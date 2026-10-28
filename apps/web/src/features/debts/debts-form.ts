@@ -1,4 +1,4 @@
-import { type DebtDirection, formatMinor, hartaLabel, KODE_UTANG, parseMajor } from '@expanses/core';
+import { type DebtDirection, formatMinor, hartaLabel, KODE_UTANG, parseGroupedMajor } from '@expanses/core';
 import type { PeopleDebts, RecordLoanInput, RecordRepaymentInput } from '@expanses/db';
 import { type CodeChoice, personCodeChoices } from '../ownables/catalogue-view';
 
@@ -113,7 +113,7 @@ export function debtDraftToInput(draft: DebtDraft, currency: string, today: stri
   if (draft.amount.trim() === '') throw new Error('Enter how much');
   let amountMinor: number;
   try {
-    amountMinor = parseMajor(draft.amount, currency);
+    amountMinor = parseGroupedMajor(draft.amount, currency);
   } catch {
     throw new Error('The amount must be a number');
   }
@@ -122,7 +122,7 @@ export function debtDraftToInput(draft: DebtDraft, currency: string, today: stri
   let feeMinor = 0;
   if (draft.fee.trim() !== '') {
     try {
-      feeMinor = parseMajor(draft.fee, currency);
+      feeMinor = parseGroupedMajor(draft.fee, currency);
     } catch {
       throw new Error('The fee must be a number');
     }
@@ -255,7 +255,7 @@ export function repaymentDraftToInput(
   if (draft.amount.trim() === '') throw new Error('Enter how much came back');
   let amountMinor: number;
   try {
-    amountMinor = parseMajor(draft.amount, currency);
+    amountMinor = parseGroupedMajor(draft.amount, currency);
   } catch {
     throw new Error('The amount must be a number');
   }
@@ -265,7 +265,7 @@ export function repaymentDraftToInput(
   let interestMinor = 0;
   if (draft.interest.trim() !== '') {
     try {
-      interestMinor = parseMajor(draft.interest, currency);
+      interestMinor = parseGroupedMajor(draft.interest, currency);
     } catch {
       throw new Error('The interest must be a number');
     }

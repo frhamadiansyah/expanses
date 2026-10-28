@@ -1,4 +1,4 @@
-import { isoDate, minorToMajorString } from '@expanses/core';
+import { groupedMajorString, groupTypedAmount, isoDate } from '@expanses/core';
 import { getLifeCoverDraft, saveLifeCoverDraft } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { type ReactNode, useState } from 'react';
@@ -10,6 +10,18 @@ import { InsetGroup, InsetRow, Panel, TextRow } from '../../ui/native';
 import { LIFE_COVER } from './catalogue';
 import { LIFE_COVER_DEFAULTS, type LifeCoverDraft, type LifeCoverPrefill, lifeCoverPrefill, lifeCoverWorking } from './life-cover-form';
 import { refusal, Figure, CalculatorPage, Waiting } from './parts';
+
+const MONEY_BOXES = ['annualNeed', 'debts', 'education', 'finalExpenses', 'liquidAssets', 'inForce'] as const;
+
+/** Figures kept before the boxes grouped as they were typed are plain digits; they open grouped like the rest. */
+function groupedMoneyBoxes(draft: LifeCoverDraft, currency: string): LifeCoverDraft {
+  const next = { ...draft };
+  for (const key of MONEY_BOXES) {
+    const kept = next[key];
+    if (kept !== undefined && /^\d+$/.test(kept)) next[key] = groupTypedAmount(kept, currency);
+  }
+  return next;
+}
 
 /**
  * What your family would need, minus what is already there.
@@ -32,7 +44,7 @@ export function LifeCoverPage() {
       {remembered.isSuccess && (
         <LifeCoverForm
           key={ws.workspaceId}
-          initial={remembered.data ? { ...LIFE_COVER_DEFAULTS, ...remembered.data } : LIFE_COVER_DEFAULTS}
+          initial={remembered.data ? groupedMoneyBoxes({ ...LIFE_COVER_DEFAULTS, ...remembered.data }, ws.baseCurrency) : LIFE_COVER_DEFAULTS}
           prefill={prefill}
           keep={async (draft) => {
             try {
@@ -55,17 +67,21 @@ function LifeCoverForm({ initial, prefill, keep }: { initial: LifeCoverDraft; pr
   const result = working.result;
   const hint = (key: keyof LifeCoverDraft, otherwise?: ReactNode) => refusal(working.problems[key], otherwise);
   // A box never typed in shows its prefill; one with no figure to show (no rate yet) stays empty and says why.
-  const shown = (typed: string | undefined, prefilled: number | null) => typed ?? (prefilled === null ? '' : minorToMajorString(prefilled, ws.baseCurrency));
+  const shown = (typed: string | undefined, prefilled: number | null) => typed ?? (prefilled === null ? '' : groupedMajorString(prefilled, ws.baseCurrency));
+  const moneyBox = (key: keyof LifeCoverDraft) => (event: { target: { value: string } }) =>
+    setCover((draft) => ({ ...draft, [key]: groupTypedAmount(event.target.value, ws.baseCurrency) }));
   const box = (key: keyof LifeCoverDraft) => (event: { target: { value: string } }) => setCover((draft) => ({ ...draft, [key]: event.target.value }));
   return (
     <>
       <InsetGroup footer="Capital needs analysis: what the family would need, minus what is already there. CFP Board lists it first among the methods; the Insurance Information Institute recommends it and rejects income multiples for assuming no inflation. No figure here is rounded, and no lowest-of-several is taken.">
         <TextRow
-          label={`Yearly amount the family needs (${ws.baseCurrency})`}
+          label="Yearly amount the family needs"
+          prefix={ws.baseCurrency}
           hint={hint('annualNeed', "At today's prices.")}
           value={cover.annualNeed}
-          onChange={box('annualNeed')}
-          inputMode="numeric"
+          onChange={moneyBox('annualNeed')}
+          inputMode="decimal"
+          placeholder="Amount"
         />
         <TextRow label="Years of support" hint={hint('years')} value={cover.years} onChange={box('years')} inputMode="numeric" />
         <TextRow label="Inflation during support (%)" hint={hint('inflation')} value={cover.inflation} onChange={box('inflation')} inputMode="decimal" />
@@ -77,33 +93,49 @@ function LifeCoverForm({ initial, prefill, keep }: { initial: LifeCoverDraft; pr
           inputMode="decimal"
         />
         <TextRow
-          label={`Debts to clear (${ws.baseCurrency})`}
+          label="Debts to clear"
+          prefix={ws.baseCurrency}
           hint={hint('debts', 'From the balance sheet.')}
           value={shown(cover.debts, prefill.debtsMinor)}
-          onChange={box('debts')}
-          inputMode="numeric"
+          onChange={moneyBox('debts')}
+          inputMode="decimal"
+          placeholder="Amount"
         />
         <TextRow
-          label={`Education still to fund (${ws.baseCurrency})`}
+          label="Education still to fund"
+          prefix={ws.baseCurrency}
           hint={hint('education', "From the education goals, at today's prices.")}
           value={shown(cover.education, prefill.educationMinor)}
-          onChange={box('education')}
-          inputMode="numeric"
+          onChange={moneyBox('education')}
+          inputMode="decimal"
+          placeholder="Amount"
         />
-        <TextRow label={`Final expenses (${ws.baseCurrency})`} hint={hint('finalExpenses')} value={cover.finalExpenses} onChange={box('finalExpenses')} inputMode="numeric" />
         <TextRow
-          label={`Liquid assets (${ws.baseCurrency})`}
+          label="Final expenses"
+          prefix={ws.baseCurrency}
+          hint={hint('finalExpenses')}
+          value={cover.finalExpenses}
+          onChange={moneyBox('finalExpenses')}
+          inputMode="decimal"
+          placeholder="Amount"
+        />
+        <TextRow
+          label="Liquid assets"
+          prefix={ws.baseCurrency}
           hint={hint('liquidAssets', 'From the balance sheet.')}
           value={shown(cover.liquidAssets, prefill.liquidAssetsMinor)}
-          onChange={box('liquidAssets')}
-          inputMode="numeric"
+          onChange={moneyBox('liquidAssets')}
+          inputMode="decimal"
+          placeholder="Amount"
         />
         <TextRow
-          label={`Cover already in force (${ws.baseCurrency})`}
+          label="Cover already in force"
+          prefix={ws.baseCurrency}
           hint={hint('inForce', 'Policies held, employer group cover included.')}
           value={cover.inForce}
-          onChange={box('inForce')}
-          inputMode="numeric"
+          onChange={moneyBox('inForce')}
+          inputMode="decimal"
+          placeholder="Amount"
         />
       </InsetGroup>
       {result ? (

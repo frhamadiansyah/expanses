@@ -782,7 +782,7 @@ test('Paid with › Add credit card › the catalogue over the keyboard › a ca
   await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^BCA UnionPay(,|$)/ }).click();
   await expect(page.getByTestId('card-setup')).toHaveCount(0);
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
-  await expect(page.getByLabel(/^Annual fee/)).toHaveValue('125000');
+  await expect(page.getByLabel(/^Annual fee/)).toHaveValue('125.000');
   await expect(page.getByLabel('Billing date')).toHaveValue('');
 });
 

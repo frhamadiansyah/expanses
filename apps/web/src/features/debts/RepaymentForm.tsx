@@ -1,4 +1,4 @@
-import { type DebtDirection, isoDate, minorToMajorString } from '@expanses/core';
+import { type DebtDirection, groupedMajorString, groupTypedAmount, isoDate } from '@expanses/core';
 import { deleteLoanEntry, editLoanEntry, type LoanEntry, recordRepayment } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -51,8 +51,8 @@ export function RepaymentForm({
   const [draft, setDraft] = useState<RepaymentDraft>(() =>
     entry
       ? {
-          amount: minorToMajorString(entry.amountMinor, currency),
-          interest: entry.interestMinor > 0 ? minorToMajorString(entry.interestMinor, currency) : '',
+          amount: groupedMajorString(entry.amountMinor, currency),
+          interest: entry.interestMinor > 0 ? groupedMajorString(entry.interestMinor, currency) : '',
           occurredOn: entry.occurredOn,
           moneyId: entry.moneyAccountId,
         }
@@ -143,18 +143,20 @@ export function RepaymentForm({
     <Sheet grouped title={word} onClose={onDone} confirm={{ label: `Save ${word.toLowerCase()}`, disabled: busy || !setAside.ready || !ready, run: () => void save() }}>
       <InsetGroup>
         <TextRow
-          label={`${direction === 'lent' ? 'Came back' : 'Paid back'} (${currency})`}
+          label={direction === 'lent' ? 'Came back' : 'Paid back'}
+          prefix={currency}
           value={draft.amount}
           inputMode="decimal"
-          onChange={(e) => set({ amount: e.target.value })}
+          onChange={(e) => set({ amount: groupTypedAmount(e.target.value, currency) })}
           placeholder="Amount"
         />
         <TextRow
-          label={`Interest (${currency})`}
+          label="Interest"
+          prefix={currency}
           info="Optional. Interest is income on money lent and spending on money borrowed; the loan itself is neither."
           value={draft.interest}
           inputMode="decimal"
-          onChange={(e) => set({ interest: e.target.value })}
+          onChange={(e) => set({ interest: groupTypedAmount(e.target.value, currency) })}
           placeholder="Amount"
         />
         <TextRow label="Date" type="date" value={draft.occurredOn} max={today} onChange={(e) => set({ occurredOn: e.target.value })} />

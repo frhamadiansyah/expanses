@@ -1,5 +1,5 @@
 import { type CatalogEntry, feeOn } from '@expanses/catalog';
-import { minorToMajorString } from '@expanses/core';
+import { groupedMajorString } from '@expanses/core';
 import type { CardTermsRow } from '@expanses/db';
 
 /** The card terms form's five fields, as text: what it starts from, and what tells it apart once typed in. */
@@ -26,12 +26,12 @@ export function termsFields(terms: CardTermsRow | undefined, entry: CatalogEntry
     return {
       statementDay: String(terms.statementDay),
       dueDay: String(terms.dueDay),
-      limit: terms.creditLimitMinor != null ? minorToMajorString(terms.creditLimitMinor, currency) : '',
-      fee: terms.annualFeeMinor != null ? minorToMajorString(terms.annualFeeMinor, currency) : '',
+      limit: terms.creditLimitMinor != null ? groupedMajorString(terms.creditLimitMinor, currency) : '',
+      fee: terms.annualFeeMinor != null ? groupedMajorString(terms.annualFeeMinor, currency) : '',
       feeOn: terms.annualFeeOn ?? '',
     };
   }
   // The entry's fee is in the entry's currency, which is the card's own for a card it opened; any other is not offered.
   const published = entry && entry.currency === currency ? feeOn(entry, today) : null;
-  return { statementDay: '', dueDay: '', limit: '', fee: published ? minorToMajorString(published.annualFeeMinor, currency) : '', feeOn: '' };
+  return { statementDay: '', dueDay: '', limit: '', fee: published ? groupedMajorString(published.annualFeeMinor, currency) : '', feeOn: '' };
 }

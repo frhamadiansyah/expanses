@@ -1,4 +1,4 @@
-import { parseMajor } from '@expanses/core';
+import { groupTypedAmount, parseGroupedMajor } from '@expanses/core';
 import { type CardRow, createProgram, listProgrammes, renameAccount, type RewardProgramRow, saveCardIdentity, saveCardTerms, setAccountForSpending, setEarnsInto, setProgramCrediting, spendingSwitchOn } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
@@ -195,7 +195,7 @@ export function CardSettingsPage() {
     setName(typedNameOf(card));
   }
 
-  const optionalMinor = (v: string) => (v.trim() ? parseMajor(v, currency) : null);
+  const optionalMinor = (v: string) => (v.trim() ? parseGroupedMajor(v, currency) : null);
   const termsTyped = statementDay !== saved.statementDay || dueDay !== saved.dueDay || limit !== saved.limit || fee !== saved.fee || feeOn !== saved.feeOn;
   const saveTerms = () =>
     run(() => saveCardTerms(database, ws, { accountId: card.id, statementDay: Number(statementDay), dueDay: Number(dueDay), creditLimitMinor: optionalMinor(limit), annualFeeMinor: optionalMinor(fee), annualFeeOn: feeOn || null }));
@@ -253,7 +253,7 @@ export function CardSettingsPage() {
               <TextRow label="Due date"value={dueDay} onChange={(e) => setDueDay(e.target.value)} inputMode="numeric" placeholder="Day" required />,
             ],
             [
-              <TextRow label={`Credit limit (${currency})`} value={limit} onChange={(e) => setLimit(e.target.value)} inputMode="decimal" />,
+              <TextRow label="Credit limit" prefix={currency} value={limit} onChange={(e) => setLimit(groupTypedAmount(e.target.value, currency))} inputMode="decimal" placeholder="Amount" />,
             ],
           ]}
         />
@@ -261,7 +261,7 @@ export function CardSettingsPage() {
           header="Annual fee"
           columns={[
             [
-              <TextRow label={`Annual fee (${currency})`} value={fee} onChange={(e) => setFee(e.target.value)} inputMode="decimal" />,
+              <TextRow label="Annual fee" prefix={currency} value={fee} onChange={(e) => setFee(groupTypedAmount(e.target.value, currency))} inputMode="decimal" placeholder="Amount" />,
               <TextRow label="Charged on" type="date" value={feeOn} onChange={(e) => setFeeOn(e.target.value)} />,
               ...(feeSummary && cp.terms?.annualFeeOn
                 ? [

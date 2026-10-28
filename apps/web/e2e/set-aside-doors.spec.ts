@@ -226,7 +226,7 @@ async function addKpr(page: Page) {
 }
 
 async function retype(page: Page, label: string | RegExp, value: string) {
-  const input = page.getByLabel(label);
+  const input = page.getByLabel(label, typeof label === 'string' ? { exact: true } : undefined);
   await input.clear();
   await input.pressSequentially(value);
 }
@@ -236,8 +236,8 @@ test('a loan instalment of principal and interest asks about the whole of it', a
   await addKpr(page);
   await page.getByRole('button', { name: 'Pay', exact: true }).click();
   // 5.000.000 principal + 1.800.000 interest: 1.800.000 over. Principal alone would ask nothing.
-  await retype(page, 'Principal (IDR)', '5000000');
-  await retype(page, 'Interest (IDR)', '1800000');
+  await retype(page, 'Principal', '5000000');
+  await retype(page, 'Interest', '1800000');
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
   const save = page.getByRole('button', { name: 'Save payment' });
   await expect(save).toBeDisabled();
@@ -307,7 +307,7 @@ test('paying Budi back from Jenius asks; the loan came into another account', as
 
   await openLoan(page, 'Budi');
   await page.getByRole('button', { name: 'Record repayment' }).click();
-  await page.getByLabel(/^Paid back \(/).pressSequentially('6800000');
+  await page.getByRole('dialog').getByLabel('Paid back', { exact: true }).pressSequentially('6800000');
   await page.getByLabel('From').selectOption({ label: 'Jenius' });
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
   const save = page.getByRole('button', { name: 'Save repayment' });

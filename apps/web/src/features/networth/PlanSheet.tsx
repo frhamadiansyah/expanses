@@ -1,4 +1,4 @@
-import { formatUnits, ordinal, parseMajor, parseUnits } from '@expanses/core';
+import { formatUnits, groupTypedAmount, ordinal, parseGroupedMajor, parseUnits } from '@expanses/core';
 import { deleteTradeTemplate, saveTradeTemplate, type TradeTemplateRow } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -114,7 +114,7 @@ function PlanForm({
         ...(plan ? { id: plan.id } : {}),
         accountId: holding.accountId,
         cashAccountId,
-        amountMinor: byUnits ? null : parseMajor(amount, holding.currency),
+        amountMinor: byUnits ? null : parseGroupedMajor(amount, holding.currency),
         unitsMicro: byUnits ? parseUnits(amount) : null,
         dayOfMonth: Number(day),
         active: !paused,
@@ -154,9 +154,10 @@ function PlanForm({
         {/* Fixed: the plan is set from the holding it buys, or the account a move goes into. */}
         <ReadOnlyRow label={plan?.kind === 'move' ? 'Moves into' : 'Buys'} value={holding.name} />
         <TextRow
-          label={byUnits ? 'Units' : `Amount (${holding.currency})`}
+          label={byUnits ? 'Units' : 'Amount'}
+          prefix={byUnits ? undefined : holding.currency}
           value={amount}
-          onChange={(e) => setAmount(e.target.value)}
+          onChange={(e) => setAmount(byUnits ? e.target.value : groupTypedAmount(e.target.value, holding.currency))}
           inputMode="decimal"
           placeholder={byUnits ? 'Units' : 'Amount'}
         />

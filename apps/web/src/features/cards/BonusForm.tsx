@@ -1,4 +1,4 @@
-import { type BonusTier, type CycleBonus, minorToMajorString, parseMajor } from '@expanses/core';
+import { type BonusTier, type CycleBonus, groupedMajorString, groupTypedAmount, parseGroupedMajor } from '@expanses/core';
 import { type AccountRow, saveCycleBonus } from '@expanses/db';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -49,7 +49,7 @@ export function BonusForm({
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
-  const major = (minor: number) => minorToMajorString(minor, currency);
+  const major = (minor: number) => groupedMajorString(minor, currency);
 
   const [name, setName] = useState(initial?.name ?? '');
   const [tiers, setTiers] = useState<TierDraft[]>(
@@ -73,7 +73,7 @@ export function BonusForm({
     try {
       const parsed: BonusTier[] = tiers
         .filter((tier) => tier.spend.trim() !== '' || tier.bonus.trim() !== '')
-        .map((tier) => ({ minSpendMinor: parseMajor(tier.spend, currency), bonus: Number(tier.bonus.trim()) }));
+        .map((tier) => ({ minSpendMinor: parseGroupedMajor(tier.spend, currency), bonus: Number(tier.bonus.trim()) }));
       if (parsed.length === 0) throw new Error('Add at least one tier: the spend it needs and what it pays');
 
       const patterns = merchants.split(',').map((s) => s.trim()).filter(Boolean);
@@ -111,12 +111,13 @@ export function BonusForm({
               footer={index === 0 ? 'Spend this much in a cycle and the bonus pays. The highest tier reached is the one that pays.' : undefined}
             >
               <TextRow
-                label={`Spend at least (${currency})`}
+                label="Spend at least"
+                prefix={currency}
                 aria-label={`Tier ${index + 1} spend`}
                 value={tier.spend}
-                onChange={(e) => setTier(index, { spend: e.target.value })}
+                onChange={(e) => setTier(index, { spend: groupTypedAmount(e.target.value, currency) })}
                 inputMode="decimal"
-                placeholder="Spend"
+                placeholder="Amount"
               />
               <TextRow
                 label={`Pays (${unit})`}

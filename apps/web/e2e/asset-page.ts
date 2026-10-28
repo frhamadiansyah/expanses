@@ -75,7 +75,7 @@ export async function changeCostAndEstimates(page: Page) {
 
   // A second estimate, then change it from its row.
   await openValueSheet(page);
-  await page.getByLabel('Value (IDR)').fill('12000000');
+  await page.getByLabel('Value', { exact: true }).fill('12000000');
   await page.getByRole('button', { name: 'Save value' }).click();
   await backFromSettings(page);
   await expect(gain).toHaveText('−Rp 8.000.000 · −40,0%');
@@ -84,8 +84,8 @@ export async function changeCostAndEstimates(page: Page) {
   await rows.first().getByRole('button', { name: /^More for Estimated value/ }).click();
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Edit value' })).toBeVisible();
-  await expect(page.getByLabel('Value (IDR)')).toHaveValue('12.000.000');
-  await page.getByLabel('Value (IDR)').fill('16000000');
+  await expect(page.getByLabel('Value', { exact: true })).toHaveValue('12.000.000');
+  await page.getByLabel('Value', { exact: true }).fill('16000000');
   await page.getByRole('button', { name: 'Save value' }).click();
   await expect(gain).toHaveText('−Rp 4.000.000 · −20,0%');
   await expect(rows).toHaveCount(3);
