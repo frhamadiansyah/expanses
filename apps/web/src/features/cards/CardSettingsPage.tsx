@@ -24,6 +24,9 @@ import { balanceText } from './programme-text';
 import { ColumnGroup, GlyphButton, Line, Step, SubmitRow, SUBTITLE, TextLine, TITLE } from './rows';
 import { termsFields } from './terms-fields';
 import { useCatalogChoice } from './useCatalogChoice';
+import { FeeAlert } from './FeeAlert';
+import { feeLine } from './fee-line';
+import { useInstallments } from '../loans/queries';
 import { formatPoints } from './useCardPoints';
 
 const settingsRoute = getRouteApi('/cards/$cardId/settings');
@@ -164,6 +167,8 @@ export function CardSettingsPage() {
   const [limit, setLimit] = useState('');
   const [fee, setFee] = useState('');
   const [feeOn, setFeeOn] = useState('');
+  const [askingFee, setAskingFee] = useState(false);
+  const plans = useInstallments(cardId);
   const [plasticSheet, setPlasticSheet] = useState<CardRow | 'new' | null>(null);
   const [loadedName, setLoadedName] = useState<string | null>(null);
   const [loadedTerms, setLoadedTerms] = useState<string | null>(null);
@@ -243,6 +248,7 @@ export function CardSettingsPage() {
    * A card opened from the catalogue without its dates has its product and its rules already: the dates are all its
    * setup still asks for, so they come first with no step number over them and no catalogue to choose from again.
    */
+  const feeSummary = cp.terms ? feeLine(cp.terms.annualFeeMinor, cp.terms.annualFeeOn, cp.terms.annualFeeWaivedYear, currency, today) : null;
   const onlyDates = step === 1 && cp.program !== undefined;
   const termsBlock = !isDebit && (
     <>
@@ -263,8 +269,28 @@ export function CardSettingsPage() {
             ],
             [
               <TextRow label={`Credit limit (${currency})`} value={limit} onChange={(e) => setLimit(e.target.value)} inputMode="decimal" />,
+            ],
+          ]}
+        />
+        <ColumnGroup
+          header="Annual fee"
+          columns={[
+            [
               <TextRow label={`Annual fee (${currency})`} value={fee} onChange={(e) => setFee(e.target.value)} inputMode="decimal" />,
               <TextRow label="Charged on" type="date" value={feeOn} onChange={(e) => setFeeOn(e.target.value)} />,
+              ...(feeSummary && cp.terms?.annualFeeOn
+                ? [
+                    // Asks whether this year's fee was waived: the same question the card page's fee row asked.
+                    <InsetRow
+                      key="year-fee"
+                      testId="card-annual-fee"
+                      title="This year's fee"
+                      value={<span className={cx(feeSummary.soon && 'font-semibold text-[var(--ph-warn)]')}>{feeSummary.waived ? 'Waived' : (feeSummary.when?.replace('Charged on ', '') ?? feeSummary.amount ?? '')}</span>}
+                      valueTone="ink"
+                      onClick={() => setAskingFee(true)}
+                    />,
+                  ]
+                : []),
             ],
           ]}
         />
@@ -287,6 +313,14 @@ export function CardSettingsPage() {
       {step === 1 && !onlyDates && <Step>Step 1 of 3</Step>}
       {step === 2 && <Step>Step 2 of 3 · Rewards program</Step>}
       {step === 3 && <Step>Step 3 of 3</Step>}
+
+      {askingFee && cp.terms && (
+        <FeeAlert
+          fee={{ cardId: card.id, name: card.name, currency, annualFeeMinor: cp.terms.annualFeeMinor, annualFeeOn: cp.terms.annualFeeOn, annualFeeWaivedYear: cp.terms.annualFeeWaivedYear }}
+          today={today}
+          onClose={() => setAskingFee(false)}
+        />
+      )}
 
       <InsetGroup>
         <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} onBlur={saveName} onKeyDown={leave} placeholder="Name" />
@@ -347,6 +381,18 @@ export function CardSettingsPage() {
         <InsetRow title="Add a card" action testId="add-card" onClick={() => setPlasticSheet('new')} />
       </InsetGroup>
       {plasticSheet && <PlasticSheet accountId={card.id} piece={plasticSheet === 'new' ? undefined : plasticSheet} first={plastic.length === 0} run={run} onClose={() => setPlasticSheet(null)} />}
+
+      {!isDebit && (
+        <InsetGroup header="Instalments">
+          <InsetRow
+            testId="card-instalments-row"
+            title="Instalments"
+            value={(plans.data ?? []).length === 0 ? 'None' : `${plans.data!.length} ${plans.data!.length === 1 ? 'plan' : 'plans'}`}
+            to="/cards/$cardId/settings/instalments"
+            params={{ cardId: card.id }}
+          />
+        </InsetGroup>
+      )}
 
       <PointsGroup page={page} run={run} />
       {step === 2 && <ProductSetup page={page} run={run} catalog={catalog} />}

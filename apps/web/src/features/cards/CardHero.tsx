@@ -15,8 +15,6 @@ import { CardFace } from './CardFace';
 import { bonusStanding, activeDuring } from './catalog-panel';
 import { cycleBack, dueDateAfter, dueIn } from './statement-dates';
 import { limitUsage } from './limit-usage';
-import { FeeAlert } from './FeeAlert';
-import { feeLine } from './fee-line';
 import { pointsSummary } from './points-summary';
 import { useInstallments } from '../loans/queries';
 import { spendingDoor } from '../goals/set-aside-question';
@@ -223,7 +221,7 @@ function PaySheet({ card, accounts, amountMinor, today, onDone }: { card: Accoun
 /**
  * A card's page: its summary, which is the whole page now that its sections are pages of their own.
  *
- * Opened from the Wallet stack: what is owed, the round actions, this statement's points, the instalments and the
+ * Opened from the Wallet stack: what is owed, the round actions, the instalments and the
  * latest purchases. Opened on its own (an account the stack does not hold): layout D2 — the card with how much of the
  * limit is used, then the current bill and the points as equals.
  *
@@ -307,30 +305,6 @@ export function CardHero({
   // Where the summary leads: the card's own pages, and the programme its points go into.
   const params = { cardId: card.id };
   const toSettings = { to: '/cards/$cardId/settings' as const, params };
-  // The annual fee and when it is next charged: one quiet row, in the due-soon warning inside 30 days. A tap asks
-  // whether it was waived.
-  const [askingFee, setAskingFee] = useState(false);
-  const fee = cp.terms ? feeLine(cp.terms.annualFeeMinor, cp.terms.annualFeeOn, cp.terms.annualFeeWaivedYear, currency, today) : null;
-  const feeRow = fee && cp.terms && (
-    <InsetGroup>
-      <InsetRow
-        testId="card-annual-fee"
-        title="Annual fee"
-        subtitle={fee.when ? <span className={cx(fee.soon && 'font-semibold text-[var(--ph-warn)]')}>{fee.when}</span> : undefined}
-        value={fee.amount ?? undefined}
-        valueTone="ink"
-        onClick={cp.terms.annualFeeOn ? () => setAskingFee(true) : undefined}
-        {...(cp.terms.annualFeeOn ? {} : toSettings)}
-      />
-      {askingFee && (
-        <FeeAlert
-          fee={{ cardId: card.id, name: card.name, currency, annualFeeMinor: cp.terms.annualFeeMinor, annualFeeOn: cp.terms.annualFeeOn, annualFeeWaivedYear: cp.terms.annualFeeWaivedYear }}
-          today={today}
-          onClose={() => setAskingFee(false)}
-        />
-      )}
-    </InsetGroup>
-  );
   const toPoints = { to: '/cards/$cardId/points' as const, params };
   const toStatement = { to: '/cards/$cardId/statement' as const, params };
   // A debit card has no statement: its See all is every transaction of the account it spends from.
@@ -484,7 +458,7 @@ export function CardHero({
       {slot ? (
         /*
          * Opened from the Wallet stack: what is owed now, then the card's round actions — Pay, Spend, Points,
-         * Statement — then this statement's points in one row, the instalment plans, and the latest purchases with
+         * Statement — then the instalment plans (once there is one), and the latest purchases with
          * what each earned. The card's settings are behind ⚙.
          */
         <div className="flex min-w-0 flex-col gap-[10px]">
@@ -505,58 +479,15 @@ export function CardHero({
               actions={[
                 ...(debit ? [] : [{ key: 'pay', label: 'Pay', glyph: <Banknote size={20} aria-hidden />, run: () => setPaying(true) }]),
                 { key: 'spend', label: 'Spend', glyph: <ArrowUpRight size={20} aria-hidden />, to: '/transactions/new' as const, search: { mode: 'expense' as const, account: card.id } },
-                // The balance is redeemed and converted on the programme's page; a card with no rewards sets them up first.
+                // The statement's points, with the programme's page one row in; a card with no rewards sets them up first.
                 cp.programme
-                  ? { key: 'points', label: unitLabel, glyph: <Gift size={20} aria-hidden />, to: '/cards/points/$programmeId' as const, params: { programmeId: cp.programme.id } }
+                  ? { key: 'points', label: unitLabel, glyph: <Gift size={20} aria-hidden />, ...toPoints }
                   : { key: 'points', label: unitLabel, glyph: <Gift size={20} aria-hidden />, ...toSettings },
                 ...(debit ? [] : [{ key: 'statement', label: 'Statement', glyph: <ReceiptText size={20} aria-hidden />, ...toStatement }]),
               ]}
             />
           </div>
-          <div className="-mt-[10px]">
-            {setup}
-            {feeRow}
-            <div data-testid="tile-points">
-              <InsetGroup>
-                {cp.program ? (
-                  <InsetRow
-                    testId="this-statement-points"
-                    title="This statement's points"
-                    subtitle={
-                      <>
-                        {/* The spend bonus nearest its next tier, as far as this statement has come toward it. */}
-                        {standing?.next ? (
-                          <span className="block" data-testid="bonus-progress">
-                            <ProgressBar
-                              className="my-[4px] w-full"
-                              currentMinor={standing.eligibleSpendMinor}
-                              targetMinor={standing.next.minSpendMinor}
-                              label={`${bonus!.name}: ${formatMinor(standing.eligibleSpendMinor, currency)} of ${formatMinor(standing.next.minSpendMinor, currency)} for +${formatPoints(standing.next.bonus)} ${unit}`}
-                            />
-                            {/* The bar's spend alone: the bonus it is for is named on the points page and in the bar's label. */}
-                            <span className="tabular">
-                              {formatMinor(standing.eligibleSpendMinor, currency)} of {formatMinor(standing.next.minSpendMinor, currency)}
-                            </span>
-                          </span>
-                        ) : (
-                          result && <span className="block">{`${shortDate(result.cycle.start)} – ${shortDate(result.cycle.end)}`}</span>
-                        )}
-                        <span className="tabular block" data-testid="tile-points-balance">
-                          {cp.programme?.name ?? cp.program.name} · {formatPoints(pointsBalance?.total ?? 0)} {unit}
-                          {worth !== null && cp.best ? ` ≈ ${formatMinor(worth, cp.best.currency)}` : ''}
-                        </span>
-                      </>
-                    }
-                    value={<span data-testid="tile-this-cycle">{result ? `+${formatPoints(result.earn.totalPoints)} ${unit}` : '—'}</span>}
-                    valueTone="ink"
-                    {...toPoints}
-                  />
-                ) : (
-                  <InsetRow title={unitLabel} subtitle="Rewards are not set up for this card." {...toSettings} />
-                )}
-              </InsetGroup>
-            </div>
-          </div>
+          {setup && <div className="-mt-[10px]">{setup}</div>}
           {instalments}
           {recent}
         </div>
@@ -634,7 +565,6 @@ export function CardHero({
     {!slot && (
       <div className="mt-[18px]">
         {setup}
-        {feeRow}
         {instalments}
         {recent}
       </div>

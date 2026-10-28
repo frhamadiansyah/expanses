@@ -133,12 +133,28 @@ export function CardPointsPage() {
       </CardScreen>
     );
   }
-  const { card, cp, currency } = page;
+  const { card, cp, currency, ledger } = page;
   const program = cp.program;
+  const unit = cp.programme?.unit ?? program?.unit ?? 'points';
+  const total = ledger.data?.balance.total ?? 0;
+  const worth = program ? pointsValue(total, cp.best) : null;
+  // "18.400 miles · ≈ Rp 1.840.000": the programme's balance, and what it is worth at the card's best redemption.
+  const balanceLine = `${formatPoints(total)} ${unit}${worth !== null && cp.best ? ` · ≈ ${formatMinor(worth, cp.best.currency)}` : ''}`;
   const purchases = cp.current ? purchasesOf(cp.current.lines).length : 0;
   return (
     <CardScreen title={TITLE} back={card.name} fallback={fallback}>
       <ErrorBox error={error} />
+      {cp.programme && (
+        <InsetGroup>
+          <InsetRow
+            testId="statement-points-programme"
+            title={cp.programme.name}
+            subtitle={<span className="tabular" data-testid="statement-points-balance">{balanceLine}</span>}
+            to="/cards/points/$programmeId"
+            params={{ programmeId: cp.programme.id }}
+          />
+        </InsetGroup>
+      )}
       {!earning(cp) && <NotEarning page={page} />}
       {program && cp.current && earning(cp) && <CycleSummary result={cp.current} rules={cp.rules} bonuses={cp.bonuses} unit={program.unit} currency={currency} best={cp.best} cardId={card.id} />}
       {program && earning(cp) && (cp.current || cp.previous) && (

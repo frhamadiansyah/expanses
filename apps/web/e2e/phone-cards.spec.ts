@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard, walletCard } from './accounts';
-import { cardPage, saveCardTerms } from './card-section';
+import { backToCardFromPlans, cardPage, saveCardTerms, startPlan } from './card-section';
 
 test('the three card screens draw at 390px without scrolling sideways', async ({ page }) => {
   const crashes: string[] = [];
@@ -128,7 +128,7 @@ test('a tapped card rises to the top at its own width and opens its page; ✕ an
   await wall.getByRole('link', { name: /^Alpha Card, / }).click();
   await expect(page).toHaveURL(/\/cards\/[^/]+$/);
   await expect(page.getByRole('heading', { name: 'Alpha Card', exact: true })).toBeFocused();
-  await expect(page.getByTestId('tile-points')).toBeVisible();
+  await expect(page.getByTestId('tile-left-to-pay')).toBeVisible();
   const raised = wall.locator('[data-place="raised"]');
   await expect(raised).toHaveCount(1);
   await expect(raised.getByRole('button', { name: 'Alpha Card', exact: true })).toBeVisible();
@@ -158,9 +158,11 @@ test('a tapped card rises to the top at its own width and opens its page; ✕ an
   await expect(actions.getByRole('button')).toHaveText(['Pay']);
   await expect(actions.getByRole('link')).toHaveText(['Spend', 'Points', 'Statement']);
   await expect(actions.getByRole('link', { name: 'Spend' })).toHaveAttribute('href', /\/transactions\/new\?.*mode=expense/);
-  await expect(page.getByTestId('this-statement-points')).toContainText("This statement's points");
-  await expect(page.getByTestId('tile-points-balance')).toContainText('0 points');
-  await expect(page.getByTestId('card-instalments').getByRole('button', { name: 'Add a plan' })).toBeVisible();
+  // The fee, rewards and points rows live behind the buttons and the cog now; with no plan there is no Instalments box.
+  await expect(page.getByTestId('this-statement-points')).toHaveCount(0);
+  await expect(page.getByTestId('card-annual-fee')).toHaveCount(0);
+  await expect(page.getByTestId('card-instalments')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Add a plan' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Recent' })).toBeVisible();
   await expect(page.getByTestId('latest-transactions').getByRole('link', { name: 'See all' })).toBeVisible();
 
@@ -169,8 +171,7 @@ test('a tapped card rises to the top at its own width and opens its page; ✕ an
   for (const [open, title] of [
     [() => actions.getByRole('link', { name: 'Statement', exact: true }).click(), 'Statement'],
     [() => page.getByTestId('latest-transactions').getByRole('link', { name: 'See all' }).click(), 'Statement'],
-    [() => page.getByTestId('this-statement-points').click(), "This statement's points"],
-    [() => actions.getByRole('link', { name: 'Points', exact: true }).click(), 'Alpha Card rewards'],
+    [() => actions.getByRole('link', { name: 'Points', exact: true }).click(), "This statement's points"],
     [() => bar.getByRole('link', { name: 'Settings' }).click(), 'Settings'],
   ] as const) {
     await open();
@@ -178,8 +179,17 @@ test('a tapped card rises to the top at its own width and opens its page; ✕ an
     await expect(page.getByRole('radiogroup', { name: 'Card sections' })).toHaveCount(0);
     await page.goBack();
     await expect(wall.locator('[data-place="raised"]')).toHaveCount(1);
-    await expect(page.getByTestId('tile-points')).toBeVisible();
+    await expect(page.getByTestId('tile-left-to-pay')).toBeVisible();
   }
+
+  // The statement points page leads with the programme's row, which opens the programme; back returns to the points page.
+  await actions.getByRole('link', { name: 'Points', exact: true }).click();
+  await page.getByTestId('statement-points-programme').click();
+  await expect(page.getByRole('heading', { name: 'Alpha Card rewards', exact: true }).first()).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('heading', { name: "This statement's points", exact: true }).first()).toBeVisible();
+  await page.goBack();
+  await expect(wall.locator('[data-place="raised"]')).toHaveCount(1);
 
   // ✕ returns to the stack, in the order it had.
   const url = page.url();
@@ -240,15 +250,16 @@ test('an instalment plan opens from its row to be changed or removed; the bin is
   await page.goto('/wallet');
   await walletCard(page, 'BCA KrisFlyer Visa Signature').click();
 
-  const held = page.getByTestId('card-instalments');
-  await held.getByRole('button', { name: 'Add a plan' }).click();
+  await startPlan(page);
   const sheet = page.getByRole('dialog', { name: 'New instalment plan' });
   await sheet.getByLabel('What it was').fill('Sofa');
   await sheet.getByLabel(/^Total/).fill('12000000');
   await sheet.getByLabel('Months').fill('12');
   await sheet.getByRole('button', { name: 'Save plan' }).click();
   await expect(sheet).toHaveCount(0);
+  await backToCardFromPlans(page);
 
+  const held = page.getByTestId('card-instalments');
   const plan = held.getByTestId('card-instalment');
   await expect(plan).toContainText(/\d+ of 12 paid/);
   await expect(plan).toContainText(/Rp\s1\.000\.000 a month/);
@@ -268,5 +279,5 @@ test('an instalment plan opens from its row to be changed or removed; the bin is
   expect((await edit.textContent())!.match(/Ends\s*([A-Z][a-z]+ \d{4})/)![1]).not.toBe(endsBefore);
   await edit.getByRole('button', { name: 'Remove plan' }).click();
   await page.getByRole('alertdialog', { name: 'Remove plan' }).getByRole('button', { name: 'Remove plan' }).click();
-  await expect(held.getByTestId('card-instalment')).toHaveCount(0);
+  await expect(held).toHaveCount(0);
 });

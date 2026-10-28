@@ -4,6 +4,7 @@ import { Fragment, type ReactNode } from 'react';
 import { useBalances } from '../../lib/queries';
 import { InsetGroup, InsetRow, LargeTitle, useWalletSlot } from '../../ui/native';
 import { InstallmentList } from '../loans/InstallmentList';
+import { useInstallments } from '../loans/queries';
 import { creditMinor, owedMinor } from '../networth/debt-rows';
 import { useCardPage } from './card-page';
 import { OwnJointRows } from '../sharing/JointAccountRows';
@@ -34,6 +35,8 @@ export function CardDetailPage() {
   const { cardId } = route.useParams();
   const { page, gate } = useCardPage(cardId);
   const balances = useBalances();
+  // The Instalments box shows once the card has a plan; the first is added from Settings → Instalments.
+  const plans = useInstallments(cardId);
   // Opened from the Wallet stack, the raised card is this page's header and the stack's screen is its ground.
   const slot = useWalletSlot();
   const Ground = slot ? Fragment : Screen;
@@ -89,7 +92,7 @@ export function CardDetailPage() {
         pointsBalance={ledger.data ? { total: ledger.data.balance.total, posted: ledger.data.balance.postedTotal, estimated: ledger.data.balance.projectedTotal } : null}
         today={today}
         setup={setup}
-        instalments={<InstallmentList cardAccountId={card.id} currency={currency} />}
+        instalments={(plans.data ?? []).length > 0 ? <InstallmentList cardAccountId={card.id} currency={currency} /> : undefined}
         lines={[...(cp.current?.lines ?? []), ...(cp.previous?.lines ?? [])]}
       />
       {!isDebit && <OwnJointRows accountId={card.id} />}

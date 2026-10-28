@@ -16,7 +16,7 @@ import { useInstallments } from './queries';
  * One plan on the card page: its name and what it still holds on the top line, then how far through its months it is and
  * what it bills a month, and the bar under them across the whole row. The whole row is the tap target; it opens the plan to edit.
  */
-function InstallmentRow({ plan, currency, today, position, onOpen }: GroupChild & { plan: CardInstallmentRow; currency: string; today: string; onOpen: () => void }) {
+export function InstallmentRow({ plan, currency, today, position, onOpen }: GroupChild & { plan: CardInstallmentRow; currency: string; today: string; onOpen: () => void }) {
   const split = installmentSplit(plan, today);
   const paid = plan.months - split.monthsLeft;
   return (
@@ -47,14 +47,12 @@ function InstallmentRow({ plan, currency, today, position, onOpen }: GroupChild 
 }
 
 /**
- * Instalment plans on one card, on its page under this statement's points. The purchase was spending on the day it
- * happened; these rows only say how much of it the card has billed so far, how much it still holds of the limit, and
- * how far through its months it is — with the way to add a plan the issuer made, to change one, and to remove one.
+ * The sheet that adds, edits and removes a card's instalment plans, shared by the card page's box and the Instalments
+ * page: `open` shows it for a new plan or an existing one, `node` is what to draw once, anywhere in the page.
  */
-export function InstallmentList({ cardAccountId, currency }: { cardAccountId: string; currency: string }) {
+export function usePlanEditor(cardAccountId: string, currency: string) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
-  const plans = useInstallments(cardAccountId);
   const today = isoDate();
   const formEl = useRef<HTMLFormElement>(null);
   /** The sheet: closed, a new plan, or the plan being edited. */
@@ -105,22 +103,10 @@ export function InstallmentList({ cardAccountId, currency }: { cardAccountId: st
     }
   }
 
-  const list = plans.data ?? [];
-  const held = list.reduce((sum, plan) => sum + installmentSplit(plan, today).unbilledMinor, 0);
   const editing = sheet !== null && sheet !== 'new';
   const editSplit = sheet !== null && sheet !== 'new' ? installmentSplit(sheet, today) : null;
-  return (
-    <div data-testid="card-instalments">
-      <InsetGroup header="Instalments" trailing={held > 0 ? `${formatMinor(held, currency)} held` : undefined}>
-        {list.length === 0 && (
-          <TextLine tone="ink-3">None yet. A purchase the issuer turns into cicilan is recorded here, so the card's debt splits into billed and unbilled.</TextLine>
-        )}
-        {list.map((plan) => (
-          <InstallmentRow key={plan.id} plan={plan} currency={currency} today={today} onOpen={() => open(plan)} />
-        ))}
-        <ActionRow label="Add a plan" onClick={() => open('new')} />
-      </InsetGroup>
-
+  const node = (
+    <>
       {sheet && (
         <Sheet grouped title={editing ? 'Edit instalment plan' : 'New instalment plan'} onClose={close}>
           <form ref={formEl} onSubmit={save}>
@@ -166,6 +152,34 @@ export function InstallmentList({ cardAccountId, currency }: { cardAccountId: st
         />
       )}
       {!sheet && <ErrorBox error={error} />}
+    </>
+  );
+  return { open, node };
+}
+
+/**
+ * Instalment plans on one card, on its page under this statement's points. The purchase was spending on the day it
+ * happened; these rows only say how much of it the card has billed so far, how much it still holds of the limit, and
+ * how far through its months it is — with the way to add a plan the issuer made, to change one, and to remove one.
+ */
+export function InstallmentList({ cardAccountId, currency }: { cardAccountId: string; currency: string }) {
+  const plans = useInstallments(cardAccountId);
+  const today = isoDate();
+  const editor = usePlanEditor(cardAccountId, currency);
+  const list = plans.data ?? [];
+  const held = list.reduce((sum, plan) => sum + installmentSplit(plan, today).unbilledMinor, 0);
+  return (
+    <div data-testid="card-instalments">
+      <InsetGroup header="Instalments" trailing={held > 0 ? `${formatMinor(held, currency)} held` : undefined}>
+        {list.length === 0 && (
+          <TextLine tone="ink-3">None yet. A purchase the issuer turns into cicilan is recorded here, so the card's debt splits into billed and unbilled.</TextLine>
+        )}
+        {list.map((plan) => (
+          <InstallmentRow key={plan.id} plan={plan} currency={currency} today={today} onOpen={() => editor.open(plan)} />
+        ))}
+        <ActionRow label="Add a plan" onClick={() => editor.open('new')} />
+      </InsetGroup>
+      {editor.node}
     </div>
   );
 }

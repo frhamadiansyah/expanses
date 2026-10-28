@@ -71,10 +71,9 @@ test('BCA KrisFlyer Visa Signature earns base miles and the cycle bonus with ful
   await buy(page, { card: 'BCA KF Signature', description: 'Anniversary dinner', category: 'Restaurants', amount: '21000000' });
 
   await openCardPage(page, 'BCA KF Signature');
-  // On the summary, the bonus this statement is working toward has been reached: no tier left to show.
-  await expect(page.getByTestId('this-statement-points')).toContainText('+2.555 miles');
   await cardPage(page, 'Points');
   const cycle = thisCycle(page);
+  await expect(cycle).toContainText(/Projected miles\s*2\.555/);
   // Rp 21.000.000 / 13.500 = 1.555,5 → 1.555 miles, plus 1.000 for reaching Rp 20.000.000.
   await expect(cycle).toContainText(/21\.000\.000 → 1\.555 miles/);
   await expect(cycle).toContainText(/Monthly spend bonus\s*Rp\s21\.000\.000 → 1\.000 miles/);
@@ -191,8 +190,6 @@ test('a spend bonus can be added by hand, and a catalogue one keeps what the for
   // Electricity is excluded by the catalogue, and that exclusion is not on the form: it must survive.
   await buy(page, { card: 'BCA KrisFlyer', description: 'PLN token', category: 'Electricity', amount: '21000000' });
   await openCardPage(page, 'BCA KrisFlyer');
-  // The summary's row shows the same bonus, nothing toward it yet.
-  await expect(page.getByTestId('bonus-progress')).toContainText(/Rp\s0 of Rp\s20\.000\.000/);
   await cardPage(page, 'Points');
   await expect(thisCycle(page).getByRole('progressbar', { name: 'Monthly spend bonus progress' })).toHaveAttribute('aria-valuenow', '0');
 });

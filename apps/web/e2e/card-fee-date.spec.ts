@@ -15,9 +15,11 @@ test('a card’s annual fee date is saved in Settings, shown as the next charge,
   entered.setFullYear(next.getFullYear() - 2);
 
   await openCard(page, { name: 'Fee Card', statementDay: '25', dueDay: '12' });
+  // The fee row is Settings' now, not the card page's.
   await expect(page.getByTestId('card-annual-fee')).toHaveCount(0);
 
   await cardPage(page, 'Settings');
+  await expect(page.getByTestId('card-annual-fee')).toHaveCount(0);
   await page.getByLabel('Annual fee (IDR)').fill('500000');
   await page.getByLabel('Charged on').fill(iso(entered));
   await saveCardTerms(page);
@@ -25,11 +27,12 @@ test('a card’s annual fee date is saved in Settings, shown as the next charge,
   await page.waitForTimeout(800);
   await page.reload();
   await expect(page.getByLabel('Charged on')).toHaveValue(iso(entered));
-  await page.goBack();
 
   const row = page.getByTestId('card-annual-fee');
-  await expect(row).toContainText('Annual fee');
+  await expect(row).toContainText("This year's fee");
   await expect(row).toContainText(words(next));
+  await page.goBack();
+  await expect(page.getByTestId('card-annual-fee')).toHaveCount(0);
 
   // Within 30 days it is also listed under Due soon in Recurring, read-only, and opens the card.
   await page.goto('/bills');
@@ -60,15 +63,14 @@ test('a card’s annual fee date is saved in Settings, shown as the next charge,
   await walletCard(page, 'Fee Card').click();
   const next2 = new Date(next);
   next2.setFullYear(next.getFullYear() + 1);
-  await expect(page.getByTestId('card-annual-fee')).toContainText(`Waived this year · next charge ${words(next2)}`);
+  await cardPage(page, 'Settings');
+  await expect(page.getByTestId('card-annual-fee')).toContainText('Waived');
 
   // Clearing the row clears the date; the fee leaves Recurring.
-  await cardPage(page, 'Settings');
   await page.getByLabel('Charged on').fill('');
   await saveCardTerms(page);
   await page.waitForTimeout(800);
   await page.reload();
   await expect(page.getByLabel('Charged on')).toHaveValue('');
-  await page.goBack();
-  await expect(page.getByTestId('card-annual-fee')).not.toContainText('next charge');
+  await expect(page.getByTestId('card-annual-fee')).toHaveCount(0);
 });

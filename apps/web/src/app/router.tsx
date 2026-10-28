@@ -33,6 +33,7 @@ import { fromSearch, trackOrigin } from './from-search';
 import { CardDetailPage } from '../features/cards/CardDetailPage';
 import { CardPointsCheckPage, CardPointsPage, CardPurchasesPage } from '../features/cards/CardPointsPage';
 import { EarnRulesPage, SpendBonusesPage } from '../features/cards/CardRulesPages';
+import { CardInstalmentsPage } from '../features/cards/CardInstalmentsPage';
 import { CardProductPage, CardSettingsPage } from '../features/cards/CardSettingsPage';
 import { CardStatementPage } from '../features/cards/CardStatementPage';
 import { WalletPage } from '../features/wallet/WalletPage';
@@ -307,6 +308,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/points/check', component: CardPointsCheckPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings', component: CardSettingsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/product', component: CardProductPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/instalments', component: CardInstalmentsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/rules', component: EarnRulesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/bonuses', component: SpendBonusesPage }),
   // A static segment, so it outranks the wallet's `$cardId` however the two are nested.
