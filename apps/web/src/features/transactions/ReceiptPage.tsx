@@ -1,5 +1,5 @@
 import { formatMinor, isoDate } from '@expanses/core';
-import { eventPostingOf, jointRowNote, listPhotos, listTransactions, ownerScope, paidOffMarkOf, setSettledBeforeApp, type TransactionPhotoRow } from '@expanses/db';
+import { eventPostingOf, jointRowNote, tagTransactions, listPhotos, listTransactions, ownerScope, paidOffMarkOf, setSettledBeforeApp, type TransactionPhotoRow } from '@expanses/db';
 import { deleteTransaction } from './member-transfer';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, Link, useNavigate, useRouter } from '@tanstack/react-router';
@@ -14,7 +14,8 @@ import { loadPurchasePoints } from '../../lib/purchase-points';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { usePhotoUrls } from '../../photos/use-photo-urls';
 import { Card, cx, Empty, ErrorBox } from '../../ui';
-import { InsetGroup, SwitchRow } from '../../ui/native';
+import { DestructiveRow, InsetGroup, SwitchRow } from '../../ui/native';
+import { showToast } from '../../ui/Toast';
 import { useCardsWithArchived } from '../cards/card-queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { usePeopleDebts } from '../debts/queries';
@@ -178,6 +179,21 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
       await deleteTransaction(database, ws, transactionId);
       await invalidate();
       router.history.push(originHref());
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Takes the purchase out of its event: it comes back to Cashflow, and the event no longer counts it. */
+  async function removeFromEvent() {
+    setError(null);
+    setBusy(true);
+    try {
+      await tagTransactions(database, ws, [transactionId], null);
+      await invalidate();
+      showToast(`Removed from ${(events.data ?? []).find((event) => event.id === tx?.eventId)?.name ?? 'the event'}`);
     } catch (e) {
       setError(e);
     } finally {
@@ -364,7 +380,16 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
           ) : (
             /* Edit is the round button in the top corner; Delete stays down here, out of a thumb's casual reach. A shared
                event's transaction is deleted on the event, with its record, never here. */
-            changeable && !fromEvent && <TwoTapDelete busy={busy} onConfirm={() => void remove()} className="self-center" />
+            changeable && !fromEvent && (
+              <>
+                {tx.eventId && (
+                  <InsetGroup>
+                    <DestructiveRow calm label="Remove from event" onClick={() => void removeFromEvent()} testId="remove-from-event" />
+                  </InsetGroup>
+                )}
+                <TwoTapDelete busy={busy} onConfirm={() => void remove()} className="self-center" />
+              </>
+            )
           )}
         </div>
       )}
