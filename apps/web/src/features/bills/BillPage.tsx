@@ -61,6 +61,8 @@ export function BillPage({ billId }: { billId: string }) {
   const [allHistory, setAllHistory] = useState(false);
   // The skipped month whose sheet is open, with the title its row carries.
   const [unskipping, setUnskipping] = useState<{ month: string; title: string } | null>(null);
+  // The paid month whose sheet is open: its payments, to open or to undo.
+  const [paidOpen, setPaidOpen] = useState<{ title: string; payments: { id: string; paidMinor: number | null; paidCurrency: string | null }[] } | null>(null);
   const [justPaid, setJustPaid] = useState<JustPaid | null>(null);
   const [error, setError] = useState<unknown>(null);
 
@@ -253,7 +255,13 @@ export function BillPage({ billId }: { billId: string }) {
                 key={row.month}
                 fresh={paidMonth?.month === row.month}
                 title={title}
-                onOpen={row.state === 'skipped' ? () => setUnskipping({ month: row.month, title }) : undefined}
+                onOpen={
+                  row.state === 'skipped'
+                    ? () => setUnskipping({ month: row.month, title })
+                    : row.state === 'paid' && row.payments.length > 0
+                      ? () => setPaidOpen({ title: `${bill.name} · ${title}`, payments: row.payments })
+                      : undefined
+                }
                 value={
                   row.state === 'paid' ? (
                     <>
@@ -310,6 +318,48 @@ export function BillPage({ billId }: { billId: string }) {
         </Sheet>
       )}
 
+      {paidOpen && (
+        <Sheet grouped title={paidOpen.title} onClose={() => setPaidOpen(null)}>
+          <InsetGroup>
+            {paidOpen.payments.map((payment) => (
+              <InsetRow
+                key={payment.id}
+                action
+                title={
+                  paidOpen.payments.length > 1 && payment.paidMinor !== null ? (
+                    <>
+                      Open payment · <Money minor={payment.paidMinor} currency={payment.paidCurrency ?? currency} />
+                    </>
+                  ) : (
+                    'Open payment'
+                  )
+                }
+                label={paidOpen.payments.length > 1 && payment.paidMinor !== null ? undefined : 'Open payment'}
+                onClick={() => {
+                  setPaidOpen(null);
+                  void navigate({ to: '/transactions/$transactionId', params: { transactionId: payment.id } });
+                }}
+              />
+            ))}
+            <InsetRow
+              action
+              title="Undo payment"
+              onClick={() => {
+                const { payments } = paidOpen;
+                // A payment is deleted, not hidden: ask once.
+                if (!window.confirm(`Undo ${paidOpen.title}? The payment is deleted.`)) return;
+                setPaidOpen(null);
+                if (justPaid && payments.some((p) => justPaid.ids.includes(p.id))) setJustPaid(null);
+                void act(() => undoBillPayments(database, ws, payments.map((p) => p.id)));
+              }}
+            />
+          </InsetGroup>
+          <InsetGroup>
+            <InsetRow action title="Cancel" onClick={() => setPaidOpen(null)} />
+          </InsetGroup>
+        </Sheet>
+      )}
+
       {pausing && <PauseSheet bill={bill} onClose={() => setPausing(false)} onPaused={() => setPausing(false)} />}
     </div>
   );
@@ -318,7 +368,7 @@ export function BillPage({ billId }: { billId: string }) {
 /**
  * A month in the bill's history. The month just paid is washed in the tint and marked `data-new`, so the payment
  * that just happened is the row the eye lands on — the row itself stays the kit's. A skipped month opens to be
- * unskipped; paid and paused months are plain.
+ * unskipped, a paid month to open or undo its payment; paused months are plain.
  */
 function HistoryRow({ position, fresh, title, value, onOpen }: GroupChild & { fresh: boolean; title: string; value: ReactNode; onOpen?: () => void }) {
   return (
