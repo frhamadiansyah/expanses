@@ -389,6 +389,7 @@ test('spending on an event from Jenius asks', async ({ page }) => {
   await page.getByLabel('Ends on').fill(TODAY);
   await page.getByRole('button', { name: 'Save event' }).click();
   await expect(page.getByRole('heading', { name: 'Lebaran', exact: true })).toBeVisible();
+  const eventUrl = page.url();
 
   // Add spending is the Add screen with the event set, so it asks the question the Add screen always asks.
   await page.getByRole('button', { name: 'Add spending', exact: true }).click();
@@ -411,7 +412,11 @@ test('spending on an event from Jenius asks', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Lebaran', exact: true })).toBeVisible();
 
   await expectShort(page, 'Emergency fund', /short by Rp.1\.800\.000/i);
-  await expectRecordedOnce(page, /Hampers/);
+  // Event spending has left Cashflow's list: it is recorded once, and found in the event's own history.
+  await page.goto(eventUrl);
+  await expect(page.getByTestId('event-history').filter({ hasText: /Hampers/ })).toHaveCount(1);
+  await page.goto('/transactions');
+  await expect(page.getByTestId('transaction-row').filter({ hasText: /Hampers/ })).toHaveCount(0);
 });
 
 // ── The desktop's quick rows and the review queue ─────────────────────────────────────────────────────────────────

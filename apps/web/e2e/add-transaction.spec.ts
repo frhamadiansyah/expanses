@@ -1232,6 +1232,23 @@ test('the category picker is a tree, it searches, and a new category is made wit
 const otherDay = (today: string) => `${today.slice(0, 8)}${today.endsWith('-01') ? '02' : '01'}`;
 
 /**
+ * Event spending is not in Cashflow's list (events leave the history): its row and its receipt are reached from the
+ * event's own page. This is that page's history row for the purchase.
+ */
+async function eventHistoryRow(page: Page, event: string, what: string) {
+  await page.goto('/events');
+  await page.getByTestId('event-row').filter({ hasText: event }).click();
+  return page.getByTestId('event-history').filter({ hasText: what });
+}
+
+/** The receipt of an event purchase, opened from the event's page. */
+async function openEventReceipt(page: Page, event: string, what: string) {
+  const row = await eventHistoryRow(page, event, what);
+  await row.getByRole('button').and(row.getByTitle('Open the receipt')).click();
+  await expect(page.getByTestId('receipt-hero')).toBeVisible();
+}
+
+/**
  * §2's field map, walked in one purchase: nothing the old form could record has been lost.
  *
  * Every row here is a field the old `add-transaction.html` had, and each is read back off a screen that is
@@ -1300,16 +1317,16 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 
-  // The row: the note, the category, what the account was charged, what the merchant charged, and the digits.
-  const row = page.getByTestId('transaction-row').filter({ hasText: 'Superindo' });
+  // The row: the note, the category, what the account was charged, what the merchant charged, and the digits. The
+  // purchase belongs to an event, so Cashflow's list leaves it out and the event's own history holds the row.
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Superindo' })).toHaveCount(0);
+  const row = await eventHistoryRow(page, 'Lebaran', 'Superindo');
   await expect(row).toHaveCount(1);
   await expect(row).toContainText('Groceries');
   await expect(row).toContainText('1.600.000');
   await expect(row).toContainText('US$100,00');
-  await expect(row).toContainText('8802');
-  // The supplementary's digits, never the primary's: an account lending one card to every purchase on it is
-  // exactly the mistake `receiptLines` guards against.
-  await expect(row).not.toContainText('1467');
+  // The event page's row does not draw card digits (a Cashflow row does); this purchase's digits are read off its
+  // receipt below, with the primary's never standing in for the supplementary's.
 
   /*
    * A second purchase on the *other* card of the same account, so the pair of assertions above cannot be
@@ -1317,16 +1334,16 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
    * card left the test green until this existed — the two happened to coincide — which is the shape of a test
    * that proves something already true for another reason.
    */
+  await page.goto('/transactions');
   await addTransaction(page, { description: 'Ranch Market', paidWith: 'BCA KF Signature ···· 1467', category: 'Groceries', amount: '50000' });
   const primary = page.getByTestId('transaction-row').filter({ hasText: 'Ranch Market' });
   await expect(primary).toContainText('1467');
   await expect(primary).not.toContainText('8802');
-  // …and the first row did not follow it: two purchases on one account, each carrying its own digits.
-  await expect(row).toContainText('8802');
-
-  // The receipt: the same facts again, off the transaction rather than off the row's own summary.
-  await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
+  // The receipt: the same facts again, off the transaction rather than off the row's own summary. Opened after the
+  // second purchase exists, so it also proves the first did not follow it: each carries its own digits.
+  await openEventReceipt(page, 'Lebaran', 'Superindo');
   await expect(page.locator('div', { hasText: /^Paid with/ }).last()).toContainText('BCA KF Signature ···· 8802');
+  await expect(page.locator('div', { hasText: /^Paid with/ }).last()).not.toContainText('1467');
   await expect(page.locator('div', { hasText: /^Total/ }).last()).toContainText('1.600.000');
   await expect(page.locator('div', { hasText: /^Original amount/ }).last()).toContainText('US$100,00');
   await expect(page.locator('div', { hasText: /^Event/ }).last()).toContainText('Lebaran');
@@ -1569,7 +1586,7 @@ test('an event, a photograph and the exclusion survive one save together', async
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 
-  await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
+  await openEventReceipt(page, 'Lebaran', 'Superindo');
   await expect(page.locator('div', { hasText: /^Event/ }).last()).toContainText('Lebaran');
   await expect(page.getByTestId('excluded-note')).toContainText('Excluded from the chart and budgets');
   // The bytes, off this device's own OPFS — not merely a row saying a picture exists.
@@ -1622,9 +1639,8 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
   await cardPurchases(page);
   await expect(page.getByTestId('purchase').filter({ hasText: 'Superindo' })).toContainText('MCC 5411 · typed');
 
-  // The refund, made from the receipt the purchase already has.
-  await page.goto('/transactions');
-  await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
+  // The refund, made from the receipt the purchase already has — reached from the event, which Cashflow leaves out.
+  await openEventReceipt(page, 'Lebaran', 'Superindo');
   await page.getByRole('button', { name: 'Edit this transaction' }).click();
   const edit = page.getByRole('dialog', { name: 'Edit transaction' });
   await edit.getByRole('radio', { name: 'Income' }).click();
@@ -1641,8 +1657,7 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
   await expect(page.getByTestId('purchase').filter({ hasText: 'Superindo' })).toHaveCount(0);
 
   // Everything that was never a card's fact came across to the new id, all four at once.
-  await page.goto('/transactions');
-  await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
+  await openEventReceipt(page, 'Lebaran', 'Superindo');
   await expect(page.locator('div', { hasText: /^Paid into/ }).last()).toContainText('BCA KF Signature');
   await expect(page.locator('div', { hasText: /^Event/ }).last()).toContainText('Lebaran');
   await expect(page.locator('div', { hasText: /^Channel/ }).last()).toContainText('Online');
