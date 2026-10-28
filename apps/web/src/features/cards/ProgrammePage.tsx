@@ -193,6 +193,12 @@ export function ProgrammePage() {
           earners={earners.map((earner) => ({ ...earner, digits: digits[earner.cardAccountId] ?? null }))}
           valuePerPoint={valuePerPoint}
           onClose={closeSheet}
+          onOpenCard={(programId) => {
+            // This entry is made the one with the settings open, so the card's page ‹ steps back to it as it was left.
+            void navigate({ to: '/cards/points/$programmeId', params: { programmeId }, search: { settings: true }, replace: true }).then(() =>
+              navigate({ to: '/cards/points/$programmeId/card/$programId', params: { programmeId, programId } }),
+            );
+          }}
           onArchived={() => void navigate({ to: '/wallet' })}
         />
       )}

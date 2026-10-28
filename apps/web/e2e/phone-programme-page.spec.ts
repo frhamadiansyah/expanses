@@ -62,7 +62,7 @@ test('the programme page keeps the balance, four buttons and History; the rest i
   await buttons.getByRole('button', { name: 'Settings' }).click();
   const settings = page.getByRole('dialog');
   await expect(settings.getByText('Cards earning here')).toBeVisible();
-  await expect(settings.getByRole('link', { name: /CIMB Octo/ })).toBeVisible();
+  await expect(settings.getByRole('button', { name: /CIMB Octo/ })).toBeVisible();
   await expect(settings.getByRole('button', { name: /Value per point/ })).toContainText('Not set');
   await expect(settings.getByRole('button', { name: 'Catch up earlier cycles' })).toHaveCount(0);
   await expect(settings.getByRole('button', { name: 'Archive programme' })).toBeVisible();
@@ -72,11 +72,20 @@ test('the programme page keeps the balance, four buttons and History; the rest i
   await expect(settings.getByText('A card still earns into this programme')).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/programme-new-3.png`, fullPage: true });
   // The card's row opens its own Catch up page, not the statement points page.
-  await settings.getByRole('link', { name: /CIMB Octo/ }).click();
+  await settings.getByRole('button', { name: /CIMB Octo/ }).click();
   await expect(page.getByTestId('programme-card-statements')).toBeVisible();
   await expect(page.getByTestId('programme-card-statement').first()).toBeVisible();
   await expect(page.getByText('Catch up earlier cycles')).toHaveCount(0);
   await expect(page.getByRole('alert')).toHaveCount(0);
+  // ‹ comes back to the programme with the settings still open; closing them, ‹ leaves the programme, not for the card's page again.
+  await page.locator('header').getByRole('button', { name: 'Settings' }).or(page.locator('header').getByRole('link', { name: 'Settings' })).first().click();
+  await expect(page.getByTestId('programme-card-statements')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Archive programme' })).toBeVisible();
+  await page.getByRole('button', { name: 'Close' }).last().click();
+  await expect(page.getByRole('button', { name: 'Archive programme' })).toHaveCount(0);
+  await page.goBack();
+  await expect(page.getByTestId('programme-card-statements')).toHaveCount(0);
+  await expect(page).not.toHaveURL(/\/card\//);
 });
 
 test('the Convert sheet shows what this statement would convert to at each partner', async ({ page }) => {

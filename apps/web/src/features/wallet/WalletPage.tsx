@@ -27,6 +27,10 @@ function Screen({ children }: { children: ReactNode }) {
   );
 }
 
+/** Where the stack sits in the history, kept for as long as the reader stays in the wallet's pages. */
+let stackAt: number | null = null;
+let watching = false;
+
 /** How many days of history the Balance box's line is drawn over. */
 const SPARK_DAYS = 30;
 
@@ -136,14 +140,21 @@ export function WalletPage() {
    * the app. Where the stack was is the history's own index.
    */
   const at = () => (router.history.location.state as { __TSR_index?: number }).__TSR_index ?? 0;
-  const stackAt = useRef<number | null>(null);
   useEffect(() => {
-    if (openId === undefined) stackAt.current = at();
+    if (openId === undefined) stackAt = at();
+    if (!watching) {
+      watching = true;
+      // A page the card opens (its statement) unmounts this one and back remounts it: the stack's place in the history
+      // is kept across that, and let go once the reader is anywhere that is not the wallet's or a card's own.
+      router.subscribe('onResolved', ({ toLocation }) => {
+        if (!/^\/(wallet|cards|accounts)(\/|$)/.test(toLocation.pathname)) stackAt = null;
+      });
+    }
   });
   const close = () => {
     const now = at();
-    if (stackAt.current !== null && now > stackAt.current) router.history.go(stackAt.current - now);
-    else if (stackAt.current === null && router.history.canGoBack()) router.history.back();
+    if (stackAt !== null && now > stackAt) router.history.go(stackAt - now);
+    else if (stackAt === null && router.history.canGoBack()) router.history.back();
     else void navigate({ to: '/wallet' });
   };
   // Opening a card moves focus to its heading, so a reader lands on the card they chose.

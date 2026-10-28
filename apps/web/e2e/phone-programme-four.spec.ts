@@ -141,7 +141,7 @@ test('a card first used years ago lists its statements by year, two years first,
   await cardPage(page, 'Points');
   await page.getByTestId('statement-points-programme').click();
   await actions(page).getByRole('button', { name: 'Settings' }).click();
-  await page.getByRole('dialog').getByRole('link', { name: /CIMB Octo/ }).click();
+  await page.getByRole('dialog').getByRole('button', { name: /CIMB Octo/ }).click();
 
   const thisYear = new Date().getUTCFullYear();
   await expect(page.getByTestId('programme-show-earlier')).toBeVisible();

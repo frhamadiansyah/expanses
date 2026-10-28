@@ -1,7 +1,7 @@
 import { isoDate } from '@expanses/core';
 import { type CardStatementMonth, cardStatementMonths, catchUpAllCycles, clearCycleActual, deriveCycleEntries, getProgramme, programmeEarners, recordCycleActual } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useParams } from '@tanstack/react-router';
+import { useNavigate, useParams, useRouter } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -42,6 +42,7 @@ export function ProgrammeCardPage() {
   const { database, ws } = useApp();
   const { programmeId, programId } = useParams({ strict: false }) as { programmeId: string; programId: string };
   const navigate = useNavigate();
+  const router = useRouter();
   const invalidate = useInvalidateAll();
   const today = isoDate();
   const [ready, setReady] = useState(false);
@@ -89,7 +90,11 @@ export function ProgrammeCardPage() {
       <PushedTitle
         title={earner.cardName}
         back="Settings"
-        onBack={() => void navigate({ to: '/cards/points/$programmeId', params: { programmeId }, search: { settings: true } })}
+        onBack={() =>
+          router.history.canGoBack()
+            ? router.history.back()
+            : void navigate({ to: '/cards/points/$programmeId', params: { programmeId }, search: { settings: true }, replace: true })
+        }
       />
       <ErrorBox error={error} />
       <div data-testid="programme-card-statements">

@@ -191,6 +191,16 @@ test('a tapped card rises to the top at its own width and opens its page; ✕ an
   await page.goBack();
   await expect(wall.locator('[data-place="raised"]')).toHaveCount(1);
 
+  // Statement, then the page's own ‹ back to the card: ✕ still goes to the stack, not to the statement again.
+  await actions.getByRole('link', { name: 'Statement', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Statement', exact: true }).first()).toBeVisible();
+  await page.locator('header').getByRole('link', { name: /Alpha Card|Card/ }).first().click();
+  await expect(wall.locator('[data-place="raised"]')).toHaveCount(1);
+  await closeCard(page).click();
+  await expect(page).toHaveURL(/\/wallet$/);
+  await wall.getByRole('link', { name: /^Alpha Card, / }).click();
+  await expect(wall.locator('[data-place="raised"]')).toHaveCount(1);
+
   // ✕ returns to the stack, in the order it had.
   const url = page.url();
   await closeCard(page).click();

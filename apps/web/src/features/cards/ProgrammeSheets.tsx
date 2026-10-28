@@ -140,6 +140,7 @@ export function ProgrammeSettingsSheet({
   valuePerPoint,
   onClose,
   onArchived,
+  onOpenCard,
 }: {
   programme: ProgrammeRow;
   tier: string | null;
@@ -149,6 +150,7 @@ export function ProgrammeSettingsSheet({
   valuePerPoint: number | null;
   onClose: () => void;
   onArchived: () => void;
+  onOpenCard: (programId: string) => void;
 }) {
   const { database, ws } = useApp();
   const { error, busy, save } = useSave(onClose);
@@ -197,17 +199,15 @@ export function ProgrammeSettingsSheet({
             ))}
           </SelectRow>
         )}
+        <InsetRow plain title="Value per point" value={valuePerPoint !== null ? formatValuePerPoint(valuePerPoint, ws.baseCurrency) : 'Not set'} onClick={() => setValuing(true)} chevron />
       </InsetGroup>
       {earners.length > 0 && (
         <InsetGroup header="Cards earning here">
           {earners.map((earner) => (
-            <InsetRow key={earner.programId} plain title={earner.cardName} subtitle={earner.digits ? `···· ${earner.digits}` : undefined} to="/cards/points/$programmeId/card/$programId" params={{ programmeId: programme.id, programId: earner.programId }} chevron />
+            <InsetRow key={earner.programId} plain title={earner.cardName} subtitle={earner.digits ? `···· ${earner.digits}` : undefined} onClick={() => onOpenCard(earner.programId)} chevron />
           ))}
         </InsetGroup>
       )}
-      <InsetGroup>
-        <InsetRow plain title="Value per point" value={valuePerPoint !== null ? formatValuePerPoint(valuePerPoint, ws.baseCurrency) : 'Not set'} onClick={() => setValuing(true)} chevron />
-      </InsetGroup>
       <InsetGroup footer={blocked ? 'A card still earns into this programme. Choose another programme for that card before archiving this one.' : earning > 0 ? undefined : 'Archiving keeps its history and takes it off the Cards page.'}>
         <DestructiveRow
           label="Archive programme"
