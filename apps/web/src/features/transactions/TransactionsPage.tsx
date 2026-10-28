@@ -1,5 +1,6 @@
 import { categoryPath, formatMinor, isoDate, monthOf, outflowFrom, parseLooseAmount, parseLooseDate, parsePeriod, periodLabel } from '@expanses/core';
 import {
+  accountIdsInUse,
   cardTopsUpWallet,
   confirmDraft,
   createDraft,
@@ -42,7 +43,7 @@ import { useDrafts } from '../review/queries';
 import { useEvents } from '../events/queries';
 import { useSharedEventSummaries } from '../events/shared-queries';
 import { Button, Card, cx, Empty, ErrorBox, Money } from '../../ui';
-import { LargeTitle, SearchPill } from '../../ui/native';
+import { GROUP_HEADER_CLASS, LargeTitle, SearchPill } from '../../ui/native';
 import { SortFilterMenu } from './SortFilterMenu';
 import { ChipMenu, type ChipOption } from './ChipMenu';
 import { type PaidChoice, PaidWithSheet } from './PaidWithSheet';
@@ -59,7 +60,7 @@ import { AmountExtra, DraftSubtitle, PaidWith, TransactionRow, useRecategorise }
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
-import { amountExtraParts, billTagOf, buildRows, sharedTransferRow, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, hasNotCountedPart, type ListFilters, type ListRow, type Sort, sortRows, totals } from './list-model';
+import { accountsWithTransactions, amountExtraParts, billTagOf, buildRows, sharedTransferRow, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, hasNotCountedPart, type ListFilters, type ListRow, outsideEvents, type Sort, sortRows, totals } from './list-model';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
@@ -305,7 +306,10 @@ export function TransactionsPage() {
    */
   const swipeDeletes = useDeferredDeletes((id) => deleteTransaction(database, ws, id), invalidate, setError);
   const deleting = swipeDeletes.pending();
-  const recorded = (list.data?.transactions ?? []).filter((tx) => !deleting.has(tx.id));
+  // Event spending is read from the Events page, not here: the ring leaves it out (unless the workspace counts events in
+  // its caps), so the list does too — search included. An account's own history keeps it, as its balance does.
+  const eventsInCaps = openBook?.countEventsInBudget ?? false;
+  const recorded = outsideEvents(list.data?.transactions ?? [], ownerWide || eventsInCaps).filter((tx) => !deleting.has(tx.id));
   // Which workspace each row is filed in, so an account's history says whose spending it is showing.
   const badges = useWorkspaceBadges(recorded.map((tx) => tx.id));
   const badgeOf = badges.of;
@@ -596,7 +600,17 @@ export function TransactionsPage() {
 
   const rowOptions = buildRowOptions(accounts, cards, inOpenBook, membership);
   // Only what can pay: the form's own rule, so a locked deposit or a house is not a choice here either.
-  const money = moneyHolders(accounts).filter((account) => canPayWith(account));
+  const paidKept = filters.paid.startsWith('acct:')
+    ? filters.paid.slice('acct:'.length)
+    : filters.paid.startsWith('card:')
+      ? cards.find((card) => card.id === filters.paid.slice('card:'.length))?.accountId
+      : undefined;
+  const inUse = useQuery({ queryKey: ['accounts-in-use', ws.workspaceId], queryFn: () => accountIdsInUse(database, ownerScope(ws)) });
+  const money = accountsWithTransactions(
+    moneyHolders(accounts).filter((account) => canPayWith(account)),
+    new Set(inUse.data ?? []),
+    paidKept,
+  );
   const cardsOf = (accountId: string) => cards.filter((card) => card.accountId === accountId);
   // Set card is offered while every ticked row is on one credit card account carrying two cards or more.
   const creditCards = new Set(accounts.filter((account) => account.subtype === 'credit_card').map((account) => account.id));
@@ -1385,7 +1399,7 @@ export function TransactionsPage() {
           {shown.length > 0 && (
             <div className="flex items-center justify-end gap-2">
               {/* Names the list under the chart, and fills the row the two controls would otherwise leave empty. */}
-              <h2 className="mr-auto text-base font-semibold">Transaction history</h2>
+              <h2 className={cx('mr-auto', GROUP_HEADER_CLASS)}>Transaction history</h2>
               {/* Grouping is the view switcher's twin: the same 28px segment, the same 32px track, the same glyph. */}
               <div role="group" aria-label="Group by" className="inline-flex gap-0.5 rounded-lg bg-slate-200 p-0.5">
                 {(
