@@ -138,8 +138,8 @@ export function WithSheet({
             <SegmentedControl
               label="How the bill is divided"
               segments={[
-                { key: 'equally', label: 'Split equally' },
-                { key: 'custom', label: 'Custom amounts' },
+                { key: 'equally', label: 'Split equally', short: 'Equally' },
+                { key: 'custom', label: 'Custom amounts', short: 'Custom' },
                 ...(receipt ? [{ key: 'receipt', label: 'By receipt' }] : []),
               ]}
               value={draft.withEqually ? 'equally' : byReceipt ? 'receipt' : 'custom'}
