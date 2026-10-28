@@ -6,8 +6,8 @@ test('card setup guides billing date, then rewards, then a suggested base rule',
   // The card's own page is where a card taken from the catalogue is finished; this one is typed by hand.
   await openCard(page, { name: 'Step Card' });
 
-  // The summary says which step the card is at; the step itself is done in the card's Settings.
-  await expect(page.getByTestId('card-setup')).toContainText('Step 1 of 3');
+  // The card's page carries no setup warning; the steps are done in the card's Settings.
+  await expect(page.getByTestId('card-setup')).toHaveCount(0);
 
   await page.getByRole('navigation').getByRole('link', { name: 'Wallet', exact: true }).click();
   const cardRow = page.getByRole('region', { name: 'Cards' });

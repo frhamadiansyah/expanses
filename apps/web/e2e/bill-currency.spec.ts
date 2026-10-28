@@ -21,8 +21,9 @@ async function lifeCover(page: Page) {
   await pickBillPaidFrom(page, 'BCA Tahapan');
   // Out today, so the rate stored today reaches it.
   // The row defaults to the paying account's currency.
-  await expect(page.getByLabel('Currency')).toHaveValue('IDR');
-  await page.getByLabel('Currency').selectOption('SGD');
+  await expect(page.getByRole('button', { name: /^Currency\s*IDR/ })).toBeVisible();
+  await page.getByRole('button', { name: /^Currency\s*[A-Z]{3}/ }).click();
+  await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: /^SGD / }).first().click();
   await page.getByLabel('Amount', { exact: true }).fill('120');
   await pickBillCategory(page);
   await page.getByLabel('Bill date').selectOption(String(Number((await todayIn(page)).slice(8))));
@@ -79,7 +80,8 @@ test('Pay several asks what the account was charged for an SGD bill, and records
   await page.goto('/bills');
   await page.getByRole('button', { name: 'Select bills to pay' }).click();
   await page.getByRole('checkbox', { name: 'Select Life cover' }).click();
-  await page.getByRole('button', { name: /^Pay 1 selected/ }).click();
+  await page.getByRole('button', { name: 'Actions' }).click();
+  await page.getByRole('menuitem', { name: /^Pay 1 selected/ }).click();
   const sheet = page.getByRole('dialog', { name: 'Pay several' });
   const charged = sheet.getByLabel('Charged in IDR for Life cover');
   await expect(charged).toHaveValue(/^1[.,]?500[.,]?000/);
@@ -100,7 +102,8 @@ test('Pay several with another account: the SGD bill is charged in that account\
   await page.goto('/bills');
   await page.getByRole('button', { name: 'Select bills to pay' }).click();
   await page.getByRole('checkbox', { name: 'Select Life cover' }).click();
-  await page.getByRole('button', { name: /^Pay 1 selected/ }).click();
+  await page.getByRole('button', { name: 'Actions' }).click();
+  await page.getByRole('menuitem', { name: /^Pay 1 selected/ }).click();
   const sheet = page.getByRole('dialog', { name: 'Pay several' });
   await sheet.getByTestId('several-with').getByRole('button').click();
   await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: /Jenius/ }).click();
@@ -119,18 +122,18 @@ test('an SGD bill keeps its currency through an edit, and a bill with none follo
   await lifeCover(page);
   await row(page, 'Life cover').click();
   await page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Edit' }).click();
-  await expect(page.getByLabel('Currency')).toHaveValue('SGD');
+  await expect(page.getByRole('button', { name: /^Currency\s*SGD/ })).toBeVisible();
   await expect(page.getByLabel('Amount', { exact: true })).toHaveValue(/^120([.,]00)?$/);
   await page.getByLabel('Amount', { exact: true }).fill('125');
   await page.getByRole('button', { name: 'Save' }).click();
   await page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Edit' }).click();
-  await expect(page.getByLabel('Currency')).toHaveValue('SGD');
+  await expect(page.getByRole('button', { name: /^Currency\s*SGD/ })).toBeVisible();
   await expect(page.getByLabel('Amount', { exact: true })).toHaveValue(/^125([.,]00)?$/);
 
   // A new bill with a payer chosen reads in that payer's currency until another is picked.
   await page.goto('/bills/new');
   await pickBillPaidFrom(page, 'Wise SGD');
-  await expect(page.getByLabel('Currency')).toHaveValue('SGD');
+  await expect(page.getByRole('button', { name: /^Currency\s*SGD/ })).toBeVisible();
   await pickBillPaidFrom(page, 'BCA Tahapan');
-  await expect(page.getByLabel('Currency')).toHaveValue('IDR');
+  await expect(page.getByRole('button', { name: /^Currency\s*IDR/ })).toBeVisible();
 });

@@ -1,7 +1,7 @@
 import { isoDate } from '@expanses/core';
 import { type MonthlyBill, skipBill, undoBillPayments, unskipBill } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
-import { Check, ListChecks, Plus } from 'lucide-react';
+import { ListChecks, Plus } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useBackToCashflow, useFrom } from '../../app/from-search';
@@ -9,6 +9,7 @@ import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox, Money } from '../../ui';
 import { type CornerAction, GROUP_GAP, GROUP_RADIUS, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, PushedTitle, SCREEN } from '../../ui/native';
 import { BillRow } from './BillRow';
+import { PaySelectedBar } from './PaySelectedBar';
 import { MonthlyBuys } from './MonthlyBuys';
 import { amountOf, billCurrencyOf, billsInReadCurrency, type BillSummary, isToPay, paidText, pausedOf, sectionsOf, settledOf, skippedText, summaryOf } from './bill-view';
 import { HeroSlider } from './HeroSlider';
@@ -234,8 +235,9 @@ export function RecurringPage() {
 
   const title = selecting ? `${picked.size} selected` : 'Recurring';
   // Glyphs at every width, with the names they always had: a screen reader and a test still hear "New bill".
+  // While selecting, the bar over the title row holds the ✕ and the action, as Cashflow's does; the title has none of its own.
   const actions: CornerAction[] = selecting
-    ? [{ key: 'done', label: 'Done', glyph: <Check size={22} aria-hidden />, run: doneSelecting }]
+    ? []
     : [
         ...(page === 0 ? [{ key: 'select', label: 'Select bills to pay', glyph: <ListChecks size={20} aria-hidden />, run: () => setSelecting(true) }] : []),
         { key: 'new', label: 'New bill', glyph: <Plus size={22} aria-hidden />, to: '/bills/new' },
@@ -324,21 +326,24 @@ export function RecurringPage() {
         </>
       )}
 
-      {page === 0 && selecting && picked.size > 0 && (() => {
+      {page === 0 && selecting && !payingSeveral && (() => {
         const chosen = readRows.filter((b) => picked.has(b.id));
         const approximate = chosen.some((b) => b.amountMinor === null);
         return (
-          <button
-            type="button"
-            onClick={() => setPayingSeveral(true)}
-            className="ph-focus fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-30 mx-auto flex min-h-12 max-w-md items-center justify-between rounded-[14px] bg-[var(--ph-tint)] px-4 text-[15px] font-semibold text-[var(--ph-surface)] shadow-lg md:sticky md:bottom-6 md:mt-4 md:w-full"
-          >
-            <span>Pay {picked.size} selected</span>
-            <span className="tabular">
-              {approximate && '~'}
-              <Money minor={chosen.reduce((s, b) => s + amountOf(b), 0)} currency={readCurrency} /> ›
-            </span>
-          </button>
+          <PaySelectedBar
+            count={picked.size}
+            onPay={() => setPayingSeveral(true)}
+            onCancel={doneSelecting}
+            pay={
+              <>
+                <span>Pay {picked.size} selected</span>
+                <span className="tabular text-[var(--ph-ink-3)]">
+                  {approximate && '~'}
+                  <Money minor={chosen.reduce((s, b) => s + amountOf(b), 0)} currency={readCurrency} />
+                </span>
+              </>
+            }
+          />
         );
       })()}
 

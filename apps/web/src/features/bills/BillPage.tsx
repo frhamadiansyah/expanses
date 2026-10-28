@@ -1,7 +1,7 @@
 import { type BillWindow, dayMonth, isoDate, monthName, ordinal, periodicRepeat, yearlyRepeat } from '@expanses/core';
-import { deleteExpenseTemplate, RecurringError, resumeBill, skipBill, undoBillPayments, unskipBill } from '@expanses/db';
+import { RecurringError, resumeBill, skipBill, undoBillPayments, unskipBill } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { Check, MoreHorizontal, Pause, Pencil, Play, SkipForward } from 'lucide-react';
+import { Check, Pause, Pencil, Play, SkipForward } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -117,19 +117,6 @@ export function BillPage({ billId }: { billId: string }) {
     }
   }
 
-  async function stop() {
-    // Keeps every payment and skip on record; it just stops asking for the next one.
-    if (!window.confirm(`Stop ${bill.name}? Its payments stay in the history.`)) return;
-    setError(null);
-    try {
-      await deleteExpenseTemplate(database, ws, bill.id);
-      await invalidate();
-      await navigate({ to: '/bills', search: from });
-    } catch (e) {
-      setError(e);
-    }
-  }
-
   const actions: RoundAction[] = [
     ...(actMonth
       ? [
@@ -153,7 +140,6 @@ export function BillPage({ billId }: { billId: string }) {
         back="Recurring"
         backTo="/bills"
         backSearch={from}
-        actions={[{ key: 'more', label: 'More', glyph: <MoreHorizontal size={20} aria-hidden />, menu: [{ key: 'stop', label: 'Stop this bill', run: () => void stop() }] }]}
       />
 
       <ErrorBox error={error} />

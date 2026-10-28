@@ -2,7 +2,7 @@ import { getRouteApi } from '@tanstack/react-router';
 import { Settings } from 'lucide-react';
 import { Fragment, type ReactNode } from 'react';
 import { useBalances } from '../../lib/queries';
-import { InsetGroup, InsetRow, LargeTitle, useWalletSlot } from '../../ui/native';
+import { LargeTitle, useWalletSlot } from '../../ui/native';
 import { InstallmentList } from '../loans/InstallmentList';
 import { useInstallments } from '../loans/queries';
 import { creditMinor, owedMinor } from '../networth/debt-rows';
@@ -22,14 +22,11 @@ function Screen({ children }: { children: ReactNode }) {
   );
 }
 
-/** What each setup step asks for, under its number. */
-const STEP_ASKS = { 1: 'Billing date and due date', 2: 'Card product, from the catalogue or by hand', 3: 'Earning rules' } as const;
-
 /**
  * A card's page: its summary. What it owes and what is left of the limit, Pay · Spend · Points · Statement, this
  * statement's points, the instalment plans and the latest purchases. The four tabs it had are pages of their own:
  * the statement (Statement, See all), this statement's points (its row), the programme's balance (Points) and the
- * card's settings (⚙), where a card still being set up does its next step.
+ * card's settings (⚙), where a card still being set up does its next step; the card's page itself carries no setup warning.
  */
 export function CardDetailPage() {
   const { cardId } = route.useParams();
@@ -48,20 +45,11 @@ export function CardDetailPage() {
       </>
     );
   }
-  const { card, cp, all, plastic, issuer, isDebit, step, today, ledger, currency } = page;
+  const { card, cp, all, plastic, issuer, isDebit, today, ledger, currency } = page;
   // The Debts page's figure for this card, read by the same function, so the two screens always agree.
   const owed = isDebit ? 0 : owedMinor(balances.data ?? {}, card.id);
   // Paid past what it owed: the bank holds the rest. Unpaid stays at nothing, as the Debts page says.
   const credit = isDebit ? 0 : creditMinor(balances.data ?? {}, card.id);
-  // A card opened from the catalogue without its dates has its product and rules; the dates are asked for in its settings only.
-  const onlyDates = step === 1 && cp.program !== undefined;
-  const setup =
-    step === null || onlyDates ? undefined : (
-      <InsetGroup>
-        <InsetRow testId="card-setup" title="Finish setting up" subtitle={`Step ${step} of 3 · ${STEP_ASKS[step]}`} to="/cards/$cardId/settings" params={{ cardId: card.id }} />
-      </InsetGroup>
-    );
-
   return (
     <Ground>
       {/* Opened from the stack, the wallet's own bar carries ✕ and ⚙; on its own the page has a title of its own. */}
@@ -84,7 +72,6 @@ export function CardDetailPage() {
         debit={isDebit}
         pointsBalance={ledger.data ? { total: ledger.data.balance.total, posted: ledger.data.balance.postedTotal, estimated: ledger.data.balance.projectedTotal } : null}
         today={today}
-        setup={setup}
         instalments={(plans.data ?? []).length > 0 ? <InstallmentList cardAccountId={card.id} currency={currency} /> : undefined}
         lines={[...(cp.current?.lines ?? []), ...(cp.previous?.lines ?? [])]}
       />

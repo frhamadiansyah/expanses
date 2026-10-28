@@ -1,4 +1,4 @@
-import { minorToMajorString } from '@expanses/core';
+import { groupedMajorString } from '@expanses/core';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { useStoredRates } from '../../lib/queries';
@@ -21,7 +21,7 @@ export function useChargedRates(currencies: readonly string[], onDate: string): 
   return query.data?.rates ?? {};
 }
 
-/** The estimate as text for the charged field, in the paying account's money; '' when there is none. */
+/** The estimate as text for the charged field, grouped as typed there, in the paying account's money; '' when there is none. */
 export function chargedEstimateText(input: {
   amountMinor: number;
   billCurrency: string;
@@ -30,5 +30,5 @@ export function chargedEstimateText(input: {
   baseCurrency: string;
 }): string {
   const minor = chargedEstimate(input);
-  return minor === null ? '' : minorToMajorString(minor, input.payerCurrency);
+  return minor === null ? '' : groupedMajorString(minor, input.payerCurrency);
 }

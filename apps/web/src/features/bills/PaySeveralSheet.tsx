@@ -1,4 +1,4 @@
-import { parseMajor } from '@expanses/core';
+import { groupTypedAmount, parseGroupedMajor } from '@expanses/core';
 import { type MonthlyBill, recordBillPayments, type SetAsideChoice } from '@expanses/db';
 import { type ReactNode, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -56,7 +56,7 @@ export function PaySeveralSheet({
   onClose,
   onPaid,
 }: {
-  /** Every unsettled bill this month, so the sheet can offer more than what was picked on the list. */
+  /** Every unsettled bill this month; the sheet lists only the picked ones among them. */
   bills: MonthlyBill[];
   picked: ReadonlySet<string>;
   today: string;
@@ -83,8 +83,8 @@ export function PaySeveralSheet({
   const payerCurrencyOf = (bill: MonthlyBill) => planOf(bill).payerCurrency;
   const isForeign = (bill: MonthlyBill) => planOf(bill).foreign;
 
-  // The picked bills lead, since that is what was chosen on the list; the rest follow in the order they came in.
-  const ordered = [...bills.filter((bill) => picked.has(bill.id)), ...bills.filter((bill) => !picked.has(bill.id))];
+  // Only what was picked on the list: a bill that was not selected has no place on this sheet.
+  const ordered = bills.filter((bill) => picked.has(bill.id));
 
   const [ticked, setTicked] = useState<Set<string>>(() => new Set(picked));
   const [amounts, setAmounts] = useState<Record<string, string>>({});
@@ -100,7 +100,7 @@ export function PaySeveralSheet({
   const amountOf = (bill: MonthlyBill) => {
     if (bill.amountMinor !== null) return bill.amountMinor;
     try {
-      return parseMajor(amounts[bill.id]?.trim() ?? '', billCurrency(bill));
+      return parseGroupedMajor(amounts[bill.id]?.trim() ?? '', billCurrency(bill));
     } catch {
       return 0;
     }
@@ -117,7 +117,7 @@ export function PaySeveralSheet({
   const chargedOf = (bill: MonthlyBill) => {
     try {
       const text = chargeShown(bill).trim();
-      return text ? parseMajor(text, payerCurrencyOf(bill)) : 0;
+      return text ? parseGroupedMajor(text, payerCurrencyOf(bill)) : 0;
     } catch {
       return 0;
     }
@@ -173,7 +173,7 @@ export function PaySeveralSheet({
           templateId: bill.id,
           billMonth: bill.billMonth,
           // Parsed here as it always was, so a figure that does not parse still says so.
-          amountMinor: bill.amountMinor ?? (typed ? parseMajor(typed, currency) : 0),
+          amountMinor: bill.amountMinor ?? (typed ? parseGroupedMajor(typed, currency) : 0),
           chargedMinor: isForeign(bill) ? chargedOf(bill) : undefined,
           // Named only when the sheet chose the account; otherwise the bill's own pays, as it always did.
           ...(overrideAccount ? { moneyAccountId: overrideAccount.id } : {}),
@@ -220,7 +220,7 @@ export function PaySeveralSheet({
                   aria-label={`What ${bill.name} came to`}
                   placeholder="Amount"
                   value={amounts[bill.id] ?? ''}
-                  onChange={(e) => setAmounts((current) => ({ ...current, [bill.id]: e.target.value }))}
+                  onChange={(e) => setAmounts((current) => ({ ...current, [bill.id]: groupTypedAmount(e.target.value, billCurrency(bill)) }))}
                 />
               )
             }
@@ -243,7 +243,7 @@ export function PaySeveralSheet({
               inputMode="decimal"
               aria-label={`Charged in ${payerCurrencyOf(bill)} for ${bill.name}`}
               value={chargeShown(bill)}
-              onChange={(e) => setCharges((current) => ({ ...current, [bill.id]: e.target.value }))}
+              onChange={(e) => setCharges((current) => ({ ...current, [bill.id]: groupTypedAmount(e.target.value, payerCurrencyOf(bill)) }))}
               placeholder="Charged"
             />
           ))}

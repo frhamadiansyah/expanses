@@ -60,12 +60,12 @@ test('the card page keeps the tile, the buttons and the latest; fee, rewards and
   await expect(page.getByTestId('card-instalment')).toContainText('Laptop');
   await page.screenshot({ path: `${SHOTS}/card-page-new-4.png`, fullPage: true });
 
-  // Settings now counts it; the card page shows the box with its Add a plan row.
+  // Settings now counts it; the card page shows the box, with no Add a plan row (plans are added from Settings).
   await page.goBack();
   await expect(page.getByTestId('card-instalments-row')).toContainText('1 plan');
   await page.goBack();
   await expect(page.getByTestId('card-instalments')).toBeVisible();
-  await expect(page.getByTestId('card-instalments').getByRole('button', { name: 'Add a plan' })).toBeVisible();
+  await expect(page.getByTestId('card-instalments').getByRole('button', { name: 'Add a plan' })).toHaveCount(0);
   await page.screenshot({ path: `${SHOTS}/card-page-new-1.png`, fullPage: true });
 
   // The Points button opens the statement points page, with the programme's row on top.

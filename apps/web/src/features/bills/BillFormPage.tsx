@@ -1,5 +1,5 @@
-import { categoryPath, CURRENCIES, isoDate, minorToMajorString, monthName, ordinal, parseMajor, sinkingPlan } from '@expanses/core';
-import { saveExpenseTemplate } from '@expanses/db';
+import { categoryPath, currencyInfo, groupedMajorString, groupTypedAmount, isoDate, monthName, ordinal, parseGroupedMajor, sinkingPlan } from '@expanses/core';
+import { deleteExpenseTemplate, saveExpenseTemplate } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
@@ -7,10 +7,10 @@ import { useApp } from '../../app/context';
 import { canPayWith, SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, LargeTitle, PickerRow, SCREEN, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { DestructiveRow, InsetGroup, InsetRow, LargeTitle, PickerRow, SCREEN, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { CategoryPicker } from '../transactions/CategoryPicker';
+import { CurrencySheet } from '../transactions/CurrencySheet';
 import { useExpenseTemplates } from '../transactions/queries';
-import { amountInput } from './bill-view';
 import { PaidFromSheet, usePaidFromLabels } from './PaidFromSheet';
 import { useSinkingFunds } from './queries';
 
@@ -68,6 +68,7 @@ export function BillFormPage({ billId }: { billId?: string }) {
   const [loaded, setLoaded] = useState(false);
   const [pickingCategory, setPickingCategory] = useState(false);
   const [pickingPayer, setPickingPayer] = useState(false);
+  const [pickingCurrency, setPickingCurrency] = useState(false);
   const form = useRef<HTMLFormElement>(null);
 
   const chosen = (accounts.data ?? []).find((account) => account.id === categoryAccountId);
@@ -85,14 +86,14 @@ export function BillFormPage({ billId }: { billId?: string }) {
   );
   const parsedAmount = (() => {
     try {
-      return amount.trim() ? parseMajor(amount.trim(), billCurrency) : null;
+      return amount.trim() ? parseGroupedMajor(amount.trim(), billCurrency) : null;
     } catch {
       return null;
     }
   })();
   const parsedSaved = (() => {
     try {
-      return fundSaved.trim() ? parseMajor(fundSaved.trim(), billCurrency) : 0;
+      return fundSaved.trim() ? parseGroupedMajor(fundSaved.trim(), billCurrency) : 0;
     } catch {
       return 0;
     }
@@ -111,7 +112,7 @@ export function BillFormPage({ billId }: { billId?: string }) {
     setName(bill.name);
     // Written in the bill's own currency (else the paying account's), the one save parses it back in: a USD bill must not read as rupiah.
     const payer = accounts.data.find((account) => account.id === bill.moneyAccountId);
-    setAmount(amountInput(bill.amountMinor, bill.currency ?? payer?.currency ?? ws.baseCurrency));
+    setAmount(bill.amountMinor === null ? '' : groupedMajorString(bill.amountMinor, bill.currency ?? payer?.currency ?? ws.baseCurrency));
     setCurrency(bill.currency ?? '');
     setCategoryAccountId(bill.categoryAccountId);
     setMoneyAccountId(bill.moneyAccountId);
@@ -126,9 +127,9 @@ export function BillFormPage({ billId }: { billId?: string }) {
       setFundOn(true);
       setFundAccountId(fund.accountId);
       // A typed figure shows as typed; a worked-out one stays the placeholder, so an edit recalculates it.
-      setFundMonthly(fund.custom ? minorToMajorString(fund.monthlyMinor, fund.currency) : '');
+      setFundMonthly(fund.custom ? groupedMajorString(fund.monthlyMinor, fund.currency) : '');
       const opening = fund.entries.find((e) => e.kind === 'opening');
-      setFundSaved(opening ? minorToMajorString(opening.amountMinor, fund.currency) : '');
+      setFundSaved(opening ? groupedMajorString(opening.amountMinor, fund.currency) : '');
     }
     setLoaded(true);
   }, [billId, loaded, templates.data, accounts.data, funds.data, ws.baseCurrency]);
@@ -166,7 +167,7 @@ export function BillFormPage({ billId }: { billId?: string }) {
         name,
         categoryAccountId,
         moneyAccountId,
-        amountMinor: amount.trim() === '' ? null : parseMajor(amount.trim(), billCurrency),
+        amountMinor: amount.trim() === '' ? null : parseGroupedMajor(amount.trim(), billCurrency),
         currency: currency || null,
         repeat,
         repeatMonth: repeat === 'monthly' ? null : Number(month),
@@ -177,8 +178,8 @@ export function BillFormPage({ billId }: { billId?: string }) {
         fund: saving
           ? {
               accountId: fundAccountId,
-              monthlyMinor: fundMonthly.trim() === '' ? null : parseMajor(fundMonthly.trim(), billCurrency),
-              alreadySavedMinor: fundSaved.trim() === '' ? null : parseMajor(fundSaved.trim(), billCurrency),
+              monthlyMinor: fundMonthly.trim() === '' ? null : parseGroupedMajor(fundMonthly.trim(), billCurrency),
+              alreadySavedMinor: fundSaved.trim() === '' ? null : parseGroupedMajor(fundSaved.trim(), billCurrency),
             }
           : null,
       });
@@ -193,6 +194,20 @@ export function BillFormPage({ billId }: { billId?: string }) {
       // A new bill has no page yet to land on; an edit came from one, so Save returns to it.
       if (billId) await navigate({ to: '/bills/$billId', params: { billId } });
       else await navigate({ to: '/bills' });
+    } catch (e) {
+      setError(e);
+    }
+  }
+
+  async function stop() {
+    if (!billId) return;
+    // Keeps every payment and skip on record; it just stops asking for the next one.
+    if (!window.confirm(`Stop ${name}? Its payments stay in the history.`)) return;
+    setError(null);
+    try {
+      await deleteExpenseTemplate(database, ws, billId);
+      await invalidate();
+      await navigate({ to: '/bills' });
     } catch (e) {
       setError(e);
     }
@@ -223,22 +238,12 @@ export function BillFormPage({ billId }: { billId?: string }) {
           <ErrorBox error={error ?? templates.error} />
           <InsetGroup>
             <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Bill name" />
-            <SelectRow
-              label="Currency"
-              value={billCurrency}
-              // Picking the paying account's own currency goes back to following it, so a later change of account carries the bill along.
-              onChange={(e) => setCurrency(e.target.value === payerCurrency ? '' : e.target.value)}
-            >
-              {CURRENCIES.map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.code} — {c.name}
-                </option>
-              ))}
-            </SelectRow>
+            <PickerRow label="Currency" value={billCurrency} onOpen={() => setPickingCurrency(true)} />
             <TextRow
               label="Amount"
+              prefix={billCurrency}
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => setAmount(groupTypedAmount(e.target.value, billCurrency))}
               inputMode="decimal"
               placeholder="Amount"
               info="Leave it empty when it changes every month, like electricity. It will be asked for each time."
@@ -328,8 +333,9 @@ export function BillFormPage({ billId }: { billId?: string }) {
               {fundOn && (
                 <TextRow
                   label="Already saved"
+                  prefix={billCurrency}
                   value={fundSaved}
-                  onChange={(e) => setFundSaved(e.target.value)}
+                  onChange={(e) => setFundSaved(groupTypedAmount(e.target.value, billCurrency))}
                   inputMode="decimal"
                   placeholder="Amount"
                   info="Money already put by for this bill. It counts toward the amount and is set aside in the account chosen below."
@@ -338,10 +344,11 @@ export function BillFormPage({ billId }: { billId?: string }) {
               {fundOn && (
                 <TextRow
                   label="Each month"
+                  prefix={billCurrency}
                   value={fundMonthly}
-                  onChange={(e) => setFundMonthly(e.target.value)}
+                  onChange={(e) => setFundMonthly(groupTypedAmount(e.target.value, billCurrency))}
                   inputMode="decimal"
-                  placeholder={worked === null ? 'Amount' : minorToMajorString(worked, billCurrency)}
+                  placeholder={worked === null ? 'Amount' : groupedMajorString(worked, billCurrency)}
                   info="Worked out from the amount and the months left. Type another amount to override."
                 />
               )}
@@ -361,9 +368,33 @@ export function BillFormPage({ billId }: { billId?: string }) {
           <InsetGroup>
             <InsetRow title="Cancel" action to={backTo} params={backParams} />
           </InsetGroup>
+
+          {/* Loses nothing — every payment stays in the history — so it is drawn calm, not in the alarm's red. */}
+          {billId && (
+            <InsetGroup>
+              <DestructiveRow calm label="Stop this bill" onClick={() => void stop()} />
+            </InsetGroup>
+          )}
         </form>
       )}
       {/* The same searchable tree as Add transaction; a bill is recorded into the open book, which the picker already honours. */}
+      {pickingCurrency && (
+        <CurrencySheet
+          value={billCurrency}
+          accountCurrency={payerCurrency}
+          baseCurrency={ws.baseCurrency}
+          // Picking the paying account's own currency goes back to following it, so a later change of account carries the bill along.
+          onPick={(code) => {
+            // The typed figure is regrouped for the new currency, so a currency without cents drops them.
+            const regroup = (typed: string) => groupTypedAmount(currencyInfo(code).exponent === 0 ? typed.split(',')[0]! : typed, code);
+            setAmount(regroup);
+            setFundSaved(regroup);
+            setFundMonthly(regroup);
+            setCurrency(code === payerCurrency ? '' : code);
+          }}
+          onClose={() => setPickingCurrency(false)}
+        />
+      )}
       {pickingPayer && <PaidFromSheet accounts={wallets} value={moneyAccountId} onPick={setMoneyAccountId} onClose={() => setPickingPayer(false)} />}
       {pickingCategory && (
         <CategoryPicker kind="expense" lockKind title="Category" value={categoryAccountId || undefined} onPick={setCategoryAccountId} onClose={() => setPickingCategory(false)} />
