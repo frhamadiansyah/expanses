@@ -8,7 +8,7 @@ import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { type GroupChild, InsetGroup, InsetRow, ProgressBar, ReadOnlyRow, SwitchRow, TextRow } from '../../ui/native';
 import { ALERT_ROW, NoticeAlert } from '../../ui/native/NoticeAlert';
-import { ActionRow, Line, SUBTITLE, TextLine, TITLE } from '../cards/rows';
+import { Line, SUBTITLE, TextLine, TITLE } from '../cards/rows';
 import { blankPlanForm, type PlanForm, planFields, planFormOf } from './plan-form';
 import { useInstallments } from './queries';
 
@@ -160,7 +160,7 @@ export function usePlanEditor(cardAccountId: string, currency: string) {
 /**
  * Instalment plans on one card, on its page under this statement's points. The purchase was spending on the day it
  * happened; these rows only say how much of it the card has billed so far, how much it still holds of the limit, and
- * how far through its months it is — with the way to add a plan the issuer made, to change one, and to remove one.
+ * how far through its months it is — with the way to change one and to remove one. A plan is added from the card's Settings, under Instalments.
  */
 export function InstallmentList({ cardAccountId, currency }: { cardAccountId: string; currency: string }) {
   const plans = useInstallments(cardAccountId);
@@ -176,7 +176,6 @@ export function InstallmentList({ cardAccountId, currency }: { cardAccountId: st
         {list.map((plan) => (
           <InstallmentRow key={plan.id} plan={plan} currency={currency} today={today} onOpen={() => editor.open(plan)} />
         ))}
-        <ActionRow label="Add a plan" onClick={() => editor.open('new')} />
       </InsetGroup>
       {editor.node}
     </div>

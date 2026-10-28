@@ -22,6 +22,7 @@ test('menu navigation between a card page and the cards list keeps working', asy
 
   await menu(page, 'Wallet');
   await page.getByRole('link', { name: 'Only Card' }).first().click();
+  await expect(page.getByTestId('card-setup')).toHaveCount(0);
   await menu(page, 'Wallet');
   await expect(page.getByRole('heading', { name: 'Wallet', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Only Card' }).first()).toBeVisible();

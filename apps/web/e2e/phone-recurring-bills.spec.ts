@@ -97,12 +97,15 @@ test('select mode puts a pay bar above the tab bar, and swipes rest while it is 
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
   await page.getByRole('checkbox', { name: 'Select Internet' }).click();
-  const bar = page.getByRole('button', { name: /^Pay \d selected/ });
+  // Cashflow's select mode: a bar at the top, ✕ to leave, the count, and a ⋯ whose menu holds the action.
+  const bar = page.getByTestId('select-bar');
   await expect(bar).toBeVisible();
-  const tabs = (await page.getByRole('navigation', { name: 'Main' }).boundingBox())!;
+  await expect(bar).toContainText('2 selected');
   const barBox = (await bar.boundingBox())!;
-  expect(barBox.y + barBox.height).toBeLessThanOrEqual(tabs.y);
-  expect(barBox.height).toBeGreaterThanOrEqual(TAP);
-  await page.getByRole('button', { name: 'Done' }).click();
+  expect(barBox.y).toBeLessThanOrEqual(1);
+  await page.getByRole('button', { name: 'Actions' }).click();
+  await expect(page.getByRole('menuitem', { name: /^Pay 2 selected/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Actions' }).click();
+  await page.getByRole('button', { name: 'Cancel selection' }).click();
   await expect(bar).toHaveCount(0);
 });

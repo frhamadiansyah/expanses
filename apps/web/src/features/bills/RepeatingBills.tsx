@@ -8,6 +8,8 @@ import { Money } from '../../ui';
 import { GROUP_GAP, GROUP_RADIUS, InsetGroup, InsetRow, Panel, PanelHeader, ROW_PAD_X, ROW_PAD_Y, rowHeight } from '../../ui/native';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { billCurrencyOf } from './bill-view';
+import type { AnnualFee } from '../cards/fee-due';
+import { FeeRow } from './FeeRow';
 import type { RepeatingNeeds } from './repeating-needs';
 import { nextDateOf } from './YearlyBillsPage';
 
@@ -23,11 +25,13 @@ export function RepeatingHero({ needs, currency }: { needs: RepeatingNeeds; curr
           <Money minor={totalMinor} currency={currency} />
         </p>
         {/* The second line the Monthly hero has too, so the two cards are the same shape when the slider moves. */}
-        {needs.bills.length > 0 && totalMinor > 0 && (
+        {needs.bills.length > 0 && totalMinor > 0 ? (
           <p className="tabular text-[13px] leading-[17px] text-[var(--ph-ink-3)]" data-testid="needed-year">
             {needs.approximate && '≈ '}
             <Money minor={totalMinor * 12} currency={currency} /> a year
           </p>
+        ) : (
+          <span aria-hidden className="block h-[17px]" />
         )}
       </div>
       {needs.bills.length === 0 ? (
@@ -39,7 +43,7 @@ export function RepeatingHero({ needs, currency }: { needs: RepeatingNeeds; curr
               <span className="block h-full" style={{ width: `${(fundedMinor / totalMinor) * 100}%`, background: 'var(--ph-up)' }} />
               <span className="block h-full" style={{ width: `${(unfundedMinor / totalMinor) * 100}%`, background: 'var(--ph-warn)' }} />
             </span>
-            <ul className="flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="repeating-legend">
+            <ul className="flex min-h-[78px] flex-col text-[12.5px] leading-[26px] text-[var(--ph-ink-3)]" data-testid="repeating-legend">
               {fundedMinor > 0 && <KeyItem colour="var(--ph-up)" label="Set aside" minor={fundedMinor} currency={currency} />}
               {unfundedMinor > 0 && <KeyItem colour="var(--ph-warn)" label="Not set aside" minor={unfundedMinor} currency={currency} />}
             </ul>
@@ -52,7 +56,7 @@ export function RepeatingHero({ needs, currency }: { needs: RepeatingNeeds; curr
 
 function KeyItem({ colour, label, minor, currency }: { colour: string; label: string; minor: number; currency: string }) {
   return (
-    <li className="flex items-center gap-[6px]">
+    <li className="flex h-[26px] items-center gap-[6px]">
       <span aria-hidden className="block h-2 w-2 rounded-full" style={{ background: colour }} />
       {label}{' '}
       <span className="tabular text-[var(--ph-ink-2)]">
@@ -121,6 +125,24 @@ export function RepeatingList({ bills, needs }: { bills: readonly MonthlyBill[];
           </div>
         );
       })}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Each credit card's annual fee, drawn as the Monthly page's fee row is. Information only: nothing here is added to the
+ * hero's need, because a fee is often waived. A tap asks whether it was.
+ */
+export function AnnualFees({ fees, onOpen }: { fees: readonly AnnualFee[]; onOpen: (fee: AnnualFee) => void }) {
+  if (fees.length === 0) return null;
+  return (
+    <section className="md:max-w-2xl" style={{ marginBottom: GROUP_GAP }} data-testid="annual-fees">
+      <PanelHeader title="Annual fees" />
+      <div className="bg-[var(--ph-surface)]" style={{ borderRadius: GROUP_RADIUS, overflow: 'hidden' }}>
+        {fees.map((fee, index) => (
+          <FeeRow key={fee.card.cardId} fee={fee} separator={index > 0} onOpen={() => onOpen(fee)} />
+        ))}
       </div>
     </section>
   );

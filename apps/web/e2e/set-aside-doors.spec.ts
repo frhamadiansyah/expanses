@@ -155,7 +155,8 @@ test('paying several bills asks once for what they take together, spread over th
   await page.getByRole('button', { name: 'Select bills to pay' }).click();
   await page.getByRole('checkbox', { name: 'Select Rent' }).click();
   await page.getByRole('checkbox', { name: 'Select School' }).click();
-  await page.getByRole('button', { name: /^Pay 2 selected/ }).click();
+  await page.getByRole('button', { name: 'Actions' }).click();
+  await page.getByRole('menuitem', { name: /^Pay 2 selected/ }).click();
 
   const sheet = page.getByRole('dialog', { name: 'Pay several' });
   await expect(sheet.getByText(/2\.000\.000 more than is free/)).toBeVisible();
@@ -175,7 +176,8 @@ test('paying several bills with "Yes" counts the whole paid total against the go
   await page.getByRole('button', { name: 'Select bills to pay' }).click();
   await page.getByRole('checkbox', { name: 'Select Rent' }).click();
   await page.getByRole('checkbox', { name: 'Select School' }).click();
-  await page.getByRole('button', { name: /^Pay 2 selected/ }).click();
+  await page.getByRole('button', { name: 'Actions' }).click();
+  await page.getByRole('menuitem', { name: /^Pay 2 selected/ }).click();
 
   const sheet = page.getByRole('dialog', { name: 'Pay several' });
   await expect(sheet.getByText(/2\.000\.000 more than is free/)).toBeVisible();

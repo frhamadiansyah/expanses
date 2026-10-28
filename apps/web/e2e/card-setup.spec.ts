@@ -6,6 +6,9 @@ test('a new card: Settings holds its terms, then its rewards are set up by hand 
   // The card's own page is where a card taken from the catalogue is finished; this one is typed by hand.
   await openCard(page, { name: 'Step Card' });
 
+  // The card's page carries no setup warning; the steps are done in the card's Settings.
+  await expect(page.getByTestId('card-setup')).toHaveCount(0);
+
   await page.getByRole('navigation').getByRole('link', { name: 'Wallet', exact: true }).click();
   const cardRow = page.getByRole('region', { name: 'Cards' });
   await expect(cardRow).toContainText('Add billing date to see points');

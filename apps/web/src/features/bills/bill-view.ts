@@ -181,6 +181,34 @@ export function pillOf(bill: Pick<MonthlyBill, 'state' | 'days' | 'window' | 'pa
 }
 
 /**
+ * The line under the amount on a bill's own page: where the bill stands, then its dates. The standing is the pill's own
+ * wording (`pillOf`), now written in the line rather than in a pill; only a late or soon bill's words take a colour.
+ * A bill not out yet reads "Due 10 Nov 2026 · opens 5 Nov"; a late one "Overdue 18 days · due 10 Oct 2026".
+ */
+export function heroLineOf(
+  bill: Pick<MonthlyBill, 'state' | 'days' | 'window' | 'paidOn'>,
+  windowText: string,
+): { lead: string | null; tone: 'alarm' | 'warn' | 'ink-3'; rest: string } {
+  const { text } = pillOf(bill);
+  const { payBy, opensOn } = bill.window;
+  const due = `${dayMonth(payBy)} ${payBy.slice(0, 4)}`;
+  switch (bill.state) {
+    case 'overdue':
+      return { lead: text, tone: 'alarm', rest: `due ${due}` };
+    case 'dueSoon':
+      return { lead: text, tone: 'warn', rest: `due ${due}` };
+    case 'upcoming':
+      return { lead: null, tone: 'ink-3', rest: opensOn === payBy ? windowText : `Due ${due} · opens ${dayMonth(opensOn)}` };
+    case 'paid':
+    case 'skipped':
+    case 'paused':
+      return { lead: text, tone: 'ink-3', rest: windowText };
+    default:
+      return { lead: null, tone: 'ink-3', rest: windowText };
+  }
+}
+
+/**
  * The small line under a row's amount: how late, how soon, or the day it is due — the same states the pill names,
  * in fewer words. Late in alarm, soon in warning, the rest quiet.
  */

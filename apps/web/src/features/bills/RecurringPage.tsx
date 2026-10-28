@@ -1,7 +1,7 @@
 import { isoDate } from '@expanses/core';
 import { type MonthlyBill, skipBill, undoBillPayments, unskipBill } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
-import { Check, ListChecks, Plus } from 'lucide-react';
+import { ListChecks, Plus } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useBackToCashflow, useFrom } from '../../app/from-search';
@@ -9,16 +9,20 @@ import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox, Money } from '../../ui';
 import { type CornerAction, GROUP_GAP, GROUP_RADIUS, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, PushedTitle, SCREEN } from '../../ui/native';
 import { BillRow } from './BillRow';
+import { useInstallments } from '../loans/queries';
+import { instalmentLines } from './instalment-rows';
+import { MonthlyInstalments } from './MonthlyInstalments';
+import { PaySelectedBar } from './PaySelectedBar';
 import { MonthlyBuys } from './MonthlyBuys';
 import { amountOf, billCurrencyOf, billsInReadCurrency, type BillSummary, isToPay, paidText, pausedOf, sectionsOf, settledOf, skippedText, summaryOf } from './bill-view';
 import { HeroSlider } from './HeroSlider';
-import { RepeatingHero, RepeatingList } from './RepeatingBills';
+import { AnnualFees, RepeatingHero, RepeatingList } from './RepeatingBills';
 import { nextDateOf } from './YearlyBillsPage';
 import { repeatingNeeds } from './repeating-needs';
 import { PaySeveralSheet } from './PaySeveralSheet';
 import { PaySheet } from './PaySheet';
 import { useBillMoney, useMonthlyBills, useSinkingFunds, useYearlyBills } from './queries';
-import { type DueFee, useUpcomingFees } from '../cards/fee-due';
+import { type DueFee, useAnnualFees, useUpcomingFees } from '../cards/fee-due';
 import { FeeAlert } from '../cards/FeeAlert';
 import { FeeRow } from './FeeRow';
 import { Unconverted } from '../workspaces/Unconverted';
@@ -62,10 +66,13 @@ function StillToPay({ summary, currency }: { summary: BillSummary; currency: str
           {summary.approximate && <span className="text-[var(--ph-ink-3)]">≈ </span>}
           <Money minor={summary.totalMinor} currency={currency} />
         </p>
-        {summary.paidMinor > 0 && (
+        {summary.paidMinor > 0 ? (
           <p className="tabular text-[13px] leading-[17px] text-[var(--ph-ink-3)]" data-testid="bills-month-total">
             of <Money minor={summary.monthTotalMinor} currency={currency} /> this month
           </p>
+        ) : (
+          /* The line's place is kept, so this card is as tall as the Repeating one it slides to. */
+          <span aria-hidden className="block h-[17px]" />
         )}
       </div>
       {total > 0 && (
@@ -76,9 +83,10 @@ function StillToPay({ summary, currency }: { summary: BillSummary; currency: str
               <span key={part.key} className="block h-full" style={{ width: `${(part.minor / total) * 100}%`, background: PART_COLOUR[part.key] }} />
             ))}
           </span>
-          <ul className="flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="bills-legend">
+          {/* Three lines are kept whatever is shown, the most this legend has: the Repeating hero keeps the same, so sliding between them never changes the card. */}
+          <ul className="flex min-h-[78px] flex-col text-[12.5px] leading-[26px] text-[var(--ph-ink-3)]" data-testid="bills-legend">
             {summary.parts.map((part) => (
-              <li key={part.key} className="flex items-center gap-[6px]">
+              <li key={part.key} className="flex h-[26px] items-center gap-[6px]">
                 <span aria-hidden className="block h-2 w-2 rounded-full" style={{ background: PART_COLOUR[part.key] }} />
                 {part.label}{' '}
                 <span className="tabular text-[var(--ph-ink-2)]">
@@ -88,7 +96,7 @@ function StillToPay({ summary, currency }: { summary: BillSummary; currency: str
               </li>
             ))}
             {summary.paidMinor > 0 && (
-              <li className="flex items-center gap-[6px]">
+              <li className="flex h-[26px] items-center gap-[6px]">
                 <span aria-hidden className="block h-2 w-2 rounded-full" style={{ background: PAID_COLOUR }} />
                 Paid{' '}
                 <span className="tabular text-[var(--ph-ink-2)]">
@@ -120,6 +128,8 @@ export function RecurringPage() {
   const yearly = useYearlyBills(today);
   const funds = useSinkingFunds(today);
   const fees = useUpcomingFees(today);
+  const annualFees = useAnnualFees(today);
+  const plans = useInstallments();
   const [askingFee, setAskingFee] = useState<DueFee | null>(null);
   const accounts = useAccounts().data ?? [];
   const rows = bills.data ?? [];
@@ -234,8 +244,9 @@ export function RecurringPage() {
 
   const title = selecting ? `${picked.size} selected` : 'Recurring';
   // Glyphs at every width, with the names they always had: a screen reader and a test still hear "New bill".
+  // While selecting, the bar over the title row holds the ✕ and the action, as Cashflow's does; the title has none of its own.
   const actions: CornerAction[] = selecting
-    ? [{ key: 'done', label: 'Done', glyph: <Check size={22} aria-hidden />, run: doneSelecting }]
+    ? []
     : [
         ...(page === 0 ? [{ key: 'select', label: 'Select bills to pay', glyph: <ListChecks size={20} aria-hidden />, run: () => setSelecting(true) }] : []),
         { key: 'new', label: 'New bill', glyph: <Plus size={22} aria-hidden />, to: '/bills/new' },
@@ -268,6 +279,7 @@ export function RecurringPage() {
       />
 
       {page === 1 && <RepeatingList bills={yearly.data ?? []} needs={needs} />}
+      {page === 1 && <AnnualFees fees={annualFees} onOpen={(fee) => setAskingFee(fee.card)} />}
 
       {page === 0 && bills.isSuccess && rows.length === 0 && (
         <InsetGroup>
@@ -296,7 +308,6 @@ export function RecurringPage() {
           </section>
         ));
       })()}
-      {askingFee && <FeeAlert fee={askingFee} today={today} onClose={() => setAskingFee(null)} />}
 
       {/* Paused bills come out for nothing this month: a group of their own, under the ones to pay. */}
       {pausedOf(rows).length > 0 && (
@@ -318,29 +329,38 @@ export function RecurringPage() {
         </section>
       )}
 
+      {/* Card instalment plans still running: read-only, after the last bill group, in no total (they go with the statement). */}
+      <MonthlyInstalments lines={instalmentLines(plans.data ?? [], accounts, ws.baseCurrency, today)} />
+
       {/* The month's regular buys, set on each holding's own page: due ones with Record, bought ones with the day. */}
       <MonthlyBuys />
 
         </>
       )}
 
-      {page === 0 && selecting && picked.size > 0 && (() => {
+      {page === 0 && selecting && !payingSeveral && (() => {
         const chosen = readRows.filter((b) => picked.has(b.id));
         const approximate = chosen.some((b) => b.amountMinor === null);
         return (
-          <button
-            type="button"
-            onClick={() => setPayingSeveral(true)}
-            className="ph-focus fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-30 mx-auto flex min-h-12 max-w-md items-center justify-between rounded-[14px] bg-[var(--ph-tint)] px-4 text-[15px] font-semibold text-[var(--ph-surface)] shadow-lg md:sticky md:bottom-6 md:mt-4 md:w-full"
-          >
-            <span>Pay {picked.size} selected</span>
-            <span className="tabular">
-              {approximate && '~'}
-              <Money minor={chosen.reduce((s, b) => s + amountOf(b), 0)} currency={readCurrency} /> ›
-            </span>
-          </button>
+          <PaySelectedBar
+            count={picked.size}
+            onPay={() => setPayingSeveral(true)}
+            onCancel={doneSelecting}
+            pay={
+              <>
+                <span>Pay {picked.size} selected</span>
+                <span className="tabular text-[var(--ph-ink-3)]">
+                  {approximate && '~'}
+                  <Money minor={chosen.reduce((s, b) => s + amountOf(b), 0)} currency={readCurrency} />
+                </span>
+              </>
+            }
+          />
         );
       })()}
+
+      {/* The fee question opens from either page: Due soon on Monthly, Annual fees on Repeating. */}
+      {askingFee && <FeeAlert fee={askingFee} today={today} onClose={() => setAskingFee(null)} />}
 
       {toast && <UndoToast text={toast.text} onUndo={() => void undo()} onDone={clearToast} />}
 
