@@ -97,12 +97,10 @@ test('a set category can be renamed, and archiving it leaves the set', async ({ 
 test('an event can be called done, and put back', async ({ page }) => {
   await addEvent(page, 'Lebaran', 'Holiday');
 
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Mark as done', exact: true }).click();
-  // The page no longer prints a Done chip: the menu says it (Reopen), and the list below.
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await expect(page.getByRole('menuitem', { name: 'Reopen', exact: true })).toBeVisible();
-  await page.keyboard.press('Escape');
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Done' }).click();
+  // The page no longer prints a Done chip: the settings switch says it, and the list below.
+  await expect(page.getByRole('checkbox', { name: 'Done' })).toBeChecked();
 
   // Done moves it under Past on the list, not out of the workspace.
   await page.goto('/events');
@@ -112,11 +110,9 @@ test('an event can be called done, and put back', async ({ page }) => {
 
   // Reopening puts it back among what is still running.
   await past.getByTestId('event-row').click();
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Reopen', exact: true }).click();
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await expect(page.getByRole('menuitem', { name: 'Mark as done', exact: true })).toBeVisible();
-  await page.keyboard.press('Escape');
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Done' }).click();
+  await expect(page.getByRole('checkbox', { name: 'Done' })).not.toBeChecked();
   await page.goto('/events');
   const current = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Now and next' }) });
   await expect(current.getByTestId('event-row')).toContainText('Lebaran');
