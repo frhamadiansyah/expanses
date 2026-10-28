@@ -1,4 +1,4 @@
-import { formatMinor } from '@expanses/core';
+import { eventCurrency, formatMinor } from '@expanses/core';
 import { setEventItemDone, type AccountRow } from '@expanses/db';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Check, Plus } from 'lucide-react';
@@ -10,7 +10,7 @@ import { InsetGroup, InsetRow, toneClass, type CornerAction, type Tone, PushedTi
 import { GROUP_RADIUS } from '../../ui/native/metrics';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { buyTarget } from './buy-item';
-import { differenceWords, plannedLabel, planTotals, quantityWords } from './plan-view';
+import { differenceWords, itemFigure, itemSubtitle, noRateWords, plannedLabel, planInEvent } from './plan-view';
 import { useEventItemsReady, useEventPlan, useEvents } from './queries';
 
 /** The kit's tones for what a difference is. The words themselves are `differenceWords`'. */
@@ -133,6 +133,9 @@ function PlanCategoryCard({
  * An event's plan, as a checklist: how many are bought and what is left to buy on top, then a card per category —
  * its header what was paid of what it plans, its items still to buy first and bought after, greyed.
  *
+ * The plan is read in the event's currency (the workspace's own when the event has none): an item priced in another
+ * currency shows its own price, and its estimate at the day's rate with ≈. The base equivalent sits under the total.
+ *
  * Only the plan is here. Spending nobody planned, and money that came back, are on the event's own page, under the
  * chart of everything it spent: this screen is the list of things to buy and nothing else.
  */
@@ -177,9 +180,10 @@ export function PlanPage() {
   }
 
   const data = plan.data;
-  const totals = data ? planTotals(data) : null;
+  const home = eventCurrency(event?.currency, ws.baseCurrency);
+  const totals = data ? planInEvent(data, home, ws.baseCurrency) : null;
   // Worked out once rather than at each of the two places it is read: the words and the tone are one reading.
-  const difference = data && data.boughtCount > 0 ? differenceWords(data.differenceMinor, ws.baseCurrency) : null;
+  const difference = data && data.boughtCount > 0 ? differenceWords(totals!.differenceMinor, home) : null;
   const search = { ws: tab };
   const addLabel = 'Add an item';
   const add: CornerAction = {
@@ -190,7 +194,7 @@ export function PlanPage() {
     params: { eventId },
     search,
   };
-  const rp = (minor: number) => formatMinor(minor, ws.baseCurrency);
+  const rp = (minor: number) => formatMinor(minor, home);
 
   return screen(
     <>
@@ -247,7 +251,7 @@ export function PlanPage() {
                   </span>
                   <span data-testid="plan-planned" className="mt-2 text-[12.5px] leading-4 text-[var(--ph-ink-3)]">
                     {plannedLabel(data)} {rp(totals.plannedMinor)}
-                    {totals.boughtActualMinor > 0 && ` · Bought ${rp(totals.boughtActualMinor)}`}
+                    {totals.boughtMinor > 0 && ` · Bought ${rp(totals.boughtMinor)}`}
                     {difference && (
                       <>
                         {' · '}
@@ -255,6 +259,16 @@ export function PlanPage() {
                       </>
                     )}
                   </span>
+                  {totals.baseEquivalentMinor !== null && (
+                    <span data-testid="plan-in-base" className="tabular mt-1 text-[12.5px] leading-4 text-[var(--ph-ink-3)]">
+                      In {ws.baseCurrency} ≈ {formatMinor(totals.baseEquivalentMinor, ws.baseCurrency)}
+                    </span>
+                  )}
+                  {totals.missingRates.length > 0 && (
+                    <span data-testid="plan-no-rate" className="mt-1 text-[12.5px] leading-4 text-[var(--ph-warn)]">
+                      {noRateWords(totals.missingRates)}
+                    </span>
+                  )}
                 </div>
               </InsetGroup>
             </div>
@@ -267,7 +281,7 @@ export function PlanPage() {
             {(data.lines ?? [])
               .filter((line) => line.items.length > 0)
               .map((line) => {
-                const paid = line.items.reduce((total, item) => total + (item.actualMinor ?? 0), 0);
+                const paid = line.items.reduce((total, item) => total + (item.paidEventMinor ?? 0), 0);
                 const ordered = [...line.items.filter((item) => !item.bought), ...line.items.filter((item) => item.bought)];
                 return (
                   <PlanCategoryCard
@@ -277,22 +291,18 @@ export function PlanPage() {
                     itemCount={line.items.length}
                     boughtCount={line.items.filter((item) => item.bought).length}
                     paid={rp(paid)}
-                    planned={rp(line.plannedMinor)}
+                    planned={rp(line.plannedEventMinor)}
                     accounts={accounts}
                   >
                     {ordered.map((item) => {
-                      const words = item.bought ? differenceWords(item.differenceMinor!, ws.baseCurrency) : null;
-                      const many = quantityWords(item, ws.baseCurrency);
-                      // Paid towards but still open: what was paid against what was planned, and how many payments made it.
-                      const partly = !item.bought && item.purchaseCount > 0 ? `of ${rp(item.estimateMinor)} · ${item.purchaseCount} ${item.purchaseCount === 1 ? 'purchase' : 'purchases'}` : null;
                       return (
                         <PlanItemRow
                           key={item.id}
                           eventId={eventId}
                           itemId={item.id}
                           name={item.name}
-                          subtitle={[item.bought ? many : null, item.bought ? (words?.text ?? null) : (partly ?? many)].filter(Boolean).join(' · ')}
-                          figure={rp(item.actualMinor ?? item.estimateMinor)}
+                          subtitle={itemSubtitle(item, home, ws.baseCurrency)}
+                          figure={itemFigure(item, home, ws.baseCurrency)}
                           state={item.done ? 'done' : item.purchaseCount > 0 ? 'paid' : 'open'}
                           search={search}
                           onBuy={() => void navigate(buyTarget(eventId, item.id, tab))}

@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { buyItNow, expectCover, expectPlanHero, fillItem, TODAY, showPlanCard } from './event-plan';
+import { buyItNow, chooseCategory, expectCover, expectPlanHero, fillItem, TODAY, showPlanCard } from './event-plan';
 import { addTransaction } from './add-transaction';
 
 /*
@@ -90,7 +90,7 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
   await page.getByLabel('What', { exact: true }).fill('Muslin wraps');
   await page.getByLabel('How many').fill('4');
   await page.getByLabel('Price each').fill('175000');
-  await page.getByLabel('Category').selectOption({ label: 'Food and beverage' });
+  await chooseCategory(page, 'Food and beverage');
   await expect(page.getByLabel('Estimate')).toHaveValue(/700\.000/);
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByTestId('plan-item').filter({ hasText: 'Muslin wraps' })).toContainText('4 × Rp 175.000');

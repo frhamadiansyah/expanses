@@ -1,16 +1,20 @@
-import { formatMinor, minorToMajorString, parseMajor } from '@expanses/core';
-import { listEventItems, saveEventItem } from '@expanses/db';
+import { CURRENCIES, eventCurrency, formatMinor, isoDate, minorToMajorString, parseMajor } from '@expanses/core';
+import { type AccountRow, listEventItems, saveEventItem } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
-import { InsetGroup, LargeTitle, ReadOnlyRow, SelectRow, TextRow, type CornerAction, PushedTitle } from '../../ui/native';
+import { cx } from '../../ui';
+import { InsetGroup, InsetRow, LargeTitle, TextRow, type CornerAction, type GroupChild, PushedTitle } from '../../ui/native';
+import { Sheet } from '../../app/Sheet';
+import { CategoryIcon } from '../categories/CategoryIcon';
+import { CurrencySheet } from '../transactions/CurrencySheet';
 import { useCategorySetMembership, useSetCategories } from '../categories/set-queries';
 import { useCategoryWorkspaces } from '../workspaces/queries';
-import { afterSaving, itemFormGate } from './plan-view';
-import { useEventItemsReady, useEventPlan, useEvents } from './queries';
+import { itemFormGate } from './plan-view';
+import { useEventItemsReady, useEventPlan, useEvents, usePlanConverter } from './queries';
 
 export function NewItemRoute() {
   const { eventId } = useParams({ from: '/events/$eventId/plan/new' });
@@ -43,17 +47,111 @@ function minorOf(typed: string, currency: string): number {
 const wholeOf = (typed: string) => (/^\d+$/.test(typed.trim()) ? Number(typed.trim()) : 0);
 
 /**
+ * The estimate, as a total rather than a field: a heavier hairline above it, its label small and quiet, its figure bold.
+ * It is still an input — read-only, out of the tab order — so it keeps the label it is found by and a figure a test can
+ * read off the form, but nothing about it invites typing.
+ */
+function EstimateRow({ value }: GroupChild & { value: string }) {
+  return (
+    <div className="flex items-center gap-3 border-t border-[var(--ph-hair)] px-[13px]" style={{ minHeight: 44 }}>
+      <label htmlFor="item-estimate" className="shrink-0 text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">
+        Estimate
+      </label>
+      <input
+        id="item-estimate"
+        value={value}
+        readOnly
+        tabIndex={-1}
+        className="tabular min-w-0 flex-1 cursor-default border-0 bg-transparent p-0 text-right text-[17px] leading-[22px] font-bold text-[var(--ph-ink)] outline-none"
+      />
+    </div>
+  );
+}
+
+/**
+ * The category row: the category's mark and name at the right, "Not in a category" in grey when empty. A tap opens a
+ * sheet holding the plan's categories as a grid of marks; one tap picks and closes.
+ */
+function CategoryPickRow({
+  categoryId,
+  name,
+  accounts,
+  onOpen,
+  position,
+}: GroupChild & { categoryId: string; name: string | null; accounts: readonly AccountRow[]; onOpen: () => void }) {
+  return (
+    <InsetRow
+      position={position}
+      title="Category"
+      plain
+      label={`Category, ${name ?? 'Not in a category'}`}
+      onClick={onOpen}
+      value={
+        name ? (
+          <span className="inline-flex items-center gap-2">
+            <CategoryIcon categoryId={categoryId} accounts={accounts} size="row" />
+            {name}
+          </span>
+        ) : (
+          'Not in a category'
+        )
+      }
+      valueTone={name ? 'ink' : 'ink-3'}
+    />
+  );
+}
+
+function CategorySheet({
+  options,
+  current,
+  accounts,
+  onPick,
+  onClose,
+}: {
+  options: readonly { id: string; name: string }[];
+  current: string;
+  accounts: readonly AccountRow[];
+  onPick: (id: string) => void;
+  onClose: () => void;
+}) {
+  const choose = (id: string) => {
+    onPick(id);
+    onClose();
+  };
+  const tile = 'ph-focus flex flex-col items-center gap-[5px] rounded-xl px-1 py-[6px] active:bg-[var(--ph-fill)]';
+  return (
+    <Sheet title="Category" grouped onClose={onClose}>
+      <div className="grid max-h-[55vh] grid-cols-4 gap-x-[6px] gap-y-[10px] overflow-y-auto px-1 pb-2">
+        {options.map((option) => (
+          <button key={option.id} type="button" aria-label={option.name} aria-current={option.id === current} onClick={() => choose(option.id)} className={cx(tile, option.id === current && 'bg-[var(--ph-fill)]')}>
+            <CategoryIcon categoryId={option.id} accounts={accounts} size="tile" />
+            <span className="line-clamp-2 text-center text-[11.5px] leading-[14px] break-words text-[var(--ph-ink-2)]">{option.name}</span>
+          </button>
+        ))}
+        <button type="button" aria-label="None" aria-current={current === ''} onClick={() => choose('')} className={cx(tile, current === '' && 'bg-[var(--ph-fill)]')}>
+          <span aria-hidden className="h-11 w-11 rounded-full bg-[var(--ph-fill)]" />
+          <span className="text-center text-[11.5px] leading-[14px] text-[var(--ph-ink-2)]">None</span>
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/**
  * The form that makes one thing to buy, and the same form that edits it.
  *
  * There is no estimate field. The estimate is how many × price each, shown read-only beside them as they are typed —
  * a figure someone could type would be a third number free to disagree with the two that make it.
+ *
+ * The price is in a currency of its own, starting at the event's. An item typed in another currency than the event's
+ * shows its estimate at the day's rate with ≈ (where a rate is stored); one with no rate shows its own figure.
  *
  * An edit carries the item's id through to `saveEventItem`, which updates that row in place. Leaving the id out
  * appends a second item instead, which is exactly how the interim card this screen replaces silently doubled a
  * category's planned figure. Here the whole list sits on the screen behind this form, so a duplicate could not hide —
  * but the id is passed all the same, because being visible is not the same as being right.
  *
- * Drawn with the native kit: every field is a line in one group, label left and answer right, and Save is the
+ * Drawn with the native kit: every field is a line in a group, label left and answer right, and Save is the
  * corner button — not a label stacked over an outlined box under a dark rectangle. The `<form>` is still the thing
  * that submits, so Enter in any field saves exactly as it did.
  */
@@ -64,6 +162,7 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
   const events = useEvents();
   const event = (events.data ?? []).find((row) => row.id === eventId) ?? null;
   const plan = useEventPlan(eventId, tab ?? null);
+  const home = eventCurrency(event?.currency, ws.baseCurrency);
   const ready = useEventItemsReady();
   const accounts = useAccounts().data ?? [];
   const setCategories = useSetCategories(event?.setId ?? null).data ?? [];
@@ -74,6 +173,10 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
   const [quantity, setQuantity] = useState('1');
   const [price, setPrice] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  // The item's own currency; the event's until the item says otherwise. An item being edited loads its own.
+  const [picked, setPicked] = useState<string | null>(null);
+  const [pickingCurrency, setPickingCurrency] = useState(false);
+  const [pickingCategory, setPickingCategory] = useState(false);
   const [link, setLink] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState<unknown>(null);
@@ -87,7 +190,8 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
     setName(existing.name);
     setQuantity(String(existing.quantity));
     // Written the way save parses it back, so a two-decimal currency reads 15.00 and saves as 15.00.
-    setPrice(minorToMajorString(existing.unitPriceMinor, ws.baseCurrency));
+    setPicked(existing.currency ?? ws.baseCurrency);
+    setPrice(minorToMajorString(existing.unitPriceMinor, existing.currency ?? ws.baseCurrency));
     setCategoryId(existing.categoryId ?? '');
     setLink(existing.link ?? '');
     setNote(existing.note ?? '');
@@ -106,8 +210,14 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
     return workspace ? `${plain} · ${workspace}` : plain;
   };
 
-  const estimateMinor = wholeOf(quantity) * minorOf(price, ws.baseCurrency);
-  const after = plan.data ? afterSaving(plan.data, { estimateMinor, replacing: itemId }) : null;
+  const currency = picked ?? home;
+  const estimateMinor = wholeOf(quantity) * minorOf(price, currency);
+  // At the day's rate where one is stored: the estimate on this form is read before anything is saved.
+  const converter = usePlanConverter(currency === home ? [] : [currency, home]).data;
+  const inHome = currency === home ? estimateMinor : (converter?.convert(estimateMinor, currency, home, isoDate()) ?? null);
+  const estimateText = currency === home ? formatMinor(estimateMinor, currency) : inHome === null ? formatMinor(estimateMinor, currency) : `≈ ${formatMinor(inHome, home)}`;
+  const chosen = planCategories.find((account) => account.id === categoryId);
+  const chosenName = chosen ? planName(chosen.id, chosen.name) : null;
   const search = { ws: tab };
   const backTo = itemId
     ? ({ to: '/events/$eventId/plan/$itemId', params: { eventId, itemId }, search } as const)
@@ -123,7 +233,9 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
         id: itemId,
         name,
         quantity: wholeOf(quantity),
-        unitPriceMinor: parseMajor(price, ws.baseCurrency),
+        unitPriceMinor: parseMajor(price, currency),
+        // Nothing is stored for the base currency: an item with no currency of its own reads as the base.
+        currency: currency === ws.baseCurrency ? null : currency,
         categoryAccountId: categoryId || null,
         link,
         note,
@@ -199,39 +311,40 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
       )}
 
       <form id="item-form" onSubmit={save}>
-        <InsetGroup header="The item" footer="No date. How many × price each makes the estimate; one of something is the ordinary case.">
-          <TextRow label="What" value={name} onChange={(e) => setName(e.target.value)} placeholder="Stroller" />
+        <InsetGroup>
+          <TextRow label="What" value={name} onChange={(e) => setName(e.target.value)} placeholder="Item name" />
           <TextRow label="How many" value={quantity} onChange={(e) => setQuantity(e.target.value)} inputMode="numeric" placeholder="Quantity" />
-          <TextRow label="Price each" value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" placeholder="Amount" />
+          <TextRow
+            label="Price each"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            inputMode="decimal"
+            placeholder="Amount"
+            prefix={CURRENCIES.find((c) => c.code === currency)?.symbol ?? currency}
+            onPrefix={() => setPickingCurrency(true)}
+            prefixLabel={`Currency: ${currency}`}
+          />
           {/*
-           * Read-only, and not part of what is saved: the estimate is the product of the two fields above it. It
-           * stays an input rather than becoming a static row so that it keeps the label it is found by, and so the
-           * figure it shows is the figure a test can read off the form.
+           * Read-only, and not part of what is saved: the estimate is the product of the two fields above it. It stays
+           * an input rather than a static row so that it keeps the label it is found by.
            */}
-          <TextRow label="Estimate" value={formatMinor(estimateMinor, ws.baseCurrency)} readOnly tabIndex={-1} className="tabular text-[var(--ph-ink-3)]" />
-          <SelectRow label="Category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-            <option value="">Not in a category</option>
-            {planCategories.map((account) => (
-              <option key={account.id} value={account.id}>
-                {planName(account.id, account.name)}
-              </option>
-            ))}
-          </SelectRow>
-          <TextRow label="Link" value={link} onChange={(e) => setLink(e.target.value)} inputMode="url" placeholder="tokopedia.com/…" />
-          <TextRow label="Note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Second-hand ok" />
+          <EstimateRow value={estimateText} />
+        </InsetGroup>
+        <InsetGroup>
+          <CategoryPickRow categoryId={categoryId} name={chosenName} accounts={accounts} onOpen={() => setPickingCategory(true)} />
+          <TextRow label="Link" value={link} onChange={(e) => setLink(e.target.value)} inputMode="url" placeholder="Web address" />
+          <TextRow label="Note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Remarks" />
         </InsetGroup>
       </form>
-
-      {after && event && (
-        <InsetGroup header="After saving">
-          {/* Not clamped again here: `afterSaving` clamps, so that the four screens do not each remember to. */}
-          <ReadOnlyRow label={`${event.name}, planned`} value={formatMinor(after.plannedMinor, ws.baseCurrency)} />
-          <ReadOnlyRow label="Still to buy" value={formatMinor(after.toBuyMinor, ws.baseCurrency)} />
-          {after.notPlannedMinor > 0 && <ReadOnlyRow label="Not planned" value={formatMinor(after.notPlannedMinor, ws.baseCurrency)} />}
-          {/* Money that came back answers no item, so saving one cannot move it — but leaving it out would under-state
-              the event by exactly the refund, with nothing on the card to say where it went. */}
-          {after.moneyBackMinor > 0 && <ReadOnlyRow label="Money back" value={formatMinor(after.moneyBackMinor, ws.baseCurrency)} />}
-        </InsetGroup>
+      {pickingCurrency && <CurrencySheet value={currency} accountCurrency={home} baseCurrency={ws.baseCurrency} onPick={setPicked} onClose={() => setPickingCurrency(false)} />}
+      {pickingCategory && (
+        <CategorySheet
+          options={planCategories.map((account) => ({ id: account.id, name: planName(account.id, account.name) }))}
+          current={categoryId}
+          accounts={accounts}
+          onPick={setCategoryId}
+          onClose={() => setPickingCategory(false)}
+        />
       )}
     </>,
   );

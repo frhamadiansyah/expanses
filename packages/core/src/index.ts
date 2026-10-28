@@ -524,8 +524,21 @@ export {
   type EventPlanItemInput,
   type EventPlanItemView,
   type EventPlanLine,
+  type EventPlanMoney,
   type EventPlanUnplanned,
 } from './events/plan';
+export {
+  canChangeEventCurrency,
+  type Converter,
+  eventCurrency,
+  itemCurrency,
+  makeConverter,
+  missingCurrencies,
+  NO_RATES,
+  purchaseTotalIn,
+  type RateRow,
+  shareIn,
+} from './events/currency';
 export {
   addMonthsToDate,
   DEFAULT_TAX_BPS,

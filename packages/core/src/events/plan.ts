@@ -5,14 +5,23 @@
  * set per category: a category line is only what its items add up to, which is why no two figures here can disagree.
  * A plan is also per category rather than per event: an event may plan the tickets and not the food, and the figures
  * below are careful never to measure unplanned spending against a plan that was never meant to cover it.
+ *
+ * Every figure named `…Minor` without `Event` or `Own` is in the workspace's **base** currency, as it always was: the
+ * spending is base, the shares a purchase gives an item are base (`share_minor`, stored so that every comparison keeps
+ * working), and an item priced in another currency is carried into base at the day's rate for them. The figures named
+ * `…EventMinor` are the same plan read in the event's own currency, for the plan screen; `…OwnMinor` is in the item's.
  */
+import { type Converter, itemCurrency, missingCurrencies, purchaseTotalIn, shareIn } from './currency';
 
 export interface EventPlanItemInput {
   id: string;
   name: string;
   /** How many of the thing. One is the ordinary case. */
   quantity: number;
+  /** In minor units of `currency`; of the base currency when the item has none (everything made before items had one). */
   unitPriceMinor: number;
+  /** The item's own currency, when it has one. Absent: the base currency. */
+  currency?: string | null;
   categoryId: string | null;
   link: string | null;
   note: string | null;
@@ -32,9 +41,23 @@ export interface EventActual {
   description: string;
   categoryId: string;
   amountBaseMinor: number;
+  /** The entry in the currency it was posted in, when known. Absent: it is read as base. */
+  amountMinor?: number;
+  currency?: string;
+}
+
+/** What a plan needs to read items priced in other currencies. Absent: every item is in the one currency. */
+export interface EventPlanMoney {
+  baseCurrency: string;
+  /** The currency the plan screen totals in. */
+  eventCurrency: string;
+  /** YYYY-MM-DD. The day an item not yet bought is converted on. */
+  today: string;
+  converter: Converter;
 }
 
 export interface EventPlanInput {
+  money?: EventPlanMoney;
   items: EventPlanItemInput[];
   actuals: EventActual[];
   /** Names for the categories either side mentions, so a line can be read. */
@@ -42,8 +65,20 @@ export interface EventPlanInput {
 }
 
 export interface EventPlanItemView extends EventPlanItemInput {
-  /** Quantity times price each, in minor units. Derived, never stored: two integers cannot round. */
+  /** Quantity times price each, in minor units of the item's own currency. Derived, never stored: two integers cannot round. */
+  estimateOwnMinor: number;
+  /**
+   * The estimate in base. An open item is converted at today's rate; a bought one at its purchase's day, so it stops
+   * following the rate. Nought when no rate reaches (`noRate`), so it is left out of every total rather than guessed.
+   */
   estimateMinor: number;
+  /** The estimate in the event's currency, or null with no rate. */
+  estimateEventMinor: number | null;
+  /** What its purchases in this reading came to, in the event's currency / the item's own: each at its own day. Null when none, or no rate. */
+  paidEventMinor: number | null;
+  paidOwnMinor: number | null;
+  /** True when a rate needed to read it in base or in the event's currency is missing. */
+  noRate: boolean;
   /**
    * Done, and — when it was paid for at all — paid for in the scope being read: a tab can put an item back on the list.
    */
@@ -79,6 +114,8 @@ export interface EventPlanLine {
   /** True when this category has at least one item: it is the category that is planned, not the event. */
   planned: boolean;
   plannedMinor: number;
+  /** The same in the event's currency; items with no rate are left out. */
+  plannedEventMinor: number;
   actualMinor: number;
   itemCount: number;
   boughtCount: number;
@@ -95,6 +132,12 @@ export interface EventPlan {
   purchaseCount: number;
   unplannedCategoryCount: number;
   plannedMinor: number;
+  /** The plan in the event's currency, with the same items left out as `missingRates` names. */
+  plannedEventMinor: number;
+  toBuyEventMinor: number;
+  boughtActualEventMinor: number;
+  /** Currencies with no rate to the base on the day they were needed: their items are in no total. */
+  missingRates: string[];
   spentMinor: number;
   /** What was spent in the categories that have items — what the plan may honestly be measured against. */
   plannedSpentMinor: number;
@@ -103,6 +146,8 @@ export interface EventPlan {
   boughtActualMinor: number;
   /** Signed: positive is over estimate, negative under, nought exact. */
   differenceMinor: number;
+  /** The same in the event's currency, over the bought items whose rates are there. */
+  differenceEventMinor: number;
   notPlannedMinor: number;
   overCount: number;
   lines: EventPlanLine[];
@@ -117,8 +162,19 @@ export function eventPlan(input: EventPlanInput): EventPlan {
   const byTransaction = new Map<string, EventActual[]>();
   for (const row of input.actuals) byTransaction.set(row.transactionId, [...(byTransaction.get(row.transactionId) ?? []), row]);
 
+  const money = input.money;
+  const missing = new Set<string>();
+  /** `minor` of one currency as another on a day; a missing rate is remembered by currency, and comes back null. */
+  const carry = (minor: number, from: string, to: string, onDate: string): number | null => {
+    if (!money || from === to) return minor;
+    const converted = money.converter.convert(minor, from, to, onDate);
+    if (converted === null) for (const gone of missingCurrencies(money.converter, money.baseCurrency, [from, to], onDate)) missing.add(gone);
+    return converted;
+  };
+
   const views: EventPlanItemView[] = input.items.map((item) => {
-    const estimateMinor = item.quantity * item.unitPriceMinor;
+    const estimateOwnMinor = item.quantity * item.unitPriceMinor;
+    const currency = money ? itemCurrency(item.currency, money.baseCurrency) : (item.currency ?? null);
     // Only the purchases in this reading count: under a workspace tab the money may be elsewhere.
     const here = item.purchases.filter((purchase) => byTransaction.has(purchase.transactionId));
     const paid = here.length > 0 ? sum(here.map((purchase) => purchase.shareMinor)) : null;
@@ -130,9 +186,49 @@ export function eventPlan(input: EventPlanInput): EventPlan {
       .map((purchase) => byTransaction.get(purchase.transactionId)!)
       .map((rows) => [...rows].sort((a, b) => b.amountBaseMinor - a.amountBaseMinor || a.categoryId.localeCompare(b.categoryId))[0]!)
       .sort((a, b) => b.occurredOn.localeCompare(a.occurredOn))[0];
+    // An item with a payment stays where its purchase put it, done or not; one nothing was paid for follows today's rate.
+    const settledOn = latest ? latest.occurredOn : (money?.today ?? '');
+    let noRate = false;
+    const inBase = money && currency ? carry(estimateOwnMinor, currency, money.baseCurrency, settledOn) : estimateOwnMinor;
+    const inEvent = money && currency ? carry(estimateOwnMinor, currency, money.eventCurrency, settledOn) : estimateOwnMinor;
+    if (inBase === null || inEvent === null) noRate = true;
+    const estimateMinor = inBase ?? 0;
+    // Each purchase is read in a currency as the same part of its expense side, at its own day.
+    const paidIn = (target: string | null): number | null => {
+      if (!money || !target) return paid;
+      if (here.length === 0) return null;
+      let total = 0;
+      for (const purchase of here) {
+        const rows = byTransaction.get(purchase.transactionId)!;
+        const day = rows[0]!.occurredOn;
+        const whole = sum(rows.map((row) => row.amountBaseMinor));
+        const there = purchaseTotalIn(
+          rows.map((row) => ({ amountMinor: row.amountMinor ?? row.amountBaseMinor, currency: row.currency ?? money.baseCurrency, amountBaseMinor: row.amountBaseMinor })),
+          target,
+          money.baseCurrency,
+          day,
+          money.converter,
+        );
+        if (there === null) {
+          for (const gone of missingCurrencies(money.converter, money.baseCurrency, [target], day)) missing.add(gone);
+          return null;
+        }
+        total += shareIn(purchase.shareMinor, whole, there);
+      }
+      return total;
+    };
+    const paidEventMinor = paidIn(money?.eventCurrency ?? null);
+    const paidOwnMinor = paidIn(currency);
+    if (here.length > 0 && (paidEventMinor === null || paidOwnMinor === null)) noRate = true;
     return {
       ...item,
+      currency,
+      estimateOwnMinor,
       estimateMinor,
+      estimateEventMinor: inEvent,
+      paidEventMinor,
+      paidOwnMinor,
+      noRate,
       bought,
       purchase: largest,
       purchaseCount: here.length,
@@ -168,6 +264,9 @@ export function eventPlan(input: EventPlanInput): EventPlan {
 
   const bought = views.filter((view) => view.bought);
   const plannedMinor = sum(views.map((view) => view.estimateMinor));
+  const plannedEventMinor = sum(views.map((view) => view.estimateEventMinor ?? 0));
+  const boughtActualEventMinor = sum(views.map((view) => view.paidEventMinor ?? 0));
+  const toBuyEventMinor = sum(views.filter((view) => !view.bought).map((view) => Math.max(0, (view.estimateEventMinor ?? 0) - (view.paidEventMinor ?? 0))));
   const spentMinor = sum(input.actuals.map((row) => row.amountBaseMinor));
   const boughtEstimateMinor = sum(bought.map((view) => view.estimateMinor));
   // Every payment towards the plan, the items still open included: it is what the plan has spent so far.
@@ -187,6 +286,7 @@ export function eventPlan(input: EventPlanInput): EventPlan {
         // A category is planned when it has items — not because the event has a plan somewhere else.
         planned: mine.length > 0,
         plannedMinor: sum(mine.map((view) => view.estimateMinor)),
+        plannedEventMinor: sum(mine.map((view) => view.estimateEventMinor ?? 0)),
         actualMinor: sum(money.map((row) => row.amountBaseMinor)),
         itemCount: mine.length,
         boughtCount: mine.filter((view) => view.bought).length,
@@ -209,6 +309,10 @@ export function eventPlan(input: EventPlanInput): EventPlan {
     purchaseCount: byTransaction.size,
     unplannedCategoryCount: lines.filter((line) => !line.planned && line.actualMinor > 0).length,
     plannedMinor,
+    plannedEventMinor,
+    toBuyEventMinor,
+    boughtActualEventMinor,
+    missingRates: [...missing].sort(),
     spentMinor,
     // Only the categories that were planned: measuring a trip's food against tickets nobody planned would call every
     // unplanned rupiah "over the plan", which is false.
@@ -218,6 +322,7 @@ export function eventPlan(input: EventPlanInput): EventPlan {
     boughtActualMinor,
     // Only what is done is measured against its estimate: an open item's payments so far are not yet its cost.
     differenceMinor: sum(bought.map((view) => view.differenceMinor!)),
+    differenceEventMinor: sum(bought.filter((view) => !view.noRate).map((view) => (view.paidEventMinor ?? 0) - (view.estimateEventMinor ?? 0))),
     // By subtraction, so what was spent always equals the items' shares plus what nobody planned — a part-allocated
     // receipt's remainder needs no special case to land here.
     notPlannedMinor: spentMinor - boughtActualMinor,

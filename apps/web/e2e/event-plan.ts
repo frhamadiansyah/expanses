@@ -183,12 +183,19 @@ export interface ItemFields {
   note?: string;
 }
 
+/** Picks the item's category through the Category row: the row opens a sheet, and one tap on a tile picks and closes it. */
+export async function chooseCategory(page: Page, name: string) {
+  await page.getByRole('button', { name: /^Category, / }).click();
+  await page.getByRole('dialog', { name: 'Category' }).getByRole('button', { name, exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Category' })).toHaveCount(0);
+}
+
 /** Fills the item form that is already open, and saves it. */
 export async function fillItem(page: Page, options: ItemFields) {
   await page.getByLabel('What', { exact: true }).fill(options.name);
   if (options.quantity) await page.getByLabel('How many').fill(options.quantity);
   await page.getByLabel('Price each').fill(options.price);
-  if (options.category) await page.getByLabel('Category').selectOption({ label: options.category });
+  if (options.category) await chooseCategory(page, options.category);
   if (options.link) await page.getByLabel('Link').fill(options.link);
   if (options.note) await page.getByLabel('Note').fill(options.note);
   await page.getByRole('button', { name: 'Save' }).click();

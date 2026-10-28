@@ -22,6 +22,8 @@ import {
   TextRow,
 } from '../../ui/native';
 import { useCategorySets } from '../categories/set-queries';
+import { CurrencySheet } from '../transactions/CurrencySheet';
+import { EventCurrencyRow } from './EventCurrencyRow';
 import { eventListLine } from './plan-view';
 import { useEventPlan, useEvents } from './queries';
 import { useSharedEventSummaries, useSharedEventView } from './shared-queries';
@@ -179,6 +181,8 @@ export function EventsPage() {
   const [startsOn, setStartsOn] = useState(today);
   const [endsOn, setEndsOn] = useState(today);
   const [setId, setSetId] = useState('');
+  const [currency, setCurrency] = useState(ws.baseCurrency);
+  const [picking, setPicking] = useState(false);
 
   const all = events.data ?? [];
   const current = all.filter((event) => eventStatus(event, today) !== 'Done');
@@ -193,6 +197,7 @@ export function EventsPage() {
         startsOn,
         endsOn,
         setId: setId === '' ? null : setId,
+        currency,
       });
       await invalidate();
       // A new event is planned next, and that happens on its own screen.
@@ -231,9 +236,11 @@ export function EventsPage() {
                 </option>
               ))}
             </SelectRow>
+            <EventCurrencyRow value={currency} onOpen={() => setPicking(true)} />
             <TextRow label="Starts on" type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
             <TextRow label="Ends on" type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} />
           </InsetGroup>
+          {picking && <CurrencySheet value={currency} accountCurrency={currency} baseCurrency={ws.baseCurrency} onPick={setCurrency} onClose={() => setPicking(false)} />}
           <ErrorBox error={error} />
         </Sheet>
       )}
