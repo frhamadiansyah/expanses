@@ -110,16 +110,34 @@ export function differenceWords(minor: number, currency = 'IDR'): { text: string
 }
 
 /**
- * The plan hero's status line: what the paid costs came to against their estimates.
+ * The plan hero's status line, from every cost of the plan, in the event's currency.
  *
- * Positive is over, as `differenceWords` reads it. With nothing paid there is no gap to speak of, so the line says so
- * rather than going missing: the hero's height then holds still from one state to the next. The amount is the size of
+ * Over counts at once: a cost whose payments already pass its estimate is over, settled or not. Saved waits for the
+ * cost to be settled, since more payments may still come on one that is open. The two net against each other (over
+ * less saved): positive is over, negative is saved, nought is on the estimate. With no gap at all, a settled cost on
+ * its estimate says so, and payments with nothing settled say "partly". No payment on any cost is "none". A cost with
+ * no event-currency reading (no rate) has no gap to add, as in the plan's own difference. The amount is the size of
  * the gap and never signed; the screen adds the arrow and the words.
  */
-export function planStatus(paidCount: number, differenceMinor: number): { kind: 'none' | 'saved' | 'over' | 'exact'; amountMinor: number } {
-  if (paidCount <= 0) return { kind: 'none', amountMinor: 0 };
-  if (differenceMinor === 0) return { kind: 'exact', amountMinor: 0 };
-  return { kind: differenceMinor > 0 ? 'over' : 'saved', amountMinor: Math.abs(differenceMinor) };
+export type PlanStatusKind = 'none' | 'partly' | 'saved' | 'over' | 'exact';
+export function planStatus(items: readonly EventPlanItemView[]): { kind: PlanStatusKind; amountMinor: number } {
+  if (!items.some((item) => item.purchaseCount > 0)) return { kind: 'none', amountMinor: 0 };
+  let over = 0;
+  let saved = 0;
+  let settledPaid = false;
+  for (const item of items) {
+    if (item.paidEventMinor === null || item.estimateEventMinor === null) continue;
+    const gap = item.paidEventMinor - item.estimateEventMinor;
+    if (gap > 0) over += gap;
+    else if (gap < 0 && item.bought) saved += -gap;
+    if (item.bought && item.purchaseCount > 0) settledPaid = true;
+  }
+  const net = over - saved;
+  if (net > 0) return { kind: 'over', amountMinor: net };
+  if (net < 0) return { kind: 'saved', amountMinor: -net };
+  // Net nought: the gaps cancelled, or there were none.
+  if (over > 0 || settledPaid) return { kind: 'exact', amountMinor: 0 };
+  return { kind: 'partly', amountMinor: 0 };
 }
 
 /** How much of the plan the ring shows as done, 0 to 100: what was planned less what is still to pay, as a share of what was planned. Nought when nothing is planned. */

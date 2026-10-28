@@ -127,7 +127,7 @@ function PlanHero({
 }: {
   percent: number;
   count: string;
-  status: { kind: 'none' | 'saved' | 'over' | 'exact'; amount: string };
+  status: { kind: 'none' | 'partly' | 'saved' | 'over' | 'exact'; amount: string };
   toPay: string;
   toPayBase: string | null;
   estimateWord: string;
@@ -192,9 +192,9 @@ function PlanHero({
               </text>
             </svg>
             <div ref={block} className="min-w-0 flex-1">
-              {status.kind === 'none' || status.kind === 'exact' ? (
+              {status.kind === 'none' || status.kind === 'partly' || status.kind === 'exact' ? (
                 <div data-testid="plan-status" className="text-xs leading-[15px] font-medium whitespace-nowrap text-[var(--ph-ink-3)]">
-                  {status.kind === 'none' ? 'Nothing paid yet' : 'On the estimate'}
+                  {status.kind === 'none' ? 'Nothing paid yet' : status.kind === 'partly' ? 'Partly paid' : 'On the estimate'}
                 </div>
               ) : (
                 <div
@@ -391,7 +391,7 @@ export function PlanPage() {
             <PlanHero
               percent={planDonePercent(totals.plannedMinor, totals.toBuyMinor)}
               count={`${data.boughtCount} of ${data.itemCount} paid`}
-              status={hereStatus(planStatus(data.boughtCount, totals.differenceMinor), rp)}
+              status={hereStatus(planStatus(data.lines.flatMap((line) => line.items)), rp)}
               // "All paid" only once every cost is done: an open item paid in full still has Rp0 to pay.
               toPay={totals.toBuyMinor > 0 || data.boughtCount < data.itemCount ? `${rp(totals.toBuyMinor)} to pay` : 'All paid'}
               toPayBase={totals.base && formatMinor(totals.base.toBuyMinor, ws.baseCurrency)}

@@ -834,12 +834,63 @@ describe('a plan in more than one currency', () => {
 });
 
 describe('the plan hero and the paid row', () => {
-  it('reads the status line from what is paid: nothing, saved, over, or on the estimate', () => {
-    expect(planStatus(0, 0)).toEqual({ kind: 'none', amountMinor: 0 });
-    expect(planStatus(0, -500)).toEqual({ kind: 'none', amountMinor: 0 });
-    expect(planStatus(2, -220_000)).toEqual({ kind: 'saved', amountMinor: 220_000 });
-    expect(planStatus(2, 450_000)).toEqual({ kind: 'over', amountMinor: 450_000 });
-    expect(planStatus(1, 0)).toEqual({ kind: 'exact', amountMinor: 0 });
+  describe('the status line', () => {
+    const cost = (id: string, estimate: number, paid: number[], done = false, over: object = {}) => ({
+      id, name: id, quantity: 1, unitPriceMinor: estimate, categoryId: 'c', link: null, note: null, done,
+      purchases: paid.map((shareMinor, index) => ({ transactionId: `${id}-${index}`, shareMinor })),
+      ...over,
+    });
+    const statusOf = (costs: ReturnType<typeof cost>[]) => {
+      const built = eventPlan({
+        categoryNames: { c: 'Trip' },
+        items: costs,
+        actuals: costs.flatMap((c) =>
+          c.purchases.map((p) => ({ transactionId: p.transactionId, occurredOn: '2026-10-01', description: c.id, categoryId: 'c', amountBaseMinor: p.shareMinor })),
+        ),
+      });
+      return planStatus(built.lines.flatMap((line) => line.items));
+    };
+
+    it('says nothing is paid when no cost has a payment', () => {
+      expect(statusOf([cost('a', 1_000_000, [])])).toEqual({ kind: 'none', amountMinor: 0 });
+      expect(statusOf([])).toEqual({ kind: 'none', amountMinor: 0 });
+    });
+
+    it('says partly paid for a deposit on an open cost', () => {
+      expect(statusOf([cost('a', 18_000_000, [5_000_000]), cost('b', 1_000_000, [])])).toEqual({ kind: 'partly', amountMinor: 0 });
+    });
+
+    it('shows over at once when payments pass the estimate, though the cost is still open', () => {
+      expect(statusOf([cost('a', 18_000_000, [10_000_000, 8_200_000])])).toEqual({ kind: 'over', amountMinor: 200_000 });
+    });
+
+    it('shows saved only for settled costs', () => {
+      expect(statusOf([cost('a', 1_000_000, [800_000])])).toEqual({ kind: 'partly', amountMinor: 0 });
+      expect(statusOf([cost('a', 1_000_000, [800_000], true)])).toEqual({ kind: 'saved', amountMinor: 200_000 });
+    });
+
+    it('nets a settled saving against an open cost that is over', () => {
+      expect(statusOf([cost('a', 1_000_000, [700_000], true), cost('b', 500_000, [600_000])])).toEqual({ kind: 'saved', amountMinor: 200_000 });
+      expect(statusOf([cost('a', 1_000_000, [900_000], true), cost('b', 500_000, [800_000])])).toEqual({ kind: 'over', amountMinor: 200_000 });
+      expect(statusOf([cost('a', 1_000_000, [900_000], true), cost('b', 500_000, [600_000])])).toEqual({ kind: 'exact', amountMinor: 0 });
+    });
+
+    it('says on the estimate for a settled cost paid exactly', () => {
+      expect(statusOf([cost('a', 1_000_000, [400_000, 600_000], true)])).toEqual({ kind: 'exact', amountMinor: 0 });
+      expect(statusOf([cost('a', 1_000_000, [1_000_000], true), cost('b', 500_000, [])])).toEqual({ kind: 'exact', amountMinor: 0 });
+    });
+
+    it('reads a cost in another currency in the event currency', () => {
+      const converter = makeConverter([{ from: 'EUR', to: 'IDR', onDate: '2026-03-01', rate: 18_000 }, { from: 'TRY', to: 'IDR', onDate: '2026-03-01', rate: 400 }], 'IDR');
+      // The pass is 95 euros (Rp 1.710.000, or 4.275 lira); Rp 2.000.000 paid is 5.000 lira: 725 lira over, the cost still open.
+      const trip = eventPlan({
+        categoryNames: { c: 'Trip' },
+        money: { baseCurrency: 'IDR', eventCurrency: 'TRY', today: '2026-03-02', converter },
+        items: [cost('museum', 9_500, [2_000_000], false, { currency: 'EUR' })],
+        actuals: [{ transactionId: 'museum-0', occurredOn: '2026-03-02', description: 'Museum', categoryId: 'c', amountBaseMinor: 2_000_000, amountMinor: 11_111, currency: 'EUR' }],
+      });
+      expect(planStatus(trip.lines.flatMap((line) => line.items))).toEqual({ kind: 'over', amountMinor: 72_500 });
+    });
   });
 
   it('shows the share done as the bar did: rounded, held between nought and a hundred, nought with nothing planned', () => {

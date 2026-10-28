@@ -82,6 +82,12 @@ async function payCost(page: Page, name: string, paid: string) {
   await buyItNow(page, { paid });
 }
 
+/** A payment on a cost that is left open (not settled). */
+async function payCostOpen(page: Page, name: string, paid: string) {
+  await page.getByTestId('plan-item').filter({ hasText: name }).getByRole('link').click();
+  await buyItNow(page, { paid, done: false });
+}
+
 test('the ring card and the paid rows', async ({ page }) => {
   // One euro is Rp 18.000 and one lira Rp 400; there is no dollar rate.
   await mockRates(page, { EUR: 18_000, TRY: 400 });
@@ -212,6 +218,41 @@ test('an event in the workspace currency has no base equivalents on the card', a
   await expect(page.getByTestId('plan-status')).toHaveText('On the estimate');
   await expect(page.getByTestId('plan-status')).toHaveCSS('color', await token(page, '--ph-ink-3'));
   await expect(page.getByTestId('plan-status')).toHaveCSS('font-weight', '500');
+  await expectRingMatchesText(page);
+});
+
+test('the status line: partly paid, over at once while open, saved only once settled', async ({ page }) => {
+  await addWallet(page);
+  await addEvent(page, 'Wedding');
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
+  await fillItem(page, { name: 'Venue', price: '18000000', category: 'Food and beverage' });
+  await page.getByRole('link', { name: 'Add a cost' }).first().click();
+  await page.getByLabel('What', { exact: true }).fill('Cake');
+  await fillItem(page, { name: 'Cake', price: '500000', category: 'Food and beverage' });
+  const status = page.getByTestId('plan-status');
+  await expect(status).toHaveText('Nothing paid yet');
+
+  // A deposit on an open cost: grey, partly paid.
+  await payCostOpen(page, 'Venue', '5000000');
+  await expect(status).toHaveText('Partly paid');
+  await expect(status).toHaveCSS('color', await token(page, '--ph-ink-3'));
+  await expect(status).toHaveCSS('font-weight', '500');
+  await expectRingMatchesText(page);
+
+  // Payments already past the estimate show at once, though the cost is still open and the ring counts nothing settled.
+  await payCostOpen(page, 'Venue', '13200000');
+  await expect(status).toHaveText('▲ Rp 200.000 over');
+  await expect(status).toHaveCSS('color', await token(page, '--ph-alarm'));
+  await expect(page.getByTestId('plan-ring').getByTestId('plan-count')).toHaveText('0 of 2 paid');
+
+  // Under the estimate and still open is no saving yet; settled, the saving nets against the excess to nothing.
+  await payCostOpen(page, 'Cake', '300000');
+  await expect(status).toHaveText('▲ Rp 200.000 over');
+  await page.getByRole('button', { name: 'Settle Cake' }).click();
+  await expect(status).toHaveText('On the estimate');
+  await expect(status).toHaveCSS('color', await token(page, '--ph-ink-3'));
+  await expect(page.getByTestId('plan-ring').getByTestId('plan-count')).toHaveText('1 of 2 paid');
   await expectRingMatchesText(page);
 });
 
