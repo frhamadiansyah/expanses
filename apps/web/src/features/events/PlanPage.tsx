@@ -23,6 +23,9 @@ const HERE: Record<'over' | 'under' | 'exact', Tone> = { over: 'alarm', under: '
  * Two targets side by side, never one inside the other: the circle is a button, 44 wide, and what it does follows the
  * item — nothing paid yet, it is Buy it now; paid towards and still open, it marks the item done; done, it puts it back
  * on the list. The rest of the row is the link into the item.
+ *
+ * The circle is the category mark's 28 px and starts at its left edge (14 px: the 44 px target reaches 8 px either side of
+ * it), and the name starts where the category's does, so the two read as one column.
  */
 function PlanItemRow({
   eventId,
@@ -48,7 +51,7 @@ function PlanItemRow({
 }) {
   const done = state === 'done';
   return (
-    <div className="flex items-center" data-testid="plan-item">
+    <div className="flex items-center pl-[6px]" data-testid="plan-item">
       <button
         type="button"
         aria-label={done ? `Reopen ${name}` : state === 'paid' ? `Done buying ${name}` : `Buy ${name}`}
@@ -58,11 +61,11 @@ function PlanItemRow({
         <span
           aria-hidden
           className={cx(
-            'flex h-6 w-6 items-center justify-center rounded-full',
+            'flex h-7 w-7 items-center justify-center rounded-full',
             done ? 'bg-[var(--ph-up-panel)] text-[var(--ph-up)]' : 'ring-[1.5px] ring-[var(--ph-chevron)] ring-inset',
           )}
         >
-          {done && <Check size={14} strokeWidth={3} />}
+          {done && <Check size={15} strokeWidth={3} />}
         </span>
       </button>
       <Link
@@ -112,9 +115,9 @@ function PlanCategoryCard({
       style={{ borderRadius: GROUP_RADIUS, marginBottom: 12 }}
     >
       <div className="flex items-center gap-3 border-b-[0.5px] border-[var(--ph-hair)] px-[14px] pt-3 pb-2.5">
-        <CategoryIcon categoryId={categoryId} accounts={accounts} />
+        <CategoryIcon categoryId={categoryId} accounts={accounts} size="row" />
         <div className="flex min-w-0 flex-1 flex-col text-xs leading-tight text-[var(--ph-ink-3)]">
-          <h2 className="truncate text-xs font-semibold text-[var(--ph-ink-2)]">{name}</h2>
+          <h2 className="truncate text-sm font-semibold text-[var(--ph-ink)]">{name}</h2>
           <span>
             {itemCount} {itemCount === 1 ? 'item' : 'items'} · {boughtCount === 0 ? 'none' : boughtCount} bought
           </span>
