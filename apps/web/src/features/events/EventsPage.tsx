@@ -27,7 +27,6 @@ import { EventCurrencyRow } from './EventCurrencyRow';
 import { eventListLine } from './plan-view';
 import { useEventPlan, useEvents } from './queries';
 import { useSharedEventSummaries, useSharedEventView } from './shared-queries';
-import { sharedWithText } from './shared-view';
 
 /** "13 – 17 Aug 2026", or one date when the event is a single day. */
 export function eventDates(event: Pick<EventRow, 'startsOn' | 'endsOn'>): string {
