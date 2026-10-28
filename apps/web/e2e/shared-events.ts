@@ -21,6 +21,12 @@ export async function eventually(page: Page, check: () => Promise<void>) {
 export async function corner(page: Page, name: string) {
   const inline = page.getByRole('button', { name, exact: true });
   if ((await inline.count()) > 0) return inline.first().click();
+  // A private event keeps its settings behind the ⚙: sharing is a row on that page.
+  const settings = page.getByRole('link', { name: 'Settings', exact: true });
+  if (name === 'Share this event' && (await settings.count()) > 0) {
+    await settings.click();
+    return page.getByTestId('settings-share').click();
+  }
   await page.getByRole('button', { name: /^More$/ }).click();
   await page.getByRole('menuitem', { name: new RegExp(`^${name}`) }).click();
 }
