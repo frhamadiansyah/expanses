@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { mockRates } from './pockets';
-import { corner, newEvent, openTrip, recordSharedSpend, showCard, spendingRow } from './shared-events';
+import { addSharedCost, corner, newEvent, openTrip, recordSharedSpend, showCard, spendingRow } from './shared-events';
 
 /*
  * The shared trip's hero swipes between three cards, Spending, Balances and Plan, with a dot each and no tabs; the list
@@ -85,17 +85,11 @@ test('the shared trip swipes between Spending, Balances and Plan', async ({ page
   expect(await noClip(page)).toBe(true);
   await page.screenshot({ path: `${SHOTS}/shared-swipe-2.png` });
 
-  // The dot for Plan: the plan hero and the To pay list; add two costs from the form.
+  // The dot for Plan: the plan hero and the costs by category; add two costs from the ＋ form.
   await showCard(page, 'Plan');
   await expect(page.getByTestId('plan-totals')).toBeInViewport();
   await expect(page.getByTestId('plan-totals')).toContainText('Nothing planned yet');
-  const form = page.getByRole('form', { name: 'Add to the plan' });
-  for (const [what, price] of [['Boat tour', '750'], ['Hotel', '2000']] as const) {
-    await form.getByLabel('What to pay').fill(what);
-    await form.getByLabel('Price (TRY)').fill(price);
-    await form.getByRole('button', { name: 'Add to the plan' }).click();
-    await expect(page.getByTestId('shared-plan-item').filter({ hasText: what })).toBeVisible();
-  }
+  for (const [what, price] of [['Boat tour', '750'], ['Hotel', '2000']] as const) await addSharedCost(page, { name: what, price });
   await expect(page.getByTestId('plan-ring')).toBeInViewport();
   await expect(page.getByTestId('plan-count')).toContainText('0 of 2 paid');
   await expect(page.getByTestId('plan-status')).toContainText('Nothing paid yet');
@@ -105,11 +99,12 @@ test('the shared trip swipes between Spending, Balances and Plan', async ({ page
   expect(await noPageScroll(page)).toBe(true);
   expect(await noClip(page)).toBe(true);
   await page.screenshot({ path: `${SHOTS}/shared-swipe-3.png` });
-  // A row still opens its sheet.
+  // A row opens the cost's page, and the way back lands on the Plan card again.
   await page.getByTestId('shared-plan-item').filter({ hasText: 'Hotel' }).click();
-  await expect(page.getByRole('dialog')).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByTestId('item-identity').getByRole('heading', { name: 'Hotel', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Back to the plan' }).click();
+  await expect(dot('Plan')).toHaveAttribute('aria-current', 'true');
+  await expect(page.getByTestId('plan-ring')).toBeInViewport();
 
   // A swipe: scroll the carousel back one card at a time, and the active dot follows.
   const scrollTo = (index: number) => carousel.evaluate((el, i) => el.scrollTo({ left: i * el.clientWidth, behavior: 'instant' as ScrollBehavior }), index);

@@ -179,6 +179,32 @@ describe('the shared plan (D7)', () => {
   });
 });
 
+describe('a shared cost keeps its category, link and remarks (full cost page)', () => {
+  it('round-trips them through the plan, groups by category, and an edit in place keeps the payments', async () => {
+    const t = await coastWeek();
+    const view = (await sharedEventView(t.database, t.ws, t.eventId))!;
+    const dinner = view.expenses.find((e) => e.note === 'Fish dinner')!.expenseId;
+    const id = await saveSharedItem(t.database, t.ws, t.eventId, {
+      name: 'Boat tour', quantity: 2, unitPriceMinor: 75_000, categoryId: 'cat-dinners', link: 'https://example.com/boat', note: 'Morning one',
+    });
+    await saveSharedItem(t.database, t.ws, t.eventId, { name: 'Taxi', quantity: 1, unitPriceMinor: 10_000, categoryId: null, link: null, note: null });
+    await addSharedItemPurchase(t.database, t.ws, t.eventId, id, { expenseId: dinner, shareMinor: 100_000 });
+
+    const lines = (await sharedEventPlan(t.database, t.ws, t.eventId))!.lines.filter((l) => l.items.length > 0);
+    const tour = lines.flatMap((l) => l.items).find((i) => i.id === id)!;
+    expect(tour).toMatchObject({ categoryId: 'cat-dinners', link: 'https://example.com/boat', note: 'Morning one', quantity: 2, unitPriceMinor: 75_000 });
+    // The taxi has no category, so it sits in a line of its own rather than under the boat tour's.
+    expect(lines.find((l) => l.categoryId === null)!.items.map((i) => i.name)).toEqual(['Taxi']);
+    expect(lines.find((l) => l.categoryId === 'cat-dinners')!.items.map((i) => i.name)).toEqual(['Boat tour']);
+
+    // Edited on the same row: no category, no link, no remarks, three of them; the payment stays on it.
+    await saveSharedItem(t.database, t.ws, t.eventId, { id, name: 'Boat tour', quantity: 3, unitPriceMinor: 75_000, categoryId: null, link: null, note: null });
+    const after = (await sharedEventPlan(t.database, t.ws, t.eventId))!.lines.flatMap((l) => l.items).find((i) => i.id === id)!;
+    expect(after).toMatchObject({ categoryId: null, link: null, note: null, quantity: 3 });
+    expect(after.purchases).toEqual([{ transactionId: dinner, shareMinor: 100_000 }]);
+  });
+});
+
 describe('a shared plan item paid for several times (0079)', () => {
   const souvenirs = async () => {
     const t = await coastWeek();

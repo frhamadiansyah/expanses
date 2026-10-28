@@ -146,9 +146,9 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   await settle.getByRole('button', { name: 'Record', exact: true }).click();
   await expect(andi.getByTestId('shared-balance-row').filter({ hasText: 'Andi' })).toContainText('Settled', { timeout: 30_000 });
 
-  // The Plan card shows the plan hero, and the form to add a cost is under it.
+  // The Plan card shows the plan hero, and the bar's ＋ adds a cost.
   await showCard(andi, 'Plan');
-  await expect(andi.getByRole('form', { name: 'Add to the plan' })).toBeVisible();
+  await expect(andi.getByRole('link', { name: 'Add the first cost' })).toBeVisible();
 
   // Rina takes the settle-up into her books, into her rupiah bank (R6).
   await openTrip(rina);
