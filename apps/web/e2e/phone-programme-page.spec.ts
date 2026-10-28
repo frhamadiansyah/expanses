@@ -70,8 +70,8 @@ test('the programme page keeps the balance, four buttons and History; the rest i
   // The card's row opens its own Catch up page, not the statement points page.
   await settings.getByRole('link', { name: /CIMB Octo/ }).click();
   await expect(page.getByTestId('programme-card-statements')).toBeVisible();
-  await page.getByTestId('programme-catch-up').click();
-  await expect(page.getByTestId('programme-catch-up')).toContainText(/Added \d+ statements?|Nothing to add/);
+  await expect(page.getByTestId('programme-card-statement').first()).toBeVisible();
+  await expect(page.getByText('Catch up earlier cycles')).toHaveCount(0);
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
 

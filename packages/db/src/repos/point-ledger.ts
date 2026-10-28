@@ -431,6 +431,141 @@ export async function backfillCycles(database: Database, ws: WorkspaceContext, p
   return (await walkCycles(database, ws, programId, cycles, today)).walked;
 }
 
+/** A card's history reaches back only so far: fifty years of statements is a runaway, not a card. */
+const MAX_CYCLES = 600;
+
+/** The day of the earliest posted purchase on a card account: a transaction with an expense line charged to it. Null when none. */
+export async function firstCardPurchaseOn(database: Database, ws: WorkspaceContext, cardAccountId: string): Promise<string | null> {
+  const rows = await database.db.values<[string | null]>(sql`
+    SELECT MIN(t.occurred_on)
+    FROM transactions t
+    WHERE t.workspace_id = ${ws.workspaceId}
+      AND t.status = 'posted'
+      AND EXISTS (SELECT 1 FROM entries c WHERE c.transaction_id = t.id AND c.account_id = ${cardAccountId})
+      AND EXISTS (
+        SELECT 1 FROM entries x JOIN accounts a ON a.id = x.account_id
+        WHERE x.transaction_id = t.id AND (a.kind = 'expense' OR x.spend_category_id IS NOT NULL)
+      )
+  `);
+  return rows[0]?.[0] ?? null;
+}
+
+/** The program row, or the refusal every caller already handles. */
+async function programOf(database: Database, ws: WorkspaceContext, programId: string) {
+  const [program] = await database.db
+    .select()
+    .from(rewardPrograms)
+    .where(and(eq(rewardPrograms.id, programId), eq(rewardPrograms.workspaceId, ws.workspaceId)));
+  if (!program) throw new PointsError('Reward program not found');
+  return program;
+}
+
+/**
+ * Works out every cycle of a card back to its first purchase, with no fixed limit, and reports how many statements it
+ * added. Run again it changes nothing (a cycle's derived rows are replaced, never added to); a card with no purchase
+ * has nothing to find.
+ */
+export async function catchUpAllCycles(database: Database, ws: WorkspaceContext, programId: string, today: string): Promise<{ added: number; walked: number; firstPurchaseOn: string | null }> {
+  const program = await programOf(database, ws, programId);
+  const firstPurchaseOn = await firstCardPurchaseOn(database, ws, program.cardAccountId);
+  if (firstPurchaseOn === null) return { added: 0, walked: 0, firstPurchaseOn };
+  return { ...(await walkCycles(database, ws, programId, 0, today, firstPurchaseOn)), firstPurchaseOn };
+}
+
+export interface CardStatementMonth {
+  start: string;
+  end: string;
+  /** What the cycle's derived earning comes to. */
+  points: number;
+  /** True when the figure is the bank's (typed, or credited per purchase); false when it is the app's own working. */
+  posted: boolean;
+  /** The points typed from the bank statement, when there are any. */
+  typed: number | null;
+}
+
+/**
+ * A card's statements from the current cycle back to the one holding its first purchase, newest first, each with its
+ * derived points and whether they are posted, and the days of any manual adjust or balance read inside that range —
+ * which may already count some of the same points.
+ */
+export async function cardStatementMonths(
+  database: Database,
+  ws: WorkspaceContext,
+  programId: string,
+  today: string,
+): Promise<{ firstPurchaseOn: string | null; months: CardStatementMonth[]; adjusts: string[] }> {
+  const program = await programOf(database, ws, programId);
+  const firstPurchaseOn = await firstCardPurchaseOn(database, ws, program.cardAccountId);
+  if (firstPurchaseOn === null) return { firstPurchaseOn, months: [], adjusts: [] };
+  const [terms] = await database.db
+    .select({ statementDay: cardTerms.statementDay })
+    .from(cardTerms)
+    .where(and(eq(cardTerms.accountId, program.cardAccountId), eq(cardTerms.workspaceId, ws.workspaceId)));
+  const statementDay = terms?.statementDay ?? 1;
+  const programmeId = await programmeIdOf(database.db, ws, programId);
+  const ledger = await listPointEntries(database, ws, programmeId);
+  const mine = ledger.filter((entry) => entry.kind === 'earn' && entry.earnedById === programId);
+  const typed = new Map((await listCycleActuals(database, ws, programId)).map((row) => [row.cycleStart, row.actualPoints]));
+
+  const months: CardStatementMonth[] = [];
+  let cycle = cycleFor(today, program.cycleAnchor, statementDay);
+  for (let index = 0; index < MAX_CYCLES && cycle.end >= firstPurchaseOn; index += 1) {
+    const inside = mine.filter((entry) => entry.occurredOn >= cycle.start && entry.occurredOn <= cycle.end);
+    months.push({
+      start: cycle.start,
+      end: cycle.end,
+      points: inside.reduce((total, entry) => total + entry.quantity, 0),
+      posted: inside.length > 0 && inside.every((entry) => entry.status === 'posted'),
+      typed: typed.get(cycle.start) ?? null,
+    });
+    cycle = previousCycle(cycle, program.cycleAnchor, statementDay);
+  }
+  const from = months[months.length - 1]!.start;
+  const adjusts = [...new Set(ledger.filter((entry) => entry.kind === 'adjust' && (entry.source === 'manual' || entry.source === 'snapshot') && entry.occurredOn >= from && entry.occurredOn <= today).map((entry) => entry.occurredOn))].sort();
+  return { firstPurchaseOn, months, adjusts };
+}
+
+/**
+ * After a purchase on a card is saved, edited or voided: works out again the cycle each of its days falls in — the old
+ * day and the new — when that cycle is older than the two a card page works out itself and was already worked out, so a
+ * catch-up already done never goes stale. Nothing here may fail a save, so what goes wrong is left for the next catch-up.
+ */
+export async function rederiveCardCycles(database: Database, ws: WorkspaceContext, accountIds: readonly string[], dates: readonly string[], today: string = new Date().toISOString().slice(0, 10)): Promise<void> {
+  try {
+    if (accountIds.length === 0 || dates.length === 0) return;
+    const programs = await database.db
+      .select()
+      .from(rewardPrograms)
+      .where(and(eq(rewardPrograms.workspaceId, ws.workspaceId), inArray(rewardPrograms.cardAccountId, [...accountIds]), isNull(rewardPrograms.archivedAt)));
+    for (const program of programs) {
+      const [terms] = await database.db
+        .select({ statementDay: cardTerms.statementDay })
+        .from(cardTerms)
+        .where(and(eq(cardTerms.accountId, program.cardAccountId), eq(cardTerms.workspaceId, ws.workspaceId)));
+      const statementDay = terms?.statementDay ?? 1;
+      const current = cycleFor(today, program.cycleAnchor, statementDay);
+      const recent = previousCycle(current, program.cycleAnchor, statementDay);
+      const [first] = await database.db
+        .select({ on: sql<string | null>`min(${pointEntries.occurredOn})` })
+        .from(pointEntries)
+        .where(and(eq(pointEntries.workspaceId, ws.workspaceId), eq(pointEntries.earnedById, program.id), eq(pointEntries.kind, 'earn')));
+      const earliest = first?.on ?? null;
+      const seen = new Set<string>();
+      for (const date of dates) {
+        const cycle = cycleFor(date, program.cycleAnchor, statementDay);
+        if (cycle.start >= recent.start || seen.has(cycle.start)) continue;
+        seen.add(cycle.start);
+        // Only the range already worked out is kept up to date: a cycle before the card's earliest derived earning, or
+        // on a card nobody has caught up, waits for its catch-up.
+        if (earliest === null || cycle.end < earliest) continue;
+        await deriveCycleEntries(database, ws, program.id, cycle);
+      }
+    }
+  } catch {
+    // The save is already done; the next catch-up works the cycle out.
+  }
+}
+
 /**
  * Catch-up as the owner sees it: the same walk back, reporting how many statements it added — cycles that held no earning
  * for this card before and hold some now. A cycle already worked out, or one with no purchases on the card, adds none,
@@ -441,7 +576,15 @@ export async function catchUpCard(database: Database, ws: WorkspaceContext, prog
   return { added };
 }
 
-async function walkCycles(database: Database, ws: WorkspaceContext, programId: string, cycles: number, today: string): Promise<{ walked: number; added: number }> {
+async function walkCycles(
+  database: Database,
+  ws: WorkspaceContext,
+  programId: string,
+  cycles: number,
+  today: string,
+  /** Walk back until a cycle ends before this day, instead of for a fixed number of cycles. */
+  until?: string,
+): Promise<{ walked: number; added: number }> {
   const [program] = await database.db
     .select()
     .from(rewardPrograms)
@@ -456,7 +599,9 @@ async function walkCycles(database: Database, ws: WorkspaceContext, programId: s
   let cycle = cycleFor(today, program.cycleAnchor, statementDay);
   let walked = 0;
   let added = 0;
-  for (let index = 0; index < Math.max(0, Math.floor(cycles)); index += 1) {
+  const limit = until ? MAX_CYCLES : Math.max(0, Math.floor(cycles));
+  for (let index = 0; index < limit; index += 1) {
+    if (until && cycle.end < until) break;
     const [before] = await database.db
       .select({ n: sql<number>`count(*)` })
       .from(pointEntries)

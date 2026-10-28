@@ -40,6 +40,7 @@ import {
   withSavedStage,
 } from './set-aside-tx';
 import { recordActivityTx } from './activity-log';
+import { rederiveCardCycles } from './point-ledger';
 import { extrasFor, extrasForTx, extrasTablesExist, movePhotosTx, writeExtrasTx } from './transaction-extras';
 
 export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email' | 'notification' | 'screen' | 'photo';
@@ -565,13 +566,26 @@ export function setSettledBeforeApp(database: Database, ws: WorkspaceContext, pu
   });
 }
 
-export function postTransaction(database: Database, ws: WorkspaceContext, input: PostTransactionInput): Promise<string> {
-  return database.transaction(async (tx) => {
+export async function postTransaction(database: Database, ws: WorkspaceContext, input: PostTransactionInput): Promise<string> {
+  const id = await database.transaction(async (tx) => {
     const id = await postTransactionTx(tx, ws, input);
     // The plain door is the one a person uses; a post that corrects another row is an edit, written by `replaceTransaction`.
     if (!input.replacesTransactionId) await recordActivityTx(tx, ws, 'create', id);
     return id;
   });
+  await rederiveCardCycles(database, ws, input.lines.map((line) => line.accountId), [input.occurredOn]);
+  return id;
+}
+
+/** The day and accounts of a transaction before it is voided or replaced, for the cards whose cycles it touched. */
+async function factsOf(database: Database, ws: WorkspaceContext, id: string): Promise<{ on: string | null; accountIds: string[] }> {
+  try {
+    const [row] = await database.db.select({ on: transactions.occurredOn }).from(transactions).where(and(eq(transactions.id, id), eq(transactions.workspaceId, ws.workspaceId)));
+    const lines = await database.db.select({ accountId: entries.accountId }).from(entries).where(eq(entries.transactionId, id));
+    return { on: row?.on ?? null, accountIds: lines.map((line) => line.accountId) };
+  } catch {
+    return { on: null, accountIds: [] };
+  }
 }
 
 /**
@@ -696,25 +710,35 @@ async function refuseEventPostingTx(tx: Db, id: string): Promise<void> {
   if (await eventPostingOfTx(tx, id)) throw new LedgerError('EVENT_POSTING', EVENT_POSTING_MESSAGE);
 }
 
-export function voidTransaction(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
-  return database.transaction(async (tx) => {
+export async function voidTransaction(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
+  const before = await factsOf(database, ws, id);
+  await database.transaction(async (tx) => {
     await voidTransactionTx(tx, ws, id);
     await recordActivityTx(tx, ws, 'delete', id);
   });
+  await rederiveCardCycles(database, ws, before.accountIds, before.on ? [before.on] : []);
 }
 
 /** Edit = void the original and post the replacement atomically. */
-export function replaceTransaction(
+export async function replaceTransaction(
   database: Database,
   ws: WorkspaceContext,
   id: string,
   input: PostTransactionInput,
 ): Promise<string> {
-  return database.transaction(async (tx) => {
+  const before = await factsOf(database, ws, id);
+  const replacement = await database.transaction(async (tx) => {
     const replacement = await replaceTransactionTx(tx, ws, id, input);
     await recordActivityTx(tx, ws, 'edit', replacement, { replaces: id });
     return replacement;
   });
+  await rederiveCardCycles(
+    database,
+    ws,
+    [...before.accountIds, ...input.lines.map((line) => line.accountId)],
+    [...(before.on ? [before.on] : []), input.occurredOn],
+  );
+  return replacement;
 }
 
 /**
