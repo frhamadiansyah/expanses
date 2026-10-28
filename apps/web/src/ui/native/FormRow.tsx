@@ -411,9 +411,14 @@ export function DestructiveRow({
   calm = false,
   disabled = false,
   testId,
+  ariaLabel,
+  onBlur,
 }: GroupChild & {
   label: string;
   onClick: () => void;
+  /** What a reader hears when it differs from the words drawn. */
+  ariaLabel?: string;
+  onBlur?: () => void;
   /** Cannot be pressed at all (the button is disabled), drawn grey: a confirmation that waits for something typed. */
   disabled?: boolean;
   testId?: string;
@@ -429,6 +434,8 @@ export function DestructiveRow({
         type="button"
         disabled={disabled}
         data-testid={testId}
+        aria-label={ariaLabel}
+        onBlur={onBlur}
         onClick={onClick}
         className={cx('ph-focus-inset w-full text-center text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', muted || disabled ? 'text-[var(--ph-ink-3)]' : calm ? 'text-[var(--ph-ink)]' : 'text-[var(--ph-alarm)]')}
         style={shell(false)}
