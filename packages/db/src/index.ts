@@ -101,6 +101,7 @@ export * from './repos/sinking-views';
 export * from './repos/event-scope';
 export * from './repos/events';
 export * from './repos/event-items';
+export * from './repos/event-currency';
 export * from './repos/shared-event-records';
 export * from './repos/shared-event-postings';
 export * from './repos/shared-event-writes';

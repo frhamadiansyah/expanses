@@ -1,4 +1,4 @@
-import { type EventPlan, eventPlan, uuidv7 } from '@expanses/core';
+import { type EventPlan, eventCurrency, eventPlan, isoDate, uuidv7 } from '@expanses/core';
 import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
@@ -6,6 +6,7 @@ import { accounts, entries, transactions } from '../schema';
 import { events } from '../schema-events';
 import { categoryIdsOfBook, hasBooks } from './books';
 import { listSetCategories } from './category-sets';
+import { listEventCurrencies, setEventCurrency, storedConverter } from './event-currency';
 import { type EventItemRow, listEventItems } from './event-items';
 import { EventError, type EventRow, eventOf, ofBook, toEventRow as toRow } from './event-scope';
 import { extrasTablesExist, notExcluded } from './transaction-extras';
@@ -23,6 +24,11 @@ export interface SaveEventInput {
   endsOn: string;
   goalId?: string | null;
   setId?: string | null;
+  /**
+   * The currency the plan is in. Left out, an edit keeps what the event has; null (or the base currency) puts it back to
+   * the base. Refused with CURRENCY_FIXED once anything is bought.
+   */
+  currency?: string | null;
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -55,6 +61,8 @@ export async function saveEvent(database: Database, ws: WorkspaceContext, input:
       target: events.id,
       set: { name, startsOn: input.startsOn, endsOn: input.endsOn, goalId: input.goalId ?? null, setId: input.setId ?? null },
     });
+  // After the row, so a refusal leaves a new event made without its currency rather than half-saved the other way.
+  if (input.currency !== undefined) await setEventCurrency(database, ws, id, input.currency);
   return id;
 }
 
@@ -67,7 +75,8 @@ export async function listEvents(database: Database, ws: WorkspaceContext): Prom
   const off = (await planOffColumnExists(database.db))
     ? new Set((await database.db.values<[string]>(sql`SELECT id FROM events WHERE workspace_id = ${ws.workspaceId} AND plan_off = 1`)).map(([id]) => id))
     : new Set<string>();
-  return rows.map((row) => ({ ...toRow(row), planOff: off.has(row.id) }));
+  const currencies = await listEventCurrencies(database.db, ws);
+  return rows.map((row) => ({ ...toRow(row), planOff: off.has(row.id), currency: currencies.get(row.id) ?? null }));
 }
 
 /*
@@ -263,6 +272,8 @@ export async function eventPlanFor(database: Database, ws: WorkspaceContext, eve
       description: transactions.description,
       categoryId: entries.accountId,
       amountBaseMinor: entries.amountBaseMinor,
+      amountMinor: entries.amountMinor,
+      currency: entries.currency,
     })
     .from(entries)
     .innerJoin(transactions, eq(entries.transactionId, transactions.id))
@@ -285,12 +296,20 @@ export async function eventPlanFor(database: Database, ws: WorkspaceContext, eve
     .from(accounts)
     .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'expense')));
 
+  // Items are priced in their own currencies and read in the event's, at rates already stored on this phone: opening a
+  // plan asks no server (the screens fetch a missing one first). Nothing is written.
+  const base = ws.baseCurrency;
+  const eventCurrencyNow = eventCurrency((await listEventCurrencies(database.db, ws)).get(eventId), base);
+  const converter = await storedConverter(database.db, base);
+
   return eventPlan({
+    money: { baseCurrency: base, eventCurrency: eventCurrencyNow, today: isoDate(), converter },
     items: mine.map((item) => ({
       id: item.id,
       name: item.name,
       quantity: item.quantity,
       unitPriceMinor: item.unitPriceMinor,
+      currency: item.currency,
       categoryId: item.categoryAccountId,
       link: item.link,
       note: item.note,
