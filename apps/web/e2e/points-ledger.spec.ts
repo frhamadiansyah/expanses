@@ -185,7 +185,7 @@ test('catches a card up from its programme page, without complaint; the card pag
 
   // Catch up is on the card's own page, behind the card's row in Settings.
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Settings' }).click();
-  await page.getByRole('dialog').getByRole('link', { name: /CIMB Octo/ }).click();
+  await page.getByRole('dialog').getByRole('button', { name: /CIMB Octo/ }).click();
   // Nothing older than this statement: the one month is listed, there is no Catch up row, and no error.
   await expect(page.getByTestId('programme-card-statement')).toHaveCount(1);
   await expect(page.getByText('Catch up earlier cycles')).toHaveCount(0);
@@ -205,7 +205,7 @@ test('the card page already lists a statement from before the app was opened, an
   await expect(page.getByTestId('programme-balance')).toHaveText('100 points');
 
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Settings' }).click();
-  await page.getByRole('dialog').getByRole('link', { name: /CIMB Octo/ }).click();
+  await page.getByRole('dialog').getByRole('button', { name: /CIMB Octo/ }).click();
   // No tap: the older month is worked out as the page opens.
   // Every statement from the first purchase to now is listed, the empty ones with nothing.
   await expect(page.getByTestId('programme-card-statement').first()).toBeVisible();

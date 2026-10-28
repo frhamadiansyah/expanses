@@ -97,8 +97,8 @@ test('a second card of the bank joins its programme', async ({ page }) => {
   await programmeRow(page, "Livin' Poin").click();
   // The cards earning here are in the programme's settings.
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Settings' }).click();
-  await expect(page.getByRole('link', { name: /Mandiri Prioritas/ })).toBeVisible();
-  await expect(page.getByRole('link', { name: /Mandiri Platinum/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Mandiri Prioritas/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Mandiri Platinum/ })).toBeVisible();
   await page.keyboard.press('Escape');
 
   // What a point is worth is the programme's one value per point, in its settings.
