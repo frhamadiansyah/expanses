@@ -205,8 +205,8 @@ export function EventsPage() {
           confirm={{ label: 'Save event', disabled: name.trim() === '', run: () => void addEvent() }}
         >
           <InsetGroup>
-            <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Lebaran, the wedding, the renovation" />
-            <SelectRow label="Categories" hint="A set keeps an event's categories out of the monthly tree." value={setId} onChange={(e) => setSetId(e.target.value)}>
+            <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} />
+            <SelectRow label="Categories" value={setId} onChange={(e) => setSetId(e.target.value)}>
               <option value="">The monthly categories</option>
               {sets.map((set) => (
                 <option key={set.id} value={set.id}>
