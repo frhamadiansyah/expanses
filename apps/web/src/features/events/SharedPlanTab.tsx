@@ -1,34 +1,102 @@
-import { formatMinor, parseMajor } from '@expanses/core';
+import { type EventPlan, parseMajor } from '@expanses/core';
 import { ownerScope, saveSharedItem, type SharedEventView } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
+import { Check } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, Panel, SubmitRow, TextRow } from '../../ui/native';
+import { cx, ErrorBox } from '../../ui';
+import { InsetGroup, Panel, SubmitRow, TextRow } from '../../ui/native';
 import { buyTarget } from './buy-item';
+import { itemFigure, itemPaidAgainst, itemSubtitle } from './plan-view';
+import { PlanHeroBody } from './PlanPage';
 import { SharedItemSheet } from './SharedItemSheet';
-import { useSharedEventPlan } from './shared-queries';
-import { planSummary, type SharedPlanItem } from './shared-plan';
+import { sharedPlanHero, type SharedPlanItem } from './shared-plan';
 import { pageLocks } from './shared-view';
 
 /**
- * The shared plan (D7): what the trip means to buy, in the event currency. A tap on an item opens it — its name and
- * price, what bought it (the tick), Buy it now, and Remove — so a mistyped price or an item bought without Buy it now
- * is put right on every phone (I10).
+ * The Plan card of the shared trip's hero: the private plan's ring card, fed from the shared items in the one currency
+ * of the trip (so no base equivalents). With no items it says so; the form to add one is under the hero.
  */
-export function SharedPlanTab({ view }: { view: SharedEventView }) {
+export function SharedPlanHero({ view, plan }: { view: SharedEventView; plan: EventPlan | null | undefined }) {
+  const card = 'flex flex-1 flex-col justify-center rounded-[11px] bg-[var(--ph-surface)]';
+  if (!plan || plan.itemCount === 0) {
+    return (
+      <div className={card} data-testid="plan-totals">
+        <p className="px-[14px] py-[14px] text-center text-[13px] leading-[17px] text-[var(--ph-ink-3)]">Nothing planned yet. Add what is planned to pay and roughly what it costs.</p>
+      </div>
+    );
+  }
+  return (
+    <div className={card} data-testid="plan-totals">
+      <PlanHeroBody {...sharedPlanHero(plan, view.currency)} />
+    </div>
+  );
+}
+
+/** One thing on the shared plan, drawn as the private plan's checklist line is; the whole row opens the item. */
+function SharedPlanRow({ item, currency, onOpen }: { item: SharedPlanItem; currency: string; onOpen: (() => void) | null }) {
+  const against = itemPaidAgainst(item, currency, currency);
+  const subtitle = itemSubtitle(item, currency, currency);
+  const content = (
+    <>
+      <span
+        aria-hidden
+        className={cx(
+          'flex h-7 w-7 shrink-0 items-center justify-center rounded-full',
+          item.done ? 'bg-[var(--ph-up-panel)] text-[var(--ph-up)]' : 'ring-[1.5px] ring-[var(--ph-chevron)] ring-inset',
+        )}
+      >
+        {item.done && <Check size={15} strokeWidth={3} />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-[var(--ph-ink)]">{item.name}</span>
+        {subtitle && <span className="block truncate text-xs text-[var(--ph-ink-3)]">{subtitle}</span>}
+      </span>
+      <span className="tabular shrink-0 text-right text-sm font-semibold whitespace-nowrap text-[var(--ph-ink)]">
+        {against?.arrow && (
+          <span
+            role="img"
+            aria-label={against.arrow === 'under' ? 'Under the estimate' : 'Over the estimate'}
+            className={cx('mr-[5px] text-[10px]', against.arrow === 'under' ? 'text-[var(--ph-up)]' : 'text-[var(--ph-alarm)]')}
+          >
+            <span aria-hidden>{against.arrow === 'under' ? '▼' : '▲'}</span>
+          </span>
+        )}
+        {itemFigure(item, currency, currency)}
+        {against && <span className="block text-[11.5px] leading-[14px] font-normal text-[var(--ph-ink-3)]">{against.of}</span>}
+      </span>
+    </>
+  );
+  const line = 'flex min-h-12 w-full items-center gap-3 px-[14px] py-2 text-left';
+  return onOpen ? (
+    <button type="button" onClick={onOpen} aria-label={item.name} data-testid="shared-plan-item" className={cx(line, 'ph-focus-inset')}>
+      {content}
+    </button>
+  ) : (
+    <div className={line} role="group" aria-label={item.name} data-testid="shared-plan-item">
+      {content}
+    </div>
+  );
+}
+
+/**
+ * The shared plan (D7) under the hero: what the trip means to buy, in the event currency, as a flat To pay list. A tap on an
+ * item opens it — its name and price, what bought it (the tick), Buy it now, and Remove — so a mistyped price or an item
+ * bought without Buy it now is put right on every phone (I10).
+ */
+export function SharedPlanTab({ view, plan, error: planError = null }: { view: SharedEventView; plan: EventPlan | null | undefined; error?: unknown }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const navigate = useNavigate();
-  const plan = useSharedEventPlan(view.eventId);
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [opened, setOpened] = useState<SharedPlanItem | null>(null);
-  const items = (plan.data?.lines ?? []).flatMap((line) => line.items);
+  const all = (plan?.lines ?? []).flatMap((line) => line.items);
+  // Still to pay first, paid after, as the private plan lists them.
+  const items = [...all.filter((item) => !item.done), ...all.filter((item) => item.done)];
   const { locked } = pageLocks(view);
-  const summary = planSummary(items, view.spentMinor);
 
   async function add(event: FormEvent) {
     event.preventDefault();
@@ -45,38 +113,16 @@ export function SharedPlanTab({ view }: { view: SharedEventView }) {
 
   return (
     <>
-      <ErrorBox error={plan.error} />
+      <ErrorBox error={planError} />
       {items.length > 0 ? (
-        <Panel header="Plan" testId="shared-plan-card">
-          <div className="text-[24px] leading-[30px] font-bold text-[var(--ph-ink)]">{formatMinor(summary.plannedMinor, view.currency)}</div>
-          <div className="pb-[8px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">
-            {`planned · ${formatMinor(view.spentMinor, view.currency)} spent · ${formatMinor(summary.leftMinor, view.currency)} left`}
-          </div>
-          <div className="h-[10px] overflow-hidden rounded-full bg-[var(--ph-track)]">
-            <div className="h-full rounded-full bg-[var(--ph-up)]" style={{ width: `${summary.percent}%` }} />
+        <Panel header="To pay" pad={false}>
+          <div className="[&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
+            {items.map((item) => (
+              <SharedPlanRow key={item.id} item={item} currency={view.currency} onOpen={locked ? null : () => setOpened(item)} />
+            ))}
           </div>
         </Panel>
       ) : null}
-      <InsetGroup header="To pay">
-        {items.map((item) => (
-          <InsetRow
-            key={item.id}
-            title={item.name}
-            subtitle={
-              item.bought
-                ? `Paid · ${formatMinor(item.actualMinor ?? 0, view.currency)}`
-                : item.purchaseCount > 0
-                  ? // Paid towards and still open: what was paid against what was planned, and how many payments made it.
-                    `${formatMinor(item.actualMinor ?? 0, view.currency)} of ${formatMinor(item.estimateMinor, view.currency)} · ${item.purchaseCount} ${item.purchaseCount === 1 ? 'payment' : 'payments'}`
-                  : `${item.quantity} × ${formatMinor(item.unitPriceMinor, view.currency)}`
-            }
-            value={formatMinor(item.estimateMinor, view.currency)}
-            onClick={locked ? undefined : () => setOpened(item)}
-            label={item.name}
-            testId="shared-plan-item"
-          />
-        ))}
-      </InsetGroup>
       {locked ? null : (
         <form aria-label="Add to the plan" onSubmit={(event) => void add(event)}>
           <InsetGroup>

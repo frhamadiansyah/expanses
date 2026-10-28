@@ -2,7 +2,7 @@ import { eventCurrency, formatMinor } from '@expanses/core';
 import { setEventItemDone, type AccountRow } from '@expanses/db';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Check, Plus } from 'lucide-react';
-import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
+import { type ComponentProps, type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox } from '../../ui';
@@ -113,7 +113,7 @@ const hereStatus = (status: ReturnType<typeof planStatus>, rp: (minor: number) =
  * height holds from one state to the next. Nothing in the text wraps: the figures are small enough to share the row.
  * When the event's currency is not the base, each of the three figures has its base equivalent under it.
  */
-function PlanHero({
+export function PlanHeroBody({
   percent,
   count,
   status,
@@ -164,8 +164,6 @@ function PlanHero({
       </span>
     );
   return (
-    <div data-testid="plan-totals">
-      <InsetGroup>
         <div className="px-[14px] py-[14px]">
           <div className="flex items-start gap-[14px]">
             <svg data-testid="plan-ring" role="img" aria-label={`${percent} percent paid, ${count}`} width={size} height={size} viewBox="0 0 100 100" className="shrink-0">
@@ -232,6 +230,15 @@ function PlanHero({
             </div>
           </div>
         </div>
+  );
+}
+
+/** The private plan's top card: the body inside a group's surface. */
+export function PlanHero(props: ComponentProps<typeof PlanHeroBody>) {
+  return (
+    <div data-testid="plan-totals">
+      <InsetGroup>
+        <PlanHeroBody {...props} />
       </InsetGroup>
     </div>
   );

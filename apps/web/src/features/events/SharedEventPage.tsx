@@ -7,24 +7,34 @@ import { ErrorBox, Money } from '../../ui';
 import { ICONS } from '../categories/CategoryIcon';
 import { chartColour, OTHER_COLOUR } from '../transactions/category-colours';
 import { ShareLine } from '../transactions/CategoryLines';
-import { Donut } from '../transactions/Donut';
-import { type CornerAction, InsetGroup, InsetRow, Panel, rowPositions, SCREEN, type Segment, SegmentedControl, PushedTitle } from '../../ui/native';
+import { type CornerAction, InsetGroup, InsetRow, Panel, rowPositions, SCREEN, PushedTitle } from '../../ui/native';
 import { addSpendingTarget } from './buy-item';
 import { eventDates } from './EventsPage';
 import { EventNameBox } from './EventNameBox';
 import { FinishSharing } from './FinishSharing';
 import { SettlementSheet } from './SettlementSheet';
 import { SettleUpSheet } from './SettleUpSheet';
-import { SharedPlanTab } from './SharedPlanTab';
-import { useFetchEventRates } from './shared-queries';
+import { HeroSwipe } from './HeroSwipe';
+import { SharedPlanHero, SharedPlanTab } from './SharedPlanTab';
+import { useFetchEventRates, useSharedEventPlan } from './shared-queries';
 import { balanceBars, dayGroups, expenseRow, mineToSettle, pageLocks, paymentLine, pickedDays, readOnlyLine, settlementDeletable, settlementRow, signedBalance, spendingSlices, waitingLine } from './shared-view';
 import { TakeOverSheet } from './TakeOverSheet';
 
-const TABS: readonly Segment[] = [
-  { key: 'spending', label: 'Spending' },
-  { key: 'balances', label: 'Balances' },
-  { key: 'plan', label: 'Plan' },
-];
+const CARDS = ['spending', 'balances', 'plan'] as const;
+
+const RING = 2 * Math.PI * 42;
+
+/** Where each category's arc starts and how long it runs round the ring, a hair apart when there are several. */
+function ringArcs(slices: readonly { key: string; totalMinor: number }[], whole: number) {
+  const gap = slices.length > 1 ? 3 : 0;
+  let at = 0;
+  return slices.map((slice) => {
+    const share = whole > 0 ? (slice.totalMinor / whole) * RING : 0;
+    const arc = { key: slice.key, start: at, length: Math.max(0.5, share - gap) };
+    at += share;
+    return arc;
+  });
+}
 
 /**
  * A shared event (shared events §6), laid out as a private one is: the dates as the bar's title, the name in a box at the top of the Spending panel only, the tabs Spending,
@@ -37,7 +47,8 @@ const TABS: readonly Segment[] = [
  */
 export function SharedEventPage({ view, menu = [], error = null }: { view: SharedEventView; menu?: CornerAction[]; error?: unknown }) {
   const navigate = useNavigate();
-  const [tab, setTab] = useState('spending');
+  const [card, setCard] = useState(0);
+  const plan = useSharedEventPlan(view.eventId);
   const [settling, setSettling] = useState<NamedPayment | null>(null);
   const [opened, setOpened] = useState<SharedSettlementView | null>(null);
   const [takingOver, setTakingOver] = useState(false);
@@ -94,6 +105,84 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
   const mine = new Set(mineToSettle(view));
   const offerSettle = (p: NamedPayment) => mine.has(p) || !view.people.some((x) => x.hasApp && (x.personId === p.fromPersonId || x.personId === p.toPersonId));
 
+  const topThree = slices.slice(0, 3);
+  const cardBox = 'flex flex-1 flex-col justify-center rounded-[11px] bg-[var(--ph-surface)]';
+  // The Spending card: the ring by category beside the total and the three biggest categories. The name sits above, out of the
+  // tap target; the rest of the card is the switch for the full category rows under the hero.
+  const spendingCard = (
+    <div className={`${cardBox} px-[14px] py-[14px]`} data-testid="shared-event-total">
+      <EventNameBox name={view.name} />
+      {slices.length > 0 ? (
+        chartFrame(
+          <div className="flex items-center gap-[14px]">
+            <svg viewBox="0 0 100 100" width={104} height={104} role="img" aria-label={`${formatMinor(view.spentMinor, view.currency)} Total spent`} className="shrink-0">
+              <circle cx="50" cy="50" r="42" fill="none" stroke="var(--ph-track)" strokeWidth="12" />
+              {ringArcs(slices, whole).map((arc) => (
+                <circle
+                  key={arc.key}
+                  cx="50"
+                  cy="50"
+                  r="42"
+                  fill="none"
+                  stroke={colourOf(arc.key)}
+                  strokeWidth="12"
+                  strokeDasharray={`${arc.length} ${RING - arc.length}`}
+                  strokeDashoffset={-arc.start}
+                  transform="rotate(-90 50 50)"
+                  opacity={picked === null || picked === arc.key ? 1 : 0.25}
+                />
+              ))}
+              <text x="50" y="46" textAnchor="middle" dominantBaseline="central" fontSize="22" fontWeight="700" fill="var(--ph-ink)">
+                {slices.length}
+              </text>
+              <text x="50" y="63" textAnchor="middle" dominantBaseline="central" fontSize="10" fill="var(--ph-ink-3)">
+                {slices.length === 1 ? 'category' : 'categories'}
+              </text>
+            </svg>
+            <div className="min-w-0 flex-1">
+              <div className="text-[12px] leading-[15px] text-[var(--ph-ink-3)]">Total spent</div>
+              <div className="tabular text-[clamp(13px,5cqw,20px)] leading-[26px] font-bold whitespace-nowrap text-[var(--ph-ink)]">{formatMinor(view.spentMinor, view.currency)}</div>
+              {topThree.map((slice) => (
+                <div key={slice.key} className="mt-[5px] flex justify-between gap-2 text-[12px] leading-[15px] text-[var(--ph-ink-3)]">
+                  <span className="min-w-0 truncate">{slice.label}</span>
+                  <span className="tabular shrink-0 whitespace-nowrap">{formatMinor(slice.totalMinor, view.currency)}</span>
+                </div>
+              ))}
+            </div>
+          </div>,
+        )
+      ) : (
+        <div className="flex flex-col items-center py-[10px]">
+          <span className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Total spent</span>
+          <span className="text-[24px] leading-[30px] font-bold text-[var(--ph-ink)]">{formatMinor(view.spentMinor, view.currency)}</span>
+        </div>
+      )}
+    </div>
+  );
+  // The Balances card: the Net balance panel as it was, a bar per person.
+  const balanceCard = (
+    <div className={`${cardBox} px-[13px] py-[13px]`} data-testid="shared-balance-bars">
+      <h2 className="pb-[8px] text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">Net balance</h2>
+      <div className="flex flex-col gap-[10px]">
+        {bars.map((bar) => (
+          <div key={bar.personId} className="flex items-center gap-[10px]" data-testid="shared-balance-row">
+            <span className="w-[100px] shrink-0 truncate text-[15px] leading-[20px] text-[var(--ph-ink)]">{bar.name}</span>
+            <span className="h-[12px] min-w-0 flex-1" aria-hidden>
+              <span
+                className="block h-full rounded-full"
+                data-tone={bar.tone}
+                style={{ width: `${bar.percent}%`, minWidth: bar.percent > 0 ? 6 : 0, background: bar.tone === 'owing' ? 'var(--ph-warn)' : 'var(--ph-up)' }}
+              />
+            </span>
+            <span className={`tabular shrink-0 text-[15px] leading-[20px] ${bar.tone === 'owing' ? 'text-[var(--ph-warn)]' : bar.tone === 'ahead' ? 'text-[var(--ph-up)]' : 'text-[var(--ph-ink-3)]'}`}>
+              {signedBalance(bar.balanceMinor, view.currency)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div className={SCREEN} data-testid="shared-event">
       <PushedTitle title={eventDates(view)} back="Events" backTo="/events" actions={actions} />
@@ -104,45 +193,35 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
           <InsetRow title={waiting} subtitle="Choose the account for each" onClick={() => setTakingOver(true)} testId="take-over-row" />
         </InsetGroup>
       ) : null}
-      <div className="mb-[14px] w-full md:max-w-sm" data-testid="shared-event-tabs">
-        <SegmentedControl label={`${view.name} sections`} segments={TABS} value={tab} onChange={setTab} />
-      </div>
-      {tab === 'spending' ? (
+      <HeroSwipe
+        label={`${view.name} sections`}
+        active={card}
+        onActive={setCard}
+        slides={[
+          { key: 'spending', label: 'Spending', node: spendingCard },
+          { key: 'balances', label: 'Balances', node: balanceCard },
+          { key: 'plan', label: 'Plan', node: <SharedPlanHero view={view} plan={plan.data} /> },
+        ]}
+      />
+      {CARDS[card] === 'spending' ? (
         <>
-          <Panel testId="shared-event-total">
-            <EventNameBox name={view.name} />
-            {slices.length > 0 ? (
-              chartFrame(
-                <Donut
-                  slices={slices.map((slice) => ({ ...slice, colour: colourOf(slice.key) }))}
-                  totalMinor={whole}
-                  middle={formatMinor(view.spentMinor, view.currency)}
-                  label="Total spent"
-                />,
-              )
-            ) : (
-              <div className="flex flex-col items-center py-[10px]">
-                <span className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Total spent</span>
-                <span className="text-[24px] leading-[30px] font-bold text-[var(--ph-ink)]">{formatMinor(view.spentMinor, view.currency)}</span>
-              </div>
-            )}
-            {showRows && slices.length > 0 ? (
-              <div className="mt-2 border-t-[0.5px] border-[var(--ph-hair)] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]" data-testid="shared-event-categories">
-                {slices.map((slice) => (
-                  <button
-                    type="button"
-                    key={slice.key}
-                    onClick={() => pick(slice.key)}
-                    aria-pressed={picked === slice.key}
-                    data-testid="event-category-row"
-                    className={`ph-focus-inset -mx-[13px] flex min-h-12 w-[calc(100%+26px)] flex-col justify-center px-[13px] py-2.5 text-left ${picked === slice.key ? 'bg-[var(--ph-fill)]' : ''}`}
-                  >
-                    <ShareLine colour={colourOf(slice.key)} name={slice.label} amountMinor={slice.totalMinor} wholeMinor={whole} currency={view.currency} chevron={false} />
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </Panel>
+          {slices.length > 0 && !showRows ? <p className="mb-[10px] text-center text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Tap the card to see all categories</p> : <div className="mb-[6px]" />}
+          {showRows && slices.length > 0 ? (
+            <Panel testId="shared-event-categories" className="[&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
+              {slices.map((slice) => (
+                <button
+                  type="button"
+                  key={slice.key}
+                  onClick={() => pick(slice.key)}
+                  aria-pressed={picked === slice.key}
+                  data-testid="event-category-row"
+                  className={`ph-focus-inset -mx-[13px] flex min-h-12 w-[calc(100%+26px)] flex-col justify-center px-[13px] py-2.5 text-left ${picked === slice.key ? 'bg-[var(--ph-fill)]' : ''}`}
+                >
+                  <ShareLine colour={colourOf(slice.key)} name={slice.label} amountMinor={slice.totalMinor} wholeMinor={whole} currency={view.currency} chevron={false} />
+                </button>
+              ))}
+            </Panel>
+          ) : null}
           {days.map((day) => {
             const d = new Date(`${day.date}T00:00:00`);
             const positions = rowPositions(day.items.length);
@@ -201,35 +280,13 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
           })}
         </>
       ) : null}
-      {tab === 'balances' ? (
+      {CARDS[card] === 'balances' ? (
         <>
           {readOnly ? (
             <InsetGroup>
               <InsetRow title={readOnlyLine(view)} chevron={false} testId="shared-event-read-only" />
             </InsetGroup>
           ) : null}
-          <Panel header="Net balance" testId="shared-balance-bars">
-            <div className="flex flex-col gap-[10px]">
-              {bars.map((bar) => (
-                <div key={bar.personId} className="flex items-center gap-[10px]" data-testid="shared-balance-row">
-                  <span className="flex w-[100px] shrink-0 flex-col">
-                    <span className="truncate text-[15px] leading-[20px] text-[var(--ph-ink)]">{bar.name}</span>
-                    {bar.hasApp ? null : <span className="whitespace-nowrap text-[11px] leading-[14px] text-[var(--ph-ink-3)]">Without the app</span>}
-                  </span>
-                  <span className="h-[12px] min-w-0 flex-1" aria-hidden>
-                    <span
-                      className="block h-full rounded-full"
-                      data-tone={bar.tone}
-                      style={{ width: `${bar.percent}%`, minWidth: bar.percent > 0 ? 6 : 0, background: bar.tone === 'owing' ? 'var(--ph-warn)' : 'var(--ph-up)' }}
-                    />
-                  </span>
-                  <span className={`tabular shrink-0 text-[15px] leading-[20px] ${bar.tone === 'owing' ? 'text-[var(--ph-warn)]' : bar.tone === 'ahead' ? 'text-[var(--ph-up)]' : 'text-[var(--ph-ink-3)]'}`}>
-                    {signedBalance(bar.balanceMinor, view.currency)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </Panel>
           <InsetGroup header="To settle up">
             {view.payments.map((p) => (
               <InsetRow
@@ -243,7 +300,7 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
           </InsetGroup>
         </>
       ) : null}
-      {tab === 'plan' ? <SharedPlanTab view={view} /> : null}
+      {CARDS[card] === 'plan' ? <SharedPlanTab view={view} plan={plan.data} error={plan.error} /> : null}
       {opened ? <SettlementSheet view={view} settlement={opened} onClose={() => setOpened(null)} /> : null}
       {settling ? <SettleUpSheet view={view} payment={settling} onClose={() => setSettling(null)} /> : null}
       {takingOver ? <TakeOverSheet view={view} onClose={() => setTakingOver(false)} /> : null}
