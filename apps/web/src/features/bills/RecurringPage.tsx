@@ -242,7 +242,8 @@ export function RecurringPage() {
     />
   );
 
-  const title = selecting ? `${picked.size} selected` : 'Recurring';
+  // The count is the select bar's; the page title under it keeps its name, as Cashflow's does.
+  const title = 'Recurring';
   // Glyphs at every width, with the names they always had: a screen reader and a test still hear "New bill".
   // While selecting, the bar over the title row holds the ✕ and the action, as Cashflow's does; the title has none of its own.
   const actions: CornerAction[] = selecting

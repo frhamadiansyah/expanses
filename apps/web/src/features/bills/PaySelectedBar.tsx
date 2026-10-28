@@ -15,7 +15,7 @@ export function PaySelectedBar({ count, pay, onPay, onCancel }: { count: number;
         <button type="button" aria-label="Cancel selection" onClick={onCancel} className={`${circle} text-[var(--ph-ink-2)]`}>
           <X size={19} aria-hidden />
         </button>
-        <span aria-live="polite" className="min-w-0 flex-1 truncate text-center text-[17px] font-semibold text-[var(--ph-ink)]">
+        <span role="heading" aria-level={2} aria-label={`${count} selected`} aria-live="polite" className="min-w-0 flex-1 truncate text-center text-[17px] font-semibold text-[var(--ph-ink)]">
           {count === 0 ? 'None selected' : `${count} selected`}
         </span>
         <button type="button" aria-label="Actions" aria-expanded={menu} onClick={() => setMenu((open) => !open)} className={`${circle} text-[var(--ph-tint)]`}>
