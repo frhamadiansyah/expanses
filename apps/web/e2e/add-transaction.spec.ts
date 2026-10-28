@@ -721,8 +721,12 @@ test('every extra survives the save, and leaving it out of the report leaves onl
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 
+  // Event spending is not in Cashflow's list: its receipt is reached from the event's own page.
+  await expect(page.getByRole('link', { name: 'Receipt for Superindo' })).toHaveCount(0);
+  await page.goto('/events');
+  await page.getByTestId('event-row').filter({ hasText: 'Lebaran' }).click();
   // The receipt carries the event and the channel it was given, and says it is out of the chart.
-  await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
+  await page.getByTestId('event-history').filter({ hasText: 'Superindo' }).getByRole('button', { name: /Superindo/ }).click();
   await expect(page.getByTestId('receipt-hero')).toBeVisible();
   /*
    * And the split itself reached the ledger as **two** categories. This spec set a two-row split up in ten

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import type { ListRow } from './list-model';
-import { amountExtraParts, amountLook, billTagOf, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory, excludedHere, hasNotCountedPart } from './list-model';
+import { amountExtraParts, amountLook, billTagOf, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory, excludedHere, hasNotCountedPart, outsideEvents, accountsWithTransactions } from './list-model';
 
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], extra: Partial<AccountRow> = {}): AccountRow => ({
   id, workspaceId: 'ws', parentId: null, kind, subtype, name: id, icon: null, currency: kind === 'expense' || kind === 'income' ? null : 'IDR', valuationMode: 'derived', systemKey: null, sortOrder: 0, archivedAt: null, createdAt: '2026-09-01T00:00:00Z', ...extra,
@@ -691,5 +691,34 @@ describe('a split with a line left out of the report (0096)', () => {
     const [business] = buildRows([mixed], [], school, cards, {}, 'business');
     expect(business).toMatchObject({ categoryName: 'Books', amountMinor: 30_000_000 });
     expect(business!.leftOut).toBeUndefined();
+  });
+});
+
+describe('Cashflow history leaves events out', () => {
+  const plain = tx('2026-09-05', 'Lunch', [['food', 40_000], ['bca', -40_000]]);
+  const trip = tx('2026-09-06', 'Bali hotel', [['food', 900_000], ['bca', -900_000]], { eventId: 'bali' });
+
+  it('drops event-tagged transactions, so the list is what the ring counts', () => {
+    expect(outsideEvents([plain, trip], false).map((t) => t.description)).toEqual(['Lunch']);
+  });
+
+  it('keeps them when the workspace counts events in its caps (the ring counts them then)', () => {
+    expect(outsideEvents([plain, trip], true)).toHaveLength(2);
+  });
+
+  it('leaves an event purchase out of a search too, since search reads the same rows', () => {
+    const rows = buildRows(outsideEvents([plain, trip], false), [], accounts, cards, {}, undefined);
+    expect(filterRows(rows, { ...EMPTY_FILTERS, month: 'all', q: 'hotel' }, accounts)).toEqual([]);
+    expect(filterRows(rows, { ...EMPTY_FILTERS, month: 'all', q: 'lunch' }, accounts)).toHaveLength(1);
+  });
+});
+
+describe('Paid with lists only accounts with transactions', () => {
+  const money = [account('cash', 'asset', 'cash', { name: 'Cash IDR' }), account('bca', 'asset', 'bank'), account('kantong', 'asset', 'ewallet')];
+  it('hides an account with none, keeps the ones used', () => {
+    expect(accountsWithTransactions(money, new Set(['bca', 'kantong'])).map((a) => a.id)).toEqual(['bca', 'kantong']);
+  });
+  it('keeps the account the filter is on even with none', () => {
+    expect(accountsWithTransactions(money, new Set(['bca']), 'cash').map((a) => a.id)).toEqual(['cash', 'bca']);
   });
 });

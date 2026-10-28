@@ -1,10 +1,11 @@
 import { formatMinor, isoDate } from '@expanses/core';
 import { type AccountRow, replaceTransaction, type TransactionView } from '@expanses/db';
-import { Check, Copy, Pencil, Trash2, Undo2 } from 'lucide-react';
+import { Copy, Pencil, Trash2, Undo2 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
+import { SelectCircle } from '../../ui/native';
 import { SwipeRow } from '../../ui/SwipeRow';
 import { UndoToast } from '../../ui/UndoToast';
 import { CategoryIcon } from '../categories/CategoryIcon';
@@ -144,12 +145,9 @@ export function TransactionRow({
             event.stopPropagation();
             select.onToggle?.();
           }}
-          className={cx(
-            'flex h-6 w-6 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-slate-900',
-            select.selected ? 'bg-[var(--ph-tint)] text-[var(--ph-surface)]' : 'ring-[1.5px] ring-slate-300 ring-inset',
-          )}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-slate-900"
         >
-          {select.selected && <Check size={15} strokeWidth={3} aria-hidden />}
+          <SelectCircle picked={select.selected} className="h-7 w-7" />
         </button>
       ) : (
         <input
@@ -162,7 +160,7 @@ export function TransactionRow({
         />
       )
     ) : (
-      <span aria-hidden className={cx('shrink-0', phone ? 'w-6' : 'w-4')} />
+      <span aria-hidden className={cx('shrink-0', phone ? 'w-7' : 'w-4')} />
     )
   );
   // In select mode a tap on the row's face ticks it; it never opens anything.

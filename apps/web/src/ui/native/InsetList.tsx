@@ -45,6 +45,9 @@ export interface GroupChild {
   position?: RowPosition;
 }
 
+/** The small grey caps of a group's header; anything drawn as one outside a group takes this too. */
+export const GROUP_HEADER_CLASS = 'text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase';
+
 /**
  * The header above a group: 11.5px / 600 / 0.06em / uppercase, outside the group, with an optional figure.
  *
@@ -58,7 +61,7 @@ function GroupHeader({ title, progress, trailing, info }: { title: string; progr
     <div className="px-[4px] pb-[6px]">
     <div className="flex items-baseline justify-between gap-3">
       <span className="flex items-center gap-[6px]">
-        <h2 className="text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">{header.label}</h2>
+        <h2 className={GROUP_HEADER_CLASS}>{header.label}</h2>
         {info && (
           <button
             type="button"

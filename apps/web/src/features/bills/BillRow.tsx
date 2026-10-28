@@ -2,13 +2,13 @@ import { monthName } from '@expanses/core';
 import type { AccountRow, MonthlyBill } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { useFrom } from '../../app/from-search';
-import { Banknote, Check, MoreHorizontal, SkipForward } from 'lucide-react';
+import { Banknote, MoreHorizontal, SkipForward } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { cx, Money } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { isPaused, isSettled, statusOf, sublineOf } from './bill-view';
 import { SwipeRow } from '../../ui/SwipeRow';
-import { ROW_PAD_X, ROW_PAD_Y, rowHeight, toneClass } from '../../ui/native';
+import { ROW_PAD_X, ROW_PAD_Y, rowHeight, SelectCircle, toneClass } from '../../ui/native';
 
 /** A line in the ⋯ menu, drawn as the kit's own overflow menu draws one. */
 const MENU_ITEM = 'ph-focus-inset block w-full px-[13px] py-[11px] text-left text-[15px] leading-[20px] text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]';
@@ -106,16 +106,7 @@ export function BillRow({
               <span aria-hidden={selecting && !settled} className={cx('absolute inset-0 transition-opacity duration-150', selecting && !settled ? 'opacity-0' : 'opacity-100')}>
                 <CategoryIcon categoryId={bill.categoryAccountId} accounts={accounts} size="row" />
               </span>
-              <span
-                aria-hidden
-                className={cx(
-                  'absolute inset-0 flex items-center justify-center rounded-full transition-opacity duration-150',
-                  selecting && !settled ? 'opacity-100' : 'opacity-0',
-                  picked ? 'bg-[var(--ph-tint)] text-[var(--ph-surface)]' : 'ring-[1.5px] ring-[var(--ph-chevron)] ring-inset',
-                )}
-              >
-                {picked && <Check size={16} strokeWidth={2.5} />}
-              </span>
+              <SelectCircle picked={picked} className={cx('absolute inset-0 transition-opacity duration-150', selecting && !settled ? 'opacity-100' : 'opacity-0')} />
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{bill.name}</span>

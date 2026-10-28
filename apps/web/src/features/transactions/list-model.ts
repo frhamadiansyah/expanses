@@ -551,3 +551,19 @@ export function totals(rows: readonly ListRow[]): { count: number; spentMinor: n
   };
 }
 
+
+/**
+ * Cashflow's history leaves out what belongs to an event: event spending is reached from the Events page, and the ring
+ * does not count it either. Unless the workspace counts events in its caps — then the ring does, and so the list does.
+ */
+export function outsideEvents<T extends { eventId?: string | null }>(txs: readonly T[], keepEvents: boolean): T[] {
+  return keepEvents ? [...txs] : txs.filter((tx) => !tx.eventId);
+}
+
+/**
+ * The accounts Paid with offers: those with a transaction somewhere (`used`), and the one the filter is on now, even
+ * when it has none, so the filter that is on can always be seen and taken off.
+ */
+export function accountsWithTransactions<T extends { id: string }>(accounts: readonly T[], used: ReadonlySet<string>, keepId?: string): T[] {
+  return accounts.filter((account) => used.has(account.id) || account.id === keepId);
+}

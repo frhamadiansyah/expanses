@@ -1408,6 +1408,17 @@ export async function listTransactionsIn(
   return { transactions: rows, currency: money.currency, missing: money.missing() };
 }
 
+/**
+ * Every account with at least one posted entry in the workspace, on any date: what Cashflow's Paid with filter lists, so
+ * an account nothing was ever recorded on (a Cash IDR left empty) is not offered.
+ */
+export async function accountIdsInUse(database: Database, ws: WorkspaceContext): Promise<string[]> {
+  const rows = await database.db.values<[string]>(sql`
+    SELECT DISTINCT e.account_id FROM entries e JOIN transactions t ON t.id = e.transaction_id
+    WHERE e.workspace_id = ${ws.workspaceId} AND t.status = 'posted'`);
+  return rows.map((row) => row[0]);
+}
+
 /** Raw debit-positive sums of posted entries per account, in each account's entry currency, up to asOf inclusive. */
 export async function nativeBalances(
   database: Database,
