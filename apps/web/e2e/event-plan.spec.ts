@@ -634,7 +634,7 @@ test('a purchase can be unticked from either screen, and the item itself removed
   await page.getByRole('link', { name: 'Back to the plan' }).click();
   await page.getByRole('button', { name: 'Reopen Car seat' }).click();
   await expect(page.getByRole('button', { name: 'Settle Car seat' })).toBeVisible();
-  await expectPlanHero(page, { count: '0 of 2 paid', toPay: 'Rp 7.500.000 to pay', planned: 'Estimate Rp 14.000.000', actual: 'Actual Rp 6.500.000', status: 'Nothing paid yet' });
+  await expectPlanHero(page, { count: '0 of 2 paid', toPay: 'Rp 7.500.000 to pay', planned: 'Estimate Rp 14.000.000', actual: 'Actual Rp 6.500.000', status: 'Partly paid' });
 
   // And removing an item leaves its purchase exactly where it is.
   await page.getByTestId('plan-item').filter({ hasText: 'Car seat' }).getByRole('link').click();
@@ -769,7 +769,7 @@ test('souvenirs bought at two shops: one item, two payments, open until marked d
   await expect(page.getByRole('button', { name: 'Add payment' })).toBeVisible();
   await buyItNow(page, { paid: '250000', done: false });
   await expect(souvenirs).toContainText('of Rp 1.000.000 · 2 payments');
-  await expectPlanHero(page, { count: '0 of 1 paid', toPay: 'Rp 550.000 to pay', planned: 'Estimate Rp 1.000.000', actual: 'Actual Rp 450.000', status: 'Nothing paid yet' });
+  await expectPlanHero(page, { count: '0 of 1 paid', toPay: 'Rp 550.000 to pay', planned: 'Estimate Rp 1.000.000', actual: 'Actual Rp 450.000', status: 'Partly paid' });
 
   await souvenirs.getByRole('link').click();
   await expect(page.getByTestId('item-payment')).toHaveCount(2);
