@@ -829,3 +829,33 @@ test('an event kept without a plan draws the ring alone, and gets its plan back'
   await page.getByRole('menuitem', { name: 'Mark as planned', exact: true }).click();
   await expect(sheet.getByRole('button', { name: 'Against the plan' })).toHaveCount(1);
 });
+
+/**
+ * One payment that was bigger than its cost because it also paid for another: no untagging first.
+ *
+ * Rp 18.200.000 is paid against a Rp 18.000.000 cost. On What it covers the second cost is ticked on the same payment,
+ * takes the Rp 200.000 that is left, and Save writes both shares.
+ */
+test('a payment bigger than its cost also covers a second cost, without untagging', async ({ page }) => {
+  await addWallet(page);
+  await addEvent(page, 'Newborn');
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
+  await fillItem(page, { name: 'Delivery package', price: '18000000', category: 'Food and beverage' });
+  await addItem(page, { name: 'Check up', price: '1500000', category: 'Food and beverage' });
+
+  await page.getByTestId('plan-item').filter({ hasText: 'Delivery package' }).getByRole('link').click();
+  await buyItNow(page, { paid: '18200000', done: false });
+  await page.getByTestId('plan-item').filter({ hasText: 'Delivery package' }).getByRole('link').click();
+  await page.getByTestId('item-payment').click();
+  await expect(page.getByRole('heading', { name: 'What it covers' })).toBeVisible();
+  await page.getByRole('checkbox', { name: 'Check up' }).check();
+  // The first cost holds the whole payment, so the second starts at its estimate and the total reads red until shared out.
+  await expect(page.getByLabel('Share for Delivery package')).toHaveValue(/18\.?200\.?000/);
+  await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();
+  await page.getByLabel('Share for Delivery package').fill('18000000');
+  await page.getByLabel('Share for Check up').fill('200000');
+  await expect(page.getByRole('button', { name: 'Save' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByTestId('plan-item').filter({ hasText: 'Check up' })).toContainText('200.000');
+});
