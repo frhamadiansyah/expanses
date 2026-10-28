@@ -117,7 +117,7 @@ test('one statement page from Photos goes to the statement check, asking which c
   await willPick(page, [chosen('lib-2', { lines: STATEMENT_PAGE })]);
   await (await openCameraMenu(page)).getByRole('menuitem', { name: 'Choose from Photos' }).click();
 
-  await expect(page.getByRole('heading', { name: 'Which card is this statement?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Which account?' })).toBeVisible();
   await expect(page.getByText('1 screenshot read on this phone')).toBeVisible();
   await page.getByTestId('statement-card').filter({ hasText: 'Kartu Biru' }).click();
   await expect(page).toHaveURL(/\/cards\/[^/]+\/check/);
@@ -133,7 +133,7 @@ test('two pictures from Photos are one statement, whatever is on them', async ({
   await willPick(page, [chosen('lib-3', { lines: STATEMENT_PAGE }), chosen('lib-4', { lines: [line('Total Rp12.000', 0.5)] })]);
   await (await openCameraMenu(page)).getByRole('menuitem', { name: 'Choose from Photos' }).click();
 
-  await expect(page.getByRole('heading', { name: 'Which card is this statement?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Which account?' })).toBeVisible();
   await expect(page.getByText('2 screenshots read on this phone')).toBeVisible();
 });
 

@@ -74,7 +74,7 @@ function wordsOf(description: string): Set<string> {
 }
 
 /** Jaccard overlap of two descriptions' merchant words, 0..1. */
-function textOverlap(a: string, b: string): number {
+export function textOverlap(a: string, b: string): number {
   const wa = wordsOf(a);
   const wb = wordsOf(b);
   if (wa.size === 0 || wb.size === 0) return 0;
