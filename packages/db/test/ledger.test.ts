@@ -7,6 +7,7 @@ import {
   listTransactions,
   nativeBalances,
   postTransaction,
+  postTransactions,
   replaceTransaction,
   setTransactionMcc,
   voidTransaction,
@@ -263,5 +264,25 @@ describe('how many rows one read hands back', () => {
     expect(all.at(-1)!.description).toBe('Day 1');
     // And a smaller limit is honoured rather than rounded up to the default.
     expect(await listTransactions(database, ws, { limit: 3 })).toHaveLength(3);
+  });
+});
+
+describe('postTransactions', () => {
+  it('posts a list in one go, and none of it when one purchase is refused', async () => {
+    const { database, ws, checking, groceries } = await cardSetup();
+    const input = (description: string, amountMinor: number, occurredOn = '2026-09-11') => ({
+      occurredOn,
+      description,
+      lines: expenseLines({ categoryAccountId: groceries.id, paymentAccountId: checking.id, amountMinor, currency: 'IDR' }),
+    });
+    const ids = await postTransactions(database, ws, [input('a', 18_000), input('b', 25_000, '2026-09-12')]);
+    expect(ids).toHaveLength(2);
+    let balances = await nativeBalances(database, ws);
+    expect(balances[checking.id]).toBe(20_000_000 - 43_000);
+
+    await expect(postTransactions(database, ws, [input('c', 5_000), input('bad', 1_000, 'tomorrow')])).rejects.toThrow();
+    balances = await nativeBalances(database, ws);
+    expect(balances[checking.id]).toBe(20_000_000 - 43_000);
+    expect(await postTransactions(database, ws, [])).toEqual([]);
   });
 });

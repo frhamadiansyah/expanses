@@ -39,6 +39,7 @@ export {
 } from './money/money';
 export { type AmountOptions, evaluateAmount, evaluateExact } from './money/keypad';
 export { groupedMajorString, parseGroupedMajor } from './money/grouped';
+export { parsePurchaseList, type ParsePurchaseListOptions, type PurchaseLine, type PurchaseLineStatus } from './entry/purchase-list';
 export { exchangeCost, type ExchangeCost, impliedRate, sumToBase } from './money/exchange';
 export { zipStore, unzipStore } from './backup/zip';
 export {
