@@ -42,7 +42,7 @@ export function buyTarget(eventId: string, itemId: string, ws?: string) {
 /**
  * Where a receipt that is already spoken for is answered.
  *
- * "What it covers" is the one screen on which several items are set against one payment, every share typed together
+ * "Link to costs" is the one screen on which several items are set against one payment, every share typed together
  * and checked against the receipt before anything is written. Anything that cannot claim a receipt on its own is
  * carried here with the item it was trying to answer, rather than told in words where to go.
  */

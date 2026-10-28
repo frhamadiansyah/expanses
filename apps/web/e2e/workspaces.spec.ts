@@ -527,7 +527,7 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
  * What is left of a receipt is a fact about the receipt, so the screens that settle it read the whole plan.
  *
  * A plan belongs to the owner and an event is spent on from every workspace, but `eventPlanFor` under a tab drops
- * the items filed in *another* workspace's categories. Reading the pick-a-purchase list and "What it covers"
+ * the items filed in *another* workspace's categories. Reading the pick-a-purchase list and "Link to costs"
  * through the open tab therefore showed a receipt one of those items already answers as free — offered at its full
  * amount on one screen, and on the other seeded into "Given to costs" with no row anywhere on the page to show it
  * or hand it back. The write does not narrow, and `usePurchaseCover` does not narrow, so these two must not either.
@@ -595,12 +595,12 @@ test('the screens that settle a receipt read the whole plan, not the open tab', 
   const lunch = page.getByRole('link', { name: /Supplier lunch/ });
   await expect.poll(() => moneyIn(lunch)).toEqual([640_000, 240_000]);
 
-  // And on "What it covers" the item holding that share has a row, ticked, with the figure that was typed for it —
+  // And on "Link to costs" the item holding that share has a row, ticked, with the figure that was typed for it —
   // so it can be handed back. Counted in the totals and absent from the list is money nobody could reach.
   await lunch.click();
-  await expect(page.getByRole('heading', { name: 'What it covers' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Link to costs' })).toBeVisible();
   await expect(page.getByRole('checkbox', { name: 'Welcome dinner' })).toBeChecked();
-  await expect(page.getByLabel('Share for Welcome dinner')).toHaveValue('400000');
+  await expect(page.getByLabel('Share for Welcome dinner')).toHaveValue('400.000');
 });
 
 /**

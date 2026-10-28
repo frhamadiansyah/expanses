@@ -122,16 +122,17 @@ export async function expectGauge(scope: Locator, expected: Record<string, strin
 }
 
 /**
- * The foot of "What it covers", as label → figure.
+ * The foot of "Link to costs", as label → figure.
  *
- * Three lines of one card, which `toContainText` cannot tell apart: "Given to costs" and "Left on this receipt"
+ * Three lines of one card, which `toContainText` cannot tell apart: "Linked to costs" and "Left on this receipt"
  * could swap places and two substring assertions on the card would pass unchanged. Each `<p>` is a label element
- * and a figure element, so the pair is read as it is shown — the amber "not planned" pill included, since it is
- * part of what the left-hand side says.
+ * and a figure element, so the pair is read as it is shown — the receipt's own row left out.
  */
-export function coverFigures(page: Page): Promise<Record<string, string>> {
-  // Three rows of one kit group now, rather than three `<p>`s of a card — read the same way, as label → figure.
-  return kitFigures(page.getByTestId('cover-totals'));
+export async function coverFigures(page: Page): Promise<Record<string, string>> {
+  // Three rows of one kit group, read as label → figure. The first is the receipt itself (its description and day
+  // are the label, which the test does not know), so it is left out and the two sums are what is returned.
+  const all = await kitFigures(page.getByTestId('cover-totals'));
+  return Object.fromEntries(Object.entries(all).slice(1));
 }
 
 export async function expectCover(page: Page, expected: Record<string, string>) {

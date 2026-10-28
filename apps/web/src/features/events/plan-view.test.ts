@@ -706,17 +706,17 @@ describe('whether the money-back rows add up to their heading', () => {
 });
 
 /*
- * A row on "What it covers" whose item is already answered by a different receipt.
+ * A row on "Link to costs" whose item is already answered by a different receipt.
  *
  * Ticking it here re-points the item and takes its money with it — often exactly what is meant, since the wrong
  * receipt gets picked and receipts get corrected. What was wrong is that it happened in silence: the row said the
  * item's estimate and its category and nothing about where its money actually was.
  */
 describe('an item another receipt already answers', () => {
-  it('says which payment already paid for it, and that ticking it here adds this one', () => {
+  it('says which payment already paid for it', () => {
     const crib = plan.lines[0]!.items[1]!;
     expect(crib.purchase!.transactionId).toBe('t1');
-    expect(answeredElsewhere(crib, 't2')).toBe('already paid by Toko Bayi · 12 Sep — ticking it here adds this one');
+    expect(answeredElsewhere(crib, 't2')).toBe('paid by Toko Bayi');
     // On its own receipt there is nothing to move and nothing to say.
     expect(answeredElsewhere(crib, 't1')).toBeNull();
     // An item nothing has answered yet is the ordinary row.
@@ -733,7 +733,7 @@ describe('an item another receipt already answers', () => {
     });
     const item = elsewhere.lines[0]!.items[0]!;
     expect(item.bought).toBe(false);
-    expect(answeredElsewhere(item, 't9')).toBe('already paid by another payment — ticking it here adds this one');
+    expect(answeredElsewhere(item, 't9')).toBe('paid by another payment');
   });
 });
 

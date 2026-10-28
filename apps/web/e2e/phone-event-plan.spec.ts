@@ -7,7 +7,7 @@ import { addTransaction } from './add-transaction';
  * The plan, by thumb.
  *
  * `event-plan.spec.ts` cannot cover any of this: the phone project matches `/phone[.-]/` by filename, so that spec
- * never runs at 390px and the plan screen, the item page, the item form, the pick-purchase list and "What it covers"
+ * never runs at 390px and the plan screen, the item page, the item form, the pick-purchase list and "Link to costs"
  * had no phone spec of their own at all. The five of them are the only screens of this feature, and every one of
  * them is reached here through the shell's own controls — the account sheet, the round `＋`, the wide links — rather
  * than by typing a URL.
@@ -136,12 +136,11 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
   await page.getByRole('link', { name: 'Link a payment' }).click();
   await noSideways(page, 'the list of payments');
   await page.getByRole('link', { name: /Mothercare/ }).click();
-  await expect(page.getByRole('heading', { name: 'What it covers' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Link to costs' })).toBeVisible();
   await page.getByRole('checkbox', { name: 'Muslin wraps' }).check();
   await expectCover(page, {
-    Receipt: 'Rp 4.150.000',
-    'Given to costs': 'Rp 2.200.000',
-    'Left on this receipt not planned': 'Rp 1.950.000',
+    'Linked to costs': 'Rp 2.200.000',
+    'Left on this receipt': 'Rp 1.950.000',
   });
   await noSideways(page, 'what it covers');
   await page.getByRole('button', { name: 'Save' }).click();

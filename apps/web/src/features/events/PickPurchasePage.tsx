@@ -18,7 +18,7 @@ interface PurchaseRow {
 /**
  * Which payment answered this item: the event's own receipts, newest first, each with what is still unaccounted for.
  *
- * Nothing here writes. It is a chooser, and the write happens on "What it covers", where the shares of one receipt
+ * Nothing here writes. It is a chooser, and the write happens on "Link to costs", where the shares of one receipt
  * are typed together and checked against it in one go. A receipt whose whole amount is already given to items cannot
  * answer another, so it is shown and said so rather than hidden: a list that quietly drops a receipt someone
  * remembers paying is a list they will not trust.
