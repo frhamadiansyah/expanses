@@ -2,7 +2,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import { addForm, choosePayment, saveButton } from './add-transaction';
 import { cardPage, cardPointsPage, saveCardTerms } from './card-section';
-import { openSplit, pickPartCategory } from './split-row';
+import { addPart, donePart, fillPart, openPart, openSplit, pickPartCategory } from './split-row';
 
 /*
  * Decimals on a whole-unit currency (spec 2026-10-14). A card charges a purchase of Rp 12.500,30 as 12.501 and earns
@@ -171,7 +171,7 @@ test('an income typed with cents posts rounded down', async ({ page }) => {
   await expect(row(page, 'Bunga')).not.toContainText('12.346');
 });
 
-test('a split with cents is refused in words, and its dock keeps 00', async ({ page }) => {
+test('a split takes whole rupiah only, and its dock keeps 00', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan' });
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
@@ -185,14 +185,19 @@ test('a split with cents is refused in words, and its dock keeps 00', async ({ p
   await form.getByRole('button', { name: 'Add more details' }).click();
   await openSplit(page);
   const split = page.getByRole('dialog', { name: 'Split' });
-  await split.getByRole('button', { name: '+ Split' }).click();
-  await split.getByLabel('Split 1 amount').fill('50000,50');
+  await addPart(page);
+  // A part's Amount is grouped as it is typed and takes whole rupiah only: a comma typed in it is not kept, so cents
+  // cannot reach a part at all.
+  const first = await openPart(page, 1);
+  await first.getByLabel('Amount', { exact: true }).fill('50000,50');
+  await expect(first.getByLabel('Amount', { exact: true })).toHaveValue('5.000.050');
+  await first.getByLabel('Amount', { exact: true }).fill('50000');
+  await donePart(page);
   await pickPartCategory(page, 2, 'Restaurants');
-  await split.getByLabel('Split 2 amount').fill('49999');
-  // Said on the sheet where the row is typed: on a phone the ✓ is greyed while the draft would be refused.
-  await expect(split.getByRole('alert')).toHaveText('Decimals go on a single amount only');
+  await fillPart(page, 2, '49999');
+  await expect(split.getByRole('alert')).toHaveCount(0);
+  await expect(split.getByTestId('split-total')).toContainText('99.999');
   await split.getByRole('button', { name: 'Close' }).click();
-  await expect(saveButton(form)).toBeDisabled();
 
   // Spread over a split, the amount has no single line to round onto: the dock offers no comma.
   await form.getByRole('button', { name: 'Amount', exact: true }).click();
@@ -201,9 +206,9 @@ test('a split with cents is refused in words, and its dock keeps 00', async ({ p
   await expect(keypad.getByRole('button', { name: ',', exact: true })).toHaveCount(0);
   await keypad.getByRole('button', { name: 'Close keypad' }).click();
 
-  // The cents taken off, the split saves whole.
+  // Whole rupiah in every part, the split saves whole.
   await openSplit(page);
-  await split.getByLabel('Split 1 amount').fill('50001');
+  await fillPart(page, 1, '50001');
   await expect(split.getByRole('alert')).toHaveCount(0);
   await split.getByRole('button', { name: 'Close' }).click();
   await saveButton(form).click();

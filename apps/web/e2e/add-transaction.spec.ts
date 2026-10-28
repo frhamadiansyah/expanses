@@ -8,7 +8,8 @@ import { openGoalForm } from './goals';
 import { cardPage, cardPurchases, saveCardTerms } from './card-section';
 import { todayIn } from './today';
 import { setCurrency } from './currency-field';
-import { openSplit, pickPartCategory, setChannel, splitRow } from './split-row';
+import { addPart, fillPart, removePart, openSplit, pickPartCategory, setChannel, splitRow } from './split-row';
+import { chooseMccCode, closeMccSheet, mccSheet, openMccSheet, rememberWord } from './mcc-sheet';
 
 /** The directory `photos/store.ts` keeps pictures in, a sibling of the database's `.expanses/` and never inside it. */
 const PHOTO_DIRECTORY = 'expanses-photos';
@@ -698,18 +699,17 @@ test('every extra survives the save, and leaving it out of the report leaves onl
   // An uneven split: 40.000 and 45.000 make the 85.000 the card was charged, and neither is half of it.
   await openSplit(page);
   const split = page.getByRole('dialog', { name: 'Split' });
-  await split.getByRole('button', { name: '+ Split' }).click();
-  await split.getByLabel('Split 1 amount').fill('40000');
+  await addPart(page);
+  await fillPart(page, 1, '40000');
   await pickPartCategory(page, 2, 'Restaurants');
-  await split.getByLabel('Split 2 amount').fill('45000');
-  await expect(split.getByText('Total Rp 85.000')).toBeVisible();
+  await fillPart(page, 2, '45000');
+  await expect(split.getByTestId('split-total')).toContainText('85.000');
   await split.getByRole('button', { name: 'Close' }).click();
   await expect(splitRow(page)).toContainText('2 splits · Total Rp 85.000');
 
-  await more.getByRole('button', { name: 'MCC' }).click();
-  const mccSheet = page.getByRole('dialog', { name: 'MCC' });
-  await mccSheet.getByLabel('MCC', { exact: true }).fill('5411');
-  await mccSheet.getByRole('button', { name: 'Close' }).click();
+  await openMccSheet(page, more);
+  await chooseMccCode(page, '5411');
+  await closeMccSheet(page);
   await expect(more.getByRole('button', { name: 'MCC' })).toContainText('5411');
 
   await setChannel(page, 'Offline');
@@ -792,20 +792,20 @@ test('a split is read in the paying account’s own currency, exponent and all',
   const more = page.getByRole('region', { name: 'More details' });
   await openSplit(page);
   const split = page.getByRole('dialog', { name: 'Split' });
-  await split.getByRole('button', { name: '+ Split' }).click();
+  await addPart(page);
   await pickPartCategory(page, 1, 'Groceries');
-  await split.getByLabel('Split 1 amount').fill('40.50');
+  await fillPart(page, 1, '40,50');
   await pickPartCategory(page, 2, 'Restaurants');
-  await split.getByLabel('Split 2 amount').fill('44.50');
+  await fillPart(page, 2, '44,50');
 
   // USD 85, not 8.500 and not 85.000: USD has two decimals, and a figure read at the wrong exponent on this
   // card would be a hundred times what was typed. IDR cannot show that mistake at all — its exponent is 0.
-  await expect(split.getByText('Total US$85,00')).toBeVisible();
+  await expect(split.getByTestId('split-total')).toContainText('85,00');
   await split.getByRole('button', { name: 'Close' }).click();
   await expect(splitRow(page)).toContainText('2 splits · Total US$85,00');
   // One row taken away leaves one row, counted as one: "1 splits" is what this used to say.
   await openSplit(page);
-  await split.getByRole('button', { name: 'Remove split 2' }).click();
+  await removePart(page, 2);
   await split.getByRole('button', { name: 'Close' }).click();
   await expect(splitRow(page)).toContainText('1 split · Total US$40,50');
 });
@@ -835,11 +835,11 @@ test('a split by category posts one line per category, each with its own figure'
   const more = page.getByRole('region', { name: 'More details' });
   await openSplit(page);
   const split = page.getByRole('dialog', { name: 'Split' });
-  await split.getByRole('button', { name: '+ Split' }).click();
+  await addPart(page);
   await pickPartCategory(page, 1, 'Groceries');
-  await split.getByLabel('Split 1 amount').fill('40000');
+  await fillPart(page, 1, '40000');
   await pickPartCategory(page, 2, 'Restaurants');
-  await split.getByLabel('Split 2 amount').fill('45000');
+  await fillPart(page, 2, '45000');
   await split.getByRole('button', { name: 'Close' }).click();
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
@@ -886,22 +886,22 @@ test('Split by category and With refuse each other in words, before Save', async
 
   await openSplit(page);
   const split = page.getByRole('dialog', { name: 'Split' });
-  await split.getByRole('button', { name: '+ Split' }).click();
-  await split.getByLabel('Split 1 amount').fill('50000');
+  await addPart(page);
+  await fillPart(page, 1, '50000');
   await pickPartCategory(page, 2, 'Groceries');
-  await split.getByLabel('Split 2 amount').fill('35000');
+  await fillPart(page, 2, '35000');
   await split.getByRole('button', { name: 'Close' }).click();
 
   // With is shut, and says why — before Save, not as an error after it.
   await expect(more.getByRole('button', { name: 'With', exact: true })).toBeDisabled();
-  await expect(more).toContainText('Remove the splits, or remove the people');
+  await expect(more).toContainText('Remove the split, or remove the people');
   // Split itself stays open: what was set first is the one that can still be corrected.
   await expect(splitRow(page)).toBeEnabled();
 
   // The way out the words name really is a way out: take the splits off and With is offered again.
   await openSplit(page);
-  await split.getByRole('button', { name: 'Remove split 2' }).click();
-  await split.getByRole('button', { name: 'Remove split 1' }).click();
+  await removePart(page, 2);
+  await removePart(page, 1);
   await split.getByRole('button', { name: 'Close' }).click();
   await expect(more.getByRole('button', { name: 'With', exact: true })).toBeEnabled();
 
@@ -914,7 +914,7 @@ test('Split by category and With refuse each other in words, before Save', async
   await form.getByRole('button', { name: 'Category', exact: true }).click();
   const picker = page.getByRole('dialog', { name: 'Select category' });
   await expect(picker.getByRole('button', { name: 'Split between categories' })).toBeDisabled();
-  await expect(picker.getByRole('button', { name: 'Split between categories' })).toHaveAttribute('title', /Remove the splits, or remove the people/);
+  await expect(picker.getByRole('button', { name: 'Split between categories' })).toHaveAttribute('title', /Remove the split, or remove the people/);
   await picker.getByRole('button', { name: 'Close' }).click();
   await expect(more.getByRole('button', { name: 'With', exact: true })).toBeEnabled();
 
@@ -1288,14 +1288,15 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
   const more = page.getByRole('region', { name: 'More details' });
   await more.getByRole('button', { name: 'Event' }).click();
   await page.getByRole('dialog', { name: 'Event' }).getByRole('button', { name: 'Lebaran' }).click();
-  await more.getByRole('button', { name: 'MCC' }).click();
-  const mccSheet = page.getByRole('dialog', { name: 'MCC' });
-  await mccSheet.getByLabel('MCC', { exact: true }).fill('5411');
+  await openMccSheet(page, more);
+  await chooseMccCode(page, '5411');
   // Remember for this merchant: the code then belongs to the merchant rather than to this one purchase, which
   // is the whole difference between the two — `typedMcc` clears the purchase's own code when a pattern is set.
-  await mccSheet.getByRole('checkbox', { name: /^Remember this MCC/ }).check();
-  await expect(mccSheet.getByRole('textbox', { name: 'Merchant text' })).toHaveValue('superindo');
-  await mccSheet.getByRole('button', { name: 'Close' }).click();
+  // The Word row suggests the note's first words in grey; typing it is what remembers it.
+  await expect(mccSheet(page).getByLabel('Word', { exact: true })).toHaveAttribute('placeholder', 'superindo');
+  await expect(mccSheet(page).getByLabel('Remembered for')).toBeVisible();
+  await rememberWord(page, 'superindo');
+  await closeMccSheet(page);
   await setChannel(page, 'Offline');
 
   await form.getByRole('button', { name: 'Save' }).click();
@@ -1379,11 +1380,11 @@ test('a split by category refuses a foreign amount in words, and the way out wor
   const more = page.getByRole('region', { name: 'More details' });
   await openSplit(page);
   const split = page.getByRole('dialog', { name: 'Split' });
-  await split.getByRole('button', { name: '+ Split' }).click();
+  await addPart(page);
   await pickPartCategory(page, 1, 'Groceries');
-  await split.getByLabel('Split 1 amount').fill('600000');
+  await fillPart(page, 1, '600000');
   await pickPartCategory(page, 2, 'Restaurants');
-  await split.getByLabel('Split 2 amount').fill('1000000');
+  await fillPart(page, 2, '1000000');
   await split.getByRole('button', { name: 'Close' }).click();
 
   await form.getByRole('button', { name: 'Save' }).click();
@@ -1609,10 +1610,9 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
   const more = page.getByRole('region', { name: 'More details' });
   await more.getByRole('button', { name: 'Event' }).click();
   await page.getByRole('dialog', { name: 'Event' }).getByRole('button', { name: 'Lebaran' }).click();
-  await more.getByRole('button', { name: 'MCC' }).click();
-  const mccSheet = page.getByRole('dialog', { name: 'MCC' });
-  await mccSheet.getByLabel('MCC', { exact: true }).fill('5411');
-  await mccSheet.getByRole('button', { name: 'Close' }).click();
+  await openMccSheet(page, more);
+  await chooseMccCode(page, '5411');
+  await closeMccSheet(page);
   await setChannel(page, 'Online');
   await more.getByRole('switch', { name: 'Exclude from report' }).click();
   await form.getByRole('button', { name: 'Save' }).click();

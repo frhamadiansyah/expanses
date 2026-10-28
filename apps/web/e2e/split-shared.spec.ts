@@ -1,7 +1,7 @@
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
 import { openAccount } from './accounts';
 import { choosePayment, saveButton } from './add-transaction';
-import { openSplit, pickPartCategory } from './split-row';
+import { addPart, fillPart, openSplit, pickPartCategory } from './split-row';
 import { openSharePage, openWorkspacePage, renameWorkspace, shareWorkspace } from './workspace-page';
 
 /*
@@ -84,17 +84,15 @@ test('a purchase split between a shared workspace and a private one reaches the 
   await form.getByLabel('Note').fill('Toko Sumber Rejeki');
   await openSplit(page);
   const split = page.getByRole('dialog', { name: 'Split' });
-  await split.getByRole('button', { name: '+ Split' }).click();
+  await addPart(page);
   await pickPartCategory(page, 1, 'Groceries');
-  await split.getByLabel('Split 1 amount').fill('830000');
+  await fillPart(page, 1, '830000');
   // A shared workspace offers the private ones' categories, under each one's name.
   await pickPartCategory(page, 2, 'Restaurants', 'Business');
-  await split.getByLabel('Split 2 amount').fill('417000');
-  for (const [n, name] of [[0, 'Home'], [1, 'Business']] as const) {
-    const part = split.getByTestId('split-row').nth(n);
-    await expect(part.getByTestId('workspace-badge')).toHaveAttribute('title', name);
-    await expect(part.getByTestId('split-part-category')).toContainText(name);
-  }
+  await fillPart(page, 2, '417000');
+  // A part in the open workspace (Home) says nothing of workspaces; one in another names it under its category.
+  await expect(split.getByTestId('split-row').nth(0)).not.toContainText('Business');
+  await expect(split.getByTestId('split-row').nth(1)).toContainText('Business');
   await split.getByRole('button', { name: 'Close' }).click();
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
