@@ -67,24 +67,23 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
   await expect(page.getByRole('heading', { name: 'Newborn', exact: true })).toBeVisible();
   await noSideways(page, 'the event');
 
-  // By its accessible name, like everything else here: the card's link reads "Plan what to buy" while nothing is
+  // By its accessible name, like everything else here: the card's link reads "Plan what to pay" while nothing is
   // planned and "See the whole plan" once there are items, and this spec's whole claim is that nothing on a phone
   // is reached by anything a desktop cannot reach by name.
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
   await expect(page.getByText('Nothing planned yet')).toBeVisible();
   await noSideways(page, 'an empty plan');
 
   /*
-   * The plan's own ＋. Both the round control and the worded button carry the name "Add an item" — that is the
-   * parity rule at work, one name for one action — and at this width only the round one is on screen.
+   * The plan's own ＋ is the one way to add a cost once the plan has some: the list has no worded row at its foot.
    */
-  const plus = page.getByRole('link', { name: 'Add an item' });
+  const plus = page.getByRole('link', { name: 'Add a cost' });
   await expect(plus).toHaveCount(1);
   await bigEnough(plus, 'the plan’s ＋');
-  await bigEnough(page.getByRole('link', { name: 'Add the first item' }), 'Add the first item');
+  await bigEnough(page.getByRole('link', { name: 'Add the first cost' }), 'Add the first cost');
   await plus.click();
 
-  await expect(page.getByRole('heading', { name: 'New item' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'New cost' })).toBeVisible();
   await noSideways(page, 'the item form');
   // Four of a thing, priced one at a time: the estimate is how many × price each and has no field to disagree with.
   await page.getByLabel('What', { exact: true }).fill('Muslin wraps');
@@ -99,7 +98,7 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
     { name: 'Crib', price: '7500000' },
     { name: 'Newborn clothes', quantity: '10', price: '150000' },
   ]) {
-    await page.getByRole('link', { name: 'Add an item' }).first().click();
+    await page.getByRole('link', { name: 'Add a cost' }).first().click();
     await fillItem(page, { ...item, category: 'Food and beverage' });
   }
   await noSideways(page, 'a plan with items');
@@ -133,14 +132,14 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
 
   // One receipt over two items, every share typed together and checked against the one payment.
   await page.getByTestId('plan-item').filter({ hasText: 'Newborn clothes' }).getByRole('link').click();
-  await page.getByRole('link', { name: 'Link a purchase' }).click();
+  await page.getByRole('link', { name: 'Link a payment' }).click();
   await noSideways(page, 'the list of payments');
   await page.getByRole('link', { name: /Mothercare/ }).click();
   await expect(page.getByRole('heading', { name: 'What it covers' })).toBeVisible();
   await page.getByRole('checkbox', { name: 'Muslin wraps' }).check();
   await expectCover(page, {
     Receipt: 'Rp 4.150.000',
-    'Given to items': 'Rp 2.200.000',
+    'Given to costs': 'Rp 2.200.000',
     'Left on this receipt not planned': 'Rp 1.950.000',
   });
   await noSideways(page, 'what it covers');
@@ -151,9 +150,9 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
    * 2.200.000 of the Mothercare receipt bought; nothing left to buy; and the crib's 300.000 under the difference.
    */
   // Covered is paid, not done: nothing left to pay until both are ticked, then all bought.
-  await expectPlanHero(page, { count: '1 of 3 bought', toGo: 'Rp 0 to go', planned: 'Planned Rp 9.700.000 · Bought Rp 9.400.000 · −Rp 300.000' });
-  for (const name of ['Newborn clothes', 'Muslin wraps']) await page.getByRole('button', { name: `Done buying ${name}` }).click();
-  await expectPlanHero(page, { count: '3 of 3 bought', toGo: 'All bought', planned: 'Planned Rp 9.700.000 · Bought Rp 9.400.000 · −Rp 300.000' });
+  await expectPlanHero(page, { count: '1 of 3 paid', toGo: 'Rp 0 to go', planned: 'Planned Rp 9.700.000 · Paid Rp 9.400.000 · −Rp 300.000' });
+  for (const name of ['Newborn clothes', 'Muslin wraps']) await page.getByRole('button', { name: `Settle ${name}` }).click();
+  await expectPlanHero(page, { count: '3 of 3 paid', toGo: 'All paid', planned: 'Planned Rp 9.700.000 · Paid Rp 9.400.000 · −Rp 300.000' });
   await noSideways(page, 'a settled plan');
 
   // And the way back out is a thumb's reach too, on the screen it came from.

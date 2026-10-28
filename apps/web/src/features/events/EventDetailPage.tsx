@@ -422,7 +422,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
           {!anyMoney && !hasPlan ? (
             /* A category is no longer something one plans: a plan is a list of things, and the card below is the way in. */
             <p className="py-6 text-center text-[13px] text-[var(--ph-ink-3)]">
-              {planned ? 'Nothing spent on it yet. Plan what to buy below, or record the first payment.' : 'Nothing spent on it yet.'}
+              {planned ? 'Nothing spent on it yet. Plan what to pay below, or record the first payment.' : 'Nothing spent on it yet.'}
             </p>
           ) : hasPlan ? (
             <Deck page={page} onPage={setPage} labels={['Where it went', 'Against the plan']} frame={chartFrame}>
@@ -439,7 +439,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
                   // `set` is the caps label the gauge prints and `spent` the middle one, and PLAN_WORDS cannot hold
                   // either as a constant — both depend on whether the plan speaks for the whole of the event.
                   words={{ ...PLAN_WORDS, set: plannedLabel(data!), spent: spentLabel(data!) }}
-                  last={{ label: 'Still to buy', value: formatMinor(totals!.toBuyMinor, ws.baseCurrency) }}
+                  last={{ label: 'Still to pay', value: formatMinor(totals!.toBuyMinor, ws.baseCurrency) }}
                 />
                 {/* The mockup's order under the ring: how the bought things went, and what nobody planned. Every
                     *money* figure is `planTotals`', never recomputed here, so no two screens can disagree about one

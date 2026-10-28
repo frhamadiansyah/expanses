@@ -7,7 +7,7 @@ import type { BudgetProgress } from '../transactions/budget-progress';
  * without rendering anything. The currency is a parameter defaulting to the owner's, so these stay pure functions.
  *
  * The card is called "Plan" and never "Budget": budgets are the monthly caps on the Budget page, and an occasion's
- * list of things to buy is a different thing that must not borrow their word.
+ * list of things to pay is a different thing that must not borrow their word.
  */
 
 /** A month has budgets; an event has a plan, and the plan is a list of things. */
@@ -16,7 +16,7 @@ export const PLAN_WORDS: GaugeWords = {
   over: 'Over the plan by',
   set: 'Planned',
   spent: 'Spent',
-  overCount: (count) => `${count} ${count === 1 ? 'item' : 'items'} over`,
+  overCount: (count) => `${count} ${count === 1 ? 'cost' : 'costs'} over`,
 };
 
 /** How the difference on an item or a plan is coloured. Beside the words it tones, so the two cannot drift apart. */
@@ -145,7 +145,7 @@ export function itemSubtitle(item: EventPlanItemView, eventCurrency: string, bas
   if (item.noRate) return [price, 'no rate yet'].filter(Boolean).join(' · ');
   if (item.purchaseCount > 0) {
     const of = formatMinor(item.estimateEventMinor ?? item.estimateOwnMinor, item.estimateEventMinor === null ? own : eventCurrency);
-    return `of ${of} · ${item.purchaseCount} ${item.purchaseCount === 1 ? 'purchase' : 'purchases'}`;
+    return `of ${of} · ${item.purchaseCount} ${item.purchaseCount === 1 ? 'payment' : 'payments'}`;
   }
   return price ?? '';
 }
@@ -189,7 +189,7 @@ export function planCardRows(plan: EventPlan) {
       categoryId: line.categoryId,
       name: line.name,
       plannedMinor: line.plannedMinor,
-      subline: `${plural(line.itemCount, 'item')} · ${line.boughtCount === 0 ? 'none bought' : `${line.boughtCount} bought`}`,
+      subline: `${plural(line.itemCount, 'cost')} · ${line.boughtCount === 0 ? 'none paid' : `${line.boughtCount} paid`}`,
     }));
 }
 
@@ -201,12 +201,12 @@ export function whereItWentRows(plan: EventPlan) {
     actualMinor: line.actualMinor,
     plannedMinor: line.plannedMinor,
     planned: line.planned,
-    subline: line.purchaseCount === 0 ? 'nothing spent yet' : plural(line.purchaseCount, 'purchase'),
+    subline: line.purchaseCount === 0 ? 'nothing spent yet' : plural(line.purchaseCount, 'payment'),
   }));
 }
 
 /**
- * The events list: a planned event says what is still to buy, an unplanned one how many purchases it holds.
+ * The events list: a planned event says what is still to pay, an unplanned one how many payments it holds.
  *
  * The figure is `planTotals`', like every other figure of this feature, so a card cannot print a negative where the
  * event's own screens print a clamped nought — an event whose only money is a refund reached this card at less than
@@ -222,14 +222,14 @@ export function eventListLine(plan: EventPlan, currency = 'IDR', planOff = false
   // Kept without a plan (Mark as unplanned): read as an event with no items, whatever items it still holds.
   if (!plan.hasPlan || planOff) {
     return {
-      subline: `No plan · ${plural(plan.purchaseCount, 'purchase')}`,
+      subline: `No plan · ${plural(plan.purchaseCount, 'payment')}`,
       amountMinor: totals.spentMinor,
       ofMinor: null as number | null,
       backLine: said(totals.netBackMinor, BACK_WORDS.event),
     };
   }
   return {
-    subline: `Planned · ${formatMinor(totals.toBuyMinor, currency)} still to buy`,
+    subline: `Planned · ${formatMinor(totals.toBuyMinor, currency)} still to pay`,
     amountMinor: totals.plannedSpentMinor,
     ofMinor: totals.plannedMinor,
     backLine: said(totals.planNetBackMinor, BACK_WORDS.plan),
@@ -384,7 +384,7 @@ export function moneyBackUnder(headingMinor: number, rows: readonly { amountMino
   if (rowsMinor === headingMinor) return null;
   if (rowsMinor < headingMinor) {
     return rows.length === 0
-      ? 'More came back than any item accounts for.'
+      ? 'More came back than any cost accounts for.'
       : `These rows come to ${formatMinor(rowsMinor, currency)}. The rest came back on payments this list does not reach.`;
   }
   return `These rows come to ${formatMinor(rowsMinor, currency)}, more than the figure above. The difference is money the figure above does not count.`;

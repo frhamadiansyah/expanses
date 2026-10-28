@@ -7,15 +7,15 @@ test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
-test('an event is planned as a list of things to buy, and suggests what to tag', async ({ page }) => {
+test('an event is planned as a list of things to pay, and suggests what to tag', async ({ page }) => {
   await addWallet(page);
   await spend(page, 'Hampers', '4200000');
   await addEvent(page, 'Lebaran');
 
   await expect(page.getByTestId('event-suggestions')).toHaveCount(0);
 
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
-  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
   await fillItem(page, { name: 'Hampers', price: '3000000', category: 'Food and beverage' });
   await page.getByRole('link', { name: 'Back to the event' }).click();
 

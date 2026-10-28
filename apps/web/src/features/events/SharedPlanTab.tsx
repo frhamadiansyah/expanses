@@ -57,17 +57,17 @@ export function SharedPlanTab({ view }: { view: SharedEventView }) {
           </div>
         </Panel>
       ) : null}
-      <InsetGroup header="To buy">
+      <InsetGroup header="To pay">
         {items.map((item) => (
           <InsetRow
             key={item.id}
             title={item.name}
             subtitle={
               item.bought
-                ? `Bought · ${formatMinor(item.actualMinor ?? 0, view.currency)}`
+                ? `Paid · ${formatMinor(item.actualMinor ?? 0, view.currency)}`
                 : item.purchaseCount > 0
                   ? // Paid towards and still open: what was paid against what was planned, and how many payments made it.
-                    `${formatMinor(item.actualMinor ?? 0, view.currency)} of ${formatMinor(item.estimateMinor, view.currency)} · ${item.purchaseCount} ${item.purchaseCount === 1 ? 'purchase' : 'purchases'}`
+                    `${formatMinor(item.actualMinor ?? 0, view.currency)} of ${formatMinor(item.estimateMinor, view.currency)} · ${item.purchaseCount} ${item.purchaseCount === 1 ? 'payment' : 'payments'}`
                   : `${item.quantity} × ${formatMinor(item.unitPriceMinor, view.currency)}`
             }
             value={formatMinor(item.estimateMinor, view.currency)}
@@ -80,7 +80,7 @@ export function SharedPlanTab({ view }: { view: SharedEventView }) {
       {locked ? null : (
         <form aria-label="Add to the plan" onSubmit={(event) => void add(event)}>
           <InsetGroup>
-            <TextRow label="Thing to buy" value={name} onChange={(e) => setName(e.target.value)} />
+            <TextRow label="What to pay" value={name} onChange={(e) => setName(e.target.value)} />
             <TextRow label={`Price (${view.currency})`} inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
           </InsetGroup>
           <InsetGroup>

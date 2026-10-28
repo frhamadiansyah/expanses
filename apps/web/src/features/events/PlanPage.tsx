@@ -54,7 +54,7 @@ function PlanItemRow({
     <div className="flex items-center pl-[6px]" data-testid="plan-item">
       <button
         type="button"
-        aria-label={done ? `Reopen ${name}` : state === 'paid' ? `Done buying ${name}` : `Buy ${name}`}
+        aria-label={done ? `Reopen ${name}` : state === 'paid' ? `Settle ${name}` : `Pay ${name}`}
         onClick={() => (state === 'open' ? onBuy() : onDone(!done))}
         className="ph-focus flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
       >
@@ -119,7 +119,7 @@ function PlanCategoryCard({
         <div className="flex min-w-0 flex-1 flex-col text-xs leading-tight text-[var(--ph-ink-3)]">
           <h2 className="truncate text-sm font-semibold text-[var(--ph-ink)]">{name}</h2>
           <span>
-            {itemCount} {itemCount === 1 ? 'item' : 'items'} · {boughtCount === 0 ? 'none' : boughtCount} bought
+            {itemCount} {itemCount === 1 ? 'cost' : 'costs'} · {boughtCount === 0 ? 'none' : boughtCount} paid
           </span>
         </div>
         <span className="tabular shrink-0 text-right text-sm leading-tight font-semibold text-[var(--ph-ink)]">
@@ -188,7 +188,7 @@ export function PlanPage() {
   // Worked out once rather than at each of the two places it is read: the words and the tone are one reading.
   const difference = data && data.boughtCount > 0 ? differenceWords(totals!.differenceMinor, home) : null;
   const search = { ws: tab };
-  const addLabel = 'Add an item';
+  const addLabel = 'Add a cost';
   const add: CornerAction = {
     key: 'add',
     label: addLabel,
@@ -219,32 +219,32 @@ export function PlanPage() {
        */}
       {ready.isSuccess && !ready.data && (
         <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-warn)]">
-          This copy of the data is from before a plan was a list of things to buy, so nothing can be added to it yet. Open it once on a version that has
+          This copy of the data is from before a plan was a list of things to pay, so nothing can be added to it yet. Open it once on a version that has
           finished updating, and the plan will be here.
         </p>
       )}
 
       {data && data.itemCount === 0 ? (
         <>
-          <Empty>Nothing planned yet. Add what is planned to buy and roughly what it costs.</Empty>
+          <Empty>Nothing planned yet. Add what is planned to pay and roughly what it costs.</Empty>
           <InsetGroup>
-            <InsetRow title="Add the first item" to="/events/$eventId/plan/new" params={{ eventId }} search={search} />
+            <InsetRow title="Add the first cost" to="/events/$eventId/plan/new" params={{ eventId }} search={search} />
           </InsetGroup>
         </>
       ) : (
         data &&
         totals && (
           <>
-            {/* One reading on top: how many are ticked off and what is left to buy, with what was planned under it. */}
+            {/* One reading on top: how many are ticked off and what is left to pay, with what was planned under it. */}
             <div data-testid="plan-totals">
               <InsetGroup>
                 <div className="flex flex-col items-center px-4 pt-3 pb-3 text-center">
                   <span data-testid="plan-count" className="text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">
-                    {data.boughtCount} of {data.itemCount} bought
+                    {data.boughtCount} of {data.itemCount} paid
                   </span>
                   <span data-testid="plan-to-go" className="tabular mt-1 text-[24px] leading-[30px] font-extrabold text-[var(--ph-ink)]">
-                    {/* "All bought" only once every item is done: an open item paid in full still has Rp0 to go. */}
-                    {totals.toBuyMinor > 0 || data.boughtCount < data.itemCount ? `${rp(totals.toBuyMinor)} to go` : 'All bought'}
+                    {/* "All paid" only once every cost is done: an open item paid in full still has Rp0 to go. */}
+                    {totals.toBuyMinor > 0 || data.boughtCount < data.itemCount ? `${rp(totals.toBuyMinor)} to go` : 'All paid'}
                   </span>
                   <span className="mt-2 h-[7px] w-full overflow-hidden rounded-full bg-[var(--ph-track)]">
                     <span
@@ -254,7 +254,7 @@ export function PlanPage() {
                   </span>
                   <span data-testid="plan-planned" className="mt-2 text-[12.5px] leading-4 text-[var(--ph-ink-3)]">
                     {plannedLabel(data)} {rp(totals.plannedMinor)}
-                    {totals.boughtMinor > 0 && ` · Bought ${rp(totals.boughtMinor)}`}
+                    {totals.boughtMinor > 0 && ` · Paid ${rp(totals.boughtMinor)}`}
                     {difference && (
                       <>
                         {' · '}
@@ -316,12 +316,6 @@ export function PlanPage() {
                   </PlanCategoryCard>
                 );
               })}
-            <InsetGroup>
-              <InsetRow title={addLabel} to="/events/$eventId/plan/new" params={{ eventId }} search={search} />
-            </InsetGroup>
-            <p className="px-[4px] text-[12.5px] leading-4 text-[var(--ph-ink-3)]">
-              Tap the circle to buy it, or — once something was paid towards it — to mark it done. More payments are added on its page.
-            </p>
           </>
         )
       )}

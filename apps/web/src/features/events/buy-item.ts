@@ -30,7 +30,7 @@ export function carriedFromDraft(draft: { amount: string; currency: string; desc
 }
 
 /**
- * Where "Buy it now" goes: the same Add screen, filled in from the item, and the item named so Save can tie the
+ * Where "Pay now" goes: the same Add screen, filled in from the item, and the item named so Save can tie the
  * payment to what it answered (`linkEventItem`, with the id the save posted). `ws` is the workspace tab the plan was
  * being read in, carried so the plan screen Save lands on keeps reading in it — never where the payment is filed,
  * which is the open workspace, as it is for every transaction.
@@ -63,7 +63,7 @@ export function coverTarget(eventId: string, transactionId: string, options: { i
  */
 export const isNothingLeft = (error: unknown) => error instanceof EventError && error.code === 'NOTHING_LEFT';
 
-/** What "Buy it now" needs of a plan item: what it is called, what it was expected to cost, where it was planned. */
+/** What "Pay now" needs of a plan item: what it is called, what it was expected to cost, where it was planned. */
 export interface BuyingItem {
   id: string;
   name: string;
@@ -119,10 +119,10 @@ export function buySeed(item: BuyingItem, baseCurrency: string): { description: 
  * what to put back rather than what went wrong.
  */
 export function buyRefusal(draft: Pick<FormDraft, 'mode' | 'amount' | 'eventId'>, eventId: string): string | null {
-  if (draft.mode !== 'expense') return 'Buying an item is recorded as an expense.';
-  if (draft.eventId !== eventId) return 'Buying an item records the payment under the item’s own event.';
+  if (draft.mode !== 'expense') return 'Paying a cost is recorded as an expense.';
+  if (draft.eventId !== eventId) return 'Paying a cost records the payment under the cost’s own event.';
   if (isRefund(draft)) {
-    return 'What it cost is a figure above nought. Money coming back is recorded on its own, without buying an item.';
+    return 'What it cost is a figure above nought. Money coming back is recorded on its own, without paying a cost.';
   }
   return null;
 }

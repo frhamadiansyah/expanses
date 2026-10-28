@@ -11,7 +11,7 @@ export const TODAY = `${NOW.getFullYear()}-${String(NOW.getMonth() + 1).padStart
  * Every `<dl>` figure inside a card, read as label → figure.
  *
  * `toContainText` on a card is not an assertion about a figure, only about the card holding that run of characters
- * somewhere: a plan whose "Bought so far" and "Still to buy" happen to be the same amount passes twice over one of
+ * somewhere: a plan whose "Bought so far" and "Still to pay" happen to be the same amount passes twice over one of
  * them, a label swapped with its neighbour passes unchanged, and a row deleted outright can still pass off the
  * donut's own SVG label behind it. Read as pairs, each figure is pinned to the words above it, and a row that is
  * gone is a key that is missing.
@@ -124,7 +124,7 @@ export async function expectGauge(scope: Locator, expected: Record<string, strin
 /**
  * The foot of "What it covers", as label → figure.
  *
- * Three lines of one card, which `toContainText` cannot tell apart: "Given to items" and "Left on this receipt"
+ * Three lines of one card, which `toContainText` cannot tell apart: "Given to costs" and "Left on this receipt"
  * could swap places and two substring assertions on the card would pass unchanged. Each `<p>` is a label element
  * and a figure element, so the pair is read as it is shown — the amber "not planned" pill included, since it is
  * part of what the left-hand side says.
@@ -164,7 +164,7 @@ export async function spend(page: Page, description: string, amount: string) {
 /** An event for today. `set` is the category set it draws on, chosen by name; none, and it files under the monthly tree. */
 export async function addEvent(page: Page, name: string, set?: string) {
   await page.goto('/events');
-  await page.getByRole('button', { name: 'Add an event' }).click();
+  await page.getByRole('button', { name: /^(Add an event|New event)$/ }).click();
   await page.getByLabel('Name', { exact: true }).fill(name);
   if (set) await page.getByLabel('Categories').selectOption({ label: set });
   await page.getByLabel('Starts on').fill(TODAY);
@@ -202,9 +202,9 @@ export async function fillItem(page: Page, options: ItemFields) {
   await expect(page.getByTestId('plan-item').filter({ hasText: options.name })).toBeVisible();
 }
 
-/** From the plan: ＋ and then the form. "Add the first item" on an empty plan opens the same form. */
+/** From the plan: ＋ and then the form. "Add the first cost" on an empty plan opens the same form. */
 export async function addItem(page: Page, options: ItemFields) {
-  await page.getByRole('link', { name: 'Add an item' }).first().click();
+  await page.getByRole('link', { name: 'Add a cost' }).first().click();
   await fillItem(page, options);
 }
 
@@ -216,7 +216,7 @@ export async function addItem(page: Page, options: ItemFields) {
  * migration 0049 made of the caps that came before it.
  */
 export async function planFor(page: Page, category: string, amount: string, option = category) {
-  // By test id, not by words: the card's link says "Plan what to buy" while nothing is planned and "See the whole
+  // By test id, not by words: the card's link says "Plan what to pay" while nothing is planned and "See the whole
   // plan" once there are items, and this helper is called both before and after the first one.
   await showPlanCard(page);
   await page.getByTestId('open-plan').click();
@@ -255,15 +255,15 @@ export async function recordIntoEvent(
 }
 
 /**
- * "Buy it now" on an item's page: the Add screen, filled in from the item, and Save ties the payment to it.
+ * "Pay now" (or "Add payment") on a cost's page: the Add screen, filled in from the item, and Save ties the payment to it.
  *
  * Only Paid with has to be chosen. `paid` is the receipt's real figure typed over the estimate — cleared first, so a
  * phone's keypad replaces the estimate rather than typing after it. Returns the form, still open when Save refused.
  */
 export async function buyItNow(page: Page, options: { paid?: string; paidWith?: string; done?: boolean } = {}) {
-  // The item's page is titled with its name: kept to tick it off on the plan once the payment is saved.
-  const name = ((await page.getByRole('heading', { level: 1 }).first().textContent()) ?? '').trim();
-  await page.getByRole('button', { name: 'Buy it now' }).click();
+  // The cost's name heads its identity block: kept to tick it off on the plan once the payment is saved.
+  const name = ((await page.getByTestId('item-identity').getByRole('heading').textContent()) ?? '').trim();
+  await page.getByRole('button', { name: /^(Pay now|Add payment)$/ }).click();
   const form = addForm(page);
   await form.getByRole('button', { name: /^Paid with/ }).click();
   await choosePayment(page, options.paidWith ?? 'BCA Tahapan');
@@ -276,7 +276,7 @@ export async function buyItNow(page: Page, options: { paid?: string; paidWith?: 
   // One receipt for one thing, the ordinary case: done once paid. An item may stay open to take more payments.
   if (options.done !== false) {
     await expect(form).toHaveCount(0);
-    const tick = page.getByRole('button', { name: `Done buying ${name}` });
+    const tick = page.getByRole('button', { name: `Settle ${name}` });
     await tick.click();
     await expect(page.getByRole('button', { name: `Reopen ${name}` })).toBeVisible();
   }

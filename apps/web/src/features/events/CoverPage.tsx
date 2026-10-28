@@ -256,7 +256,7 @@ export function CoverPage() {
         ) : items.length === 0 ? (
           <Empty>This event has nothing on its plan yet, so there is nothing for the receipt to answer.</Empty>
         ) : (
-          <InsetGroup header="What it paid for" footer="Tick everything this receipt paid for and give each its share. One receipt can settle many items.">
+          <InsetGroup header="What it paid for" footer="Tick everything this receipt paid for and give each its share. One receipt can settle many costs.">
             {items.map((row) => (
               <CoverRow
                 key={row.id}
@@ -277,7 +277,7 @@ export function CoverPage() {
         <div data-testid="cover-totals">
           <InsetGroup header="Against the receipt">
             <InsetRow title="Receipt" value={formatMinor(totals.totalMinor, currency)} valueTone="ink" />
-            <InsetRow title="Given to items" value={formatMinor(totals.givenMinor, currency)} valueTone="ink" />
+            <InsetRow title="Given to costs" value={formatMinor(totals.givenMinor, currency)} valueTone="ink" />
             <InsetRow
               title={leftLabel}
               value={totals.over ? 'that is more than the receipt' : formatMinor(totals.leftMinor, currency)}
@@ -287,7 +287,7 @@ export function CoverPage() {
         </div>
 
         <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-          Shares start at each item’s estimate; change them to what the receipt really says. Anything left over stays as spending in its category, marked “not
+          Shares start at each cost’s estimate; change them to what the receipt really says. Anything left over stays as spending in its category, marked “not
           planned”. The receipt itself is never split — the statement and points are untouched.
         </p>
       </div>

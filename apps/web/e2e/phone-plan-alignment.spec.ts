@@ -12,7 +12,7 @@ test('by thumb: an item’s circle lines up with its category’s mark, and its 
   await expect(page.getByRole('heading', { name: 'Coast week', exact: true })).toBeVisible();
   await showPlanCard(page);
   await page.getByTestId('open-plan').click();
-  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
   await page.getByLabel('What', { exact: true }).fill('Tickets');
   await page.getByLabel('Price each').fill('100000');
   await chooseCategory(page, 'Food and beverage');

@@ -106,8 +106,8 @@ export function PickPurchasePage() {
     <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
       <div className="mx-auto max-w-2xl">
         <PushedTitle
-          title="Link a purchase"
-          back={named ? 'Back to the item' : 'Back to the plan'}
+          title="Link a payment"
+          back={named ? 'Back to the cost' : 'Back to the plan'}
           backTo={backTo.to}
           backParams={backTo.params}
           backSearch={backTo.search}
@@ -117,7 +117,7 @@ export function PickPurchasePage() {
         <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">
           {named ? (
             <>
-              Which payment bought <b className="font-semibold text-[var(--ph-ink)]">{named.name}</b>? The next screen says what else the same receipt covers.
+              Which payment paid <b className="font-semibold text-[var(--ph-ink)]">{named.name}</b>? The next screen says what else the same receipt covers.
             </>
           ) : (
             <>Which payment answered something on this plan? The next screen says what it covers.</>
@@ -125,13 +125,13 @@ export function PickPurchasePage() {
         </p>
 
         {rows.length === 0 ? (
-          <Empty>Nothing tagged to this event still has anything unaccounted for. Tag a payment first, or use Buy it now.</Empty>
+          <Empty>Nothing tagged to this event still has anything unaccounted for. Tag a payment first, or use Pay now.</Empty>
         ) : (
           <InsetGroup
             header="Tagged to this event"
             footer={
               open.length === 0
-                ? 'Nothing tagged to this event still has anything unaccounted for. Tag a payment first, or use Buy it now.'
+                ? 'Nothing tagged to this event still has anything unaccounted for. Tag a payment first, or use Pay now.'
                 : undefined
             }
           >
