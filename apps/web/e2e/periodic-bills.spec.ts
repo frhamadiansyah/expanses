@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { pickBillCategory, showRepeating } from './bill-form';
+import { pickBillCategory, pickBillPaidFrom, showRepeating } from './bill-form';
 import { localIsoDate, todayIn } from './today';
 
 test.beforeEach(({ page }) => {
@@ -23,7 +23,7 @@ async function addEveryThreeMonths(page: Page, name: string, at: { month: number
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel('Amount', { exact: true }).fill('300000');
   await pickBillCategory(page);
-  await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan' });
+  await pickBillPaidFrom(page, 'BCA Tahapan');
   await page.getByLabel('Repeats').selectOption({ label: 'Every few months' });
   // The schedule is Months, Starting and Due by: no Bill date, no Month.
   await expect(page.getByLabel('Months', { exact: true })).toHaveValue('3');

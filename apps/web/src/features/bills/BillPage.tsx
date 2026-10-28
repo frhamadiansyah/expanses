@@ -6,11 +6,12 @@ import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { useFrom } from '../../app/from-search';
-import { useAccounts, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox, Money } from '../../ui';
 import { ActionButtons, GROUP_RADIUS, type GroupChild, InsetGroup, InsetRow, LargeTitle, Panel, PushedTitle, ReadOnlyRow, type RoundAction, SCREEN } from '../../ui/native';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { billCurrencyOf, pillOf } from './bill-view';
+import { usePaidFromLabels } from './PaidFromSheet';
 import { PauseSheet } from './PauseSheet';
 import { PaySheet } from './PaySheet';
 import { SinkingFundGroup } from './SinkingFundGroup';
@@ -50,6 +51,7 @@ export function BillPage({ billId }: { billId: string }) {
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
+  const { nameOf: paidName } = usePaidFromLabels(moneyHolders(accounts));
   const today = isoDate();
   const detail = useBillDetail(billId, today);
   const fund = (useSinkingFunds(today).data ?? []).find((f) => f.billId === billId);
@@ -227,7 +229,7 @@ export function BillPage({ billId }: { billId: string }) {
           }
         />
         {bill.currency ? <ReadOnlyRow label="Currency" value={bill.currency} /> : null}
-        <ReadOnlyRow label="Paid from" value={account?.name ?? ''} />
+        <ReadOnlyRow label="Paid from" value={account ? paidName(account) : ''} />
         <ReadOnlyRow label="Category" value={category?.name ?? ''} />
         {bookName ? <ReadOnlyRow label="Workspace" value={bookName} /> : null}
       </InsetGroup>

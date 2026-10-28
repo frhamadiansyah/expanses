@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { pickBillCategory, showRepeating } from './bill-form';
+import { pickBillCategory, pickBillPaidFrom, showRepeating } from './bill-form';
 import { todayIn } from './today';
 
 /** A yearly bill about five months ahead, saving up in BCA Savings; `saved` is its Already saved. */
@@ -11,7 +11,7 @@ async function addFundedBill(page: Page, name: string, saved: string, amount = '
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel('Amount', { exact: true }).fill(amount);
   await pickBillCategory(page);
-  await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan' });
+  await pickBillPaidFrom(page, 'BCA Tahapan');
   await page.getByLabel('Repeats').selectOption('yearly');
   await page.getByLabel('Month', { exact: true }).selectOption(String(at.getMonth() + 1));
   await page.getByLabel('Due by').selectOption(String(at.getDate()));

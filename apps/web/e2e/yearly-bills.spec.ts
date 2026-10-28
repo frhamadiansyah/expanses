@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { pickBillCategory, showMonthly, showRepeating } from './bill-form';
+import { pickBillCategory, pickBillPaidFrom, showMonthly, showRepeating } from './bill-form';
 import { localIsoDate, todayIn } from './today';
 
 test.beforeEach(({ page }) => {
@@ -23,7 +23,7 @@ async function addYearlyBill(page: Page, name: string, at: { month: number; day:
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel('Amount', { exact: true }).fill('3000000');
   await pickBillCategory(page);
-  await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan' });
+  await pickBillPaidFrom(page, 'BCA Tahapan');
   await page.getByLabel('Repeats').selectOption('yearly');
   await page.getByLabel('Month', { exact: true }).selectOption(String(at.month));
   await page.getByLabel('Due by').selectOption(String(at.day));
@@ -84,7 +84,7 @@ test('a bill switches between monthly and yearly in Edit', async ({ page }) => {
   await page.getByLabel('Name', { exact: true }).fill('Gym');
   await page.getByLabel('Amount', { exact: true }).fill('350000');
   await pickBillCategory(page);
-  await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan' });
+  await pickBillPaidFrom(page, 'BCA Tahapan');
   // A monthly bill has no Month row.
   await expect(page.getByLabel('Repeats')).toHaveValue('monthly');
   await expect(page.getByLabel('Month', { exact: true })).toHaveCount(0);

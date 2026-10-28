@@ -11,6 +11,7 @@ import { InsetGroup, InsetRow, LargeTitle, PickerRow, SCREEN, SelectRow, SwitchR
 import { CategoryPicker } from '../transactions/CategoryPicker';
 import { useExpenseTemplates } from '../transactions/queries';
 import { amountInput } from './bill-view';
+import { PaidFromSheet, usePaidFromLabels } from './PaidFromSheet';
 import { useSinkingFunds } from './queries';
 
 const FUND_ACCOUNT_KEY = 'expanses.sinking-account';
@@ -66,11 +67,14 @@ export function BillFormPage({ billId }: { billId?: string }) {
   const [error, setError] = useState<unknown>(null);
   const [loaded, setLoaded] = useState(false);
   const [pickingCategory, setPickingCategory] = useState(false);
+  const [pickingPayer, setPickingPayer] = useState(false);
   const form = useRef<HTMLFormElement>(null);
 
   const chosen = (accounts.data ?? []).find((account) => account.id === categoryAccountId);
   // What a bill is paid with: money kept for spending, or a card — the same answer every "Paid with" gives.
   const wallets = moneyHolders(accounts.data ?? []).filter((account) => canPayWith(account, moneyAccountId));
+  const payer = wallets.find((account) => account.id === moneyAccountId);
+  const { nameOf: paidName } = usePaidFromLabels(wallets);
   // What the Currency row shows and the amount is read in: the one picked, else the payer's, else the workspace's.
   const payerCurrency = (accounts.data ?? []).find((account) => account.id === moneyAccountId)?.currency ?? ws.baseCurrency;
   const billCurrency = currency || payerCurrency;
@@ -245,14 +249,12 @@ export function BillFormPage({ billId }: { billId?: string }) {
               placeholder="Choose a category"
               onOpen={() => setPickingCategory(true)}
             />
-            <SelectRow label="Paid from" value={moneyAccountId} onChange={(e) => setMoneyAccountId(e.target.value)}>
-              <option value="">Choose an account</option>
-              {wallets.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name}
-                </option>
-              ))}
-            </SelectRow>
+            <PickerRow
+              label="Paid from"
+              value={payer ? paidName(payer) : ''}
+              placeholder="Choose an account"
+              onOpen={() => setPickingPayer(true)}
+            />
           </InsetGroup>
 
           <InsetGroup>
@@ -362,6 +364,7 @@ export function BillFormPage({ billId }: { billId?: string }) {
         </form>
       )}
       {/* The same searchable tree as Add transaction; a bill is recorded into the open book, which the picker already honours. */}
+      {pickingPayer && <PaidFromSheet accounts={wallets} value={moneyAccountId} onPick={setMoneyAccountId} onClose={() => setPickingPayer(false)} />}
       {pickingCategory && (
         <CategoryPicker kind="expense" lockKind title="Category" value={categoryAccountId || undefined} onPick={setCategoryAccountId} onClose={() => setPickingCategory(false)} />
       )}
