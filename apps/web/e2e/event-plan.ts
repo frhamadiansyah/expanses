@@ -311,16 +311,18 @@ export async function showPlanCard(page: Page) {
 
 /**
  * The plan screen's top card: how many are paid, what is left to pay, the estimate and the actual (each label with its
- * figure), and the difference line, or null while nothing is paid. The base equivalents are not read here.
+ * figure), and the status line (saved, over, on the estimate, or nothing paid yet).
+ * The count is read from inside the ring. The base equivalents are not read here.
  */
 export async function expectPlanHero(
   page: Page,
-  expected: { count: string; toPay: string; planned: string; actual: string; difference: string | null },
+  expected: { count: string; toPay: string; planned: string; actual: string; status: string },
 ) {
-  // innerText, because the label and its figure are separate blocks with no space between them in the text content.
+  // innerText, because the label and its figure are separate blocks with no space between them in the text content;
+  // an SVG text has no innerText, so the ring's count is read by textContent.
   const read = async (id: string) => {
     const spot = page.getByTestId(id);
-    return (await spot.count()) === 0 ? null : ((await spot.innerText()) ?? '').replace(/\s+/g, ' ').trim();
+    return (await spot.count()) === 0 ? null : ((id === 'plan-count' ? await spot.textContent() : await spot.innerText()) ?? '').replace(/\s+/g, ' ').trim();
   };
   await expect
     .poll(async () => ({
@@ -328,7 +330,7 @@ export async function expectPlanHero(
       toPay: await read('plan-to-go'),
       planned: await read('plan-planned'),
       actual: await read('plan-actual'),
-      difference: await read('plan-difference'),
+      status: await read('plan-status'),
     }))
     .toEqual(expected);
 }

@@ -6,7 +6,7 @@ import {
   BACK_WORDS,
   chartUnder,
   coverTotals,
-  differenceFoot,
+  planStatus,
   differenceWords,
   estimateLabel,
   eventListLine,
@@ -834,12 +834,12 @@ describe('a plan in more than one currency', () => {
 });
 
 describe('the plan hero and the paid row', () => {
-  it('says the difference against the estimate in words, over, under or on it', () => {
-    expect(plain(differenceFoot(450_000).text)).toBe('Rp 450.000 over the estimate');
-    expect(differenceFoot(450_000).tone).toBe('over');
-    expect(plain(differenceFoot(-220_000).text)).toBe('Rp 220.000 under the estimate');
-    expect(differenceFoot(-220_000).tone).toBe('under');
-    expect(differenceFoot(0)).toEqual({ text: 'On the estimate', tone: 'exact' });
+  it('reads the status line from what is paid: nothing, saved, over, or on the estimate', () => {
+    expect(planStatus(0, 0)).toEqual({ kind: 'none', amountMinor: 0 });
+    expect(planStatus(0, -500)).toEqual({ kind: 'none', amountMinor: 0 });
+    expect(planStatus(2, -220_000)).toEqual({ kind: 'saved', amountMinor: 220_000 });
+    expect(planStatus(2, 450_000)).toEqual({ kind: 'over', amountMinor: 450_000 });
+    expect(planStatus(1, 0)).toEqual({ kind: 'exact', amountMinor: 0 });
   });
 
   it('shows the share done as the bar did: rounded, held between nought and a hundred, nought with nothing planned', () => {

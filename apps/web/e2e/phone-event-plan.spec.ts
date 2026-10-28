@@ -151,9 +151,9 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
    * 2.200.000 of the Mothercare receipt bought; nothing left to buy; and the crib's 300.000 under the difference.
    */
   // Covered is paid, not done: nothing left to pay until both are ticked, then all bought.
-  await expectPlanHero(page, { count: '1 of 3 paid', toPay: 'Rp 0 to pay', planned: 'Estimate Rp 9.700.000', actual: 'Actual Rp 9.400.000', difference: 'Rp 300.000 under the estimate' });
+  await expectPlanHero(page, { count: '1 of 3 paid', toPay: 'Rp 0 to pay', planned: 'Estimate Rp 9.700.000', actual: 'Actual Rp 9.400.000', status: '▼ Rp 300.000 saved' });
   for (const name of ['Newborn clothes', 'Muslin wraps']) await page.getByRole('button', { name: `Settle ${name}` }).click();
-  await expectPlanHero(page, { count: '3 of 3 paid', toPay: 'All paid', planned: 'Estimate Rp 9.700.000', actual: 'Actual Rp 9.400.000', difference: 'Rp 300.000 under the estimate' });
+  await expectPlanHero(page, { count: '3 of 3 paid', toPay: 'All paid', planned: 'Estimate Rp 9.700.000', actual: 'Actual Rp 9.400.000', status: '▼ Rp 300.000 saved' });
   await noSideways(page, 'a settled plan');
 
   // And the way back out is a thumb's reach too, on the screen it came from.

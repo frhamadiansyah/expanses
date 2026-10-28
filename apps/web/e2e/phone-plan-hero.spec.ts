@@ -7,7 +7,8 @@ import { mockRates } from './pockets';
  *
  * The trip is planned in lira, the workspace stays in rupiah: the flight is priced in rupiah, the museum pass in euros,
  * the dinner in lira, the guide in dollars (which has no rate). Flight paid under its estimate and the museum pass paid
- * over it give the card both of its difference lines and the rows both of their arrows.
+ * over it give the card its saved and over status lines and the rows both of their arrows. The count sits inside the ring
+ * under the percentage; the first line of the text is always a status, so the ring and the text stay one height.
  */
 
 async function pickCurrency(page: Page, from: string, to: string) {
@@ -33,6 +34,45 @@ async function token(page: Page, name: string) {
     probe.remove();
     return colour;
   }, name);
+}
+
+/** The ring and the text block beside it (the status line's parent), measured. */
+async function measure(page: Page) {
+  const ring = (await page.getByTestId('plan-ring').boundingBox())!;
+  const text = (await page.getByTestId('plan-status').locator('..').boundingBox())!;
+  return { ring, text };
+}
+
+/** The ring is as tall as the text, square, and level with it. */
+async function expectRingMatchesText(page: Page) {
+  const { ring, text } = await measure(page);
+  expect(Math.abs(ring.height - text.height)).toBeLessThanOrEqual(1);
+  expect(Math.abs(ring.width - ring.height)).toBeLessThanOrEqual(1);
+  expect(Math.abs(ring.y - text.y)).toBeLessThanOrEqual(1);
+}
+
+/** Nothing runs out of the card, and the Estimate and Actual figures each stay on one line. */
+async function expectNothingWraps(page: Page) {
+  const card = page.getByTestId('plan-totals');
+  const fits = await card.evaluate((el) => {
+    const right = el.getBoundingClientRect().right;
+    const inside = [...el.querySelectorAll<HTMLElement>('[data-testid^="plan-"]')].every((part) => part.getBoundingClientRect().right <= right + 0.5);
+    return { scroll: el.scrollWidth <= el.clientWidth, inside };
+  });
+  expect(fits).toEqual({ scroll: true, inside: true });
+  for (const id of ['plan-planned', 'plan-actual', 'plan-to-go', 'plan-status']) {
+    const lines = await page.getByTestId(id).evaluate((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top / 4))).size;
+    });
+    // The Estimate and Actual blocks are a label over a figure, so two lines; the rest are one.
+    expect(lines).toBeLessThanOrEqual(id === 'plan-planned' || id === 'plan-actual' ? 2 : 1);
+  }
+  for (const id of ['plan-planned', 'plan-actual']) {
+    const figure = (await page.getByTestId(id).locator('span').last().boundingBox())!;
+    expect(figure.height).toBeLessThanOrEqual(17);
+  }
 }
 
 const colourOf = (spot: Locator) => spot.evaluate((el) => getComputedStyle(el).color);
@@ -65,7 +105,6 @@ test('the ring card and the paid rows', async ({ page }) => {
   await addCost(page, { name: 'Guide', price: '50', currency: 'USD' });
 
   const card = page.getByTestId('plan-totals');
-  const hero = async (id: string) => ((await page.getByTestId(id).innerText()) ?? '').replace(/\s+/g, ' ').trim();
 
   // The words: Estimate and Actual, never Planned or Bought; the missing rate is said on the cost, not on the card.
   await expect(page.getByTestId('plan-planned')).toContainText('Estimate');
@@ -74,45 +113,41 @@ test('the ring card and the paid rows', async ({ page }) => {
   await expect(card).not.toContainText('Bought');
   await expect(card).not.toContainText(/rate yet/i);
   await expect(page.getByTestId('plan-item').filter({ hasText: 'Guide' })).toContainText('no rate yet');
+  // The count is inside the ring, under the percentage; there is no foot line and no count in the text.
+  await expect(page.getByTestId('plan-ring').getByTestId('plan-count')).toHaveText('0 of 4 paid');
   await expect(page.getByTestId('plan-difference')).toHaveCount(0);
+  await expect(page.getByTestId('plan-status')).toHaveText('Nothing paid yet');
+  await expect(page.getByTestId('plan-status')).toHaveCSS('color', await token(page, '--ph-ink-3'));
+  await expect(page.getByTestId('plan-status')).toHaveCSS('font-weight', '500');
+  await expect(page.getByTestId('plan-planned').locator('span').last()).toHaveCSS('font-size', '12px');
+  await expect(page.getByTestId('plan-to-go')).toHaveCSS('font-size', '16px');
+  expect((await page.getByTestId('plan-count').boundingBox())!.height).toBeGreaterThanOrEqual(8);
 
   // The base equivalent under each of the three figures, because the trip is not in rupiah.
   for (const id of ['plan-to-go-base', 'plan-planned-base', 'plan-actual-base']) await expect(page.getByTestId(id)).toContainText(/^≈ Rp/);
 
-  // The ring is as tall as the text beside it, and starts where it starts.
-  const measure = async () => {
-    const ring = (await page.getByTestId('plan-ring').boundingBox())!;
-    const text = (await page.getByTestId('plan-count').locator('..').boundingBox())!;
-    return { ring, text };
-  };
-  const before = await measure();
-  expect(Math.abs(before.ring.height - before.text.height)).toBeLessThanOrEqual(1);
-  expect(Math.abs(before.ring.width - before.ring.height)).toBeLessThanOrEqual(1);
-  expect(Math.abs(before.ring.y - before.text.y)).toBeLessThanOrEqual(1);
-
-  // Nothing wraps or runs out of the card.
-  const fits = () =>
-    card.evaluate((el) => {
-      const right = el.getBoundingClientRect().right;
-      const inside = [...el.querySelectorAll<HTMLElement>('[data-testid^="plan-"]')].every((part) => part.getBoundingClientRect().right <= right + 0.5);
-      return { scroll: el.scrollWidth <= el.clientWidth, inside };
-    });
-  expect(await fits()).toEqual({ scroll: true, inside: true });
+  // The ring is as tall as the text beside it, and starts where it starts; nothing wraps or runs out of the card.
+  await expectRingMatchesText(page);
+  await expectNothingWraps(page);
 
   // Museum pass paid over its estimate: Rp 2.000.000 is ₺ 5.000 against ₺ 4.275.
   await payCost(page, 'Museum pass', '2000000');
-  await expect(page.getByTestId('plan-difference')).toHaveText(/725.* over the estimate/);
-  await expect(page.getByTestId('plan-difference')).toHaveCSS('color', await token(page, '--ph-alarm'));
+  await expect(page.getByTestId('plan-status')).toHaveText(/^▲ .*725.* over$/);
+  await expect(page.getByTestId('plan-status')).toHaveAttribute('aria-label', /^Over the estimate by .*725/);
+  await expect(page.getByTestId('plan-status')).toHaveCSS('color', await token(page, '--ph-alarm'));
+  await expectRingMatchesText(page);
+  await expectNothingWraps(page);
   // Flight paid under: Rp 9.000.000 is ₺ 22.500 against ₺ 24.500.
   await payCost(page, 'Flight', '9000000');
-  await expect(page.getByTestId('plan-difference')).toHaveText(/1\.275.* under the estimate/);
-  await expect(page.getByTestId('plan-difference')).toHaveCSS('color', await token(page, '--ph-up'));
-  expect(await hero('plan-count')).toBe('2 of 4 paid');
+  await expect(page.getByTestId('plan-status')).toHaveText(/^▼ .*1\.275.* saved$/);
+  await expect(page.getByTestId('plan-status')).toHaveAttribute('aria-label', /^Saved .*1\.275.* against the estimate$/);
+  await expect(page.getByTestId('plan-status')).toHaveCSS('color', await token(page, '--ph-up'));
+  await expect(page.getByTestId('plan-status')).toHaveCSS('font-weight', '600');
+  await expect(page.getByTestId('plan-ring').getByTestId('plan-count')).toHaveText('2 of 4 paid');
   // The actual is plain ink, never green.
   await expect(page.getByTestId('plan-actual').locator('span').last()).toHaveCSS('color', await token(page, '--ph-ink'));
-  const after = await measure();
-  expect(Math.abs(after.ring.height - after.text.height)).toBeLessThanOrEqual(1);
-  expect(await fits()).toEqual({ scroll: true, inside: true });
+  await expectRingMatchesText(page);
+  await expectNothingWraps(page);
 
   // The rows: paid costs in ink, an arrow on the amount's line, the estimate under it in the quiet grey.
   const ink = await token(page, '--ph-ink');
@@ -166,5 +201,39 @@ test('an event in the workspace currency has no base equivalents on the card', a
   await expect(row).toContainText('6 × Rp 55.000');
   await expect(row.getByLabel('Under the estimate')).toBeVisible();
   await expect(row).toContainText('of Rp 330.000');
-  await expect(page.getByTestId('plan-difference')).toHaveText('Rp 30.000 under the estimate');
+  await expect(page.getByTestId('plan-status')).toHaveText('▼ Rp 30.000 saved');
+  await expectRingMatchesText(page);
+  // Paid exactly on the estimate: the line says so, quietly.
+  await page.getByTestId('plan-item').filter({ hasText: 'Tickets' }).getByRole('link').click();
+  await page.getByRole('link', { name: 'Edit' }).click();
+  await page.getByLabel('Price each').fill('50000');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('link', { name: 'Back to the plan' }).click();
+  await expect(page.getByTestId('plan-status')).toHaveText('On the estimate');
+  await expect(page.getByTestId('plan-status')).toHaveCSS('color', await token(page, '--ph-ink-3'));
+  await expect(page.getByTestId('plan-status')).toHaveCSS('font-weight', '500');
+  await expectRingMatchesText(page);
+});
+
+test('big lira figures with two decimals and their rupiah lines stay inside the card', async ({ page }) => {
+  await mockRates(page, { TRY: 400 });
+  await addWallet(page);
+  await page.goto('/events');
+  await page.getByRole('button', { name: /^(Add an event|New event)$/ }).click();
+  await page.getByLabel('Name', { exact: true }).fill('Istanbul');
+  await page.getByRole('button', { name: 'Currency: IDR' }).click();
+  await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: /^TRY / }).first().click();
+  await page.getByRole('button', { name: 'Save event' }).click();
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
+  await fillItem(page, { name: 'Villa', price: '30575', category: 'Food and beverage' });
+  await expect(page.getByTestId('plan-planned')).toContainText(/30\.575,00/);
+  await expectRingMatchesText(page);
+  await expectNothingWraps(page);
+  // Paid under: Rp 11.000.000 is ₺ 27.500.
+  await payCost(page, 'Villa', '11000000');
+  await expect(page.getByTestId('plan-actual')).toContainText(/27\.500,00/);
+  await expect(page.getByTestId('plan-status')).toHaveText(/^▼ .*3\.075,00.* saved$/);
+  await expectRingMatchesText(page);
+  await expectNothingWraps(page);
 });
