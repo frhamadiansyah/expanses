@@ -1,4 +1,4 @@
-import { EMERGENCY_RETURN_BPS, emergencyTargetMinor, HOUSEHOLDS, type Household, INCOME_STABILITIES, type IncomeStability, isoDate, parseMajor, savingPlanFor } from '@expanses/core';
+import { EMERGENCY_RETURN_BPS, emergencyTargetMinor, HOUSEHOLDS, type Household, INCOME_STABILITIES, type IncomeStability, groupTypedAmount, isoDate, parseGroupedMajor, savingPlanFor } from '@expanses/core';
 import { createGoalFromCalculator, type EmergencyInputs } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -25,7 +25,7 @@ export function EmergencyFundPage() {
 
   const money = (value: string) => {
     try {
-      return value.trim() === '' ? 0 : parseMajor(value, ws.baseCurrency);
+      return value.trim() === '' ? 0 : parseGroupedMajor(value, ws.baseCurrency);
     } catch {
       return 0;
     }
@@ -101,10 +101,12 @@ export function EmergencyFundPage() {
           inputMode="decimal"
         />
         <TextRow
-          label={`What goes out a month (${ws.baseCurrency})`}
+          label="What goes out a month"
+          prefix={ws.baseCurrency}
           value={monthlyOutgoing}
-          onChange={(e) => setMonthlyOutgoing(e.target.value)}
-          inputMode="numeric"
+          onChange={(e) => setMonthlyOutgoing(groupTypedAmount(e.target.value, ws.baseCurrency))}
+          inputMode="decimal"
+          placeholder="Amount"
         />
       </InsetGroup>
 

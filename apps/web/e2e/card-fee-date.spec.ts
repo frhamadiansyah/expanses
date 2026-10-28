@@ -20,7 +20,7 @@ test('a card’s annual fee date is saved in Settings, shown as the next charge,
 
   await cardPage(page, 'Settings');
   await expect(page.getByTestId('card-annual-fee')).toHaveCount(0);
-  await page.getByLabel('Annual fee (IDR)').fill('500000');
+  await page.getByLabel('Annual fee').fill('500000');
   await page.getByLabel('Charged on').fill(iso(entered));
   await saveCardTerms(page);
   // The save is written out to storage a moment after it is made; a reload straight away would beat it.

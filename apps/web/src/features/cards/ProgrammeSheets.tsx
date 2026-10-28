@@ -1,4 +1,4 @@
-import { currencyInfo, type ExpiryPolicy, formatValuePerPoint, groupTypedValue, isoDate, parseMajor, parseValuePerPoint, type TransferPartner, valuePerPointText } from '@expanses/core';
+import { currencyInfo, type ExpiryPolicy, formatValuePerPoint, groupTypedAmount, groupTypedValue, isoDate, parseGroupedMajor, parseValuePerPoint, type TransferPartner, valuePerPointText } from '@expanses/core';
 import {
   archiveProgramme,
   createProgramme,
@@ -342,7 +342,7 @@ export function ConvertSheet({
                 points: parsePoints(points),
                 occurredOn: on,
                 note,
-                valueMinor: fetched.trim() === '' ? null : parseMajor(fetched, ws.baseCurrency),
+                valueMinor: fetched.trim() === '' ? null : parseGroupedMajor(fetched, ws.baseCurrency),
               }),
             ),
         }}
@@ -351,7 +351,7 @@ export function ConvertSheet({
         <InsetGroup>
           <TextRow label={`${unitWord(programme.unit)} used`} value={points} onChange={(e) => setPoints(e.target.value)} inputMode="decimal" placeholder={unitWord(programme.unit)} required />
           {typed && <TextRow label="What for" value={what} onChange={(e) => setWhat(e.target.value)} placeholder="Voucher" />}
-          <TextRow label={`What it fetched (${ws.baseCurrency})`} hint="Leave empty if it had no cash value." value={fetched} onChange={(e) => setFetched(e.target.value)} inputMode="decimal" placeholder="Amount" />
+          <TextRow label="What it fetched" prefix={ws.baseCurrency} hint="Leave empty if it had no cash value." value={fetched} onChange={(e) => setFetched(groupTypedAmount(e.target.value, ws.baseCurrency))} inputMode="decimal" placeholder="Amount" />
           <TextRow label="Date" type="date" value={on} onChange={(e) => setOn(e.target.value)} required />
         </InsetGroup>
       </Sheet>

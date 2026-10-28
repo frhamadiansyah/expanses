@@ -1,4 +1,4 @@
-import { convertMinor, minorToMajorString, parseMajor } from '@expanses/core';
+import { convertMinor, groupedMajorString, parseGroupedMajor } from '@expanses/core';
 
 /** Units of the base currency per one of each side, as `resolveRates` gives them (the base itself is 1). */
 export interface SettleRate {
@@ -17,7 +17,7 @@ export interface SettleRate {
  */
 export function settleFigure(input: { amountMinor: number; eventCurrency: string; accountCurrency: string; typed: string | null; rate: SettleRate | null }): number {
   if (input.typed !== null) {
-    const typed = parseMajor(input.typed, input.accountCurrency);
+    const typed = parseGroupedMajor(input.typed, input.accountCurrency);
     if (!Number.isSafeInteger(typed) || typed <= 0) throw new Error(`Enter what moved in ${input.accountCurrency}`);
     return typed;
   }
@@ -29,9 +29,9 @@ export function settleFigure(input: { amountMinor: number; eventCurrency: string
 export function suggestedFigure(amount: string, eventCurrency: string, accountCurrency: string, rate: SettleRate | null): string {
   if (!rate) return '';
   try {
-    const amountMinor = parseMajor(amount, eventCurrency);
+    const amountMinor = parseGroupedMajor(amount, eventCurrency);
     if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) return '';
-    return minorToMajorString(settleFigure({ amountMinor, eventCurrency, accountCurrency, typed: null, rate }), accountCurrency);
+    return groupedMajorString(settleFigure({ amountMinor, eventCurrency, accountCurrency, typed: null, rate }), accountCurrency);
   } catch {
     return '';
   }

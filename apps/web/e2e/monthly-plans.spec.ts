@@ -13,7 +13,7 @@ async function setPlan(page: Page, amount: string, day: string) {
   await page.getByTestId('monthly-plan').click();
   const sheet = page.getByRole('dialog');
   await expect(sheet.getByText('Buys', { exact: true })).toBeVisible();
-  await sheet.getByLabel('Amount (IDR)').fill(amount);
+  await sheet.getByLabel('Amount', { exact: true }).fill(amount);
   await sheet.getByLabel('Every month on').selectOption(day);
   await expect(sheet.getByLabel('Paid from')).toHaveValue(/.+/);
   await sheet.getByRole('button', { name: 'Save plan' }).click();
@@ -77,7 +77,7 @@ test('a plan whose day is ahead waits quietly; changed and removed from the hold
   await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await page.getByTestId('monthly-plan').click();
   const sheet = page.getByRole('dialog');
-  await expect(sheet.getByLabel('Amount (IDR)')).toHaveValue(/750\.000/);
+  await expect(sheet.getByLabel('Amount', { exact: true })).toHaveValue(/750\.000/);
   await sheet.getByLabel('Every month on').selectOption('3');
   await sheet.getByRole('button', { name: 'Save plan' }).click();
   await expect(page.getByTestId('monthly-plan')).toContainText('Rp 750.000 · 3rd');

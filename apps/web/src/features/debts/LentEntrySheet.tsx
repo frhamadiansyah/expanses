@@ -1,4 +1,4 @@
-import { type DebtDirection, isoDate, minorToMajorString, parseMajor } from '@expanses/core';
+import { type DebtDirection, groupedMajorString, groupTypedAmount, isoDate, parseGroupedMajor } from '@expanses/core';
 import { editLoanEntry, type LoanEntry } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -41,10 +41,10 @@ export function LentEntrySheet({
     moneyHolders(accounts).filter((account) => (direction === 'lent' ? canPayWith(account) : WALLET_SUBTYPES.includes(account.subtype)) && account.currency === currency),
     direction,
   );
-  const [amount, setAmount] = useState(() => minorToMajorString(entry.amountMinor, currency));
+  const [amount, setAmount] = useState(() => groupedMajorString(entry.amountMinor, currency));
   const [moneyId, setMoneyId] = useState(entry.moneyAccountId);
   const [occurredOn, setOccurredOn] = useState(entry.occurredOn);
-  const [fee, setFee] = useState(() => (entry.feeMinor > 0 ? minorToMajorString(entry.feeMinor, currency) : ''));
+  const [fee, setFee] = useState(() => (entry.feeMinor > 0 ? groupedMajorString(entry.feeMinor, currency) : ''));
   const feesCategoryId = accounts.find((account) => account.kind === 'expense' && account.systemKey === 'miscellaneous.fees_charges')?.id ?? '';
   const [feeCategoryId, setFeeCategoryId] = useState(entry.feeCategoryId ?? '');
   const [error, setError] = useState<unknown>(null);
@@ -60,8 +60,8 @@ export function LentEntrySheet({
       let amountMinor: number;
       let feeMinor = 0;
       try {
-        amountMinor = parseMajor(amount, currency);
-        feeMinor = hasFee ? parseMajor(fee, currency) : 0;
+        amountMinor = parseGroupedMajor(amount, currency);
+        feeMinor = hasFee ? parseGroupedMajor(fee, currency) : 0;
       } catch {
         throw new Error('The amount must be a number');
       }
@@ -92,7 +92,7 @@ export function LentEntrySheet({
       confirm={{ label: 'Save', disabled: busy || amount.trim() === '' || !moneyId, run: () => void save() }}
     >
       <InsetGroup>
-        <TextRow label={`${labels.given} (${currency})`} value={amount} inputMode="decimal" onChange={(e) => setAmount(e.target.value)} placeholder="Amount" />
+        <TextRow label={labels.given} prefix={currency} value={amount} inputMode="decimal" onChange={(e) => setAmount(groupTypedAmount(e.target.value, currency))} placeholder="Amount" />
         <SelectRow label={direction === 'lent' ? 'Paid from' : 'Received into'} value={moneyId} onChange={(e) => setMoneyId(e.target.value)}>
           {money.map((account) => (
             <option key={account.id} value={account.id}>
@@ -101,7 +101,7 @@ export function LentEntrySheet({
           ))}
         </SelectRow>
         <TextRow label="Date" type="date" value={occurredOn} max={today} onChange={(e) => setOccurredOn(e.target.value)} />
-        <TextRow label={`Fee (${currency})`} value={fee} inputMode="decimal" onChange={(e) => setFee(e.target.value)} placeholder="Amount" />
+        <TextRow label="Fee" prefix={currency} value={fee} inputMode="decimal" onChange={(e) => setFee(groupTypedAmount(e.target.value, currency))} placeholder="Amount" />
         {hasFee ? (
           <SelectRow label="Fee category" value={feeCategoryId || feesCategoryId} onChange={(e) => setFeeCategoryId(e.target.value)}>
             <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />

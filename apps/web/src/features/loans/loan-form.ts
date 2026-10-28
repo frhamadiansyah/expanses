@@ -1,4 +1,4 @@
-import { isoDate, type LoanMethod, minorToMajorString, parseMajor, periodOn, type ScheduleRow } from '@expanses/core';
+import { groupedMajorString, isoDate, type LoanMethod, parseGroupedMajor, periodOn, type ScheduleRow } from '@expanses/core';
 import type { LoanPaymentInput, LoanTermsRow, SaveLoanTermsInput } from '@expanses/db';
 
 export interface LoanTermsDraft {
@@ -57,13 +57,13 @@ export function loanTermsDraftFromTerms(terms: LoanTermsRow, currency: string, t
     accountId: terms.accountId,
     lenderName: terms.lenderName,
     purpose: terms.purpose ?? '',
-    originalAmount: minorToMajorString(terms.originalMinor, currency),
+    originalAmount: groupedMajorString(terms.originalMinor, currency),
     firstPaymentOn: terms.firstPaymentOn,
     tenorMonths: String(terms.tenorMonths),
     method: terms.method,
     paymentDay: String(terms.paymentDay),
     rate,
-    payment: current && current.paymentMinor > 0 ? minorToMajorString(current.paymentMinor, currency) : '',
+    payment: current && current.paymentMinor > 0 ? groupedMajorString(current.paymentMinor, currency) : '',
     rateKind: current?.kind ?? 'fixed',
     assetAccountId: terms.assetAccountId ?? '',
     lenderNpwp: terms.lenderNpwp ?? '',
@@ -89,7 +89,7 @@ export function loanTermsDraftToInput(draft: LoanTermsDraft, currency: string): 
   if (draft.originalAmount.trim() === '') throw new Error('Enter how much was borrowed');
   let originalMinor: number;
   try {
-    originalMinor = parseMajor(draft.originalAmount, currency);
+    originalMinor = parseGroupedMajor(draft.originalAmount, currency);
   } catch {
     throw new Error('The amount must be a number');
   }
@@ -103,7 +103,7 @@ export function loanTermsDraftToInput(draft: LoanTermsDraft, currency: string): 
   let paymentMinor = 0;
   if (draft.payment.trim() !== '') {
     try {
-      paymentMinor = parseMajor(draft.payment, currency);
+      paymentMinor = parseGroupedMajor(draft.payment, currency);
     } catch {
       throw new Error('The payment must be a number');
     }
@@ -145,8 +145,8 @@ export function paymentDraftFrom(row: ScheduleRow | null | undefined, today: str
   return {
     occurredOn: row.onDate > today ? today : row.onDate,
     moneyId,
-    principal: minorToMajorString(row.principalMinor, currency),
-    interest: minorToMajorString(row.interestMinor, currency),
+    principal: groupedMajorString(row.principalMinor, currency),
+    interest: groupedMajorString(row.interestMinor, currency),
     extras: [],
   };
 }
@@ -163,7 +163,7 @@ export function paymentDraftFrom(row: ScheduleRow | null | undefined, today: str
  */
 export function extraPaymentMinor(typed: string, currency: string): number {
   if (typed.trim() === '') return 0;
-  return parseMajor(typed, currency);
+  return parseGroupedMajor(typed, currency);
 }
 
 /** Turns a payment as typed into one to record, refusing more principal than is left. */
@@ -182,7 +182,7 @@ export function paymentDraftToInput(
   const amount = (typed: string, what: string): number => {
     if (typed.trim() === '') return 0;
     try {
-      return parseMajor(typed, currency);
+      return parseGroupedMajor(typed, currency);
     } catch {
       throw new Error(`The ${what} must be a number`);
     }

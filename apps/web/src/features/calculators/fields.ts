@@ -1,4 +1,4 @@
-import { parseMajor } from '@expanses/core';
+import { parseGroupedMajor } from '@expanses/core';
 
 /**
  * What one box on the Calculators page says: a figure, or the sentence its row shows instead. Nothing here throws, so
@@ -28,12 +28,12 @@ export function readWhole(typed: string): Field<number> {
   return { ok: true, value };
 }
 
-/** An amount in the workspace's money, by `parseMajor`; an empty box is nothing. */
+/** An amount in the workspace's money, by `parseGroupedMajor` (the text of an amount box grouped as it is typed); an empty box is nothing. */
 export function readMoney(typed: string, currency: string): Field<number> {
   if (typed.trim() === '') return { ok: true, value: 0 };
   let value: number;
   try {
-    value = parseMajor(typed, currency);
+    value = parseGroupedMajor(typed, currency);
   } catch {
     return refuse(`Not an amount in ${currency}`);
   }

@@ -33,8 +33,8 @@ test('row 2 — with a birthday: ages 6 to 12, the years on the birthday', async
   await page.getByRole('button', { name: 'Add a level' }).click();
   await typeInto(page, 'Starts at age', '6');
   await typeInto(page, 'Until age', '12');
-  await typeInto(page, 'Enrollment today (IDR)', '45000000');
-  await typeInto(page, 'Academic today (IDR)', '20000000');
+  await typeInto(page, 'Enrollment today', '45000000');
+  await typeInto(page, 'Academic today', '20000000');
   await expect(page.getByText('Ages 6 to 12 · 2032 to 2038')).toBeVisible();
   await page.getByRole('button', { name: 'Use this amount' }).click();
 
@@ -99,7 +99,7 @@ test('row 6 — money set aside before a level is added: the target rises, what 
   await page.getByRole('button', { name: 'Add a level' }).click();
   await typeInto(page, 'Starts in year', '2038');
   await typeInto(page, 'Until year', '2041');
-  await typeInto(page, 'Academic today (IDR)', '30000000');
+  await typeInto(page, 'Academic today', '30000000');
   await page.getByRole('button', { name: 'Use this amount' }).click();
   await expect(stageLines(page)).toHaveCount(9);
 
@@ -110,7 +110,7 @@ test('row 6 — money set aside before a level is added: the target rises, what 
 
 test('row 7 — retirement saved from the Retirement page: 3,5% growth, 10% return, and the page’s figure', async ({ page }) => {
   await page.goto('/calculators/retirement');
-  await typeInto(page, 'Yearly spending in retirement (IDR)', '120000000');
+  await typeInto(page, 'Yearly spending in retirement', '120000000');
   await typeInto(page, 'Age now', '35');
   await typeInto(page, 'Retirement age', '55');
   const answer = page.getByTestId('answer-retirement');
@@ -139,13 +139,13 @@ test('row 9 — life cover opens on the loan and the education goal just added',
   await addAccount(page, 'KPR Bintaro', 'loan', 'Amount owed now', '300000000');
   await page.goto('/goals');
   await openGoalForm(page, 'Education');
-  await typeInto(page, "Cost in today's money (IDR)", '150000000');
+  await typeInto(page, "Cost in today's money", '150000000');
   await page.getByRole('button', { name: 'Save goal' }).last().click();
   await expect(goalRow(page, 'Education')).toBeVisible();
 
   await page.goto('/calculators/life-cover');
-  await expect(page.getByLabel('Debts to clear (IDR)', { exact: true })).toHaveValue('300000000');
-  await expect(page.getByLabel('Education still to fund (IDR)', { exact: true })).toHaveValue('150000000');
+  await expect(page.getByLabel('Debts to clear', { exact: true })).toHaveValue('300.000.000');
+  await expect(page.getByLabel('Education still to fund', { exact: true })).toHaveValue('150.000.000');
 });
 
 test('row 10 — a holiday’s return follows its date until one is typed, then stays', async ({ page }) => {

@@ -39,6 +39,16 @@ describe('debtDraftToInput', () => {
     expect(input.person).toMatchObject({ name: 'Andi', direction: 'lent', currency: 'IDR' });
   });
 
+  it('reads a grouped amount and fee in a currency with cents', () => {
+    const input = debtDraftToInput(draft({ amount: '1.234,50', fee: '2,25', feeCategoryId: 'fees' }), 'USD', TODAY);
+
+    expect(input).toMatchObject({ amountMinor: 123_450, feeMinor: 225 });
+  });
+
+  it('reads a grouped amount in a three-decimal currency as thousands, not decimals', () => {
+    expect(debtDraftToInput(draft({ amount: '1.234' }), 'KWD', TODAY).amountMinor).toBe(1_234_000);
+  });
+
   it('borrows when the direction says so', () => {
     const input = debtDraftToInput(draft({ direction: 'borrowed' }), 'IDR', TODAY);
 

@@ -238,7 +238,7 @@ test('a card purchase turned into instalments splits into billed and unbilled', 
   await expect(edit.getByLabel('Billed', { exact: true }).first()).toBeVisible();
   await expect(edit.getByLabel('Still held', { exact: true }).first()).toBeVisible();
   await expect(edit.getByLabel('Ends', { exact: true }).first()).toBeVisible();
-  await expect(edit.getByLabel(/^Total/)).toHaveValue('12000000');
+  await expect(edit.getByLabel(/^Total/)).toHaveValue('12.000.000');
   await expect(edit.getByLabel('Months')).toHaveValue('12');
   await edit.getByLabel(/^Total/).fill('9000000');
   await edit.getByLabel('Months').fill('6');
@@ -275,13 +275,13 @@ test('a loan in another currency is printed in its own currency, and the monthly
   await page.getByRole('link', { name: 'Dollar car loan' }).click();
   await page.getByRole('button', { name: 'Add loan terms' }).click();
   await page.getByLabel('Lender').pressSequentially('Car Finance');
-  await page.getByLabel('Amount borrowed (USD)').pressSequentially('24000.00');
+  await page.getByLabel('Amount borrowed').pressSequentially('24000,00');
   await page.getByLabel('Rate a year (%)').pressSequentially('0');
   await page.getByLabel('How interest is worked out').selectOption('zero');
   await page.getByLabel('First payment on').fill('2026-01-25');
   await page.getByLabel('Tenor in months').pressSequentially('48');
   await page.getByLabel('Payment day').fill('25');
-  await page.getByLabel('Payment each month (USD)').pressSequentially('500.00');
+  await page.getByLabel('Payment each month').pressSequentially('500,00');
   await page.getByRole('button', { name: 'Save terms' }).click();
   // The schedule is the write landing; a page load before it does loses the write. See `addKpr`.
   await expect(page.getByTestId('loan-card')).toBeVisible();
@@ -311,13 +311,13 @@ test('an extra payment reads its penalty in the loan’s own money, cents and al
   await page.getByRole('link', { name: 'Dollar car loan' }).click();
   await page.getByRole('button', { name: 'Add loan terms' }).click();
   await page.getByLabel('Lender').pressSequentially('Car Finance');
-  await page.getByLabel('Amount borrowed (USD)').pressSequentially('24000.00');
+  await page.getByLabel('Amount borrowed').pressSequentially('24000,00');
   await page.getByLabel('Rate a year (%)').pressSequentially('0');
   await page.getByLabel('How interest is worked out').selectOption('zero');
   await page.getByLabel('First payment on').fill('2026-01-25');
   await page.getByLabel('Tenor in months').pressSequentially('48');
   await page.getByLabel('Payment day').fill('25');
-  await page.getByLabel('Payment each month (USD)').pressSequentially('500.00');
+  await page.getByLabel('Payment each month').pressSequentially('500,00');
   await page.getByRole('button', { name: 'Save terms' }).click();
   // The schedule is the write landing; a page load before it does loses the write. See `addKpr`.
   await expect(page.getByTestId('loan-card')).toBeVisible();

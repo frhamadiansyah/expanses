@@ -202,7 +202,7 @@ test('working a retirement goal out keeps the return its owner typed', async ({ 
   const retirement = await goalCard(page, 'Retirement');
   await openWorking(page);
   await expect(page.getByLabel('Return while saving (%)')).toHaveValue('9');
-  await page.getByLabel('Yearly spending in retirement (IDR)').fill('120000000');
+  await page.getByLabel('Yearly spending in retirement').fill('120000000');
   await page.getByLabel('Years until retirement').fill('20');
   await page.getByLabel('Years in retirement').fill('20');
   await page.getByRole('button', { name: 'Use this amount' }).click();
@@ -232,7 +232,7 @@ test('works out a retirement target from your own figures', async ({ page }) => 
   await expect(page.getByLabel('Inflation a year (%)')).toHaveValue('3.5');
   await expect(page.getByLabel('Return while saving (%)')).toHaveValue('10');
   await expect(page.getByLabel('Return while retired (%)')).toHaveValue('5');
-  await page.getByLabel('Yearly spending in retirement (IDR)').fill('120000000');
+  await page.getByLabel('Yearly spending in retirement').fill('120000000');
   await page.getByLabel('Years until retirement').fill('20');
   await page.getByLabel('Years in retirement').fill('20');
   await page.getByLabel('Inflation a year (%)').fill('5');
@@ -242,7 +242,7 @@ test('works out a retirement target from your own figures', async ({ page }) => 
   await expect(page.getByText('Worked out from these figures')).toBeVisible();
   // The working reopens as it was saved.
   await openWorking(page);
-  await expect(page.getByLabel('Yearly spending in retirement (IDR)')).toHaveValue('120000000');
+  await expect(page.getByLabel('Yearly spending in retirement')).toHaveValue('120.000.000');
   await expect(page.getByLabel('Return while retired (%)')).toHaveValue('8');
   await expect(page.getByLabel('Inflation a year (%)')).toHaveValue('5');
 });
@@ -258,7 +258,7 @@ test('typing an amount by hand stops the goal being worked out', async ({ page }
 
   const retirement = await goalCard(page, 'Retirement');
   await openWorking(page);
-  await page.getByLabel('Yearly spending in retirement (IDR)').fill('120000000');
+  await page.getByLabel('Yearly spending in retirement').fill('120000000');
   await page.getByLabel('Years until retirement').fill('20');
   await page.getByLabel('Years in retirement').fill('20');
   await page.getByLabel('Inflation a year (%)').fill('5');

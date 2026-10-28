@@ -22,8 +22,8 @@ async function cardWithAPurchase(page: Page, on?: string, minimum?: string) {
   await page.getByRole('button', { name: 'Add rule' }).click();
   await page.getByLabel('Rule name').fill('Base');
   await page.getByLabel('Points', { exact: true }).fill('1');
-  await page.getByLabel('Per spend (IDR)').fill('2500');
-  if (minimum) await page.getByLabel('Minimum transaction (IDR)').fill(minimum);
+  await page.getByLabel('Per spend').fill('2500');
+  if (minimum) await page.getByLabel('Minimum transaction').fill(minimum);
   await page.getByRole('button', { name: 'Save rule' }).click();
   await expect(page.getByText('1 per Rp')).toBeVisible();
 
@@ -160,7 +160,7 @@ async function redeem(page: Page, points: string, fetched: string) {
   await page.getByRole('dialog').getByRole('button', { name: 'Something else…' }).click();
   await page.getByRole('dialog').getByLabel('Points used').fill(points);
   await page.getByLabel('What for').fill('Statement credit');
-  await page.getByLabel('What it fetched (IDR)').fill(fetched);
+  await page.getByLabel('What it fetched').fill(fetched);
   await page.getByRole('button', { name: 'Save redemption' }).click();
 }
 

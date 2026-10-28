@@ -35,8 +35,8 @@ export async function firstLevel(page: Page) {
   await page.getByRole('button', { name: 'Add a level' }).click();
   await typeInto(page, 'Starts in year', '2032');
   await typeInto(page, 'Until year', '2038');
-  await typeInto(page, 'Enrollment today (IDR)', '45000000');
-  await typeInto(page, 'Academic today (IDR)', '20000000');
+  await typeInto(page, 'Enrollment today', '45000000');
+  await typeInto(page, 'Academic today', '20000000');
 }
 
 /** Row 1: no birthday — calendar years, each due on 1 January, 65 jt then 20 jt five times. */
@@ -62,7 +62,7 @@ export async function row5(page: Page) {
   await page.getByRole('button', { name: 'Add a level' }).click();
   await typeInto(page, 'Starts in year', '2038');
   await typeInto(page, 'Until year', '2041');
-  await typeInto(page, 'Academic today (IDR)', '30000000');
+  await typeInto(page, 'Academic today', '30000000');
   await page.getByRole('button', { name: 'Use this amount' }).click();
 
   await expect(stageLines(page)).toHaveCount(9);
@@ -82,12 +82,12 @@ async function typeLife(page: Page, label: string, text: string) {
 /** Row 8: life cover with resources above needs says so, with the surplus, and never a negative cover. */
 export async function row8(page: Page) {
   await page.goto('/calculators/life-cover');
-  await typeLife(page, 'Yearly amount the family needs (IDR)', '120000000');
-  await typeLife(page, 'Debts to clear (IDR)', '300000000');
-  await typeLife(page, 'Education still to fund (IDR)', '150000000');
-  await typeLife(page, 'Final expenses (IDR)', '25000000');
-  await typeLife(page, 'Liquid assets (IDR)', '2000000000');
-  await typeLife(page, 'Cover already in force (IDR)', '500000000');
+  await typeLife(page, 'Yearly amount the family needs', '120000000');
+  await typeLife(page, 'Debts to clear', '300000000');
+  await typeLife(page, 'Education still to fund', '150000000');
+  await typeLife(page, 'Final expenses', '25000000');
+  await typeLife(page, 'Liquid assets', '2000000000');
+  await typeLife(page, 'Cover already in force', '500000000');
   const answer = page.getByTestId('answer-life-cover');
   await expect(answer).toContainText('No further cover needed');
   await expect(answer).toContainText('915.358.073');

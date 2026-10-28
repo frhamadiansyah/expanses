@@ -34,7 +34,7 @@ test('card setup guides billing date, then rewards, then a suggested base rule',
   await page.getByRole('button', { name: 'Add rule' }).click();
   await expect(page.getByLabel('Rule name')).toHaveValue('Base');
   await expect(page.getByLabel('Points', { exact: true })).toHaveValue('1');
-  await expect(page.getByLabel('Per spend (IDR)')).toHaveValue('2500');
+  await expect(page.getByLabel('Per spend')).toHaveValue('2.500');
   await page.getByRole('button', { name: 'Save rule' }).click();
 
   // Set up: the step is gone, and the rule is counted under the card's points settings.
@@ -60,11 +60,11 @@ test('the corner check on a card being set up needs both dates, keeps what was t
 
   // One date only: said, kept, and the page stays.
   await page.getByLabel('Billing date').fill('25');
-  await page.getByLabel('Credit limit (IDR)').fill('5000000');
+  await page.getByLabel('Credit limit').fill('5000000');
   await check.click();
   await expect(page.getByText('Enter the billing date and the due date')).toBeVisible();
   await expect(page.getByLabel('Billing date')).toHaveValue('25');
-  await expect(page.getByLabel('Credit limit (IDR)')).toHaveValue('5000000');
+  await expect(page.getByLabel('Credit limit')).toHaveValue('5.000.000');
   await expect(page.getByText('Step 1 of 3')).toBeVisible();
   await expect(heading).toBeVisible();
 
@@ -74,7 +74,7 @@ test('the corner check on a card being set up needs both dates, keeps what was t
   await expect(page.getByText('Step 2 of 3')).toBeVisible();
   await expect(heading).toBeVisible();
   await expect(page.getByLabel('Billing date')).toHaveValue('25');
-  await expect(page.getByLabel('Credit limit (IDR)')).toHaveValue('5000000');
+  await expect(page.getByLabel('Credit limit')).toHaveValue('5.000.000');
   await expect(page.getByText('Enter the billing date and the due date')).toHaveCount(0);
 });
 
@@ -94,9 +94,9 @@ test('a settled card saves its edited terms with the corner check and goes back 
   await expect(page.getByRole('group', { name: 'Actions' })).toBeVisible();
 
   await cardPage(page, 'Settings');
-  await page.getByLabel('Credit limit (IDR)').fill('7000000');
+  await page.getByLabel('Credit limit').fill('7000000');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('group', { name: 'Actions' })).toBeVisible();
   await cardPage(page, 'Settings');
-  await expect(page.getByLabel('Credit limit (IDR)')).toHaveValue('7000000');
+  await expect(page.getByLabel('Credit limit')).toHaveValue('7.000.000');
 });

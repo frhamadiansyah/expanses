@@ -47,7 +47,7 @@ test('an archived asset is listed in the group and restored from its page', asyn
   await cost.fill('');
   await cost.blur();
   await page.getByRole('button', { name: /^Value/ }).click();
-  await page.getByLabel('Value (IDR)').fill('0');
+  await page.getByLabel('Value', { exact: true }).fill('0');
   await page.getByRole('button', { name: 'Save value' }).click();
   await page.getByRole('main').getByRole('button', { name: 'Archive', exact: true }).click();
   await expect(page).toHaveURL(/\/net-worth\/assets$/);

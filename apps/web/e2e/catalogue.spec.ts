@@ -123,7 +123,7 @@ test('comparing in KrisFlyer ranks UnionPay converted miles above Signature mile
   await applyCatalogue(page, 'BCA KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
 
   await page.goto('/recommend');
-  await page.getByLabel('Amount (IDR)').fill('540000');
+  await page.getByLabel('Amount', { exact: true }).fill('540000');
   await page.getByLabel('Spent in').selectOption('SGD');
   await page.getByLabel('Category', { exact: true }).selectOption({ label: 'Restaurants' });
   await expect(page.getByLabel('Compare in').locator('option', { hasText: 'KrisFlyer' })).toHaveCount(1);

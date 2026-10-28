@@ -138,7 +138,7 @@ test('row 11 — the sections hold: a holiday never lists under compulsory', asy
   // The 15 jt is the goal's cost in today's money: the list and the card read it grown to its date, so it is read
   // where it was typed, in the goal's own form.
   await editGoal(await goalCard(page, 'Holiday'));
-  await expect(page.getByLabel(/Cost in today's money/).first()).toHaveValue('15000000');
+  await expect(page.getByLabel(/Cost in today's money/).first()).toHaveValue('15.000.000');
 });
 
 test('row 13 — the card grades against the household’s own months', async ({ page }) => {

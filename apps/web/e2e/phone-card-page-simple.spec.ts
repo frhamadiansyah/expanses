@@ -12,7 +12,7 @@ async function addEarningCard(page: Page, name: string) {
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
-  await page.getByLabel('Annual fee (IDR)').fill('750000');
+  await page.getByLabel('Annual fee').fill('750000');
   await saveCardTerms(page);
   await page.getByRole('button', { name: 'Set up rewards' }).click();
   await expect(page.getByText('Step 3 of 3')).toBeVisible();
@@ -41,7 +41,7 @@ test('the card page keeps the tile, the buttons and the latest; fee, rewards and
   await cardPage(page, 'Settings');
   const main = page.getByRole('main');
   await expect(page.getByRole('heading', { name: 'Annual fee', exact: true })).toBeVisible();
-  await expect(page.getByLabel('Annual fee (IDR)')).toHaveValue('750000');
+  await expect(page.getByLabel('Annual fee')).toHaveValue('750.000');
   await expect(main.getByTestId('card-annual-fee')).toHaveCount(0);
   await expect(main.getByLabel('Earns into')).toContainText('Simple Card rewards');
   await expect(main.getByTestId('card-instalments-row')).toContainText('None');

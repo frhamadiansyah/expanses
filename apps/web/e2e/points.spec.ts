@@ -22,17 +22,17 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
   await page.getByRole('button', { name: 'Add rule' }).click();
   await page.getByLabel('Rule name').fill('Base');
   await page.getByLabel('Points', { exact: true }).fill('1');
-  await page.getByLabel('Per spend (IDR)').fill('2500');
+  await page.getByLabel('Per spend').fill('2500');
   await page.getByRole('button', { name: 'Save rule' }).click();
   await expect(page.getByText('1 per Rp')).toBeVisible();
 
   await page.getByRole('button', { name: 'Add rule' }).click();
   await page.getByLabel('Rule name').fill('5x dining');
   await page.getByLabel('Points', { exact: true }).fill('5');
-  await page.getByLabel('Per spend (IDR)').fill('2500');
+  await page.getByLabel('Per spend').fill('2500');
   await page.getByLabel('Only these categories').selectOption([{ label: 'Food and beverage (all)' }]);
   await page.getByLabel('Priority').fill('10');
-  await page.getByLabel('Bonus cap: spend per cycle (IDR)').fill('3000000');
+  await page.getByLabel('Bonus cap: spend per cycle').fill('3000000');
   await page.getByRole('button', { name: 'Save rule' }).click();
   await expect(page.getByText('5 per Rp')).toBeVisible();
 
@@ -67,7 +67,7 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
   await page.keyboard.press('Escape');
 
   await page.goto('/recommend');
-  await page.getByLabel('Amount (IDR)').fill('100000');
+  await page.getByLabel('Amount', { exact: true }).fill('100000');
   await page.getByLabel('Category').selectOption({ label: 'Restaurants' });
   await page.getByRole('button', { name: 'Compare cards' }).click();
   const best = page.locator('section', { hasText: 'Best' });

@@ -1,4 +1,4 @@
-import { isoDate, parseMajor } from '@expanses/core';
+import { groupTypedAmount, isoDate, parseGroupedMajor } from '@expanses/core';
 import { type AccountRow, type CardRow, moveMoneyIn } from '@expanses/db';
 import { type FormEvent, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -73,9 +73,9 @@ export function MoneyInForm({
     setError(null);
     setBusy(true);
     try {
-      const amountMinor = parseMajor(amount, currency);
-      const feeMinor = fee.trim() === '' ? 0 : parseMajor(fee, fromCurrency);
-      const fromAmountMinor = cross ? parseMajor(charged, fromCurrency) : undefined;
+      const amountMinor = parseGroupedMajor(amount, currency);
+      const feeMinor = fee.trim() === '' ? 0 : parseGroupedMajor(fee, fromCurrency);
+      const fromAmountMinor = cross ? parseGroupedMajor(charged, fromCurrency) : undefined;
       const rateOf = async (code: string) => {
         if (code === ws.baseCurrency) return undefined;
         const rate = (await resolveRates([code], occurredOn)).rates[code];
@@ -130,9 +130,9 @@ export function MoneyInForm({
             : held.map(option)}
         </SelectRow>
         <ReadOnlyRow label="Into" value={into.name} />
-        <TextRow label={cross ? `Received (${currency})` : 'Amount'} info={words.about} inputMode="decimal" placeholder="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} />
-        {cross && <TextRow label={`Charged (${fromCurrency})`} inputMode="decimal" placeholder="Amount" value={charged} onChange={(e) => setCharged(e.target.value)} />}
-        <TextRow label={cross ? `${words.fee} in ${fromCurrency}` : words.fee} inputMode="decimal" placeholder="Optional" value={fee} onChange={(e) => setFee(e.target.value)} />
+        <TextRow label={cross ? 'Received' : 'Amount'} prefix={currency} info={words.about} inputMode="decimal" placeholder="Amount" value={amount} onChange={(e) => setAmount(groupTypedAmount(e.target.value, currency))} />
+        {cross && <TextRow label="Charged" prefix={fromCurrency} inputMode="decimal" placeholder="Amount" value={charged} onChange={(e) => setCharged(groupTypedAmount(e.target.value, fromCurrency))} />}
+        <TextRow label={words.fee} prefix={fromCurrency} inputMode="decimal" placeholder="Amount" value={fee} onChange={(e) => setFee(groupTypedAmount(e.target.value, fromCurrency))} />
         <TextRow label="Date" type="date" value={occurredOn} max={today} onChange={(e) => setOccurredOn(e.target.value)} />
       </InsetGroup>
     </form>

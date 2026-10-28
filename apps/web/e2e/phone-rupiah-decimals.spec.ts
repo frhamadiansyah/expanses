@@ -43,7 +43,7 @@ async function cardEarningPer12501(page: Page) {
   await page.getByRole('button', { name: 'Add rule' }).click();
   await page.getByLabel('Rule name').fill('Base');
   await page.getByLabel('Points', { exact: true }).fill('1');
-  await page.getByLabel('Per spend (IDR)').fill('12501');
+  await page.getByLabel('Per spend').fill('12501');
   await page.getByRole('button', { name: 'Save rule' }).click();
   await expect(page.getByText('Step 3 of 3')).toHaveCount(0);
 }

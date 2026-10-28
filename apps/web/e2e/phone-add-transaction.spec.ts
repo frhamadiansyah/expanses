@@ -783,7 +783,7 @@ test('Paid with › Add credit card › the catalogue over the keyboard › a ca
   const dates = page.getByTestId('card-setup');
   await expect(dates).toContainText('Billing and due dates');
   await dates.click();
-  await expect(page.getByLabel(/^Annual fee/)).toHaveValue('125000');
+  await expect(page.getByLabel(/^Annual fee/)).toHaveValue('125.000');
   await expect(page.getByLabel('Billing date')).toHaveValue('');
 });
 
