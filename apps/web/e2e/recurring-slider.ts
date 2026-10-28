@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { openAccount } from './accounts';
-import { pickBillCategory } from './bill-form';
+import { pickBillCategory, pickBillPaidFrom } from './bill-form';
 import { todayIn } from './today';
 
 /** A yearly bill 180 days ahead, so it is only on the Repeating page. Opens the wallet it is paid from. */
@@ -12,7 +12,7 @@ export async function addFarYearlyBill(page: Page, name: string) {
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel('Amount', { exact: true }).fill('3000000');
   await pickBillCategory(page);
-  await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan' });
+  await pickBillPaidFrom(page, 'BCA Tahapan');
   await page.getByLabel('Repeats').selectOption('yearly');
   await page.getByLabel('Month', { exact: true }).selectOption(String(date.getMonth() + 1));
   await page.getByLabel('Due by').selectOption(String(date.getDate()));
@@ -26,7 +26,7 @@ export async function addMonthlyBill(page: Page, name: string) {
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel('Amount', { exact: true }).fill('150000');
   await pickBillCategory(page);
-  await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan' });
+  await pickBillPaidFrom(page, 'BCA Tahapan');
   await page.getByLabel('Bill date').selectOption('1');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page).toHaveURL(/\/bills$/);

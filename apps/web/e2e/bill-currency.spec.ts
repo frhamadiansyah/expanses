@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { pickBillCategory } from './bill-form';
+import { pickBillCategory, pickBillPaidFrom } from './bill-form';
 import { mockRates } from './pockets';
 import { todayIn } from './today';
 
@@ -18,7 +18,7 @@ async function lifeCover(page: Page) {
   await openAccount(page, { subtype: 'bank', name: 'Wise SGD', balance: '1000', currency: 'SGD', rate: '12500' });
   await page.goto('/bills/new');
   await page.getByLabel('Name', { exact: true }).fill('Life cover');
-  await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan' });
+  await pickBillPaidFrom(page, 'BCA Tahapan');
   // Out today, so the rate stored today reaches it.
   // The row defaults to the paying account's currency.
   await expect(page.getByLabel('Currency')).toHaveValue('IDR');
@@ -129,8 +129,8 @@ test('an SGD bill keeps its currency through an edit, and a bill with none follo
 
   // A new bill with a payer chosen reads in that payer's currency until another is picked.
   await page.goto('/bills/new');
-  await page.getByLabel('Paid from').selectOption({ label: 'Wise SGD' });
+  await pickBillPaidFrom(page, 'Wise SGD');
   await expect(page.getByLabel('Currency')).toHaveValue('SGD');
-  await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan' });
+  await pickBillPaidFrom(page, 'BCA Tahapan');
   await expect(page.getByLabel('Currency')).toHaveValue('IDR');
 });

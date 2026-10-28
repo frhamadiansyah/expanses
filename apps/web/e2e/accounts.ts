@@ -171,7 +171,8 @@ async function openMoneyAccount(page: Page, o: NewAccount) {
   }
   /* Money kept for spending is a card on Wallet, where the form lands once the write is done. */
   await expect(page).toHaveURL(/\/wallet$/);
-  await expect(walletCard(page, o.shown ?? o.name)).toBeVisible();
+  // First: two accounts may share a name, and the card just added is one of them.
+  await expect(walletCard(page, o.shown ?? o.name).first()).toBeVisible();
 }
 
 export interface NewCard {
