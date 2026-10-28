@@ -64,15 +64,15 @@ export function SharedItemSheet({ view, item, onBuy, onClose }: { view: SharedEv
       <form aria-label={`Change ${item.name}`} onSubmit={save} data-testid="shared-item-sheet">
         <ErrorBox error={error} />
         <InsetGroup>
-          <TextRow label="Thing to buy" value={name} onChange={(e) => setName(e.target.value)} />
+          <TextRow label="What to pay" value={name} onChange={(e) => setName(e.target.value)} />
           <TextRow label={`${item.quantity > 1 ? 'Price each' : 'Price'} (${view.currency})`} inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
         </InsetGroup>
         <InsetGroup
           header={item.purchases.length > 0 ? 'Add another payment' : undefined}
-          footer="A payment towards it from an expense already recorded. Its part is what the item came to of it."
+          footer="A payment towards it from an expense already recorded. Its part is what the cost came to of it."
         >
-          <SelectRow label="Bought with" value={expenseId} onChange={(e) => pickExpense(e.target.value)}>
-            <option value="">{item.purchases.length > 0 ? 'No other payment' : 'Not bought yet'}</option>
+          <SelectRow label="Paid with" value={expenseId} onChange={(e) => pickExpense(e.target.value)}>
+            <option value="">{item.purchases.length > 0 ? 'No other payment' : 'Not paid yet'}</option>
             {choices.map((c) => (
               <option key={c.expenseId} value={c.expenseId}>
                 {c.label}
@@ -86,7 +86,7 @@ export function SharedItemSheet({ view, item, onBuy, onClose }: { view: SharedEv
         </InsetGroup>
       </form>
       {item.purchases.length > 0 && (
-        <InsetGroup header="Payments" footer="Tap a payment twice to take it off this item. The expense stays on the event.">
+        <InsetGroup header="Payments" footer="Tap a payment twice to take it off this cost. The expense stays on the event.">
           {item.purchases.map((purchase) => (
             <InsetRow
               key={purchase.transactionId}
@@ -105,10 +105,10 @@ export function SharedItemSheet({ view, item, onBuy, onClose }: { view: SharedEv
         </InsetGroup>
       )}
       <InsetGroup>
-        {item.done ? null : <InsetRow title={`Buy ${item.name} now`} onClick={onBuy} testId="shared-item-buy" />}
-        {/* Done is its own mark: an item paid for in parts stays on the list until nothing more is to be bought. */}
+        {item.done ? null : <InsetRow title={`Pay ${item.name} now`} onClick={onBuy} testId="shared-item-buy" />}
+        {/* Done is its own mark: a cost paid in parts stays on the list until nothing more is to be paid. */}
         <InsetRow
-          title={item.done ? 'Reopen' : 'Done buying'}
+          title={item.done ? 'Reopen' : 'Settle'}
           action
           onClick={() => void run(() => setSharedItemDone(database, ownerScope(ws), view.eventId, item.id, !item.done))}
         />

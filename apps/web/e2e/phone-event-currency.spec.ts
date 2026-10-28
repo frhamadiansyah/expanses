@@ -35,7 +35,7 @@ test('a trip planned in lira holds items in rupiah and euros and totals them in 
   await page.getByTestId('open-plan').click();
 
   // Flight: starts in lira, the price is rupiah. The category goes through the sheet of marks.
-  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
   await page.getByLabel('What', { exact: true }).fill('Flight');
   await expect(page.getByRole('button', { name: 'Currency: TRY' })).toBeVisible();
   await page.getByRole('button', { name: 'Currency: TRY' }).click();
@@ -50,7 +50,7 @@ test('a trip planned in lira holds items in rupiah and euros and totals them in 
   await expect(page.getByTestId('plan-category').filter({ hasText: 'Food and beverage' })).toContainText('Flight');
 
   // Museum pass: euros.
-  await page.getByRole('link', { name: 'Add an item' }).first().click();
+  await page.getByRole('link', { name: 'Add a cost' }).first().click();
   await page.getByLabel('What', { exact: true }).fill('Museum pass');
   await page.getByRole('button', { name: 'Currency: TRY' }).click();
   await pickCurrency(page, 'EUR');

@@ -43,7 +43,7 @@ test('an event reads like Cashflow: where it went, and a swipe to what it planne
   await showPlan(page);
   await expect(sheet).toContainText('Over the plan by');
   await expect(sheet).toContainText(/Rp\s?680\.000/);
-  await expect(sheet).toContainText('Still to buy');
+  await expect(sheet).toContainText('Still to pay');
 
   // The event's own history sits under it.
   await expect(page.getByRole('heading', { name: 'Transaction history' })).toBeVisible();

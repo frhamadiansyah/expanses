@@ -97,7 +97,7 @@ export function PlanCard({ eventId, plan, bookId, inPanel = false }: {
                       testId="plan-card-item"
                       depth={1}
                       title={item.name}
-                      subtitle={item.bought ? 'bought' : (quantityWords(item, currency) ?? undefined)}
+                      subtitle={item.bought ? 'paid' : (quantityWords(item, currency) ?? undefined)}
                       value={rp(item.actualMinor ?? item.estimateMinor)}
                       valueTone={item.bought ? 'ink-3' : 'ink'}
                       to="/events/$eventId/plan/$itemId"
@@ -110,18 +110,18 @@ export function PlanCard({ eventId, plan, bookId, inPanel = false }: {
           })}
           <WayIn
             title="See the whole plan"
-            subtitle="tick things off, add items"
+            subtitle="tick things off, add costs"
             to="/events/$eventId/plan"
             params={{ eventId }}
             search={search}
           />
-          <InsetRow title="Add an item" subtitle="plan another thing, in any category" to="/events/$eventId/plan/new" params={{ eventId }} search={search} />
+          <InsetRow title="Add a cost" subtitle="plan another thing, in any category" to="/events/$eventId/plan/new" params={{ eventId }} search={search} />
         </InsetGroup>
         </div>
       ) : (
         /* Said plainly, because the chart above is a complete answer on its own: an event may simply be tagged. */
         <InsetGroup footer="An event needs no plan. Without one it simply adds up what was tagged to it.">
-          <WayIn title="Plan what to buy" subtitle="turn this into a list with estimates" to="/events/$eventId/plan" params={{ eventId }} search={search} />
+          <WayIn title="Plan what to pay" subtitle="turn this into a list with estimates" to="/events/$eventId/plan" params={{ eventId }} search={search} />
         </InsetGroup>
       )}
     </div>

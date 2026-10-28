@@ -1,5 +1,5 @@
 import { CURRENCIES, eventCurrency, formatMinor, isoDate, minorToMajorString, parseMajor } from '@expanses/core';
-import { type AccountRow, listEventItems, saveEventItem } from '@expanses/db';
+import { type AccountRow, listEventItems, removeEventItem, saveEventItem } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
@@ -7,7 +7,7 @@ import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
 import { cx } from '../../ui';
-import { InsetGroup, InsetRow, LargeTitle, TextRow, type CornerAction, type GroupChild, PushedTitle } from '../../ui/native';
+import { DestructiveRow, InsetGroup, InsetRow, LargeTitle, TextRow, type CornerAction, type GroupChild, PushedTitle } from '../../ui/native';
 import { Sheet } from '../../app/Sheet';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { CurrencySheet } from '../transactions/CurrencySheet';
@@ -114,6 +114,7 @@ function CategorySheet({
   onPick: (id: string) => void;
   onClose: () => void;
 }) {
+  // Tapping the category already chosen clears it: the only way back to none, so the grid has no tile for it.
   const choose = (id: string) => {
     onPick(id);
     onClose();
@@ -123,22 +124,18 @@ function CategorySheet({
     <Sheet title="Category" grouped onClose={onClose}>
       <div className="grid max-h-[55vh] grid-cols-4 gap-x-[6px] gap-y-[10px] overflow-y-auto px-1 pb-2">
         {options.map((option) => (
-          <button key={option.id} type="button" aria-label={option.name} aria-current={option.id === current} onClick={() => choose(option.id)} className={cx(tile, option.id === current && 'bg-[var(--ph-fill)]')}>
+          <button key={option.id} type="button" aria-label={option.name} aria-current={option.id === current} onClick={() => choose(option.id === current ? '' : option.id)} className={cx(tile, option.id === current && 'bg-[var(--ph-fill)]')}>
             <CategoryIcon categoryId={option.id} accounts={accounts} size="tile" />
             <span className="line-clamp-2 text-center text-[11.5px] leading-[14px] break-words text-[var(--ph-ink-2)]">{option.name}</span>
           </button>
         ))}
-        <button type="button" aria-label="None" aria-current={current === ''} onClick={() => choose('')} className={cx(tile, current === '' && 'bg-[var(--ph-fill)]')}>
-          <span aria-hidden className="h-11 w-11 rounded-full bg-[var(--ph-fill)]" />
-          <span className="text-center text-[11.5px] leading-[14px] text-[var(--ph-ink-2)]">None</span>
-        </button>
       </div>
     </Sheet>
   );
 }
 
 /**
- * The form that makes one thing to buy, and the same form that edits it.
+ * The form that makes one thing to pay, and the same form that edits it.
  *
  * There is no estimate field. The estimate is how many × price each, shown read-only beside them as they are typed —
  * a figure someone could type would be a third number free to disagree with the two that make it.
@@ -247,7 +244,7 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
        */
       const saved = await listEventItems(database, ws, eventId);
       if (!saved.some((row) => row.id === id)) {
-        throw new Error('Nothing was saved: this copy of the data is from before a plan was a list of things to buy. Open it once on a finished version, then try again.');
+        throw new Error('Nothing was saved: this copy of the data is from before a plan was a list of things to pay. Open it once on a finished version, then try again.');
       }
       await invalidate();
       await navigate(backTo);
@@ -256,7 +253,20 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
     }
   }
 
-  const title = itemId ? 'Edit item' : 'New item';
+  /** Payments stay on the event as not planned; with any linked, the user is asked first. */
+  async function remove(row: { id: string; name: string; purchases: readonly unknown[] }) {
+    if (row.purchases.length > 0 && !window.confirm(`Delete ${row.name}? Its payments stay in the event as not planned.`)) return;
+    setError(null);
+    try {
+      await removeEventItem(database, ws, row.id);
+      await invalidate();
+      await navigate({ to: '/events/$eventId/plan', params: { eventId }, search });
+    } catch (e) {
+      setError(e);
+    }
+  }
+
+  const title = itemId ? 'Edit cost' : 'New cost';
   const screen = (children: ReactNode) => (
     <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
       <div className="mx-auto max-w-2xl">{children}</div>
@@ -275,7 +285,7 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
     return screen(
       <>
         <PushedTitle title={title} back="Back to the plan" backTo="/events/$eventId/plan" backParams={{ eventId }} backSearch={search} />
-        <Empty>That item is no longer on this plan.</Empty>
+        <Empty>That cost is no longer on this plan.</Empty>
       </>,
     );
 
@@ -305,14 +315,14 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
       <ErrorBox error={error ?? plan.error} />
       {blocked && (
         <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-warn)]">
-          This copy of the data is from before a plan was a list of things to buy, so nothing here can be saved yet. Open it once on a version that has finished
+          This copy of the data is from before a plan was a list of things to pay, so nothing here can be saved yet. Open it once on a version that has finished
           updating, and the plan will be here.
         </p>
       )}
 
       <form id="item-form" onSubmit={save}>
         <InsetGroup>
-          <TextRow label="What" value={name} onChange={(e) => setName(e.target.value)} placeholder="Item name" />
+          <TextRow label="What" value={name} onChange={(e) => setName(e.target.value)} placeholder="Cost name" />
           <TextRow label="How many" value={quantity} onChange={(e) => setQuantity(e.target.value)} inputMode="numeric" placeholder="Quantity" />
           <TextRow
             label="Price each"
@@ -336,6 +346,12 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
           <TextRow label="Note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Remarks" />
         </InsetGroup>
       </form>
+      {/* Only on an edit, and a group of its own at the foot: the air round it is the only undo a finger gets. */}
+      {existing && (
+        <InsetGroup>
+          <DestructiveRow label="Delete" onClick={() => void remove(existing)} />
+        </InsetGroup>
+      )}
       {pickingCurrency && <CurrencySheet value={currency} accountCurrency={home} baseCurrency={ws.baseCurrency} onPick={setPicked} onClose={() => setPickingCurrency(false)} />}
       {pickingCategory && (
         <CategorySheet

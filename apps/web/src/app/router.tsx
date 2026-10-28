@@ -135,7 +135,7 @@ export interface EventPlanSearch {
   ws?: string;
 }
 
-/** The event screen itself: the same tab. "Buy it now" opens the Add screen now, so there is no item to carry here. */
+/** The event screen itself: the same tab. "Pay now" opens the Add screen now, so there is no cost to carry here. */
 export type EventSearch = EventPlanSearch;
 
 /** Choosing and reading a receipt: the item being answered is carried through both screens so Cancel knows the way back. */

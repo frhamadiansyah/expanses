@@ -126,13 +126,13 @@ test("a note typed into an event's spending does not fill in a category the even
   await expect(byHand.getByRole('button', { name: /^Category/ })).toContainText('Groceries');
 });
 
-test('a plan is a list of things to buy, and a category is only their sum', async ({ page }) => {
+test('a plan is a list of things to pay, and a category is only their sum', async ({ page }) => {
   await addWallet(page);
   await addEvent(page, 'Newborn');
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
   await expect(page.getByText('Nothing planned yet')).toBeVisible();
 
-  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
   // 'Food and beverage' is the label the other event specs already prove is in the default tree; the point here is
   // the arithmetic, not which category the pram lands in.
   await fillItem(page, { name: 'Stroller Bugaboo', price: '12000000', category: 'Food and beverage', link: 'tokopedia.com/bugaboo', note: 'Second-hand ok' });
@@ -156,8 +156,8 @@ test('a plan is a list of things to buy, and a category is only their sum', asyn
 test('a quantity that is not a whole number is refused, and so is a price of nothing', async ({ page }) => {
   await addWallet(page);
   await addEvent(page, 'Newborn');
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
-  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
   await page.getByLabel('What', { exact: true }).fill('Bottles');
   await page.getByLabel('Price each').fill('500000');
 
@@ -201,8 +201,8 @@ test('a quantity that is not a whole number is refused, and so is a price of not
 test('an edit changes the item it opened, and never quietly makes a second one', async ({ page }) => {
   await addWallet(page);
   await addEvent(page, 'Newborn');
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
-  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
   await fillItem(page, { name: 'Muslin wraps', quantity: '4', price: '175000', category: 'Food and beverage' });
   await expect(page.getByTestId('plan-totals')).toContainText('700.000');
 
@@ -225,10 +225,10 @@ test('what was tagged before the plan is not planned: said on the event, and kep
   await addWallet(page);
   await spend(page, 'Hampers', '4200000');
   await addEvent(page, 'Lebaran');
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
   await expect(page.getByText('Nothing planned yet')).toBeVisible();
 
-  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
   await fillItem(page, { name: 'Hampers for the office', price: '3000000', category: 'Food and beverage' });
   await page.getByRole('link', { name: 'Back to the event' }).click();
   await page.getByTestId('event-suggestions').getByRole('button', { name: 'Tag Hampers' }).click();
@@ -237,7 +237,7 @@ test('what was tagged before the plan is not planned: said on the event, and kep
   // One item is planned by now, so the card's link has changed from an invitation into a way back in.
   await showPlanCard(page);
   await page.getByRole('link', { name: 'See the whole plan' }).click();
-  // The plan is the list of things to buy and nothing else: the hampers are not a line on it.
+  // The plan is the list of things to pay and nothing else: the hampers are not a line on it.
   await expect(page.getByTestId('plan-item')).toHaveCount(1);
   await expect(page.getByTestId('plan-item').filter({ hasText: 'Hampers' })).toContainText('Hampers for the office');
   // Spending nobody planned is said on the event, under the plan's ring, label to figure.
@@ -249,7 +249,7 @@ test('what was tagged before the plan is not planned: said on the event, and kep
 /**
  * Buying, and what one receipt covers.
  *
- * "Buy it now" is the ordinary case — one receipt, one thing — and it fills the payment in from the item so only the
+ * "Pay now" is the ordinary case — one receipt, one thing — and it fills the payment in from the item so only the
  * real price has to be typed. A shopping trip that answered three items cannot be ticked off three times, because the
  * first tick claims what is left of the receipt; it is settled on "What it covers", where the shares are typed
  * together and checked against the one payment. Nothing here splits the transaction: the shares are a reading of it.
@@ -259,18 +259,18 @@ test('an item is bought at the real price, and one receipt can answer three', as
   // Recorded before the event exists, so it is there to be tagged and then shared out.
   await spend(page, 'Mothercare', '4150000');
   await addEvent(page, 'Newborn');
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
-  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
   await fillItem(page, { name: 'Crib', price: '7500000', category: 'Food and beverage' });
   await addItem(page, { name: 'Newborn clothes', quantity: '10', price: '150000', category: 'Food and beverage' });
   await addItem(page, { name: 'Muslin wraps', quantity: '4', price: '175000', category: 'Food and beverage' });
 
-  // Buy it now: the Add screen, pre-filled from the item — its name, its estimate, its category, the event — and
+  // Pay now: the Add screen, pre-filled from the item — its name, its estimate, its category, the event — and
   // only what paid and the real price change.
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
-  await page.getByRole('button', { name: 'Buy it now' }).click();
+  await page.getByRole('button', { name: 'Pay now' }).click();
   const buying = addForm(page);
-  await expect(page.getByRole('heading', { name: 'Buy Crib' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Pay Crib' })).toBeVisible();
   await expect(buying).toContainText('Filled in from the estimate');
   await expect(buying.getByLabel('Note')).toHaveValue('Crib');
   await expect(buying.getByLabel('Amount', { exact: true })).toHaveValue('7500000');
@@ -282,7 +282,7 @@ test('an item is bought at the real price, and one receipt can answer three', as
   await saveButton(buying).click();
   // Save lands on the plan with the payment on the item; Done buying ticks it off.
   await expect(page).toHaveURL(/\/events\/[^/]+\/plan$/);
-  await page.getByRole('button', { name: 'Done buying Crib' }).click();
+  await page.getByRole('button', { name: 'Settle Crib' }).click();
   const crib = page.getByTestId('plan-item').filter({ hasText: 'Crib' });
   await expect(crib).toContainText('7.200.000');
   await expect(crib).toContainText('−Rp 300.000');
@@ -293,7 +293,7 @@ test('an item is bought at the real price, and one receipt can answer three', as
   await showPlanCard(page);
   await page.getByRole('link', { name: 'See the whole plan' }).click();
   await page.getByTestId('plan-item').filter({ hasText: 'Newborn clothes' }).getByRole('link').click();
-  await page.getByRole('link', { name: 'Link a purchase' }).click();
+  await page.getByRole('link', { name: 'Link a payment' }).click();
   await page.getByRole('link', { name: /Mothercare/ }).click();
   await page.getByRole('checkbox', { name: 'Muslin wraps' }).check();
   await expect(page.getByTestId('cover-totals')).toContainText('2.200.000'); // given to items
@@ -302,12 +302,12 @@ test('an item is bought at the real price, and one receipt can answer three', as
 
   // Both are paid in full and still open until ticked: nothing left to pay, and not yet all bought.
   await expect(page.getByTestId('plan-to-go')).toHaveText(/Rp\s?0 to go/);
-  await page.getByRole('button', { name: 'Done buying Muslin wraps' }).click();
+  await page.getByRole('button', { name: 'Settle Muslin wraps' }).click();
   await expect(page.getByTestId('plan-item').filter({ hasText: 'Muslin wraps' })).toContainText('exactly');
 
   // Taking the wraps off the receipt leaves the clothes holding their share, and hands the wraps' back.
   await page.getByTestId('plan-item').filter({ hasText: 'Muslin wraps' }).getByRole('link').click();
-  await page.getByRole('button', { name: 'Remove the link' }).click();
+  await page.getByRole('button', { name: 'Unlink payment' }).click();
   await page.getByRole('link', { name: 'Back to the plan' }).click();
   await expect(page.getByTestId('plan-item').filter({ hasText: 'Newborn clothes' })).toContainText('1.500.000');
 });
@@ -322,8 +322,8 @@ test('an item is bought at the real price, and one receipt can answer three', as
 test('a receipt that is already spoken for is shown as fully accounted for, not offered again', async ({ page }) => {
   await addWallet(page);
   await addEvent(page, 'Newborn');
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
-  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
   await fillItem(page, { name: 'Crib', price: '7500000', category: 'Food and beverage' });
   await addItem(page, { name: 'Muslin wraps', quantity: '4', price: '175000', category: 'Food and beverage' });
 
@@ -333,12 +333,12 @@ test('a receipt that is already spoken for is shown as fully accounted for, not 
 
   // So the other item is not offered it: the row is there, said plainly, and is not a link to click.
   await page.getByTestId('plan-item').filter({ hasText: 'Muslin wraps' }).getByRole('link').click();
-  await page.getByRole('link', { name: 'Link a purchase' }).click();
+  await page.getByRole('link', { name: 'Link a payment' }).click();
   await expect(page.getByText('fully accounted for')).toBeVisible();
   await expect(page.getByRole('link', { name: /Crib/ })).toHaveCount(0);
 
   // And the crib's own page carries the same receipt to the screen where it can be split between items.
-  await page.getByRole('link', { name: 'Back to the item' }).click();
+  await page.getByRole('link', { name: 'Back to the cost' }).click();
   await page.getByRole('link', { name: 'Back to the plan' }).click();
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
   await page.getByRole('link', { name: 'Say what it covers' }).click();
@@ -351,16 +351,16 @@ test('a receipt that is already spoken for is shown as fully accounted for, not 
 /**
  * The two readings a plan owes outside its own screen.
  *
- * On the list an event says what is still to buy, and its figure is read against the plan rather than against
+ * On the list an event says what is still to pay, and its figure is read against the plan rather than against
  * nothing. In the history each payment is a plain row: its category already says where it went, and the items it
  * settled are the plan's to show.
  */
-test('the list says what is still to buy, and the history row is the payment alone, with no item pills', async ({ page }) => {
+test('the list says what is still to pay, and the history row is the payment alone, with no item pills', async ({ page }) => {
   await addWallet(page);
   await spend(page, 'Mothercare', '4150000');
   await addEvent(page, 'Newborn');
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
-  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
   await fillItem(page, { name: 'Newborn clothes', quantity: '10', price: '150000', category: 'Food and beverage' });
   await addItem(page, { name: 'Car seat', price: '6500000', category: 'Food and beverage' });
   await page.getByRole('link', { name: 'Back to the event' }).click();
@@ -368,7 +368,7 @@ test('the list says what is still to buy, and the history row is the payment alo
   await showPlanCard(page);
   await page.getByRole('link', { name: 'See the whole plan' }).click();
   await page.getByTestId('plan-item').filter({ hasText: 'Newborn clothes' }).getByRole('link').click();
-  await page.getByRole('link', { name: 'Link a purchase' }).click();
+  await page.getByRole('link', { name: 'Link a payment' }).click();
   await page.getByRole('link', { name: /Mothercare/ }).click();
   await page.getByRole('button', { name: 'Save' }).click();
 
@@ -382,7 +382,7 @@ test('the list says what is still to buy, and the history row is the payment alo
 
   await page.getByRole('link', { name: 'All events' }).click();
   // The line says what is left to buy, and the figure is read against the plan rather than against nothing.
-  await expect(page.getByTestId('event-row')).toContainText('6.500.000 still to buy');
+  await expect(page.getByTestId('event-row')).toContainText('6.500.000 still to pay');
   await expect(page.getByTestId('event-row')).toContainText('8.000.000');
 });
 
@@ -390,14 +390,14 @@ test('the list says what is still to buy, and the history row is the payment alo
  * Every figure of one event, in one test, read as label → figure so no two of them can be confused.
  *
  * The plan's summary has four figures and the event's ring another six, and two of them are genuinely the same
- * amount here — Rp7.200.000 is both what was bought and what is still to buy — so a pair of `toContainText`
+ * amount here — Rp7.200.000 is both what was bought and what is still to pay — so a pair of `toContainText`
  * assertions would pass twice over one figure and never notice the other was missing. Read as pairs, each figure
  * is pinned to the words printed above it, and a label swapped with its neighbour fails.
  *
  * Worked by hand from what is typed below:
  *   Planned          7.500.000 + 6.500.000 + 4 × 175.000        = 14.700.000
  *   Bought so far    the crib's receipt                          =  7.200.000
- *   Still to buy     6.500.000 + 700.000                         =  7.200.000
+ *   Still to pay     6.500.000 + 700.000                         =  7.200.000
  *   Difference       7.200.000 paid against 7.500.000 planned    =   −300.000
  *   Spent on plan    7.200.000 + the 900.000 steriliser          =  8.100.000
  *   Not planned      the steriliser, which answers no item       =    900.000
@@ -406,17 +406,17 @@ test('the figures agree with each other', async ({ page }) => {
   await addWallet(page);
   await spend(page, 'Bottle steriliser', '900000');
   await addEvent(page, 'Newborn');
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
-  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
   await fillItem(page, { name: 'Crib', price: '7500000', category: 'Food and beverage' });
   await addItem(page, { name: 'Car seat', price: '6500000', category: 'Food and beverage' });
   await addItem(page, { name: 'Muslin wraps', quantity: '4', price: '175000', category: 'Food and beverage' });
   /*
-   * Read once before anything is bought as well as after, because after the buy "Bought so far" and "Still to buy"
+   * Read once before anything is bought as well as after, because after the buy "Bought so far" and "Still to pay"
    * are both Rp7.200.000 — and a pair of figures that are equal cannot tell which label belongs to which. Here they
    * are Rp0 and the whole plan, so the two are pinned to their own words and a swap of the two fails.
    */
-  await expectPlanHero(page, { count: '0 of 3 bought', toGo: 'Rp 14.700.000 to go', planned: 'Planned Rp 14.700.000' });
+  await expectPlanHero(page, { count: '0 of 3 paid', toGo: 'Rp 14.700.000 to go', planned: 'Planned Rp 14.700.000' });
 
   await page.getByRole('link', { name: 'Back to the event' }).click();
   // Tagged, and nothing on the plan claims it: Rp900.000 of spending nobody planned.
@@ -426,7 +426,7 @@ test('the figures agree with each other', async ({ page }) => {
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
   await buyItNow(page, { paid: '7200000' });
 
-  await expectPlanHero(page, { count: '1 of 3 bought', toGo: 'Rp 7.200.000 to go', planned: 'Planned Rp 14.700.000 · Bought Rp 7.200.000 · −Rp 300.000' });
+  await expectPlanHero(page, { count: '1 of 3 paid', toGo: 'Rp 7.200.000 to go', planned: 'Planned Rp 14.700.000 · Paid Rp 7.200.000 · −Rp 300.000' });
 
   await page.getByRole('link', { name: 'Back to the event' }).click();
   const sheet = page.getByTestId('event-sheet');
@@ -443,7 +443,7 @@ test('the figures agree with each other', async ({ page }) => {
   await showPlan(page);
   await expect(page.getByTestId('event-detail-sheet')).toHaveCount(0);
   // The plan's own words on the arc — a card handed the Budget page's would say "Budgeted" with every figure right.
-  await expectGauge(sheet, { Planned: 'Rp 14.700.000', Spent: 'Rp 8.100.000', 'Still to buy': 'Rp 7.200.000' });
+  await expectGauge(sheet, { Planned: 'Rp 14.700.000', Spent: 'Rp 8.100.000', 'Still to pay': 'Rp 7.200.000' });
   await expect(sheet.getByRole('img', { name: /left of the plan/i })).toBeVisible();
   await expectFigures(sheet, { 'Difference so far': '−Rp 300.000', 'Not planned': 'Rp 900.000' });
 });
@@ -461,8 +461,8 @@ test('one receipt answers two items and not one entry of the ledger moves', asyn
   await addWallet(page);
   await spend(page, 'Mothercare', '4150000');
   await addEvent(page, 'Newborn');
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
-  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
   await fillItem(page, { name: 'Newborn clothes', quantity: '10', price: '150000', category: 'Food and beverage' });
   await addItem(page, { name: 'Muslin wraps', quantity: '4', price: '175000', category: 'Food and beverage' });
   await page.getByRole('link', { name: 'Back to the event' }).click();
@@ -478,19 +478,19 @@ test('one receipt answers two items and not one entry of the ledger moves', asyn
   await showPlanCard(page);
   await page.getByRole('link', { name: 'See the whole plan' }).click();
   await page.getByTestId('plan-item').filter({ hasText: 'Newborn clothes' }).getByRole('link').click();
-  await page.getByRole('link', { name: 'Link a purchase' }).click();
+  await page.getByRole('link', { name: 'Link a payment' }).click();
   await page.getByRole('link', { name: /Mothercare/ }).click();
   await page.getByRole('checkbox', { name: 'Muslin wraps' }).check();
   // Three lines of one card, each figure pinned to its own label: 1.500.000 + 700.000 given, 1.950.000 left.
   await expectCover(page, {
     Receipt: 'Rp 4.150.000',
-    'Given to items': 'Rp 2.200.000',
+    'Given to costs': 'Rp 2.200.000',
     'Left on this receipt not planned': 'Rp 1.950.000',
   });
   await page.getByRole('button', { name: 'Save' }).click();
 
   // Covered is paid towards, not done: ticked off, the wraps read as bought at exactly their estimate.
-  await page.getByRole('button', { name: 'Done buying Muslin wraps' }).click();
+  await page.getByRole('button', { name: 'Settle Muslin wraps' }).click();
   await expect(page.getByTestId('plan-item').filter({ hasText: 'Muslin wraps' })).toContainText('exactly');
 
   const after = await ledgerOf(page);
@@ -512,8 +512,8 @@ test('one receipt answers two items and not one entry of the ledger moves', asyn
 test('money back is named with the rows it adds up, beside spending nobody planned', async ({ page }) => {
   await addWallet(page);
   await addEvent(page, 'Newborn');
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
-  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
   await fillItem(page, { name: 'Crib', price: '3000000', category: 'Food and beverage' });
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
   await buyItNow(page);
@@ -527,8 +527,8 @@ test('money back is named with the rows it adds up, beside spending nobody plann
   await showPlanCard(page);
   await page.getByRole('link', { name: 'See the whole plan' }).click();
   // "Planned so far", not "Planned": a refund answers no item, so the plan is not the whole account of the money.
-  await expectPlanHero(page, { count: '1 of 1 bought', toGo: 'All bought', planned: 'Planned so far Rp 3.000.000 · Bought Rp 3.000.000 · exactly' });
-  // The plan is the list of things to buy: the hampers and the refunds are not lines on it.
+  await expectPlanHero(page, { count: '1 of 1 paid', toGo: 'All paid', planned: 'Planned so far Rp 3.000.000 · Paid Rp 3.000.000 · exactly' });
+  // The plan is the list of things to pay: the hampers and the refunds are not lines on it.
   await expect(page.getByTestId('plan-item')).toHaveCount(1);
 
   await page.getByRole('link', { name: 'Back to the event' }).click();
@@ -554,8 +554,8 @@ test('money back is named with the rows it adds up, beside spending nobody plann
 test('an event whose refunds outran it says what came back, and shows no negative and no bare nought', async ({ page }) => {
   await addWallet(page);
   await addEvent(page, 'Newborn');
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
-  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
   await fillItem(page, { name: 'Crib', price: '5000000', category: 'Food and beverage' });
   await page.getByRole('link', { name: 'Back to the event' }).click();
 
@@ -575,7 +575,7 @@ test('an event whose refunds outran it says what came back, and shows no negativ
   await sheet.getByRole('button', { name: 'Against the plan' }).click();
   await showPlan(page);
   // The ring: Rp0, the very figure the Plan card prints for the very same quantity.
-  await expectGauge(sheet, { 'Planned so far': 'Rp 5.000.000', Spent: 'Rp 0', 'Still to buy': 'Rp 5.000.000' });
+  await expectGauge(sheet, { 'Planned so far': 'Rp 5.000.000', Spent: 'Rp 0', 'Still to pay': 'Rp 5.000.000' });
   await showPlanCard(page);
   await expect(page.getByTestId('event-plan-card')).toContainText(/Rp\s?0 of Rp\s?5\.000\.000/);
   /*
@@ -589,15 +589,15 @@ test('an event whose refunds outran it says what came back, and shows no negativ
 /**
  * Taking it back, from either screen — and taking the item away altogether.
  *
- * The tick on the plan and "Remove the link" on the item are the same undoing reached two ways, and neither may
+ * The tick on the plan and "Unlink payment" on the item are the same undoing reached two ways, and neither may
  * touch the payment: it stays on the event and simply stops answering anything, which is what "not planned" beside
  * it means. Removing the item itself says the same thing about a thing that is no longer planned at all.
  */
 test('a purchase can be unticked from either screen, and the item itself removed', async ({ page }) => {
   await addWallet(page);
   await addEvent(page, 'Newborn');
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
-  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
   await fillItem(page, { name: 'Crib', price: '7500000', category: 'Food and beverage' });
   await addItem(page, { name: 'Car seat', price: '6500000', category: 'Food and beverage' });
 
@@ -606,30 +606,31 @@ test('a purchase can be unticked from either screen, and the item itself removed
     await buyItNow(page, { paid });
     await expect(page.getByRole('button', { name: `Reopen ${name}` })).toBeVisible();
   }
-  await expectPlanHero(page, { count: '2 of 2 bought', toGo: 'All bought', planned: 'Planned Rp 14.000.000 · Bought Rp 13.700.000 · −Rp 300.000' });
+  await expectPlanHero(page, { count: '2 of 2 paid', toGo: 'All paid', planned: 'Planned Rp 14.000.000 · Paid Rp 13.700.000 · −Rp 300.000' });
 
-  // What bought it, on the item's own page: the payment, the day, and the two ways out.
+  // What paid it, on the item's own page: the payment, the day, and the two ways out.
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
-  const bought = page.locator('section', { has: page.getByRole('heading', { name: 'What bought it' }) });
+  const bought = page.locator('section', { has: page.getByRole('heading', { name: 'Paid', exact: true }) });
   await expect(bought).toContainText('Crib');
   expect(await moneyIn(bought)).toEqual([7_200_000]);
   await expect(bought.getByRole('link', { name: 'Say what it covers' })).toBeVisible();
-  await bought.getByRole('button', { name: 'Remove the link' }).click();
-  // The link is gone and the purchase is not: the card turns back into the one that offers to buy it.
-  await expect(page.getByRole('heading', { name: 'Already bought it?' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'What bought it' })).toHaveCount(0);
+  await bought.getByRole('button', { name: 'Unlink payment' }).click();
+  // The link is gone and the purchase is not: the page turns back into the one that offers to pay it.
+  await expect(page.getByRole('button', { name: 'Pay now' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Paid', exact: true })).toHaveCount(0);
 
   // From the plan, the tick beside the row reopens it: back on the list, its payment kept, paid in full so none to go.
   await page.getByRole('link', { name: 'Back to the plan' }).click();
   await page.getByRole('button', { name: 'Reopen Car seat' }).click();
-  await expect(page.getByRole('button', { name: 'Done buying Car seat' })).toBeVisible();
-  await expectPlanHero(page, { count: '0 of 2 bought', toGo: 'Rp 7.500.000 to go', planned: 'Planned Rp 14.000.000 · Bought Rp 6.500.000' });
+  await expect(page.getByRole('button', { name: 'Settle Car seat' })).toBeVisible();
+  await expectPlanHero(page, { count: '0 of 2 paid', toGo: 'Rp 7.500.000 to go', planned: 'Planned Rp 14.000.000 · Paid Rp 6.500.000' });
 
   // And removing an item leaves its purchase exactly where it is.
   await page.getByTestId('plan-item').filter({ hasText: 'Car seat' }).getByRole('link').click();
-  await page.getByRole('button', { name: 'Remove this item' }).click();
+  await page.getByRole('link', { name: 'Edit' }).click();
+  await page.getByRole('button', { name: 'Delete' }).click();
   await expect(page.getByTestId('plan-item').filter({ hasText: 'Car seat' })).toHaveCount(0);
-  await expectPlanHero(page, { count: '0 of 1 bought', toGo: 'Rp 7.500.000 to go', planned: 'Planned Rp 7.500.000' });
+  await expectPlanHero(page, { count: '0 of 1 paid', toGo: 'Rp 7.500.000 to go', planned: 'Planned Rp 7.500.000' });
   // Both payments are still on the event, answering nothing: the event says so under the plan's ring.
   await page.getByRole('link', { name: 'Back to the event' }).click();
   await showPlanCard(page);
@@ -639,7 +640,7 @@ test('a purchase can be unticked from either screen, and the item itself removed
 /**
  * A refusal that leaves nothing behind.
  *
- * "Buy it now" posts the payment, tags it to the event, and only then asks the item to claim it — and a share is a
+ * "Pay now" posts the payment, tags it to the event, and only then asks the item to claim it — and a share is a
  * whole figure above nought, so buying a thing for less than nothing was refused by the repository *after* two writes
  * had already happened. The user was shown the repository's words about shares, and left holding a payment tagged to
  * their trip that they never asked for and were never offered a way to undo. So the figure is asked about first, and
@@ -655,8 +656,8 @@ test('a purchase can be unticked from either screen, and the item itself removed
 test('buying something for nothing is refused before a rupiah is written', async ({ page }) => {
   await addWallet(page);
   await addEvent(page, 'Newborn');
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
-  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
   await fillItem(page, { name: 'Crib', price: '7500000', category: 'Food and beverage' });
 
   const before = await ledgerOf(page);
@@ -687,7 +688,7 @@ test('buying something for nothing is refused before a rupiah is written', async
   await showPlanCard(page);
   await page.getByRole('link', { name: 'See the whole plan' }).click();
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
-  await page.getByRole('button', { name: 'Buy it now' }).click();
+  await page.getByRole('button', { name: 'Pay now' }).click();
   await buying.getByRole('button', { name: /^Paid with/ }).click();
   await choosePayment(page, 'BCA Tahapan');
   await buying.getByRole('button', { name: 'Clear amount' }).click();
@@ -696,7 +697,7 @@ test('buying something for nothing is refused before a rupiah is written', async
 });
 
 /**
- * A copy of the data from before a plan was a list of things to buy.
+ * A copy of the data from before a plan was a list of things to pay.
  *
  * `event_items` arrived in migration 0049. Every write against a database without it is a deliberate no-op that
  * still hands back an id — right for the repository, and a trap for a screen, which would show an item save and
@@ -728,11 +729,11 @@ test('data from before the plan says so, instead of losing what is typed into it
   await page.getByTestId('event-row').click();
   await showPlanCard(page);
   await page.getByTestId('open-plan').click();
-  await expect(page.getByText(/This copy of the data is from before a plan was a list of things to buy/)).toBeVisible();
+  await expect(page.getByText(/This copy of the data is from before a plan was a list of things to pay/)).toBeVisible();
 
   // And the form says the same thing again with its Save turned off, rather than taking an item it cannot keep.
-  await page.getByRole('link', { name: 'Add the first item' }).click();
-  await expect(page.getByText(/This copy of the data is from before a plan was a list of things to buy/)).toBeVisible();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
+  await expect(page.getByText(/This copy of the data is from before a plan was a list of things to pay/)).toBeVisible();
   await page.getByLabel('What', { exact: true }).fill('Crib');
   await page.getByLabel('Price each').fill('7500000');
   await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();
@@ -742,35 +743,35 @@ test('data from before the plan says so, instead of losing what is typed into it
 test('souvenirs bought at two shops: one item, two payments, open until marked done', async ({ page }) => {
   await addWallet(page);
   await addEvent(page, 'Bali trip');
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
-  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
   await fillItem(page, { name: 'Souvenirs', price: '1000000', category: 'Food and beverage' });
 
   const souvenirs = page.getByTestId('plan-item').filter({ hasText: 'Souvenirs' });
   await souvenirs.getByRole('link').click();
   await buyItNow(page, { paid: '200000', done: false });
   // Paid towards and still open: what was paid against what was planned, and the circle now ticks it off.
-  await expect(souvenirs).toContainText('of Rp 1.000.000 · 1 purchase');
-  await expect(page.getByRole('button', { name: 'Done buying Souvenirs' })).toBeVisible();
+  await expect(souvenirs).toContainText('of Rp 1.000.000 · 1 payment');
+  await expect(page.getByRole('button', { name: 'Settle Souvenirs' })).toBeVisible();
 
   await souvenirs.getByRole('link').click();
-  await expect(page.getByRole('heading', { name: 'Bought more of it?' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add payment' })).toBeVisible();
   await buyItNow(page, { paid: '250000', done: false });
-  await expect(souvenirs).toContainText('of Rp 1.000.000 · 2 purchases');
-  await expectPlanHero(page, { count: '0 of 1 bought', toGo: 'Rp 550.000 to go', planned: 'Planned Rp 1.000.000 · Bought Rp 450.000' });
+  await expect(souvenirs).toContainText('of Rp 1.000.000 · 2 payments');
+  await expectPlanHero(page, { count: '0 of 1 paid', toGo: 'Rp 550.000 to go', planned: 'Planned Rp 1.000.000 · Paid Rp 450.000' });
 
   await souvenirs.getByRole('link').click();
   await expect(page.getByTestId('item-payment')).toHaveCount(2);
-  await page.getByRole('button', { name: 'Done buying' }).click();
+  await page.getByRole('checkbox', { name: 'Settled' }).click();
   await page.getByRole('link', { name: 'Back to the plan' }).click();
-  await expectPlanHero(page, { count: '1 of 1 bought', toGo: 'All bought', planned: 'Planned Rp 1.000.000 · Bought Rp 450.000 · −Rp 550.000' });
+  await expectPlanHero(page, { count: '1 of 1 paid', toGo: 'All paid', planned: 'Planned Rp 1.000.000 · Paid Rp 450.000 · −Rp 550.000' });
 });
 
 test('the plan reads by category: a group each on the whole plan, and each opens in place on the event', async ({ page }) => {
   await addWallet(page);
   await addEvent(page, 'Newborn');
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
-  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
   await fillItem(page, { name: 'Stroller', price: '8000000', category: 'Food and beverage' });
   await addItem(page, { name: 'Car seat', price: '4500000', category: 'Food and beverage' });
   await addItem(page, { name: 'Bodysuit', quantity: '6', price: '50000', category: 'Groceries' });
@@ -781,8 +782,8 @@ test('the plan reads by category: a group each on the whole plan, and each opens
   await expect(groups.filter({ hasText: 'Stroller' })).toContainText('Car seat');
   await expect(groups.filter({ hasText: 'Bodysuit' })).toContainText('6 × Rp 50.000');
   await expect(groups.filter({ hasText: 'Bodysuit' })).toContainText(/Rp\s?0\s*of Rp\s?300\.000/);
-  await expect(groups.filter({ hasText: 'Bodysuit' })).toContainText('1 item · none bought');
-  await expect(groups.filter({ hasText: 'Stroller' })).toContainText('2 items · none bought');
+  await expect(groups.filter({ hasText: 'Bodysuit' })).toContainText('1 cost · none paid');
+  await expect(groups.filter({ hasText: 'Stroller' })).toContainText('2 costs · none paid');
 
   // The event page: a category opens to its items, and folds again.
   await page.getByRole('link', { name: 'Back to the event' }).click();
@@ -798,8 +799,8 @@ test('the plan reads by category: a group each on the whole plan, and each opens
 test('an event kept without a plan draws the ring alone, and gets its plan back', async ({ page }) => {
   await addWallet(page);
   await addEvent(page, 'Newborn');
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
-  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
   await fillItem(page, { name: 'Stroller', price: '8000000', category: 'Food and beverage' });
   await page.getByRole('link', { name: 'Back to the event' }).click();
   const sheet = page.getByTestId('event-sheet');
@@ -809,7 +810,7 @@ test('an event kept without a plan draws the ring alone, and gets its plan back'
   await page.getByRole('menuitem', { name: 'Mark as unplanned', exact: true }).click();
   await expect(sheet.getByRole('button', { name: 'Against the plan' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'See the whole plan' })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Plan what to buy' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Plan what to pay' })).toHaveCount(0);
   await expect(sheet).toContainText('Nothing spent on it yet.');
 
   // Its item waited: turned back on, the plan is as it was.

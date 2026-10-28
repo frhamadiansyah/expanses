@@ -100,33 +100,33 @@ describe('words', () => {
 });
 
 describe('the cards', () => {
-  it('is one Plan row per planned category, with how many items and how many are bought', () => {
+  it('is one Plan row per planned category, with how many costs and how many are paid', () => {
     expect(planCardRows(plan)).toEqual([
-      { categoryId: 'gear', name: 'Baby gear', plannedMinor: 19_500_000, subline: '2 items · 1 bought' },
-      { categoryId: 'clothes', name: 'Clothes', plannedMinor: 700_000, subline: '1 item · none bought' },
+      { categoryId: 'gear', name: 'Baby gear', plannedMinor: 19_500_000, subline: '2 costs · 1 paid' },
+      { categoryId: 'clothes', name: 'Clothes', plannedMinor: 700_000, subline: '1 cost · none paid' },
     ]);
   });
 
   it('shows every category under "Where it went", saying which ones have no items', () => {
     expect(whereItWentRows(withFood())).toEqual([
-      { categoryId: 'gear', name: 'Baby gear', actualMinor: 7_800_000, plannedMinor: 19_500_000, planned: true, subline: '1 purchase' },
+      { categoryId: 'gear', name: 'Baby gear', actualMinor: 7_800_000, plannedMinor: 19_500_000, planned: true, subline: '1 payment' },
       { categoryId: 'clothes', name: 'Clothes', actualMinor: 0, plannedMinor: 700_000, planned: true, subline: 'nothing spent yet' },
-      { categoryId: 'food', name: 'Restaurants', actualMinor: 5_000_000, plannedMinor: 0, planned: false, subline: '1 purchase' },
+      { categoryId: 'food', name: 'Restaurants', actualMinor: 5_000_000, plannedMinor: 0, planned: false, subline: '1 payment' },
     ]);
   });
 
-  it('says on the events list what is still to buy, or how many purchases there were', () => {
+  it('says on the events list what is still to pay, or how many payments there were', () => {
     const line = eventListLine(plan);
-    expect(plain(line.subline)).toBe('Planned · Rp 12.700.000 still to buy');
+    expect(plain(line.subline)).toBe('Planned · Rp 12.700.000 still to pay');
     expect(line).toMatchObject({ amountMinor: 7_800_000, ofMinor: 20_200_000, backLine: null });
     expect(eventListLine(eventPlan({ ...input, items: [] }))).toEqual({
-      subline: 'No plan · 1 purchase',
+      subline: 'No plan · 1 payment',
       amountMinor: 7_800_000,
       ofMinor: null,
       backLine: null,
     });
     // Kept without a plan, its items still there: read as no plan, measured against nothing.
-    expect(eventListLine(plan, 'IDR', true)).toMatchObject({ subline: 'No plan · 1 purchase', ofMinor: null });
+    expect(eventListLine(plan, 'IDR', true)).toMatchObject({ subline: 'No plan · 1 payment', ofMinor: null });
   });
 
   /*
@@ -183,7 +183,7 @@ describe('an event whose card would read below nought', () => {
     expect(line).toMatchObject({ amountMinor: 0, ofMinor: 5_000_000 });
     expect(plain(line.backLine!)).toBe('Rp 1.000.000 more came back than the plan spent');
     // Nothing is still to buy any less for a refund: the subline is the plan's, in full.
-    expect(plain(line.subline)).toBe('Planned · Rp 5.000.000 still to buy');
+    expect(plain(line.subline)).toBe('Planned · Rp 5.000.000 still to pay');
   });
 });
 
@@ -242,8 +242,8 @@ describe('the words a plan is read in', () => {
     expect(PLAN_WORDS.over).toBe('Over the plan by');
     expect(PLAN_WORDS.set).toBe('Planned');
     expect(PLAN_WORDS.spent).toBe('Spent');
-    expect(PLAN_WORDS.overCount(1)).toBe('1 item over');
-    expect(PLAN_WORDS.overCount(3)).toBe('3 items over');
+    expect(PLAN_WORDS.overCount(1)).toBe('1 cost over');
+    expect(PLAN_WORDS.overCount(3)).toBe('3 costs over');
   });
 
   /*
@@ -684,7 +684,7 @@ describe('whether the money-back rows add up to their heading', () => {
     expect(plain(moneyBackUnder(1_000_000, [{ amountMinor: 600_000 }])!)).toBe(
       'These rows come to Rp 600.000. The rest came back on payments this list does not reach.',
     );
-    expect(moneyBackUnder(1_000_000, [])).toBe('More came back than any item accounts for.');
+    expect(moneyBackUnder(1_000_000, [])).toBe('More came back than any cost accounts for.');
   });
 
   /*

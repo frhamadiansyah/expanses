@@ -436,7 +436,7 @@ async function spendOn(page: Page, description: string, category: string, amount
  * each option belongs to, since two workspaces can hold copies of one category and the name alone is a coin toss.
  */
 async function planAndTag(page: Page, category: string, description: string, option = category) {
-  // What it is expected to cost: a plan is a list of things to buy, and an item without a price is not one.
+  // What it is expected to cost: a plan is a list of things to pay, and an item without a price is not one.
   await planFor(page, category, '1000000', option);
   await page.getByTestId('event-suggestions').getByRole('button', { name: `Tag ${description}` }).click();
 }
@@ -478,7 +478,7 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
   // name, and the name alone would make the choice a coin toss. The tile is found by that name, so a missing label fails the click.
   await showPlanCard(page);
   await page.getByTestId('open-plan').click();
-  await page.getByRole('link', { name: 'Add an item' }).first().click();
+  await page.getByRole('link', { name: 'Add a cost' }).first().click();
   await chooseCategory(page, 'Restaurants · Personal');
   await page.getByRole('link', { name: 'Cancel' }).click();
   await page.getByRole('link', { name: 'Back to the event' }).click();
@@ -529,7 +529,7 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
  * A plan belongs to the owner and an event is spent on from every workspace, but `eventPlanFor` under a tab drops
  * the items filed in *another* workspace's categories. Reading the pick-a-purchase list and "What it covers"
  * through the open tab therefore showed a receipt one of those items already answers as free — offered at its full
- * amount on one screen, and on the other seeded into "Given to items" with no row anywhere on the page to show it
+ * amount on one screen, and on the other seeded into "Given to costs" with no row anywhere on the page to show it
  * or hand it back. The write does not narrow, and `usePurchaseCover` does not narrow, so these two must not either.
  *
  * Nothing in the suite failed when the narrowing was put back, which is why this test exists: it is read under the
@@ -551,7 +551,7 @@ test('the screens that settle a receipt read the whole plan, not the open tab', 
   await expect(page.getByRole('heading', { name: 'Singapore holiday', exact: true })).toBeVisible();
   const url = page.url();
 
-  // Personal's side of the trip: one thing still to buy, and a dinner tagged so the workspace has a tab at all.
+  // Personal's side of the trip: one thing still to pay, and a dinner tagged so the workspace has a tab at all.
   await showPlanCard(page);
   await page.getByTestId('open-plan').click();
   await addItem(page, { name: 'Welcome dinner', price: '1000000', category: 'Restaurants' });
@@ -577,7 +577,7 @@ test('the screens that settle a receipt read the whole plan, not the open tab', 
   await showPlanCard(page);
   await page.getByRole('link', { name: 'See the whole plan' }).click();
   await page.getByTestId('plan-item').filter({ hasText: 'Welcome dinner' }).getByRole('link').click();
-  await page.getByRole('link', { name: 'Link a purchase' }).click();
+  await page.getByRole('link', { name: 'Link a payment' }).click();
   await page.getByRole('link', { name: /Supplier lunch/ }).click();
   await page.getByLabel('Share for Welcome dinner').fill('400000');
   await page.getByRole('button', { name: 'Save' }).click();
@@ -589,7 +589,7 @@ test('the screens that settle a receipt read the whole plan, not the open tab', 
   await showPlanCard(page);
   await page.getByTestId('open-plan').click();
   await page.getByTestId('plan-item').filter({ hasText: 'Client entertaining' }).getByRole('link').click();
-  await page.getByRole('link', { name: 'Link a purchase' }).click();
+  await page.getByRole('link', { name: 'Link a payment' }).click();
 
   // Rp640.000 of receipt, Rp240.000 of it still free: the Personal item's share counts in every tab.
   const lunch = page.getByRole('link', { name: /Supplier lunch/ });
