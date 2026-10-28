@@ -285,7 +285,7 @@ test('a purchase paid by card reaches the points engine with the MCC and categor
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await saveCardTerms(page);
-  await chooseCatalogueCard(page, 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  await chooseCatalogueCard(page, 'signature', 'BCA KrisFlyer Visa Signature');
 
   await page.goto('/transactions');
   await addPurchase(page, {

@@ -16,7 +16,7 @@ test('a linked card hides its rules in Settings until Customise rules sets it up
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await saveCardTerms(page);
-  await chooseCatalogueCard(page, 'krisflyer', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  await chooseCatalogueCard(page, 'krisflyer', 'BCA KrisFlyer Visa Signature');
 
   // Some points already earned: a balance typed in on the programme page.
   await page.getByRole('button', { name: 'BCA KrisFlyer', exact: true }).click();

@@ -1235,7 +1235,7 @@ export function TransactionsPage() {
       {choosingWorkspace && <WorkspaceMenu onClose={() => setChoosingWorkspace(false)} />}
       {adding && (
         <Sheet grouped title="Add a transaction" onClose={() => setAdding(false)}>
-          <TransactionCard onDone={() => setAdding(false)} />
+          <TransactionCard defaultPaidWith onDone={() => setAdding(false)} />
         </Sheet>
       )}
 

@@ -34,7 +34,7 @@ describe('the catalogue cards offered while a card name is typed', () => {
 
   it('looks across every bank while none is chosen, by the bank and name together', () => {
     expect(names('', 'bca union')).toEqual(['BCA UnionPay']);
-    expect(names('', 'accor')).toEqual(['CIMB Niaga World ALL Accor Live Limitless']);
+    expect(names('', 'accor')).toEqual(['CIMB Niaga World All Accor']);
   });
 
   it('offers nothing before either half of the row says something, or for a name no card has', () => {
@@ -47,7 +47,7 @@ describe('the catalogue cards offered while a card name is typed', () => {
 describe('a catalogue card on the bank-and-name row', () => {
   it('puts its bank in the bank’s place and its name without the bank’s words', () => {
     expect(entryOnRow(entryFor('bca-unionpay'))).toEqual({ bank: 'BCA', name: 'UnionPay' });
-    expect(entryOnRow(entryFor('cimb-niaga-world-all-accor'))).toEqual({ bank: 'CIMB Niaga', name: 'World ALL Accor Live Limitless' });
+    expect(entryOnRow(entryFor('cimb-niaga-world-all-accor'))).toEqual({ bank: 'CIMB Niaga', name: 'World All Accor' });
     // A product name that does not lead with its bank stays whole.
     const jenius = entryFor('jenius-platinum');
     expect(entryOnRow(jenius)).toEqual({ bank: jenius.bank, name: 'Jenius Platinum' });

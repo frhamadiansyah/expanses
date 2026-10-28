@@ -17,6 +17,7 @@ import {
   Store,
   Tags,
   UserRound,
+  WalletCards,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -57,6 +58,7 @@ export const SETTINGS_ITEMS: readonly NavItem[] = [
   { to: '/settings/capture', label: 'Capture', icon: Smartphone },
   { to: '/backup', label: 'Backup', icon: ArrowDownToLine },
   { to: '/settings/activity', label: 'Activity', icon: History },
+  { to: '/settings/default', label: 'Default', icon: WalletCards },
   { to: '/import', label: 'Import', icon: ArrowUpFromLine },
 ] as const;
 

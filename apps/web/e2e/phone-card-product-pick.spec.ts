@@ -38,10 +38,10 @@ test('a new card without a product: Settings holds its own facts, the product is
   await page.screenshot({ path: `${SHOTS}/product-pick-2-list.png`, fullPage: true });
   await page.getByLabel('Search card or bank').fill('krisflyer');
   await expect(main.getByText(/^\d+ cards?$/)).toBeVisible();
-  await main.getByRole('button', { name: /^BCA Singapore Airlines KrisFlyer Visa Signature/ }).click();
+  await main.getByRole('button', { name: /^BCA KrisFlyer Visa Signature/ }).click();
 
   // The preview: what it earns, with one button to use it.
-  await expect(page.getByRole('heading', { name: 'BCA Singapore Airlines KrisFlyer Visa Signature', exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'BCA KrisFlyer Visa Signature', exact: true }).first()).toBeVisible();
   await expect(main.getByText('This card', { exact: true })).toBeVisible();
   await expect(main.getByText('What it earns', { exact: true })).toBeVisible();
   await expect(main.getByRole('button', { name: /^Earning rules/ })).toHaveCount(0);

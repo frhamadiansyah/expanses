@@ -2,7 +2,7 @@
   "id": "dbs-travel-visa-signature",
   "entryVersion": 1,
   "bank": "Bank DBS Indonesia",
-  "name": "digibank Visa Travel Signature",
+  "name": "Digibank Visa Travel Signature",
   "network": "visa",
   "currency": "IDR",
   "program": {

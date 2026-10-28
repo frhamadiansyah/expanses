@@ -2,7 +2,7 @@
   "id": "maybank-visa-infinite",
   "entryVersion": 3,
   "bank": "Maybank",
-  "name": "Maybank Kartu Kredit Visa Infinite",
+  "name": "Maybank Visa Infinite",
   "network": "visa",
   "currency": "IDR",
   "program": {

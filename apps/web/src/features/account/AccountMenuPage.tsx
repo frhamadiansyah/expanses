@@ -14,6 +14,8 @@ import { NewWorkspaceSheet } from '../workspaces/NewWorkspaceSheet';
 import { useArchivedBooks, useBooks } from '../workspaces/queries';
 import { WorkspaceDot } from '../workspaces/WorkspaceBadge';
 import { AddWorkspaceSheet } from './AddWorkspaceSheet';
+import { paymentLabel } from '../transactions/PaymentSheet';
+import { resolveDefaultPaidWith, usePayableOptions, useStoredDefaultPaidWith } from './default-paid-with';
 
 /** How long ago the last backup was, in the fewest words that still answer "am I covered?". */
 function backupNote(last: string | null): string {
@@ -80,6 +82,8 @@ export function AccountMenuPage() {
   const archived = useArchivedBooks();
   const pending = usePendingDraftCount().data ?? 0;
   const lastBackup = useQuery({ queryKey: ['last-backup'], queryFn: () => getLastBackupAt(database) });
+  const storedDefault = useStoredDefaultPaidWith();
+  const payable = usePayableOptions();
   const [adding, setAdding] = useState(false);
   const [joining, setJoining] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -102,6 +106,11 @@ export function AccountMenuPage() {
   const note = (to: string) => {
     if (to === '/backup') return lastBackup.isSuccess ? backupNote(lastBackup.data) : undefined;
     if (to === '/review' && pending > 0) return `${pending} waiting`;
+    if (to === '/settings/default') {
+      if (!storedDefault.isSuccess || !payable.ready) return undefined;
+      const found = resolveDefaultPaidWith(storedDefault.data, payable.options);
+      return <span className="block max-w-[48vw] truncate md:max-w-[16rem]">{found ? paymentLabel(found) : 'None'}</span>;
+    }
     return undefined;
   };
   const rows = (items: readonly NavItem[]) =>

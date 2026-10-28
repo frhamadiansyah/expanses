@@ -1,7 +1,7 @@
 {
   "id": "cimb-niaga-octo-card",
   "bank": "CIMB Niaga",
-  "name": "CIMB Niaga OCTO Card",
+  "name": "CIMB Niaga Octo Card",
   "network": "mastercard",
   "program": {
     "unit": "cashback",

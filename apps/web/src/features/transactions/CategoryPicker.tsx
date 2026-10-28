@@ -1,7 +1,7 @@
 import { categoryPath } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
-import { Check, Shapes } from 'lucide-react';
+import { Check, Tag } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { Sheet, SheetAddButton, SheetSearchButton } from '../../app/Sheet';
 import { useAccounts, useInOpenBook } from '../../lib/queries';
@@ -58,7 +58,7 @@ export interface EventCategoryChoice {
 
 /** The drawing an event category was given, from the same bundled set the tree's categories draw from. */
 export function EventCategoryGlyph({ icon }: { icon: string | null }) {
-  const Icon = (icon ? ICONS[icon] : undefined) ?? Shapes;
+  const Icon = (icon ? ICONS[icon] : undefined) ?? Tag;
   return (
     <RowGlyph>
       <Icon size={15} />

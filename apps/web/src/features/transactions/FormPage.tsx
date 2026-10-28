@@ -144,6 +144,8 @@ export function NewTransactionRoute() {
             ...(buying ? buySeed(buying, ws.baseCurrency) : {}),
           }}
           followUp={followUp}
+          // Only the plain blank form: an account's page, an event or a trade brings its own.
+          defaultPaidWith={!account && !to && !opening && !trading && !buying && (mode ?? 'expense') === 'expense'}
           onBack={back}
           onDone={back}
         />

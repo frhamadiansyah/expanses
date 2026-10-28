@@ -2,7 +2,7 @@
   "id": "danamon-amex-gold-charge",
   "entryVersion": 6,
   "bank": "Bank Danamon",
-  "name": "Kartu Charge Danamon American Express Gold",
+  "name": "Danamon American Express Gold Charge",
   "network": "amex",
   "currency": "IDR",
   "program": {
