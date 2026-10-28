@@ -480,6 +480,8 @@ export interface MonthlyBill extends ExpenseTemplateRow {
   chargedMinor: number | null;
   chargedCurrency: string | null;
   paymentId: string | null;
+  /** The account that actually paid billMonth, which may not be the bill's default; null: unpaid or not found. */
+  paidFromAccountId: string | null;
   /** The fixed amount, else what it came to the last time it was paid, else null. */
   estimateMinor: number | null;
   /** Months a payment can be recorded for, oldest unsettled first; a paused month last. */
@@ -501,6 +503,8 @@ export interface BillHistoryRow {
   chargedMinor: number | null;
   chargedCurrency: string | null;
   paymentId: string | null;
+  /** The account that actually paid the month, which may not be the bill's default. */
+  paidFromAccountId: string | null;
   /** Every posted payment of the month, newest first: a month may hold more than one. */
   payments: { id: string; paidMinor: number | null; paidCurrency: string | null }[];
 }
@@ -524,6 +528,8 @@ interface PaymentFact {
   /** The bill's own figure when the payment was a foreign one: the original amount and currency of the purchase. */
   originalMinor: number | null;
   originalCurrency: string | null;
+  /** The money account the payment came out of: the line opposite the category's. */
+  payerAccountId: string | null;
 }
 
 interface BillFacts {
@@ -577,7 +583,9 @@ async function billFacts(database: Database, ws: WorkspaceContext, templates: Ex
   for (const row of rows) {
     const line = lines.find((l) => l.transactionId === row.transactionId && l.accountId === categoryOf.get(row.templateId));
     const list = payments.get(row.templateId) ?? [];
-    list.push({ ...row, amountMinor: line ? Number(line.amountMinor) : null, currency: line?.currency ?? null });
+    const others = lines.filter((l) => l.transactionId === row.transactionId && l.accountId !== categoryOf.get(row.templateId));
+    const payer = others.find((l) => line && Math.sign(Number(l.amountMinor)) !== Math.sign(Number(line.amountMinor))) ?? others[0];
+    list.push({ ...row, amountMinor: line ? Number(line.amountMinor) : null, currency: line?.currency ?? null, payerAccountId: payer?.accountId ?? null });
     payments.set(row.templateId, list);
   }
   for (const list of payments.values()) list.sort((a, b) => b.occurredOn.localeCompare(a.occurredOn));
@@ -643,6 +651,7 @@ function monthOfBill(template: ExpenseTemplateRow, facts: BillFacts, month: stri
     chargedMinor: paid?.chargedMinor ?? null,
     chargedCurrency: paid?.chargedCurrency ?? null,
     paymentId: payment?.transactionId ?? null,
+    paidFromAccountId: payment?.payerAccountId ?? null,
     payments: (facts.payments.get(template.id) ?? [])
       .filter((p) => p.billMonth === month)
       .map((p) => ({ id: p.transactionId, paidMinor: paidFigures(p).paidMinor, paidCurrency: paidFigures(p).paidCurrency })),

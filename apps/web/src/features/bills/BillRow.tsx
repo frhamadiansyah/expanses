@@ -44,7 +44,7 @@ export function BillRow({
 }) {
   // A paused month is as done with as a paid one here: nothing to swipe, nothing to tick. Its own page can still pay it.
   const settled = isSettled(bill) || isPaused(bill);
-  const accountName = accounts.find((account) => account.id === bill.moneyAccountId)?.name ?? '';
+  const accountName = accounts.find((account) => account.id === (bill.paidFromAccountId ?? bill.moneyAccountId))?.name ?? '';
   const status = statusOf(bill);
   const navigate = useNavigate();
   // Opened from Cashflow, the list says so on to the bill, so the bill's way back keeps Recurring's.
