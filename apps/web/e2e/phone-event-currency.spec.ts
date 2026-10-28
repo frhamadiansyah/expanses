@@ -64,5 +64,5 @@ test('a trip planned in lira holds items in rupiah and euros and totals them in 
 
   // 24.500 + 4.275 lira, and the rupiah those are: 9.800.000 + 1.710.000.
   await expect(page.getByTestId('plan-planned')).toContainText('28.775');
-  await expect(page.getByTestId('plan-in-base')).toContainText('11.510.000');
+  await expect(page.getByTestId('plan-planned-base')).toContainText('11.510.000');
 });

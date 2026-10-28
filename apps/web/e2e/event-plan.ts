@@ -309,8 +309,26 @@ export async function showPlanCard(page: Page) {
   }).toPass();
 }
 
-/** The plan screen's top: how many are bought, what is left to buy, and what was planned (with any difference). */
-export async function expectPlanHero(page: Page, expected: { count: string; toGo: string; planned: string }) {
-  const read = async (id: string) => ((await page.getByTestId(id).textContent()) ?? '').replace(/\s+/g, ' ').trim();
-  await expect.poll(async () => ({ count: await read('plan-count'), toGo: await read('plan-to-go'), planned: await read('plan-planned') })).toEqual(expected);
+/**
+ * The plan screen's top card: how many are paid, what is left to pay, the estimate and the actual (each label with its
+ * figure), and the difference line, or null while nothing is paid. The base equivalents are not read here.
+ */
+export async function expectPlanHero(
+  page: Page,
+  expected: { count: string; toPay: string; planned: string; actual: string; difference: string | null },
+) {
+  // innerText, because the label and its figure are separate blocks with no space between them in the text content.
+  const read = async (id: string) => {
+    const spot = page.getByTestId(id);
+    return (await spot.count()) === 0 ? null : ((await spot.innerText()) ?? '').replace(/\s+/g, ' ').trim();
+  };
+  await expect
+    .poll(async () => ({
+      count: await read('plan-count'),
+      toPay: await read('plan-to-go'),
+      planned: await read('plan-planned'),
+      actual: await read('plan-actual'),
+      difference: await read('plan-difference'),
+    }))
+    .toEqual(expected);
 }

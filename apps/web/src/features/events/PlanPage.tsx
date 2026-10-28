@@ -2,7 +2,7 @@ import { eventCurrency, formatMinor } from '@expanses/core';
 import { setEventItemDone, type AccountRow } from '@expanses/db';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Check, Plus } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox } from '../../ui';
@@ -10,10 +10,10 @@ import { InsetGroup, InsetRow, toneClass, type CornerAction, type Tone, PushedTi
 import { GROUP_RADIUS } from '../../ui/native/metrics';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { buyTarget } from './buy-item';
-import { differenceWords, itemFigure, itemSubtitle, noRateWords, plannedLabel, planInEvent } from './plan-view';
+import { differenceFoot, estimateLabel, itemFigure, itemPaidAgainst, itemSubtitle, planDonePercent, planInEvent } from './plan-view';
 import { useEventItemsReady, useEventPlan, useEvents } from './queries';
 
-/** The kit's tones for what a difference is. The words themselves are `differenceWords`'. */
+/** The kit's tones for what a difference is. The words themselves are `differenceFoot`'. */
 const HERE: Record<'over' | 'under' | 'exact', Tone> = { over: 'alarm', under: 'gain', exact: 'ink-3' };
 
 /**
@@ -24,6 +24,10 @@ const HERE: Record<'over' | 'under' | 'exact', Tone> = { over: 'alarm', under: '
  * item — nothing paid yet, it is Buy it now; paid towards and still open, it marks the item done; done, it puts it back
  * on the list. The rest of the row is the link into the item.
  *
+ * A paid cost stays in ink; only its circle turns green. Its figure is what was paid, with the estimate under it in the
+ * quiet ink ("of Rp 330.000") and, only when the two differ, an arrow before the figure: green down for a saving, red up
+ * for an overrun. A cost still to pay has the one line.
+ *
  * The circle is the category mark's 28 px and starts at its left edge (14 px: the 44 px target reaches 8 px either side of
  * it), and the name starts where the category's does, so the two read as one column.
  */
@@ -33,6 +37,7 @@ function PlanItemRow({
   name,
   subtitle,
   figure,
+  against,
   state,
   search,
   onBuy,
@@ -43,6 +48,8 @@ function PlanItemRow({
   name: string;
   subtitle: string;
   figure: string;
+  /** The estimate a paid cost is read against, and whether it came in under or over it; null for a cost not yet paid. */
+  against: { of: string; arrow: 'under' | 'over' | null } | null;
   /** Nothing paid yet, paid towards and still open, or done. */
   state: 'open' | 'paid' | 'done';
   search: { ws: string | undefined };
@@ -75,11 +82,146 @@ function PlanItemRow({
         className="ph-focus-inset flex min-h-11 min-w-0 flex-1 items-center gap-3 py-2 pr-[14px] pl-1"
       >
         <span className="min-w-0 flex-1">
-          <span className={cx('block truncate text-sm font-medium', done ? 'text-[var(--ph-ink-3)]' : 'text-[var(--ph-ink)]')}>{name}</span>
+          <span className="block truncate text-sm font-medium text-[var(--ph-ink)]">{name}</span>
           {subtitle && <span className="block truncate text-xs text-[var(--ph-ink-3)]">{subtitle}</span>}
         </span>
-        <span className={cx('tabular shrink-0 text-sm font-semibold whitespace-nowrap', done ? 'text-[var(--ph-ink-3)]' : 'text-[var(--ph-ink)]')}>{figure}</span>
+        <span className="tabular shrink-0 text-right text-sm font-semibold whitespace-nowrap text-[var(--ph-ink)]">
+          {against?.arrow && (
+            <span
+              role="img"
+              aria-label={against.arrow === 'under' ? 'Under the estimate' : 'Over the estimate'}
+              className={cx('mr-[5px] text-[10px]', against.arrow === 'under' ? 'text-[var(--ph-up)]' : 'text-[var(--ph-alarm)]')}
+            >
+              <span aria-hidden>{against.arrow === 'under' ? '▼' : '▲'}</span>
+            </span>
+          )}
+          {figure}
+          {against && <span className="block text-[11.5px] leading-[14px] font-normal text-[var(--ph-ink-3)]">{against.of}</span>}
+        </span>
       </Link>
+    </div>
+  );
+}
+
+/**
+ * The plan's top card: a ring of how much is paid beside the count, what is left to pay, and the estimate against
+ * the actual; and, under a hairline, how the two compare.
+ *
+ * The ring is exactly as tall as the text beside it, so the text is measured and the SVG sized to it (a ring of its own
+ * size beside text of another would leave one of them floating). The ring is drawn on a 100 unit square and scaled, so
+ * its stroke and its percentage grow with it. Nothing in the text wraps: the figures are small enough to share the row.
+ * When the event's currency is not the base, each of the three figures has its base equivalent under it.
+ */
+function PlanHero({
+  percent,
+  count,
+  toPay,
+  toPayBase,
+  estimateWord,
+  estimate,
+  estimateBase,
+  actual,
+  actualBase,
+  foot,
+}: {
+  percent: number;
+  count: string;
+  toPay: string;
+  toPayBase: string | null;
+  estimateWord: string;
+  estimate: string;
+  estimateBase: string | null;
+  actual: string;
+  actualBase: string | null;
+  foot: { text: string; tone: 'over' | 'under' | 'exact' } | null;
+}) {
+  const block = useRef<HTMLDivElement>(null);
+  // Before it is measured, and where nothing can be: about the height the text comes to.
+  const [size, setSize] = useState(100);
+  // Every render, so a change of text or of font size is read at once; the observer catches what a render does not
+  // (a font loading late, the card narrowing). The state only moves when the height does.
+  useLayoutEffect(() => {
+    const el = block.current;
+    if (!el) return;
+    const measure = () => {
+      const height = el.getBoundingClientRect().height;
+      setSize((was) => (Math.abs(was - height) < 0.01 ? was : height));
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  });
+  const circumference = 2 * Math.PI * 45;
+  const base = (text: string | null, id: string) =>
+    text && (
+      <span data-testid={id} className="tabular block text-[10px] leading-[13px] whitespace-nowrap text-[var(--ph-ink-3)]">
+        ≈ {text}
+      </span>
+    );
+  return (
+    <div data-testid="plan-totals">
+      <InsetGroup>
+        <div className="px-[14px] py-[14px]">
+          <div className="flex items-start gap-[14px]">
+            <svg data-testid="plan-ring" role="img" aria-label={`${percent} percent paid`} width={size} height={size} viewBox="0 0 100 100" className="shrink-0">
+              <circle cx="50" cy="50" r="45" fill="none" stroke="var(--ph-track)" strokeWidth="10" />
+              {percent > 0 && (
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="45"
+                  fill="none"
+                  stroke="var(--ph-up)"
+                  strokeWidth="10"
+                  strokeLinecap="round"
+                  strokeDasharray={circumference}
+                  strokeDashoffset={circumference * (1 - percent / 100)}
+                  transform="rotate(-90 50 50)"
+                />
+              )}
+              <text x="50%" y="50%" textAnchor="middle" dominantBaseline="central" fontSize="22" fontWeight="700" fill="var(--ph-ink)">
+                {percent}%
+              </text>
+            </svg>
+            <div ref={block} className="min-w-0 flex-1">
+              <div data-testid="plan-count" className="text-xs leading-[15px] font-semibold whitespace-nowrap text-[var(--ph-ink-2)]">
+                {count}
+              </div>
+              <div data-testid="plan-to-go" className="tabular mt-px text-base leading-5 font-extrabold whitespace-nowrap text-[var(--ph-ink)]">
+                {toPay}
+              </div>
+              {base(toPayBase, 'plan-to-go-base')}
+              <div className="my-[5px] h-[0.5px] bg-[var(--ph-hair)]" />
+              <div className="flex justify-between gap-1.5">
+                <div>
+                  <div data-testid="plan-planned" className="whitespace-nowrap">
+                    <span className="block text-[10.5px] leading-[13px] text-[var(--ph-ink-3)]">{estimateWord}</span>
+                    <span className="tabular text-[13px] leading-4 font-semibold text-[var(--ph-ink)]">{estimate}</span>
+                  </div>
+                  {base(estimateBase, 'plan-planned-base')}
+                </div>
+                <div className="text-right">
+                  <div data-testid="plan-actual" className="whitespace-nowrap">
+                    <span className="block text-[10.5px] leading-[13px] text-[var(--ph-ink-3)]">Actual</span>
+                    <span className="tabular text-[13px] leading-4 font-semibold text-[var(--ph-ink)]">{actual}</span>
+                  </div>
+                  {base(actualBase, 'plan-actual-base')}
+                </div>
+              </div>
+            </div>
+          </div>
+          {foot && (
+            <div
+              data-testid="plan-difference"
+              className={cx('tabular mt-[10px] border-t-[0.5px] border-[var(--ph-hair)] pt-2 text-center text-[12.5px] whitespace-nowrap', toneClass(HERE[foot.tone]))}
+            >
+              {foot.text}
+            </div>
+          )}
+        </div>
+      </InsetGroup>
     </div>
   );
 }
@@ -133,11 +275,13 @@ function PlanCategoryCard({
 }
 
 /**
- * An event's plan, as a checklist: how many are bought and what is left to buy on top, then a card per category —
- * its header what was paid of what it plans, its items still to buy first and bought after, greyed.
+ * An event's plan, as a checklist: a ring card on top (how many are paid, what is left to pay, the estimate against the
+ * actual and how they compare), then a card per category — its header what was paid of what it plans, its items still
+ * to pay first and paid after.
  *
  * The plan is read in the event's currency (the workspace's own when the event has none): an item priced in another
- * currency shows its own price, and its estimate at the day's rate with ≈. The base equivalent sits under the total.
+ * currency shows its own price, and its estimate at the day's rate with ≈. The base equivalents sit under the card's
+ * three figures.
  *
  * Only the plan is here. Spending nobody planned, and money that came back, are on the event's own page, under the
  * chart of everything it spent: this screen is the list of things to buy and nothing else.
@@ -185,8 +329,7 @@ export function PlanPage() {
   const data = plan.data;
   const home = eventCurrency(event?.currency, ws.baseCurrency);
   const totals = data ? planInEvent(data, home, ws.baseCurrency) : null;
-  // Worked out once rather than at each of the two places it is read: the words and the tone are one reading.
-  const difference = data && data.boughtCount > 0 ? differenceWords(totals!.differenceMinor, home) : null;
+  const difference = data && data.boughtCount > 0 ? differenceFoot(totals!.differenceMinor, home) : null;
   const search = { ws: tab };
   const addLabel = 'Add a cost';
   const add: CornerAction = {
@@ -235,51 +378,24 @@ export function PlanPage() {
         data &&
         totals && (
           <>
-            {/* One reading on top: how many are ticked off and what is left to pay, with what was planned under it. */}
-            <div data-testid="plan-totals">
-              <InsetGroup>
-                <div className="flex flex-col items-center px-4 pt-3 pb-3 text-center">
-                  <span data-testid="plan-count" className="text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">
-                    {data.boughtCount} of {data.itemCount} paid
-                  </span>
-                  <span data-testid="plan-to-go" className="tabular mt-1 text-[24px] leading-[30px] font-extrabold text-[var(--ph-ink)]">
-                    {/* "All paid" only once every cost is done: an open item paid in full still has Rp0 to go. */}
-                    {totals.toBuyMinor > 0 || data.boughtCount < data.itemCount ? `${rp(totals.toBuyMinor)} to go` : 'All paid'}
-                  </span>
-                  <span className="mt-2 h-[7px] w-full overflow-hidden rounded-full bg-[var(--ph-track)]">
-                    <span
-                      className="block h-full rounded-full bg-[var(--ph-up)]"
-                      style={{ width: `${totals.plannedMinor > 0 ? Math.min(100, Math.round(((totals.plannedMinor - totals.toBuyMinor) / totals.plannedMinor) * 100)) : 0}%` }}
-                    />
-                  </span>
-                  <span data-testid="plan-planned" className="mt-2 text-[12.5px] leading-4 text-[var(--ph-ink-3)]">
-                    {plannedLabel(data)} {rp(totals.plannedMinor)}
-                    {totals.boughtMinor > 0 && ` · Paid ${rp(totals.boughtMinor)}`}
-                    {difference && (
-                      <>
-                        {' · '}
-                        <span className={toneClass(HERE[difference.tone])}>{difference.text}</span>
-                      </>
-                    )}
-                  </span>
-                  {totals.baseEquivalentMinor !== null && (
-                    <span data-testid="plan-in-base" className="tabular mt-1 text-[12.5px] leading-4 text-[var(--ph-ink-3)]">
-                      In {ws.baseCurrency} ≈ {formatMinor(totals.baseEquivalentMinor, ws.baseCurrency)}
-                    </span>
-                  )}
-                  {totals.missingRates.length > 0 && (
-                    <span data-testid="plan-no-rate" className="mt-1 text-[12.5px] leading-4 text-[var(--ph-warn)]">
-                      {noRateWords(totals.missingRates)}
-                    </span>
-                  )}
-                </div>
-              </InsetGroup>
-            </div>
+            <PlanHero
+              percent={planDonePercent(totals.plannedMinor, totals.toBuyMinor)}
+              count={`${data.boughtCount} of ${data.itemCount} paid`}
+              // "All paid" only once every cost is done: an open item paid in full still has Rp0 to pay.
+              toPay={totals.toBuyMinor > 0 || data.boughtCount < data.itemCount ? `${rp(totals.toBuyMinor)} to pay` : 'All paid'}
+              toPayBase={totals.base && formatMinor(totals.base.toBuyMinor, ws.baseCurrency)}
+              estimateWord={estimateLabel(data)}
+              estimate={rp(totals.plannedMinor)}
+              estimateBase={totals.base && formatMinor(totals.base.plannedMinor, ws.baseCurrency)}
+              actual={rp(totals.boughtMinor)}
+              actualBase={totals.base && formatMinor(totals.base.boughtMinor, ws.baseCurrency)}
+              foot={difference}
+            />
 
             {/*
               * The checklist, a card per category, read like a day in the Cashflow history: its header says how many
-              * of its items are bought and what was paid of what it plans, and its items follow — still to buy first,
-              * bought after, greyed — each with how many and at what price.
+              * of its items are paid and what was paid of what it plans, and its items follow — still to buy first,
+              * paid after — each with how many and at what price.
               */}
             {(data.lines ?? [])
               .filter((line) => line.items.length > 0)
@@ -306,6 +422,7 @@ export function PlanPage() {
                           name={item.name}
                           subtitle={itemSubtitle(item, home, ws.baseCurrency)}
                           figure={itemFigure(item, home, ws.baseCurrency)}
+                          against={itemPaidAgainst(item, home, ws.baseCurrency)}
                           state={item.done ? 'done' : item.purchaseCount > 0 ? 'paid' : 'open'}
                           search={search}
                           onBuy={() => void navigate(buyTarget(eventId, item.id, tab))}
