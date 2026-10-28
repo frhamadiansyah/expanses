@@ -389,8 +389,8 @@ test('the list says what is still to pay, and the history row is the payment alo
   await expect(mothercare).not.toContainText('not planned');
 
   await page.getByRole('link', { name: 'All events' }).click();
-  // The line says what is left to buy, and the figure is read against the plan rather than against nothing.
-  await expect(page.getByTestId('event-row')).toContainText('6.500.000 still to pay');
+  // The row keeps two lines, its name and its dates, and the figure is read against the plan rather than against nothing.
+  await expect(page.getByTestId('event-row')).not.toContainText('still to pay');
   await expect(page.getByTestId('event-row')).toContainText('8.000.000');
 });
 
