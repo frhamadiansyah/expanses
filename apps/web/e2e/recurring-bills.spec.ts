@@ -320,6 +320,8 @@ test('last month’s overdue bill paid from its page says so, can be undone, and
   await expect(page.getByTestId('bills-legend')).toContainText('Overdue');
   await row(page, 'Biznet Home').click();
   await expect(page.getByTestId('bill-hero')).toContainText(`${lastMonth} bill`);
+  // The standing is in the line under the amount, not a pill: the late words, then the due date.
+  await expect(page.getByTestId('bill-hero').getByTestId('bill-status')).toContainText(/^Overdue \d+ days? · due \d+ \w{3} 20\d\d$/);
   await action(page, 'Pay').click();
   const sheet = page.getByRole('dialog', { name: 'Pay Biznet Home' });
   await expect(sheet.getByLabel('For')).toHaveValue(new RegExp(`-${String(earlier.getMonth() + 1).padStart(2, '0')}$`));
@@ -337,6 +339,8 @@ test('last month’s overdue bill paid from its page says so, can be undone, and
   await banner.getByRole('button', { name: 'Undo' }).click();
   await expect(banner).toHaveCount(0);
   await expect(page.getByTestId('bill-hero')).toContainText(`${lastMonth} bill`);
+  // The standing is in the line under the amount, not a pill: the late words, then the due date.
+  await expect(page.getByTestId('bill-hero').getByTestId('bill-status')).toContainText(/^Overdue \d+ days? · due \d+ \w{3} 20\d\d$/);
 
   await action(page, 'Pay').click();
   await sheet.getByRole('button', { name: 'Record payment' }).click();

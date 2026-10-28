@@ -8,7 +8,7 @@ import { moneyHolders, useAccounts, useBalances, useInvalidateAll } from '../../
 import { useCards } from '../cards/card-queries';
 import { Check } from 'lucide-react';
 import { cx, ErrorBox, Money } from '../../ui';
-import { type GroupChild, InsetGroup, InsetRow, PickerRow, ROW_PAD_X, ROW_PAD_Y, rowHeight, SwitchRow, TextRow } from '../../ui/native';
+import { type GroupChild, InsetGroup, InsetRow, PickerRow, ROW_PAD_X, ROW_PAD_Y, rowHeight, SelectCircle, SwitchRow, TextRow } from '../../ui/native';
 import { payerChoices, spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { payerPlan } from './bill-payer';
@@ -367,15 +367,7 @@ function BillTick({ name, status, checked, onToggle, amount, position }: GroupCh
             checked={checked}
             onChange={onToggle}
           />
-          <span
-            aria-hidden
-            className={cx(
-              'flex h-[20px] w-[20px] items-center justify-center rounded-full border-[1.5px] border-[var(--ph-ink-3)] text-transparent',
-              'peer-checked:border-[var(--ph-ink)] peer-checked:text-[var(--ph-ink)]',
-            )}
-          >
-            <Check size={12} strokeWidth={3.5} aria-hidden />
-          </span>
+          <SelectCircle picked={checked} />
         </label>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[17px] leading-[22px] font-medium text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">{name}</span>

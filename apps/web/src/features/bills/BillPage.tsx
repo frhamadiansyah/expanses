@@ -10,7 +10,7 @@ import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox, Money } from '../../ui';
 import { ActionButtons, GROUP_RADIUS, type GroupChild, InsetGroup, InsetRow, LargeTitle, Panel, PushedTitle, ReadOnlyRow, type RoundAction, SCREEN } from '../../ui/native';
 import { CategoryIcon } from '../categories/CategoryIcon';
-import { billCurrencyOf, pillOf } from './bill-view';
+import { billCurrencyOf, heroLineOf, pillOf } from './bill-view';
 import { usePaidFromLabels } from './PaidFromSheet';
 import { PauseSheet } from './PauseSheet';
 import { PaySheet } from './PaySheet';
@@ -83,7 +83,7 @@ export function BillPage({ billId }: { billId: string }) {
   const { bill, history, bookName } = detail.data;
   const account = accounts.find((a) => a.id === bill.moneyAccountId);
   const currency = billCurrencyOf(bill, accounts, ws.baseCurrency);
-  const pill = pillOf(bill);
+  const hero = heroLineOf(bill, windowLine(bill.window));
   // The month just paid, which is not always the month the page now speaks for: paying last month's overdue bill, or
   // choosing another month in For, moves the bill on. The confirmation follows the payment, not the bill.
   const paidMonth = justPaid ? history.find((row) => row.month === justPaid.month && row.state === 'paid') : undefined;
@@ -152,9 +152,6 @@ export function BillPage({ billId }: { billId: string }) {
             {monthName(bill.billMonth, 'long')}
             {bill.repeat !== 'monthly' && ` ${bill.billMonth.slice(0, 4)}`} bill
           </p>
-          <span className={cx('rounded-full px-[8px] py-[2px] text-[12px] leading-[16px] font-semibold', pill.className)} data-testid="bill-status">
-            {pill.text}
-          </span>
         </div>
         {bill.amountMinor !== null ? (
           <p className="tabular truncate text-[26px] leading-[32px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]">
@@ -170,7 +167,11 @@ export function BillPage({ billId }: { billId: string }) {
             )}
           </p>
         )}
-        <p className="text-[13px] leading-[18px] text-[var(--ph-ink-3)]">{windowLine(bill.window)}</p>
+        <p className="text-[13px] leading-[18px] text-[var(--ph-ink-3)]" data-testid="bill-status">
+          {hero.lead && <span className={hero.tone === 'alarm' ? 'text-[var(--ph-alarm)]' : hero.tone === 'warn' ? 'text-[var(--ph-warn)]' : undefined}>{hero.lead}</span>}
+          {hero.lead && ' · '}
+          {hero.rest}
+        </p>
       </Panel>
 
       {justPaid && paidMonth && (
