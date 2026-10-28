@@ -2,11 +2,12 @@ import { type CaptureLine, isoDate } from '@expanses/core';
 import { listCardTerms } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { CreditCard } from 'lucide-react';
+import { CreditCard, Landmark, Wallet } from 'lucide-react';
 import { useApp } from '../../app/context';
 import { native } from '../../capture/native';
 import { APP_STATEMENT_PREFIX, takeOfferedStatement } from '../../capture/statements';
-import { useAccounts } from '../../lib/queries';
+import { canPayWith, SUBTYPE_LABELS } from '../../lib/account-types';
+import { moneyHolders, useAccounts } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, LargeTitle, SCREEN } from '../../ui/native';
 import { cycleBack } from '../cards/statement-dates';
@@ -52,7 +53,7 @@ export function PickCardPage() {
   const terms = useQuery({ queryKey: ['card-terms-all', ws.workspaceId], queryFn: () => listCardTerms(database, ws) });
   const images = useQuery({ queryKey: ['statement-batch', batch], enabled: batch !== '', staleTime: Infinity, queryFn: () => takeBatch(batch) });
 
-  const title = <LargeTitle title="Which card is this statement?" back="Wallet" backTo="/wallet" />;
+  const title = <LargeTitle title="Which account?" back="Wallet" backTo="/wallet" />;
   if (!batch || (images.isSuccess && images.data.length === 0))
     return (
       <div className={SCREEN}>
@@ -72,13 +73,15 @@ export function PickCardPage() {
   const today = isoDate();
   const statementDay = new Map(terms.data.map((t) => [t.accountId, t.statementDay]));
   const cards = accounts.data.filter((a) => a.archivedAt === null && a.subtype === 'credit_card');
+  // Any account money is spent from, a card keeping its own check: a bank, a saving account or a wallet gets the list check.
+  const others = moneyHolders(accounts.data).filter((a) => a.archivedAt === null && a.subtype !== 'cash' && canPayWith(a));
   const shots = images.data.length;
 
   return (
     <div className={SCREEN}>
       {title}
-      {cards.length === 0 ? (
-        <Empty>No credit card here yet. Add one on Cards, then share the screenshots again.</Empty>
+      {cards.length === 0 && others.length === 0 ? (
+        <Empty>No account here yet. Add one, then share the screenshots again.</Empty>
       ) : (
         <InsetGroup header={`${shots} screenshot${shots === 1 ? '' : 's'} read on this phone`}>
           {cards.map((card) => {
@@ -97,6 +100,19 @@ export function PickCardPage() {
               />
             );
           })}
+          {others.map((account) => (
+            <InsetRow
+              key={account.id}
+              testId="statement-account"
+              icon={account.subtype === 'ewallet' || account.subtype === 'emoney' ? <Wallet size={17} aria-hidden /> : <Landmark size={17} aria-hidden />}
+              title={account.name}
+              subtitle={SUBTYPE_LABELS[account.subtype]}
+              onClick={() => {
+                const held = holdStatementBatch(images.data);
+                void navigate({ to: '/statement/list', search: { account: account.id, batch: held } });
+              }}
+            />
+          ))}
         </InsetGroup>
       )}
       <p className="mx-[4px] mt-[-8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">

@@ -316,6 +316,29 @@ export function readStatement(images: readonly CaptureLine[][], period: Statemen
   return { rows, closingMinor, previousMinor, emptyImages };
 }
 
+/**
+ * The date a text starts with and how much of the text it takes (with the spaces after it), placed in `period` as a
+ * statement row's date is (or, given `notAfter`, with no year the latest day not after it). Null when the text does not
+ * start with a date. For lists that print one date to a row.
+ */
+export function leadingDateOf(text: string, period: StatementPeriod, notAfter?: string): { iso: string; length: number } | null {
+  const printed = dateAt(text);
+  if (!printed) return null;
+  let iso = placeDate(printed, period);
+  // A list of what has happened: a date printed with no year is the latest one that is not yet to come.
+  if (notAfter !== undefined && printed.year === null) {
+    iso = null;
+    for (let year = Number(notAfter.slice(0, 4)); year >= Number(notAfter.slice(0, 4)) - 4 && iso === null; year -= 1) {
+      const candidate = isoOf(year, printed.month, printed.day);
+      if (candidate !== null && candidate <= notAfter) iso = candidate;
+    }
+  }
+  if (iso === null) return null;
+  let at = printed.length;
+  while (text[at] === ' ') at += 1;
+  return { iso, length: at };
+}
+
 /** The place words a card network appends to a merchant's name (`words.ts`), at the end of a description. */
 const TRAILING_PLACE = new RegExp(`(?:^|\\s)(?:${[...W.trailingPlaces].sort((a, b) => b.length - a.length).map(escape).join('|')})$`);
 

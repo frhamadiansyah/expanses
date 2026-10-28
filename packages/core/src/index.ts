@@ -594,6 +594,8 @@ export { type Anchor, type CaptureKind, type CaptureLine, type Field, type MoveT
 export { WORDS } from './capture/words';
 export { type Candidate, looksLikeRefund, type MatchOptions, type MatchResult, matchStatement, type RowOutcome } from './statement/match';
 export { categoryKeyOf, merchantKeyOf, readStatement } from './statement/read';
+export { type ListReading, type ListRow, readTransactionList } from './statement/list';
+export { type ListCandidate, type ListMatch, type ListOutcome, matchList } from './statement/list-match';
 export { readsAsStatement, STATEMENT_SHAPE_ROWS } from './statement/shape';
 export { STATEMENT_WORDS, type StatementWords } from './statement/words';
 export type { StatementPeriod, StatementReading, StatementRow } from './statement/types';
