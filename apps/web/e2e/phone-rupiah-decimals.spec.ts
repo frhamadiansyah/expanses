@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import { addForm, choosePayment, saveButton } from './add-transaction';
-import { cardPage, cardPointsPage, saveCardTerms } from './card-section';
+import { cardPage, cardPointsPage, saveCardTerms, setUpRewardsByHand } from './card-section';
 import { addPart, donePart, fillPart, openPart, openSplit, pickPartCategory } from './split-row';
 
 /*
@@ -39,13 +39,12 @@ async function cardEarningPer12501(page: Page) {
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await saveCardTerms(page);
-  await page.getByRole('button', { name: 'Set up rewards' }).click();
+  await setUpRewardsByHand(page);
   await page.getByRole('button', { name: 'Add rule' }).click();
   await page.getByLabel('Rule name').fill('Base');
   await page.getByLabel('Points', { exact: true }).fill('1');
   await page.getByLabel('Per spend').fill('12501');
   await page.getByRole('button', { name: 'Save rule' }).click();
-  await expect(page.getByText('Step 3 of 3')).toHaveCount(0);
 }
 
 test('a purchase typed with cents posts rounded up, reopens whole, and an edit of its note keeps its points on the exact figure', async ({ page }) => {

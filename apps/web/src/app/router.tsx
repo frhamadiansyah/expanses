@@ -35,6 +35,7 @@ import { CardPointsCheckPage, CardPointsPage, CardPurchasesPage } from '../featu
 import { EarnRulesPage, SpendBonusesPage } from '../features/cards/CardRulesPages';
 import { CardInstalmentsPage } from '../features/cards/CardInstalmentsPage';
 import { CardProductPage, CardSettingsPage } from '../features/cards/CardSettingsPage';
+import { CardByHandPage, CardCatalogPreviewPage } from '../features/cards/CardProductPages';
 import { CardStatementPage } from '../features/cards/CardStatementPage';
 import { WalletPage } from '../features/wallet/WalletPage';
 import { WalletReorderPage } from '../features/wallet/WalletReorderPage';
@@ -322,6 +323,8 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/points/check', component: CardPointsCheckPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings', component: CardSettingsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/product', component: CardProductPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/product/listed/$entryId', component: CardCatalogPreviewPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/product/by-hand', component: CardByHandPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/instalments', component: CardInstalmentsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/rules', component: EarnRulesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/bonuses', component: SpendBonusesPage }),

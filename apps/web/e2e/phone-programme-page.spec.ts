@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { addTransaction } from './add-transaction';
-import { cardPage, cardSettingsPage, saveCardTerms, walletCard } from './card-section';
+import { cardPage, cardSettingsPage, saveCardTerms, walletCard, setUpRewardsByHand, chooseCatalogueCard } from './card-section';
 
 const SHOTS = '/private/tmp/claude-501/-Users-frhamadiansyah-Documents-Projects-Expanses/17ecd7cc-b713-4f21-b1a9-9a90ded56208/scratchpad';
 
@@ -18,7 +18,7 @@ async function openProgramme(page: Page) {
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await saveCardTerms(page);
-  await page.getByRole('button', { name: 'Set up rewards' }).click();
+  await setUpRewardsByHand(page);
   await page.getByRole('button', { name: 'Add rule' }).click();
   await page.getByLabel('Rule name').fill('Base');
   await page.getByLabel('Points', { exact: true }).fill('1');
@@ -96,11 +96,7 @@ test('the Convert sheet shows what this statement would convert to at each partn
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await saveCardTerms(page);
-  await expect(page.getByText('Step 2 of 3')).toBeVisible();
-  await page.getByLabel('Search catalogue').fill('unionpay');
-  await page.getByRole('button', { name: 'BCA UnionPay', exact: true }).click();
-  await page.getByRole('button', { name: 'Use these terms' }).click();
-  await expect(page.getByText('Step 2 of 3')).toHaveCount(0);
+  await chooseCatalogueCard(page, 'unionpay', 'BCA UnionPay');
   await cardSettingsPage(page, 'Card product');
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Kopi', paidWith: 'BCA UnionPay Card', category: 'Restaurants', amount: '540000' });

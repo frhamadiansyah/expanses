@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { addTransaction, choosePayment } from './add-transaction';
-import { cardPage, cardSettingsPage, saveCardTerms } from './card-section';
+import { cardPage, cardSettingsPage, saveCardTerms, chooseCatalogueCard } from './card-section';
 
 test.beforeEach(({ page }) => {
   // A linked catalogue card asks before an edit makes it customised.
@@ -28,11 +28,7 @@ async function applyCatalogue(page: Page, card: string, search: string, entryNam
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await saveCardTerms(page);
-  await expect(page.getByText('Step 2 of 3')).toBeVisible();
-  await page.getByLabel('Search catalogue').fill(search);
-  await page.getByRole('button', { name: entryName, exact: true }).click();
-  await page.getByRole('button', { name: 'Use these terms' }).click();
-  await expect(page.getByText('Step 2 of 3')).toHaveCount(0);
+  await chooseCatalogueCard(page, search, entryName);
   await cardSettingsPage(page, 'Card product');
   await expect(page.getByText('From catalogue · Linked')).toBeVisible();
   await page.getByRole('button', { name: 'Settings' }).click();
@@ -156,12 +152,10 @@ test('CIMB Niaga World ALL Accor pre-fills billing date 22 and earns 2,5 points 
   await addCard(page, 'CIMB Accor');
   await openCardPage(page, 'CIMB Accor');
   await cardPage(page, 'Settings');
-  await page.getByLabel('Search catalogue').fill('accor');
-  await page.getByRole('button', { name: 'CIMB Niaga World ALL Accor Live Limitless', exact: true }).click();
+  await chooseCatalogueCard(page, 'accor', 'CIMB Niaga World ALL Accor Live Limitless');
   await expect(page.getByLabel('Billing date')).toHaveValue('22');
   await page.getByLabel('Due date').fill('12');
   await saveCardTerms(page);
-  await page.getByRole('button', { name: 'Use these terms' }).click();
   await cardSettingsPage(page, 'Card product');
   await expect(page.getByText('From catalogue · Linked')).toBeVisible();
 

@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
-import { cardPage, saveCardTerms } from './card-section';
+import { cardPage, saveCardTerms, setUpRewardsByHand } from './card-section';
 
 /** A credit card with a billing date, a points program and a rule, so its band has a figure to carry. */
 async function addEarningCard(page: Page, name: string) {
@@ -11,12 +11,10 @@ async function addEarningCard(page: Page, name: string) {
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await saveCardTerms(page);
-  await page.getByRole('button', { name: 'Set up rewards' }).click();
-  await expect(page.getByText('Step 3 of 3')).toBeVisible();
+  await setUpRewardsByHand(page);
   // The suggested base rule, so the card is set up and opens on Wallet's summary from now on.
   await page.getByRole('button', { name: 'Add rule' }).click();
   await page.getByRole('button', { name: 'Save rule' }).click();
-  await expect(page.getByText('Step 3 of 3')).toHaveCount(0);
 }
 
 /**

@@ -5,7 +5,7 @@ import { addCap } from './budget';
 import { addForm, addTransaction, addTransfer, attachPhoto, closeDetails, fillAmount, openAmount, saveButton, shareWith, chooseTo, choosePayment } from './add-transaction';
 import { addEvent } from './event-plan';
 import { openGoalForm } from './goals';
-import { cardPage, cardPurchases, saveCardTerms } from './card-section';
+import { cardPage, cardPurchases, saveCardTerms, chooseCatalogueCard } from './card-section';
 import { todayIn } from './today';
 import { setCurrency } from './currency-field';
 import { addPart, fillPart, removePart, openSplit, pickPartCategory, setChannel, splitRow } from './split-row';
@@ -666,10 +666,7 @@ async function catalogueCard(page: Page, name: string, search: string, entryName
   await page.getByLabel('Billing date').fill(billingDay);
   await page.getByLabel('Due date').fill('12');
   await saveCardTerms(page);
-  await page.getByLabel('Search catalogue').fill(search);
-  await page.getByRole('button', { name: entryName, exact: true }).click();
-  await page.getByRole('button', { name: 'Use these terms' }).click();
-  await expect(page.getByText('Step 2 of 3')).toHaveCount(0);
+  await chooseCatalogueCard(page, search, entryName);
 }
 
 test('every extra survives the save, and leaving it out of the report leaves only the chart and the budgets', async ({ page }) => {

@@ -23,7 +23,6 @@ async function openStatement(page: Page) {
   await page.getByLabel('Billing date').fill('31');
   await page.getByLabel('Due date').fill('15');
   await saveCardTerms(page);
-  await expect(page.getByText('Step 2 of 3')).toBeVisible();
   await buy(page, 'Hotel Mulia', '2000000', LAST_MONTH);
   await buy(page, 'Superindo', '450000', TODAY);
   await page.goto('/wallet');

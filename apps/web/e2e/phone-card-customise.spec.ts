@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openCard } from './accounts';
-import { cardPage, cardSettingsPage, saveCardTerms } from './card-section';
+import { cardPage, cardSettingsPage, saveCardTerms, chooseCatalogueCard } from './card-section';
 
 const SHOTS = '/private/tmp/claude-501/-Users-frhamadiansyah-Documents-Projects-Expanses/17ecd7cc-b713-4f21-b1a9-9a90ded56208/scratchpad';
 
@@ -16,10 +16,7 @@ test('a linked card hides its rules in Settings until Customise rules sets it up
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await saveCardTerms(page);
-  await page.getByLabel('Search catalogue').fill('krisflyer');
-  await page.getByRole('button', { name: 'BCA Singapore Airlines KrisFlyer Visa Signature', exact: true }).click();
-  await page.getByRole('button', { name: 'Use these terms' }).click();
-  await expect(page.getByText('Step 2 of 3')).toHaveCount(0);
+  await chooseCatalogueCard(page, 'krisflyer', 'BCA Singapore Airlines KrisFlyer Visa Signature');
 
   // Some points already earned: a balance typed in on the programme page.
   await page.getByRole('button', { name: 'BCA KrisFlyer', exact: true }).click();

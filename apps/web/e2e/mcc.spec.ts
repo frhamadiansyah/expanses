@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { addTransaction, choosePayment } from './add-transaction';
-import { cardPage, cardPointsPage, saveCardTerms } from './card-section';
+import { cardPage, cardPointsPage, saveCardTerms, chooseCatalogueCard } from './card-section';
 import { chooseMccCode, closeMccSheet, openMccSheet, rememberWord } from './mcc-sheet';
 
 test.beforeEach(({ page }) => {
@@ -24,10 +24,7 @@ async function applyCatalogue(page: Page, card: string, search: string, entryNam
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await saveCardTerms(page);
-  await page.getByLabel('Search catalogue').fill(search);
-  await page.getByRole('button', { name: entryName, exact: true }).click();
-  await page.getByRole('button', { name: 'Use these terms' }).click();
-  await expect(page.getByText('Step 2 of 3')).toHaveCount(0);
+  await chooseCatalogueCard(page, search, entryName);
 }
 
 /** The card's purchases with what each earned: under this statement's points. */

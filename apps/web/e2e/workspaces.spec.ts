@@ -301,7 +301,6 @@ async function addCard(page: Page) {
   await page.getByLabel('Billing date').fill('31');
   await page.getByLabel('Due date').fill('15');
   await saveCardTerms(page);
-  await expect(page.getByText('Step 2 of 3')).toBeVisible();
 }
 
 /** Spends on the card from whatever workspace is open. */

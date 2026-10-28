@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard, openSettings, walletCard } from './accounts';
 import { addForm, addTransaction, choosePayment, saveButton } from './add-transaction';
-import { cardPage, saveCardTerms } from './card-section';
+import { cardPage, saveCardTerms, setUpRewardsByHand } from './card-section';
 import { pasteInto } from './paste';
 
 const row = (page: Page, what: string) => page.getByTestId('transaction-row').filter({ hasText: what });
@@ -68,14 +68,12 @@ test('a foreign purchase that earns cashback shows the foreign amount alone unde
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await saveCardTerms(page);
-  await page.getByLabel('Earns').selectOption({ label: 'Cashback' });
-  await page.getByRole('button', { name: 'Set up rewards' }).click();
+  await setUpRewardsByHand(page, { unit: 'Cashback' });
   await page.getByRole('button', { name: 'Add rule' }).click();
   await page.getByLabel('Rule name').fill('Base');
   await page.getByLabel('Points', { exact: true }).fill('1');
   await page.getByLabel('Per spend').fill('100');
   await page.getByRole('button', { name: 'Save rule' }).click();
-  await expect(page.getByText('Step 3 of 3')).toHaveCount(0);
 
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();

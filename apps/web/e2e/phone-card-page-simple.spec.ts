@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
-import { cardPage, saveCardTerms, startPlan } from './card-section';
+import { cardPage, saveCardTerms, startPlan, setUpRewardsByHand } from './card-section';
 
 const SHOTS = '/private/tmp/claude-501/-Users-frhamadiansyah-Documents-Projects-Expanses/17ecd7cc-b713-4f21-b1a9-9a90ded56208/scratchpad';
 
@@ -14,11 +14,9 @@ async function addEarningCard(page: Page, name: string) {
   await page.getByLabel('Due date').fill('12');
   await page.getByLabel('Annual fee').fill('750000');
   await saveCardTerms(page);
-  await page.getByRole('button', { name: 'Set up rewards' }).click();
-  await expect(page.getByText('Step 3 of 3')).toBeVisible();
+  await setUpRewardsByHand(page);
   await page.getByRole('button', { name: 'Add rule' }).click();
   await page.getByRole('button', { name: 'Save rule' }).click();
-  await expect(page.getByText('Step 3 of 3')).toHaveCount(0);
 }
 
 test('the card page keeps the tile, the buttons and the latest; fee, rewards and points moved behind the buttons and the cog', async ({ page }) => {
