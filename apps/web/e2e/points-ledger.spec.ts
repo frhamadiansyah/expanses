@@ -106,9 +106,9 @@ test('a balance read in the app anchors the ledger', async ({ page }) => {
   await cardWithAPurchase(page);
   await openProgramme(page);
 
-  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Balance' }).click();
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Set balance' }).click();
   await page.getByLabel('Actual balance').fill('500');
-  await page.getByRole('button', { name: 'Set balance' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Set balance' }).click();
 
   await expect(page.getByTestId('programme-balance')).toHaveText('500 points');
   // The card's points page reads the same balance: the programme's it earns into.
@@ -179,7 +179,9 @@ test('catches a card up from its programme page, without complaint; the card pag
   await cardPage(page, 'Settings');
   await openProgramme(page);
 
-  // The action row is the programme's, one per card earning into it; its explanation sits behind an ⓘ.
+  // The action row is the programme's, one per card earning into it, behind Settings.
+  await page.getByRole('button', { name: 'Programme settings' }).click();
+  await page.getByRole('button', { name: 'Catch up earlier cycles' }).click();
   await page.getByRole('button', { name: 'Catch up CIMB Octo' }).click();
 
   // Nothing older exists here, so the balance is what this cycle earned and no error is shown.

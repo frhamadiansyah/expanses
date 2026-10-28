@@ -1,6 +1,7 @@
-import { type ExpiryPolicy, parseMajor, type TransferPartner } from '@expanses/core';
+import { type ExpiryPolicy, isoDate, parseMajor, type TransferPartner } from '@expanses/core';
 import {
   archiveProgramme,
+  backfillCycles,
   createProgramme,
   type ProgrammeRow,
   type ProgrammeUnit,
@@ -17,10 +18,12 @@ import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { DestructiveRow, InsetGroup, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
+import { DestructiveRow, InsetGroup, InsetRow, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
 import { formatPoints } from './format-points';
 import { programmeFamily, programmeTier } from './programme-art/programmes';
 import { conversionEstimate, parsePoints, partnerFor } from './programme-text';
+import { ActionRow } from './rows';
+import { TransferEstimates } from './TransferEstimates';
 
 /*
  * The sheets a points programme is worked with: adding one, its settings, and the three round buttons on its page —
@@ -128,19 +131,35 @@ export function AddProgrammeSheet({ onClose }: { onClose: () => void }) {
 export function ProgrammeSettingsSheet({
   programme,
   tier,
-  earning,
+  earners,
+  valueCount,
   onClose,
   onArchived,
 }: {
   programme: ProgrammeRow;
   tier: string | null;
-  earning: number;
+  /** The cards earning here, each with the last digits it shows (if recorded). */
+  earners: { programId: string; cardAccountId: string; cardName: string; digits: string | null }[];
+  valueCount: number;
   onClose: () => void;
   onArchived: () => void;
 }) {
   const { database, ws } = useApp();
   const { error, busy, save } = useSave(onClose);
   const archive = useSave(onArchived);
+  const earning = earners.length;
+  const [catching, setCatching] = useState(false);
+  const [catchError, setCatchError] = useState<unknown>(null);
+  const invalidate = useInvalidateAll();
+  const catchUp = async (programId: string) => {
+    setCatchError(null);
+    try {
+      await backfillCycles(database, ws, programId, 24, isoDate());
+      await invalidate();
+    } catch (e) {
+      setCatchError(e);
+    }
+  };
   const [name, setName] = useState(programme.name);
   const [unit, setUnit] = useState<ProgrammeUnit>(programme.unit);
   const [policy, setPolicy] = useState<ExpiryPolicy>(programme.expiryPolicy);
@@ -168,8 +187,15 @@ export function ProgrammeSettingsSheet({
           }),
       }}
     >
-      <ErrorBox error={error ?? archive.error} />
+      <ErrorBox error={error ?? archive.error ?? catchError} />
       <ProgrammeFields name={name} setName={setName} unit={unit} setUnit={setUnit} policy={policy} setPolicy={setPolicy} months={months} setMonths={setMonths} />
+      {earners.length > 0 && (
+        <InsetGroup header="Cards earning here">
+          {earners.map((earner) => (
+            <InsetRow key={earner.programId} plain title={earner.cardName} subtitle={earner.digits ? `···· ${earner.digits}` : undefined} to="/cards/$cardId/points" params={{ cardId: earner.cardAccountId }} chevron />
+          ))}
+        </InsetGroup>
+      )}
       {tiers && chosen && (
         <InsetGroup header="Membership card" footer="Which of the programme's cards is drawn for it on the Points page.">
           <SelectRow label="Card tier" value={chosen.id} onChange={(e) => setTierId(e.target.value)}>
@@ -179,6 +205,17 @@ export function ProgrammeSettingsSheet({
               </option>
             ))}
           </SelectRow>
+        </InsetGroup>
+      )}
+      <InsetGroup>
+        <InsetRow plain title="What points are worth" value={`${valueCount} ${valueCount === 1 ? 'value' : 'values'}`} to="/cards/points/$programmeId/worth" params={{ programmeId: programme.id }} chevron />
+        {earning > 0 && <InsetRow plain title="Catch up earlier cycles" onClick={() => setCatching((on) => !on)} chevron />}
+      </InsetGroup>
+      {catching && (
+        <InsetGroup header="Catch up earlier cycles">
+          {earners.map((earner) => (
+            <ActionRow key={earner.programId} label={`Catch up ${earner.cardName}`} onClick={() => void catchUp(earner.programId)} />
+          ))}
         </InsetGroup>
       )}
       <InsetGroup footer={earning > 0 ? 'A card still earns into this programme. Choose another programme for that card before archiving this one.' : 'Archiving keeps its history and takes it off the Cards page.'}>
@@ -260,12 +297,15 @@ export function ConvertSheet({
   programme,
   others,
   partners,
+  statementPoints,
   today,
   onClose,
 }: {
   programme: ProgrammeRow;
   others: ProgrammeRow[];
   partners: TransferPartner[];
+  /** What this statement's points come to across the cards earning here, for the estimates under the choices. */
+  statementPoints: number;
   today: string;
   onClose: () => void;
 }) {
@@ -344,6 +384,7 @@ export function ConvertSheet({
           </SelectRow>
         )}
       </InsetGroup>
+      <TransferEstimates partners={partners} points={statementPoints} unit={programme.unit} today={today} />
       <InsetGroup footer="Taken from the points that expire soonest. What arrived starts a batch of its own, expiring under the other programme's policy.">
         <TextRow
           label={`${unitWord(programme.unit)} converted`}
