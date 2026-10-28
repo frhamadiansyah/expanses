@@ -50,7 +50,7 @@ test('a new card without a product: Settings holds its own facts, the product is
 
   // Back on Settings with the product filled and the Points group there.
   await expect(page.getByRole('heading', { name: 'Settings', exact: true }).first()).toBeVisible();
-  await expect(main.getByRole('button', { name: /^Card product\s*BCA Singapore Airlines KrisFlyer/ })).toBeVisible();
+  await expect(main.getByRole('button', { name: /^Card product\s*BCA KrisFlyer/ })).toBeVisible();
   await expect(main.getByText('Points', { exact: true })).toBeVisible();
   await expect(main.getByLabel('Bank credits points')).toBeVisible();
   await expect(main.getByText('Rewards, earning rules and spend bonuses appear here once a card product is chosen.')).toHaveCount(0);
