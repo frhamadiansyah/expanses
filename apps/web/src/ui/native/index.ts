@@ -17,6 +17,7 @@ export { CurrencyCode, DestructiveRow, optionLabel, PickerRow, ReadOnlyRow, Sear
 export { CardStack, Face as WalletFace, type WalletCard } from './CardStack';
 export { Drawer, useDrawers } from './Drawer';
 export { useWalletSlot, type WalletSlot } from './wallet-slot';
+export { useSwipeStep } from './swipe-step';
 export { Panel, PanelHeader, SCREEN } from './Panel';
 export { ActionLine, LineAction } from './ActionLine';
 export { ActionButtons, type RoundAction } from './ActionButtons';
