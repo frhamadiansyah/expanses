@@ -95,9 +95,7 @@ test('BCA UnionPay doubles points on an SGD purchase billed in rupiah', async ({
   await expect(cycle.getByText(/540\.000 → 54 points/)).toHaveCount(2);
   await expect(cycle).toContainText('108');
   // What the 108 would transfer to is the programme's, on its own page.
-  await page.getByRole('button', { name: 'BCA UnionPay Card', exact: true }).click();
-  await cardPage(page, 'Settings');
-  await page.getByTestId('points-balance').click();
+  await page.getByTestId('statement-points-programme').click();
   await expect(page.getByText('If transferred')).toBeVisible();
   await expect(page.getByRole('main')).toContainText('50 KrisFlyer');
 });
@@ -219,6 +217,7 @@ test('editing a rule or a bonus opens its form where its row stood, not below th
   // Every rule row on the page, in reading order.
   const rows = page.getByRole('button', { name: /^Edit / });
   const rules = page.locator('section', { has: page.getByRole('heading', { name: 'Earn rules' }) });
+  await expect(rules.getByRole('button', { name: /^Edit / }).nth(1)).toBeVisible();
   const ruleCount = await rules.getByRole('button', { name: /^Edit / }).count();
   expect(ruleCount).toBeGreaterThanOrEqual(2);
   const total = await rows.count();
@@ -242,8 +241,10 @@ test('editing a rule or a bonus opens its form where its row stood, not below th
   await cardSettingsPage(page, 'Spend bonuses');
   const bonuses = page.locator('section', { has: page.getByRole('heading', { name: 'Spend bonuses' }) });
   const bonusRows = page.getByRole('button', { name: /^Edit / });
-  const bonusTotal = await bonusRows.count();
   const live = bonuses.getByTestId(/^bonus-/).filter({ hasNotText: 'past terms' }).first();
+  // The page is opened by its address, so its rows load after it: count them once they are there.
+  await expect(live).toBeVisible();
+  const bonusTotal = await bonusRows.count();
   const id = (await live.getAttribute('data-testid'))!;
   await live.getByRole('button', { name: /^Edit / }).click();
   await expect(page.getByTestId(id)).toHaveCount(0);

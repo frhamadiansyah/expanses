@@ -139,7 +139,7 @@ export function ProgrammePage() {
         <p data-testid="programme-balance" className="tabular truncate text-[26px] leading-[32px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]">
           {balanceText(balance.total, unit)}
         </p>
-        <p className="tabular text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
+        <p data-testid="programme-provenance" className="tabular text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
           {formatPoints(balance.postedTotal)} posted · {formatPoints(balance.projectedTotal)} estimated
         </p>
       </Panel>

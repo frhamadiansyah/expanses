@@ -20,9 +20,19 @@ export async function cardPage(page: Page, which: 'Statement' | 'Points' | 'Sett
   await expect(page.getByRole('heading', { name: title, exact: true }).first()).toBeVisible();
 }
 
-/** Open a page under the card's Settings — Card product, Earning rules, Spend bonuses — from the Settings page. */
+/**
+ * Open a page under the card's Settings: Card product, Earning rules, Spend bonuses. A card on the catalogue shows no
+ * rules or bonuses rows (it follows the catalogue), so for those the editor is reached by its address, which still
+ * stands, to exercise the editors on catalogue rows.
+ */
 export async function cardSettingsPage(page: Page, which: 'Card product' | 'Earning rules' | 'Spend bonuses') {
-  await page.getByRole('main').getByRole('button', { name: new RegExp(`^${which}`) }).click();
+  const row = page.getByRole('main').getByRole('button', { name: new RegExp(`^${which}`) });
+  if (which !== 'Card product' && (await row.count()) === 0) {
+    const here = new URL(page.url()).pathname.replace(/\/$/, '');
+    await page.goto(`${here}/${which === 'Earning rules' ? 'rules' : 'bonuses'}`);
+  } else {
+    await row.click();
+  }
   await expect(page.getByRole('heading', { name: which, exact: true }).first()).toBeVisible();
 }
 

@@ -7,6 +7,9 @@ import {
   CatalogError,
   cardSpendLines,
   createAccount,
+  customiseFromScratch,
+  listPointEntries,
+  recordPointSnapshot,
   createProgram,
   dismissCatalogVersion,
   type EarnRuleInput,
@@ -201,5 +204,34 @@ describe('catalogue crediting', () => {
     expect(await crediting()).toBe('per_statement');
     await resetToCatalog(database, ws, programId, { ...prioritas, entryVersion: prioritas.entryVersion + 1 }, TODAY);
     expect(await crediting()).toBe('per_transaction');
+  });
+});
+
+describe('customiseFromScratch', () => {
+  it('cuts the link and clears rules, bonuses, and partners, but leaves the points earned', async () => {
+    const { database, ws, card } = await withCard();
+    const { programId } = await applyCatalogEntry(database, ws, { cardAccountId: card.id, entry: entry('bca-sq-krisflyer-visa-signature'), today: TODAY, replaceManual: false });
+    await recordPointSnapshot(database, ws, { programId, balance: 4_200, observedOn: TODAY });
+    const before = await listPointEntries(database, ws, programId);
+    expect(before.length).toBeGreaterThan(0);
+    expect((await listEarnRules(database, ws, programId)).length).toBeGreaterThan(0);
+
+    await customiseFromScratch(database, ws, programId);
+
+    expect(await listEarnRules(database, ws, programId)).toEqual([]);
+    expect(await listCycleBonuses(database, ws, programId)).toEqual([]);
+    expect(await listTransferPartners(database, ws, programId)).toEqual([]);
+    expect((await listRedemptionOptions(database, ws, programId)).filter((option) => option.catalogKey)).toEqual([]);
+    const state = await getCatalogState(database, ws, programId);
+    expect(state).toMatchObject({ entryId: null, entryVersion: null, status: null, snapshot: null, memberLevel: null });
+    expect(await listPointEntries(database, ws, programId)).toEqual(before);
+    const [program] = (await listPrograms(database, ws)).filter((row) => row.id === programId);
+    expect(program?.name).toBe('KrisFlyer');
+  });
+
+  it('refuses a program that is not linked', async () => {
+    const { database, ws, card } = await withCard();
+    const program = await createProgram(database, ws, { cardAccountId: card.id, name: 'Mine', unit: 'points', cycleAnchor: 'calendar' });
+    await expect(customiseFromScratch(database, ws, program.id)).rejects.toBeInstanceOf(CatalogError);
   });
 });

@@ -1,5 +1,5 @@
 import { describeEntry, diffCatalogEntries, isStale } from '@expanses/catalog';
-import { applyCatalogUpdate, dismissCatalogVersion, listCategoryChoices, resetToCatalog, setCatalogCategoryChoice } from '@expanses/db';
+import { applyCatalogUpdate, customiseFromScratch, dismissCatalogVersion, listCategoryChoices, resetToCatalog, setCatalogCategoryChoice } from '@expanses/db';
 import { useApp } from '../../app/context';
 import { CATALOG_REPORT_EMAIL, reportMailto, shouldShowReport } from '../../lib/catalog-config';
 import { useQuery } from '@tanstack/react-query';
@@ -67,6 +67,8 @@ export function CatalogPanel({ cp, today, run }: { cp: CardPoints; today: string
       {entry.program.categoryChoice && <CategoryChoice cp={cp} today={today} run={run} />}
 
       {/* The whole of the entry, folded: a disclosure row, as iOS draws "more about this". */}
+      {/* Listed for a linked card only: a customised card shows its rules in Settings, where they can be edited. */}
+      {linked && (
       <Panel pad={false}>
         <details className="group">
           <summary className="ph-focus-inset flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 px-[13px] py-[11px] text-[15px] leading-[20px] text-[var(--ph-ink)] [&::-webkit-details-marker]:hidden">
@@ -82,6 +84,19 @@ export function CatalogPanel({ cp, today, run }: { cp: CardPoints; today: string
           </ul>
         </details>
       </Panel>
+      )}
+
+      {linked && (
+        <InsetGroup>
+          <ActionRow
+            label="Customise rules"
+            onClick={() =>
+              window.confirm('Customise rules? This card stops following the catalogue. Its rules and bonuses are removed and you enter your own. Points already earned stay.') &&
+              void run(() => customiseFromScratch(database, ws, program.id))
+            }
+          />
+        </InsetGroup>
+      )}
 
       {/* Reset takes back every change the owner made, so it is a destructive row in a group of its own. */}
       {!linked && (

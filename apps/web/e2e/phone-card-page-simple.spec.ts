@@ -43,7 +43,7 @@ test('the card page keeps the tile, the buttons and the latest; fee, rewards and
   await expect(page.getByRole('heading', { name: 'Annual fee', exact: true })).toBeVisible();
   await expect(page.getByLabel('Annual fee (IDR)')).toHaveValue('750000');
   await expect(main.getByTestId('card-annual-fee')).toHaveCount(0);
-  await expect(main.getByRole('link', { name: /^Programme/ }).or(main.getByRole('button', { name: /^Programme/ }))).toContainText('Simple Card rewards');
+  await expect(main.getByLabel('Earns into')).toContainText('Simple Card rewards');
   await expect(main.getByTestId('card-instalments-row')).toContainText('None');
   await page.screenshot({ path: `${SHOTS}/card-page-new-3.png`, fullPage: true });
 
