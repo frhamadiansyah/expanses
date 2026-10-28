@@ -164,6 +164,9 @@ export function CoverPage() {
   const [saving, setSaving] = useState(false);
 
   const items = (plan.data?.lines ?? []).flatMap((line) => line.items);
+  // A settled cost is closed to more receipts: it is listed only while this receipt already covers it, so it can still be unticked.
+  const covered = new Set((cover.data?.covers ?? []).map((row) => row.itemId));
+  const listed = items.filter((row) => !row.done || covered.has(row.id) || shares[row.id] !== undefined);
   const totalMinor = cover.data?.totalMinor ?? 0;
   const currency = ws.baseCurrency;
   const symbol = CURRENCIES.find((c) => c.code === currency)?.symbol ?? currency;
@@ -269,11 +272,11 @@ export function CoverPage() {
         {/* No share box before the stored shares are seeded: a share typed first would be overwritten as they land. */}
         {!seeded ? (
           <p className="text-sm text-[var(--ph-ink-3)]">Loading…</p>
-        ) : items.length === 0 ? (
-          <Empty>This event has nothing on its plan yet, so there is nothing for the receipt to answer.</Empty>
+        ) : listed.length === 0 ? (
+          <Empty>There is nothing on the plan left for this receipt to answer.</Empty>
         ) : (
           <InsetGroup>
-            {items.map((row) => (
+            {listed.map((row) => (
               <CoverRow
                 key={row.id}
                 id={`${rowId}-${row.id}`}

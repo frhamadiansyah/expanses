@@ -868,3 +868,40 @@ test('a payment bigger than its cost also covers a second cost, without untaggin
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByTestId('plan-item').filter({ hasText: 'Check up' })).toContainText('200.000');
 });
+
+/**
+ * A settled cost is closed to other receipts: Link to costs does not list it, unless the receipt already covers it.
+ */
+test('a settled cost is not offered to another receipt, but stays on the one that covers it', async ({ page }) => {
+  await addWallet(page);
+  await spend(page, 'Mothercare', '300000');
+  await addEvent(page, 'Newborn');
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
+  await fillItem(page, { name: 'Crib', price: '7500000', category: 'Food and beverage' });
+  await addItem(page, { name: 'Muslin wraps', quantity: '4', price: '175000', category: 'Food and beverage' });
+
+  // The crib is paid and settled by its own receipt.
+  await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
+  await buyItNow(page);
+
+  // Another receipt, tagged to the event, linked from the wraps: the settled crib is not on its list, the wraps are.
+  await page.getByRole('link', { name: 'Back to the event' }).click();
+  await page.getByTestId('event-suggestions').getByRole('button', { name: 'Tag Mothercare' }).click();
+  await showPlanCard(page);
+  await page.getByRole('link', { name: 'See the whole plan' }).click();
+  await page.getByTestId('plan-item').filter({ hasText: 'Muslin wraps' }).getByRole('link').click();
+  await page.getByRole('link', { name: 'Link a payment' }).click();
+  await page.getByRole('link', { name: /Mothercare/ }).click();
+  await expect(page.getByRole('heading', { name: 'Link to costs' })).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: 'Muslin wraps' })).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: 'Crib' })).toHaveCount(0);
+
+  // The crib's own receipt still lists it, so it can be unticked.
+  await page.goBack();
+  await page.goBack();
+  await page.getByRole('link', { name: 'Back to the plan' }).click();
+  await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
+  await page.getByTestId('item-payment').click();
+  await expect(page.getByRole('checkbox', { name: 'Crib' })).toBeChecked();
+});
