@@ -4,6 +4,7 @@ import {
   createAccount,
   createProgram,
   backfillCycles,
+  catchUpCard,
   deriveCycleEntries,
   listAccounts,
   listPointEntries,
@@ -235,6 +236,26 @@ describe('catching a card up', () => {
 
     // Two cycles does not reach April, so only the current cycle's purchases are counted.
     expect((await programBalance(database, ws, program.id, TODAY)).total).toBe(150);
+  });
+
+  it('reports the statements it added, and none the second time or when nothing is older', async () => {
+    const { database, ws, program } = await withOldSpending();
+    // The current cycle is worked out as the page opens; the April purchase is the one catch-up finds.
+    await backfillCycles(database, ws, program.id, 2, TODAY);
+    expect(await catchUpCard(database, ws, program.id, 24, TODAY)).toEqual({ added: 1 });
+    expect(await catchUpCard(database, ws, program.id, 24, TODAY)).toEqual({ added: 0 });
+  });
+
+  it('counts every older statement that held purchases', async () => {
+    const { database, ws, card, program } = await withOldSpending();
+    const all = await listAccounts(database, ws);
+    const groceries = all.find((account) => account.name === 'Groceries')!.id;
+    await postTransaction(database, ws, {
+      occurredOn: '2026-06-05',
+      description: 'June shop',
+      lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: card.id, amountMinor: 1_000_000, currency: 'IDR' }),
+    });
+    expect(await catchUpCard(database, ws, program.id, 24, TODAY)).toEqual({ added: 3 });
   });
 
   it('says how many cycles it worked out', async () => {

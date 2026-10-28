@@ -125,6 +125,7 @@ export {
   ruleMatches,
   type SpendLine,
 } from './points/earn';
+export { comparisonRedemption, pointsWorth, type PointsWorth, parseValuePerPoint, formatValuePerPoint, groupTypedValue, valuePerPointText, VALUE_PER_POINT_SCALE } from './points/worth';
 export {
   bestRedemption,
   type CardCandidate,
@@ -487,6 +488,7 @@ export {
   type EntrySource,
   type ExpiryPolicy,
   expiresOn,
+  expiryLots,
   feeRoi,
   type FeeRoi,
   type FeeRoiInput,

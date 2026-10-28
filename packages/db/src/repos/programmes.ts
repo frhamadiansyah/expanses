@@ -1,11 +1,11 @@
-import { type Balance, balanceOf, consumeFifo, cycleFor, type ExpiryPolicy, expiresOn as expiryDateFor, LedgerError, type TransferPartner, uuidv7 } from '@expanses/core';
+import { type Balance, balanceOf, consumeFifo, expiryLots, cycleFor, type ExpiryPolicy, expiresOn as expiryDateFor, LedgerError, type TransferPartner, uuidv7 } from '@expanses/core';
 import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { cardTerms, earnsInto, pointEntries, pointProgrammes, pointSnapshots, rewardPrograms } from '../schema-points';
 import { backfillCycles, expireDueEntries, listPointEntries } from './point-ledger';
-import { findProgramme, programmeIdOf, type ProgrammeRow } from './programme-link';
+import { findProgramme, programmeIdOf, type ProgrammeRow, readProgrammeValues, valueColumnExists } from './programme-link';
 import { listTransferPartners, PointsError } from './points';
 
 /*
@@ -190,6 +190,52 @@ export async function setProgrammeTier(database: Database, ws: WorkspaceContext,
     if (!(await tierColumnExists(tx))) throw new PointsError('This database cannot keep that yet');
     await tx.run(sql`UPDATE point_programmes SET tier = ${word} WHERE id = ${programmeId} AND workspace_id = ${ws.workspaceId}`);
   });
+}
+
+/** Each programme's value per point (0105), scaled, by programme id: only the live programmes that have one are listed. */
+export const listProgrammeValues = readProgrammeValues;
+
+/** One programme's value per point, scaled, or null when none is set. */
+export async function getProgrammeValuePerPoint(database: Database | { db: Db }, ws: WorkspaceContext, programmeId: string): Promise<number | null> {
+  return (await listProgrammeValues(database, ws))[programmeId] ?? null;
+}
+
+/**
+ * What one point of a programme is worth in the workspace's base currency, as a scaled integer (minor units × 10 000);
+ * null clears it. Zero or less, or a figure that is not a whole number, is refused.
+ */
+export async function setProgrammeValuePerPoint(database: Database, ws: WorkspaceContext, programmeId: string, value: number | null): Promise<void> {
+  if (value !== null && (!Number.isSafeInteger(value) || value <= 0)) throw new PointsError('A point is worth more than nothing');
+  await database.transaction(async (tx) => {
+    await requireProgramme(tx, ws, programmeId);
+    if (!(await valueColumnExists(tx))) throw new PointsError('This database cannot keep that yet');
+    await tx.run(sql`UPDATE point_programmes SET value_per_point_e4 = ${value} WHERE id = ${programmeId} AND workspace_id = ${ws.workspaceId}`);
+  });
+}
+
+export interface ProgrammeExpiry {
+  /** Whether any of its points can expire: a policy other than never, or a batch already carrying a date. */
+  canExpire: boolean;
+  /** Held now and dying within 30 and within 90 days. */
+  in30: number;
+  in90: number;
+  nextExpiryOn: string | null;
+  /** What is left to expire on each date, earliest first, after everything spent or converted. */
+  lots: { expiresOn: string; remaining: number }[];
+}
+
+/** What of a programme's balance dies when: the figures its Expiry page lists, from the same ledger as the balance. */
+export async function programmeExpiry(database: Database, ws: WorkspaceContext, programmeId: string, today: string): Promise<ProgrammeExpiry> {
+  const programme = await requireProgramme(database.db, ws, programmeId);
+  const entries = await listPointEntries(database, ws, programmeId);
+  const lots = expiryLots(entries);
+  return {
+    canExpire: programme.expiryPolicy !== 'none' || entries.some((entry) => entry.expiresOn !== null),
+    in30: balanceOf(entries, today, 30).expiringSoon,
+    in90: balanceOf(entries, today, 90).expiringSoon,
+    nextExpiryOn: lots[0]?.expiresOn ?? null,
+    lots,
+  };
 }
 
 export interface EarnsIntoResult {

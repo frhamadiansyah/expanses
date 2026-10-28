@@ -45,14 +45,14 @@ test("converting Livin' Poin into KrisFlyer shows both balances", async ({ page 
   await expect(page.getByTestId('programme-balance')).toHaveText('0 points');
 
   // Its balance set to the one the bank's app shows.
-  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Set balance' }).click();
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Adjust' }).click();
   await page.getByLabel('Actual balance').fill('20.000');
-  await page.getByRole('dialog').getByRole('button', { name: 'Set balance' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByTestId('programme-balance')).toHaveText('20.000 points');
 
   // Converted into an airline programme that does not exist yet, made in the same step.
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Convert' }).click();
-  await page.getByLabel('To', { exact: true }).selectOption({ label: 'New programme…' });
+  await page.getByRole('dialog').getByRole('button', { name: 'Another programme…' }).click();
   await page.getByLabel('Programme name').fill('KrisFlyer');
   await page.getByLabel('Counted in').selectOption('miles');
   await page.getByLabel('Points converted').fill('10.000');
@@ -96,24 +96,22 @@ test('a second card of the bank joins its programme', async ({ page }) => {
   await expect(programmeRow(page, 'Platinum points')).toHaveCount(0);
   await programmeRow(page, "Livin' Poin").click();
   // The cards earning here are in the programme's settings.
-  await page.getByRole('button', { name: 'Programme settings' }).click();
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Settings' }).click();
   await expect(page.getByRole('link', { name: /Mandiri Prioritas/ })).toBeVisible();
   await expect(page.getByRole('link', { name: /Mandiri Platinum/ })).toBeVisible();
   await page.keyboard.press('Escape');
 
-  // What a point fetches is on its own page, for the card whose terms list it.
-  await page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Worth' }).click();
-  const values = page.getByTestId('point-values');
-  await page.getByRole('button', { name: 'Add a value' }).click();
-  await page.getByRole('dialog', { name: 'Add a value' }).getByLabel('Card', { exact: true }).selectOption({ label: 'Mandiri Platinum' });
-  await page.getByRole('dialog', { name: 'Add a value' }).getByLabel('Redemption', { exact: true }).fill('Statement credit');
-  await page.getByRole('dialog', { name: 'Add a value' }).getByLabel('Points redeemed', { exact: true }).fill('1');
-  await page.getByRole('dialog', { name: 'Add a value' }).getByLabel('Worth', { exact: true }).fill('25');
-  await page.getByRole('dialog', { name: 'Add a value' }).getByRole('button', { name: 'Add value' }).click();
-  await expect(values).toContainText(/Statement credit: 1 points = Rp\s25/);
-  await expect(values).toContainText('Mandiri Platinum');
-  await values.getByRole('button', { name: 'Remove Statement credit' }).click();
-  await expect(values).toContainText('No values yet');
+  // What a point is worth is the programme's one value per point, in its settings.
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Settings' }).click();
+  const settings = page.getByRole('dialog');
+  await settings.getByRole('button', { name: /Value per point/ }).click();
+  await page.getByLabel('1 point = Rp').fill('25');
+  await page.getByRole('button', { name: 'Save value' }).click();
+  await expect(settings.getByRole('button', { name: /Value per point/ })).toContainText(/Rp\s25/);
+  await settings.getByRole('button', { name: /Value per point/ }).click();
+  await page.getByLabel('1 point = Rp').fill('');
+  await page.getByRole('button', { name: 'Save value' }).click();
+  await expect(settings.getByRole('button', { name: /Value per point/ })).toContainText('Not set');
 });
 
 test('a KrisFlyer programme is drawn as its membership card, its tier changes the face, and an unknown programme keeps the plain face', async ({ page }) => {

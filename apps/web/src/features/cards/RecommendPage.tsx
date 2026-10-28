@@ -1,4 +1,4 @@
-import { type CompareTarget, CURRENCIES, formatMinor, isoDate, mccName, parseMajor, type Recommendation, recommendCards, resolveMcc } from '@expanses/core';
+import { type CompareTarget, comparisonRedemption, CURRENCIES, formatMinor, isoDate, mccName, parseMajor, type Recommendation, recommendCards, resolveMcc } from '@expanses/core';
 import { mccSourcesFor, spendingSwitchOn } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
@@ -65,7 +65,7 @@ export function RecommendPage() {
         bonuses: cp.bonuses,
         transferPartners: cp.transferPartners,
         cycleLines: cp.current?.lines ?? [],
-        bestRedemption: cp.best,
+        bestRedemption: comparisonRedemption(cp.valuePerPoint, cp.best, cp.baseCurrency),
       }));
       const target: CompareTarget = compareIn === VALUE ? { kind: 'value' } : { kind: 'program', program: compareIn };
       const query = { amountMinor, currency: ws.baseCurrency, originalCurrency: spentIn || null, mcc: resolved?.mcc ?? null, categoryId, description: merchant, occurredOn: date };

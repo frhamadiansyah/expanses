@@ -25,9 +25,9 @@ test('a linked card hides its rules in Settings until Customise rules sets it up
   await page.getByRole('button', { name: 'BCA KrisFlyer', exact: true }).click();
   await cardPage(page, 'Points');
   await page.getByTestId('statement-points-programme').click();
-  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Set balance' }).click();
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Adjust' }).click();
   await page.getByLabel('Actual balance').fill('500');
-  await page.getByRole('dialog').getByRole('button', { name: 'Set balance' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByTestId('programme-balance')).toContainText('500');
   await page.goBack();
   await page.getByRole('button', { name: 'BCA KrisFlyer', exact: true }).click();

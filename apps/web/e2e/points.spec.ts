@@ -40,13 +40,13 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
   await page.getByRole('button', { name: 'CIMB Octo', exact: true }).click();
   await cardPage(page, 'Points');
   await page.getByTestId('statement-points-programme').click();
-  await page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Worth' }).click();
-  await page.getByRole('button', { name: 'Add a value' }).click();
-  const value = page.getByRole('dialog', { name: 'Add a value' });
-  await value.getByLabel('Points redeemed').fill('1');
-  await value.getByLabel('Worth', { exact: true }).fill('25');
-  await value.getByRole('button', { name: 'Add value' }).click();
-  await expect(page.getByText('= Rp')).toBeVisible();
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: /Value per point/ }).click();
+  await page.getByLabel('1 point = Rp').fill('25');
+  await page.getByRole('button', { name: 'Save value' }).click();
+  await expect(page.getByRole('dialog').getByRole('button', { name: /Value per point/ })).toContainText(/Rp\s25/);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
 
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Wedding dinner', paidWith: 'CIMB Octo', category: 'Restaurants', amount: '3500000' });

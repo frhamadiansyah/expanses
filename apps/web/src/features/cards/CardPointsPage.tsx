@@ -1,4 +1,4 @@
-import { type CycleBonus, cycleFor, type EarnRule, explainCycle, formatMinor, previousCycle, type Redemption } from '@expanses/core';
+import { type CycleBonus, cycleFor, type EarnRule, explainCycle, formatMinor, previousCycle } from '@expanses/core';
 import { type AccountRow, listCycleActuals, recordCycleActual } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, Link, useNavigate } from '@tanstack/react-router';
@@ -33,7 +33,7 @@ function CycleSummary({
   bonuses,
   unit,
   currency,
-  best,
+  cp,
   cardId,
 }: {
   result: CycleResult;
@@ -41,13 +41,13 @@ function CycleSummary({
   bonuses: CycleBonus[];
   unit: string;
   currency: string;
-  best: Redemption | null;
+  cp: CardPoints;
   cardId: string;
 }) {
   // Catalogue cards keep earlier terms as dated rules; only those in force during the cycle are relevant here.
   const activeRules = rules.filter((rule) => activeDuring(rule, result.cycle.start, result.cycle.end));
   const spend = result.lines.reduce((s, l) => s + Math.max(0, l.amountMinor), 0);
-  const value = pointsValue(result.earn.totalPoints, best);
+  const value = pointsValue(result.earn.totalPoints, cp);
   const bonusRows = bonusProgressRows(bonuses, result, unit, currency);
   const hasSources = activeRules.length > 0 || bonusRows.length > 0 || result.earn.unearnedSpendMinor > 0 || result.earn.cardFeeSpendMinor > 0;
   /*
@@ -59,7 +59,7 @@ function CycleSummary({
       <InsetGroup header={`${shortDate(result.cycle.start)} – ${shortDate(result.cycle.end)}`}>
         <ReadOnlyRow label="Spend" value={formatMinor(spend, currency)} />
         <ReadOnlyRow label={`Projected ${unit}`} value={formatPoints(result.earn.totalPoints)} />
-        {value !== null && best && <ReadOnlyRow label="Worth about" value={formatMinor(value, best.currency)} />}
+        {value && <ReadOnlyRow label="Worth about" value={formatMinor(value.valueMinor, value.currency)} />}
       </InsetGroup>
       {hasSources && (
         <InsetGroup header="Where they came from">
@@ -137,9 +137,9 @@ export function CardPointsPage() {
   const program = cp.program;
   const unit = cp.programme?.unit ?? program?.unit ?? 'points';
   const total = ledger.data?.balance.total ?? 0;
-  const worth = program ? pointsValue(total, cp.best) : null;
-  // "18.400 miles · ≈ Rp 1.840.000": the programme's balance, and what it is worth at the card's best redemption.
-  const balanceLine = `${formatPoints(total)} ${unit}${worth !== null && cp.best ? ` · ≈ ${formatMinor(worth, cp.best.currency)}` : ''}`;
+  const worth = program ? pointsValue(total, cp) : null;
+  // "18.400 miles · ≈ Rp 1.840.000": the programme's balance, and what it is worth at its value per point.
+  const balanceLine = `${formatPoints(total)} ${unit}${worth ? ` · ≈ ${formatMinor(worth.valueMinor, worth.currency)}` : ''}`;
   const purchases = cp.current ? purchasesOf(cp.current.lines).length : 0;
   return (
     <CardScreen title={TITLE} back={card.name} fallback={fallback}>
@@ -156,7 +156,7 @@ export function CardPointsPage() {
         </InsetGroup>
       )}
       {!earning(cp) && <NotEarning page={page} />}
-      {program && cp.current && earning(cp) && <CycleSummary result={cp.current} rules={cp.rules} bonuses={cp.bonuses} unit={program.unit} currency={currency} best={cp.best} cardId={card.id} />}
+      {program && cp.current && earning(cp) && <CycleSummary result={cp.current} rules={cp.rules} bonuses={cp.bonuses} unit={program.unit} currency={currency} cp={cp} cardId={card.id} />}
       {program && earning(cp) && (cp.current || cp.previous) && (
         <InsetGroup>
           {cp.current && (

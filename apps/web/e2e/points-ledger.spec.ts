@@ -106,9 +106,9 @@ test('a balance read in the app anchors the ledger', async ({ page }) => {
   await cardWithAPurchase(page);
   await openProgramme(page);
 
-  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Set balance' }).click();
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Adjust' }).click();
   await page.getByLabel('Actual balance').fill('500');
-  await page.getByRole('dialog').getByRole('button', { name: 'Set balance' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click();
 
   await expect(page.getByTestId('programme-balance')).toHaveText('500 points');
   // The card's points page reads the same balance: the programme's it earns into.
@@ -125,11 +125,12 @@ function monthsAgo(months: number): string {
 
 /** How the points die is the programme's, set in its settings. */
 async function setExpiry(page: Page, months: string) {
-  await page.getByRole('button', { name: 'Programme settings' }).click();
+  await page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Expiry' }).click();
   await page.getByLabel('Points expire').selectOption('months_from_earn');
   await page.getByLabel('Months they last').fill(months);
-  await page.getByRole('button', { name: 'Save programme' }).click();
-  await expect(page.getByRole('button', { name: 'Save programme' })).toBeHidden();
+  await page.getByRole('button', { name: 'Save expiry' }).click();
+  await expect(page.getByTestId('programme-expiry-summary')).toBeVisible();
+  await page.goBack();
 }
 
 test('warns on the dashboard about points that are about to die', async ({ page }) => {
@@ -153,8 +154,9 @@ test('warns on the dashboard about points that are about to die', async ({ page 
 
 /** Redeems points on the programme's page. */
 async function redeem(page: Page, points: string, fetched: string) {
-  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Redeem' }).click();
-  await page.getByRole('dialog').getByLabel('Points redeemed').fill(points);
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Convert' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Something else…' }).click();
+  await page.getByRole('dialog').getByLabel('Points used').fill(points);
   await page.getByLabel('What for').fill('Statement credit');
   await page.getByLabel('What it fetched (IDR)').fill(fetched);
   await page.getByRole('button', { name: 'Save redemption' }).click();
@@ -179,14 +181,42 @@ test('catches a card up from its programme page, without complaint; the card pag
   await cardPage(page, 'Settings');
   await openProgramme(page);
 
-  // The action row is the programme's, one per card earning into it, behind Settings.
-  await page.getByRole('button', { name: 'Programme settings' }).click();
-  await page.getByRole('button', { name: 'Catch up earlier cycles' }).click();
-  await page.getByRole('button', { name: 'Catch up CIMB Octo' }).click();
+  // Catch up is on the card's own page, behind the card's row in Settings.
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('dialog').getByRole('link', { name: /CIMB Octo/ }).click();
+  await expect(page.getByTestId('programme-card-statement')).toHaveCount(1);
+  await page.getByTestId('programme-catch-up').click();
 
-  // Nothing older exists here, so the balance is what this cycle earned and no error is shown.
-  await expect(page.getByTestId('programme-balance')).toHaveText('100 points');
+  // Nothing older exists here: it says so, the list is as it was and no error is shown.
+  await expect(page.getByTestId('programme-catch-up')).toContainText('Nothing to add');
+  await expect(page.getByTestId('programme-card-statement')).toHaveCount(1);
   await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test('Catch up finds a statement from before the app was opened and says how many it added', async ({ page }) => {
+  // Two purchases: this cycle's, and one four months back that opening the programme does not reach.
+  await cardWithAPurchase(page);
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Old shop', paidWith: 'CIMB Octo', category: 'Groceries', amount: '500000', date: monthsAgo(4) });
+  await page.goto('/wallet');
+  await walletCard(page, 'CIMB Octo').click();
+  await cardPage(page, 'Points');
+  await openProgrammeFromPoints(page);
+  await expect(page.getByTestId('programme-balance')).toHaveText('100 points');
+
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('dialog').getByRole('link', { name: /CIMB Octo/ }).click();
+  await expect(page.getByTestId('programme-card-statement')).toHaveCount(1);
+  await page.getByTestId('programme-catch-up').click();
+  await expect(page.getByTestId('programme-catch-up')).toContainText('Added 1 statement');
+  await expect(page.getByTestId('programme-card-statement')).toHaveCount(2);
+  await expect(page.getByTestId('programme-card-statements')).toContainText('Estimated');
+
+  // Back lands in Settings, and the balance behind it has the older points.
+  await page.getByRole('button', { name: 'Settings' }).first().click();
+  await expect(page.getByRole('dialog').getByText('Cards earning here')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('programme-balance')).toHaveText('300 points');
 });
 
 test('the amber earned-nothing line opens only the purchases that earned nothing', async ({ page }) => {
