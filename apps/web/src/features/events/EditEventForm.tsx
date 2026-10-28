@@ -4,6 +4,8 @@ import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, SelectRow, SubmitRow, TextRow } from '../../ui/native';
+import { CurrencySheet } from '../transactions/CurrencySheet';
+import { EventCurrencyRow } from './EventCurrencyRow';
 
 /**
  * Edit event: the New event form, opened on the event as it stands — its name, its dates and the categories it draws on.
@@ -11,17 +13,22 @@ import { InsetGroup, InsetRow, SelectRow, SubmitRow, TextRow } from '../../ui/na
  * The categories can be changed only while nothing is tagged to the event and nothing is planned on it: what is
  * already there was filed in the set it drew on, and moving the event to another set would leave it filed in
  * categories the event no longer offers. The goal it funds is kept as it is; this form does not touch it.
+ *
+ * The currency the plan is in changes the same way, until something is bought for the event.
  */
 export function EditEventForm({
   event,
   sets,
   setLocked,
+  currencyLocked,
   onDone,
 }: {
   event: EventRow;
   sets: readonly { id: string; name: string }[];
   /** Something is tagged or planned on it, so the categories stay as they are. */
   setLocked: boolean;
+  /** Something is bought for it, so the currency stays as it is. */
+  currencyLocked: boolean;
   onDone: () => void;
 }) {
   const { database, ws } = useApp();
@@ -30,13 +37,15 @@ export function EditEventForm({
   const [startsOn, setStartsOn] = useState(event.startsOn);
   const [endsOn, setEndsOn] = useState(event.endsOn);
   const [setId, setSetId] = useState(event.setId ?? '');
+  const [currency, setCurrency] = useState(event.currency ?? ws.baseCurrency);
+  const [picking, setPicking] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
   async function save(submitted: FormEvent) {
     submitted.preventDefault();
     setError(null);
     try {
-      await saveEvent(database, ws, { id: event.id, name, startsOn, endsOn, goalId: event.goalId, setId: setId === '' ? null : setId });
+      await saveEvent(database, ws, { id: event.id, name, startsOn, endsOn, goalId: event.goalId, setId: setId === '' ? null : setId, currency });
       await invalidate();
       onDone();
     } catch (e) {
@@ -62,9 +71,11 @@ export function EditEventForm({
             ))}
           </SelectRow>
         )}
+        <EventCurrencyRow value={currency} locked={currencyLocked} onOpen={() => setPicking(true)} />
         <TextRow label="Starts on" type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
         <TextRow label="Ends on" type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} />
       </InsetGroup>
+      {picking && <CurrencySheet value={currency} accountCurrency={currency} baseCurrency={ws.baseCurrency} onPick={setCurrency} onClose={() => setPicking(false)} />}
       <InsetGroup>
         <SubmitRow label="Save changes" />
       </InsetGroup>

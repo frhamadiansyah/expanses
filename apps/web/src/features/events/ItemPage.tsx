@@ -1,4 +1,4 @@
-import { dayMonth, formatMinor } from '@expanses/core';
+import { dayMonth, eventCurrency, formatMinor } from '@expanses/core';
 import { removeEventItem, setEventItemDone, unlinkEventItem } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Pencil } from 'lucide-react';
@@ -8,8 +8,8 @@ import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox } from '../../ui';
 import { DestructiveRow, Hero, InsetGroup, InsetRow, ReadOnlyRow, toneClass, type CornerAction, PushedTitle } from '../../ui/native';
 import { buyTarget, coverTarget } from './buy-item';
-import { differenceWords } from './plan-view';
-import { useEventHistory, useEventPlan } from './queries';
+import { differenceWords, noRateWords } from './plan-view';
+import { useEventHistory, useEventPlan, useEvents } from './queries';
 
 /** The kit's tones for the three things a difference can be. The words themselves come from `differenceWords`. */
 const HERE: Record<'over' | 'under' | 'exact', 'alarm' | 'gain' | 'ink-3'> = { over: 'alarm', under: 'gain', exact: 'ink-3' };
@@ -32,6 +32,8 @@ export function ItemPage() {
   const invalidate = useInvalidateAll();
   const navigate = useNavigate();
   const plan = useEventPlan(eventId, tab ?? null);
+  const events = useEvents();
+  const home = eventCurrency((events.data ?? []).find((row) => row.id === eventId)?.currency, ws.baseCurrency);
   // Each payment's shop and day, read off the event's own history: the plan names only the latest.
   const history = useEventHistory(eventId, tab ?? null);
   const accounts = useAccounts().data ?? [];
@@ -64,6 +66,18 @@ export function ItemPage() {
     );
   }
 
+  // The hero in the event's currency: what was paid (held at the purchase's day), else the estimate at the day's rate.
+  // With no rate it falls back to the item's own figure, the way the plan row does.
+  const own = item?.currency ?? ws.baseCurrency;
+  const hero = !item
+    ? { minor: 0, currency: home, approx: false }
+    : item.purchaseCount > 0
+      ? item.paidEventMinor !== null
+        ? { minor: item.paidEventMinor, currency: home, approx: false }
+        : { minor: item.actualMinor ?? 0, currency: ws.baseCurrency, approx: false }
+      : item.noRate || item.estimateEventMinor === null
+        ? { minor: item.estimateOwnMinor, currency: own, approx: false }
+        : { minor: item.estimateEventMinor, currency: home, approx: own !== home };
   const difference = item?.bought ? differenceWords(item.differenceMinor!, ws.baseCurrency) : null;
   const boughtElsewhere = item?.bought && item.boughtInCategoryId !== null && item.boughtInCategoryId !== item.categoryId;
   const edit: CornerAction = {
@@ -84,8 +98,9 @@ export function ItemPage() {
         {item && (
           <>
             <Hero
-              minor={item.bought || item.purchaseCount > 0 ? (item.actualMinor ?? 0) : item.estimateMinor}
-              currency={ws.baseCurrency}
+              minor={hero.minor}
+              currency={hero.currency}
+              approximate={hero.approx}
               // An estimate is not money that has moved, so it is not drawn in the colour of money that has.
               direction={item.bought || item.purchaseCount > 0 ? 'out' : 'neutral'}
               caption={
@@ -98,7 +113,7 @@ export function ItemPage() {
                           ? `${item.description} · ${dayMonth(item.occurredOn!)}`
                           : `${item.purchaseCount} purchases`
                       : item.purchaseCount > 0
-                        ? `paid so far, of ${formatMinor(item.estimateMinor, ws.baseCurrency)}`
+                        ? `paid so far, of ${formatMinor(item.estimateEventMinor ?? item.estimateOwnMinor, item.estimateEventMinor === null ? own : home)}`
                         : 'estimate'}
                     {boughtElsewhere && ` · bought in ${nameOf(item.boughtInCategoryId)}`}
                     {item.categoryId && !item.bought && ` · ${nameOf(item.categoryId)}`}
@@ -118,9 +133,11 @@ export function ItemPage() {
               }
             >
               <ReadOnlyRow label="How many" value={String(item.quantity)} />
-              <ReadOnlyRow label="Price each" value={formatMinor(item.unitPriceMinor, ws.baseCurrency)} />
+              <ReadOnlyRow label="Price each" value={formatMinor(item.unitPriceMinor, own)} />
               {/* Derived, never typed: there is no estimate field anywhere in this feature. */}
-              <ReadOnlyRow label="Estimate" value={formatMinor(item.estimateMinor, ws.baseCurrency)} />
+              <ReadOnlyRow label="Estimate" value={formatMinor(item.estimateOwnMinor, own)} />
+              {own !== home && !item.noRate && item.estimateEventMinor !== null && <ReadOnlyRow label={`In ${home}`} value={`≈ ${formatMinor(item.estimateEventMinor, home)}`} />}
+              {item.noRate && <ReadOnlyRow label="Rate" value={noRateWords(plan.data?.missingRates ?? [])} />}
               <ReadOnlyRow label="Category" value={nameOf(item.categoryId) ?? 'Not in a category'} />
               {/* The one value that is itself a control: an address goes out to the web, which no route can do. */}
               <InsetRow

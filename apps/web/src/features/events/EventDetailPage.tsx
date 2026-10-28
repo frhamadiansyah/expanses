@@ -1,4 +1,4 @@
-import { formatMinor, isoDate } from '@expanses/core';
+import { canChangeEventCurrency, formatMinor, isoDate } from '@expanses/core';
 import { deleteEvent, finishEvent, setEventPlanOff, finishSharedEvent, ownerScope, type SharedEventView, tagTransaction } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { MoreHorizontal, Plus } from 'lucide-react';
@@ -247,6 +247,8 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
   // Kept without a plan (the gear's Mark as unplanned), the page is the ring alone: no gauge, no Plan card.
   const planned = event?.planOff !== true;
   const hasItems = data?.hasPlan === true;
+  // Bought: an item with a payment against it or marked done. The repository refuses a change after that, too.
+  const anythingBought = !canChangeEventCurrency((data?.lines ?? []).flatMap((line) => line.items).filter((item) => item.done || item.purchases.length > 0).length);
   const hasPlan = hasItems && planned;
   const onPlan = hasPlan && page === 1;
   const transactions = history.data?.length ?? 0;
@@ -632,7 +634,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
 
       {event && editing && (
         <div ref={editRef}>
-          <EditEventForm event={event} sets={sets} setLocked={anyMoney || hasItems || transactions > 0} onDone={() => setEditing(false)} />
+          <EditEventForm event={event} sets={sets} setLocked={anyMoney || hasItems || transactions > 0} currencyLocked={anythingBought} onDone={() => setEditing(false)} />
         </div>
       )}
       {/* The category sheet and its Undo toast, once for the screen rather than once per row. */}

@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard, walletCard } from './accounts';
-import { addItem, moneyIn, planFor, showPlanCard } from './event-plan';
+import { addItem, chooseCategory, moneyIn, planFor, showPlanCard } from './event-plan';
 import { addTransaction, addTransfer, saveButton } from './add-transaction';
 import { cardPage, saveCardTerms } from './card-section';
 import { openWorkspacePage, workspaceLine } from './workspace-page';
@@ -475,11 +475,11 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
   await page.goto(url);
   await planAndTag(page, 'Client lunches', 'Supplier lunch', 'Client lunches · Business');
   // The item form says which workspace each category belongs to: two workspaces can hold a category of the same
-  // name, and the name alone would make the choice a coin toss. selectOption throws when the label is not offered.
+  // name, and the name alone would make the choice a coin toss. The tile is found by that name, so a missing label fails the click.
   await showPlanCard(page);
   await page.getByTestId('open-plan').click();
   await page.getByRole('link', { name: 'Add an item' }).first().click();
-  await page.getByLabel('Category').selectOption({ label: 'Restaurants · Personal' });
+  await chooseCategory(page, 'Restaurants · Personal');
   await page.getByRole('link', { name: 'Cancel' }).click();
   await page.getByRole('link', { name: 'Back to the event' }).click();
 

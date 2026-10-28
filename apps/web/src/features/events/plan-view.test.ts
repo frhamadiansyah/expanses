@@ -1,4 +1,4 @@
-import { eventPlan, type EventPlanInput } from '@expanses/core';
+import { eventPlan, type EventPlanInput, makeConverter } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import {
   afterSaving,
@@ -9,11 +9,15 @@ import {
   differenceWords,
   eventListLine,
   gaugeFor,
+  itemFigure,
   itemFormGate,
   itemSubline,
+  itemSubtitle,
   moneyBackRows,
   moneyBackUnder,
   planCardRows,
+  planInEvent,
+  noRateWords,
   plannedLabel,
   PLAN_WORDS,
   planTotals,
@@ -760,5 +764,58 @@ describe('afterSaving an item paid towards and still open', () => {
     expect(plan.toBuyMinor).toBe(0);
     expect(afterSaving(plan, { estimateMinor: 200_000, replacing: 's' }).toBuyMinor).toBe(50_000);
     expect(afterSaving(plan, { estimateMinor: 120_000, replacing: 's' }).toBuyMinor).toBe(0);
+  });
+});
+
+describe('a plan in more than one currency', () => {
+  const converter = makeConverter(
+    [
+      { from: 'EUR', to: 'IDR', onDate: '2026-03-01', rate: 18_000 },
+      { from: 'TRY', to: 'IDR', onDate: '2026-03-01', rate: 400 },
+    ],
+    'IDR',
+  );
+  const item = (id: string, name: string, quantity: number, unitPriceMinor: number, over: object = {}) => ({
+    id, name, quantity, unitPriceMinor, categoryId: 'c', link: null, note: null, purchases: [], done: false, ...over,
+  });
+  const trip = eventPlan({
+    categoryNames: { c: 'Trip' },
+    money: { baseCurrency: 'IDR', eventCurrency: 'TRY', today: '2026-03-02', converter },
+    items: [
+      item('flight', 'Flight', 1, 9_800_000),
+      item('museum', 'Museum pass', 1, 9_500, { currency: 'EUR', done: true, purchases: [{ transactionId: 't1', shareMinor: 1_656_000 }] }),
+      item('dinner', 'Dinner', 6, 180_000, { currency: 'TRY' }),
+      item('ferry', 'Ferry', 1, 5_000, { currency: 'USD' }),
+    ],
+    actuals: [{ transactionId: 't1', occurredOn: '2026-03-02', description: 'Museum', categoryId: 'c', amountBaseMinor: 1_656_000, amountMinor: 9_200, currency: 'EUR' }],
+  });
+  const views = Object.fromEntries(trip.lines[0]!.items.map((view) => [view.id, view]));
+
+  it('shows an open item in the event currency with ≈, unless it is already in it', () => {
+    expect(plain(itemFigure(views.flight!, 'TRY', 'IDR'))).toMatch(/^≈ .*24\.500/);
+    expect(itemFigure(views.flight!, 'TRY', 'IDR').startsWith('≈ ')).toBe(true);
+    expect(itemFigure(views.dinner!, 'TRY', 'IDR').startsWith('≈')).toBe(false);
+  });
+
+  it('shows what was paid for a bought item, without ≈, and the estimate in its own currency under it', () => {
+    expect(itemFigure(views.museum!, 'TRY', 'IDR').startsWith('≈')).toBe(false);
+    expect(plain(itemSubtitle(views.museum!, 'TRY', 'IDR'))).toMatch(/^Paid .*92.* · estimate .*95/);
+  });
+
+  it('shows the item’s own figure and says so when no rate reaches it', () => {
+    expect(itemFigure(views.ferry!, 'TRY', 'IDR')).toMatch(/50/);
+    expect(itemSubtitle(views.ferry!, 'TRY', 'IDR')).toMatch(/no rate yet$/);
+  });
+
+  it('totals in the event currency with the base equivalent, and names the missing rate', () => {
+    const totals = planInEvent(trip, 'TRY', 'IDR');
+    expect(totals.plannedMinor).toBe(2_450_000 + 427_500 + 1_080_000);
+    expect(totals.baseEquivalentMinor).toBe(9_800_000 + 1_710_000 + 4_320_000);
+    expect(totals.missingRates).toEqual(['USD']);
+    expect(noRateWords(totals.missingRates)).toBe('No USD rate yet');
+  });
+
+  it('has no base line when the event is in the base currency', () => {
+    expect(planInEvent(plan, 'IDR', 'IDR').baseEquivalentMinor).toBeNull();
   });
 });

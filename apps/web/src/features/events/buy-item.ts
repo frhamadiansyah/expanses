@@ -93,8 +93,9 @@ export function eventOpening(
 /**
  * The fields an item fills in: its name as the note, its estimate as the amount, its category.
  *
- * The estimate is the owner's money (the plan is read in the base currency), typed as the amount row types it, so
- * the figure that opens is the one the item page printed. It is only a start — the receipt rarely says exactly what
+ * The estimate is in the base currency — an item priced in another is carried over at the day's rate — typed as the
+ * amount row types it. A purchase's `share_minor` is base too, whatever currency the item or the payment is in, which
+ * is what keeps every comparison between plan and spending in one currency. It is only a start — the receipt rarely says exactly what
  * the plan guessed — and the screen says so. A category the item does not name is left for the screen to ask.
  */
 export function buySeed(item: BuyingItem, baseCurrency: string): { description: string; amount: string; categoryId?: string } {

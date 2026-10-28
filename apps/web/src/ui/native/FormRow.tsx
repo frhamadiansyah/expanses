@@ -148,6 +148,8 @@ export function TextRow({
   middle,
   suffix,
   prefix,
+  onPrefix,
+  prefixLabel,
   position,
   className,
   ...props
@@ -157,6 +159,9 @@ export function TextRow({
   suffix?: string;
   /** The currency before the figure, at the right with it, always shown: "IDR" in front of 450.000, so the label stays "Amount". */
   prefix?: string;
+  /** Makes the prefix a button that does this — opening a currency list; `prefixLabel` is its accessible name. */
+  onPrefix?: () => void;
+  prefixLabel?: string;
   /** Something between the label and the field, on the same line — a foreign balance's "@ rate". */
   middle?: ReactNode;
   /** A line always shown under the row: something the reader needs every time, such as what the row just decided. */
@@ -192,9 +197,15 @@ export function TextRow({
           // The figure sits right beside its currency: the field is as wide as the figure it holds (a hidden copy of the
           // text sizes it), so "IDR" and the number read as one amount at the right of the row.
           <span className="ml-auto flex min-w-0 items-baseline gap-[6px]">
-            <span aria-hidden className="shrink-0 text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">
-              {prefix}
-            </span>
+            {onPrefix ? (
+              <button type="button" aria-label={prefixLabel} onClick={onPrefix} className="ph-focus shrink-0 rounded text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">
+                {prefix}
+              </button>
+            ) : (
+              <span aria-hidden className="shrink-0 text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">
+                {prefix}
+              </span>
+            )}
             <span className="relative inline-grid min-w-[3ch]">
               <span aria-hidden className="invisible col-start-1 row-start-1 px-[1px] text-[17px] leading-[22px] whitespace-pre md:text-[15px] md:leading-[20px]">
                 {String(props.value ?? '') || String(props.placeholder ?? '') || ' '}

@@ -110,6 +110,68 @@ export function differenceWords(minor: number, currency = 'IDR'): { text: string
 export const quantityWords = (item: EventPlanItemView, currency = 'IDR') =>
   item.quantity > 1 ? `${item.quantity} × ${formatMinor(item.unitPriceMinor, currency)}` : null;
 
+/**
+ * What an item's row says on the right, on the plan screen, in the event's currency.
+ *
+ * A bought item shows what was paid, held at its purchase's day and never ≈. One still to buy is its estimate carried
+ * to the event's currency at the day's rate, so it wears ≈ when its own currency differs and not otherwise. With no rate
+ * the item's own figure is shown instead, and it is left out of the totals.
+ */
+export function itemFigure(item: EventPlanItemView, eventCurrency: string, baseCurrency: string): string {
+  const own = item.currency ?? baseCurrency;
+  if (item.purchaseCount > 0) {
+    if (item.paidEventMinor !== null) return formatMinor(item.paidEventMinor, eventCurrency);
+    return item.paidOwnMinor !== null ? formatMinor(item.paidOwnMinor, own) : formatMinor(item.actualMinor ?? 0, baseCurrency);
+  }
+  if (item.noRate || item.estimateEventMinor === null) return formatMinor(item.estimateOwnMinor, own);
+  const text = formatMinor(item.estimateEventMinor, eventCurrency);
+  return own === eventCurrency ? text : `≈ ${text}`;
+}
+
+/**
+ * The line under an item's name on the plan screen: its price in its own currency when that is not the event's, what
+ * was paid against the estimate for a bought item priced in another currency than the base, and the words for a missing
+ * rate. In one currency throughout it is what it always was.
+ */
+export function itemSubtitle(item: EventPlanItemView, eventCurrency: string, baseCurrency: string): string {
+  const own = item.currency ?? baseCurrency;
+  const price = item.quantity > 1 ? quantityWords(item, own) : own !== eventCurrency ? formatMinor(item.unitPriceMinor, own) : null;
+  if (item.bought) {
+    if (own !== baseCurrency && item.paidOwnMinor !== null) {
+      return [item.quantity > 1 ? price : null, `Paid ${formatMinor(item.paidOwnMinor, own)} · estimate ${formatMinor(item.estimateOwnMinor, own)}`].filter(Boolean).join(' · ');
+    }
+    return [price, differenceWords(item.differenceMinor!, baseCurrency).text].filter(Boolean).join(' · ');
+  }
+  if (item.noRate) return [price, 'no rate yet'].filter(Boolean).join(' · ');
+  if (item.purchaseCount > 0) {
+    const of = formatMinor(item.estimateEventMinor ?? item.estimateOwnMinor, item.estimateEventMinor === null ? own : eventCurrency);
+    return `of ${of} · ${item.purchaseCount} ${item.purchaseCount === 1 ? 'purchase' : 'purchases'}`;
+  }
+  return price ?? '';
+}
+
+/**
+ * The plan screen's totals in the event's currency, with the base equivalent beneath when the two differ.
+ *
+ * Every figure is the plan's own (`plannedEventMinor`, …); the base line is `plannedMinor`, each item converted to base
+ * on its own so an item already in base never takes a trip through the event's currency and back.
+ */
+export function planInEvent(plan: EventPlan, eventCurrency: string, baseCurrency: string) {
+  return {
+    plannedMinor: Math.max(0, plan.plannedEventMinor),
+    toBuyMinor: Math.max(0, plan.toBuyEventMinor),
+    boughtMinor: Math.max(0, plan.boughtActualEventMinor),
+    differenceMinor: plan.differenceEventMinor,
+    /** Only when the event's currency is not the base: otherwise the same figure twice. */
+    baseEquivalentMinor: eventCurrency === baseCurrency ? null : Math.max(0, plan.plannedMinor),
+    /** Currencies with no rate: named in one line, their items left out of the figures above. */
+    missingRates: plan.missingRates,
+  };
+}
+
+/** "No USD rate yet", the app's wording for a figure waiting on a rate. */
+export const noRateWords = (currencies: readonly string[]) => `No ${currencies.join(', ')} rate yet`;
+
 /** The line under an item's name: what it is expected to cost, or where and when it was actually bought. */
 export function itemSubline(item: EventPlanItemView, currency = 'IDR'): string {
   const state = item.bought && item.occurredOn ? `${item.description} · ${dayMonth(item.occurredOn)}` : 'estimate';
