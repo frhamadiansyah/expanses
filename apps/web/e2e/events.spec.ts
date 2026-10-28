@@ -81,17 +81,19 @@ test('a category on Where it went filters the history to its own payments, and S
 test('Edit event renames it and moves its dates; its categories stay once something is tagged', async ({ page }) => {
   await addWallet(page);
   await addEvent(page, 'Bandung weekend');
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Edit event', exact: true }).click();
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByTestId('settings-name').click();
   const form = page.getByTestId('edit-event');
   await form.getByLabel('Name', { exact: true }).fill('Bandung long weekend');
   await form.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.getByRole('heading', { name: 'Bandung long weekend', exact: true })).toBeVisible();
+  await expect(page.getByTestId('settings-name')).toContainText('Bandung long weekend');
   await expect(form).toHaveCount(0);
+  await page.getByRole('link', { name: 'Back to the event' }).click();
+  await expect(page.getByRole('heading', { name: 'Bandung long weekend', exact: true })).toBeVisible();
 
   await recordIntoEvent(page, { description: 'Kopi Aroma', amount: '120000', category: 'Food and beverage' });
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Edit event', exact: true }).click();
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByTestId('settings-categories').click();
   await expect(page.getByTestId('edit-event').getByRole('combobox', { name: 'Categories' })).toHaveCount(0);
   await expect(page.getByTestId('edit-event')).toContainText('The monthly categories');
 });

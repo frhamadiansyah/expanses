@@ -14,6 +14,7 @@ import { PickPurchasePage } from '../features/events/PickPurchasePage';
 import { EditSharedCostRoute, NewSharedCostRoute, SharedCostLinkPage, SharedCostPage } from '../features/events/SharedCostPages';
 import { EventCategoriesPage } from '../features/events/EventCategoriesPage';
 import { PeoplePage } from '../features/events/PeoplePage';
+import { EventSettingsPage } from '../features/events/EventSettingsPage';
 import { PlanPage } from '../features/events/PlanPage';
 import { BudgetPage } from '../features/budget/BudgetPage';
 import { budgetSearch } from '../features/budget/budget-search';
@@ -229,6 +230,8 @@ const routeTree = rootRoute.addChildren([
   // MORE_GROUPS already. "link" is a static segment, so it outranks `$itemId` however they are ordered here.
   // A shared event's people (shared events §6): invite, add a name, a new phone, remove.
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/people', component: PeoplePage }),
+  // A private event's settings: the gear on its page (name, dates, categories, currency, Plan, Done, Share, Delete).
+  createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/settings', component: EventSettingsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/categories', component: EventCategoriesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan', component: PlanPage, validateSearch: planSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan/new', component: NewItemRoute, validateSearch: planSearch }),
