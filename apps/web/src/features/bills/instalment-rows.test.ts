@@ -67,7 +67,7 @@ describe('annualFeesOf', () => {
   const card = (over: object) => ({ cardId: 'c', name: 'A', currency: 'IDR', annualFeeMinor: null, annualFeeOn: null, annualFeeWaivedYear: null, ...over });
   it('keeps cards with an amount or a date, by date, and sets none of it against a need', () => {
     const rows = annualFeesOf(
-      [card({ cardId: '1', name: 'None' }), card({ cardId: '2', name: 'Dated', annualFeeOn: '2024-12-01' }), card({ cardId: '3', name: 'Amount only', annualFeeMinor: 500_000 })],
+      [card({ cardId: '1', name: 'None' }), card({ cardId: '2', name: 'Dated', annualFeeOn: '2024-12-01' }), card({ cardId: '3', name: 'Amount only', annualFeeMinor: 500_000 }), card({ cardId: '4', name: 'Free', annualFeeMinor: 0, annualFeeOn: '2024-11-01' })],
       '2026-10-15',
     );
     expect(rows.map((r) => r.card.name)).toEqual(['Dated', 'Amount only']);

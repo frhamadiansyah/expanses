@@ -20,7 +20,8 @@ function useFeeCards(): DueFee[] {
   const terms = useQuery({ queryKey: ['card-terms-all', ws.workspaceId], queryFn: () => listCardTerms(database, ws) });
   const cards: DueFee[] = (terms.data ?? []).flatMap((t) => {
     const account = (accounts.data ?? []).find((a) => a.id === t.accountId);
-    return account && !account.archivedAt
+    // A fee set to nothing is no fee: it is on neither Due soon nor the Repeating page.
+    return account && !account.archivedAt && t.annualFeeMinor !== 0
       ? [{ cardId: t.accountId, name: account.name, currency: account.currency ?? ws.baseCurrency, annualFeeMinor: t.annualFeeMinor, annualFeeOn: t.annualFeeOn, annualFeeWaivedYear: t.annualFeeWaivedYear }]
       : [];
   });
@@ -44,7 +45,7 @@ export interface AnnualFee {
  */
 export function annualFeesOf(cards: readonly DueFee[], today: string): AnnualFee[] {
   return cards
-    .filter((card) => card.annualFeeMinor !== null || card.annualFeeOn)
+    .filter((card) => card.annualFeeMinor !== 0 && (card.annualFeeMinor !== null || card.annualFeeOn))
     .map((card) => ({
       card,
       on: card.annualFeeOn ? (feeWaived(card.annualFeeOn, card.annualFeeWaivedYear, today) ? chargeAfterWaiver(card.annualFeeOn, today) : nextFeeDate(card.annualFeeOn, today)) : null,
