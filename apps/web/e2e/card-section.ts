@@ -8,13 +8,13 @@ export const walletCard = (page: Page, name: string | RegExp) => page.getByRole(
 
 /**
  * Open one of the card's own pages from its summary. The four tabs it had are pages now: the statement (the round
- * Statement button), this statement's points (its row on the summary), and the settings (⚙ in the corner), which hold
+ * Statement button), this statement's points (the round Points, Miles or Cashback button), and the settings (⚙ in the corner), which hold
  * what the Card and Rewards rules tabs did.
  */
 export async function cardPage(page: Page, which: 'Statement' | 'Points' | 'Settings') {
   const main = page.getByRole('main');
   if (which === 'Statement') await main.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Statement', exact: true }).click();
-  else if (which === 'Points') await main.getByTestId('this-statement-points').click();
+  else if (which === 'Points') await main.getByRole('group', { name: 'Actions' }).getByRole('link', { name: /^(Points|Miles|Cashback)$/ }).click();
   else await main.getByRole('link', { name: 'Settings', exact: true }).first().click();
   const title = { Statement: 'Statement', Points: "This statement's points", Settings: 'Settings' }[which];
   await expect(page.getByRole('heading', { name: title, exact: true }).first()).toBeVisible();
@@ -47,4 +47,22 @@ export async function saveCardTerms(page: Page, field = 'Due date') {
 export async function cardPointsPage(page: Page, which: 'Purchases' | 'Points the statement shows') {
   await page.getByRole('main').getByRole('link', { name: new RegExp(`^${which}`) }).click();
   await expect(page.getByRole('heading', { name: which === 'Purchases' ? 'Purchases' : 'Points on the statement', exact: true }).first()).toBeVisible();
+}
+
+/**
+ * Start the card's first instalment plan, the only way in while it has none: Settings, the Instalments row, then ＋.
+ * The New instalment plan sheet is left open for the caller to fill.
+ */
+export async function startPlan(page: Page) {
+  await cardPage(page, 'Settings');
+  await page.getByRole('main').getByRole('link', { name: /^Instalments/ }).click();
+  await expect(page.getByRole('heading', { name: 'Instalments', exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Add a plan' }).click();
+}
+
+/** Back from the Instalments page and the settings to the card's own page, where the plans box now shows. */
+export async function backToCardFromPlans(page: Page) {
+  await page.goBack();
+  await page.goBack();
+  await expect(page.getByTestId('card-instalments')).toBeVisible();
 }

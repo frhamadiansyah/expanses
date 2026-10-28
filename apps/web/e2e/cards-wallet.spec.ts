@@ -57,7 +57,7 @@ test('a desktop stacks cards of one fixed width and raises the one tapped, with 
   await expect(page.getByRole('radiogroup', { name: 'Card sections' })).toHaveCount(0);
   await expect(page.getByLabel('Billing date')).toHaveValue('25');
   await page.getByRole('button', { name: 'Alpha Card', exact: true }).click();
-  await expect(page.getByTestId('tile-points')).toBeVisible();
+  await expect(page.getByTestId('tile-left-to-pay')).toBeVisible();
 
   // Back behaves like ✕: the stack again, in its order.
   await page.goBack();

@@ -19,6 +19,7 @@ import {
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
+import { useBack } from '../../app/BackHeader';
 import { ArrowLeftRight, Gift, Scale, Settings, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -48,6 +49,7 @@ export function ProgrammePage() {
   const { database, ws } = useApp();
   const { programmeId } = useParams({ strict: false }) as { programmeId: string };
   const navigate = useNavigate();
+  const goBack = useBack('/cards/points');
   const invalidate = useInvalidateAll();
   const today = isoDate();
   const [sheet, setSheet] = useState<SheetName | null>(null);
@@ -120,7 +122,7 @@ export function ProgrammePage() {
       <PushedTitle
         title={programme.name}
         back="Points"
-        backTo="/cards/points"
+        onBack={goBack}
         actions={[{ key: 'settings', label: 'Programme settings', glyph: <Settings size={20} aria-hidden />, run: () => setSheet('settings') }]}
       />
       <ErrorBox error={error} />
