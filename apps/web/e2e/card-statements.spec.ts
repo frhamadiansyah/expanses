@@ -22,7 +22,6 @@ async function setUp(page: Page) {
   await page.getByLabel('Due date').fill('15');
   await saveCardTerms(page);
   // Saving terms moves setup on to rewards; the statement is a page of its own, from the card.
-  await expect(page.getByText('Step 2 of 3')).toBeVisible();
   await page.getByRole('button', { name: 'BCA Visa' }).click();
   await cardPage(page, 'Statement');
   await expect(page.getByTestId('statement-range')).toBeVisible();

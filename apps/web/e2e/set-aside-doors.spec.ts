@@ -48,7 +48,6 @@ async function addCard(page: Page) {
   await page.getByLabel('Billing date').pressSequentially('31');
   await page.getByLabel('Due date').pressSequentially('15');
   await saveCardTerms(page);
-  await expect(page.getByText('Step 2 of 3')).toBeVisible();
   await page.getByRole('button', { name: 'BCA Visa' }).click();
   await cardPage(page, 'Statement');
   await expect(page.getByTestId('statement-range')).toBeVisible();

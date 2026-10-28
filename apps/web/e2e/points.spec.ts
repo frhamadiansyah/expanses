@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { addTransaction } from './add-transaction';
-import { cardPage, saveCardTerms } from './card-section';
+import { cardPage, saveCardTerms, setUpRewardsByHand } from './card-section';
 
 async function addCard(page: Page, name: string) {
   await openCard(page, { name });
@@ -17,7 +17,7 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await saveCardTerms(page);
-  await page.getByRole('button', { name: 'Set up rewards' }).click();
+  await setUpRewardsByHand(page);
 
   await page.getByRole('button', { name: 'Add rule' }).click();
   await page.getByLabel('Rule name').fill('Base');
@@ -37,7 +37,8 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
   await expect(page.getByText('5 per Rp')).toBeVisible();
 
   // What a point fetches is the programme's, set on its page.
-  await page.getByRole('button', { name: 'CIMB Octo', exact: true }).click();
+  await page.goto('/wallet');
+  await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^CIMB Octo(,|$)/ }).click();
   await cardPage(page, 'Points');
   await page.getByTestId('statement-points-programme').click();
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Settings' }).click();

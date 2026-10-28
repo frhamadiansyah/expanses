@@ -527,7 +527,6 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   await page.getByLabel('Billing date').fill('31');
   await page.getByLabel('Due date').fill('15');
   await saveCardTerms(page);
-  await expect(page.getByText('Step 2 of 3')).toBeVisible();
   await openAccount(dewi, { subtype: 'bank', name: 'Dewi Bank', balance: '5000000' });
   await page.goto('/transactions');
   await shareAndJoin(page, dewi);

@@ -44,13 +44,41 @@ export async function cardPurchases(page: Page) {
 
 /**
  * Save the card's terms from its Settings page: Enter in a terms field (Due date unless given) is the form's own
- * save, and the page stays. A card being set up then moves to its next step, so the first step's label is waited
- * to go; the short wait lets the write settle before the spec moves on.
+ * save, and the page stays; the short wait lets the write settle before the spec moves on.
  */
 export async function saveCardTerms(page: Page, field = 'Due date') {
   await page.getByLabel(field, { exact: true }).press('Enter');
-  await expect(page.getByText('Step 1 of 3')).toHaveCount(0);
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(500);
+}
+
+/**
+ * From the card's Settings: choose the card from the catalogue. Card product → search → the card → its preview →
+ * Use this card, which lands back on Settings with the product filled. `level` picks a member level when the card has them.
+ */
+export async function chooseCatalogueCard(page: Page, search: string, entryName: string, level?: string) {
+  await page.getByRole('main').getByRole('button', { name: /^Card product/ }).click();
+  await expect(page.getByRole('heading', { name: 'Card product', exact: true }).first()).toBeVisible();
+  await page.getByLabel('Search card or bank').fill(search);
+  await page.getByRole('main').getByRole('button', { name: new RegExp(`^${entryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}( |$)`) }).first().click();
+  if (level) await page.getByLabel('Level').selectOption({ label: level });
+  await page.getByRole('button', { name: 'Use this card' }).click();
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true }).first()).toBeVisible();
+}
+
+/**
+ * From the card's Settings: set its rewards up by hand — Card product → My card is not listed → Save — and open its
+ * Earning rules page, where the rule forms are. `unit` and `name` fill the by-hand form first.
+ */
+export async function setUpRewardsByHand(page: Page, opts: { unit?: 'Points' | 'Miles' | 'Cashback'; name?: string; openRules?: boolean } = {}) {
+  await page.getByRole('main').getByRole('button', { name: /^Card product/ }).click();
+  await page.getByRole('button', { name: 'My card is not listed' }).click();
+  await expect(page.getByRole('heading', { name: 'Set up by hand', exact: true }).first()).toBeVisible();
+  if (opts.name) await page.getByLabel('Program name').fill(opts.name);
+  if (opts.unit) await page.getByLabel('Earns').selectOption({ label: opts.unit });
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  if (opts.openRules === false) return;
+  await page.getByRole('main').getByRole('button', { name: /^Earning rules/ }).click();
+  await expect(page.getByRole('heading', { name: 'Earning rules', exact: true }).first()).toBeVisible();
 }
 
 /** Open a page under this statement's points — the purchases, or the points the statement shows. */
