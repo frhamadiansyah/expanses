@@ -30,7 +30,7 @@ import {
   uncategorisedCategory,
 } from '@expanses/db';
 import { ArrowDownLeft, ArrowUpRight, Check, CreditCard, Hash, Home, Landmark, Layers, Shapes, Split, Target } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { type CSSProperties, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -74,7 +74,7 @@ import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
 import { extraRowRefusal, extraRows, offersTransferFee, postingCurrency } from './tx-form';
 import { SplitSheet, splitSummary } from './SplitSheet';
-import { PhotosSheet } from './PhotosSheet';
+import { PhotosSheet, usePhotoAttach } from './PhotosSheet';
 import { draftIn } from './move-workspace';
 import { useBooks, useCategoryBooks } from '../workspaces/queries';
 import { applyReceipt, filledLine, type ReceiptFilled, readReceiptPhoto } from './receipt-fill';
@@ -321,6 +321,18 @@ function CardBody({
     setDraft((d) => ({ ...d, amount: next.amount, currency: next.currency, description: next.description, occurredOn: next.occurredOn }));
     setReceipt(filled);
   }
+  /*
+   * The Amount row's camera goes straight to the system's own picker (on iOS its sheet of Photo Library, Take Photo and
+   * Choose Files): one tap, not our sheet and then the picker. Once there are pictures the glyph opens the Photos sheet
+   * instead, which is where they are seen and removed, and which still has its own + for more.
+   */
+  const queryClient = useQueryClient();
+  const receiptInput = useRef<HTMLInputElement>(null);
+  const receiptPicks = usePhotoAttach(async (added, files) => {
+    setDraft((d) => ({ ...d, photoIds: [...d.photoIds, ...added] }));
+    await queryClient.invalidateQueries({ queryKey: ['all-photo-rows', ws.workspaceId] });
+    void readReceiptFrom(files);
+  });
   const undoReceipt = () => {
     if (receipt) setDraft((d) => ({ ...d, ...receipt.before }));
     setReceipt(null);
@@ -759,6 +771,8 @@ function CardBody({
    */
   const ask = finish?.accountAsk;
   const asking = ask && (ask.side === 'money' ? !draft.moneyId : !draft.toId) ? ask.side : null;
+  /** Whether the card's first row is Workspace; the row under it carries the hairline between them. */
+  const workspaceRow = (draft.mode !== 'transfer' || canMove) && !finish;
   const askRow = (glyph: ReactNode, open: () => void) => (
     <button
       type="button"
@@ -769,7 +783,7 @@ function CardBody({
       <RowLead>
         <RowGlyph>{glyph}</RowGlyph>
       </RowLead>
-      <span className={ROW_BODY}>
+      <span className={cx(ROW_BODY, workspaceRow && 'border-t-[0.5px] border-[var(--ph-hair)]')}>
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-[15px] leading-5 font-semibold text-[var(--ph-ink)]">{ask!.label}</span>
           <span className="text-[12.5px] leading-4 text-[var(--ph-warn-ink)]">{ask!.note}</span>
@@ -1034,7 +1048,7 @@ function CardBody({
               it would be offering something the save cannot honour.
             */}
             {/* A draft belongs to the workspace it was captured in: switching here would leave it behind. */}
-            {(draft.mode !== 'transfer' || canMove) && !finish && (
+            {workspaceRow && (
               <FormRow
                 lead="value"
                 icon={
@@ -1058,6 +1072,7 @@ function CardBody({
             <div className="relative">
             <FormRow
               lead="value"
+              divided={workspaceRow}
               icon={
                 <span className="relative">
                   <RowGlyph>{payGlyph}</RowGlyph>
@@ -1133,7 +1148,7 @@ function CardBody({
               set={set}
               selectOnOpen={!!duplicateOf}
               noRefund={!!finish}
-              {...(photosOnAmount ? { photos: { count: draft.photoIds.length, open: () => setSheet('photos') } } : {})}
+              {...(photosOnAmount ? { photos: { count: draft.photoIds.length, open: () => (draft.photoIds.length === 0 ? receiptInput.current?.click() : setSheet('photos')) } } : {})}
               {...(transferSecond ? { second: transferSecond } : {})}
             />
             {/* A transfer's fee (option A): its category on the left, the figure on the right, under the Amount. */}
@@ -1372,10 +1387,10 @@ function CardBody({
         a way out, but the full-screen form has no ✕, and a form with no Cancel there has no way out but Back.
       */}
       {headerSave ? (
-        <ErrorBox error={error} />
+        <ErrorBox error={error ?? receiptPicks.error} />
       ) : (
       <div className="flex flex-col gap-2 pt-1 in-[[role=dialog]]:shadow-[0_40px_0_0_var(--ph-surface)] in-[[role=dialog]]:sticky in-[[role=dialog]]:bottom-0 in-[[role=dialog]]:-mx-4 in-[[role=dialog]]:border-t-[0.5px] in-[[role=dialog]]:border-[var(--ph-hair)] in-[[role=dialog]]:bg-[var(--ph-surface)] in-[[role=dialog]]:px-4 in-[[role=dialog]]:py-2">
-        <ErrorBox error={error} />
+        <ErrorBox error={error ?? receiptPicks.error} />
         <div className={cx('flex items-center gap-2', title !== undefined && 'hidden')}>
           <button
             type="button"
@@ -1559,6 +1574,19 @@ function CardBody({
           onClose={() => setSheet(null)}
         />
       )}
+      <input
+        ref={receiptInput}
+        data-testid="amount-photo-input"
+        type="file"
+        accept="image/*,application/pdf"
+        multiple
+        hidden
+        onChange={(e) => {
+          void receiptPicks.attach([...(e.target.files ?? [])]);
+          // Cleared, so choosing the same file twice in a row is still a change the input reports.
+          e.target.value = '';
+        }}
+      />
       {sheet === 'photos' && <PhotosSheet draft={draft} onChange={setDraft} onClose={() => setSheet(null)} onAttached={(files) => void readReceiptFrom(files)} />}
       {sheet === 'move' && (
         <ChoiceSheet

@@ -1,5 +1,5 @@
 import { Info, Search } from 'lucide-react';
-import { Children, isValidElement, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useId, useState } from 'react';
+import { Children, isValidElement, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useId, useRef, useState } from 'react';
 import { cx } from '../index';
 import { currencyMatches, type FormKind, planFormRow, planSwitchRow } from './form-row';
 import { KeyboardStrip } from './KeyboardStrip';
@@ -157,7 +157,7 @@ export function TextRow({
   label: string;
   /** The unit after the figure, in the figure's ink, once one is typed: "g" for grams. */
   suffix?: string;
-  /** The currency before the figure, at the right with it, always shown: "IDR" in front of 450.000, so the label stays "Amount". */
+  /** The currency before the figure, at the right with it: "IDR" in front of 450.000, so the label stays "Amount". Shown once something is typed (an empty field shows only its placeholder), or always when `onPrefix` makes it a button. */
   prefix?: string;
   /** Makes the prefix a button that does this — opening a currency list; `prefixLabel` is its accessible name. */
   onPrefix?: () => void;
@@ -176,6 +176,8 @@ export function TextRow({
   const generated = useId();
   const id = props.id ?? generated;
   const [explained, setExplained] = useState(false);
+  const field = useRef<HTMLInputElement>(null);
+  const filled = String(props.value ?? props.defaultValue ?? '') !== '';
   return (
     <div className="relative">
       <Separator show={Boolean(position?.separator)} />
@@ -193,35 +195,7 @@ export function TextRow({
           </label>
         )}
         {middle}
-        {prefix ? (
-          // The figure sits right beside its currency: the field is as wide as the figure it holds (a hidden copy of the
-          // text sizes it), so "IDR" and the number read as one amount at the right of the row.
-          <span className="ml-auto flex min-w-0 items-baseline gap-[6px]">
-            {onPrefix ? (
-              <button type="button" aria-label={prefixLabel} onClick={onPrefix} className="ph-focus shrink-0 rounded text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">
-                {prefix}
-              </button>
-            ) : (
-              <span aria-hidden className="shrink-0 text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">
-                {prefix}
-              </span>
-            )}
-            <span className="relative inline-grid min-w-[3ch]">
-              <span aria-hidden className="invisible col-start-1 row-start-1 px-[1px] text-[17px] leading-[22px] whitespace-pre md:text-[15px] md:leading-[20px]">
-                {String(props.value ?? '') || String(props.placeholder ?? '') || ' '}
-              </span>
-              <input
-                {...props}
-                id={id}
-                className={cx(
-                  'ph-focus absolute inset-0 w-full min-w-0 rounded bg-transparent text-right text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]',
-                  'placeholder:text-[var(--ph-ink-3)]',
-                  className,
-                )}
-              />
-            </span>
-          </span>
-        ) : (
+        {DATE_TYPES.has(props.type ?? '') ? (
           <input
             {...props}
             id={id}
@@ -230,10 +204,44 @@ export function TextRow({
               'placeholder:text-[var(--ph-ink-3)]',
               // WebKit draws a date or time input at a height of its own, with a margin inside it, so on iOS every
               // date row stood taller than the rows around it. Held to a text field's 20px, it lines up with them.
-              DATE_TYPES.has(props.type ?? '') && 'ph-date-input h-[20px] appearance-none',
+              'ph-date-input h-[20px] appearance-none',
               className,
             )}
           />
+        ) : (
+          // The field is as wide as what it holds (a hidden copy of the text sizes it) and sits at the right of the row.
+          // An empty field is then exactly as wide as its placeholder and reads left to right, so the caret stands before
+          // the first letter of the placeholder rather than trailing after it, as it would in a field that is
+          // right-aligned across the whole row. The whole stretch to its right still focuses it.
+          <span className="flex min-w-0 flex-1 cursor-text items-baseline justify-end gap-[6px]" onClick={(event) => event.target === event.currentTarget && field.current?.focus()}>
+            {prefix && onPrefix && (
+              <button type="button" aria-label={prefixLabel} onClick={onPrefix} className="ph-focus shrink-0 rounded text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">
+                {prefix}
+              </button>
+            )}
+            {/* A plain prefix shows once something is typed, and stays when the field is left: an empty field shows only its placeholder. */}
+            {prefix && !onPrefix && filled && (
+              <span aria-hidden className="shrink-0 text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">
+                {prefix}
+              </span>
+            )}
+            <span className="relative inline-grid min-w-[3ch]">
+              <span aria-hidden className={cx('invisible col-start-1 row-start-1 px-[1px] text-[17px] leading-[22px] whitespace-pre md:text-[15px] md:leading-[20px]', className)}>
+                {String(props.value ?? '') || String(props.placeholder ?? '') || ' '}
+              </span>
+              <input
+                {...props}
+                ref={field}
+                id={id}
+                className={cx(
+                  'ph-focus absolute inset-0 w-full min-w-0 rounded bg-transparent text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]',
+                  filled ? 'text-right' : 'text-left',
+                  'placeholder:text-[var(--ph-ink-3)]',
+                  className,
+                )}
+              />
+            </span>
+          </span>
         )}
         {suffix && String(props.value ?? '').trim() !== '' && (
           <span aria-hidden className="-ml-[8px] shrink-0 text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">

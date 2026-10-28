@@ -81,10 +81,13 @@ export function FormRow({
   onClick,
   disabled = false,
   tone,
+  divided,
 }: {
   icon?: ReactNode;
   label: string;
   name?: string;
+  /** A hairline above the row, for one wrapped so the group's own rule cannot reach its body. */
+  divided?: boolean;
   value?: ReactNode;
   /** With `lead="value"`, the caption on the right; the label when left out. */
   caption?: ReactNode;
@@ -126,7 +129,7 @@ export function FormRow({
       )}
     >
       <RowLead>{icon}</RowLead>
-      <span className={ROW_BODY}>
+      <span className={bodyClass(divided)}>
         {title}
         {right !== undefined && right !== null && right !== '' && (
           <span className="max-w-[55%] shrink-0 truncate text-right text-[12.5px] leading-4 text-[var(--ph-ink-3)]">{right}</span>

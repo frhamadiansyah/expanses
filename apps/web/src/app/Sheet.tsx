@@ -328,7 +328,7 @@ export function Sheet({
             )}
           </div>
         ) : (
-          <div className="-mt-1 mb-1 flex items-center justify-between gap-3">
+          <div className="-mt-1 mb-1 flex min-h-11 items-center justify-between gap-3">
             {heading ? <div className="min-w-0 flex-1">{heading}</div> : <h2 className="flex-1 text-base font-semibold">{title}</h2>}
             {/* The header's buttons sit side by side with no gap, as iOS bar buttons do: each is its own 44 px target. */}
             <div className="-mr-2 flex shrink-0 items-center">
@@ -361,6 +361,8 @@ export function Sheet({
  * (Paid with, Select category). Drawn like the ✕, filled while the search is open.
  */
 export function SheetSearchButton({ open, onClick }: { open: boolean; onClick: () => void }) {
+  // While the search bar shows it stands in for the magnifier; the bar's own ✕ closes the search and brings this back.
+  if (open) return null;
   return (
     <button
       type="button"
