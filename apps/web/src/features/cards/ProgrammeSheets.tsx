@@ -158,6 +158,7 @@ export function ProgrammeSettingsSheet({
   const [unit, setUnit] = useState<ProgrammeUnit>(programme.unit);
   const [tierId, setTierId] = useState(tier);
   const [valuing, setValuing] = useState(false);
+  const [blocked, setBlocked] = useState(false);
   const family = programmeFamily(name);
   const tiers = family && family.tiers.length > 1 ? family.tiers : null;
   const chosen = family && tiers ? programmeTier(family, tierId) : null;
@@ -207,12 +208,13 @@ export function ProgrammeSettingsSheet({
       <InsetGroup>
         <InsetRow plain title="Value per point" value={valuePerPoint !== null ? formatValuePerPoint(valuePerPoint, ws.baseCurrency) : 'Not set'} onClick={() => setValuing(true)} chevron />
       </InsetGroup>
-      <InsetGroup footer={earning > 0 ? 'A card still earns into this programme. Choose another programme for that card before archiving this one.' : 'Archiving keeps its history and takes it off the Cards page.'}>
+      <InsetGroup footer={blocked ? 'A card still earns into this programme. Choose another programme for that card before archiving this one.' : earning > 0 ? undefined : 'Archiving keeps its history and takes it off the Cards page.'}>
         <DestructiveRow
           label="Archive programme"
           muted={earning > 0}
           onClick={() => {
-            if (earning > 0 || !window.confirm(`Archive ${programme.name}?`)) return;
+            if (earning > 0) return setBlocked(true);
+            if (!window.confirm(`Archive ${programme.name}?`)) return;
             void archive.save(() => archiveProgramme(database, ws, programme.id));
           }}
         />

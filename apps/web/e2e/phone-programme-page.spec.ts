@@ -66,6 +66,10 @@ test('the programme page keeps the balance, four buttons and History; the rest i
   await expect(settings.getByRole('button', { name: /Value per point/ })).toContainText('Not set');
   await expect(settings.getByRole('button', { name: 'Catch up earlier cycles' })).toHaveCount(0);
   await expect(settings.getByRole('button', { name: 'Archive programme' })).toBeVisible();
+  // A card still earns here: nothing says so until Archive is pressed, then the line says why it did not go.
+  await expect(settings.getByText('A card still earns into this programme')).toHaveCount(0);
+  await settings.getByRole('button', { name: 'Archive programme' }).click();
+  await expect(settings.getByText('A card still earns into this programme')).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/programme-new-3.png`, fullPage: true });
   // The card's row opens its own Catch up page, not the statement points page.
   await settings.getByRole('link', { name: /CIMB Octo/ }).click();
