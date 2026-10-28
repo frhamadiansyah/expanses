@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { addTransaction, choosePayment } from './add-transaction';
 import { cardPage, cardPointsPage, saveCardTerms } from './card-section';
+import { chooseMccCode, closeMccSheet, openMccSheet, rememberWord } from './mcc-sheet';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -65,14 +66,10 @@ async function buy(page: Page, p: Purchase) {
   if (p.on) await form.getByLabel('Date').fill(p.on);
   await form.getByRole('button', { name: 'Add more details' }).click();
   const more = page.getByRole('region', { name: 'More details' });
-  await more.getByRole('button', { name: 'MCC' }).click();
-  const mccSheet = page.getByRole('dialog', { name: 'MCC' });
-  await mccSheet.getByLabel('MCC', { exact: true }).fill(p.mcc);
-  if (p.remember) {
-    await mccSheet.getByLabel('Remember this MCC for every purchase containing the merchant text').check();
-    await mccSheet.getByLabel('Merchant text', { exact: true }).fill(p.remember);
-  }
-  await mccSheet.getByRole('button', { name: 'Close' }).click();
+  await openMccSheet(page, more);
+  await chooseMccCode(page, p.mcc);
+  if (p.remember) await rememberWord(page, p.remember);
+  await closeMccSheet(page);
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
   if (!p.on) await expect(page.getByText(p.description)).toBeVisible();
