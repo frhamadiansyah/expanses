@@ -31,6 +31,7 @@ import {
 } from '@expanses/db';
 import { ArrowDownLeft, ArrowUpRight, Check, CreditCard, Hash, Home, Landmark, Layers, Shapes, Split, Target } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
 import { type CSSProperties, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -250,6 +251,7 @@ function CardBody({
   photoIds: string[];
 }) {
   const { database, ws } = useApp();
+  const navigate = useNavigate();
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
   const openBook = useOpenBook();
@@ -1213,6 +1215,10 @@ function CardBody({
               onFocus={() => setNoteFocused(true)}
               onBlur={() => setNoteFocused(false)}
               {...(offersChannel ? { channel: draft.channel || null, onChannel: (channel: 'online' | 'offline' | null) => set({ channel: channel ?? '' }) } : {})}
+              // A new expense, on a screen of its own: the list glyph opens Paste a list, carrying who pays.
+              {...(full && !initial && !duplicateOf && !finish && draft.mode === 'expense'
+                ? { onPasteList: () => void navigate({ to: '/transactions/paste', search: { ...(draft.moneyId ? { account: draft.moneyId } : {}), ...(draft.cardId ? { card: draft.cardId } : {}) } }) }
+                : {})}
             />
             <DateRow on={draft.occurredOn} onChange={(occurredOn) => set({ occurredOn })} />
             <NoteSuggestions typed={draft.description} kind={suggestKind} open={noteFocused} categoryName={categoryNameOf} onPick={pickNote} />

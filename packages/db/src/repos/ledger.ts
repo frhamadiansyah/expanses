@@ -577,6 +577,31 @@ export async function postTransaction(database: Database, ws: WorkspaceContext, 
   return id;
 }
 
+/**
+ * Several plain purchases posted in one database transaction: all of them are written or none, so a list pasted in one go
+ * never half-lands. Each gets the activity entry `postTransaction` writes; the card cycles they touch are re-derived once,
+ * after. Returns the new ids in the order given.
+ */
+export async function postTransactions(database: Database, ws: WorkspaceContext, inputs: readonly PostTransactionInput[]): Promise<string[]> {
+  if (inputs.length === 0) return [];
+  const ids = await database.transaction(async (tx) => {
+    const made: string[] = [];
+    for (const input of inputs) {
+      const id = await postTransactionTx(tx, ws, input);
+      if (!input.replacesTransactionId) await recordActivityTx(tx, ws, 'create', id);
+      made.push(id);
+    }
+    return made;
+  });
+  await rederiveCardCycles(
+    database,
+    ws,
+    [...new Set(inputs.flatMap((input) => input.lines.map((line) => line.accountId)))],
+    [...new Set(inputs.map((input) => input.occurredOn))],
+  );
+  return ids;
+}
+
 /** The day and accounts of a transaction before it is voided or replaced, for the cards whose cycles it touched. */
 async function factsOf(database: Database, ws: WorkspaceContext, id: string): Promise<{ on: string | null; accountIds: string[] }> {
   try {

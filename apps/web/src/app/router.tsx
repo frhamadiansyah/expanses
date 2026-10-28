@@ -83,6 +83,7 @@ import { YearlyBillsPage } from '../features/bills/YearlyBillsPage';
 import { DuplicateTransactionRoute, EditTransactionRoute, NewTransactionRoute } from '../features/transactions/FormPage';
 import { newTransactionSearch } from '../features/transactions/new-search';
 import { MoneyFlowPage, moneyFlowSearch } from '../features/transactions/MoneyFlow';
+import { PasteListPage } from '../features/transactions/PasteListPage';
 import { ActivityDetailPage } from '../features/activity/ActivityDetailPage';
 import { ActivityPage } from '../features/activity/ActivityPage';
 import { ReceiptRoute } from '../features/transactions/ReceiptPage';
@@ -204,6 +205,16 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/new', component: NewTransactionRoute, validateSearch: newTransactionSearch }),
   // The Money flow box, on a screen of its own and sideways: "flow" is static too, so it beats `$transactionId`.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/flow', component: MoneyFlowPage, validateSearch: moneyFlowSearch }),
+  // A list of purchases pasted as notes: "paste" is static too. `account` and `card` carry the form's Paid with.
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/transactions/paste',
+    component: PasteListPage,
+    validateSearch: (search: Record<string, unknown>): { account?: string; card?: string } => ({
+      ...(typeof search.account === 'string' && search.account ? { account: search.account } : {}),
+      ...(typeof search.card === 'string' && search.card ? { card: search.card } : {}),
+    }),
+  }),
   // One transaction, whole.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId', component: ReceiptRoute }),
   // The card again, on one transaction — a phone's Edit, from the receipt or the row's swipe.
