@@ -47,7 +47,7 @@ function minorOf(typed: string, currency: string): number {
 const wholeOf = (typed: string) => (/^\d+$/.test(typed.trim()) ? Number(typed.trim()) : 0);
 
 /**
- * The estimate, as a total rather than a field: a heavier hairline above it, its label small and quiet, its figure bold.
+ * The estimate, as a total rather than a field: a heavier hairline above it, its label small and quiet, its figure in the same regular weight as the fields above.
  * It is still an input — read-only, out of the tab order — so it keeps the label it is found by and a figure a test can
  * read off the form, but nothing about it invites typing.
  */
@@ -62,7 +62,7 @@ function EstimateRow({ value }: GroupChild & { value: string }) {
         value={value}
         readOnly
         tabIndex={-1}
-        className="tabular min-w-0 flex-1 cursor-default border-0 bg-transparent p-0 text-right text-[17px] leading-[22px] font-bold text-[var(--ph-ink)] outline-none"
+        className="tabular min-w-0 flex-1 cursor-default border-0 bg-transparent p-0 text-right text-[17px] leading-[22px] font-normal text-[var(--ph-ink)] outline-none"
       />
     </div>
   );
