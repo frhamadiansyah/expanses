@@ -138,6 +138,7 @@ export {
 } from './points/recommend';
 export { containsKeyword } from './text/keywords';
 export { CARD_FEE_PHRASES, cardFeeCategoryIds, isCardFee } from './points/card-fees';
+export { type PlasticRef, purchasesForPlastic } from './points/plastic';
 export { candidateMccs, type CycleContext, explainCycle, explainTransaction, type Suggestion } from './points/explain';
 export {
   capInPoints,

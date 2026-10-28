@@ -1,15 +1,15 @@
-import { formatMinor, installmentSplit, minorToMajorString, parseMajor, transferLines } from '@expanses/core';
+import { formatMinor, installmentSplit, minorToMajorString, parseMajor, purchasesForPlastic, transferLines } from '@expanses/core';
 import type { SpendLine } from '@expanses/core';
 import { type AccountRow, cardStatement, type CardRow, postTransaction } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight, Banknote, Gift, ReceiptText } from 'lucide-react';
-import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { keptForSpending } from '../../lib/account-types';
 import { moneyHolders, useCategoryColours, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
-import { ActionButtons, InsetGroup, InsetRow, type InsetRowProps, ProgressBar, SelectRow, TextRow, useWalletSlot } from '../../ui/native';
+import { ActionButtons, InsetGroup, InsetRow, type InsetRowProps, ProgressBar, SelectRow, TextRow, useSwipeStep, useWalletSlot } from '../../ui/native';
 import { categoryMark } from '../categories/CategoryIcon';
 import { CardFace } from './CardFace';
 import { bonusStanding, activeDuring } from './catalog-panel';
@@ -277,6 +277,25 @@ export function CardHero({
   useEffect(() => {
     setSlotShown?.(shown ? { last4: shown.last4, holderName: shown.holderName } : null);
   }, [setSlotShown, shown?.last4, shown?.holderName]);
+  // A swipe on the card steps through the plastic cards, as the dots do. It answers whether there was one to step to.
+  const lastIndex = cards.length - 1;
+  const stepShown = useCallback(
+    (by: 1 | -1): boolean => {
+      const next = shownIndex + by;
+      if (next < 0 || next > lastIndex) return false;
+      setShownIndex(next);
+      return true;
+    },
+    [shownIndex, lastIndex],
+  );
+  const setSlotSwipe = slot?.setSwipe;
+  useEffect(() => {
+    if (!setSlotSwipe || lastIndex < 1) return;
+    setSlotSwipe(stepShown);
+    return () => setSlotSwipe(null);
+  }, [setSlotSwipe, stepShown, lastIndex]);
+  const faceBox = useRef<HTMLDivElement>(null);
+  const faceSwipe = useSwipeStep({ enabled: lastIndex >= 1, onStep: stepShown, target: () => faceBox.current });
   const limit = cp.terms?.creditLimitMinor ?? null;
   const plans = useInstallments(card.id);
   const holding = (plans.data ?? []).map((plan) => ({ plan, split: installmentSplit(plan, today) })).filter(({ split }) => split.unbilledMinor > 0);
@@ -308,7 +327,9 @@ export function CardHero({
   const toStatement = { to: '/cards/$cardId/statement' as const, params };
   // A debit card has no statement: its See all is every transaction of the account it spends from.
   const seeAll = debit ? { to: '/transactions' as const, search: { account: card.id } } : toStatement;
-  const recent = <LatestTransactions lines={lines} accounts={accounts} currency={currency} pointsOf={pointsOf} unit={unit} seeAll={seeAll} />;
+  // Recent follows the plastic card shown; a purchase naming no card, or a removed one, is the primary's.
+  const recentLines = purchasesForPlastic(lines, cards, shown?.id);
+  const recent = <LatestTransactions lines={recentLines} accounts={accounts} currency={currency} pointsOf={pointsOf} unit={unit} seeAll={seeAll} />;
 
   const dueOn = lastCycle && cp.terms ? dueDateAfter(lastCycle.end, cp.terms.dueDay) : null;
   // The statement already bills instalment plans a month at a time, so this is what the bank asks for.
@@ -421,15 +442,17 @@ export function CardHero({
         {slot ? (
           <div data-testid="wallet-slot" aria-hidden style={{ width: slot.width, height: slot.height, maxWidth: '100%' }} />
         ) : (
-          <CardFace
-            issuer={issuer}
-            name={card.name}
-            last4={shown?.last4 ?? null}
-            holderName={shown?.holderName}
-            network={cp.catalog.entry?.network}
-            look={cp.catalog.entry?.look}
-            className="!w-[17rem] max-w-full"
-          />
+          <div ref={faceBox} data-testid="card-face-swipe" className="w-fit max-w-full" style={lastIndex >= 1 ? { touchAction: 'pan-y' } : undefined} {...faceSwipe.handlers}>
+            <CardFace
+              issuer={issuer}
+              name={card.name}
+              last4={shown?.last4 ?? null}
+              holderName={shown?.holderName}
+              network={cp.catalog.entry?.network}
+              look={cp.catalog.entry?.look}
+              className="!w-[17rem] max-w-full"
+            />
+          </div>
         )}
         {/* One statement can carry several cards; the dots show each one's face in turn. */}
         {cards.length > 1 && (

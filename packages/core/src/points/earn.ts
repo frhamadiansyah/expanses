@@ -92,6 +92,8 @@ export interface SpendLine {
   cardFee?: boolean;
   /** What the owner said about the purchase: 'online', 'offline', or nothing. Never guessed. */
   channel?: 'online' | 'offline' | null;
+  /** Which plastic card paid, when the account holds several; informational, never read by the earn rules. */
+  cardId?: string | null;
 }
 
 export interface EarnAllocation {
