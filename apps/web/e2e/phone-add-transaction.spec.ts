@@ -777,12 +777,11 @@ test('Paid with › Add credit card › the catalogue over the keyboard › a ca
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('BCA UnionPay');
 
-  // Opened with no dates: the card's page offers to add them, and its settings offer the published fee beside them.
+  // Opened with no dates: the card's page has no row for them, and its settings offer the published fee beside them.
   await page.goto('/wallet');
   await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^BCA UnionPay(,|$)/ }).click();
-  const dates = page.getByTestId('card-setup');
-  await expect(dates).toContainText('Billing and due dates');
-  await dates.click();
+  await expect(page.getByTestId('card-setup')).toHaveCount(0);
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(page.getByLabel(/^Annual fee/)).toHaveValue('125000');
   await expect(page.getByLabel('Billing date')).toHaveValue('');
 });

@@ -79,11 +79,9 @@ test('a catalogue card opens without its dates, and the fee is saved once they a
   // Saved as its bank and its own name: the issuer is BCA, the name UnionPay.
   await expect(page.getByRole('heading', { name: 'UnionPay' })).toBeVisible();
 
-  // Its rules are in already, so the dates are not step 1 of anything: one row offers to add them.
-  const dates = page.getByTestId('card-setup');
-  await expect(dates).toContainText('Billing and due dates');
-  await expect(dates).toContainText('Add');
-  await dates.click();
+  // Its rules are in already, so the dates are not step 1 of anything, and the card's page has no row asking: they are in Settings.
+  await expect(page.getByTestId('card-setup')).toHaveCount(0);
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(page.getByText('Step 1 of 3')).toHaveCount(0);
   await expect(page.getByText('Is this card in the catalogue?')).toHaveCount(0);
   // The published fee waits beside the empty days, and is saved with them.
