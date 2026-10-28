@@ -219,7 +219,8 @@ test('a card purchase turned into instalments splits into billed and unbilled', 
 
   // The plan is managed where it is read: on the card's summary, a row per plan with its months and what it holds.
   const held = page.getByTestId('card-instalments');
-  await expect(held).toContainText(/Rp\s[\d.]+ held/);
+  // The held figure is the limit bar's, not the Instalments header's.
+  await expect(held.getByRole('heading', { name: 'Instalments' })).not.toContainText('held');
   const plan = held.getByTestId('card-instalment');
   await expect(plan).toContainText('iBox Grand Indonesia');
   await expect(plan).toContainText(/\d+ of 12 paid/);

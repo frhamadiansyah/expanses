@@ -167,10 +167,9 @@ export function InstallmentList({ cardAccountId, currency }: { cardAccountId: st
   const today = isoDate();
   const editor = usePlanEditor(cardAccountId, currency);
   const list = plans.data ?? [];
-  const held = list.reduce((sum, plan) => sum + installmentSplit(plan, today).unbilledMinor, 0);
   return (
     <div data-testid="card-instalments">
-      <InsetGroup header="Instalments" trailing={held > 0 ? `${formatMinor(held, currency)} held` : undefined}>
+      <InsetGroup header="Instalments">
         {list.length === 0 && (
           <TextLine tone="ink-3">None yet. A purchase the issuer turns into cicilan is recorded here, so the card's debt splits into billed and unbilled.</TextLine>
         )}
