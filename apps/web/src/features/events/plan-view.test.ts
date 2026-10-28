@@ -6,18 +6,21 @@ import {
   BACK_WORDS,
   chartUnder,
   coverTotals,
+  differenceFoot,
   differenceWords,
+  estimateLabel,
   eventListLine,
   gaugeFor,
   itemFigure,
   itemFormGate,
+  itemPaidAgainst,
   itemSubline,
   itemSubtitle,
   moneyBackRows,
   moneyBackUnder,
   planCardRows,
+  planDonePercent,
   planInEvent,
-  noRateWords,
   plannedLabel,
   PLAN_WORDS,
   planTotals,
@@ -810,12 +813,51 @@ describe('a plan in more than one currency', () => {
   it('totals in the event currency with the base equivalent, and names the missing rate', () => {
     const totals = planInEvent(trip, 'TRY', 'IDR');
     expect(totals.plannedMinor).toBe(2_450_000 + 427_500 + 1_080_000);
-    expect(totals.baseEquivalentMinor).toBe(9_800_000 + 1_710_000 + 4_320_000);
+    expect(totals.base?.plannedMinor).toBe(9_800_000 + 1_710_000 + 4_320_000);
+    // Only the museum pass is paid, and its payment was read in lira; the open flight and dinner owe their whole estimate.
+    expect(totals.base?.boughtMinor).toBe(1_656_000);
+    expect(totals.base?.toBuyMinor).toBe(9_800_000 + 4_320_000);
     expect(totals.missingRates).toEqual(['USD']);
-    expect(noRateWords(totals.missingRates)).toBe('No USD rate yet');
+  });
+
+  it('reads a paid cost against its estimate: an arrow only when they differ, the estimate in the event currency', () => {
+    // Paid € 92 (₺ 4.140) against € 95 (₺ 4.275): a saving.
+    expect(itemPaidAgainst(views.museum!, 'TRY', 'IDR')).toMatchObject({ arrow: 'under' });
+    expect(plain(itemPaidAgainst(views.museum!, 'TRY', 'IDR')!.of)).toMatch(/^of ≈ .*4\.275/);
+    expect(itemPaidAgainst(views.flight!, 'TRY', 'IDR')).toBeNull();
+    expect(itemPaidAgainst(views.ferry!, 'TRY', 'IDR')).toBeNull();
   });
 
   it('has no base line when the event is in the base currency', () => {
-    expect(planInEvent(plan, 'IDR', 'IDR').baseEquivalentMinor).toBeNull();
+    expect(planInEvent(plan, 'IDR', 'IDR').base).toBeNull();
+  });
+});
+
+describe('the plan hero and the paid row', () => {
+  it('says the difference against the estimate in words, over, under or on it', () => {
+    expect(plain(differenceFoot(450_000).text)).toBe('Rp 450.000 over the estimate');
+    expect(differenceFoot(450_000).tone).toBe('over');
+    expect(plain(differenceFoot(-220_000).text)).toBe('Rp 220.000 under the estimate');
+    expect(differenceFoot(-220_000).tone).toBe('under');
+    expect(differenceFoot(0)).toEqual({ text: 'On the estimate', tone: 'exact' });
+  });
+
+  it('shows the share done as the bar did: rounded, held between nought and a hundred, nought with nothing planned', () => {
+    expect(planDonePercent(14_700_000, 7_200_000)).toBe(51);
+    expect(planDonePercent(1_000_000, 0)).toBe(100);
+    expect(planDonePercent(1_000_000, 1_000_000)).toBe(0);
+    expect(planDonePercent(1_000_000, 1_500_000)).toBe(0);
+    expect(planDonePercent(0, 0)).toBe(0);
+  });
+
+  it('names the planned figure Estimate, and Estimate so far where it was Planned so far', () => {
+    expect(estimateLabel(plan)).toBe('Estimate');
+    expect(estimateLabel(withFood())).toBe('Estimate so far');
+  });
+
+  it('keeps the difference off the left line of a paid cost and puts the estimate under its figure', () => {
+    const crib = plan.lines[0]!.items[1]!;
+    expect(itemSubtitle(crib, 'IDR', 'IDR')).toBe('');
+    expect(itemPaidAgainst(crib, 'IDR', 'IDR')).toEqual({ of: expect.stringMatching(/^of .*7\.500\.000/), arrow: 'over' });
   });
 });

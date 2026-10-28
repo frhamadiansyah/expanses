@@ -50,6 +50,9 @@ export const gaugeFor = (plan: EventPlan): BudgetProgress => {
  */
 export const plannedLabel = (plan: EventPlan) => (plan.unplannedCategoryCount > 0 || planTotals(plan).moneyBackMinor > 0 ? 'Planned so far' : 'Planned');
 
+/** The plan hero's label for the planned figure: "Estimate", and "Estimate so far" wherever `plannedLabel` says "Planned so far". */
+export const estimateLabel = (plan: EventPlan) => plannedLabel(plan).replace('Planned', 'Estimate');
+
 /**
  * What the ring's middle figure is counting, said out loud whenever it is not the whole event.
  *
@@ -106,6 +109,19 @@ export function differenceWords(minor: number, currency = 'IDR'): { text: string
   return { text: `${minor > 0 ? '+' : '−'}${formatMinor(Math.abs(minor), currency)}`, tone: minor > 0 ? 'over' : 'under' };
 }
 
+/**
+ * The plan hero's difference line, in words with the hero's own wording: over or under the estimate, or on it.
+ * The tones are `differenceWords`': over is alarm, under is the gain, exact is quiet.
+ */
+export function differenceFoot(minor: number, currency = 'IDR'): { text: string; tone: 'over' | 'under' | 'exact' } {
+  if (minor === 0) return { text: 'On the estimate', tone: 'exact' };
+  return { text: `${formatMinor(Math.abs(minor), currency)} ${minor > 0 ? 'over' : 'under'} the estimate`, tone: minor > 0 ? 'over' : 'under' };
+}
+
+/** How much of the plan the ring shows as done, 0 to 100: what was planned less what is still to pay, as a share of what was planned. Nought when nothing is planned. */
+export const planDonePercent = (plannedMinor: number, toBuyMinor: number) =>
+  plannedMinor > 0 ? Math.min(100, Math.max(0, Math.round(((plannedMinor - toBuyMinor) / plannedMinor) * 100))) : 0;
+
 /** "6 × Rp500.000", or nothing at all: one of something needs no arithmetic shown. */
 export const quantityWords = (item: EventPlanItemView, currency = 'IDR') =>
   item.quantity > 1 ? `${item.quantity} × ${formatMinor(item.unitPriceMinor, currency)}` : null;
@@ -129,9 +145,24 @@ export function itemFigure(item: EventPlanItemView, eventCurrency: string, baseC
 }
 
 /**
- * The line under an item's name on the plan screen: its price in its own currency when that is not the event's, what
- * was paid against the estimate for a bought item priced in another currency than the base, and the words for a missing
- * rate. In one currency throughout it is what it always was.
+ * The second thing a paid cost says on the right of its row, under what was paid: the estimate, "of Rp 330.000", and
+ * an arrow before the paid figure only when the two differ. Under the estimate is a saving ("under"), over is the cost
+ * running past it ("over"). Read in the event's currency, where the figure itself is; null when the cost is not paid
+ * or a missing rate leaves one side without an event-currency figure, and the row then keeps its single figure.
+ */
+export function itemPaidAgainst(item: EventPlanItemView, eventCurrency: string, baseCurrency: string): { of: string; arrow: 'under' | 'over' | null } | null {
+  if (!item.bought || item.paidEventMinor === null || item.estimateEventMinor === null) return null;
+  const own = item.currency ?? baseCurrency;
+  const estimate = formatMinor(item.estimateEventMinor, eventCurrency);
+  const gap = item.paidEventMinor - item.estimateEventMinor;
+  return { of: `of ${own === eventCurrency ? estimate : `≈ ${estimate}`}`, arrow: gap === 0 ? null : gap > 0 ? 'over' : 'under' };
+}
+
+/**
+ * The line under an item's name on the plan screen: the plan's arithmetic ("6 × Rp 55.000"), its price in its own
+ * currency when that is not the event's, what was paid against the estimate for a bought item priced in another
+ * currency than the base, and the words for a missing rate. The difference from the estimate is not here: a paid
+ * cost says it on the right, with `itemPaidAgainst`. In one currency throughout, a single cost has no line at all.
  */
 export function itemSubtitle(item: EventPlanItemView, eventCurrency: string, baseCurrency: string): string {
   const own = item.currency ?? baseCurrency;
@@ -140,7 +171,7 @@ export function itemSubtitle(item: EventPlanItemView, eventCurrency: string, bas
     if (own !== baseCurrency && item.paidOwnMinor !== null) {
       return [item.quantity > 1 ? price : null, `Paid ${formatMinor(item.paidOwnMinor, own)} · estimate ${formatMinor(item.estimateOwnMinor, own)}`].filter(Boolean).join(' · ');
     }
-    return [price, differenceWords(item.differenceMinor!, baseCurrency).text].filter(Boolean).join(' · ');
+    return price ?? '';
   }
   if (item.noRate) return [price, 'no rate yet'].filter(Boolean).join(' · ');
   if (item.purchaseCount > 0) {
@@ -151,26 +182,30 @@ export function itemSubtitle(item: EventPlanItemView, eventCurrency: string, bas
 }
 
 /**
- * The plan screen's totals in the event's currency, with the base equivalent beneath when the two differ.
+ * The plan screen's totals in the event's currency, with the base equivalents beside them when the two differ.
  *
- * Every figure is the plan's own (`plannedEventMinor`, …); the base line is `plannedMinor`, each item converted to base
- * on its own so an item already in base never takes a trip through the event's currency and back.
+ * Every figure is the plan's own (`plannedEventMinor`, …); the base figures are `plannedMinor`, `toBuyMinor` and what
+ * was paid, each item converted to base on its own so an item already in base never takes a trip through the event's
+ * currency and back. A cost with no rate adds nothing to the planned and to-pay figures in either currency, and its
+ * payments are left out of the base paid figure exactly where the event-currency one leaves them out (no event-currency
+ * reading of the payment), so each base line is the same set of costs as the figure it sits under.
  */
 export function planInEvent(plan: EventPlan, eventCurrency: string, baseCurrency: string) {
+  const paidBase = plan.lines.flatMap((line) => line.items).reduce((total, item) => total + (item.paidEventMinor === null ? 0 : (item.actualMinor ?? 0)), 0);
   return {
     plannedMinor: Math.max(0, plan.plannedEventMinor),
     toBuyMinor: Math.max(0, plan.toBuyEventMinor),
     boughtMinor: Math.max(0, plan.boughtActualEventMinor),
     differenceMinor: plan.differenceEventMinor,
-    /** Only when the event's currency is not the base: otherwise the same figure twice. */
-    baseEquivalentMinor: eventCurrency === baseCurrency ? null : Math.max(0, plan.plannedMinor),
-    /** Currencies with no rate: named in one line, their items left out of the figures above. */
+    /** Only when the event's currency is not the base: otherwise the same figures twice. */
+    base:
+      eventCurrency === baseCurrency
+        ? null
+        : { plannedMinor: Math.max(0, plan.plannedMinor), toBuyMinor: Math.max(0, plan.toBuyMinor), boughtMinor: Math.max(0, paidBase) },
+    /** Currencies with no rate: their items are left out of the figures above. */
     missingRates: plan.missingRates,
   };
 }
-
-/** "No USD rate yet", the app's wording for a figure waiting on a rate. */
-export const noRateWords = (currencies: readonly string[]) => `No ${currencies.join(', ')} rate yet`;
 
 /** The line under an item's name: what it is expected to cost, or where and when it was actually bought. */
 export function itemSubline(item: EventPlanItemView, currency = 'IDR'): string {

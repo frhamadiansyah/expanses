@@ -128,7 +128,8 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
   // the dot's own 24px, under the 44 the ＋, the wide links and the way back are all held to above.
   await bigEnough(page.getByRole('button', { name: 'Reopen Crib' }), 'the plan’s tick');
   await expect(crib).toContainText('7.200.000');
-  await expect(crib).toContainText('−Rp 300.000');
+  await expect(crib.getByLabel('Under the estimate')).toBeVisible();
+  await expect(crib).toContainText('of Rp 7.500.000');
 
   // One receipt over two items, every share typed together and checked against the one payment.
   await page.getByTestId('plan-item').filter({ hasText: 'Newborn clothes' }).getByRole('link').click();
@@ -150,9 +151,9 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
    * 2.200.000 of the Mothercare receipt bought; nothing left to buy; and the crib's 300.000 under the difference.
    */
   // Covered is paid, not done: nothing left to pay until both are ticked, then all bought.
-  await expectPlanHero(page, { count: '1 of 3 paid', toGo: 'Rp 0 to go', planned: 'Planned Rp 9.700.000 · Paid Rp 9.400.000 · −Rp 300.000' });
+  await expectPlanHero(page, { count: '1 of 3 paid', toPay: 'Rp 0 to pay', planned: 'Estimate Rp 9.700.000', actual: 'Actual Rp 9.400.000', difference: 'Rp 300.000 under the estimate' });
   for (const name of ['Newborn clothes', 'Muslin wraps']) await page.getByRole('button', { name: `Settle ${name}` }).click();
-  await expectPlanHero(page, { count: '3 of 3 paid', toGo: 'All paid', planned: 'Planned Rp 9.700.000 · Paid Rp 9.400.000 · −Rp 300.000' });
+  await expectPlanHero(page, { count: '3 of 3 paid', toPay: 'All paid', planned: 'Estimate Rp 9.700.000', actual: 'Actual Rp 9.400.000', difference: 'Rp 300.000 under the estimate' });
   await noSideways(page, 'a settled plan');
 
   // And the way back out is a thumb's reach too, on the screen it came from.
