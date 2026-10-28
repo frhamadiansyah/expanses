@@ -58,3 +58,22 @@ test('the history header is the group header, and Paid with offers only accounts
   await expect(sheet.getByRole('button', { name: /^BCA Tahapan/ })).toBeVisible();
   await expect(sheet.getByRole('button', { name: /^Brankas/ })).toHaveCount(0);
 });
+
+test('a trip running today has a row at the top of Cashflow that opens it; a far-future one has none', async ({ page }) => {
+  await eventWith(page, 'Lombok trip');
+  await page.goto('/events');
+  await page.getByRole('button', { name: 'New event' }).click();
+  await page.getByLabel('Name', { exact: true }).fill('Next year');
+  await page.getByLabel('Starts on').fill('2099-01-01');
+  await page.getByLabel('Ends on').fill('2099-01-05');
+  await page.getByRole('button', { name: 'Save event' }).click();
+  await expect(page.getByRole('heading', { name: 'Next year', exact: true })).toBeVisible();
+
+  await page.goto('/transactions');
+  const trips = page.getByTestId('travel-row');
+  await expect(trips).toHaveCount(1);
+  await expect(trips).toContainText('Lombok trip');
+  await expect(trips).toContainText('Today · day 1 of 1');
+  await trips.click();
+  await expect(page.getByRole('heading', { name: 'Lombok trip', exact: true })).toBeVisible();
+});

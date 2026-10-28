@@ -41,6 +41,7 @@ import { useAccountNumberLast4, useCards, useCardsWithArchived, useWalletLast4 }
 import { useScanReceipt } from '../../capture/use-scan';
 import { useDrafts } from '../review/queries';
 import { useEvents } from '../events/queries';
+import { TravelRows } from '../events/TravelRows';
 import { useSharedEventSummaries } from '../events/shared-queries';
 import { Button, Card, cx, Empty, ErrorBox, Money } from '../../ui';
 import { GROUP_HEADER_CLASS, LargeTitle, SearchPill } from '../../ui/native';
@@ -1340,6 +1341,8 @@ export function TransactionsPage() {
         )}
       </div>
 
+      {/* A trip running now or starting within a week: an entry to its page, not part of the ring or the history. */}
+      {chartShown && !search.account && <TravelRows today={today} />}
       {/* The chart leads the list, over whatever period is chosen. */}
       {chartShown && (
         <SpendingReport
