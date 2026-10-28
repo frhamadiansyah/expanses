@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useRef } from 'react';
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 
 export interface HeroSlide {
   key: string;
@@ -45,6 +45,14 @@ export function HeroSwipe({ label, slides, active, onActive }: { label: string; 
   };
 
   useEffect(() => () => clearTimeout(timer.current), []);
+
+  // A page that opens on a later card (back from a cost's page lands on Plan) starts scrolled to it, not to the first.
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el && active > 0) el.scrollLeft = active * el.clientWidth;
+    // Once, on arrival: later changes of `active` come from the scroll itself or from a dot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="w-full md:max-w-2xl">

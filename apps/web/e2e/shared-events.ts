@@ -110,3 +110,36 @@ export async function recordSharedSpend(page: Page, spend: SharedSpend) {
   await saveButton(card).click();
   await expect(card).toHaveCount(0, { timeout: 30_000 });
 }
+
+export interface SharedCost {
+  name: string;
+  /** Price each, digits as typed. */
+  price: string;
+  quantity?: string;
+  /** A category of the trip, by name. */
+  category?: string;
+  link?: string;
+  note?: string;
+}
+
+/**
+ * Adds a cost to the open shared trip plan, from the Plan card: the bar plus (or "Add the first cost" on an empty
+ * plan) opens the cost form, which saves back to the plan with the cost listed.
+ */
+export async function addSharedCost(page: Page, cost: SharedCost) {
+  await showCard(page, 'Plan');
+  const first = page.getByRole('link', { name: 'Add the first cost' });
+  if ((await first.count()) > 0) await first.click();
+  else await page.getByRole('link', { name: 'Add a cost' }).click();
+  await page.getByLabel('What', { exact: true }).fill(cost.name);
+  if (cost.quantity) await page.getByLabel('How many').fill(cost.quantity);
+  await page.getByLabel('Price each').fill(cost.price);
+  if (cost.category) {
+    await page.getByRole('button', { name: /^Category, / }).click();
+    await page.getByRole('dialog', { name: 'Category' }).getByRole('button', { name: cost.category, exact: true }).click();
+  }
+  if (cost.link) await page.getByLabel('Purchase link').fill(cost.link);
+  if (cost.note) await page.getByLabel('Remarks').fill(cost.note);
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByTestId('shared-plan-item').filter({ hasText: cost.name })).toBeVisible();
+}

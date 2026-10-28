@@ -1,5 +1,5 @@
 import { CURRENCIES, eventCurrency, groupTypedAmount, isoDate, minorToMajorString, parseMajor } from '@expanses/core';
-import { type AccountRow, listEventItems, removeEventItem, saveEventItem } from '@expanses/db';
+import { listEventItems, removeEventItem, saveEventItem } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
@@ -30,7 +30,7 @@ export function EditItemRoute() {
 }
 
 /** Half-typed digits are not an error, only a figure that is not there yet: nought until the whole of it parses. */
-function minorOf(typed: string, currency: string): number {
+export function minorOf(typed: string, currency: string): number {
   try {
     return parseMajor(typed, currency);
   } catch {
@@ -45,7 +45,7 @@ function minorOf(typed: string, currency: string): number {
  * refuses it as `QUANTITY_RANGE` and says so. Substituting 1 here instead showed an estimate of Rp 0 and wrote
  * 1 × the price, which is the one thing a form may never do: give the user a figure other than the one it showed.
  */
-const wholeOf = (typed: string) => (/^\d+$/.test(typed.trim()) ? Number(typed.trim()) : 0);
+export const wholeOf = (typed: string) => (/^\d+$/.test(typed.trim()) ? Number(typed.trim()) : 0);
 
 /**
  * The estimate, as a total rather than a field: a heavier hairline above it, its label small and quiet, its figure drawn as Price each's is: regular weight, the same size and ink,
@@ -53,7 +53,7 @@ const wholeOf = (typed: string) => (/^\d+$/.test(typed.trim()) ? Number(typed.tr
  * It is still an input — read-only, out of the tab order — so it keeps the label it is found by and a figure a test can
  * read off the form, but nothing about it invites typing.
  */
-function EstimateRow({ value }: GroupChild & { value: string }) {
+export function EstimateRow({ value }: GroupChild & { value: string }) {
   return (
     <div className="flex items-center gap-3 border-t border-[var(--ph-hair)] px-[13px]" style={{ minHeight: 44 }}>
       <label htmlFor="item-estimate" className="shrink-0 text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">
@@ -74,13 +74,7 @@ function EstimateRow({ value }: GroupChild & { value: string }) {
  * The category row: the category's mark and name at the right, "Not in a category" in grey when empty. A tap opens a
  * sheet holding the plan's categories as a grid of marks; one tap picks and closes.
  */
-function CategoryPickRow({
-  categoryId,
-  name,
-  accounts,
-  onOpen,
-  position,
-}: GroupChild & { categoryId: string; name: string | null; accounts: readonly AccountRow[]; onOpen: () => void }) {
+export function CategoryPickRow({ mark, name, onOpen, position }: GroupChild & { mark: ReactNode; name: string | null; onOpen: () => void }) {
   return (
     <InsetRow
       position={position}
@@ -91,7 +85,7 @@ function CategoryPickRow({
       value={
         name ? (
           <span className="inline-flex items-center gap-2">
-            <CategoryIcon categoryId={categoryId} accounts={accounts} size="row" />
+            {mark}
             {name}
           </span>
         ) : (
@@ -103,16 +97,14 @@ function CategoryPickRow({
   );
 }
 
-function CategorySheet({
+export function CategorySheet({
   options,
   current,
-  accounts,
   onPick,
   onClose,
 }: {
-  options: readonly { id: string; name: string }[];
+  options: readonly { id: string; name: string; mark: ReactNode }[];
   current: string;
-  accounts: readonly AccountRow[];
   onPick: (id: string) => void;
   onClose: () => void;
 }) {
@@ -127,7 +119,7 @@ function CategorySheet({
       <div className="grid max-h-[55vh] grid-cols-4 gap-x-[6px] gap-y-[10px] overflow-y-auto px-1 pb-2">
         {options.map((option) => (
           <button key={option.id} type="button" aria-label={option.name} aria-current={option.id === current} onClick={() => choose(option.id === current ? '' : option.id)} className={cx(tile, option.id === current && 'bg-[var(--ph-fill)]')}>
-            <CategoryIcon categoryId={option.id} accounts={accounts} size="tile" />
+            {option.mark}
             <span className="line-clamp-2 text-center text-[11.5px] leading-[14px] break-words text-[var(--ph-ink-2)]">{option.name}</span>
           </button>
         ))}
@@ -351,7 +343,7 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
           <EstimateRow value={estimateText} />
         </InsetGroup>
         <InsetGroup>
-          <CategoryPickRow categoryId={categoryId} name={chosenName} accounts={accounts} onOpen={() => setPickingCategory(true)} />
+          <CategoryPickRow mark={<CategoryIcon categoryId={categoryId} accounts={accounts} size="row" />} name={chosenName} onOpen={() => setPickingCategory(true)} />
           <TextRow label="Purchase link"value={link} onChange={(e) => setLink(e.target.value)} inputMode="url" placeholder="Web address" />
           <TextRow label="Remarks" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note" />
         </InsetGroup>
@@ -365,9 +357,8 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
       {pickingCurrency && <CurrencySheet value={currency} accountCurrency={home} baseCurrency={ws.baseCurrency} onPick={pickCurrency} onClose={() => setPickingCurrency(false)} />}
       {pickingCategory && (
         <CategorySheet
-          options={planCategories.map((account) => ({ id: account.id, name: planName(account.id, account.name) }))}
+          options={planCategories.map((account) => ({ id: account.id, name: planName(account.id, account.name), mark: <CategoryIcon categoryId={account.id} accounts={accounts} size="tile" /> }))}
           current={categoryId}
-          accounts={accounts}
           onPick={setCategoryId}
           onClose={() => setPickingCategory(false)}
         />

@@ -147,6 +147,24 @@ export function CategoryIcon({
 }
 
 /**
+ * A category mark drawn from a glyph and a colour directly, for categories that are not accounts — a shared trip's own.
+ * The same circle, wash and sizes as `CategoryIcon`'s, so a shared cost reads like a private one.
+ */
+export function MarkChip({ Glyph, colour, size = 'md' }: { Glyph: LucideIcon; colour: string; size?: keyof typeof SIZES }) {
+  const { box, glyph } = SIZES[size];
+  return (
+    <span
+      data-testid="category-mark"
+      aria-hidden
+      className={`inline-flex shrink-0 items-center justify-center rounded-full ${box}`}
+      style={{ background: `color-mix(in srgb, ${colour} 15%, transparent)`, color: colour }}
+    >
+      <Glyph size={glyph} strokeWidth={2.2} />
+    </span>
+  );
+}
+
+/**
  * No category yet: the unknown mark in the warning tone, because it is a question still to answer. Every list that
  * holds rows waiting for a category — Review's captures, a statement check's missing rows — draws this one.
  */

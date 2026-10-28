@@ -11,6 +11,7 @@ import { EventsPage } from '../features/events/EventsPage';
 import { EditItemRoute, NewItemRoute } from '../features/events/ItemFormPage';
 import { ItemPage } from '../features/events/ItemPage';
 import { PickPurchasePage } from '../features/events/PickPurchasePage';
+import { EditSharedCostRoute, NewSharedCostRoute, SharedCostLinkPage, SharedCostPage } from '../features/events/SharedCostPages';
 import { EventCategoriesPage } from '../features/events/EventCategoriesPage';
 import { PeoplePage } from '../features/events/PeoplePage';
 import { PlanPage } from '../features/events/PlanPage';
@@ -136,7 +137,10 @@ export interface EventPlanSearch {
 }
 
 /** The event screen itself: the same tab. "Pay now" opens the Add screen now, so there is no cost to carry here. */
-export type EventSearch = EventPlanSearch;
+export interface EventSearch extends EventPlanSearch {
+  /** The shared trip's hero card to open on: the way back from a cost's pages lands on its Plan. */
+  card?: 'plan';
+}
 
 /** Choosing and reading a receipt: the item being answered is carried through both screens so Cancel knows the way back. */
 export interface EventLinkSearch extends EventPlanSearch {
@@ -146,7 +150,7 @@ export interface EventLinkSearch extends EventPlanSearch {
 const text = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
 
 const planSearch = (search: Record<string, unknown>): EventPlanSearch => ({ ws: text(search.ws) });
-const eventSearch = (search: Record<string, unknown>): EventSearch => ({ ws: text(search.ws) });
+const eventSearch = (search: Record<string, unknown>): EventSearch => ({ ws: text(search.ws), ...(search.card === 'plan' ? { card: 'plan' as const } : {}) });
 const linkSearch = (search: Record<string, unknown>): EventLinkSearch => ({ ws: text(search.ws), item: text(search.item) });
 
 /** The Categories list's tab, in the address so the way back from an income category lands on Income. */
@@ -232,6 +236,11 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan/link/$transactionId', component: CoverPage, validateSearch: linkSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan/$itemId', component: ItemPage, validateSearch: planSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan/$itemId/edit', component: EditItemRoute, validateSearch: planSearch }),
+  // A shared trip's costs: the same screens as above on the trip's own plan, which lives in its event book.
+  createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/shared-plan/new', component: NewSharedCostRoute }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/shared-plan/$itemId', component: SharedCostPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/shared-plan/$itemId/edit', component: EditSharedCostRoute }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/shared-plan/$itemId/link', component: SharedCostLinkPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators', component: CalculatorsPage }),
   // Each calculator is its own page, so the catalogue chooses and the page answers (one to a screen, not four).
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators/emergency', component: EmergencyFundPage }),

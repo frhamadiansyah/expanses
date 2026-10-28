@@ -1,5 +1,5 @@
 import { eventCurrency, formatMinor } from '@expanses/core';
-import { setEventItemDone, type AccountRow } from '@expanses/db';
+import { setEventItemDone } from '@expanses/db';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Check, Plus } from 'lucide-react';
 import { type ComponentProps, type ReactNode, useLayoutEffect, useRef, useState } from 'react';
@@ -248,23 +248,22 @@ export function PlanHero(props: ComponentProps<typeof PlanHeroBody>) {
  * A category of the plan as one card, laid out like a day in the Cashflow history: its mark, its name over how many of
  * its items are bought, and on the right what was paid of what it plans; a hairline, then its items.
  */
-function PlanCategoryCard({
-  categoryId,
+export function PlanCategoryCard({
+  mark,
   name,
   itemCount,
   boughtCount,
   paid,
   planned,
-  accounts,
   children,
 }: {
-  categoryId: string | null;
+  /** The category's mark: a private category's, or a shared trip's own. */
+  mark: ReactNode;
   name: string;
   itemCount: number;
   boughtCount: number;
   paid: string;
   planned: string;
-  accounts: readonly AccountRow[];
   children: ReactNode;
 }) {
   return (
@@ -275,7 +274,7 @@ function PlanCategoryCard({
       style={{ borderRadius: GROUP_RADIUS, marginBottom: 12 }}
     >
       <div className="flex items-center gap-3 border-b-[0.5px] border-[var(--ph-hair)] px-[14px] pt-3 pb-2.5">
-        <CategoryIcon categoryId={categoryId} accounts={accounts} size="row" />
+        {mark}
         <div className="flex min-w-0 flex-1 flex-col text-xs leading-tight text-[var(--ph-ink-3)]">
           <h2 className="truncate text-sm font-semibold text-[var(--ph-ink)]">{name}</h2>
           <span>
@@ -422,13 +421,12 @@ export function PlanPage() {
                 return (
                   <PlanCategoryCard
                     key={line.categoryId ?? 'none'}
-                    categoryId={line.categoryId}
+                    mark={<CategoryIcon categoryId={line.categoryId} accounts={accounts} size="row" />}
                     name={line.name}
                     itemCount={line.items.length}
                     boughtCount={line.items.filter((item) => item.bought).length}
                     paid={rp(paid)}
                     planned={rp(line.plannedEventMinor)}
-                    accounts={accounts}
                   >
                     {ordered.map((item) => {
                       return (

@@ -1,7 +1,7 @@
 import type { NamedPayment, SharedEventView, SharedSettlementView } from '@expanses/db';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { formatMinor } from '@expanses/core';
-import { CircleEllipsis, HandCoins, MoreHorizontal } from 'lucide-react';
+import { CircleEllipsis, HandCoins, MoreHorizontal, Plus } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { ErrorBox, Money } from '../../ui';
 import { ICONS } from '../categories/CategoryIcon';
@@ -47,7 +47,9 @@ function ringArcs(slices: readonly { key: string; totalMinor: number }[], whole:
  */
 export function SharedEventPage({ view, menu = [], error = null }: { view: SharedEventView; menu?: CornerAction[]; error?: unknown }) {
   const navigate = useNavigate();
-  const [card, setCard] = useState(0);
+  // Back from a cost's page lands on the Plan card, which is where the trip was left.
+  const { card: arrivedOn } = useSearch({ from: '/events/$eventId' });
+  const [card, setCard] = useState(arrivedOn === 'plan' ? CARDS.indexOf('plan') : 0);
   const plan = useSharedEventPlan(view.eventId);
   const [settling, setSettling] = useState<NamedPayment | null>(null);
   const [opened, setOpened] = useState<SharedSettlementView | null>(null);
@@ -63,6 +65,10 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
   // Everything is one ⋯: a corner button never carries a word, so Add spending (a line of the menu, not a ＋ of its own)
   // goes inside it rather than standing in the bar as a circle with no glyph.
   const actions: CornerAction[] = [
+    // On the Plan card the bar's ＋ adds a cost, as it does on the private plan.
+    ...(CARDS[card] === 'plan' && !locked
+      ? [{ key: 'add-cost', label: 'Add a cost', glyph: <Plus size={22} aria-hidden />, to: '/events/$eventId/shared-plan/new', params: { eventId: view.eventId } } satisfies CornerAction]
+      : []),
     {
       key: 'more',
       label: 'More',
