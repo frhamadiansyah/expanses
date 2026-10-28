@@ -127,8 +127,10 @@ function MoneyField({
        * span keeps the figure exactly where it was, so this changes what receives the tap and not the look.
        */
       <button type="button" aria-label={label} onClick={onKeypad} disabled={disabled} className={cx(className, 'flex items-center self-stretch', end ? 'justify-end text-right' : 'text-left')}>
+        {/* Nothing typed yet: the cursor stands before the placeholder's first letter, as in any empty field, not after the word. */}
+        {typing && !value && <span aria-hidden data-testid="typing-mark" className="ph-caret" style={{ marginLeft: 0, marginRight: -1 }} />}
         <span className="min-w-0 truncate">{value ? amountFace(value, currency, refund, fractional) : <span className="text-[var(--ph-ink-3)]">{placeholder}</span>}</span>
-        {typing && <span aria-hidden data-testid="typing-mark" className="ph-caret" />}
+        {typing && !!value && <span aria-hidden data-testid="typing-mark" className="ph-caret" />}
       </button>
     );
   }

@@ -228,6 +228,16 @@ export async function attachPhoto(page: Page, form: Locator, file: { name: strin
   const more = page.getByRole('region', { name: 'More details' });
   // Photos are the Amount row's camera now (Buy / sell keeps its row under Add more details).
   const camera = form.getByTestId('amount-photos');
+  // With no picture yet the glyph goes straight to the system picker (one tap); the file lands on its input, and the
+  // glyph then opens the Photos sheet, where the picture is seen and removed.
+  if ((await camera.count()) > 0 && (await camera.getAttribute('aria-label')) === 'Photos') {
+    await page.getByTestId('amount-photo-input').setInputFiles(file);
+    await expect(camera).toHaveAttribute('aria-label', 'Photos, 1');
+    await camera.click();
+    const opened = page.getByRole('dialog', { name: 'Photos' });
+    await expect(opened.getByRole('button', { name: 'Photo 1', exact: true })).toBeVisible();
+    return { more, sheet: opened };
+  }
   await ((await camera.count()) > 0 ? camera : more.getByRole('button', { name: 'Photos' })).click();
   const sheet = page.getByRole('dialog', { name: 'Photos' });
   await sheet.getByTestId('photo-library-input').setInputFiles(file);
