@@ -89,18 +89,6 @@ function EventListRow({ event, today, position, shared, ready }: GroupChild & { 
             <span className="mt-[2px] flex items-center gap-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
               <span className="truncate">{eventDates(event)}</span>
             </span>
-            {shared && (
-              <span className="mt-[2px] flex items-center gap-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="event-shared-with">
-                <span aria-hidden className="flex -space-x-1">
-                  {shared.people.slice(0, 3).map((p, i) => (
-                    <span key={`${i}-${p.name}`} className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[var(--ph-fill)] text-[10px] font-semibold text-[var(--ph-ink-2)] ring-1 ring-[var(--ph-surface)]">
-                      {p.initials}
-                    </span>
-                  ))}
-                </span>
-                <span className="truncate">{sharedWithText(shared.sharedWith)}</span>
-              </span>
-            )}
             {/* The figure on the right is clamped at nought, so what the clamp swallowed is said here rather than
                 left as a silent nought — the same both-sided rule the event's own screens keep under their ring. */}
             {line?.backLine && <span className="block truncate text-[12.5px] leading-[16px] text-[var(--ph-up)]">{line.backLine}</span>}
