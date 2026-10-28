@@ -57,7 +57,7 @@ export function NewTransactionRoute() {
    * just made is this item and nothing else, so the item takes the whole of it as its share.
    *
    * A receipt already spoken for is the one refusal with somewhere to go — ticking an item off claims what is left
-   * of its receipt, so a receipt answering several items is settled on "What it covers" and not by a second tick.
+   * of its receipt, so a receipt answering several items is settled on "Link to costs" and not by a second tick.
    * The payment is posted and tagged by now either way, so carrying the user to that screen loses nothing and asks
    * them for exactly what the app could not know. Both ways out replace this screen, so Back from them does not
    * open the same purchase again.

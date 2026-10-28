@@ -7,7 +7,7 @@ import { addSpendingTarget, buyTarget, carriedFromDraft, coverTarget, isNothingL
  * The one refusal a screen routes rather than prints.
  *
  * The Add screen's "Buy it now" follow-up (`NewTransactionRoute`) posts the payment, tagged, and then asks the item to claim it. When the receipt is
- * already spoken for the repository answers `NOTHING_LEFT`, and the screen must carry the user to "What it covers"
+ * already spoken for the repository answers `NOTHING_LEFT`, and the screen must carry the user to "Link to costs"
  * with the item in hand instead of showing them a sentence. Everything else it must rethrow, or a real failure —
  * a share out of range, a category that is not a category — would vanish into a navigation.
  *

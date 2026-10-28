@@ -448,7 +448,7 @@ export function moneyBackUnder(headingMinor: number, rows: readonly { amountMino
 }
 
 /**
- * What a row on "What it covers" says about an item other receipts already paid towards.
+ * What a row on "Link to costs" says about an item other receipts already paid towards.
  *
  * An item may be paid for several times, so ticking it here adds this receipt to what it already holds — it takes
  * nothing away from the others. The row says where the item's money already is, so that is not a surprise.
@@ -456,14 +456,14 @@ export function moneyBackUnder(headingMinor: number, rows: readonly { amountMino
 export function answeredElsewhere(item: EventPlanItemView, transactionId: string): string | null {
   const others = item.purchases.filter((purchase) => purchase.transactionId !== transactionId);
   if (others.length === 0) return null;
-  if (others.length > 1) return `already paid by ${others.length} other payments — ticking it here adds this one`;
+  if (others.length > 1) return `paid by ${others.length} other payments`;
   const known = item.purchaseCount > 0 && item.description && item.purchase?.transactionId !== transactionId;
-  const where = known ? `${item.description}${item.occurredOn ? ` · ${dayMonth(item.occurredOn)}` : ''}` : 'another payment';
-  return `already paid by ${where} — ticking it here adds this one`;
+  const where = known ? item.description : 'another payment';
+  return `paid by ${where}`;
 }
 
 /**
- * The three figures at the foot of "What it covers". `over` turns Save off rather than letting the write refuse.
+ * The three figures at the foot of "Link to costs". `over` turns Save off rather than letting the write refuse.
  *
  * This is the screen a receipt answering several items belongs on: ticking an item off claims what is left of its
  * receipt, so the second tick on a shared one finds nothing there. Here every share is typed together and checked

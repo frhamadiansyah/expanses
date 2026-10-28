@@ -251,7 +251,7 @@ test('what was tagged before the plan is not planned: said on the event, and kep
  *
  * "Pay now" is the ordinary case — one receipt, one thing — and it fills the payment in from the item so only the
  * real price has to be typed. A shopping trip that answered three items cannot be ticked off three times, because the
- * first tick claims what is left of the receipt; it is settled on "What it covers", where the shares are typed
+ * first tick claims what is left of the receipt; it is settled on "Link to costs", where the shares are typed
  * together and checked against the one payment. Nothing here splits the transaction: the shares are a reading of it.
  */
 test('an item is bought at the real price, and one receipt can answer three', async ({ page }) => {
@@ -298,7 +298,9 @@ test('an item is bought at the real price, and one receipt can answer three', as
   await page.getByRole('link', { name: 'Link a payment' }).click();
   await page.getByRole('link', { name: /Mothercare/ }).click();
   await page.getByRole('checkbox', { name: 'Muslin wraps' }).check();
-  await expect(page.getByTestId('cover-totals')).toContainText('2.200.000'); // given to items
+  await expect(page.getByTestId('cover-totals')).toContainText('Linked to costs');
+  await expect(page.getByTestId('cover-totals')).toContainText('2.200.000'); // linked to costs
+  await expect(page.getByTestId('cover-totals')).toContainText('Left on this receipt');
   await expect(page.getByTestId('cover-totals')).toContainText('1.950.000'); // left on this receipt
   await page.getByRole('button', { name: 'Save' }).click();
 
@@ -322,7 +324,7 @@ test('an item is bought at the real price, and one receipt can answer three', as
  *
  * Ticking an item off claims what is *left* of its receipt, so the second tick against a shared one finds nothing
  * there. That is the normal path for a shopping trip, not an error: the app cannot know a receipt is shared until it
- * is told, and "What it covers" is where it is told.
+ * is told, and "Link to costs" is where it is told.
  */
 test('a receipt that is already spoken for is shown as fully accounted for, not offered again', async ({ page }) => {
   await addWallet(page);
@@ -347,9 +349,10 @@ test('a receipt that is already spoken for is shown as fully accounted for, not 
   await page.getByRole('link', { name: 'Back to the plan' }).click();
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
   await page.getByTestId('item-payment').click();
-  await expect(page.getByRole('heading', { name: 'What it covers' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Link to costs' })).toBeVisible();
   await page.getByRole('checkbox', { name: 'Muslin wraps' }).check();
-  await expect(page.getByTestId('cover-totals')).toContainText('that is more than the receipt');
+  await expect(page.getByTestId('cover-totals')).toContainText('Over this receipt');
+  await expect(page.getByTestId('cover-totals')).not.toContainText('more than the receipt');
   await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();
 });
 
@@ -488,9 +491,8 @@ test('one receipt answers two items and not one entry of the ledger moves', asyn
   await page.getByRole('checkbox', { name: 'Muslin wraps' }).check();
   // Three lines of one card, each figure pinned to its own label: 1.500.000 + 700.000 given, 1.950.000 left.
   await expectCover(page, {
-    Receipt: 'Rp 4.150.000',
-    'Given to costs': 'Rp 2.200.000',
-    'Left on this receipt not planned': 'Rp 1.950.000',
+    'Linked to costs': 'Rp 2.200.000',
+    'Left on this receipt': 'Rp 1.950.000',
   });
   await page.getByRole('button', { name: 'Save' }).click();
 
@@ -623,7 +625,7 @@ test('a purchase can be unticked from either screen, and the item itself removed
   // One payment has no separate "Say what it covers" row: the payment itself opens the screen.
   await expect(bought).not.toContainText('Say what it covers');
   await bought.getByTestId('item-payment').click();
-  await expect(page.getByRole('heading', { name: 'What it covers' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Link to costs' })).toBeVisible();
   await page.goBack();
   await bought.getByRole('button', { name: 'Unlink payment' }).click();
   // The link is gone and the purchase is not: the page turns back into the one that offers to pay it.
@@ -833,7 +835,7 @@ test('an event kept without a plan draws the ring alone, and gets its plan back'
 /**
  * One payment that was bigger than its cost because it also paid for another: no untagging first.
  *
- * Rp 18.200.000 is paid against a Rp 18.000.000 cost. On What it covers the second cost is ticked on the same payment,
+ * Rp 18.200.000 is paid against a Rp 18.000.000 cost. On Link to costs the second cost is ticked on the same payment,
  * takes the Rp 200.000 that is left, and Save writes both shares.
  */
 test('a payment bigger than its cost also covers a second cost, without untagging', async ({ page }) => {
@@ -848,13 +850,18 @@ test('a payment bigger than its cost also covers a second cost, without untaggin
   await buyItNow(page, { paid: '18200000', done: false });
   await page.getByTestId('plan-item').filter({ hasText: 'Delivery package' }).getByRole('link').click();
   await page.getByTestId('item-payment').click();
-  await expect(page.getByRole('heading', { name: 'What it covers' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Link to costs' })).toBeVisible();
   await page.getByRole('checkbox', { name: 'Check up' }).check();
   // The first cost holds the whole payment, so the second starts at its estimate and the total reads red until shared out.
   await expect(page.getByLabel('Share for Delivery package')).toHaveValue(/18\.?200\.?000/);
+  await expect(page.getByTestId('cover-totals')).toContainText('Linked to costs');
+  await expect(page.getByTestId('cover-totals')).toContainText('Over this receipt');
   await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();
   await page.getByLabel('Share for Delivery package').fill('18000000');
   await page.getByLabel('Share for Check up').fill('200000');
+  await expect(page.getByLabel('Share for Check up')).toHaveValue('200.000');
+  await expect(page.getByTestId('cover-totals')).toContainText('Left on this receipt');
+  await expect(page.getByTestId('cover-totals')).not.toContainText('Over this receipt');
   await expect(page.getByRole('button', { name: 'Save' })).toBeEnabled();
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByTestId('plan-item').filter({ hasText: 'Check up' })).toContainText('200.000');
