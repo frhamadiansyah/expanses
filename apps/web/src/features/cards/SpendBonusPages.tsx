@@ -321,6 +321,7 @@ function WaiverForm({ page }: { page: CardPage }) {
     <InsetRow
       key={value}
       testId={`waiver-${value}`}
+      plain
       title={title}
       subtitle={hint}
       value={shownKind === value ? <Check size={17} aria-label="Chosen" className="text-[var(--ph-tint)]" /> : undefined}
@@ -330,14 +331,14 @@ function WaiverForm({ page }: { page: CardPage }) {
   return (
     <>
       <ErrorBox error={error} />
-      <InsetGroup header="How is the fee waived?" footer="Pick one. A challenge is usually added after the fee is charged. Choose None to remove it.">
+      <InsetGroup header="How is the fee waived?">
         {choice('none', 'None', 'The fee is charged and stays charged')}
         {choice('automatic', 'Spend a yearly amount', 'The bank waives the fee itself when spending reaches the amount')}
-        {choice('challenge', 'A challenge from the bank', 'The bank set a target and a date, usually after a call')}
+        {choice('challenge', 'Spending challenge', 'The bank set a target and a date, usually after a call')}
       </InsetGroup>
       {shownKind !== 'none' && (
         <InsetGroup header={shownKind === 'automatic' ? 'Target' : 'From the bank'}>
-          <TextRow label={`Spend (${currency})`} value={shownAmount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="Amount" />
+          <TextRow label="Spend" prefix={currency} value={shownAmount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="Amount" />
           {shownKind === 'automatic' && <ReadOnlyRow label="Within" value="12 months before the fee date" />}
           {shownKind === 'challenge' && <TextRow label="Counted from" type="date" value={shownFrom} onChange={(e) => setFrom(e.target.value)} />}
           {shownKind === 'challenge' && <TextRow label="Spend by" type="date" value={shownBy} onChange={(e) => setBy(e.target.value)} />}

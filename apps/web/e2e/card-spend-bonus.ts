@@ -86,7 +86,7 @@ export async function waiverFlow(page: Page, name: string) {
   // A challenge asks for the spend, the day it counts from, the day to spend by and what counts: no Then or reminder rows.
   await page.getByTestId('waiver-challenge').click();
   await expect(page.getByLabel('Then')).toHaveCount(0);
-  await page.getByLabel('Spend (IDR)').fill('1500000');
+  await page.getByLabel('Spend', { exact: true }).fill('1500000');
   await page.getByLabel('Counted from').fill(iso(days(-10)));
   const by = days(3);
   await page.getByLabel('Spend by').fill(iso(by));

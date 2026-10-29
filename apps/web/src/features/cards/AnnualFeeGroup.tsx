@@ -2,6 +2,7 @@ import { formatMinor, waiverRowText } from '@expanses/core';
 import { useNavigate } from '@tanstack/react-router';
 import { cx } from '../../ui';
 import { InsetRow, PickerRow } from '../../ui/native';
+import type { GroupChild } from '../../ui/native/InsetList';
 import type { CardPage } from './card-page';
 import { feeLine } from './fee-line';
 import { useSpendBonuses } from './spend-bonuses';
@@ -11,7 +12,7 @@ import { shortDate } from './useCardPoints';
  * Settings' "This year's fee" row: how this year's charge stands (the charge's date, Waived, or Refunded once the bank
  * refunded a fee challenge). A tap asks whether it was waived.
  */
-export function YearFeeRow({ page, onAsk }: { page: CardPage; onAsk: () => void }) {
+export function YearFeeRow({ page, onAsk, position }: GroupChild & { page: CardPage; onAsk: () => void }) {
   const { cp, currency, today } = page;
   const { refunds } = useSpendBonuses(cp, page.all, today);
   const terms = cp.terms;
@@ -21,19 +22,20 @@ export function YearFeeRow({ page, onAsk }: { page: CardPage; onAsk: () => void 
   return (
     <InsetRow
       testId="card-annual-fee"
+      position={position}
+      plain
       title="This year's fee"
-      value={<span data-testid="year-fee" className={cx(line.soon && 'font-semibold text-[var(--ph-warn)]')}>{text}</span>}
-      valueTone="ink"
+      value={<span data-testid="year-fee" className={cx(line.soon && 'text-[var(--ph-warn)]')}>{text}</span>}
       onClick={onAsk}
     />
   );
 }
 
 /** Settings' one Fee waiver row: None until a yearly target or a bank's challenge is set; it opens the page that sets it. */
-export function FeeWaiverRow({ page }: { page: CardPage }) {
+export function FeeWaiverRow({ page, position }: GroupChild & { page: CardPage }) {
   const navigate = useNavigate();
   const { card, cp, currency, today } = page;
   const { waiver } = useSpendBonuses(cp, page.all, today);
   const text = waiverRowText(waiver, waiver ? formatMinor(waiver.amountMinor, currency) : '', waiver?.spendBy ? shortDate(waiver.spendBy) : null);
-  return <PickerRow label="Fee waiver" value={text} testId="fee-waiver-row" onOpen={() => void navigate({ to: '/cards/$cardId/settings/fee-waiver', params: { cardId: card.id } })} />;
+  return <PickerRow position={position} label="Fee waiver" value={text} testId="fee-waiver-row" onOpen={() => void navigate({ to: '/cards/$cardId/settings/fee-waiver', params: { cardId: card.id } })} />;
 }

@@ -290,6 +290,7 @@ export function CardSettingsPage() {
         <InsetGroup header="Instalments">
           <InsetRow
             testId="card-instalments-row"
+            plain
             title="Instalments"
             value={(plans.data ?? []).length === 0 ? 'None' : `${plans.data!.length} ${plans.data!.length === 1 ? 'plan' : 'plans'}`}
             to="/cards/$cardId/settings/instalments"
