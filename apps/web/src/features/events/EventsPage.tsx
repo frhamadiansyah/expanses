@@ -22,10 +22,11 @@ import {
   TextRow,
 } from '../../ui/native';
 import { useCategorySets } from '../categories/set-queries';
+import { CurrencySheet } from '../transactions/CurrencySheet';
+import { EventCurrencyRow } from './EventCurrencyRow';
 import { eventListLine } from './plan-view';
 import { useEventPlan, useEvents } from './queries';
 import { useSharedEventSummaries, useSharedEventView } from './shared-queries';
-import { sharedWithText } from './shared-view';
 
 /** "13 – 17 Aug 2026", or one date when the event is a single day. */
 export function eventDates(event: Pick<EventRow, 'startsOn' | 'endsOn'>): string {
@@ -43,24 +44,6 @@ export function eventDates(event: Pick<EventRow, 'startsOn' | 'endsOn'>): string
 export function eventStatus(event: Pick<EventRow, 'startsOn' | 'endsOn' | 'finishedAt'>, today: string): 'Upcoming' | 'Now' | 'Done' {
   if (event.finishedAt !== null || event.endsOn < today) return 'Done';
   return event.startsOn > today ? 'Upcoming' : 'Now';
-}
-
-export function StatusChip({ status }: { status: 'Upcoming' | 'Now' | 'Done' }) {
-  return (
-    <span
-      className={cx(
-        'rounded-full px-1.5 py-px text-[10.5px] font-bold tracking-wide uppercase',
-        // The kit's panel pairs, so a chip keeps its meaning on a dark ground rather than turning into a pale smear.
-        status === 'Now'
-          ? 'bg-[var(--ph-up-panel)] text-[var(--ph-up-ink)]'
-          : status === 'Upcoming'
-            ? 'bg-[var(--ph-info-panel)] text-[var(--ph-info-ink)]'
-            : 'bg-[var(--ph-fill)] text-[var(--ph-ink-3)]',
-      )}
-    >
-      {status}
-    </span>
-  );
 }
 
 /**
@@ -104,23 +87,7 @@ function EventListRow({ event, today, position, shared, ready }: GroupChild & { 
             <span className="block truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{event.name}</span>
             <span className="mt-[2px] flex items-center gap-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
               <span className="truncate">{eventDates(event)}</span>
-              {/* Done is the Past header's to say; only an event still ahead or running wears a chip. */}
-              {eventStatus(event, today) !== 'Done' && <StatusChip status={eventStatus(event, today)} />}
             </span>
-            {shared && (
-              <span className="mt-[2px] flex items-center gap-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="event-shared-with">
-                <span aria-hidden className="flex -space-x-1">
-                  {shared.people.slice(0, 3).map((p, i) => (
-                    <span key={`${i}-${p.name}`} className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[var(--ph-fill)] text-[10px] font-semibold text-[var(--ph-ink-2)] ring-1 ring-[var(--ph-surface)]">
-                      {p.initials}
-                    </span>
-                  ))}
-                </span>
-                <span className="truncate">{sharedWithText(shared.sharedWith)}</span>
-              </span>
-            )}
-            {/* "No plan · 3 purchases" says nothing the figure at the right does not: only a plan has a line of its own. */}
-            {line && of !== null && <span className="block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{line.subline}</span>}
             {/* The figure on the right is clamped at nought, so what the clamp swallowed is said here rather than
                 left as a silent nought — the same both-sided rule the event's own screens keep under their ring. */}
             {line?.backLine && <span className="block truncate text-[12.5px] leading-[16px] text-[var(--ph-up)]">{line.backLine}</span>}
@@ -179,6 +146,8 @@ export function EventsPage() {
   const [startsOn, setStartsOn] = useState(today);
   const [endsOn, setEndsOn] = useState(today);
   const [setId, setSetId] = useState('');
+  const [currency, setCurrency] = useState(ws.baseCurrency);
+  const [picking, setPicking] = useState(false);
 
   const all = events.data ?? [];
   const current = all.filter((event) => eventStatus(event, today) !== 'Done');
@@ -193,6 +162,7 @@ export function EventsPage() {
         startsOn,
         endsOn,
         setId: setId === '' ? null : setId,
+        currency,
       });
       await invalidate();
       // A new event is planned next, and that happens on its own screen.
@@ -222,8 +192,8 @@ export function EventsPage() {
           confirm={{ label: 'Save event', disabled: name.trim() === '', run: () => void addEvent() }}
         >
           <InsetGroup>
-            <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Lebaran, the wedding, the renovation" />
-            <SelectRow label="Categories" hint="A set keeps an event's categories out of the monthly tree." value={setId} onChange={(e) => setSetId(e.target.value)}>
+            <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} />
+            <SelectRow label="Categories" value={setId} onChange={(e) => setSetId(e.target.value)}>
               <option value="">The monthly categories</option>
               {sets.map((set) => (
                 <option key={set.id} value={set.id}>
@@ -231,9 +201,11 @@ export function EventsPage() {
                 </option>
               ))}
             </SelectRow>
+            <EventCurrencyRow value={currency} onOpen={() => setPicking(true)} />
             <TextRow label="Starts on" type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
             <TextRow label="Ends on" type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} />
           </InsetGroup>
+          {picking && <CurrencySheet value={currency} accountCurrency={currency} baseCurrency={ws.baseCurrency} onPick={setCurrency} onClose={() => setPicking(false)} />}
           <ErrorBox error={error} />
         </Sheet>
       )}

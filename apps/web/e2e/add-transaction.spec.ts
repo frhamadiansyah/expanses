@@ -5,10 +5,11 @@ import { addCap } from './budget';
 import { addForm, addTransaction, addTransfer, attachPhoto, closeDetails, fillAmount, openAmount, saveButton, shareWith, chooseTo, choosePayment } from './add-transaction';
 import { addEvent } from './event-plan';
 import { openGoalForm } from './goals';
-import { cardPage, cardPurchases, saveCardTerms } from './card-section';
+import { cardPage, cardPurchases, saveCardTerms, chooseCatalogueCard } from './card-section';
 import { todayIn } from './today';
 import { setCurrency } from './currency-field';
-import { openSplit, pickPartCategory, setChannel, splitRow } from './split-row';
+import { addPart, fillPart, removePart, openSplit, pickPartCategory, setChannel, splitRow } from './split-row';
+import { chooseMccCode, closeMccSheet, mccSheet, openMccSheet, rememberWord } from './mcc-sheet';
 
 /** The directory `photos/store.ts` keeps pictures in, a sibling of the database's `.expanses/` and never inside it. */
 const PHOTO_DIRECTORY = 'expanses-photos';
@@ -130,7 +131,7 @@ test('Paid with names each card by its digits, and choosing one sets the account
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')).filter((label) => label?.includes('BCA KrisFlyer')));
   expect([...offered].sort()).toEqual(['BCA KrisFlyer ···· 1467', 'BCA KrisFlyer ···· 8802']);
 
-  await sheet.getByRole('button', { name: 'Close' }).click();
+  await sheet.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('dialog', { name: 'Add a transaction' }).getByRole('button', { name: 'Cancel' }).click();
 
   await addTransaction(page, { description: 'Ranch Market', paidWith: 'BCA KrisFlyer ···· 8802', category: 'Groceries', amount: '450000' });
@@ -665,17 +666,14 @@ async function catalogueCard(page: Page, name: string, search: string, entryName
   await page.getByLabel('Billing date').fill(billingDay);
   await page.getByLabel('Due date').fill('12');
   await saveCardTerms(page);
-  await page.getByLabel('Search catalogue').fill(search);
-  await page.getByRole('button', { name: entryName, exact: true }).click();
-  await page.getByRole('button', { name: 'Use these terms' }).click();
-  await expect(page.getByText('Step 2 of 3')).toHaveCount(0);
+  await chooseCatalogueCard(page, search, entryName);
 }
 
 test('every extra survives the save, and leaving it out of the report leaves only the chart and the budgets', async ({ page }) => {
   await addAccount(page, 'BCA KF Signature', 'credit_card', async () => {
     await page.getByLabel('Current balance').fill('0');
   });
-  await catalogueCard(page, 'BCA KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  await catalogueCard(page, 'BCA KF Signature', 'signature', 'BCA KrisFlyer Visa Signature');
   await addEvent(page, 'Lebaran');
 
   await page.goto('/transactions');
@@ -698,18 +696,17 @@ test('every extra survives the save, and leaving it out of the report leaves onl
   // An uneven split: 40.000 and 45.000 make the 85.000 the card was charged, and neither is half of it.
   await openSplit(page);
   const split = page.getByRole('dialog', { name: 'Split' });
-  await split.getByRole('button', { name: '+ Split' }).click();
-  await split.getByLabel('Split 1 amount').fill('40000');
+  await addPart(page);
+  await fillPart(page, 1, '40000');
   await pickPartCategory(page, 2, 'Restaurants');
-  await split.getByLabel('Split 2 amount').fill('45000');
-  await expect(split.getByText('Total Rp 85.000')).toBeVisible();
+  await fillPart(page, 2, '45000');
+  await expect(split.getByTestId('split-total')).toContainText('85.000');
   await split.getByRole('button', { name: 'Close' }).click();
   await expect(splitRow(page)).toContainText('2 splits · Total Rp 85.000');
 
-  await more.getByRole('button', { name: 'MCC' }).click();
-  const mccSheet = page.getByRole('dialog', { name: 'MCC' });
-  await mccSheet.getByLabel('MCC', { exact: true }).fill('5411');
-  await mccSheet.getByRole('button', { name: 'Close' }).click();
+  await openMccSheet(page, more);
+  await chooseMccCode(page, '5411');
+  await closeMccSheet(page);
   await expect(more.getByRole('button', { name: 'MCC' })).toContainText('5411');
 
   await setChannel(page, 'Offline');
@@ -721,8 +718,12 @@ test('every extra survives the save, and leaving it out of the report leaves onl
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 
+  // Event spending is not in Cashflow's list: its receipt is reached from the event's own page.
+  await expect(page.getByRole('link', { name: 'Receipt for Superindo' })).toHaveCount(0);
+  await page.goto('/events');
+  await page.getByTestId('event-row').filter({ hasText: 'Lebaran' }).click();
   // The receipt carries the event and the channel it was given, and says it is out of the chart.
-  await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
+  await page.getByTestId('event-history').filter({ hasText: 'Superindo' }).getByRole('button', { name: /Superindo/ }).click();
   await expect(page.getByTestId('receipt-hero')).toBeVisible();
   /*
    * And the split itself reached the ledger as **two** categories. This spec set a two-row split up in ten
@@ -788,20 +789,20 @@ test('a split is read in the paying account’s own currency, exponent and all',
   const more = page.getByRole('region', { name: 'More details' });
   await openSplit(page);
   const split = page.getByRole('dialog', { name: 'Split' });
-  await split.getByRole('button', { name: '+ Split' }).click();
+  await addPart(page);
   await pickPartCategory(page, 1, 'Groceries');
-  await split.getByLabel('Split 1 amount').fill('40.50');
+  await fillPart(page, 1, '40,50');
   await pickPartCategory(page, 2, 'Restaurants');
-  await split.getByLabel('Split 2 amount').fill('44.50');
+  await fillPart(page, 2, '44,50');
 
   // USD 85, not 8.500 and not 85.000: USD has two decimals, and a figure read at the wrong exponent on this
   // card would be a hundred times what was typed. IDR cannot show that mistake at all — its exponent is 0.
-  await expect(split.getByText('Total US$85,00')).toBeVisible();
+  await expect(split.getByTestId('split-total')).toContainText('85,00');
   await split.getByRole('button', { name: 'Close' }).click();
   await expect(splitRow(page)).toContainText('2 splits · Total US$85,00');
   // One row taken away leaves one row, counted as one: "1 splits" is what this used to say.
   await openSplit(page);
-  await split.getByRole('button', { name: 'Remove split 2' }).click();
+  await removePart(page, 2);
   await split.getByRole('button', { name: 'Close' }).click();
   await expect(splitRow(page)).toContainText('1 split · Total US$40,50');
 });
@@ -831,11 +832,11 @@ test('a split by category posts one line per category, each with its own figure'
   const more = page.getByRole('region', { name: 'More details' });
   await openSplit(page);
   const split = page.getByRole('dialog', { name: 'Split' });
-  await split.getByRole('button', { name: '+ Split' }).click();
+  await addPart(page);
   await pickPartCategory(page, 1, 'Groceries');
-  await split.getByLabel('Split 1 amount').fill('40000');
+  await fillPart(page, 1, '40000');
   await pickPartCategory(page, 2, 'Restaurants');
-  await split.getByLabel('Split 2 amount').fill('45000');
+  await fillPart(page, 2, '45000');
   await split.getByRole('button', { name: 'Close' }).click();
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
@@ -882,35 +883,36 @@ test('Split by category and With refuse each other in words, before Save', async
 
   await openSplit(page);
   const split = page.getByRole('dialog', { name: 'Split' });
-  await split.getByRole('button', { name: '+ Split' }).click();
-  await split.getByLabel('Split 1 amount').fill('50000');
+  await addPart(page);
+  await fillPart(page, 1, '50000');
   await pickPartCategory(page, 2, 'Groceries');
-  await split.getByLabel('Split 2 amount').fill('35000');
+  await fillPart(page, 2, '35000');
   await split.getByRole('button', { name: 'Close' }).click();
 
   // With is shut, and says why — before Save, not as an error after it.
   await expect(more.getByRole('button', { name: 'With', exact: true })).toBeDisabled();
-  await expect(more).toContainText('Remove the splits, or remove the people');
+  await expect(more).toContainText('Remove the split, or remove the people');
   // Split itself stays open: what was set first is the one that can still be corrected.
   await expect(splitRow(page)).toBeEnabled();
 
   // The way out the words name really is a way out: take the splits off and With is offered again.
   await openSplit(page);
-  await split.getByRole('button', { name: 'Remove split 2' }).click();
-  await split.getByRole('button', { name: 'Remove split 1' }).click();
+  await removePart(page, 2);
+  await removePart(page, 1);
   await split.getByRole('button', { name: 'Close' }).click();
   await expect(more.getByRole('button', { name: 'With', exact: true })).toBeEnabled();
 
   // And the refusal goes the other way round too: a person on the bill shuts Split.
   await more.getByRole('button', { name: 'With', exact: true }).click();
   const withSheet = page.getByRole('dialog', { name: 'With', exact: true });
-  await withSheet.getByLabel('Add a person').fill('Andi');
-  await withSheet.getByRole('button', { name: 'Add', exact: true }).click();
-  await withSheet.getByRole('button', { name: 'Close' }).click();
+  await withSheet.getByLabel('Search or add a person').fill('Andi');
+  await withSheet.getByLabel('Search or add a person').press('Enter');
+  await expect(withSheet.getByRole('button', { name: 'Andi', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await withSheet.getByRole('button', { name: 'Close', exact: true }).click();
   await form.getByRole('button', { name: 'Category', exact: true }).click();
   const picker = page.getByRole('dialog', { name: 'Select category' });
   await expect(picker.getByRole('button', { name: 'Split between categories' })).toBeDisabled();
-  await expect(picker.getByRole('button', { name: 'Split between categories' })).toHaveAttribute('title', /Remove the splits, or remove the people/);
+  await expect(picker.getByRole('button', { name: 'Split between categories' })).toHaveAttribute('title', /Remove the split, or remove the people/);
   await picker.getByRole('button', { name: 'Close' }).click();
   await expect(more.getByRole('button', { name: 'With', exact: true })).toBeEnabled();
 
@@ -991,7 +993,7 @@ test('a bill split equally between three people leaves each of them owing their 
   await expect(sheet.getByTestId('with-your-share')).toHaveText('Rp 100.000');
 
   // Shut, the row underneath reads back what was decided — the summary Task 14's edit sheet will show too.
-  await sheet.getByRole('button', { name: 'Close' }).click();
+  await sheet.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(more.getByRole('button', { name: 'With', exact: true })).toContainText('3 people · Owed Rp 300.000');
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
@@ -1230,6 +1232,23 @@ test('the category picker is a tree, it searches, and a new category is made wit
 const otherDay = (today: string) => `${today.slice(0, 8)}${today.endsWith('-01') ? '02' : '01'}`;
 
 /**
+ * Event spending is not in Cashflow's list (events leave the history): its row and its receipt are reached from the
+ * event's own page. This is that page's history row for the purchase.
+ */
+async function eventHistoryRow(page: Page, event: string, what: string) {
+  await page.goto('/events');
+  await page.getByTestId('event-row').filter({ hasText: event }).click();
+  return page.getByTestId('event-history').filter({ hasText: what });
+}
+
+/** The receipt of an event purchase, opened from the event's page. */
+async function openEventReceipt(page: Page, event: string, what: string) {
+  const row = await eventHistoryRow(page, event, what);
+  await row.getByRole('button').and(row.getByTitle('Open the receipt')).click();
+  await expect(page.getByTestId('receipt-hero')).toBeVisible();
+}
+
+/**
  * §2's field map, walked in one purchase: nothing the old form could record has been lost.
  *
  * Every row here is a field the old `add-transaction.html` had, and each is read back off a screen that is
@@ -1260,7 +1279,7 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
   // The 31st clamps to the end of the month, so this card's statement cycle IS the calendar month. With the
   // usual 25th the cycle runs 26th→25th, and `OTHER_DAY` — the 1st — falls into the *previous* cycle on every
   // day from the 26th onwards, which took the purchase off "This cycle" and out of the list read at the end.
-  await catalogueCard(page, 'BCA KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature', '31');
+  await catalogueCard(page, 'BCA KF Signature', 'signature', 'BCA KrisFlyer Visa Signature', '31');
   await addEvent(page, 'Lebaran');
 
   await page.goto('/transactions');
@@ -1284,29 +1303,30 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
   const more = page.getByRole('region', { name: 'More details' });
   await more.getByRole('button', { name: 'Event' }).click();
   await page.getByRole('dialog', { name: 'Event' }).getByRole('button', { name: 'Lebaran' }).click();
-  await more.getByRole('button', { name: 'MCC' }).click();
-  const mccSheet = page.getByRole('dialog', { name: 'MCC' });
-  await mccSheet.getByLabel('MCC', { exact: true }).fill('5411');
+  await openMccSheet(page, more);
+  await chooseMccCode(page, '5411');
   // Remember for this merchant: the code then belongs to the merchant rather than to this one purchase, which
   // is the whole difference between the two — `typedMcc` clears the purchase's own code when a pattern is set.
-  await mccSheet.getByRole('checkbox', { name: /^Remember this MCC/ }).check();
-  await expect(mccSheet.getByRole('textbox', { name: 'Merchant text' })).toHaveValue('superindo');
-  await mccSheet.getByRole('button', { name: 'Close' }).click();
+  // The Word row suggests the note's first words in grey; typing it is what remembers it.
+  await expect(mccSheet(page).getByLabel('Word', { exact: true })).toHaveAttribute('placeholder', 'superindo');
+  await expect(mccSheet(page).getByLabel('Remembered for')).toBeVisible();
+  await rememberWord(page, 'superindo');
+  await closeMccSheet(page);
   await setChannel(page, 'Offline');
 
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 
-  // The row: the note, the category, what the account was charged, what the merchant charged, and the digits.
-  const row = page.getByTestId('transaction-row').filter({ hasText: 'Superindo' });
+  // The row: the note, the category, what the account was charged, what the merchant charged, and the digits. The
+  // purchase belongs to an event, so Cashflow's list leaves it out and the event's own history holds the row.
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Superindo' })).toHaveCount(0);
+  const row = await eventHistoryRow(page, 'Lebaran', 'Superindo');
   await expect(row).toHaveCount(1);
   await expect(row).toContainText('Groceries');
   await expect(row).toContainText('1.600.000');
   await expect(row).toContainText('US$100,00');
-  await expect(row).toContainText('8802');
-  // The supplementary's digits, never the primary's: an account lending one card to every purchase on it is
-  // exactly the mistake `receiptLines` guards against.
-  await expect(row).not.toContainText('1467');
+  // The event page's row does not draw card digits (a Cashflow row does); this purchase's digits are read off its
+  // receipt below, with the primary's never standing in for the supplementary's.
 
   /*
    * A second purchase on the *other* card of the same account, so the pair of assertions above cannot be
@@ -1314,16 +1334,16 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
    * card left the test green until this existed — the two happened to coincide — which is the shape of a test
    * that proves something already true for another reason.
    */
+  await page.goto('/transactions');
   await addTransaction(page, { description: 'Ranch Market', paidWith: 'BCA KF Signature ···· 1467', category: 'Groceries', amount: '50000' });
   const primary = page.getByTestId('transaction-row').filter({ hasText: 'Ranch Market' });
   await expect(primary).toContainText('1467');
   await expect(primary).not.toContainText('8802');
-  // …and the first row did not follow it: two purchases on one account, each carrying its own digits.
-  await expect(row).toContainText('8802');
-
-  // The receipt: the same facts again, off the transaction rather than off the row's own summary.
-  await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
+  // The receipt: the same facts again, off the transaction rather than off the row's own summary. Opened after the
+  // second purchase exists, so it also proves the first did not follow it: each carries its own digits.
+  await openEventReceipt(page, 'Lebaran', 'Superindo');
   await expect(page.locator('div', { hasText: /^Paid with/ }).last()).toContainText('BCA KF Signature ···· 8802');
+  await expect(page.locator('div', { hasText: /^Paid with/ }).last()).not.toContainText('1467');
   await expect(page.locator('div', { hasText: /^Total/ }).last()).toContainText('1.600.000');
   await expect(page.locator('div', { hasText: /^Original amount/ }).last()).toContainText('US$100,00');
   await expect(page.locator('div', { hasText: /^Event/ }).last()).toContainText('Lebaran');
@@ -1375,11 +1395,11 @@ test('a split by category refuses a foreign amount in words, and the way out wor
   const more = page.getByRole('region', { name: 'More details' });
   await openSplit(page);
   const split = page.getByRole('dialog', { name: 'Split' });
-  await split.getByRole('button', { name: '+ Split' }).click();
+  await addPart(page);
   await pickPartCategory(page, 1, 'Groceries');
-  await split.getByLabel('Split 1 amount').fill('600000');
+  await fillPart(page, 1, '600000');
   await pickPartCategory(page, 2, 'Restaurants');
-  await split.getByLabel('Split 2 amount').fill('1000000');
+  await fillPart(page, 2, '1000000');
   await split.getByRole('button', { name: 'Close' }).click();
 
   await form.getByRole('button', { name: 'Save' }).click();
@@ -1415,7 +1435,7 @@ test('an excluded purchase leaves the chart and the budget, keeps the statement 
   await addAccount(page, 'BCA KF Signature', 'credit_card', async () => {
     await page.getByLabel('Current balance').fill('0');
   });
-  await catalogueCard(page, 'BCA KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  await catalogueCard(page, 'BCA KF Signature', 'signature', 'BCA KrisFlyer Visa Signature');
 
   const spend = async (note: string, amount: string, exclude: boolean) => {
     await page.goto('/transactions');
@@ -1558,7 +1578,7 @@ test('an event, a photograph and the exclusion survive one save together', async
   await form.getByLabel('Note').fill('Superindo');
 
   const { more, sheet } = await attachPhoto(page, form, { name: 'receipt.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('a Lebaran receipt') });
-  await sheet.getByRole('button', { name: 'Close' }).click();
+  await sheet.getByRole('button', { name: 'Close', exact: true }).click();
   await more.getByRole('button', { name: 'Event' }).click();
   await page.getByRole('dialog', { name: 'Event' }).getByRole('button', { name: 'Lebaran' }).click();
   await more.getByRole('switch', { name: 'Exclude from report' }).click();
@@ -1566,7 +1586,7 @@ test('an event, a photograph and the exclusion survive one save together', async
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 
-  await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
+  await openEventReceipt(page, 'Lebaran', 'Superindo');
   await expect(page.locator('div', { hasText: /^Event/ }).last()).toContainText('Lebaran');
   await expect(page.getByTestId('excluded-note')).toContainText('Excluded from the chart and budgets');
   // The bytes, off this device's own OPFS — not merely a row saying a picture exists.
@@ -1589,7 +1609,7 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
     await page.getByLabel('Current balance').fill('0');
   });
   // Real terms, so the Points tab has a scheme to list the purchase against — and so the MCC is readable there.
-  await catalogueCard(page, 'BCA KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  await catalogueCard(page, 'BCA KF Signature', 'signature', 'BCA KrisFlyer Visa Signature');
   await addEvent(page, 'Lebaran');
 
   await page.goto('/transactions');
@@ -1605,10 +1625,9 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
   const more = page.getByRole('region', { name: 'More details' });
   await more.getByRole('button', { name: 'Event' }).click();
   await page.getByRole('dialog', { name: 'Event' }).getByRole('button', { name: 'Lebaran' }).click();
-  await more.getByRole('button', { name: 'MCC' }).click();
-  const mccSheet = page.getByRole('dialog', { name: 'MCC' });
-  await mccSheet.getByLabel('MCC', { exact: true }).fill('5411');
-  await mccSheet.getByRole('button', { name: 'Close' }).click();
+  await openMccSheet(page, more);
+  await chooseMccCode(page, '5411');
+  await closeMccSheet(page);
   await setChannel(page, 'Online');
   await more.getByRole('switch', { name: 'Exclude from report' }).click();
   await form.getByRole('button', { name: 'Save' }).click();
@@ -1620,9 +1639,8 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
   await cardPurchases(page);
   await expect(page.getByTestId('purchase').filter({ hasText: 'Superindo' })).toContainText('MCC 5411 · typed');
 
-  // The refund, made from the receipt the purchase already has.
-  await page.goto('/transactions');
-  await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
+  // The refund, made from the receipt the purchase already has — reached from the event, which Cashflow leaves out.
+  await openEventReceipt(page, 'Lebaran', 'Superindo');
   await page.getByRole('button', { name: 'Edit this transaction' }).click();
   const edit = page.getByRole('dialog', { name: 'Edit transaction' });
   await edit.getByRole('radio', { name: 'Income' }).click();
@@ -1639,8 +1657,7 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
   await expect(page.getByTestId('purchase').filter({ hasText: 'Superindo' })).toHaveCount(0);
 
   // Everything that was never a card's fact came across to the new id, all four at once.
-  await page.goto('/transactions');
-  await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
+  await openEventReceipt(page, 'Lebaran', 'Superindo');
   await expect(page.locator('div', { hasText: /^Paid into/ }).last()).toContainText('BCA KF Signature');
   await expect(page.locator('div', { hasText: /^Event/ }).last()).toContainText('Lebaran');
   await expect(page.locator('div', { hasText: /^Channel/ }).last()).toContainText('Online');

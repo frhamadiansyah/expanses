@@ -1,7 +1,7 @@
 import type { CatalogCardLook } from '@expanses/catalog';
 import { Link, type LinkProps } from '@tanstack/react-router';
 import { RotateCw } from 'lucide-react';
-import { type CSSProperties, Fragment, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type CSSProperties, Fragment, type ReactNode, type Ref, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useEscape } from '../../app/use-escape';
 import { usePhone } from '../../app/use-phone';
 import { CardFace } from '../../features/cards/CardFace';
@@ -10,6 +10,7 @@ import { cx } from '../index';
 import { arriveFrom, flightKeyframes, flyInto, leaveFrom, MOVE_MS, PILE_LAG_MS, PILE_STAGGER_MS, type Pose, poseFrom, poseTransform, reducedMotion, springProgress } from './card-motion';
 import { CARD_H, CARD_W, DESKTOP_CARD_W, faceIsBehind, PILE_FLOOR_DESKTOP, PILE_FLOOR_PHONE, PILE_PEEK, pileHeight, type StackedCard, stackLayout } from './card-stack';
 import { InsetGroup, InsetRow } from './InsetList';
+import { useSwipeStep } from './swipe-step';
 import { WalletSlotContext } from './wallet-slot';
 
 /**
@@ -143,6 +144,11 @@ export function CardStack({
   // Whether a page has a back is that page's to say (it says no as it goes); a card put down is put down face up.
   useEffect(() => setFlipped(false), [raisedKey]);
   const still = reducedMotion();
+  // A page with several plastic cards gives the raised card a swipe that steps through them; the card slides, a tap still taps.
+  const [stepper, setStepper] = useState<((by: 1 | -1) => boolean) | null>(null);
+  const setSwipe = useCallback((step: ((by: 1 | -1) => boolean) | null) => setStepper(() => step), []);
+  const slide = useRef<HTMLDivElement>(null);
+  const swipe = useSwipeStep({ enabled: stepper !== null, onStep: (by) => stepper?.(by) ?? false, target: () => slide.current });
 
   /*
    * A card that changes between its band and its whole face on the way — the covered card raised, the raised card
@@ -321,6 +327,8 @@ export function CardStack({
                 borderRadius: whole ? radius : `${radius}px ${radius}px 0 0`,
                 pointerEvents: 'auto',
               };
+              // A vertical drag still scrolls the page; only a sideways one is the swipe.
+              const swipeStyle: CSSProperties = stepper ? { ...style, touchAction: 'pan-y' } : style;
               const hit = 'ph-focus-inset absolute top-0 left-0 block w-full text-left';
               /*
                * Every card is drawn whole, at one width; the card after it is laid over it, so what shows is its top
@@ -372,7 +380,7 @@ export function CardStack({
                       boxShadow: placed.place !== 'raised' && index > 0 && !(hidden && index === (raisedIndex === 0 ? 1 : 0)) ? 'var(--ph-card-edge)' : undefined,
                     }}
                   >
-                    <CardTurn raised={placed.place === 'raised'} flipped={flipped} still={still} backRef={backRef}>
+                    <CardTurn raised={placed.place === 'raised'} flipped={flipped} still={still} backRef={backRef} slideRef={placed.place === 'raised' ? slide : undefined}>
                       <Face card={drawn} band={turning ? false : covered} scale={scale} />
                     </CardTurn>
                     {placed.place === 'raised' ? (
@@ -392,7 +400,7 @@ export function CardStack({
                           </button>
                         ) : (
                           <>
-                            <button type="button" aria-label={`${name}, show balance`} aria-pressed={false} className={cx(hit, 'ph-under-dialog')} style={style} onClick={() => setFlipped(true)} />
+                            <button type="button" aria-label={`${name}, show balance`} aria-pressed={false} className={cx(hit, 'ph-under-dialog')} style={swipeStyle} {...swipe.handlers} onClick={() => !swipe.swiped() && setFlipped(true)} />
                             {/* The same small mark as the back's, so the card reads as one that turns. */}
                             <span aria-hidden className="pointer-events-none absolute top-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/25 text-white">
                               <RotateCw size={15} />
@@ -401,7 +409,7 @@ export function CardStack({
                         )
                       ) : (
                         // The raised card is the page's header; tapping it closes it, as in Wallet.
-                        <button type="button" aria-label={name} className={hit} style={style} onClick={() => onClose?.()} />
+                        <button type="button" aria-label={name} className={hit} style={swipeStyle} {...swipe.handlers} onClick={() => !swipe.swiped() && onClose?.()} />
                       )
                     ) : card.to ? (
                       <Link to={card.to} params={card.params} aria-label={named} className={hit} style={style} />
@@ -445,7 +453,7 @@ export function CardStack({
         </div>
       </section>
       {isRaised && (
-        <WalletSlotContext.Provider value={{ width: layout.cardWidth, height: layout.cardHeight, setShown, backHost, flipped, setFlippable }}>
+        <WalletSlotContext.Provider value={{ width: layout.cardWidth, height: layout.cardHeight, setShown, setSwipe, backHost, flipped, setFlippable }}>
           {/* The page comes up under the raised card once it has all but landed, as a pass's details do in Wallet. */}
           {/* It leaves room at its foot for the pile, so its last rows scroll clear of it. */}
           <div className="ph-card-page-in" style={pile > 0 && PILE_PEEK > 0 ? { paddingBottom: pile + 8 } : undefined}>
@@ -467,7 +475,7 @@ const TURN_MS = 400;
  * hidden` — switched when the card is edge-on, or at once for a fade — so it is out of the tab order and the
  * accessibility tree, and what shows is always what is read.
  */
-function CardTurn({ raised, flipped, still, backRef, children }: { raised: boolean; flipped: boolean; still: boolean; backRef: (node: HTMLElement | null) => void; children: ReactNode }) {
+function CardTurn({ raised, flipped, still, backRef, slideRef, children }: { raised: boolean; flipped: boolean; still: boolean; backRef: (node: HTMLElement | null) => void; slideRef?: Ref<HTMLDivElement>; children: ReactNode }) {
   const motion = raised ? `${still ? 200 : TURN_MS}ms` : '0ms';
   const half = still ? 0 : TURN_MS / 2;
   const side = (shown: boolean): CSSProperties => ({
@@ -481,7 +489,7 @@ function CardTurn({ raised, flipped, still, backRef, children }: { raised: boole
     opacity: still && !shown ? 0 : 1,
   });
   return (
-    <div style={{ position: 'absolute', inset: 0, perspective: raised && !still ? 1200 : undefined }}>
+    <div ref={slideRef} style={{ position: 'absolute', inset: 0, perspective: raised && !still ? 1200 : undefined }}>
       <div
         data-testid="card-turn"
         data-flipped={flipped ? '' : undefined}

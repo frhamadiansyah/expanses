@@ -777,13 +777,12 @@ test('Paid with › Add credit card › the catalogue over the keyboard › a ca
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('BCA UnionPay');
 
-  // Opened with no dates: the card's page offers to add them, and its settings offer the published fee beside them.
+  // Opened with no dates: the card's page has no row for them, and its settings offer the published fee beside them.
   await page.goto('/wallet');
   await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^BCA UnionPay(,|$)/ }).click();
-  const dates = page.getByTestId('card-setup');
-  await expect(dates).toContainText('Billing and due dates');
-  await dates.click();
-  await expect(page.getByLabel(/^Annual fee/)).toHaveValue('125000');
+  await expect(page.getByTestId('card-setup')).toHaveCount(0);
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await expect(page.getByLabel(/^Annual fee/)).toHaveValue('125.000');
   await expect(page.getByLabel('Billing date')).toHaveValue('');
 });
 
@@ -887,12 +886,9 @@ test('a receipt from the Amount row’s camera fills what is empty, says so, and
   await page.getByLabel('Note').fill('Groceries run');
 
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
-  // The Amount row's camera opens Photos; a picture added there is read.
-  await page.getByTestId('amount-photos').click();
-  const sheet = page.getByRole('dialog', { name: 'Photos' });
-  await sheet.getByTestId('photo-library-input').setInputFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: png });
-  await expect(sheet.getByRole('button', { name: 'Photo 1', exact: true })).toBeVisible();
-  await sheet.getByRole('button', { name: 'Close' }).click();
+  // The Amount row's camera goes straight to the system picker (no sheet of ours first); a picture chosen is read.
+  await page.getByTestId('amount-photo-input').setInputFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: png });
+  await expect(page.getByRole('dialog', { name: 'Photos' })).toHaveCount(0);
 
   await expect(page.getByTestId('receipt-filled')).toHaveText(/Filled from the receipt: amount, date\. Check them\.\s*Undo/);
   await expect(page.getByRole('button', { name: 'Amount', exact: true })).toHaveText('41.300');

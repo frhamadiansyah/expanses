@@ -22,7 +22,7 @@ export async function fundByMoney(page: Page) {
   await openAsset(page, FUND);
   await expect(page.getByTestId('asset-grid')).toContainText('Money inRp');
   await page.getByRole('button', { name: 'Value', exact: true }).click();
-  await page.getByLabel('Value (IDR)').fill('1052000');
+  await page.getByLabel('Value', { exact: true }).fill('1052000');
   await page.getByRole('button', { name: 'Save value' }).click();
   await expect(page.getByTestId('asset-card')).toContainText('1.052.000');
 }

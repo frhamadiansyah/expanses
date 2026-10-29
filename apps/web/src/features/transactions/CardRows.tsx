@@ -1,5 +1,5 @@
 import { isoDate } from '@expanses/core';
-import { AlignLeft, CalendarDays, ChevronLeft, ChevronRight, Store, Wifi, X } from 'lucide-react';
+import { AlignLeft, CalendarDays, ChevronLeft, ChevronRight, ListPlus, Store, Wifi, X } from 'lucide-react';
 import { type CSSProperties, useId, useRef } from 'react';
 import { cx } from '../../ui';
 import { ROW_BODY, RowGlyph, RowLead } from './FormRow';
@@ -40,6 +40,7 @@ export function NoteRow({
   disabled = false,
   channel,
   onChannel,
+  onPasteList,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -52,6 +53,8 @@ export function NoteRow({
    */
   channel?: 'online' | 'offline' | null;
   onChannel?: (channel: 'online' | 'offline' | null) => void;
+  /** A list glyph at the row's right, as the camera is at Amount: opens "Paste a list" of purchases. A new expense only. */
+  onPasteList?: () => void;
 }) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -104,6 +107,19 @@ export function NoteRow({
             style={{ '--ph-tap-y': '12px', '--ph-tap-x': '12px' } as CSSProperties}
           >
             <X size={12} aria-hidden />
+          </button>
+        )}
+        {onPasteList && !disabled && (
+          <button
+            type="button"
+            aria-label="Paste a list"
+            data-testid="note-paste-list"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={onPasteList}
+            className="ph-focus ph-tap flex h-7 shrink-0 items-center justify-center rounded-full px-[4px] text-[var(--ph-ink-3)]"
+            style={{ '--ph-tap-y': '8px', '--ph-tap-x': '6px' } as CSSProperties}
+          >
+            <ListPlus size={18} aria-hidden />
           </button>
         )}
       </span>

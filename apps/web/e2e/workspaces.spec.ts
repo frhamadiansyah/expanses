@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard, walletCard } from './accounts';
-import { addItem, moneyIn, planFor, showPlanCard } from './event-plan';
+import { addItem, chooseCategory, moneyIn, planFor, showPlanCard } from './event-plan';
 import { addTransaction, addTransfer, saveButton } from './add-transaction';
 import { cardPage, saveCardTerms } from './card-section';
 import { openWorkspacePage, workspaceLine } from './workspace-page';
@@ -69,8 +69,9 @@ async function spend(page: Page, description: string, amount: string) {
 
 /** Makes a workspace through the sidebar switcher and lands in it, as the sheet does on its own. */
 async function newWorkspace(page: Page, name: string, startsWith: string) {
-  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
-  await page.getByRole('button', { name: 'New workspace' }).click();
+  await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByTestId('add-workspace').click();
+  await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill(name);
   await sheet.getByLabel('Starts with').selectOption({ label: startsWith });
@@ -111,8 +112,9 @@ test('a new workspace copies the categories, opens empty, and leaves the other a
  */
 test('a Business workspace starts with the business categories, and Personal keeps its own', async ({ page }) => {
   await addBank(page);
-  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
-  await page.getByRole('button', { name: 'New workspace' }).click();
+  await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByTestId('add-workspace').click();
+  await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Shop');
   await expect(sheet.getByLabel('Categories')).toHaveValue('business');
@@ -147,8 +149,9 @@ test('a Business workspace starts with the business categories, and Personal kee
 /** A Business workspace made with Empty categories can take the business list later, from its page, after agreeing to it. */
 test('a Business workspace’s page offers the Business list, and Not now changes nothing', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
-  await page.getByRole('button', { name: 'New workspace' }).click();
+  await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByTestId('add-workspace').click();
+  await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Shop');
   await sheet.getByLabel('Categories').selectOption({ label: 'Empty' });
@@ -298,7 +301,6 @@ async function addCard(page: Page) {
   await page.getByLabel('Billing date').fill('31');
   await page.getByLabel('Due date').fill('15');
   await saveCardTerms(page);
-  await expect(page.getByText('Step 2 of 3')).toBeVisible();
 }
 
 /** Spends on the card from whatever workspace is open. */
@@ -332,16 +334,20 @@ test('a card’s statement holds every workspace, and each row says which', asyn
   await expect(page.getByTestId('statement-total')).toContainText('770.000');
 });
 
-/** The switcher is where a workspace is chosen; the Account page is where one is changed, and it says so. */
-test('the switcher’s “Manage workspaces” lands on the Account page, and the sheet closes behind it', async ({ page }) => {
+/** The switcher only switches; the Account page is where one is made or changed. */
+test('the switcher only lists workspaces, and the Account page holds New', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Workspace', exact: true }).click();
-  await page.getByRole('dialog', { name: 'Workspaces' }).getByRole('link', { name: 'Manage workspaces' }).click();
-
+  const switcher = page.getByRole('dialog', { name: 'Workspaces' });
+  await expect(switcher.getByTestId('workspace-choice')).toHaveCount(1);
+  await expect(switcher.getByText(/New workspace|Join a workspace|Manage workspaces/)).toHaveCount(0);
+  await switcher.getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('link', { name: 'Account', exact: true }).click();
   await expect(page).toHaveURL(/\/account$/);
   await expect(page.getByRole('dialog', { name: 'Workspaces' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Account', exact: true })).toBeVisible();
   await expect(page.getByTestId('account-workspace')).toHaveCount(1);
+  await expect(page.getByTestId('add-workspace')).toBeVisible();
   // The old address still arrives.
   await page.goto('/settings');
   await expect(page).toHaveURL(/\/account$/);
@@ -359,15 +365,16 @@ test('a workspace’s page renames it, archives it, keeps Personal, and restores
   // Personal first, then the one just made: the order the switcher shows them in.
   await expect(page.getByTestId('account-workspace')).toHaveCount(2);
   await workspaceLine(page, 'Business').getByTestId('workspace-open').click();
-  await page.getByLabel('Name', { exact: true }).fill('Consulting');
-  // The ✓ in the title bar saves the name: dim until there is a new name to save, and dim again once it is saved.
-  const save = page.getByRole('button', { name: 'Save name' });
-  await page.getByLabel('Name', { exact: true }).fill('Business');
+  // The Name row opens a small sheet; Save stays dim until there is a new name to save.
+  await page.getByTestId('ws-name-row').click();
+  const sheet = page.getByRole('dialog', { name: 'Name' });
+  const save = sheet.getByRole('button', { name: 'Save', exact: true });
   await expect(save).toBeDisabled();
-  await page.getByLabel('Name', { exact: true }).fill('Consulting');
+  await sheet.getByLabel('Name', { exact: true }).fill('');
+  await expect(save).toBeDisabled();
+  await sheet.getByLabel('Name', { exact: true }).fill('Consulting');
   await save.click();
   await expect(page.getByRole('heading', { name: 'Consulting' })).toBeVisible();
-  await expect(save).toBeDisabled();
   // The switcher follows: it is the same workspace, under the name it is now called.
   await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText('Consulting');
 
@@ -388,9 +395,10 @@ test('a workspace’s page renames it, archives it, keeps Personal, and restores
   await page.getByRole('button', { name: 'Click again to archive' }).click();
   await expect(page.getByRole('alert')).toContainText('Personal is where categories and expected income fall back to, so it stays');
 
-  // Pressing Enter in the name saves it too, as the ✓ does.
-  await page.getByLabel('Name', { exact: true }).fill('Home');
-  await page.getByLabel('Name', { exact: true }).press('Enter');
+  // Pressing Enter in the Name sheet saves it too.
+  await page.getByTestId('ws-name-row').click();
+  await page.getByRole('dialog', { name: 'Name' }).getByLabel('Name', { exact: true }).fill('Home');
+  await page.getByRole('dialog', { name: 'Name' }).getByLabel('Name', { exact: true }).press('Enter');
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText('Home');
 
@@ -427,7 +435,7 @@ async function spendOn(page: Page, description: string, category: string, amount
  * each option belongs to, since two workspaces can hold copies of one category and the name alone is a coin toss.
  */
 async function planAndTag(page: Page, category: string, description: string, option = category) {
-  // What it is expected to cost: a plan is a list of things to buy, and an item without a price is not one.
+  // What it is expected to cost: a plan is a list of things to pay, and an item without a price is not one.
   await planFor(page, category, '1000000', option);
   await page.getByTestId('event-suggestions').getByRole('button', { name: `Tag ${description}` }).click();
 }
@@ -466,11 +474,11 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
   await page.goto(url);
   await planAndTag(page, 'Client lunches', 'Supplier lunch', 'Client lunches · Business');
   // The item form says which workspace each category belongs to: two workspaces can hold a category of the same
-  // name, and the name alone would make the choice a coin toss. selectOption throws when the label is not offered.
+  // name, and the name alone would make the choice a coin toss. The tile is found by that name, so a missing label fails the click.
   await showPlanCard(page);
   await page.getByTestId('open-plan').click();
-  await page.getByRole('link', { name: 'Add an item' }).first().click();
-  await page.getByLabel('Category').selectOption({ label: 'Restaurants · Personal' });
+  await page.getByRole('link', { name: 'Add a cost' }).first().click();
+  await chooseCategory(page, 'Restaurants · Personal');
   await page.getByRole('link', { name: 'Cancel' }).click();
   await page.getByRole('link', { name: 'Back to the event' }).click();
 
@@ -518,9 +526,9 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
  * What is left of a receipt is a fact about the receipt, so the screens that settle it read the whole plan.
  *
  * A plan belongs to the owner and an event is spent on from every workspace, but `eventPlanFor` under a tab drops
- * the items filed in *another* workspace's categories. Reading the pick-a-purchase list and "What it covers"
+ * the items filed in *another* workspace's categories. Reading the pick-a-purchase list and "Link to costs"
  * through the open tab therefore showed a receipt one of those items already answers as free — offered at its full
- * amount on one screen, and on the other seeded into "Given to items" with no row anywhere on the page to show it
+ * amount on one screen, and on the other seeded into "Given to costs" with no row anywhere on the page to show it
  * or hand it back. The write does not narrow, and `usePurchaseCover` does not narrow, so these two must not either.
  *
  * Nothing in the suite failed when the narrowing was put back, which is why this test exists: it is read under the
@@ -542,7 +550,7 @@ test('the screens that settle a receipt read the whole plan, not the open tab', 
   await expect(page.getByRole('heading', { name: 'Singapore holiday', exact: true })).toBeVisible();
   const url = page.url();
 
-  // Personal's side of the trip: one thing still to buy, and a dinner tagged so the workspace has a tab at all.
+  // Personal's side of the trip: one thing still to pay, and a dinner tagged so the workspace has a tab at all.
   await showPlanCard(page);
   await page.getByTestId('open-plan').click();
   await addItem(page, { name: 'Welcome dinner', price: '1000000', category: 'Restaurants' });
@@ -568,7 +576,7 @@ test('the screens that settle a receipt read the whole plan, not the open tab', 
   await showPlanCard(page);
   await page.getByRole('link', { name: 'See the whole plan' }).click();
   await page.getByTestId('plan-item').filter({ hasText: 'Welcome dinner' }).getByRole('link').click();
-  await page.getByRole('link', { name: 'Link a purchase' }).click();
+  await page.getByRole('link', { name: 'Link a payment' }).click();
   await page.getByRole('link', { name: /Supplier lunch/ }).click();
   await page.getByLabel('Share for Welcome dinner').fill('400000');
   await page.getByRole('button', { name: 'Save' }).click();
@@ -580,18 +588,18 @@ test('the screens that settle a receipt read the whole plan, not the open tab', 
   await showPlanCard(page);
   await page.getByTestId('open-plan').click();
   await page.getByTestId('plan-item').filter({ hasText: 'Client entertaining' }).getByRole('link').click();
-  await page.getByRole('link', { name: 'Link a purchase' }).click();
+  await page.getByRole('link', { name: 'Link a payment' }).click();
 
   // Rp640.000 of receipt, Rp240.000 of it still free: the Personal item's share counts in every tab.
   const lunch = page.getByRole('link', { name: /Supplier lunch/ });
   await expect.poll(() => moneyIn(lunch)).toEqual([640_000, 240_000]);
 
-  // And on "What it covers" the item holding that share has a row, ticked, with the figure that was typed for it —
+  // And on "Link to costs" the item holding that share has a row, ticked, with the figure that was typed for it —
   // so it can be handed back. Counted in the totals and absent from the list is money nobody could reach.
   await lunch.click();
-  await expect(page.getByRole('heading', { name: 'What it covers' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Link to costs' })).toBeVisible();
   await expect(page.getByRole('checkbox', { name: 'Welcome dinner' })).toBeChecked();
-  await expect(page.getByLabel('Share for Welcome dinner')).toHaveValue('400000');
+  await expect(page.getByLabel('Share for Welcome dinner')).toHaveValue('400.000');
 });
 
 /**

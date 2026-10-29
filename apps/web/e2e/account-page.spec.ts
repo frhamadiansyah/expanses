@@ -71,11 +71,11 @@ test('a current account takes a second currency and becomes one with pockets, ke
   await expect(page.getByTestId('account-recent')).toContainText('Groceries run');
 });
 
-test('Record on an account with pockets opens paid with the pocket in the workspace’s own currency', async ({ page }) => {
+test('Spend and Receive on a bank with pockets open the Add screen with the pocket in the workspace’s own currency', async ({ page }) => {
   await mockRates(page, { USD: 16_250 });
   await openWithPockets(page, { name: 'Valas Plus', pockets: [{ currency: 'USD', balance: '300.00', rate: '16250' }, { currency: 'IDR', balance: '5000000' }] });
   await openMoney(page, 'Valas Plus');
-  await page.getByRole('button', { name: 'Record', exact: true }).click();
+  await page.getByRole('button', { name: 'Spend', exact: true }).click();
   // The Add screen itself, as ＋ opens it, with the account filled in: its tabs are there, Expense on.
   await expect(page).toHaveURL(/\/transactions\/new\?.*mode=expense/);
   const form = addForm(page);
@@ -87,6 +87,12 @@ test('Record on an account with pockets opens paid with the pocket in the worksp
   await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
   await expect(form.getByRole('radio', { name: 'Transfer', exact: true })).toBeChecked();
   await expect(form.getByRole('button', { name: /^From/ })).toContainText('Valas Plus · IDR');
+  // Receive opens the same screen on Income, into the same pocket.
+  await page.goBack();
+  await page.getByRole('button', { name: 'Receive', exact: true }).click();
+  await expect(page).toHaveURL(/\/transactions\/new\?.*mode=income/);
+  await expect(addForm(page).getByRole('radio', { name: 'Income', exact: true })).toBeChecked();
+  await expect(addForm(page).getByRole('button', { name: /^Received into/ })).toContainText('Valas Plus · IDR');
 });
 
 test('a cash account with pockets: Record, Move, Withdraw, Adjust; Withdraw is into the rupiah pocket and Adjust asks which pocket', async ({ page }) => {
@@ -116,7 +122,7 @@ test('a cash account with pockets: Record, Move, Withdraw, Adjust; Withdraw is i
   await which.getByTestId('adjust-pocket-TRY').click();
   const adjust = page.getByRole('dialog', { name: 'Adjust balance' });
   await expect(adjust).toContainText('1.000');
-  await adjust.getByLabel('Actually have').fill('900');
+  await adjust.getByLabel('Actual').fill('900');
   await adjust.getByRole('button', { name: 'Save' }).click();
   await expect(adjust).toHaveCount(0);
   await expect(page.getByTestId('pocket-TRY')).toContainText('900');
@@ -186,8 +192,8 @@ test('cash is withdrawn into and counted: a short count is unrecorded spending, 
   const sheet = page.getByRole('dialog', { name: 'Adjust balance' });
   await expect(sheet).toContainText('Rp 932.500');
   await expect(sheet.getByRole('button', { name: 'Save' })).toBeDisabled();
-  await sheet.getByLabel('Actually have').fill('887500');
-  await expect(sheet.getByTestId('adjust-difference')).toContainText('45.000 less than the app says.');
+  await sheet.getByLabel('Actual').fill('887500');
+  await expect(sheet.getByTestId('adjust-difference')).toContainText('45.000 less than the balance.');
   // Cash that comes up short was nearly always spent: that is the answer it starts on.
   await expect(sheet.getByRole('radio', { name: /Spending I didn’t record/ })).toBeChecked();
   await sheet.getByRole('button', { name: 'Save' }).click();
@@ -227,9 +233,9 @@ test('Withdraw into a dollar cash account from a rupiah bank: what left, the dol
   await page.getByRole('button', { name: 'Withdraw', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'Cash withdrawal' });
   await sheet.getByLabel('From').selectOption({ label: 'Everyday' });
-  await sheet.getByRole('textbox', { name: 'Received (USD)' }).fill('100');
-  await sheet.getByLabel('Charged (IDR)').fill('1600000');
-  await sheet.getByLabel('ATM fee in IDR').fill('25000');
+  await sheet.getByRole('textbox', { name: 'Received' }).fill('100');
+  await sheet.getByLabel('Charged').fill('1600000');
+  await sheet.getByLabel('ATM fee').fill('25000');
   await sheet.getByRole('button', { name: 'Save' }).click();
   await expect(sheet).toHaveCount(0);
   await showBalance(page);
@@ -246,7 +252,7 @@ test('a current account adjusted as just a correction moves its balance and noth
   await openMoney(page, 'Everyday');
   await page.getByRole('button', { name: 'Adjust', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'Adjust balance' });
-  await sheet.getByLabel('Actually have').fill('12480000');
+  await sheet.getByLabel('Actual').fill('12480000');
   // Anything but cash starts on a correction.
   await expect(sheet.getByRole('radio', { name: /Just a correction/ })).toBeChecked();
   await sheet.getByRole('button', { name: 'Save' }).click();
@@ -370,7 +376,8 @@ test('an account with pockets lists them, and a pocket opens its own page with t
   await expect(page.getByTestId('pocket-USD')).toContainText('2.400,00');
   await expect(page.getByTestId('pocket-USD')).not.toContainText('US Dollar');
   // Four actions in one row; adding a currency is the Pockets list's last row, not an action.
-  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Record', exact: true })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Spend', exact: true })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Receive', exact: true })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Adjust', exact: true })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Move', exact: true })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: /^Add (a )?currency$/ })).toHaveCount(0);

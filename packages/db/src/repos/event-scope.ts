@@ -37,6 +37,11 @@ export interface EventRow {
    * column is outside the schema, so a row read any other way says false.
    */
   planOff: boolean;
+  /**
+   * The currency the event plans in, when it has one of its own (0104). Null: the workspace's base currency. Read by
+   * `listEvents` only — like `planOff`, a row read any other way says null.
+   */
+  currency: string | null;
 }
 
 /**
@@ -60,6 +65,7 @@ const toRow = (row: typeof events.$inferSelect): EventRow => ({
   setId: row.setId,
   finishedAt: row.finishedAt,
   planOff: false,
+  currency: null,
 });
 
 export async function eventOf(database: Database, ws: WorkspaceContext, id: string): Promise<EventRow> {

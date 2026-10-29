@@ -11,7 +11,7 @@ import {
   SprayCan, Stethoscope, Tent, Ticket, TrainFront, Trash2, TreePalm, TrendingUp, Trophy, Users, UsersRound, Utensils, UtensilsCrossed, Wallet,
   WashingMachine, Watch, Wifi, Wine, Wrench, Zap, Store, Milk, Egg, Fish, Beef, Drumstick, Apple, Carrot, Cookie, CookingPot, GlassWater, Tv, Refrigerator, Lamp, Armchair, Sprout, Plug, Syringe, Hospital, Glasses, Bandage, Coins, Target, MoonStar, Truck, Headphones, Popcorn, Guitar, ToyBrick, BrushCleaning, Motorbike, Toothbrush, Hamburger, Shrimp, Salad, Croissant, Donut, Cupcake, Candy, IceCreamBowl, Banana, Grape, Wheat, LeafyGreen, Martini, AirVent, Lightbulb, Fan, Heater, ShowerHead, Toilet, HousePlug, HouseWifi, Houses, PlantPot, Recycle, BroomSparkles, SoapDispenserDroplet, Microwave, Drill, PaintBucket, Fence, Key, Road, SquareParking, CarFront, CarBattery, TicketsPlane, Luggage, PlaneTakeoff, TramFront, Sailboat, Tablets, Thermometer, BriefcaseMedical, TestTube, Microscope, WalletCards, BanknoteArrowUp, BanknoteArrowDown, Vault, TicketPercent, Tags, ReceiptText, FileSignature, ScrollText, Backpack, NotebookPen, School2, Balloon, Ribbon, Medal, Handbag, BookHeart, Bone, Bird, Rabbit, Turtle, FerrisWheel, RollerCoaster, TentTree, Mountain, FishingRod, Piano, Drum, Dices, Puzzle, Volleyball, Radio, BriefcaseBusiness, HardHat, Laptop2, Printer, Router, TabletSmartphone, Newspaper, Mic,
 } from 'lucide-react';
-import { useCategoryColours } from '../../lib/queries';
+import { useAccounts, useCategoryColours } from '../../lib/queries';
 import { type ChosenColours, tintOf } from '../transactions/category-colours';
 
 /**
@@ -78,8 +78,23 @@ export function categoryMark(
   return { Glyph: ICONS[category?.icon ?? base.icon] ?? CircleHelp, colour: tintOf(rootId, chosen, base.colour), name: category?.name ?? null };
 }
 
+/**
+ * The colour a chart draws a category in: exactly its mark's, so a ring slice, its legend row and the category's mark
+ * always agree. A category of the owner's own takes its top-level parent's; none, or one not in the tree, is the slate.
+ */
+export function categoryMarkColour(categoryId: string | null | undefined, accounts: readonly AccountRow[], chosen?: ChosenColours): string {
+  return categoryMark(categoryId ?? null, accounts, chosen).colour;
+}
+
+/** `categoryMarkColour` ready to hand to a chart: reads the accounts and the picked colours once for all its slices. */
+export function useCategoryMarkColour(): (categoryId: string | null | undefined) => string {
+  const accounts = useAccounts().data ?? [];
+  const chosen = useCategoryColours().data;
+  return (categoryId) => categoryMarkColour(categoryId, accounts, chosen);
+}
+
 /** `row` is the kit's own lead circle, 28 px — what a form row's glyph sits in, so a category lines up with them. */
-const SIZES = { lg: { box: 'h-16 w-16', glyph: 32 }, md: { box: 'h-9 w-9', glyph: 18 }, row: { box: 'h-7 w-7', glyph: 15 }, sm: { box: 'h-6 w-6', glyph: 14 }, xs: { box: 'h-5 w-5', glyph: 12 } } as const;
+const SIZES = { tile: { box: 'h-11 w-11', glyph: 22 }, lg: { box: 'h-16 w-16', glyph: 32 }, md: { box: 'h-9 w-9', glyph: 18 }, row: { box: 'h-7 w-7', glyph: 15 }, sm: { box: 'h-6 w-6', glyph: 14 }, xs: { box: 'h-5 w-5', glyph: 12 } } as const;
 
 /**
  * A round, tinted category mark: the glyph names the category, the colour its top-level parent.
@@ -127,6 +142,24 @@ export function CategoryIcon({
       aria-hidden={title ? undefined : true}
     >
       {label ? <span className="tabular text-sm font-semibold">{label}</span> : <Glyph size={glyph} strokeWidth={2.2} />}
+    </span>
+  );
+}
+
+/**
+ * A category mark drawn from a glyph and a colour directly, for categories that are not accounts — a shared trip's own.
+ * The same circle, wash and sizes as `CategoryIcon`'s, so a shared cost reads like a private one.
+ */
+export function MarkChip({ Glyph, colour, size = 'md' }: { Glyph: LucideIcon; colour: string; size?: keyof typeof SIZES }) {
+  const { box, glyph } = SIZES[size];
+  return (
+    <span
+      data-testid="category-mark"
+      aria-hidden
+      className={`inline-flex shrink-0 items-center justify-center rounded-full ${box}`}
+      style={{ background: `color-mix(in srgb, ${colour} 15%, transparent)`, color: colour }}
+    >
+      <Glyph size={glyph} strokeWidth={2.2} />
     </span>
   );
 }

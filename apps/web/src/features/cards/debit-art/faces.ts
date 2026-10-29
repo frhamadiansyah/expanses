@@ -1,4 +1,4 @@
-import { INDONESIAN_BANKS } from '@expanses/core';
+import { bankNameWords, INDONESIAN_BANKS } from '@expanses/core';
 
 /**
  * The drawn faces Wallet gives the money it holds (docs/card-art, approved 23 Oct 2026): which account gets which, and
@@ -189,11 +189,18 @@ export function holderLine(kind: FaceKind): string | null {
 
 /**
  * A name as a drawn face prints it beside the bank's own mark: "BCA Xpresi" under a face that already says BCA is
- * "Xpresi", "Bank Mandiri Xpresi" under Mandiri's "Xpresi". A name that is only the bank, or does not start with it, is
- * printed whole.
+ * "Xpresi", "Bank Mandiri Xpresi" under Mandiri's "Xpresi". The bank may be written any of its ways at the front of the
+ * name, not only as the mark is: "CIMB Octo Savers" under a "CIMB Niaga" face is "Octo Savers", since an account at a
+ * bank is shown by its short name. A name that is only the bank, or does not start with it, is printed whole.
  */
 export function nameBesideMark(name: string, mark: string): string {
   const trimmed = name.trim();
-  const rest = trimmed.replace(new RegExp(`^(?:bank\\s+)?${mark.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s)\\s+`, 'i'), '');
-  return rest === '' ? trimmed : rest;
+  const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // The longest way first, so "CIMB Niaga" is taken whole before "CIMB" would take half of it.
+  const words = [...new Set([mark.trim(), ...bankNameWords(mark)])].filter((word) => word !== '').sort((a, b) => b.length - a.length);
+  for (const word of words) {
+    const rest = trimmed.replace(new RegExp(`^(?:bank\\s+)?${escape(word)}(?=\\s)\\s+`, 'i'), '');
+    if (rest !== trimmed) return rest === '' ? trimmed : rest;
+  }
+  return trimmed;
 }

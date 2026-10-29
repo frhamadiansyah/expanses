@@ -21,6 +21,12 @@ export async function eventually(page: Page, check: () => Promise<void>) {
 export async function corner(page: Page, name: string) {
   const inline = page.getByRole('button', { name, exact: true });
   if ((await inline.count()) > 0) return inline.first().click();
+  // A private event keeps its settings behind the ⚙: sharing is a row on that page.
+  const settings = page.getByRole('link', { name: 'Settings', exact: true });
+  if (name === 'Share this event' && (await settings.count()) > 0) {
+    await settings.click();
+    return page.getByTestId('settings-share').click();
+  }
   await page.getByRole('button', { name: /^More$/ }).click();
   await page.getByRole('menuitem', { name: new RegExp(`^${name}`) }).click();
 }
@@ -45,10 +51,23 @@ export async function newEvent(page: Page, name: string) {
 /** A row of the trip's Spending list, by its note. */
 export const spendingRow = (page: Page, text: string) => page.getByTestId('shared-expense-row').filter({ hasText: text });
 
-/** The Balances section of the trip page (a radio of the segmented control). */
-export async function showBalances(page: Page) {
-  await page.getByRole('radio', { name: 'Balances' }).click();
+/** Shows a card of the trip page's swipeable hero by its dot: Spending, Balances or Plan. */
+export async function showCard(page: Page, name: 'Spending' | 'Balances' | 'Plan') {
+  await page.getByTestId('hero-dots').getByRole('button', { name, exact: true }).click();
+  await expect(page.getByTestId('hero-dots').getByRole('button', { name, exact: true })).toHaveAttribute('aria-current', 'true');
+  // The swipe has come to rest: the scroller's left edge is the card's.
+  await expect(async () => {
+    const index = ['Spending', 'Balances', 'Plan'].indexOf(name);
+    const gap = await page.evaluate((i) => {
+      const el = document.querySelector('[data-testid="hero-swipe"]')!;
+      return Math.abs(el.scrollLeft - i * el.clientWidth);
+    }, index);
+    expect(gap).toBeLessThan(1);
+  }).toPass({ timeout: 5_000 });
 }
+
+/** The Balances card of the trip page, and the To settle up list under it. */
+export const showBalances = (page: Page) => showCard(page, 'Balances');
 
 /** The shared Add screen, whichever way it is drawn. */
 export const sharedCard = (page: Page): Locator => page.getByTestId('shared-expense-card');
@@ -96,4 +115,37 @@ export async function recordSharedSpend(page: Page, spend: SharedSpend) {
   }
   await saveButton(card).click();
   await expect(card).toHaveCount(0, { timeout: 30_000 });
+}
+
+export interface SharedCost {
+  name: string;
+  /** Price each, digits as typed. */
+  price: string;
+  quantity?: string;
+  /** A category of the trip, by name. */
+  category?: string;
+  link?: string;
+  note?: string;
+}
+
+/**
+ * Adds a cost to the open shared trip plan, from the Plan card: the bar plus (or "Add the first cost" on an empty
+ * plan) opens the cost form, which saves back to the plan with the cost listed.
+ */
+export async function addSharedCost(page: Page, cost: SharedCost) {
+  await showCard(page, 'Plan');
+  const first = page.getByRole('link', { name: 'Add the first cost' });
+  if ((await first.count()) > 0) await first.click();
+  else await page.getByRole('link', { name: 'Add a cost' }).click();
+  await page.getByLabel('What', { exact: true }).fill(cost.name);
+  if (cost.quantity) await page.getByLabel('How many').fill(cost.quantity);
+  await page.getByLabel('Price each').fill(cost.price);
+  if (cost.category) {
+    await page.getByRole('button', { name: /^Category, / }).click();
+    await page.getByRole('dialog', { name: 'Category' }).getByRole('button', { name: cost.category, exact: true }).click();
+  }
+  if (cost.link) await page.getByLabel('Purchase link').fill(cost.link);
+  if (cost.note) await page.getByLabel('Remarks').fill(cost.note);
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByTestId('shared-plan-item').filter({ hasText: cost.name })).toBeVisible();
 }

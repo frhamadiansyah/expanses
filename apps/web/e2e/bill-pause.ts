@@ -1,7 +1,7 @@
 /** Shared walks for the pause specs: a household with two bills, and pausing one from its own page. */
 import { expect, type Page } from '@playwright/test';
 import { openAccount } from './accounts';
-import { pickBillCategory } from './bill-form';
+import { pickBillCategory, pickBillPaidFrom } from './bill-form';
 
 /** A bill out on the 1st, so it is always out this month. */
 export async function addBill(page: Page, name: string, amount: string, category: string) {
@@ -9,7 +9,7 @@ export async function addBill(page: Page, name: string, amount: string, category
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel('Amount', { exact: true }).fill(amount);
   await pickBillCategory(page, category);
-  await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan' });
+  await pickBillPaidFrom(page, 'BCA Tahapan');
   await page.getByLabel('Bill date').selectOption('1');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page).toHaveURL(/\/bills$/);

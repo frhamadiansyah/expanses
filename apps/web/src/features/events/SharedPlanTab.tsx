@@ -1,105 +1,128 @@
-import { formatMinor, parseMajor } from '@expanses/core';
-import { ownerScope, saveSharedItem, type SharedEventView } from '@expanses/db';
+import { type EventPlan, formatMinor } from '@expanses/core';
+import type { SharedEventView } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
-import { type FormEvent, useState } from 'react';
-import { useApp } from '../../app/context';
-import { useInvalidateAll } from '../../lib/queries';
-import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, Panel, SubmitRow, TextRow } from '../../ui/native';
-import { buyTarget } from './buy-item';
-import { SharedItemSheet } from './SharedItemSheet';
-import { useSharedEventPlan } from './shared-queries';
-import { planSummary, type SharedPlanItem } from './shared-plan';
+import { Check } from 'lucide-react';
+import { cx, Empty, ErrorBox } from '../../ui';
+import { InsetGroup, InsetRow } from '../../ui/native';
+import { itemFigure, itemPaidAgainst, itemSubtitle } from './plan-view';
+import { PlanCategoryCard, PlanHeroBody } from './PlanPage';
+import { SharedCategoryMark } from './SharedCostPages';
+import { sharedPlanHero, type SharedPlanItem } from './shared-plan';
 import { pageLocks } from './shared-view';
 
 /**
- * The shared plan (D7): what the trip means to buy, in the event currency. A tap on an item opens it — its name and
- * price, what bought it (the tick), Buy it now, and Remove — so a mistyped price or an item bought without Buy it now
- * is put right on every phone (I10).
+ * The Plan card of the shared trip's hero: the private plan's ring card, fed from the shared items in the one currency
+ * of the trip (so no base equivalents). With no items it says so; a cost is added from the ＋ in the bar.
  */
-export function SharedPlanTab({ view }: { view: SharedEventView }) {
-  const { database, ws } = useApp();
-  const invalidate = useInvalidateAll();
-  const navigate = useNavigate();
-  const plan = useSharedEventPlan(view.eventId);
-  const [name, setName] = useState('');
-  const [price, setPrice] = useState('');
-  const [error, setError] = useState<unknown>(null);
-  const [opened, setOpened] = useState<SharedPlanItem | null>(null);
-  const items = (plan.data?.lines ?? []).flatMap((line) => line.items);
-  const { locked } = pageLocks(view);
-  const summary = planSummary(items, view.spentMinor);
-
-  async function add(event: FormEvent) {
-    event.preventDefault();
-    setError(null);
-    try {
-      await saveSharedItem(database, ownerScope(ws), view.eventId, { name, quantity: 1, unitPriceMinor: parseMajor(price, view.currency), categoryId: null, link: null, note: null });
-      setName('');
-      setPrice('');
-      await invalidate();
-    } catch (failure) {
-      setError(failure);
-    }
+export function SharedPlanHero({ view, plan }: { view: SharedEventView; plan: EventPlan | null | undefined }) {
+  const card = 'flex flex-1 flex-col justify-center rounded-[11px] bg-[var(--ph-surface)]';
+  if (!plan || plan.itemCount === 0) {
+    return (
+      <div className={card} data-testid="plan-totals">
+        <p className="px-[14px] py-[14px] text-center text-[13px] leading-[17px] text-[var(--ph-ink-3)]">Nothing planned yet. Add what is planned to pay and roughly what it costs.</p>
+      </div>
+    );
   }
+  return (
+    <div className={card} data-testid="plan-totals">
+      <PlanHeroBody {...sharedPlanHero(plan, view.currency)} />
+    </div>
+  );
+}
+
+/** One thing on the shared plan, drawn as the private plan's checklist line is; the whole row opens the cost's page. */
+function SharedPlanRow({ item, currency, onOpen }: { item: SharedPlanItem; currency: string; onOpen: (() => void) | null }) {
+  const against = itemPaidAgainst(item, currency, currency);
+  const subtitle = itemSubtitle(item, currency, currency);
+  const content = (
+    <>
+      <span
+        aria-hidden
+        className={cx(
+          'flex h-7 w-7 shrink-0 items-center justify-center rounded-full',
+          item.done ? 'bg-[var(--ph-up-panel)] text-[var(--ph-up)]' : 'ring-[1.5px] ring-[var(--ph-chevron)] ring-inset',
+        )}
+      >
+        {item.done && <Check size={15} strokeWidth={3} />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-[var(--ph-ink)]">{item.name}</span>
+        {subtitle && <span className="block truncate text-xs text-[var(--ph-ink-3)]">{subtitle}</span>}
+      </span>
+      <span className="tabular shrink-0 text-right text-sm font-semibold whitespace-nowrap text-[var(--ph-ink)]">
+        {against?.arrow && (
+          <span
+            role="img"
+            aria-label={against.arrow === 'under' ? 'Under the estimate' : 'Over the estimate'}
+            className={cx('mr-[5px] text-[10px]', against.arrow === 'under' ? 'text-[var(--ph-up)]' : 'text-[var(--ph-alarm)]')}
+          >
+            <span aria-hidden>{against.arrow === 'under' ? '▼' : '▲'}</span>
+          </span>
+        )}
+        {itemFigure(item, currency, currency)}
+        {against && <span className="block text-[11.5px] leading-[14px] font-normal text-[var(--ph-ink-3)]">{against.of}</span>}
+      </span>
+    </>
+  );
+  const line = 'flex min-h-12 w-full items-center gap-3 px-[14px] py-2 text-left';
+  return onOpen ? (
+    <button type="button" onClick={onOpen} aria-label={item.name} data-testid="shared-plan-item" className={cx(line, 'ph-focus-inset')}>
+      {content}
+    </button>
+  ) : (
+    <div className={line} role="group" aria-label={item.name} data-testid="shared-plan-item">
+      {content}
+    </div>
+  );
+}
+
+/**
+ * The shared plan (D7) under the hero: what the trip means to buy, in the event currency, a card per category as the
+ * private plan lists them — the category's mark and name, how many of its costs are paid, then its costs, still to pay
+ * first. A tap on a cost opens its page (I10: a mistyped price, or a cost paid without Pay now, is put right there on
+ * every phone); the ＋ in the bar, on the Plan card, adds one.
+ */
+export function SharedPlanTab({ view, plan, error: planError = null }: { view: SharedEventView; plan: EventPlan | null | undefined; error?: unknown }) {
+  const navigate = useNavigate();
+  const { locked } = pageLocks(view);
+  const rp = (minor: number) => formatMinor(minor, view.currency);
+  const lines = (plan?.lines ?? []).filter((line) => line.items.length > 0);
 
   return (
     <>
-      <ErrorBox error={plan.error} />
-      {items.length > 0 ? (
-        <Panel header="Plan" testId="shared-plan-card">
-          <div className="text-[24px] leading-[30px] font-bold text-[var(--ph-ink)]">{formatMinor(summary.plannedMinor, view.currency)}</div>
-          <div className="pb-[8px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">
-            {`planned · ${formatMinor(view.spentMinor, view.currency)} spent · ${formatMinor(summary.leftMinor, view.currency)} left`}
-          </div>
-          <div className="h-[10px] overflow-hidden rounded-full bg-[var(--ph-track)]">
-            <div className="h-full rounded-full bg-[var(--ph-up)]" style={{ width: `${summary.percent}%` }} />
-          </div>
-        </Panel>
-      ) : null}
-      <InsetGroup header="To buy">
-        {items.map((item) => (
-          <InsetRow
-            key={item.id}
-            title={item.name}
-            subtitle={
-              item.bought
-                ? `Bought · ${formatMinor(item.actualMinor ?? 0, view.currency)}`
-                : item.purchaseCount > 0
-                  ? // Paid towards and still open: what was paid against what was planned, and how many payments made it.
-                    `${formatMinor(item.actualMinor ?? 0, view.currency)} of ${formatMinor(item.estimateMinor, view.currency)} · ${item.purchaseCount} ${item.purchaseCount === 1 ? 'purchase' : 'purchases'}`
-                  : `${item.quantity} × ${formatMinor(item.unitPriceMinor, view.currency)}`
-            }
-            value={formatMinor(item.estimateMinor, view.currency)}
-            onClick={locked ? undefined : () => setOpened(item)}
-            label={item.name}
-            testId="shared-plan-item"
-          />
-        ))}
-      </InsetGroup>
-      {locked ? null : (
-        <form aria-label="Add to the plan" onSubmit={(event) => void add(event)}>
+      <ErrorBox error={planError} />
+      {plan && plan.itemCount === 0 && !locked ? (
+        <>
+          <Empty>Nothing planned yet. Add what is planned to pay and roughly what it costs.</Empty>
           <InsetGroup>
-            <TextRow label="Thing to buy" value={name} onChange={(e) => setName(e.target.value)} />
-            <TextRow label={`Price (${view.currency})`} inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
+            <InsetRow title="Add the first cost" to="/events/$eventId/shared-plan/new" params={{ eventId: view.eventId }} />
           </InsetGroup>
-          <InsetGroup>
-            <SubmitRow label="Add to the plan" disabled={!name.trim() || !price.trim()} />
-          </InsetGroup>
-          <ErrorBox error={error} />
-        </form>
-      )}
-      {opened ? (
-        <SharedItemSheet
-          view={view}
-          item={opened}
-          onBuy={() => {
-            setOpened(null);
-            void navigate(buyTarget(view.eventId, opened.id));
-          }}
-          onClose={() => setOpened(null)}
-        />
+        </>
       ) : null}
+      {lines.map((line) => {
+        const paid = line.items.reduce((total, item) => total + (item.paidEventMinor ?? 0), 0);
+        const ordered = [...line.items.filter((item) => !item.bought), ...line.items.filter((item) => item.bought)];
+        return (
+          <PlanCategoryCard
+            key={line.categoryId ?? 'none'}
+            mark={<SharedCategoryMark categoryId={line.categoryId} categories={view.categories} />}
+            name={line.name}
+            itemCount={line.items.length}
+            boughtCount={line.items.filter((item) => item.bought).length}
+            paid={rp(paid)}
+            planned={rp(line.plannedEventMinor)}
+          >
+            {ordered.map((item) => (
+              <SharedPlanRow
+                key={item.id}
+                item={item}
+                currency={view.currency}
+                onOpen={locked ? null : () => void navigate({ to: '/events/$eventId/shared-plan/$itemId', params: { eventId: view.eventId, itemId: item.id }, search: {} })}
+              />
+            ))}
+          </PlanCategoryCard>
+        );
+      })}
     </>
   );
 }

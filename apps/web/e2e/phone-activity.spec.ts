@@ -37,7 +37,7 @@ const line = (page: Page, what: string) => page.getByTestId('activity-line').fil
 async function openActivity(page: Page) {
   await page.goto('/account');
   const entry = page.getByRole('link', { name: /^Activity/ });
-  await expect(entry).toContainText('What was changed, and undo');
+  await expect(entry).not.toContainText('What was changed');
   await entry.click();
   await expect(page).toHaveURL(/\/settings\/activity$/);
   await expect(page.getByRole('heading', { name: 'Activity', exact: true })).toBeVisible();

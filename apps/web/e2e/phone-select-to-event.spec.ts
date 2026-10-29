@@ -24,16 +24,15 @@ async function expectActionDisabled(page: Page, action: string) {
 }
 
 async function startSelecting(page: Page) {
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await page.getByTestId('filters-menu').getByRole('menuitem', { name: 'Select' }).click();
+  await page.getByRole('button', { name: 'Select', exact: true }).click();
   await expect(bar(page)).toBeVisible();
 }
 
 /**
- * Select mode on the list: tick rows of any date and category, and put them all into an event at once — then take
- * one back out. The event's own history is where the result is read, because that is where the tag is used.
+ * Select mode on the list: tick rows of any date and category, and put them all into an event at once — then see
+ * them leave Cashflow. The event's own history is where the result is read, because that is where the tag is used.
  */
-test('ticked rows go into an event together, and one comes back out', async ({ page }) => {
+test('ticked rows go into an event together, and leave the Cashflow list', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
 
   // An event to put them in, made where events are made.
@@ -91,17 +90,11 @@ test('ticked rows go into an event together, and one comes back out', async ({ p
   await expect(history.filter({ hasText: 'Pertashop' })).toHaveCount(1);
   await expect(history.filter({ hasText: 'Kopi Tuku' })).toHaveCount(0);
 
-  // And one back out.
+  // Event spending is reached from the Events page only: the two have left Cashflow's list, the third stays.
   await page.goto('/transactions');
-  await startSelecting(page);
-  await tick(page, 'Pertashop').click();
-  await act(page, 'Remove from event');
-  await expect(toast(page)).toContainText('1 transaction removed from Lombok trip');
-  await expect(bar(page)).toHaveCount(0);
-
-  await page.goto(eventUrl);
-  await expect(history.filter({ hasText: 'Sate Rembiga' })).toHaveCount(1);
-  await expect(history.filter({ hasText: 'Pertashop' })).toHaveCount(0);
+  await expect(row(page, 'Kopi Tuku')).toHaveCount(1);
+  await expect(row(page, 'Sate Rembiga')).toHaveCount(0);
+  await expect(row(page, 'Pertashop')).toHaveCount(0);
 });
 
 /** Undo puts every row back where it was, so a selection put in the wrong event costs one tap. */

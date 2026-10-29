@@ -2,8 +2,9 @@ import { getRouteApi } from '@tanstack/react-router';
 import { Settings } from 'lucide-react';
 import { Fragment, type ReactNode } from 'react';
 import { useBalances } from '../../lib/queries';
-import { InsetGroup, InsetRow, LargeTitle, useWalletSlot } from '../../ui/native';
+import { LargeTitle, useWalletSlot } from '../../ui/native';
 import { InstallmentList } from '../loans/InstallmentList';
+import { useInstallments } from '../loans/queries';
 import { creditMinor, owedMinor } from '../networth/debt-rows';
 import { useCardPage } from './card-page';
 import { OwnJointRows } from '../sharing/JointAccountRows';
@@ -21,19 +22,18 @@ function Screen({ children }: { children: ReactNode }) {
   );
 }
 
-/** What each setup step asks for, under its number. */
-const STEP_ASKS = { 1: 'Billing date and due date', 2: 'Card product, from the catalogue or by hand', 3: 'Earning rules' } as const;
-
 /**
  * A card's page: its summary. What it owes and what is left of the limit, Pay · Spend · Points · Statement, this
  * statement's points, the instalment plans and the latest purchases. The four tabs it had are pages of their own:
  * the statement (Statement, See all), this statement's points (its row), the programme's balance (Points) and the
- * card's settings (⚙), where a card still being set up does its next step.
+ * card's settings (⚙), where a card still being set up does its next step; the card's page itself carries no setup warning.
  */
 export function CardDetailPage() {
   const { cardId } = route.useParams();
   const { page, gate } = useCardPage(cardId);
   const balances = useBalances();
+  // The Instalments box shows once the card has a plan; the first is added from Settings → Instalments.
+  const plans = useInstallments(cardId);
   // Opened from the Wallet stack, the raised card is this page's header and the stack's screen is its ground.
   const slot = useWalletSlot();
   const Ground = slot ? Fragment : Screen;
@@ -45,27 +45,11 @@ export function CardDetailPage() {
       </>
     );
   }
-  const { card, cp, all, plastic, issuer, isDebit, step, today, ledger, currency } = page;
+  const { card, cp, all, plastic, issuer, isDebit, today, ledger, currency } = page;
   // The Debts page's figure for this card, read by the same function, so the two screens always agree.
   const owed = isDebit ? 0 : owedMinor(balances.data ?? {}, card.id);
   // Paid past what it owed: the bank holds the rest. Unpaid stays at nothing, as the Debts page says.
   const credit = isDebit ? 0 : creditMinor(balances.data ?? {}, card.id);
-  /*
-   * A card opened from the catalogue without its dates already has its product and rules, so the dates are not
-   * step 1 of anything: the row names them and offers to add them, in the settings where the card's terms live.
-   */
-  const onlyDates = step === 1 && cp.program !== undefined;
-  const setup =
-    step === null ? undefined : (
-      <InsetGroup>
-        {onlyDates ? (
-          <InsetRow testId="card-setup" title="Billing and due dates" value="Add" valueTone="tint" to="/cards/$cardId/settings" params={{ cardId: card.id }} />
-        ) : (
-          <InsetRow testId="card-setup" title="Finish setting up" subtitle={`Step ${step} of 3 · ${STEP_ASKS[step]}`} to="/cards/$cardId/settings" params={{ cardId: card.id }} />
-        )}
-      </InsetGroup>
-    );
-
   return (
     <Ground>
       {/* Opened from the stack, the wallet's own bar carries ✕ and ⚙; on its own the page has a title of its own. */}
@@ -88,8 +72,7 @@ export function CardDetailPage() {
         debit={isDebit}
         pointsBalance={ledger.data ? { total: ledger.data.balance.total, posted: ledger.data.balance.postedTotal, estimated: ledger.data.balance.projectedTotal } : null}
         today={today}
-        setup={setup}
-        instalments={<InstallmentList cardAccountId={card.id} currency={currency} />}
+        instalments={(plans.data ?? []).length > 0 ? <InstallmentList cardAccountId={card.id} currency={currency} /> : undefined}
         lines={[...(cp.current?.lines ?? []), ...(cp.previous?.lines ?? [])]}
       />
       {!isDebit && <OwnJointRows accountId={card.id} />}

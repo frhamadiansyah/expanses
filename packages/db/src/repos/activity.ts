@@ -339,6 +339,7 @@ async function lineOf(db: Db, ws: WorkspaceContext, event: AuditEvent, undone: R
   const tail = async (): Promise<boolean> => gone || (await hasReplacement(db, txId));
 
   const op = event.src === 'sync' ? (event.op === 'void' ? 'delete' : typeof event.payload.replacesTransactionId === 'string' ? 'edit' : 'create') : event.op;
+  const adjusting = op === 'adjust';
 
   if (op === 'delete') {
     // A row that was deleted and is not void any more has been put back by other means.
@@ -347,8 +348,8 @@ async function lineOf(db: Db, ws: WorkspaceContext, event: AuditEvent, undone: R
     return { ...base, kind: 'delete', group: 'transactions', title: `${now.description} deleted`, subtitle: figureLine(now), who, state, undo: state === 'open' ? { kind: 'delete', transactionId: txId } : null };
   }
 
-  if (op === 'create' || op === 'payment') {
-    let title = `${now.description} added`;
+  if (op === 'create' || op === 'payment' || adjusting) {
+    let title = adjusting ? `${typeof event.payload.accountName === 'string' ? `${event.payload.accountName} ` : ''}${now.description === 'Counted cash' ? 'counted' : 'balance adjusted'}` : `${now.description} added`;
     if (op === 'payment') {
       const [bill] = await db.values<[string]>(sql`SELECT name FROM expense_templates WHERE id = ${String(event.payload.templateId ?? now.templateId ?? '')}`);
       title = `${bill?.[0] ?? now.description} paid`;
@@ -516,6 +517,13 @@ async function inputOfTx(tx: Db, ws: WorkspaceContext, id: string): Promise<Post
     ? await tx.values<[string]>(sql`SELECT bill_month FROM bill_payments WHERE transaction_id = ${id}`)
     : [];
   const excluded = await excludedLinesTx(tx, id);
+  // A past purchase on a money account (its balancing pair, found by the ref and the Before the app line, voided or not)
+  // goes back as one, so Undo of a delete or of an edit that changed the mark puts the mark back too.
+  const [past] = await tx.values<[number]>(sql`
+    SELECT 1 FROM transactions t JOIN entries e ON e.transaction_id = t.id JOIN accounts a ON a.id = e.account_id
+    WHERE t.workspace_id = ${ws.workspaceId} AND t.external_ref = ${`before-app:${id}`} AND a.system_key = 'before_the_app' LIMIT 1`);
+  // A card purchase keeps following its own settlement; only a purchase off a card says the mark outright.
+  const [card] = await tx.values<[number]>(sql`SELECT 1 FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = ${id} AND a.subtype = 'credit_card' LIMIT 1`);
   const lines: PostingLine[] = v.lines.map((line) => ({
     accountId: line.accountId,
     amountMinor: line.amountMinor,
@@ -542,6 +550,7 @@ async function inputOfTx(tx: Db, ws: WorkspaceContext, id: string): Promise<Post
     excludedParts: [...excluded],
     dayOrder: placed?.[0] ?? null,
     exactHundredths: typed?.[0] ?? null,
+    ...(card === undefined || past !== undefined ? { pastPurchase: past !== undefined } : {}),
   };
 }
 

@@ -5,6 +5,7 @@ import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, SelectRow, SwitchRow } from '../../ui/native';
 import { useActiveNetWorthGroup, useJointAccount, useShareSetting } from './net-worth-queries';
+import { newItemShared } from './net-worth-items';
 import { JOINT_LINE, sayNetWorthError, settingOnAdd, shareRowOf } from './net-worth-state';
 
 /*
@@ -90,24 +91,21 @@ export function ShareWithHouseholdRow({ accountId, jointSwitch = false }: { acco
 }
 
 /**
- * The add forms' part (D9): with one tax ID a note that it is shared, separately a **Share with Household** switch, on.
- * `save` writes the setting for what the form just opened; `element` is null when this person is in no active group.
+ * The add forms' part (D9, and the owner's rule that a new item starts Shared while this person's net worth sharing is
+ * active): a **Shared** switch, on, as the last row of the form's main group. `row` is null when this person is in no
+ * active group, so a household that never set it up sees nothing. Turning it off makes the item private; with one tax ID
+ * every item is shared, so the switch stands on and cannot be turned off. `save` writes the setting for what the form
+ * just opened.
  */
-export function useShareOnAdd(): { element: ReactNode; save: (accountIds: readonly string[]) => Promise<void> } {
+export function useShareOnAdd(testId = 'asset-shared-switch'): { row: ReactNode; save: (accountIds: readonly string[]) => Promise<void> } {
   const { database } = useApp();
   const group = useActiveNetWorthGroup();
-  const [share, setShare] = useState(true);
+  const [share, setShare] = useState(newItemShared(true) === true);
   const mode = group.data?.mode ?? null;
-  const element =
-    mode === 'joint' ? (
-      <InsetGroup>
-        <InsetRow title="Shared with Household (one tax ID)" chevron={false} />
-      </InsetGroup>
-    ) : mode === 'separate' ? (
-      <InsetGroup footer="The others see its balance and one total of other use, never its lines.">
-        <SwitchRow label="Share with Household" checked={share} onChange={setShare} />
-      </InsetGroup>
-    ) : null;
+  const row =
+    mode === null ? null : (
+      <SwitchRow testId={testId} label="Shared" checked={mode === 'joint' || share} disabled={mode === 'joint'} onChange={setShare} info="Visible to the household in net worth" />
+    );
   async function save(accountIds: readonly string[]) {
     // The group as it is when the form saves, not as the screen last read it: a joint household's new item is always
     // written `total` (D9), even when the query had not loaded or the mode changed while the form was open.
@@ -115,5 +113,5 @@ export function useShareOnAdd(): { element: ReactNode; save: (accountIds: readon
     if (!setting) return;
     for (const id of accountIds) await setShareSetting(database, id, setting);
   }
-  return { element, save };
+  return { row, save };
 }

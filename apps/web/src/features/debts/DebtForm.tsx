@@ -1,4 +1,4 @@
-import { type DebtDirection, isoDate } from '@expanses/core';
+import { type DebtDirection, groupTypedAmount, isoDate } from '@expanses/core';
 import { recordLoan } from '@expanses/db';
 import { Check } from 'lucide-react';
 import { type FormEvent, useRef, useState } from 'react';
@@ -60,9 +60,9 @@ export function DebtForm({
   );
   const currency = money.find((account) => account.id === draft.moneyId)?.currency ?? ws.baseCurrency;
   const foreign = currency !== ws.baseCurrency;
-  // The account decides the currency, so the figures name it only once there is an account: "(IDR)" before one is
+  // The account decides the currency, so the figures name it only once there is an account: "IDR" before one is
   // picked would be a guess the reader has to unlearn when they choose a dollar account.
-  const codeShown = draft.moneyId ? ` (${currency})` : '';
+  const codeShown = draft.moneyId ? currency : undefined;
   // Read from what this device holds, never fetched just because the form opened (see `useStoredRates`).
   const held = useHeldRates(foreign ? [currency] : [], draft.occurredOn > today ? today : draft.occurredOn);
   // Asked for when no rate is stored for the day, or when a Save found none; left out when one is known.
@@ -199,10 +199,11 @@ export function DebtForm({
         />
         {/* Named in the account's currency once there is an account: it decides what the figure is read in. */}
         <TextRow
-          label={`${draft.direction === 'lent' ? 'Money lent' : 'Money borrowed'}${codeShown}`}
+          label={draft.direction === 'lent' ? 'Money lent' : 'Money borrowed'}
+          prefix={codeShown}
           value={draft.amount}
           inputMode="decimal"
-          onChange={(e) => set({ amount: e.target.value })}
+          onChange={(e) => set({ amount: groupTypedAmount(e.target.value, currency) })}
           placeholder="Amount"
           required
         />
@@ -278,7 +279,8 @@ export function DebtForm({
         {/* A fee on the money moved is the owner's cost, filed as spending; what the person owes stays the loan. */}
         {detailsOpen ? (
           <TextRow
-            label={`Fee${codeShown}`}
+            label="Fee"
+            prefix={codeShown}
             info={
               draft.direction === 'lent'
                 ? 'Optional. A card or bank charge for sending the money. Counted as spending; the amount owed stays the loan.'
@@ -286,7 +288,7 @@ export function DebtForm({
             }
             value={draft.fee}
             inputMode="decimal"
-            onChange={(e) => set({ fee: e.target.value })}
+            onChange={(e) => set({ fee: groupTypedAmount(e.target.value, currency) })}
             placeholder="Amount"
           />
         ) : null}

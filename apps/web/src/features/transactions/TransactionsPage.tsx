@@ -1,5 +1,6 @@
 import { categoryPath, formatMinor, isoDate, monthOf, outflowFrom, parseLooseAmount, parseLooseDate, parsePeriod, periodLabel } from '@expanses/core';
 import {
+  accountIdsInUse,
   cardTopsUpWallet,
   confirmDraft,
   createDraft,
@@ -25,7 +26,7 @@ import {
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
-import { ArrowUpDown, CalendarDays, ChevronDown, CircleAlert, CircleCheck, Ellipsis, HandCoins, Home, LayoutGrid, List, ListFilter, Pencil, Plus, Search, Table2, X } from 'lucide-react';
+import { CalendarDays, ChevronDown, CircleAlert, CircleCheck, Home, LayoutGrid, List, Pencil, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -40,13 +41,15 @@ import { useAccountNumberLast4, useCards, useCardsWithArchived, useWalletLast4 }
 import { useScanReceipt } from '../../capture/use-scan';
 import { useDrafts } from '../review/queries';
 import { useEvents } from '../events/queries';
+import { TravelRows } from '../events/TravelRows';
 import { useSharedEventSummaries } from '../events/shared-queries';
 import { Button, Card, cx, Empty, ErrorBox, Money } from '../../ui';
-import { LargeTitle, SearchPill } from '../../ui/native';
+import { GROUP_HEADER_CLASS, LargeTitle, SearchPill } from '../../ui/native';
+import { SortFilterMenu } from './SortFilterMenu';
 import { ChipMenu, type ChipOption } from './ChipMenu';
 import { type PaidChoice, PaidWithSheet } from './PaidWithSheet';
 import { ConvertForm } from './ConvertForm';
-import { isEditable } from './draft';
+import { isCorrection, isEditable } from './draft';
 import { DayHeader } from './DayHeader';
 import { DayReorder, landed, movedBy, ReorderControls, reorderAttrs, ReorderScope } from './DayReorder';
 import { EventSheet } from './EventSheet';
@@ -58,7 +61,7 @@ import { AmountExtra, DraftSubtitle, PaidWith, TransactionRow, useRecategorise }
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
-import { amountExtraParts, billTagOf, buildRows, sharedTransferRow, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, hasNotCountedPart, type ListFilters, type ListRow, type Sort, sortRows, totals } from './list-model';
+import { accountsWithTransactions, amountExtraParts, billTagOf, buildRows, sharedTransferRow, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, hasNotCountedPart, type ListFilters, type ListRow, outsideEvents, type Sort, sortRows, totals } from './list-model';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
@@ -73,10 +76,10 @@ import { useDeferredDeletes } from './deferred-delete';
 import { useDuplicable } from './duplicable';
 import { editInsteadIn, openToEditMessage } from '../workspaces/filing';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
-import { WorkspaceBadge, WorkspaceDot } from '../workspaces/WorkspaceBadge';
+import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
 import { Unconverted } from '../workspaces/Unconverted';
 import { UndoToast } from '../../ui/UndoToast';
-import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
+import { WorkspaceMenu } from '../workspaces/WorkspaceMenu';
 import { useBooks, useCategoryBooks, useOpenBook, useWorkspaceBadges } from '../workspaces/queries';
 import { ChoiceSheet } from './ChoiceSheet';
 import { CardSheet } from '../cards/CardSheet';
@@ -110,8 +113,8 @@ const ALL_TIME_LIMIT = 5000;
 const SORTS: { value: string; label: string; short: string }[] = [
   { value: 'date:desc', label: 'Newest first', short: 'Newest' },
   { value: 'date:asc', label: 'Oldest first', short: 'Oldest' },
-  { value: 'amount:desc', label: 'Largest amount', short: 'Largest' },
-  { value: 'amount:asc', label: 'Smallest amount', short: 'Smallest' },
+  { value: 'amount:desc', label: 'Largest first', short: 'Largest' },
+  { value: 'amount:asc', label: 'Smallest first', short: 'Smallest' },
 ];
 
 const TYPES: { value: ListFilters['type']; label: string }[] = [
@@ -191,7 +194,6 @@ export function TransactionsPage() {
   const [pickingPaid, setPickingPaid] = useState(false);
   // One copy of the category gesture for the whole screen: the sheet it opens and the Undo toast it leaves.
   const recategorise = useRecategorise();
-  const [showFilters, setShowFilters] = useState(false);
   // The workspace switcher, reached from the ⋯ menu — the one thing in there that changes the whole app.
   const [choosingWorkspace, setChoosingWorkspace] = useState(false);
   const openBook = useOpenBook();
@@ -305,7 +307,10 @@ export function TransactionsPage() {
    */
   const swipeDeletes = useDeferredDeletes((id) => deleteTransaction(database, ws, id), invalidate, setError);
   const deleting = swipeDeletes.pending();
-  const recorded = (list.data?.transactions ?? []).filter((tx) => !deleting.has(tx.id));
+  // Event spending is read from the Events page, not here: the ring leaves it out (unless the workspace counts events in
+  // its caps), so the list does too — search included. An account's own history keeps it, as its balance does.
+  const eventsInCaps = openBook?.countEventsInBudget ?? false;
+  const recorded = outsideEvents(list.data?.transactions ?? [], ownerWide || eventsInCaps).filter((tx) => !deleting.has(tx.id));
   // Which workspace each row is filed in, so an account's history says whose spending it is showing.
   const badges = useWorkspaceBadges(recorded.map((tx) => tx.id));
   const badgeOf = badges.of;
@@ -596,7 +601,17 @@ export function TransactionsPage() {
 
   const rowOptions = buildRowOptions(accounts, cards, inOpenBook, membership);
   // Only what can pay: the form's own rule, so a locked deposit or a house is not a choice here either.
-  const money = moneyHolders(accounts).filter((account) => canPayWith(account));
+  const paidKept = filters.paid.startsWith('acct:')
+    ? filters.paid.slice('acct:'.length)
+    : filters.paid.startsWith('card:')
+      ? cards.find((card) => card.id === filters.paid.slice('card:'.length))?.accountId
+      : undefined;
+  const inUse = useQuery({ queryKey: ['accounts-in-use', ws.workspaceId], queryFn: () => accountIdsInUse(database, ownerScope(ws)) });
+  const money = accountsWithTransactions(
+    moneyHolders(accounts).filter((account) => canPayWith(account)),
+    new Set(inUse.data ?? []),
+    paidKept,
+  );
   const cardsOf = (accountId: string) => cards.filter((card) => card.accountId === accountId);
   // Set card is offered while every ticked row is on one credit card account carrying two cards or more.
   const creditCards = new Set(accounts.filter((account) => account.subtype === 'credit_card').map((account) => account.id));
@@ -990,6 +1005,8 @@ export function TransactionsPage() {
     const reachable = !trade && isEditable(tx) && !readOnly;
     const elsewhere = reachable ? elsewhereOf(tx.id) : null;
     const clickable = reachable && !elsewhere && filingKnown;
+    // A balance correction has no Edit, but it can be deleted: the swipe offers Delete alone.
+    const deletableCorrection = !trade && isCorrection(tx) && !readOnly && filingKnown;
     // Every way in that *writes* inherits the same refusals. A trade, an opening balance, a voided row and a
     // purchase filed in another workspace may not be edited, deleted or re-filed from here — by swipe no less
     // than by click. Looking is not writing: on a phone the tap opens the receipt for all of them, because the
@@ -1023,7 +1040,7 @@ export function TransactionsPage() {
         onEdit={clickable ? toEdit : undefined}
         onDuplicate={clickable && mayDuplicate ? toDuplicate : undefined}
         // One tap or a long swipe deletes at once, with Undo on the toast: the delete is written when the toast goes.
-        onDelete={clickable ? () => void swipeDeletes.begin(tx.id, tx.description ? `Deleted ${tx.description}` : 'Deleted') : undefined}
+        onDelete={clickable || deletableCorrection ? () => void swipeDeletes.begin(tx.id, tx.description ? `Deleted ${tx.description}` : 'Deleted') : undefined}
         // Dead while a write for this row is going out.
         busy={busy === tx.id}
         // Select mode: the tick, where this row can take one; the row's every other gesture waits until it is over.
@@ -1190,9 +1207,8 @@ export function TransactionsPage() {
         actions={
           phone
             ? [
-                ...(readOnly ? [] : [{ key: 'add', label: 'Add a transaction', glyph: <Plus size={22} aria-hidden />, run: () => { close(); void navigate({ to: '/transactions/new' }); } }]),
                 { key: 'search', label: 'Search', glyph: <Search size={20} aria-hidden />, pressed: showSearch, run: () => setShowSearch((was) => !was) },
-                { key: 'filters', label: 'Filters', glyph: <Ellipsis size={20} aria-hidden />, pressed: showFilters, expanded: showFilters, run: () => setShowFilters((was) => !was) },
+                { key: 'workspace', label: `Workspace, ${openBook?.name ?? workspaceName}`, glyph: <span aria-hidden className="text-[18px] leading-none font-semibold uppercase">{(openBook?.name ?? workspaceName).trim().charAt(0) || '·'}</span>, run: () => setChoosingWorkspace(true) },
               ]
             : []
         }
@@ -1216,81 +1232,18 @@ export function TransactionsPage() {
               {scan.busy ? 'Reading the receipt…' : 'Scan a receipt'}
             </Button>
           )}
-          {/* Ticking rows to put into an event: the list's, so the table — the editor — does not offer it. */}
-          {view === 'list' && !readOnly && (
-            <Button variant="secondary" aria-pressed={selecting} onClick={() => (selecting ? stopSelecting() : startSelecting())}>
-              {selecting ? 'Done' : 'Select'}
-            </Button>
-          )}
         </div>
       )}
-      {phone && showFilters && (
-        <>
-          {/* Taps outside the menu close it, the way a pull-down menu behaves on iOS. */}
-          <button type="button" aria-label="Close filters" className="fixed inset-0 z-20 cursor-default" onClick={() => setShowFilters(false)} />
-          {/* Fixed under the title row's ⋯, wherever the page is scrolled: from far down the list the ⋯ tapped is the pinned
-              bar's, and a menu hung from the header up the page opened out of sight. */}
-          <div role="menu" className="fixed top-[calc(env(safe-area-inset-top)+60px)] right-4 z-30 w-max max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-slate-200" data-testid="filters-menu">
-            {/* First, and always here: it is how a second workspace is made, and how you move between them. */}
-            <button
-              type="button"
-              role="menuitem"
-              data-testid="workspace-row"
-              onClick={() => {
-                setShowFilters(false);
-                setChoosingWorkspace(true);
-              }}
-              // A gap, not a divider: this changes the whole app, where the three below it narrow one list.
-              className="flex min-h-12 w-full items-center gap-3 border-b-6 border-slate-100 px-4 text-left text-sm"
-            >
-              <WorkspaceDot book={openBook} />
-              <span className="flex-1 truncate font-medium">{openBook?.name ?? workspaceName}</span>
-              <span className="text-xs text-slate-500">Workspace ›</span>
-            </button>
-            {/* Two things, and neither is a filter of this list: what the whole app reads and writes through, and the
-             * one place money lent and borrowed lives — which on a wide screen is under Net worth's Debts, among the
-             * people it names. What the list narrows itself by is on the list's own controls — the period on the
-             * chart, what paid beside the Sort, what is not recorded in the review box above the rows — and revealing
-             * deleted rows waits on the filter bar on a wide screen. */}
-            <Link
-              to="/net-worth/lend-borrow"
-              role="menuitem"
-              data-testid="lend-borrow-row"
-              onClick={() => setShowFilters(false)}
-              className="flex min-h-12 w-full items-center gap-3 px-4 text-left text-sm"
-            >
-              <HandCoins size={17} aria-hidden className="text-slate-500" />
-              <span className="flex-1">Lend &amp; borrow</span>
-              <span className="text-xs text-slate-500">›</span>
-            </Link>
-            {/* Ticking rows, to put a run of them into an event at once — whatever their dates and categories. */}
-            {view === 'list' && !readOnly && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setShowFilters(false);
-                  startSelecting();
-                }}
-                className="flex min-h-12 w-full items-center gap-3 border-t border-slate-100 px-4 text-left text-sm"
-              >
-                <CircleCheck size={17} aria-hidden className="text-slate-500" />
-                <span className="flex-1">Select</span>
-              </button>
-            )}
-          </div>
-        </>
-      )}
-      {choosingWorkspace && <WorkspaceSheet onClose={() => setChoosingWorkspace(false)} />}
+      {choosingWorkspace && <WorkspaceMenu onClose={() => setChoosingWorkspace(false)} />}
       {adding && (
         <Sheet grouped title="Add a transaction" onClose={() => setAdding(false)}>
-          <TransactionCard onDone={() => setAdding(false)} />
+          <TransactionCard defaultPaidWith onDone={() => setAdding(false)} />
         </Sheet>
       )}
 
       <div className="space-y-1">
-        {/* On a phone the filters are the ⋯ menu below; the row of chips is a wide screen's. */}
-        <div className={cx('flex flex-wrap items-center gap-2', (phone || !showFilters) && 'hidden md:flex')}>
+        {/* The row of chips is a wide screen's; a phone filters from the Sort and filter button. */}
+        <div className="hidden flex-wrap items-center gap-2 md:flex">
           {!phone && (
           <label className="relative min-w-52 flex-[1_1_280px]">
             <Search size={16} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-slate-400" aria-hidden />
@@ -1305,8 +1258,8 @@ export function TransactionsPage() {
             />
           </label>
           )}
-          {/* The filters sit behind the ⋯ button on a phone, and are simply there on a wide screen. */}
-          <div className={cx('flex flex-wrap items-center gap-2', !showFilters && 'hidden md:flex')}>
+          {/* Hidden on a phone, simply there on a wide screen. */}
+          <div className="hidden flex-wrap items-center gap-2 md:flex">
             {pending.length > 0 && (
               <button
                 type="button"
@@ -1390,6 +1343,8 @@ export function TransactionsPage() {
         )}
       </div>
 
+      {/* A trip running now or starting within a week: an entry to its page, not part of the ring or the history. */}
+      {chartShown && !search.account && <TravelRows today={today} />}
       {/* The chart leads the list, over whatever period is chosen. */}
       {chartShown && (
         <SpendingReport
@@ -1449,7 +1404,7 @@ export function TransactionsPage() {
           {shown.length > 0 && (
             <div className="flex items-center justify-end gap-2">
               {/* Names the list under the chart, and fills the row the two controls would otherwise leave empty. */}
-              <h2 className="mr-auto text-base font-semibold">Transaction history</h2>
+              <h2 className={cx('mr-auto', GROUP_HEADER_CLASS)}>Transaction history</h2>
               {/* Grouping is the view switcher's twin: the same 28px segment, the same 32px track, the same glyph. */}
               <div role="group" aria-label="Group by" className="inline-flex gap-0.5 rounded-lg bg-slate-200 p-0.5">
                 {(
@@ -1474,35 +1429,39 @@ export function TransactionsPage() {
                   </button>
                 ))}
               </div>
-              {/* What the list was paid with — the list's own filter, beside the sort it shares a row with. On, the icon
-                  goes dark with a dot; the same icon opens a sheet on a phone and a fixed-width searchable menu elsewhere. */}
-              <ChipMenu
-                name="Paid with"
-                value={filters.paid}
-                active={Boolean(paidPicked)}
-                count={paidPicked ? 1 : 0}
-                searchable
-                wideMenu
-                options={paidOptions}
-                onPick={(value) => setFilter('paid', value)}
-                onOpen={phone ? () => setPickingPaid(true) : undefined}
-                shown={<ListFilter size={15} aria-hidden />}
-                iconOnly
-              />
-              {pickingPaid && <PaidWithSheet choices={paidChoices} value={filters.paid} onPick={(value) => setFilter('paid', value)} onClose={() => setPickingPaid(false)} />}
-              {/* Sorting says itself with an arrow rather than a word, so the two controls read as a pair. */}
-              <ChipMenu
-                name="Sort"
-                value={sortValue}
-                active={sortValue !== 'date:desc'}
-                options={SORTS}
-                onPick={(value) => {
+              {/* Ticking rows, to put a run of them into an event at once: a square button beside the others, dark while it is on.
+                  The count and the Add to event / Done actions stay in the select bar. */}
+              {view === 'list' && !readOnly && (
+                <div className="inline-flex items-center rounded-lg bg-slate-200 p-0.5">
+                  <button
+                    type="button"
+                    aria-label="Select"
+                    aria-pressed={selecting}
+                    onClick={() => (selecting ? stopSelecting() : startSelecting())}
+                    className={cx('flex h-7 w-8 items-center justify-center rounded-md', selecting ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900')}
+                  >
+                    <CircleCheck size={15} aria-hidden />
+                  </button>
+                </div>
+              )}
+              {/* Sort and what the list was paid with, one icon and one menu. On a phone Paid with opens its sheet. */}
+              <SortFilterMenu
+                sorts={SORTS}
+                sortValue={sortValue}
+                onSort={(value) => {
                   const [key, dir] = value.split(':') as [Sort['key'], Sort['dir']];
                   setSort({ key, dir });
                 }}
-                shown={<ArrowUpDown size={15} aria-hidden />}
-                iconOnly
+                paid={filters.paid}
+                paidOptions={paidOptions}
+                onPaid={(value) => setFilter('paid', value)}
+                onOpenPaid={phone ? () => setPickingPaid(true) : undefined}
+                onReset={() => {
+                  setSort({ key: 'date', dir: 'desc' });
+                  setFilter('paid', '');
+                }}
               />
+              {pickingPaid && <PaidWithSheet choices={paidChoices} value={filters.paid} onPick={(value) => setFilter('paid', value)} onClose={() => setPickingPaid(false)} />}
             </div>
           )}
 

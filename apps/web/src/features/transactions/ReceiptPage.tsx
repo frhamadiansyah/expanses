@@ -1,5 +1,5 @@
 import { formatMinor, isoDate } from '@expanses/core';
-import { eventPostingOf, jointRowNote, listPhotos, listTransactions, ownerScope, paidOffMarkOf, setSettledBeforeApp, type TransactionPhotoRow } from '@expanses/db';
+import { eventPostingOf, jointRowNote, tagTransactions, unlinkPurchaseFromBill, listPhotos, listTransactions, ownerScope, paidOffMarkOf, setSettledBeforeApp, type TransactionPhotoRow } from '@expanses/db';
 import { deleteTransaction } from './member-transfer';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, Link, useNavigate, useRouter } from '@tanstack/react-router';
@@ -14,7 +14,10 @@ import { loadPurchasePoints } from '../../lib/purchase-points';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { usePhotoUrls } from '../../photos/use-photo-urls';
 import { Card, cx, Empty, ErrorBox } from '../../ui';
-import { InsetGroup, SwitchRow } from '../../ui/native';
+import { DestructiveRow, InsetGroup, InsetRow, SwitchRow } from '../../ui/native';
+import { monthWithYear } from '../bills/bill-link-view';
+import { useBillOfPurchase } from '../bills/queries';
+import { showToast } from '../../ui/Toast';
 import { useCardsWithArchived } from '../cards/card-queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { usePeopleDebts } from '../debts/queries';
@@ -25,6 +28,7 @@ import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
 import { useWorkspaceBadges } from '../workspaces/queries';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { classify } from './classify';
+import { isCorrection } from './draft';
 import { useChangeable } from './queries';
 import { heroCaption, receiptLines, splitParts } from './receipt-view';
 import { TransactionCard } from './TransactionCard';
@@ -107,6 +111,8 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   const fromEvent = useQuery({ queryKey: ['event-posting', transactionId], queryFn: () => eventPostingOf(database, transactionId) }).data ?? null;
   // Withdrawal rate §7: the withdrawals a spend from foreign money came from.
   const withdrawal = useWithdrawalsUsed(tx?.id ?? null).data ?? null;
+  // The recurring bill this purchase settles a month of, when it does (linked afterwards, or paid from the bill).
+  const bill = useBillOfPurchase(transactionId).data ?? null;
   /*
    * A credit card purchase or refund that can carry the paid-off mark — the same answer the card's statement gives
    * before it offers Paid off — switches it here too, where a tap on the row lands. Null for everything else.
@@ -178,6 +184,35 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
       await deleteTransaction(database, ws, transactionId);
       await invalidate();
       router.history.push(originHref());
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Takes the purchase out of its event: it comes back to Cashflow, and the event no longer counts it. */
+  async function removeFromEvent() {
+    setError(null);
+    setBusy(true);
+    try {
+      await tagTransactions(database, ws, [transactionId], null);
+      await invalidate();
+      showToast(`Removed from ${(events.data ?? []).find((event) => event.id === tx?.eventId)?.name ?? 'the event'}`);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Lets the bill's month go: the purchase stays, and the month is owed again. */
+  async function unlinkBill() {
+    setError(null);
+    setBusy(true);
+    try {
+      await unlinkPurchaseFromBill(database, ws, { transactionId });
+      await invalidate();
     } catch (e) {
       setError(e);
     } finally {
@@ -278,10 +313,25 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
         ))}
       </Card>
 
+      {/* The bill this settles a month of: a tap opens it; a purchase linked afterwards can be let go again. */}
+      {bill && tx.status === 'posted' && !elsewhere && (
+        <InsetGroup>
+          <InsetRow title="Bill" value={`${bill.name} · ${monthWithYear(bill.billMonth)}`} valueTone="ink-2" testId="receipt-bill" onClick={() => void navigate({ to: '/bills/$billId', params: { billId: bill.templateId } })} />
+          {bill.linked && changeable && <InsetRow action title="Unlink" disabled={busy} onClick={() => void unlinkBill()} testId="unlink-bill" />}
+        </InsetGroup>
+      )}
+
       {/* The statement's Paid off, where the row's tap lands: on, the purchase asks nothing of the statement. */}
       {paidOffMark && (
         <InsetGroup wide>
           <SwitchRow label={paidOffMark.refund ? 'Settled' : 'Paid off'} checked={paidOffMark.settled} disabled={busy} onChange={(on) => void markPaidOff(on)} />
+        </InsetGroup>
+      )}
+
+      {/* A past purchase on a money account: read here, changed on its form. */}
+      {tx.past && tx.status === 'posted' && (
+        <InsetGroup>
+          <InsetRow title="Past purchase" value="Balance unchanged" chevron={false} testId="receipt-past" />
         </InsetGroup>
       )}
 
@@ -364,7 +414,26 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
           ) : (
             /* Edit is the round button in the top corner; Delete stays down here, out of a thumb's casual reach. A shared
                event's transaction is deleted on the event, with its record, never here. */
-            changeable && !fromEvent && <TwoTapDelete busy={busy} onConfirm={() => void remove()} className="self-center" />
+            (changeable || (isCorrection(tx) && !isTrade && !elsewhere)) && !fromEvent && (
+              <>
+                {tx.eventId && (
+                  <InsetGroup>
+                    <DestructiveRow calm label="Remove from event" onClick={() => void removeFromEvent()} testId="remove-from-event" />
+                  </InsetGroup>
+                )}
+                {kind.type === 'expense' && tx.status === 'posted' && !bill && (
+                  <InsetGroup>
+                    <DestructiveRow
+                      calm
+                      label="Link to a bill"
+                      onClick={() => void navigate({ to: '/transactions/$transactionId/bill', params: { transactionId } })}
+                      testId="link-to-bill"
+                    />
+                  </InsetGroup>
+                )}
+                <TwoTapDelete busy={busy} onConfirm={() => void remove()} className="self-center" />
+              </>
+            )
           )}
         </div>
       )}

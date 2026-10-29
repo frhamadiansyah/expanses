@@ -324,7 +324,7 @@ function pageCorner(account: AccountRow): CornerAction[] {
  * (`DepositMoneyOut`).
  *
  * An account with pockets is not itself somewhere money is paid from — each pocket is — so its Record (the Add screen,
- * with Expense, Income and Transfer as tabs), Withdraw and Top up open with one of its pockets chosen, Adjust asks
+ * with Expense, Income and Transfer as tabs; a bank's Spend and Receive in its place), Withdraw and Top up open with one of its pockets chosen, Adjust asks
  * which, and it adds what only the parent can do: move between its pockets.
  * Adding another currency is the last row of its Pockets list. A pocket is an account, and has an account's actions.
  */
@@ -344,6 +344,8 @@ function actionsFor(
     const pocket = (pockets.find((p) => p.currency === baseCurrency) ?? pockets[0])?.id;
     const byKey: Record<string, RoundAction> = {
       record: newTx('record', 'Record', <PenLine size={20} aria-hidden />, { mode: 'expense', ...(pocket ? { account: pocket } : {}) }),
+      spend: newTx('spend', 'Spend', <ArrowUpRight size={20} aria-hidden />, { mode: 'expense', ...(pocket ? { account: pocket } : {}) }),
+      receive: newTx('receive', 'Receive', <ArrowDownLeft size={20} aria-hidden />, { mode: 'income', ...(pocket ? { account: pocket } : {}) }),
       move: { key: 'move', label: 'Move', glyph: <Repeat size={20} aria-hidden />, to: '/accounts/$accountId/move' as const, params: { accountId: id } },
       withdraw: { key: 'withdraw', label: 'Withdraw', glyph: <ArrowDownToLine size={20} aria-hidden />, run: () => open.moneyIn('withdraw') },
       'top-up': { key: 'top-up', label: 'Top up', glyph: <Plus size={20} aria-hidden />, run: () => open.moneyIn('top-up') },

@@ -1,7 +1,7 @@
 import { billWindow, parseMajor } from '@expanses/core';
 import type { MonthlyBill } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { amountInput, owedNow, paidText, sectionsOf, settledOf, skippedText, statusOf, sublineOf, summaryOf } from './bill-view';
+import { amountInput, heroLineOf, owedNow, paidText, sectionsOf, settledOf, skippedText, statusOf, sublineOf, summaryOf } from './bill-view';
 
 const bill = (over: Partial<MonthlyBill>): MonthlyBill => ({
   id: over.name ?? 'x',
@@ -27,6 +27,7 @@ const bill = (over: Partial<MonthlyBill>): MonthlyBill => ({
   repeatMonth: null,
   repeatEvery: null,
   paymentId: null,
+  paidFromAccountId: null,
   estimateMinor: 100,
   payableMonths: ['2026-09'],
   pausedUntil: null,
@@ -79,10 +80,17 @@ describe('the Recurring list', () => {
         { key: 'overdue', label: 'Overdue', minor: 450_000, approximate: false },
         { key: 'dueSoon', label: 'Due soon', minor: 3_500_000 + 1_070_000, approximate: true },
       ],
+      paidMinor: 6_000_000,
+      monthTotalMinor: 450_000 + 3_500_000 + 290_000 + 780_000 + 6_000_000,
       allSettled: false,
       allPaused: false,
     });
     expect(summaryOf([rows[4]!], '2026-09-08')).toMatchObject({ totalMinor: 0, parts: [], allSettled: true, allPaused: false });
+  });
+
+  it('counts only paid money in the month, not skipped bills, and adds none when nothing is paid', () => {
+    expect(summaryOf([rows[0]!, rows[5]!], '2026-09-08')).toMatchObject({ paidMinor: 0, monthTotalMinor: 450_000 });
+    expect(summaryOf([rows[4]!], '2026-09-08')).toMatchObject({ paidMinor: 6_000_000, totalMinor: 0, monthTotalMinor: 6_000_000 });
   });
 
   it('leaves a paused bill out of what is still to pay, and says until when under its amount', () => {
@@ -119,5 +127,23 @@ describe('the Recurring list', () => {
     expect(skippedText('Gym', '2026-09', '2026-09-08')).toBe('Skipped Gym this month');
     expect(skippedText('Gym', '2026-08', '2026-09-08')).toBe('Skipped Gym’s August bill');
     expect(skippedText('Gym', '2026-10', '2026-09-08')).toBe('Skipped Gym’s October bill');
+  });
+});
+
+describe('heroLineOf', () => {
+  const window = billWindow('2026-10', 28, 10);
+  it('puts the status into the line: late words coloured, then the due date', () => {
+    const line = heroLineOf(bill({ state: 'overdue', days: 18, window }), 'x');
+    expect(line.lead).toBe('Overdue 18 days');
+    expect(line.tone).toBe('alarm');
+    expect(line.rest).toMatch(/^due \d+ \w{3} 20\d\d$/);
+  });
+  it('reads a bill not out yet as due, then when it opens', () => {
+    const line = heroLineOf(bill({ state: 'upcoming', days: 3, window }), 'x');
+    expect(line.lead).toBeNull();
+    expect(line.rest).toMatch(/^Due \d+ \w{3} 20\d\d · opens \d+ \w{3}$/);
+  });
+  it('keeps the window line for an open bill', () => {
+    expect(heroLineOf(bill({ state: 'open', window }), 'Out 28 Sep · pay by 10 Oct 2026')).toEqual({ lead: null, tone: 'ink-3', rest: 'Out 28 Sep · pay by 10 Oct 2026' });
   });
 });

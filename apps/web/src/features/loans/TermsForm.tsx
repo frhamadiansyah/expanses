@@ -1,4 +1,4 @@
-import { flatToEffectiveBps, isoDate, LOAN_ITEMS, type LoanMethod } from '@expanses/core';
+import { flatToEffectiveBps, groupTypedAmount, isoDate, LOAN_ITEMS, type LoanMethod } from '@expanses/core';
 import { saveLoanTerms, setLoanItem, type LoanTermsRow } from '@expanses/db';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -81,12 +81,13 @@ export function TermsForm({
       >
         <TextRow label="Lender" value={draft.lenderName} onChange={(e) => set({ lenderName: e.target.value })} placeholder="Bank BTN" required />
         <TextRow
-          label={`Amount borrowed (${currency})`}
+          label="Amount borrowed"
+          prefix={currency}
           hint="The original amount, not what is left."
           info={formId ? 'Changing what was agreed moves no money: the balance and its payments are as they are.' : undefined}
           value={draft.originalAmount}
           inputMode="decimal"
-          onChange={(e) => set({ originalAmount: e.target.value })}
+          onChange={(e) => set({ originalAmount: groupTypedAmount(e.target.value, currency) })}
           placeholder="Amount"
           required
         />
@@ -141,11 +142,13 @@ export function TermsForm({
           onChange={(e) => set({ paymentDay: e.target.value })}
         />
         <TextRow
-          label={`Payment each month (${currency})`}
+          label="Payment each month"
+          prefix={currency}
+          placeholder="Amount"
           hint="Leave empty to work it out from the rate."
           value={draft.payment}
           inputMode="decimal"
-          onChange={(e) => set({ payment: e.target.value })}
+          onChange={(e) => set({ payment: groupTypedAmount(e.target.value, currency) })}
         />
       </InsetGroup>
 

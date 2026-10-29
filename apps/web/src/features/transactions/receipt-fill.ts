@@ -1,4 +1,4 @@
-import { minorToMajorString, type ReceiptFill, readReceipt } from '@expanses/core';
+import { type CaptureLine, minorToMajorString, type ReceiptFill, readReceipt } from '@expanses/core';
 import { native } from '../../capture/native';
 import type { FormDraft } from './tx-form';
 
@@ -55,6 +55,41 @@ function base64Of(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error ?? new Error('That photo could not be opened'));
     reader.readAsDataURL(file);
   });
+}
+
+/**
+ * The text of one or several pictures of the same receipt, read on the phone, as one list of lines top to bottom: each
+ * later picture sits a whole page below the one before. Null when none is a picture or none could be read.
+ */
+export async function recognizePhotos(files: readonly File[]): Promise<CaptureLine[] | null> {
+  const out: CaptureLine[] = [];
+  let read = false;
+  for (const [page, file] of files.filter((f) => f.type.startsWith('image/')).entries()) {
+    try {
+      const { lines } = await native.recognizeImage({ base64: await base64Of(file) });
+      read = true;
+      for (const line of lines) out.push({ ...line, box: [line.box[0], line.box[1] + page, line.box[2], line.box[3]] });
+    } catch {
+      // A picture that cannot be read adds nothing; the others still count.
+    }
+  }
+  return read ? out : null;
+}
+
+/**
+ * Several pictures read on the phone, one list of lines per picture (a statement's screenshots, not one receipt's
+ * pages). A picture that cannot be read is left out; null when none could be.
+ */
+export async function recognizeEach(files: readonly File[]): Promise<CaptureLine[][] | null> {
+  const out: CaptureLine[][] = [];
+  for (const file of files.filter((f) => f.type.startsWith('image/'))) {
+    try {
+      out.push((await native.recognizeImage({ base64: await base64Of(file) })).lines);
+    } catch {
+      // Left out: the others still count.
+    }
+  }
+  return out.length > 0 ? out : null;
 }
 
 /**

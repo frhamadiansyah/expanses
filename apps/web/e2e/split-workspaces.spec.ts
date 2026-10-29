@@ -1,12 +1,13 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { choosePayment } from './add-transaction';
-import { openSplit, pickPartCategory } from './split-row';
+import { addPart, fillPart, openSplit, pickPartCategory } from './split-row';
 
 /** Makes a workspace through the sidebar switcher and lands in it, as the sheet does on its own. */
 async function newWorkspace(page: Page, name: string, startsWith: string) {
-  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
-  await page.getByRole('button', { name: 'New workspace' }).click();
+  await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByTestId('add-workspace').click();
+  await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill(name);
   await sheet.getByLabel('Starts with').selectOption({ label: startsWith });
@@ -38,17 +39,15 @@ test('a purchase split across workspaces lists each part in its workspace, and t
   await form.getByLabel('Note').fill('Pasar Sentosa');
   await openSplit(page);
   const split = page.getByRole('dialog', { name: 'Split' });
-  await split.getByRole('button', { name: '+ Split' }).click();
+  await addPart(page);
   await pickPartCategory(page, 1, 'Groceries');
-  await split.getByLabel('Split 1 amount').fill('900000');
+  await fillPart(page, 1, '900000');
   // Business's categories come after this workspace's own, under its name; the line then wears its letter.
   await pickPartCategory(page, 2, 'Restaurants', 'Business');
-  await split.getByLabel('Split 2 amount').fill('450000');
-  for (const [n, name] of [[0, 'Personal'], [1, 'Business']] as const) {
-    const part = split.getByTestId('split-row').nth(n);
-    await expect(part.getByTestId('workspace-badge')).toHaveAttribute('title', name);
-    await expect(part.getByTestId('split-part-category')).toContainText(name);
-  }
+  await fillPart(page, 2, '450000');
+  // A part in the open workspace says nothing of workspaces; one in another names it under its category.
+  await expect(split.getByTestId('split-row').nth(0)).not.toContainText('Business');
+  await expect(split.getByTestId('split-row').nth(1)).toContainText('Business');
   await split.getByRole('button', { name: 'Close' }).click();
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);

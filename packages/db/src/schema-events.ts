@@ -24,6 +24,7 @@ export const eventItems = sqliteTable('event_items', {
   eventId: text('event_id').notNull(),
   name: text('name').notNull(),
   quantity: integer('quantity').notNull(),
+  /** Minor units of the item's currency (`event_item_currency`, 0104); of the workspace base currency when it has none. */
   unitPriceMinor: integer('unit_price_minor').notNull(),
   /** Null: planned but filed in no category, so it belongs to no workspace. */
   categoryAccountId: text('category_account_id'),
@@ -47,6 +48,11 @@ export const eventItemPurchases = sqliteTable(
     itemId: text('item_id').notNull(),
     workspaceId: text('workspace_id').notNull(),
     transactionId: text('transaction_id').notNull(),
+    /**
+     * In minor units of the **base** currency, whatever currency the item or the purchase is in: the share is cut from the
+     * receipt's expense side (`entries.amount_base_minor`), so every comparison between plan and spending stays in one
+     * currency. Screens convert it for display (see core events/plan.ts).
+     */
     shareMinor: integer('share_minor').notNull(),
     createdAt: text('created_at').notNull(),
   },

@@ -3,7 +3,7 @@ import { openAccount } from './accounts';
 import { openAmount, addForm, saveButton, chooseTo, choosePayment } from './add-transaction';
 import { openAssets } from './drawers';
 import { openGoalForm } from './goals';
-import { pickBillCategory } from './bill-form';
+import { pickBillCategory, pickBillPaidFrom } from './bill-form';
 
 /**
  * A goal's row on /goals, where each goal is one line of the list. The goal itself — its figure, stages, what
@@ -125,7 +125,7 @@ export async function addBill(page: Page, name: string, amount: string) {
   await page.getByLabel('Name', { exact: true }).pressSequentially(name);
   await page.getByLabel('Amount', { exact: true }).pressSequentially(amount);
   await pickBillCategory(page);
-  await page.getByLabel('Paid from').selectOption({ label: 'Jenius' });
+  await pickBillPaidFrom(page, 'Jenius');
   await page.getByLabel('Bill date').selectOption('1');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page).toHaveURL(/\/bills$/);

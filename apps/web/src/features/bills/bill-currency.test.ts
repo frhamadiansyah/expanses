@@ -27,6 +27,7 @@ const bill = (over: Partial<MonthlyBill>): MonthlyBill => ({
   chargedMinor: null,
   chargedCurrency: null,
   paymentId: null,
+  paidFromAccountId: null,
   estimateMinor: 100,
   payableMonths: ['2026-09'],
   pausedUntil: null,

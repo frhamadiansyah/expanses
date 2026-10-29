@@ -15,6 +15,8 @@ export function SearchPill({
   placeholder,
   label = placeholder,
   compact = false,
+  onEnter,
+  enterKeyHint,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -24,6 +26,10 @@ export function SearchPill({
   label?: string;
   /** The segmented control's own 32 px, for a field that takes a tab row's place in a sheet and must not change it. */
   compact?: boolean;
+  /** Run when the keyboard's Enter key is pressed; the key is swallowed so nothing else answers it. */
+  onEnter?: () => void;
+  /** The label iOS puts on the Enter key. */
+  enterKeyHint?: 'done' | 'go' | 'search' | 'enter';
 }) {
   const field = useRef<HTMLInputElement>(null);
   // Ready to type in as soon as it is asked for, but without the browser scrolling the page to wherever the field
@@ -40,7 +46,9 @@ export function SearchPill({
         placeholder={placeholder}
         aria-label={label}
         autoComplete="off"
-        className="min-w-0 flex-1 bg-transparent text-base focus:outline-none"
+        enterKeyHint={enterKeyHint}
+        onKeyDown={onEnter ? (event) => { if (event.key === 'Enter') { event.preventDefault(); onEnter(); } } : undefined}
+        className="min-w-0 flex-1 bg-transparent text-base focus:outline-none [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-cancel-button]:appearance-none"
       />
       <button
         type="button"

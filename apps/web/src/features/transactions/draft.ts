@@ -17,6 +17,14 @@ export function isEditable(tx: TransactionView): boolean {
 }
 
 /**
+ * A balance fixed to what was counted (Adjust, "only moves the balance"): it has no form to edit, but it can be taken
+ * back. Deleting it puts the balance back by exactly the difference. An opening balance cannot be deleted here.
+ */
+export function isCorrection(tx: TransactionView): boolean {
+  return tx.status === 'posted' && classify(tx).type === 'correction';
+}
+
+/**
  * Money moved with a person that also carries a category: a loan put on a card with its fee, a repayment with its
  * interest. The transaction forms read it by its one category — as a Rp 100.000 expense, or as income — and have no
  * row for the person, so a save from them would rewrite it as a plain purchase and drop what the person owes. It

@@ -1,4 +1,4 @@
-import { minorToMajorString, monthName, parseMajor } from '@expanses/core';
+import { groupedMajorString, groupTypedAmount, monthName, parseGroupedMajor } from '@expanses/core';
 import { type MonthlyBill, recordBillPayments, skipBill } from '@expanses/db';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -24,6 +24,7 @@ export function PaySheet({
   onPaid,
   onSkipped,
   onSeeBill,
+  onLink,
 }: {
   bill: MonthlyBill;
   today: string;
@@ -32,6 +33,8 @@ export function PaySheet({
   onSkipped: (billMonth: string) => void;
   /** Shown only when the sheet was opened from the list. */
   onSeeBill?: () => void;
+  /** Opens the purchases that could settle the month chosen, for a payment that is already recorded. */
+  onLink?: (billMonth: string) => void;
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -41,7 +44,7 @@ export function PaySheet({
   const wallets = moneyHolders(accounts).filter((account) => canPayWith(account, bill.moneyAccountId) || account.id === fund?.accountId);
   const currencyOf = (id: string) => accounts.find((account) => account.id === id)?.currency ?? ws.baseCurrency;
 
-  const [amount, setAmount] = useState(() => (bill.amountMinor === null ? '' : minorToMajorString(bill.amountMinor, billCurrencyOf(bill, accounts, ws.baseCurrency))));
+  const [amount, setAmount] = useState(() => (bill.amountMinor === null ? '' : groupedMajorString(bill.amountMinor, billCurrencyOf(bill, accounts, ws.baseCurrency))));
   const [month, setMonth] = useState(bill.payableMonths[0] ?? bill.billMonth);
   const [payer, setPayer] = useState(bill.moneyAccountId);
   const [paidOn, setPaidOn] = useState(today);
@@ -56,7 +59,7 @@ export function PaySheet({
   const foreign = currency !== payerCurrency;
   const months = bill.payableMonths.length > 0 ? bill.payableMonths : [bill.billMonth];
   /** The one reading of the typed figure: Save throws what it says, the question reads 0 until it parses. */
-  const readAmount = () => (amount.trim() ? parseMajor(amount.trim(), currency) : 0);
+  const readAmount = () => (amount.trim() ? parseGroupedMajor(amount.trim(), currency) : 0);
   const typedMinor = (() => {
     try {
       return readAmount();
@@ -70,7 +73,7 @@ export function PaySheet({
   /** The account is charged this in its own money: what the bank took, which is what the set-aside question is about. */
   const chargedMinor = (() => {
     try {
-      return chargedShown.trim() ? parseMajor(chargedShown.trim(), payerCurrency) : 0;
+      return chargedShown.trim() ? parseGroupedMajor(chargedShown.trim(), payerCurrency) : 0;
     } catch {
       return 0;
     }
@@ -102,7 +105,7 @@ export function PaySheet({
       let chargedAmount: number | undefined;
       if (foreign) {
         // Parsed here so a figure that does not parse still says so; an empty row is asked for rather than guessed.
-        chargedAmount = chargedShown.trim() ? parseMajor(chargedShown.trim(), payerCurrency) : 0;
+        chargedAmount = chargedShown.trim() ? parseGroupedMajor(chargedShown.trim(), payerCurrency) : 0;
         if (!(chargedAmount > 0)) {
           setError(new Error(`Enter what the account was charged in ${payerCurrency}`));
           return;
@@ -144,12 +147,13 @@ export function PaySheet({
       <form ref={form} onSubmit={record}>
         <InsetGroup>
           <TextRow
-            label={`Amount (${currency})`}
+            label="Amount"
+            prefix={currency}
             id="pay-amount"
             aria-label="What it came to"
             inputMode="decimal"
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={(e) => setAmount(groupTypedAmount(e.target.value, currency))}
             placeholder={bill.amountMinor === null ? 'Amount' : undefined}
             info={
               bill.amountMinor === null ? (
@@ -193,7 +197,7 @@ export function PaySheet({
               id="pay-charged"
               inputMode="decimal"
               value={chargedShown}
-              onChange={(e) => setCharged(e.target.value)}
+              onChange={(e) => setCharged(groupTypedAmount(e.target.value, payerCurrency))}
               placeholder={`Charged in ${payerCurrency}`}
               info={`What the account was charged, as its statement shows. It starts as an estimate at the latest rate known, and can be changed to the real figure.`}
             />
@@ -216,6 +220,12 @@ export function PaySheet({
           <InsetRow action title="Skip this month" disabled={busy} onClick={() => void skip()} className={grey} />
           {onSeeBill && <InsetRow action title="See bill" onClick={onSeeBill} className={grey} />}
         </InsetGroup>
+
+        {onLink && (
+          <InsetGroup>
+            <InsetRow title="Already recorded? Link a purchase" plain onClick={() => onLink(month)} testId="link-purchase" />
+          </InsetGroup>
+        )}
       </form>
     </Sheet>
   );

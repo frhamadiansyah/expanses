@@ -46,12 +46,12 @@ test('Card rewards is a row of a bank account’s Settings, not a group on Walle
   await sheet.getByPlaceholder('Search').fill('blu');
   await expect(sheet.getByRole('button', { name: 'Add manually' })).toBeVisible();
   // One tap links the account to the card's programme and closes the sheet; the row then names it.
-  await sheet.getByRole('button', { name: 'Garuda x bluDebit Card' }).click();
+  await sheet.getByRole('button', { name: 'Garuda x Blu Debit' }).click();
   await expect(sheet).toHaveCount(0);
   await expect(row).toContainText('GarudaMiles');
   // Linked: the sheet marks the current card and offers the card page, where the rules are kept.
   await row.click();
-  await expect(page.getByRole('dialog').getByRole('button', { name: 'Garuda x bluDebit Card' })).toHaveAttribute('aria-current', 'true');
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Garuda x Blu Debit' })).toHaveAttribute('aria-current', 'true');
   await page.getByRole('dialog').getByRole('button', { name: 'Open card page' }).click();
   await expect(page).toHaveURL(new RegExp(`/cards/${accountId}$`));
   // A card that is not listed is set up by hand, on the same page.

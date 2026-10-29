@@ -1,16 +1,21 @@
-import { formatMinor, minorToMajorString, parseMajor } from '@expanses/core';
-import { listEventItems, saveEventItem } from '@expanses/db';
+import { CURRENCIES, eventCurrency, groupTypedAmount, isoDate, minorToMajorString, parseMajor } from '@expanses/core';
+import { listEventItems, removeEventItem, saveEventItem } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
-import { InsetGroup, LargeTitle, ReadOnlyRow, SelectRow, TextRow, type CornerAction, PushedTitle } from '../../ui/native';
+import { cx } from '../../ui';
+import { DestructiveRow, InsetGroup, InsetRow, LargeTitle, TextRow, type CornerAction, type GroupChild, PushedTitle } from '../../ui/native';
+import { Sheet } from '../../app/Sheet';
+import { CategoryIcon } from '../categories/CategoryIcon';
+import { CurrencySheet } from '../transactions/CurrencySheet';
 import { useCategorySetMembership, useSetCategories } from '../categories/set-queries';
 import { useCategoryWorkspaces } from '../workspaces/queries';
-import { afterSaving, itemFormGate } from './plan-view';
-import { useEventItemsReady, useEventPlan, useEvents } from './queries';
+import { spacedMinor } from './amount-text';
+import { itemFormGate } from './plan-view';
+import { useEventItemsReady, useEventPlan, useEvents, usePlanConverter } from './queries';
 
 export function NewItemRoute() {
   const { eventId } = useParams({ from: '/events/$eventId/plan/new' });
@@ -25,7 +30,7 @@ export function EditItemRoute() {
 }
 
 /** Half-typed digits are not an error, only a figure that is not there yet: nought until the whole of it parses. */
-function minorOf(typed: string, currency: string): number {
+export function minorOf(typed: string, currency: string): number {
   try {
     return parseMajor(typed, currency);
   } catch {
@@ -40,20 +45,104 @@ function minorOf(typed: string, currency: string): number {
  * refuses it as `QUANTITY_RANGE` and says so. Substituting 1 here instead showed an estimate of Rp 0 and wrote
  * 1 × the price, which is the one thing a form may never do: give the user a figure other than the one it showed.
  */
-const wholeOf = (typed: string) => (/^\d+$/.test(typed.trim()) ? Number(typed.trim()) : 0);
+export const wholeOf = (typed: string) => (/^\d+$/.test(typed.trim()) ? Number(typed.trim()) : 0);
 
 /**
- * The form that makes one thing to buy, and the same form that edits it.
+ * The estimate, as a total rather than a field: a heavier hairline above it, its label small and quiet, its figure drawn as Price each's is: regular weight, the same size and ink,
+ * the symbol a space before a grouped number ("Rp 9.800.000").
+ * It is still an input — read-only, out of the tab order — so it keeps the label it is found by and a figure a test can
+ * read off the form, but nothing about it invites typing.
+ */
+export function EstimateRow({ value }: GroupChild & { value: string }) {
+  return (
+    <div className="flex items-center gap-3 border-t border-[var(--ph-hair)] px-[13px]" style={{ minHeight: 44 }}>
+      <label htmlFor="item-estimate" className="shrink-0 text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">
+        Estimate
+      </label>
+      <input
+        id="item-estimate"
+        value={value}
+        readOnly
+        tabIndex={-1}
+        className="tabular min-w-0 flex-1 cursor-default border-0 bg-transparent p-0 text-right text-[17px] leading-[22px] font-normal text-[var(--ph-ink)] outline-none md:text-[15px] md:leading-[20px]"
+      />
+    </div>
+  );
+}
+
+/**
+ * The category row: the category's mark and name at the right, "Not in a category" in grey when empty. A tap opens a
+ * sheet holding the plan's categories as a grid of marks; one tap picks and closes.
+ */
+export function CategoryPickRow({ mark, name, onOpen, position }: GroupChild & { mark: ReactNode; name: string | null; onOpen: () => void }) {
+  return (
+    <InsetRow
+      position={position}
+      title="Category"
+      plain
+      label={`Category, ${name ?? 'Not in a category'}`}
+      onClick={onOpen}
+      value={
+        name ? (
+          <span className="inline-flex items-center gap-2">
+            {mark}
+            {name}
+          </span>
+        ) : (
+          'Not in a category'
+        )
+      }
+      valueTone={name ? 'ink' : 'ink-3'}
+    />
+  );
+}
+
+export function CategorySheet({
+  options,
+  current,
+  onPick,
+  onClose,
+}: {
+  options: readonly { id: string; name: string; mark: ReactNode }[];
+  current: string;
+  onPick: (id: string) => void;
+  onClose: () => void;
+}) {
+  // Tapping the category already chosen clears it: the only way back to none, so the grid has no tile for it.
+  const choose = (id: string) => {
+    onPick(id);
+    onClose();
+  };
+  const tile = 'ph-focus flex flex-col items-center gap-[5px] rounded-xl px-1 py-[6px] active:bg-[var(--ph-fill)]';
+  return (
+    <Sheet title="Category" grouped onClose={onClose}>
+      <div className="grid max-h-[55vh] grid-cols-4 gap-x-[6px] gap-y-[10px] overflow-y-auto px-1 pb-2">
+        {options.map((option) => (
+          <button key={option.id} type="button" aria-label={option.name} aria-current={option.id === current} onClick={() => choose(option.id === current ? '' : option.id)} className={cx(tile, option.id === current && 'bg-[var(--ph-fill)]')}>
+            {option.mark}
+            <span className="line-clamp-2 text-center text-[11.5px] leading-[14px] break-words text-[var(--ph-ink-2)]">{option.name}</span>
+          </button>
+        ))}
+      </div>
+    </Sheet>
+  );
+}
+
+/**
+ * The form that makes one thing to pay, and the same form that edits it.
  *
  * There is no estimate field. The estimate is how many × price each, shown read-only beside them as they are typed —
  * a figure someone could type would be a third number free to disagree with the two that make it.
+ *
+ * The price is in a currency of its own, starting at the event's. An item typed in another currency than the event's
+ * shows its estimate at the day's rate with ≈ (where a rate is stored); one with no rate shows its own figure.
  *
  * An edit carries the item's id through to `saveEventItem`, which updates that row in place. Leaving the id out
  * appends a second item instead, which is exactly how the interim card this screen replaces silently doubled a
  * category's planned figure. Here the whole list sits on the screen behind this form, so a duplicate could not hide —
  * but the id is passed all the same, because being visible is not the same as being right.
  *
- * Drawn with the native kit: every field is a line in one group, label left and answer right, and Save is the
+ * Drawn with the native kit: every field is a line in a group, label left and answer right, and Save is the
  * corner button — not a label stacked over an outlined box under a dark rectangle. The `<form>` is still the thing
  * that submits, so Enter in any field saves exactly as it did.
  */
@@ -64,6 +153,7 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
   const events = useEvents();
   const event = (events.data ?? []).find((row) => row.id === eventId) ?? null;
   const plan = useEventPlan(eventId, tab ?? null);
+  const home = eventCurrency(event?.currency, ws.baseCurrency);
   const ready = useEventItemsReady();
   const accounts = useAccounts().data ?? [];
   const setCategories = useSetCategories(event?.setId ?? null).data ?? [];
@@ -74,6 +164,10 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
   const [quantity, setQuantity] = useState('1');
   const [price, setPrice] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  // The item's own currency; the event's until the item says otherwise. An item being edited loads its own.
+  const [picked, setPicked] = useState<string | null>(null);
+  const [pickingCurrency, setPickingCurrency] = useState(false);
+  const [pickingCategory, setPickingCategory] = useState(false);
   const [link, setLink] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState<unknown>(null);
@@ -86,8 +180,10 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
     if (!itemId || loaded || !existing) return;
     setName(existing.name);
     setQuantity(String(existing.quantity));
-    // Written the way save parses it back, so a two-decimal currency reads 15.00 and saves as 15.00.
-    setPrice(minorToMajorString(existing.unitPriceMinor, ws.baseCurrency));
+    // Written the way save parses it back, grouped as it is typed: a two-decimal currency reads 15,00 and saves as 15,00.
+    const own = existing.currency ?? ws.baseCurrency;
+    setPicked(own);
+    setPrice(groupTypedAmount(minorToMajorString(existing.unitPriceMinor, own).replace('.', ','), own));
     setCategoryId(existing.categoryId ?? '');
     setLink(existing.link ?? '');
     setNote(existing.note ?? '');
@@ -106,8 +202,21 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
     return workspace ? `${plain} · ${workspace}` : plain;
   };
 
-  const estimateMinor = wholeOf(quantity) * minorOf(price, ws.baseCurrency);
-  const after = plan.data ? afterSaving(plan.data, { estimateMinor, replacing: itemId }) : null;
+  const currency = picked ?? home;
+  const estimateMinor = wholeOf(quantity) * minorOf(price, currency);
+  // At the day's rate where one is stored: the estimate on this form is read before anything is saved.
+  const converter = usePlanConverter(currency === home ? [] : [currency, home]).data;
+  const inHome = currency === home ? estimateMinor : (converter?.convert(estimateMinor, currency, home, isoDate()) ?? null);
+  const estimateText = currency === home ? spacedMinor(estimateMinor, currency) : inHome === null ? spacedMinor(estimateMinor, currency) : `≈ ${spacedMinor(inHome, home)}`;
+  // A price typed in cents is regrouped for the currency picked, so its decimal comma never outlives a currency without cents.
+  const pickCurrency = (code: string) => {
+    setPicked(code);
+    const regrouped = groupTypedAmount(price, code);
+    // Cents dropped with the comma, not folded into the whole: 95,50 in rupiah is 95, not 9.550.
+    setPrice(price.includes(',') && !regrouped.includes(',') ? groupTypedAmount(price.split(',')[0] ?? '', code) : regrouped);
+  };
+  const chosen = planCategories.find((account) => account.id === categoryId);
+  const chosenName = chosen ? planName(chosen.id, chosen.name) : null;
   const search = { ws: tab };
   const backTo = itemId
     ? ({ to: '/events/$eventId/plan/$itemId', params: { eventId, itemId }, search } as const)
@@ -123,7 +232,9 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
         id: itemId,
         name,
         quantity: wholeOf(quantity),
-        unitPriceMinor: parseMajor(price, ws.baseCurrency),
+        unitPriceMinor: parseMajor(price, currency),
+        // Nothing is stored for the base currency: an item with no currency of its own reads as the base.
+        currency: currency === ws.baseCurrency ? null : currency,
         categoryAccountId: categoryId || null,
         link,
         note,
@@ -135,7 +246,7 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
        */
       const saved = await listEventItems(database, ws, eventId);
       if (!saved.some((row) => row.id === id)) {
-        throw new Error('Nothing was saved: this copy of the data is from before a plan was a list of things to buy. Open it once on a finished version, then try again.');
+        throw new Error('Nothing was saved: this copy of the data is from before a plan was a list of things to pay. Open it once on a finished version, then try again.');
       }
       await invalidate();
       await navigate(backTo);
@@ -144,7 +255,20 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
     }
   }
 
-  const title = itemId ? 'Edit item' : 'New item';
+  /** Payments stay on the event as not planned; with any linked, the user is asked first. */
+  async function remove(row: { id: string; name: string; purchases: readonly unknown[] }) {
+    if (row.purchases.length > 0 && !window.confirm(`Delete ${row.name}? Its payments stay in the event as not planned.`)) return;
+    setError(null);
+    try {
+      await removeEventItem(database, ws, row.id);
+      await invalidate();
+      await navigate({ to: '/events/$eventId/plan', params: { eventId }, search });
+    } catch (e) {
+      setError(e);
+    }
+  }
+
+  const title = itemId ? 'Edit cost' : 'New cost';
   const screen = (children: ReactNode) => (
     <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
       <div className="mx-auto max-w-2xl">{children}</div>
@@ -163,7 +287,7 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
     return screen(
       <>
         <PushedTitle title={title} back="Back to the plan" backTo="/events/$eventId/plan" backParams={{ eventId }} backSearch={search} />
-        <Empty>That item is no longer on this plan.</Empty>
+        <Empty>That cost is no longer on this plan.</Empty>
       </>,
     );
 
@@ -193,45 +317,51 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
       <ErrorBox error={error ?? plan.error} />
       {blocked && (
         <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-warn)]">
-          This copy of the data is from before a plan was a list of things to buy, so nothing here can be saved yet. Open it once on a version that has finished
+          This copy of the data is from before a plan was a list of things to pay, so nothing here can be saved yet. Open it once on a version that has finished
           updating, and the plan will be here.
         </p>
       )}
 
       <form id="item-form" onSubmit={save}>
-        <InsetGroup header="The item" footer="No date. How many × price each makes the estimate; one of something is the ordinary case.">
-          <TextRow label="What" value={name} onChange={(e) => setName(e.target.value)} placeholder="Stroller" />
+        <InsetGroup>
+          <TextRow label="What" value={name} onChange={(e) => setName(e.target.value)} placeholder="Cost name" />
           <TextRow label="How many" value={quantity} onChange={(e) => setQuantity(e.target.value)} inputMode="numeric" placeholder="Quantity" />
-          <TextRow label="Price each" value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" placeholder="Amount" />
+          <TextRow
+            label="Price each"
+            value={price}
+            onChange={(e) => setPrice(groupTypedAmount(e.target.value, currency))}
+            inputMode="decimal"
+            placeholder="Amount"
+            prefix={CURRENCIES.find((c) => c.code === currency)?.symbol ?? currency}
+            onPrefix={() => setPickingCurrency(true)}
+            prefixLabel={`Currency: ${currency}`}
+          />
           {/*
-           * Read-only, and not part of what is saved: the estimate is the product of the two fields above it. It
-           * stays an input rather than becoming a static row so that it keeps the label it is found by, and so the
-           * figure it shows is the figure a test can read off the form.
+           * Read-only, and not part of what is saved: the estimate is the product of the two fields above it. It stays
+           * an input rather than a static row so that it keeps the label it is found by.
            */}
-          <TextRow label="Estimate" value={formatMinor(estimateMinor, ws.baseCurrency)} readOnly tabIndex={-1} className="tabular text-[var(--ph-ink-3)]" />
-          <SelectRow label="Category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-            <option value="">Not in a category</option>
-            {planCategories.map((account) => (
-              <option key={account.id} value={account.id}>
-                {planName(account.id, account.name)}
-              </option>
-            ))}
-          </SelectRow>
-          <TextRow label="Link" value={link} onChange={(e) => setLink(e.target.value)} inputMode="url" placeholder="tokopedia.com/…" />
-          <TextRow label="Note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Second-hand ok" />
+          <EstimateRow value={estimateText} />
+        </InsetGroup>
+        <InsetGroup>
+          <CategoryPickRow mark={<CategoryIcon categoryId={categoryId} accounts={accounts} size="row" />} name={chosenName} onOpen={() => setPickingCategory(true)} />
+          <TextRow label="Purchase link"value={link} onChange={(e) => setLink(e.target.value)} inputMode="url" placeholder="Web address" />
+          <TextRow label="Remarks" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note" />
         </InsetGroup>
       </form>
-
-      {after && event && (
-        <InsetGroup header="After saving">
-          {/* Not clamped again here: `afterSaving` clamps, so that the four screens do not each remember to. */}
-          <ReadOnlyRow label={`${event.name}, planned`} value={formatMinor(after.plannedMinor, ws.baseCurrency)} />
-          <ReadOnlyRow label="Still to buy" value={formatMinor(after.toBuyMinor, ws.baseCurrency)} />
-          {after.notPlannedMinor > 0 && <ReadOnlyRow label="Not planned" value={formatMinor(after.notPlannedMinor, ws.baseCurrency)} />}
-          {/* Money that came back answers no item, so saving one cannot move it — but leaving it out would under-state
-              the event by exactly the refund, with nothing on the card to say where it went. */}
-          {after.moneyBackMinor > 0 && <ReadOnlyRow label="Money back" value={formatMinor(after.moneyBackMinor, ws.baseCurrency)} />}
+      {/* Only on an edit, and a group of its own at the foot: the air round it is the only undo a finger gets. */}
+      {existing && (
+        <InsetGroup>
+          <DestructiveRow label="Delete" onClick={() => void remove(existing)} />
         </InsetGroup>
+      )}
+      {pickingCurrency && <CurrencySheet value={currency} accountCurrency={home} baseCurrency={ws.baseCurrency} onPick={pickCurrency} onClose={() => setPickingCurrency(false)} />}
+      {pickingCategory && (
+        <CategorySheet
+          options={planCategories.map((account) => ({ id: account.id, name: planName(account.id, account.name), mark: <CategoryIcon categoryId={account.id} accounts={accounts} size="tile" /> }))}
+          current={categoryId}
+          onPick={setCategoryId}
+          onClose={() => setPickingCategory(false)}
+        />
       )}
     </>,
   );

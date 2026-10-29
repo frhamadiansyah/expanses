@@ -48,7 +48,6 @@ async function addCard(page: Page) {
   await page.getByLabel('Billing date').pressSequentially('31');
   await page.getByLabel('Due date').pressSequentially('15');
   await saveCardTerms(page);
-  await expect(page.getByText('Step 2 of 3')).toBeVisible();
   await page.getByRole('button', { name: 'BCA Visa' }).click();
   await cardPage(page, 'Statement');
   await expect(page.getByTestId('statement-range')).toBeVisible();
@@ -80,7 +79,7 @@ test('paying the card bill from Jenius asks, and the Emergency fund lends the 1.
   // The round Pay opens the payment sheet.
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: /^Pay / });
-  await expect(sheet.getByLabel('Amount (IDR)')).toHaveValue('6800000');
+  await expect(sheet.getByLabel('Amount', { exact: true })).toHaveValue('6800000');
   await expect(sheet.getByText(/1\.800\.000 more than is free/)).toBeVisible();
   await expect(sheet.getByRole('button', { name: 'Record payment' })).toBeDisabled();
   await borrowFromEmergencyFund(sheet);
@@ -156,7 +155,8 @@ test('paying several bills asks once for what they take together, spread over th
   await page.getByRole('button', { name: 'Select bills to pay' }).click();
   await page.getByRole('checkbox', { name: 'Select Rent' }).click();
   await page.getByRole('checkbox', { name: 'Select School' }).click();
-  await page.getByRole('button', { name: /^Pay 2 selected/ }).click();
+  await page.getByRole('button', { name: 'Actions' }).click();
+  await page.getByRole('menuitem', { name: /^Pay 2 selected/ }).click();
 
   const sheet = page.getByRole('dialog', { name: 'Pay several' });
   await expect(sheet.getByText(/2\.000\.000 more than is free/)).toBeVisible();
@@ -176,7 +176,8 @@ test('paying several bills with "Yes" counts the whole paid total against the go
   await page.getByRole('button', { name: 'Select bills to pay' }).click();
   await page.getByRole('checkbox', { name: 'Select Rent' }).click();
   await page.getByRole('checkbox', { name: 'Select School' }).click();
-  await page.getByRole('button', { name: /^Pay 2 selected/ }).click();
+  await page.getByRole('button', { name: 'Actions' }).click();
+  await page.getByRole('menuitem', { name: /^Pay 2 selected/ }).click();
 
   const sheet = page.getByRole('dialog', { name: 'Pay several' });
   await expect(sheet.getByText(/2\.000\.000 more than is free/)).toBeVisible();
@@ -226,7 +227,7 @@ async function addKpr(page: Page) {
 }
 
 async function retype(page: Page, label: string | RegExp, value: string) {
-  const input = page.getByLabel(label);
+  const input = page.getByLabel(label, typeof label === 'string' ? { exact: true } : undefined);
   await input.clear();
   await input.pressSequentially(value);
 }
@@ -236,8 +237,8 @@ test('a loan instalment of principal and interest asks about the whole of it', a
   await addKpr(page);
   await page.getByRole('button', { name: 'Pay', exact: true }).click();
   // 5.000.000 principal + 1.800.000 interest: 1.800.000 over. Principal alone would ask nothing.
-  await retype(page, 'Principal (IDR)', '5000000');
-  await retype(page, 'Interest (IDR)', '1800000');
+  await retype(page, 'Principal', '5000000');
+  await retype(page, 'Interest', '1800000');
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
   const save = page.getByRole('button', { name: 'Save payment' });
   await expect(save).toBeDisabled();
@@ -307,7 +308,7 @@ test('paying Budi back from Jenius asks; the loan came into another account', as
 
   await openLoan(page, 'Budi');
   await page.getByRole('button', { name: 'Record repayment' }).click();
-  await page.getByLabel(/^Paid back \(/).pressSequentially('6800000');
+  await page.getByRole('dialog').getByLabel('Paid back', { exact: true }).pressSequentially('6800000');
   await page.getByLabel('From').selectOption({ label: 'Jenius' });
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
   const save = page.getByRole('button', { name: 'Save repayment' });
@@ -388,10 +389,10 @@ test('spending on an event from Jenius asks', async ({ page }) => {
   await page.getByLabel('Ends on').fill(TODAY);
   await page.getByRole('button', { name: 'Save event' }).click();
   await expect(page.getByRole('heading', { name: 'Lebaran', exact: true })).toBeVisible();
+  const eventUrl = page.url();
 
   // Add spending is the Add screen with the event set, so it asks the question the Add screen always asks.
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Add spending' }).click();
+  await page.getByRole('button', { name: 'Add spending', exact: true }).click();
   const form = addForm(page);
   await form.getByRole('button', { name: /^Paid with/ }).click();
   await choosePayment(page, 'Jenius');
@@ -411,7 +412,11 @@ test('spending on an event from Jenius asks', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Lebaran', exact: true })).toBeVisible();
 
   await expectShort(page, 'Emergency fund', /short by Rp.1\.800\.000/i);
-  await expectRecordedOnce(page, /Hampers/);
+  // Event spending has left Cashflow's list: it is recorded once, and found in the event's own history.
+  await page.goto(eventUrl);
+  await expect(page.getByTestId('event-history').filter({ hasText: /Hampers/ })).toHaveCount(1);
+  await page.goto('/transactions');
+  await expect(page.getByTestId('transaction-row').filter({ hasText: /Hampers/ })).toHaveCount(0);
 });
 
 // ── The desktop's quick rows and the review queue ─────────────────────────────────────────────────────────────────

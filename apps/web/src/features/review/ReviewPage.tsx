@@ -31,7 +31,7 @@ import { UndoToast } from '../../ui/UndoToast';
 import { CategoryOptions } from '../cards/options';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
 import { asksAboutSetAside, SetAsideSheet } from '../goals/SetAsideQuestion';
-import { answerPatch, captureRowView, type ReadingWithLines } from './capture-view';
+import { answerPatch, captureRowView, effectiveCategory, type ReadingWithLines } from './capture-view';
 import { CaptureTypeMark } from './CaptureTypeMark';
 import { CaptureViewer } from './CaptureViewer';
 import { DraftDays } from './DraftDays';
@@ -39,7 +39,7 @@ import { DraftSheet } from './DraftSheet';
 import { keepsPicture } from './keep-picture';
 import { corrections, draftPatch } from './draft-form';
 import type { FormDraft } from '../transactions/tx-form';
-import { useCaptureSources, useDrafts } from './queries';
+import { useCaptureSources, useDraftCategoryGuesses, useDrafts } from './queries';
 import { SkippedList } from './SkippedList';
 import type { SwipeAction, SwipeHint } from '../../ui/SwipeRow';
 
@@ -62,6 +62,7 @@ export function ReviewPage() {
   const invalidate = useInvalidateAll();
   const phone = usePhone();
   const drafts = useDrafts();
+  const guesses = useDraftCategoryGuesses(drafts.data ?? []).data;
   const accounts = useAccounts().data ?? [];
   const sources = useCaptureSources().data ?? [];
   const scan = useScanReceipt();
@@ -147,6 +148,16 @@ export function ReviewPage() {
   async function record(draft: DraftRow, opts: { undoable?: boolean } = {}) {
     setError(null);
     const keepPhoto = keepsPicture(draft);
+    // A category the row showed from the merchant's history is written onto the draft before it is recorded.
+    const guessed = effectiveCategory(draft, guesses);
+    if (guessed && !draft.categoryAccountId) {
+      try {
+        await editDraft(database, ws, draft.id, { categoryAccountId: guessed });
+      } catch (e) {
+        setError(e);
+        return;
+      }
+    }
     if (draft.kind === 'expense') {
       const door = spendingDoor(draft.accountId ?? '', Math.max(0, draft.amountMinor));
       let asks = false;
@@ -235,7 +246,7 @@ export function ReviewPage() {
    */
   function swipeRecord(draft: DraftRow) {
     // A category is a question too: the row no longer prints it, but recording without one is refused all the same.
-    const uncategorised = draft.kind !== 'transfer' && !draft.categoryAccountId;
+    const uncategorised = draft.kind !== 'transfer' && !effectiveCategory(draft, guesses);
     if (uncategorised || captureRowView(draft, sourceOf(draft)).needs.length > 0) setEditing(draft.id);
     else void record(draft, { undoable: true });
   }
@@ -369,6 +380,7 @@ export function ReviewPage() {
           onSwipeRight={swipeRecord}
           discardActions={discardActions}
           recordHint={recordHint}
+          guesses={guesses}
         />
       )}
 

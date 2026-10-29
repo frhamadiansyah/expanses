@@ -65,15 +65,15 @@ export function AdjustBalanceForm({
     <form id={formId} onSubmit={submit} className="flex flex-col gap-4">
       <ErrorBox error={error ?? balances.error} />
       <InsetGroup className="!mb-0">
-        <ReadOnlyRow label="In the app" value={inApp === null ? null : formatMinor(inApp, currency)} />
-        <TextRow label="Actually have" inputMode="decimal" placeholder="Amount" value={typed} onChange={(e) => setTyped(e.target.value)} />
+        <ReadOnlyRow label="Balance" value={inApp === null ? null : formatMinor(inApp, currency)} />
+        <TextRow label="Actual" inputMode="decimal" placeholder="Amount" value={typed} onChange={(e) => setTyped(e.target.value)} />
         <TextRow label="As of" type="date" value={onDate} max={today} onChange={(e) => setOnDate(e.target.value)} />
       </InsetGroup>
       {differs && (
         <section className="rounded-[11px] bg-[var(--ph-surface)] px-[13px] py-[11px]" data-testid="adjust-difference">
           <p className="text-[15px] leading-[20px] text-[var(--ph-ink)]">
             <span className={cx('font-semibold', difference < 0 ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-up)]')}>{differenceWords(difference, currency)}</span>
-            {' than the app says.'}
+            {' than the balance.'}
           </p>
           <div role="radiogroup" aria-label="What the difference was" className="mt-[10px] flex flex-col gap-[10px]">
             {adjustChoices(difference).map((choice) => (

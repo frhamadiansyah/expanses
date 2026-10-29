@@ -1,45 +1,45 @@
-import { CURRENCIES, formatMinor, isoDate, parseMajor } from '@expanses/core';
+import { bestRedemption, formatMinor, isoDate, pointsWorth } from '@expanses/core';
 import {
-  backfillCycles,
   deleteConversion,
-  deleteRedemptionOption,
   getProgramme,
-  listPrograms,
+  getProgrammeValuePerPoint,
+  listCards,
   listProgrammes,
   listProgrammeTiers,
   listRedemptionOptions,
-  type ProgrammeRow,
-  type RedemptionOptionRow,
   programBalance,
   programmeEarners,
   programmeHistory,
   programmePartners,
   refreshProgramme,
-  saveRedemptionOption,
+  toRedemption,
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useParams } from '@tanstack/react-router';
-import { ArrowLeftRight, Gift, Scale, Settings, Trash2 } from 'lucide-react';
+import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
+import { useBack } from '../../app/BackHeader';
+import { ArrowLeftRight, Hourglass, Settings, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox } from '../../ui';
-import { ActionButtons, InsetGroup, InsetRow, Panel, PushedTitle, type RoundAction, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { ActionButtons, InsetGroup, InsetRow, Panel, PushedTitle, type RoundAction, SCREEN } from '../../ui/native';
 import { formatPoints } from './format-points';
 import { balanceText, expiryNote, historyLine } from './programme-text';
-import { BalanceSheet, ConvertSheet, ProgrammeSettingsSheet, RedeemSheet } from './ProgrammeSheets';
-import { ActionRow, ColumnGroup, RowWithActions, SubmitRow, TextLine } from './rows';
-import { TransferEstimates } from './TransferEstimates';
+import { BalanceSheet, ConvertSheet, ProgrammeSettingsSheet } from './ProgrammeSheets';
+import { RowWithActions } from './rows';
 
-type SheetName = 'redeem' | 'convert' | 'balance' | 'settings';
+type SheetName = 'convert' | 'balance' | 'settings';
 
 /**
  * A points programme on its own page: Livin' Poin, KrisFlyer, Bonvoy. The balance leads, with what of it is about to
- * expire; under it the three things done with a balance — redeem it, convert it into another programme, set it to the
- * figure the issuer's app shows. Then the cards earning into it, each opening its card, and its history: each card's
- * earning per statement, redemptions, conversions in and out with both sides, corrections and expiries.
+ * expire, and what it is worth when a value per point is known (or the card's best redemption says); under it the
+ * four round buttons — Convert (into another programme, or spent on a voucher, cash, a flight), Adjust (to the figure
+ * the issuer's app shows), Expiry (how points die, and what dies when) and Settings. Then its history: each card's earning per
+ * statement, redemptions, conversions in and out with both sides, corrections and expiries.
  *
- * Under them, what the cycle's points would transfer to and the catch-up per card for cycles from before the app.
+ * The value per point, the cards earning here, the catch-up per card for cycles from before the app, and archiving are
+ * in the programme's settings; what this statement's points would convert to is in the Convert sheet. A statement's
+ * row in History opens that card's statement points page.
  *
  * Opening it brings its ledger up to date first, as a card's page does: each earning card works out its open cycle and
  * the one before, and points past their date are written off.
@@ -48,9 +48,12 @@ export function ProgrammePage() {
   const { database, ws } = useApp();
   const { programmeId } = useParams({ strict: false }) as { programmeId: string };
   const navigate = useNavigate();
+  const goBack = useBack('/cards/points');
   const invalidate = useInvalidateAll();
   const today = isoDate();
-  const [sheet, setSheet] = useState<SheetName | null>(null);
+  // Back from a card's Catch up page comes here with the settings open again.
+  const reopen = (useSearch({ strict: false }) as { settings?: true }).settings === true;
+  const [sheet, setSheet] = useState<SheetName | null>(reopen ? 'settings' : null);
   const [error, setError] = useState<unknown>(null);
   const data = useQuery({
     queryKey: ['programme', ws.workspaceId, programmeId, today],
@@ -64,29 +67,42 @@ export function ProgrammePage() {
         programme,
         earners,
         options,
+        valuePerPoint: await getProgrammeValuePerPoint(database, ws, programmeId),
         balance: await programBalance(database, ws, programmeId, today),
         history: await programmeHistory(database, ws, programmeId),
         partners: await programmePartners(database, ws, programmeId),
         others: (await listProgrammes(database, ws)).filter((other) => other.id !== programmeId),
         // Which of its membership cards Points draws it as (0088), for its Settings.
         tier: (await listProgrammeTiers(database, ws))[programmeId] ?? null,
-        // Which earning cards follow the catalogue: changing a value of theirs makes them customised, so it asks first.
-        linked: new Set((await listPrograms(database, ws)).filter((program) => program.catalogStatus === 'linked').map((program) => program.id)),
+        // The last digits of each earning card, for the grey line under it in Settings.
+        digits: await cardDigits(database, ws),
       };
     },
   });
 
   if (data.isSuccess && data.data === null) return <Empty>Programme not found.</Empty>;
   if (!data.data) return <p className="text-sm text-slate-500">Loading…</p>;
-  const { programme, earners, options, balance, history, partners, others, linked, tier } = data.data;
+  const { programme, earners, options, valuePerPoint, balance, history, partners, others, digits, tier } = data.data;
   const unit = programme.unit;
   const note = expiryNote(balance);
 
+  // What the balance is worth: the programme's value per point, else the best redemption of the cards earning here.
+  const worth = pointsWorth(balance.total, valuePerPoint, bestRedemption(options.map(toRedemption)), ws.baseCurrency);
+
   const actions: RoundAction[] = [
-    { key: 'redeem', label: 'Redeem', glyph: <Gift size={20} aria-hidden />, run: () => setSheet('redeem') },
     { key: 'convert', label: 'Convert', glyph: <ArrowLeftRight size={20} aria-hidden />, run: () => setSheet('convert') },
-    { key: 'balance', label: 'Balance', glyph: <Scale size={20} aria-hidden />, run: () => setSheet('balance') },
+    { key: 'balance', label: 'Adjust', glyph: <SlidersHorizontal size={20} aria-hidden />, run: () => setSheet('balance') },
+    { key: 'expiry', label: 'Expiry', glyph: <Hourglass size={20} aria-hidden />, to: '/cards/points/$programmeId/expiry', params: { programmeId } },
+    { key: 'settings', label: 'Settings', glyph: <Settings size={20} aria-hidden />, run: () => setSheet('settings') },
   ];
+
+  // A statement's earning opens that card's statement points page.
+  const statementOf = (row: { kind: string; earnedById: string | null }) => (row.kind === 'earn' && row.earnedById ? earners.find((earner) => earner.programId === row.earnedById) : undefined);
+
+  const closeSheet = () => {
+    setSheet(null);
+    if (reopen) void navigate({ to: '/cards/points/$programmeId', params: { programmeId }, search: {}, replace: true });
+  };
 
   const removeConversion = async (conversionId: string, title: string) => {
     if (!window.confirm(`Remove the conversion ${title}? Both balances go back to how they were.`)) return;
@@ -99,29 +115,20 @@ export function ProgrammePage() {
     }
   };
 
-  const catchUp = async (programId: string) => {
-    setError(null);
-    try {
-      await backfillCycles(database, ws, programId, 24, today);
-      await invalidate();
-    } catch (e) {
-      setError(e);
-    }
-  };
-
   // This statement's points for each card: its earning in the cycle still open today.
   const thisStatement = (programId: string) =>
     history
       .filter((row) => row.kind === 'earn' && row.earnedById === programId && row.on >= today)
       .sort((a, b) => a.on.localeCompare(b.on))[0];
 
+  const statementPoints = earners.reduce((sum, earner) => sum + (thisStatement(earner.programId)?.quantity ?? 0), 0);
+
   return (
     <div className={SCREEN}>
       <PushedTitle
         title={programme.name}
         back="Points"
-        backTo="/cards/points"
-        actions={[{ key: 'settings', label: 'Programme settings', glyph: <Settings size={20} aria-hidden />, run: () => setSheet('settings') }]}
+        onBack={goBack}
       />
       <ErrorBox error={error} />
 
@@ -137,34 +144,13 @@ export function ProgrammePage() {
         <p data-testid="programme-balance" className="tabular truncate text-[26px] leading-[32px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]">
           {balanceText(balance.total, unit)}
         </p>
-        <p className="tabular text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
+        <p data-testid="programme-provenance" className="tabular text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
+          {worth ? `≈ ${formatMinor(worth.valueMinor, worth.currency)} · ` : ''}
           {formatPoints(balance.postedTotal)} posted · {formatPoints(balance.projectedTotal)} estimated
         </p>
       </Panel>
 
       <ActionButtons actions={actions} />
-
-      {earners.length > 0 && (
-        <InsetGroup header="Earned by" footer="Each card's rules, caps and statement checks stay with the card.">
-          {earners.map((earner) => {
-            const current = thisStatement(earner.programId);
-            return (
-              <InsetRow
-                key={earner.programId}
-                title={earner.cardName}
-                subtitle={current ? `This statement${current.estimated ? ', estimated' : ''}` : 'Nothing this statement yet'}
-                value={current ? `+${formatPoints(current.quantity)}` : undefined}
-                to="/cards/$cardId/points"
-                params={{ cardId: earner.cardAccountId }}
-              />
-            );
-          })}
-        </InsetGroup>
-      )}
-
-      <TransferEstimates partners={partners} points={earners.reduce((sum, earner) => sum + (thisStatement(earner.programId)?.quantity ?? 0), 0)} unit={unit} today={today} />
-
-      <PointValues programme={programme} earners={earners} options={options} linked={linked} />
 
       <div data-testid="programme-history">
         <InsetGroup header="History" footer={earners.length === 0 ? `No card earns into ${programme.name}: its ${unit} arrive by conversion, or by setting the balance to the one its own app shows.` : undefined}>
@@ -184,33 +170,35 @@ export function ProgrammePage() {
                   actions={[{ label: `Remove conversion ${line.title}`, glyph: <Trash2 size={17} aria-hidden />, destructive: true, onClick: () => void removeConversion(row.conversionId!, line.title) }]}
                 />
               ) : (
-                <InsetRow key={row.key} testId="programme-history-row" title={line.title} subtitle={line.subtitle} value={value} />
+                <InsetRow
+                  key={row.key}
+                  testId="programme-history-row"
+                  title={line.title}
+                  subtitle={line.subtitle}
+                  value={value}
+                  {...(statementOf(row) ? { to: '/cards/$cardId/points' as const, params: { cardId: statementOf(row)!.cardAccountId }, chevron: true } : {})}
+                />
               );
             })
           )}
         </InsetGroup>
       </div>
 
-      {earners.length > 0 && (
-        <InsetGroup
-          header="Earlier cycles"
-          info="Works the last two years of cycles out from purchases already recorded here. Points earned before this app was used are not among them — set the programme's balance to the one the issuer shows instead."
-        >
-          {earners.map((earner) => (
-            <ActionRow key={earner.programId} label={`Catch up ${earner.cardName}`} onClick={() => void catchUp(earner.programId)} />
-          ))}
-        </InsetGroup>
-      )}
-
-      {sheet === 'redeem' && <RedeemSheet programme={programme} options={options} today={today} onClose={() => setSheet(null)} />}
-      {sheet === 'convert' && <ConvertSheet programme={programme} others={others} partners={partners} today={today} onClose={() => setSheet(null)} />}
-      {sheet === 'balance' && <BalanceSheet programme={programme} today={today} onClose={() => setSheet(null)} />}
+      {sheet === 'convert' && <ConvertSheet programme={programme} others={others} partners={partners} statementPoints={statementPoints} today={today} onClose={closeSheet} />}
+      {sheet === 'balance' && <BalanceSheet programme={programme} today={today} onClose={closeSheet} />}
       {sheet === 'settings' && (
         <ProgrammeSettingsSheet
           programme={programme}
           tier={tier}
-          earning={earners.length}
-          onClose={() => setSheet(null)}
+          earners={earners.map((earner) => ({ ...earner, digits: digits[earner.cardAccountId] ?? null }))}
+          valuePerPoint={valuePerPoint}
+          onClose={closeSheet}
+          onOpenCard={(programId) => {
+            // This entry is made the one with the settings open, so the card's page ‹ steps back to it as it was left.
+            void navigate({ to: '/cards/points/$programmeId', params: { programmeId }, search: { settings: true }, replace: true }).then(() =>
+              navigate({ to: '/cards/points/$programmeId/card/$programId', params: { programmeId, programId } }),
+            );
+          }}
           onArchived={() => void navigate({ to: '/wallet' })}
         />
       )}
@@ -218,115 +206,9 @@ export function ProgrammePage() {
   );
 }
 
-/**
- * What the programme's points fetch, one value per redemption: what the cards' points are worth on their pages, and
- * what Redeem offers. A value belongs to the card whose terms list it, so with two cards earning here each value says
- * whose it is, and a new one is added to the card chosen.
- */
-function PointValues({
-  programme,
-  earners,
-  options,
-  linked,
-}: {
-  programme: ProgrammeRow;
-  earners: { programId: string; cardName: string }[];
-  options: RedemptionOptionRow[];
-  linked: ReadonlySet<string>;
-}) {
-  const { database, ws } = useApp();
-  const invalidate = useInvalidateAll();
-  const [error, setError] = useState<unknown>(null);
-  const [programId, setProgramId] = useState(earners[0]?.programId ?? '');
-  const [name, setName] = useState('');
-  const [points, setPoints] = useState('');
-  const [value, setValue] = useState('');
-  const [currency, setCurrency] = useState(ws.baseCurrency);
-  const cardOf = (id: string) => earners.find((earner) => earner.programId === id)?.cardName ?? programme.name;
-  const confirmCustomise = (id: string) =>
-    !linked.has(id) || window.confirm(`${cardOf(id)} follows the catalogue. Changing it makes it customised: catalogue updates stop applying automatically and wait for review. Continue?`);
-  const act = async (fn: () => Promise<unknown>) => {
-    setError(null);
-    try {
-      await fn();
-      await invalidate();
-      return true;
-    } catch (e) {
-      setError(e);
-      return false;
-    }
-  };
-  const target = earners.some((earner) => earner.programId === programId) ? programId : (earners[0]?.programId ?? '');
-  return (
-    <div data-testid="point-values">
-      <InsetGroup
-        header="What points are worth"
-        footer={earners.length === 0 ? `Values come with the cards earning into ${programme.name}.` : undefined}
-      >
-        {options.length === 0 && <TextLine tone="ink-3">No values yet. Add what a redemption fetches, so points can be worth something here.</TextLine>}
-        {options.map((option) => (
-          <RowWithActions
-            key={option.id}
-            title={`${option.name}: ${formatPoints(option.perPoints)} ${programme.unit} = ${formatMinor(option.valueMinor, option.currency)}`}
-            subtitle={earners.length > 1 ? cardOf(option.programId) : undefined}
-            actions={[
-              {
-                label: `Remove ${option.name}`,
-                glyph: <Trash2 size={17} aria-hidden />,
-                destructive: true,
-                onClick: () => confirmCustomise(option.programId) && void act(() => deleteRedemptionOption(database, ws, option.id)),
-              },
-            ]}
-          />
-        ))}
-      </InsetGroup>
-      {earners.length > 0 && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!confirmCustomise(target)) return;
-            void act(async () => {
-              await saveRedemptionOption(database, ws, { programId: target, name, type: 'cashback', perPoints: Number(points), valueMinor: parseMajor(value, currency), currency });
-              setName('');
-              setPoints('');
-              setValue('');
-            });
-          }}
-        >
-          <ColumnGroup
-            header="Add a value"
-            columns={[
-              [
-                ...(earners.length > 1
-                  ? [
-                      <SelectRow label="Card" value={target} onChange={(e) => setProgramId(e.target.value)}>
-                        {earners.map((earner) => (
-                          <option key={earner.programId} value={earner.programId}>
-                            {earner.cardName}
-                          </option>
-                        ))}
-                      </SelectRow>,
-                    ]
-                  : []),
-                <TextRow label="Redemption" value={name} onChange={(e) => setName(e.target.value)} placeholder="Statement credit" />,
-                <TextRow label={programme.unit === 'miles' ? 'Miles redeemed' : 'Points redeemed'} value={points} onChange={(e) => setPoints(e.target.value)} inputMode="numeric" placeholder="Points" required />,
-              ],
-              [
-                <TextRow label="Worth" value={value} onChange={(e) => setValue(e.target.value)} inputMode="decimal" placeholder="Amount" required />,
-                <SelectRow label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-                  {CURRENCIES.map((c) => (
-                    <option key={c.code} value={c.code}>
-                      {c.code}
-                    </option>
-                  ))}
-                </SelectRow>,
-              ],
-            ]}
-            submit={<SubmitRow label="Add value" />}
-          />
-        </form>
-      )}
-      <ErrorBox error={error} />
-    </div>
-  );
+/** The last four digits of each card account's first card that has them, by account. */
+async function cardDigits(database: Parameters<typeof listCards>[0], ws: Parameters<typeof listCards>[1]): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const card of await listCards(database, ws)) if (card.last4 && !out[card.accountId]) out[card.accountId] = card.last4;
+  return out;
 }

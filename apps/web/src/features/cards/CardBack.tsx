@@ -51,7 +51,7 @@ export function BackSlot({
   points: { total: number; posted: number; estimated: number } | null;
 }) {
   const top = items[0];
-  const rule = 'mt-2 border-t-[0.5px] border-[var(--ph-hairline)] pt-2';
+  const rule = 'mt-2 border-t-[0.5px] border-[var(--ph-hair)] pt-2';
   if (top) {
     return (
       <Link to="/cards/$cardId/bonuses" params={{ cardId }} data-testid="back-bonus" className={`ph-focus ${rule} flex items-center gap-[10px]`}>
@@ -71,13 +71,13 @@ export function BackSlot({
   }
   if (!points) {
     return (
-      <Link to="/cards/$cardId/settings" params={{ cardId }} data-testid="this-statement-points" className={`ph-focus ${rule} block text-[13px] leading-[18px] text-[var(--ph-ink-3)]`}>
+      <Link to="/cards/$cardId/settings" params={{ cardId }} data-testid="back-points" className={`ph-focus ${rule} block text-[13px] leading-[18px] text-[var(--ph-ink-3)]`}>
         Rewards are not set up for this card.
       </Link>
     );
   }
   return (
-    <Link to="/cards/$cardId/points" params={{ cardId }} data-testid="this-statement-points" className={`ph-focus ${rule} block text-[13px] leading-[19px] text-[var(--ph-ink-2)]`}>
+    <Link to="/cards/$cardId/points" params={{ cardId }} data-testid="back-points" className={`ph-focus ${rule} block text-[13px] leading-[19px] text-[var(--ph-ink-2)]`}>
       <span className="flex justify-between gap-2">
         <span>Points this statement</span>
         <span className="tabular text-[var(--ph-ink)]" data-testid="tile-points-balance">

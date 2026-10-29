@@ -45,8 +45,8 @@ export async function programmeFaces(page: Page) {
   // Its Settings offer KrisFlyer's tiers; Elite Gold changes the face, and holds across a reload.
   await page.getByRole('region', { name: 'Points' }).getByRole('link', { name: /^KrisFlyer, / }).click();
   await expect(page.getByTestId('programme-balance')).toBeVisible();
-  await page.locator('header').getByRole('button', { name: 'Programme settings' }).click();
-  const tier = page.getByRole('dialog').getByLabel('Card tier');
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Settings' }).click();
+  const tier = page.getByRole('dialog').getByLabel('Membership tier');
   await expect(tier).toHaveValue('member');
   await tier.selectOption({ label: 'Elite Gold' });
   await page.getByRole('button', { name: 'Save programme' }).click();
@@ -60,7 +60,7 @@ export async function programmeFaces(page: Page) {
   // A programme nothing is drawn for is offered no tier.
   await page.getByRole('region', { name: 'Points' }).getByRole('link', { name: /^Hilton Honors, / }).click();
   await expect(page.getByTestId('programme-balance')).toBeVisible();
-  await page.locator('header').getByRole('button', { name: 'Programme settings' }).click();
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Settings' }).click();
   await expect(page.getByRole('dialog').getByLabel('Name')).toHaveValue('Hilton Honors');
-  await expect(page.getByRole('dialog').getByLabel('Card tier')).toHaveCount(0);
+  await expect(page.getByRole('dialog').getByLabel('Membership tier')).toHaveCount(0);
 }

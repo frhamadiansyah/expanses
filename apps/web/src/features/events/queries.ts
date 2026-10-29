@@ -1,17 +1,23 @@
 import {
   booksInEvent,
+  type Database,
   eventItemsExist,
   eventPlanFor,
   inBook,
+  listEventCurrencies,
+  listEventItems,
   listEvents,
   listTransactions,
   ownerScope,
   purchaseCover,
+  storedConverter,
   suggestForEvent,
   type WorkspaceContext,
 } from '@expanses/db';
+import { isoDate } from '@expanses/core';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
+import { useResolveRates } from '../../lib/queries';
 
 // An event spans books (a trip touches Personal and Business alike), so every read here is owner-level.
 export function useEvents() {
@@ -37,13 +43,66 @@ export function useBooksInEvent(eventId: string | null) {
   });
 }
 
+/*
+ * Rates for the currencies a plan is read in. An item priced in another currency than the event's is shown at the day's
+ * rate, so the rate of each foreign currency is fetched (or found stored, or reported missing) before the plan is read.
+ * Asked once a session per day and set of currencies: a failed fetch is tried again on the next open, a stored rate never
+ * asks. What is read afterwards is only what is stored, so a missing rate shows as missing rather than as a guess.
+ */
+const asked = new Set<string>();
+
+async function ensureRates(
+  currencies: readonly string[],
+  base: string,
+  workspaceId: string,
+  resolve: (currencies: string[], onDate: string) => Promise<{ missing: string[] }>,
+): Promise<void> {
+  const needed = [...new Set(currencies)].filter((code) => code !== base).sort();
+  const key = `${workspaceId}|${isoDate()}|${needed.join()}`;
+  if (needed.length === 0 || asked.has(key)) return;
+  asked.add(key);
+  try {
+    if ((await resolve(needed, isoDate())).missing.length > 0) asked.delete(key);
+  } catch {
+    asked.delete(key);
+  }
+}
+
+/** Every currency the event's plan is read in: its own, and each item's. */
+async function currenciesOfPlan(database: Database, ws: WorkspaceContext, eventId: string): Promise<string[]> {
+  const own = (await listEventCurrencies(database.db, ws)).get(eventId);
+  const items = await listEventItems(database, ws, eventId);
+  return [...(own ? [own] : []), ...items.flatMap((item) => (item.currency ? [item.currency] : []))];
+}
+
 /** What the event meant to buy, against what it actually bought. */
 export function useEventPlan(eventId: string | null, bookId: string | null = null) {
   const { database, ws } = useApp();
+  const resolve = useResolveRates();
   return useQuery({
     queryKey: ['event-plan', ws.workspaceId, eventId, bookId],
-    queryFn: () => eventPlanFor(database, scopeOf(ws, bookId), eventId!),
+    queryFn: async () => {
+      await ensureRates(await currenciesOfPlan(database, ws, eventId!), ws.baseCurrency, ws.workspaceId, resolve);
+      return eventPlanFor(database, scopeOf(ws, bookId), eventId!);
+    },
     enabled: eventId !== null,
+  });
+}
+
+/**
+ * The stored rates as a converter, once the given currencies' rates were asked for. For the item form's estimate, which
+ * is read before anything is saved and so cannot come from the plan.
+ */
+export function usePlanConverter(currencies: readonly string[]) {
+  const { database, ws } = useApp();
+  const resolve = useResolveRates();
+  const wanted = [...new Set(currencies)].sort();
+  return useQuery({
+    queryKey: ['plan-converter', ws.workspaceId, wanted.join(), isoDate()],
+    queryFn: async () => {
+      await ensureRates(wanted, ws.baseCurrency, ws.workspaceId, resolve);
+      return storedConverter(database.db, ws.baseCurrency);
+    },
   });
 }
 

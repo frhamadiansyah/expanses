@@ -9,9 +9,13 @@ import { ErrorBox } from '../../ui';
 import { type GroupChild, InsetGroup, InsetRow, ROW_PAD_X, ROW_PAD_Y, SCREEN, TAP } from '../../ui/native';
 import { daysSince, getLastBackupAt } from '../backup/backupState';
 import { usePendingDraftCount } from '../review/queries';
+import { JoinSheet } from '../sharing/JoinSheet';
 import { NewWorkspaceSheet } from '../workspaces/NewWorkspaceSheet';
 import { useArchivedBooks, useBooks } from '../workspaces/queries';
 import { WorkspaceDot } from '../workspaces/WorkspaceBadge';
+import { AddWorkspaceSheet } from './AddWorkspaceSheet';
+import { paymentLabel } from '../transactions/PaymentSheet';
+import { resolveDefaultPaidWith, usePayableOptions, useStoredDefaultPaidWith } from './default-paid-with';
 
 /** How long ago the last backup was, in the fewest words that still answer "am I covered?". */
 function backupNote(last: string | null): string {
@@ -47,7 +51,7 @@ function WorkspaceLine({
         style={{ gap: 10, padding: `${ROW_PAD_Y}px 0 ${ROW_PAD_Y}px ${ROW_PAD_X}px` }}
       >
         <span className="flex w-7 shrink-0 justify-center">
-          <WorkspaceDot book={book} />
+          <WorkspaceDot book={book} size={28} />
         </span>
         <span className="block min-w-0 flex-1 truncate text-[17px] leading-[22px] font-medium text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">{book.name}</span>
         {current && <Check size={18} aria-label="Open" className="shrink-0 text-[var(--ph-tint)]" />}
@@ -78,6 +82,10 @@ export function AccountMenuPage() {
   const archived = useArchivedBooks();
   const pending = usePendingDraftCount().data ?? 0;
   const lastBackup = useQuery({ queryKey: ['last-backup'], queryFn: () => getLastBackupAt(database) });
+  const storedDefault = useStoredDefaultPaidWith();
+  const payable = usePayableOptions();
+  const [adding, setAdding] = useState(false);
+  const [joining, setJoining] = useState(false);
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -98,6 +106,11 @@ export function AccountMenuPage() {
   const note = (to: string) => {
     if (to === '/backup') return lastBackup.isSuccess ? backupNote(lastBackup.data) : undefined;
     if (to === '/review' && pending > 0) return `${pending} waiting`;
+    if (to === '/settings/default') {
+      if (!storedDefault.isSuccess || !payable.ready) return undefined;
+      const found = resolveDefaultPaidWith(storedDefault.data, payable.options);
+      return <span className="block max-w-[48vw] truncate md:max-w-[16rem]">{found ? paymentLabel(found) : 'None'}</span>;
+    }
     return undefined;
   };
   const rows = (items: readonly NavItem[]) =>
@@ -122,7 +135,7 @@ export function AccountMenuPage() {
             <InsetRow
               key={book.id}
               testId="archived-workspace"
-              icon={<WorkspaceDot book={book} />}
+              icon={<WorkspaceDot book={book} size={28} />}
               title={<span className="text-[var(--ph-ink-3)]">{book.name}</span>}
               value="Archived"
               to="/account/workspaces/$bookId"
@@ -130,7 +143,7 @@ export function AccountMenuPage() {
               label={`Open ${book.name}, archived`}
             />
           )),
-          <InsetRow key="new" testId="new-workspace" icon={<Plus size={16} aria-hidden />} title="New workspace" chevron={false} onClick={() => setCreating(true)} />,
+          <InsetRow key="add" testId="add-workspace" icon={<Plus size={16} aria-hidden />} title="Add workspace" chevron={false} onClick={() => setAdding(true)} />,
         ]}
       </InsetGroup>
 
@@ -142,6 +155,20 @@ export function AccountMenuPage() {
         </InsetGroup>
       ))}
 
+      {adding && (
+        <AddWorkspaceSheet
+          onClose={() => setAdding(false)}
+          onNew={() => {
+            setAdding(false);
+            setCreating(true);
+          }}
+          onJoin={() => {
+            setAdding(false);
+            setJoining(true);
+          }}
+        />
+      )}
+      {joining && <JoinSheet onClose={() => setJoining(false)} />}
       {creating && <NewWorkspaceSheet onClose={() => setCreating(false)} />}
     </div>
   );

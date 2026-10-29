@@ -57,7 +57,7 @@ export function NewTransactionRoute() {
    * just made is this item and nothing else, so the item takes the whole of it as its share.
    *
    * A receipt already spoken for is the one refusal with somewhere to go — ticking an item off claims what is left
-   * of its receipt, so a receipt answering several items is settled on "What it covers" and not by a second tick.
+   * of its receipt, so a receipt answering several items is settled on "Link to costs" and not by a second tick.
    * The payment is posted and tagged by now either way, so carrying the user to that screen loses nothing and asks
    * them for exactly what the app could not know. Both ways out replace this screen, so Back from them does not
    * open the same purchase again.
@@ -106,7 +106,7 @@ export function NewTransactionRoute() {
         <SharedExpenseCard
           view={view}
           {...(expense ? { expenseId: expense } : {})}
-          {...(bought ? { itemId: bought.id, title: `Buy ${bought.name}`, seed: { note: bought.name, amount: minorToMajorString(bought.estimateMinor, view.currency), categoryId: bought.categoryId } } : {})}
+          {...(bought ? { itemId: bought.id, title: `Pay ${bought.name}`, seed: { note: bought.name, amount: minorToMajorString(bought.estimateMinor, view.currency), categoryId: bought.categoryId } } : {})}
           {...(!bought && !expense && (amount || note || date) ? { seed: { note: note ?? '', amount: amount ?? '', categoryId: null, ...(currency ? { currency } : {}), ...(date ? { occurredOn: date } : {}) } } : {})}
           onBack={back}
           onDone={toEvent}
@@ -129,7 +129,7 @@ export function NewTransactionRoute() {
       ) : (
         <TransactionCard
           full
-          title={buying ? `Buy ${buying.name}` : trading ? 'Trade' : 'New transaction'}
+          title={buying ? `Pay ${buying.name}` : trading ? 'Trade' : 'New transaction'}
           label={trading ? 'Trade' : 'Add a transaction'}
           // Spending into an event is spending: Expense, whatever the address asked.
           mode={opening ? 'expense' : mode}
@@ -144,6 +144,8 @@ export function NewTransactionRoute() {
             ...(buying ? buySeed(buying, ws.baseCurrency) : {}),
           }}
           followUp={followUp}
+          // Only the plain blank form: an account's page, an event or a trade brings its own.
+          defaultPaidWith={!account && !to && !opening && !trading && !buying && (mode ?? 'expense') === 'expense'}
           onBack={back}
           onDone={back}
         />

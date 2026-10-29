@@ -6,6 +6,7 @@ import { bookCategories } from '../schema-books';
 import { withCapture } from '../sync/capture';
 import { createAccountTx, ensureSystemAccountTx, MONEY_SUBTYPES } from './accounts';
 import { hasBooks, personalBookIdTx } from './books';
+import { recordActivityTx } from './activity-log';
 import { nativeBalancesTx, postTransactionTx } from './ledger';
 
 export class AdjustBalanceError extends Error {
@@ -82,6 +83,8 @@ export async function adjustBalance(
       ],
       ratesToBase: input.rateToBase ? { [currency]: input.rateToBase } : {},
     });
+    // A count is something a person did: the Activity page lists it, with the way back (Undo takes the adjustment out).
+    await recordActivityTx(tx, ws, 'adjust', transactionId, { accountId: account.id, accountName: account.name });
     return { transactionId, differenceMinor: difference };
   });
 }

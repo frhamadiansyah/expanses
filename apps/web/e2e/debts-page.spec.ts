@@ -225,8 +225,8 @@ test('a loan paid off leaves the list and the total, and waits under the paid-of
   await debtRow(page, 'Kredit HP').click();
   // A payment of everything that is left clears it: the ledger marks the loan paid off.
   await page.getByRole('button', { name: 'Pay', exact: true }).click();
-  await page.getByLabel('Principal (IDR)').fill('');
-  await page.getByLabel('Principal (IDR)').pressSequentially('3000000');
+  await page.getByLabel('Principal', { exact: true }).fill('');
+  await page.getByLabel('Principal', { exact: true }).pressSequentially('3000000');
   await page.getByRole('button', { name: 'Save payment' }).click();
   await expect(page.getByRole('button', { name: 'Save payment' })).toHaveCount(0);
 
@@ -254,7 +254,7 @@ test('a card paid past its bill holds the surplus: Unpaid at nothing, and the cr
   await expect(tile.getByTestId('tile-unpaid-balance')).toHaveText('Rp 100.000');
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: /^Pay / });
-  await sheet.getByLabel('Amount (IDR)').fill('350000');
+  await sheet.getByLabel('Amount', { exact: true }).fill('350000');
   await sheet.getByRole('button', { name: 'Record payment' }).click();
   await expect(sheet).toHaveCount(0);
 

@@ -1,3 +1,4 @@
+import type { ReceiptMemo } from './receipt-split-model';
 import {
   cardTopUpLines,
   convertMinor,
@@ -26,6 +27,7 @@ import { emptyPurchaseDraft, type PurchaseDraft, purchaseDraftToInput } from './
 import { classify } from './classify';
 import { isEditable } from './draft';
 import { postedAgainstPlaceholder } from '../sharing/sharing-copy';
+import { hasRest, settleRest, splitTotal } from './split-rest';
 
 export type FormMode = 'expense' | 'income' | 'transfer' | 'trade';
 
@@ -38,6 +40,11 @@ export interface SplitRow {
    * counts unless it says so too (`withPartExcluded`). Never on a Not counted row, which no report reads.
    */
   excluded?: boolean;
+  /**
+   * This row is the Rest: its figure is the total less the other rows, worked out by `split-rest.ts` rather than typed.
+   * At most one row has it; Save works it out again against the amount, so a total changed since is followed.
+   */
+  rest?: boolean;
 }
 
 /**
@@ -123,6 +130,11 @@ export interface WithRow {
 export interface FormDraft {
   /** A credit card purchase dated before the card started in the app: already paid off, so the card owes no more. */
   alreadyPaid?: boolean;
+  /**
+   * An expense or income on a money account marked a past purchase: its balance does not hold it. Absent until the
+   * icon is touched, when the account's opening day and the purchase's date decide (`isPastDefault`).
+   */
+  pastPurchase?: boolean;
   mode: FormMode;
   bookId: string; // the workspace row
   occurredOn: string;
@@ -152,6 +164,8 @@ export interface FormDraft {
   photoIds: string[];
   with: WithRow[];
   withEqually: boolean;
+  /** The restaurant bill the With amounts were worked out from (With → By receipt), kept so Edit can reopen it. */
+  receiptSplit?: ReceiptMemo;
   goalId: string;
   manualRate: string;
   /** True while correcting a transaction rather than adding one: With is not offered on an edit (§15.6). */
@@ -578,7 +592,7 @@ export const peopleOn = (draft: FormDraft): WithRow[] => draft.with.filter((row)
  * Restaurants, in silence.
  */
 export const SPLIT_WITH_REFUSAL =
-  'A bill split by category cannot also be shared with someone: each share is filed under one category, and the split names several. Remove the splits, or remove the people.';
+  'Split by category and With people cannot be used together. Remove the split, or remove the people.';
 
 /**
  * Why this row is refused right now — null when it is free to be used.
@@ -1091,6 +1105,9 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
 
   // The split is read before the figure is asked for, because on a split the rows *are* the figure — the order
   // `draftToLines` had, and losing it is what made a split impossible to save.
+  // A Rest part follows the amount: if the total moved after the split was made, its figure is worked out afresh here.
+  const total = hasRest(draft.splits) && (!typed || typed === account.currency) ? splitTotal(draft.amount, account.currency) : null;
+  if (total !== null) draft = { ...draft, splits: settleRest(draft.splits, total, account.currency) };
   const splits = splitByCategory(draft) ? splitRowsOf(draft, account.currency, typed) : null;
   const splitTotalMinor = splits ? splits.reduce((sum, row) => sum + row.amountMinor, 0) : null;
   const { amountMinor, exactHundredths, originalCurrency, originalAmountMinor } = amounts(draft, account, typed, splitTotalMinor);

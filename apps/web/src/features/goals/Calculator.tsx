@@ -9,9 +9,10 @@ import {
   type Household,
   INCOME_STABILITIES,
   type IncomeStability,
+  groupedMajorString,
+  groupTypedAmount,
   isoDate,
-  minorToMajorString,
-  parseMajor,
+  parseGroupedMajor,
   RETIREMENT_RETURN_BPS,
   type RetirementInputs,
 } from '@expanses/core';
@@ -86,7 +87,7 @@ function CalculatorForm({ goal, saved, onDone, onCancel }: { goal: GoalRow; save
   const [education, setEducation] = useState(() => educationDraftFrom(savedEducation(saved), ws.baseCurrency));
   // Retirement: the saved working, or the agreed prefills — 3.5% inflation, 10% while saving, 5% while retired.
   const retirement = saved?.kind === 'retirement' ? (saved.inputs as RetirementInputs) : undefined;
-  const [annualSpend, setAnnualSpend] = useState(() => (retirement ? minorToMajorString(retirement.annualSpendTodayMinor, ws.baseCurrency) : ''));
+  const [annualSpend, setAnnualSpend] = useState(() => (retirement ? groupedMajorString(retirement.annualSpendTodayMinor, ws.baseCurrency) : ''));
   const [yearsToRetirement, setYearsToRetirement] = useState(() => String(retirement?.yearsToRetirement ?? 20));
   const [yearsInRetirement, setYearsInRetirement] = useState(() => String(retirement?.yearsInRetirement ?? 20));
   const [inflation, setInflation] = useState(() => percentOf(retirement?.inflationBps ?? DEFAULT_INFLATION_BPS));
@@ -105,7 +106,7 @@ function CalculatorForm({ goal, saved, onDone, onCancel }: { goal: GoalRow; save
             ? educationInputsOf(education, ws.baseCurrency)
             : {
                 version: 2 as const,
-                annualSpendTodayMinor: parseMajor(annualSpend, ws.baseCurrency),
+                annualSpendTodayMinor: parseGroupedMajor(annualSpend, ws.baseCurrency),
                 yearsToRetirement: Number(yearsToRetirement.replace(',', '.')),
                 yearsInRetirement: Number(yearsInRetirement.replace(',', '.')),
                 inflationBps: percentToBps(inflation, 'Inflation'),
@@ -175,11 +176,13 @@ function CalculatorForm({ goal, saved, onDone, onCancel }: { goal: GoalRow; save
         : [
             <TextRow
               key="spend"
-              label={`Yearly spending in retirement (${ws.baseCurrency})`}
+              label="Yearly spending in retirement"
+              prefix={ws.baseCurrency}
               hint="At today's prices. Inflation is applied automatically."
               value={annualSpend}
-              onChange={(e) => setAnnualSpend(e.target.value)}
-              inputMode="numeric"
+              onChange={(e) => setAnnualSpend(groupTypedAmount(e.target.value, ws.baseCurrency))}
+              inputMode="decimal"
+              placeholder="Amount"
               required
             />,
             <TextRow

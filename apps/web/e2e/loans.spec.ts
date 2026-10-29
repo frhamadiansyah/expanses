@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { expectWalletFigure, openAccount } from './accounts';
+import { backToCardFromPlans, startPlan } from './card-section';
 import { openDrawers } from './drawers';
 
 test.beforeEach(({ page }) => {
@@ -204,28 +205,64 @@ test('a card purchase turned into instalments splits into billed and unbilled', 
 
   await page.goto('/wallet');
   await page.getByRole('link', { name: 'BCA KrisFlyer' }).click();
-  await page.getByRole('button', { name: 'Add a plan' }).click();
+  // With no plan the card page shows no Instalments box: the first is added from Settings, Instalments, ＋.
+  await expect(page.getByTestId('card-instalments')).toHaveCount(0);
+  await startPlan(page);
   const sheet = page.getByRole('dialog', { name: 'New instalment plan' });
   await sheet.getByLabel('What it was').fill('iBox Grand Indonesia');
   await sheet.getByLabel(/^Total/).fill('12000000');
   await sheet.getByLabel('Months').fill('12');
   await sheet.getByRole('button', { name: 'Save plan' }).click();
   await expect(sheet).toHaveCount(0);
+  await expect(page.getByTestId('card-instalment')).toHaveCount(1);
+  await backToCardFromPlans(page);
 
   // The plan is managed where it is read: on the card's summary, a row per plan with its months and what it holds.
   const held = page.getByTestId('card-instalments');
-  await expect(held).toContainText(/Rp\s[\d.]+ held/);
+  // The held figure is the limit bar's, not the Instalments header's.
+  await expect(held.getByRole('heading', { name: 'Instalments' })).not.toContainText('held');
   const plan = held.getByTestId('card-instalment');
   await expect(plan).toContainText('iBox Grand Indonesia');
-  await expect(plan).toContainText('earns no points');
-  await expect(plan).toContainText(/\d+ of 12 paid · Rp\s1\.000\.000 a month/);
-  await expect(plan).toContainText(/Billed Rp\s[\d.]+ · ends \d{4}-\d{2}/);
-  await expect(plan).toContainText('still held');
+  await expect(plan).toContainText(/\d+ of 12 paid/);
+  await expect(plan).toContainText(/Rp\s1\.000\.000 a month/);
 
-  // And removed from there, leaving the purchase it came from alone.
-  await plan.getByRole('button', { name: 'Remove iBox Grand Indonesia' }).click();
-  await expect(held.getByTestId('card-instalment')).toHaveCount(0);
-  await expect(held.getByRole('button', { name: 'Add a plan' })).toBeVisible();
+  // The bin is gone: the row is the way in, and it carries a chevron.
+  await expect(plan.getByRole('button', { name: 'Remove iBox Grand Indonesia' })).toHaveCount(0);
+
+  // Tapping the row opens the plan; a new total and fewer months change its monthly figure and its last month.
+  await plan.getByRole('button', { name: 'Edit iBox Grand Indonesia' }).click();
+  const edit = page.getByRole('dialog', { name: 'Edit instalment plan' });
+  const endsBefore = (await edit.textContent())!.match(/Ends\s*([A-Z][a-z]+ \d{4})/)![1]!;
+  await expect(edit.getByLabel('What it was')).toHaveValue('iBox Grand Indonesia');
+  // What the row no longer spells out is in the sheet: billed, still held and when it ends.
+  await expect(edit.getByText('So far')).toBeVisible();
+  await expect(edit.getByLabel('Billed', { exact: true }).first()).toBeVisible();
+  await expect(edit.getByLabel('Still held', { exact: true }).first()).toBeVisible();
+  await expect(edit.getByLabel('Ends', { exact: true }).first()).toBeVisible();
+  await expect(edit.getByLabel(/^Total/)).toHaveValue('12.000.000');
+  await expect(edit.getByLabel('Months')).toHaveValue('12');
+  await edit.getByLabel(/^Total/).fill('9000000');
+  await edit.getByLabel('Months').fill('6');
+  await edit.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(edit).toHaveCount(0);
+  await expect(plan).toContainText(/\d+ of 6 paid/);
+  await expect(plan).toContainText(/Rp\s1\.500\.000 a month/);
+  await plan.getByRole('button', { name: 'Edit iBox Grand Indonesia' }).click();
+  expect((await edit.textContent())!.match(/Ends\s*([A-Z][a-z]+ \d{4})/)![1]).not.toBe(endsBefore);
+  await edit.getByRole('button', { name: 'Close' }).click();
+
+  // Removing asks first, in an alert; Not now keeps it, Remove plan takes it away and leaves the purchase alone.
+  await plan.getByRole('button', { name: 'Edit iBox Grand Indonesia' }).click();
+  await edit.getByRole('button', { name: 'Remove plan' }).click();
+  const alert = page.getByRole('alertdialog', { name: 'Remove plan' });
+  await expect(alert).toContainText('The purchase it came from stays as it is.');
+  await alert.getByRole('button', { name: 'Not now' }).click();
+  await expect(held.getByTestId('card-instalment')).toHaveCount(1);
+  await edit.getByRole('button', { name: 'Remove plan' }).click();
+  await alert.getByRole('button', { name: 'Remove plan' }).click();
+  await expect(edit).toHaveCount(0);
+  // The last plan gone, the box goes from the card page too.
+  await expect(held).toHaveCount(0);
 });
 
 test('a loan in another currency is printed in its own currency, and the monthly total is converted', async ({ page }) => {
@@ -239,13 +276,13 @@ test('a loan in another currency is printed in its own currency, and the monthly
   await page.getByRole('link', { name: 'Dollar car loan' }).click();
   await page.getByRole('button', { name: 'Add loan terms' }).click();
   await page.getByLabel('Lender').pressSequentially('Car Finance');
-  await page.getByLabel('Amount borrowed (USD)').pressSequentially('24000.00');
+  await page.getByLabel('Amount borrowed').pressSequentially('24000,00');
   await page.getByLabel('Rate a year (%)').pressSequentially('0');
   await page.getByLabel('How interest is worked out').selectOption('zero');
   await page.getByLabel('First payment on').fill('2026-01-25');
   await page.getByLabel('Tenor in months').pressSequentially('48');
   await page.getByLabel('Payment day').fill('25');
-  await page.getByLabel('Payment each month (USD)').pressSequentially('500.00');
+  await page.getByLabel('Payment each month').pressSequentially('500,00');
   await page.getByRole('button', { name: 'Save terms' }).click();
   // The schedule is the write landing; a page load before it does loses the write. See `addKpr`.
   await expect(page.getByTestId('loan-card')).toBeVisible();
@@ -275,13 +312,13 @@ test('an extra payment reads its penalty in the loan’s own money, cents and al
   await page.getByRole('link', { name: 'Dollar car loan' }).click();
   await page.getByRole('button', { name: 'Add loan terms' }).click();
   await page.getByLabel('Lender').pressSequentially('Car Finance');
-  await page.getByLabel('Amount borrowed (USD)').pressSequentially('24000.00');
+  await page.getByLabel('Amount borrowed').pressSequentially('24000,00');
   await page.getByLabel('Rate a year (%)').pressSequentially('0');
   await page.getByLabel('How interest is worked out').selectOption('zero');
   await page.getByLabel('First payment on').fill('2026-01-25');
   await page.getByLabel('Tenor in months').pressSequentially('48');
   await page.getByLabel('Payment day').fill('25');
-  await page.getByLabel('Payment each month (USD)').pressSequentially('500.00');
+  await page.getByLabel('Payment each month').pressSequentially('500,00');
   await page.getByRole('button', { name: 'Save terms' }).click();
   // The schedule is the write landing; a page load before it does loses the write. See `addKpr`.
   await expect(page.getByTestId('loan-card')).toBeVisible();

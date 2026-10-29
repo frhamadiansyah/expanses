@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { addTransaction } from './add-transaction';
-import { cardPage, cardPointsPage, walletCard, saveCardTerms } from './card-section';
+import { cardPage, cardPointsPage, walletCard, saveCardTerms, setUpRewardsByHand } from './card-section';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -17,13 +17,13 @@ async function cardWithAPurchase(page: Page, on?: string, minimum?: string) {
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await saveCardTerms(page);
-  await page.getByRole('button', { name: 'Set up rewards' }).click();
+  await setUpRewardsByHand(page);
 
   await page.getByRole('button', { name: 'Add rule' }).click();
   await page.getByLabel('Rule name').fill('Base');
   await page.getByLabel('Points', { exact: true }).fill('1');
-  await page.getByLabel('Per spend (IDR)').fill('2500');
-  if (minimum) await page.getByLabel('Minimum transaction (IDR)').fill(minimum);
+  await page.getByLabel('Per spend').fill('2500');
+  if (minimum) await page.getByLabel('Minimum transaction').fill(minimum);
   await page.getByRole('button', { name: 'Save rule' }).click();
   await expect(page.getByText('1 per Rp')).toBeVisible();
 
@@ -41,26 +41,33 @@ async function toPoints(page: Page) {
   await cardPage(page, 'Points');
 }
 
-/** From the card's Settings to the programme it earns into, where its balance is worked with. */
+/** From the card's Settings to the programme it earns into, where its balance is worked with: summary, Points, the programme row. */
 async function openProgramme(page: Page) {
-  await page.getByTestId('points-balance').click();
+  await toPoints(page);
+  await openProgrammeFromPoints(page);
+}
+
+/** From this statement's points to the programme row at its top. */
+async function openProgrammeFromPoints(page: Page) {
+  await page.getByTestId('statement-points-programme').click();
   await expect(page.getByTestId('programme-balance')).toBeVisible();
 }
 
 test('a balance says how much of it the app only worked out', async ({ page }) => {
   await cardWithAPurchase(page);
+  await openProgramme(page);
 
   // 250.000 at 1 per 2.500 is 100 points, and nobody has confirmed them.
-  await expect(page.getByTestId('points-balance')).toContainText('100');
-  await expect(page.getByTestId('points-provenance')).toContainText('0 posted');
-  await expect(page.getByTestId('points-provenance')).toContainText('100 estimated');
+  await expect(page.getByTestId('programme-balance')).toContainText('100');
+  await expect(page.getByTestId('programme-provenance')).toContainText('0 posted');
+  await expect(page.getByTestId('programme-provenance')).toContainText('100 estimated');
 });
 
 test('typing what the bank gave moves points from estimated to posted', async ({ page }) => {
   await cardWithAPurchase(page);
 
   // Per-purchase figures only exist for a card that credits that way — Jenius and Mandiri do.
-  await expect(page.getByTestId('points-balance')).toBeVisible();
+  await expect(page.getByLabel('Bank credits points')).toBeVisible();
   await page.getByLabel('Bank credits points').selectOption('per_transaction');
   await expect(page.getByLabel('Bank credits points')).toHaveValue('per_transaction');
   await toPoints(page);
@@ -87,28 +94,29 @@ test('typing what the bank gave moves points from estimated to posted', async ({
   await again.getByRole('button', { name: 'Save actual for Superindo' }).click();
   await expect(again).toContainText('Bank credited 120 points');
 
-  // Back to the summary and into Settings, where the balance the card earns into is read.
+  // Back to this statement's points and into the programme, where the balance the card earns into is read.
   await page.getByRole('button', { name: 'Points' }).click();
-  await page.getByRole('button', { name: 'CIMB Octo', exact: true }).click();
-  await cardPage(page, 'Settings');
-  await expect(page.getByTestId('points-provenance')).toContainText('120 posted');
-  await expect(page.getByTestId('points-provenance')).toContainText('0 estimated');
-  await expect(page.getByTestId('points-balance')).toContainText('120');
+  await openProgrammeFromPoints(page);
+  await expect(page.getByTestId('programme-provenance')).toContainText('120 posted');
+  await expect(page.getByTestId('programme-provenance')).toContainText('0 estimated');
+  await expect(page.getByTestId('programme-balance')).toContainText('120');
 });
 
 test('a balance read in the app anchors the ledger', async ({ page }) => {
   await cardWithAPurchase(page);
   await openProgramme(page);
 
-  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Balance' }).click();
-  await page.getByLabel('Balance in the app').fill('500');
-  await page.getByRole('button', { name: 'Set balance' }).click();
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Adjust' }).click();
+  await page.getByLabel('Actual balance').fill('500');
+  await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click();
 
   await expect(page.getByTestId('programme-balance')).toHaveText('500 points');
-  // The card's Settings read the same balance: the programme's it earns into.
+  // The card's points page reads the same balance: the programme's it earns into.
   await page.goBack();
-  await expect(page.getByTestId('points-balance')).toContainText('500');
+  await expect(page.getByTestId('statement-points-balance')).toContainText('500');
 });
+
+const SHOTS = '/private/tmp/claude-501/-Users-frhamadiansyah-Documents-Projects-Expanses/17ecd7cc-b713-4f21-b1a9-9a90ded56208/scratchpad';
 
 /** A date far enough back that a two-year policy kills the points within the sixty-day window. */
 function monthsAgo(months: number): string {
@@ -119,19 +127,19 @@ function monthsAgo(months: number): string {
 
 /** How the points die is the programme's, set in its settings. */
 async function setExpiry(page: Page, months: string) {
-  await openProgramme(page);
-  await page.getByRole('button', { name: 'Programme settings' }).click();
+  await page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Expiry' }).click();
   await page.getByLabel('Points expire').selectOption('months_from_earn');
   await page.getByLabel('Months they last').fill(months);
-  await page.getByRole('button', { name: 'Save programme' }).click();
-  await expect(page.getByRole('button', { name: 'Save programme' })).toBeHidden();
+  await page.getByRole('button', { name: 'Save expiry' }).click();
+  await expect(page.getByTestId('programme-expiry-summary')).toBeVisible();
+  await page.goBack();
 }
 
 test('warns on the dashboard about points that are about to die', async ({ page }) => {
   // In the previous cycle, so the card page derives it. Points earned before the cycles on screen are
   // not in the ledger at all, which is why this date is recent rather than years back.
   await cardWithAPurchase(page, monthsAgo(1));
-  await expect(page.getByTestId('points-balance')).toContainText('100');
+  await openProgramme(page);
 
   // Two months from a purchase one month ago: it dies inside the sixty-day window.
   await setExpiry(page, '2');
@@ -148,17 +156,18 @@ test('warns on the dashboard about points that are about to die', async ({ page 
 
 /** Redeems points on the programme's page. */
 async function redeem(page: Page, points: string, fetched: string) {
-  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Redeem' }).click();
-  await page.getByRole('dialog').getByLabel('Points redeemed').fill(points);
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Convert' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Something else…' }).click();
+  await page.getByRole('dialog').getByLabel('Points used').fill(points);
   await page.getByLabel('What for').fill('Statement credit');
-  await page.getByLabel('What it fetched (IDR)').fill(fetched);
+  await page.getByLabel('What it fetched').fill(fetched);
   await page.getByRole('button', { name: 'Save redemption' }).click();
 }
 
 test('spending points takes them off the balance, oldest first', async ({ page }) => {
   await cardWithAPurchase(page);
-  await expect(page.getByTestId('points-balance')).toContainText('100');
   await openProgramme(page);
+  await expect(page.getByTestId('programme-balance')).toContainText('100');
 
   await redeem(page, '40', '1000');
 
@@ -174,12 +183,60 @@ test('catches a card up from its programme page, without complaint; the card pag
   await cardPage(page, 'Settings');
   await openProgramme(page);
 
-  // The action row is the programme's, one per card earning into it; its explanation sits behind an ⓘ.
-  await page.getByRole('button', { name: 'Catch up CIMB Octo' }).click();
-
-  // Nothing older exists here, so the balance is what this cycle earned and no error is shown.
-  await expect(page.getByTestId('programme-balance')).toHaveText('100 points');
+  // Catch up is on the card's own page, behind the card's row in Settings.
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: /CIMB Octo/ }).click();
+  // Nothing older than this statement: the one month is listed, there is no Catch up row, and no error.
+  await expect(page.getByTestId('programme-card-statement')).toHaveCount(1);
+  await expect(page.getByText('Catch up earlier cycles')).toHaveCount(0);
+  await expect(page.getByTestId('programme-show-earlier')).toHaveCount(0);
   await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test('the card page already lists a statement from before the app was opened, and a typed figure makes it Posted', async ({ page }) => {
+  // Two purchases: this cycle's, and one four months back that opening the programme does not reach.
+  await cardWithAPurchase(page);
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Old shop', paidWith: 'CIMB Octo', category: 'Groceries', amount: '500000', date: monthsAgo(4) });
+  await page.goto('/wallet');
+  await walletCard(page, 'CIMB Octo').click();
+  await cardPage(page, 'Points');
+  await openProgrammeFromPoints(page);
+  await expect(page.getByTestId('programme-balance')).toHaveText('100 points');
+
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: /CIMB Octo/ }).click();
+  // No tap: the older month is worked out as the page opens.
+  // Every statement from the first purchase to now is listed, the empty ones with nothing.
+  await expect(page.getByTestId('programme-card-statement').first()).toBeVisible();
+  expect(await page.getByTestId('programme-card-statement').count()).toBeGreaterThanOrEqual(4);
+  const old = page.getByTestId('programme-card-statement').filter({ hasText: '200' });
+  await expect(old).toHaveCount(1);
+  await expect(old).toContainText('Estimated');
+  await page.screenshot({ path: `${SHOTS}/programme-catchup-1.png`, fullPage: true });
+
+  // Tap a month, type what the statement shows, save: it is Posted.
+  await old.click();
+  const sheet = page.getByRole('dialog');
+  await expect(sheet.getByText('Statement closed')).toBeVisible();
+  await expect(sheet.getByText('Estimated from purchases')).toBeVisible();
+  await expect(sheet.getByText('Clear typed points')).toHaveCount(0);
+  await sheet.getByLabel('Points on the statement').fill('260');
+  await page.screenshot({ path: `${SHOTS}/programme-catchup-2.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Save statement points' }).click();
+  await expect(page.getByTestId('programme-card-statement').filter({ hasText: '260' })).toContainText('Posted');
+
+  // Typed points can be cleared, which brings the estimate back.
+  await page.getByTestId('programme-card-statement').filter({ hasText: '260' }).click();
+  await page.getByRole('dialog').getByText('Clear typed points').click();
+  await expect(page.getByTestId('programme-card-statement').filter({ hasText: 'Posted' })).toHaveCount(0);
+  await expect(page.getByTestId('programme-card-statement').filter({ hasText: '200' })).toContainText('Estimated');
+
+  // Back lands in Settings, and the balance behind it has the older points.
+  await page.getByRole('button', { name: 'Settings' }).first().click();
+  await expect(page.getByRole('dialog').getByText('Cards earning here')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('programme-balance')).toHaveText('300 points');
 });
 
 test('the amber earned-nothing line opens only the purchases that earned nothing', async ({ page }) => {

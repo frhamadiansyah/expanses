@@ -2,7 +2,7 @@
   "id": "blu-garuda-debit",
   "entryVersion": 1,
   "bank": "blu by BCA Digital",
-  "name": "Garuda x bluDebit Card",
+  "name": "Garuda x Blu Debit",
   "network": "mastercard",
   "cardType": "debit",
   "currency": "IDR",

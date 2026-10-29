@@ -1,4 +1,4 @@
-import { type CompareTarget, CURRENCIES, formatMinor, isoDate, mccName, parseMajor, type Recommendation, recommendCards, resolveMcc } from '@expanses/core';
+import { type CompareTarget, comparisonRedemption, CURRENCIES, formatMinor, groupTypedAmount, isoDate, mccName, parseGroupedMajor, type Recommendation, recommendCards, resolveMcc } from '@expanses/core';
 import { mccSourcesFor, spendingSwitchOn } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
@@ -53,7 +53,7 @@ export function RecommendPage() {
     setBusy(true);
     try {
       if (!categoryId) throw new Error('Choose a category');
-      const amountMinor = parseMajor(amount, ws.baseCurrency);
+      const amountMinor = parseGroupedMajor(amount, ws.baseCurrency);
       if (amountMinor <= 0) throw new Error('Amount must be greater than zero');
       const loaded = await loadAll(date);
       const candidates = loaded.map((cp) => ({
@@ -65,7 +65,7 @@ export function RecommendPage() {
         bonuses: cp.bonuses,
         transferPartners: cp.transferPartners,
         cycleLines: cp.current?.lines ?? [],
-        bestRedemption: cp.best,
+        bestRedemption: comparisonRedemption(cp.valuePerPoint, cp.best, cp.baseCurrency),
       }));
       const target: CompareTarget = compareIn === VALUE ? { kind: 'value' } : { kind: 'program', program: compareIn };
       const query = { amountMinor, currency: ws.baseCurrency, originalCurrency: spentIn || null, mcc: resolved?.mcc ?? null, categoryId, description: merchant, occurredOn: date };
@@ -84,11 +84,13 @@ export function RecommendPage() {
       <form onSubmit={compare}>
         <InsetGroup header="What is being bought">
           <TextRow
-            label={`Amount (${ws.baseCurrency})`}
+            label="Amount"
+            prefix={ws.baseCurrency}
             hint={spentIn ? `The ${ws.baseCurrency} amount billed after conversion.` : undefined}
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={(e) => setAmount(groupTypedAmount(e.target.value, ws.baseCurrency))}
             inputMode="decimal"
+            placeholder="Amount"
             required
           />
           <SelectRow

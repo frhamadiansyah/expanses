@@ -1,4 +1,4 @@
-import { debtItem, extraPaymentEffect, flatToEffectiveBps, formatMinor, groupTypedAmount, isoDate, minorToMajorString, payoffQuote, periodOn } from '@expanses/core';
+import { debtItem, extraPaymentEffect, flatToEffectiveBps, formatMinor, groupTypedAmount, isoDate, minorToMajorString, parseGroupedMajor, payoffQuote, periodOn } from '@expanses/core';
 import { addRatePeriod, type LoanTermsRow, payOffLoan, recordExtraPayment, recordLoanPayment, setLoanCode } from '@expanses/db';
 import { useParams } from '@tanstack/react-router';
 import { Banknote, CircleCheck, CirclePlus, FileText, MoreHorizontal, Pencil, Percent } from 'lucide-react';
@@ -187,8 +187,8 @@ function PaySheet({
     <Sheet grouped tall title="Pay" onClose={onClose} confirm={{ label: 'Save payment', disabled: saving.busy || !setAside.ready, run: () => void save() }}>
       <InsetGroup>
         <TextRow label="Date" type="date" value={filled.occurredOn} onFocus={touch('occurredOn')} max={today} onChange={(e) => set({ occurredOn: e.target.value })} />
-        <TextRow label={`Principal (${currency})`} value={filled.principal} inputMode="decimal" onFocus={touch('principal')} onChange={(e) => set({ principal: e.target.value })} />
-        <TextRow label={`Interest (${currency})`} value={filled.interest} inputMode="decimal" onFocus={touch('interest')} onChange={(e) => set({ interest: e.target.value })} />
+        <TextRow label="Principal" prefix={currency} value={filled.principal} inputMode="decimal" placeholder="Amount" onFocus={touch('principal')} onChange={(e) => set({ principal: groupTypedAmount(e.target.value, currency) })} />
+        <TextRow label="Interest" prefix={currency} value={filled.interest} inputMode="decimal" placeholder="Amount" onFocus={touch('interest')} onChange={(e) => set({ interest: groupTypedAmount(e.target.value, currency) })} />
         <SelectRow label="Paid from" value={filled.moneyId} onFocus={touch('moneyId')} onChange={(e) => set({ moneyId: e.target.value })}>
           {money.map((account) => (
             <option key={account.id} value={account.id}>
@@ -214,10 +214,12 @@ function PaySheet({
           <TextRow
             key={`amount-${index}`}
             label="Amount"
+            prefix={currency}
             aria-label={`Extra ${index + 1} amount`}
             value={extra.amount}
             inputMode="decimal"
-            onChange={(e) => set({ extras: filled.extras.map((row, i) => (i === index ? { ...row, amount: e.target.value } : row)) })}
+            placeholder="Amount"
+            onChange={(e) => set({ extras: filled.extras.map((row, i) => (i === index ? { ...row, amount: groupTypedAmount(e.target.value, currency) } : row)) })}
           />,
         ])}
         <InsetRow
@@ -252,7 +254,7 @@ function RateChangeSheet({ accountId, currency, onClose }: { accountId: string; 
         fromOn,
         rateBps,
         kind,
-        paymentMinor: payment.trim() === '' ? 0 : Number(payment.replace(/\./g, '')),
+        paymentMinor: payment.trim() === '' ? 0 : parseGroupedMajor(payment, currency),
       });
     });
 
@@ -272,12 +274,13 @@ function RateChangeSheet({ accountId, currency, onClose }: { accountId: string; 
           <option value="floating">Floating</option>
         </SelectRow>
         <TextRow
-          label={`New payment (${currency})`}
+          label="New payment"
+          prefix={currency}
           info="Left empty, it is worked out from the new rate."
           value={payment}
           inputMode="decimal"
-          onChange={(e) => setPayment(e.target.value)}
-          placeholder="Worked out"
+          onChange={(e) => setPayment(groupTypedAmount(e.target.value, currency))}
+          placeholder="Amount"
         />
       </InsetGroup>
       <ErrorBox error={saving.error} />
@@ -364,7 +367,7 @@ function PayExtraSheet({
   return (
     <Sheet grouped tall title="Pay extra" onClose={onClose} confirm={{ label: 'Save extra payment', disabled: saving.busy || !setAside.ready, run: () => void save() }}>
       <InsetGroup>
-        <TextRow label={`How much (${currency})`} value={amount} inputMode="decimal" onChange={(e) => setAmount(groupTypedAmount(e.target.value, currency))} placeholder="Amount" />
+        <TextRow label="How much" prefix={currency} value={amount} inputMode="decimal" onChange={(e) => setAmount(groupTypedAmount(e.target.value, currency))} placeholder="Amount" />
         <SelectRow label="How often" value={repeat} onChange={(e) => setRepeat(e.target.value as 'once' | 'yearly' | 'monthly')}>
           <option value="once">Once</option>
           <option value="yearly">Every year</option>
@@ -398,12 +401,13 @@ function PayExtraSheet({
           ))}
         </SelectRow>
         <TextRow
-          label={`Penalty the bank charges (${currency})`}
+          label="Penalty the bank charges"
+          prefix={currency}
           info="What the bank charges for paying early, booked as a fee and never as principal. Left empty when there is none."
           value={penalty}
           inputMode="decimal"
           onChange={(e) => setPenalty(groupTypedAmount(e.target.value, currency))}
-          placeholder="None"
+          placeholder="Amount"
         />
         {/* The rate, and only while the day has none: a loan in the base currency draws nothing here. */}
         {rate.node}

@@ -255,15 +255,14 @@ export function moneySummary(accounts: readonly AccountRow[], balances: Readonly
 }
 
 /**
- * The round buttons on the page of an account with pockets, in order. Record is the Add screen (Expense, Income and
- * Transfer are tabs in it); Move needs two pockets to move between; Withdraw is cash's and Top up a wallet's; a bank
- * or saving account has neither; Adjust ends the row.
+ * The round buttons on the page of an account with pockets, in order. Cash and a wallet lead with Record (the Add
+ * screen; Expense, Income and Transfer are tabs in it); Move needs two pockets to move between; Withdraw is cash's and
+ * Top up a wallet's; Adjust ends the row. A bank or saving account has no Withdraw or Top up, so it keeps the four
+ * it had before pockets in place of Record: Spend and Receive, then Move, then Adjust.
  */
-export function parentActionKeys(subtype: string, pocketCount: number): ('record' | 'move' | 'withdraw' | 'top-up' | 'adjust')[] {
-  return [
-    'record',
-    ...(pocketCount >= 2 ? (['move'] as const) : []),
-    ...(subtype === 'cash' ? (['withdraw'] as const) : subtype === 'ewallet' || subtype === 'emoney' ? (['top-up'] as const) : []),
-    'adjust',
-  ];
+export function parentActionKeys(subtype: string, pocketCount: number): ('record' | 'spend' | 'receive' | 'move' | 'withdraw' | 'top-up' | 'adjust')[] {
+  const move = pocketCount >= 2 ? (['move'] as const) : [];
+  if (subtype === 'cash') return ['record', ...move, 'withdraw', 'adjust'];
+  if (subtype === 'ewallet' || subtype === 'emoney') return ['record', ...move, 'top-up', 'adjust'];
+  return ['spend', 'receive', ...move, 'adjust'];
 }

@@ -1,9 +1,10 @@
 import { type KeyboardEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { PageDots } from '../../ui/native';
 
 const reduced = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /**
- * A hero that slides: each card takes most of the width so the next one peeks in at the right edge, and the dots under
+ * A hero that slides: each card takes the whole width, and the dots under
  * it say which page is showing. Swiping, the dots and the arrow keys all move it; the page under it follows `page`.
  */
 export function HeroSlider({
@@ -22,6 +23,8 @@ export function HeroSlider({
   const track = useRef<HTMLDivElement>(null);
   // Where a dot or key sent the track: scroll events on the way there must not say the page is somewhere between.
   const heading = useRef<number | null>(null);
+  // The page the last dot or key asked for.
+  const latest = useRef<number | null>(null);
 
   const leftOf = useCallback((index: number) => {
     const el = track.current;
@@ -36,13 +39,18 @@ export function HeroSlider({
       const next = Math.max(0, Math.min(pages.length - 1, index));
       onPage(next);
       if (!el) return;
-      // Already there: no scroll will come to end the wait.
-      if (Math.abs(el.scrollLeft - leftOf(next)) < 2) return;
+      // Already there: no scroll will come to end the wait. Unless an earlier smooth scroll is still under way (a key
+      // pressed twice quickly): it would carry the track on to its own stop, so a new scroll must cancel it.
+      if (heading.current === null && Math.abs(el.scrollLeft - leftOf(next)) < 2) return;
       heading.current = next;
+      latest.current = next;
       el.scrollTo({ left: leftOf(next), behavior: reduced() ? 'auto' : 'smooth' });
-      // A track already there fires no scroll: do not wait on one.
+      // A track already there fires no scroll: do not wait on one. A smooth scroll that a reversed key cut short
+      // can come to rest a pixel or two off its stop, so the stop is set outright when the wait ends.
       window.setTimeout(() => {
+        if (latest.current !== next) return;
         if (heading.current === next) heading.current = null;
+        if (Math.abs(el.scrollLeft - leftOf(next)) >= 1) el.scrollLeft = leftOf(next);
       }, 800);
     },
     [leftOf, onPage, pages.length],
@@ -107,8 +115,8 @@ export function HeroSlider({
         onTouchStart={() => (heading.current = null)}
         onWheel={() => (heading.current = null)}
         onKeyDown={onKeyDown}
-        className="ph-focus -mx-4 flex snap-x snap-mandatory gap-2 overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:px-0 [&::-webkit-scrollbar]:hidden"
-        style={{ overscrollBehaviorX: 'contain', scrollPaddingInline: 16 }}
+        className="ph-focus flex snap-x snap-mandatory gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        style={{ overscrollBehaviorX: 'contain' }}
       >
         {pages.map((card, index) => (
           <div
@@ -117,26 +125,13 @@ export function HeroSlider({
             aria-roledescription="slide"
             aria-label={names[index]}
             aria-hidden={index === page ? undefined : true}
-            className="w-[92%] shrink-0 snap-start md:w-[98%]"
+            className="w-full shrink-0 snap-start [&_section]:mb-0!"
           >
             {card}
           </div>
         ))}
       </div>
-      <div role="group" aria-label="Page" className="flex justify-center" style={{ marginBottom: 12 }}>
-        {names.map((name, index) => (
-          <button
-            key={name}
-            type="button"
-            aria-label={name}
-            aria-current={index === page ? 'true' : undefined}
-            onClick={() => go(index)}
-            className="ph-focus flex h-8 w-6 items-center justify-center"
-          >
-            <span aria-hidden className={`block h-[7px] w-[7px] rounded-full ${index === page ? 'bg-[var(--ph-ink)]' : 'bg-[var(--ph-track)]'}`} />
-          </button>
-        ))}
-      </div>
+      <PageDots names={names} index={page} onSelect={go} label="Page" className="mt-2 mb-2" />
     </div>
   );
 }

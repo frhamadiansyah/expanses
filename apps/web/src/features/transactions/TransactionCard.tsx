@@ -20,6 +20,8 @@ import {
   replaceTransaction,
   getCardTerms,
   settledBeforeAppOf,
+  isPastDefault,
+  pastPurchaseOf,
   saveMerchantMcc,
   splitBill,
   cardTopsUpWallet,
@@ -29,17 +31,19 @@ import {
   type TransactionView,
   uncategorisedCategory,
 } from '@expanses/db';
-import { ArrowDownLeft, ArrowUpRight, Check, CreditCard, Hash, Home, Landmark, Layers, Shapes, Split, Target } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { ArrowDownLeft, ArrowUpRight, Check, CreditCard, Hash, Home, Landmark, Layers, Tag, Split, Target } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
 import { type CSSProperties, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
-import { canPayWith, canReceiveInto, canTransferBetween, canTransferWith } from '../../lib/account-types';
+import { canPayWith, canReceiveInto, canTransferBetween, canTransferWith, SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useHoldingLinks } from '../investments/queries';
 import { moneyHolders, useAccounts, useAccountsFor, useInvalidateAll, useIsBookShared, useResolveRates } from '../../lib/queries';
 import { Card, cx, ErrorBox, InputRow, RowHint } from '../../ui';
 import { PushedTitle, SegmentedControl } from '../../ui/native';
 import { useCards, useCardsWithArchived } from '../cards/card-queries';
+import { payableOptions, resolveDefaultPaidWith, useStoredDefaultPaidWith } from '../account/default-paid-with';
 import { useEvents } from '../events/queries';
 import { useSharedEventSummaries } from '../events/shared-queries';
 import { CategoryOptions } from '../cards/options';
@@ -61,7 +65,7 @@ import { amountRowText, chargedRowText, feeRowText, goalRowText, holdingFace, ho
 import { DateRow, NoteRow } from './CardRows';
 import { CategoryPicker } from './CategoryPicker';
 import { ChoiceSheet } from './ChoiceSheet';
-import { useOpenings } from '../accounts/queries';
+import { useOpenings, useOpeningDay } from '../accounts/queries';
 import { Chevron, FieldRow, FormRow, FormRows, MoneyFieldRow, ROW_BODY, RowGlyph, RowLead, SelectFormRow } from './FormRow';
 import { MoreDetails } from './MoreDetails';
 import { NoteSuggestions } from './NoteSuggestions';
@@ -73,10 +77,13 @@ import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
 import { extraRowRefusal, extraRows, offersTransferFee, postingCurrency } from './tx-form';
 import { SplitSheet, splitSummary } from './SplitSheet';
-import { PhotosSheet } from './PhotosSheet';
+import { offerStatement } from '../../capture/statements';
+import { PhotosSheet, usePhotoAttach } from './PhotosSheet';
+import { PicturesSheet } from './PicturesSheet';
 import { draftIn } from './move-workspace';
 import { useBooks, useCategoryBooks } from '../workspaces/queries';
-import { applyReceipt, filledLine, type ReceiptFilled, readReceiptPhoto } from './receipt-fill';
+import { heldForm, releaseForm } from './receipt-split-hold';
+import { applyReceipt, filledLine, type ReceiptFilled, readReceiptPhoto, recognizeEach } from './receipt-fill';
 import { autoCategoryOutOfSet, categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, isExpenseTopUp, memberTransferOf, topUpWallets, typedCurrency, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
@@ -200,6 +207,11 @@ export function TransactionCard(props: {
    * which reads that transaction, has to know the void is its own doing and not a reason to send anyone away.
    */
   onSaveStart?: () => void;
+  /**
+   * A plain blank form, which opens with Paid with on the Default set in Account (when it is still a way to pay).
+   * Left off by every opener that brings an account of its own, and by edits, duplicates and captures.
+   */
+  defaultPaidWith?: boolean;
 }) {
   // An edit can read a placeholder the purchase is already posted against: one another member paid for (§4.4).
   const accounts = useAccountsFor(props.initial ?? props.duplicateOf);
@@ -209,8 +221,12 @@ export function TransactionCard(props: {
   // The draft is built from the accounts once, so it must not be built before they are here: `formFromTransaction`
   // reads each account's currency, and a draft seeded from an empty list opens a foreign purchase with no currency.
   // The same holds for the photo rows: a draft seeded before they arrive opens an edit with none of them.
-  if (!accounts.isSuccess || !photos.ready) return <Card>Loading…</Card>;
-  return <CardBody {...props} accounts={accounts.data} photoIds={photos.ids} />;
+  const wantsDefault = !!props.defaultPaidWith && !props.initial && !props.duplicateOf && !props.finish && (props.mode ?? 'expense') === 'expense';
+  const storedDefault = useStoredDefaultPaidWith();
+  const defaultCards = useCards();
+  if (!accounts.isSuccess || !photos.ready || (wantsDefault && (storedDefault.isPending || defaultCards.isPending))) return <Card>Loading…</Card>;
+  const fallback = wantsDefault ? resolveDefaultPaidWith(storedDefault.data, payableOptions(accounts.data, (defaultCards.data ?? []) as CardRow[])) : null;
+  return <CardBody {...props} accounts={accounts.data} photoIds={photos.ids} defaultPay={fallback ? { moneyId: fallback.accountId, cardId: fallback.cardId ?? '' } : undefined} />;
 }
 
 function CardBody({
@@ -230,6 +246,7 @@ function CardBody({
   onSaveStart,
   accounts: ownAccounts,
   photoIds,
+  defaultPay,
 }: {
   initial?: TransactionView;
   duplicateOf?: TransactionView;
@@ -248,8 +265,11 @@ function CardBody({
   onSaveStart?: () => void;
   accounts: AccountRow[];
   photoIds: string[];
+  /** The Default Paid with, already checked against what can pay: the blank form opens on it. */
+  defaultPay?: { moneyId: string; cardId: string };
 }) {
   const { database, ws } = useApp();
+  const navigate = useNavigate();
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
   const openBook = useOpenBook();
@@ -276,12 +296,22 @@ function CardBody({
   // The placeholders among `accounts`: what the edited purchase names that this device's own list leaves out (§4.4).
   const placeholders = new Set(accounts.filter((a) => !listedIds.has(a.id)).map((a) => a.id));
   const assetProfiles = useAssetProfiles();
+  // Back from the receipt page: the form as it was left, with the amounts the receipt gave, and the With sheet open on them.
+  const [held] = useState(() => (full && !initial && !duplicateOf && !finish ? heldForm() : null));
+  useEffect(() => releaseForm(), []);
   const [draft, setDraft] = useState<FormDraft>(() =>
-    initial
+    held
+      ? held.draft
+      : initial
       ? formFromTransaction(initial, accounts, bookId, photoIds)
       : duplicateOf
         ? duplicateDraft(duplicateOf, accounts, bookId)
-        : { ...emptyForm(bookId), mode: mode ?? 'expense', ...seeded(seed, accounts), ...finish?.prefill },
+        : ((blank) => (defaultPay && !blank.moneyId ? { ...blank, ...defaultPay } : blank))({
+            ...emptyForm(bookId),
+            mode: mode ?? 'expense',
+            ...seeded(seed, accounts),
+            ...finish?.prefill,
+          }),
   );
   /*
    * Who filled Category. One the form opened with — an edit, a duplicate, a capture already filed — counts as chosen
@@ -319,6 +349,40 @@ function CardBody({
     setDraft((d) => ({ ...d, amount: next.amount, currency: next.currency, description: next.description, occurredOn: next.occurredOn }));
     setReceipt(filled);
   }
+  /*
+   * The Amount row's camera goes straight to the system's own picker (on iOS its sheet of Photo Library, Take Photo and
+   * Choose Files): one tap, not our sheet and then the picker. Once there are pictures the glyph opens the Photos sheet
+   * instead, which is where they are seen and removed, and which still has its own + for more.
+   */
+  const queryClient = useQueryClient();
+  const receiptInput = useRef<HTMLInputElement>(null);
+  const receiptPicks = usePhotoAttach(async (added, files) => {
+    setDraft((d) => ({ ...d, photoIds: [...d.photoIds, ...added] }));
+    await queryClient.invalidateQueries({ queryKey: ['all-photo-rows', ws.workspaceId] });
+    void readReceiptFrom(files);
+  });
+  const [pictures, setPictures] = useState<File[] | null>(null);
+  const [listBusy, setListBusy] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+  /*
+   * "Read as a list of transactions": the chosen files are read here, by the same reader the receipt uses
+   * (`native.recognizeImage`, which takes a web File's bytes — no second native picker), and handed to the card picker
+   * as one batch with the form's account first.
+   */
+  async function readPicturesAsList(files: File[]) {
+    setListError(null);
+    setListBusy(true);
+    const images = await recognizeEach(files);
+    setListBusy(false);
+    if (!images) {
+      setListError('Nothing could be read from those pictures');
+      return;
+    }
+    const batch = offerStatement(images);
+    setPictures(null);
+    const account = latest.current.moneyId;
+    void navigate({ to: '/statement/shared', search: account ? { batch, account } : { batch } });
+  }
   const undoReceipt = () => {
     if (receipt) setDraft((d) => ({ ...d, ...receipt.before }));
     setReceipt(null);
@@ -341,7 +405,7 @@ function CardBody({
   const withTopUps = (d: FormDraft, id = bookTopUps): FormDraft => (d.mode === 'transfer' && id ? { ...d, topUpCategoryId: id } : d);
   // Add more details opens in place, under the card, rather than over it: the extras are part of the one form.
   // Opened from an event it starts open, because the Event row it fills in lives there and should be seen set.
-  const [detailsOpen, setDetailsOpen] = useState(() => !!draft.eventId && !!seed?.eventId);
+  const [detailsOpen, setDetailsOpen] = useState(() => !!held || (!!draft.eventId && !!seed?.eventId));
   const formRef = useRef<HTMLFormElement>(null);
   const [needsRate, setNeedsRate] = useState<string | null>(null);
   /*
@@ -582,6 +646,7 @@ function CardBody({
             setAside: setAside.choice,
             ...(moveTo ? { moveToBook: true, toBookId: moveTo } : {}),
             ...(offersAlreadyPaid && savedSettled.isSuccess ? { settledBeforeApp: paidOff } : {}),
+            ...(offersPast && savedPast.isSuccess ? { pastPurchase: pastOn } : {}),
           });
           /*
            * Tagged into a shared event by the Event row: it moves there now (shared events §6, D2) — it leaves this
@@ -598,7 +663,7 @@ function CardBody({
             if (kept.length > 0) throw new Error(kept[0]!.why);
           }
         }
-        else posted = await postTransaction(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice, settledBeforeApp: paidOff });
+        else posted = await postTransaction(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice, settledBeforeApp: paidOff, ...(offersPast ? { pastPurchase: pastOn } : {}) });
         const memory = formToMemory(filed, accounts);
         if (memory) await saveMerchantMcc(database, ws, memory);
       }
@@ -694,6 +759,23 @@ function CardBody({
   });
   // Never ticked by itself, whatever the date: the owner says so (asked 22 Oct).
   const paidOff = offersAlreadyPaid && (draft.alreadyPaid ?? (initial ? savedSettled.data === true : false));
+  /*
+   * An expense or income on a money account can be a past purchase: its balance does not hold it, while reports do.
+   * The icon on Paid with is the button. It is set by itself from the date — before the day the account's balance
+   * is counted from, past; on or after, not — until a tap says otherwise; a saved one reads back what it was saved
+   * as until its date or account changes. Never for a transfer, a top-up or a card.
+   */
+  const moneyPaying = payingAccount !== undefined && payingAccount.kind === 'asset' && SPENDABLE_SUBTYPES.includes(payingAccount.subtype);
+  const offersPast = (draft.mode === 'expense' || draft.mode === 'income') && moneyPaying && !expenseTopUp && !accountsLocked;
+  const moneyOpeningDay = useOpeningDay(offersPast ? payingAccount : null);
+  const openedOn = offersPast ? moneyOpeningDay : null;
+  const savedPast = useQuery({
+    queryKey: ['past-purchase', ws.workspaceId, initial?.id ?? ''],
+    enabled: !!initial && offersPast,
+    queryFn: () => pastPurchaseOf(database, ws, initial!.id),
+  });
+  const sameAsSaved = !!initial && initial.occurredOn === draft.occurredOn && initial.entries.some((e) => e.accountId === draft.moneyId);
+  const pastOn = offersPast && (draft.pastPurchase ?? (sameAsSaved ? savedPast.data === true : isPastDefault(openedOn, draft.occurredOn)));
   // An older purchase made on a card since removed reads as that card, with its digits, and says it was removed.
   const removedCard = draft.mode === 'expense' || draft.mode === 'trade' ? removedCardPayment(everyCard, accounts, draft.moneyId, draft.cardId) : null;
   // Money back lands in the account it was paid with, so the row says where it goes.
@@ -716,7 +798,7 @@ function CardBody({
     <CategoryIcon categoryId={draft.categoryId} accounts={accounts} size="row" />
   ) : (
     <RowGlyph>
-      <Shapes size={15} />
+      <Tag size={15} />
     </RowGlyph>
   );
   // What the bar's ✓ answers: whether this would post as it stands — the same question Save asks, asked early.
@@ -757,6 +839,8 @@ function CardBody({
    */
   const ask = finish?.accountAsk;
   const asking = ask && (ask.side === 'money' ? !draft.moneyId : !draft.toId) ? ask.side : null;
+  /** Whether the card's first row is Workspace; the row under it carries the hairline between them. */
+  const workspaceRow = (draft.mode !== 'transfer' || canMove) && !finish;
   const askRow = (glyph: ReactNode, open: () => void) => (
     <button
       type="button"
@@ -767,7 +851,7 @@ function CardBody({
       <RowLead>
         <RowGlyph>{glyph}</RowGlyph>
       </RowLead>
-      <span className={ROW_BODY}>
+      <span className={cx(ROW_BODY, workspaceRow && 'border-t-[0.5px] border-[var(--ph-hair)]')}>
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-[15px] leading-5 font-semibold text-[var(--ph-ink)]">{ask!.label}</span>
           <span className="text-[12.5px] leading-4 text-[var(--ph-warn-ink)]">{ask!.note}</span>
@@ -1032,7 +1116,7 @@ function CardBody({
               it would be offering something the save cannot honour.
             */}
             {/* A draft belongs to the workspace it was captured in: switching here would leave it behind. */}
-            {(draft.mode !== 'transfer' || canMove) && !finish && (
+            {workspaceRow && (
               <FormRow
                 lead="value"
                 icon={
@@ -1056,9 +1140,16 @@ function CardBody({
             <div className="relative">
             <FormRow
               lead="value"
+              divided={workspaceRow}
               icon={
                 <span className="relative">
-                  <RowGlyph>{payGlyph}</RowGlyph>
+                  {pastOn ? (
+                    <span aria-hidden data-testid="past-tick" className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--ph-tint)] text-[var(--ph-surface)]">
+                      <Check size={15} strokeWidth={3} />
+                    </span>
+                  ) : (
+                    <RowGlyph>{payGlyph}</RowGlyph>
+                  )}
                   {paidOff && (
                     <span
                       aria-hidden
@@ -1097,6 +1188,16 @@ function CardBody({
                 className="ph-focus absolute top-0 bottom-0 left-[10px] w-[34px] rounded-full"
               />
             )}
+            {offersPast && (
+              <button
+                type="button"
+                aria-label="Past purchase"
+                aria-pressed={pastOn}
+                title={pastOn ? 'Past purchase: the balance stays' : 'Counts in the balance'}
+                onClick={() => set({ pastPurchase: !pastOn })}
+                className="ph-focus absolute top-0 bottom-0 left-[10px] w-[34px] rounded-full"
+              />
+            )}
             </div>
             )}
 
@@ -1131,7 +1232,7 @@ function CardBody({
               set={set}
               selectOnOpen={!!duplicateOf}
               noRefund={!!finish}
-              {...(photosOnAmount ? { photos: { count: draft.photoIds.length, open: () => setSheet('photos') } } : {})}
+              {...(photosOnAmount ? { photos: { count: draft.photoIds.length, open: () => (draft.photoIds.length === 0 ? receiptInput.current?.click() : setSheet('photos')) } } : {})}
               {...(transferSecond ? { second: transferSecond } : {})}
             />
             {/* A transfer's fee (option A): its category on the left, the figure on the right, under the Amount. */}
@@ -1213,6 +1314,10 @@ function CardBody({
               onFocus={() => setNoteFocused(true)}
               onBlur={() => setNoteFocused(false)}
               {...(offersChannel ? { channel: draft.channel || null, onChannel: (channel: 'online' | 'offline' | null) => set({ channel: channel ?? '' }) } : {})}
+              // A new expense, on a screen of its own: the list glyph opens Paste a list, carrying who pays.
+              {...(full && !initial && !duplicateOf && !finish && draft.mode === 'expense'
+                ? { onPasteList: () => void navigate({ to: '/transactions/paste', search: { ...(draft.moneyId ? { account: draft.moneyId } : {}), ...(draft.cardId ? { card: draft.cardId } : {}) } }) }
+                : {})}
             />
             <DateRow on={draft.occurredOn} onChange={(occurredOn) => set({ occurredOn })} />
             <NoteSuggestions typed={draft.description} kind={suggestKind} open={noteFocused} categoryName={categoryNameOf} onPick={pickNote} />
@@ -1254,7 +1359,7 @@ function CardBody({
               <SelectFormRow
                 icon={
                   <RowGlyph>
-                    <Shapes size={15} />
+                    <Tag size={15} />
                   </RowGlyph>
                 }
                 label="Category for points"
@@ -1321,6 +1426,8 @@ function CardBody({
             refuses to tag an edit, and a row that cannot be honoured is worse than no row.
           */}
           <MoreDetails
+            receiptSplit={full && !initial && !duplicateOf && !finish && draft.mode === 'expense'}
+            openWith={!!held && !held.recorded}
             lead={
               draft.mode === 'trade' ? (
                 <MoneyFieldRow
@@ -1366,10 +1473,10 @@ function CardBody({
         a way out, but the full-screen form has no ✕, and a form with no Cancel there has no way out but Back.
       */}
       {headerSave ? (
-        <ErrorBox error={error} />
+        <ErrorBox error={error ?? receiptPicks.error} />
       ) : (
       <div className="flex flex-col gap-2 pt-1 in-[[role=dialog]]:shadow-[0_40px_0_0_var(--ph-surface)] in-[[role=dialog]]:sticky in-[[role=dialog]]:bottom-0 in-[[role=dialog]]:-mx-4 in-[[role=dialog]]:border-t-[0.5px] in-[[role=dialog]]:border-[var(--ph-hair)] in-[[role=dialog]]:bg-[var(--ph-surface)] in-[[role=dialog]]:px-4 in-[[role=dialog]]:py-2">
-        <ErrorBox error={error} />
+        <ErrorBox error={error ?? receiptPicks.error} />
         <div className={cx('flex items-center gap-2', title !== undefined && 'hidden')}>
           <button
             type="button"
@@ -1551,6 +1658,35 @@ function CardBody({
           value={draft.feeCategoryId}
           onPick={(feeCategoryId) => set({ feeCategoryId })}
           onClose={() => setSheet(null)}
+        />
+      )}
+      <input
+        ref={receiptInput}
+        data-testid="amount-photo-input"
+        type="file"
+        accept="image/*,application/pdf"
+        multiple
+        hidden
+        onChange={(e) => {
+          const chosen = [...(e.target.files ?? [])];
+          // Two or more: asked what they are first (a list of transactions, or this purchase's photos).
+          if (chosen.length >= 2) setPictures(chosen);
+          else void receiptPicks.attach(chosen);
+          // Cleared, so choosing the same file twice in a row is still a change the input reports.
+          e.target.value = '';
+        }}
+      />
+      {pictures && (
+        <PicturesSheet
+          files={pictures}
+          busy={listBusy}
+          error={listError}
+          onList={() => void readPicturesAsList(pictures)}
+          onAttach={() => {
+            void receiptPicks.attach(pictures);
+            setPictures(null);
+          }}
+          onClose={() => setPictures(null)}
         />
       )}
       {sheet === 'photos' && <PhotosSheet draft={draft} onChange={setDraft} onClose={() => setSheet(null)} onAttached={(files) => void readReceiptFrom(files)} />}

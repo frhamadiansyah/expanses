@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
-import { cardPage, walletCard, saveCardTerms } from './card-section';
+import { cardPage, walletCard, saveCardTerms, setUpRewardsByHand } from './card-section';
 import { programmeFaces } from './programme-faces';
 
 test.beforeEach(({ page }) => {
@@ -21,12 +21,11 @@ async function cardEarningInto(page: Page, card: string, programme: string) {
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await saveCardTerms(page);
-  await page.getByLabel('Program name').fill(programme);
-  await page.getByRole('button', { name: 'Set up rewards' }).click();
+  await setUpRewardsByHand(page, { name: programme });
   await page.getByRole('button', { name: 'Add rule' }).click();
   await page.getByLabel('Rule name').fill('Base');
   await page.getByLabel('Points', { exact: true }).fill('1');
-  await page.getByLabel('Per spend (IDR)').fill('2500');
+  await page.getByLabel('Per spend').fill('2500');
   await page.getByRole('button', { name: 'Save rule' }).click();
   await expect(page.getByText('1 per Rp')).toBeVisible();
 }
@@ -45,14 +44,14 @@ test("converting Livin' Poin into KrisFlyer shows both balances", async ({ page 
   await expect(page.getByTestId('programme-balance')).toHaveText('0 points');
 
   // Its balance set to the one the bank's app shows.
-  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Balance' }).click();
-  await page.getByLabel('Balance in the app').fill('20.000');
-  await page.getByRole('button', { name: 'Set balance' }).click();
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Adjust' }).click();
+  await page.getByLabel('Actual balance').fill('20.000');
+  await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByTestId('programme-balance')).toHaveText('20.000 points');
 
   // Converted into an airline programme that does not exist yet, made in the same step.
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Convert' }).click();
-  await page.getByLabel('To', { exact: true }).selectOption({ label: 'New programme…' });
+  await page.getByRole('dialog').getByRole('button', { name: 'Another programme…' }).click();
   await page.getByLabel('Programme name').fill('KrisFlyer');
   await page.getByLabel('Counted in').selectOption('miles');
   await page.getByLabel('Points converted').fill('10.000');
@@ -88,28 +87,30 @@ test('a second card of the bank joins its programme', async ({ page }) => {
   await walletCard(page, 'Mandiri Platinum').click();
   await cardPage(page, 'Settings');
   await page.getByLabel('Earns into', { exact: true }).selectOption({ label: "Livin' Poin" });
-  await expect(page.getByTestId('points-balance')).toBeVisible();
-  await expect(page.getByRole('button', { name: /^Programme.*Livin' Poin/ })).toBeVisible();
+  await expect(page.getByLabel('Earns into', { exact: true }).locator('option:checked')).toHaveText("Livin' Poin");
 
   // One programme for the two cards; the second card's own was empty, so it is put away.
   await page.goto('/cards/points');
   await expect(programmeRow(page, "Livin' Poin")).toHaveAccessibleName(new RegExp('2 cards earn here'));
   await expect(programmeRow(page, 'Platinum points')).toHaveCount(0);
   await programmeRow(page, "Livin' Poin").click();
-  await expect(page.getByRole('link', { name: /Mandiri Prioritas/ })).toBeVisible();
-  await expect(page.getByRole('link', { name: /Mandiri Platinum/ })).toBeVisible();
+  // The cards earning here are in the programme's settings.
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Settings' }).click();
+  await expect(page.getByRole('button', { name: /Mandiri Prioritas/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Mandiri Platinum/ })).toBeVisible();
+  await page.keyboard.press('Escape');
 
-  // What a point fetches is set here too, for the card whose terms list it.
-  const values = page.getByTestId('point-values');
-  await values.getByLabel('Card').selectOption({ label: 'Mandiri Platinum' });
-  await values.getByLabel('Redemption').fill('Statement credit');
-  await values.getByLabel('Points redeemed').fill('1');
-  await values.getByLabel('Worth').fill('25');
-  await values.getByRole('button', { name: 'Add value' }).click();
-  await expect(values).toContainText(/Statement credit: 1 points = Rp\s25/);
-  await expect(values).toContainText('Mandiri Platinum');
-  await values.getByRole('button', { name: 'Remove Statement credit' }).click();
-  await expect(values).toContainText('No values yet');
+  // What a point is worth is the programme's one value per point, in its settings.
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Settings' }).click();
+  const settings = page.getByRole('dialog');
+  await settings.getByRole('button', { name: /Value per point/ }).click();
+  await page.getByLabel('1 point = Rp').fill('25');
+  await page.getByRole('button', { name: 'Save value' }).click();
+  await expect(settings.getByRole('button', { name: /Value per point/ })).toContainText(/Rp\s25/);
+  await settings.getByRole('button', { name: /Value per point/ }).click();
+  await page.getByLabel('1 point = Rp').fill('');
+  await page.getByRole('button', { name: 'Save value' }).click();
+  await expect(settings.getByRole('button', { name: /Value per point/ })).toContainText('Not set');
 });
 
 test('a KrisFlyer programme is drawn as its membership card, its tier changes the face, and an unknown programme keeps the plain face', async ({ page }) => {

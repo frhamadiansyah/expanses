@@ -2,7 +2,7 @@
   "id": "bca-sq-krisflyer-visa-signature",
   "entryVersion": 2,
   "bank": "BCA",
-  "name": "BCA Singapore Airlines KrisFlyer Visa Signature",
+  "name": "BCA KrisFlyer Visa Signature",
   "network": "visa",
   "currency": "IDR",
   "program": {

@@ -20,7 +20,7 @@ import { carrySharedTransferTx, sharedTransferBooksTx, voidSharedTransferTx } fr
 import { followDepositEventTx, reopenDepositEventTx } from './deposit-event-log';
 import { markForeignDirtyTx } from './fx-pending';
 import { eventOnlyExists, eventPostingOfTx, notEventOnly } from './event-only';
-import { accountBanksTx, ensureSystemAccountTx, systemAccountId } from './accounts';
+import { type AccountSubtype, accountBanksTx, ensureSystemAccountTx, SPENDABLE_SUBTYPES, systemAccountId } from './accounts';
 import { carryEventItemTx } from './event-items';
 import {
   applySetAsideTx,
@@ -40,6 +40,7 @@ import {
   withSavedStage,
 } from './set-aside-tx';
 import { recordActivityTx } from './activity-log';
+import { rederiveCardCycles } from './point-ledger';
 import { extrasFor, extrasForTx, extrasTablesExist, movePhotosTx, writeExtrasTx } from './transaction-extras';
 
 export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email' | 'notification' | 'screen' | 'photo';
@@ -83,6 +84,7 @@ export type LedgerErrorCode =
   | 'FUND_SWITCH'
   | 'ASSET_SALE'
   | 'NOT_A_CARD_PURCHASE'
+  | 'NOT_A_MONEY_PURCHASE'
   | 'CARD_NOT_FOUND'
   | 'NOT_ON_CARD';
 
@@ -127,6 +129,14 @@ export interface PostTransactionInput {
    * account moves. The settlement follows the purchase when it is edited, and goes with it when it is deleted.
    */
   settledBeforeApp?: boolean;
+  /**
+   * An expense or income on a money account (a wallet, a bank, a saving account, cash) from before the account's
+   * balance was counted: it is posted, and beside it a balancing pair against Before the app on the same day, so the
+   * account's balance — today's and on any past day — does not change, while the purchase still counts in reports,
+   * categories and budgets by its date. The same mark and the same balancing row as `settledBeforeApp`, which a credit
+   * card keeps; a transfer, or a purchase on no money account, ignores it. On `replaceTransaction`, as `settledBeforeApp`.
+   */
+  pastPurchase?: boolean;
   /**
    * On `replaceTransaction`: the correction moves the transaction to the workspace its categories are in. Without it a
    * category from another workspace is refused, since an ordinary edit stays where it was filed. Never read by a post.
@@ -480,7 +490,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, given: Pos
   // Household sharing: the lineage this row joins, resolved by its net effect before the transaction commits (§6.3).
   await capturePostedTx(tx, id, bookId ?? null, input.replacesTransactionId ?? null, input.paidFrom);
   await audit(tx, ws, 'post', id, input);
-  if (input.settledBeforeApp) await settleBeforeAppTx(tx, ws, id, input);
+  if (input.settledBeforeApp || input.pastPurchase) await settleBeforeAppTx(tx, ws, id, input);
   return id;
 }
 
@@ -497,17 +507,55 @@ async function cardLineOf(tx: Db, ws: WorkspaceContext, lines: readonly PostingL
   return null;
 }
 
-/** The settlement's postings: the card paid back what it took on, against Opening Balances. */
+/**
+ * The money-account lines of an expense or income, the ones a past purchase (`pastPurchase`) balances. Empty unless the
+ * postings include a spending or income category line (a transfer between accounts has none and is never past).
+ */
+async function moneyLinesOf(tx: Db, ws: WorkspaceContext, lines: readonly PostingLine[]): Promise<PostingLine[]> {
+  const found = new Map<string, { kind: string; subtype: string }>();
+  for (const line of lines) {
+    if (found.has(line.accountId)) continue;
+    const [account] = await tx.select({ kind: accounts.kind, subtype: accounts.subtype }).from(accounts).where(and(eq(accounts.id, line.accountId), eq(accounts.workspaceId, ws.workspaceId)));
+    if (account) found.set(line.accountId, account);
+  }
+  if (!lines.some((line) => ['expense', 'income'].includes(found.get(line.accountId)?.kind ?? ''))) return [];
+  return lines.filter((line) => {
+    const account = found.get(line.accountId);
+    return account?.kind === 'asset' && SPENDABLE_SUBTYPES.includes(account.subtype as AccountSubtype) && line.amountMinor !== 0;
+  });
+}
+
+/**
+ * The settlement's postings. A credit card is paid back what it took on, against Opening Balances. A purchase on a
+ * money account is balanced the same way against Before the app: each money line is reversed in its own currency, so
+ * the account ends where it started and the pair sums to zero per currency. Null when there is nothing to balance.
+ */
 async function settlementInputOf(tx: Db, ws: WorkspaceContext, purchaseId: string, input: PostTransactionInput): Promise<PostTransactionInput | null> {
   const card = await cardLineOf(tx, ws, input.lines);
-  if (!card) return null;
-  const opening = await systemAccountId(tx, ws, 'opening_balance');
+  if (card) {
+    const opening = await systemAccountId(tx, ws, 'opening_balance');
+    return {
+      occurredOn: input.occurredOn,
+      description: 'Settled before the app',
+      lines: [
+        { accountId: card.accountId, amountMinor: -card.amountMinor, currency: card.currency },
+        { accountId: opening, amountMinor: card.amountMinor, currency: card.currency },
+      ],
+      ratesToBase: input.ratesToBase,
+      externalRef: beforeAppRef(purchaseId),
+    };
+  }
+  const money = await moneyLinesOf(tx, ws, input.lines);
+  if (money.length === 0) return null;
+  const before = await ensureSystemAccountTx(tx, ws, 'before_the_app');
+  const counter = new Map<string, number>();
+  for (const line of money) counter.set(line.currency, (counter.get(line.currency) ?? 0) + line.amountMinor);
   return {
     occurredOn: input.occurredOn,
     description: 'Settled before the app',
     lines: [
-      { accountId: card.accountId, amountMinor: -card.amountMinor, currency: card.currency },
-      { accountId: opening, amountMinor: card.amountMinor, currency: card.currency },
+      ...money.map((line) => ({ accountId: line.accountId, amountMinor: -line.amountMinor, currency: line.currency })),
+      ...[...counter].filter(([, minor]) => minor !== 0).map(([currency, minor]) => ({ accountId: before, amountMinor: minor, currency })),
     ],
     ratesToBase: input.ratesToBase,
     externalRef: beforeAppRef(purchaseId),
@@ -565,13 +613,98 @@ export function setSettledBeforeApp(database: Database, ws: WorkspaceContext, pu
   });
 }
 
-export function postTransaction(database: Database, ws: WorkspaceContext, input: PostTransactionInput): Promise<string> {
+/**
+ * Whether a purchase dated `occurredOn` starts out as a past purchase on an account whose balance is counted from
+ * `accountOpenedOn`: strictly before it, yes; on or after, no. An account with no opening day has no default. Only a
+ * default — each purchase carries its own mark, and moving the account's day later never rewrites an old one.
+ */
+export function isPastDefault(accountOpenedOn: string | null | undefined, occurredOn: string): boolean {
+  return !!accountOpenedOn && occurredOn < accountOpenedOn;
+}
+
+/** Whether a purchase on a money account carries the past mark: the same balancing row `settledBeforeAppOf` finds. */
+export const pastPurchaseOf = settledBeforeAppOf;
+
+/**
+ * Marks a saved expense or income on a money account as a past purchase, or takes that back, without touching the
+ * purchase itself: the balance moves by the amount, once. Asking for what already stands does nothing. Refused for a
+ * transfer or anything not on a money account.
+ */
+export function setPastPurchase(database: Database, ws: WorkspaceContext, purchaseId: string, past: boolean): Promise<void> {
   return database.transaction(async (tx) => {
+    const [purchase] = await tx
+      .select({ occurredOn: transactions.occurredOn, status: transactions.status })
+      .from(transactions)
+      .where(and(eq(transactions.id, purchaseId), eq(transactions.workspaceId, ws.workspaceId)));
+    if (!purchase || purchase.status !== 'posted') throw new LedgerError('NOT_FOUND', `Transaction ${purchaseId} not found`);
+    const settlement = await settlementOfTx(tx, ws, purchaseId);
+    if (!past) {
+      if (settlement) await voidTransactionTx(tx, ws, settlement);
+      return;
+    }
+    if (settlement) return;
+    const rows = await tx
+      .select({ accountId: entries.accountId, amountMinor: entries.amountMinor, currency: entries.currency, rate: entries.fxRateToBase })
+      .from(entries)
+      .where(and(eq(entries.transactionId, purchaseId), eq(entries.workspaceId, ws.workspaceId)));
+    const input: PostTransactionInput = {
+      occurredOn: purchase.occurredOn,
+      description: '',
+      lines: rows.map(({ accountId, amountMinor, currency }) => ({ accountId, amountMinor, currency })),
+      ratesToBase: Object.fromEntries(rows.map((row) => [row.currency, row.rate])),
+    };
+    if ((await moneyLinesOf(tx, ws, input.lines)).length === 0 || (await cardLineOf(tx, ws, input.lines))) {
+      throw new LedgerError('NOT_A_MONEY_PURCHASE', 'Only an expense or income on a money account can be a past purchase');
+    }
+    await settleBeforeAppTx(tx, ws, purchaseId, input);
+  });
+}
+
+export async function postTransaction(database: Database, ws: WorkspaceContext, input: PostTransactionInput): Promise<string> {
+  const id = await database.transaction(async (tx) => {
     const id = await postTransactionTx(tx, ws, input);
     // The plain door is the one a person uses; a post that corrects another row is an edit, written by `replaceTransaction`.
     if (!input.replacesTransactionId) await recordActivityTx(tx, ws, 'create', id);
     return id;
   });
+  await rederiveCardCycles(database, ws, input.lines.map((line) => line.accountId), [input.occurredOn]);
+  return id;
+}
+
+/**
+ * Several plain purchases posted in one database transaction: all of them are written or none, so a list pasted in one go
+ * never half-lands. Each gets the activity entry `postTransaction` writes; the card cycles they touch are re-derived once,
+ * after. Returns the new ids in the order given.
+ */
+export async function postTransactions(database: Database, ws: WorkspaceContext, inputs: readonly PostTransactionInput[]): Promise<string[]> {
+  if (inputs.length === 0) return [];
+  const ids = await database.transaction(async (tx) => {
+    const made: string[] = [];
+    for (const input of inputs) {
+      const id = await postTransactionTx(tx, ws, input);
+      if (!input.replacesTransactionId) await recordActivityTx(tx, ws, 'create', id);
+      made.push(id);
+    }
+    return made;
+  });
+  await rederiveCardCycles(
+    database,
+    ws,
+    [...new Set(inputs.flatMap((input) => input.lines.map((line) => line.accountId)))],
+    [...new Set(inputs.map((input) => input.occurredOn))],
+  );
+  return ids;
+}
+
+/** The day and accounts of a transaction before it is voided or replaced, for the cards whose cycles it touched. */
+async function factsOf(database: Database, ws: WorkspaceContext, id: string): Promise<{ on: string | null; accountIds: string[] }> {
+  try {
+    const [row] = await database.db.select({ on: transactions.occurredOn }).from(transactions).where(and(eq(transactions.id, id), eq(transactions.workspaceId, ws.workspaceId)));
+    const lines = await database.db.select({ accountId: entries.accountId }).from(entries).where(eq(entries.transactionId, id));
+    return { on: row?.on ?? null, accountIds: lines.map((line) => line.accountId) };
+  } catch {
+    return { on: null, accountIds: [] };
+  }
 }
 
 /**
@@ -696,25 +829,35 @@ async function refuseEventPostingTx(tx: Db, id: string): Promise<void> {
   if (await eventPostingOfTx(tx, id)) throw new LedgerError('EVENT_POSTING', EVENT_POSTING_MESSAGE);
 }
 
-export function voidTransaction(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
-  return database.transaction(async (tx) => {
+export async function voidTransaction(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
+  const before = await factsOf(database, ws, id);
+  await database.transaction(async (tx) => {
     await voidTransactionTx(tx, ws, id);
     await recordActivityTx(tx, ws, 'delete', id);
   });
+  await rederiveCardCycles(database, ws, before.accountIds, before.on ? [before.on] : []);
 }
 
 /** Edit = void the original and post the replacement atomically. */
-export function replaceTransaction(
+export async function replaceTransaction(
   database: Database,
   ws: WorkspaceContext,
   id: string,
   input: PostTransactionInput,
 ): Promise<string> {
-  return database.transaction(async (tx) => {
+  const before = await factsOf(database, ws, id);
+  const replacement = await database.transaction(async (tx) => {
     const replacement = await replaceTransactionTx(tx, ws, id, input);
     await recordActivityTx(tx, ws, 'edit', replacement, { replaces: id });
     return replacement;
   });
+  await rederiveCardCycles(
+    database,
+    ws,
+    [...before.accountIds, ...input.lines.map((line) => line.accountId)],
+    [...(before.on ? [before.on] : []), input.occurredOn],
+  );
+  return replacement;
 }
 
 /**
@@ -769,9 +912,10 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
    * An edit never posts a second settlement: the one a purchase paid off before the app has follows it below. Asked
    * outright (`settledBeforeApp` true or false), the edit adds the settlement or takes it away; left out, it follows.
    */
-  const { id: _ignored, settledBeforeApp: settle, moveToBook, toBookId, fileTransfer: _file, acrossBooks, ...input } = withId;
+  const { id: _ignored, settledBeforeApp: settleCard, pastPurchase, moveToBook, toBookId, fileTransfer: _file, acrossBooks, ...input } = withId;
   void _file;
   void _ignored;
+  const settle = settleCard ?? pastPurchase;
   // Before anything is read or written: a derived transaction is the event's to change (C1). `markVoidTx` says it again.
   if (!door.eventDerivation) await refuseEventPostingTx(tx, id);
   const [original] = await tx
@@ -792,7 +936,7 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   const [placed] = (await dayOrderExists(tx)) ? await tx.values<[number | null]>(sql`SELECT day_order FROM transactions WHERE id = ${id}`) : [];
   const [typed] = (await exactExists(tx)) ? await tx.values<[number | null]>(sql`SELECT exact_hundredths FROM transactions WHERE id = ${id}`) : [];
   const [settles] = (await billTablesExist(tx))
-    ? await tx.select({ billMonth: billPayments.billMonth }).from(billPayments).where(eq(billPayments.transactionId, id))
+    ? await tx.select({ billMonth: billPayments.billMonth, templateId: billPayments.templateId }).from(billPayments).where(eq(billPayments.transactionId, id))
     : [];
   // Two workspaces can hold copies of one category, alike on any screen. An edit is a correction to the same
   // spending, so it stays where it was filed: a category from another workspace is refused here, before
@@ -892,6 +1036,10 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
     ...(input.exactHundredths === undefined ? { exactHundredths: await carriedExactTx(tx, typed?.[0] ?? null, oldLines, input.lines) } : {}),
     setAside,
   });
+  // A purchase linked to a bill's month after the fact has no bill of its own, so posting would drop the link: carry it.
+  if (settles && !original?.templateId && !input.templateId) {
+    await tx.insert(billPayments).values({ transactionId: replacement, workspaceId: ws.workspaceId, templateId: settles.templateId, billMonth: settles.billMonth }).onConflictDoNothing();
+  }
   /*
    * A transfer has no category to file it by. Moved, it is filed in the chosen workspace (and so leaves the others'
    * lists); edited without a move, one that was filed stays filed. Its partner, a fee or a transfer, follows the move.
@@ -1138,6 +1286,11 @@ export interface TransactionView {
    */
   dayOrder?: number | null;
   /**
+   * A purchase on a money account that is a past purchase (`pastPurchase`): its balancing pair stands beside it, so
+   * its account's balance does not hold it. Absent on anything else, so a view built by hand need not name it.
+   */
+  past?: boolean;
+  /**
    * The amount as typed with cents, in hundredths, when it had any (0068); null otherwise. Never shown: every screen
    * reads the whole figure on the lines. What card points are worked out from, and what an edit that keeps the amount
    * passes back. Optional so a view built by hand need not name it; every view read from the ledger carries it.
@@ -1179,6 +1332,8 @@ export interface ListTransactionsOptions {
    * for one workspace's share of the same trip, which must not also change what currency the figures are in.
    */
   bookId?: string;
+  /** Also read the balancing pair beside a past purchase (Before the app), which a list never shows: it is not an event. */
+  includeBalancing?: boolean;
 }
 
 async function listWith(database: Database, ws: WorkspaceContext, opts: ListTransactionsOptions, money: BookMoney): Promise<TransactionView[]> {
@@ -1188,6 +1343,11 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
   if (opts.id) conds.push(eq(transactions.id, opts.id));
   // An event's own history: what was tagged to it, whenever it happened.
   if (opts.eventId) conds.push(eq(transactions.eventId, opts.eventId));
+  // The balancing pair beside a past purchase is bookkeeping, not something that happened: no list, search or history
+  // shows it (a card's settlement against Opening Balances is a different row and is left as it was).
+  if (!opts.includeBalancing) {
+    conds.push(sql`${transactions.id} NOT IN (SELECT transaction_id FROM entries WHERE account_id IN (SELECT id FROM accounts WHERE system_key = 'before_the_app'))`);
+  }
   if (opts.from) conds.push(gte(transactions.occurredOn, opts.from));
   if (opts.to) conds.push(lte(transactions.occurredOn, opts.to));
   if (opts.accountId) {
@@ -1288,8 +1448,18 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     list.push({ ...entry, ...(filedIn ? { bookId: filedIn } : {}), ...(off ? { excluded: true } : {}) });
     byTx.set(transactionId, list);
   }
+  // Which of these carry the past mark: their balancing pair is posted, found by its ref and its Before the app line.
+  const past = new Set(
+    (
+      await database.db.values<[string]>(sql`
+        SELECT substr(t.external_ref, ${'before-app:'.length + 1}) FROM transactions t
+        WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted' AND t.external_ref IN ${txs.map((t) => beforeAppRef(t.id))}
+          AND t.id IN (SELECT e.transaction_id FROM entries e JOIN accounts a ON a.id = e.account_id WHERE a.system_key = 'before_the_app')`)
+    ).map((row) => row[0]),
+  );
   const views = txs.map((t) => ({
     id: t.id,
+    ...(past.has(t.id) ? { past: true } : {}),
     occurredOn: t.occurredOn,
     description: t.description,
     source: t.source,
@@ -1357,6 +1527,17 @@ export async function listTransactionsIn(
   const money = await bookMoneyFor(database, ws);
   const rows = await listWith(database, ws, opts, money);
   return { transactions: rows, currency: money.currency, missing: money.missing() };
+}
+
+/**
+ * Every account with at least one posted entry in the workspace, on any date: what Cashflow's Paid with filter lists, so
+ * an account nothing was ever recorded on (a Cash IDR left empty) is not offered.
+ */
+export async function accountIdsInUse(database: Database, ws: WorkspaceContext): Promise<string[]> {
+  const rows = await database.db.values<[string]>(sql`
+    SELECT DISTINCT e.account_id FROM entries e JOIN transactions t ON t.id = e.transaction_id
+    WHERE e.workspace_id = ${ws.workspaceId} AND t.status = 'posted'`);
+  return rows.map((row) => row[0]);
 }
 
 /** Raw debit-positive sums of posted entries per account, in each account's entry currency, up to asOf inclusive. */

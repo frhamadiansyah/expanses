@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { expectWalletFigure, openCard } from './accounts';
 import { addForm, choosePayment, saveButton } from './add-transaction';
-import { openSplit, pickPartCategory } from './split-row';
+import { addPart, donePart, fillPart, openPart, openSplit, partExcluded, pickPartCategory } from './split-row';
 
 /*
  * One card purchase split across workspaces, a part of it left out of reports (0090). Invented figures: Rp 4.500.000 at
@@ -12,25 +12,24 @@ import { openSplit, pickPartCategory } from './split-row';
 /** Makes Business from ⋯, a copy of Personal's categories, and comes back to Personal. */
 async function withBusiness(page: Page) {
   await openCard(page, { name: 'BCA Visa', statementDay: '31', dueDay: '15' });
-  await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await page.getByTestId('filters-menu').getByTestId('workspace-row').click();
-  await page.getByRole('dialog', { name: 'Workspaces' }).getByRole('button', { name: 'New workspace' }).click();
+  await page.goto('/account');
+  await page.getByTestId('add-workspace').click();
+  await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Business');
   await sheet.getByLabel('Starts with').selectOption({ label: 'Copy from Personal' });
   await sheet.getByRole('button', { name: 'Create workspace' }).click();
   await expect(sheet).toHaveCount(0);
+  await page.goto('/transactions');
   await switchTo(page, 'Personal');
 }
 
 /** Opens the workspace switcher from ⋯ and picks one, landing on its Cashflow. */
 async function switchTo(page: Page, name: string) {
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await page.getByTestId('filters-menu').getByTestId('workspace-row').click();
-  await page.getByRole('dialog', { name: 'Workspaces' }).getByTestId('workspace-choice').filter({ hasText: name }).click();
-  await expect(page.getByRole('dialog', { name: 'Workspaces' })).toHaveCount(0);
+  await page.getByRole('button', { name: /^Workspace, / }).click();
+  await page.getByTestId('workspace-menu').getByTestId('workspace-choice').filter({ hasText: name }).click();
+  await expect(page.getByTestId('workspace-menu')).toHaveCount(0);
   await page.goto('/transactions');
 }
 
@@ -49,26 +48,29 @@ async function startSplit(page: Page) {
   await form.getByRole('button', { name: 'Add more details' }).click();
   await openSplit(page);
   const split = page.getByRole('dialog', { name: 'Split' });
-  await split.getByRole('button', { name: '+ Split' }).click();
+  await addPart(page);
   return { form, split };
 }
 
 test('a part Not counted is in no workspace’s Cashflow, while the card owes the whole charge', async ({ page }) => {
   await withBusiness(page);
   const { form, split } = await startSplit(page);
-  await split.getByLabel('Split 1 amount').fill('500000');
+  await fillPart(page, 1, '500000');
   await pickPartCategory(page, 2, 'Restaurants', 'Business');
-  await split.getByLabel('Split 2 amount').fill('3000000');
-  await split.getByRole('button', { name: '+ Split' }).click();
+  await fillPart(page, 2, '3000000');
+  await addPart(page);
   await pickPartCategory(page, 3, '', 'No workspace');
-  await split.getByLabel('Split 3 amount').fill('1000000');
+  await fillPart(page, 3, '1000000');
   const parts = split.getByTestId('split-row');
   // A workspace's part has its own switch; the part in no workspace has none, and says where it stands instead.
-  await expect(parts.nth(0).getByRole('switch', { name: 'Exclude from report' })).toBeVisible();
-  await expect(parts.nth(1).getByRole('switch', { name: 'Exclude from report' })).toBeVisible();
-  await expect(parts.nth(2).getByRole('switch', { name: 'Exclude from report' })).toHaveCount(0);
-  await expect(parts.nth(2)).toContainText('In no workspace and no report');
-  await expect(split.getByText('Total Rp 4.500.000')).toBeVisible();
+  await partExcluded(page, 1);
+  await partExcluded(page, 2);
+  await expect(parts.nth(2)).toContainText('Not counted');
+  const notCounted = await openPart(page, 3);
+  await expect(notCounted.getByRole('checkbox', { name: 'Exclude from report' })).toHaveCount(0);
+  await expect(notCounted).toContainText('In no workspace and no report');
+  await donePart(page);
+  await expect(split.getByTestId('split-total')).toContainText('4.500.000');
   await split.getByRole('button', { name: 'Close' }).click();
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
@@ -102,13 +104,11 @@ test('a part Not counted is in no workspace’s Cashflow, while the card owes th
 test('a part excluded from its workspace’s report leaves that Cashflow alone, the other part and the card untouched', async ({ page }) => {
   await withBusiness(page);
   const { form, split } = await startSplit(page);
-  await split.getByLabel('Split 1 amount').fill('500000');
+  await fillPart(page, 1, '500000');
   await pickPartCategory(page, 2, 'Restaurants', 'Business');
-  await split.getByLabel('Split 2 amount').fill('4000000');
-  const business = split.getByTestId('split-row').nth(1).getByRole('switch', { name: 'Exclude from report' });
-  await business.click();
-  await expect(business).toHaveAttribute('aria-checked', 'true');
-  await expect(split.getByTestId('split-row').nth(0).getByRole('switch', { name: 'Exclude from report' })).toHaveAttribute('aria-checked', 'false');
+  await fillPart(page, 2, '4000000');
+  expect(await partExcluded(page, 2, true)).toBe(true);
+  expect(await partExcluded(page, 1)).toBe(false);
   await split.getByRole('button', { name: 'Close' }).click();
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
@@ -132,26 +132,20 @@ test('two lines of one workspace switch on their own: Exclude on Groceries leave
   await openCard(page, { name: 'BCA Visa', statementDay: '31', dueDay: '15' });
   await page.goto('/transactions');
   const { form, split } = await startSplit(page);
-  await split.getByLabel('Split 1 amount').fill('300000');
+  await fillPart(page, 1, '300000');
   await pickPartCategory(page, 2, 'Restaurants');
-  await split.getByLabel('Split 2 amount').fill('200000');
+  await fillPart(page, 2, '200000');
 
-  const parts = split.getByTestId('split-row');
-  const first = parts.nth(0).getByRole('switch', { name: 'Exclude from report' });
-  const second = parts.nth(1).getByRole('switch', { name: 'Exclude from report' });
-  await first.click();
-  await expect(first).toHaveAttribute('aria-checked', 'true');
-  await expect(second).toHaveAttribute('aria-checked', 'false');
+  const states = async () => [await partExcluded(page, 1), await partExcluded(page, 2)];
+  await partExcluded(page, 1, true);
+  expect(await states()).toEqual([true, false]);
   // The other way round, then back: each switch moves alone.
-  await second.click();
-  await expect(second).toHaveAttribute('aria-checked', 'true');
-  await first.click();
-  await expect(first).toHaveAttribute('aria-checked', 'false');
-  await expect(second).toHaveAttribute('aria-checked', 'true');
-  await second.click();
-  await first.click();
-  await expect(first).toHaveAttribute('aria-checked', 'true');
-  await expect(second).toHaveAttribute('aria-checked', 'false');
+  await partExcluded(page, 2, true);
+  await partExcluded(page, 1, false);
+  expect(await states()).toEqual([false, true]);
+  await partExcluded(page, 2, false);
+  await partExcluded(page, 1, true);
+  expect(await states()).toEqual([true, false]);
   await split.getByRole('button', { name: 'Close' }).click();
   await saveButton(form).click();
   await expect(form).toHaveCount(0);

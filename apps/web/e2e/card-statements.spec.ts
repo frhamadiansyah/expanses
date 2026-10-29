@@ -22,7 +22,6 @@ async function setUp(page: Page) {
   await page.getByLabel('Due date').fill('15');
   await saveCardTerms(page);
   // Saving terms moves setup on to rewards; the statement is a page of its own, from the card.
-  await expect(page.getByText('Step 2 of 3')).toBeVisible();
   await page.getByRole('button', { name: 'BCA Visa' }).click();
   await cardPage(page, 'Statement');
   await expect(page.getByTestId('statement-range')).toBeVisible();
@@ -140,7 +139,7 @@ test('the last statement is paid from the card’s Current bill tile', async ({ 
   await expect(tile.getByTestId('due-date')).toContainText(/^Due \d+ \w+ · /);
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: /^Pay / });
-  await expect(sheet.getByLabel('Amount (IDR)')).toHaveValue('2000000');
+  await expect(sheet.getByLabel('Amount', { exact: true })).toHaveValue('2000000');
   await sheet.getByRole('button', { name: 'Record payment' }).click();
   await expect(sheet).toHaveCount(0);
 
@@ -157,10 +156,11 @@ test('Pay opens a sheet with the amount filled in; a smaller amount records a pa
   const tile = page.getByTestId('tile-left-to-pay');
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: /^Pay / });
-  await expect(sheet.getByLabel('Amount (IDR)')).toHaveValue('2000000');
+  await expect(sheet.getByLabel('Amount', { exact: true })).toHaveValue('2000000');
+  await expect(sheet.getByText('IDR', { exact: true }).first()).toBeVisible();
   await expect(sheet.getByLabel('Paid with')).toBeVisible();
   await expect(sheet.getByLabel('Paid on')).toBeVisible();
-  await sheet.getByLabel('Amount (IDR)').fill('500000');
+  await sheet.getByLabel('Amount', { exact: true }).fill('500000');
   await sheet.getByRole('button', { name: 'Record payment' }).click();
   await expect(sheet).toHaveCount(0);
   await expect(tile.getByTestId('tile-unpaid-balance')).toContainText('1.500.000');

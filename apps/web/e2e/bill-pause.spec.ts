@@ -13,7 +13,7 @@ test('pausing a bill for two months takes it out of Still to pay, shows the mont
   await pauseFor(page, 'Gym', 2);
   const now = new Date();
   const next = MONTHS[(now.getMonth() + 1) % 12]!;
-  await expect(page.getByTestId('bill-status')).toHaveText('Paused');
+  await expect(page.getByTestId('bill-status')).toContainText('Paused');
   // This month and the next are paused, and the history says so.
   const history = page.getByTestId('bill-history');
   await expect(history.getByText('Paused')).toHaveCount(2);
@@ -28,7 +28,7 @@ test('pausing a bill for two months takes it out of Still to pay, shows the mont
 
   await paused.getByTestId('bill-row').filter({ hasText: 'Gym' }).click();
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Resume' }).click();
-  await expect(page.getByTestId('bill-status')).not.toHaveText('Paused');
+  await expect(page.getByTestId('bill-status')).not.toContainText('Paused');
   await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pause' })).toBeVisible();
   await page.goto('/bills');
   await expect(page.getByTestId('bills-total')).toContainText('500.000');

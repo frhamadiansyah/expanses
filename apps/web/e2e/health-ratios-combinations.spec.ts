@@ -186,8 +186,9 @@ test('row 8 — five units, and the total is the sum of the converted lines', as
 });
 test('row 9 — a workspace that reads in dollars types and converts in cents', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
-  await page.getByRole('button', { name: 'New workspace' }).click();
+  await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByTestId('add-workspace').click();
+  await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Studio');
   await sheet.getByLabel('Starts with').selectOption({ label: 'Copy from Personal' });
@@ -232,7 +233,7 @@ test('row 11 — the sections hold: a holiday never lists under compulsory', asy
   // The 15 jt is the goal's cost in today's money: the list and the card read it grown to its date, so it is read
   // where it was typed, in the goal's own form.
   await editGoal(await goalCard(page, 'Holiday'));
-  await expect(page.getByLabel(/Cost in today's money/).first()).toHaveValue('15000000');
+  await expect(page.getByLabel(/Cost in today's money/).first()).toHaveValue('15.000.000');
 });
 
 test('row 12 — a working reopens on the answers and base it was saved with', async ({ page }) => {

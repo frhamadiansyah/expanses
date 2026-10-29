@@ -1,19 +1,21 @@
 import { type BillWindow, dayMonth, isoDate, monthName, ordinal, periodicRepeat, yearlyRepeat } from '@expanses/core';
-import { deleteExpenseTemplate, RecurringError, resumeBill, skipBill, undoBillPayments } from '@expanses/db';
+import { RecurringError, resumeBill, skipBill, undoBillPayments, unlinkPurchaseFromBill, unskipBill } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { Check, MoreHorizontal, Pause, Pencil, Play, SkipForward } from 'lucide-react';
+import { Check, Pause, Pencil, Play, SkipForward } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
+import { Sheet } from '../../app/Sheet';
 import { useFrom } from '../../app/from-search';
-import { useAccounts, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox, Money } from '../../ui';
 import { ActionButtons, GROUP_RADIUS, type GroupChild, InsetGroup, InsetRow, LargeTitle, Panel, PushedTitle, ReadOnlyRow, type RoundAction, SCREEN } from '../../ui/native';
 import { CategoryIcon } from '../categories/CategoryIcon';
-import { billCurrencyOf, pillOf } from './bill-view';
+import { billCurrencyOf, heroLineOf, pillOf } from './bill-view';
+import { usePaidFromLabels } from './PaidFromSheet';
 import { PauseSheet } from './PauseSheet';
 import { PaySheet } from './PaySheet';
 import { SinkingFundGroup } from './SinkingFundGroup';
-import { useBillDetail, useSinkingFunds } from './queries';
+import { useBillDetail, useBillMonthsBefore, useSinkingFunds } from './queries';
 
 /** How many months the history shows before See all. */
 const HISTORY_SHOWN = 3;
@@ -49,13 +51,20 @@ export function BillPage({ billId }: { billId: string }) {
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
+  const { nameOf: paidName } = usePaidFromLabels(moneyHolders(accounts));
   const today = isoDate();
   const detail = useBillDetail(billId, today);
   const fund = (useSinkingFunds(today).data ?? []).find((f) => f.billId === billId);
+  // Whether any purchase before the bill started could be linked: the History's last row is offered only then.
+  const earlier = useBillMonthsBefore(billId, 1).data;
 
   const [paying, setPaying] = useState(false);
   const [pausing, setPausing] = useState(false);
   const [allHistory, setAllHistory] = useState(false);
+  // The skipped month whose sheet is open, with the title its row carries.
+  const [unskipping, setUnskipping] = useState<{ month: string; title: string } | null>(null);
+  // The paid month whose sheet is open: its payments, to open or to undo.
+  const [paidOpen, setPaidOpen] = useState<{ title: string; payments: { id: string; paidMinor: number | null; paidCurrency: string | null; linked: boolean }[] } | null>(null);
   const [justPaid, setJustPaid] = useState<JustPaid | null>(null);
   const [error, setError] = useState<unknown>(null);
 
@@ -76,7 +85,7 @@ export function BillPage({ billId }: { billId: string }) {
   const { bill, history, bookName } = detail.data;
   const account = accounts.find((a) => a.id === bill.moneyAccountId);
   const currency = billCurrencyOf(bill, accounts, ws.baseCurrency);
-  const pill = pillOf(bill);
+  const hero = heroLineOf(bill, windowLine(bill.window));
   // The month just paid, which is not always the month the page now speaks for: paying last month's overdue bill, or
   // choosing another month in For, moves the bill on. The confirmation follows the payment, not the bill.
   const paidMonth = justPaid ? history.find((row) => row.month === justPaid.month && row.state === 'paid') : undefined;
@@ -110,19 +119,6 @@ export function BillPage({ billId }: { billId: string }) {
     }
   }
 
-  async function stop() {
-    // Keeps every payment and skip on record; it just stops asking for the next one.
-    if (!window.confirm(`Stop ${bill.name}? Its payments stay in the history.`)) return;
-    setError(null);
-    try {
-      await deleteExpenseTemplate(database, ws, bill.id);
-      await invalidate();
-      await navigate({ to: '/bills', search: from });
-    } catch (e) {
-      setError(e);
-    }
-  }
-
   const actions: RoundAction[] = [
     ...(actMonth
       ? [
@@ -146,7 +142,6 @@ export function BillPage({ billId }: { billId: string }) {
         back="Recurring"
         backTo="/bills"
         backSearch={from}
-        actions={[{ key: 'more', label: 'More', glyph: <MoreHorizontal size={20} aria-hidden />, menu: [{ key: 'stop', label: 'Stop this bill', run: () => void stop() }] }]}
       />
 
       <ErrorBox error={error} />
@@ -159,9 +154,6 @@ export function BillPage({ billId }: { billId: string }) {
             {monthName(bill.billMonth, 'long')}
             {bill.repeat !== 'monthly' && ` ${bill.billMonth.slice(0, 4)}`} bill
           </p>
-          <span className={cx('rounded-full px-[8px] py-[2px] text-[12px] leading-[16px] font-semibold', pill.className)} data-testid="bill-status">
-            {pill.text}
-          </span>
         </div>
         {bill.amountMinor !== null ? (
           <p className="tabular truncate text-[26px] leading-[32px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]">
@@ -177,7 +169,11 @@ export function BillPage({ billId }: { billId: string }) {
             )}
           </p>
         )}
-        <p className="text-[13px] leading-[18px] text-[var(--ph-ink-3)]">{windowLine(bill.window)}</p>
+        <p className="text-[13px] leading-[18px] text-[var(--ph-ink-3)]" data-testid="bill-status">
+          {hero.lead && <span className={hero.tone === 'alarm' ? 'text-[var(--ph-alarm)]' : hero.tone === 'warn' ? 'text-[var(--ph-warn)]' : undefined}>{hero.lead}</span>}
+          {hero.lead && ' · '}
+          {hero.rest}
+        </p>
       </Panel>
 
       {justPaid && paidMonth && (
@@ -224,7 +220,7 @@ export function BillPage({ billId }: { billId: string }) {
           }
         />
         {bill.currency ? <ReadOnlyRow label="Currency" value={bill.currency} /> : null}
-        <ReadOnlyRow label="Paid from" value={account?.name ?? ''} />
+        <ReadOnlyRow label="Paid from" value={account ? paidName(account) : ''} />
         <ReadOnlyRow label="Category" value={category?.name ?? ''} />
         {bookName ? <ReadOnlyRow label="Workspace" value={bookName} /> : null}
       </InsetGroup>
@@ -232,20 +228,28 @@ export function BillPage({ billId }: { billId: string }) {
       {bill.repeat !== 'monthly' && fund && <SinkingFundGroup fund={fund} />}
 
       {/* Nothing to show until a month has been paid, skipped or paused: no empty group, no placeholder. */}
-      {history.some((row) => row.state === 'paid' || row.state === 'skipped' || row.state === 'paused') && (
+      {(history.some((row) => row.state === 'paid' || row.state === 'skipped' || row.state === 'paused') || (earlier?.months.length ?? 0) > 0) && (
       <div data-testid="bill-history">
         <InsetGroup header="History">
           {[
-            ...shown.map((row) => (
+            ...shown.map((row) => {
+              const title =
+                bill.repeat !== 'monthly'
+                  ? row.state === 'paid'
+                    ? `Paid in ${row.month.slice(0, 4)}`
+                    : `${row.month.slice(0, 4)} bill`
+                  : `${monthName(row.month, 'long')} bill`;
+              return (
               <HistoryRow
                 key={row.month}
                 fresh={paidMonth?.month === row.month}
-                title={
-                  bill.repeat !== 'monthly'
-                    ? row.state === 'paid'
-                      ? `Paid in ${row.month.slice(0, 4)}`
-                      : `${row.month.slice(0, 4)} bill`
-                    : `${monthName(row.month, 'long')} bill`
+                title={title}
+                onOpen={
+                  row.state === 'skipped'
+                    ? () => setUnskipping({ month: row.month, title })
+                    : row.state === 'paid' && row.payments.length > 0
+                      ? () => setPaidOpen({ title: `${bill.name} · ${title}`, payments: row.payments })
+                      : undefined
                 }
                 value={
                   row.state === 'paid' ? (
@@ -263,9 +267,21 @@ export function BillPage({ billId }: { billId: string }) {
                   )
                 }
               />
-            )),
+              );
+            }),
             ...(history.length > shown.length
               ? [<InsetRow key="all" title="See all" label="See all" action onClick={() => setAllHistory(true)} />]
+              : []),
+            ...((earlier?.months.length ?? 0) > 0
+              ? [
+                  <InsetRow
+                    key="earlier"
+                    action
+                    title={<span className="text-[var(--ph-tint)]">Link an earlier month</span>}
+                    label="Link an earlier month"
+                    onClick={() => void navigate({ to: '/bills/$billId/earlier', params: { billId }, search: from })}
+                  />,
+                ]
               : []),
           ]}
         </InsetGroup>
@@ -282,7 +298,88 @@ export function BillPage({ billId }: { billId: string }) {
             setJustPaid({ ids, amountMinor, paidOn, month });
           }}
           onSkipped={() => setPaying(false)}
+          onLink={(month) => {
+            setPaying(false);
+            void navigate({ to: '/bills/$billId/link', params: { billId }, search: { ...from, month } });
+          }}
         />
+      )}
+
+      {unskipping && (
+        <Sheet grouped title={`${unskipping.title} · skipped`} onClose={() => setUnskipping(null)}>
+          <InsetGroup>
+            <InsetRow
+              action
+              title="Unskip"
+              onClick={() => {
+                const { month } = unskipping;
+                setUnskipping(null);
+                void act(() => unskipBill(database, ws, bill.id, month));
+              }}
+            />
+            <InsetRow action title="Cancel" onClick={() => setUnskipping(null)} />
+          </InsetGroup>
+        </Sheet>
+      )}
+
+      {paidOpen && (
+        <Sheet grouped title={paidOpen.title} onClose={() => setPaidOpen(null)}>
+          <InsetGroup>
+            {paidOpen.payments.map((payment) => (
+              <InsetRow
+                key={payment.id}
+                action
+                title={
+                  paidOpen.payments.length > 1 && payment.paidMinor !== null ? (
+                    <>
+                      {payment.linked ? 'Open the purchase' : 'Open payment'} · <Money minor={payment.paidMinor} currency={payment.paidCurrency ?? currency} />
+                    </>
+                  ) : payment.linked ? (
+                    'Open the purchase'
+                  ) : (
+                    'Open payment'
+                  )
+                }
+                label={paidOpen.payments.length > 1 && payment.paidMinor !== null ? undefined : payment.linked ? 'Open the purchase' : 'Open payment'}
+                onClick={() => {
+                  setPaidOpen(null);
+                  void navigate({ to: '/transactions/$transactionId', params: { transactionId: payment.id } });
+                }}
+              />
+            ))}
+            {/* A purchase that was linked afterwards is the person's own: unlinking lets it go, undoing would delete it. */}
+            {paidOpen.payments.some((p) => p.linked) && (
+              <InsetRow
+                action
+                title="Unlink"
+                onClick={() => {
+                  const linked = paidOpen.payments.filter((p) => p.linked);
+                  setPaidOpen(null);
+                  void act(async () => {
+                    for (const p of linked) await unlinkPurchaseFromBill(database, ws, { transactionId: p.id });
+                  });
+                }}
+              />
+            )}
+            {paidOpen.payments.some((p) => !p.linked) && (
+            <InsetRow
+              action
+              title="Undo payment"
+              onClick={() => {
+                const payments = paidOpen.payments.filter((p) => !p.linked);
+                // A payment is deleted, not hidden: ask once.
+                if (!window.confirm(`Undo ${paidOpen.title}? The payment is deleted.`)) return;
+                setPaidOpen(null);
+                if (justPaid && payments.some((p) => justPaid.ids.includes(p.id))) setJustPaid(null);
+                void act(() => undoBillPayments(database, ws, payments.map((p) => p.id)));
+              }}
+            />
+            )}
+          </InsetGroup>
+          <InsetGroup>
+            <InsetRow action title="Cancel" onClick={() => setPaidOpen(null)} />
+          </InsetGroup>
+        </Sheet>
       )}
 
       {pausing && <PauseSheet bill={bill} onClose={() => setPausing(false)} onPaused={() => setPausing(false)} />}
@@ -292,13 +389,14 @@ export function BillPage({ billId }: { billId: string }) {
 
 /**
  * A month in the bill's history. The month just paid is washed in the tint and marked `data-new`, so the payment
- * that just happened is the row the eye lands on — the row itself stays the kit's.
+ * that just happened is the row the eye lands on — the row itself stays the kit's. A skipped month opens to be
+ * unskipped, a paid month to open or undo its payment; paused months are plain.
  */
-function HistoryRow({ position, fresh, title, value }: GroupChild & { fresh: boolean; title: string; value: ReactNode }) {
+function HistoryRow({ position, fresh, title, value, onOpen }: GroupChild & { fresh: boolean; title: string; value: ReactNode; onOpen?: () => void }) {
   return (
     // The wash sits on the wrapper: the row draws itself on a transparent ground, which would win over it.
     <div data-new={fresh} className={cx(fresh && 'bg-[var(--ph-tint-panel)]')}>
-      <InsetRow position={position} title={title} value={value} valueTone="ink-2" />
+      <InsetRow position={position} title={title} value={value} valueTone="ink-2" onClick={onOpen} />
     </div>
   );
 }

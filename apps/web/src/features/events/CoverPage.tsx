@@ -1,25 +1,26 @@
-import { dayMonth, type EventPlanItemView, formatMinor, minorToMajorString, parseMajor } from '@expanses/core';
+import { CURRENCIES, dayMonth, type EventPlanItemView, formatMinor, groupTypedAmount, minorToMajorString, parseMajor } from '@expanses/core';
 import { setPurchaseCover } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
-import { type ReactNode, useEffect, useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useApp } from '../../app/context';
-import { useAccounts, useInvalidateAll } from '../../lib/queries';
+import { useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox } from '../../ui';
 import {
   InsetGroup,
   InsetRow,
   LargeTitle,
   ROW_PAD_X,
-  ROW_PAD_Y,
-  rowHeight,
-  toneClass,
   type CornerAction,
   type GroupChild,
-  type Tone,
 } from '../../ui/native';
-import { answeredElsewhere, coverTotals, differenceWords } from './plan-view';
+import { answeredElsewhere, coverTotals } from './plan-view';
 import { useEventHistory, useEventPlan, useEvents, usePurchaseCover } from './queries';
+
+/** A figure as the share field shows it: grouped in id-ID, the decimal comma where the currency has cents. */
+function typedOf(minor: number, currency: string): string {
+  return groupTypedAmount(minorToMajorString(minor, currency).replace('.', ','), currency);
+}
 
 /** Half-typed digits are not an error, only a figure that is not there yet: nought until the whole of it parses. */
 function minorOf(typed: string, currency: string): number {
@@ -30,73 +31,87 @@ function minorOf(typed: string, currency: string): number {
   }
 }
 
-/** The kit's tones for what a difference is. The words themselves are `differenceWords`'. */
-const HERE: Record<'over' | 'under' | 'exact', Tone> = { over: 'alarm', under: 'gain', exact: 'ink-3' };
-
 /**
- * A row with a tick on one side and a typed share on the other.
+ * One cost of the checklist, drawn as the plan draws its rows: the 28 px circle at the left (green with a tick when the
+ * receipt answers it, a grey ring when not), the name at 14 px medium, and the figure at the right.
  *
- * There is no primitive for this and there should not be: `InsetRow` is one tap target on purpose, and this row is
- * two controls by its nature — the tick says the receipt answered this item, and the field says how much of it did.
- * So the row is drawn to the kit's own measurements and with the kit's own separator, rather than by bending a
- * primitive that exists to forbid exactly this shape.
+ * The tick is a real checkbox laid invisibly over the circle, so it is named by the cost and keyboard-reachable; the
+ * name beside it is a label for the same box. The typed share is a second control by its nature, which is why this is
+ * not an `InsetRow`.
  */
 function CoverRow({
   position,
   ticked,
   onTick,
   name,
-  subtitle,
   elsewhere,
   share,
   onShare,
-  difference,
+  estimate,
+  symbol,
   id,
 }: GroupChild & {
   ticked: boolean;
   onTick: (on: boolean) => void;
   name: string;
-  subtitle: string;
   elsewhere: string | null;
   share: string;
   onShare: (typed: string) => void;
-  difference: { text: string; tone: 'over' | 'under' | 'exact' };
+  estimate: string;
+  symbol: string;
   id: string;
 }) {
   return (
-    <div className="relative">
+    <div className="relative flex items-center pl-[6px]">
       {position?.separator && (
         <span aria-hidden className="pointer-events-none absolute top-0 right-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X }} />
       )}
-      <div className="flex flex-wrap items-center gap-3" style={{ minHeight: rowHeight(true), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}>
+      <span className="relative flex h-11 w-11 shrink-0 items-center justify-center">
         <input
           id={id}
           type="checkbox"
+          aria-label={name}
           checked={ticked}
           onChange={(e) => onTick(e.target.checked)}
-          className="ph-focus h-5 w-5 shrink-0 rounded accent-[var(--ph-tint)]"
+          className="peer absolute inset-0 z-10 m-0 h-full w-full cursor-pointer opacity-0"
         />
+        <span
+          aria-hidden
+          className={cx(
+            'flex h-7 w-7 items-center justify-center rounded-full peer-focus-visible:outline-2 peer-focus-visible:outline-[var(--ph-tint)]',
+            ticked ? 'bg-[var(--ph-up-panel)] text-[var(--ph-up)]' : 'ring-[1.5px] ring-[var(--ph-chevron)] ring-inset',
+          )}
+        >
+          {ticked && <Check size={15} strokeWidth={3} />}
+        </span>
+      </span>
+      <div className="flex min-h-11 min-w-0 flex-1 items-center gap-3 py-2 pr-[14px] pl-1">
         <label htmlFor={id} className="min-w-0 flex-1 cursor-pointer">
-          <span className="block truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{name}</span>
-          <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{subtitle}</span>
-          {/* An item another receipt already answers is re-pointed by ticking it here, and its money goes with it.
-              That is often what is meant — the wrong receipt was picked, or one was corrected — but it happened in
-              silence, with nothing on the row saying where the money currently is. */}
-          {elsewhere && <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-warn)]">{elsewhere}</span>}
+          <span className="block text-sm font-medium text-[var(--ph-ink)]">{name}</span>
+          {elsewhere && <span className="block text-xs text-[var(--ph-ink-3)]">{elsewhere}</span>}
         </label>
         {ticked ? (
-          <span className="flex shrink-0 items-center gap-2">
-            <input
-              aria-label={`Share for ${name}`}
-              inputMode="decimal"
-              value={share}
-              onChange={(e) => onShare(e.target.value)}
-              className="ph-focus tabular w-32 rounded bg-transparent text-right text-[16px] leading-[20px] text-[var(--ph-ink)] md:text-[15px]"
-            />
-            <span className={cx('w-24 shrink-0 text-right text-[11.5px] font-semibold', toneClass(HERE[difference.tone]))}>{difference.text}</span>
+          <span className="tabular flex shrink-0 flex-col items-end text-sm font-semibold whitespace-nowrap text-[var(--ph-ink)]">
+            <span className="flex items-baseline gap-1">
+              <span aria-hidden>{symbol}</span>
+              {/* The field is as wide as what is typed: a hidden copy of the text sets the width. */}
+              <span className="inline-grid">
+                <span aria-hidden className="invisible col-start-1 row-start-1 min-w-[2ch] whitespace-pre text-right">
+                  {share || ' '}
+                </span>
+                <input
+                  aria-label={`Share for ${name}`}
+                  inputMode="decimal"
+                  value={share}
+                  onChange={(e) => onShare(e.target.value)}
+                  className="ph-focus tabular col-start-1 row-start-1 w-0 min-w-full rounded bg-transparent p-0 text-right text-sm font-semibold text-[var(--ph-ink)]"
+                />
+              </span>
+            </span>
+            <span className="block text-[11.5px] leading-[14px] font-normal text-[var(--ph-ink-3)]">of {estimate}</span>
           </span>
         ) : (
-          <span className="shrink-0 text-[15px] text-[var(--ph-ink-3)]">—</span>
+          <span className="tabular shrink-0 text-sm whitespace-nowrap text-[var(--ph-ink-3)]">{estimate}</span>
         )}
       </div>
     </div>
@@ -140,7 +155,6 @@ export function CoverPage() {
   const plan = useEventPlan(eventId, null);
   const cover = usePurchaseCover(transactionId);
   const history = useEventHistory(eventId, tab ?? null);
-  const accounts = useAccounts().data ?? [];
   const rowId = useId();
 
   // itemId → the share as it is typed. A key that is present is a tick; absent is unticked.
@@ -150,23 +164,27 @@ export function CoverPage() {
   const [saving, setSaving] = useState(false);
 
   const items = (plan.data?.lines ?? []).flatMap((line) => line.items);
+  // A settled cost is closed to more receipts: it is listed only while this receipt already covers it, so it can still be unticked.
+  const covered = new Set((cover.data?.covers ?? []).map((row) => row.itemId));
+  const listed = items.filter((row) => !row.done || covered.has(row.id) || shares[row.id] !== undefined);
   const totalMinor = cover.data?.totalMinor ?? 0;
   const currency = ws.baseCurrency;
+  const symbol = CURRENCIES.find((c) => c.code === currency)?.symbol ?? currency;
 
   /*
    * Seeded once, from what this receipt already answers: the stored shares are the truth about it, read owner-wide,
    * so a workspace tab can never make one look unspoken for. The item carried in `?item=` joins them at whatever is
    * still free, up to its own estimate — and when nothing is free it starts at its estimate instead, so the figures
-   * below say in red that something else has to give it up rather than seeding a nought the repository must refuse.
+   * above say it is over and something else has to give it up rather than seeding a nought the repository must refuse.
    */
   useEffect(() => {
     if (seeded || !cover.data || !plan.data) return;
     const next: Record<string, string> = {};
-    for (const row of cover.data.covers) next[row.itemId] = minorToMajorString(row.shareMinor, currency);
+    for (const row of cover.data.covers) next[row.itemId] = typedOf(row.shareMinor, currency);
     const named = item ? (items.find((row) => row.id === item) ?? null) : null;
     if (named && next[named.id] === undefined) {
       const left = cover.data.totalMinor - cover.data.covers.reduce((total, row) => total + row.shareMinor, 0);
-      next[named.id] = minorToMajorString(left > 0 ? Math.min(named.estimateMinor, left) : named.estimateMinor, currency);
+      next[named.id] = typedOf(left > 0 ? Math.min(named.estimateMinor, left) : named.estimateMinor, currency);
     }
     setShares(next);
     setSeeded(true);
@@ -184,7 +202,7 @@ export function CoverPage() {
       }
       const given = Object.entries(was).reduce((total, [, typed]) => total + minorOf(typed, currency), 0);
       const left = totalMinor - given;
-      return { ...was, [row.id]: minorToMajorString(left > 0 ? Math.min(row.estimateMinor, left) : row.estimateMinor, currency) };
+      return { ...was, [row.id]: typedOf(left > 0 ? Math.min(row.estimateMinor, left) : row.estimateMinor, currency) };
     });
   }
 
@@ -211,8 +229,7 @@ export function CoverPage() {
 
   const receipt = (history.data ?? []).find((tx) => tx.id === transactionId) ?? null;
   const paidWith = receipt?.entries.find((entry) => entry.accountKind === 'asset' || entry.accountKind === 'liability')?.accountName ?? null;
-  const nameOf = (id: string | null) => (id === null ? null : (accounts.find((account) => account.id === id)?.name ?? id));
-  // A share of nothing is not a share but the absence of one, and the repository says so; the button says so first.
+    // A share of nothing is not a share but the absence of one, and the repository says so; the button says so first.
   const unsaveable = totals.over || ticked.some((id) => typedMinor(id) <= 0);
 
   const cancelTo = item
@@ -227,69 +244,54 @@ export function CoverPage() {
     disabled: unsaveable || saving || !cover.isSuccess,
   };
 
-  /** The left-hand side of the last total: the words, and — while there is money over — what that money is. */
-  const leftLabel: ReactNode = (
-    <span className="inline-flex items-center gap-2">
-      <span>Left on this receipt</span>
-      {totals.leftMinor > 0 && <span className="text-[12.5px] font-semibold text-[var(--ph-warn)]">not planned</span>}
-    </span>
-  );
-
   return (
     <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
       <div className="mx-auto max-w-2xl">
-        <LargeTitle title="What it covers" back="Cancel" backTo={cancelTo.to} backParams={cancelTo.params} backSearch={cancelTo.search} actions={[saveAction]} />
+        <LargeTitle title="Link to costs" back="Cancel" backTo={cancelTo.to} backParams={cancelTo.params} backSearch={cancelTo.search} actions={[saveAction]} />
         <ErrorBox error={error ?? events.error ?? plan.error ?? cover.error} />
 
-        <InsetGroup header="The receipt">
-          <InsetRow
-            title={cover.data?.description ?? receipt?.description ?? 'This payment'}
-            subtitle={[cover.data?.occurredOn ? dayMonth(cover.data.occurredOn) : null, paidWith].filter(Boolean).join(' · ')}
-            value={formatMinor(totalMinor, currency)}
-            valueTone="ink"
-          />
-        </InsetGroup>
+        <div data-testid="cover-totals">
+          <InsetGroup>
+            <InsetRow
+              plain
+              title={cover.data?.description ?? receipt?.description ?? 'This payment'}
+              subtitle={[cover.data?.occurredOn ? dayMonth(cover.data.occurredOn) : null, paidWith].filter(Boolean).join(' · ')}
+              value={formatMinor(totalMinor, currency)}
+              valueTone="ink"
+            />
+            <InsetRow plain title="Linked to costs" value={formatMinor(totals.givenMinor, currency)} valueTone="ink" />
+            <InsetRow
+              plain
+              title={totals.over ? 'Over this receipt' : 'Left on this receipt'}
+              value={formatMinor(Math.abs(totals.leftMinor), currency)}
+              valueTone="ink"
+            />
+          </InsetGroup>
+        </div>
 
         {/* No share box before the stored shares are seeded: a share typed first would be overwritten as they land. */}
         {!seeded ? (
           <p className="text-sm text-[var(--ph-ink-3)]">Loading…</p>
-        ) : items.length === 0 ? (
-          <Empty>This event has nothing on its plan yet, so there is nothing for the receipt to answer.</Empty>
+        ) : listed.length === 0 ? (
+          <Empty>There is nothing on the plan left for this receipt to answer.</Empty>
         ) : (
-          <InsetGroup header="What it paid for" footer="Tick everything this receipt paid for and give each its share. One receipt can settle many items.">
-            {items.map((row) => (
+          <InsetGroup>
+            {listed.map((row) => (
               <CoverRow
                 key={row.id}
                 id={`${rowId}-${row.id}`}
                 ticked={shares[row.id] !== undefined}
                 onTick={(on) => toggle(row, on)}
                 name={row.name}
-                subtitle={`estimate ${formatMinor(row.estimateMinor, currency)}${row.categoryId ? ` · ${nameOf(row.categoryId)}` : ''}`}
                 elsewhere={answeredElsewhere(row, transactionId)}
                 share={shares[row.id] ?? ''}
-                onShare={(typed) => setShares((was) => ({ ...was, [row.id]: typed }))}
-                difference={differenceWords(typedMinor(row.id) - row.estimateMinor, currency)}
+                onShare={(typed) => setShares((was) => ({ ...was, [row.id]: groupTypedAmount(typed, currency) }))}
+                estimate={formatMinor(row.estimateMinor, currency)}
+                symbol={symbol}
               />
             ))}
           </InsetGroup>
         )}
-
-        <div data-testid="cover-totals">
-          <InsetGroup header="Against the receipt">
-            <InsetRow title="Receipt" value={formatMinor(totals.totalMinor, currency)} valueTone="ink" />
-            <InsetRow title="Given to items" value={formatMinor(totals.givenMinor, currency)} valueTone="ink" />
-            <InsetRow
-              title={leftLabel}
-              value={totals.over ? 'that is more than the receipt' : formatMinor(totals.leftMinor, currency)}
-              valueTone={totals.over ? 'alarm' : 'ink'}
-            />
-          </InsetGroup>
-        </div>
-
-        <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-          Shares start at each item’s estimate; change them to what the receipt really says. Anything left over stays as spending in its category, marked “not
-          planned”. The receipt itself is never split — the statement and points are untouched.
-        </p>
       </div>
     </div>
   );

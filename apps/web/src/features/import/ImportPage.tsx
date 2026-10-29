@@ -197,7 +197,7 @@ export function ImportPage() {
 
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Import CSV" />
+      <LargeTitle title="Import" />
       <ErrorBox error={error} />
 
       {/* The row opens the platform's own chooser; this is the chooser, so the file the app reads is the file. */}

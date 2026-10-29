@@ -225,7 +225,7 @@ test('lends US$100 with no dollar rate stored: the form asks for it and the loan
   await page.getByLabel(/^(Borrower|Lender)$/).fill('Andi');
   await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
   await page.getByLabel('Paid from').selectOption({ label: 'Wise USD (USD)' });
-  await page.getByLabel('Money lent (USD)').fill('100');
+  await page.getByLabel('Money lent').fill('100');
   await page.getByLabel('Rate: IDR per 1 USD').fill('16250');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
 
@@ -244,7 +244,7 @@ test('borrows US$50 with no dollar rate stored: the form asks for it and the deb
   await page.getByLabel(/^(Borrower|Lender)$/).fill('Budi');
   await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
   await page.getByLabel('Received into').selectOption({ label: 'Wise USD (USD)' });
-  await page.getByLabel('Money borrowed (USD)').fill('50');
+  await page.getByLabel('Money borrowed').fill('50');
   // Saved blank first: with no rate stored and none to fetch, it says so and waits for one — nothing is lost.
   await page.getByLabel('Rate: IDR per 1 USD').fill('');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -445,10 +445,10 @@ test('the figures name a currency only once an account decides it', async ({ pag
   await expect(page.getByRole('textbox', { name: 'Money lent', exact: true })).toHaveAttribute('placeholder', 'Amount');
   await expect(page.getByRole('textbox', { name: 'Fee', exact: true })).toHaveAttribute('placeholder', 'Amount');
   await page.getByLabel('Paid from').selectOption({ label: 'Wise USD (USD)' });
-  await expect(page.getByRole('textbox', { name: 'Money lent (USD)', exact: true })).toBeVisible();
-  await expect(page.getByRole('textbox', { name: 'Fee (USD)', exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Money lent', exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Fee', exact: true })).toBeVisible();
   await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await expect(page.getByRole('textbox', { name: 'Money lent (IDR)', exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Money lent', exact: true })).toBeVisible();
 });
 
 test('a person\'s initial turns red when a loan is overdue, and stays grey with no date', async ({ page }) => {
@@ -511,7 +511,7 @@ test('a history line opens to be changed: the money lent, a collection, or takin
 
   // The collection, opened filled in and changed.
   await page.getByRole('button', { name: /^Collection · / }).click();
-  await expect(collectionSheet.getByLabel(/^Came back/)).toHaveValue(/^500000/);
+  await expect(collectionSheet.getByLabel(/^Came back/)).toHaveValue(/^500\.000/);
   await collectionSheet.getByLabel(/^Came back/).fill('700000');
   await collectionSheet.getByRole('button', { name: 'Save collection' }).click();
   await expect(hero).toContainText('4.300.000');
@@ -519,7 +519,7 @@ test('a history line opens to be changed: the money lent, a collection, or takin
   // The money lent cannot go below what has come back; it says so, and nothing changes.
   await page.getByRole('button', { name: /^Lent · / }).click();
   const lentSheet = page.getByRole('dialog', { name: 'Lent' });
-  await expect(lentSheet.getByLabel(/^Money lent/)).toHaveValue(/^5000000/);
+  await expect(lentSheet.getByLabel(/^Money lent/)).toHaveValue(/^5\.000\.000/);
   await lentSheet.getByLabel(/^Money lent/).fill('300000');
   await lentSheet.getByRole('button', { name: 'Save' }).click();
   await expect(lentSheet.getByText(/700\.000 has already come back, so the loan cannot be less than that/)).toBeVisible();

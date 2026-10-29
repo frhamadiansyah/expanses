@@ -11,8 +11,10 @@ import { EventsPage } from '../features/events/EventsPage';
 import { EditItemRoute, NewItemRoute } from '../features/events/ItemFormPage';
 import { ItemPage } from '../features/events/ItemPage';
 import { PickPurchasePage } from '../features/events/PickPurchasePage';
+import { EditSharedCostRoute, NewSharedCostRoute, SharedCostLinkPage, SharedCostPage } from '../features/events/SharedCostPages';
 import { EventCategoriesPage } from '../features/events/EventCategoriesPage';
 import { PeoplePage } from '../features/events/PeoplePage';
+import { EventSettingsPage } from '../features/events/EventSettingsPage';
 import { PlanPage } from '../features/events/PlanPage';
 import { BudgetPage } from '../features/budget/BudgetPage';
 import { budgetSearch } from '../features/budget/budget-search';
@@ -24,6 +26,7 @@ import { LifeCoverPage } from '../features/calculators/LifeCoverPage';
 import { RetirementFundPage } from '../features/calculators/RetirementFundPage';
 import { CaptureSettingsPage } from '../features/capture/CaptureSettingsPage';
 import { SourcePage } from '../features/capture/SourcePage';
+import { WayPage } from '../features/capture/WayPage';
 import { ImportPage } from '../features/import/ImportPage';
 import { ReviewPage } from '../features/review/ReviewPage';
 import { fromSearch, trackOrigin } from './from-search';
@@ -31,26 +34,31 @@ import { CardDetailPage } from '../features/cards/CardDetailPage';
 import { CardPointsCheckPage, CardPointsPage, CardPurchasesPage } from '../features/cards/CardPointsPage';
 import { EarnRulesPage, SpendBonusesPage } from '../features/cards/CardRulesPages';
 import { FeeWaiverPage, SpendBonusListPage, SpendBonusPage } from '../features/cards/SpendBonusPages';
+import { CardInstalmentsPage } from '../features/cards/CardInstalmentsPage';
 import { CardProductPage, CardSettingsPage } from '../features/cards/CardSettingsPage';
+import { CardByHandPage, CardCatalogPreviewPage } from '../features/cards/CardProductPages';
 import { CardStatementPage } from '../features/cards/CardStatementPage';
 import { WalletPage } from '../features/wallet/WalletPage';
 import { WalletReorderPage } from '../features/wallet/WalletReorderPage';
 import { ProgrammePage } from '../features/cards/ProgrammePage';
+import { ProgrammeCardPage } from '../features/cards/ProgrammeCardPage';
+import { ProgrammeExpiryPage } from '../features/cards/ProgrammeExpiryPage';
 import { PointsPage } from '../features/cards/PointsPage';
 import { RecommendPage } from '../features/cards/RecommendPage';
 import { CheckStatementPage, checkSearch } from '../features/statement-check/CheckStatementPage';
+import { ListCheckPage, listSearch } from '../features/statement-check/ListCheckPage';
 import { PickCardPage, sharedStatementSearch } from '../features/statement-check/PickCardPage';
 import { CategoriesPage } from '../features/categories/CategoriesPage';
 import { CategoryPage } from '../features/categories/CategoryPage';
 import { SetsPage } from '../features/categories/SetsPage';
 import { KitPage } from '../features/design/KitPage';
 import { MerchantsPage } from '../features/merchants/MerchantsPage';
-import { AddAccountPage } from '../features/ownables/AddAccountPage';
+import { AddAccountPage, AddMoneyAccountPage } from '../features/ownables/AddAccountPage';
 import { IncomePage } from '../features/investments/IncomePage';
 import { AllTradesPage } from '../features/investments/AllTradesPage';
 import { AddAssetPage } from '../features/ownables/AddAssetPage';
 import { addAssetSearch } from '../features/ownables/add-asset-search';
-import { AddDebtPage } from '../features/ownables/AddDebtPage';
+import { AddCardPage, AddDebtPage } from '../features/ownables/AddDebtPage';
 import { AssetDetailPage } from '../features/networth/AssetDetailPage';
 import { AssetSettingsRoute } from '../features/networth/AssetSettingsPage';
 import { EditAssetRoute } from '../features/networth/EditAssetPage';
@@ -72,12 +80,18 @@ import { OverviewPage } from '../features/networth/OverviewPage';
 import { UpdatePricesPage } from '../features/prices/UpdatePricesPage';
 import { BillFormPage, EditBillRoute } from '../features/bills/BillFormPage';
 import { BillRoute } from '../features/bills/BillPage';
+import { FundHistoryRoute } from '../features/bills/FundHistoryPage';
+import { EarlierMonthsRoute, LinkBillMonthRoute, LinkPurchaseRoute, LinkToBillRoute } from '../features/bills/LinkPurchasePages';
 import { RecurringPage } from '../features/bills/RecurringPage';
 import { YearlyBillsPage } from '../features/bills/YearlyBillsPage';
 import { DuplicateTransactionRoute, EditTransactionRoute, NewTransactionRoute } from '../features/transactions/FormPage';
 import { newTransactionSearch } from '../features/transactions/new-search';
 import { MoneyFlowPage, moneyFlowSearch } from '../features/transactions/MoneyFlow';
+import { PasteListPage } from '../features/transactions/PasteListPage';
+import { ReceiptSplitPage } from '../features/transactions/ReceiptSplitPage';
+import { ReceiptSplitStartPage } from '../features/transactions/ReceiptSplitStartPage';
 import { ActivityDetailPage } from '../features/activity/ActivityDetailPage';
+import { DefaultPaidWithPage } from '../features/account/DefaultPaidWithPage';
 import { ActivityPage } from '../features/activity/ActivityPage';
 import { ReceiptRoute } from '../features/transactions/ReceiptPage';
 import { TransactionsPage } from '../features/transactions/TransactionsPage';
@@ -87,6 +101,10 @@ import { SecurityPage } from '../features/investments/SecurityPage';
 import { SecurityPricePage } from '../features/investments/SecurityPricePage';
 import { DeveloperSettingsPage } from '../features/workspaces/DeveloperSettingsPage';
 import { WorkspacePage } from '../features/workspaces/WorkspacePage';
+import { MemberPage } from '../features/sharing/MemberPage';
+import { NetWorthPage } from '../features/sharing/NetWorthPage';
+import { NetWorthItemsPage } from '../features/sharing/NetWorthItemsPage';
+import { SharePage } from '../features/sharing/SharePage';
 import { AccountMenuPage } from '../features/account/AccountMenuPage';
 import { JoinPage } from '../features/sharing/JoinPage';
 import { SharedItemPage } from '../features/networth/SharedItemPage';
@@ -130,8 +148,11 @@ export interface EventPlanSearch {
   ws?: string;
 }
 
-/** The event screen itself: the same tab. "Buy it now" opens the Add screen now, so there is no item to carry here. */
-export type EventSearch = EventPlanSearch;
+/** The event screen itself: the same tab. "Pay now" opens the Add screen now, so there is no cost to carry here. */
+export interface EventSearch extends EventPlanSearch {
+  /** The shared trip's hero card to open on: the way back from a cost's pages lands on its Plan. */
+  card?: 'plan';
+}
 
 /** Choosing and reading a receipt: the item being answered is carried through both screens so Cancel knows the way back. */
 export interface EventLinkSearch extends EventPlanSearch {
@@ -141,7 +162,7 @@ export interface EventLinkSearch extends EventPlanSearch {
 const text = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
 
 const planSearch = (search: Record<string, unknown>): EventPlanSearch => ({ ws: text(search.ws) });
-const eventSearch = (search: Record<string, unknown>): EventSearch => ({ ws: text(search.ws) });
+const eventSearch = (search: Record<string, unknown>): EventSearch => ({ ws: text(search.ws), ...(search.card === 'plan' ? { card: 'plan' as const } : {}) });
 const linkSearch = (search: Record<string, unknown>): EventLinkSearch => ({ ws: text(search.ws), item: text(search.item) });
 
 /** The Categories list's tab, in the address so the way back from an income category lands on Income. */
@@ -191,10 +212,27 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/new', component: NewTransactionRoute, validateSearch: newTransactionSearch }),
   // The Money flow box, on a screen of its own and sideways: "flow" is static too, so it beats `$transactionId`.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/flow', component: MoneyFlowPage, validateSearch: moneyFlowSearch }),
+  // A list of purchases pasted as notes: "paste" is static too. `account` and `card` carry the form's Paid with.
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/transactions/paste',
+    component: PasteListPage,
+    validateSearch: (search: Record<string, unknown>): { account?: string; card?: string } => ({
+      ...(typeof search.account === 'string' && search.account ? { account: search.account } : {}),
+      ...(typeof search.card === 'string' && search.card ? { card: search.card } : {}),
+    }),
+  }),
+  // A restaurant bill divided by who had what, reached from With → By receipt: "receipt-split" is static too.
+  createRoute({ getParentRoute: () => rootRoute, path: '/transactions/receipt-split', component: ReceiptSplitPage }),
+  // The same split started from Account: who is sharing and the photo, then the pages above.
+  createRoute({ getParentRoute: () => rootRoute, path: '/transactions/receipt-split/start', component: ReceiptSplitStartPage }),
   // One transaction, whole.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId', component: ReceiptRoute }),
   // The card again, on one transaction — a phone's Edit, from the receipt or the row's swipe.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId/edit', component: EditTransactionRoute }),
+  // The same linking, from the purchase: which bill, then which month of it.
+  createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId/bill', component: LinkToBillRoute }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId/bill/$billId', component: LinkBillMonthRoute }),
   // The Add screen again, started from one transaction: Duplicate on a row's swipe, the receipt and the desktop's editor.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId/duplicate', component: DuplicateTransactionRoute }),
   // Spending was its own page; the chart it held now leads the transactions it adds up.
@@ -212,6 +250,15 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/new', component: () => <BillFormPage /> }),
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId', component: BillRoute, validateSearch: fromSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId/edit', component: EditBillRoute }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId/fund-history', component: FundHistoryRoute }),
+  // Linking a purchase already recorded to a bill's month, from the bill (`link` takes the month it is for).
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/bills/$billId/link',
+    component: LinkPurchaseRoute,
+    validateSearch: (search: Record<string, unknown>) => ({ ...fromSearch(search), month: typeof search.month === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(search.month) ? search.month : '' }),
+  }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId/earlier', component: EarlierMonthsRoute, validateSearch: fromSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events', component: EventsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId', component: EventDetailPage, validateSearch: eventSearch }),
   // The plan and its items: six screens, every one of them a real route, so a desktop reaches each by URL and by
@@ -219,6 +266,8 @@ const routeTree = rootRoute.addChildren([
   // MORE_GROUPS already. "link" is a static segment, so it outranks `$itemId` however they are ordered here.
   // A shared event's people (shared events §6): invite, add a name, a new phone, remove.
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/people', component: PeoplePage }),
+  // A private event's settings: the gear on its page (name, dates, categories, currency, Plan, Done, Share, Delete).
+  createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/settings', component: EventSettingsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/categories', component: EventCategoriesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan', component: PlanPage, validateSearch: planSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan/new', component: NewItemRoute, validateSearch: planSearch }),
@@ -226,6 +275,11 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan/link/$transactionId', component: CoverPage, validateSearch: linkSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan/$itemId', component: ItemPage, validateSearch: planSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan/$itemId/edit', component: EditItemRoute, validateSearch: planSearch }),
+  // A shared trip's costs: the same screens as above on the trip's own plan, which lives in its event book.
+  createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/shared-plan/new', component: NewSharedCostRoute }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/shared-plan/$itemId', component: SharedCostPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/shared-plan/$itemId/edit', component: EditSharedCostRoute }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/shared-plan/$itemId/link', component: SharedCostLinkPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators', component: CalculatorsPage }),
   // Each calculator is its own page, so the catalogue chooses and the page answers (one to a screen, not four).
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators/emergency', component: EmergencyFundPage }),
@@ -234,6 +288,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators/life-cover', component: LifeCoverPage }),
   // Before /accounts only for reading: a route is ranked by how specific its path is, never by where it sits here.
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/new', component: AddAccountPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/accounts/add', component: AddMoneyAccountPage }),
   // The Accounts page and the Cards tab are Wallet now (owner, 23 Oct): an old link or bookmark lands there.
   createRoute({
     getParentRoute: () => rootRoute,
@@ -288,6 +343,9 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/points/check', component: CardPointsCheckPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings', component: CardSettingsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/product', component: CardProductPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/product/listed/$entryId', component: CardCatalogPreviewPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/product/by-hand', component: CardByHandPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/instalments', component: CardInstalmentsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/rules', component: EarnRulesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/bonuses', component: SpendBonusesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/fee-waiver', component: FeeWaiverPage }),
@@ -300,11 +358,14 @@ const routeTree = rootRoute.addChildren([
   // page of its own beside the wallet. "points" is static, so it outranks the wallet's `$cardId`.
   // The programmes, listed: opened from Wallet's corner. Static, so it outranks the wallet's `$cardId` as well.
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/points', component: PointsPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/cards/points/$programmeId', component: ProgrammePage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/points/$programmeId', component: ProgrammePage, validateSearch: (search: Record<string, unknown>): { settings?: true } => (search.settings === true || search.settings === 'true' ? { settings: true } : {}) }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/points/$programmeId/card/$programId', component: ProgrammeCardPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/points/$programmeId/expiry', component: ProgrammeExpiryPage }),
   // A card's statement checked from screenshots (statement-check spec §3.4): a screen of its own over the wallet, as
   // Move is over an account. `batch` enters with screenshots the share sheet already read.
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/check', component: CheckStatementPage, validateSearch: checkSearch }),
   // Several statement screenshots shared from Photos, already read: which card they belong to, before the check (S2).
+  createRoute({ getParentRoute: () => rootRoute, path: '/statement/list', component: ListCheckPage, validateSearch: listSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/statement/shared', component: PickCardPage, validateSearch: sharedStatementSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth', component: OverviewPage }),
   // The ratios, on a screen of their own: Net worth's corner glyph opens it.
@@ -402,6 +463,7 @@ const routeTree = rootRoute.addChildren([
   // The debt picker stands on its own path: a debt is a card, a loan or money owed to a person, and each of them
   // lands somewhere different.
   createRoute({ getParentRoute: () => rootRoute, path: '/debts/new', component: AddDebtPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/new', component: AddCardPage }),
   // Debts — everything owed — keeps the address the Loans page had, so a loan's own page stays where it was.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans', component: DebtsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans/$accountId', component: LoanDetailPage }),
@@ -413,6 +475,10 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/backup/icloud', component: ICloudRestorePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account', component: AccountMenuPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId', component: WorkspacePage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share', component: SharePage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/net-worth', component: NetWorthPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/net-worth/items', component: NetWorthItemsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/members/$memberId', component: MemberPage }),
   // Settings was the page of workspaces; they live on the Account page now, so an old link lands there.
   createRoute({
     getParentRoute: () => rootRoute,
@@ -428,10 +494,12 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/developer', component: DeveloperSettingsPage }),
   // Capture: how to set the phone up, what it keeps, and what each source has learned. The row that reaches it is
   // iPhone-only (`isNative()`); the addresses themselves work everywhere, so the same pages can be shown on a desktop.
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings/default', component: DefaultPaidWithPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/activity', component: ActivityPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/activity/$id', component: ActivityDetailPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/capture', component: CaptureSettingsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/capture/sources/$sourceId', component: SourcePage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings/capture/ways/$way', component: WayPage }),
   // The design kit's specimen sheet. Deliberately not in `nav.ts`: it is a place to look at the primitives
   // before the routes adopt them, not a screen anyone navigates to.
   createRoute({ getParentRoute: () => rootRoute, path: '/design-kit', component: KitPage }),

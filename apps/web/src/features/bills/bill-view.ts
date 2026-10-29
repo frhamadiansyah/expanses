@@ -50,6 +50,9 @@ export interface BillSummary {
   variesText: string | null;
   /** What the total is made of, for the bar and its key: only the parts with money in them. */
   parts: { key: 'overdue' | 'dueSoon'; label: string; minor: number; approximate: boolean }[];
+  /** What was paid this month, and so what the whole month came to once the rest is added: skipped and paused bills count for nothing. */
+  paidMinor: number;
+  monthTotalMinor: number;
   allSettled: boolean;
   /** Nothing to pay because every bill is paused, which is not the same as all paid. */
   allPaused: boolean;
@@ -68,6 +71,8 @@ export function summaryOf(rows: readonly MonthlyBill[], today: string): BillSumm
     approximate: varying > 0,
     variesText: varying > 0 ? variesWords(varying) : null,
     parts: groups.filter((g) => sum(g.rows) > 0).map((g) => ({ key: g.key, label: g.label, minor: sum(g.rows), approximate: anyVaries(g.rows) })),
+    paidMinor: sum(rows.filter((b) => b.state === 'paid')),
+    monthTotalMinor: sum(open) + sum(rows.filter((b) => b.state === 'paid')),
     allSettled: open.length === 0,
     allPaused: open.length === 0 && rows.length > 0 && rows.every(isPaused),
   };
@@ -173,6 +178,34 @@ export const PILL_CLASS: Record<BillTone, string> = {
 export function pillOf(bill: Pick<MonthlyBill, 'state' | 'days' | 'window' | 'paidOn'>): { text: string; className: string } {
   const pill = billPill({ state: bill.state, days: bill.days }, bill.window, bill.paidOn);
   return { text: pill.text, className: PILL_CLASS[pill.tone] };
+}
+
+/**
+ * The line under the amount on a bill's own page: where the bill stands, then its dates. The standing is the pill's own
+ * wording (`pillOf`), now written in the line rather than in a pill; only a late or soon bill's words take a colour.
+ * A bill not out yet reads "Due 10 Nov 2026 · opens 5 Nov"; a late one "Overdue 18 days · due 10 Oct 2026".
+ */
+export function heroLineOf(
+  bill: Pick<MonthlyBill, 'state' | 'days' | 'window' | 'paidOn'>,
+  windowText: string,
+): { lead: string | null; tone: 'alarm' | 'warn' | 'ink-3'; rest: string } {
+  const { text } = pillOf(bill);
+  const { payBy, opensOn } = bill.window;
+  const due = `${dayMonth(payBy)} ${payBy.slice(0, 4)}`;
+  switch (bill.state) {
+    case 'overdue':
+      return { lead: text, tone: 'alarm', rest: `due ${due}` };
+    case 'dueSoon':
+      return { lead: text, tone: 'warn', rest: `due ${due}` };
+    case 'upcoming':
+      return { lead: null, tone: 'ink-3', rest: opensOn === payBy ? windowText : `Due ${due} · opens ${dayMonth(opensOn)}` };
+    case 'paid':
+    case 'skipped':
+    case 'paused':
+      return { lead: text, tone: 'ink-3', rest: windowText };
+    default:
+      return { lead: null, tone: 'ink-3', rest: windowText };
+  }
 }
 
 /**

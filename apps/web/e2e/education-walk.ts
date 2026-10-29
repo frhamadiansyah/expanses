@@ -14,7 +14,7 @@ export async function typeInto(page: Page, label: string, text: string) {
 export async function addEducationGoal(page: Page) {
   await page.goto('/goals');
   await openGoalForm(page, 'Education');
-  await typeInto(page, "Cost in today's money (IDR)", '1000000');
+  await typeInto(page, "Cost in today's money", '1000000');
   await page.getByRole('button', { name: 'Save goal' }).last().click();
   // The save lands as a row on the list, and every step after this reads the goal's own page: its working, its
   // stages, its figures — so the goal is opened here, once.
@@ -49,8 +49,8 @@ export async function twoLevelsWalk(page: Page) {
   await expect(page.getByLabel('Other is paid', { exact: true })).toHaveValue('once');
   await typeInto(page, 'Starts in year', '2032');
   await typeInto(page, 'Until year', '2038');
-  await typeInto(page, 'Enrollment today (IDR)', '45000000');
-  await typeInto(page, 'Academic today (IDR)', '20000000');
+  await typeInto(page, 'Enrollment today', '45000000');
+  await typeInto(page, 'Academic today', '20000000');
   await expect(page.getByText('2032 to 2038 · due 1 January each year')).toBeVisible();
   await page.getByRole('button', { name: 'Use this amount' }).click();
 
@@ -61,11 +61,11 @@ export async function twoLevelsWalk(page: Page) {
   // The saved levels come back: the second working starts from the first, not from nothing.
   await openWorking(page);
   await expect(page.getByLabel('Starts in year', { exact: true })).toHaveValue('2032');
-  await expect(page.getByLabel('Enrollment today (IDR)', { exact: true })).toHaveValue('45000000');
+  await expect(page.getByLabel('Enrollment today', { exact: true })).toHaveValue('45.000.000');
   await page.getByRole('button', { name: 'Add a level' }).click();
   await typeInto(page, 'Starts in year', '2038');
   await typeInto(page, 'Until year', '2041');
-  await typeInto(page, 'Academic today (IDR)', '30000000');
+  await typeInto(page, 'Academic today', '30000000');
   await page.getByRole('button', { name: 'Use this amount' }).click();
 
   await expect(stageLines(page)).toHaveCount(9);

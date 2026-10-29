@@ -44,7 +44,7 @@ let origin: string | null = null;
 
 /** A receipt (`/transactions/<id>`), its edit or its duplicate, and the Add screen, which no receipt is opened from; "flow" is a screen of its own. */
 export function isTransactionDetail(pathname: string): boolean {
-  return /^\/transactions\/(?!flow$)[^/]+(\/(edit|duplicate))?\/?$/.test(pathname);
+  return /^\/transactions\/(?!flow$)[^/]+(\/(edit|duplicate|bill(\/[^/]+)?))?\/?$/.test(pathname);
 }
 
 /** Called once with the router: remembers each location that is not a transaction's own screen. */

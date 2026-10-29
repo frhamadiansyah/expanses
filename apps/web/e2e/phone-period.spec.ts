@@ -37,16 +37,12 @@ test('the list narrows by what paid, beside the sort, and a chip takes it off ag
   await page.goto('/transactions');
   // The filter is a control of the list itself now: the icon beside the sort it shares a row with, offering only
   // what can pay — the account's own row is a choice, a locked deposit would not be.
-  await page.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('option', { name: /BCA Tahapan/ }).click();
+  await page.getByRole('button', { name: 'Sort and filter' }).click();
+  await page.getByRole('menuitem', { name: /^Paid with/ }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: /BCA Tahapan/ }).click();
 
-  // And ⋯ is left with what only ⋯ can do: the workspace, and what the list reveals.
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  const menu = page.getByTestId('filters-menu');
-  await expect(menu).not.toContainText('Paid with');
-  await expect(menu).not.toContainText('Not recorded');
-  // A tap outside the menu, low on the screen: the menu (with Select in it) now reaches past the middle.
-  await page.getByRole('button', { name: 'Close filters' }).click({ position: { x: 12, y: 600 } });
+  // The sort and filter menu closes once a choice is made.
+  await expect(page.getByTestId('sort-filter-menu')).toHaveCount(0);
 
   const chips = page.getByTestId('active-filters');
   await expect(chips).toContainText('Paid with BCA Tahapan');

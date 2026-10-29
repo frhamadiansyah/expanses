@@ -2,7 +2,7 @@
   "id": "maybank-mini",
   "entryVersion": 3,
   "bank": "Maybank",
-  "name": "MINI Maybank Kartu Kredit",
+  "name": "Maybank MINI",
   "network": "visa",
   "currency": "IDR",
   "program": {

@@ -47,7 +47,6 @@ export async function oneOfEach(page: Page) {
   await type(page, 'Billing date', '31');
   await type(page, 'Due date', '15');
   await saveCardTerms(page);
-  await expect(page.getByText('Step 2 of 3')).toBeVisible();
   for (const [description, amount, date] of [
     ['Hotel Mulia', '2000000', LAST_MONTH],
     ['Superindo', '450000', TODAY],

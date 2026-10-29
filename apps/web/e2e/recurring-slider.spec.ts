@@ -13,8 +13,8 @@ test('Recurring slides from Monthly to Repeating: its hero, and one list of the 
 
   await showRepeating(page);
   const hero = page.getByTestId('repeating-summary');
-  await expect(hero).toContainText('Set aside · per month');
-  await expect(hero).toContainText('No sinking funds yet');
+  await expect(hero).toContainText('Needed · per month');
+  await expect(hero).toContainText('Not set aside');
   await expect(page.getByTestId('bill-row')).toHaveCount(0);
   const domain = page.getByTestId('yearly-bill-row').filter({ hasText: 'Domain' });
   await expect(domain).toContainText('3.000.000');
@@ -52,6 +52,6 @@ test('the arrow keys and a scroll of the hero change the page too', async ({ pag
 test('with nothing repeating, the Repeating list says so', async ({ page }) => {
   await page.goto('/bills');
   await showRepeating(page);
-  await expect(page.getByTestId('repeating-summary')).toContainText('No sinking funds yet');
+  await expect(page.getByTestId('repeating-summary')).toContainText('No repeating bills yet');
   await expect(page.getByTestId('repeating-empty')).toContainText('No repeating bills yet');
 });

@@ -27,6 +27,10 @@ function Screen({ children }: { children: ReactNode }) {
   );
 }
 
+/** Where the stack sits in the history, kept for as long as the reader stays in the wallet's pages. */
+let stackAt: number | null = null;
+let watching = false;
+
 /** How many days of history the Balance box's line is drawn over. */
 const SPARK_DAYS = 30;
 
@@ -136,14 +140,21 @@ export function WalletPage() {
    * the app. Where the stack was is the history's own index.
    */
   const at = () => (router.history.location.state as { __TSR_index?: number }).__TSR_index ?? 0;
-  const stackAt = useRef<number | null>(null);
   useEffect(() => {
-    if (openId === undefined) stackAt.current = at();
+    if (openId === undefined) stackAt = at();
+    if (!watching) {
+      watching = true;
+      // A page the card opens (its statement) unmounts this one and back remounts it: the stack's place in the history
+      // is kept across that, and let go once the reader is anywhere that is not the wallet's or a card's own.
+      router.subscribe('onResolved', ({ toLocation }) => {
+        if (!/^\/(wallet|cards|accounts)(\/|$)/.test(toLocation.pathname)) stackAt = null;
+      });
+    }
   });
   const close = () => {
     const now = at();
-    if (stackAt.current !== null && now > stackAt.current) router.history.go(stackAt.current - now);
-    else if (stackAt.current === null && router.history.canGoBack()) router.history.back();
+    if (stackAt !== null && now > stackAt) router.history.go(stackAt - now);
+    else if (stackAt === null && router.history.canGoBack()) router.history.back();
     else void navigate({ to: '/wallet' });
   };
   // Opening a card moves focus to its heading, so a reader lands on the card they chose.
@@ -166,7 +177,7 @@ export function WalletPage() {
 
   /*
    * The corners: the View button — a tap steps pile, grid, one at a time — the Points page,
-   * then ＋ (money to spend from, or a credit card, each through its own door), and the card tools the Cards tab had,
+   * then ＋ (the New account page, whose Type row also reaches a credit card), and the card tools the Cards tab had,
    * which wait behind the ⋯.
    */
   const actions: CornerAction[] = [
@@ -183,10 +194,7 @@ export function WalletPage() {
       key: 'add',
       label: 'Add',
       glyph: <Plus size={22} aria-hidden />,
-      menu: [
-        { key: 'money', label: 'Money account', to: '/accounts/new' },
-        { key: 'card', label: 'Credit card', to: '/debts/new' },
-      ],
+      to: '/accounts/add',
     },
     // The cards put in an order by hand: one list, money and credit cards mixed, read by all three views.
     { key: 'reorder', label: 'Reorder cards', glyph: <ArrowUpDown size={18} aria-hidden />, to: '/wallet/reorder' },

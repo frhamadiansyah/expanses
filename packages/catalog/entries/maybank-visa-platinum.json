@@ -2,7 +2,7 @@
   "id": "maybank-visa-platinum",
   "entryVersion": 3,
   "bank": "Maybank",
-  "name": "Maybank Kartu Kredit Visa Platinum",
+  "name": "Maybank Visa Platinum",
   "network": "visa",
   "currency": "IDR",
   "program": {

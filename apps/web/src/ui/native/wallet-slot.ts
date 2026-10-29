@@ -14,6 +14,11 @@ export interface WalletSlot {
   /** Which of the account's plastic cards the raised card shows — the page's dots choose it. */
   setShown: (face: { last4: string | null; holderName?: string | null; spent?: string | null } | null) => void;
   /**
+   * A page with several plastic cards says how a swipe steps through them (true when it moved), and null when it has
+   * one: the raised card then follows a horizontal swipe, and a swipe is never also a tap.
+   */
+  setSwipe: (step: ((by: 1 | -1) => boolean) | null) => void;
+  /**
    * The back of the raised card, for a page that has something to show on it (an account's balance): the element it
    * portals into, null until the card has mounted it. A page with no back never touches it.
    */

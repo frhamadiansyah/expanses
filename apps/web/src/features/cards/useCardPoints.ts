@@ -1,6 +1,8 @@
 import { type CatalogEntry, findEntry } from '@expanses/catalog';
 import {
   bestRedemption,
+  pointsWorth,
+  type PointsWorth,
   categoryAncestors,
   computeCycleEarn,
   type Cycle,
@@ -24,6 +26,7 @@ import {
   type Database,
   getCardTerms,
   getCatalogState,
+  getProgrammeValuePerPoint,
   listCycleActuals,
   listCycleBonuses,
   listEarnRules,
@@ -57,6 +60,10 @@ export interface CardPoints {
   rules: EarnRule[];
   redemptions: RedemptionOptionRow[];
   best: Redemption | null;
+  /** The programme's own value per point (0105), scaled; null when none is set. */
+  valuePerPoint: number | null;
+  /** The workspace's base currency, which that value is in. */
+  baseCurrency: string;
   bonuses: CycleBonus[];
   transferPartners: TransferPartner[];
   catalog: CatalogState & { entry: CatalogEntry | undefined };
@@ -73,8 +80,9 @@ export function expenseAncestors(accounts: AccountRow[]): Record<string, string[
   return categoryAncestors(accounts.filter((a) => a.kind === 'expense'));
 }
 
-export function pointsValue(points: number, best: Redemption | null): number | null {
-  return best ? Math.floor((points * best.valueMinor) / best.perPoints) : null;
+/** What a count of a card's points is worth: its programme's value per point, else the card's best redemption option. */
+export function pointsValue(points: number, cp: Pick<CardPoints, 'best' | 'valuePerPoint' | 'baseCurrency'>): PointsWorth | null {
+  return pointsWorth(points, cp.valuePerPoint, cp.best, cp.baseCurrency);
 }
 
 /** Loads a card's reward setup and derives earn for the cycle containing `onDate` and the one before it. */
@@ -88,20 +96,21 @@ export async function loadCardPoints(
   const terms = await getCardTerms(database, ws, card.id);
   const program = (await listPrograms(database, ws)).find((p) => p.cardAccountId === card.id);
   const programme = program ? await programmeOfCard(database, ws, program.id) : undefined;
-  const empty: CardPoints = { card, terms, program, programme, rules: [], redemptions: [], best: null, bonuses: [], transferPartners: [], catalog: NO_CATALOG, crediting: 'per_statement', transactionActuals: [], current: null, previous: null };
+  const empty: CardPoints = { card, terms, program, programme, rules: [], redemptions: [], best: null, valuePerPoint: null, baseCurrency: ws.baseCurrency, bonuses: [], transferPartners: [], catalog: NO_CATALOG, crediting: 'per_statement', transactionActuals: [], current: null, previous: null };
   if (!program) return empty;
 
   const rules = await listEarnRules(database, ws, program.id);
   const redemptions = await listRedemptionOptions(database, ws, program.id);
   const actuals = await listCycleActuals(database, ws, program.id);
   const best = bestRedemption(redemptions.map(toRedemption));
+  const valuePerPoint = programme ? await getProgrammeValuePerPoint(database, ws, programme.id) : null;
   const bonuses = await listCycleBonuses(database, ws, program.id);
   const transferPartners = await listTransferPartners(database, ws, program.id);
   const state = await getCatalogState(database, ws, program.id);
   const catalog = { ...state, entry: state.entryId ? findEntry(state.entryId) : undefined };
   const transactionActuals = await listTransactionPointActuals(database, ws, program.id);
   const crediting = program.crediting;
-  if (program.cycleAnchor === 'statement' && !terms) return { ...empty, rules, redemptions, best, bonuses, transferPartners, catalog, crediting, transactionActuals };
+  if (program.cycleAnchor === 'statement' && !terms) return { ...empty, rules, redemptions, best, valuePerPoint, bonuses, transferPartners, catalog, crediting, transactionActuals };
 
   const ancestors = expenseAncestors(accounts);
   const statementDay = terms?.statementDay ?? 1;
@@ -119,7 +128,7 @@ export async function loadCardPoints(
   const currentCycle = cycleFor(onDate, program.cycleAnchor, statementDay);
   const current = await load(currentCycle);
   const previous = await load(previousCycle(currentCycle, program.cycleAnchor, statementDay));
-  return { card, terms, program, programme, rules, redemptions, best, bonuses, transferPartners, catalog, crediting, transactionActuals, current, previous };
+  return { card, terms, program, programme, rules, redemptions, best, valuePerPoint, baseCurrency: ws.baseCurrency, bonuses, transferPartners, catalog, crediting, transactionActuals, current, previous };
 }
 
 export const shortDate = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });

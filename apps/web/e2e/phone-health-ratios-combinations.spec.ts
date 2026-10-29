@@ -100,16 +100,16 @@ test('row 7 — a weekly line overridden for one month keeps its unit, and next 
 });
 test('row 9 — a workspace that reads in dollars types and converts in cents', async ({ page }) => {
   // A phone reaches the workspaces from Cashflow's ⋯.
-  await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await page.getByTestId('filters-menu').getByTestId('workspace-row').click();
-  await page.getByRole('dialog', { name: 'Workspaces' }).getByRole('button', { name: 'New workspace' }).click();
+  await page.goto('/account');
+  await page.getByTestId('add-workspace').click();
+  await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Studio');
   await sheet.getByLabel('Starts with').selectOption({ label: 'Copy from Personal' });
   await sheet.getByLabel('Reads in').selectOption('USD');
   await sheet.getByRole('button', { name: 'Create workspace' }).click();
   await expect(sheet).toHaveCount(0);
+  await page.goto('/transactions');
 
   await page.goto('/budget');
   const screen = await openEditBudgets(page);
@@ -138,7 +138,7 @@ test('row 11 — the sections hold: a holiday never lists under compulsory', asy
   // The 15 jt is the goal's cost in today's money: the list and the card read it grown to its date, so it is read
   // where it was typed, in the goal's own form.
   await editGoal(await goalCard(page, 'Holiday'));
-  await expect(page.getByLabel(/Cost in today's money/).first()).toHaveValue('15000000');
+  await expect(page.getByLabel(/Cost in today's money/).first()).toHaveValue('15.000.000');
 });
 
 test('row 13 — the card grades against the household’s own months', async ({ page }) => {

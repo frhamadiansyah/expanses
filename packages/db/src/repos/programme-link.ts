@@ -76,3 +76,24 @@ export async function findProgramme(db: Db, ws: WorkspaceContext, programmeId: s
     .where(and(eq(pointProgrammes.id, programmeId), eq(pointProgrammes.workspaceId, ws.workspaceId)));
   return row;
 }
+
+/*
+ * value per point (0105) is read and written by name, like tier (0088): a database stopped before it has no such column,
+ * and there no programme has a value. It is a scaled integer, minor units × 10 000 per point (see core's worth.ts).
+ */
+const valueColumn = new WeakMap<object, boolean>();
+export async function valueColumnExists(tx: Db): Promise<boolean> {
+  if (valueColumn.get(tx)) return true;
+  const rows = await tx.values<[number]>(sql`SELECT 1 FROM pragma_table_info('point_programmes') WHERE name = 'value_per_point_e4'`);
+  if (rows.length > 0) valueColumn.set(tx, true);
+  return rows.length > 0;
+}
+
+/** Each live programme's value per point (0105), scaled, by programme id; only those that have one. */
+export async function readProgrammeValues(database: { db: Db }, ws: WorkspaceContext): Promise<Record<string, number>> {
+  if (!(await valueColumnExists(database.db))) return {};
+  const rows = await database.db.values<[string, number]>(
+    sql`SELECT id, value_per_point_e4 FROM point_programmes WHERE workspace_id = ${ws.workspaceId} AND value_per_point_e4 IS NOT NULL AND archived_at IS NULL`,
+  );
+  return Object.fromEntries(rows.map(([id, value]) => [id, Number(value)]));
+}

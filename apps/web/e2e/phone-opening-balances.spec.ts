@@ -9,11 +9,8 @@ test('opening balances stay out of the list, and the menu no longer offers to sh
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '5000000' });
   await page.goto('/transactions');
   const opening = page.getByTestId('transaction-row').filter({ hasText: 'Opening balance' });
-  await expect(page.getByRole('button', { name: 'Filters', exact: true })).toBeVisible();
   await expect(opening).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await expect(page.getByRole('menu')).toBeVisible();
   await expect(page.getByRole('menuitemcheckbox', { name: 'Show opening balances' })).toHaveCount(0);
   await expect(page.getByText('Show opening balances')).toHaveCount(0);
 

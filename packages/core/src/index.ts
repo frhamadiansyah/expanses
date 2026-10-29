@@ -38,6 +38,8 @@ export {
   wholeFromHundredths,
 } from './money/money';
 export { type AmountOptions, evaluateAmount, evaluateExact } from './money/keypad';
+export { groupedMajorString, parseGroupedMajor } from './money/grouped';
+export { parsePurchaseList, type ParsePurchaseListOptions, type PurchaseLine, type PurchaseLineStatus } from './entry/purchase-list';
 export { exchangeCost, type ExchangeCost, impliedRate, sumToBase } from './money/exchange';
 export { zipStore, unzipStore } from './backup/zip';
 export {
@@ -125,6 +127,7 @@ export {
   ruleMatches,
   type SpendLine,
 } from './points/earn';
+export { comparisonRedemption, pointsWorth, type PointsWorth, parseValuePerPoint, formatValuePerPoint, groupTypedValue, valuePerPointText, VALUE_PER_POINT_SCALE } from './points/worth';
 export {
   bestRedemption,
   type CardCandidate,
@@ -136,6 +139,7 @@ export {
 } from './points/recommend';
 export { containsKeyword } from './text/keywords';
 export { CARD_FEE_PHRASES, cardFeeCategoryIds, isCardFee } from './points/card-fees';
+export { type PlasticRef, purchasesForPlastic } from './points/plastic';
 export { candidateMccs, type CycleContext, explainCycle, explainTransaction, type Suggestion } from './points/explain';
 export {
   capInPoints,
@@ -318,7 +322,28 @@ export {
   spreadOver,
   wholeSince,
 } from './goals/set-aside';
-export { monthsBetween, type SinkingFundFacts, type SinkingPlan, type SinkingProgress, sinkingPlan, sinkingProgress } from './bills/sinking';
+export {
+  monthlyAt,
+  monthsBetween,
+  recalcMonthly,
+  type SinkingEntry,
+  type SinkingEntryKind,
+  type SinkingExtraPreview,
+  type SinkingFundFacts,
+  type SinkingHistoryRow,
+  type SinkingMonth,
+  type SinkingPlan,
+  type SinkingProgress,
+  type SinkingSaveInput,
+  type SinkingSaveResult,
+  sinkingExtraPreview,
+  sinkingHistory,
+  sinkingPlan,
+  sinkingProgress,
+  sinkingRecalc,
+  sinkingSavePlan,
+  withPlan,
+} from './bills/sinking';
 export { formatLots, lotsOf, unitsFromLots } from './assets/units';
 export { type GoldPriceChoice, GRAMS_PER_TROY_OUNCE, gramPriceMicroFromOunce, type PriceSource, wantsWorldPrice } from './assets/world-gold';
 export {
@@ -394,7 +419,7 @@ export {
 } from './coretax/review';
 export { csvColumns, toReportCsv } from './coretax/export';
 export { bankMatches, INDONESIAN_BANKS, type IndonesianBank } from './coretax/banks';
-export { accountDisplayName, BANK_NAMED_SUBTYPES, shortBankName } from './assets/account-name';
+export { accountDisplayName, BANK_NAMED_SUBTYPES, bankNameWords, shortBankName } from './assets/account-name';
 export { brokerMatches, INDONESIAN_BROKERS, type IndonesianBroker } from './coretax/brokers';
 export { goldBrandMatches, INDONESIAN_GOLD_BRANDS, WORLD_GOLD_BRANDS, type GoldMaker } from './assets/gold-brands';
 export { fundPlaceMatches, INDONESIAN_FUND_APPS, type FundPlace } from './assets/fund-places';
@@ -466,6 +491,7 @@ export {
   type EntrySource,
   type ExpiryPolicy,
   expiresOn,
+  expiryLots,
   feeRoi,
   type FeeRoi,
   type FeeRoiInput,
@@ -503,8 +529,21 @@ export {
   type EventPlanItemInput,
   type EventPlanItemView,
   type EventPlanLine,
+  type EventPlanMoney,
   type EventPlanUnplanned,
 } from './events/plan';
+export {
+  canChangeEventCurrency,
+  type Converter,
+  eventCurrency,
+  itemCurrency,
+  makeConverter,
+  missingCurrencies,
+  NO_RATES,
+  purchaseTotalIn,
+  type RateRow,
+  shareIn,
+} from './events/currency';
 export {
   addMonthsToDate,
   DEFAULT_TAX_BPS,
@@ -551,10 +590,15 @@ export { capturedDayOf, findDateTime } from './capture/date';
 export { appNameOfScreen, fingerprintOf, sameSource } from './capture/fingerprint';
 export { accountHintOf, namesCard, paymentMethodOf, readCapture } from './capture/read';
 export { readReceipt, type ReceiptFill } from './capture/receipt';
+export { readReceiptLines, type ReceiptCharge, type ReceiptItem, type ReceiptLinesReading } from './capture/receipt-lines';
+export { type ChargeKind } from './capture/receipt-words';
+export { allocateByWeights, type ReceiptShares, splitReceipt, type SplitCharge, type SplitItem } from './debts/receipt-split';
 export { type Anchor, type CaptureKind, type CaptureLine, type Field, type MoveType, type RawCapture, type ReadAmount, type Reading, type Template, type WordList } from './capture/types';
 export { WORDS } from './capture/words';
 export { type Candidate, looksLikeRefund, type MatchOptions, type MatchResult, matchStatement, type RowOutcome } from './statement/match';
 export { categoryKeyOf, merchantKeyOf, readStatement } from './statement/read';
+export { type ListReading, type ListRow, readTransactionList } from './statement/list';
+export { type ListCandidate, type ListMatch, type ListOutcome, matchList } from './statement/list-match';
 export { readsAsStatement, STATEMENT_SHAPE_ROWS } from './statement/shape';
 export { STATEMENT_WORDS, type StatementWords } from './statement/words';
 export type { StatementPeriod, StatementReading, StatementRow } from './statement/types';

@@ -9,13 +9,16 @@ import {
   CreditCard,
   History,
   FileSpreadsheet,
+  HandCoins,
   PiggyBank,
+  Receipt,
   Smartphone,
   Sparkles,
   TrendingUp,
   Store,
   Tags,
   UserRound,
+  WalletCards,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -55,8 +58,9 @@ export const ACCOUNT_TAB: NavItem = { to: '/account', label: 'Account', icon: Us
 export const SETTINGS_ITEMS: readonly NavItem[] = [
   { to: '/settings/capture', label: 'Capture', icon: Smartphone },
   { to: '/backup', label: 'Backup', icon: ArrowDownToLine },
-  { to: '/settings/activity', label: 'Activity', icon: History, note: 'What was changed, and undo' },
-  { to: '/import', label: 'Import CSV', icon: ArrowUpFromLine },
+  { to: '/settings/activity', label: 'Activity', icon: History },
+  { to: '/settings/default', label: 'Default', icon: WalletCards },
+  { to: '/import', label: 'Import', icon: ArrowUpFromLine },
 ] as const;
 
 /** The rest of the Account page, grouped the way it is looked for. */
@@ -71,6 +75,9 @@ export const MORE_GROUPS: readonly NavGroup[] = [
       // No "Add a debt" here. This page is a list of places, and a debt is added from the screens that list debts:
       // the Debts page's own +, and Lend & borrow's Add a loan. A door among the places made one line of this menu
       // open a form where every other line opens a screen.
+      // Money lent and borrowed lives here rather than in Cashflow's ⋯ menu, which is left to the workspace.
+      { to: '/net-worth/lend-borrow', label: 'Lend & borrow', icon: HandCoins },
+      { to: '/transactions/receipt-split/start', label: 'Split a receipt', icon: Receipt },
       { to: '/categories', label: 'Categories', icon: Tags },
     ],
   },

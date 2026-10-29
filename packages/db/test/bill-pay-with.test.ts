@@ -3,7 +3,9 @@ import {
   createAccount,
   listAccounts,
   listSinkingFunds,
+  billDetail,
   listTransactions,
+  monthlyBills,
   nativeBalances,
   recordBillPayments,
   saveExpenseTemplate,
@@ -95,4 +97,16 @@ it('on a card for all, only the bill that was saving up pays the card from its f
   expect((after[h.savings.id] ?? 0) - (before[h.savings.id] ?? 0)).toBe(-3_750_000);
   expect(after[h.bca.id]).toBe(before[h.bca.id]);
   expect(await listSinkingFunds(h.database.db, h.ws)).toEqual([]);
+});
+
+it('a paid bill names the account that paid it, not its default', async () => {
+  const h = await setup();
+  await recordBillPayments(h.database, h.ws, {
+    paidOn: '2026-11-12',
+    payments: [{ templateId: h.internet, billMonth: '2026-11', amountMinor: 450_000, moneyAccountId: h.card.id }],
+  });
+  const detail = await billDetail(h.database, h.ws, h.internet, '2026-11-12');
+  expect(detail.history.find((row) => row.month === '2026-11')!.paidFromAccountId).toBe(h.card.id);
+  const other = (await monthlyBills(h.database, h.ws, '2026-11-12')).find((b) => b.id === h.life)!;
+  expect(other.paidFromAccountId).toBeNull();
 });

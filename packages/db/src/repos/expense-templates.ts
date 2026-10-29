@@ -10,6 +10,9 @@ import {
   isOwedMonth,
   expenseLines,
   sinkingPlan,
+  sinkingProgress,
+  type SinkingSaveResult,
+  sinkingSavePlan,
   transferLines,
   isoDate,
   monthOf,
@@ -28,7 +31,9 @@ import { bookCategories, books } from '../schema-books';
 import { billPauses, billPayments, billSkips, billWindows, expenseTemplates } from '../schema-recurring';
 import { billCurrencies, writeBillCurrency } from './bill-currency';
 import { type BillRepeatFacts, billRepeats, writeBillRepeat } from './bill-repeat';
-import { dropSinkingFund, getSinkingFund, writeSinkingFund } from './sinking-funds';
+import { fundRoom, fundShortMessage } from './sinking-actions';
+import { dropSinkingFund, getSinkingFund, moveSinkingFund, type SinkingFundRow, setSinkingCustom, writeSinkingFund, writeSinkingOpening, writeSinkingPlan } from './sinking-funds';
+import { sinkingFactsOf } from './sinking-views';
 import { BILL_MONTH, billPausesExist, billTablesExist } from './bill-months';
 import { withCapture } from '../sync/capture';
 import { bookMoneyFor, type Unconverted } from './book-currency';
@@ -99,7 +104,12 @@ export interface SaveExpenseTemplateInput {
    * A yearly bill's sinking fund (0101): the account it is set aside in and the monthly figure (worked out from the
    * amount and the months left when absent). Null turns the fund off; absent leaves an edited bill's as it was.
    */
-  fund?: { accountId: string; monthlyMinor?: number | null } | null;
+  fund?: {
+    accountId: string;
+    monthlyMinor?: number | null;
+    /** 'Already saved': money put by before the fund was set up. Absent leaves it as it was; 0 or null clears it. */
+    alreadySavedMinor?: number | null;
+  } | null;
 }
 
 const toRow = (
@@ -140,6 +150,84 @@ async function accountKind(db: Db, ws: WorkspaceContext, accountId: string): Pro
   return row?.kind;
 }
 
+/** The month a bill's window starts, as stored; `fallback` for a bill without one. */
+async function storedStartsMonth(db: Db, id: string, fallback: string): Promise<string> {
+  if (!(await billTablesExist(db))) return fallback;
+  const [window] = await db.select({ startsMonth: billWindows.startsMonth }).from(billWindows).where(eq(billWindows.templateId, id));
+  return window?.startsMonth ?? fallback;
+}
+
+interface FundPlan {
+  accountId: string;
+  existing: SinkingFundRow | null;
+  result: SinkingSaveResult;
+}
+
+/**
+ * Works out what saving the form does to a yearly bill's sinking fund, and refuses it when the account cannot hold
+ * what the fund promises right now (already saved plus this month's amount): the account's free money (balance minus
+ * every other promise, this bill's own claim left out) must cover it. Only NOW is checked, never the months to come:
+ * later months are a plan, and a plan that outgrows the account shows as a shortage on the set-aside view.
+ */
+async function planFund(
+  database: Database,
+  ws: WorkspaceContext,
+  input: SaveExpenseTemplateInput,
+  ctx: { id: string; yearlyMonth: number; repeatNow: BillRepeatFacts | null; amountMinor: number | null; today: string; startsMonth: string; oldAmountMinor: number | null },
+): Promise<FundPlan> {
+  const fund = input.fund!;
+  const { amountMinor, today } = ctx;
+  if (amountMinor === null) throw new RecurringError('FUND_AMOUNT', 'A sinking fund needs a fixed amount');
+  const db = database.db;
+  const [fundAccount] = await db
+    .select({ kind: accounts.kind, currency: accounts.currency })
+    .from(accounts)
+    .where(and(eq(accounts.id, fund.accountId), eq(accounts.workspaceId, ws.workspaceId)));
+  if (!fundAccount || fundAccount.kind !== 'asset') throw new RecurringError('FUND_ACCOUNT', 'Choose an account to set the money aside in');
+  const fundCurrency = fundAccount.currency ?? ws.baseCurrency;
+  const own = input.currency !== undefined ? input.currency : ((await billCurrencies(db, ws)).get(ctx.id) ?? null);
+  const billCurrency = own ?? (await accountCurrency(db, ws, input.moneyAccountId)) ?? ws.baseCurrency;
+  if (fundCurrency !== billCurrency) throw new RecurringError('FUND_CURRENCY', `Set the money aside in an account in ${billCurrency}`);
+  if (fund.monthlyMinor != null && !(Number.isSafeInteger(fund.monthlyMinor) && fund.monthlyMinor > 0)) {
+    throw new RecurringError('FUND_MONTHLY', 'Enter the amount to set aside each month');
+  }
+  if (fund.alreadySavedMinor != null && !(Number.isSafeInteger(fund.alreadySavedMinor) && fund.alreadySavedMinor >= 0)) {
+    throw new RecurringError('FUND_OPENING', 'Enter the amount already saved');
+  }
+  const dueMonth = sinkingPlan({
+    targetMinor: amountMinor,
+    today,
+    repeatMonth: ctx.yearlyMonth,
+    dayOfMonth: input.dayOfMonth,
+    currency: billCurrency,
+    repeatEvery: ctx.repeatNow?.every,
+    startsMonth: ctx.startsMonth,
+  }).dueMonth;
+  const existing = await getSinkingFund(db, ws, ctx.id);
+  const result = sinkingSavePlan({
+    existing: existing ? sinkingFactsOf(existing) : null,
+    existingCustom: existing?.custom ?? false,
+    targetMinor: amountMinor,
+    oldTargetMinor: ctx.oldAmountMinor,
+    today,
+    dueMonth,
+    currency: billCurrency,
+    typedMonthlyMinor: fund.monthlyMinor ?? null,
+    openingMinor: fund.alreadySavedMinor,
+  });
+  const monthly = result.plan?.monthlyMinor ?? result.facts.monthlyMinor;
+  if (!(Number.isSafeInteger(monthly) && monthly > 0)) throw new RecurringError('FUND_MONTHLY', 'Enter the amount to set aside each month');
+
+  const promisedNow = sinkingProgress(result.facts, amountMinor, dueMonth, today).savedMinor;
+  const heldNow = existing && existing.accountId === fund.accountId ? sinkingProgress(sinkingFactsOf(existing), amountMinor, dueMonth, today).savedMinor : 0;
+  // Nothing new is promised, so an account already short for other reasons does not block an unrelated edit.
+  if (promisedNow > heldNow) {
+    const room = await fundRoom(database, ws, fund.accountId, today, ctx.id);
+    if (room && promisedNow > room.freeMinor) throw new RecurringError('FUND_SHORT', fundShortMessage(room, promisedNow));
+  }
+  return { accountId: fund.accountId, existing, result };
+}
+
 /** Adds or edits a recurring bill. */
 export async function saveExpenseTemplate(database: Database, ws: WorkspaceContext, input: SaveExpenseTemplateInput): Promise<string> {
   const name = input.name.trim();
@@ -171,6 +259,44 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
     }
   }
 
+  const id = input.id ?? uuidv7();
+  // How it repeated before this save, so a change of repeat, month or day can move the first month it is owed for.
+  const [before] = await database.db
+    .select({ dayOfMonth: expenseTemplates.dayOfMonth, amountMinor: expenseTemplates.amountMinor })
+    .from(expenseTemplates)
+    .where(and(eq(expenseTemplates.id, id), eq(expenseTemplates.workspaceId, ws.workspaceId)));
+  const beforeRepeat = (await billRepeats(database.db, ws)).get(id) ?? null;
+  // Absent leaves an edited bill as it was; a new bill is monthly.
+  const repeatNow: BillRepeatFacts | null =
+    input.repeat === undefined
+      ? beforeRepeat
+      : input.repeat === 'yearly'
+        ? { repeat: 'yearly', month: input.repeatMonth!, every: null }
+        : input.repeat === 'months'
+          ? { repeat: 'months', month: input.repeatMonth!, every: input.repeatEvery! }
+          : null;
+  const yearlyMonth: number | null = repeatNow?.month ?? null;
+  const sameRepeat = (repeatNow?.repeat ?? null) === (beforeRepeat?.repeat ?? null) && yearlyMonth === (beforeRepeat?.month ?? null) && (repeatNow?.every ?? null) === (beforeRepeat?.every ?? null);
+  const today = isoDate();
+  const repeatChanged = Boolean(before) && (!sameRepeat || (yearlyMonth !== null && before!.dayOfMonth !== input.dayOfMonth));
+  // The first occurrence on or after today, which an every-few-months bill counts its gaps from.
+  const startsMonth = input.startsMonth ?? (yearlyMonth === null ? today.slice(0, 7) : nextOccurrenceMonth(today, yearlyMonth, input.dayOfMonth));
+
+  // The sinking fund is worked out and checked BEFORE anything is written: a refusal leaves the bill as it was. (The
+  // free-money check reads the whole book, which cannot be done from inside the transaction below.)
+  const fundPlan =
+    input.fund && yearlyMonth !== null
+      ? await planFund(database, ws, input, {
+          id,
+          yearlyMonth,
+          repeatNow,
+          amountMinor,
+          today,
+          startsMonth: repeatChanged ? startsMonth : await storedStartsMonth(database.db, id, startsMonth),
+          oldAmountMinor: before?.amountMinor ?? null,
+        })
+      : null;
+
   // One write: a bill saved without its window would have no pay-by day and a first month guessed from createdAt.
   return database.transaction(async (tx) => {
     // A bill points at a spending category and at the money that pays it. Crossing the two would post
@@ -189,28 +315,6 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
       throw new RecurringError('NOT_A_WALLET', 'A bill needs an account or a card to pay it');
     }
 
-    const id = input.id ?? uuidv7();
-    // How it repeated before this save, so a change of repeat, month or day can move the first month it is owed for.
-    const [before] = await tx
-      .select({ dayOfMonth: expenseTemplates.dayOfMonth })
-      .from(expenseTemplates)
-      .where(and(eq(expenseTemplates.id, id), eq(expenseTemplates.workspaceId, ws.workspaceId)));
-    const beforeRepeat = (await billRepeats(tx, ws)).get(id) ?? null;
-    // Absent leaves an edited bill as it was; a new bill is monthly.
-    const repeatNow: BillRepeatFacts | null =
-      input.repeat === undefined
-        ? beforeRepeat
-        : input.repeat === 'yearly'
-          ? { repeat: 'yearly', month: input.repeatMonth!, every: null }
-          : input.repeat === 'months'
-            ? { repeat: 'months', month: input.repeatMonth!, every: input.repeatEvery! }
-            : null;
-    const yearlyMonth: number | null = repeatNow?.month ?? null;
-    const sameRepeat = (repeatNow?.repeat ?? null) === (beforeRepeat?.repeat ?? null) && yearlyMonth === (beforeRepeat?.month ?? null) && (repeatNow?.every ?? null) === (beforeRepeat?.every ?? null);
-    const today = isoDate();
-    const repeatChanged = Boolean(before) && (!sameRepeat || (yearlyMonth !== null && before!.dayOfMonth !== input.dayOfMonth));
-    // The first occurrence on or after today, which an every-few-months bill counts its gaps from.
-    const startsMonth = input.startsMonth ?? (yearlyMonth === null ? today.slice(0, 7) : nextOccurrenceMonth(today, yearlyMonth, input.dayOfMonth));
     await withCapture(tx, [{ entity: 'bill', id }, { entity: 'bill_window', id }], async () => {
       await tx
         .insert(expenseTemplates)
@@ -251,32 +355,16 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
     });
 
     // The fund is the owner's own and does not sync, so it is written outside the capture; a refusal still undoes the bill.
-    if (input.fund && yearlyMonth !== null) {
-      if (amountMinor === null) throw new RecurringError('FUND_AMOUNT', 'A sinking fund needs a fixed amount');
-      const [fundAccount] = await tx
-        .select({ kind: accounts.kind, currency: accounts.currency })
-        .from(accounts)
-        .where(and(eq(accounts.id, input.fund.accountId), eq(accounts.workspaceId, ws.workspaceId)));
-      if (!fundAccount || fundAccount.kind !== 'asset') throw new RecurringError('FUND_ACCOUNT', 'Choose an account to set the money aside in');
-      const fundCurrency = fundAccount.currency ?? ws.baseCurrency;
-      const own = input.currency !== undefined ? input.currency : (await billCurrencies(tx, ws)).get(id) ?? null;
-      const billCurrency = own ?? (await accountCurrency(tx, ws, input.moneyAccountId)) ?? ws.baseCurrency;
-      if (fundCurrency !== billCurrency) throw new RecurringError('FUND_CURRENCY', `Set the money aside in an account in ${billCurrency}`);
-      let monthlyMinor = input.fund.monthlyMinor ?? null;
-      if (monthlyMinor === null) {
-        const [window] = (await billTablesExist(tx)) ? await tx.select({ startsMonth: billWindows.startsMonth }).from(billWindows).where(eq(billWindows.templateId, id)) : [];
-        monthlyMinor = sinkingPlan({
-          targetMinor: amountMinor,
-          today,
-          repeatMonth: yearlyMonth,
-          dayOfMonth: input.dayOfMonth,
-          currency: billCurrency,
-          repeatEvery: repeatNow?.every,
-          startsMonth: window?.startsMonth,
-        }).monthlyMinor;
+    if (fundPlan) {
+      const { existing, result } = fundPlan;
+      if (!existing) {
+        await writeSinkingFund(tx, ws, { billId: id, accountId: fundPlan.accountId, monthlyMinor: result.facts.monthlyMinor, startedMonth: result.facts.startedMonth, custom: result.custom });
+      } else {
+        await moveSinkingFund(tx, ws, id, fundPlan.accountId);
       }
-      if (!(Number.isSafeInteger(monthlyMinor) && monthlyMinor > 0)) throw new RecurringError('FUND_MONTHLY', 'Enter the amount to set aside each month');
-      await writeSinkingFund(tx, ws, { billId: id, accountId: input.fund.accountId, monthlyMinor, startedMonth: today.slice(0, 7) });
+      if (result.openingMinor !== undefined) await writeSinkingOpening(tx, ws, id, result.openingMinor, today);
+      if (result.plan) await writeSinkingPlan(tx, ws, id, result.plan.from, result.plan.monthlyMinor, result.custom, today);
+      else if (existing) await setSinkingCustom(tx, ws, id, result.custom);
     } else if (input.fund === null || yearlyMonth === null) {
       await dropSinkingFund(tx, ws, id);
     }
@@ -392,6 +480,8 @@ export interface MonthlyBill extends ExpenseTemplateRow {
   chargedMinor: number | null;
   chargedCurrency: string | null;
   paymentId: string | null;
+  /** The account that actually paid billMonth, which may not be the bill's default; null: unpaid or not found. */
+  paidFromAccountId: string | null;
   /** The fixed amount, else what it came to the last time it was paid, else null. */
   estimateMinor: number | null;
   /** Months a payment can be recorded for, oldest unsettled first; a paused month last. */
@@ -413,6 +503,10 @@ export interface BillHistoryRow {
   chargedMinor: number | null;
   chargedCurrency: string | null;
   paymentId: string | null;
+  /** The account that actually paid the month, which may not be the bill's default. */
+  paidFromAccountId: string | null;
+  /** Every posted payment of the month, newest first: a month may hold more than one. */
+  payments: { id: string; paidMinor: number | null; paidCurrency: string | null; linked: boolean }[];
 }
 
 export interface BillDetail {
@@ -434,6 +528,13 @@ interface PaymentFact {
   /** The bill's own figure when the payment was a foreign one: the original amount and currency of the purchase. */
   originalMinor: number | null;
   originalCurrency: string | null;
+  /** The money account the payment came out of: the line opposite the category's. */
+  payerAccountId: string | null;
+  /**
+   * True for a purchase that was already in the app and linked to the month afterwards; false for a payment Pay recorded.
+   * The two are told apart by the purchase itself: Pay posts it with the bill's id (transactions.template_id), a link does not.
+   */
+  linked: boolean;
 }
 
 interface BillFacts {
@@ -460,6 +561,7 @@ async function billFacts(database: Database, ws: WorkspaceContext, templates: Ex
           occurredOn: transactions.occurredOn,
           originalMinor: transactions.originalAmountMinor,
           originalCurrency: transactions.originalCurrency,
+          paidBy: transactions.templateId,
         })
         .from(billPayments)
         .innerJoin(transactions, eq(transactions.id, billPayments.transactionId))
@@ -475,19 +577,25 @@ async function billFacts(database: Database, ws: WorkspaceContext, templates: Ex
           })
           .from(transactions)
           .where(and(eq(transactions.workspaceId, ws.workspaceId), eq(transactions.status, 'posted'), inArray(transactions.templateId, ids)))
-      ).map((row) => ({ ...row, templateId: row.templateId!, billMonth: row.occurredOn.slice(0, 7) }));
+      ).map((row) => ({ ...row, templateId: row.templateId!, billMonth: row.occurredOn.slice(0, 7), paidBy: row.templateId }));
 
   const lines = rows.length === 0
     ? []
     : await database.db
-        .select({ transactionId: entries.transactionId, accountId: entries.accountId, amountMinor: entries.amountMinor, currency: entries.currency })
+        .select({ transactionId: entries.transactionId, accountId: entries.accountId, amountMinor: entries.amountMinor, currency: entries.currency, kind: accounts.kind })
         .from(entries)
+        .innerJoin(accounts, eq(accounts.id, entries.accountId))
         .where(and(eq(entries.workspaceId, ws.workspaceId), inArray(entries.transactionId, rows.map((row) => row.transactionId))));
   const categoryOf = new Map(templates.map((t) => [t.id, t.categoryAccountId]));
   for (const row of rows) {
-    const line = lines.find((l) => l.transactionId === row.transactionId && l.accountId === categoryOf.get(row.templateId));
+    // A purchase linked from another category has no line in the bill's own: its first expense line speaks for it.
+    const own = lines.filter((l) => l.transactionId === row.transactionId);
+    const line = own.find((l) => l.accountId === categoryOf.get(row.templateId)) ?? own.find((l) => l.kind === 'expense');
     const list = payments.get(row.templateId) ?? [];
-    list.push({ ...row, amountMinor: line ? Number(line.amountMinor) : null, currency: line?.currency ?? null });
+    const others = own.filter((l) => l.accountId !== line?.accountId);
+    const payer = others.find((l) => line && Math.sign(Number(l.amountMinor)) !== Math.sign(Number(line.amountMinor))) ?? others[0];
+    const { paidBy, ...fact } = row;
+    list.push({ ...fact, linked: paidBy === null, amountMinor: line ? Number(line.amountMinor) : null, currency: line?.currency ?? null, payerAccountId: payer?.accountId ?? null });
     payments.set(row.templateId, list);
   }
   for (const list of payments.values()) list.sort((a, b) => b.occurredOn.localeCompare(a.occurredOn));
@@ -553,6 +661,10 @@ function monthOfBill(template: ExpenseTemplateRow, facts: BillFacts, month: stri
     chargedMinor: paid?.chargedMinor ?? null,
     chargedCurrency: paid?.chargedCurrency ?? null,
     paymentId: payment?.transactionId ?? null,
+    paidFromAccountId: payment?.payerAccountId ?? null,
+    payments: (facts.payments.get(template.id) ?? [])
+      .filter((p) => p.billMonth === month)
+      .map((p) => ({ id: p.transactionId, paidMinor: paidFigures(p).paidMinor, paidCurrency: paidFigures(p).paidCurrency, linked: p.linked })),
   };
 }
 
@@ -840,4 +952,215 @@ export function undoBillPayments(database: Database, ws: WorkspaceContext, trans
   return database.transaction(async (tx) => {
     for (const id of transactionIds) await voidTransactionTx(tx, ws, id);
   });
+}
+
+/* ------------------------------------------------------------------------------------------------------------------
+ * Linking a purchase that is already in the ledger to a bill's month.
+ *
+ * Pay posts a purchase and its bill_payments row together. A link writes only the row, for a purchase that was entered
+ * by hand: nothing is posted, voided or moved, so no balance, budget or report changes. The two are told apart by the
+ * purchase itself: Pay stamps transactions.template_id, a link leaves it null (so no schema column is needed).
+ * ------------------------------------------------------------------------------------------------------------------ */
+
+export interface LinkPurchaseInput {
+  templateId: string;
+  /** YYYY-MM: the bill's month the purchase settles. */
+  billMonth: string;
+  transactionId: string;
+  /** The day the screen is read on; today when absent. Months after the bill's latest payable month are refused. */
+  today?: string;
+}
+
+/** The newest month a purchase may be linked to: the latest the Pay sheet offers, never before this month. */
+function latestLinkMonth(template: ExpenseTemplateRow, facts: BillFacts, today: string): string {
+  const input = { today, startsMonth: template.startsMonth, outDay: template.dayOfMonth, payByDay: template.payByDay, settled: settledOf(template, facts), yearlyMonth: template.repeatMonth, repeatEvery: template.repeatEvery };
+  const payable = payableBillMonths(input);
+  return [monthOf(today), currentBillMonth(input), ...payable].reduce((a, b) => (a > b ? a : b));
+}
+
+async function liveTemplate(database: Database, ws: WorkspaceContext, templateId: string): Promise<ExpenseTemplateRow> {
+  const template = (await listExpenseTemplates(database, ws)).find((t) => t.id === templateId);
+  if (!template) throw new RecurringError('NOT_FOUND', 'That bill is not here');
+  return template;
+}
+
+/** Why a month of a bill cannot take a purchase, or null when it can. Read by a screen before it offers the link; `linkPurchaseToBill` asks the same. */
+export async function billLinkRefusal(
+  database: Database,
+  ws: WorkspaceContext,
+  input: { templateId: string; billMonth: string; today?: string },
+): Promise<{ code: 'NOT_OWED' | 'MONTH_AHEAD' | 'SKIPPED' | 'ALREADY_SETTLED'; message: string } | null> {
+  if (!BILL_MONTH.test(input.billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
+  const template = await liveTemplate(database, ws, input.templateId);
+  const facts = await billFacts(database, ws, [template]);
+  const { billMonth } = input;
+  if (!isOwedMonth(billMonth, template.repeatMonth, template.repeatEvery, template.startsMonth)) {
+    return { code: 'NOT_OWED', message: `${template.name} does not come out in that month` };
+  }
+  if (billMonth > latestLinkMonth(template, facts, input.today ?? isoDate())) return { code: 'MONTH_AHEAD', message: 'That month is not out yet' };
+  if ((facts.skips.get(template.id) ?? new Set()).has(billMonth)) return { code: 'SKIPPED', message: 'That month is skipped. Unskip it first.' };
+  if (await isSettled(database.db, ws, template.id, billMonth)) return { code: 'ALREADY_SETTLED', message: `${template.name} is already settled for that month` };
+  return null;
+}
+
+/** Links a purchase already recorded to one month of a bill, so that month reads as paid with the purchase's own date and amount. */
+export async function linkPurchaseToBill(database: Database, ws: WorkspaceContext, input: LinkPurchaseInput): Promise<void> {
+  const { templateId, billMonth, transactionId } = input;
+  if (!BILL_MONTH.test(billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
+  if (!(await billTablesExist(database.db))) throw new RecurringError('NO_LINKS', 'This database cannot link a purchase to a bill yet');
+  const refusal = await billLinkRefusal(database, ws, { templateId, billMonth, today: input.today });
+  if (refusal) throw new RecurringError(refusal.code, refusal.message);
+  await database.transaction(async (tx) => {
+    const [purchase] = await tx
+      .select({ id: transactions.id, status: transactions.status })
+      .from(transactions)
+      .where(and(eq(transactions.id, transactionId), eq(transactions.workspaceId, ws.workspaceId)));
+    if (!purchase || purchase.status !== 'posted') throw new RecurringError('NOT_A_PURCHASE', 'That purchase is not here');
+    const spent = await tx.values<[number]>(sql`
+      SELECT 1 FROM entries e JOIN accounts a ON a.id = e.account_id
+      WHERE e.transaction_id = ${transactionId} AND a.kind = 'expense' AND e.amount_minor > 0 LIMIT 1`);
+    if (spent.length === 0) throw new RecurringError('NOT_A_PURCHASE', 'Only a purchase can be linked to a bill');
+    const [already] = await tx.select({ month: billPayments.billMonth }).from(billPayments).where(eq(billPayments.transactionId, transactionId));
+    if (already) throw new RecurringError('ALREADY_LINKED', 'That purchase is already linked to a bill');
+    if (await isSettled(tx, ws, templateId, billMonth)) throw new RecurringError('ALREADY_SETTLED', 'That month is already settled');
+    await withCapture(tx, { entity: 'purchase', id: transactionId }, () =>
+      tx.insert(billPayments).values({ transactionId, workspaceId: ws.workspaceId, templateId, billMonth }),
+    );
+  });
+}
+
+/** Takes a link back: only the bill's claim on the purchase goes, the purchase itself is untouched. A payment Pay recorded is refused (undo voids it). */
+export function unlinkPurchaseFromBill(database: Database, ws: WorkspaceContext, input: { transactionId: string }): Promise<void> {
+  return database.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ paidBy: transactions.templateId })
+      .from(billPayments)
+      .innerJoin(transactions, eq(transactions.id, billPayments.transactionId))
+      .where(and(eq(billPayments.transactionId, input.transactionId), eq(billPayments.workspaceId, ws.workspaceId)));
+    if (!row) return;
+    if (row.paidBy !== null) throw new RecurringError('NOT_LINKED', 'That payment was recorded from the bill. Undo it there.');
+    await withCapture(tx, { entity: 'purchase', id: input.transactionId }, () =>
+      tx.delete(billPayments).where(and(eq(billPayments.transactionId, input.transactionId), eq(billPayments.workspaceId, ws.workspaceId))),
+    );
+  });
+}
+
+/** The bill a purchase is linked to, and the month; null when it is linked to none. `linked` is false for a payment Pay recorded. */
+export async function billOfPurchase(database: Database, ws: WorkspaceContext, transactionId: string): Promise<{ templateId: string; name: string; billMonth: string; linked: boolean } | null> {
+  if (!(await billTablesExist(database.db))) return null;
+  const [row] = await database.db
+    .select({ templateId: billPayments.templateId, billMonth: billPayments.billMonth, name: expenseTemplates.name, paidBy: transactions.templateId })
+    .from(billPayments)
+    .innerJoin(transactions, eq(transactions.id, billPayments.transactionId))
+    .innerJoin(expenseTemplates, eq(expenseTemplates.id, billPayments.templateId))
+    .where(and(eq(billPayments.transactionId, transactionId), eq(billPayments.workspaceId, ws.workspaceId), eq(transactions.status, 'posted')));
+  return row ? { templateId: row.templateId, name: row.name, billMonth: row.billMonth, linked: row.paidBy === null } : null;
+}
+
+export interface BillLinkCandidate {
+  transactionId: string;
+  occurredOn: string;
+  description: string;
+  /** What the purchase came to: the bill's own figure for a foreign one, else what the category was charged. */
+  amountMinor: number;
+  currency: string;
+  /** The money account it came out of. */
+  payerAccountId: string | null;
+  /** Within a tenth of the bill's amount. Always false for a bill with no fixed amount, or a figure in another money. */
+  isClose: boolean;
+}
+
+/** The bill's category purchases that are posted, are expenses and are linked to no bill, newest first. */
+async function categoryPurchases(database: Database, ws: WorkspaceContext, template: ExpenseTemplateRow, month: string | null): Promise<BillLinkCandidate[]> {
+  const db = database.db;
+  const rows = await db
+    .select({
+      transactionId: transactions.id,
+      occurredOn: transactions.occurredOn,
+      description: transactions.description,
+      originalMinor: transactions.originalAmountMinor,
+      originalCurrency: transactions.originalCurrency,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.workspaceId, ws.workspaceId),
+        eq(transactions.status, 'posted'),
+        ...(month ? [sql`substr(${transactions.occurredOn}, 1, 7) = ${month}`] : []),
+        sql`${transactions.id} IN (SELECT transaction_id FROM entries WHERE account_id = ${template.categoryAccountId} AND amount_minor > 0)`,
+        sql`${transactions.id} NOT IN (SELECT transaction_id FROM bill_payments)`,
+      ),
+    )
+    .orderBy(sql`${transactions.occurredOn} DESC`, sql`${transactions.createdAt} DESC`);
+  if (rows.length === 0) return [];
+  const lines = await db
+    .select({ transactionId: entries.transactionId, accountId: entries.accountId, amountMinor: entries.amountMinor, currency: entries.currency })
+    .from(entries)
+    .where(and(eq(entries.workspaceId, ws.workspaceId), inArray(entries.transactionId, rows.map((r) => r.transactionId))));
+  const payerCurrency = (await accountCurrency(db, ws, template.moneyAccountId)) ?? ws.baseCurrency;
+  const billCurrency = template.currency ?? payerCurrency;
+  return rows.map((row) => {
+    const own = lines.filter((l) => l.transactionId === row.transactionId);
+    const line = own.find((l) => l.accountId === template.categoryAccountId && Number(l.amountMinor) > 0)!;
+    const payer = own.find((l) => l.accountId !== template.categoryAccountId && Number(l.amountMinor) < 0);
+    const foreign = row.originalMinor !== null && row.originalCurrency !== null && row.originalCurrency !== line.currency;
+    const amountMinor = foreign ? row.originalMinor! : Number(line.amountMinor);
+    const currency = foreign ? row.originalCurrency! : line.currency;
+    const isClose = template.amountMinor !== null && currency === billCurrency && Math.abs(amountMinor - template.amountMinor) * 10 <= template.amountMinor;
+    return { transactionId: row.transactionId, occurredOn: row.occurredOn, description: row.description ?? '', amountMinor, currency, payerAccountId: payer?.accountId ?? null, isClose };
+  });
+}
+
+/** Purchases that could settle one month of a bill: in its category, dated in that month, not linked yet; newest first. */
+export async function billLinkCandidates(database: Database, ws: WorkspaceContext, input: { templateId: string; billMonth: string }): Promise<BillLinkCandidate[]> {
+  if (!BILL_MONTH.test(input.billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
+  if (!(await billTablesExist(database.db))) return [];
+  const template = await liveTemplate(database, ws, input.templateId);
+  return categoryPurchases(database, ws, template, input.billMonth);
+}
+
+export interface BillEarlierMonth {
+  month: string;
+  /** Unlinked purchases in the bill's category dated in the month. */
+  count: number;
+  /** How many of them are within a tenth of the bill's amount. */
+  closeCount: number;
+}
+
+export interface BillEarlierMonths {
+  months: BillEarlierMonth[];
+  /** The next month to ask from for the following page; null when nothing earlier is left to list. */
+  nextFrom: string | null;
+}
+
+/**
+ * The months before a bill started that a purchase could be linked to, newest first: from `fromMonth` (the month before the
+ * start when absent) back `limitMonths` months, never past the earliest purchase in the category. A month already paid or
+ * skipped is left out, and so is one the bill does not come out in.
+ */
+export async function billMonthsBefore(
+  database: Database,
+  ws: WorkspaceContext,
+  input: { templateId: string; fromMonth?: string; limitMonths?: number },
+): Promise<BillEarlierMonths> {
+  if (input.fromMonth !== undefined && !BILL_MONTH.test(input.fromMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
+  if (!(await billTablesExist(database.db))) return { months: [], nextFrom: null };
+  const template = await liveTemplate(database, ws, input.templateId);
+  const facts = await billFacts(database, ws, [template]);
+  const settled = settledOf(template, facts);
+  const purchases = (await categoryPurchases(database, ws, template, null)).filter((p) => p.occurredOn.slice(0, 7) < template.startsMonth);
+  if (purchases.length === 0) return { months: [], nextFrom: null };
+  const earliest = purchases.reduce((min, p) => (p.occurredOn < min ? p.occurredOn : min), purchases[0]!.occurredOn).slice(0, 7);
+  const limit = Math.max(1, input.limitMonths ?? 12);
+  const months: BillEarlierMonth[] = [];
+  let month = input.fromMonth ?? addMonths(template.startsMonth, -1);
+  if (month >= template.startsMonth) month = addMonths(template.startsMonth, -1);
+  let walked = 0;
+  for (; month >= earliest && walked < limit; month = addMonths(month, -1), walked += 1) {
+    if (settled[month] === 'paid' || settled[month] === 'skipped') continue;
+    if (!isOwedMonth(month, template.repeatMonth, template.repeatEvery, template.startsMonth)) continue;
+    const inMonth = purchases.filter((p) => p.occurredOn.slice(0, 7) === month);
+    months.push({ month, count: inMonth.length, closeCount: inMonth.filter((p) => p.isClose).length });
+  }
+  return { months, nextFrom: month >= earliest ? month : null };
 }

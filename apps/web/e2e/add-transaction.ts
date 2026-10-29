@@ -193,8 +193,14 @@ export async function shareWith(page: Page, form: Locator, people: readonly { na
   await more.getByRole('button', { name: 'With', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'With', exact: true });
   for (const person of people) {
-    await sheet.getByLabel('Add a person').fill(person.name);
-    await sheet.getByRole('button', { name: 'Add', exact: true }).click();
+    const search = sheet.getByLabel('Search or add a person');
+    await search.fill(person.name);
+    // One already on the books is its own circle in the row; a name nobody has met is added by the keyboard's Done.
+    const known = sheet.getByRole('button', { name: person.name, exact: true });
+    if (await known.count()) await known.click();
+    else await search.press('Enter');
+    await expect(sheet.getByRole('button', { name: person.name, exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await search.fill('');
   }
   if (people.some((person) => person.owes !== undefined)) {
     await sheet.getByRole('radio', { name: 'Custom amounts' }).click();
@@ -212,7 +218,7 @@ export async function shareWith(page: Page, form: Locator, people: readonly { na
  * under the card: they are part of the form now rather than a sheet over it, so there is nothing else to close.
  */
 export async function closeDetails(more: Locator, sheet: Locator) {
-  await sheet.getByRole('button', { name: 'Close' }).click();
+  await sheet.getByRole('button', { name: 'Close', exact: true }).click();
 }
 
 /**
@@ -228,6 +234,16 @@ export async function attachPhoto(page: Page, form: Locator, file: { name: strin
   const more = page.getByRole('region', { name: 'More details' });
   // Photos are the Amount row's camera now (Buy / sell keeps its row under Add more details).
   const camera = form.getByTestId('amount-photos');
+  // With no picture yet the glyph goes straight to the system picker (one tap); the file lands on its input, and the
+  // glyph then opens the Photos sheet, where the picture is seen and removed.
+  if ((await camera.count()) > 0 && (await camera.getAttribute('aria-label')) === 'Photos') {
+    await page.getByTestId('amount-photo-input').setInputFiles(file);
+    await expect(camera).toHaveAttribute('aria-label', 'Photos, 1');
+    await camera.click();
+    const opened = page.getByRole('dialog', { name: 'Photos' });
+    await expect(opened.getByRole('button', { name: 'Photo 1', exact: true })).toBeVisible();
+    return { more, sheet: opened };
+  }
   await ((await camera.count()) > 0 ? camera : more.getByRole('button', { name: 'Photos' })).click();
   const sheet = page.getByRole('dialog', { name: 'Photos' });
   await sheet.getByTestId('photo-library-input').setInputFiles(file);

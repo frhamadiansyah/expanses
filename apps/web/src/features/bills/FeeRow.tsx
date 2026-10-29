@@ -7,7 +7,8 @@ import type { DueFee } from '../cards/fee-due';
 /** A card's fee and the day it is next charged, as the Recurring list holds them. */
 interface UpcomingDue {
   card: DueFee;
-  on: string;
+  /** The next charge; null while the card has an amount but no date. */
+  on: string | null;
 }
 import { feeDateText } from '../cards/fee-line';
 
@@ -36,7 +37,7 @@ export function FeeRow({ fee, separator, onOpen }: { fee: UpcomingDue; separator
         </span>
         <span className="tabular flex shrink-0 flex-col items-end text-[15px] leading-[20px] text-[var(--ph-ink)]">
           {card.annualFeeMinor !== null ? formatMinor(card.annualFeeMinor, card.currency) : <span className="text-[var(--ph-ink-3)]">Amount not set</span>}
-          <span className={cx('mt-[2px] text-[12.5px] leading-[16px]', toneClass('warn'))}>{feeDateText(on)}</span>
+          {on && <span className={cx('mt-[2px] text-[12.5px] leading-[16px]', toneClass('warn'))}>{feeDateText(on)}</span>}
         </span>
         <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)] md:hidden">
           {'›'}

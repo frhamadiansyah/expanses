@@ -46,6 +46,7 @@ describe('saving an item', () => {
         name: 'Check-ups',
         quantity: 6,
         unitPriceMinor: 500_000,
+        currency: null,
         categoryAccountId: gear.id,
         // A link with no scheme is given one; nothing is ever fetched.
         link: 'https://tokopedia.com/bugaboo-fox-5',
@@ -61,6 +62,7 @@ describe('saving an item', () => {
         // One of something is the ordinary case, so the quantity need not be given.
         quantity: 1,
         unitPriceMinor: 2_000_000,
+        currency: null,
         categoryAccountId: null,
         link: null,
         note: null,

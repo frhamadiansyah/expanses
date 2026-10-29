@@ -2,7 +2,7 @@
   "id": "dbs-live-fresh-visa",
   "entryVersion": 2,
   "bank": "DBS",
-  "name": "digibank Live Fresh",
+  "name": "Digibank Live Fresh",
   "network": "visa",
   "currency": "IDR",
   "program": {

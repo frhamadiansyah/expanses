@@ -132,3 +132,17 @@ it('undo voids the payments, and the months are owed again', async () => {
   expect((await h.state(h.pln, '2026-09-21')).state).toBe('overdue');
   expect(await listTransactions(h.database, h.ws, { from: '2026-09-01', to: '2026-09-30' })).toEqual([]);
 });
+
+it('a month in the history lists its payment, and undoing it returns the month to unpaid', async () => {
+  const h = await household();
+  const [id] = await recordBillPayments(h.database, h.ws, { paidOn: '2026-09-03', payments: [{ templateId: h.internet, billMonth: '2026-08', amountMinor: 450_000 }] });
+  const month = async () => (await billDetail(h.database, h.ws, h.internet, '2026-09-05')).history.find((m) => m.month === '2026-08')!;
+
+  const paid = await month();
+  expect(paid.payments).toEqual([{ id, paidMinor: 450_000, paidCurrency: 'IDR', linked: false }]);
+  expect(paid.paymentId).toBe(id);
+  expect((await month()).state).toBe('paid');
+
+  await undoBillPayments(h.database, h.ws, paid.payments.map((p) => p.id));
+  expect(await month()).toMatchObject({ state: 'dueSoon', payments: [], paymentId: null });
+});

@@ -1,7 +1,8 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { addTransaction, choosePayment } from './add-transaction';
-import { cardPage, cardPointsPage, saveCardTerms } from './card-section';
+import { cardPage, cardPointsPage, saveCardTerms, chooseCatalogueCard } from './card-section';
+import { chooseMccCode, closeMccSheet, openMccSheet, rememberWord } from './mcc-sheet';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -23,10 +24,7 @@ async function applyCatalogue(page: Page, card: string, search: string, entryNam
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await saveCardTerms(page);
-  await page.getByLabel('Search catalogue').fill(search);
-  await page.getByRole('button', { name: entryName, exact: true }).click();
-  await page.getByRole('button', { name: 'Use these terms' }).click();
-  await expect(page.getByText('Step 2 of 3')).toHaveCount(0);
+  await chooseCatalogueCard(page, search, entryName);
 }
 
 /** The card's purchases with what each earned: under this statement's points. */
@@ -65,14 +63,10 @@ async function buy(page: Page, p: Purchase) {
   if (p.on) await form.getByLabel('Date').fill(p.on);
   await form.getByRole('button', { name: 'Add more details' }).click();
   const more = page.getByRole('region', { name: 'More details' });
-  await more.getByRole('button', { name: 'MCC' }).click();
-  const mccSheet = page.getByRole('dialog', { name: 'MCC' });
-  await mccSheet.getByLabel('MCC', { exact: true }).fill(p.mcc);
-  if (p.remember) {
-    await mccSheet.getByLabel('Remember this MCC for every purchase containing the merchant text').check();
-    await mccSheet.getByLabel('Merchant text', { exact: true }).fill(p.remember);
-  }
-  await mccSheet.getByRole('button', { name: 'Close' }).click();
+  await openMccSheet(page, more);
+  await chooseMccCode(page, p.mcc);
+  if (p.remember) await rememberWord(page, p.remember);
+  await closeMccSheet(page);
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
   if (!p.on) await expect(page.getByText(p.description)).toBeVisible();
@@ -91,7 +85,7 @@ function lastCycleDate(): string {
 
 test('remembering a merchant MCC removes the Maybank Platinum extra from past purchases too', async ({ page }) => {
   await addCard(page, 'Maybank Platinum');
-  await applyCatalogue(page, 'Maybank Platinum', 'platinum', 'Maybank Kartu Kredit Visa Platinum');
+  await applyCatalogue(page, 'Maybank Platinum', 'platinum', 'Maybank Visa Platinum');
   await buy(page, { card: 'Maybank Platinum', description: 'BURGER BANGOR KEMANG', category: 'Restaurants', amount: '60000' });
 
   await openPurchases(page, 'Maybank Platinum');
@@ -107,7 +101,7 @@ test('remembering a merchant MCC removes the Maybank Platinum extra from past pu
 
 test('a per-purchase actual of 0 suggests fast food, and remembering it matches the bank', async ({ page }) => {
   await addCard(page, 'Maybank Platinum');
-  await applyCatalogue(page, 'Maybank Platinum', 'platinum', 'Maybank Kartu Kredit Visa Platinum');
+  await applyCatalogue(page, 'Maybank Platinum', 'platinum', 'Maybank Visa Platinum');
   await buy(page, { card: 'Maybank Platinum', description: 'WARUNG STEAK JKT', category: 'Restaurants', amount: '60000' });
 
   await openPurchases(page, 'Maybank Platinum');
@@ -122,7 +116,7 @@ test('a per-purchase actual of 0 suggests fast food, and remembering it matches 
 
 test('a BMW dealer purchase earns 1 TREATS Point per Rp 3.333', async ({ page }) => {
   await addCard(page, 'Maybank BMW Card');
-  await applyCatalogue(page, 'Maybank BMW Card', 'bmw', 'BMW Maybank Kartu Kredit');
+  await applyCatalogue(page, 'Maybank BMW Card', 'bmw', 'Maybank BMW');
   await buy(page, { card: 'Maybank BMW Card', description: 'BMW ASTRA CILANDAK', category: 'Miscellaneous', amount: '3333000' });
   await openCardPage(page, 'Maybank BMW Card');
   await cardPage(page, 'Points');
@@ -131,7 +125,7 @@ test('a BMW dealer purchase earns 1 TREATS Point per Rp 3.333', async ({ page })
 
 test('a shoe store purchase typed as MCC 5661 earns the Manchester United sports extra', async ({ page }) => {
   await addCard(page, 'Maybank MU Card');
-  await applyCatalogue(page, 'Maybank MU Card', 'manchester', 'Maybank Kartu Kredit Manchester United');
+  await applyCatalogue(page, 'Maybank MU Card', 'manchester', 'Maybank Manchester United');
   await buy(page, { card: 'Maybank MU Card', description: 'SEPATU KITA', category: 'Clothing', amount: '200000', mcc: '5661' });
   await openCardPage(page, 'Maybank MU Card');
   await cardPage(page, 'Points');
@@ -142,7 +136,7 @@ test('a shoe store purchase typed as MCC 5661 earns the Manchester United sports
 
 test('a BCA statement total that differs lists likely causes', async ({ page }) => {
   await addCard(page, 'BCA KF Signature');
-  await applyCatalogue(page, 'BCA KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  await applyCatalogue(page, 'BCA KF Signature', 'signature', 'BCA KrisFlyer Visa Signature');
   await buy(page, { card: 'BCA KF Signature', description: 'PANTI ASUHAN KASIH', category: 'Gift giving', amount: '1350000', on: lastCycleDate() });
 
   await openCardPage(page, 'BCA KF Signature');

@@ -1,6 +1,6 @@
 import type { CreatedInvite } from '@expanses/db';
-import { Share2 } from 'lucide-react';
 import { useState } from 'react';
+import { isNative } from '../../lib/pwa';
 import { shareText } from '../../native/share';
 import { ErrorBox } from '../../ui';
 import { type GroupChild, InsetGroup, InsetRow } from '../../ui/native';
@@ -17,35 +17,46 @@ function CodeRow({ code }: GroupChild & { code: string }) {
   );
 }
 
+/** Whether a share sheet exists here: the shell's, or the browser's own. Send is left out where neither does. */
+const canSend = () => isNative() || (typeof navigator !== 'undefined' && typeof navigator.share === 'function');
+
 /**
- * An invite, once made: the code, the `cicis://join/…` link, and Share — the share sheet in the shell, the browser's
- * own where it has one, the clipboard elsewhere. The code and the link are the same invite written two ways.
+ * An invite, once made: the code, the `cicis://join/…` link, Copy and Send — the share sheet in the shell, the
+ * browser's own where it has one. The code and the link are the same invite written two ways.
  */
 export function InviteCard({
   invite,
   bookName,
   inviterName,
   header,
-  footer,
+  footer = '',
 }: {
   invite: CreatedInvite;
   bookName: string;
   inviterName: string;
   header: string;
-  footer: string;
+  footer?: string;
 }) {
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
+  const text = `${inviterName} sent an invite to ${bookName}. Open ${invite.link} — or choose Join a workspace in the app and enter ${invite.code}`;
 
-  async function share() {
+  async function copy() {
+    setError(null);
+    try {
+      await navigator.clipboard.writeText(text);
+      setNote('Copied');
+    } catch (failure) {
+      setError(failure);
+    }
+  }
+
+  async function send() {
     setError(null);
     setNote(null);
     try {
-      const done = await shareText({
-        title: `Join ${bookName}`,
-        text: `${inviterName} sent an invite to ${bookName}. Open ${invite.link} — or choose Join a workspace in the app and enter ${invite.code}`,
-      });
-      if (done === 'copied') setNote('Copied. Paste it to the person being invited.');
+      const done = await shareText({ title: `Join ${bookName}`, text });
+      if (done === 'copied') setNote('Copied');
     } catch (failure) {
       setError(failure);
     }
@@ -55,10 +66,11 @@ export function InviteCard({
   return (
     <div data-testid="invite-card">
       <ErrorBox error={error} />
-      <InsetGroup wide header={header} footer={`${footer} Works once, until ${expires}.${note ? ` ${note}` : ''}`}>
+      <InsetGroup wide header={header} footer={`${footer ? `${footer} ` : ''}Works once, until ${expires}.${note ? ` ${note}.` : ''}`}>
         <CodeRow code={invite.code} />
         <InsetRow title="Link" subtitle={<span data-testid="invite-link">{invite.link}</span>} chevron={false} />
-    <InsetRow title="Share invite" action onClick={() => void share()} />
+        <InsetRow testId="share-copy" title="Copy" action onClick={() => void copy()} />
+        {canSend() ? <InsetRow testId="share-send" title="Send" action onClick={() => void send()} /> : null}
       </InsetGroup>
     </div>
   );

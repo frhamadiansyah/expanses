@@ -3,13 +3,13 @@ import { CURRENCIES, debtItem, isoDate } from '@expanses/core';
 import { applyCatalogEntry, createAccount, createCardAccount, openDebtBalance, saveCardTerms, saveLoanTerms, setLoanItem } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { Search } from 'lucide-react';
-import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { openingRateFor, ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
-import { type GroupChild, InsetGroup, InsetRow, SelectRow, TAP, TextRow } from '../../ui/native';
+import { type GroupChild, InsetGroup, InsetRow, PushedTitle, SCREEN, SelectRow, TAP, TextRow } from '../../ui/native';
 import { KeyboardStrip } from '../../ui/native/KeyboardStrip';
 import { issuerChoices, useWorkspaceIssuers } from '../cards/card-queries';
 import { memberLevelsOf } from '../cards/catalog-picker';
@@ -47,6 +47,19 @@ export function AddDebtPage() {
 }
 
 /**
+ * A credit card, added straight from Wallet's + with no debt to choose first: the same card form the debt picker hands
+ * over to, on a page of its own.
+ */
+export function AddCardPage() {
+  return (
+    <div className={SCREEN}>
+      <PushedTitle title="New credit card" back="Wallet" backTo="/wallet" />
+      <NewCardForm />
+    </div>
+  );
+}
+
+/**
  * The form behind every debt but a card: a loan with a lender, or money owed to a person.
  *
  * It asks only what its item needs — the catalogue decided that when the item was chosen — and `planNewDebt`
@@ -56,7 +69,7 @@ export function AddDebtPage() {
  */
 function DebtItemForm({ item }: { item: string }) {
   const { database, ws } = useApp();
-  const household = useShareOnAdd();
+  const household = useShareOnAdd('debt-shared-switch');
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
@@ -170,9 +183,9 @@ function DebtItemForm({ item }: { item: string }) {
         {asks.includes('person') && <TextRow label="Who" value={draft.person} onChange={(e) => set({ person: e.target.value })} placeholder="Name" required />}
         {asks.includes('rate') && <TextRow label="Interest rate" value={draft.rate} onChange={(e) => set({ rate: e.target.value })} inputMode="decimal" placeholder="% a year" />}
         {asks.includes('term') && <TextRow label="Months left" value={draft.term} onChange={(e) => set({ term: e.target.value })} inputMode="numeric" placeholder="Months" />}
+        {household.row}
         <TextRow label="Owed as of" type="date" value={draft.openedOn} max={today} onChange={(e) => set({ openedOn: e.target.value })} />
       </InsetGroup>
-      {household.element}
       <InsetGroup>
         {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
         <InsetRow title="Add debt" action onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
@@ -212,14 +225,17 @@ export interface CardFormEmbedding extends EmbeddedForm {
 export function NewCardForm({
   onCreated,
   embedded,
+  lead,
 }: {
+  /** A row ahead of the card's own, for a page that offers the card as one kind among others (New account's Type). */
+  lead?: ReactNode;
   /** Where saving goes instead of the card's own page, given the card account just made. */
   onCreated?: (accountId: string) => void;
   /** Drawn in a sheet: no heading line and no button — the sheet's ✓ saves it (see `CashAccountForm`). */
   embedded?: CardFormEmbedding;
 }) {
   const { database, ws } = useApp();
-  const household = useShareOnAdd();
+  const household = useShareOnAdd('debt-shared-switch');
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
@@ -357,6 +373,7 @@ export function NewCardForm({
       <form ref={form} id={embedded?.formId} onSubmit={submit}>
         <ErrorBox error={error} />
         <InsetGroup header={embedded ? undefined : 'Credit card · filed as a debt, kept as a card'}>
+          {lead}
           {/* One row for which card it is, the New account form's own: the bank, then the name, offered the catalogue. */}
           <CardRow
             bank={bank}
@@ -381,6 +398,7 @@ export function NewCardForm({
           )}
           <TextRow label="Last 4 digits" value={last4} onChange={(e) => setLast4(e.target.value)} inputMode="numeric" maxLength={4} placeholder="••••" />
           <TextRow label="Current balance" value={owed} onChange={(e) => setOwed(e.target.value)} inputMode="decimal" placeholder="Amount" />
+          {household.row}
         </InsetGroup>
         {/*
           The rest is the fold's, as on the transaction form: a catalogue card already knows its currency, so only a
@@ -426,8 +444,7 @@ export function NewCardForm({
         >
           {detailsToggleLabel(detailsOpen)}
         </button>
-        {household.element}
-        {!embedded && (
+          {!embedded && (
           <InsetGroup>
             {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
             <InsetRow title="Add card" action onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />

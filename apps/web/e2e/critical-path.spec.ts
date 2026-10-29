@@ -22,7 +22,7 @@ test('card purchase counts once as spending; the statement is paid from the card
   const tile = page.getByTestId('tile-left-to-pay');
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: /^Pay / });
-  await sheet.getByLabel('Amount (IDR)').fill('500000');
+  await sheet.getByLabel('Amount', { exact: true }).fill('500000');
   await sheet.getByRole('button', { name: 'Record payment' }).click();
   await expect(sheet).toHaveCount(0);
   await expect(tile.getByTestId('tile-unpaid-balance')).toHaveText('Rp 0');

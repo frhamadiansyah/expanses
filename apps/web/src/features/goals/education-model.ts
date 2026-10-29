@@ -1,4 +1,4 @@
-import { DEFAULT_FEES, EDUCATION_INFLATION_BPS, type EducationPlanInputs, type FeeCharge, minorToMajorString, OFFERED_LEVELS, parseMajor, uuidv7 } from '@expanses/core';
+import { DEFAULT_FEES, EDUCATION_INFLATION_BPS, type EducationPlanInputs, type FeeCharge, groupedMajorString, OFFERED_LEVELS, parseGroupedMajor, uuidv7 } from '@expanses/core';
 
 /** One cost of a level as typed: its name, today's amount, and whether it is paid once or every year. */
 export interface FeeDraft {
@@ -40,7 +40,7 @@ export function educationDraftFrom(inputs: EducationPlanInputs | undefined, curr
       name: level.name,
       start: String((byAge ? level.startAge : level.startYear) ?? ''),
       until: String((byAge ? level.untilAge : level.untilYear) ?? ''),
-      fees: level.fees.map((fee) => ({ id: fee.id, name: fee.name, amount: minorToMajorString(fee.amountTodayMinor, currency), charged: fee.charged })),
+      fees: level.fees.map((fee) => ({ id: fee.id, name: fee.name, amount: groupedMajorString(fee.amountTodayMinor, currency), charged: fee.charged })),
       returnPercent: level.returnBps === null ? '' : percent(level.returnBps),
       returnTyped: level.returnBps !== null,
     })),
@@ -82,7 +82,7 @@ const percentBps = (value: string, what: string) => {
   return Math.round(number * 100);
 };
 
-/** Every typed figure read once, by `parseMajor`; a fee left empty is not a fee. Throws a sentence on anything half-typed. */
+/** Every typed figure read once, by `parseGroupedMajor`; a fee left empty is not a fee. Throws a sentence on anything half-typed. */
 export function educationInputsOf(draft: EducationDraft, currency: string): EducationPlanInputs {
   const byAge = draft.birthday.trim() !== '';
   return {
@@ -107,7 +107,7 @@ export function educationInputsOf(draft: EducationDraft, currency: string): Educ
         returnBps,
         fees: level.fees
           .filter((fee) => fee.amount.trim() !== '')
-          .map((fee) => ({ id: fee.id, name: fee.name.trim() || 'Fee', amountTodayMinor: parseMajor(fee.amount, currency), charged: fee.charged })),
+          .map((fee) => ({ id: fee.id, name: fee.name.trim() || 'Fee', amountTodayMinor: parseGroupedMajor(fee.amount, currency), charged: fee.charged })),
       };
     }),
   };

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { addEvent, addWallet, buyItNow, expectFigures, fillItem, recordIntoEvent, showPlanCard } from './event-plan';
+import { addEvent, addWallet, buyItNow, expectFigures, fillItem, recordIntoEvent, showPlanCard, showPlan } from './event-plan';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -20,8 +20,8 @@ test('planning one category never calls the rest of the trip over plan', async (
   await expect(page.getByTestId('event-total')).toContainText('9.200.000');
 
   // The tickets are planned and nothing else is.
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
-  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await page.getByRole('link', { name: 'Add the first cost' }).click();
   await fillItem(page, { name: 'Museum tickets', quantity: '4', price: '875000', category: 'Transportation' });
   /*
    * And bought, for a little under the estimate.
@@ -38,6 +38,7 @@ test('planning one category never calls the rest of the trip over plan', async (
 
   const sheet = page.getByTestId('event-sheet');
   await sheet.getByRole('button', { name: 'Against the plan' }).click();
+  await showPlan(page);
   // Rp9.200.000 of food nobody planned is not Rp5.700.000 over a Rp3.500.000 ticket plan.
   await expect(sheet).not.toContainText('Over the plan by');
   await expect(sheet).toContainText('Planned so far');
@@ -68,5 +69,5 @@ test('planning one category never calls the rest of the trip over plan', async (
   // The Plan card holds only what was planned.
   await showPlanCard(page);
   await expect(page.getByTestId('event-plan-card')).toContainText('Transportation');
-  await expect(page.getByTestId('event-plan-card')).toContainText('1 item · 1 bought');
+  await expect(page.getByTestId('event-plan-card')).toContainText('1 cost · 1 paid');
 });

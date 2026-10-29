@@ -1,4 +1,4 @@
-import { cx } from '../../ui';
+import { DestructiveRow, InsetGroup } from '../../ui/native';
 import { useTwoTap } from '../../ui/two-tap';
 
 /**
@@ -14,8 +14,6 @@ const LOOKS = {
     idle: 'Delete',
     armed: 'Click again to delete',
     name: (armed: boolean) => (armed ? 'Click again to delete' : 'Delete this transaction'),
-    className: (armed: boolean) =>
-      cx('min-h-11 rounded-lg px-3 text-sm font-medium disabled:opacity-60', armed ? 'bg-red-700 text-white' : 'text-red-700 hover:bg-red-50'),
   },
 } as const;
 
@@ -42,28 +40,18 @@ export function TwoTapDelete({
   onConfirm,
   className,
   look = 'inline',
-  title,
 }: {
   /** True while a write is already going out. */
   busy?: boolean;
   onConfirm: () => void;
   className?: string;
   look?: TwoTapLook;
-  title?: string;
 }) {
   const { armed, onBlur, onClick } = useTwoTap(onConfirm);
   const words = LOOKS[look];
   return (
-    <button
-      type="button"
-      disabled={busy}
-      title={title}
-      aria-label={words.name(armed)}
-      onBlur={onBlur}
-      onClick={onClick}
-      className={cx(words.className(armed), className)}
-    >
-      {armed ? words.armed : words.idle}
-    </button>
+    <InsetGroup className={className}>
+      <DestructiveRow label={armed ? words.armed : words.idle} ariaLabel={words.name(armed)} disabled={busy} onBlur={onBlur} onClick={onClick} />
+    </InsetGroup>
   );
 }

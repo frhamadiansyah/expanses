@@ -37,3 +37,27 @@ test('the ⋯ menu opens where it can be seen with the page scrolled down, not o
   await menu.getByRole('menuitem', { name: 'Which card?' }).click();
   await expect(page).toHaveURL(/\/recommend$/);
 });
+
+test('Wallet’s + opens New account, and its Type row reaches the credit card form with no debt to choose first', async ({ page }) => {
+  await page.goto('/wallet');
+  await page.getByRole('link', { name: 'Add', exact: true }).click();
+  await expect(page).toHaveURL(/\/accounts\/add$/);
+  await page.getByLabel('Type', { exact: true }).selectOption({ label: 'Credit card' });
+  await expect(page.getByRole('heading', { name: 'New account' })).toBeVisible();
+  await expect(page.getByLabel('Name', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add card' })).toBeVisible();
+});
+
+test('Wallet’s + opens a money account form straight away as a current account, and its Type row changes the kind', async ({ page }) => {
+  await page.goto('/wallet');
+  await page.getByRole('link', { name: 'Add', exact: true }).click();
+  await expect(page).toHaveURL(/\/accounts\/add$/);
+  await expect(page.getByRole('heading', { name: 'New account' })).toBeVisible();
+  const type = page.getByLabel('Type', { exact: true });
+  await expect(type).toHaveValue('bank');
+  await type.selectOption({ label: 'Cash' });
+  await page.getByLabel('Name', { exact: true }).pressSequentially('Pocket money');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page).toHaveURL(/\/wallet$/);
+  await expect(page.getByText('Pocket money').first()).toBeVisible();
+});

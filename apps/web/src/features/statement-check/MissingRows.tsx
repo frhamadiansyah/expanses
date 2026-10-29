@@ -1,4 +1,4 @@
-import { formatMinor, minorToMajorString, parseMajor } from '@expanses/core';
+import { formatMinor, groupedMajorString, groupTypedAmount, parseGroupedMajor } from '@expanses/core';
 import { type AccountRow, type CheckDraftRow, creditKindOf } from '@expanses/db';
 import { MoreHorizontal } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
@@ -246,11 +246,11 @@ function TopUpSheet({
   onClose: () => void;
 }) {
   const [walletId, setWalletId] = useState(row.topUp?.walletAccountId ?? (wallets.length === 1 ? wallets[0]!.id : ''));
-  const [fee, setFee] = useState(() => (row.topUp?.feeMinor ? minorToMajorString(row.topUp.feeMinor, currency) : ''));
+  const [fee, setFee] = useState(() => (row.topUp?.feeMinor ? groupedMajorString(row.topUp.feeMinor, currency) : ''));
   let feeMinor: number | null = 0;
   if (fee.trim()) {
     try {
-      feeMinor = parseMajor(fee, currency);
+      feeMinor = parseGroupedMajor(fee, currency);
     } catch {
       feeMinor = null;
     }
@@ -273,7 +273,7 @@ function TopUpSheet({
             </option>
           ))}
         </SelectRow>
-        <TextRow label="Fee" value={fee} onChange={(event) => setFee(event.target.value)} inputMode="decimal" />
+        <TextRow label="Fee" prefix={currency} value={fee} onChange={(event) => setFee(groupTypedAmount(event.target.value, currency))} inputMode="decimal" placeholder="Amount" />
       </InsetGroup>
       <div data-testid="top-up-summary" className="mb-[12px] rounded-[12px] bg-[var(--ph-surface)] px-[12px] py-[10px] text-[13px] leading-[20px]">
         <div className="flex justify-between gap-2">
@@ -337,11 +337,11 @@ function CorrectSheet({
   onSave: (patch: { on: string; amountMinor: number }) => void;
   onClose: () => void;
 }) {
-  const [amount, setAmount] = useState(() => minorToMajorString(row.amountMinor, currency));
+  const [amount, setAmount] = useState(() => groupedMajorString(row.amountMinor, currency));
   const [on, setOn] = useState(row.on);
   let amountMinor: number | null = null;
   try {
-    amountMinor = parseMajor(amount, currency);
+    amountMinor = parseGroupedMajor(amount, currency);
   } catch {
     amountMinor = null;
   }
@@ -362,7 +362,7 @@ function CorrectSheet({
       }}
     >
       <InsetGroup header={row.description} footer="As the statement prints it. The screenshot is not kept.">
-        <TextRow label={`Amount (${currency})`} value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" />
+        <TextRow label="Amount" prefix={currency} value={amount} onChange={(e) => setAmount(groupTypedAmount(e.target.value, currency))} inputMode="decimal" placeholder="Amount" />
         <TextRow label="Date" type="date" value={on} onChange={(e) => setOn(e.target.value)} />
       </InsetGroup>
     </Sheet>

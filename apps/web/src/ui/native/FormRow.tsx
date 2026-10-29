@@ -1,9 +1,9 @@
 import { Info, Search } from 'lucide-react';
-import { Children, isValidElement, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useId, useState } from 'react';
+import { Children, isValidElement, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useId, useRef, useState } from 'react';
 import { cx } from '../index';
 import { currencyMatches, type FormKind, planFormRow, planSwitchRow } from './form-row';
 import { KeyboardStrip } from './KeyboardStrip';
-import { type GroupChild, toneClass } from './InsetList';
+import { type GroupChild, toneClass, RowIcon } from './InsetList';
 import { ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP } from './metrics';
 import type { Tone } from './row';
 /**
@@ -56,10 +56,13 @@ export function PickerRow({
   detailTone,
   info,
   testId,
+  chevron,
 }: GroupChild & {
   label: string;
   value: string | null | undefined;
   placeholder?: string;
+  /** Whether the › is drawn; by default it is, with an answer or without. False for a row that does something rather than opens something. */
+  chevron?: boolean;
   /**
    * What the row means, behind an ⓘ beside the label and under the row only when asked for — as TextRow's `info`. The row is
    * one button, which cannot hold another, so with an ⓘ the button is laid over the whole row and the label, answer and ⓘ are
@@ -91,7 +94,7 @@ export function PickerRow({
       ) : (
         answer
       )}
-      {plan.chevron && (
+      {(chevron ?? plan.chevron) && (
         <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
           {'›'}
         </span>
@@ -144,6 +147,9 @@ export function TextRow({
   info,
   middle,
   suffix,
+  prefix,
+  onPrefix,
+  prefixLabel,
   position,
   className,
   ...props
@@ -151,6 +157,11 @@ export function TextRow({
   label: string;
   /** The unit after the figure, in the figure's ink, once one is typed: "g" for grams. */
   suffix?: string;
+  /** The currency before the figure, at the right with it: "IDR" in front of 450.000, so the label stays "Amount". Shown once something is typed (an empty field shows only its placeholder), or always when `onPrefix` makes it a button. */
+  prefix?: string;
+  /** Makes the prefix a button that does this — opening a currency list; `prefixLabel` is its accessible name. */
+  onPrefix?: () => void;
+  prefixLabel?: string;
   /** Something between the label and the field, on the same line — a foreign balance's "@ rate". */
   middle?: ReactNode;
   /** A line always shown under the row: something the reader needs every time, such as what the row just decided. */
@@ -165,6 +176,8 @@ export function TextRow({
   const generated = useId();
   const id = props.id ?? generated;
   const [explained, setExplained] = useState(false);
+  const field = useRef<HTMLInputElement>(null);
+  const filled = String(props.value ?? props.defaultValue ?? '') !== '';
   return (
     <div className="relative">
       <Separator show={Boolean(position?.separator)} />
@@ -182,18 +195,54 @@ export function TextRow({
           </label>
         )}
         {middle}
-        <input
-          {...props}
-          id={id}
-          className={cx(
-            'ph-focus min-w-0 flex-1 rounded bg-transparent text-right text-[17px] leading-[22px] md:leading-[20px] text-[var(--ph-ink)] md:text-[15px]',
-            'placeholder:text-[var(--ph-ink-3)]',
-            // WebKit draws a date or time input at a height of its own, with a margin inside it, so on iOS every
-            // date row stood taller than the rows around it. Held to a text field's 20px, it lines up with them.
-            DATE_TYPES.has(props.type ?? '') && 'ph-date-input h-[20px] appearance-none',
-            className,
-          )}
-        />
+        {DATE_TYPES.has(props.type ?? '') ? (
+          <input
+            {...props}
+            id={id}
+            className={cx(
+              'ph-focus min-w-0 flex-1 rounded bg-transparent text-right text-[17px] leading-[22px] md:leading-[20px] text-[var(--ph-ink)] md:text-[15px]',
+              'placeholder:text-[var(--ph-ink-3)]',
+              // WebKit draws a date or time input at a height of its own, with a margin inside it, so on iOS every
+              // date row stood taller than the rows around it. Held to a text field's 20px, it lines up with them.
+              'ph-date-input h-[20px] appearance-none',
+              className,
+            )}
+          />
+        ) : (
+          // The field is as wide as what it holds (a hidden copy of the text sizes it) and sits at the right of the row.
+          // An empty field is then exactly as wide as its placeholder and reads left to right, so the caret stands before
+          // the first letter of the placeholder rather than trailing after it, as it would in a field that is
+          // right-aligned across the whole row. The whole stretch to its right still focuses it.
+          <span className="flex min-w-0 flex-1 cursor-text items-baseline justify-end gap-[6px]" onClick={(event) => event.target === event.currentTarget && field.current?.focus()}>
+            {prefix && onPrefix && (
+              <button type="button" aria-label={prefixLabel} onClick={onPrefix} className="ph-focus shrink-0 rounded text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">
+                {prefix}
+              </button>
+            )}
+            {/* A plain prefix shows once something is typed, and stays when the field is left: an empty field shows only its placeholder. */}
+            {prefix && !onPrefix && filled && (
+              <span aria-hidden className="shrink-0 text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">
+                {prefix}
+              </span>
+            )}
+            <span className="relative inline-grid min-w-[3ch]">
+              <span aria-hidden className={cx('invisible col-start-1 row-start-1 px-[1px] text-[17px] leading-[22px] whitespace-pre md:text-[15px] md:leading-[20px]', className)}>
+                {String(props.value ?? '') || String(props.placeholder ?? '') || ' '}
+              </span>
+              <input
+                {...props}
+                ref={field}
+                id={id}
+                className={cx(
+                  'ph-focus absolute inset-0 w-full min-w-0 rounded bg-transparent text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]',
+                  filled ? 'text-right' : 'text-left',
+                  'placeholder:text-[var(--ph-ink-3)]',
+                  className,
+                )}
+              />
+            </span>
+          </span>
+        )}
         {suffix && String(props.value ?? '').trim() !== '' && (
           <span aria-hidden className="-ml-[8px] shrink-0 text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">
             {suffix}
@@ -370,9 +419,14 @@ export function DestructiveRow({
   calm = false,
   disabled = false,
   testId,
+  ariaLabel,
+  onBlur,
 }: GroupChild & {
   label: string;
   onClick: () => void;
+  /** What a reader hears when it differs from the words drawn. */
+  ariaLabel?: string;
+  onBlur?: () => void;
   /** Cannot be pressed at all (the button is disabled), drawn grey: a confirmation that waits for something typed. */
   disabled?: boolean;
   testId?: string;
@@ -388,6 +442,8 @@ export function DestructiveRow({
         type="button"
         disabled={disabled}
         data-testid={testId}
+        aria-label={ariaLabel}
+        onBlur={onBlur}
         onClick={onClick}
         className={cx('ph-focus-inset w-full text-center text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', muted || disabled ? 'text-[var(--ph-ink-3)]' : calm ? 'text-[var(--ph-ink)]' : 'text-[var(--ph-alarm)]')}
         style={shell(false)}
@@ -416,15 +472,21 @@ export function SwitchRow({
   disabled = false,
   hint,
   info,
+  icon,
   position,
+  testId,
 }: GroupChild & {
   label: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
   disabled?: boolean;
+  /** What a test names the switch by. */
+  testId?: string;
   hint?: ReactNode;
   /** What the switch means, behind an ⓘ beside the label rather than a line always under it — as TextRow's `info`. */
   info?: ReactNode;
+  /** The round icon every row of a group with icons carries, so a switch among them does not stand out bare. */
+  icon?: ReactNode;
 }) {
   const id = useId();
   const [explained, setExplained] = useState(false);
@@ -435,6 +497,7 @@ export function SwitchRow({
       {/* The pill is the row's content, and 31 px of it inside the row's 44 leaves less air above and below than
           a line of text would: the padding is what keeps a switch row the height of every other row. */}
       <div className="flex items-center gap-3" style={{ minHeight: plan.minHeight, padding: `${(TAP - SWITCH_H) / 2}px ${ROW_PAD_X}px` }}>
+        {icon && <RowIcon>{icon}</RowIcon>}
         <span className="flex min-w-0 flex-1 items-center gap-[6px]">
           <label htmlFor={id} className={cx('min-w-0 text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', toneClass(plan.labelTone))}>
             {label}
@@ -457,6 +520,7 @@ export function SwitchRow({
           <input
             id={id}
             type="checkbox"
+            data-testid={testId}
             checked={checked}
             disabled={disabled}
             onChange={(event) => onChange(event.target.checked)}
@@ -476,13 +540,14 @@ export function SwitchRow({
  * A real `submit`, not a row that calls the save itself: the browser still checks every `required` field before
  * anything is written, exactly as the dark rectangle it replaces did, and Enter in any field still submits.
  */
-export function SubmitRow({ label, disabled = false, position }: GroupChild & { label: string; disabled?: boolean }) {
+export function SubmitRow({ label, disabled = false, position, testId }: GroupChild & { label: string; disabled?: boolean; testId?: string }) {
   return (
     <div className="relative">
       <Separator show={Boolean(position?.separator)} />
       <button
         type="submit"
         disabled={disabled}
+        data-testid={testId}
         className="ph-focus-inset block w-full text-center text-[17px] leading-[22px] md:text-[15px] md:leading-[20px] font-semibold text-[var(--ph-ink)] disabled:text-[var(--ph-ink-3)]"
         style={shell(false)}
       >

@@ -12,6 +12,7 @@ import { useOpenBook } from '../features/workspaces/queries';
 import { WorkspaceDot } from '../features/workspaces/WorkspaceBadge';
 import { WorkspaceSheet } from '../features/workspaces/WorkspaceSheet';
 import { cx } from '../ui';
+import { ToastHost } from '../ui/Toast';
 import { useApp } from './context';
 import { TabBar } from './TabBar';
 import { usePhone } from './use-phone';
@@ -34,7 +35,7 @@ const MORE = [
   { to: '/calculators', label: 'Calculators' },
   { to: '/tax-report', label: 'Tax report' },
   { to: '/recommend', label: 'Which card?' },
-  { to: '/import', label: 'Import CSV' },
+  { to: '/import', label: 'Import' },
   { to: '/backup', label: 'Backup' },
   { to: '/account', label: 'Account' },
 ] as const;
@@ -191,6 +192,7 @@ export function Layout() {
           />
         </>
       )}
+      <ToastHost />
     </div>
   );
 }

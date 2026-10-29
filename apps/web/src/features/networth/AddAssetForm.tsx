@@ -209,6 +209,7 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
         {estimated || byMoney ? (
           <MoneyRow label="Current value" value={draft.estimate} onChange={(estimate) => change({ estimate })} currency={draft.currency} placeholder="Optional" />
         ) : null}
+        {household.row}
       </InsetGroup>
       {draft.itemId === 'stock' && itemId === undefined && (
         <InsetGroup footer="Or type it in below, as before.">
@@ -276,7 +277,6 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
         </p>
       ) : null}
 
-      {household.element}
       <ErrorBox error={error} />
     </form>
   );

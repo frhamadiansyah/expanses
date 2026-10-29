@@ -1,4 +1,4 @@
-import { eventPlan, type EventPlanInput } from '@expanses/core';
+import { eventPlan, type EventPlanInput, makeConverter } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import {
   afterSaving,
@@ -6,14 +6,21 @@ import {
   BACK_WORDS,
   chartUnder,
   coverTotals,
+  planStatus,
   differenceWords,
+  estimateLabel,
   eventListLine,
   gaugeFor,
+  itemFigure,
   itemFormGate,
+  itemPaidAgainst,
   itemSubline,
+  itemSubtitle,
   moneyBackRows,
   moneyBackUnder,
   planCardRows,
+  planDonePercent,
+  planInEvent,
   plannedLabel,
   PLAN_WORDS,
   planTotals,
@@ -96,33 +103,33 @@ describe('words', () => {
 });
 
 describe('the cards', () => {
-  it('is one Plan row per planned category, with how many items and how many are bought', () => {
+  it('is one Plan row per planned category, with how many costs and how many are paid', () => {
     expect(planCardRows(plan)).toEqual([
-      { categoryId: 'gear', name: 'Baby gear', plannedMinor: 19_500_000, subline: '2 items · 1 bought' },
-      { categoryId: 'clothes', name: 'Clothes', plannedMinor: 700_000, subline: '1 item · none bought' },
+      { categoryId: 'gear', name: 'Baby gear', plannedMinor: 19_500_000, subline: '2 costs · 1 paid' },
+      { categoryId: 'clothes', name: 'Clothes', plannedMinor: 700_000, subline: '1 cost · none paid' },
     ]);
   });
 
   it('shows every category under "Where it went", saying which ones have no items', () => {
     expect(whereItWentRows(withFood())).toEqual([
-      { categoryId: 'gear', name: 'Baby gear', actualMinor: 7_800_000, plannedMinor: 19_500_000, planned: true, subline: '1 purchase' },
+      { categoryId: 'gear', name: 'Baby gear', actualMinor: 7_800_000, plannedMinor: 19_500_000, planned: true, subline: '1 payment' },
       { categoryId: 'clothes', name: 'Clothes', actualMinor: 0, plannedMinor: 700_000, planned: true, subline: 'nothing spent yet' },
-      { categoryId: 'food', name: 'Restaurants', actualMinor: 5_000_000, plannedMinor: 0, planned: false, subline: '1 purchase' },
+      { categoryId: 'food', name: 'Restaurants', actualMinor: 5_000_000, plannedMinor: 0, planned: false, subline: '1 payment' },
     ]);
   });
 
-  it('says on the events list what is still to buy, or how many purchases there were', () => {
+  it('says on the events list what is still to pay, or how many payments there were', () => {
     const line = eventListLine(plan);
-    expect(plain(line.subline)).toBe('Planned · Rp 12.700.000 still to buy');
+    expect(plain(line.subline)).toBe('Planned · Rp 12.700.000 still to pay');
     expect(line).toMatchObject({ amountMinor: 7_800_000, ofMinor: 20_200_000, backLine: null });
     expect(eventListLine(eventPlan({ ...input, items: [] }))).toEqual({
-      subline: 'No plan · 1 purchase',
+      subline: 'No plan · 1 payment',
       amountMinor: 7_800_000,
       ofMinor: null,
       backLine: null,
     });
     // Kept without a plan, its items still there: read as no plan, measured against nothing.
-    expect(eventListLine(plan, 'IDR', true)).toMatchObject({ subline: 'No plan · 1 purchase', ofMinor: null });
+    expect(eventListLine(plan, 'IDR', true)).toMatchObject({ subline: 'No plan · 1 payment', ofMinor: null });
   });
 
   /*
@@ -179,7 +186,7 @@ describe('an event whose card would read below nought', () => {
     expect(line).toMatchObject({ amountMinor: 0, ofMinor: 5_000_000 });
     expect(plain(line.backLine!)).toBe('Rp 1.000.000 more came back than the plan spent');
     // Nothing is still to buy any less for a refund: the subline is the plan's, in full.
-    expect(plain(line.subline)).toBe('Planned · Rp 5.000.000 still to buy');
+    expect(plain(line.subline)).toBe('Planned · Rp 5.000.000 still to pay');
   });
 });
 
@@ -238,8 +245,8 @@ describe('the words a plan is read in', () => {
     expect(PLAN_WORDS.over).toBe('Over the plan by');
     expect(PLAN_WORDS.set).toBe('Planned');
     expect(PLAN_WORDS.spent).toBe('Spent');
-    expect(PLAN_WORDS.overCount(1)).toBe('1 item over');
-    expect(PLAN_WORDS.overCount(3)).toBe('3 items over');
+    expect(PLAN_WORDS.overCount(1)).toBe('1 cost over');
+    expect(PLAN_WORDS.overCount(3)).toBe('3 costs over');
   });
 
   /*
@@ -680,7 +687,7 @@ describe('whether the money-back rows add up to their heading', () => {
     expect(plain(moneyBackUnder(1_000_000, [{ amountMinor: 600_000 }])!)).toBe(
       'These rows come to Rp 600.000. The rest came back on payments this list does not reach.',
     );
-    expect(moneyBackUnder(1_000_000, [])).toBe('More came back than any item accounts for.');
+    expect(moneyBackUnder(1_000_000, [])).toBe('More came back than any cost accounts for.');
   });
 
   /*
@@ -699,17 +706,17 @@ describe('whether the money-back rows add up to their heading', () => {
 });
 
 /*
- * A row on "What it covers" whose item is already answered by a different receipt.
+ * A row on "Link to costs" whose item is already answered by a different receipt.
  *
  * Ticking it here re-points the item and takes its money with it — often exactly what is meant, since the wrong
  * receipt gets picked and receipts get corrected. What was wrong is that it happened in silence: the row said the
  * item's estimate and its category and nothing about where its money actually was.
  */
 describe('an item another receipt already answers', () => {
-  it('says which payment already paid for it, and that ticking it here adds this one', () => {
+  it('says which payment already paid for it', () => {
     const crib = plan.lines[0]!.items[1]!;
     expect(crib.purchase!.transactionId).toBe('t1');
-    expect(answeredElsewhere(crib, 't2')).toBe('already paid by Toko Bayi · 12 Sep — ticking it here adds this one');
+    expect(answeredElsewhere(crib, 't2')).toBe('paid by Toko Bayi');
     // On its own receipt there is nothing to move and nothing to say.
     expect(answeredElsewhere(crib, 't1')).toBeNull();
     // An item nothing has answered yet is the ordinary row.
@@ -726,7 +733,7 @@ describe('an item another receipt already answers', () => {
     });
     const item = elsewhere.lines[0]!.items[0]!;
     expect(item.bought).toBe(false);
-    expect(answeredElsewhere(item, 't9')).toBe('already paid by another payment — ticking it here adds this one');
+    expect(answeredElsewhere(item, 't9')).toBe('paid by another payment');
   });
 });
 
@@ -760,5 +767,148 @@ describe('afterSaving an item paid towards and still open', () => {
     expect(plan.toBuyMinor).toBe(0);
     expect(afterSaving(plan, { estimateMinor: 200_000, replacing: 's' }).toBuyMinor).toBe(50_000);
     expect(afterSaving(plan, { estimateMinor: 120_000, replacing: 's' }).toBuyMinor).toBe(0);
+  });
+});
+
+describe('a plan in more than one currency', () => {
+  const converter = makeConverter(
+    [
+      { from: 'EUR', to: 'IDR', onDate: '2026-03-01', rate: 18_000 },
+      { from: 'TRY', to: 'IDR', onDate: '2026-03-01', rate: 400 },
+    ],
+    'IDR',
+  );
+  const item = (id: string, name: string, quantity: number, unitPriceMinor: number, over: object = {}) => ({
+    id, name, quantity, unitPriceMinor, categoryId: 'c', link: null, note: null, purchases: [], done: false, ...over,
+  });
+  const trip = eventPlan({
+    categoryNames: { c: 'Trip' },
+    money: { baseCurrency: 'IDR', eventCurrency: 'TRY', today: '2026-03-02', converter },
+    items: [
+      item('flight', 'Flight', 1, 9_800_000),
+      item('museum', 'Museum pass', 1, 9_500, { currency: 'EUR', done: true, purchases: [{ transactionId: 't1', shareMinor: 1_656_000 }] }),
+      item('dinner', 'Dinner', 6, 180_000, { currency: 'TRY' }),
+      item('ferry', 'Ferry', 1, 5_000, { currency: 'USD' }),
+    ],
+    actuals: [{ transactionId: 't1', occurredOn: '2026-03-02', description: 'Museum', categoryId: 'c', amountBaseMinor: 1_656_000, amountMinor: 9_200, currency: 'EUR' }],
+  });
+  const views = Object.fromEntries(trip.lines[0]!.items.map((view) => [view.id, view]));
+
+  it('shows an open item in the event currency with ≈, unless it is already in it', () => {
+    expect(plain(itemFigure(views.flight!, 'TRY', 'IDR'))).toMatch(/^≈ .*24\.500/);
+    expect(itemFigure(views.flight!, 'TRY', 'IDR').startsWith('≈ ')).toBe(true);
+    expect(itemFigure(views.dinner!, 'TRY', 'IDR').startsWith('≈')).toBe(false);
+  });
+
+  it('shows what was paid for a bought item, without ≈, and the estimate in its own currency under it', () => {
+    expect(itemFigure(views.museum!, 'TRY', 'IDR').startsWith('≈')).toBe(false);
+    expect(plain(itemSubtitle(views.museum!, 'TRY', 'IDR'))).toMatch(/^Paid .*92.* · estimate .*95/);
+  });
+
+  it('shows the item’s own figure and says so when no rate reaches it', () => {
+    expect(itemFigure(views.ferry!, 'TRY', 'IDR')).toMatch(/50/);
+    expect(itemSubtitle(views.ferry!, 'TRY', 'IDR')).toMatch(/no rate yet$/);
+  });
+
+  it('totals in the event currency with the base equivalent, and names the missing rate', () => {
+    const totals = planInEvent(trip, 'TRY', 'IDR');
+    expect(totals.plannedMinor).toBe(2_450_000 + 427_500 + 1_080_000);
+    expect(totals.base?.plannedMinor).toBe(9_800_000 + 1_710_000 + 4_320_000);
+    // Only the museum pass is paid, and its payment was read in lira; the open flight and dinner owe their whole estimate.
+    expect(totals.base?.boughtMinor).toBe(1_656_000);
+    expect(totals.base?.toBuyMinor).toBe(9_800_000 + 4_320_000);
+    expect(totals.missingRates).toEqual(['USD']);
+  });
+
+  it('reads a paid cost against its estimate: an arrow only when they differ, the estimate in the event currency', () => {
+    // Paid € 92 (₺ 4.140) against € 95 (₺ 4.275): a saving.
+    expect(itemPaidAgainst(views.museum!, 'TRY', 'IDR')).toMatchObject({ arrow: 'under' });
+    expect(plain(itemPaidAgainst(views.museum!, 'TRY', 'IDR')!.of)).toMatch(/^of ≈ .*4\.275/);
+    expect(itemPaidAgainst(views.flight!, 'TRY', 'IDR')).toBeNull();
+    expect(itemPaidAgainst(views.ferry!, 'TRY', 'IDR')).toBeNull();
+  });
+
+  it('has no base line when the event is in the base currency', () => {
+    expect(planInEvent(plan, 'IDR', 'IDR').base).toBeNull();
+  });
+});
+
+describe('the plan hero and the paid row', () => {
+  describe('the status line', () => {
+    const cost = (id: string, estimate: number, paid: number[], done = false, over: object = {}) => ({
+      id, name: id, quantity: 1, unitPriceMinor: estimate, categoryId: 'c', link: null, note: null, done,
+      purchases: paid.map((shareMinor, index) => ({ transactionId: `${id}-${index}`, shareMinor })),
+      ...over,
+    });
+    const statusOf = (costs: ReturnType<typeof cost>[]) => {
+      const built = eventPlan({
+        categoryNames: { c: 'Trip' },
+        items: costs,
+        actuals: costs.flatMap((c) =>
+          c.purchases.map((p) => ({ transactionId: p.transactionId, occurredOn: '2026-10-01', description: c.id, categoryId: 'c', amountBaseMinor: p.shareMinor })),
+        ),
+      });
+      return planStatus(built.lines.flatMap((line) => line.items));
+    };
+
+    it('says nothing is paid when no cost has a payment', () => {
+      expect(statusOf([cost('a', 1_000_000, [])])).toEqual({ kind: 'none', amountMinor: 0 });
+      expect(statusOf([])).toEqual({ kind: 'none', amountMinor: 0 });
+    });
+
+    it('says partly paid for a deposit on an open cost', () => {
+      expect(statusOf([cost('a', 18_000_000, [5_000_000]), cost('b', 1_000_000, [])])).toEqual({ kind: 'partly', amountMinor: 0 });
+    });
+
+    it('shows over at once when payments pass the estimate, though the cost is still open', () => {
+      expect(statusOf([cost('a', 18_000_000, [10_000_000, 8_200_000])])).toEqual({ kind: 'over', amountMinor: 200_000 });
+    });
+
+    it('shows saved only for settled costs', () => {
+      expect(statusOf([cost('a', 1_000_000, [800_000])])).toEqual({ kind: 'partly', amountMinor: 0 });
+      expect(statusOf([cost('a', 1_000_000, [800_000], true)])).toEqual({ kind: 'saved', amountMinor: 200_000 });
+    });
+
+    it('nets a settled saving against an open cost that is over', () => {
+      expect(statusOf([cost('a', 1_000_000, [700_000], true), cost('b', 500_000, [600_000])])).toEqual({ kind: 'saved', amountMinor: 200_000 });
+      expect(statusOf([cost('a', 1_000_000, [900_000], true), cost('b', 500_000, [800_000])])).toEqual({ kind: 'over', amountMinor: 200_000 });
+      expect(statusOf([cost('a', 1_000_000, [900_000], true), cost('b', 500_000, [600_000])])).toEqual({ kind: 'exact', amountMinor: 0 });
+    });
+
+    it('says on the estimate for a settled cost paid exactly', () => {
+      expect(statusOf([cost('a', 1_000_000, [400_000, 600_000], true)])).toEqual({ kind: 'exact', amountMinor: 0 });
+      expect(statusOf([cost('a', 1_000_000, [1_000_000], true), cost('b', 500_000, [])])).toEqual({ kind: 'exact', amountMinor: 0 });
+    });
+
+    it('reads a cost in another currency in the event currency', () => {
+      const converter = makeConverter([{ from: 'EUR', to: 'IDR', onDate: '2026-03-01', rate: 18_000 }, { from: 'TRY', to: 'IDR', onDate: '2026-03-01', rate: 400 }], 'IDR');
+      // The pass is 95 euros (Rp 1.710.000, or 4.275 lira); Rp 2.000.000 paid is 5.000 lira: 725 lira over, the cost still open.
+      const trip = eventPlan({
+        categoryNames: { c: 'Trip' },
+        money: { baseCurrency: 'IDR', eventCurrency: 'TRY', today: '2026-03-02', converter },
+        items: [cost('museum', 9_500, [2_000_000], false, { currency: 'EUR' })],
+        actuals: [{ transactionId: 'museum-0', occurredOn: '2026-03-02', description: 'Museum', categoryId: 'c', amountBaseMinor: 2_000_000, amountMinor: 11_111, currency: 'EUR' }],
+      });
+      expect(planStatus(trip.lines.flatMap((line) => line.items))).toEqual({ kind: 'over', amountMinor: 72_500 });
+    });
+  });
+
+  it('shows the share done as the bar did: rounded, held between nought and a hundred, nought with nothing planned', () => {
+    expect(planDonePercent(14_700_000, 7_200_000)).toBe(51);
+    expect(planDonePercent(1_000_000, 0)).toBe(100);
+    expect(planDonePercent(1_000_000, 1_000_000)).toBe(0);
+    expect(planDonePercent(1_000_000, 1_500_000)).toBe(0);
+    expect(planDonePercent(0, 0)).toBe(0);
+  });
+
+  it('names the planned figure Estimate, and Estimate so far where it was Planned so far', () => {
+    expect(estimateLabel(plan)).toBe('Estimate');
+    expect(estimateLabel(withFood())).toBe('Estimate so far');
+  });
+
+  it('keeps the difference off the left line of a paid cost and puts the estimate under its figure', () => {
+    const crib = plan.lines[0]!.items[1]!;
+    expect(itemSubtitle(crib, 'IDR', 'IDR')).toBe('');
+    expect(itemPaidAgainst(crib, 'IDR', 'IDR')).toEqual({ of: expect.stringMatching(/^of .*7\.500\.000/), arrow: 'over' });
   });
 });

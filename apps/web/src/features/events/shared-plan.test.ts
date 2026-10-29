@@ -1,7 +1,7 @@
-import { formatMinor, type EventPlanItemView } from '@expanses/core';
+import { type EventPlan, formatMinor, type EventPlanItemView } from '@expanses/core';
 import type { SharedEventView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { defaultPart, itemChanges, planSummary, tickChoices } from './shared-plan';
+import { defaultPart, itemChanges, planSummary, sharedPlanHero, tickChoices } from './shared-plan';
 
 /* An item of the shared plan, opened (D7, I10). Invented figures, in TRY. */
 
@@ -48,5 +48,41 @@ describe('plan summary', () => {
     expect(planSummary([{ estimateMinor: 1_200 }, { estimateMinor: 800 }], 500)).toEqual({ plannedMinor: 2_000, leftMinor: 1_500, percent: 25 });
     expect(planSummary([{ estimateMinor: 100 }], 400)).toEqual({ plannedMinor: 100, leftMinor: 0, percent: 100 });
     expect(planSummary([], 400)).toEqual({ plannedMinor: 0, leftMinor: 0, percent: 0 });
+  });
+});
+
+describe('the shared plan hero', () => {
+  const plan = (items: EventPlanItemView[], boughtCount: number) =>
+    ({
+      lines: [{ items }],
+      itemCount: items.length,
+      boughtCount,
+      plannedEventMinor: items.reduce((t, i) => t + i.estimateMinor, 0),
+      toBuyEventMinor: items.filter((i) => !i.bought).reduce((t, i) => t + Math.max(0, i.estimateMinor - (i.paidEventMinor ?? 0)), 0),
+      boughtActualEventMinor: items.reduce((t, i) => t + (i.paidEventMinor ?? 0), 0),
+      unplannedCategoryCount: 0,
+      missingRates: [],
+    }) as unknown as EventPlan;
+  const open = item({ estimateEventMinor: 150_000, paidEventMinor: null });
+  const paid = item({ id: 'i2', estimateMinor: 100_000, estimateEventMinor: 100_000, paidEventMinor: 90_000, actualMinor: 90_000, purchaseCount: 1, bought: true, done: true });
+
+  it('says nothing paid, with everything still to pay', () => {
+    const hero = sharedPlanHero(plan([open], 0), 'TRY');
+    expect(hero.status.kind).toBe('none');
+    expect(hero.percent).toBe(0);
+    expect(hero.count).toBe('0 of 1 paid');
+    expect(hero.toPay).toBe(`${formatMinor(150_000, 'TRY')} to pay`);
+    expect(hero.toPayBase).toBeNull();
+  });
+
+  it('reads a settled item under its estimate as a saving', () => {
+    const hero = sharedPlanHero(plan([open, paid], 1), 'TRY');
+    expect(hero.status).toEqual({ kind: 'saved', amount: formatMinor(10_000, 'TRY') });
+    expect(hero.actual).toBe(formatMinor(90_000, 'TRY'));
+    expect(hero.count).toBe('1 of 2 paid');
+  });
+
+  it('says All paid once every item is done', () => {
+    expect(sharedPlanHero(plan([paid], 1), 'TRY').toPay).toBe('All paid');
   });
 });

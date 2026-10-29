@@ -292,7 +292,8 @@ export const JOURNEYS: Journey[] = [
       await page.getByRole('button', { name: 'Select bills to pay' }).click();
       await page.getByRole('checkbox', { name: 'Select Rent' }).click();
       await page.getByRole('checkbox', { name: 'Select School' }).click();
-      await page.getByRole('button', { name: /^Pay 2 selected/ }).click();
+      await page.getByRole('button', { name: 'Actions' }).click();
+      await page.getByRole('menuitem', { name: /^Pay 2 selected/ }).click();
       const sheet = page.getByRole('dialog', { name: 'Pay several' });
       await expect(sheet.getByText(/2\.000\.000 more than is free/)).toBeVisible();
       await sheet.getByRole('button', { name: 'Take from Emergency fund' }).click();

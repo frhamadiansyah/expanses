@@ -1,10 +1,10 @@
 import { formatMinor, isoDate } from '@expanses/core';
-import { deleteEvent, finishEvent, setEventPlanOff, finishSharedEvent, ownerScope, type SharedEventView, tagTransaction } from '@expanses/db';
+import { finishSharedEvent, ownerScope, type SharedEventView, tagTransaction } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { MoreHorizontal, Plus } from 'lucide-react';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { Plus, Settings } from 'lucide-react';
+import { type ReactNode, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
-import { useAccounts, useCategoryColours, useInvalidateAll } from '../../lib/queries';
+import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox, Money } from '../../ui';
 import {
   InsetGroup,
@@ -19,22 +19,19 @@ import {
   PushedTitle,
 } from '../../ui/native';
 import { addSpendingTarget } from './buy-item';
-import { useCategorySets } from '../categories/set-queries';
+import { useCategoryMarkColour } from '../categories/CategoryIcon';
 import { BudgetGauge } from '../transactions/BudgetGauge';
 import { ShareLine } from '../transactions/CategoryLines';
-import { chartColour } from '../transactions/category-colours';
 import { Deck } from '../transactions/Deck';
 import { Donut } from '../transactions/Donut';
-import { buildRows } from '../transactions/list-model';
-import { TransactionRow, useRecategorise } from '../transactions/TransactionRow';
+import { amountExtraParts, buildRows } from '../transactions/list-model';
+import { AmountExtra, TransactionRow, useRecategorise } from '../transactions/TransactionRow';
 import { EventNameBox } from './EventNameBox';
 import { eventDates } from './EventsPage';
-import { EditEventForm } from './EditEventForm';
 import { PlanCard } from './PlanCard';
 import { BACK_WORDS, chartUnder, differenceWords, gaugeFor, PLAN_WORDS, plannedLabel, planTotals, spentLabel, TONE, whereItWentRows } from './plan-view';
 import { editInsteadIn } from '../workspaces/filing';
 import { useCategoryWorkspaces, useWorkspaceBadges } from '../workspaces/queries';
-import { ShareEventSheet } from './ShareEventSheet';
 import { sharedEventMenu } from './shared-menu';
 import { SharedEventPage } from './SharedEventPage';
 import { useSharedEventSummaries, useSharedEventView } from './shared-queries';
@@ -55,9 +52,6 @@ export function EventDetailPage() {
   const { eventId } = useParams({ from: '/events/$eventId' });
   const summaries = useSharedEventSummaries();
   const shared = useSharedEventView(eventId);
-  // Hosted here, above the switch: sharing turns this page into the shared one at once, and the sheet still has the
-  // move and the invite to finish (shared events §6).
-  const [sharing, setSharing] = useState(false);
   const events = useEvents();
   const event = (events.data ?? []).find((row) => row.id === eventId) ?? null;
   if (summaries.isPending) return null;
@@ -65,13 +59,12 @@ export function EventDetailPage() {
   return (
     <>
       {!isShared ? (
-        <LocalEventPage onShare={() => setSharing(true)} />
+        <LocalEventPage />
       ) : shared.data ? (
         <SharedEventScreen view={shared.data} />
       ) : (
         <SharedEventWaiting name={event?.name ?? 'Event'} loading={shared.isPending || (shared.isFetching && !shared.error)} error={shared.error} />
       )}
-      {sharing && event ? <ShareEventSheet event={event} onClose={() => setSharing(false)} /> : null}
     </>
   );
 }
@@ -143,7 +136,7 @@ function Figure({ label, children }: { label: string; children: ReactNode }) {
  * the list of events is one tap back. Planning and tagging happen here, under the chart they change; recording opens
  * the Add screen with the event filled in, and comes back here.
  */
-function LocalEventPage({ onShare }: { onShare: () => void }) {
+function LocalEventPage() {
   const { eventId } = useParams({ from: '/events/$eventId' });
   // `ws` here is the workspace tab a plan screen was reading in; `ws` from useApp below is the workspace context.
   const { ws: openedIn } = useSearch({ from: '/events/$eventId' });
@@ -170,8 +163,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
   const suggestions = useEventSuggestions(eventId, openTab);
   const history = useEventHistory(eventId, openTab);
   const accounts = useAccounts().data ?? [];
-  const chosenColours = useCategoryColours().data;
-  const sets = useCategorySets({ ownerWide: true }).data ?? [];
+  const colourFor = useCategoryMarkColour();
   const today = isoDate();
   // One copy of the category gesture for this screen: the sheet it opens and the Undo toast it leaves.
   const recategorise = useRecategorise();
@@ -192,13 +184,9 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
   const [picked, setPicked] = useState<string | null>(null);
   /* The rows under the ring, folded away until the chart is tapped — Cashflow's ring does the same. */
   const [showRows, setShowRows] = useState(false);
-  const [editing, setEditing] = useState(false);
+  /* The plan under the gauge, folded away until the gauge is tapped — as the rows under the ring are. */
+  const [showPlan, setShowPlan] = useState(false);
   const historyRef = useRef<HTMLElement>(null);
-  // Edit opens from the gear at the top, and its form sits at the foot of the page: taken there once, as it opens.
-  const editRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (editing) editRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [editing]);
 
   const nameOf = (id: string) => accounts.find((account) => account.id === id)?.name ?? id;
   // The plan is the owner's, so it offers every workspace's categories — and two workspaces can hold copies of
@@ -287,7 +275,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
   const donut = (
     <div data-testid="event-total">
       <Donut
-        slices={spentLines.map((line) => ({ key: line.categoryId ?? 'none', label: line.name, totalMinor: line.actualMinor, colour: chartColour(line.categoryId ?? 'none', chosenColours) }))}
+        slices={spentLines.map((line) => ({ key: line.categoryId ?? 'none', label: line.name, totalMinor: line.actualMinor, colour: colourFor(line.categoryId) }))}
         // What went out, not the net: the slices are what the categories spent, and a slice may never be longer
         // than the ring it is drawn on. The middle stays the event's own total, with the difference said under it.
         totalMinor={whole}
@@ -303,26 +291,28 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
   /*
    * The chart is the switch for its own rows, as Cashflow's is: one tap shows the categories, another folds them and
    * drops any category picked from them. A div rather than a button: the deck inside it scrolls sideways, which a
-   * button's content will not do on iOS. Against the plan there are no rows, so there the tap does nothing.
+   * button's content will not do on iOS. Against the plan the same tap shows or hides the plan's own list.
    */
   const fold = () => {
+    if (onPlan) return setShowPlan(!showPlan);
     if (showRows) setPicked(null);
     setShowRows(!showRows);
   };
+  const folded = onPlan ? showPlan : showRows;
   const chartFrame = (content: ReactNode) => (
     <div
       role="button"
       tabIndex={0}
-      onClick={onPlan ? undefined : fold}
+      onClick={fold}
       onKeyDown={(event) => {
-        if (!onPlan && (event.key === 'Enter' || event.key === ' ')) {
+        if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
           fold();
         }
       }}
-      aria-expanded={showRows}
-      aria-label={showRows ? 'Hide categories' : 'See all categories'}
-      data-testid={showRows ? 'hide-categories' : 'see-categories'}
+      aria-expanded={folded}
+      aria-label={onPlan ? (showPlan ? 'Hide the plan' : 'See the plan') : showRows ? 'Hide categories' : 'See all categories'}
+      data-testid={onPlan ? (showPlan ? 'hide-plan' : 'see-plan') : showRows ? 'hide-categories' : 'see-categories'}
       className="block w-full cursor-pointer"
     >
       {content}
@@ -357,55 +347,20 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
     glyph: <Plus size={22} aria-hidden />,
     run: () => void navigate(addSpendingTarget(eventId)),
   };
-  /*
-   * Everything done to the event itself, behind the gear rather than in a list at the foot of the page: Edit, Share,
-   * done or not, and Remove last, in alarm. Only an event that is not shared reaches this page (a shared one is
-   * `SharedEventScreen`), so an event can be shared once.
-   */
+  // Everything done to the event itself is on its settings page, one tap from the gear. Only an event that is not
+  // shared reaches this page (a shared one is `SharedEventScreen`), so an event can be shared once.
   const settings: CornerAction = {
     key: 'settings',
-    label: 'More',
-    glyph: <MoreHorizontal size={20} aria-hidden />,
-    menu: event
-      ? [
-          // Add spending is the first line here, not a ＋ of its own in the bar.
-          { key: 'add', label: 'Add spending', run: addSpending.run },
-          { key: 'edit', label: 'Edit event', run: () => setEditing(true) },
-          { key: 'share', label: 'Share this event', run: onShare },
-          {
-            key: 'plan',
-            label: event.planOff ? 'Mark as planned' : 'Mark as unplanned',
-            run: () =>
-              void run(async () => {
-                setPage(0);
-                await setEventPlanOff(database, ws, event.id, !event.planOff);
-              }),
-          },
-          {
-            key: 'done',
-            label: event.finishedAt === null ? 'Mark as done' : 'Reopen',
-            run: () => void run(() => finishEvent(database, ws, event.id, event.finishedAt === null)),
-          },
-          {
-            key: 'remove',
-            label: 'Remove event',
-            destructive: true,
-            run: () => {
-              if (!window.confirm(`Remove ${event.name}? Its transactions stay where they are.`)) return;
-              void run(async () => {
-                await deleteEvent(database, ws, event.id);
-                await navigate({ to: '/events' });
-              });
-            },
-          },
-        ]
-      : [],
+    label: 'Settings',
+    glyph: <Settings size={20} aria-hidden />,
+    to: '/events/$eventId/settings',
+    params: { eventId },
   };
 
   return (
     <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
       <div className="mx-auto max-w-2xl">
-      <PushedTitle title={event ? eventDates(event) : 'Event'} back="All events" backTo="/events" actions={[settings]} />
+      <PushedTitle title={event ? eventDates(event) : 'Event'} back="All events" backTo="/events" actions={[addSpending, settings]} />
       <ErrorBox error={error ?? events.error ?? plan.error} />
 
       {workspaceTabs}
@@ -416,7 +371,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
           {!anyMoney && !hasPlan ? (
             /* A category is no longer something one plans: a plan is a list of things, and the card below is the way in. */
             <p className="py-6 text-center text-[13px] text-[var(--ph-ink-3)]">
-              {planned ? 'Nothing spent on it yet. Plan what to buy below, or record the first payment.' : 'Nothing spent on it yet.'}
+              {planned ? 'Nothing spent on it yet. Plan what to pay below, or record the first payment.' : 'Nothing spent on it yet.'}
             </p>
           ) : hasPlan ? (
             <Deck page={page} onPage={setPage} labels={['Where it went', 'Against the plan']} frame={chartFrame}>
@@ -433,7 +388,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
                   // `set` is the caps label the gauge prints and `spent` the middle one, and PLAN_WORDS cannot hold
                   // either as a constant — both depend on whether the plan speaks for the whole of the event.
                   words={{ ...PLAN_WORDS, set: plannedLabel(data!), spent: spentLabel(data!) }}
-                  last={{ label: 'Still to buy', value: formatMinor(totals!.toBuyMinor, ws.baseCurrency) }}
+                  last={{ label: 'Still to pay', value: formatMinor(totals!.toBuyMinor, ws.baseCurrency) }}
                 />
                 {/* The mockup's order under the ring: how the bought things went, and what nobody planned. Every
                     *money* figure is `planTotals`', never recomputed here, so no two screens can disagree about one
@@ -515,7 +470,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
                   )}
                 >
                   <ShareLine
-                    colour={chartColour(row.categoryId ?? 'none', chosenColours)}
+                    colour={colourFor(row.categoryId)}
                     name={row.categoryId === null ? row.name : planName(row.categoryId)}
                     // Clamped: a category whose refunds outweigh its purchases still cannot have spent less than
                     // nothing. What came back is named under the ring, on the page that can explain it.
@@ -530,7 +485,7 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
           )}
 
           {/* Against the plan's own list, in the gauge's card: no gap between the reading and what it reads. */}
-          {onPlan && data && <PlanCard eventId={eventId} plan={data} bookId={openTab} inPanel />}
+          {onPlan && showPlan && data && <PlanCard eventId={eventId} plan={data} bookId={openTab} inPanel />}
         </Panel>
       )}
 
@@ -603,6 +558,8 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
                         testId="event-history"
                         amountMinor={expense?.amountBaseMinor ?? 0}
                         currency={ws.baseCurrency}
+                        // The foreign figure under the amount, as every other list draws it.
+                        amountExtra={<AmountExtra parts={amountExtraParts(tx, undefined, listRow)} />}
                         className="py-2.5"
                         title="Open the receipt"
                         onOpen={() => void navigate({ to: '/transactions/$transactionId', params: { transactionId: tx.id } })}
@@ -624,11 +581,6 @@ function LocalEventPage({ onShare }: { onShare: () => void }) {
         </section>
       )}
 
-      {event && editing && (
-        <div ref={editRef}>
-          <EditEventForm event={event} sets={sets} setLocked={anyMoney || hasItems || transactions > 0} onDone={() => setEditing(false)} />
-        </div>
-      )}
       {/* The category sheet and its Undo toast, once for the screen rather than once per row. */}
       {recategorise.overlay}
       </div>

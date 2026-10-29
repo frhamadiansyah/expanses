@@ -3,6 +3,7 @@ import { openAccount } from './accounts';
 import { addForm, choosePayment, openAmount, saveButton } from './add-transaction';
 import { mockRates } from './pockets';
 import { corner, eventually, newEvent, openTrip, recordSharedSpend, spendingRow } from './shared-events';
+import { openWorkspaceSharePage } from './workspace-page';
 
 /*
  * A refund for a purchase of a shared event (the owner's report: a refund to the card was missing on the partner's
@@ -47,8 +48,9 @@ test('a refund moved into a shared event shows on both phones with the same rows
   await expect(andi.getByTestId('shared-event')).toBeVisible({ timeout: 60_000 });
 
   // Rina hears that Andi joined before she records, so he is in the split.
-  await rina.goto('/events');
-  await eventually(rina, () => expect(rina.getByTestId('event-shared-with')).toContainText('Shared with 2 people', { timeout: 1_000 }));
+  await rina.goto('/account');
+  await openWorkspaceSharePage(rina, 'Personal');
+  await eventually(rina, () => expect(rina.getByTestId('share-event-row').first()).toContainText('Shared with 2 people', { timeout: 1_000 }));
 
   // Rina pays ₺900 for the fish dinner from her bank (Rp 504.000), shared by all three.
   await openTrip(rina);
@@ -73,8 +75,7 @@ test('a refund moved into a shared event shows on both phones with the same rows
   await expect(form).toHaveCount(0);
 
   // Select the refund, Add to event: it leaves the workspace and joins the event's spending below zero.
-  await rina.getByRole('button', { name: 'Filters', exact: true }).click();
-  await rina.getByTestId('filters-menu').getByRole('menuitem', { name: 'Select' }).click();
+  await rina.getByRole('button', { name: 'Select', exact: true }).click();
   const bar = rina.getByRole('toolbar', { name: 'Selected transactions' });
   await rina.getByRole('checkbox', { name: 'Select Refund · Fish dinner' }).click();
   await bar.getByRole('button', { name: 'Actions' }).click();

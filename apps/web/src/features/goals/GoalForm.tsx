@@ -1,4 +1,4 @@
-import { bandHint, CURRENCIES, type GoalKind, isoDate, minorToMajorString, monthsUntil, parseMajor, returnBandFor } from '@expanses/core';
+import { bandHint, CURRENCIES, type GoalKind, groupedMajorString, groupTypedAmount, isoDate, monthsUntil, parseGroupedMajor, returnBandFor } from '@expanses/core';
 import { type GoalRow, goalIsFunded, saveGoal } from '@expanses/db';
 import { useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
@@ -26,10 +26,10 @@ interface StageDraft {
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-function draftFromTemplate(template: GoalTemplate, today: string): StageDraft {
+function draftFromTemplate(template: GoalTemplate, today: string, currency: string): StageDraft {
   return {
     name: template.stage.name,
-    amount: template.stage.targetMinor === null ? '' : String(template.stage.targetMinor),
+    amount: template.stage.targetMinor === null ? '' : groupTypedAmount(String(template.stage.targetMinor), currency),
     months: template.stage.targetMonths === null ? '' : String(template.stage.targetMonths),
     dueOn: templateDueOn(template, today),
     usesMonths: template.stage.targetMonths !== null,
@@ -90,20 +90,20 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
     if (!goal) return;
     void goalIsFunded(database, goal.id).then(setFunded);
   }, [database, goal]);
-  const [standing, setStanding] = useState(goal ? minorToMajorString(goal.standingMonthlyMinor, goal.currency) : '0');
+  const [standing, setStanding] = useState(goal ? groupedMajorString(goal.standingMonthlyMinor, goal.currency) : '0');
   const [standingNote, setStandingNote] = useState(goal?.standingNote ?? '');
   const [stages, setStages] = useState<StageDraft[]>(
     goal
       ? goal.stages.map((stage) => ({
           id: stage.id,
           name: stage.name,
-          amount: stage.targetMinor === null ? '' : minorToMajorString(stage.targetMinor, goal.currency),
+          amount: stage.targetMinor === null ? '' : groupedMajorString(stage.targetMinor, goal.currency),
           months: stage.targetMonths === null ? '' : String(stage.targetMonths),
           dueOn: stage.dueOn,
           usesMonths: stage.targetMonths !== null,
           paidOn: stage.paidOn,
         }))
-      : [draftFromTemplate(starting!, today)],
+      : [draftFromTemplate(starting!, today, currency)],
   );
   const setAside = useSetAside(goal, earmarks);
   const [error, setError] = useState<unknown>(null);
@@ -121,7 +121,7 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
     setGrowth(String(chosen.growthBps / 100));
     setExpectedReturn(String(chosen.returnBps / 100));
     setReturnTyped(false);
-    setStages([draftFromTemplate(chosen, today)]);
+    setStages([draftFromTemplate(chosen, today, currency)]);
   }
 
   const setStage = (index: number, patch: Partial<StageDraft>) => {
@@ -145,13 +145,13 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
         kind,
         growthBps: Math.round(Number(growth.replace(',', '.')) * 100),
         returnBps: Math.round(Number(expectedReturn.replace(',', '.')) * 100),
-        standingMonthlyMinor: standing.trim() === '' ? 0 : parseMajor(standing, currency),
+        standingMonthlyMinor: standing.trim() === '' ? 0 : parseGroupedMajor(standing, currency),
         standingNote: standingNote.trim() || null,
         currency,
         stages: stages.map((stage) => ({
           id: stage.id,
           name: stage.name,
-          targetMinor: stage.usesMonths ? null : parseMajor(stage.amount, currency),
+          targetMinor: stage.usesMonths ? null : parseGroupedMajor(stage.amount, currency),
           targetMonths: stage.usesMonths ? Number(stage.months) : null,
           dueOn: stage.dueOn,
           paidOn: stage.paidOn,
@@ -217,9 +217,10 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
               ) : (
                 <TextRow
                   key="amount"
-                  label={`Cost in today's money (${currency})`}
+                  label="Cost in today's money"
+                  prefix={currency}
                   value={stage.amount}
-                  onChange={(e) => setStage(index, { amount: e.target.value })}
+                  onChange={(e) => setStage(index, { amount: groupTypedAmount(e.target.value, currency) })}
                   inputMode="decimal"
                   placeholder="Amount"
                   required
@@ -259,11 +260,12 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
         <InsetGroup header="Already moving">
           <TextRow
             label="Standing amount each month"
-            info={`A transfer already made for this goal, outside monthly buys. In ${currency}.`}
+            prefix={currency}
+            info="Optional. A transfer already made for this goal, outside monthly buys."
             value={standing}
-            onChange={(e) => setStanding(e.target.value)}
+            onChange={(e) => setStanding(groupTypedAmount(e.target.value, currency))}
             inputMode="decimal"
-            placeholder="Optional"
+            placeholder="Amount"
           />
           <TextRow label="What that transfer is" value={standingNote} onChange={(e) => setStandingNote(e.target.value)} placeholder="Standing transfer to the time deposit" />
         </InsetGroup>

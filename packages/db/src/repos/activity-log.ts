@@ -12,7 +12,7 @@ import { auditLog } from '../schema';
  * list holds what was changed by hand and nothing the app did on its own behalf. A row is never rewritten.
  */
 
-export type ActivityOp = 'create' | 'edit' | 'delete' | 'payment' | 'archive';
+export type ActivityOp = 'create' | 'edit' | 'delete' | 'payment' | 'archive' | 'adjust';
 
 /** One row of the person's own doing. `transactionId` (an account's id for archive) is the new row for create, edit and payment, the voided one for delete. */
 export async function recordActivityTx(tx: Db, ws: WorkspaceContext, op: ActivityOp, transactionId: string, payload: Record<string, unknown> = {}): Promise<void> {

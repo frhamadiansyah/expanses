@@ -19,6 +19,7 @@ test('Account: switch by the row, open a workspace by its ›, retype it, archiv
   await expect(page.getByText(/^Open:/)).toHaveCount(0);
 
   // A second workspace, made from the sheet this page opens.
+  await page.getByTestId('add-workspace').click();
   await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Warung');

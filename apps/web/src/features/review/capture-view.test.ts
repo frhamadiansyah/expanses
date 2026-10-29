@@ -1,7 +1,7 @@
 import type { CaptureLine, Reading } from '@expanses/core';
 import type { CaptureSource, DraftRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { answerPatch, arrivalLine, asksForSourceAccount, captureRowView, draftDays, fieldBoxes, majorText, messageOnce, minorFromTyped } from './capture-view';
+import { answerPatch, arrivalLine, asksForSourceAccount, captureRowView, draftDays, effectiveCategory, fieldBoxes, majorText, messageOnce, minorFromTyped } from './capture-view';
 
 const draft = (over: Partial<DraftRow> = {}): DraftRow => ({
   id: 'd1',
@@ -220,5 +220,21 @@ describe('draftDays', () => {
   it('gives no total for a day mixing currencies', () => {
     const [day] = draftDays([draft({ id: 'a' }), draft({ id: 'b', currency: 'USD', amountMinor: 500 })]);
     expect(day!.net).toBe(0);
+  });
+});
+
+describe('effectiveCategory', () => {
+  const base = { id: 'd1', kind: 'expense' as const, categoryAccountId: null };
+  it('uses the guess for an uncategorised expense or income', () => {
+    expect(effectiveCategory(base, { d1: 'cat-groceries' })).toBe('cat-groceries');
+    expect(effectiveCategory({ ...base, kind: 'income' }, { d1: 'cat-salary' })).toBe('cat-salary');
+  });
+  it('never replaces a category the draft has', () => {
+    expect(effectiveCategory({ ...base, categoryAccountId: 'cat-own' }, { d1: 'cat-groceries' })).toBe('cat-own');
+  });
+  it('has none without a guess, and none for a transfer', () => {
+    expect(effectiveCategory(base, { d1: null })).toBeNull();
+    expect(effectiveCategory(base, undefined)).toBeNull();
+    expect(effectiveCategory({ ...base, kind: 'transfer' }, { d1: 'cat-groceries' })).toBeNull();
   });
 });

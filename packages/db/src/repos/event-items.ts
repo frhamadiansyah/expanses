@@ -4,6 +4,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { eventItemPurchases, eventItems } from '../schema-events';
+import { itemCurrencies, writeItemCurrency } from './event-currency';
 import { EventError, eventOf } from './event-scope';
 
 export interface EventItemRow {
@@ -11,7 +12,10 @@ export interface EventItemRow {
   eventId: string;
   name: string;
   quantity: number;
+  /** In minor units of `currency`. */
   unitPriceMinor: number;
+  /** The item's own currency (0104). Null: none stored, so the price is in the workspace's base currency. */
+  currency: string | null;
   categoryAccountId: string | null;
   link: string | null;
   note: string | null;
@@ -27,7 +31,13 @@ export interface SaveEventItemInput {
   name: string;
   /** One when absent: one of something is the ordinary case. */
   quantity?: number;
+  /** In minor units of `currency`. */
   unitPriceMinor: number;
+  /**
+   * The currency the price is in. Absent: an edit keeps the item's, a new item has none (the base currency). Pass the
+   * base currency to say so explicitly.
+   */
+  currency?: string | null;
   categoryAccountId?: string | null;
   link?: string | null;
   note?: string | null;
@@ -72,12 +82,13 @@ async function purchasesOf(tx: Db, ws: WorkspaceContext, itemIds: readonly strin
   return out;
 }
 
-const toItem = (row: typeof eventItems.$inferSelect, purchases: { transactionId: string; shareMinor: number }[] = []): EventItemRow => ({
+const toItem = (row: typeof eventItems.$inferSelect, purchases: { transactionId: string; shareMinor: number }[] = [], currency: string | null = null): EventItemRow => ({
   id: row.id,
   eventId: row.eventId,
   name: row.name,
   quantity: row.quantity,
   unitPriceMinor: row.unitPriceMinor,
+  currency,
   categoryAccountId: row.categoryAccountId,
   link: row.link,
   note: row.note,
@@ -114,7 +125,8 @@ export async function listEventItems(database: Database, ws: WorkspaceContext, e
     .where(and(eq(eventItems.workspaceId, ws.workspaceId), eq(eventItems.eventId, eventId)))
     .orderBy(asc(eventItems.sortOrder), asc(eventItems.createdAt));
   const purchases = await purchasesOf(database.db, ws, rows.map((row) => row.id));
-  return rows.map((row) => toItem(row, purchases.get(row.id) ?? []));
+  const currencies = await itemCurrencies(database.db, ws, rows.map((row) => row.id));
+  return rows.map((row) => toItem(row, purchases.get(row.id) ?? [], currencies.get(row.id) ?? null));
 }
 
 /** Adds a thing to buy, or edits one. An edit never moves it and never touches the purchase behind it. */
@@ -149,6 +161,7 @@ export async function saveEventItem(database: Database, ws: WorkspaceContext, ev
       .update(eventItems)
       .set({ name, quantity, unitPriceMinor: input.unitPriceMinor, categoryAccountId, link, note })
       .where(and(eq(eventItems.workspaceId, ws.workspaceId), eq(eventItems.id, input.id)));
+    if (input.currency !== undefined) await writeItemCurrency(database.db, ws, input.id, input.currency);
     return input.id;
   }
 
@@ -173,6 +186,7 @@ export async function saveEventItem(database: Database, ws: WorkspaceContext, ev
     sortOrder: Number(last.next),
     createdAt: new Date().toISOString(),
   });
+  if (input.currency) await writeItemCurrency(database.db, ws, id, input.currency);
   return id;
 }
 
@@ -183,6 +197,7 @@ export async function removeEventItem(database: Database, ws: WorkspaceContext, 
     if (await purchasesExist(tx)) {
       await tx.delete(eventItemPurchases).where(and(eq(eventItemPurchases.workspaceId, ws.workspaceId), eq(eventItemPurchases.itemId, itemId)));
     }
+    await writeItemCurrency(tx, ws, itemId, null);
     await tx.delete(eventItems).where(and(eq(eventItems.workspaceId, ws.workspaceId), eq(eventItems.id, itemId)));
   });
 }

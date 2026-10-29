@@ -1,6 +1,6 @@
 import { NetWorthError, type NetWorthGroupView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { canInvite, jointTaxLine, netWorthRowOf, notReadyLine, pendingPrompt, ADD_SOMEONE_LINE, inviteesFor, needsReview, sayNetWorthError, settingOnAdd, shareRowOf, toggleInvitee } from './net-worth-state';
+import { canInvite, jointTaxLine, netWorthRowOf, notReadyLine, pendingPrompt, ADD_SOMEONE_LINE, FILING_CHOICES, netWorthValue, inviteesFor, needsReview, sayNetWorthError, settingOnAdd, shareRowOf, toggleInvitee } from './net-worth-state';
 
 const rina = { memberId: 'r', name: 'Rina', role: 'owner' as const };
 const andi = { memberId: 'a', name: 'Andi', role: 'member' as const };
@@ -46,6 +46,7 @@ describe('the Share net worth row (§6, §8.1)', () => {
       proposalId: 'p1',
       mode: 'joint',
       line: 'Rina set up household net worth: one tax ID.',
+      title: 'Rina asks to share net worth',
     });
     expect(netWorthRowOf(view('a', { pending: proposal({ mode: 'separate' }), waitingFor: ['a'] }), members).pending?.line).toBe(
       'Rina set up household net worth: separate tax IDs.',
@@ -55,7 +56,7 @@ describe('the Share net worth row (§6, §8.1)', () => {
   it('a change that leaves a current member out asks them too (review round 2, D6)', () => {
     const active = { proposalId: 'p0', mode: 'separate' as const, members: ['r', 'a', 's'] };
     const row = netWorthRowOf(view('a', { active, pending: proposal({ proposalId: 'p2', mode: 'separate', members: ['r', 's'] }), waitingFor: ['a'] }), members);
-    expect(row.pending).toEqual({ kind: 'asked', proposalId: 'p2', mode: 'separate', line: 'Rina proposes a group that leaves this member out: separate tax IDs.' });
+    expect(row.pending).toEqual({ kind: 'asked', proposalId: 'p2', mode: 'separate', line: 'Rina proposes a group that leaves this member out: separate tax IDs.', title: 'Rina proposes a group that leaves this member out: separate tax IDs.' });
     const answered = netWorthRowOf(view('a', { active, pending: proposal({ proposalId: 'p2', mode: 'separate', members: ['r', 's'] }), waitingFor: ['s'] }), members);
     expect(answered.pending).toEqual({ kind: 'waiting', proposalId: 'p2', line: 'Waiting for Sari', cancellable: false });
   });
@@ -150,5 +151,19 @@ describe('jointTaxLine', () => {
     expect(jointTaxLine(['Andi'])).toBe(
       'For the joint tax return, each item also goes to Andi with its row of the tax report: its code, its figures and the details its table asks for, such as an account number.',
     );
+  });
+});
+
+describe('the Net worth row on the Share page', () => {
+  const active = { mode: 'joint' as const, line: 'x', members: [] };
+  const waiting = { kind: 'waiting' as const, proposalId: 'p', line: 'x', cancellable: true };
+  it('reads Off, Waiting or On', () => {
+    expect(netWorthValue({ active: null, pending: null })).toBe('Off');
+    expect(netWorthValue({ active: null, pending: waiting })).toBe('Waiting');
+    expect(netWorthValue({ active, pending: null })).toBe('On');
+    expect(netWorthValue({ active, pending: waiting })).toBe('On');
+  });
+  it('words the two ways of filing', () => {
+    expect(FILING_CHOICES).toEqual({ joint: 'Filed together', separate: 'Filed separately' });
   });
 });

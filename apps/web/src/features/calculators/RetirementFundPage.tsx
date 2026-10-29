@@ -1,4 +1,4 @@
-import { isoDate } from '@expanses/core';
+import { groupTypedAmount, isoDate } from '@expanses/core';
 import { createGoalFromCalculator } from '@expanses/db';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -19,6 +19,8 @@ export function RetirementFundPage() {
 
   const retirementAnswer = retirementWorking(retirement, ws.baseCurrency);
   const setRetirementBox = (key: keyof RetirementDraft) => (event: { target: { value: string } }) => setRetirement((draft) => ({ ...draft, [key]: event.target.value }));
+  const setMoneyBox = (key: 'annualSpend' | 'alreadySaved') => (event: { target: { value: string } }) =>
+    setRetirement((draft) => ({ ...draft, [key]: groupTypedAmount(event.target.value, ws.baseCurrency) }));
   const retirementHint = (key: keyof RetirementDraft, otherwise?: ReactNode) => refusal(retirementAnswer.problems[key], otherwise);
 
   async function save() {
@@ -37,11 +39,13 @@ export function RetirementFundPage() {
     <CalculatorPage entry={RETIREMENT_FUND} error={error} saved={saved}>
       <InsetGroup>
         <TextRow
-          label={`Yearly spending in retirement (${ws.baseCurrency})`}
+          label="Yearly spending in retirement"
+          prefix={ws.baseCurrency}
           hint={retirementHint('annualSpend', "At today's prices.")}
           value={retirement.annualSpend}
-          onChange={setRetirementBox('annualSpend')}
-          inputMode="numeric"
+          onChange={setMoneyBox('annualSpend')}
+          inputMode="decimal"
+          placeholder="Amount"
         />
         <TextRow label="Age now" hint={retirementHint('ageNow')} value={retirement.ageNow} onChange={setRetirementBox('ageNow')} inputMode="numeric" />
         <TextRow label="Retirement age" hint={retirementHint('retireAge')} value={retirement.retireAge} onChange={setRetirementBox('retireAge')} inputMode="numeric" />
@@ -68,11 +72,13 @@ export function RetirementFundPage() {
           inputMode="decimal"
         />
         <TextRow
-          label={`Already put aside (${ws.baseCurrency})`}
+          label="Already put aside"
+          prefix={ws.baseCurrency}
           hint={retirementHint('alreadySaved', 'What is held for this today; it keeps earning until saving stops.')}
           value={retirement.alreadySaved}
-          onChange={setRetirementBox('alreadySaved')}
-          inputMode="numeric"
+          onChange={setMoneyBox('alreadySaved')}
+          inputMode="decimal"
+          placeholder="Amount"
         />
       </InsetGroup>
 

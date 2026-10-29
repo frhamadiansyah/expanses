@@ -1,7 +1,7 @@
 {
   "id": "bni-mypertamina",
   "bank": "BNI",
-  "name": "BNI MyPertamina",
+  "name": "BNI My Pertamina",
   "network": "mastercard",
   "program": {
     "unit": "cashback",

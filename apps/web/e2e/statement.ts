@@ -55,3 +55,20 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
 
 export const screenshotFiles = (count: number) =>
   Array.from({ length: count }, (_, i) => ({ name: `statement-${i + 1}.png`, mimeType: 'image/png', buffer: PNG }));
+
+/**
+ * A wallet's transaction list as Vision reads it: each entry a block of separate lines — the name, a long reference id and
+ * the date with its time on the left, the signed amount with the source under it on the right.
+ */
+export function walletListLines(entries: readonly (readonly [name: string, ref: string, when: string, amount: string, source: string])[]): CaptureLine[] {
+  return entries.flatMap(([name, ref, when, amount, source], i) => {
+    const y = 0.12 + i * 0.1;
+    return [
+      line(name, 0.05, y, 0.5),
+      line(ref, 0.05, y + 0.025, 0.5),
+      line(when, 0.05, y + 0.05, 0.3),
+      line(amount, 0.72, y, 0.25),
+      line(source, 0.72, y + 0.025, 0.25),
+    ];
+  });
+}

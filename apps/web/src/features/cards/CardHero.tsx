@@ -1,16 +1,16 @@
-import { formatMinor, installmentSplit, minorToMajorString, parseMajor, transferLines } from '@expanses/core';
+import { formatMinor, installmentSplit, minorToMajorString, parseMajor, purchasesForPlastic, transferLines } from '@expanses/core';
 import type { SpendLine } from '@expanses/core';
 import { type AccountRow, cardStatement, type CardRow, postTransaction, spendByPlastic } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight, Banknote, Gift, ReceiptText } from 'lucide-react';
-import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { keptForSpending } from '../../lib/account-types';
 import { moneyHolders, useCategoryColours, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { createPortal } from 'react-dom';
-import { ActionButtons, InsetGroup, InsetRow, type InsetRowProps, SelectRow, TextRow, useWalletSlot } from '../../ui/native';
+import { ActionButtons, PageDots, InsetGroup, InsetRow, type InsetRowProps, SelectRow, TextRow, useSwipeStep, useWalletSlot } from '../../ui/native';
 import { backRadius } from '../accounts/balance-back';
 import { BackSlot } from './CardBack';
 import { useSpendBonuses } from './spend-bonuses';
@@ -18,13 +18,11 @@ import { categoryMark } from '../categories/CategoryIcon';
 import { CardFace } from './CardFace';
 import { cycleBack, dueDateAfter, dueIn } from './statement-dates';
 import { limitUsage } from './limit-usage';
-import { FeeAlert } from './FeeAlert';
-import { feeLine } from './fee-line';
 import { useInstallments } from '../loans/queries';
 import { spendingDoor } from '../goals/set-aside-question';
 import { creditLine } from '../networth/debt-rows';
 import { useSetAside } from '../goals/SetAsideQuestion';
-import { type CardPoints, formatPoints, pointsValue, shortDate } from './useCardPoints';
+import { type CardPoints, formatPoints, shortDate } from './useCardPoints';
 
 /**
  * Wallet's "Latest Transactions" under an open pass: the card's most recent purchases, each opening its receipt, and
@@ -68,9 +66,15 @@ function LatestTransactions({
               key={purchase.id}
               icon={<mark.Glyph size={16} strokeWidth={2.2} />}
               iconColour={mark.colour}
-              title={purchase.description || mark.name || 'Purchase'}
-              subtitle={[mark.name, shortDate(purchase.on), earned ? `+${formatPoints(earned)} ${unit}` : null].filter(Boolean).join(' · ')}
-              value={formatMinor(purchase.amountMinor, currency)}
+              // The category is the first line, as on Cashflow; the note and the day are the second; the points sit under the amount.
+              title={mark.name || purchase.description || 'Purchase'}
+              subtitle={[purchase.description, shortDate(purchase.on)].filter(Boolean).join(' · ')}
+              value={
+                <span className="flex flex-col items-end">
+                  <span>{formatMinor(purchase.amountMinor, currency)}</span>
+                  {earned ? <span className="text-[12.5px] leading-[16px] font-normal text-[var(--ph-ink-3)]">{`+${formatPoints(earned)} ${unit}`}</span> : null}
+                </span>
+              }
               valueTone="ink"
               to="/transactions/$transactionId"
               params={{ transactionId: purchase.id }}
@@ -133,7 +137,7 @@ function PaySheet({ card, accounts, amountMinor, today, onDone }: { card: Accoun
         }}
       >
         <InsetGroup>
-          <TextRow label={`Amount (${currency})`} value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" />
+          <TextRow label="Amount" prefix={currency} value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" />
           <SelectRow label="Paid with" value={fromId} onChange={(event) => setFromId(event.target.value)}>
             {payers.map((account) => (
               <option key={account.id} value={account.id}>
@@ -158,7 +162,7 @@ function PaySheet({ card, accounts, amountMinor, today, onDone }: { card: Accoun
 /**
  * A card's page: its summary, which is the whole page now that its sections are pages of their own.
  *
- * Opened from the Wallet stack: what is owed, the round actions, this statement's points, the instalments and the
+ * Opened from the Wallet stack: what is owed, the round actions, the instalments and the
  * latest purchases. Opened on its own (an account the stack does not hold): layout D2 — the card with how much of the
  * limit is used, then the current bill and the points as equals.
  *
@@ -231,6 +235,25 @@ export function CardHero({
   useEffect(() => {
     setSlotShown?.(shown ? { last4: shown.last4, holderName: shown.holderName, spent: spentText } : null);
   }, [setSlotShown, shown?.last4, shown?.holderName, spentText]);
+  // A swipe on the card steps through the plastic cards, as the dots do. It answers whether there was one to step to.
+  const lastIndex = cards.length - 1;
+  const stepShown = useCallback(
+    (by: 1 | -1): boolean => {
+      const next = shownIndex + by;
+      if (next < 0 || next > lastIndex) return false;
+      setShownIndex(next);
+      return true;
+    },
+    [shownIndex, lastIndex],
+  );
+  const setSlotSwipe = slot?.setSwipe;
+  useEffect(() => {
+    if (!setSlotSwipe || lastIndex < 1) return;
+    setSlotSwipe(stepShown);
+    return () => setSlotSwipe(null);
+  }, [setSlotSwipe, stepShown, lastIndex]);
+  const faceBox = useRef<HTMLDivElement>(null);
+  const faceSwipe = useSwipeStep({ enabled: lastIndex >= 1, onStep: stepShown, target: () => faceBox.current });
   const limit = cp.terms?.creditLimitMinor ?? null;
   const plans = useInstallments(card.id);
   const holding = (plans.data ?? []).map((plan) => ({ plan, split: installmentSplit(plan, today) })).filter(({ split }) => split.unbilledMinor > 0);
@@ -254,35 +277,13 @@ export function CardHero({
   // Where the summary leads: the card's own pages, and the programme its points go into.
   const params = { cardId: card.id };
   const toSettings = { to: '/cards/$cardId/settings' as const, params };
-  // The annual fee and when it is next charged: one quiet row, in the due-soon warning inside 30 days. A tap asks
-  // whether it was waived.
-  const [askingFee, setAskingFee] = useState(false);
-  const fee = cp.terms ? feeLine(cp.terms.annualFeeMinor, cp.terms.annualFeeOn, cp.terms.annualFeeWaivedYear, currency, today, bonuses.refunds.at(-1)?.feeYear ?? null) : null;
-  const feeRow = fee && cp.terms && (
-    <InsetGroup>
-      <InsetRow
-        testId="card-annual-fee"
-        title="Annual fee"
-        subtitle={fee.when ? <span className={cx(fee.soon && 'font-semibold text-[var(--ph-warn)]')}>{fee.when}</span> : undefined}
-        value={fee.amount ?? undefined}
-        valueTone="ink"
-        onClick={cp.terms.annualFeeOn ? () => setAskingFee(true) : undefined}
-        {...(cp.terms.annualFeeOn ? {} : toSettings)}
-      />
-      {askingFee && (
-        <FeeAlert
-          fee={{ cardId: card.id, name: card.name, currency, annualFeeMinor: cp.terms.annualFeeMinor, annualFeeOn: cp.terms.annualFeeOn, annualFeeWaivedYear: cp.terms.annualFeeWaivedYear }}
-          today={today}
-          onClose={() => setAskingFee(false)}
-        />
-      )}
-    </InsetGroup>
-  );
   const toPoints = { to: '/cards/$cardId/points' as const, params };
   const toStatement = { to: '/cards/$cardId/statement' as const, params };
   // A debit card has no statement: its See all is every transaction of the account it spends from.
   const seeAll = debit ? { to: '/transactions' as const, search: { account: card.id } } : toStatement;
-  const recent = <LatestTransactions lines={lines} accounts={accounts} currency={currency} pointsOf={pointsOf} unit={unit} seeAll={seeAll} />;
+  // Recent follows the plastic card shown; a purchase naming no card, or a removed one, is the primary's.
+  const recentLines = purchasesForPlastic(lines, cards, shown?.id);
+  const recent = <LatestTransactions lines={recentLines} accounts={accounts} currency={currency} pointsOf={pointsOf} unit={unit} seeAll={seeAll} />;
 
   const dueOn = lastCycle && cp.terms ? dueDateAfter(lastCycle.end, cp.terms.dueDay) : null;
   // The statement already bills instalment plans a month at a time, so this is what the bank asks for.
@@ -390,9 +391,9 @@ export function CardHero({
       actions={[
         ...(debit ? [] : [{ key: 'pay', label: 'Pay', glyph: <Banknote size={20} aria-hidden />, run: () => setPaying(true) }]),
         { key: 'spend', label: 'Spend', glyph: <ArrowUpRight size={20} aria-hidden />, to: '/transactions/new' as const, search: { mode: 'expense' as const, account: card.id } },
-        // The balance is redeemed and converted on the programme's page; a card with no rewards sets them up first.
+        // The statement's points, with the programme's page one row in; a card with no rewards sets them up first.
         cp.programme
-          ? { key: 'points', label: unitLabel, glyph: <Gift size={20} aria-hidden />, to: '/cards/points/$programmeId' as const, params: { programmeId: cp.programme.id } }
+          ? { key: 'points', label: unitLabel, glyph: <Gift size={20} aria-hidden />, ...toPoints }
           : { key: 'points', label: unitLabel, glyph: <Gift size={20} aria-hidden />, ...toSettings },
         ...(debit ? [] : [{ key: 'statement', label: 'Statement', glyph: <ReceiptText size={20} aria-hidden />, ...toStatement }]),
       ]}
@@ -437,8 +438,7 @@ export function CardHero({
 
   const below = (
     <>
-      {setup}
-      {feeRow}
+      {setup && <div className="-mt-[10px]">{setup}</div>}
       {instalments}
       {recent}
     </>
@@ -448,19 +448,17 @@ export function CardHero({
   const turned = slot?.flipped === true;
   const dots =
     cards.length > 1 ? (
-      <div className={cx('mt-2 flex h-[15px] items-center justify-center gap-1.5', turned && 'invisible')} role="group" aria-label="Cards on this account" aria-hidden={turned || undefined}>
-        {cards.map((piece, index) => (
-          <button
-            key={piece.id}
-            type="button"
-            tabIndex={turned ? -1 : undefined}
-            aria-label={`Show card ending ${piece.last4 ?? 'unknown'}${piece.holderName ? `, ${piece.holderName}` : ''}`}
-            aria-pressed={index === shownIndex}
-            title={`···· ${piece.last4 ?? '????'}${piece.holderName ? ` ${piece.holderName}` : ''}`}
-            onClick={() => setShownIndex(index)}
-            className={cx('ph-focus h-2 rounded-full transition-all', index === shownIndex ? 'w-5 bg-[var(--ph-ink)]' : 'w-2 bg-[var(--ph-chevron)]')}
-          />
-        ))}
+      <div className={cx(turned && 'invisible')} aria-hidden={turned || undefined}>
+        <PageDots
+          names={cards.map((piece) => piece.id)}
+          index={shownIndex}
+          onSelect={setShownIndex}
+          label="Cards on this account"
+          semantics="pressed"
+          className="mt-2 mb-2"
+          ariaLabelOf={(i) => `Show card ending ${cards[i]?.last4 ?? 'unknown'}${cards[i]?.holderName ? `, ${cards[i]?.holderName}` : ''}`}
+          titleOf={(i) => `···· ${cards[i]?.last4 ?? '????'}${cards[i]?.holderName ? ` ${cards[i]?.holderName}` : ''}`}
+        />
       </div>
     ) : null;
 
@@ -480,15 +478,17 @@ export function CardHero({
         <>
           <div className="grid gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">
             <div className="min-w-0">
-              <CardFace
-                issuer={issuer}
-                name={card.name}
-                last4={shown?.last4 ?? null}
-                holderName={shown?.holderName}
-                network={cp.catalog.entry?.network}
-                look={cp.catalog.entry?.look}
-                className="!w-[17rem] max-w-full"
-              />
+              <div ref={faceBox} data-testid="card-face-swipe" className="w-fit max-w-full" style={lastIndex >= 1 ? { touchAction: 'pan-y' } : undefined} {...faceSwipe.handlers}>
+                <CardFace
+                  issuer={issuer}
+                  name={card.name}
+                  last4={shown?.last4 ?? null}
+                  holderName={shown?.holderName}
+                  network={cp.catalog.entry?.network}
+                  look={cp.catalog.entry?.look}
+                  className="!w-[17rem] max-w-full"
+                />
+              </div>
               {dots}
             </div>
             <div className="flex min-w-0 flex-col">

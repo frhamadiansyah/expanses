@@ -2,7 +2,8 @@ import { type Browser, expect, type Page, test, type TestInfo } from '@playwrigh
 import { openAccount, walletCard } from './accounts';
 import { addTransaction } from './add-transaction';
 import { mockRates } from './pockets';
-import { corner, eventually, newEvent, openTrip, recordSharedSpend, sharedCard, showBalances, spendingRow } from './shared-events';
+import { corner, eventually, newEvent, openTrip, recordSharedSpend, sharedCard, showBalances, showCard, spendingRow } from './shared-events';
+import { openWorkspaceSharePage } from './workspace-page';
 
 /*
  * Shared events, end to end (shared events §9 step 5). Rina and Andi each on a phone of their own; Budi is a name
@@ -57,9 +58,10 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   await join.getByRole('button', { name: 'Join', exact: true }).click();
   await expect(andi.getByTestId('shared-event')).toBeVisible({ timeout: 60_000 });
 
-  // The events list names who it is shared with.
-  await rina.goto('/events');
-  await eventually(rina, () => expect(rina.getByTestId('event-shared-with')).toContainText('Shared with 2 people', { timeout: 1_000 }));
+  // The Share page's Events section names who each event is shared with.
+  await rina.goto('/account');
+  await openWorkspaceSharePage(rina, 'Personal');
+  await eventually(rina, () => expect(rina.getByTestId('share-event-row').first()).toContainText('Shared with 2 people', { timeout: 1_000 }));
 
   // Rina pays a €90 fish dinner from her euro wallet, for all three; the keypad types the amount.
   await openTrip(rina);
@@ -71,9 +73,9 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   await expect(total).toContainText(/2[.,]835/);
   await expect(total).not.toContainText(/share/);
   await expect(total.getByRole('heading', { name: 'Coast week' })).toBeVisible();
-  const tabsBox = (await rina.getByTestId('shared-event-tabs').boundingBox())!;
-  const totalBox = (await total.boundingBox())!;
-  expect(tabsBox.y + tabsBox.height).toBeLessThanOrEqual(totalBox.y);
+  // No tabs: the hero swipes between Spending, Balances and Plan, and the Spending card is first.
+  await expect(rina.getByTestId('shared-event-tabs')).toHaveCount(0);
+  await expect(rina.getByTestId('hero-dots').getByRole('button', { name: 'Spending', exact: true })).toHaveAttribute('aria-current', 'true');
   await expect(rina.getByTestId('shared-event-header')).toHaveCount(0);
   // The record sits in its day, with who paid and the share beneath its amount.
   await expect(rina.getByTestId('shared-event-day').filter({ has: spendingRow(rina, 'Fish dinner') })).toBeVisible();
@@ -126,7 +128,7 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   await expect(bars).toHaveCount(3);
   await expect(bars.filter({ hasText: 'Rina' })).toContainText(/\+/);
   await expect(bars.filter({ hasText: 'Budi' })).toContainText(/−.*945/);
-  await expect(bars.filter({ hasText: 'Budi' })).toContainText('Without the app');
+  await expect(bars.filter({ hasText: 'Budi' })).not.toContainText('Without the app');
   await expect(rina.getByRole('heading', { name: 'To settle up' })).toBeVisible();
   const rinaPayments = rina.getByTestId('shared-payment-row');
   await expect(rinaPayments).toHaveCount(2);
@@ -142,13 +144,13 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   await andi.getByTestId('shared-payment-row').filter({ hasText: 'Andi pays Rina' }).click();
   const settle = andi.getByTestId('settle-up');
   await settle.getByLabel('Paid from').selectOption({ label: 'Andi Bank · IDR' });
-  await expect(settle.getByLabel('In IDR')).not.toHaveValue('');
+  await expect(settle.getByLabel('In account currency')).not.toHaveValue('');
   await settle.getByRole('button', { name: 'Record', exact: true }).click();
   await expect(andi.getByTestId('shared-balance-row').filter({ hasText: 'Andi' })).toContainText('Settled', { timeout: 30_000 });
 
-  // The Plan tab opens the plan in place of the chart.
-  await andi.getByRole('radio', { name: 'Plan' }).click();
-  await expect(andi.getByRole('form', { name: 'Add to the plan' })).toBeVisible();
+  // The Plan card shows the plan hero, and the bar's ＋ adds a cost.
+  await showCard(andi, 'Plan');
+  await expect(andi.getByRole('link', { name: 'Add the first cost' })).toBeVisible();
 
   // Rina takes the settle-up into her books, into her rupiah bank (R6).
   await openTrip(rina);
@@ -165,8 +167,7 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   // A purchase that already exists moves in with Select → Add to event: it leaves Cashflow and joins the trip's spending.
   await rina.goto('/transactions');
   await addTransaction(rina, { description: 'Taxi', paidWith: 'Rina Bank', category: 'Transport', amount: '120000' });
-  await rina.getByRole('button', { name: 'Filters', exact: true }).click();
-  await rina.getByTestId('filters-menu').getByRole('menuitem', { name: 'Select' }).click();
+  await rina.getByRole('button', { name: 'Select', exact: true }).click();
   const bar = rina.getByRole('toolbar', { name: 'Selected transactions' });
   await expect(bar).toBeVisible();
   await rina.getByRole('checkbox', { name: 'Select Taxi' }).click();

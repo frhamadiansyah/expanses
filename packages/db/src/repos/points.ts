@@ -502,6 +502,14 @@ export async function recordCycleActual(
   });
 }
 
+/** Takes a typed statement figure back: the cycle's points are the app's own working again once it is derived. */
+export async function clearCycleActual(database: Database, ws: WorkspaceContext, input: { programId: string; cycleStart: string }): Promise<void> {
+  await database.transaction(async (tx) => {
+    await requireProgram(tx, ws, input.programId);
+    await tx.delete(cycleActuals).where(and(eq(cycleActuals.programId, input.programId), eq(cycleActuals.workspaceId, ws.workspaceId), eq(cycleActuals.cycleStart, input.cycleStart)));
+  });
+}
+
 export async function listCycleActuals(database: Database, ws: WorkspaceContext, programId: string) {
   return database.db
     .select({ cycleStart: cycleActuals.cycleStart, actualPoints: cycleActuals.actualPoints, recordedAt: cycleActuals.recordedAt })
@@ -544,9 +552,9 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
   // Shared events (ruling R12): a purchase paid by card for several people has a share line of only this person's part,
   // so it earns on the card line instead (its spend category is set) and the share category's own line is skipped.
   const shareLinesOut = (await eventOnlyExists(database.db)) ? sql`AND a.id NOT IN (SELECT account_id FROM event_category_accounts)` : sql``;
-  type Row = [string, string, string, string, string, number, string, string | null, string | null, string | null, number | null, number];
+  type Row = [string, string, string, string, string, number, string, string | null, string | null, string | null, number | null, number, string | null];
   const rows = await database.db.values<Row>(sql`
-    SELECT t.id, e.id, t.occurred_on, e.account_id, t.description, e.amount_minor, e.currency, t.original_currency, t.mcc, ${channelColumn}, ${exactColumn}, ${categoryLines}
+    SELECT t.id, e.id, t.occurred_on, e.account_id, t.description, e.amount_minor, e.currency, t.original_currency, t.mcc, ${channelColumn}, ${exactColumn}, ${categoryLines}, t.card_id
     FROM entries e
     JOIN transactions t ON t.id = e.transaction_id
     JOIN accounts a ON a.id = e.account_id
@@ -567,7 +575,7 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
   `);
   // A purchase of a holding paid by card: the card line itself names the category it would have had.
   const assetRows = await database.db.values<Row>(sql`
-    SELECT t.id, e.id, t.occurred_on, e.spend_category_id, t.description, -e.amount_minor, e.currency, t.original_currency, t.mcc, ${channelColumn}, ${exactColumn}, ${categoryLines}
+    SELECT t.id, e.id, t.occurred_on, e.spend_category_id, t.description, -e.amount_minor, e.currency, t.original_currency, t.mcc, ${channelColumn}, ${exactColumn}, ${categoryLines}, t.card_id
     FROM entries e
     JOIN transactions t ON t.id = e.transaction_id
     LEFT JOIN card_postings p ON p.transaction_id = t.id
@@ -587,7 +595,7 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
     .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.subtype, 'category')));
   const feeCategories = cardFeeCategoryIds(categories);
   const noPoints = await nonEarningInstallmentTransactionIds(database, ws);
-  return [...rows, ...assetRows].map(([transactionId, entryId, occurredOn, categoryId, description, amountMinor, currency, originalCurrency, typed, channel, exact, categories]) => {
+  return [...rows, ...assetRows].map(([transactionId, entryId, occurredOn, categoryId, description, amountMinor, currency, originalCurrency, typed, channel, exact, categories, plasticId]) => {
     const { mcc, source } = resolveMcc(description, categoryId, { ...sources, typed });
     // amountMinor stays what the card was charged — the figure every screen shows; points read earnMinor beside it.
     const earnMinor = earnFigure(Number(amountMinor), exact === null ? null : Number(exact), Number(categories));
@@ -605,6 +613,7 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
       mccSource: source,
       cardFee: isCardFee(description, categoryId, feeCategories) || noPoints.has(transactionId),
       channel: channel as 'online' | 'offline' | null,
+      cardId: plasticId,
     };
   });
 }

@@ -446,7 +446,7 @@ describe('a bill spread over several categories', () => {
     it('is refused in words rather than filing one category’s money under another', () => {
       expect(() => formToPost(both, accounts)).toThrow(SPLIT_WITH_REFUSAL);
       // The words name both ways out, because either one is a whole answer on its own.
-      expect(SPLIT_WITH_REFUSAL).toContain('Remove the splits, or remove the people');
+      expect(SPLIT_WITH_REFUSAL).toBe('Split by category and With people cannot be used together. Remove the split, or remove the people.');
     });
 
     it('cannot reach splitBill at all, whichever half is dropped', () => {

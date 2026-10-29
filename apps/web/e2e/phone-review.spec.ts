@@ -1,5 +1,8 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { openAccount, openCard } from './accounts';
+import { addPlastic, openAccount, openCard } from './accounts';
+import { cardPage } from './card-section';
+import { addTransaction } from './add-transaction';
+import { inject, notice } from './capture';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -158,4 +161,44 @@ test('a swipe on a capture with no category opens the form rather than recording
   await page.getByRole('button', { name: 'Discard', exact: true }).click();
   await expect(page.getByTestId('draft-row')).toHaveCount(0);
   await expect(toast(page)).toContainText('Discarded REFUND UNIQLO');
+});
+
+const sms = (id: string, shop: string, amount: string, time: string) =>
+  notice({
+    id,
+    app: 'BANKCONTOH',
+    title: 'BANKCONTOH',
+    body: `Pembayaran berhasil kartukredit XXXX9025 tgl 30-09-2026 ${time} di ${shop} IDR${amount}. Jika trx tidak Anda kenal, hub 10000`,
+  });
+
+test('a capture whose shop has history shows that category, and a swipe right records it there', async ({ page }) => {
+  await page.clock.setSystemTime(new Date('2026-09-30T12:00:00+07:00'));
+  await openCard(page, { name: 'Prima Platinum', bank: 'Mandiri', last4: '3317' });
+  await page.goto('/wallet');
+  await page.getByRole('link', { name: /^Mandiri Prima Platinum(,|$)/ }).click();
+  await cardPage(page, 'Settings');
+  await addPlastic(page, '9025', 'Partner');
+  // Filed before under a name sharing only the first word: the Add form guesses Groceries from it.
+  await addTransaction(page, { description: 'Warung Bahari', paidWith: 'Mandiri Prima Platinum ···· 3317', category: 'Groceries', amount: '45000' });
+
+  await page.goto('/review');
+  await inject(page, [sms('sms-known', 'WARUNG SEDERHANA', '48.300,00', '10:15:00'), sms('sms-new', 'TOKO ASING BARU', '71.900,00', '14:40:00')]);
+  const known = row(page, 'WARUNG SEDERHANA');
+  await expect(known).toContainText('Groceries');
+  await expect(known).not.toContainText('Choose category');
+  // A shop never seen before still has its question.
+  await expect(row(page, 'TOKO ASING BARU')).toContainText('Choose category');
+
+  await swipe(page, known, 'right');
+  await expect(toast(page)).toContainText('Recorded WARUNG SEDERHANA');
+  await expect(page.getByTestId('draft-row')).toHaveCount(1);
+
+  await page.goto('/transactions');
+  await expect(page.getByText('WARUNG SEDERHANA').first()).toBeVisible();
+  await expect(page.getByText('Groceries').first()).toBeVisible();
+
+  // The shop with no history opens the form rather than recording.
+  await page.goto('/review');
+  await swipe(page, row(page, 'TOKO ASING BARU'), 'right');
+  await expect(page.getByRole('form', { name: 'Review TOKO ASING BARU' })).toBeVisible();
 });

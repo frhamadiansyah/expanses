@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { pickBillCategory } from './bill-form';
+import { pickBillCategory, pickBillPaidFrom } from './bill-form';
 
 /** Anything a finger is meant to hit must be at least this tall or wide. */
 const TAP = 44;
@@ -18,7 +18,7 @@ async function addBill(page: Page, name: string, amount: string) {
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel('Amount', { exact: true }).fill(amount);
   await pickBillCategory(page);
-  await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan' });
+  await pickBillPaidFrom(page, 'BCA Tahapan');
   await page.getByLabel('Bill date').selectOption('1');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page).toHaveURL(/\/bills$/);
@@ -97,12 +97,15 @@ test('select mode puts a pay bar above the tab bar, and swipes rest while it is 
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
   await page.getByRole('checkbox', { name: 'Select Internet' }).click();
-  const bar = page.getByRole('button', { name: /^Pay \d selected/ });
+  // Cashflow's select mode: a bar at the top, ✕ to leave, the count, and a ⋯ whose menu holds the action.
+  const bar = page.getByTestId('select-bar');
   await expect(bar).toBeVisible();
-  const tabs = (await page.getByRole('navigation', { name: 'Main' }).boundingBox())!;
+  await expect(bar).toContainText('2 selected');
   const barBox = (await bar.boundingBox())!;
-  expect(barBox.y + barBox.height).toBeLessThanOrEqual(tabs.y);
-  expect(barBox.height).toBeGreaterThanOrEqual(TAP);
-  await page.getByRole('button', { name: 'Done' }).click();
+  expect(barBox.y).toBeLessThanOrEqual(1);
+  await page.getByRole('button', { name: 'Actions' }).click();
+  await expect(page.getByRole('menuitem', { name: /^Pay 2 selected/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Actions' }).click();
+  await page.getByRole('button', { name: 'Cancel selection' }).click();
   await expect(bar).toHaveCount(0);
 });

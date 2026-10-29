@@ -54,7 +54,7 @@ export async function flipHero(page: Page, name: string) {
   await expect(back.getByTestId('limit-bar')).toHaveCount(0);
   // No bonus yet and no rewards on this card: the slot says so rather than showing a ring.
   await expect(page.getByTestId('back-bonus')).toHaveCount(0);
-  await expect(page.getByTestId('this-statement-points')).toContainText('Rewards are not set up');
+  await expect(page.getByTestId('back-points')).toContainText('Rewards are not set up');
   // The back is the card's own box.
   await expect.poll(async () => Math.abs((await back.boundingBox())!.height - front.height)).toBeLessThanOrEqual(1);
   await page.getByRole('button', { name: /, show card$/ }).click();
@@ -64,9 +64,9 @@ export async function flipHero(page: Page, name: string) {
 /** Sets the annual fee on the card's Settings and returns to the Fee waiver row. */
 export async function setFee(page: Page, fee: string, chargedOn: string) {
   await cardPage(page, 'Settings');
-  await page.getByLabel('Annual fee (IDR)').fill(fee);
+  await page.getByLabel('Annual fee', { exact: true }).fill(fee);
   await page.getByLabel('Charged on').fill(chargedOn);
-  await saveCardTerms(page, 'Annual fee (IDR)');
+  await saveCardTerms(page, 'Annual fee');
   await page.waitForTimeout(400);
 }
 
@@ -80,7 +80,7 @@ export async function waiverFlow(page: Page, name: string) {
 
   const row = page.getByTestId('fee-waiver-row');
   await expect(row).toContainText('None');
-  await expect(page.getByTestId('year-fee')).toContainText('Charged');
+  await expect(page.getByTestId('year-fee')).toContainText(/\d{4}/);
   await row.click();
   await expect(page.getByRole('heading', { name: 'Fee waiver', exact: true }).first()).toBeVisible();
   // A challenge asks for the spend, the day it counts from, the day to spend by and what counts: no Then or reminder rows.

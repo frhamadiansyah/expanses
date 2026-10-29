@@ -9,7 +9,7 @@ export function TransferEstimates({ partners, points, unit, today }: { partners:
   const available = partners.filter((partner) => activeDuring(partner, today, today));
   if (available.length === 0 || points <= 0) return null;
   return (
-    <InsetGroup header="If transferred">
+    <InsetGroup header={`If this statement's ${formatPoints(Math.floor(points))} ${unit} were converted`}>
       {available.map((partner) => {
         const detail = convertDetail(Math.floor(points), partner);
         const note = capNote(partner, detail, unit);

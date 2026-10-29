@@ -1,8 +1,8 @@
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
 import { openAccount } from './accounts';
 import { choosePayment, saveButton } from './add-transaction';
-import { openSplit, pickPartCategory } from './split-row';
-import { openWorkspacePage } from './workspace-page';
+import { addPart, fillPart, openSplit, pickPartCategory } from './split-row';
+import { openSharePage, openWorkspacePage, renameWorkspace, shareWorkspace } from './workspace-page';
 
 /*
  * A purchase split between a workspace shared with a household and a private one (0084, household sharing): Fandri
@@ -32,8 +32,9 @@ async function eventually(page: Page, check: () => Promise<void>) {
 }
 
 async function newWorkspace(page: Page, name: string, startsWith: string) {
-  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
-  await page.getByRole('button', { name: 'New workspace' }).click();
+  await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByTestId('add-workspace').click();
+  await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill(name);
   await sheet.getByLabel('Starts with').selectOption({ label: startsWith });
@@ -50,14 +51,10 @@ async function openWorkspace(page: Page, name: string) {
 /** Fandri renames Personal to Home and shares it; Dewi joins by the link. */
 async function shareHome(page: Page, dewi: Page) {
   await openWorkspacePage(page, 'Personal');
-  await page.getByLabel('Name', { exact: true }).fill('Home');
-  await page.getByRole('button', { name: 'Save name', exact: true }).click();
+  await renameWorkspace(page, 'Home');
   await expect(page.getByText('Now called Home.')).toBeVisible();
-  await page.getByRole('button', { name: /Share this workspace/ }).click();
-  const form = page.getByRole('form', { name: 'Share this workspace' });
-  await form.getByLabel('Name').fill('Fandri');
-  await form.getByRole('button', { name: 'Share', exact: true }).click();
-  const code = (await page.getByTestId('invite-code').textContent({ timeout: 60_000 }))!.trim();
+  await openSharePage(page);
+  const code = await shareWorkspace(page, 'Fandri');
   await dewi.goto(`/join#${code}`);
   const join = dewi.getByTestId('join-workspace');
   await expect(join.getByText('Home', { exact: true })).toBeVisible({ timeout: 30_000 });
@@ -87,17 +84,15 @@ test('a purchase split between a shared workspace and a private one reaches the 
   await form.getByLabel('Note').fill('Toko Sumber Rejeki');
   await openSplit(page);
   const split = page.getByRole('dialog', { name: 'Split' });
-  await split.getByRole('button', { name: '+ Split' }).click();
+  await addPart(page);
   await pickPartCategory(page, 1, 'Groceries');
-  await split.getByLabel('Split 1 amount').fill('830000');
+  await fillPart(page, 1, '830000');
   // A shared workspace offers the private ones' categories, under each one's name.
   await pickPartCategory(page, 2, 'Restaurants', 'Business');
-  await split.getByLabel('Split 2 amount').fill('417000');
-  for (const [n, name] of [[0, 'Home'], [1, 'Business']] as const) {
-    const part = split.getByTestId('split-row').nth(n);
-    await expect(part.getByTestId('workspace-badge')).toHaveAttribute('title', name);
-    await expect(part.getByTestId('split-part-category')).toContainText(name);
-  }
+  await fillPart(page, 2, '417000');
+  // A part in the open workspace (Home) says nothing of workspaces; one in another names it under its category.
+  await expect(split.getByTestId('split-row').nth(0)).not.toContainText('Business');
+  await expect(split.getByTestId('split-row').nth(1)).toContainText('Business');
   await split.getByRole('button', { name: 'Close' }).click();
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);

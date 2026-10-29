@@ -25,7 +25,7 @@ async function fundAt(page: Page, o: { name: string; amount: string; value: stri
   await expect(page).toHaveURL(/\/net-worth\/assets$/);
   await openAsset(page, o.name);
   await page.getByRole('button', { name: 'Value', exact: true }).click();
-  await page.getByLabel('Value (IDR)').fill(o.value);
+  await page.getByLabel('Value', { exact: true }).fill(o.value);
   await page.getByRole('button', { name: 'Save value' }).click();
   await expect(page.getByTestId('asset-card')).toContainText(o.value.replace(/\B(?=(\d{3})+(?!\d))/g, '.'));
   const held = page.getByLabel('Institution', { exact: true });

@@ -358,15 +358,15 @@ describe('swapping the two pockets of a move', () => {
 });
 
 describe('parentActionKeys', () => {
-  it('leads with Record, ends with Adjust and puts Move after it', () => {
+  it('leads cash and a wallet with Record and a bank with Spend and Receive, ends with Adjust and puts Move before it', () => {
     expect(parentActionKeys('cash', 2)).toEqual(['record', 'move', 'withdraw', 'adjust']);
     expect(parentActionKeys('ewallet', 3)).toEqual(['record', 'move', 'top-up', 'adjust']);
     expect(parentActionKeys('emoney', 2)).toEqual(['record', 'move', 'top-up', 'adjust']);
-    expect(parentActionKeys('bank', 2)).toEqual(['record', 'move', 'adjust']);
-    expect(parentActionKeys('saving', 2)).toEqual(['record', 'move', 'adjust']);
+    expect(parentActionKeys('bank', 2)).toEqual(['spend', 'receive', 'move', 'adjust']);
+    expect(parentActionKeys('savings', 2)).toEqual(['spend', 'receive', 'move', 'adjust']);
   });
   it('has no Move with one pocket', () => {
     expect(parentActionKeys('cash', 1)).toEqual(['record', 'withdraw', 'adjust']);
-    expect(parentActionKeys('bank', 1)).toEqual(['record', 'adjust']);
+    expect(parentActionKeys('bank', 1)).toEqual(['spend', 'receive', 'adjust']);
   });
 });

@@ -1,10 +1,15 @@
-import { isoDate, sinkingProgress } from '@expanses/core';
+import { isoDate, type SinkingFundFacts, type SinkingMonth, sinkingProgress } from '@expanses/core';
 import { eq } from 'drizzle-orm';
 import { ownerScope, type WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts } from '../schema';
 import { yearlyBills } from './expense-templates';
 import { listSinkingFunds, type SinkingFundRow } from './sinking-funds';
+
+/** The facts core's walk takes, from a fund or its view (whose `monthlyMinor` is the current figure, not the first plan's). */
+export function sinkingFactsOf(fund: Pick<SinkingFundRow, 'baseMonthlyMinor' | 'startedMonth' | 'entries'>): SinkingFundFacts {
+  return { monthlyMinor: fund.baseMonthlyMinor, startedMonth: fund.startedMonth, entries: fund.entries };
+}
 
 export interface SinkingFundView extends SinkingFundRow {
   name: string;
@@ -20,6 +25,8 @@ export interface SinkingFundView extends SinkingFundRow {
   savedMinor: number;
   monthsDone: number;
   monthsTotal: number;
+  /** Every begun month, oldest first. */
+  months: SinkingMonth[];
 }
 
 /**
@@ -41,7 +48,7 @@ export async function sinkingFundViews(database: Database, ws: WorkspaceContext,
     const bill = bills.get(fund.billId);
     const account = accountsById.get(fund.accountId);
     if (!bill || !account || bill.amountMinor === null || bill.state === 'paid' || bill.state === 'skipped') continue;
-    const progress = sinkingProgress(fund, bill.amountMinor, bill.billMonth, today);
+    const progress = sinkingProgress(sinkingFactsOf(fund), bill.amountMinor, bill.billMonth, today);
     views.push({
       ...fund,
       name: bill.name,

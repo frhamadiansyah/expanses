@@ -11,7 +11,7 @@ export const TODAY = `${NOW.getFullYear()}-${String(NOW.getMonth() + 1).padStart
  * Every `<dl>` figure inside a card, read as label → figure.
  *
  * `toContainText` on a card is not an assertion about a figure, only about the card holding that run of characters
- * somewhere: a plan whose "Bought so far" and "Still to buy" happen to be the same amount passes twice over one of
+ * somewhere: a plan whose "Bought so far" and "Still to pay" happen to be the same amount passes twice over one of
  * them, a label swapped with its neighbour passes unchanged, and a row deleted outright can still pass off the
  * donut's own SVG label behind it. Read as pairs, each figure is pinned to the words above it, and a row that is
  * gone is a key that is missing.
@@ -122,16 +122,17 @@ export async function expectGauge(scope: Locator, expected: Record<string, strin
 }
 
 /**
- * The foot of "What it covers", as label → figure.
+ * The foot of "Link to costs", as label → figure.
  *
- * Three lines of one card, which `toContainText` cannot tell apart: "Given to items" and "Left on this receipt"
+ * Three lines of one card, which `toContainText` cannot tell apart: "Linked to costs" and "Left on this receipt"
  * could swap places and two substring assertions on the card would pass unchanged. Each `<p>` is a label element
- * and a figure element, so the pair is read as it is shown — the amber "not planned" pill included, since it is
- * part of what the left-hand side says.
+ * and a figure element, so the pair is read as it is shown — the receipt's own row left out.
  */
-export function coverFigures(page: Page): Promise<Record<string, string>> {
-  // Three rows of one kit group now, rather than three `<p>`s of a card — read the same way, as label → figure.
-  return kitFigures(page.getByTestId('cover-totals'));
+export async function coverFigures(page: Page): Promise<Record<string, string>> {
+  // Three rows of one kit group, read as label → figure. The first is the receipt itself (its description and day
+  // are the label, which the test does not know), so it is left out and the two sums are what is returned.
+  const all = await kitFigures(page.getByTestId('cover-totals'));
+  return Object.fromEntries(Object.entries(all).slice(1));
 }
 
 export async function expectCover(page: Page, expected: Record<string, string>) {
@@ -164,7 +165,7 @@ export async function spend(page: Page, description: string, amount: string) {
 /** An event for today. `set` is the category set it draws on, chosen by name; none, and it files under the monthly tree. */
 export async function addEvent(page: Page, name: string, set?: string) {
   await page.goto('/events');
-  await page.getByRole('button', { name: 'Add an event' }).click();
+  await page.getByRole('button', { name: /^(Add an event|New event)$/ }).click();
   await page.getByLabel('Name', { exact: true }).fill(name);
   if (set) await page.getByLabel('Categories').selectOption({ label: set });
   await page.getByLabel('Starts on').fill(TODAY);
@@ -183,21 +184,28 @@ export interface ItemFields {
   note?: string;
 }
 
+/** Picks the item's category through the Category row: the row opens a sheet, and one tap on a tile picks and closes it. */
+export async function chooseCategory(page: Page, name: string) {
+  await page.getByRole('button', { name: /^Category, / }).click();
+  await page.getByRole('dialog', { name: 'Category' }).getByRole('button', { name, exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Category' })).toHaveCount(0);
+}
+
 /** Fills the item form that is already open, and saves it. */
 export async function fillItem(page: Page, options: ItemFields) {
   await page.getByLabel('What', { exact: true }).fill(options.name);
   if (options.quantity) await page.getByLabel('How many').fill(options.quantity);
   await page.getByLabel('Price each').fill(options.price);
-  if (options.category) await page.getByLabel('Category').selectOption({ label: options.category });
-  if (options.link) await page.getByLabel('Link').fill(options.link);
-  if (options.note) await page.getByLabel('Note').fill(options.note);
+  if (options.category) await chooseCategory(page, options.category);
+  if (options.link) await page.getByLabel('Purchase link').fill(options.link);
+  if (options.note) await page.getByLabel('Remarks').fill(options.note);
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByTestId('plan-item').filter({ hasText: options.name })).toBeVisible();
 }
 
-/** From the plan: ＋ and then the form. "Add the first item" on an empty plan opens the same form. */
+/** From the plan: ＋ and then the form. "Add the first cost" on an empty plan opens the same form. */
 export async function addItem(page: Page, options: ItemFields) {
-  await page.getByRole('link', { name: 'Add an item' }).first().click();
+  await page.getByRole('link', { name: 'Add a cost' }).first().click();
   await fillItem(page, options);
 }
 
@@ -209,7 +217,7 @@ export async function addItem(page: Page, options: ItemFields) {
  * migration 0049 made of the caps that came before it.
  */
 export async function planFor(page: Page, category: string, amount: string, option = category) {
-  // By test id, not by words: the card's link says "Plan what to buy" while nothing is planned and "See the whole
+  // By test id, not by words: the card's link says "Plan what to pay" while nothing is planned and "See the whole
   // plan" once there are items, and this helper is called both before and after the first one.
   await showPlanCard(page);
   await page.getByTestId('open-plan').click();
@@ -232,8 +240,7 @@ export async function recordIntoEvent(
   tx: { description: string; amount: string; category?: string; paidWith?: string },
 ) {
   const event = page.url();
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Add spending' }).click();
+  await page.getByRole('button', { name: 'Add spending', exact: true }).click();
   const form = addForm(page);
   await form.getByRole('button', { name: /^Paid with/ }).click();
   await choosePayment(page, tx.paidWith ?? 'BCA Tahapan');
@@ -248,15 +255,15 @@ export async function recordIntoEvent(
 }
 
 /**
- * "Buy it now" on an item's page: the Add screen, filled in from the item, and Save ties the payment to it.
+ * "Pay now" (or "Add payment") on a cost's page: the Add screen, filled in from the item, and Save ties the payment to it.
  *
  * Only Paid with has to be chosen. `paid` is the receipt's real figure typed over the estimate — cleared first, so a
  * phone's keypad replaces the estimate rather than typing after it. Returns the form, still open when Save refused.
  */
 export async function buyItNow(page: Page, options: { paid?: string; paidWith?: string; done?: boolean } = {}) {
-  // The item's page is titled with its name: kept to tick it off on the plan once the payment is saved.
-  const name = ((await page.getByRole('heading', { level: 1 }).first().textContent()) ?? '').trim();
-  await page.getByRole('button', { name: 'Buy it now' }).click();
+  // The cost's name heads its identity block: kept to tick it off on the plan once the payment is saved.
+  const name = ((await page.getByTestId('item-identity').getByRole('heading').textContent()) ?? '').trim();
+  await page.getByRole('button', { name: /^(Pay now|Add payment)$/ }).click();
   const form = addForm(page);
   await form.getByRole('button', { name: /^Paid with/ }).click();
   await choosePayment(page, options.paidWith ?? 'BCA Tahapan');
@@ -269,11 +276,21 @@ export async function buyItNow(page: Page, options: { paid?: string; paidWith?: 
   // One receipt for one thing, the ordinary case: done once paid. An item may stay open to take more payments.
   if (options.done !== false) {
     await expect(form).toHaveCount(0);
-    const tick = page.getByRole('button', { name: `Done buying ${name}` });
+    const tick = page.getByRole('button', { name: `Settle ${name}` });
     await tick.click();
     await expect(page.getByRole('button', { name: `Reopen ${name}` })).toBeVisible();
   }
   return form;
+}
+
+/** The plan list under the gauge starts folded: tap the gauge frame to show it. Idempotent, and a no-op off the gauge page. */
+export async function showPlan(page: Page) {
+  // Retried, because the swipe settles after the click that made it: until it has, the frame is still the ring's.
+  await expect(async () => {
+    const see = page.getByTestId('see-plan');
+    if ((await see.count()) > 0) await see.click();
+    await expect(page.getByTestId('hide-plan')).toBeVisible({ timeout: 1000 });
+  }).toPass();
 }
 
 /** The plan card sits under Against the plan, the chart that reads it: swipe there first when the event has a plan. */
@@ -286,12 +303,34 @@ export async function showPlanCard(page: Page) {
       const dot = page.getByRole('button', { name: 'Against the plan', exact: true });
       if ((await dot.count()) > 0) await dot.click();
     }
+    const see = page.getByTestId('see-plan');
+    if ((await see.count()) > 0) await see.click();
     await expect(card).toBeVisible({ timeout: 1000 });
   }).toPass();
 }
 
-/** The plan screen's top: how many are bought, what is left to buy, and what was planned (with any difference). */
-export async function expectPlanHero(page: Page, expected: { count: string; toGo: string; planned: string }) {
-  const read = async (id: string) => ((await page.getByTestId(id).textContent()) ?? '').replace(/\s+/g, ' ').trim();
-  await expect.poll(async () => ({ count: await read('plan-count'), toGo: await read('plan-to-go'), planned: await read('plan-planned') })).toEqual(expected);
+/**
+ * The plan screen's top card: how many are paid, what is left to pay, the estimate and the actual (each label with its
+ * figure), and the status line (saved, over, on the estimate, or nothing paid yet).
+ * The count is read from inside the ring. The base equivalents are not read here.
+ */
+export async function expectPlanHero(
+  page: Page,
+  expected: { count: string; toPay: string; planned: string; actual: string; status: string },
+) {
+  // innerText, because the label and its figure are separate blocks with no space between them in the text content;
+  // an SVG text has no innerText, so the ring's count is read by textContent.
+  const read = async (id: string) => {
+    const spot = page.getByTestId(id);
+    return (await spot.count()) === 0 ? null : ((id === 'plan-count' ? await spot.textContent() : await spot.innerText()) ?? '').replace(/\s+/g, ' ').trim();
+  };
+  await expect
+    .poll(async () => ({
+      count: await read('plan-count'),
+      toPay: await read('plan-to-go'),
+      planned: await read('plan-planned'),
+      actual: await read('plan-actual'),
+      status: await read('plan-status'),
+    }))
+    .toEqual(expected);
 }

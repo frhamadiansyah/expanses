@@ -1,4 +1,4 @@
-import { convertMinor, minorToMajorString } from '@expanses/core';
+import { convertMinor, groupedMajorString } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import { settleFigure, suggestedFigure } from './settle-up';
 
@@ -25,7 +25,7 @@ describe('a settle-up into an account of another currency (R5)', () => {
   });
 
   it('suggests the figure for the amount as typed, and nothing for an amount that is not one', () => {
-    expect(suggestedFigure('1000', 'TRY', 'IDR', rate)).toBe(minorToMajorString(convertMinor(100_000, 'TRY', 'IDR', 470), 'IDR'));
+    expect(suggestedFigure('1000', 'TRY', 'IDR', rate)).toBe(groupedMajorString(convertMinor(100_000, 'TRY', 'IDR', 470), 'IDR'));
     expect(suggestedFigure('', 'TRY', 'IDR', rate)).toBe('');
     expect(suggestedFigure('1000', 'TRY', 'IDR', null)).toBe('');
   });

@@ -1,6 +1,6 @@
 import { Link, type LinkProps } from '@tanstack/react-router';
 import { Info } from 'lucide-react';
-import { Children, cloneElement, createContext, isValidElement, type ReactElement, type ReactNode, useContext, useState } from 'react';
+import { Children, cloneElement, createContext, Fragment, isValidElement, type ReactElement, type ReactNode, useContext, useState } from 'react';
 import { cx } from '../index';
 import { type SwipeAction, type SwipeHint, SwipeRow } from '../SwipeRow';
 import { groupHeader, type HeaderProgress, type RowPosition, rowPositions } from './group';
@@ -45,6 +45,9 @@ export interface GroupChild {
   position?: RowPosition;
 }
 
+/** The small grey caps of a group's header; anything drawn as one outside a group takes this too. */
+export const GROUP_HEADER_CLASS = 'text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase';
+
 /**
  * The header above a group: 11.5px / 600 / 0.06em / uppercase, outside the group, with an optional figure.
  *
@@ -58,7 +61,7 @@ function GroupHeader({ title, progress, trailing, info }: { title: string; progr
     <div className="px-[4px] pb-[6px]">
     <div className="flex items-baseline justify-between gap-3">
       <span className="flex items-center gap-[6px]">
-        <h2 className="text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">{header.label}</h2>
+        <h2 className={GROUP_HEADER_CLASS}>{header.label}</h2>
         {info && (
           <button
             type="button"
@@ -102,6 +105,19 @@ export function useWide(wide: boolean): boolean {
 }
 
 /**
+ * The rows of a group, a fragment's rows counted as the group's own: a `<>` round two rows would otherwise be one
+ * child, and neither would get a position, so no hairline would be drawn between them.
+ */
+function rowsOf(children: ReactNode, prefix = ''): ReactElement<GroupChild>[] {
+  return Children.toArray(children).flatMap((child, index) => {
+    if (!isValidElement(child)) return [];
+    const key = `${prefix}${child.key ?? index}`;
+    if (child.type === Fragment) return rowsOf((child.props as { children?: ReactNode }).children, `${key}/`);
+    return [cloneElement(child as ReactElement<GroupChild>, { key })];
+  });
+}
+
+/**
  * A grouped inset list.
  *
  * The group hands each child its place — first, last, and whether a hairline is drawn above it — so a row never
@@ -132,7 +148,7 @@ export function InsetGroup({
   className?: string;
   children: ReactNode;
 }) {
-  const items = Children.toArray(children).filter(isValidElement) as ReactElement<GroupChild>[];
+  const items = rowsOf(children);
   const positions = rowPositions(items.length);
   const full = useWide(wide);
   return (

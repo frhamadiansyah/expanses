@@ -68,7 +68,7 @@ test('a card named from the catalogue arrives with its bank, its rules and the p
 
   // The catalogue's own terms: the bank's published annual fee, and the earn rules that came with it.
   await cardPage(page, 'Settings');
-  await expect(page.getByLabel('Annual fee')).toHaveValue('125000');
+  await expect(page.getByLabel('Annual fee')).toHaveValue('125.000');
 });
 
 test('a catalogue card opens without its dates, and the fee is saved once they are given on its page', async ({ page }) => {
@@ -79,15 +79,13 @@ test('a catalogue card opens without its dates, and the fee is saved once they a
   // Saved as its bank and its own name: the issuer is BCA, the name UnionPay.
   await expect(page.getByRole('heading', { name: 'UnionPay' })).toBeVisible();
 
-  // Its rules are in already, so the dates are not step 1 of anything: one row offers to add them.
-  const dates = page.getByTestId('card-setup');
-  await expect(dates).toContainText('Billing and due dates');
-  await expect(dates).toContainText('Add');
-  await dates.click();
+  // Its rules are in already, so the dates are not step 1 of anything, and the card's page has no row asking: they are in Settings.
+  await expect(page.getByTestId('card-setup')).toHaveCount(0);
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(page.getByText('Step 1 of 3')).toHaveCount(0);
   await expect(page.getByText('Is this card in the catalogue?')).toHaveCount(0);
   // The published fee waits beside the empty days, and is saved with them.
-  await expect(page.getByLabel('Annual fee')).toHaveValue('125000');
+  await expect(page.getByLabel('Annual fee')).toHaveValue('125.000');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await saveCardTerms(page);
@@ -95,7 +93,7 @@ test('a catalogue card opens without its dates, and the fee is saved once they a
   await expect(page.getByText('Start with the billing date.', { exact: false })).toHaveCount(0);
   await page.reload();
   await expect(page.getByLabel('Billing date')).toHaveValue('25');
-  await expect(page.getByLabel('Annual fee')).toHaveValue('125000');
+  await expect(page.getByLabel('Annual fee')).toHaveValue('125.000');
 });
 
 test('one date without the other is refused, and nothing is opened meanwhile', async ({ page }) => {

@@ -5,13 +5,14 @@ import { Link } from '@tanstack/react-router';
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
-import { useAccounts, useCategoryColours, useInOpenBook } from '../../lib/queries';
+import { useAccounts, useInOpenBook } from '../../lib/queries';
 import { Button, Card, Empty, Money } from '../../ui';
 import { SegmentedControl } from '../../ui/native';
+import { useCategoryMarkColour } from '../categories/CategoryIcon';
 import { useCategorySetMembership, useCategorySets } from '../categories/set-queries';
 import { budgetProgress } from './budget-progress';
 import { BudgetGauge } from './BudgetGauge';
-import { categoryColour, chartColour, OTHER_COLOUR, ringSlices, shade } from './category-colours';
+import { OTHER_COLOUR, ringSlices, shade } from './category-colours';
 import { CapLine, ShareLine } from './CategoryLines';
 import { Deck } from './Deck';
 import { Donut, type DonutSlice } from './Donut';
@@ -141,9 +142,9 @@ function Ring({
   // One tap on the chart, whichever way the list is at the time.
   const fold = showRows ? onFold : onAsk;
   const onThird = third !== undefined && page === (second ? 2 : 1);
-  const chosen = useCategoryColours().data;
+  const colourFor = useCategoryMarkColour();
   const ordered = [...nodes].sort((a, b) => b.totalMinor - a.totalMinor);
-  const { shown, rest } = ringSlices(ordered.map((node) => ({ id: node.id, totalMinor: node.totalMinor })), 8, chosen);
+  const { shown, rest } = ringSlices(ordered.map((node) => ({ id: node.id, totalMinor: node.totalMinor })), 8, colourFor);
   const byId = new Map(ordered.map((node) => [node.id, node]));
   const slices: DonutSlice[] = shown.map((slice, index) => ({
     key: slice.item.id,
@@ -154,7 +155,7 @@ function Ring({
   const colourById = new Map(slices.map((slice) => [slice.key, slice.colour]));
   const restMinor = rest.reduce((sum, item) => sum + item.totalMinor, 0);
   if (restMinor > 0) slices.push({ key: 'other', label: `${rest.length} smaller categories`, totalMinor: restMinor, colour: OTHER_COLOUR });
-  for (const slice of extra) if (slice.totalMinor > 0) slices.push({ ...slice, colour: categoryColour(slice.key) });
+  for (const slice of extra) if (slice.totalMinor > 0) slices.push({ ...slice, colour: OTHER_COLOUR });
 
   const donut = (
     <Donut
@@ -217,7 +218,7 @@ function Ring({
             <Row
               key={node.id}
               node={node}
-              colour={colourById.get(node.id) ?? (colourOf ? colourOf(node, index) : chartColour(node.id, chosen))}
+              colour={colourById.get(node.id) ?? (colourOf ? colourOf(node, index) : colourFor(node.id))}
               totalMinor={totalMinor}
               month={month}
               currency={currency}
@@ -268,7 +269,7 @@ export function SpendingReport({
 }) {
   const { database, ws } = useApp();
   const accounts = useAccounts().data ?? [];
-  const chosen = useCategoryColours().data;
+  const colourFor = useCategoryMarkColour();
   const inOpenBook = useInOpenBook();
   // The categories are folded away until asked for: the list underneath is what most days are about.
   const [showAll, setShowAll] = useState(false);
@@ -410,7 +411,7 @@ export function SpendingReport({
           transactions={countIn(open)}
           showRows
           header={header}
-          colourOf={(_, index) => shade(chartColour(open.id, chosen), index, Math.max(2, open.children.length))}
+          colourOf={(_, index) => shade(colourFor(open.id), index, Math.max(2, open.children.length))}
           onBack={onBack}
         />
       ) : (
@@ -459,7 +460,7 @@ export function SpendingReport({
                 <h2 className="mb-1 text-sm font-semibold">{group.set.name}</h2>
                 <div className="divide-y divide-slate-100">
                   {group.tree.map((node) => (
-                    <Row key={node.id} node={node} colour={categoryColour(node.id)} totalMinor={total} month={month} currency={currency} capMinor={onBudgets ? caps[node.id] : undefined} against={onBudgets ? 'budget' : 'month'} />
+                    <Row key={node.id} node={node} colour={colourFor(node.id)} totalMinor={total} month={month} currency={currency} capMinor={onBudgets ? caps[node.id] : undefined} against={onBudgets ? 'budget' : 'month'} />
                   ))}
                 </div>
               </div>
