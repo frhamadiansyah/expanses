@@ -61,7 +61,8 @@ describe('migration 0089', () => {
     const indexes = await database.db.values(sql`SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'accounts' ORDER BY name`);
     const balances = await nativeBalances(database, ws);
     await migrate(database);
-    expect(await database.db.values(sql`PRAGMA table_info(accounts)`)).toEqual(columns);
+    // Columns a later migration adds (0107 counted_from) are not 0089's to keep.
+    expect((await database.db.values<[number, string]>(sql`PRAGMA table_info(accounts)`)).filter((column) => column[1] !== 'counted_from')).toEqual(columns);
     expect(await database.db.values(sql`SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'accounts' ORDER BY name`)).toEqual(indexes);
     expect(await nativeBalances(database, ws)).toEqual(balances);
     expect(await database.db.values(sql`SELECT number_last4, for_spending, card_tier FROM accounts WHERE id = 'acc-bank'`)).toEqual([['0917', 0, 'gold']]);

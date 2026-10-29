@@ -51,7 +51,7 @@ describe('migration 0104', () => {
     // A build before 0104 reads an event without a currency and an item without one.
     expect(await listEventItems(older, ws, trip)).toMatchObject([{ id: flight, unitPriceMinor: 9_800_000, currency: null }]);
 
-    expect(await migrate(older)).toEqual([104, 105, 106]);
+    expect(await migrate(older)).toEqual([104, 105, 106, 107]);
     await rate(older, 'TRY', 400);
     await setEventCurrency(older, ws, trip, 'TRY');
 
