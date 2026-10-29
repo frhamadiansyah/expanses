@@ -25,11 +25,13 @@
 		<key>NSExtensionAttributes</key>
 		<dict>
 			<!-- One image is one receipt or one screenshot, read as one movement. Two or more are one statement's
-			     screenshots, read as a batch for the statement check. -->
+			     screenshots, read as a batch for the statement check. Plain text (a bank message) is saved as a capture. -->
 			<key>NSExtensionActivationRule</key>
 			<dict>
 				<key>NSExtensionActivationSupportsImageWithMaxCount</key>
 				<integer>20</integer>
+				<key>NSExtensionActivationSupportsText</key>
+				<true/>
 			</dict>
 		</dict>
 		<key>NSExtensionPointIdentifier</key>
