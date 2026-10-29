@@ -58,7 +58,7 @@ export function CostRow({
         position={position}
         label="Cost today"
         prefix={currency}
-        prefixTag
+        prefixAlways
         onPrefix={funded ? undefined : () => setPicking(true)}
         prefixLabel={`Currency: ${currency}`}
         hint={funded ? 'Money is already counted toward this goal, so its currency is fixed.' : undefined}

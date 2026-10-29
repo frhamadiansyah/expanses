@@ -247,10 +247,6 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
                     <TextRow
                       key="amount"
                       label="Months of outgoings"
-                      prefix={currency}
-                      prefixTag
-                      onPrefix={funded ? undefined : () => setPickingCurrency(true)}
-                      prefixLabel={`Currency: ${currency}`}
                       value={stages[0]!.months}
                       onChange={(e) => setStage(0, { months: e.target.value })}
                       inputMode="numeric"
@@ -289,6 +285,9 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
         <InsetGroup>
           {[
             <PickerRow key="assumptions" label="Assumptions" value={assumptionsSummary(growth, expectedReturn)} onOpen={() => setAssumptionsOpen(true)} />,
+            ...(single && stages[0]!.usesMonths
+              ? [<PickerRow key="currency" label="Currency" value={currency} onOpen={() => setPickingCurrency(true)} disabled={funded} hint={funded ? 'Money is already counted toward this goal, so its currency is fixed.' : undefined} />]
+              : []),
             <PickerRow key="funding" label="Funding" value={fundingSummary(setAsideSummary(setAsideEntries), taggedNow.length)} placeholder="None" onOpen={() => setFundingOpen(true)} />,
           ]}
         </InsetGroup>

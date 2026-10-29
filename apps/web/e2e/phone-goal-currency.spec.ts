@@ -3,7 +3,7 @@ import { openGoalForm, pickGoalCurrency } from './goals';
 import { goalRow } from './set-aside';
 
 /*
- * A goal counted in a currency of its own: a currency tag on the cost row of the New goal page, the amount rows read in that
+ * A goal counted in a currency of its own: a currency code on the cost row of the New goal page, the amount rows read in that
  * currency, and the saved goal shows its cost in it (EUR with cents, JPY with none).
  */
 
