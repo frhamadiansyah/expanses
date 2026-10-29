@@ -28,6 +28,7 @@ import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
 import { useWorkspaceBadges } from '../workspaces/queries';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { classify } from './classify';
+import { isCorrection } from './draft';
 import { useChangeable } from './queries';
 import { heroCaption, receiptLines, splitParts } from './receipt-view';
 import { TransactionCard } from './TransactionCard';
@@ -406,7 +407,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
           ) : (
             /* Edit is the round button in the top corner; Delete stays down here, out of a thumb's casual reach. A shared
                event's transaction is deleted on the event, with its record, never here. */
-            changeable && !fromEvent && (
+            (changeable || (isCorrection(tx) && !isTrade && !elsewhere)) && !fromEvent && (
               <>
                 {tx.eventId && (
                   <InsetGroup>

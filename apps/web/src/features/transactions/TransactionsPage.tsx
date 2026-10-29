@@ -49,7 +49,7 @@ import { SortFilterMenu } from './SortFilterMenu';
 import { ChipMenu, type ChipOption } from './ChipMenu';
 import { type PaidChoice, PaidWithSheet } from './PaidWithSheet';
 import { ConvertForm } from './ConvertForm';
-import { isEditable } from './draft';
+import { isCorrection, isEditable } from './draft';
 import { DayHeader } from './DayHeader';
 import { DayReorder, landed, movedBy, ReorderControls, reorderAttrs, ReorderScope } from './DayReorder';
 import { EventSheet } from './EventSheet';
@@ -1005,6 +1005,8 @@ export function TransactionsPage() {
     const reachable = !trade && isEditable(tx) && !readOnly;
     const elsewhere = reachable ? elsewhereOf(tx.id) : null;
     const clickable = reachable && !elsewhere && filingKnown;
+    // A balance correction has no Edit, but it can be deleted: the swipe offers Delete alone.
+    const deletableCorrection = !trade && isCorrection(tx) && !readOnly && filingKnown;
     // Every way in that *writes* inherits the same refusals. A trade, an opening balance, a voided row and a
     // purchase filed in another workspace may not be edited, deleted or re-filed from here — by swipe no less
     // than by click. Looking is not writing: on a phone the tap opens the receipt for all of them, because the
@@ -1038,7 +1040,7 @@ export function TransactionsPage() {
         onEdit={clickable ? toEdit : undefined}
         onDuplicate={clickable && mayDuplicate ? toDuplicate : undefined}
         // One tap or a long swipe deletes at once, with Undo on the toast: the delete is written when the toast goes.
-        onDelete={clickable ? () => void swipeDeletes.begin(tx.id, tx.description ? `Deleted ${tx.description}` : 'Deleted') : undefined}
+        onDelete={clickable || deletableCorrection ? () => void swipeDeletes.begin(tx.id, tx.description ? `Deleted ${tx.description}` : 'Deleted') : undefined}
         // Dead while a write for this row is going out.
         busy={busy === tx.id}
         // Select mode: the tick, where this row can take one; the row's every other gesture waits until it is over.
