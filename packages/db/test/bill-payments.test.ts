@@ -139,7 +139,7 @@ it('a month in the history lists its payment, and undoing it returns the month t
   const month = async () => (await billDetail(h.database, h.ws, h.internet, '2026-09-05')).history.find((m) => m.month === '2026-08')!;
 
   const paid = await month();
-  expect(paid.payments).toEqual([{ id, paidMinor: 450_000, paidCurrency: 'IDR' }]);
+  expect(paid.payments).toEqual([{ id, paidMinor: 450_000, paidCurrency: 'IDR', linked: false }]);
   expect(paid.paymentId).toBe(id);
   expect((await month()).state).toBe('paid');
 

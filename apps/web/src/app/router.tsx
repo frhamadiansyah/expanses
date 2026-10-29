@@ -80,6 +80,7 @@ import { UpdatePricesPage } from '../features/prices/UpdatePricesPage';
 import { BillFormPage, EditBillRoute } from '../features/bills/BillFormPage';
 import { BillRoute } from '../features/bills/BillPage';
 import { FundHistoryRoute } from '../features/bills/FundHistoryPage';
+import { EarlierMonthsRoute, LinkBillMonthRoute, LinkPurchaseRoute, LinkToBillRoute } from '../features/bills/LinkPurchasePages';
 import { RecurringPage } from '../features/bills/RecurringPage';
 import { YearlyBillsPage } from '../features/bills/YearlyBillsPage';
 import { DuplicateTransactionRoute, EditTransactionRoute, NewTransactionRoute } from '../features/transactions/FormPage';
@@ -228,6 +229,9 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId', component: ReceiptRoute }),
   // The card again, on one transaction — a phone's Edit, from the receipt or the row's swipe.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId/edit', component: EditTransactionRoute }),
+  // The same linking, from the purchase: which bill, then which month of it.
+  createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId/bill', component: LinkToBillRoute }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId/bill/$billId', component: LinkBillMonthRoute }),
   // The Add screen again, started from one transaction: Duplicate on a row's swipe, the receipt and the desktop's editor.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId/duplicate', component: DuplicateTransactionRoute }),
   // Spending was its own page; the chart it held now leads the transactions it adds up.
@@ -246,6 +250,14 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId', component: BillRoute, validateSearch: fromSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId/edit', component: EditBillRoute }),
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId/fund-history', component: FundHistoryRoute }),
+  // Linking a purchase already recorded to a bill's month, from the bill (`link` takes the month it is for).
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/bills/$billId/link',
+    component: LinkPurchaseRoute,
+    validateSearch: (search: Record<string, unknown>) => ({ ...fromSearch(search), month: typeof search.month === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(search.month) ? search.month : '' }),
+  }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId/earlier', component: EarlierMonthsRoute, validateSearch: fromSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events', component: EventsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId', component: EventDetailPage, validateSearch: eventSearch }),
   // The plan and its items: six screens, every one of them a real route, so a desktop reaches each by URL and by

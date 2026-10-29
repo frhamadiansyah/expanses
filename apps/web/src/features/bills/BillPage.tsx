@@ -1,5 +1,5 @@
 import { type BillWindow, dayMonth, isoDate, monthName, ordinal, periodicRepeat, yearlyRepeat } from '@expanses/core';
-import { RecurringError, resumeBill, skipBill, undoBillPayments, unskipBill } from '@expanses/db';
+import { RecurringError, resumeBill, skipBill, undoBillPayments, unlinkPurchaseFromBill, unskipBill } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check, Pause, Pencil, Play, SkipForward } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
@@ -15,7 +15,7 @@ import { usePaidFromLabels } from './PaidFromSheet';
 import { PauseSheet } from './PauseSheet';
 import { PaySheet } from './PaySheet';
 import { SinkingFundGroup } from './SinkingFundGroup';
-import { useBillDetail, useSinkingFunds } from './queries';
+import { useBillDetail, useBillMonthsBefore, useSinkingFunds } from './queries';
 
 /** How many months the history shows before See all. */
 const HISTORY_SHOWN = 3;
@@ -55,6 +55,8 @@ export function BillPage({ billId }: { billId: string }) {
   const today = isoDate();
   const detail = useBillDetail(billId, today);
   const fund = (useSinkingFunds(today).data ?? []).find((f) => f.billId === billId);
+  // Whether any purchase before the bill started could be linked: the History's last row is offered only then.
+  const earlier = useBillMonthsBefore(billId, 1).data;
 
   const [paying, setPaying] = useState(false);
   const [pausing, setPausing] = useState(false);
@@ -62,7 +64,7 @@ export function BillPage({ billId }: { billId: string }) {
   // The skipped month whose sheet is open, with the title its row carries.
   const [unskipping, setUnskipping] = useState<{ month: string; title: string } | null>(null);
   // The paid month whose sheet is open: its payments, to open or to undo.
-  const [paidOpen, setPaidOpen] = useState<{ title: string; payments: { id: string; paidMinor: number | null; paidCurrency: string | null }[] } | null>(null);
+  const [paidOpen, setPaidOpen] = useState<{ title: string; payments: { id: string; paidMinor: number | null; paidCurrency: string | null; linked: boolean }[] } | null>(null);
   const [justPaid, setJustPaid] = useState<JustPaid | null>(null);
   const [error, setError] = useState<unknown>(null);
 
@@ -226,7 +228,7 @@ export function BillPage({ billId }: { billId: string }) {
       {bill.repeat !== 'monthly' && fund && <SinkingFundGroup fund={fund} />}
 
       {/* Nothing to show until a month has been paid, skipped or paused: no empty group, no placeholder. */}
-      {history.some((row) => row.state === 'paid' || row.state === 'skipped' || row.state === 'paused') && (
+      {(history.some((row) => row.state === 'paid' || row.state === 'skipped' || row.state === 'paused') || (earlier?.months.length ?? 0) > 0) && (
       <div data-testid="bill-history">
         <InsetGroup header="History">
           {[
@@ -270,6 +272,17 @@ export function BillPage({ billId }: { billId: string }) {
             ...(history.length > shown.length
               ? [<InsetRow key="all" title="See all" label="See all" action onClick={() => setAllHistory(true)} />]
               : []),
+            ...((earlier?.months.length ?? 0) > 0
+              ? [
+                  <InsetRow
+                    key="earlier"
+                    action
+                    title={<span className="text-[var(--ph-tint)]">Link an earlier month</span>}
+                    label="Link an earlier month"
+                    onClick={() => void navigate({ to: '/bills/$billId/earlier', params: { billId }, search: from })}
+                  />,
+                ]
+              : []),
           ]}
         </InsetGroup>
       </div>
@@ -285,6 +298,10 @@ export function BillPage({ billId }: { billId: string }) {
             setJustPaid({ ids, amountMinor, paidOn, month });
           }}
           onSkipped={() => setPaying(false)}
+          onLink={(month) => {
+            setPaying(false);
+            void navigate({ to: '/bills/$billId/link', params: { billId }, search: { ...from, month } });
+          }}
         />
       )}
 
@@ -315,24 +332,41 @@ export function BillPage({ billId }: { billId: string }) {
                 title={
                   paidOpen.payments.length > 1 && payment.paidMinor !== null ? (
                     <>
-                      Open payment · <Money minor={payment.paidMinor} currency={payment.paidCurrency ?? currency} />
+                      {payment.linked ? 'Open the purchase' : 'Open payment'} · <Money minor={payment.paidMinor} currency={payment.paidCurrency ?? currency} />
                     </>
+                  ) : payment.linked ? (
+                    'Open the purchase'
                   ) : (
                     'Open payment'
                   )
                 }
-                label={paidOpen.payments.length > 1 && payment.paidMinor !== null ? undefined : 'Open payment'}
+                label={paidOpen.payments.length > 1 && payment.paidMinor !== null ? undefined : payment.linked ? 'Open the purchase' : 'Open payment'}
                 onClick={() => {
                   setPaidOpen(null);
                   void navigate({ to: '/transactions/$transactionId', params: { transactionId: payment.id } });
                 }}
               />
             ))}
+            {/* A purchase that was linked afterwards is the person's own: unlinking lets it go, undoing would delete it. */}
+            {paidOpen.payments.some((p) => p.linked) && (
+              <InsetRow
+                action
+                title="Unlink"
+                onClick={() => {
+                  const linked = paidOpen.payments.filter((p) => p.linked);
+                  setPaidOpen(null);
+                  void act(async () => {
+                    for (const p of linked) await unlinkPurchaseFromBill(database, ws, { transactionId: p.id });
+                  });
+                }}
+              />
+            )}
+            {paidOpen.payments.some((p) => !p.linked) && (
             <InsetRow
               action
               title="Undo payment"
               onClick={() => {
-                const { payments } = paidOpen;
+                const payments = paidOpen.payments.filter((p) => !p.linked);
                 // A payment is deleted, not hidden: ask once.
                 if (!window.confirm(`Undo ${paidOpen.title}? The payment is deleted.`)) return;
                 setPaidOpen(null);
@@ -340,6 +374,7 @@ export function BillPage({ billId }: { billId: string }) {
                 void act(() => undoBillPayments(database, ws, payments.map((p) => p.id)));
               }}
             />
+            )}
           </InsetGroup>
           <InsetGroup>
             <InsetRow action title="Cancel" onClick={() => setPaidOpen(null)} />

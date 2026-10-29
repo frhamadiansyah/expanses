@@ -1,4 +1,4 @@
-import { billDetail, bookMoneyFor, monthlyBills, sinkingFundViews, yearlyBills } from '@expanses/db';
+import { billDetail, billLinkCandidates, billLinkRefusal, billMonthsBefore, billOfPurchase, bookMoneyFor, listExpenseTemplates, monthlyBills, sinkingFundViews, yearlyBills } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -30,4 +30,34 @@ export function useBillMoney() {
 export function useSinkingFunds(today: string) {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['sinking-funds', ws.workspaceId, today], queryFn: () => sinkingFundViews(database, ws, today) });
+}
+
+/** The purchases that could settle one month of a bill (see `billLinkCandidates`). */
+export function useBillLinkCandidates(billId: string, month: string) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['bill-link-candidates', ws.workspaceId, ws.bookId ?? null, billId, month], queryFn: () => billLinkCandidates(database, ws, { templateId: billId, billMonth: month }), enabled: month !== '' });
+}
+
+/** The months before a bill started that hold purchases to link, `pages` years' worth of them (see `billMonthsBefore`). */
+export function useBillMonthsBefore(billId: string, pages: number) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['bill-months-before', ws.workspaceId, ws.bookId ?? null, billId, pages], queryFn: () => billMonthsBefore(database, ws, { templateId: billId, limitMonths: 12 * pages }) });
+}
+
+/** Why a month of a bill cannot take a purchase, or null (see `billLinkRefusal`). */
+export function useBillLinkRefusal(billId: string, month: string, today: string) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['bill-link-refusal', ws.workspaceId, ws.bookId ?? null, billId, month, today], queryFn: () => billLinkRefusal(database, ws, { templateId: billId, billMonth: month, today }) });
+}
+
+/** The bill a purchase is linked to, if any (see `billOfPurchase`). */
+export function useBillOfPurchase(transactionId: string) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['bill-of-purchase', ws.workspaceId, transactionId], queryFn: () => billOfPurchase(database, ws, transactionId) });
+}
+
+/** Every active recurring bill the workspace holds, whether or not it is listed this month. */
+export function useBillTemplates() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['bill-templates', ws.workspaceId, ws.bookId ?? null], queryFn: async () => (await listExpenseTemplates(database, ws)).filter((t) => t.active) });
 }

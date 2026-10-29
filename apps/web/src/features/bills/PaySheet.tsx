@@ -24,6 +24,7 @@ export function PaySheet({
   onPaid,
   onSkipped,
   onSeeBill,
+  onLink,
 }: {
   bill: MonthlyBill;
   today: string;
@@ -32,6 +33,8 @@ export function PaySheet({
   onSkipped: (billMonth: string) => void;
   /** Shown only when the sheet was opened from the list. */
   onSeeBill?: () => void;
+  /** Opens the purchases that could settle the month chosen, for a payment that is already recorded. */
+  onLink?: (billMonth: string) => void;
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -217,6 +220,12 @@ export function PaySheet({
           <InsetRow action title="Skip this month" disabled={busy} onClick={() => void skip()} className={grey} />
           {onSeeBill && <InsetRow action title="See bill" onClick={onSeeBill} className={grey} />}
         </InsetGroup>
+
+        {onLink && (
+          <InsetGroup>
+            <InsetRow title="Already recorded? Link a purchase" plain onClick={() => onLink(month)} testId="link-purchase" />
+          </InsetGroup>
+        )}
       </form>
     </Sheet>
   );

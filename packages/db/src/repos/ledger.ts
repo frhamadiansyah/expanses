@@ -841,7 +841,7 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   const [placed] = (await dayOrderExists(tx)) ? await tx.values<[number | null]>(sql`SELECT day_order FROM transactions WHERE id = ${id}`) : [];
   const [typed] = (await exactExists(tx)) ? await tx.values<[number | null]>(sql`SELECT exact_hundredths FROM transactions WHERE id = ${id}`) : [];
   const [settles] = (await billTablesExist(tx))
-    ? await tx.select({ billMonth: billPayments.billMonth }).from(billPayments).where(eq(billPayments.transactionId, id))
+    ? await tx.select({ billMonth: billPayments.billMonth, templateId: billPayments.templateId }).from(billPayments).where(eq(billPayments.transactionId, id))
     : [];
   // Two workspaces can hold copies of one category, alike on any screen. An edit is a correction to the same
   // spending, so it stays where it was filed: a category from another workspace is refused here, before
@@ -941,6 +941,10 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
     ...(input.exactHundredths === undefined ? { exactHundredths: await carriedExactTx(tx, typed?.[0] ?? null, oldLines, input.lines) } : {}),
     setAside,
   });
+  // A purchase linked to a bill's month after the fact has no bill of its own, so posting would drop the link: carry it.
+  if (settles && !original?.templateId && !input.templateId) {
+    await tx.insert(billPayments).values({ transactionId: replacement, workspaceId: ws.workspaceId, templateId: settles.templateId, billMonth: settles.billMonth }).onConflictDoNothing();
+  }
   /*
    * A transfer has no category to file it by. Moved, it is filed in the chosen workspace (and so leaves the others'
    * lists); edited without a move, one that was filed stays filed. Its partner, a fee or a transfer, follows the move.
