@@ -13,7 +13,7 @@ test('by thumb: an account page adds from itself, and a pocket goes back to its 
   // The corner holds the ⚙ alone: no ⋯, and nothing named Tax report code outside Settings.
   await expect(page.getByRole('main').getByRole('link', { name: 'Settings', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'More', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Add', exact: true }).tap();
+  await page.getByRole('button', { name: 'Record', exact: true }).tap();
   await expect(page).toHaveURL(/\/transactions\/new\?.*mode=expense/);
   await expect(addForm(page).getByRole('button', { name: /^Paid with/ })).toContainText('Everyday');
   await page.goBack();
@@ -52,7 +52,7 @@ test('by thumb: cash is counted and withdrawn into, a wallet topped up, and a cu
 
   await page.goto('/wallet');
   await walletCard(page, 'GoPay').tap();
-  await expect(page.getByRole('group', { name: 'Actions' }).locator('button, a')).toHaveText(['Add', 'Top up', 'Adjust', 'Statement']);
+  await expect(page.getByRole('group', { name: 'Actions' }).locator('button, a')).toHaveText(['Record', 'Top up', 'Adjust', 'Statement']);
   await page.getByRole('button', { name: 'Top up', exact: true }).tap();
   const topUp = page.getByRole('dialog', { name: 'Top up' });
   await expect(topUp).toContainText('GoPay');
@@ -64,7 +64,7 @@ test('by thumb: cash is counted and withdrawn into, a wallet topped up, and a cu
 
   await page.goto('/wallet');
   await walletCard(page, 'Everyday').tap();
-  await expect(page.getByRole('group', { name: 'Actions' }).locator('button, a')).toHaveText(['Add', 'Transfer', 'Adjust', 'Statement']);
+  await expect(page.getByRole('group', { name: 'Actions' }).locator('button, a')).toHaveText(['Record', 'Transfer', 'Adjust', 'Statement']);
   await page.getByTestId('add-currency').tap();
   await expect(page.getByRole('dialog', { name: 'Add a currency' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

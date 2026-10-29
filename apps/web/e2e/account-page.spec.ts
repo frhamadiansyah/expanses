@@ -31,7 +31,7 @@ test('a current account: its actions, its last rows, its ⚙ and a way to add a 
   await expect(page.getByText('Bank One · Current account', { exact: true })).toBeVisible();
   await expect(page.getByTestId('card-currency')).toHaveAccessibleName('IDR · Indonesian Rupiah');
   const actions = page.getByRole('group', { name: 'Actions' }).locator('button, a');
-  await expect(actions).toHaveText(['Add', 'Transfer', 'Adjust', 'Statement']);
+  await expect(actions).toHaveText(['Record', 'Transfer', 'Adjust', 'Statement']);
   await expect(page.getByTestId('account-recent')).toContainText('Groceries run');
 
   // The corner is the ⚙ alone: Edit and Archive wait in Settings, and Add a currency is the last row of the facts.
@@ -128,11 +128,11 @@ test('a cash account with pockets: Record, Move, Withdraw, Adjust; Withdraw is i
   await expect(page.getByTestId('pocket-TRY')).toContainText('900');
 });
 
-test('Add opens a new transaction already paid with the account', async ({ page }) => {
+test('Record opens a new transaction already paid with the account', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000' });
   await openAccount(page, { subtype: 'cash', name: 'Pocket cash', balance: '300000' });
   await openMoney(page, 'Everyday');
-  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByRole('button', { name: 'Record', exact: true }).click();
   await expect(page).toHaveURL(/\/transactions\/new\?.*mode=expense.*account=/);
   const form = addForm(page);
   await expect(form.getByRole('radio', { name: 'Expense', exact: true })).toBeChecked();
@@ -271,7 +271,7 @@ test('a wallet is topped up from a card, with a fee; the ordinary transfer still
   await openAccount(page, { subtype: 'credit_card', name: 'Travel Card', balance: '0', last4: '4321' });
   await openAccount(page, { subtype: 'ewallet', name: 'GoPay', balance: '0' });
   await openMoney(page, 'GoPay');
-  await expect(page.getByRole('group', { name: 'Actions' }).locator('button, a')).toHaveText(['Add', 'Top up', 'Adjust', 'Statement']);
+  await expect(page.getByRole('group', { name: 'Actions' }).locator('button, a')).toHaveText(['Record', 'Top up', 'Adjust', 'Statement']);
 
   await page.getByRole('button', { name: 'Top up', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'Top up' });
@@ -395,7 +395,7 @@ test('an account with pockets lists them, and a pocket opens its own page with t
 test('an expense added from an account is saved by the Add screen’s ✓, goes back to the account and shows in its Recent', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000' });
   await openMoney(page, 'Everyday');
-  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByRole('button', { name: 'Record', exact: true }).click();
   const form = addForm(page);
   // ✓ in the bar, dimmed until the expense would save.
   const save = saveButton(form);

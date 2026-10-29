@@ -366,10 +366,10 @@ function actionsFor(
   const adjust = (label: string): RoundAction => ({ key: 'adjust', label, glyph: <SlidersHorizontal size={20} aria-hidden />, run: open.adjust });
   /*
    * An account whose transactions can be checked from screenshots keeps four buttons all the same: Spend and Receive
-   * become one Add (the Add screen, with Expense, Income and Transfer as tabs), and the check is the last of them.
+   * become one Record (the Add screen, with Expense, Income and Transfer as tabs), and the check is the last of them.
    */
   if (account.kind === 'asset' && STATEMENT_CHECKABLE_SUBTYPES.includes(account.subtype)) {
-    const add = newTx('add', 'Add', <PenLine size={20} aria-hidden />, { mode: 'expense', account: id });
+    const add = newTx('add', 'Record', <PenLine size={20} aria-hidden />, { mode: 'expense', account: id });
     const statement: RoundAction = { key: 'statement', label: 'Statement', glyph: <ReceiptText size={20} aria-hidden />, to: '/statement/list', search: { account: id }, testId: 'check-statement' };
     const own: RoundAction =
       account.subtype === 'ewallet' || account.subtype === 'emoney'
