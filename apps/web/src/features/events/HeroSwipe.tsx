@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { PageDots } from '../../ui/native';
 
 export interface HeroSlide {
   key: string;
@@ -80,20 +81,7 @@ export function HeroSwipe({ label, slides, active, onActive }: { label: string; 
           </div>
         ))}
       </div>
-      <div className="flex justify-center" data-testid="hero-dots">
-        {slides.map((slide, index) => (
-          <button
-            key={slide.key}
-            type="button"
-            aria-label={slide.label}
-            aria-current={index === active ? 'true' : undefined}
-            onClick={() => go(index)}
-            className="ph-focus flex h-8 w-6 items-center justify-center"
-          >
-            <span aria-hidden className={`block h-[6px] w-[6px] rounded-full ${index === active ? 'bg-[var(--ph-ink)]' : 'bg-[var(--ph-chevron)]'}`} />
-          </button>
-        ))}
-      </div>
+      <PageDots names={slides.map((slide) => slide.label)} index={active} onSelect={go} label="Page" testId="hero-dots" className="mt-2 mb-2" />
     </div>
   );
 }

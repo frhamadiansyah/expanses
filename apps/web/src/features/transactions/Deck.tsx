@@ -1,5 +1,5 @@
 import { type ReactNode, useLayoutEffect, useRef } from 'react';
-import { cx } from '../../ui';
+import { PageDots } from '../../ui/native';
 
 /**
  * Charts as pages of one card, moved between by swiping sideways or by tapping a dot.
@@ -74,17 +74,8 @@ export function Deck({
        * height of a control that had quietly gone. So the strip is furniture — the dots are drawn in it when there are
        * two pages to choose between, and it is left empty when there is only one.
        */}
-      <div className="flex h-3 justify-center gap-1.5 pt-1.5">
-        {labels.map((label, index) => (
-          <button
-            key={label}
-            type="button"
-            aria-label={label}
-            aria-current={index === page}
-            onClick={() => go(index)}
-            className={cx('h-1.5 rounded-full transition-all', index === page ? 'w-4 bg-slate-400' : 'w-1.5 bg-slate-200')}
-          />
-        ))}
+      <div className="mt-2 mb-2 h-[14px]">
+        {labels.length > 1 && <PageDots names={labels} index={page} onSelect={go} label="Page" />}
       </div>
     </div>
   );

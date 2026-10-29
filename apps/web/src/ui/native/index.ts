@@ -13,6 +13,7 @@ export { GROUP_HEADER_CLASS, InsetGroup, InsetRow, RowIcon, toneClass, useWide, 
 export { CornerButton, CornerMenu, LargeTitle, OverflowMenu, PushedTitle } from './NavTitle';
 export { SegmentedControl } from './Segmented';
 export { Hero, ProgressBar } from './Hero';
+export { PageDots } from './PageDots';
 export { SearchPill } from './SearchPill';
 export { CurrencyCode, DestructiveRow, optionLabel, PickerRow, ReadOnlyRow, SearchField, SelectRow, SubmitRow, SwitchRow, TextRow, FORM_KINDS } from './FormRow';
 export { CardStack, Face as WalletFace, type WalletCard } from './CardStack';

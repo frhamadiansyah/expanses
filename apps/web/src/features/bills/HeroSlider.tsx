@@ -1,4 +1,5 @@
 import { type KeyboardEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { PageDots } from '../../ui/native';
 
 const reduced = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
@@ -123,20 +124,7 @@ export function HeroSlider({
           </div>
         ))}
       </div>
-      <div role="group" aria-label="Page" className="flex justify-center" style={{ marginBottom: 8 }}>
-        {names.map((name, index) => (
-          <button
-            key={name}
-            type="button"
-            aria-label={name}
-            aria-current={index === page ? 'true' : undefined}
-            onClick={() => go(index)}
-            className="ph-focus flex h-6 w-6 items-center justify-center"
-          >
-            <span aria-hidden className={`block h-[7px] w-[7px] rounded-full ${index === page ? 'bg-[var(--ph-ink)]' : 'bg-[var(--ph-track)]'}`} />
-          </button>
-        ))}
-      </div>
+      <PageDots names={names} index={page} onSelect={go} label="Page" className="mt-2 mb-2" />
     </div>
   );
 }
