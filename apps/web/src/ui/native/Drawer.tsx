@@ -1,4 +1,5 @@
-import { type ReactNode, useState } from 'react';
+import type { ReactNode } from 'react';
+import { useRemembered } from '../../lib/page-memory';
 import { cx } from '../index';
 import { RowIcon } from './InsetList';
 import { NESTED_ICON, nestedPad, ROW_ICON, ROW_PAD_X, ROW_PAD_Y, rowHeight } from './metrics';
@@ -27,9 +28,10 @@ import { type TreePlace, TreeLines, TreeStem } from './TreeLines';
  * opens itself is that answer hidden again. The key is the caller's, because a page with two columns of drawers needs
  * one that is unique across both — `group:kind` rather than `kind`.
  */
-export function useDrawers(initiallyOpen: Iterable<string> = []) {
+export function useDrawers(initiallyOpen: Iterable<string> = [], remembered?: string) {
   // Shut unless the caller already knows what was asked for: a box tapped on the chart above is a drawer asked open.
-  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set(initiallyOpen));
+  // With a `remembered` name the open set comes back when this history entry is returned to (Back from a row's page).
+  const [open, setOpen] = useRemembered<ReadonlySet<string>>(remembered, () => new Set(initiallyOpen));
   const toggle = (key: string) =>
     setOpen((was) => {
       const next = new Set(was);
