@@ -30,7 +30,8 @@ test('Paid with is a sheet with a search; "48" leaves 4821, the pick marks the i
   // Each card is named by its name and its digits, the digits leading on screen.
   const mandiri = sheet.getByRole('button', { name: 'Mandiri Signature ···· 4821' });
   await expect(mandiri).toBeVisible();
-  await expect(sheet.getByRole('button', { name: 'Visa Platinum ···· 7310' })).toBeVisible();
+  // A card nothing was paid with is not offered: the filter lists only what the list can show.
+  await expect(sheet.getByRole('button', { name: 'Visa Platinum ···· 7310' })).toHaveCount(0);
   await expect(sheet.getByRole('button', { name: 'BCA Tahapan', exact: true })).toBeVisible();
 
   // Two digits narrow the sheet to the one card they belong to; All steps aside while something is typed.
