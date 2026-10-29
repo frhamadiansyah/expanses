@@ -63,16 +63,6 @@ export function RetirementFundPage() {
           onChange={setRetirementBox('yearsInRetirement')}
           inputMode="numeric"
         />
-        <TextRow
-          label="Already put aside"
-          prefix={ws.baseCurrency}
-          info="What is held for this today; it keeps earning until saving stops."
-          hint={retirementHint('alreadySaved')}
-          value={retirement.alreadySaved}
-          onChange={setMoneyBox('alreadySaved')}
-          inputMode="decimal"
-          placeholder="Amount"
-        />
       </InsetGroup>
       <SpendBar open={spendFocused} suggestions={spend} onPick={(typed) => setRetirement((draft) => ({ ...draft, annualSpend: typed }))} />
 
