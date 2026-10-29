@@ -136,6 +136,23 @@ describe('readCapture', () => {
     expect(reading.name?.value).toBe('INDOMARET');
   });
 
+  it("keeps a company's abbreviation with its name: 'PT. NAMA' is not cut at the stop after PT", () => {
+    const reading = readCapture(
+      notification('Terima kasih utk trx kartukredit XXXX3306 tgl 11-09-2026 08:41:05 di PT. TOKO BARU CONTOH IDR1.234.500,00. Jika trx tidak Anda kenal, hub 10000'),
+      WORDS,
+      null,
+    );
+    expect(reading.name?.value).toBe('PT. TOKO BARU CONTOH');
+    expect(reading.amount?.value).toEqual({ minor: 1_234_500, currency: 'IDR' });
+    expect(accountHintOf('XXXX3306')).toBe('3306');
+    const plain = readCapture(
+      notification('Terima kasih utk trx kartukredit XXXX3306 tgl 11-09-2026 08:41:05 di PT TOKO BARU CONTOH IDR1.234.500,00. Jika trx tidak Anda kenal, hub 10000'),
+      WORDS,
+      null,
+    );
+    expect(plain.name?.value).toBe('PT TOKO BARU CONTOH');
+  });
+
   it('reads a bank message end to end: the card, the day and time, the merchant and the amount', () => {
     const reading = readCapture(
       notification('Terima kasih utk trx kartukredit XXXX5512 tgl 03-09-2026 10:15:42 di TOKO ROTI CONTOH IDR48.300,00. Jika trx tidak Anda kenal, hub 10000', 'BANKCONTOH'),

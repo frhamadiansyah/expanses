@@ -33,9 +33,10 @@ interface Unit {
  * How a notification's own words are cut into pieces.
  *
  * A full stop between two digits is a thousands mark — `Rp38.000` — so a sentence ends only where the stop is followed
- * by space, which is what keeps `'Pembayaran Rp38.000 berhasil. Saldo Rp1.212.000'` two sentences and not five.
+ * by space, which is what keeps `'Pembayaran Rp38.000 berhasil. Saldo Rp1.212.000'` two sentences and not five. The stop
+ * of a company's or title's abbreviation (`PT.`, `CV.`, `Jl.`) is not an end: `di PT. NAMA IDR1.000,00` is one.
  */
-const SENTENCE = /(?<=[.!?])\s+|\n+/;
+const SENTENCE = /(?<=[.!?])(?<!\b(?:PT|CV|UD|TB|Tbk|Jl|Dr|Ir|Hj|No)[.!?])\s+|\n+/i;
 
 function unitsOf(capture: RawCapture): Unit[] {
   if (capture.lines.length > 0) {
@@ -407,7 +408,8 @@ function nameFrom(
   rest: string,
   notName: readonly string[] = [],
 ): { value: string; confidence: number; line: number | null } | null {
-  const cut = rest.search(/[.,;:!?()](?=\s|$)| {2,}/);
+  // The stop of an abbreviation (`PT.`, `CV.`) is part of the name, not where it ends.
+  const cut = rest.search(/(?<!\b(?:PT|CV|UD|TB|Tbk|Jl|Dr|Ir|Hj|No))[.,;:!?()](?=\s|$)| {2,}/i);
   const head = (cut < 0 ? rest : rest.slice(0, cut)).trim();
   if (head === '') return null;
   const money = findAmounts(head, WORDS_FOR_CUT)[0];
