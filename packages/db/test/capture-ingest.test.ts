@@ -415,6 +415,40 @@ describe('what is not worth a draft', () => {
     expect(draft!.description).toBe('BANKCONTOH');
   });
 
+  describe('text shared from the share sheet', () => {
+    // Shaped exactly as the share extension writes it: the fixed "Shared text" label, no title, the text as the body.
+    const shared = (id: string, capturedAt: string): RawCapture => ({
+      id,
+      kind: 'notification',
+      capturedAt,
+      app: 'Shared text',
+      title: null,
+      body: 'Nsb Yth. Transaksi Kartu Kredit Contoh 5520 di PT. TOKO CONTOH+62 sebesar IDR 99.500,00 pada 12/11/26 09:20:11 telah berhasil.',
+      lines: [],
+      imageFile: null,
+    });
+
+    it('becomes a draft with its amount, shop and card', async () => {
+      const { database, ws } = await workspace();
+      const card = await createCardAccount(database, ws, { name: 'Contoh card', subtype: 'credit_card', currency: 'IDR' });
+      await addCard(database, ws, { accountId: card.id, last4: '5520' });
+      expect(await ingestCaptures(database, ws, [shared('share-1', '2026-11-12T09:21:00+07:00')], { today: '2026-11-12' })).toMatchObject({ drafts: 1 });
+      const [draft] = await listDrafts(database, ws, 'pending');
+      expect(draft).toMatchObject({ amountMinor: 99_500, kind: 'expense', accountId: card.id });
+      expect(draft!.description).toBe('PT. TOKO CONTOH');
+      expect(await listSources(database.db)).toMatchObject([{ keyKind: 'app', key: 'Shared text', label: 'Shared text' }]);
+    });
+
+    it('shared twice makes one draft', async () => {
+      const { database, ws } = await workspace();
+      const card = await createCardAccount(database, ws, { name: 'Contoh card', subtype: 'credit_card', currency: 'IDR' });
+      await addCard(database, ws, { accountId: card.id, last4: '5520' });
+      await ingestCaptures(database, ws, [shared('share-1', '2026-11-12T09:21:00+07:00')], { today: '2026-11-12' });
+      await ingestCaptures(database, ws, [shared('share-2', '2026-11-12T09:25:00+07:00')], { today: '2026-11-12' });
+      expect(await listDrafts(database, ws, 'pending')).toHaveLength(1);
+    });
+  });
+
   it('skips an offer handed over twice (the app stopped before the phone let it go) once', async () => {
     const { database, ws } = await workspace();
     const offer = at('09:30', { body: 'Cashback voucher Rp10.000 untuk kamu' });
