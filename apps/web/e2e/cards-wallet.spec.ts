@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
-import { cardPage, saveCardTerms } from './card-section';
+import { cardPage, saveCardTerms, showCardBack } from './card-section';
 
 /** A credit card with a billing date, a points program and a rule, so its band has a figure to carry. */
 async function addEarningCard(page: Page, name: string) {
@@ -46,9 +46,10 @@ test('a desktop stacks cards of one fixed width and raises the one tapped, with 
   await expect(page.getByRole('heading', { name: 'Alpha Card', exact: true })).toBeFocused();
   const raised = wall.locator('[data-place="raised"]');
   expect(Math.round((await raised.boundingBox())!.width)).toBe(380);
-  // Wallet's summary, beside the card on a desktop: the tiles sit to its right.
-  const unpaid = (await page.getByTestId('tile-left-to-pay').boundingBox())!;
-  expect(unpaid.x).toBeGreaterThanOrEqual((await raised.boundingBox())!.x + 380);
+  // Turned over, the card's back is the card's own box: Owed now and the points on it.
+  await showCardBack(page);
+  await expect(page.getByTestId('tile-left-to-pay')).toContainText('Owed now');
+  await expect.poll(async () => Math.round((await page.getByTestId('tile-left-to-pay').boundingBox())!.width)).toBe(380);
   await expect(page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Points', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Recent' })).toBeVisible();
 
@@ -57,7 +58,7 @@ test('a desktop stacks cards of one fixed width and raises the one tapped, with 
   await expect(page.getByRole('radiogroup', { name: 'Card sections' })).toHaveCount(0);
   await expect(page.getByLabel('Billing date')).toHaveValue('25');
   await page.getByRole('button', { name: 'Alpha Card', exact: true }).click();
-  await expect(page.getByTestId('tile-points')).toBeVisible();
+  await expect(page.getByTestId('wallet-slot')).toBeVisible();
 
   // Back behaves like ✕: the stack again, in its order.
   await page.goBack();

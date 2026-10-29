@@ -11,6 +11,7 @@ import { cx, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, PickerRow, ReadOnlyRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
 import { TrackPaymentsSetting } from '../statement-check/TrackPaymentsSetting';
+import { AnnualFeeGroup } from './AnnualFeeGroup';
 import { CardFace } from './CardFace';
 import { PlasticSheet } from './PlasticSheet';
 import { issuerChoices, useWorkspaceIssuers } from './card-queries';
@@ -263,11 +264,10 @@ export function CardSettingsPage() {
             ],
             [
               <TextRow label={`Credit limit (${currency})`} value={limit} onChange={(e) => setLimit(e.target.value)} inputMode="decimal" />,
-              <TextRow label={`Annual fee (${currency})`} value={fee} onChange={(e) => setFee(e.target.value)} inputMode="decimal" />,
-              <TextRow label="Charged on" type="date" value={feeOn} onChange={(e) => setFeeOn(e.target.value)} />,
             ],
           ]}
         />
+        <AnnualFeeGroup page={page} fee={fee} onFee={setFee} feeOn={feeOn} onFeeOn={setFeeOn} />
       </form>
     </>
   );

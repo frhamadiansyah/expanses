@@ -1,4 +1,4 @@
-import { chargeAfterWaiver, dayMonth, FEE_SOON_DAYS, feeDaysAway, feeWaived, formatMinor, nextFeeDate } from '@expanses/core';
+import { chargeAfterWaiver, coveredCharge, dayMonth, FEE_SOON_DAYS, feeDaysAway, feeWaived, formatMinor, nextFeeDate } from '@expanses/core';
 
 /** "12 Mar 2027". */
 export const feeDateText = (iso: string) => `${dayMonth(iso)} ${iso.slice(0, 4)}`;
@@ -11,6 +11,8 @@ export interface FeeLine {
   /** The next charge is within the due-soon window and not waived. */
   soon: boolean;
   waived: boolean;
+  /** This year's charge was refunded by the bank (a fee challenge met). */
+  refunded: boolean;
 }
 
 /** The annual fee row on a card's page; null while neither an amount nor a date is set. */
@@ -20,12 +22,16 @@ export function feeLine(
   waivedYear: number | null,
   currency: string,
   today: string,
+  refundedYear: number | null = null,
 ): FeeLine | null {
   if (feeMinor === null && !chargedOn) return null;
   const amount = feeMinor !== null ? formatMinor(feeMinor, currency) : null;
-  if (!chargedOn) return { amount, when: null, soon: false, waived: false };
-  if (feeWaived(chargedOn, waivedYear, today)) {
-    return { amount, when: `Waived this year · next charge ${feeDateText(chargeAfterWaiver(chargedOn, today))}`, soon: false, waived: true };
+  if (!chargedOn) return { amount, when: null, soon: false, waived: false, refunded: false };
+  if (refundedYear !== null && refundedYear === Number(coveredCharge(chargedOn, today).slice(0, 4))) {
+    return { amount, when: `Refunded this year · next charge ${feeDateText(chargeAfterWaiver(chargedOn, today))}`, soon: false, waived: false, refunded: true };
   }
-  return { amount, when: `Charged on ${feeDateText(nextFeeDate(chargedOn, today))}`, soon: feeDaysAway(chargedOn, today) <= FEE_SOON_DAYS, waived: false };
+  if (feeWaived(chargedOn, waivedYear, today)) {
+    return { amount, when: `Waived this year · next charge ${feeDateText(chargeAfterWaiver(chargedOn, today))}`, soon: false, waived: true, refunded: false };
+  }
+  return { amount, when: `Charged on ${feeDateText(nextFeeDate(chargedOn, today))}`, soon: feeDaysAway(chargedOn, today) <= FEE_SOON_DAYS, waived: false, refunded: false };
 }

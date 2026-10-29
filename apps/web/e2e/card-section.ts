@@ -7,6 +7,19 @@ import { expect, type Page } from '@playwright/test';
 export const walletCard = (page: Page, name: string | RegExp) => page.getByRole('region', { name: 'Cards' }).getByRole('link', { name });
 
 /**
+ * The card's back holds Owed now, the limit and the nearest bonus or the points: a tap on the raised card turns it
+ * over. Turns it when it is not turned already, so a journey that reads the back can call this wherever it is.
+ */
+export async function showCardBack(page: Page) {
+  const turn = page.getByRole('button', { name: /, show balance$/ });
+  const back = page.getByRole('button', { name: /, show card$/ });
+  // The page says it has a back a moment after it mounts: wait for either side's button.
+  await expect(turn.or(back)).toBeVisible();
+  if ((await turn.count()) > 0) await turn.click();
+  await expect(page.getByTestId('tile-points')).toBeVisible();
+}
+
+/**
  * Open one of the card's own pages from its summary. The four tabs it had are pages now: the statement (the round
  * Statement button), this statement's points (its row on the summary), and the settings (⚙ in the corner), which hold
  * what the Card and Rewards rules tabs did.
@@ -14,7 +27,16 @@ export const walletCard = (page: Page, name: string | RegExp) => page.getByRole(
 export async function cardPage(page: Page, which: 'Statement' | 'Points' | 'Settings') {
   const main = page.getByRole('main');
   if (which === 'Statement') await main.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Statement', exact: true }).click();
-  else if (which === 'Points') await main.getByTestId('this-statement-points').click();
+  else if (which === 'Points') {
+    await showCardBack(page);
+    const direct = page.getByTestId('this-statement-points');
+    if ((await direct.count()) > 0) await direct.click();
+    else {
+      // With a spend bonus on the card's back, its points are one tap further: the bonuses list has the row.
+      await page.getByTestId('back-bonus').click();
+      await page.getByRole('link', { name: "This statement's points" }).click();
+    }
+  }
   else await main.getByRole('link', { name: 'Settings', exact: true }).first().click();
   const title = { Statement: 'Statement', Points: "This statement's points", Settings: 'Settings' }[which];
   await expect(page.getByRole('heading', { name: title, exact: true }).first()).toBeVisible();

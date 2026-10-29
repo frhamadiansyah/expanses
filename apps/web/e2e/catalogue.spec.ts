@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { addTransaction, choosePayment } from './add-transaction';
-import { cardPage, cardSettingsPage, saveCardTerms } from './card-section';
+import { cardPage, cardSettingsPage, saveCardTerms, showCardBack } from './card-section';
 
 test.beforeEach(({ page }) => {
   // A linked catalogue card asks before an edit makes it customised.
@@ -71,8 +71,10 @@ test('BCA KrisFlyer Visa Signature earns base miles and the cycle bonus with ful
   await buy(page, { card: 'BCA KF Signature', description: 'Anniversary dinner', category: 'Restaurants', amount: '21000000' });
 
   await openCardPage(page, 'BCA KF Signature');
-  // On the summary, the bonus this statement is working toward has been reached: no tier left to show.
-  await expect(page.getByTestId('this-statement-points')).toContainText('+2.555 miles');
+  // On the card's back, the bonus this statement is working toward has been reached: no tier left to show.
+  await showCardBack(page);
+  await expect(page.getByTestId('back-bonus')).toContainText('Top tier reached');
+  await expect(page.getByTestId('back-bonus')).toContainText('+1.000 miles');
   await cardPage(page, 'Points');
   const cycle = thisCycle(page);
   // Rp 21.000.000 / 13.500 = 1.555,5 → 1.555 miles, plus 1.000 for reaching Rp 20.000.000.
@@ -191,8 +193,9 @@ test('a spend bonus can be added by hand, and a catalogue one keeps what the for
   // Electricity is excluded by the catalogue, and that exclusion is not on the form: it must survive.
   await buy(page, { card: 'BCA KrisFlyer', description: 'PLN token', category: 'Electricity', amount: '21000000' });
   await openCardPage(page, 'BCA KrisFlyer');
-  // The summary's row shows the same bonus, nothing toward it yet.
-  await expect(page.getByTestId('bonus-progress')).toContainText(/Rp\s0 of Rp\s20\.000\.000/);
+  // The card's back shows the same bonus, nothing toward it yet.
+  await showCardBack(page);
+  await expect(page.getByTestId('back-bonus')).toContainText(/Rp\s20\.000\.000 to go/);
   await cardPage(page, 'Points');
   await expect(thisCycle(page).getByRole('progressbar', { name: 'Monthly spend bonus progress' })).toHaveAttribute('aria-valuenow', '0');
 });

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openCard, walletCard } from './accounts';
-import { cardPage, saveCardTerms } from './card-section';
+import { cardPage, saveCardTerms, showCardBack } from './card-section';
 
 test('card setup guides billing date, then rewards, then a suggested base rule', async ({ page }) => {
   // The card's own page is where a card taken from the catalogue is finished; this one is typed by hand.
@@ -46,6 +46,7 @@ test('card setup guides billing date, then rewards, then a suggested base rule',
   // Back on the summary there is no step left to finish.
   await page.getByRole('button', { name: 'Settings' }).click();
   await page.getByRole('button', { name: 'Step Card' }).click();
+  await showCardBack(page);
   await expect(page.getByTestId('this-statement-points')).toBeVisible();
   await expect(page.getByTestId('card-setup')).toHaveCount(0);
 });
@@ -91,11 +92,13 @@ test('a settled card saves its edited terms with the corner check and goes back 
   await page.getByRole('button', { name: 'Save rule' }).click();
   await expect(page.getByText('Step 3 of 3')).toHaveCount(0);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await showCardBack(page);
   await expect(page.getByTestId('this-statement-points')).toBeVisible();
 
   await cardPage(page, 'Settings');
   await page.getByLabel('Credit limit (IDR)').fill('7000000');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await showCardBack(page);
   await expect(page.getByTestId('this-statement-points')).toBeVisible();
   await cardPage(page, 'Settings');
   await expect(page.getByLabel('Credit limit (IDR)')).toHaveValue('7000000');

@@ -9,81 +9,22 @@ import { Sheet } from '../../app/Sheet';
 import { keptForSpending } from '../../lib/account-types';
 import { moneyHolders, useCategoryColours, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
-import { ActionButtons, InsetGroup, InsetRow, type InsetRowProps, ProgressBar, SelectRow, TextRow, useWalletSlot } from '../../ui/native';
+import { createPortal } from 'react-dom';
+import { ActionButtons, InsetGroup, InsetRow, type InsetRowProps, SelectRow, TextRow, useWalletSlot } from '../../ui/native';
+import { backRadius } from '../accounts/balance-back';
+import { BackSlot } from './CardBack';
+import { useSpendBonuses } from './spend-bonuses';
 import { categoryMark } from '../categories/CategoryIcon';
 import { CardFace } from './CardFace';
-import { bonusStanding, activeDuring } from './catalog-panel';
 import { cycleBack, dueDateAfter, dueIn } from './statement-dates';
 import { limitUsage } from './limit-usage';
 import { FeeAlert } from './FeeAlert';
 import { feeLine } from './fee-line';
-import { pointsSummary } from './points-summary';
 import { useInstallments } from '../loans/queries';
 import { spendingDoor } from '../goals/set-aside-question';
 import { creditLine } from '../networth/debt-rows';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { type CardPoints, formatPoints, pointsValue, shortDate } from './useCardPoints';
-
-/** A figure that is the point of its tile: 22 px, tabular, and never money that a caller formatted itself. */
-function TileFigure({ children, testId }: { children: ReactNode; testId?: string }) {
-  return (
-    <span data-testid={testId} className="tabular text-[22px] leading-[28px] font-extrabold tracking-[-0.02em] text-[var(--ph-ink)]">
-      {children}
-    </span>
-  );
-}
-
-/**
- * One of Wallet's tiles under an open pass — "Balance JP¥584 [Add Money]": a small label, the figure large, and the
- * one thing to do about it as a pill on the right. What the pill opens is drawn inside the tile, under the figure.
- */
-function WalletTile({
-  label,
-  figure,
-  figureTestId,
-  caption,
-  note,
-  action,
-  onAction,
-  testId,
-  children,
-}: {
-  label: string;
-  figure: ReactNode;
-  figureTestId?: string;
-  caption?: ReactNode;
-  /** A line under the caption in the tint, for something in the owner's favour: a card's credit. */
-  note?: ReactNode;
-  action?: string;
-  onAction?: () => void;
-  testId?: string;
-  children?: ReactNode;
-}) {
-  return (
-    <div data-testid={testId} className="rounded-[14px] bg-[var(--ph-surface)] px-[16px] py-[12px]">
-      <div className="flex items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="text-[13px] leading-[18px] font-medium text-[var(--ph-ink-3)]">{label}</div>
-          <div data-testid={figureTestId} className="tabular truncate text-[28px] leading-[34px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]">
-            {figure}
-          </div>
-          {caption && <div className="mt-[2px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{caption}</div>}
-          {note && <div className="mt-[2px] text-[12.5px] leading-[16px] font-semibold text-[var(--ph-tint)]">{note}</div>}
-        </div>
-        {action && (
-          <button
-            type="button"
-            onClick={onAction}
-            className="ph-focus min-h-[44px] shrink-0 rounded-full bg-[var(--ph-tint)] px-[18px] text-[15px] leading-[20px] font-semibold text-[var(--ph-surface)]"
-          >
-            {action}
-          </button>
-        )}
-      </div>
-      {children}
-    </div>
-  );
-}
 
 /**
  * Wallet's "Latest Transactions" under an open pass: the card's most recent purchases, each opening its receipt, and
@@ -270,6 +211,12 @@ export function CardHero({
    */
   const slot = useWalletSlot();
   const setSlotShown = slot?.setShown;
+  // The card turns over to its back: Owed now, the limit, and the nearest bonus or the points.
+  const setFlippable = slot?.setFlippable;
+  useEffect(() => {
+    setFlippable?.(true);
+    return () => setFlippable?.(false);
+  }, [setFlippable]);
   useEffect(() => {
     setSlotShown?.(shown ? { last4: shown.last4, holderName: shown.holderName } : null);
   }, [setSlotShown, shown?.last4, shown?.holderName]);
@@ -288,23 +235,18 @@ export function CardHero({
   // The balance is the programme's the card earns into, counted in that programme's unit.
   const unit = cp.programme?.unit ?? cp.program?.unit ?? 'points';
   const unitLabel = unit === 'miles' ? 'Miles' : unit === 'cashback' ? 'Cashback' : 'Points';
-  const result = cp.current;
-  // The spend bonus nearest its next tier, among those in force at the cycle's end; the first of them once all are reached.
-  const activeBonuses = result ? cp.bonuses.filter((b) => activeDuring(b, result.cycle.end, result.cycle.end)) : [];
-  const standingOf = (b: (typeof activeBonuses)[number]) => bonusStanding(b, result!.earn.eligibleSpendByBonus[b.id] ?? 0, result!.earn.bonusById[b.id] ?? 0);
-  const bonus = activeBonuses.filter((b) => standingOf(b).next).sort((a, b) => standingOf(a).remainingMinor - standingOf(b).remainingMinor)[0] ?? activeBonuses[0];
-  const worth = cp.program ? pointsValue(pointsBalance?.total ?? 0, cp.best) : null;
+  // The spend bonuses (cycle bonuses and the fee waiver), nearest to their goal first: the back shows the first.
+  const bonuses = useSpendBonuses(cp, accounts, today);
   /** What one purchase earned, by this cycle's or the last one's rules; nothing when the card earns nothing. */
   const pointsOf = (transactionId: string): number | null =>
     cp.program ? (cp.current?.earn.pointsByTransaction[transactionId] ?? cp.previous?.earn.pointsByTransaction[transactionId] ?? null) : null;
-  const standing = bonus && result ? standingOf(bonus) : null;
   // Where the summary leads: the card's own pages, and the programme its points go into.
   const params = { cardId: card.id };
   const toSettings = { to: '/cards/$cardId/settings' as const, params };
   // The annual fee and when it is next charged: one quiet row, in the due-soon warning inside 30 days. A tap asks
   // whether it was waived.
   const [askingFee, setAskingFee] = useState(false);
-  const fee = cp.terms ? feeLine(cp.terms.annualFeeMinor, cp.terms.annualFeeOn, cp.terms.annualFeeWaivedYear, currency, today) : null;
+  const fee = cp.terms ? feeLine(cp.terms.annualFeeMinor, cp.terms.annualFeeOn, cp.terms.annualFeeWaivedYear, currency, today, bonuses.refunds.at(-1)?.feeYear ?? null) : null;
   const feeRow = fee && cp.terms && (
     <InsetGroup>
       <InsetRow
@@ -432,208 +374,121 @@ export function CardHero({
     </>
   );
 
+  const actions = (
+    <ActionButtons
+      actions={[
+        ...(debit ? [] : [{ key: 'pay', label: 'Pay', glyph: <Banknote size={20} aria-hidden />, run: () => setPaying(true) }]),
+        { key: 'spend', label: 'Spend', glyph: <ArrowUpRight size={20} aria-hidden />, to: '/transactions/new' as const, search: { mode: 'expense' as const, account: card.id } },
+        // The balance is redeemed and converted on the programme's page; a card with no rewards sets them up first.
+        cp.programme
+          ? { key: 'points', label: unitLabel, glyph: <Gift size={20} aria-hidden />, to: '/cards/points/$programmeId' as const, params: { programmeId: cp.programme.id } }
+          : { key: 'points', label: unitLabel, glyph: <Gift size={20} aria-hidden />, ...toSettings },
+        ...(debit ? [] : [{ key: 'statement', label: 'Statement', glyph: <ReceiptText size={20} aria-hidden />, ...toStatement }]),
+      ]}
+    />
+  );
+
+  /*
+   * The card's back: what is owed now, the limit as it is used, and under a thin rule the nearest spend bonus with its
+   * ring, or this statement's points. Opened from Wallet it is the raised card's own back (a tap on the card turns it
+   * over); on the page's own it is a white box under the card.
+   */
+  const backFace = (className: string, style?: CSSProperties) => (
+    <div data-testid={debit ? undefined : 'tile-left-to-pay'} className={cx('flex flex-col overflow-hidden bg-[var(--ph-surface)] text-[var(--ph-ink)]', className)} style={style}>
+      {!debit && (
+        <div className="min-w-0">
+          <div className="pr-[40px] text-[13px] leading-[18px] font-medium text-[var(--ph-ink-3)]">Owed now</div>
+          <div data-testid="tile-unpaid-balance" className="tabular truncate text-[26px] leading-[30px] font-bold tracking-[-0.02em]">
+            {formatMinor(owedMinor, currency)}
+          </div>
+          <div className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{billCaption()}</div>
+          {creditMinor > 0 && (
+            <div className="mt-[2px] text-[12.5px] leading-[16px] font-semibold text-[var(--ph-tint)]">
+              <span data-testid="tile-credit" title="Paid past what was owed: the bank holds this as credit">
+                {creditLine(creditMinor, currency)}
+              </span>
+            </div>
+          )}
+          {limitBlock(true)}
+        </div>
+      )}
+      <div data-testid="tile-points" className={debit ? undefined : 'mt-auto'}>
+        <BackSlot
+          cardId={card.id}
+          items={bonuses.items}
+          unit={unit}
+          currency={currency}
+          points={cp.program ? { total: pointsBalance?.total ?? 0, posted: pointsBalance?.posted ?? 0, estimated: pointsBalance?.estimated ?? 0 } : null}
+        />
+      </div>
+    </div>
+  );
+
+  const below = (
+    <>
+      {setup}
+      {feeRow}
+      {instalments}
+      {recent}
+    </>
+  );
+
+  // The dots keep their height while the card is turned over, so the page below does not move.
+  const turned = slot?.flipped === true;
+  const dots =
+    cards.length > 1 ? (
+      <div className={cx('mt-2 flex h-[15px] items-center justify-center gap-1.5', turned && 'invisible')} role="group" aria-label="Cards on this account" aria-hidden={turned || undefined}>
+        {cards.map((piece, index) => (
+          <button
+            key={piece.id}
+            type="button"
+            tabIndex={turned ? -1 : undefined}
+            aria-label={`Show card ending ${piece.last4 ?? 'unknown'}${piece.holderName ? `, ${piece.holderName}` : ''}`}
+            aria-pressed={index === shownIndex}
+            title={`···· ${piece.last4 ?? '????'}${piece.holderName ? ` ${piece.holderName}` : ''}`}
+            onClick={() => setShownIndex(index)}
+            className={cx('ph-focus h-2 rounded-full transition-all', index === shownIndex ? 'w-5 bg-[var(--ph-ink)]' : 'w-2 bg-[var(--ph-chevron)]')}
+          />
+        ))}
+      </div>
+    ) : null;
+
   return (
     <>
-    <div
-      className="grid gap-5 lg:grid-cols-[var(--hero-face)_minmax(0,1fr)]"
-      style={{ '--hero-face': slot ? `${slot.width}px` : '17rem' } as CSSProperties}
-    >
-      <div className="min-w-0">
-        {slot ? (
-          <div data-testid="wallet-slot" aria-hidden style={{ width: slot.width, height: slot.height, maxWidth: '100%' }} />
-        ) : (
-          <CardFace
-            issuer={issuer}
-            name={card.name}
-            last4={shown?.last4 ?? null}
-            holderName={shown?.holderName}
-            network={cp.catalog.entry?.network}
-            look={cp.catalog.entry?.look}
-            className="!w-[17rem] max-w-full"
-          />
-        )}
-        {/* One statement can carry several cards; the dots show each one's face in turn. */}
-        {cards.length > 1 && (
-          <div className="mt-2 flex items-center justify-center gap-1.5" role="group" aria-label="Cards on this account">
-            {cards.map((piece, index) => (
-              <button
-                key={piece.id}
-                type="button"
-                aria-label={`Show card ending ${piece.last4 ?? 'unknown'}${piece.holderName ? `, ${piece.holderName}` : ''}`}
-                aria-pressed={index === shownIndex}
-                title={`···· ${piece.last4 ?? '????'}${piece.holderName ? ` ${piece.holderName}` : ''}`}
-                onClick={() => setShownIndex(index)}
-                className={cx(
-                  'ph-focus h-2 rounded-full transition-all',
-                  index === shownIndex ? 'w-5 bg-[var(--ph-ink)]' : 'w-2 bg-[var(--ph-chevron)]',
-                )}
-              />
-            ))}
-          </div>
-        )}
-        {/* Under the card on its own page; inside the Unpaid tile when the card is Wallet's raised pass. */}
-        {!slot && limitBlock()}
-      </div>
-
       {slot ? (
-        /*
-         * Opened from the Wallet stack: what is owed now, then the card's round actions — Pay, Spend, Points,
-         * Statement — then this statement's points in one row, the instalment plans, and the latest purchases with
-         * what each earned. The card's settings are behind ⚙.
-         */
-        <div className="flex min-w-0 flex-col gap-[10px]">
-          {!debit && (
-            <WalletTile
-              testId="tile-left-to-pay"
-              label="Owed now"
-              figure={formatMinor(owedMinor, currency)}
-              figureTestId="tile-unpaid-balance"
-              caption={billCaption()}
-              note={creditMinor > 0 ? <span data-testid="tile-credit" title="Paid past what was owed: the bank holds this as credit">{creditLine(creditMinor, currency)}</span> : undefined}
-            >
-              {limitBlock(true)}
-            </WalletTile>
-          )}
-          <div className="mt-[6px]">
-            <ActionButtons
-              actions={[
-                ...(debit ? [] : [{ key: 'pay', label: 'Pay', glyph: <Banknote size={20} aria-hidden />, run: () => setPaying(true) }]),
-                { key: 'spend', label: 'Spend', glyph: <ArrowUpRight size={20} aria-hidden />, to: '/transactions/new' as const, search: { mode: 'expense' as const, account: card.id } },
-                // The balance is redeemed and converted on the programme's page; a card with no rewards sets them up first.
-                cp.programme
-                  ? { key: 'points', label: unitLabel, glyph: <Gift size={20} aria-hidden />, to: '/cards/points/$programmeId' as const, params: { programmeId: cp.programme.id } }
-                  : { key: 'points', label: unitLabel, glyph: <Gift size={20} aria-hidden />, ...toSettings },
-                ...(debit ? [] : [{ key: 'statement', label: 'Statement', glyph: <ReceiptText size={20} aria-hidden />, ...toStatement }]),
-              ]}
-            />
+        <>
+          <div data-testid="wallet-slot" aria-hidden style={{ width: slot.width, height: slot.height, maxWidth: '100%', pointerEvents: 'none' }} />
+          {slot.backHost && createPortal(backFace('h-full w-full px-4 py-[14px]', { borderRadius: backRadius(slot.width), pointerEvents: 'auto' }), slot.backHost)}
+          {dots}
+          <div className="mt-[14px] flex min-w-0 flex-col">
+            {actions}
+            {below}
           </div>
-          <div className="-mt-[10px]">
-            {setup}
-            {feeRow}
-            <div data-testid="tile-points">
-              <InsetGroup>
-                {cp.program ? (
-                  <InsetRow
-                    testId="this-statement-points"
-                    title="This statement's points"
-                    subtitle={
-                      <>
-                        {/* The spend bonus nearest its next tier, as far as this statement has come toward it. */}
-                        {standing?.next ? (
-                          <span className="block" data-testid="bonus-progress">
-                            <ProgressBar
-                              className="my-[4px] w-full"
-                              currentMinor={standing.eligibleSpendMinor}
-                              targetMinor={standing.next.minSpendMinor}
-                              label={`${bonus!.name}: ${formatMinor(standing.eligibleSpendMinor, currency)} of ${formatMinor(standing.next.minSpendMinor, currency)} for +${formatPoints(standing.next.bonus)} ${unit}`}
-                            />
-                            {/* The bar's spend alone: the bonus it is for is named on the points page and in the bar's label. */}
-                            <span className="tabular">
-                              {formatMinor(standing.eligibleSpendMinor, currency)} of {formatMinor(standing.next.minSpendMinor, currency)}
-                            </span>
-                          </span>
-                        ) : (
-                          result && <span className="block">{`${shortDate(result.cycle.start)} – ${shortDate(result.cycle.end)}`}</span>
-                        )}
-                        <span className="tabular block" data-testid="tile-points-balance">
-                          {cp.programme?.name ?? cp.program.name} · {formatPoints(pointsBalance?.total ?? 0)} {unit}
-                          {worth !== null && cp.best ? ` ≈ ${formatMinor(worth, cp.best.currency)}` : ''}
-                        </span>
-                      </>
-                    }
-                    value={<span data-testid="tile-this-cycle">{result ? `+${formatPoints(result.earn.totalPoints)} ${unit}` : '—'}</span>}
-                    valueTone="ink"
-                    {...toPoints}
-                  />
-                ) : (
-                  <InsetRow title={unitLabel} subtitle="Rewards are not set up for this card." {...toSettings} />
-                )}
-              </InsetGroup>
+        </>
+      ) : (
+        <>
+          <div className="grid gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">
+            <div className="min-w-0">
+              <CardFace
+                issuer={issuer}
+                name={card.name}
+                last4={shown?.last4 ?? null}
+                holderName={shown?.holderName}
+                network={cp.catalog.entry?.network}
+                look={cp.catalog.entry?.look}
+                className="!w-[17rem] max-w-full"
+              />
+              {dots}
+            </div>
+            <div className="flex min-w-0 flex-col">
+              {backFace('mb-4 rounded-[14px] px-4 py-[14px]')}
+              {actions}
             </div>
           </div>
-          {instalments}
-          {recent}
-        </div>
-      ) : (
-      /* The bill and the points as equals. The sections follow the whole hero, in a column of their own. */
-      <div className="flex min-w-0 flex-col">
-        {!debit && (
-          <div data-testid="tile-left-to-pay">
-            <InsetGroup header="Current bill" wide>
-              <InsetRow title={<TileFigure>{cp.terms && lastCycle ? formatMinor(leftToPayMinor, currency) : '—'}</TileFigure>} subtitle={billCaption()} />
-              {creditMinor > 0 && (
-                <InsetRow testId="tile-credit" title={<span className="text-[var(--ph-up)]">{creditLine(creditMinor, currency)}</span>} subtitle="Paid past what was owed: the bank holds this as credit" />
-              )}
-              {cp.terms && lastCycle ? (
-                <InsetRow action title="Pay this bill" onClick={() => setPaying(true)} />
-              ) : (
-                <InsetRow title={<span className="text-[var(--ph-tint)]">Enter billing date</span>} {...toSettings} />
-              )}
-            </InsetGroup>
-          </div>
-        )}
-
-        <div data-testid="tile-points">
-          <InsetGroup header={unitLabel} wide>
-            {cp.program ? (
-              <InsetRow
-                title={
-                  <TileFigure testId="tile-points-balance">
-                    {formatPoints(pointsBalance?.total ?? 0)} {unit}
-                  </TileFigure>
-                }
-                /* Posted, then what this cycle is adding; the cycle's dates are on hover, the spend is in Points. */
-                subtitle={
-                  <span
-                    data-testid="tile-this-cycle"
-                    title={result ? `This cycle: ${shortDate(result.cycle.start)} – ${shortDate(result.cycle.end)}` : undefined}
-                  >
-                    {pointsSummary(pointsBalance?.posted ?? 0, pointsBalance?.estimated ?? 0, result ? result.earn.totalPoints : null)}
-                  </span>
-                }
-              />
-            ) : (
-              <InsetRow title={<TileFigure>—</TileFigure>} subtitle="Rewards are not set up for this card." />
-            )}
-            {cp.program && standing && standing.next && (
-              <InsetRow
-                title={`${formatMinor(standing.remainingMinor, currency)} more`}
-                subtitle={`for +${formatPoints(standing.next.bonus)} bonus · ${bonus!.name}`}
-                value={
-                  <ProgressBar
-                    className="w-[70px]"
-                    currentMinor={standing.eligibleSpendMinor}
-                    targetMinor={standing.next.minSpendMinor}
-                    label={`${bonus!.name}: ${formatMinor(standing.eligibleSpendMinor, currency)} of ${formatMinor(standing.next.minSpendMinor, currency)}`}
-                  />
-                }
-              />
-            )}
-            {/* Points are spent and converted from the programme they sit in, which has a page of its own. */}
-            {cp.programme && pointsBalance && (
-              <InsetRow title={<span className="text-[var(--ph-tint)]">Use {unit}</span>} to="/cards/points/$programmeId" params={{ programmeId: cp.programme.id }} />
-            )}
-            {cp.program && result && (
-              <InsetRow title={<span className="text-[var(--ph-tint)]">See by rule</span>} {...toPoints} />
-            )}
-            {!cp.program && (
-              <InsetRow title={<span className="text-[var(--ph-tint)]">Set up rewards</span>} {...toSettings} />
-            )}
-          </InsetGroup>
-        </div>
-      </div>
+          <div className="mt-[6px]">{below}</div>
+        </>
       )}
-    </div>
-    {/* On its own page the summary's other groups follow the whole hero, in a column of their own. */}
-    {!slot && (
-      <div className="mt-[18px]">
-        {setup}
-        {feeRow}
-        {instalments}
-        {recent}
-      </div>
-    )}
-    {paying && <PaySheet card={card} accounts={accounts} amountMinor={leftToPayMinor || owedMinor} today={today} onDone={() => setPaying(false)} />}
+      {paying && <PaySheet card={card} accounts={accounts} amountMinor={leftToPayMinor || owedMinor} today={today} onDone={() => setPaying(false)} />}
     </>
   );
 }
