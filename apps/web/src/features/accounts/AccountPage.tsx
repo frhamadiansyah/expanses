@@ -10,6 +10,7 @@ import {
   ChevronRight,
   PenLine,
   Plus,
+  ReceiptText,
   Repeat,
   Settings,
   SlidersHorizontal,
@@ -18,7 +19,7 @@ import { type ReactElement, useState } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
-import { SPENDABLE_SUBTYPES, SUBTYPE_LABELS } from '../../lib/account-types';
+import { SPENDABLE_SUBTYPES, STATEMENT_CHECKABLE_SUBTYPES, SUBTYPE_LABELS } from '../../lib/account-types';
 import { useAccounts, useBalances } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
 import {
@@ -363,6 +364,19 @@ function actionsFor(
   const spend = newTx('spend', 'Spend', <ArrowUpRight size={20} aria-hidden />, { mode: 'expense', account: id });
   const receive = newTx('receive', 'Receive', <ArrowDownLeft size={20} aria-hidden />, { mode: 'income', account: id });
   const adjust = (label: string): RoundAction => ({ key: 'adjust', label, glyph: <SlidersHorizontal size={20} aria-hidden />, run: open.adjust });
+  /*
+   * An account whose transactions can be checked from screenshots keeps four buttons all the same: Spend and Receive
+   * become one Add (the Add screen, with Expense, Income and Transfer as tabs), and the check is the last of them.
+   */
+  if (account.kind === 'asset' && STATEMENT_CHECKABLE_SUBTYPES.includes(account.subtype)) {
+    const add = newTx('add', 'Add', <PenLine size={20} aria-hidden />, { mode: 'expense', account: id });
+    const statement: RoundAction = { key: 'statement', label: 'Statement', glyph: <ReceiptText size={20} aria-hidden />, to: '/statement/list', search: { account: id }, testId: 'check-statement' };
+    const own: RoundAction =
+      account.subtype === 'ewallet' || account.subtype === 'emoney'
+        ? { key: 'top-up', label: 'Top up', glyph: <Plus size={20} aria-hidden />, run: () => open.moneyIn('top-up') }
+        : newTx('transfer', 'Transfer', <ArrowLeftRight size={20} aria-hidden />, { mode: 'transfer', account: id });
+    return [add, own, adjust('Adjust'), statement];
+  }
   if (account.subtype === 'cash') {
     return [spend, receive, { key: 'withdraw', label: 'Withdraw', glyph: <ArrowDownToLine size={20} aria-hidden />, run: () => open.moneyIn('withdraw') }, adjust('Adjust')];
   }

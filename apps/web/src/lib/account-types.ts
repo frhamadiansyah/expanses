@@ -66,6 +66,9 @@ export const SUBTYPE_LABELS: Record<AccountSubtype, string> = {
  * A time deposit is left out on purpose: it cannot be paid from, and the money leaves by a transfer when it
  * matures. Other cash equivalents — a cheque, a wesel, commercial paper — can be spent.
  */
+/** The money accounts whose transaction list can be checked from screenshots: a bank, a saving account, a wallet. */
+export const STATEMENT_CHECKABLE_SUBTYPES: readonly AccountSubtype[] = ['bank', 'savings', 'ewallet', 'emoney'];
+
 export const SPENDABLE_SUBTYPES: readonly AccountSubtype[] = ['bank', 'cash', 'savings', 'ewallet', 'emoney', 'other_cash'];
 
 /**

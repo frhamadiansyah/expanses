@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { expectWalletFigure, openAccount, openSettings, openWalletAccount } from './accounts';
+import { expectWalletFigure, openAccount, openWalletAccount } from './accounts';
 import { addTransaction } from './add-transaction';
 import { screenshotFiles, setStatementImages, walletListLines } from './statement';
 
@@ -27,7 +27,6 @@ test('a wallet list travels from screenshots to recorded rows, and a second run 
 
   const check = async () => {
     await openWalletAccount(page, 'Dompet Satu');
-    await openSettings(page);
     await page.getByTestId('check-statement').click();
     await expect(page.getByRole('heading', { name: 'Check statement' })).toBeVisible();
     await setStatementImages(page, [walletListLines(LIST)]);
@@ -110,7 +109,6 @@ test('rows older than the day the account is counted from are recorded as past, 
   await openAccount(page, { subtype: 'ewallet', name: 'Dompet Satu', balance: '500000', opened: '2026-09-18' });
   await page.clock.setSystemTime(TODAY);
   await openWalletAccount(page, 'Dompet Satu');
-  await openSettings(page);
   await page.getByTestId('check-statement').click();
   await setStatementImages(page, [walletListLines(LIST)]);
   await page.getByTestId('statement-files').setInputFiles(screenshotFiles(1));

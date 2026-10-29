@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { ArrowLeftRight, Percent, Plus } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
+import { useRemembered, useScrollMemory } from '../../lib/page-memory';
 import { useAccounts } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { type CornerAction, Drawer, Figure, groupedFigure, GroupedRow, Hero, InsetGroup, InsetRow, Panel, PushedTitle, SCREEN, useDrawers, type TreePlace } from '../../ui/native';
@@ -131,9 +132,9 @@ function DrawerFigure({ drawer, baseCurrency }: { drawer: AssetDrawer; baseCurre
  * balance sheet on the page above folds the same money by. A kind of one still folds: "Intangible and other" holding
  * nothing but gold must still say that what is in it is gold.
  */
-function Group({ group, baseCurrency, money, stocks, opened = false, after }: { group: AssetGroup; baseCurrency: string; money: Set<string>; stocks: ByStockInputs; opened?: boolean; after?: ReactNode }) {
+function Group({ group, baseCurrency, money, stocks, opened = false, kindKey, after }: { group: AssetGroup; baseCurrency: string; money: Set<string>; stocks: ByStockInputs; opened?: boolean; kindKey?: string | null; after?: ReactNode }) {
   // A group picked on the chart above is shown with everything in it, not as drawers still to open.
-  const drawers = useDrawers(opened ? group.drawers.map((drawer) => `${group.group}:${drawer.key}`) : []);
+  const drawers = useDrawers(opened ? group.drawers.map((drawer) => `${group.group}:${drawer.key}`) : [], `assets:${group.group}:${opened}:${kindKey ?? ''}`);
   const trailing = group.totalMinor === null ? <Figure tone="warn">{`No ${group.missing.join(', ')} rate yet`}</Figure> : <Money minor={group.totalMinor} currency={baseCurrency} />;
   return (
     <InsetGroup header={group.label} trailing={trailing}>
@@ -188,9 +189,9 @@ export function AssetsPage() {
   const gone = useGoneAssets();
   const [showGone, setShowGone] = useState(false);
   // The section picked on the chart, if one is: the list below narrows to it.
-  const [picked, setPicked] = useState<string | null>(null);
+  const [picked, setPicked] = useRemembered<string | null>('assets:picked', () => null);
   // Inside a picked section with more than one kind, the kind picked on its own boxes: the list narrows to that drawer.
-  const [kind, setKind] = useState<string | null>(null);
+  const [kind, setKind] = useRemembered<string | null>('assets:kind', () => null);
   const pick = (key: string | null) => {
     setPicked(key);
     setKind(null);
@@ -203,6 +204,8 @@ export function AssetsPage() {
   const dueIds = new Set((due.data ?? []).map((proposal) => proposal.accountId));
   const baseCurrency = ws.baseCurrency;
   const ready = values.data && profiles.data && accounts.data && held.data && links.data && securities.data;
+  // Back from a fund's own page puts the list where it was left.
+  useScrollMemory('assets', Boolean(ready));
   const groups = ready
     ? groupAssets(values.data!, profiles.data!, { accounts: accounts.data!, baseCurrency, ratesToBase: held.data!.rates, due: dueIds })
     : [];
@@ -318,6 +321,7 @@ export function AssetsPage() {
             money={money}
             stocks={stocks}
             opened={active === group.group}
+            kindKey={activeKind}
             // Every buy and sell, read on a page of its own: a row closing the section the trades are in.
             after={
               hasTrades && group.group === tradesHome ? (
