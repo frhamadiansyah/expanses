@@ -45,7 +45,7 @@ test('the page holds the guides behind rows, not on it', async ({ page }) => {
   await expect(page.getByText('Show the steps')).toHaveCount(0);
   await expect(page.getByText('What each source has learned')).toHaveCount(0);
   await expect(page.getByText('Nothing captured yet.')).toBeVisible();
-  for (const way of ['Notifications', 'Screen scanner', 'Scan a receipt']) {
+  for (const way of ['Notifications', 'Share a bank message', 'Screen scanner', 'Scan a receipt']) {
     await expect(page.getByRole('link', { name: way, exact: true })).toBeVisible();
   }
 });

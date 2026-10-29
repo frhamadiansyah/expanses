@@ -7,7 +7,7 @@
  */
 
 export interface CaptureGuide {
-  key: 'notifications' | 'screen-scanner' | 'receipt';
+  key: 'notifications' | 'share-message' | 'screen-scanner' | 'receipt';
   title: string;
   blurb: string;
   /** What the guide needs that a browser does not have, when there is something to say. */
@@ -50,6 +50,18 @@ export const CAPTURE_GUIDES: readonly CaptureGuide[] = [
       'Below the trigger, add the action “Log notification” (search for the app), then tap each of Title, Body, App and Date and insert the matching variable from the trigger. Left empty they capture nothing.',
       'Save, then pay once with that app: the draft appears in Review the next time the app is opened.',
       'If the only notification that card sends is about points or cashback, turn on “Read offers for the purchase” for that source under Capture sources — the purchase is read out of the rewards message.',
+    ],
+  },
+  {
+    key: 'share-message',
+    title: 'Share a bank message',
+    blurb: 'A message that arrives where Shortcuts cannot watch for it becomes a draft with one share.',
+    note: 'Works for any app, including WhatsApp Business, whose notifications cannot start a shortcut.',
+    steps: [
+      'Long-press the bank message in the app it arrived in, then tap Share.',
+      'Choose Expanses in the share sheet. If it is not listed, scroll the app row to the end and tap More.',
+      '“Saved to review” shows and the sheet closes. The app is not opened.',
+      'Open Review: the draft is there, read the same way as a notification.',
     ],
   },
   {

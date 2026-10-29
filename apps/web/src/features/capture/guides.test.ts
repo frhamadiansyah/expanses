@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { CAPTURE_GUIDES, isShortcutLink, SCREEN_SCANNER_SHORTCUT_URL } from './guides';
 
 describe('the capture setup guides', () => {
-  it('covers the three ways in, each with steps to follow', () => {
-    expect(CAPTURE_GUIDES.map((guide) => guide.key)).toEqual(['notifications', 'screen-scanner', 'receipt']);
+  it('covers the four ways in, each with steps to follow', () => {
+    expect(CAPTURE_GUIDES.map((guide) => guide.key)).toEqual(['notifications', 'share-message', 'screen-scanner', 'receipt']);
     for (const guide of CAPTURE_GUIDES) {
       expect(guide.title).not.toBe('');
       expect(guide.blurb).not.toBe('');
