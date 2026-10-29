@@ -81,7 +81,7 @@ describe('items', () => {
   });
   it('a challenge item is reached exactly at its amount', () => {
     const window = { from: '2026-10-14', to: '2026-10-31' };
-    expect(waiverItem(challenge, window, 1_499_999, 800_000, '2026-10-28')).toMatchObject({ reached: false, remainingMinor: 1, daysLeft: 3, name: 'Fee challenge', rewardMinor: 800_000 });
+    expect(waiverItem(challenge, window, 1_499_999, 800_000, '2026-10-28')).toMatchObject({ reached: false, remainingMinor: 1, daysLeft: 3, name: 'Fee waiver challenge', rewardMinor: 800_000 });
     expect(waiverItem(challenge, window, 1_500_000, 800_000, '2026-10-28')).toMatchObject({ reached: true, fraction: 1, remainingMinor: 0 });
   });
   it('an automatic item is the fee waiver target', () => {

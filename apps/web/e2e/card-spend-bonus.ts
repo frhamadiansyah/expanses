@@ -97,7 +97,7 @@ export async function waiverFlow(page: Page, name: string) {
   await openWalletCard(page, name);
   await showCardBack(page);
   const bonus = page.getByTestId('back-bonus');
-  await expect(bonus).toContainText('Fee challenge');
+  await expect(bonus).toContainText('Fee waiver challenge');
   await expect(bonus).toContainText('Rp 800.000');
   await expect(bonus).toContainText('1.088.000 to go');
   await expect(bonus).toContainText('3 days left');
@@ -109,7 +109,7 @@ export async function refundFlow(page: Page, name: string) {
   await openWalletCard(page, name);
   await showCardBack(page);
   const bonus = page.getByTestId('back-bonus');
-  await expect(bonus).toContainText('Fee challenge');
+  await expect(bonus).toContainText('Fee waiver challenge');
   await expect(bonus).toContainText('Rp 1.500.000 reached');
   await expect(bonus.getByTestId('bonus-ring')).toHaveAccessibleName('Reached');
   const owedBefore = (await page.getByTestId('tile-unpaid-balance').textContent())!;

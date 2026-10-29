@@ -117,7 +117,7 @@ export function waiverItem(waiver: FeeWaiver, window: WaiverWindow, spentMinor: 
   return {
     id: challenge ? 'challenge' : 'target',
     kind: challenge ? 'challenge' : 'target',
-    name: challenge ? 'Fee challenge' : 'Fee waiver target',
+    name: challenge ? 'Fee waiver challenge' : 'Fee waiver target',
     rewardPoints: null,
     rewardMinor: feeMinor,
     spentMinor,
