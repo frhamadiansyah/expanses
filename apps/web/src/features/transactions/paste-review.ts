@@ -1,5 +1,6 @@
 import type { PurchaseLine } from '@expanses/core';
-import type { AccountRow, PostTransactionInput } from '@expanses/db';
+import { isPastDefault, type AccountRow, type PostTransactionInput } from '@expanses/db';
+import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { quickToInput } from './quick-row';
 
 /**
@@ -95,8 +96,11 @@ export function purchaseInputs(
   accounts: readonly AccountRow[],
   uncategorisedId: string,
   ratesFor: (occurredOn: string) => Record<string, number> | undefined,
+  /** The day the payer's balance is counted from, when it is a money account: a line dated before it is a past purchase. */
+  openedOn: string | null = null,
 ): PostTransactionInput[] {
   const currency = paid.account.currency;
+  const money = paid.account.kind === 'asset' && SPENDABLE_SUBTYPES.includes(paid.account.subtype);
   if (!currency) throw new Error('Choose what to pay with');
   return rows.map((row) => {
     if (row.amountMinor === null || row.amountMinor <= 0) throw new Error(`Line ${row.lineNo} has no amount`);
@@ -113,7 +117,7 @@ export function purchaseInputs(
       accounts,
     );
     const ratesToBase = ratesFor(row.occurredOn);
-    return { ...input, ...(ratesToBase ? { ratesToBase } : {}) };
+    return { ...input, ...(ratesToBase ? { ratesToBase } : {}), ...(money && isPastDefault(openedOn, row.occurredOn) ? { pastPurchase: true } : {}) };
   });
 }
 

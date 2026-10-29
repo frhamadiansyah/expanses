@@ -158,3 +158,16 @@ test('a line that is only a date sets the day of the lines below it', async ({ p
   // Four purchases on three days.
   await expect(page.getByTestId('transaction-row')).toHaveCount(4);
 });
+
+test('lines dated before the account opened are posted as past purchases by themselves, and the balance stays', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '1000000' });
+  await openPaste(page);
+  // The page's own date is ten days back: before the day the account's balance is counted from.
+  await page.getByLabel('Date').fill(await todayIn(page, 10));
+  await page.getByLabel('Purchases').fill('kopi susu 12000\nparkir 5000');
+  await page.getByRole('button', { name: 'Review 2' }).click();
+  await page.getByTestId('review-save').click();
+  await expect(page.getByTestId('toast')).toHaveText('Added 2 purchases');
+  await page.goto('/wallet');
+  await expectWalletFigure(page, 'BCA Tahapan', '1.000.000');
+});

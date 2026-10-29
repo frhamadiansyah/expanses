@@ -20,7 +20,7 @@ import { carrySharedTransferTx, sharedTransferBooksTx, voidSharedTransferTx } fr
 import { followDepositEventTx, reopenDepositEventTx } from './deposit-event-log';
 import { markForeignDirtyTx } from './fx-pending';
 import { eventOnlyExists, eventPostingOfTx, notEventOnly } from './event-only';
-import { accountBanksTx, ensureSystemAccountTx, systemAccountId } from './accounts';
+import { type AccountSubtype, accountBanksTx, ensureSystemAccountTx, SPENDABLE_SUBTYPES, systemAccountId } from './accounts';
 import { carryEventItemTx } from './event-items';
 import {
   applySetAsideTx,
@@ -84,6 +84,7 @@ export type LedgerErrorCode =
   | 'FUND_SWITCH'
   | 'ASSET_SALE'
   | 'NOT_A_CARD_PURCHASE'
+  | 'NOT_A_MONEY_PURCHASE'
   | 'CARD_NOT_FOUND'
   | 'NOT_ON_CARD';
 
@@ -128,6 +129,14 @@ export interface PostTransactionInput {
    * account moves. The settlement follows the purchase when it is edited, and goes with it when it is deleted.
    */
   settledBeforeApp?: boolean;
+  /**
+   * An expense or income on a money account (a wallet, a bank, a saving account, cash) from before the account's
+   * balance was counted: it is posted, and beside it a balancing pair against Before the app on the same day, so the
+   * account's balance — today's and on any past day — does not change, while the purchase still counts in reports,
+   * categories and budgets by its date. The same mark and the same balancing row as `settledBeforeApp`, which a credit
+   * card keeps; a transfer, or a purchase on no money account, ignores it. On `replaceTransaction`, as `settledBeforeApp`.
+   */
+  pastPurchase?: boolean;
   /**
    * On `replaceTransaction`: the correction moves the transaction to the workspace its categories are in. Without it a
    * category from another workspace is refused, since an ordinary edit stays where it was filed. Never read by a post.
@@ -481,7 +490,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, given: Pos
   // Household sharing: the lineage this row joins, resolved by its net effect before the transaction commits (§6.3).
   await capturePostedTx(tx, id, bookId ?? null, input.replacesTransactionId ?? null, input.paidFrom);
   await audit(tx, ws, 'post', id, input);
-  if (input.settledBeforeApp) await settleBeforeAppTx(tx, ws, id, input);
+  if (input.settledBeforeApp || input.pastPurchase) await settleBeforeAppTx(tx, ws, id, input);
   return id;
 }
 
@@ -498,17 +507,55 @@ async function cardLineOf(tx: Db, ws: WorkspaceContext, lines: readonly PostingL
   return null;
 }
 
-/** The settlement's postings: the card paid back what it took on, against Opening Balances. */
+/**
+ * The money-account lines of an expense or income, the ones a past purchase (`pastPurchase`) balances. Empty unless the
+ * postings include a spending or income category line (a transfer between accounts has none and is never past).
+ */
+async function moneyLinesOf(tx: Db, ws: WorkspaceContext, lines: readonly PostingLine[]): Promise<PostingLine[]> {
+  const found = new Map<string, { kind: string; subtype: string }>();
+  for (const line of lines) {
+    if (found.has(line.accountId)) continue;
+    const [account] = await tx.select({ kind: accounts.kind, subtype: accounts.subtype }).from(accounts).where(and(eq(accounts.id, line.accountId), eq(accounts.workspaceId, ws.workspaceId)));
+    if (account) found.set(line.accountId, account);
+  }
+  if (!lines.some((line) => ['expense', 'income'].includes(found.get(line.accountId)?.kind ?? ''))) return [];
+  return lines.filter((line) => {
+    const account = found.get(line.accountId);
+    return account?.kind === 'asset' && SPENDABLE_SUBTYPES.includes(account.subtype as AccountSubtype) && line.amountMinor !== 0;
+  });
+}
+
+/**
+ * The settlement's postings. A credit card is paid back what it took on, against Opening Balances. A purchase on a
+ * money account is balanced the same way against Before the app: each money line is reversed in its own currency, so
+ * the account ends where it started and the pair sums to zero per currency. Null when there is nothing to balance.
+ */
 async function settlementInputOf(tx: Db, ws: WorkspaceContext, purchaseId: string, input: PostTransactionInput): Promise<PostTransactionInput | null> {
   const card = await cardLineOf(tx, ws, input.lines);
-  if (!card) return null;
-  const opening = await systemAccountId(tx, ws, 'opening_balance');
+  if (card) {
+    const opening = await systemAccountId(tx, ws, 'opening_balance');
+    return {
+      occurredOn: input.occurredOn,
+      description: 'Settled before the app',
+      lines: [
+        { accountId: card.accountId, amountMinor: -card.amountMinor, currency: card.currency },
+        { accountId: opening, amountMinor: card.amountMinor, currency: card.currency },
+      ],
+      ratesToBase: input.ratesToBase,
+      externalRef: beforeAppRef(purchaseId),
+    };
+  }
+  const money = await moneyLinesOf(tx, ws, input.lines);
+  if (money.length === 0) return null;
+  const before = await ensureSystemAccountTx(tx, ws, 'before_the_app');
+  const counter = new Map<string, number>();
+  for (const line of money) counter.set(line.currency, (counter.get(line.currency) ?? 0) + line.amountMinor);
   return {
     occurredOn: input.occurredOn,
     description: 'Settled before the app',
     lines: [
-      { accountId: card.accountId, amountMinor: -card.amountMinor, currency: card.currency },
-      { accountId: opening, amountMinor: card.amountMinor, currency: card.currency },
+      ...money.map((line) => ({ accountId: line.accountId, amountMinor: -line.amountMinor, currency: line.currency })),
+      ...[...counter].filter(([, minor]) => minor !== 0).map(([currency, minor]) => ({ accountId: before, amountMinor: minor, currency })),
     ],
     ratesToBase: input.ratesToBase,
     externalRef: beforeAppRef(purchaseId),
@@ -562,6 +609,53 @@ export function setSettledBeforeApp(database: Database, ws: WorkspaceContext, pu
       ratesToBase: Object.fromEntries(rows.map((row) => [row.currency, row.rate])),
     };
     if (!(await cardLineOf(tx, ws, input.lines))) throw new LedgerError('NOT_A_CARD_PURCHASE', 'Only a credit card purchase can be paid off before the app');
+    await settleBeforeAppTx(tx, ws, purchaseId, input);
+  });
+}
+
+/**
+ * Whether a purchase dated `occurredOn` starts out as a past purchase on an account whose balance is counted from
+ * `accountOpenedOn`: strictly before it, yes; on or after, no. An account with no opening day has no default. Only a
+ * default — each purchase carries its own mark, and moving the account's day later never rewrites an old one.
+ */
+export function isPastDefault(accountOpenedOn: string | null | undefined, occurredOn: string): boolean {
+  return !!accountOpenedOn && occurredOn < accountOpenedOn;
+}
+
+/** Whether a purchase on a money account carries the past mark: the same balancing row `settledBeforeAppOf` finds. */
+export const pastPurchaseOf = settledBeforeAppOf;
+
+/**
+ * Marks a saved expense or income on a money account as a past purchase, or takes that back, without touching the
+ * purchase itself: the balance moves by the amount, once. Asking for what already stands does nothing. Refused for a
+ * transfer or anything not on a money account.
+ */
+export function setPastPurchase(database: Database, ws: WorkspaceContext, purchaseId: string, past: boolean): Promise<void> {
+  return database.transaction(async (tx) => {
+    const [purchase] = await tx
+      .select({ occurredOn: transactions.occurredOn, status: transactions.status })
+      .from(transactions)
+      .where(and(eq(transactions.id, purchaseId), eq(transactions.workspaceId, ws.workspaceId)));
+    if (!purchase || purchase.status !== 'posted') throw new LedgerError('NOT_FOUND', `Transaction ${purchaseId} not found`);
+    const settlement = await settlementOfTx(tx, ws, purchaseId);
+    if (!past) {
+      if (settlement) await voidTransactionTx(tx, ws, settlement);
+      return;
+    }
+    if (settlement) return;
+    const rows = await tx
+      .select({ accountId: entries.accountId, amountMinor: entries.amountMinor, currency: entries.currency, rate: entries.fxRateToBase })
+      .from(entries)
+      .where(and(eq(entries.transactionId, purchaseId), eq(entries.workspaceId, ws.workspaceId)));
+    const input: PostTransactionInput = {
+      occurredOn: purchase.occurredOn,
+      description: '',
+      lines: rows.map(({ accountId, amountMinor, currency }) => ({ accountId, amountMinor, currency })),
+      ratesToBase: Object.fromEntries(rows.map((row) => [row.currency, row.rate])),
+    };
+    if ((await moneyLinesOf(tx, ws, input.lines)).length === 0 || (await cardLineOf(tx, ws, input.lines))) {
+      throw new LedgerError('NOT_A_MONEY_PURCHASE', 'Only an expense or income on a money account can be a past purchase');
+    }
     await settleBeforeAppTx(tx, ws, purchaseId, input);
   });
 }
@@ -818,9 +912,10 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
    * An edit never posts a second settlement: the one a purchase paid off before the app has follows it below. Asked
    * outright (`settledBeforeApp` true or false), the edit adds the settlement or takes it away; left out, it follows.
    */
-  const { id: _ignored, settledBeforeApp: settle, moveToBook, toBookId, fileTransfer: _file, acrossBooks, ...input } = withId;
+  const { id: _ignored, settledBeforeApp: settleCard, pastPurchase, moveToBook, toBookId, fileTransfer: _file, acrossBooks, ...input } = withId;
   void _file;
   void _ignored;
+  const settle = settleCard ?? pastPurchase;
   // Before anything is read or written: a derived transaction is the event's to change (C1). `markVoidTx` says it again.
   if (!door.eventDerivation) await refuseEventPostingTx(tx, id);
   const [original] = await tx
@@ -1191,6 +1286,11 @@ export interface TransactionView {
    */
   dayOrder?: number | null;
   /**
+   * A purchase on a money account that is a past purchase (`pastPurchase`): its balancing pair stands beside it, so
+   * its account's balance does not hold it. Absent on anything else, so a view built by hand need not name it.
+   */
+  past?: boolean;
+  /**
    * The amount as typed with cents, in hundredths, when it had any (0068); null otherwise. Never shown: every screen
    * reads the whole figure on the lines. What card points are worked out from, and what an edit that keeps the amount
    * passes back. Optional so a view built by hand need not name it; every view read from the ledger carries it.
@@ -1232,6 +1332,8 @@ export interface ListTransactionsOptions {
    * for one workspace's share of the same trip, which must not also change what currency the figures are in.
    */
   bookId?: string;
+  /** Also read the balancing pair beside a past purchase (Before the app), which a list never shows: it is not an event. */
+  includeBalancing?: boolean;
 }
 
 async function listWith(database: Database, ws: WorkspaceContext, opts: ListTransactionsOptions, money: BookMoney): Promise<TransactionView[]> {
@@ -1241,6 +1343,11 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
   if (opts.id) conds.push(eq(transactions.id, opts.id));
   // An event's own history: what was tagged to it, whenever it happened.
   if (opts.eventId) conds.push(eq(transactions.eventId, opts.eventId));
+  // The balancing pair beside a past purchase is bookkeeping, not something that happened: no list, search or history
+  // shows it (a card's settlement against Opening Balances is a different row and is left as it was).
+  if (!opts.includeBalancing) {
+    conds.push(sql`${transactions.id} NOT IN (SELECT transaction_id FROM entries WHERE account_id IN (SELECT id FROM accounts WHERE system_key = 'before_the_app'))`);
+  }
   if (opts.from) conds.push(gte(transactions.occurredOn, opts.from));
   if (opts.to) conds.push(lte(transactions.occurredOn, opts.to));
   if (opts.accountId) {
@@ -1341,8 +1448,18 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     list.push({ ...entry, ...(filedIn ? { bookId: filedIn } : {}), ...(off ? { excluded: true } : {}) });
     byTx.set(transactionId, list);
   }
+  // Which of these carry the past mark: their balancing pair is posted, found by its ref and its Before the app line.
+  const past = new Set(
+    (
+      await database.db.values<[string]>(sql`
+        SELECT substr(t.external_ref, ${'before-app:'.length + 1}) FROM transactions t
+        WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted' AND t.external_ref IN ${txs.map((t) => beforeAppRef(t.id))}
+          AND t.id IN (SELECT e.transaction_id FROM entries e JOIN accounts a ON a.id = e.account_id WHERE a.system_key = 'before_the_app')`)
+    ).map((row) => row[0]),
+  );
   const views = txs.map((t) => ({
     id: t.id,
+    ...(past.has(t.id) ? { past: true } : {}),
     occurredOn: t.occurredOn,
     description: t.description,
     source: t.source,

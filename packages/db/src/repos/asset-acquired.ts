@@ -187,3 +187,29 @@ export async function changeOriginalCost(
     });
   });
 }
+
+/**
+ * Moves the day a money account's balance is counted from ("As of"): its opening entry is replaced on the new day with
+ * the same lines and rate. Only the default for new purchases follows (a purchase dated before it starts out past);
+ * nothing already recorded is recounted or rewritten. An account with no opening entry has no day to move.
+ */
+export async function changeOpeningDate(database: Database, ws: WorkspaceContext, accountId: string, on: string, today: string): Promise<void> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(on)) throw new AssetError('That is not a date');
+  if (on > today) throw new AssetError('It cannot be counted from after today');
+  await database.transaction(async (tx) => {
+    await assertAccountInWorkspace(tx, ws, accountId, 'Account');
+    const opening = await openingOfTx(tx, ws, accountId);
+    if (!opening || opening.occurredOn === on) return;
+    const lines = await tx
+      .select({ accountId: entries.accountId, amountMinor: entries.amountMinor, currency: entries.currency, fxRateToBase: entries.fxRateToBase, amountBaseMinor: entries.amountBaseMinor, memo: entries.memo })
+      .from(entries)
+      .where(and(eq(entries.transactionId, opening.id), eq(entries.workspaceId, ws.workspaceId)));
+    const ratesToBase = Object.fromEntries(lines.filter((line) => line.currency !== ws.baseCurrency).map((line) => [line.currency, line.fxRateToBase]));
+    await replaceTransactionTx(tx, ws, opening.id, {
+      occurredOn: on,
+      description: opening.description,
+      lines: lines.map((line) => ({ accountId: line.accountId, amountMinor: line.amountMinor, currency: line.currency, memo: line.memo, amountBaseMinor: line.amountBaseMinor })),
+      ratesToBase,
+    });
+  });
+}

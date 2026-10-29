@@ -19,7 +19,7 @@ const LIST = [
 
 test('a wallet list travels from screenshots to recorded rows, and a second run finds them all recorded', async ({ page }) => {
   await page.clock.setSystemTime(TODAY);
-  await openAccount(page, { subtype: 'ewallet', name: 'Dompet Satu', balance: '500000' });
+  await openAccount(page, { subtype: 'ewallet', name: 'Dompet Satu', balance: '500000', opened: '2026-09-01' });
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Noodle Stall', paidWith: 'Dompet Satu', category: 'Cafe & dessert', amount: '41000', date: '2026-09-19' });
   await addTransaction(page, { description: 'Tea Shop', paidWith: 'Dompet Satu', category: 'Cafe & dessert', amount: '8000', date: '2026-09-15' });
@@ -77,7 +77,7 @@ test('a wallet list travels from screenshots to recorded rows, and a second run 
 
 test('screenshots picked from Photos reach the account choice and then the list check', async ({ page }) => {
   await page.clock.setSystemTime(TODAY);
-  await openAccount(page, { subtype: 'ewallet', name: 'Dompet Satu', balance: '500000' });
+  await openAccount(page, { subtype: 'ewallet', name: 'Dompet Satu', balance: '500000', opened: '2026-09-01' });
   await page.goto('/review');
   await page.waitForFunction(() => typeof window.__captureInject === 'function');
   const captures = ['one', 'two'].map((id) => ({
@@ -102,4 +102,23 @@ test('screenshots picked from Photos reach the account choice and then the list 
   await expect(page.getByTestId('list-headline')).toContainText('5 rows read');
   await expect(page.getByTestId('count-new')).toHaveText(/^New — record here4›?$/);
   await expect(page.getByTestId('count-skipped')).toHaveText(/^Skipped1›?$/);
+});
+
+test('rows older than the day the account is counted from are recorded as past, and the balance stays', async ({ page }) => {
+  await page.clock.setSystemTime(TODAY);
+  // Opened on the 18th: the 15th row is past; the 18th and 19th are not.
+  await openAccount(page, { subtype: 'ewallet', name: 'Dompet Satu', balance: '500000', opened: '2026-09-18' });
+  await page.clock.setSystemTime(TODAY);
+  await openWalletAccount(page, 'Dompet Satu');
+  await openSettings(page);
+  await page.getByTestId('check-statement').click();
+  await setStatementImages(page, [walletListLines(LIST)]);
+  await page.getByTestId('statement-files').setInputFiles(screenshotFiles(1));
+  await page.getByTestId('list-read').click();
+  await page.getByTestId('count-new').click();
+  await page.getByTestId('record-new').click();
+  await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
+  await page.goto('/wallet');
+  await page.screenshot({ path: 'test-results/past-statement.png' });
+  await expectWalletFigure(page, 'Dompet Satu', '1.459.000');
 });

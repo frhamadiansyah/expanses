@@ -1,10 +1,12 @@
-import { type AccountRow, setAccountCardTier, setAccountForSpending, setAccountNumberLast4, setWalletLast4 } from '@expanses/db';
+import { type AccountRow, changeOpeningDate, setAccountCardTier, setAccountForSpending, setAccountNumberLast4, setWalletLast4 } from '@expanses/db';
 import { CATALOG } from '@expanses/catalog';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { keptForSpending, SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { InsetGroup, InsetRow, PickerRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { formatMinor, isoDate } from '@expanses/core';
+import { InsetGroup, InsetRow, PickerRow, ReadOnlyRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { useOpenings } from './queries';
 import { errorHint } from '../networth/AssetSettings';
 import { useAssetProfile, useAssetProfiles } from '../networth/queries';
 import { useAccountNumberLast4, useCardTiers, useProgramByAccount, useWalletLast4 } from '../cards/card-queries';
@@ -38,6 +40,7 @@ export function AccountSettingsBox({ account, onError }: { account: AccountRow; 
   const [typed, setTyped] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<string | null>(null);
   const [rewardsOpen, setRewardsOpen] = useState(false);
+  const opening = useOpenings([account.id]).data?.[account.id];
 
   const all = accounts.data ?? [];
   const bank = account.subtype === 'bank' || account.subtype === 'savings';
@@ -161,9 +164,27 @@ export function AccountSettingsBox({ account, onError }: { account: AccountRow; 
 
   // A statement check for an account that is not a card: a list of its transactions in screenshots, against what is recorded.
   const checkable = account.kind === 'asset' && CHECKABLE.includes(account.subtype) && !all.some((a) => a.parentId === account.id);
-  if (rows.length === 0 && !checkable) return null;
+  // The day the balance is counted from. Only the default for new purchases: one dated before it starts out past.
+  const asOf = account.kind === 'asset' && SPENDABLE_SUBTYPES.includes(account.subtype) && opening && account.currency ? opening : null;
+  if (rows.length === 0 && !checkable && !asOf) return null;
   return (
     <>
+      {asOf && (
+        <InsetGroup footer={'Purchases dated before it start out as "past".'}>
+          <ReadOnlyRow label="Balance" value={formatMinor(asOf.amountMinor, asOf.currency)} />
+          <TextRow
+            key={`asof-${asOf.occurredOn}`}
+            label="As of"
+            type="date"
+            value={asOf.occurredOn}
+            max={isoDate()}
+            onChange={(e) => {
+              const on = e.target.value;
+              if (on && on !== asOf.occurredOn) run(() => changeOpeningDate(database, ws, account.id, on, isoDate()));
+            }}
+          />
+        </InsetGroup>
+      )}
       {checkable && (
         <InsetGroup>
           <InsetRow testId="check-statement" title="Check statement" to="/statement/list" search={{ account: account.id }} />

@@ -8,6 +8,10 @@ export const SYSTEM_ACCOUNTS = [
   // workspace's spending. Equity, so no report — which reads income and expense lines only — can ever count it, while
   // the card keeps the whole charge. Made on first use (`ensureSystemAccountTx`), as Balance corrections is.
   { key: 'not_counted', name: 'Not counted' },
+  // The other side of the balancing pair beside a past purchase on a money account (an old expense or income that must
+  // not change today's balance). Equity, so no report counts it; never the opening entry the way Opening Balances is.
+  // Made on first use (`ensureSystemAccountTx`), as Balance corrections is.
+  { key: 'before_the_app', name: 'Before the app' },
 ] as const;
 
 export type SystemAccountKey = (typeof SYSTEM_ACCOUNTS)[number]['key'];

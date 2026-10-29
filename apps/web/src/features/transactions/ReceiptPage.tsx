@@ -327,6 +327,13 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
         </InsetGroup>
       )}
 
+      {/* A past purchase on a money account: read here, changed on its form. */}
+      {tx.past && tx.status === 'posted' && (
+        <InsetGroup>
+          <InsetRow title="Past purchase" value="Balance unchanged" chevron={false} testId="receipt-past" />
+        </InsetGroup>
+      )}
+
       {parts.length > 0 && (
         <section data-testid="split-parts" aria-labelledby="split-parts-title" className="flex flex-col gap-1.5">
           <h2 id="split-parts-title" className="px-1 text-[13px] text-[var(--ph-ink-3)]">
