@@ -39,7 +39,7 @@ export const accounts = sqliteTable('accounts', {
   sortOrder: integer('sort_order').notNull(),
   archivedAt: text('archived_at'),
   createdAt: text('created_at').notNull(),
-  // number_last4 (0080), for_spending (0086) and card_tier (0087) are read and written by name, never through this
+  // number_last4 (0080), for_spending (0086) and card_tier (0087) and counted_from (0107) are read and written by name, never through this
   // table: a database stopped before any of them has no such column, and every select and insert this schema writes
   // would name it.
 });

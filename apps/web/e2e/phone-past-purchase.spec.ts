@@ -134,3 +134,32 @@ test('an account opened at nothing counts from the day it was added', async ({ p
   await form.getByLabel('Date').fill('2026-09-20');
   await expect(form.getByRole('button', { name: 'Past purchase' })).toHaveAttribute('aria-pressed', 'false');
 });
+
+test('an account opened at nothing shows its As of, and moving it back moves where "past" starts', async ({ page }) => {
+  await openAccount(page, { subtype: 'ewallet', name: 'GoPay Nol', balance: '0' });
+  await openWalletAccount(page, 'GoPay Nol');
+  await openSettings(page);
+  const asOf = page.getByLabel('As of');
+  await expect(asOf).toHaveValue('2026-09-20');
+  await expect(page.getByText('Purchases dated before it start out as "past".')).toBeVisible();
+  await expect(page.getByText('Rp 0').first()).toBeVisible();
+  await asOf.fill('2026-09-01');
+  await asOf.blur();
+  await expect(asOf).toHaveValue('2026-09-01');
+  // The day is kept, and no opening entry was made for it.
+  await page.goto('/wallet');
+  await openWalletAccount(page, 'GoPay Nol');
+  await openSettings(page);
+  await expect(page.getByLabel('As of')).toHaveValue('2026-09-01');
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  await openAmount(form);
+  await fillAmount(page, form, '41000');
+  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await choosePayment(page, 'GoPay Nol');
+  await form.getByLabel('Date').fill('2026-09-10');
+  await expect(form.getByRole('button', { name: 'Past purchase' })).toHaveAttribute('aria-pressed', 'false');
+  await form.getByLabel('Date').fill('2026-08-20');
+  await expect(form.getByRole('button', { name: 'Past purchase' })).toHaveAttribute('aria-pressed', 'true');
+});
