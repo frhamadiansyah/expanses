@@ -23,6 +23,8 @@ export function HeroSlider({
   const track = useRef<HTMLDivElement>(null);
   // Where a dot or key sent the track: scroll events on the way there must not say the page is somewhere between.
   const heading = useRef<number | null>(null);
+  // The page the last dot or key asked for.
+  const latest = useRef<number | null>(null);
 
   const leftOf = useCallback((index: number) => {
     const el = track.current;
@@ -37,13 +39,18 @@ export function HeroSlider({
       const next = Math.max(0, Math.min(pages.length - 1, index));
       onPage(next);
       if (!el) return;
-      // Already there: no scroll will come to end the wait.
-      if (Math.abs(el.scrollLeft - leftOf(next)) < 2) return;
+      // Already there: no scroll will come to end the wait. Unless an earlier smooth scroll is still under way (a key
+      // pressed twice quickly): it would carry the track on to its own stop, so a new scroll must cancel it.
+      if (heading.current === null && Math.abs(el.scrollLeft - leftOf(next)) < 2) return;
       heading.current = next;
+      latest.current = next;
       el.scrollTo({ left: leftOf(next), behavior: reduced() ? 'auto' : 'smooth' });
-      // A track already there fires no scroll: do not wait on one.
+      // A track already there fires no scroll: do not wait on one. A smooth scroll that a reversed key cut short
+      // can come to rest a pixel or two off its stop, so the stop is set outright when the wait ends.
       window.setTimeout(() => {
+        if (latest.current !== next) return;
         if (heading.current === next) heading.current = null;
+        if (Math.abs(el.scrollLeft - leftOf(next)) >= 1) el.scrollLeft = leftOf(next);
       }, 800);
     },
     [leftOf, onPage, pages.length],
