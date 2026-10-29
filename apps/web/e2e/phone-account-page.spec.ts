@@ -4,7 +4,7 @@ import { openAccount, walletCard, showBalance } from './accounts';
 import { addForm } from './add-transaction';
 import { mockRates, openWithPockets } from './pockets';
 
-test('by thumb: an account page spends from itself, and a pocket goes back to its account', async ({ page }) => {
+test('by thumb: an account page adds from itself, and a pocket goes back to its account', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openAccount(page, { subtype: 'bank', name: 'Everyday', balance: '12500000' });
   await walletCard(page, 'Everyday').tap();
@@ -13,7 +13,7 @@ test('by thumb: an account page spends from itself, and a pocket goes back to it
   // The corner holds the ⚙ alone: no ⋯, and nothing named Tax report code outside Settings.
   await expect(page.getByRole('main').getByRole('link', { name: 'Settings', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'More', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Spend', exact: true }).tap();
+  await page.getByRole('button', { name: 'Add', exact: true }).tap();
   await expect(page).toHaveURL(/\/transactions\/new\?.*mode=expense/);
   await expect(addForm(page).getByRole('button', { name: /^Paid with/ })).toContainText('Everyday');
   await page.goBack();
@@ -52,7 +52,7 @@ test('by thumb: cash is counted and withdrawn into, a wallet topped up, and a cu
 
   await page.goto('/wallet');
   await walletCard(page, 'GoPay').tap();
-  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button')).toHaveText(['Spend', 'Top up', 'Receive', 'Adjust']);
+  await expect(page.getByRole('group', { name: 'Actions' }).locator('button, a')).toHaveText(['Add', 'Top up', 'Adjust', 'Statement']);
   await page.getByRole('button', { name: 'Top up', exact: true }).tap();
   const topUp = page.getByRole('dialog', { name: 'Top up' });
   await expect(topUp).toContainText('GoPay');
@@ -64,7 +64,7 @@ test('by thumb: cash is counted and withdrawn into, a wallet topped up, and a cu
 
   await page.goto('/wallet');
   await walletCard(page, 'Everyday').tap();
-  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button')).toHaveText(['Spend', 'Receive', 'Transfer', 'Adjust']);
+  await expect(page.getByRole('group', { name: 'Actions' }).locator('button, a')).toHaveText(['Add', 'Transfer', 'Adjust', 'Statement']);
   await page.getByTestId('add-currency').tap();
   await expect(page.getByRole('dialog', { name: 'Add a currency' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
