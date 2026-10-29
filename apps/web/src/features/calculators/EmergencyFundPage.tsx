@@ -8,6 +8,7 @@ import { emergencyDraftFrom, emergencyInputsOf, HOUSEHOLD_LABELS, INCOME_LABELS,
 import { EMERGENCY_FUND } from './catalogue';
 import { readPercent, readWhole } from './fields';
 import { Answer, CalculatorPage, SaveRow } from './parts';
+import { SpendBar, useSpendSuggestions } from './SpendBar';
 
 /** Months of what goes out, loan principal included — and the monthly saving that gets there over a horizon and a rate you set. */
 export function EmergencyFundPage() {
@@ -19,6 +20,8 @@ export function EmergencyFundPage() {
 
   const [emergency, setEmergency] = useState(() => emergencyDraftFrom());
   const [monthlyOutgoing, setMonthlyOutgoing] = useState('');
+  const [outgoingFocused, setOutgoingFocused] = useState(false);
+  const spend = useSpendSuggestions('emergency', emergency.base);
   // The two assumptions the answer used to bury, written into the boxes they were made in: a year, and `EMERGENCY_RETURN_BPS`.
   const [horizon, setHorizon] = useState('12');
   const [returnPercent, setReturnPercent] = useState(String(EMERGENCY_RETURN_BPS / 100));
@@ -69,7 +72,7 @@ export function EmergencyFundPage() {
   }
 
   return (
-    <CalculatorPage entry={EMERGENCY_FUND} error={error} saved={saved}>
+    <CalculatorPage entry={EMERGENCY_FUND} error={error} saved={saved} quiet>
       <InsetGroup>
         <SelectRow
           label="Household"
@@ -105,13 +108,16 @@ export function EmergencyFundPage() {
           prefix={ws.baseCurrency}
           value={monthlyOutgoing}
           onChange={(e) => setMonthlyOutgoing(groupTypedAmount(e.target.value, ws.baseCurrency))}
+          onFocus={() => setOutgoingFocused(true)}
+          onBlur={() => setOutgoingFocused(false)}
           inputMode="decimal"
           placeholder="Amount"
         />
       </InsetGroup>
+      <SpendBar open={outgoingFocused} suggestions={spend} onPick={setMonthlyOutgoing} />
 
-      {/* How long you give yourself, and what the money earns while it waits — the two figures that used to be assumptions. */}
-      <InsetGroup header="The plan" footer="Set here: the answer only ever shows what these two say.">
+      {/* How long to give it, and what the money earns while it waits. */}
+      <InsetGroup header="The plan">
         <TextRow
           label="Save it over (months)"
           hint={horizonProblem}
@@ -129,7 +135,7 @@ export function EmergencyFundPage() {
       </InsetGroup>
 
       <Answer answer={emergencyAnswer} testId="answer-emergency" />
-      <SaveRow label="Save Emergency fund as a goal" ready={emergencyAnswer !== null && emergencyInputs !== null} onSave={() => void save()} />
+      <SaveRow label="Set a goal" ready={emergencyAnswer !== null && emergencyInputs !== null} onSave={() => void save()} />
     </CalculatorPage>
   );
 }
