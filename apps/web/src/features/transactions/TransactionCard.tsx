@@ -20,6 +20,8 @@ import {
   replaceTransaction,
   getCardTerms,
   settledBeforeAppOf,
+  isPastDefault,
+  pastPurchaseOf,
   saveMerchantMcc,
   splitBill,
   cardTopsUpWallet,
@@ -35,7 +37,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { type CSSProperties, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
-import { canPayWith, canReceiveInto, canTransferBetween, canTransferWith } from '../../lib/account-types';
+import { canPayWith, canReceiveInto, canTransferBetween, canTransferWith, SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useHoldingLinks } from '../investments/queries';
 import { moneyHolders, useAccounts, useAccountsFor, useInvalidateAll, useIsBookShared, useResolveRates } from '../../lib/queries';
 import { Card, cx, ErrorBox, InputRow, RowHint } from '../../ui';
@@ -644,6 +646,7 @@ function CardBody({
             setAside: setAside.choice,
             ...(moveTo ? { moveToBook: true, toBookId: moveTo } : {}),
             ...(offersAlreadyPaid && savedSettled.isSuccess ? { settledBeforeApp: paidOff } : {}),
+            ...(offersPast && savedPast.isSuccess ? { pastPurchase: pastOn } : {}),
           });
           /*
            * Tagged into a shared event by the Event row: it moves there now (shared events §6, D2) — it leaves this
@@ -660,7 +663,7 @@ function CardBody({
             if (kept.length > 0) throw new Error(kept[0]!.why);
           }
         }
-        else posted = await postTransaction(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice, settledBeforeApp: paidOff });
+        else posted = await postTransaction(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice, settledBeforeApp: paidOff, ...(offersPast ? { pastPurchase: pastOn } : {}) });
         const memory = formToMemory(filed, accounts);
         if (memory) await saveMerchantMcc(database, ws, memory);
       }
@@ -756,6 +759,23 @@ function CardBody({
   });
   // Never ticked by itself, whatever the date: the owner says so (asked 22 Oct).
   const paidOff = offersAlreadyPaid && (draft.alreadyPaid ?? (initial ? savedSettled.data === true : false));
+  /*
+   * An expense or income on a money account can be a past purchase: its balance does not hold it, while reports do.
+   * The icon on Paid with is the button. It is set by itself from the date — before the day the account's balance
+   * is counted from, past; on or after, not — until a tap says otherwise; a saved one reads back what it was saved
+   * as until its date or account changes. Never for a transfer, a top-up or a card.
+   */
+  const moneyPaying = payingAccount !== undefined && payingAccount.kind === 'asset' && SPENDABLE_SUBTYPES.includes(payingAccount.subtype);
+  const offersPast = (draft.mode === 'expense' || draft.mode === 'income') && moneyPaying && !expenseTopUp && !accountsLocked;
+  const moneyOpening = useOpenings(offersPast ? [payingAccount!.id] : []);
+  const openedOn = offersPast ? (moneyOpening.data?.[payingAccount!.id]?.occurredOn ?? null) : null;
+  const savedPast = useQuery({
+    queryKey: ['past-purchase', ws.workspaceId, initial?.id ?? ''],
+    enabled: !!initial && offersPast,
+    queryFn: () => pastPurchaseOf(database, ws, initial!.id),
+  });
+  const sameAsSaved = !!initial && initial.occurredOn === draft.occurredOn && initial.entries.some((e) => e.accountId === draft.moneyId);
+  const pastOn = offersPast && (draft.pastPurchase ?? (sameAsSaved ? savedPast.data === true : isPastDefault(openedOn, draft.occurredOn)));
   // An older purchase made on a card since removed reads as that card, with its digits, and says it was removed.
   const removedCard = draft.mode === 'expense' || draft.mode === 'trade' ? removedCardPayment(everyCard, accounts, draft.moneyId, draft.cardId) : null;
   // Money back lands in the account it was paid with, so the row says where it goes.
@@ -1123,7 +1143,13 @@ function CardBody({
               divided={workspaceRow}
               icon={
                 <span className="relative">
-                  <RowGlyph>{payGlyph}</RowGlyph>
+                  {pastOn ? (
+                    <span aria-hidden data-testid="past-tick" className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--ph-tint)] text-[var(--ph-surface)]">
+                      <Check size={15} strokeWidth={3} />
+                    </span>
+                  ) : (
+                    <RowGlyph>{payGlyph}</RowGlyph>
+                  )}
                   {paidOff && (
                     <span
                       aria-hidden
@@ -1159,6 +1185,16 @@ function CardBody({
                 aria-pressed={paidOff}
                 title={paidOff ? 'Already paid off: the card owes the same' : 'Still owed on the card'}
                 onClick={() => set({ alreadyPaid: !paidOff })}
+                className="ph-focus absolute top-0 bottom-0 left-[10px] w-[34px] rounded-full"
+              />
+            )}
+            {offersPast && (
+              <button
+                type="button"
+                aria-label="Past purchase"
+                aria-pressed={pastOn}
+                title={pastOn ? 'Past purchase: the balance stays' : 'Counts in the balance'}
+                onClick={() => set({ pastPurchase: !pastOn })}
                 className="ph-focus absolute top-0 bottom-0 left-[10px] w-[34px] rounded-full"
               />
             )}

@@ -517,6 +517,13 @@ async function inputOfTx(tx: Db, ws: WorkspaceContext, id: string): Promise<Post
     ? await tx.values<[string]>(sql`SELECT bill_month FROM bill_payments WHERE transaction_id = ${id}`)
     : [];
   const excluded = await excludedLinesTx(tx, id);
+  // A past purchase on a money account (its balancing pair, found by the ref and the Before the app line, voided or not)
+  // goes back as one, so Undo of a delete or of an edit that changed the mark puts the mark back too.
+  const [past] = await tx.values<[number]>(sql`
+    SELECT 1 FROM transactions t JOIN entries e ON e.transaction_id = t.id JOIN accounts a ON a.id = e.account_id
+    WHERE t.workspace_id = ${ws.workspaceId} AND t.external_ref = ${`before-app:${id}`} AND a.system_key = 'before_the_app' LIMIT 1`);
+  // A card purchase keeps following its own settlement; only a purchase off a card says the mark outright.
+  const [card] = await tx.values<[number]>(sql`SELECT 1 FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = ${id} AND a.subtype = 'credit_card' LIMIT 1`);
   const lines: PostingLine[] = v.lines.map((line) => ({
     accountId: line.accountId,
     amountMinor: line.amountMinor,
@@ -543,6 +550,7 @@ async function inputOfTx(tx: Db, ws: WorkspaceContext, id: string): Promise<Post
     excludedParts: [...excluded],
     dayOrder: placed?.[0] ?? null,
     exactHundredths: typed?.[0] ?? null,
+    ...(card === undefined || past !== undefined ? { pastPurchase: past !== undefined } : {}),
   };
 }
 

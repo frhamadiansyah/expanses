@@ -130,6 +130,11 @@ export interface WithRow {
 export interface FormDraft {
   /** A credit card purchase dated before the card started in the app: already paid off, so the card owes no more. */
   alreadyPaid?: boolean;
+  /**
+   * An expense or income on a money account marked a past purchase: its balance does not hold it. Absent until the
+   * icon is touched, when the account's opening day and the purchase's date decide (`isPastDefault`).
+   */
+  pastPurchase?: boolean;
   mode: FormMode;
   bookId: string; // the workspace row
   occurredOn: string;

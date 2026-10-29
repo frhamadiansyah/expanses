@@ -1,5 +1,5 @@
 import { expenseLines, incomeLines, type ListOutcome, type ListRow, transferLines } from '@expanses/core';
-import type { PostTransactionInput, TransactionView } from '@expanses/db';
+import { isPastDefault, type PostTransactionInput, type TransactionView } from '@expanses/db';
 
 /**
  * The statement check for an account that is not a card, worked out without React: the counts the summary shows, the
@@ -94,6 +94,8 @@ export function listInputs(
   account: { id: string; currency: string },
   uncategorisedId: { expense: string; income: string },
   ratesFor: (occurredOn: string) => Record<string, number> | undefined,
+  /** The day the account's balance is counted from: an expense or income dated before it is a past purchase. */
+  openedOn: string | null = null,
 ): PostTransactionInput[] {
   return tickedRows(rows).map((row) => {
     const { amountMinor } = row;
@@ -109,7 +111,8 @@ export function listInputs(
       lines = expenseLines({ categoryAccountId: row.categoryId || uncategorisedId.expense, paymentAccountId: account.id, amountMinor, currency });
     }
     const ratesToBase = ratesFor(row.occurredOn);
-    return { occurredOn: row.occurredOn, description: row.note, lines, ...(ratesToBase ? { ratesToBase } : {}) };
+    const past = row.type !== 'transfer' && isPastDefault(openedOn, row.occurredOn);
+    return { occurredOn: row.occurredOn, description: row.note, lines, ...(ratesToBase ? { ratesToBase } : {}), ...(past ? { pastPurchase: true } : {}) };
   });
 }
 
