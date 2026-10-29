@@ -371,6 +371,17 @@ export function AmountRow({
               </span>
             </>
           )}
+          {draft.amount !== '' && !locked && (
+            <button
+              type="button"
+              aria-label="Clear amount"
+              onClick={() => set({ amount: '' })}
+              className="ph-focus ph-tap flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink-3)]"
+              style={{ '--ph-tap-y': '12px', '--ph-tap-x': '12px' } as CSSProperties}
+            >
+              <X size={12} aria-hidden />
+            </button>
+          )}
           {photos && !locked && (
             <button
               type="button"
@@ -385,17 +396,6 @@ export function AmountRow({
             >
               <Camera size={18} aria-hidden />
               {photos.count > 0 && <span className="tabular text-[12.5px] leading-4 font-semibold">{photos.count}</span>}
-            </button>
-          )}
-          {draft.amount !== '' && !locked && (
-            <button
-              type="button"
-              aria-label="Clear amount"
-              onClick={() => set({ amount: '' })}
-              className="ph-focus ph-tap flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink-3)]"
-              style={{ '--ph-tap-y': '12px', '--ph-tap-x': '12px' } as CSSProperties}
-            >
-              <X size={12} aria-hidden />
             </button>
           )}
         </span>

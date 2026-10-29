@@ -253,7 +253,6 @@ export function SplitSheet({
       const book = bookOf(row.categoryId);
       if (book && book !== ws.bookId) notes.push(partName(row.categoryId) ?? '');
     }
-    if (i === at) notes.push('Rest');
     return notes.filter(Boolean).join(' · ') || undefined;
   };
 
@@ -301,7 +300,7 @@ export function SplitSheet({
           })}
         </InsetGroup>
       )}
-      <InsetGroup footer={splits.length > 0 ? 'A part opens to change its category, amount or Exclude from report.' : undefined}>
+      <InsetGroup>
         <InsetRow
           action
           title="＋ Add a part"
@@ -342,7 +341,7 @@ export function SplitSheet({
                 value={current.amount}
                 inputMode="decimal"
                 placeholder="Amount"
-                hint={part === at ? 'Works out from the other parts. Typing an amount here fixes it, and the part before it becomes the Rest.' : undefined}
+                info={part === at ? 'Works out from the other parts. Typing an amount here fixes it, and the part before it becomes the Rest.' : undefined}
                 onChange={(e) => {
                   const edit = editAmount(splits, part, groupTypedAmount(e.target.value, currency), total, currency);
                   if ('refusal' in edit) return setOver(edit.refusal);

@@ -26,18 +26,16 @@ test('the last part is the Rest: it follows the other parts, and an edit that wo
   const parts = split.getByTestId('split-row');
   await expect(split.getByTestId('split-total')).toContainText('250.000');
 
-  // The first press makes two parts: Groceries with the whole amount, and a Rest of nothing.
+  // The first press makes two parts: Groceries with the whole amount, and a Rest of nothing (not labelled).
   await addPart(page);
   await expect(parts).toHaveCount(2);
   await fillPart(page, 1, '120000');
   await expect(parts.nth(1)).toContainText('130.000');
-  await expect(parts.nth(1)).toContainText('Rest');
   await pickPartCategory(page, 2, 'Household');
 
   // A third part is the new Rest; the part before it keeps its figure until it is changed.
   await addPart(page);
   await pickPartCategory(page, 3, 'Restaurants');
-  await expect(parts.nth(2)).toContainText('Rest');
   await fillPart(page, 2, '80000');
   await expect(parts.nth(0)).toContainText('120.000');
   await expect(parts.nth(1)).toContainText('80.000');
