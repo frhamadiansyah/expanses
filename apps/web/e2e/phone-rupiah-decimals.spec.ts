@@ -45,6 +45,8 @@ async function cardEarningPer12501(page: Page) {
   await page.getByLabel('Points', { exact: true }).fill('1');
   await page.getByLabel('Per spend').fill('12501');
   await page.getByRole('button', { name: 'Save rule' }).click();
+  // The save is done when the rules list shows the rule: leaving before then would drop it.
+  await expect(page.getByText('Base', { exact: true })).toBeVisible();
 }
 
 test('a purchase typed with cents posts rounded up, reopens whole, and an edit of its note keeps its points on the exact figure', async ({ page }) => {

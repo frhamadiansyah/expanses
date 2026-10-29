@@ -73,8 +73,8 @@ export function PickCardPage() {
   const today = isoDate();
   const statementDay = new Map(terms.data.map((t) => [t.accountId, t.statementDay]));
   const cards = accounts.data.filter((a) => a.archivedAt === null && a.subtype === 'credit_card');
-  // Any account money is spent from, a card keeping its own check: a bank, a saving account or a wallet gets the list check.
-  const others = moneyHolders(accounts.data).filter((a) => a.archivedAt === null && a.subtype !== 'cash' && canPayWith(a));
+  // Any account money is spent from, a card keeping its own check and listed once, above: a bank, a saving account or a wallet gets the list check.
+  const others = moneyHolders(accounts.data).filter((a) => a.archivedAt === null && a.subtype !== 'cash' && a.subtype !== 'credit_card' && canPayWith(a));
   const shots = images.data.length;
   // Cards, then the rest; the account already on the form (the camera's way in) first of all.
   const entries = [...cards, ...others].sort((x, y) => Number(y.id === onForm) - Number(x.id === onForm));
