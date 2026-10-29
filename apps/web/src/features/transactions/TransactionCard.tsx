@@ -1143,12 +1143,16 @@ function CardBody({
               divided={workspaceRow}
               icon={
                 <span className="relative">
-                  {pastOn ? (
-                    <span aria-hidden data-testid="past-tick" className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--ph-tint)] text-[var(--ph-surface)]">
-                      <Check size={15} strokeWidth={3} />
+                  <RowGlyph>{payGlyph}</RowGlyph>
+                  {/* A past purchase is ticked the way a card's Already paid off is: the account's own icon with a small tick at its corner. */}
+                  {pastOn && (
+                    <span
+                      aria-hidden
+                      data-testid="past-tick"
+                      className="absolute -right-1 -bottom-1 flex h-[14px] w-[14px] items-center justify-center rounded-full bg-[var(--ph-tint)] text-[var(--ph-surface)] ring-2 ring-[var(--ph-surface)]"
+                    >
+                      <Check size={9} strokeWidth={3.5} />
                     </span>
-                  ) : (
-                    <RowGlyph>{payGlyph}</RowGlyph>
                   )}
                   {paidOff && (
                     <span
