@@ -117,7 +117,7 @@ test('row 7 — retirement saved from the Retirement page: 3,5% growth, 10% retu
   await expect(answer).toContainText('4.120.008.061');
   const youNeed = figure((await answer.locator('div > div').first().locator('p').nth(1).textContent()) ?? '');
   expect(youNeed).toBe(4_120_008_061);
-  await page.getByRole('button', { name: 'Save Retirement fund as a goal' }).click();
+  await page.getByRole('button', { name: 'Set a goal' }).click();
   await expect(page.getByText('Saved Retirement fund as a goal.')).toBeVisible();
 
   await page.goto('/goals');

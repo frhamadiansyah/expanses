@@ -1,5 +1,5 @@
 import { Info, Search } from 'lucide-react';
-import { Children, isValidElement, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useId, useRef, useState } from 'react';
+import { Children, isValidElement, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useEffect, useId, useRef, useState } from 'react';
 import { cx } from '../index';
 import { currencyMatches, type FormKind, planFormRow, planSwitchRow } from './form-row';
 import { KeyboardStrip } from './KeyboardStrip';
@@ -177,9 +177,19 @@ export function TextRow({
   const id = props.id ?? generated;
   const [explained, setExplained] = useState(false);
   const field = useRef<HTMLInputElement>(null);
+  const wrap = useRef<HTMLDivElement>(null);
   const filled = String(props.value ?? props.defaultValue ?? '') !== '';
+  // An open note closes on a tap anywhere outside the row.
+  useEffect(() => {
+    if (!explained) return;
+    const close = (event: PointerEvent) => {
+      if (!wrap.current?.contains(event.target as Node)) setExplained(false);
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [explained]);
   return (
-    <div className="relative">
+    <div className="relative" ref={wrap}>
       <Separator show={Boolean(position?.separator)} />
       <div className="flex items-center gap-3" style={shell(false)}>
         {info ? (

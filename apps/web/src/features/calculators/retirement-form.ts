@@ -41,6 +41,15 @@ export interface RetirementWorking {
   answer: RetirementAnswer | null;
 }
 
+/** The note behind the i of Years in retirement: worked from what is typed, generic while the two figures are not there. */
+export function yearsNote(draft: Pick<RetirementDraft, 'retireAge' | 'yearsInRetirement'>): string {
+  const retire = readWhole(draft.retireAge);
+  const years = readWhole(draft.yearsInRetirement);
+  const lead = 'How long the money has to last after retiring';
+  if (!retire.ok || !years.ok || years.value < 1) return `${lead}.`;
+  return `${lead}: ${years.value} ${years.value === 1 ? 'year' : 'years'} from age ${retire.value} runs to age ${retire.value + years.value}.`;
+}
+
 /**
  * Reads every box and works the answer out, never throwing: a box that does not read puts its sentence on its own
  * row, and the answer waits. The monthly figure is saved at the return while saving — the drawdown return only sizes
