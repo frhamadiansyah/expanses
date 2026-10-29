@@ -23,6 +23,11 @@ export interface RuleMatch {
   /** Merchant category codes or ranges that never earn under this rule. A purchase without an MCC is not excluded. */
   excludeMccs?: string[];
   /**
+   * Merchant category codes or ranges that earn even when the purchase's category is one this rule excludes: the bank
+   * judges a purchase by the merchant's code, so an online marketplace filed under Utilities still earns.
+   */
+  categoryOverrideMccs?: string[];
+  /**
    * Days the purchase must fall on, 0 for Sunday through 6 for Saturday, which is how a weekend offer is written.
    * The day is the date the purchase happened, read in the machine's own zone, not the date it was posted.
    */
@@ -166,7 +171,8 @@ export function matchesSpend(match: RuleMatch, line: SpendLine, ancestors: Recor
   if (line.cardFee) return false;
   const chain = [line.categoryId, ...(ancestors[line.categoryId] ?? [])];
   if (match.categoryIds?.length && !match.categoryIds.some((id) => chain.includes(id))) return false;
-  if (match.excludeCategoryIds?.some((id) => chain.includes(id))) return false;
+  const mccNow = line.mcc;
+  if (match.excludeCategoryIds?.some((id) => chain.includes(id)) && !(mccNow && match.categoryOverrideMccs?.some((spec) => mccInRange(mccNow, spec)))) return false;
   const include = (match.merchantPatterns ?? []).filter((p) => p.trim());
   if (include.length && !include.some((p) => containsKeyword(line.description, p))) return false;
   if ((match.excludeMerchantPatterns ?? []).some((p) => containsKeyword(line.description, p))) return false;

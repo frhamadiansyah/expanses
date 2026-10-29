@@ -11,6 +11,8 @@ export interface CatalogMatch {
   /** Merchant category codes or ranges such as 3000-3299. */
   mccs?: string[];
   excludeMccs?: string[];
+  /** Codes that earn even when the category is excluded: the bank judges by the merchant's code. */
+  categoryOverrideMccs?: string[];
   /** Days the purchase must fall on, 0 for Sunday through 6 for Saturday, which is how a weekend offer is written. */
   daysOfWeek?: number[];
 }

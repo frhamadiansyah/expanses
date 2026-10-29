@@ -1,6 +1,6 @@
 {
   "id": "danamon-jcb-precious",
-  "entryVersion": 7,
+  "entryVersion": 8,
   "bank": "Bank Danamon",
   "name": "Danamon JCB Precious",
   "network": "jcb",
@@ -180,6 +180,10 @@
             ],
             "excludeMccs": [
               "5541-5542"
+            ],
+            "categoryOverrideMccs": [
+              "5262",
+              "5964"
             ]
           }
         },
@@ -211,6 +215,10 @@
             ],
             "excludeMccs": [
               "5541-5542"
+            ],
+            "categoryOverrideMccs": [
+              "5262",
+              "5964"
             ]
           },
           "minCycleSpendMinor": 1500000,
@@ -248,6 +256,10 @@
             ],
             "excludeMccs": [
               "5541-5542"
+            ],
+            "categoryOverrideMccs": [
+              "5262",
+              "5964"
             ]
           },
           "minCycleSpendMinor": 1500000,
@@ -288,6 +300,10 @@
             ],
             "excludeMccs": [
               "5541-5542"
+            ],
+            "categoryOverrideMccs": [
+              "5262",
+              "5964"
             ]
           }
         }

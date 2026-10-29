@@ -30,6 +30,17 @@ describe('MCC matching', () => {
     expect(ruleMatches(base, line(), ancestors)).toBe(true);
   });
 
+  it('lets listed codes earn although the category is excluded, and nothing else', () => {
+    const base = rule({ match: { excludeCategoryIds: ['utilities'], categoryOverrideMccs: ['5262', '5964'] } });
+    const bills = (over: Partial<SpendLine>) => line({ categoryId: 'internet', ...over });
+    const chain = { internet: ['utilities'] };
+    expect(ruleMatches(base, bills({ mcc: '5262', mccSource: 'memory' }), chain)).toBe(true);
+    expect(ruleMatches(base, bills({ mcc: '5964', mccSource: 'memory' }), chain)).toBe(true);
+    expect(ruleMatches(base, bills({ mcc: '4814', mccSource: 'category' }), chain)).toBe(false);
+    expect(ruleMatches(base, bills(), chain)).toBe(false);
+    expect(ruleMatches(base, line({ categoryId: 'dining' }), chain)).toBe(true);
+  });
+
   it('keeps excluded MCCs out of cycle bonus eligibility', () => {
     const bonus: CycleBonus = { id: 'b', key: 'b', name: 'Bonus', tiers: [{ minSpendMinor: 100_000, bonus: 500 }], match: { excludeMccs: ['5814'] }, validFrom: null, validTo: null };
     const lines = [

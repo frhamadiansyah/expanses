@@ -99,6 +99,7 @@ export function planCatalogApply(
     if (match.origin) result.origin = match.origin;
     if (match.mccs) result.mccs = [...match.mccs];
     if (match.excludeMccs) result.excludeMccs = [...match.excludeMccs];
+    if (match.categoryOverrideMccs) result.categoryOverrideMccs = [...match.categoryOverrideMccs];
     if (match.daysOfWeek) result.daysOfWeek = [...match.daysOfWeek];
     return result;
   };

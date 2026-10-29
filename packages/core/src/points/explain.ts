@@ -51,7 +51,7 @@ function candidatesBySignature(context: CycleContext, transactionId: string, lin
 
 /** Every code this card's rules and bonuses name, with ranges represented by their first code. */
 export function candidateMccs(rules: readonly EarnRule[], bonuses: readonly CycleBonus[] = []): string[] {
-  const specs = [...rules, ...bonuses].flatMap(({ match }) => [...(match.mccs ?? []), ...(match.excludeMccs ?? [])]);
+  const specs = [...rules, ...bonuses].flatMap(({ match }) => [...(match.mccs ?? []), ...(match.excludeMccs ?? []), ...(match.categoryOverrideMccs ?? [])]);
   return [...new Set(specs.map((spec) => spec.split('-')[0] ?? spec))].sort();
 }
 
