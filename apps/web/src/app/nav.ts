@@ -11,6 +11,7 @@ import {
   FileSpreadsheet,
   HandCoins,
   PiggyBank,
+  Receipt,
   Smartphone,
   Sparkles,
   TrendingUp,
@@ -76,6 +77,7 @@ export const MORE_GROUPS: readonly NavGroup[] = [
       // open a form where every other line opens a screen.
       // Money lent and borrowed lives here rather than in Cashflow's ⋯ menu, which is left to the workspace.
       { to: '/net-worth/lend-borrow', label: 'Lend & borrow', icon: HandCoins },
+      { to: '/transactions/receipt-split/start', label: 'Split a receipt', icon: Receipt },
       { to: '/categories', label: 'Categories', icon: Tags },
     ],
   },

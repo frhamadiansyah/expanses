@@ -1,4 +1,5 @@
 import { Check } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 
 /** One person in the row: the key tells them apart, the name is the label and the initial. */
 export interface Circle {
@@ -15,35 +16,32 @@ export function PeopleRow({
   people,
   picked,
   onToggle,
-  newName,
-  onAddNew,
+  scrollTo,
   testId,
 }: {
   people: readonly Circle[];
   picked: (key: string) => boolean;
   onToggle: (key: string) => void;
-  /** A name typed that nobody has: drawn first as a dashed circle that adds them. */
-  newName?: string;
-  onAddNew?: () => void;
+  /** The key of somebody just added: the row scrolls to bring them into view. */
+  scrollTo?: string;
   testId?: string;
 }) {
+  const row = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!scrollTo) return;
+    const circle = [...(row.current?.querySelectorAll<HTMLElement>('[data-key]') ?? [])].find((el) => el.dataset.key === scrollTo);
+    circle?.scrollIntoView?.({ inline: 'end', block: 'nearest' });
+  }, [scrollTo]);
   return (
     <div
+      ref={row}
       className="-mx-1 flex snap-x gap-[14px] overflow-x-auto px-1 pb-1 [mask-image:linear-gradient(90deg,#000_calc(100%-34px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       data-testid={testId}
     >
-      {newName && onAddNew && (
-        <button type="button" aria-label={`New person ${newName}`} onClick={onAddNew} className="ph-tap w-[62px] shrink-0 snap-start text-center">
-          <span className="mx-auto flex h-[54px] w-[54px] items-center justify-center rounded-full border-[1.5px] border-dashed border-[#0a84ff] text-[20px] font-semibold text-[#0a84ff]">
-            {newName.charAt(0).toUpperCase()}
-          </span>
-          <span className="mt-1 block truncate text-[12.5px] leading-4 text-[#0a84ff]">{newName}</span>
-        </button>
-      )}
       {people.map((person) => {
         const on = picked(person.key);
         return (
-          <button key={person.key} type="button" aria-label={person.name} aria-pressed={on} onClick={() => onToggle(person.key)} className="ph-tap w-[62px] shrink-0 snap-start text-center">
+          <button key={person.key} data-key={person.key} type="button" aria-label={person.name} aria-pressed={on} onClick={() => onToggle(person.key)} className="ph-tap w-[62px] shrink-0 snap-start text-center">
             <span
               className={`relative mx-auto flex h-[54px] w-[54px] items-center justify-center rounded-full text-[20px] font-semibold ${on ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : 'bg-[var(--ph-fill)] text-[var(--ph-ink-2)]'}`}
             >

@@ -193,11 +193,14 @@ export async function shareWith(page: Page, form: Locator, people: readonly { na
   await more.getByRole('button', { name: 'With', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'With', exact: true });
   for (const person of people) {
-    await sheet.getByLabel('Search or add a person').fill(person.name);
-    // A name nobody has met is a dashed "New person" circle; one already on the books is its own circle in the row.
-    const fresh = sheet.getByRole('button', { name: `New person ${person.name}` });
-    if (await fresh.count()) await fresh.click();
-    else await sheet.getByRole('button', { name: person.name, exact: true }).click();
+    const search = sheet.getByLabel('Search or add a person');
+    await search.fill(person.name);
+    // One already on the books is its own circle in the row; a name nobody has met is added by the keyboard's Done.
+    const known = sheet.getByRole('button', { name: person.name, exact: true });
+    if (await known.count()) await known.click();
+    else await search.press('Enter');
+    await expect(sheet.getByRole('button', { name: person.name, exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await search.fill('');
   }
   if (people.some((person) => person.owes !== undefined)) {
     await sheet.getByRole('radio', { name: 'Custom amounts' }).click();

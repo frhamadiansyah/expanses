@@ -12,6 +12,10 @@ export interface HeldForm {
   currency: string;
   /** What was just read off a photo; null when Edit reopens a bill already on the draft. */
   reading: ReceiptLinesReading | null;
+  /** 'account': the split started from Account (the start page), not from a purchase; back returns there. */
+  origin?: 'account';
+  /** Handed to a blank New transaction to record, not back to a form waiting on the With sheet. */
+  recorded?: boolean;
 }
 
 let held: HeldForm | null = null;

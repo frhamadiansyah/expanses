@@ -906,7 +906,7 @@ test('Split by category and With refuse each other in words, before Save', async
   await more.getByRole('button', { name: 'With', exact: true }).click();
   const withSheet = page.getByRole('dialog', { name: 'With', exact: true });
   await withSheet.getByLabel('Search or add a person').fill('Andi');
-  await withSheet.getByRole('button', { name: 'New person Andi' }).click();
+  await withSheet.getByLabel('Search or add a person').press('Enter');
   await expect(withSheet.getByRole('button', { name: 'Andi', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await withSheet.getByRole('button', { name: 'Close', exact: true }).click();
   await form.getByRole('button', { name: 'Category', exact: true }).click();

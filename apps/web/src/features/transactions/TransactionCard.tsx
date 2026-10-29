@@ -75,11 +75,13 @@ import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
 import { extraRowRefusal, extraRows, offersTransferFee, postingCurrency } from './tx-form';
 import { SplitSheet, splitSummary } from './SplitSheet';
+import { offerStatement } from '../../capture/statements';
 import { PhotosSheet, usePhotoAttach } from './PhotosSheet';
+import { PicturesSheet } from './PicturesSheet';
 import { draftIn } from './move-workspace';
 import { useBooks, useCategoryBooks } from '../workspaces/queries';
 import { heldForm, releaseForm } from './receipt-split-hold';
-import { applyReceipt, filledLine, type ReceiptFilled, readReceiptPhoto } from './receipt-fill';
+import { applyReceipt, filledLine, type ReceiptFilled, readReceiptPhoto, recognizeEach } from './receipt-fill';
 import { autoCategoryOutOfSet, categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, isExpenseTopUp, memberTransferOf, topUpWallets, typedCurrency, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
@@ -357,6 +359,28 @@ function CardBody({
     await queryClient.invalidateQueries({ queryKey: ['all-photo-rows', ws.workspaceId] });
     void readReceiptFrom(files);
   });
+  const [pictures, setPictures] = useState<File[] | null>(null);
+  const [listBusy, setListBusy] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+  /*
+   * "Read as a list of transactions": the chosen files are read here, by the same reader the receipt uses
+   * (`native.recognizeImage`, which takes a web File's bytes — no second native picker), and handed to the card picker
+   * as one batch with the form's account first.
+   */
+  async function readPicturesAsList(files: File[]) {
+    setListError(null);
+    setListBusy(true);
+    const images = await recognizeEach(files);
+    setListBusy(false);
+    if (!images) {
+      setListError('Nothing could be read from those pictures');
+      return;
+    }
+    const batch = offerStatement(images);
+    setPictures(null);
+    const account = latest.current.moneyId;
+    void navigate({ to: '/statement/shared', search: account ? { batch, account } : { batch } });
+  }
   const undoReceipt = () => {
     if (receipt) setDraft((d) => ({ ...d, ...receipt.before }));
     setReceipt(null);
@@ -1367,7 +1391,7 @@ function CardBody({
           */}
           <MoreDetails
             receiptSplit={full && !initial && !duplicateOf && !finish && draft.mode === 'expense'}
-            openWith={!!held}
+            openWith={!!held && !held.recorded}
             lead={
               draft.mode === 'trade' ? (
                 <MoneyFieldRow
@@ -1608,11 +1632,27 @@ function CardBody({
         multiple
         hidden
         onChange={(e) => {
-          void receiptPicks.attach([...(e.target.files ?? [])]);
+          const chosen = [...(e.target.files ?? [])];
+          // Two or more: asked what they are first (a list of transactions, or this purchase's photos).
+          if (chosen.length >= 2) setPictures(chosen);
+          else void receiptPicks.attach(chosen);
           // Cleared, so choosing the same file twice in a row is still a change the input reports.
           e.target.value = '';
         }}
       />
+      {pictures && (
+        <PicturesSheet
+          files={pictures}
+          busy={listBusy}
+          error={listError}
+          onList={() => void readPicturesAsList(pictures)}
+          onAttach={() => {
+            void receiptPicks.attach(pictures);
+            setPictures(null);
+          }}
+          onClose={() => setPictures(null)}
+        />
+      )}
       {sheet === 'photos' && <PhotosSheet draft={draft} onChange={setDraft} onClose={() => setSheet(null)} onAttached={(files) => void readReceiptFrom(files)} />}
       {sheet === 'move' && (
         <ChoiceSheet

@@ -57,6 +57,9 @@ export function WithSheet({
   receipt?: { read: (files: File[]) => Promise<string | null>; edit: () => void };
 }) {
   const [search, setSearch] = useState('');
+  // Who was just added by name (Done on the keyboard): scrolled into view, and announced.
+  const [added, setAdded] = useState<string | null>(null);
+  const [addedName, setAddedName] = useState('');
   const [byReceipt, setByReceipt] = useState(() => !!receipt && !!draft.receiptSplit);
   const [reading, setReading] = useState(false);
   const [readError, setReadError] = useState<string | null>(null);
@@ -103,7 +106,7 @@ export function WithSheet({
     else add({ debtAccountId: person.accountId, name: person.name, amount: '' });
   }
 
-  // Enter, or the dashed circle: the typed name is added and picked. A name already in the row is picked, not made twice.
+  // Done on the keyboard: the typed name is added at the end of the row and picked. A name already in the row is picked, not made twice.
   const addTyped = () => {
     if (!typed) return;
     setSearch('');
@@ -112,6 +115,8 @@ export function WithSheet({
       return;
     }
     add({ debtAccountId: '', name: typed, amount: '' });
+    setAdded(`name:${typed}`);
+    setAddedName(typed);
   };
 
   return (
@@ -119,6 +124,9 @@ export function WithSheet({
       <div className="flex flex-col gap-[10px]">
         <SearchPill value={search} onChange={setSearch} onClose={() => setSearch('')} placeholder="Search or add a person" label="Search or add a person" onEnter={addTyped} enterKeyHint="done" />
 
+        <span role="status" className="sr-only">
+          {addedName ? `Added ${addedName}` : ''}
+        </span>
         <PeopleRow
           testId="with-people"
           people={shown.map((person) => ({ key: person.accountId || `name:${person.name}`, name: person.name }))}
@@ -130,7 +138,7 @@ export function WithSheet({
             const person = shown.find((p) => (p.accountId || `name:${p.name}`) === key);
             if (person) toggle(person);
           }}
-          {...(typed && !exact ? { newName: typed, onAddNew: addTyped } : {})}
+          scrollTo={added ?? undefined}
         />
 
         {people.length > 0 && (
