@@ -24,20 +24,40 @@ export function useEntryKey(): string {
   return useRouterState({ select: (state) => String((state.location.state as { __TSR_key?: string } | undefined)?.__TSR_key ?? state.location.href) });
 }
 
-/** State that survives leaving and coming Back to this history entry. With no `name` it is plain state. */
+/**
+ * The address a Save or Delete is about to send the owner back to. A save lands on a new history entry (the edit's own
+ * is replaced), so the entry key cannot find what the list was showing; the address can, but only for the one return:
+ * a fresh visit to the same address still starts as a fresh page does.
+ */
+let returning: { href: string; at: number } | null = null;
+const RETURN_WINDOW_MS = 5000;
+
+export function markReturn(href: string): void {
+  returning = { href, at: Date.now() };
+}
+
+/** State that survives leaving and coming Back to this history entry, or returning to its address after a save. With no `name` it is plain state. */
 export function useRemembered<T>(name: string | undefined, initial: () => T): [T, (next: T | ((was: T) => T)) => void] {
   const entry = useEntryKey();
+  const href = useRouterState({ select: (state) => state.location.href });
   const key = name === undefined ? null : `${entry}|${name}`;
-  const [value, setValue] = useState<T>(() => (key !== null && memory.has(key) ? (memory.get(key) as T) : initial()));
+  const addressKey = name === undefined ? null : `${href}|address:${name}`;
+  const [value, setValue] = useState<T>(() => {
+    if (key !== null && memory.has(key)) return memory.get(key) as T;
+    const back = returning !== null && returning.href === href && Date.now() - returning.at < RETURN_WINDOW_MS;
+    if (back && addressKey !== null && memory.has(addressKey)) return memory.get(addressKey) as T;
+    return initial();
+  });
   const set = useCallback(
     (next: T | ((was: T) => T)) => {
       setValue((was) => {
         const now = typeof next === 'function' ? (next as (was: T) => T)(was) : next;
         if (key !== null) remember(key, now);
+        if (addressKey !== null) remember(addressKey, now);
         return now;
       });
     },
-    [key],
+    [key, addressKey],
   );
   return [value, set];
 }

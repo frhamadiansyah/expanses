@@ -1,3 +1,4 @@
+import { markReturn } from '../lib/page-memory';
 import { useSearch } from '@tanstack/react-router';
 
 /**
@@ -62,5 +63,8 @@ export function trackOrigin(router: {
 
 /** Where a transaction's Save or Delete lands: the page its receipt was opened from, else Cashflow. */
 export function originHref(): string {
-  return origin ?? '/transactions';
+  const href = origin ?? '/transactions';
+  // Where the page lands is a new entry: let it find what it was showing when this one was left (filters, sort).
+  markReturn(href);
+  return href;
 }

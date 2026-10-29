@@ -29,6 +29,7 @@ import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
 import { CalendarDays, ChevronDown, CircleAlert, CircleCheck, Home, LayoutGrid, List, Pencil, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { useRemembered } from '../../lib/page-memory';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { canPayWith } from '../../lib/account-types';
@@ -176,7 +177,8 @@ export function TransactionsPage() {
   // What a row names may have been put away since; the rows read it from every card, archived ones too.
   const everyCard = useCardsWithArchived().data ?? [];
   const drafts = useDrafts();
-  const [filters, setFilters] = useState<Omit<ListFilters, 'month'>>(EMPTY_FILTERS);
+  // The filters, the sort and the search box survive an edit or a receipt opened from the list and coming back to it.
+  const [filters, setFilters] = useRemembered<Omit<ListFilters, 'month'>>('filters', () => EMPTY_FILTERS);
   // Whether opening balances and past purchases are in the list: off, unless this device was told otherwise.
   const [showOpening] = useState(() => {
     try {
@@ -185,10 +187,10 @@ export function TransactionsPage() {
       return false;
     }
   });
-  const [sort, setSort] = useState<Sort>({ key: 'date', dir: 'desc' });
+  const [sort, setSort] = useRemembered<Sort>('sort', () => ({ key: 'date', dir: 'desc' }));
   const [adding, setAdding] = useState(false);
   // On a phone the search field and the filters are behind their buttons; a wide screen shows both.
-  const [showSearch, setShowSearch] = useState(false);
+  const [showSearch, setShowSearch] = useRemembered<boolean>('show-search', () => false);
   const phone = usePhone();
   // A phone's Paid with filter is a sheet (`PaidWithSheet`); a wide screen's hangs from its icon.
   const [pickingPaid, setPickingPaid] = useState(false);
