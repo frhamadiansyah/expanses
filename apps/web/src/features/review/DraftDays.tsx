@@ -86,7 +86,7 @@ function DraftFace({ draft, accounts, source, categoryId }: { draft: DraftRow; a
   const nameOf = (id: string | null) => (id ? (accounts.find((account) => account.id === id)?.name ?? null) : null);
   const from = nameOf(draft.accountId);
   const to = nameOf(draft.toAccountId);
-  const warn = (text: string) => <span className="font-medium text-[var(--ph-warn)]">{text}</span>;
+  const warn = (text: string) => <span>{text}</span>;
 
   return (
     <span className="flex items-center gap-3 py-2">
@@ -98,7 +98,6 @@ function DraftFace({ draft, accounts, source, categoryId }: { draft: DraftRow; a
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">
           {transfer ? 'Transfer' : category ? category.name : warn('Choose category')}
-          {draft.confidence !== null && draft.confidence < 80 && <span className="ml-2 text-xs font-normal text-[var(--ph-warn)]">unsure</span>}
         </span>
         <span className="block truncate text-xs text-slate-500">
           {view.type && <CaptureTypeMark type={view.type} />}

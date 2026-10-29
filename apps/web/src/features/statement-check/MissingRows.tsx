@@ -96,7 +96,7 @@ export function MissingRows({
                       {payment || row.categoryId ? <CategoryIcon categoryId={row.categoryId} accounts={accounts} transfer={payment} /> : <UnknownCategoryMark />}
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium">
-                          {payment ? 'Card payment' : name ? name : <span className="text-[var(--ph-warn)]">Choose category</span>}
+                          {payment ? 'Card payment' : name ? name : "Choose category"}
                         </span>
                         <span className="block truncate text-xs text-[var(--ph-ink-3)]">
                           {source && <span className="text-[var(--ph-tint)]">{source}</span>}

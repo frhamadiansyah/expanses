@@ -109,7 +109,6 @@ test('the account settings show the day its balance is counted from, and moving 
   await openSettings(page);
   const asOf = page.getByLabel('As of');
   await expect(asOf).toHaveValue('2026-09-20');
-  await expect(page.getByText('Purchases dated before it start out as "past".')).toBeVisible();
   await page.screenshot({ path: 'test-results/past-settings.png' });
   await asOf.fill('2026-09-05');
   await asOf.blur();
@@ -141,7 +140,6 @@ test('an account opened at nothing shows its As of, and moving it back moves whe
   await openSettings(page);
   const asOf = page.getByLabel('As of');
   await expect(asOf).toHaveValue('2026-09-20');
-  await expect(page.getByText('Purchases dated before it start out as "past".')).toBeVisible();
   await expect(page.getByText('Rp 0').first()).toBeVisible();
   await asOf.fill('2026-09-01');
   await asOf.blur();

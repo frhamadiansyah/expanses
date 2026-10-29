@@ -168,7 +168,7 @@ export function MarkChip({ Glyph, colour, size = 'md' }: { Glyph: LucideIcon; co
  * No category yet: the unknown mark in the warning tone, because it is a question still to answer. Every list that
  * holds rows waiting for a category — Review's captures, a statement check's missing rows — draws this one.
  */
-export function UnknownCategoryMark({ size = 'md', title }: { size?: keyof typeof SIZES; title?: string } = {}) {
+export function UnknownCategoryMark({ size = 'md', title, tone = 'neutral' }: { size?: keyof typeof SIZES; title?: string; tone?: 'warn' | 'neutral' } = {}) {
   const { box, glyph } = SIZES[size];
   return (
     <span
@@ -176,7 +176,7 @@ export function UnknownCategoryMark({ size = 'md', title }: { size?: keyof typeo
       data-unknown=""
       title={title}
       aria-hidden={title ? undefined : true}
-      className={`inline-flex ${box} shrink-0 items-center justify-center rounded-full bg-[var(--ph-warn-panel)] text-[var(--ph-warn-ink)]`}
+      className={`inline-flex ${box} shrink-0 items-center justify-center rounded-full ${tone === 'neutral' ? 'bg-[var(--ph-fill)] text-[var(--ph-ink-3)]' : 'bg-[var(--ph-warn-panel)] text-[var(--ph-warn-ink)]'}`}
     >
       <CircleHelp size={glyph} strokeWidth={2.2} />
     </span>

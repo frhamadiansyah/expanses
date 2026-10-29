@@ -72,7 +72,7 @@ function LatestTransactions({
               value={
                 <span className="flex flex-col items-end">
                   <span>{formatMinor(purchase.amountMinor, currency)}</span>
-                  {earned ? <span className="text-[12.5px] leading-[16px] font-normal text-[var(--ph-ink-3)]">{`+${formatPoints(earned)} ${unit}`}</span> : null}
+                  {earned ? <span className="text-[12.5px] leading-[16px] font-normal text-[var(--ph-ink-3)]">{`${earned < 0 ? '−' : '+'}${formatPoints(Math.abs(earned))} ${unit}`}</span> : null}
                 </span>
               }
               valueTone="ink"
@@ -376,7 +376,7 @@ export function CardHero({
               `Over the limit by ${formatMinor(-usage.availableMinor, currency)}`
             ) : compact ? (
               <>
-                <span className="tabular font-semibold text-[var(--ph-ink)]">{formatMinor(usage.availableMinor, currency)} available</span> of {formatMinor(limit, currency)}
+                {formatMinor(usage.availableMinor, currency)} available of {formatMinor(limit, currency)}
               </>
             ) : (
               `Available ${formatMinor(usage.availableMinor, currency)} of ${formatMinor(limit, currency)}`

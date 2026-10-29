@@ -176,7 +176,7 @@ export function AccountSettingsBox({ account, onError }: { account: AccountRow; 
   return (
     <>
       {asOf && (
-        <InsetGroup footer={'Purchases dated before it start out as "past".'}>
+        <InsetGroup>
           <ReadOnlyRow label="Balance" value={formatMinor(asOf.amountMinor, asOf.currency)} />
           <TextRow
             key={`asof-${asOf.occurredOn}`}

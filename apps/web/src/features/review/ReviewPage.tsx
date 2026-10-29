@@ -400,7 +400,6 @@ export function ReviewPage() {
                 <>
                   {view.type && <CaptureTypeMark type={view.type} />}
                   {draft.description}
-                  {draft.confidence !== null && draft.confidence < 80 && <span className="ml-2 text-[12.5px] font-normal text-[var(--ph-warn)]">unsure</span>}
                 </>
               );
             },
@@ -422,7 +421,6 @@ export function ReviewPage() {
                   <span className={cx('block', busy === draft.id && 'opacity-50')}>
                     {view.type && <CaptureTypeMark type={view.type} />}
                     {draft.description}
-                    {draft.confidence !== null && draft.confidence < 80 && <span className="ml-2 text-[12.5px] text-[var(--ph-warn)]">unsure</span>}
                     {/* Where it came from and how many sightings are folded in: the phone row's subtitle, as a line. */}
                     {view.type && (
                       <span className="block text-[12.5px] text-[var(--ph-ink-2)]">
