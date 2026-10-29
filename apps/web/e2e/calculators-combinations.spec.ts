@@ -31,11 +31,10 @@ test('row 2 — with a birthday: ages 6 to 12, the years on the birthday', async
   await openWorking(page);
   await page.getByLabel('Birthday', { exact: true }).fill('2026-03-15');
   await page.getByRole('button', { name: 'Add a level' }).click();
-  await typeInto(page, 'Starts at age', '6');
-  await typeInto(page, 'Until age', '12');
+  await typeInto(page, 'Ages from', '6');
+  await typeInto(page, 'Ages to', '12');
   await typeInto(page, 'Enrollment today', '45000000');
   await typeInto(page, 'Academic today', '20000000');
-  await expect(page.getByText('Ages 6 to 12 · 2032 to 2038')).toBeVisible();
   await page.getByRole('button', { name: 'Use this amount' }).click();
 
   await expect(stageLines(page)).toHaveCount(6);
@@ -97,8 +96,8 @@ test('row 6 — money set aside before a level is added: the target rises, what 
 
   await openWorking(page);
   await page.getByRole('button', { name: 'Add a level' }).click();
-  await typeInto(page, 'Starts in year', '2038');
-  await typeInto(page, 'Until year', '2041');
+  await typeInto(page, 'Years from', '2038');
+  await typeInto(page, 'Years to', '2041');
   await typeInto(page, 'Academic today', '30000000');
   await page.getByRole('button', { name: 'Use this amount' }).click();
   await expect(stageLines(page)).toHaveCount(9);

@@ -33,8 +33,8 @@ export async function neededAMonth(page: Page): Promise<number> {
 export async function firstLevel(page: Page) {
   await openWorking(page);
   await page.getByRole('button', { name: 'Add a level' }).click();
-  await typeInto(page, 'Starts in year', '2032');
-  await typeInto(page, 'Until year', '2038');
+  await typeInto(page, 'Years from', '2032');
+  await typeInto(page, 'Years to', '2038');
   await typeInto(page, 'Enrollment today', '45000000');
   await typeInto(page, 'Academic today', '20000000');
 }
@@ -43,7 +43,6 @@ export async function firstLevel(page: Page) {
 export async function row1(page: Page) {
   await addEducationGoal(page);
   await firstLevel(page);
-  await expect(page.getByText('2032 to 2038 · due 1 January each year')).toBeVisible();
   await page.getByRole('button', { name: 'Use this amount' }).click();
   await expect(stageLines(page)).toHaveCount(6);
   expect(await todayFigures(page)).toEqual([65_000_000, 20_000_000, 20_000_000, 20_000_000, 20_000_000, 20_000_000]);
@@ -60,8 +59,8 @@ export async function row5(page: Page) {
 
   await openWorking(page);
   await page.getByRole('button', { name: 'Add a level' }).click();
-  await typeInto(page, 'Starts in year', '2038');
-  await typeInto(page, 'Until year', '2041');
+  await typeInto(page, 'Years from', '2038');
+  await typeInto(page, 'Years to', '2041');
   await typeInto(page, 'Academic today', '30000000');
   await page.getByRole('button', { name: 'Use this amount' }).click();
 

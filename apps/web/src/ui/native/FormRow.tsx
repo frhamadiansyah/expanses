@@ -145,6 +145,7 @@ export function TextRow({
   label,
   hint,
   info,
+  wrapLabel = false,
   middle,
   suffix,
   prefix,
@@ -172,7 +173,10 @@ export function TextRow({
    * The same ⓘ the transaction form's Exclude row carries.
    */
   info?: ReactNode;
+  /** A long label may wrap onto two lines rather than push the figure out of its row. */
+  wrapLabel?: boolean;
 } & InputHTMLAttributes<HTMLInputElement>) {
+  const labelClass = wrapLabel ? LABEL.replace('shrink-0', 'min-w-0 max-w-[52%] shrink') : LABEL;
   const generated = useId();
   const id = props.id ?? generated;
   const [explained, setExplained] = useState(false);
@@ -194,13 +198,13 @@ export function TextRow({
       <div className="flex items-center gap-3" style={shell(false)}>
         {info ? (
           <span className="flex shrink-0 items-center gap-[6px]">
-            <label htmlFor={id} className={LABEL}>
+            <label htmlFor={id} className={labelClass}>
               {label}
             </label>
             <InfoToggle label={label} explained={explained} onToggle={() => setExplained((was) => !was)} />
           </span>
         ) : (
-          <label htmlFor={id} className={LABEL}>
+          <label htmlFor={id} className={labelClass}>
             {label}
           </label>
         )}

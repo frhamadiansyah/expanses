@@ -40,18 +40,16 @@ export async function twoLevelsWalk(page: Page) {
   await openWorking(page);
 
   // Spec §10: monthly tuition stays out of the fund, and the editor says so.
-  await expect(page.getByText('Monthly fees belong in the budget beside groceries; only the lumpy charges belong here.')).toBeVisible();
   await page.getByRole('button', { name: 'Add a level' }).click();
   // The next offered name, and the three offered costs.
   await expect(page.getByLabel('Level name', { exact: true })).toHaveValue('Preschool');
   await expect(page.getByLabel('Enrollment is paid', { exact: true })).toHaveValue('once');
   await expect(page.getByLabel('Academic is paid', { exact: true })).toHaveValue('yearly');
   await expect(page.getByLabel('Other is paid', { exact: true })).toHaveValue('once');
-  await typeInto(page, 'Starts in year', '2032');
-  await typeInto(page, 'Until year', '2038');
+  await typeInto(page, 'Years from', '2032');
+  await typeInto(page, 'Years to', '2038');
   await typeInto(page, 'Enrollment today', '45000000');
   await typeInto(page, 'Academic today', '20000000');
-  await expect(page.getByText('2032 to 2038 · due 1 January each year')).toBeVisible();
   await page.getByRole('button', { name: 'Use this amount' }).click();
 
   await expect(stageLines(page)).toHaveCount(6);
@@ -60,11 +58,11 @@ export async function twoLevelsWalk(page: Page) {
 
   // The saved levels come back: the second working starts from the first, not from nothing.
   await openWorking(page);
-  await expect(page.getByLabel('Starts in year', { exact: true })).toHaveValue('2032');
+  await expect(page.getByLabel('Years from', { exact: true })).toHaveValue('2032');
   await expect(page.getByLabel('Enrollment today', { exact: true })).toHaveValue('45.000.000');
   await page.getByRole('button', { name: 'Add a level' }).click();
-  await typeInto(page, 'Starts in year', '2038');
-  await typeInto(page, 'Until year', '2041');
+  await typeInto(page, 'Years from', '2038');
+  await typeInto(page, 'Years to', '2041');
   await typeInto(page, 'Academic today', '30000000');
   await page.getByRole('button', { name: 'Use this amount' }).click();
 

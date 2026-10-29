@@ -1,51 +1,111 @@
-import { isoDate } from '@expanses/core';
+import { isoDate, uuidv7 } from '@expanses/core';
 import { createGoalFromCalculator } from '@expanses/db';
 import { useState } from 'react';
+import { Sheet } from '../../app/Sheet';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { InsetGroup, InsetRow } from '../../ui/native';
 import { EducationEditor } from '../goals/EducationEditor';
-import { addLevel, educationDraftFrom } from '../goals/education-model';
+import { addLevel, type EducationDraft, educationDraftFrom } from '../goals/education-model';
 import { EDUCATION_FUND } from './catalogue';
+import { childLabel, educationGoalName } from './education-children';
 import { educationWorking } from './education-answer';
 import { Answer, CalculatorPage, SaveRow } from './parts';
 
-/** Each level at today's prices, raised once to the year it is paid — the goal's own editor, answered by its engine. */
+interface Child {
+  id: string;
+  name: string;
+  draft: EducationDraft;
+}
+
+/**
+ * Each level at today's prices, raised once to the year it is paid — the goal's own editor, answered by its engine.
+ *
+ * The page holds its children in its own state, one editor's draft each; none is a record until "Set a goal" saves
+ * the one on show as a goal of its own, so a second child never overwrites the first.
+ */
 export function EducationFundPage() {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const today = isoDate();
   const [error, setError] = useState<unknown>(null);
   const [saved, setSaved] = useState<string | null>(null);
-  const [education, setEducation] = useState(() => addLevel(educationDraftFrom(undefined, ws.baseCurrency)));
+  const freshChild = (): Child => ({ id: uuidv7(), name: '', draft: addLevel(educationDraftFrom(undefined, ws.baseCurrency)) });
+  const [children, setChildren] = useState<Child[]>(() => [freshChild()]);
+  const [currentId, setCurrentId] = useState(() => children[0]!.id);
+  const [choosing, setChoosing] = useState(false);
+
+  const index = Math.max(0, children.findIndex((child) => child.id === currentId));
+  const current = children[index]!;
+  const patch = (next: Partial<Omit<Child, 'id'>>) => setChildren((all) => all.map((child) => (child.id === current.id ? { ...child, ...next } : child)));
 
   // The working reads its own boxes and never throws: a half-typed figure refuses on its row, the page stays up.
-  const educationAnswer = educationWorking(education, ws.baseCurrency, today);
+  const educationAnswer = educationWorking(current.draft, ws.baseCurrency, today);
 
   async function save() {
     if (!educationAnswer.inputs) return;
     setError(null);
+    const name = educationGoalName(current.name);
     try {
-      await createGoalFromCalculator(database, ws, { name: 'Education fund', kind: 'education', inputs: educationAnswer.inputs as never, today });
+      await createGoalFromCalculator(database, ws, { name, kind: 'education', inputs: educationAnswer.inputs as never, today });
       await invalidate();
-      setSaved('Saved Education fund as a goal.');
+      setSaved(`Saved ${name} as a goal.`);
     } catch (e) {
       setError(e);
     }
   }
 
   return (
-    <CalculatorPage entry={EDUCATION_FUND} error={error} saved={saved}>
+    <CalculatorPage entry={EDUCATION_FUND} error={error} saved={saved} quiet>
       <InsetGroup>
-        <InsetRow title="Levels" value={String(education.levels.length)} chevron={false} />
+        <InsetRow title="Child" value={childLabel(current.name, index)} onClick={() => setChoosing(true)} />
+        <InsetRow title="Levels" value={String(current.draft.levels.length)} chevron={false} />
       </InsetGroup>
-      <EducationEditor value={education} onChange={setEducation} currency={ws.baseCurrency} today={today} />
+      <EducationEditor
+        key={current.id}
+        value={current.draft}
+        onChange={(draft) => patch({ draft })}
+        name={current.name}
+        onName={(name) => patch({ name })}
+        currency={ws.baseCurrency}
+        today={today}
+      />
       <Answer
         answer={educationAnswer.answer && { targetMinor: educationAnswer.answer.totalMinor, monthlyMinor: educationAnswer.answer.monthlyMinor, covered: false }}
         problem={educationAnswer.problem}
         testId="answer-education"
       />
-      <SaveRow label="Save Education fund as a goal" ready={educationAnswer.answer !== null} onSave={() => void save()} />
+      <SaveRow label="Set a goal" ready={educationAnswer.answer !== null} onSave={() => void save()} />
+
+      {choosing && (
+        <Sheet grouped title="Child" onClose={() => setChoosing(false)}>
+          <InsetGroup>
+            {children.map((child, at) => (
+              <InsetRow
+                key={child.id}
+                title={childLabel(child.name, at)}
+                value={child.id === current.id ? '✓' : undefined}
+                chevron={false}
+                onClick={() => {
+                  setCurrentId(child.id);
+                  setChoosing(false);
+                }}
+              />
+            ))}
+            <InsetRow
+              title="＋ Add a child"
+              label="Add a child"
+              chevron={false}
+              onClick={() => {
+                const next = freshChild();
+                setChildren((all) => [...all, next]);
+                setCurrentId(next.id);
+                setChoosing(false);
+              }}
+            />
+          </InsetGroup>
+        </Sheet>
+      )}
     </CalculatorPage>
   );
 }

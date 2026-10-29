@@ -43,6 +43,7 @@ export function RetirementFundPage() {
       <InsetGroup>
         <TextRow
           label="Yearly spending in retirement"
+          wrapLabel
           prefix={ws.baseCurrency}
           hint={retirementHint('annualSpend')}
           value={retirement.annualSpend}

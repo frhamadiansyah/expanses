@@ -132,10 +132,9 @@ test('turns the answer into a goal, which reaches the budget sheet', async ({ pa
 test('says what the levels will cost when the time comes, and saves them as a goal', async ({ page }) => {
   await page.goto('/calculators/education');
   // The page opens with one level to fill in.
-  await type(page, 'Starts in year', '2036');
-  await type(page, 'Until year', '2040');
+  await type(page, 'Years from', '2036');
+  await type(page, 'Years to', '2040');
   await type(page, 'Academic today', '100000000');
-  await expect(page.getByText('2036 to 2040 · due 1 January each year')).toBeVisible();
 
   // Four years at today's 100 juta, each inflated once to its own year, is far more than 400 juta.
   const answer = page.getByTestId('answer-education');
@@ -143,12 +142,57 @@ test('says what the levels will cost when the time comes, and saves them as a go
   const need = Number((await answer.locator('div > div').first().innerText()).replace(/\D/g, ''));
   expect(need).toBeGreaterThan(400_000_000);
 
-  await page.getByRole('button', { name: 'Save Education fund as a goal' }).click();
+  await page.getByRole('button', { name: 'Set a goal' }).click();
   await expect(page.getByText('Saved Education fund as a goal.')).toBeVisible();
   await page.goto('/goals');
   const education = await goalCard(page, 'Education fund');
   await expect(education.getByRole('heading', { name: 'Education fund' })).toBeVisible();
   await expect(education.getByRole('button', { name: / · year \d+: / })).toHaveCount(4);
+});
+
+test('each child is a goal of its own: switched by the Child row, never overwriting the one saved before', async ({ page }) => {
+  await page.goto('/calculators/education');
+  await expect(page.getByText("Each year at today's prices, raised to the year it is paid.")).toHaveCount(0);
+  await expect(page.getByLabel('Years from')).toBeVisible();
+  await type(page, 'Name', 'Nadia');
+  await expect(page.getByRole('button', { name: /^Child\s*Nadia/ })).toBeVisible();
+  await type(page, 'Years from', '2036');
+  await type(page, 'Years to', '2039');
+  await type(page, 'Academic today', '100000000');
+  await page.getByRole('button', { name: 'Set a goal' }).click();
+  await expect(page.getByText('Saved Education fund · Nadia as a goal.')).toBeVisible();
+
+  // A second child: its own empty editor; the first keeps what was typed.
+  await page.getByRole('button', { name: /^Child\s*Nadia/ }).click();
+  await page.getByRole('button', { name: 'Add a child' }).click();
+  await expect(page.getByLabel('Name', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Years from')).toHaveValue('');
+  await type(page, 'Name', 'Raka');
+  await type(page, 'Years from', '2040');
+  await type(page, 'Years to', '2042');
+  await type(page, 'Academic today', '50000000');
+  await page.getByRole('button', { name: 'Set a goal' }).click();
+  await expect(page.getByText('Saved Education fund · Raka as a goal.')).toBeVisible();
+
+  await page.getByRole('button', { name: /^Child\s*Raka/ }).click();
+  await page.getByRole('button', { name: 'Nadia' }).click();
+  await expect(page.getByLabel('Years from')).toHaveValue('2036');
+
+  await page.goto('/goals');
+  await goalCard(page, 'Education fund · Raka');
+  await page.goto('/goals');
+  await goalCard(page, 'Education fund · Nadia');
+});
+
+test('a cost is renamed in place and removed from its own line', async ({ page }) => {
+  await page.goto('/calculators/education');
+  await expect(page.getByLabel('Cost 1 name')).toHaveValue('Enrollment');
+  await page.getByLabel('Cost 1 name').fill('Registration');
+  await expect(page.getByLabel('Registration today')).toBeVisible();
+  await page.getByRole('button', { name: 'Remove Registration' }).click();
+  await expect(page.getByLabel('Cost 1 name')).toHaveValue('Academic');
+  await page.getByRole('button', { name: 'Add a cost to Preschool' }).click();
+  await expect(page.getByLabel('Cost 3 name')).toHaveValue('');
 });
 
 test('the retirement boxes keep their notes behind an i, worked from what is typed, closed by a tap outside', async ({ page }) => {
