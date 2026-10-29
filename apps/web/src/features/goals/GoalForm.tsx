@@ -84,8 +84,6 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
     if (!goal) return;
     void goalIsFunded(database, goal.id).then(setFunded);
   }, [database, goal]);
-  const [standing, setStanding] = useState(goal ? groupedMajorString(goal.standingMonthlyMinor, goal.currency) : '0');
-  const [standingNote, setStandingNote] = useState(goal?.standingNote ?? '');
   const [stages, setStages] = useState<StageDraft[]>(
     goal
       ? goal.stages.map((stage) => ({
@@ -187,8 +185,9 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
         kind,
         growthBps: Math.round(Number(growth.replace(',', '.')) * 100),
         returnBps: Math.round(Number(expectedReturn.replace(',', '.')) * 100),
-        standingMonthlyMinor: standing.trim() === '' ? 0 : parseGroupedMajor(standing, currency),
-        standingNote: standingNote.trim() || null,
+        // The form has no field for it; what the Monthly button set on a saved goal is carried through.
+        standingMonthlyMinor: goal?.standingMonthlyMinor ?? 0,
+        standingNote: goal?.standingNote ?? null,
         currency,
         stages: named.map((stage) => ({
           id: stage.id,
@@ -291,22 +290,6 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
           {[
             <PickerRow key="assumptions" label="Assumptions" value={assumptionsSummary(growth, expectedReturn)} onOpen={() => setAssumptionsOpen(true)} />,
             <PickerRow key="funding" label="Funding" value={fundingSummary(setAsideSummary(setAsideEntries), taggedNow.length)} placeholder="None" onOpen={() => setFundingOpen(true)} />,
-            // A standing amount (and its note) already saved on a goal stays editable; a new goal has no field for one.
-            ...(goal && goal.standingMonthlyMinor > 0
-              ? [
-                  <TextRow
-                    key="standing"
-                    label="Standing amount each month"
-                    prefix={currency}
-                    info="Optional. A transfer already made for this goal, outside monthly buys."
-                    value={standing}
-                    onChange={(e) => setStanding(groupTypedAmount(e.target.value, currency))}
-                    inputMode="decimal"
-                    placeholder="Amount"
-                  />,
-                ]
-              : []),
-            ...(goal?.standingNote ? [<TextRow key="note" label="What that transfer is" value={standingNote} onChange={(e) => setStandingNote(e.target.value)} placeholder="Standing transfer to the time deposit" />] : []),
           ]}
         </InsetGroup>
 
