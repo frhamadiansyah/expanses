@@ -12,8 +12,8 @@ import { InsetGroup, InsetRow, ReadOnlyRow, SelectRow, TextRow } from '../../ui/
 import { CardScreen, type CardPage, useCardPage } from './card-page';
 import { rewardText } from './CardBack';
 import { activeDuring } from './catalog-panel';
-import { CategoryOptions } from './options';
-import { Line, Meter, MultiSelectRow, SUBTITLE, TextLine } from './rows';
+import { Line, Meter, SUBTITLE, TextLine } from './rows';
+import { CountsRow } from './CountsRow';
 import { useSpendBonuses } from './spend-bonuses';
 import { expenseAncestors, formatPoints, shortDate } from './useCardPoints';
 
@@ -21,7 +21,6 @@ const listRoute = getRouteApi('/cards/$cardId/bonuses');
 const oneRoute = getRouteApi('/cards/$cardId/bonuses/$bonusId');
 const waiverRoute = getRouteApi('/cards/$cardId/settings/fee-waiver');
 
-const selected = (select: HTMLSelectElement) => Array.from(select.selectedOptions, (o) => o.value).filter(Boolean);
 
 /** What a bonus line says under its name: which window it counts over, or the fee it saves and by when. */
 function windowText(item: SpendBonusItem, currency: string): string {
@@ -342,9 +341,7 @@ function WaiverForm({ page }: { page: CardPage }) {
           {shownKind === 'automatic' && <ReadOnlyRow label="Within" value="12 months before the fee date" />}
           {shownKind === 'challenge' && <TextRow label="Counted from" type="date" value={shownFrom} onChange={(e) => setFrom(e.target.value)} />}
           {shownKind === 'challenge' && <TextRow label="Spend by" type="date" value={shownBy} onChange={(e) => setBy(e.target.value)} />}
-          <MultiSelectRow label="Counts" hint="None selected = all purchases. Ctrl/⌘-click for several." size={6} value={shownCategories} onChange={(e) => setCategories(selected(e.target))}>
-            <CategoryOptions ownerWide accounts={all} kind="expense" placeholder={null} />
-          </MultiSelectRow>
+          <CountsRow accounts={all} value={shownCategories} onChange={setCategories} />
         </InsetGroup>
       )}
       <InsetGroup>

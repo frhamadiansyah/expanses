@@ -6,6 +6,7 @@ import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { ActionRow, GroupColumns, MultiSelectRow, SubmitRow } from './rows';
+import { CountsRow } from './CountsRow';
 import { CategoryOptions } from './options';
 import { mergeMatch, parseRulePoints } from './rule-values';
 
@@ -101,9 +102,7 @@ export function RuleForm({
           </InsetGroup>
 
           <InsetGroup header="Where it applies">
-            <MultiSelectRow label="Only these categories" hint="None selected = every category. Ctrl/⌘-click for several." size={6} value={categoryIds} onChange={(e) => setCategoryIds(selected(e.target))}>
-              <CategoryOptions ownerWide accounts={accounts} kind="expense" placeholder={null} />
-            </MultiSelectRow>
+            <CountsRow accounts={accounts} value={categoryIds} onChange={setCategoryIds} />
             <MultiSelectRow label="Never these categories" hint="e.g. Fees, insurance, e-wallet top-ups." size={6} value={excludeIds} onChange={(e) => setExcludeIds(selected(e.target))}>
               <CategoryOptions ownerWide accounts={accounts} kind="expense" placeholder={null} />
             </MultiSelectRow>

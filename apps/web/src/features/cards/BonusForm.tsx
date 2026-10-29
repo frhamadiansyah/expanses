@@ -6,6 +6,7 @@ import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { DestructiveRow, InsetGroup, TextRow } from '../../ui/native';
 import { ActionRow, GroupColumns, MultiSelectRow, SubmitRow } from './rows';
+import { CountsRow } from './CountsRow';
 import { CategoryOptions } from './options';
 import { mergeMatch } from './rule-values';
 
@@ -138,9 +139,7 @@ export function BonusForm({
         <div className="min-w-0">
 
           <InsetGroup header="Where it counts">
-            <MultiSelectRow label="Only these categories" hint="None selected = every category. Ctrl/⌘-click for several." size={6} value={categoryIds} onChange={(e) => setCategoryIds(selected(e.target))}>
-              <CategoryOptions ownerWide accounts={accounts} kind="expense" placeholder={null} />
-            </MultiSelectRow>
+            <CountsRow accounts={accounts} value={categoryIds} onChange={setCategoryIds} />
             <MultiSelectRow label="Never these categories" hint="Spending here does not count toward the threshold." size={6} value={excludeIds} onChange={(e) => setExcludeIds(selected(e.target))}>
               <CategoryOptions ownerWide accounts={accounts} kind="expense" placeholder={null} />
             </MultiSelectRow>
