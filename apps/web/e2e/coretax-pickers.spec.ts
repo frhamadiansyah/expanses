@@ -18,8 +18,9 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await page.getByRole('button', { name: 'Current account' }).click();
   await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
   await page.getByLabel('Current balance', { exact: true }).fill('20000000');
-  // The balance is optional here, and the group's footer says what happens to it.
-  await expect(page.getByText('The balance is optional; it is posted as an opening balance.')).toBeVisible();
+  // The group carries no sentence about the balance or the bank: the footer is only for an account that cannot be spent from.
+  await expect(page.getByText('The balance is optional')).toHaveCount(0);
+  await expect(page.getByText('Cannot be spent from directly.')).toHaveCount(0);
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(walletCard(page, 'BCA Tahapan')).toBeVisible();
 

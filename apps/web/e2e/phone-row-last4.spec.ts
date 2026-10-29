@@ -124,9 +124,9 @@ test('a wallet with phone digits shows "5521" on its rows, and is never offered 
     balance: '500000',
     extra: async (p) => {
       const digits = p.getByLabel('Phone number', { exact: true });
-      // Anything but four digits is refused in words.
+      // Fewer than four digits get no sentence under the row while they are typed.
       await digits.fill('55');
-      await expect(p.getByText('The last 4 digits of the phone number are four numbers, like 5521.')).toBeVisible();
+      await expect(p.getByText('The last 4 digits of the phone number are four numbers, like 5521.')).toHaveCount(0);
       await expect(digits).toHaveAttribute('inputmode', 'numeric');
       await expect(digits).toHaveAttribute('placeholder', 'Last 4 digits');
       // A whole number pasted in keeps its last four, never the carrier's prefix.
