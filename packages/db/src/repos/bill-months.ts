@@ -34,11 +34,13 @@ export const BILL_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
  * The day a transaction counts on in a monthly spending figure. A bill payment made outside the month whose bill it
  * settles counts on that bill's out day in that month (clamped to the month's end); everything else, including a
  * bill paid inside its own month, counts on the day it happened. bill_payments is keyed by transaction, so this is
- * one row at most and never multiplies the entries it is asked about.
+ * one row at most and never multiplies the entries it is asked about. A purchase merely linked to a month afterwards
+ * (no template_id of its own) stays where it was spent.
  */
 export const attributedOn = (): SQL => sql`COALESCE((
   SELECT CASE WHEN bp.bill_month = substr(${transactions.occurredOn}, 1, 7) THEN NULL
     ELSE min(date(bp.bill_month || '-01', '+' || (et.day_of_month - 1) || ' days'), date(bp.bill_month || '-01', '+1 month', '-1 day')) END
   FROM bill_payments bp JOIN expense_templates et ON et.id = bp.template_id
   WHERE bp.transaction_id = ${transactions.id}
+    AND ${transactions.templateId} IS NOT NULL
 ), ${transactions.occurredOn})`;

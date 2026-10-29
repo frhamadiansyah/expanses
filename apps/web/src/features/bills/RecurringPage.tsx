@@ -393,6 +393,7 @@ export function RecurringPage() {
             setToast({ text: skippedText(b.name, month, today), undo: () => unskipBill(database, ws, b.id, month) });
           }}
           onSeeBill={() => navigate({ to: '/bills/$billId', params: { billId: paying.id }, search: from })}
+          onLink={(month) => navigate({ to: '/bills/$billId/link', params: { billId: paying.id }, search: { ...from, month } })}
         />
       )}
     </div>

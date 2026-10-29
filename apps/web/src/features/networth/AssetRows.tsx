@@ -30,7 +30,7 @@ export function partsLabel(parts: AcquiredParts): string | null {
  * A wheel, as iOS draws a date picker's column: the lines scroll and snap, and the one resting in the middle band is
  * the answer. A line can also be tapped. It is a listbox, so a screen reader — and a test — can pick by name.
  */
-function Wheel({ label, items, value, onChange, disabled = false }: { label: string; items: { value: string; label: string }[]; value: string; onChange: (value: string) => void; disabled?: boolean }) {
+export function Wheel({ label, items, value, onChange, disabled = false }: { label: string; items: { value: string; label: string }[]; value: string; onChange: (value: string) => void; disabled?: boolean }) {
   const list = useRef<HTMLDivElement>(null);
   const settle = useRef<number | undefined>(undefined);
   const index = Math.max(0, items.findIndex((item) => item.value === value));
