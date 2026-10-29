@@ -94,9 +94,19 @@ describe('planning a card before anything is written', () => {
       openingBalanceMinor: 0,
       memberLevel: null,
       terms: null,
+      creditLimitMinor: null,
     });
     // Blanks are no dates either: a day typed and cleared again is not half of the terms.
     expect(planNewCard(card({ name: 'BCA UnionPay', statementDay: ' ', dueDay: '' }), plain, 'IDR').terms).toBeNull();
+  });
+
+  it('keeps a typed credit limit with the dates, without them, and refuses one that is not a figure', () => {
+    expect(planNewCard(card({ name: 'BCA UnionPay', limit: '20.000.000' }), plain, 'IDR')).toMatchObject({ creditLimitMinor: 20_000_000, terms: null });
+    expect(planNewCard(card({ name: 'BCA UnionPay', limit: '20000000', statementDay: '25', dueDay: '12' }), plain, 'IDR')).toMatchObject({ creditLimitMinor: 20_000_000, terms: { statementDay: 25, dueDay: 12 } });
+    expect(planNewCard(card({ name: 'Kartu USD', limit: '5.000' }), null, 'IDR', 'USD')).toMatchObject({ currency: 'USD', creditLimitMinor: 500_000 });
+    expect(planNewCard(card({ name: 'BCA UnionPay', limit: '  ' }), plain, 'IDR').creditLimitMinor).toBeNull();
+    expect(() => planNewCard(card({ name: 'BCA UnionPay', limit: 'lots' }), plain, 'IDR')).toThrow('The credit limit must be a number');
+    expect(() => planNewCard(card({ name: 'BCA UnionPay', limit: '0' }), plain, 'IDR')).toThrow('The credit limit must be more than zero');
   });
 
   it('refuses one date without the other, whichever is missing, for any card', () => {

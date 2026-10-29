@@ -21,7 +21,7 @@ export interface TermsFields {
  * the empty days: saving the days saves the fee with them, in sight, and it can be corrected before it is — a fee
  * waived or negotiated down is the holder's to say. Saved terms are always read as saved, an empty fee included.
  */
-export function termsFields(terms: CardTermsRow | undefined, entry: CatalogEntry | null | undefined, today: string, currency: string): TermsFields {
+export function termsFields(terms: CardTermsRow | undefined, entry: CatalogEntry | null | undefined, today: string, currency: string, limitMinor: number | null = null): TermsFields {
   if (terms) {
     return {
       statementDay: String(terms.statementDay),
@@ -33,5 +33,5 @@ export function termsFields(terms: CardTermsRow | undefined, entry: CatalogEntry
   }
   // The entry's fee is in the entry's currency, which is the card's own for a card it opened; any other is not offered.
   const published = entry && entry.currency === currency ? feeOn(entry, today) : null;
-  return { statementDay: '', dueDay: '', limit: '', fee: published ? groupedMajorString(published.annualFeeMinor, currency) : '', feeOn: '' };
+  return { statementDay: '', dueDay: '', limit: limitMinor !== null ? groupedMajorString(limitMinor, currency) : '', fee: published ? groupedMajorString(published.annualFeeMinor, currency) : '', feeOn: '' };
 }

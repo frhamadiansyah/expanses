@@ -236,7 +236,7 @@ function RateField({ label, value, onChange }: { label: string; value: string; o
  *
  * Both the plain balance and each pocket are one of these, so turning Multi-currency on only turns one row into several.
  */
-function MoneyRow({
+export function MoneyRow({
   label,
   currencyLabel,
   amountLabel,
@@ -248,6 +248,7 @@ function MoneyRow({
   rate,
   onRate,
   hint,
+  ownRate = true,
   position,
 }: GroupChild & {
   /** The row's name on the left, in a label's ink, as a `TextRow` draws it; without one the currency takes its place. */
@@ -264,6 +265,8 @@ function MoneyRow({
   onRate: (value: string) => void;
   /** A line under the row, such as how a typed rate reads. */
   hint?: string;
+  /** False where the form asks the rate on a row of its own, in another group, rather than under the balance. */
+  ownRate?: boolean;
 }) {
   const amountId = useId();
   const rateId = useId();
@@ -316,7 +319,7 @@ function MoneyRow({
         {picking && <CurrencySheet value={currency} accountCurrency={currency} baseCurrency={base} onPick={onCurrency} onClose={() => setPicking(false)} />}
         {/* A foreign opening rate, under its balance: left empty, the day's rate is fetched. The prompt names the
             unit it is typed in, so "IDR per 1 USD" is never typed the other way round. */}
-        {foreign && (
+        {foreign && ownRate && (
           <div className="relative">
             {hairline}
             <div className="flex items-center gap-3" style={{ minHeight: TAP, padding: `0 ${ROW_PAD_X}px` }}>
@@ -421,7 +424,6 @@ export function CashAccountForm({
   const onCanSave = embedded?.onCanSave;
   useEffect(() => onCanSave?.(canSave), [onCanSave, canSave]);
 
-  const chosen = cashItem(item);
   const asks = fieldsFor('account', item);
   const locked = asks.includes('matures');
   const foreign = currency !== ws.baseCurrency;
@@ -452,6 +454,10 @@ export function CashAccountForm({
     // Refused before anything is written: the page's own Add account is pressed whether or not the sheet's ✓ is dimmed.
     if (phone?.ok === false) {
       setError(new Error(phone.error));
+      return;
+    }
+    if (numbered?.ok === false) {
+      setError(new Error(numbered.error));
       return;
     }
     setBusy(true);
@@ -523,25 +529,7 @@ export function CashAccountForm({
     /* Still a real `<form>`: Enter in any box saves, exactly as it did when the button below was the submit. */
     <form ref={form} id={embedded?.formId} onSubmit={submit}>
       <ErrorBox error={error} />
-      <InsetGroup
-        header={embedded ? undefined : `${chosen.label}${locked ? ' · cannot be spent from directly' : ''}`}
-        footer={
-          embedded ? (
-            locked ? 'Cannot be spent from directly. When it matures, take the money out with Withdraw on its page.' : undefined
-          ) : (
-            <>
-              {chosen.sub.charAt(0).toUpperCase() + chosen.sub.slice(1)}.
-              {fund
-                ? ' It is called by its broker, one account per broker; a bank as its custodian goes on the yearly tax report.'
-                : asks.includes('bank')
-                  ? " The bank goes on the yearly tax report; the name is what it's called here."
-                  : " The name is what it's called here."}
-              {!pocketed && (source ? ` The balance is optional; it moves from ${source.name} as a transfer.` : ' The balance is optional; it is posted as an opening balance.')}
-              {locked && ' When it matures, take the money out with Withdraw on its page.'}
-            </>
-          )
-        }
-      >
+      <InsetGroup footer={locked ? 'Cannot be spent from directly. When it matures, take the money out with Withdraw on its page.' : undefined}>
         {/* A sheet has no picker screen before the form, so the kind is its first row. */}
         {kinds && (
           <SelectRow
@@ -591,7 +579,6 @@ export function CashAccountForm({
             {...last4Field(setPhoneLast4)}
             placeholder="Last 4 digits"
             className="tabular"
-            hint={phone?.ok === false ? phone.error : undefined}
           />
         )}
         {/* What a bank's own alerts name the account by, shown on its rows as a card's digits are: "···· 1234". */}
@@ -602,7 +589,6 @@ export function CashAccountForm({
             {...last4Field(setNumberLast4)}
             placeholder="Last 4 digits"
             className="tabular"
-            hint={numbered.ok === false ? numbered.error : undefined}
           />
         )}
         {asks.includes('matures') && <TextRow label="Matures on" type="date" value={maturesOn} onChange={(e) => setMaturesOn(e.target.value)} required />}

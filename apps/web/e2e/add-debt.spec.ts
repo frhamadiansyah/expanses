@@ -54,10 +54,9 @@ test('a card named from the catalogue arrives with its bank, its rules and the p
   await pickCatalogueCard(page, 'bca', 'BCA UnionPay');
   await expect(page.getByLabel('Bank', { exact: true })).toHaveValue('BCA');
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue('UnionPay');
-  // The dates are details, and given here the terms are made at once — with the published fee written onto them.
-  await page.getByRole('button', { name: 'Add more details' }).click();
-  // A catalogue card already knows its currency, so the details ask only the dates.
-  await expect(page.getByLabel('Currency', { exact: true })).toHaveCount(0);
+  // Given here, the terms are made at once — with the published fee written onto them.
+  // A catalogue card already knows its currency, so its balance has no currency to pick.
+  await expect(page.getByRole('button', { name: /^Currency: / })).toHaveCount(0);
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Add card' }).click();
@@ -100,7 +99,6 @@ test('one date without the other is refused, and nothing is opened meanwhile', a
   await page.goto('/debts/new');
   await page.getByRole('button', { name: 'Credit card' }).click();
   await nameCardByHand(page, 'Kartu Setengah');
-  await page.getByRole('button', { name: 'Add more details' }).click();
   await page.getByLabel('Billing date').fill('25');
   await page.getByRole('button', { name: 'Add card' }).click();
 

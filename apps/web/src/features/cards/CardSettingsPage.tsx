@@ -127,7 +127,7 @@ export function CardSettingsPage() {
   // The fields read the saved card again whenever it changes underneath them — a catalogue applied writes the
   // published annual fee onto the terms, and a form still showing the old ones would save that emptiness back. A
   // catalogue card opened without its dates has no terms for that fee yet, so the form offers it beside them.
-  const saved = termsFields(cp.terms, cp.catalog.snapshot ?? cp.catalog.entry, today, currency);
+  const saved = termsFields(cp.terms, cp.catalog.snapshot ?? cp.catalog.entry, today, currency, cp.limitMinor);
   // An issuer that closes every statement on one day has it offered, typed in, until the terms are saved.
   const fixedDay = !cp.terms ? cp.catalog.entry?.program.fixedStatementDay : undefined;
   const termsKey = `${card.id}:${JSON.stringify(saved)}:${fixedDay ?? ''}`;

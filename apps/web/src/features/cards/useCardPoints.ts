@@ -24,6 +24,7 @@ import {
   programmeOfCard,
   type ProgrammeRow,
   type Database,
+  getCardLimit,
   getCardTerms,
   getCatalogState,
   getProgrammeValuePerPoint,
@@ -54,6 +55,8 @@ export interface CycleResult {
 export interface CardPoints {
   card: AccountRow;
   terms: CardTermsRow | undefined;
+  /** The credit limit, also when the card has no billing and due dates yet (so no terms): a limit typed on the New card form. */
+  limitMinor: number | null;
   program: RewardProgramRow | undefined;
   /** The points programme the card earns into: where its balance, expiry and redemptions live. */
   programme: ProgrammeRow | undefined;
@@ -94,9 +97,10 @@ export async function loadCardPoints(
   onDate: string,
 ): Promise<CardPoints> {
   const terms = await getCardTerms(database, ws, card.id);
+  const limitMinor = terms ? terms.creditLimitMinor : await getCardLimit(database, ws, card.id);
   const program = (await listPrograms(database, ws)).find((p) => p.cardAccountId === card.id);
   const programme = program ? await programmeOfCard(database, ws, program.id) : undefined;
-  const empty: CardPoints = { card, terms, program, programme, rules: [], redemptions: [], best: null, valuePerPoint: null, baseCurrency: ws.baseCurrency, bonuses: [], transferPartners: [], catalog: NO_CATALOG, crediting: 'per_statement', transactionActuals: [], current: null, previous: null };
+  const empty: CardPoints = { card, terms, limitMinor, program, programme, rules: [], redemptions: [], best: null, valuePerPoint: null, baseCurrency: ws.baseCurrency, bonuses: [], transferPartners: [], catalog: NO_CATALOG, crediting: 'per_statement', transactionActuals: [], current: null, previous: null };
   if (!program) return empty;
 
   const rules = await listEarnRules(database, ws, program.id);
@@ -128,7 +132,7 @@ export async function loadCardPoints(
   const currentCycle = cycleFor(onDate, program.cycleAnchor, statementDay);
   const current = await load(currentCycle);
   const previous = await load(previousCycle(currentCycle, program.cycleAnchor, statementDay));
-  return { card, terms, program, programme, rules, redemptions, best, valuePerPoint, baseCurrency: ws.baseCurrency, bonuses, transferPartners, catalog, crediting, transactionActuals, current, previous };
+  return { card, terms, limitMinor, program, programme, rules, redemptions, best, valuePerPoint, baseCurrency: ws.baseCurrency, bonuses, transferPartners, catalog, crediting, transactionActuals, current, previous };
 }
 
 export const shortDate = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });

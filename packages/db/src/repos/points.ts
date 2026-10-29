@@ -34,7 +34,9 @@ export class PointsError extends Error {
   }
 }
 
-export type CardTermsRow = typeof cardTerms.$inferSelect & FeeFields;
+/** Terms with both days. A row holding a limit alone (0108) is not one: see `getCardLimit`. */
+type DatedTerms = typeof cardTerms.$inferSelect & { statementDay: number; dueDay: number };
+export type CardTermsRow = DatedTerms & FeeFields;
 export type RewardProgramRow = typeof rewardPrograms.$inferSelect;
 export type RedemptionOptionRow = typeof redemptionOptions.$inferSelect;
 
@@ -97,31 +99,48 @@ const day = (n: number, label: string) => {
   return n;
 };
 
+/** A row with both days: the billing cycle the app counts from. A limit alone (0108) is not terms yet, see `getCardLimit`. */
+const dated = (row: typeof cardTerms.$inferSelect): row is DatedTerms => row.statementDay !== null && row.dueDay !== null;
+
 export async function getCardTerms(database: Database, ws: WorkspaceContext, accountId: string): Promise<CardTermsRow | undefined> {
   const [row] = await database.db
     .select()
     .from(cardTerms)
     .where(and(eq(cardTerms.accountId, accountId), eq(cardTerms.workspaceId, ws.workspaceId)));
-  return row ? { ...row, ...((await feeFieldsByCard(database.db, ws)).get(accountId) ?? NO_FEE_FIELDS) } : undefined;
+  return row && dated(row) ? { ...row, ...((await feeFieldsByCard(database.db, ws)).get(accountId) ?? NO_FEE_FIELDS) } : undefined;
 }
 
 export async function listCardTerms(database: Database, ws: WorkspaceContext): Promise<CardTermsRow[]> {
-  const rows = await database.db.select().from(cardTerms).where(eq(cardTerms.workspaceId, ws.workspaceId));
+  const rows = (await database.db.select().from(cardTerms).where(eq(cardTerms.workspaceId, ws.workspaceId))).filter(dated);
   const fees = await feeFieldsByCard(database.db, ws);
   return rows.map((row) => ({ ...row, ...(fees.get(row.accountId) ?? NO_FEE_FIELDS) }));
+}
+
+/**
+ * A card's credit limit, whether or not its billing and due dates are known: a limit typed on the New card form with no
+ * dates is kept on a terms row that has none (0108), which `getCardTerms` does not call terms yet. Null when none is set.
+ */
+export async function getCardLimit(database: Database, ws: WorkspaceContext, accountId: string): Promise<number | null> {
+  const [row] = await database.db
+    .select({ creditLimitMinor: cardTerms.creditLimitMinor })
+    .from(cardTerms)
+    .where(and(eq(cardTerms.accountId, accountId), eq(cardTerms.workspaceId, ws.workspaceId)));
+  return row?.creditLimitMinor ?? null;
 }
 
 export async function saveCardTerms(
   database: Database,
   ws: WorkspaceContext,
-  input: { accountId: string; statementDay: number; dueDay: number; creditLimitMinor: number | null; annualFeeMinor: number | null; annualFeeOn?: string | null },
+  /** Both days or neither: a card with a limit and no dates yet is kept as a limit alone (0108). */
+  input: { accountId: string; statementDay: number | null; dueDay: number | null; creditLimitMinor: number | null; annualFeeMinor: number | null; annualFeeOn?: string | null },
 ): Promise<void> {
+  if ((input.statementDay === null) !== (input.dueDay === null)) throw new PointsError('Give both the statement day and the due day, or neither');
   if (input.annualFeeOn && !/^\d{4}-\d{2}-\d{2}$/.test(input.annualFeeOn)) throw new PointsError('Charged on must be a full date');
   const row = {
     accountId: input.accountId,
     workspaceId: ws.workspaceId,
-    statementDay: day(input.statementDay, 'Statement day'),
-    dueDay: day(input.dueDay, 'Due day'),
+    statementDay: input.statementDay === null ? null : day(input.statementDay, 'Statement day'),
+    dueDay: input.dueDay === null ? null : day(input.dueDay, 'Due day'),
     creditLimitMinor: input.creditLimitMinor,
     annualFeeMinor: input.annualFeeMinor,
   };

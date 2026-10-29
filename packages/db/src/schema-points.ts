@@ -4,8 +4,9 @@ export const cardTerms = sqliteTable('card_terms', {
   accountId: text('account_id').primaryKey(),
   workspaceId: text('workspace_id').notNull(),
   creditLimitMinor: integer('credit_limit_minor'),
-  statementDay: integer('statement_day').notNull(),
-  dueDay: integer('due_day').notNull(),
+  // Both days are null on a card known only by its limit (0108); the app reads that as no billing cycle yet.
+  statementDay: integer('statement_day'),
+  dueDay: integer('due_day'),
   annualFeeMinor: integer('annual_fee_minor'),
   // annual_fee_on and annual_fee_waived_year (0093) are deliberately not declared here: see repos/fee-columns.ts.
 });

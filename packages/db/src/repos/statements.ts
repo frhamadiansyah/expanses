@@ -296,7 +296,7 @@ export async function billOnNextStatement(database: Database, ws: WorkspaceConte
     .select({ statementDay: cardTerms.statementDay })
     .from(cardTerms)
     .where(and(eq(cardTerms.accountId, cardAccountId), eq(cardTerms.workspaceId, ws.workspaceId)));
-  if (!terms) throw new StatementError('NO_STATEMENT_DAY', 'Add the card’s statement day first');
+  if (terms?.statementDay == null) throw new StatementError('NO_STATEMENT_DAY', 'Add the card’s statement day first');
   const line = (await cardLines(database.db, ws, cardAccountId)).find((l) => l.transactionId === transactionId);
   if (!line) throw new StatementError('NOT_FOUND', 'That transaction is not on this card');
   const postedOn = nextStatementStart(line.statementOn, terms.statementDay);
