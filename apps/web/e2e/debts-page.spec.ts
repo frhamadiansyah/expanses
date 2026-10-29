@@ -1,3 +1,4 @@
+import { showCardBack } from './card-section';
 import { expect, type Page, test } from '@playwright/test';
 import { personRow } from './people';
 import { openAccount, openCard } from './accounts';
@@ -113,6 +114,7 @@ test('each debt opens its own place: a loan its schedule, a card the card, a per
   await expect(page.getByRole('heading', { name: 'BCA Visa' })).toBeVisible();
   // It opens raised out of the Wallet stack, and its Unpaid tile is the very figure the Debts row showed.
   await expect(page.getByRole('region', { name: 'Cards' }).locator('[data-place="raised"]')).toBeVisible();
+  await showCardBack(page);
   await expect(page.getByTestId('tile-unpaid-balance')).toHaveText('Rp 2.450.000');
 
   await page.goto('/net-worth/loans');
@@ -247,6 +249,7 @@ test('a card paid past its bill holds the surplus: Unpaid at nothing, and the cr
   await page.goto('/net-worth/loans');
   await openDrawers(page);
   await page.getByRole('link', { name: 'BCA Visa' }).click();
+  await showCardBack(page);
   const tile = page.getByTestId('tile-left-to-pay');
   await expect(tile.getByTestId('tile-unpaid-balance')).toHaveText('Rp 100.000');
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();

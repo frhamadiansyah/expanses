@@ -24,7 +24,7 @@ import { ColumnGroup, Line, SUBTITLE, TextLine, TITLE } from './rows';
 import { termsFields } from './terms-fields';
 import { useCatalogChoice } from './useCatalogChoice';
 import { FeeAlert } from './FeeAlert';
-import { feeLine } from './fee-line';
+import { FeeWaiverRow, YearFeeRow } from './AnnualFeeGroup';
 import { useInstallments } from '../loans/queries';
 
 const settingsRoute = getRouteApi('/cards/$cardId/settings');
@@ -178,7 +178,6 @@ export function CardSettingsPage() {
     window.setTimeout(goBack, 0);
   };
 
-  const feeSummary = cp.terms ? feeLine(cp.terms.annualFeeMinor, cp.terms.annualFeeOn, cp.terms.annualFeeWaivedYear, currency, today) : null;
   const termsBlock = !isDebit && (
     <>
       <form
@@ -207,19 +206,8 @@ export function CardSettingsPage() {
             [
               <TextRow label="Annual fee" prefix={currency} value={fee} onChange={(e) => setFee(groupTypedAmount(e.target.value, currency))} inputMode="decimal" placeholder="Amount" />,
               <TextRow label="Charged on" type="date" value={feeOn} onChange={(e) => setFeeOn(e.target.value)} />,
-              ...(feeSummary && cp.terms?.annualFeeOn
-                ? [
-                    // Asks whether this year's fee was waived: the same question the card page's fee row asked.
-                    <InsetRow
-                      key="year-fee"
-                      testId="card-annual-fee"
-                      title="This year's fee"
-                      value={<span className={cx(feeSummary.soon && 'font-semibold text-[var(--ph-warn)]')}>{feeSummary.waived ? 'Waived' : (feeSummary.when?.replace('Charged on ', '') ?? feeSummary.amount ?? '')}</span>}
-                      valueTone="ink"
-                      onClick={() => setAskingFee(true)}
-                    />,
-                  ]
-                : []),
+              ...(cp.terms?.annualFeeOn ? [<YearFeeRow key="year-fee" page={page} onAsk={() => setAskingFee(true)} />] : []),
+              <FeeWaiverRow key="fee-waiver" page={page} />,
             ],
           ]}
         />

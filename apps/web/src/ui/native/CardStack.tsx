@@ -37,6 +37,8 @@ export interface WalletCard {
   name: string;
   last4: string | null;
   holderName?: string | null;
+  /** What this plastic card spent this statement, as money: printed top-right of a credit card with several plastics. */
+  spent?: string | null;
   network?: string | null;
   look?: CatalogCardLook | null;
   /**
@@ -128,7 +130,7 @@ export function CardStack({
   // The face's own corner, scaled with it, so a box and the art inside it round alike.
   const radius = Math.round(14.4 * scale);
   // The page's dots choose which plastic card on the account the raised card shows.
-  const [shown, setShown] = useState<{ last4: string | null; holderName?: string | null } | null>(null);
+  const [shown, setShown] = useState<{ last4: string | null; holderName?: string | null; spent?: string | null } | null>(null);
   useEffect(() => setShown(null), [raisedKey]);
   /*
    * The raised card's back: a page that has one (an account's balance) says it is flippable, and a tap on the card then
@@ -310,7 +312,7 @@ export function CardStack({
               // On its way between its band and its whole face: drawn whole, under a ghost of its band (above).
               const was = leaving?.cards[index];
               const turning = was !== undefined && faceIsBehind(was) !== covered;
-              const drawn = placed.place === 'raised' && shown ? { ...card, last4: shown.last4, holderName: shown.holderName } : card;
+              const drawn = placed.place === 'raised' && shown ? { ...card, last4: shown.last4, holderName: shown.holderName, spent: shown.spent } : card;
               // One link per card, named by the card and its figure, so a reader hears every figure moving through.
               const name = card.label ?? card.name;
               const named = card.figure && card.figure !== '—' ? `${name}, ${card.figure}` : name;
@@ -521,6 +523,8 @@ export function Face({ card, band, scale, figure = false }: { card: WalletCard; 
         name={card.name}
         last4={card.last4}
         holderName={card.holderName}
+        spent={card.spent}
+        cornerScale={scale}
         network={card.network}
         look={card.look}
         kind={card.kind}

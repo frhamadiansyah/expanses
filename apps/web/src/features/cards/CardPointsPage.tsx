@@ -13,6 +13,7 @@ import { activeDuring } from './catalog-panel';
 import { describeSuggestion, purchasesOf } from './hint-text';
 import { PurchaseList, SuggestionFixes } from './PurchaseList';
 import { Capsule, EARLIER, FigureRow, Line, Meter, StepperRow, SubmitRow, SUBTITLE, TextLine } from './rows';
+import { useSpendBonuses } from './spend-bonuses';
 import { refreshLedger } from './useCardLedger';
 import { type CardPoints, type CycleResult, formatPoints, loadCycleResult, pointsValue, shortDate } from './useCardPoints';
 
@@ -101,6 +102,16 @@ function CycleSummary({
   );
 }
 
+/** The one row that opens the card's spend bonuses (cycle bonuses and the fee waiver): how many are active. */
+function SpendBonusesRow({ page }: { page: CardPage }) {
+  const { items } = useSpendBonuses(page.cp, page.all, page.today);
+  return (
+    <InsetGroup>
+      <InsetRow testId="spend-bonuses-row" title="Spend bonuses" value={`${items.length} active`} valueTone="ink-3" to="/cards/$cardId/bonuses" params={{ cardId: page.card.id }} />
+    </InsetGroup>
+  );
+}
+
 /** A card with no rules works nothing out: the way to its settings, where rewards are set up. */
 function NotEarning({ page }: { page: CardPage }) {
   return (
@@ -157,6 +168,7 @@ export function CardPointsPage() {
       )}
       {!earning(cp) && <NotEarning page={page} />}
       {program && cp.current && earning(cp) && <CycleSummary result={cp.current} rules={cp.rules} bonuses={cp.bonuses} unit={program.unit} currency={currency} cp={cp} cardId={card.id} />}
+      {program && <SpendBonusesRow page={page} />}
       {program && earning(cp) && (cp.current || cp.previous) && (
         <InsetGroup>
           {cp.current && (

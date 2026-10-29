@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { addPlastic, openAccount, openCard } from './accounts';
 import { addForm, addTransaction, choosePayment, fillAmount, saveButton } from './add-transaction';
-import { cardPage, saveCardTerms } from './card-section';
+import { cardPage, saveCardTerms, showCardBack } from './card-section';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const local = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -48,6 +48,7 @@ test('a purchase the bank billed a statement late moves to the next one', async 
   await buy(page, 'Hotel Mulia', '2000000', LAST_MONTH);
   await openCardPage(page);
 
+  await showCardBack(page);
   await expect(page.getByTestId('tile-left-to-pay')).toContainText('2.000.000');
   await cardPage(page, 'Statement');
   await page.getByRole('button', { name: 'Earlier statement' }).click();
@@ -60,6 +61,7 @@ test('a purchase the bank billed a statement late moves to the next one', async 
   await expect(page.getByTestId('statement-line').filter({ hasText: 'Hotel Mulia' }).getByRole('button', { name: 'Use purchase date' })).toBeVisible();
   // And the card's summary has nothing billed on the statement it left.
   await page.getByRole('link', { name: 'BCA Visa' }).click();
+  await showCardBack(page);
   await expect(page.getByTestId('tile-left-to-pay')).toContainText('Nothing billed');
 });
 
@@ -131,6 +133,7 @@ test('the last statement is paid from the card’s Current bill tile', async ({ 
   await buy(page, 'Hotel Mulia', '2000000', LAST_MONTH);
   await openCardPage(page);
 
+  await showCardBack(page);
   const tile = page.getByTestId('tile-left-to-pay');
   await expect(tile).toContainText('2.000.000');
   await expect(tile.getByTestId('due-date')).toContainText(/^Due \d+ \w+ · /);
@@ -149,6 +152,7 @@ test('Pay opens a sheet with the amount filled in; a smaller amount records a pa
   await buy(page, 'Hotel Mulia', '2000000', LAST_MONTH);
   await openCardPage(page);
 
+  await showCardBack(page);
   const tile = page.getByTestId('tile-left-to-pay');
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: /^Pay / });

@@ -773,6 +773,8 @@ export function CardFace({
   figure,
   kind,
   face,
+  spent,
+  cornerScale = 1,
   className,
 }: {
   issuer: string | null;
@@ -800,6 +802,14 @@ export function CardFace({
   kind?: string;
   /** The drawn face of the account's bank or app, when it has one: then `kind` is not drawn, the card is. */
   face?: FaceRef | null;
+  /**
+   * What this plastic card spent this statement, as money: printed top-right, left of the corner button the raised card
+   * wears, as a small "Spent" over the figure. Only a credit card with several plastic cards says it; the rest leave
+   * the corner blank.
+   */
+  spent?: string | null;
+  /** The scale the face is drawn at, so the corner button (32 px, 8 px in) is cleared in the face's own units. */
+  cornerScale?: number;
   className?: string;
 }) {
   // SVG ids must be unique on the page and plain enough for url(#…).
@@ -836,7 +846,8 @@ export function CardFace({
   const contactless = !faced || face.kind === 'debit' || face.kind === 'emoney';
   const digits = faced ? (face.kind === 'paylater' ? null : face.kind === 'ewallet' ? last4 : (last4 ?? '····')) : (last4 ?? '····');
   // A drawn face already carries its bank's mark, so a name that opens with the bank is printed without it.
-  const holder = faced ? (holderLine(face.kind) ?? (holderName ? nameBesideMark(holderName, face.mark) : holderName)) : holderName;
+  // The card's type or product sits under the digits, where the holder's name was.
+  const holder = faced ? (holderLine(face.kind) ?? cardName) : cardName;
   const emboss = dark ? '0 1px 0 rgb(255 255 255 / 0.45), 0 -1px 0 rgb(0 0 0 / 0.2)' : '0 1px 0 rgb(0 0 0 / 0.55), 0 -1px 0 rgb(255 255 255 / 0.18)';
   const inset = md ? (portrait ? 12 : 16) : 9;
   const hidden = behind || band !== undefined;
@@ -922,24 +933,24 @@ export function CardFace({
       )}
       {!hidden && !drawn && !membership && (
         <>
-          <div className="absolute flex items-start justify-between gap-2" style={{ top: inset - 2, left: inset, right: inset }}>
-            {/* A drawn face prints its bank in the bank's own colour where the drawing did, and nothing top-right. */}
-            <div className="min-w-0 truncate font-bold tracking-wide" style={faced && art?.bank ? { color: art.bank, textShadow: 'none' } : undefined}>
-              {bank}
-            </div>
-            {figure !== undefined && <FaceFigure figure={figure} md={md} />}
-            {!faced && figure === undefined && (
-              <div
-                className={cx(
-                  'min-w-0 truncate text-right leading-tight font-semibold tracking-tight',
-                  // A portrait card is barely half as wide, so its name steps down a size much sooner.
-                  md ? (cardName.length > (portrait ? 7 : 14) ? (cardName.length > (portrait ? 12 : 22) ? 'text-[11px]' : 'text-[13px]') : 'text-[15px]') : 'text-[10px]',
-                )}
-              >
-                {cardName}
+          {spent && !faced ? (
+            /* Exactly as tall as the corner button and level with it; the bank truncates before the figure does. */
+            <div className="absolute flex items-center justify-between gap-2" style={{ top: 8 / cornerScale, left: inset, right: (8 + 32 + 6) / cornerScale, height: 32 / cornerScale }}>
+              <div className="min-w-0 flex-1 truncate font-bold tracking-wide">{bank}</div>
+              <div data-testid="face-spent" className="shrink-0 text-right whitespace-nowrap">
+                <div className="text-[8px] leading-[10px] opacity-75">Spent</div>
+                <div className="tabular text-[12px] leading-[14px] font-bold">{spent}</div>
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="absolute flex items-start justify-between gap-2" style={{ top: inset - 2, left: inset, right: inset }}>
+              {/* A drawn face prints its bank in the bank's own colour where the drawing did, and nothing top-right. */}
+              <div className="min-w-0 truncate font-bold tracking-wide" style={faced && art?.bank ? { color: art.bank, textShadow: 'none' } : undefined}>
+                {bank}
+              </div>
+              {figure !== undefined && <FaceFigure figure={figure} md={md} />}
+            </div>
+          )}
           {(chip || contactless) && (
             <div className={cx('absolute flex items-center gap-2', portrait ? 'top-[34%]' : 'top-[37%]')} style={{ left: inset }}>
               {chip && <Chip kind={chip} md={md} id={id} />}

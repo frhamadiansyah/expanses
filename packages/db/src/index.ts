@@ -95,6 +95,7 @@ export * from './repos/business-income';
 export * from './repos/kmk-rates';
 export * from './repos/expense-templates';
 export * from './repos/activity';
+export * from './repos/card-fee-waiver';
 export * from './repos/sinking-actions';
 export * from './repos/sinking-funds';
 export * from './repos/sinking-views';

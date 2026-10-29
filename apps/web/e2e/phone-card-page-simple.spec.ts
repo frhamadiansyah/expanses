@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
-import { cardPage, saveCardTerms, startPlan, setUpRewardsByHand } from './card-section';
+import { cardPage, saveCardTerms, showCardBack, startPlan, setUpRewardsByHand } from './card-section';
 
 const SHOTS = '/private/tmp/claude-501/-Users-frhamadiansyah-Documents-Projects-Expanses/17ecd7cc-b713-4f21-b1a9-9a90ded56208/scratchpad';
 
@@ -24,11 +24,11 @@ test('the card page keeps the tile, the buttons and the latest; fee, rewards and
   await page.goto('/wallet');
   await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^Simple Card(,|$)/ }).click();
 
-  // The card page: no fee, rewards or points rows; no Instalments box while there is no plan.
+  // The card page: no fee, rewards or points rows (the points are on the card's back); no Instalments box while there is no plan.
+  await showCardBack(page);
   await expect(page.getByTestId('tile-left-to-pay')).toContainText('Owed now');
   await expect(page.getByTestId('card-annual-fee')).toHaveCount(0);
   await expect(page.getByTestId('card-rewards-setup')).toHaveCount(0);
-  await expect(page.getByTestId('tile-points')).toHaveCount(0);
   await expect(page.getByTestId('this-statement-points')).toHaveCount(0);
   await expect(page.getByTestId('card-instalments')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Add a plan' })).toHaveCount(0);
@@ -109,6 +109,7 @@ test('a plan added and removed from the Instalments page shows and hides the box
   await expect(page.getByTestId('card-instalment')).toHaveCount(0);
   await page.goBack();
   await page.goBack();
+  await showCardBack(page);
   await expect(page.getByTestId('tile-left-to-pay')).toBeVisible();
   await expect(page.getByTestId('card-instalments')).toHaveCount(0);
 });
