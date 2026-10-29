@@ -339,6 +339,7 @@ async function lineOf(db: Db, ws: WorkspaceContext, event: AuditEvent, undone: R
   const tail = async (): Promise<boolean> => gone || (await hasReplacement(db, txId));
 
   const op = event.src === 'sync' ? (event.op === 'void' ? 'delete' : typeof event.payload.replacesTransactionId === 'string' ? 'edit' : 'create') : event.op;
+  const adjusting = op === 'adjust';
 
   if (op === 'delete') {
     // A row that was deleted and is not void any more has been put back by other means.
@@ -347,8 +348,8 @@ async function lineOf(db: Db, ws: WorkspaceContext, event: AuditEvent, undone: R
     return { ...base, kind: 'delete', group: 'transactions', title: `${now.description} deleted`, subtitle: figureLine(now), who, state, undo: state === 'open' ? { kind: 'delete', transactionId: txId } : null };
   }
 
-  if (op === 'create' || op === 'payment') {
-    let title = `${now.description} added`;
+  if (op === 'create' || op === 'payment' || adjusting) {
+    let title = adjusting ? `${typeof event.payload.accountName === 'string' ? `${event.payload.accountName} ` : ''}${now.description === 'Counted cash' ? 'counted' : 'balance adjusted'}` : `${now.description} added`;
     if (op === 'payment') {
       const [bill] = await db.values<[string]>(sql`SELECT name FROM expense_templates WHERE id = ${String(event.payload.templateId ?? now.templateId ?? '')}`);
       title = `${bill?.[0] ?? now.description} paid`;
