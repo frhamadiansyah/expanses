@@ -153,6 +153,18 @@ describe('readCapture', () => {
     expect(plain.name?.value).toBe('PT TOKO BARU CONTOH');
   });
 
+  it("ends a merchant at the phone prefix it is run into: 'NAMA+62' is NAMA", () => {
+    const reading = readCapture(
+      notification('Nsb Yth. Transaksi Kartu Kredit Contoh 4410 di PT. TOKO BARU CONTOHNIA+62 sebesar IDR 150.500,00 pada 12/11/26 09:20:11 telah berhasil. Info: 1500000/+622100000000(LN)'),
+      WORDS,
+      null,
+    );
+    expect(reading.name?.value).toBe('PT. TOKO BARU CONTOHNIA');
+    expect(reading.amount?.value).toEqual({ minor: 150_500, currency: 'IDR' });
+    expect(reading.occurredAt?.value).toBe('2026-11-12T09:20');
+    expect(accountHintOf('Transaksi Kartu Kredit Contoh 4410 di PT. TOKO')).toBe('4410');
+  });
+
   it('reads a bank message end to end: the card, the day and time, the merchant and the amount', () => {
     const reading = readCapture(
       notification('Terima kasih utk trx kartukredit XXXX5512 tgl 03-09-2026 10:15:42 di TOKO ROTI CONTOH IDR48.300,00. Jika trx tidak Anda kenal, hub 10000', 'BANKCONTOH'),

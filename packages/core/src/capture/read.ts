@@ -426,8 +426,15 @@ function nameFrom(
   while (from < words.length && stop.has(words[from]!.toLowerCase())) from += 1;
   let to = from;
   while (to < words.length && NAME_TOKEN.test(words[to]!)) to += 1;
-  if (to === from) return null;
-  const value = words.slice(from, to).join(' ').trim();
+  // A merchant run into a phone prefix ("NIA+62") ends where the plus begins: the word before it is still the name's.
+  let tail = '';
+  if (to < words.length) {
+    const cut = words[to]!.indexOf('+');
+    const before = cut > 0 && /^\+\d/.test(words[to]!.slice(cut)) ? words[to]!.slice(0, cut) : '';
+    if (before !== '' && NAME_TOKEN.test(before)) tail = before;
+  }
+  if (to === from && tail === '') return null;
+  const value = [...words.slice(from, to), ...(tail ? [tail] : [])].join(' ').trim();
   if (value === '') return null;
   return { value, confidence: 80, line: units[at]!.line };
 }
