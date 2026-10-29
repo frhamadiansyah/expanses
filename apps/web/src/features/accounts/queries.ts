@@ -1,5 +1,5 @@
 import { isoDate } from '@expanses/core';
-import { listTransactions, openingsOf, ownerScope } from '@expanses/db';
+import { listCountedFrom, listTransactions, openingsOf, ownerScope } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { daysBefore } from './balance-series';
@@ -19,14 +19,25 @@ export function useOpenings(accountIds: readonly string[]) {
   return useQuery({ queryKey: ['openings', ws.workspaceId, ids.join(',')], queryFn: () => openingsOf(database, ws, ids) });
 }
 
+/** The "As of" day each account opened at nothing was given (0107), by account id. */
+export function useCountedFrom() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['counted-from', ws.workspaceId], queryFn: () => listCountedFrom(database, ws) });
+}
+
 /**
- * The day an account's balance is counted from: its opening entry's date, or — an account opened at nothing has no
- * opening entry — the day it was added. A purchase dated before it starts out as a past purchase.
+ * The day an account's balance is counted from: its opening entry's date; or — an account opened at nothing has no
+ * opening entry — the day chosen for it (`counted_from`), else the day it was added. A purchase dated before it
+ * starts out as a past purchase.
  */
 export function useOpeningDay(account: { id: string; createdAt?: string | null } | undefined | null): string | null {
   const openings = useOpenings(account ? [account.id] : []);
+  const counted = useCountedFrom();
   if (!account) return null;
-  return openings.data?.[account.id]?.occurredOn ?? (openings.isSuccess && account.createdAt ? account.createdAt.slice(0, 10) : null);
+  const opened = openings.data?.[account.id]?.occurredOn;
+  if (opened) return opened;
+  if (!openings.isSuccess || !counted.isSuccess) return null;
+  return counted.data[account.id] ?? (account.createdAt ? account.createdAt.slice(0, 10) : null);
 }
 
 /** How many rows an account's page lists under Recent; See all opens the rest in the ledger. */

@@ -35,6 +35,7 @@ import { cardPostings, cards } from '../schema-cards';
 import { draftTransactions } from '../schema-drafts';
 import { cardStatementSettings, type StatementLinkKind, statementChecks, statementLinks } from '../schema-statements';
 import { ensureSystemAccountTx, systemAccountId } from './accounts';
+import { recordActivityTx } from './activity-log';
 import { ensureCategoryByKeyTx } from './categories';
 import { cardTopsUpWallet, TOP_UP_KEY } from './money-in';
 import { confirmDraftTx, listDrafts } from './drafts';
@@ -875,9 +876,11 @@ export async function recordStatementCheck(
     } else if (standing?.status === 'posted' && (standingAmount !== total || standing.description !== description || standing.externalRef !== paymentsRef)) {
       const id = await replaceTransactionTx(tx, ws, priorAdjustment!.transactionId, { occurredOn: period.end, description, lines: adjustmentLines, externalRef: paymentsRef, excludedFromReport: true });
       await link(id, 'payments-untracked');
+      await recordStatementAdjustTx(tx, ws, id, cardAccountId);
     } else if (standing?.status !== 'posted' && count > 0) {
       const id = await postTransactionTx(tx, ws, { occurredOn: period.end, description, lines: adjustmentLines, externalRef: paymentsRef, excludedFromReport: true });
       await link(id, 'payments-untracked');
+      await recordStatementAdjustTx(tx, ws, id, cardAccountId);
     }
 
     // What the statement does not show: the owner's answer for each, and nothing for one unanswered. A tied
@@ -926,8 +929,8 @@ export async function recordStatementCheck(
       const [name] = await tx.select({ name: accounts.name }).from(accounts).where(eq(accounts.id, cardAccountId));
       const input = { occurredOn: bridgeOn, description: `Balance before the checked statements: ${name?.name ?? ''}`.trim(), lines, externalRef: bridgeRefOf(cardAccountId) };
       if (bridge && wanted === 0) await voidTransactionTx(tx, ws, bridge.id);
-      else if (bridge && wanted !== bridgeOwed) await replaceTransactionTx(tx, ws, bridge.id, input);
-      else if (!bridge && wanted !== 0) await postTransactionTx(tx, ws, input);
+      else if (bridge && wanted !== bridgeOwed) await recordStatementAdjustTx(tx, ws, await replaceTransactionTx(tx, ws, bridge.id, input), cardAccountId);
+      else if (!bridge && wanted !== 0) await recordStatementAdjustTx(tx, ws, await postTransactionTx(tx, ws, input), cardAccountId);
     }
 
     // Links to what a correction or a deletion replaced go: the check names what stands.
@@ -942,6 +945,12 @@ export async function recordStatementCheck(
       .where(eq(statementChecks.id, checkId));
     return { checkId, status, differenceMinor };
   });
+}
+
+/** The Activity page's line for a balancing row a statement check posted: read-only, as the check stands on it. */
+async function recordStatementAdjustTx(tx: Tx, ws: WorkspaceContext, transactionId: string, cardAccountId: string): Promise<void> {
+  const [card] = await tx.select({ name: accounts.name }).from(accounts).where(eq(accounts.id, cardAccountId));
+  await recordActivityTx(tx, ws, 'adjust', transactionId, { accountId: cardAccountId, accountName: card?.name ?? '', statement: true });
 }
 
 /**

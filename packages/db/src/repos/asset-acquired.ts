@@ -213,3 +213,41 @@ export async function changeOpeningDate(database: Database, ws: WorkspaceContext
     });
   });
 }
+
+const countedColumn = new WeakMap<object, boolean>();
+async function countedColumnExists(tx: Db): Promise<boolean> {
+  if (countedColumn.get(tx)) return true;
+  const rows = await tx.values<[number]>(sql`SELECT 1 FROM pragma_table_info('accounts') WHERE name = 'counted_from'`);
+  if (rows.length > 0) countedColumn.set(tx, true);
+  return rows.length > 0;
+}
+
+/**
+ * The "As of" day of each account opened at nothing (0107), by account id: only the accounts that have one are listed.
+ * Read by name, as card_tier is: a database stopped before 0107 has no such column and there no account has a day.
+ */
+export async function listCountedFrom(database: Database, ws: WorkspaceContext): Promise<Record<string, string>> {
+  if (!(await countedColumnExists(database.db))) return {};
+  const rows = await database.db.values<[string, string]>(
+    sql`SELECT id, counted_from FROM accounts WHERE workspace_id = ${ws.workspaceId} AND counted_from IS NOT NULL`,
+  );
+  return Object.fromEntries(rows);
+}
+
+/**
+ * Sets the day a money account with no opening entry is counted from, or clears it with null. Only the default for
+ * new purchases follows (one dated before it starts out past); nothing is posted, recounted or rewritten. An account
+ * that has an opening entry keeps its day there (`changeOpeningDate`), so it is refused here.
+ */
+export async function setCountedFrom(database: Database, ws: WorkspaceContext, accountId: string, on: string | null, today: string): Promise<void> {
+  if (on !== null) {
+    if (!DAY.test(on)) throw new AssetError('That is not a date');
+    if (on > today) throw new AssetError('It cannot be counted from after today');
+  }
+  await database.transaction(async (tx) => {
+    await assertAccountInWorkspace(tx, ws, accountId, 'Account');
+    if (await openingOfTx(tx, ws, accountId)) throw new AssetError('Its day is the opening entry’s: change that one');
+    if (!(await countedColumnExists(tx))) throw new AssetError('This database cannot keep that yet');
+    await tx.run(sql`UPDATE accounts SET counted_from = ${on} WHERE id = ${accountId}`);
+  });
+}

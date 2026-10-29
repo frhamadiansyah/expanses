@@ -1,6 +1,7 @@
 import { type CaptureLine, expenseLines, type StatementPeriod, transferLines } from '@expanses/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  activityOf,
   addCard,
   type CheckDecisions,
   type CheckDraftRow,
@@ -709,5 +710,27 @@ describe('the Track card payments setting', () => {
     expect(await getTrackPayments(h.database, h.card.id)).toBe(true);
     await setTrackPayments(h.database, h.card.id, false);
     expect(await getTrackPayments(h.database, h.card.id)).toBe(false);
+  });
+});
+
+describe('the Activity page after a check', () => {
+  const lines = [['12MAY', 'TOKO ALFA', '100,000'], ['20MAY', 'PAYMENT THANK YOU', '50,000CR']] as Printed[];
+
+  it('lists the balancing row for payments not tracked as the statement adjusted, and cannot undo it', async () => {
+    const h = await household();
+    const prepared = await h.prepare([image(lines, { previous: '0', closing: '50,000' })]);
+    await recordStatementCheck(h.database, h.ws, { ...prepared, rows: categorised(prepared.rows, h.groceries) }, NO_DECISIONS);
+    const adjusted = (await activityOf(h.database, h.ws, {})).filter((l) => l.title.endsWith('statement adjusted'));
+    expect(adjusted).toHaveLength(1);
+    expect(adjusted[0]).toMatchObject({ state: 'cannot', undo: null, group: 'transactions' });
+    expect(adjusted[0]!.title).toMatch(/^.+ statement adjusted$/);
+    expect(adjusted[0]!.title).not.toMatch(/counted|balance adjusted/);
+  });
+
+  it('a check with nothing to balance leaves no such line', async () => {
+    const h = await household();
+    const prepared = await h.prepare([image([['12MAY', 'TOKO ALFA', '100,000']], { previous: '0', closing: '100,000' })]);
+    await recordStatementCheck(h.database, h.ws, { ...prepared, rows: categorised(prepared.rows, h.groceries) }, NO_DECISIONS);
+    expect((await activityOf(h.database, h.ws, {})).filter((l) => l.title.endsWith('statement adjusted'))).toHaveLength(0);
   });
 });

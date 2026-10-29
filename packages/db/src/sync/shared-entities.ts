@@ -551,8 +551,8 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
  */
 export const NEVER_SYNCED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   books: ['workspace_id', 'kind', 'sort_order', 'created_at'],
-  // number_last4 (0080), for_spending (0086) and card_tier (0087) are a money account's; a category never has any.
-  accounts: ['workspace_id', 'valuation_mode', 'created_at', 'number_last4', 'for_spending', 'card_tier'],
+  // number_last4 (0080), for_spending (0086) and card_tier (0087) and counted_from (0107) are a money account's; a category never has any.
+  accounts: ['workspace_id', 'valuation_mode', 'created_at', 'number_last4', 'for_spending', 'card_tier', 'counted_from'],
   budgets: ['workspace_id', 'created_at', 'updated_at'],
   budget_overrides: ['workspace_id'],
   budget_frequencies: ['workspace_id'],

@@ -349,13 +349,17 @@ async function lineOf(db: Db, ws: WorkspaceContext, event: AuditEvent, undone: R
   }
 
   if (op === 'create' || op === 'payment' || adjusting) {
-    let title = adjusting ? `${typeof event.payload.accountName === 'string' ? `${event.payload.accountName} ` : ''}${now.description === 'Counted cash' ? 'counted' : 'balance adjusted'}` : `${now.description} added`;
+    // A statement check's own balancing row: it stands for the statement's figures, so voiding it alone would leave the check saying reconciled.
+    const checked = adjusting && event.payload.statement === true;
+    let title = checked
+      ? `${typeof event.payload.accountName === 'string' ? `${event.payload.accountName} ` : ''}statement adjusted`
+      : adjusting ? `${typeof event.payload.accountName === 'string' ? `${event.payload.accountName} ` : ''}${now.description === 'Counted cash' ? 'counted' : 'balance adjusted'}` : `${now.description} added`;
     if (op === 'payment') {
       const [bill] = await db.values<[string]>(sql`SELECT name FROM expense_templates WHERE id = ${String(event.payload.templateId ?? now.templateId ?? '')}`);
       title = `${bill?.[0] ?? now.description} paid`;
     }
     const open = !done && !(await tail());
-    const state: ActivityState = done ? 'undone' : open ? 'open' : 'changed';
+    const state: ActivityState = done ? 'undone' : open ? (checked ? 'cannot' : 'open') : 'changed';
     return {
       ...base,
       kind: op === 'payment' ? 'payment' : 'create',
@@ -364,7 +368,7 @@ async function lineOf(db: Db, ws: WorkspaceContext, event: AuditEvent, undone: R
       subtitle: figureLine(now),
       who,
       state,
-      undo: open ? { kind: 'remove', transactionId: txId } : null,
+      undo: open && !checked ? { kind: 'remove', transactionId: txId } : null,
       transactionId: gone ? null : txId,
     };
   }
