@@ -30,7 +30,10 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
   await page.getByLabel('Rule name').fill('5x dining');
   await page.getByLabel('Points', { exact: true }).fill('5');
   await page.getByLabel('Per spend').fill('2500');
-  await page.getByLabel('Only these categories').selectOption([{ label: 'Food and beverage (all)' }]);
+  await page.getByTestId('counts-row').click();
+  await page.getByRole('checkbox', { name: 'Food and beverage', exact: true }).click();
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByTestId('counts-row')).toContainText('Food and beverage');
   await page.getByLabel('Priority').fill('10');
   await page.getByLabel('Bonus cap: spend per cycle').fill('3000000');
   await page.getByRole('button', { name: 'Save rule' }).click();
