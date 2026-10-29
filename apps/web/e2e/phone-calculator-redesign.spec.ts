@@ -34,6 +34,13 @@ test('the bar over the keyboard offers last month, the 3-month average and the y
   await expect(yearly.getByRole('option', { name: 'Last month × 12, 14.400.000' })).toBeVisible();
   await yearly.getByRole('option', { name: 'Last month × 12, 14.400.000' }).click();
   await expect(page.getByLabel('Yearly spending in retirement', { exact: true })).toHaveValue('14.400.000');
+
+  // Life cover: the yearly amount the family needs takes the same bar.
+  await page.goto('/calculators/life-cover');
+  await page.getByLabel('Yearly amount the family needs', { exact: true }).click();
+  const family = page.getByRole('listbox', { name: 'Spending to fill from' });
+  await family.getByRole('option', { name: 'Last month × 12, 14.400.000' }).click();
+  await expect(page.getByLabel('Yearly amount the family needs', { exact: true })).toHaveValue('14.400.000');
 });
 
 test('a cost swipes left to delete', async ({ page }) => {
