@@ -436,7 +436,7 @@ describe('what is not worth a draft', () => {
       const [draft] = await listDrafts(database, ws, 'pending');
       expect(draft).toMatchObject({ amountMinor: 99_500, kind: 'expense', accountId: card.id });
       expect(draft!.description).toBe('PT. TOKO CONTOH');
-      expect(await listSources(database.db)).toMatchObject([{ keyKind: 'app', key: 'Shared text', label: 'Shared text' }]);
+      expect(await listSources(database)).toMatchObject([{ keyKind: 'app', key: 'Shared text', label: 'Shared text' }]);
     });
 
     it('shared twice makes one draft', async () => {
