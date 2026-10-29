@@ -11,7 +11,7 @@ import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '..
 import { cx, ErrorBox } from '../../ui';
 import { InsetGroup, PickerRow, PushedTitle, ReadOnlyRow, SCREEN, SubmitRow, TextRow, DestructiveRow } from '../../ui/native';
 import { showToast } from '../../ui/Toast';
-import { useOpenings } from '../accounts/queries';
+import { useOpeningDay } from '../accounts/queries';
 import { useCards } from '../cards/card-queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { DateRow } from './CardRows';
@@ -84,7 +84,7 @@ export function PasteListPage() {
   const payer = chosen ?? carried ?? payable[0] ?? null;
   const payerAccount = accounts.find((account) => account.id === payer?.accountId);
   // Where the payer's balance is counted from: a line dated before it is posted as a past purchase.
-  const payerOpening = useOpenings(payerAccount ? [payerAccount.id] : []);
+  const payerOpeningDay = useOpeningDay(payerAccount);
   const currency = payerAccount?.currency ?? ws.baseCurrency;
   const payerName = payer ? (payer.cardId ? `${payer.accountName} ···· ${payer.last4 ?? '????'}` : payer.accountName) : '';
 
@@ -126,7 +126,7 @@ export function PasteListPage() {
           rates[day] = found.rates;
         }
       }
-      const inputs = purchaseInputs(rows, { account: payerAccount, cardId: payer.cardId }, accounts, uncategorised, (day) => rates[day], payerOpening.data?.[payerAccount.id]?.occurredOn ?? null);
+      const inputs = purchaseInputs(rows, { account: payerAccount, cardId: payer.cardId }, accounts, uncategorised, (day) => rates[day], payerOpeningDay);
       // One database transaction: the whole list lands or none of it does.
       await postTransactions(database, ws, inputs);
       await invalidate();

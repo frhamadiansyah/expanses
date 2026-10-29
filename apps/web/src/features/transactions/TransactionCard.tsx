@@ -65,7 +65,7 @@ import { amountRowText, chargedRowText, feeRowText, goalRowText, holdingFace, ho
 import { DateRow, NoteRow } from './CardRows';
 import { CategoryPicker } from './CategoryPicker';
 import { ChoiceSheet } from './ChoiceSheet';
-import { useOpenings } from '../accounts/queries';
+import { useOpenings, useOpeningDay } from '../accounts/queries';
 import { Chevron, FieldRow, FormRow, FormRows, MoneyFieldRow, ROW_BODY, RowGlyph, RowLead, SelectFormRow } from './FormRow';
 import { MoreDetails } from './MoreDetails';
 import { NoteSuggestions } from './NoteSuggestions';
@@ -767,8 +767,8 @@ function CardBody({
    */
   const moneyPaying = payingAccount !== undefined && payingAccount.kind === 'asset' && SPENDABLE_SUBTYPES.includes(payingAccount.subtype);
   const offersPast = (draft.mode === 'expense' || draft.mode === 'income') && moneyPaying && !expenseTopUp && !accountsLocked;
-  const moneyOpening = useOpenings(offersPast ? [payingAccount!.id] : []);
-  const openedOn = offersPast ? (moneyOpening.data?.[payingAccount!.id]?.occurredOn ?? null) : null;
+  const moneyOpeningDay = useOpeningDay(offersPast ? payingAccount : null);
+  const openedOn = offersPast ? moneyOpeningDay : null;
   const savedPast = useQuery({
     queryKey: ['past-purchase', ws.workspaceId, initial?.id ?? ''],
     enabled: !!initial && offersPast,

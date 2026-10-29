@@ -19,6 +19,16 @@ export function useOpenings(accountIds: readonly string[]) {
   return useQuery({ queryKey: ['openings', ws.workspaceId, ids.join(',')], queryFn: () => openingsOf(database, ws, ids) });
 }
 
+/**
+ * The day an account's balance is counted from: its opening entry's date, or — an account opened at nothing has no
+ * opening entry — the day it was added. A purchase dated before it starts out as a past purchase.
+ */
+export function useOpeningDay(account: { id: string; createdAt?: string | null } | undefined | null): string | null {
+  const openings = useOpenings(account ? [account.id] : []);
+  if (!account) return null;
+  return openings.data?.[account.id]?.occurredOn ?? (openings.isSuccess && account.createdAt ? account.createdAt.slice(0, 10) : null);
+}
+
 /** How many rows an account's page lists under Recent; See all opens the rest in the ledger. */
 export const RECENT_LIMIT = 5;
 

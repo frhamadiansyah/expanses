@@ -10,7 +10,7 @@ import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '..
 import { Button, cx, Empty, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, LargeTitle, PickerRow, SCREEN, SelectRow, TextRow } from '../../ui/native';
 import { showToast } from '../../ui/Toast';
-import { useOpenings } from '../accounts/queries';
+import { useOpeningDay } from '../accounts/queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { DateRow } from '../transactions/CardRows';
 import { CategoryPicker } from '../transactions/CategoryPicker';
@@ -92,7 +92,7 @@ export function ListCheckPage() {
 
 function ListBody({ account, accounts, batch }: { account: AccountRow; accounts: AccountRow[]; batch?: string }) {
   const { database, ws } = useApp();
-  const opening = useOpenings([account.id]);
+  const openingDay = useOpeningDay(account);
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
@@ -291,7 +291,7 @@ function ListBody({ account, accounts, batch }: { account: AccountRow; accounts:
           rates[day] = found.rates;
         }
       }
-      const inputs = listInputs(newRows, { id: account.id, currency }, uncategorised, (day) => rates[day], opening.data?.[account.id]?.occurredOn ?? null);
+      const inputs = listInputs(newRows, { id: account.id, currency }, uncategorised, (day) => rates[day], openingDay);
       // One database transaction: all of the ticked rows land or none of them does.
       await postTransactions(database, ws, inputs);
       await invalidate();

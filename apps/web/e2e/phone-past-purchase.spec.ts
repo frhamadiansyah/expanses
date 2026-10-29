@@ -119,3 +119,18 @@ test('the account settings show the day its balance is counted from, and moving 
   await page.goto('/transactions?month=2026-09');
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Noodle Stall' })).toHaveCount(1);
 });
+
+test('an account opened at nothing counts from the day it was added', async ({ page }) => {
+  await openAccount(page, { subtype: 'ewallet', name: 'GoPay Nol', balance: '0' });
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  await openAmount(form);
+  await fillAmount(page, form, '41000');
+  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await choosePayment(page, 'GoPay Nol');
+  await form.getByLabel('Date').fill('2026-09-10');
+  await expect(form.getByRole('button', { name: 'Past purchase' })).toHaveAttribute('aria-pressed', 'true');
+  await form.getByLabel('Date').fill('2026-09-20');
+  await expect(form.getByRole('button', { name: 'Past purchase' })).toHaveAttribute('aria-pressed', 'false');
+});
