@@ -45,11 +45,11 @@ export async function setAssumption(page: Page, label: 'Cost growth a year' | 'E
 }
 
 /**
- * A goal form's currency tag, tapped, and a currency chosen from the list that opens: the tag sits on the cost row (or,
- * for a goal counted in months, on the standing amount row).
+ * A goal form's currency, tapped, and a currency chosen from the list that opens: the grey code sits on the cost row
+ * (or, for a goal counted in months, a Currency row sits beside Assumptions).
  */
 export async function pickGoalCurrency(page: Page, code: string) {
-  await page.getByRole('button', { name: /^Currency: [A-Z]{3}$/ }).first().click();
+  await page.getByRole('button', { name: /^Currency:? [A-Z]{3}$/ }).first().click();
   await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: new RegExp(`^${code} `) }).first().click();
 }
 
