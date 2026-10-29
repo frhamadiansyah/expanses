@@ -1,5 +1,5 @@
 import { test } from '@playwright/test';
-import { cardWithPurchase, flipHero, refundFlow, waiverFlow } from './card-spend-bonus';
+import { cardWithPurchase, plasticSpendFlow, flipHero, refundFlow, waiverFlow } from './card-spend-bonus';
 
 /**
  * A card's hero is the card, turned over like a bank or e-wallet account: Owed now and the limit on the back, the
@@ -11,4 +11,8 @@ test('the card flips to Owed now; the Fee waiver challenge shows on the back; Fe
   await flipHero(page, 'Flip Card');
   await waiverFlow(page, 'Flip Card');
   await refundFlow(page, 'Flip Card');
+});
+
+test('each plastic card’s face says what that card spent this statement', async ({ page }) => {
+  await plasticSpendFlow(page);
 });

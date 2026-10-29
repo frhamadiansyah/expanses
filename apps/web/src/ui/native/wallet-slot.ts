@@ -12,7 +12,7 @@ export interface WalletSlot {
   width: number;
   height: number;
   /** Which of the account's plastic cards the raised card shows — the page's dots choose it. */
-  setShown: (face: { last4: string | null; holderName?: string | null } | null) => void;
+  setShown: (face: { last4: string | null; holderName?: string | null; spent?: string | null } | null) => void;
   /**
    * The back of the raised card, for a page that has something to show on it (an account's balance): the element it
    * portals into, null until the card has mounted it. A page with no back never touches it.

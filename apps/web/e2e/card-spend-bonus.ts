@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { openCard } from './accounts';
+import { addPlastic, openCard } from './accounts';
 import { addTransaction } from './add-transaction';
 import { cardPage, saveCardTerms, showCardBack } from './card-section';
 
@@ -42,6 +42,8 @@ export async function flipHero(page: Page, name: string) {
   await expect(page.getByRole('group', { name: 'Actions' }).getByRole('link')).toHaveText(['Spend', 'Points', 'Statement']);
   await expect(page.getByRole('heading', { name: 'Recent' })).toBeVisible();
   await expect(page.getByText('Spent this statement')).toHaveCount(0);
+  // One plastic card: nothing is printed top-right of its face.
+  await expect(page.getByTestId('face-spent')).toHaveCount(0);
   const front = (await raised.boundingBox())!;
 
   await turn.click();
@@ -145,4 +147,25 @@ export async function refundFlow(page: Page, name: string) {
   await cardPage(page, 'Settings');
   await expect(page.getByTestId('year-fee')).toContainText('Refunded');
   await expect(page.getByTestId('fee-waiver-row')).toContainText('None');
+}
+
+/** A credit card with a primary and a supplementary plastic: each one's face says what that card spent this statement. */
+export async function plasticSpendFlow(page: Page) {
+  await openCard(page, { name: 'Twin Card', bank: 'BCA', last4: '1467', statementDay: '31', dueDay: '15' });
+  await openWalletCard(page, 'BCA Twin Card');
+  await cardPage(page, 'Settings');
+  await addPlastic(page, '8802', 'Spouse');
+  await buy(page, 'BCA Twin Card ···· 1467', '120000');
+  await buy(page, 'BCA Twin Card ···· 8802', '450000');
+
+  await openWalletCard(page, 'BCA Twin Card');
+  const spent = page.getByTestId('face-spent');
+  // The primary leads; its own spend, small "Spent" over the figure.
+  await expect(spent).toContainText('Spent');
+  await expect(spent).toContainText('120.000');
+  await page.getByRole('button', { name: /^Show card ending 8802/ }).click();
+  await expect(spent).toContainText('450.000');
+  // The back is the whole account: both cards' spend is owed.
+  await showCardBack(page);
+  await expect(page.getByTestId('tile-unpaid-balance')).toContainText('570.000');
 }

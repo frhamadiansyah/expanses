@@ -1,6 +1,6 @@
 import { formatMinor, installmentSplit, minorToMajorString, parseMajor, transferLines } from '@expanses/core';
 import type { SpendLine } from '@expanses/core';
-import { type AccountRow, cardStatement, type CardRow, postTransaction } from '@expanses/db';
+import { type AccountRow, cardStatement, type CardRow, postTransaction, spendByPlastic } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight, Banknote, Gift, ReceiptText } from 'lucide-react';
 import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
@@ -217,9 +217,20 @@ export function CardHero({
     setFlippable?.(true);
     return () => setFlippable?.(false);
   }, [setFlippable]);
+  // What each plastic card spent this statement, said on its own face: only a credit card with several plastics.
+  const spendCycle = cp.current?.cycle ?? (cp.terms ? cycleBack(today, cp.terms.statementDay, 0) : null);
+  const several = !debit && cards.length > 1 && spendCycle !== null;
+  const byPlastic = useQuery({
+    queryKey: ['spend-by-plastic', ws.workspaceId, card.id, spendCycle?.start ?? '-', spendCycle?.end ?? '-', today],
+    enabled: several,
+    queryFn: () => spendByPlastic(database, ws, card.id, spendCycle!.start, spendCycle!.end),
+  });
+  // A purchase that names no card belongs to the primary.
+  const spentText =
+    several && shown && byPlastic.data ? formatMinor((byPlastic.data[shown.id] ?? 0) + (shown.isPrimary ? (byPlastic.data[''] ?? 0) : 0), currency) : null;
   useEffect(() => {
-    setSlotShown?.(shown ? { last4: shown.last4, holderName: shown.holderName } : null);
-  }, [setSlotShown, shown?.last4, shown?.holderName]);
+    setSlotShown?.(shown ? { last4: shown.last4, holderName: shown.holderName, spent: spentText } : null);
+  }, [setSlotShown, shown?.last4, shown?.holderName, spentText]);
   const limit = cp.terms?.creditLimitMinor ?? null;
   const plans = useInstallments(card.id);
   const holding = (plans.data ?? []).map((plan) => ({ plan, split: installmentSplit(plan, today) })).filter(({ split }) => split.unbilledMinor > 0);
