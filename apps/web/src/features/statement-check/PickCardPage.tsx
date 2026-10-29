@@ -17,8 +17,8 @@ import { holdStatementBatch } from './batch';
  * `/statement/shared?batch=<id>`: the batch the share sheet wrote, named by its `cicis://statement/<id>` link, or one
  * the app read itself (`capture/statements.ts`).
  */
-export function sharedStatementSearch(search: Record<string, unknown>): { batch?: string } {
-  return { batch: typeof search.batch === 'string' ? search.batch : undefined };
+export function sharedStatementSearch(search: Record<string, unknown>): { batch?: string; account?: string } {
+  return { batch: typeof search.batch === 'string' ? search.batch : undefined, account: typeof search.account === 'string' ? search.account : undefined };
 }
 
 /*
@@ -46,7 +46,7 @@ const dayMonth = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateStri
  * and opens it on that card's last statement cycle, at the reading step's end.
  */
 export function PickCardPage() {
-  const { batch = '' } = useSearch({ strict: false }) as { batch?: string };
+  const { batch = '', account: onForm = '' } = useSearch({ strict: false }) as { batch?: string; account?: string };
   const { database, ws } = useApp();
   const navigate = useNavigate();
   const accounts = useAccounts();
@@ -76,6 +76,8 @@ export function PickCardPage() {
   // Any account money is spent from, a card keeping its own check: a bank, a saving account or a wallet gets the list check.
   const others = moneyHolders(accounts.data).filter((a) => a.archivedAt === null && a.subtype !== 'cash' && canPayWith(a));
   const shots = images.data.length;
+  // Cards, then the rest; the account already on the form (the camera's way in) first of all.
+  const entries = [...cards, ...others].sort((x, y) => Number(y.id === onForm) - Number(x.id === onForm));
 
   return (
     <div className={SCREEN}>
@@ -84,35 +86,38 @@ export function PickCardPage() {
         <Empty>No account here yet. Add one, then share the screenshots again.</Empty>
       ) : (
         <InsetGroup header={`${shots} screenshot${shots === 1 ? '' : 's'} read on this phone`}>
-          {cards.map((card) => {
-            const cycle = cycleBack(today, statementDay.get(card.id) ?? 1, 1);
+          {entries.map((account) => {
+            const here = account.id === onForm;
+            if (account.subtype === 'credit_card') {
+              const cycle = cycleBack(today, statementDay.get(account.id) ?? 1, 1);
+              return (
+                <InsetRow
+                  key={account.id}
+                  testId="statement-card"
+                  icon={<CreditCard size={17} aria-hidden />}
+                  title={account.name}
+                  subtitle={`Statement ${dayMonth(cycle.start)} – ${dayMonth(cycle.end)}`}
+                  onClick={() => {
+                    const held = holdStatementBatch(images.data);
+                    void navigate({ to: '/cards/$cardId/check', params: { cardId: account.id }, search: { start: cycle.start, end: cycle.end, batch: held } });
+                  }}
+                />
+              );
+            }
             return (
               <InsetRow
-                key={card.id}
-                testId="statement-card"
-                icon={<CreditCard size={17} aria-hidden />}
-                title={card.name}
-                subtitle={`Statement ${dayMonth(cycle.start)} – ${dayMonth(cycle.end)}`}
+                key={account.id}
+                testId="statement-account"
+                icon={account.subtype === 'ewallet' || account.subtype === 'emoney' ? <Wallet size={17} aria-hidden /> : <Landmark size={17} aria-hidden />}
+                title={account.name}
+                subtitle={here ? `${SUBTYPE_LABELS[account.subtype]} · on the form` : SUBTYPE_LABELS[account.subtype]}
                 onClick={() => {
                   const held = holdStatementBatch(images.data);
-                  void navigate({ to: '/cards/$cardId/check', params: { cardId: card.id }, search: { start: cycle.start, end: cycle.end, batch: held } });
+                  void navigate({ to: '/statement/list', search: { account: account.id, batch: held } });
                 }}
               />
             );
           })}
-          {others.map((account) => (
-            <InsetRow
-              key={account.id}
-              testId="statement-account"
-              icon={account.subtype === 'ewallet' || account.subtype === 'emoney' ? <Wallet size={17} aria-hidden /> : <Landmark size={17} aria-hidden />}
-              title={account.name}
-              subtitle={SUBTYPE_LABELS[account.subtype]}
-              onClick={() => {
-                const held = holdStatementBatch(images.data);
-                void navigate({ to: '/statement/list', search: { account: account.id, batch: held } });
-              }}
-            />
-          ))}
         </InsetGroup>
       )}
       <p className="mx-[4px] mt-[-8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">

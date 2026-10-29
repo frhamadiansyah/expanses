@@ -77,6 +77,22 @@ export async function recognizePhotos(files: readonly File[]): Promise<CaptureLi
 }
 
 /**
+ * Several pictures read on the phone, one list of lines per picture (a statement's screenshots, not one receipt's
+ * pages). A picture that cannot be read is left out; null when none could be.
+ */
+export async function recognizeEach(files: readonly File[]): Promise<CaptureLine[][] | null> {
+  const out: CaptureLine[][] = [];
+  for (const file of files.filter((f) => f.type.startsWith('image/'))) {
+    try {
+      out.push((await native.recognizeImage({ base64: await base64Of(file) })).lines);
+    } catch {
+      // Left out: the others still count.
+    }
+  }
+  return out.length > 0 ? out : null;
+}
+
+/**
  * Reads a receipt photo on the phone (Apple's text recognition, nothing leaves the device). Null when it is not a
  * picture, when this device cannot read pictures, or when the picture holds no figure: the photo is attached either
  * way, and a receipt that could not be read simply fills nothing.

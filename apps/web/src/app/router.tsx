@@ -87,6 +87,7 @@ import { newTransactionSearch } from '../features/transactions/new-search';
 import { MoneyFlowPage, moneyFlowSearch } from '../features/transactions/MoneyFlow';
 import { PasteListPage } from '../features/transactions/PasteListPage';
 import { ReceiptSplitPage } from '../features/transactions/ReceiptSplitPage';
+import { ReceiptSplitStartPage } from '../features/transactions/ReceiptSplitStartPage';
 import { ActivityDetailPage } from '../features/activity/ActivityDetailPage';
 import { DefaultPaidWithPage } from '../features/account/DefaultPaidWithPage';
 import { ActivityPage } from '../features/activity/ActivityPage';
@@ -221,6 +222,8 @@ const routeTree = rootRoute.addChildren([
   }),
   // A restaurant bill divided by who had what, reached from With → By receipt: "receipt-split" is static too.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/receipt-split', component: ReceiptSplitPage }),
+  // The same split started from Account: who is sharing and the photo, then the pages above.
+  createRoute({ getParentRoute: () => rootRoute, path: '/transactions/receipt-split/start', component: ReceiptSplitStartPage }),
   // One transaction, whole.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId', component: ReceiptRoute }),
   // The card again, on one transaction — a phone's Edit, from the receipt or the row's swipe.

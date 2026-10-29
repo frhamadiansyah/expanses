@@ -71,11 +71,22 @@ export function ReceiptSplitPage() {
   const patchItem = (id: string, patch: Partial<MemoItem>) => setMemo({ ...memo, items: memo.items.map((item) => (item.id === id ? { ...item, ...patch } : item)) });
 
   const leave = (draft = form.draft) => {
-    holdForm({ draft, currency, reading: null });
+    holdForm({ ...form, draft, reading: null });
     returning.current = true;
     if (router.history.canGoBack()) router.history.back();
     else void navigate({ to: '/transactions/new' });
   };
+
+  // Started from Account: the bill becomes a blank New transaction to record, in place of this page in the history.
+  const fromAccount = form.origin === 'account';
+  const finish = () => {
+    const draft = withReceiptApplied(form.draft, memo, isoDate());
+    if (!fromAccount) return leave(draft);
+    holdForm({ ...form, draft, reading: null, recorded: true });
+    returning.current = true;
+    void navigate({ to: '/transactions/new', replace: true });
+  };
+  const finishLabel = fromAccount ? 'Record this purchase' : 'Use these amounts';
 
   const openItem = (item: MemoItem | null) => {
     setAmountError('');
@@ -111,7 +122,7 @@ export function ReceiptSplitPage() {
           title="Totals"
           back="Who had what"
           onBack={() => setStep('who')}
-          actions={[{ key: 'use', label: 'Use these amounts', glyph: <Check size={20} aria-hidden />, run: () => leave(withReceiptApplied(form.draft, memo, isoDate())) }]}
+          actions={[{ key: 'use', label: finishLabel, glyph: <Check size={20} aria-hidden />, run: finish }]}
         />
         <div className="space-y-3 md:max-w-2xl">
           <div className={cx(SURFACE, RULED)} data-testid="receipt-totals">
@@ -137,11 +148,11 @@ export function ReceiptSplitPage() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              leave(withReceiptApplied(form.draft, memo, isoDate()));
+              finish();
             }}
           >
             <InsetGroup>
-              <SubmitRow label="Use these amounts" testId="receipt-use" />
+              <SubmitRow label={finishLabel} testId="receipt-use" />
             </InsetGroup>
           </form>
         </div>
@@ -153,7 +164,7 @@ export function ReceiptSplitPage() {
     <div className={SCREEN}>
       <PushedTitle
         title="Who had what"
-        back="With"
+        back={fromAccount ? 'Split a receipt' : 'With'}
         onBack={() => leave()}
         actions={[{ key: 'totals', label: 'Totals', glyph: <ArrowRight size={20} aria-hidden />, disabled: !ready, run: () => setStep('totals') }]}
       />

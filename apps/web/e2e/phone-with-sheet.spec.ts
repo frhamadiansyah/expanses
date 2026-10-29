@@ -34,14 +34,17 @@ test('With is one sideways row of people: pick, filter, and add a new name from 
   await dewi.click();
   await expect(dewi).toHaveAttribute('aria-pressed', 'false');
 
-  // Typing filters the row; a name nobody has is a dashed circle first, and Enter adds and picks it.
+  // Typing filters the row; a name nobody has shows nothing extra, and Enter adds it at the end, picked.
   const search = withSheet.getByLabel('Search or add a person');
   await search.fill('Ayu');
   await expect(dewi).toHaveCount(0);
-  await expect(withSheet.getByRole('button', { name: 'New person Ayu' })).toBeVisible();
+  await expect(withSheet.getByRole('button', { name: /^New person/ })).toHaveCount(0);
   await search.press('Enter');
   await expect(search).toHaveValue('');
   await expect(withSheet.getByRole('button', { name: 'Ayu', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(withSheet.getByRole('status')).toHaveText('Added Ayu');
+  await expect(withSheet.getByTestId('with-people').getByRole('button').last()).toHaveAccessibleName('Ayu');
+  await withSheet.screenshot({ path: `${process.env.SHOTS ?? test.info().outputDir}/with-after-add.png` });
   // A name already in the row is that person, not a second one.
   await search.fill('dewi');
   await expect(withSheet.getByRole('button', { name: /^New person/ })).toHaveCount(0);
