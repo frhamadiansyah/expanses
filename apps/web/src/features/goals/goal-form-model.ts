@@ -1,3 +1,5 @@
+import { formatMinor } from '@expanses/core';
+
 /**
  * The goal form's decisions that are not drawing: which accounts can still be added to Money set aside, what the
  * save writes for them, and whether the page may be saved yet.
@@ -35,6 +37,31 @@ export function setAsideWrites(eligibleIds: readonly string[], added: readonly s
     const typed = inGroup.has(accountId) ? text(accountId) : '';
     return isNoAmount(typed) ? { accountId, action: 'remove' as const, text: '' } : { accountId, action: 'save' as const, text: typed };
   });
+}
+
+/**
+ * The name a goal's only payment is saved under. The form shows no What row for one payment, so the payment is the
+ * goal itself and takes the goal's name. A saved goal's payment keeps a name of its own (one that is not the goal's
+ * saved name), so editing never renames what the goal page already shows.
+ */
+export function onlyPaymentName(goalName: string, stageName: string, savedGoalName: string | undefined): string {
+  if (savedGoalName !== undefined && stageName.trim() !== '' && stageName !== savedGoalName) return stageName;
+  return goalName.trim();
+}
+
+/** The Money set aside row's answer: "None", the total when the rows share a currency, otherwise how many accounts hold it. */
+export function setAsideSummary(entries: readonly { currency: string; minor: number }[]): string {
+  const held = entries.filter((entry) => entry.minor > 0);
+  if (held.length === 0) return 'None';
+  const currencies = new Set(held.map((entry) => entry.currency));
+  if (currencies.size === 1) return formatMinor(held.reduce((sum, entry) => sum + entry.minor, 0), held[0]!.currency);
+  return `${held.length} accounts`;
+}
+
+/** The Assumptions row's answer: "Growth 5% · Return 4%". A figure not typed yet reads as nothing. */
+export function assumptionsSummary(growth: string, expectedReturn: string): string {
+  const figure = (typed: string) => (typed.trim() === '' ? '0' : typed.trim());
+  return `Growth ${figure(growth)}% · Return ${figure(expectedReturn)}%`;
 }
 
 export interface StageText {

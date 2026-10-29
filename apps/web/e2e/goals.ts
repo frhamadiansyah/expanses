@@ -10,6 +10,60 @@ export async function openGoalForm(page: Page, template: string) {
   await page.getByLabel('Kind', { exact: true }).selectOption({ label: template });
 }
 
+/** The Assumptions row on a goal form, opened: the small sheet with Cost growth a year and Expected return a year. */
+export async function openAssumptions(page: Page) {
+  await page.getByRole('button', { name: /^Assumptions/ }).click();
+  const sheet = page.getByRole('dialog', { name: 'Assumptions' });
+  await expect(sheet).toBeVisible();
+  return sheet;
+}
+
+/** Puts the Assumptions sheet away again, so the fields behind it can be reached. */
+export async function closeAssumptions(page: Page) {
+  await page.getByRole('dialog', { name: 'Assumptions' }).getByRole('button', { name: 'Close' }).first().click();
+  await expect(page.getByRole('dialog', { name: 'Assumptions' })).toHaveCount(0);
+}
+
+/** One figure from the Assumptions sheet ('Cost growth a year' or 'Expected return a year'): opened, read, put away. */
+export async function assumption(page: Page, label: 'Cost growth a year' | 'Expected return a year') {
+  const sheet = await openAssumptions(page);
+  const value = await sheet.getByLabel(label, { exact: true }).inputValue();
+  await closeAssumptions(page);
+  return value;
+}
+
+/** Types a figure into the Assumptions sheet, one key at a time when asked, and puts the sheet away. */
+export async function setAssumption(page: Page, label: 'Cost growth a year' | 'Expected return a year', value: string, keys = false) {
+  const sheet = await openAssumptions(page);
+  const field = sheet.getByLabel(label, { exact: true });
+  if (keys) {
+    await field.click();
+    await field.press('ControlOrMeta+a');
+    await field.pressSequentially(value, { delay: 30 });
+  } else await field.fill(value);
+  await closeAssumptions(page);
+}
+
+/**
+ * A goal form's currency tag, tapped, and a currency chosen from the list that opens: the tag sits on the cost row (or,
+ * for a goal counted in months, on the standing amount row).
+ */
+export async function pickGoalCurrency(page: Page, code: string) {
+  await page.getByRole('button', { name: /^Currency: [A-Z]{3}$/ }).first().click();
+  await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: new RegExp(`^${code} `) }).first().click();
+}
+
+/** Adds a second (or later) payment through the sheet the Add a payment row opens, and saves it. */
+export async function addPayment(page: Page, payment: { what: string; cost: string; dueOn?: string }) {
+  await page.getByRole('button', { name: 'Add a payment' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Add a payment' });
+  await sheet.getByLabel('What', { exact: true }).fill(payment.what);
+  await sheet.getByLabel(/Cost today/).fill(payment.cost);
+  if (payment.dueOn) await sheet.getByLabel('Due by').fill(payment.dueOn);
+  await sheet.getByRole('button', { name: 'Save payment' }).click();
+  await expect(sheet).toHaveCount(0);
+}
+
 /**
  * The working behind a goal's amount. The pencil opens the goal's fields and the working together, and the row
  * inside it swaps the fields for the working — so this is one door, not two.

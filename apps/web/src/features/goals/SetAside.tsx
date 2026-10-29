@@ -134,7 +134,7 @@ function SetAsideRow({ state, account, position }: GroupChild & { state: SetAsid
  * Money set aside: only the accounts added, each a row, and one row to add another. Adding opens a sheet of the
  * accounts not yet in the group and lands on the new row's amount.
  */
-export function SetAsideGroup({ state }: { state: SetAsideState }) {
+export function SetAsideGroup({ state, header = 'Money set aside' }: { state: SetAsideState; header?: string }) {
   const [choosing, setChoosing] = useState(false);
   const { focus } = state;
   const rowCount = state.rows.length;
@@ -143,11 +143,11 @@ export function SetAsideGroup({ state }: { state: SetAsideState }) {
   }, [focus, rowCount]);
 
   if (state.eligible.length === 0) {
-    return <InsetGroup header="Money set aside" footer="No savings, cash or deposit account to set money aside in.">{[]}</InsetGroup>;
+    return <InsetGroup header={header} footer="No savings, cash or deposit account to set money aside in.">{[]}</InsetGroup>;
   }
   return (
     <>
-      <InsetGroup header="Money set aside" info="From savings, cash or a deposit. Holdings are tagged on each purchase instead.">
+      <InsetGroup header={header} info="From savings, cash or a deposit. Holdings are tagged on each purchase instead.">
         {[
           ...state.rows.map((account) => <SetAsideRow key={account.id} state={state} account={account} />),
           ...(state.addable.length > 0

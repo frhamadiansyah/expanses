@@ -200,6 +200,7 @@ test('the goal form says what is free for this goal, and how short a bigger figu
   await page.goto('/goals');
   const umrah = await goalCard(page, 'Umrah 2027');
   await editGoal(umrah);
+  await page.getByRole('button', { name: /^Funding/ }).click();
   // 5.000.000 free on Jenius plus Umrah's own 7.500.000 there, which the save replaces: 12.500.000.
   await page.getByRole('button', { name: 'About Jenius' }).click();
   await expect(page.getByText(/^Rp.12\.500\.000 free for this goal$/)).toBeVisible();

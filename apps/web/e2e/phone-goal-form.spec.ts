@@ -1,13 +1,13 @@
 import { expect, test } from '@playwright/test';
-import { addMoneyAccount, addSetAsideRow, goalCard, goalRow } from './set-aside';
-import { openGoalForm } from './goals';
+import { addMoneyAccount, addSetAsideRow, closeSetAsideRows, goalCard, goalRow } from './set-aside';
+import { addPayment, openGoalForm } from './goals';
 
 /*
  * The goal form as a page of the kit's own rows: ‹ at the left, ✓ at the right, the kind a row on the page, and
- * Money set aside only the accounts added.
+ * Funding only the accounts added.
  */
 
-test('a goal is made from the + on a full page: kind, name, a payment, an account row, ✓', async ({ page }) => {
+test('a goal is made from the + on a full page: kind, name, payments, an account row, ✓', async ({ page }) => {
   await addMoneyAccount(page, 'Jenius', 'savings', '20000000');
   await page.goto('/goals');
   await page.getByRole('button', { name: 'Add goal' }).first().click();
@@ -20,17 +20,22 @@ test('a goal is made from the + on a full page: kind, name, a payment, an accoun
   await page.getByLabel('Name', { exact: true }).fill('Lombok trip');
   // The ✓ waits for a figure.
   await expect(save).toBeDisabled();
-  await page.getByLabel(/Cost in today's money/).first().fill('4000000');
+  await page.getByLabel(/Cost today/).first().fill('4000000');
   await expect(save).toBeEnabled();
 
-  await page.getByRole('button', { name: 'Add a payment' }).click();
-  await page.getByLabel('What', { exact: true }).nth(1).fill('Hotel');
-  await page.getByLabel(/Cost in today's money/).nth(1).fill('2000000');
+  await addPayment(page, { what: 'Hotel', cost: '2000000' });
+  // Two payments: a row each, the first under the goal's name.
+  await expect(page.getByTestId('payment-row')).toHaveCount(2);
+  await expect(page.getByTestId('payment-row').first()).toContainText('Lombok trip');
+  await expect(page.getByTestId('payment-row').nth(1)).toContainText('Hotel');
 
-  // Only the rows added show: nothing is listed until an account is.
+  // Funding is one row on the form; the accounts are behind it, and nothing is listed until one is added.
+  await expect(page.getByRole('button', { name: /^Funding/ })).toContainText('None');
   await expect(page.getByTestId('set-aside-row')).toHaveCount(0);
   await addSetAsideRow(page, 'Jenius');
   await page.getByLabel('Jenius', { exact: true }).fill('1500000');
+  await closeSetAsideRows(page);
+  await expect(page.getByRole('button', { name: /^Funding/ })).toContainText('1.500.000');
 
   await save.click();
   await expect(page).toHaveURL(/\/goals$/);
@@ -45,7 +50,7 @@ test('set aside from a saved goal adds an account through the sheet, and a row c
   await addMoneyAccount(page, 'BCA', 'savings', '10000000');
   await page.goto('/goals');
   await openGoalForm(page, 'Wedding');
-  await page.getByLabel(/Cost in today's money/).first().fill('8000000');
+  await page.getByLabel(/Cost today/).first().fill('8000000');
   await page.getByRole('button', { name: 'Save goal' }).click();
   const card = await goalCard(page, 'Wedding');
 

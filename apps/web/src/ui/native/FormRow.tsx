@@ -19,6 +19,9 @@ import type { Tone } from './row';
 
 const LABEL = 'shrink-0 text-[17px] leading-[22px] md:text-[15px] md:leading-[20px] text-[var(--ph-ink)]';
 
+/** A currency tag on a money row: small, outlined, the quiet ink. */
+const TAG = 'ph-focus shrink-0 self-center rounded-[7px] border border-[var(--ph-hair)] px-[6px] py-[1px] text-[12px] leading-[16px] text-[var(--ph-ink-3)]';
+
 /** The inputs WebKit draws with a height of their own. */
 const DATE_TYPES = new Set(['date', 'time', 'datetime-local', 'month']);
 
@@ -151,6 +154,7 @@ export function TextRow({
   prefix,
   onPrefix,
   prefixLabel,
+  prefixTag = false,
   position,
   className,
   ...props
@@ -163,6 +167,8 @@ export function TextRow({
   /** Makes the prefix a button that does this — opening a currency list; `prefixLabel` is its accessible name. */
   onPrefix?: () => void;
   prefixLabel?: string;
+  /** Draws the prefix as a small outlined tag, always shown (a button with `onPrefix`, plain text without): a currency that is a property of the row. */
+  prefixTag?: boolean;
   /** Something between the label and the field, on the same line — a foreign balance's "@ rate". */
   middle?: ReactNode;
   /** A line always shown under the row: something the reader needs every time, such as what the row just decided. */
@@ -228,13 +234,22 @@ export function TextRow({
           // the first letter of the placeholder rather than trailing after it, as it would in a field that is
           // right-aligned across the whole row. The whole stretch to its right still focuses it.
           <span className="flex min-w-0 flex-1 cursor-text items-baseline justify-end gap-[6px]" onClick={(event) => event.target === event.currentTarget && field.current?.focus()}>
-            {prefix && onPrefix && (
+            {prefix && prefixTag && (
+              onPrefix ? (
+                <button type="button" aria-label={prefixLabel} onClick={onPrefix} className={TAG}>
+                  {prefix}
+                </button>
+              ) : (
+                <span className={TAG}>{prefix}</span>
+              )
+            )}
+            {prefix && onPrefix && !prefixTag && (
               <button type="button" aria-label={prefixLabel} onClick={onPrefix} className="ph-focus shrink-0 rounded text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">
                 {prefix}
               </button>
             )}
             {/* A plain prefix shows once something is typed, and stays when the field is left: an empty field shows only its placeholder. */}
-            {prefix && !onPrefix && filled && (
+            {prefix && !onPrefix && !prefixTag && filled && (
               <span aria-hidden className="shrink-0 text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">
                 {prefix}
               </span>

@@ -1,5 +1,5 @@
-import { bandHint, CURRENCIES, type GoalKind, groupedMajorString, groupTypedAmount, isoDate, monthsUntil, parseGroupedMajor, returnBandFor } from '@expanses/core';
-import { type GoalRow, goalIsFunded, saveGoal } from '@expanses/db';
+import { bandHint, type GoalKind, formatMinor, groupedMajorString, groupTypedAmount, isoDate, monthsUntil, parseGroupedMajor, parseMajor, returnBandFor } from '@expanses/core';
+import { type GoalRow, goalIsFunded, retagTrade, saveGoal } from '@expanses/db';
 import { useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
 import { type FormEvent, useEffect, useState } from 'react';
@@ -7,24 +7,18 @@ import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { type CornerAction, DestructiveRow, InsetGroup, InsetRow, PushedTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { type CornerAction, InsetGroup, InsetRow, PickerRow, PushedTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { CurrencySheet } from '../transactions/CurrencySheet';
+import { Sheet } from '../../app/Sheet';
 import { Calculator, calculatorKindOf } from './Calculator';
-import { canSaveGoal } from './goal-form-model';
+import { assumptionsSummary, canSaveGoal, onlyPaymentName, setAsideSummary } from './goal-form-model';
+import { applyTagChanges, fundingSummary, tagChanges, taggedIds } from './goal-tags';
+import { FundingSheet, taggable } from './FundingSheet';
+import { useTrades } from '../networth/queries';
+import { CostRow, costLine, DATE, dueByLine, PaymentSheet, type StageDraft } from './PaymentRows';
 import { GOAL_KIND_LABELS, GOAL_TEMPLATES, type GoalTemplate, prefilledReturnBps, templateDueOn, templateFor } from './goal-cards';
 import { useEarmarks, useGoalPlans } from './queries';
-import { SetAsideGroup, useSetAside } from './SetAside';
-
-interface StageDraft {
-  id?: string;
-  name: string;
-  amount: string;
-  months: string;
-  dueOn: string;
-  usesMonths: boolean;
-  paidOn: string | null;
-}
-
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
+import { useSetAside } from './SetAside';
 
 function draftFromTemplate(template: GoalTemplate, today: string, currency: string): StageDraft {
   return {
@@ -110,6 +104,32 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
   const [busy, setBusy] = useState(false);
   // The working opens in place of the fields: the goal's own page one step in, and Cancel brings the fields back.
   const [working, setWorking] = useState(false);
+  // Which payment's sheet is open ('new' for one being added), whether Assumptions is, and the currency list for a goal counted in months.
+  const [paymentOpen, setPaymentOpen] = useState<number | 'new' | null>(null);
+  const [assumptionsOpen, setAssumptionsOpen] = useState(false);
+  const [pickingCurrency, setPickingCurrency] = useState(false);
+  const [fundingOpen, setFundingOpen] = useState(false);
+  // A new goal exists from the moment it is created; a retry after a purchase was refused saves that goal again, not a second one.
+  const [createdId, setCreatedId] = useState<string | null>(null);
+  const goalIdNow = goal?.id ?? createdId ?? undefined;
+  // The purchases tagged to the goal: what it already had, plus what the Funding sheet added, less what it took away.
+  // Only ✓ writes them, once the goal exists.
+  const trades = useTrades().data ?? [];
+  const originalTags = goalIdNow ? taggable(trades).filter((trade) => trade.goalId === goalIdNow).map((trade) => trade.id) : [];
+  const [addedTags, setAddedTags] = useState<string[]>([]);
+  const [removedTags, setRemovedTags] = useState<string[]>([]);
+  const taggedNow = taggedIds(originalTags, addedTags, removedTags);
+  const tags = {
+    ids: taggedNow,
+    add: (id: string) => {
+      setAddedTags((was) => (was.includes(id) ? was : [...was, id]));
+      setRemovedTags((was) => was.filter((row) => row !== id));
+    },
+    remove: (id: string) => {
+      setRemovedTags((was) => (was.includes(id) ? was : [...was, id]));
+      setAddedTags((was) => was.filter((row) => row !== id));
+    },
+  };
 
   const template = GOAL_TEMPLATES.find((row) => row.kind === kind);
 
@@ -131,7 +151,29 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
   };
   const firstDue = stages[0]?.dueOn && DATE.test(stages[0].dueOn) ? stages[0].dueOn : today;
   const returnInfo = kind === 'emergency' || kind === 'retirement' ? 'What the money funding it should earn.' : bandHint(returnBandFor(monthsUntil(today, firstDue)));
-  const canSave = !busy && canSaveGoal(name, stages);
+  // One payment is the goal itself, so it is saved under the goal's name; with several, each keeps the name it was given.
+  const single = stages.length === 1;
+  const named = stages.map((stage) => (single ? { ...stage, name: onlyPaymentName(name, stage.name, goal?.name) } : stage));
+  const canSave = !busy && canSaveGoal(name, named);
+  const setAsideEntries = setAside.rows.map((account) => {
+    const currencyOfRow = setAside.currencyOf(account);
+    try {
+      const typed = setAside.textOf(account);
+      return { currency: currencyOfRow, minor: typed.trim() === '' ? 0 : parseMajor(typed, currencyOfRow) };
+    } catch {
+      return { currency: currencyOfRow, minor: 0 };
+    }
+  });
+  const blankPayment: StageDraft = { name: '', amount: '', months: '', dueOn: today, usesMonths: false, paidOn: null };
+
+  function savePayment(index: number | 'new', draft: StageDraft) {
+    if (index === 'new') {
+      // The first payment gets its name now that there is more than one, so each payment has a name.
+      setStages((rows) => [...rows.map((row, i) => (rows.length === 1 && i === 0 ? { ...row, name: onlyPaymentName(name, row.name, goal?.name) } : row)), draft]);
+      return;
+    }
+    setStage(index, draft);
+  }
 
   async function submit(event?: FormEvent) {
     event?.preventDefault();
@@ -140,7 +182,7 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
     setBusy(true);
     try {
       const goalId = await saveGoal(database, ws, {
-        id: goal?.id,
+        id: goalIdNow,
         name,
         kind,
         growthBps: Math.round(Number(growth.replace(',', '.')) * 100),
@@ -148,7 +190,7 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
         standingMonthlyMinor: standing.trim() === '' ? 0 : parseGroupedMajor(standing, currency),
         standingNote: standingNote.trim() || null,
         currency,
-        stages: stages.map((stage) => ({
+        stages: named.map((stage) => ({
           id: stage.id,
           name: stage.name,
           targetMinor: stage.usesMonths ? null : parseGroupedMajor(stage.amount, currency),
@@ -157,8 +199,14 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
           paidOn: stage.paidOn,
         })),
       });
+      setCreatedId(goalId);
       await setAside.write(goalId);
+      const { failed } = await applyTagChanges((tradeId, to) => retagTrade(database, ws, tradeId, to), goalId, tagChanges(originalTags, taggedNow));
       await invalidate();
+      if (failed.length > 0) {
+        // The goal is saved; the purchases refused are still tagged here, and ✓ again tries them once more.
+        throw new Error(`${failed.length === 1 ? 'A purchase' : `${failed.length} purchases`} could not be tagged: ${failed[0]!.message}`);
+      }
       goBack();
     } catch (e) {
       setError(e);
@@ -184,93 +232,83 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
       <ErrorBox error={error} />
       <form onSubmit={submit}>
         <InsetGroup>
-          <SelectRow label="Kind" info={template?.hint} value={kind} onChange={(e) => pickKind(e.target.value as GoalKind)} disabled={!!goal}>
-            {GOAL_TEMPLATES.map((row) => (
-              <option key={row.kind} value={row.kind}>
-                {row.label}
-              </option>
-            ))}
-            <option value="other">{GOAL_KIND_LABELS.other}</option>
-          </SelectRow>
-          <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Goal name" required />
-          <SelectRow
-            label="Currency"
-            info={funded ? 'Money is already counted toward this goal, so its currency is fixed.' : 'What the cost and the progress are counted in. Money in other currencies is converted at the day\'s rate.'}
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value)}
-            disabled={funded}
-          >
-            {CURRENCIES.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.code} — {c.name}
-              </option>
-            ))}
-          </SelectRow>
+          {[
+            <SelectRow key="kind" label="Kind" info={template?.hint} value={kind} onChange={(e) => pickKind(e.target.value as GoalKind)} disabled={!!goal}>
+              {GOAL_TEMPLATES.map((row) => (
+                <option key={row.kind} value={row.kind}>
+                  {row.label}
+                </option>
+              ))}
+              <option value="other">{GOAL_KIND_LABELS.other}</option>
+            </SelectRow>,
+            <TextRow key="name" label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Goal name" required />,
+            ...(single
+              ? [
+                  stages[0]!.usesMonths ? (
+                    <TextRow
+                      key="amount"
+                      label="Months of outgoings"
+                      prefix={currency}
+                      prefixTag
+                      onPrefix={funded ? undefined : () => setPickingCurrency(true)}
+                      prefixLabel={`Currency: ${currency}`}
+                      value={stages[0]!.months}
+                      onChange={(e) => setStage(0, { months: e.target.value })}
+                      inputMode="numeric"
+                      placeholder="Months"
+                    />
+                  ) : (
+                    <CostRow key="amount" stage={stages[0]!} currency={currency} funded={funded} onAmount={(amount) => setStage(0, { amount })} onCurrency={setCurrency} />
+                  ),
+                  <TextRow key="due" label="Due by" type="date" value={stages[0]!.dueOn} onChange={(e) => setStage(0, { dueOn: e.target.value })} />,
+                  <InsetRow key="add" label="Add a payment" title={<span className="text-[var(--ph-tint)]">＋ Add a payment</span>} chevron={false} onClick={() => setPaymentOpen('new')} />,
+                ]
+              : []),
+          ]}
         </InsetGroup>
 
-        {stages.map((stage, index) => (
-          <InsetGroup key={stage.id ?? index} header={index === 0 ? 'Payments' : `Payment ${index + 1}`} info={index === 0 ? 'Add a payment for each one the scheme asks for.' : undefined}>
+        {!single && (
+          <InsetGroup header="Payments" info="Add a payment for each one the scheme asks for.">
             {[
-              <TextRow key="what" label="What" value={stage.name} onChange={(e) => setStage(index, { name: e.target.value })} placeholder="What this payment is" required />,
-              stage.usesMonths ? (
-                <TextRow key="amount" label="Months of outgoings" value={stage.months} onChange={(e) => setStage(index, { months: e.target.value })} inputMode="numeric" placeholder="Months" />
-              ) : (
-                <TextRow
-                  key="amount"
-                  label="Cost in today's money"
-                  prefix={currency}
-                  value={stage.amount}
-                  onChange={(e) => setStage(index, { amount: groupTypedAmount(e.target.value, currency) })}
-                  inputMode="decimal"
-                  placeholder="Amount"
-                  required
+              ...stages.map((stage, index) => (
+                <InsetRow
+                  key={stage.id ?? index}
+                  testId="payment-row"
+                  title={stage.name}
+                  value={costLine(stage, currency)}
+                  subtitle={dueByLine(stage)}
+                  plain
+                  chevron={false}
+                  onClick={() => setPaymentOpen(index)}
                 />
-              ),
-              <TextRow key="due" label="Needed by" type="date" value={stage.dueOn} onChange={(e) => setStage(index, { dueOn: e.target.value })} />,
-              ...(stages.length > 1
-                ? [<DestructiveRow key="remove" label="Remove this payment" onClick={() => setStages((rows) => rows.filter((_, i) => i !== index))} />]
-                : []),
+              )),
+              <InsetRow key="add" label="Add a payment" title={<span className="text-[var(--ph-tint)]">＋ Add a payment</span>} chevron={false} onClick={() => setPaymentOpen('new')} />,
             ]}
           </InsetGroup>
-        ))}
+        )}
+
         <InsetGroup>
-          <InsetRow
-            label="Add a payment"
-            title="＋ Add a payment"
-            action
-            onClick={() => setStages((rows) => [...rows, { name: '', amount: '', months: '', dueOn: today, usesMonths: false, paidOn: null }])}
-          />
+          {[
+            <PickerRow key="assumptions" label="Assumptions" value={assumptionsSummary(growth, expectedReturn)} onOpen={() => setAssumptionsOpen(true)} />,
+            <PickerRow key="funding" label="Funding" value={fundingSummary(setAsideSummary(setAsideEntries), taggedNow.length)} placeholder="None" onOpen={() => setFundingOpen(true)} />,
+            // A standing amount (and its note) already saved on a goal stays editable; a new goal has no field for one.
+            ...(goal && goal.standingMonthlyMinor > 0
+              ? [
+                  <TextRow
+                    key="standing"
+                    label="Standing amount each month"
+                    prefix={currency}
+                    info="Optional. A transfer already made for this goal, outside monthly buys."
+                    value={standing}
+                    onChange={(e) => setStanding(groupTypedAmount(e.target.value, currency))}
+                    inputMode="decimal"
+                    placeholder="Amount"
+                  />,
+                ]
+              : []),
+            ...(goal?.standingNote ? [<TextRow key="note" label="What that transfer is" value={standingNote} onChange={(e) => setStandingNote(e.target.value)} placeholder="Standing transfer to the time deposit" />] : []),
+          ]}
         </InsetGroup>
-
-        <InsetGroup header="Growth">
-          <TextRow label="Cost growth a year" info="How fast this gets more expensive." suffix="%" value={growth} onChange={(e) => setGrowth(e.target.value)} inputMode="decimal" />
-          <TextRow
-            label="Expected return a year"
-            info={returnInfo}
-            suffix="%"
-            value={expectedReturn}
-            onChange={(e) => {
-              setExpectedReturn(e.target.value);
-              setReturnTyped(true);
-            }}
-            inputMode="decimal"
-          />
-        </InsetGroup>
-
-        <InsetGroup header="Already moving">
-          <TextRow
-            label="Standing amount each month"
-            prefix={currency}
-            info="Optional. A transfer already made for this goal, outside monthly buys."
-            value={standing}
-            onChange={(e) => setStanding(groupTypedAmount(e.target.value, currency))}
-            inputMode="decimal"
-            placeholder="Amount"
-          />
-          <TextRow label="What that transfer is" value={standingNote} onChange={(e) => setStandingNote(e.target.value)} placeholder="Standing transfer to the time deposit" />
-        </InsetGroup>
-
-        <SetAsideGroup state={setAside} />
 
         {/* For the goals whose amount is worked out rather than typed: the working is part of editing them. */}
         {goal && calculatorKindOf(kind) && goal.currency === ws.baseCurrency && currency === ws.baseCurrency && (
@@ -284,6 +322,40 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
           </InsetGroup>
         )}
       </form>
+
+      {paymentOpen !== null && (
+        <PaymentSheet
+          key={String(paymentOpen)}
+          initial={paymentOpen === 'new' ? blankPayment : { ...named[paymentOpen]! }}
+          isNew={paymentOpen === 'new'}
+          currency={currency}
+          funded={funded}
+          onCurrency={setCurrency}
+          onSave={(draft) => savePayment(paymentOpen, draft)}
+          onRemove={paymentOpen !== 'new' && stages.length > 1 ? () => setStages((rows) => rows.filter((_, i) => i !== paymentOpen)) : undefined}
+          onClose={() => setPaymentOpen(null)}
+        />
+      )}
+      {assumptionsOpen && (
+        <Sheet title="Assumptions" onClose={() => setAssumptionsOpen(false)} grouped>
+          <InsetGroup>
+            <TextRow label="Cost growth a year" info="How fast this gets more expensive." suffix="%" value={growth} onChange={(e) => setGrowth(e.target.value)} inputMode="decimal" />
+            <TextRow
+              label="Expected return a year"
+              info={returnInfo}
+              suffix="%"
+              value={expectedReturn}
+              onChange={(e) => {
+                setExpectedReturn(e.target.value);
+                setReturnTyped(true);
+              }}
+              inputMode="decimal"
+            />
+          </InsetGroup>
+        </Sheet>
+      )}
+      {fundingOpen && <FundingSheet goalId={goalIdNow} setAside={setAside} tags={tags} onClose={() => setFundingOpen(false)} />}
+      {pickingCurrency && <CurrencySheet value={currency} accountCurrency={currency} baseCurrency={ws.baseCurrency} onPick={setCurrency} onClose={() => setPickingCurrency(false)} />}
     </div>
   );
 }
