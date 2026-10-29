@@ -4,8 +4,8 @@ import { ChevronRight } from 'lucide-react';
 import { type RefObject, useLayoutEffect, useRef, useState } from 'react';
 import { usePhone } from '../../app/use-phone';
 import { useAccounts } from '../../lib/queries';
-import { cx, ErrorBox } from '../../ui';
-import { arriveFrom, CARD_W, DESKTOP_CARD_W, flyInto, InsetGroup, InsetRow, leaveFrom, Panel, reducedMotion, type WalletCard, WalletFace, cardHeightFor } from '../../ui/native';
+import { ErrorBox } from '../../ui';
+import { arriveFrom, CARD_W, PageDots, DESKTOP_CARD_W, flyInto, InsetGroup, InsetRow, leaveFrom, Panel, reducedMotion, type WalletCard, WalletFace, cardHeightFor } from '../../ui/native';
 import { pocketsOf } from '../accounts/pockets';
 import { RECENT_LIMIT, useRecentTransactions } from '../accounts/queries';
 import { buildRows } from '../transactions/list-model';
@@ -204,21 +204,14 @@ export function WalletCarousel({ cards, accounts }: { cards: readonly WalletCard
             ))}
         </div>
         {cards.length > 1 && (
-          <div className="mt-[10px] flex items-center justify-center gap-[6px]" role="group" aria-label="Cards shown">
-            {cards.map((card, i) => (
-              <button
-                key={card.key}
-                type="button"
-                data-testid="wallet-dot"
-                aria-label={card.label ?? card.name}
-                aria-current={i === index ? 'true' : undefined}
-                onClick={() => scrollTo(i)}
-                className="ph-focus flex h-[22px] w-[14px] items-center justify-center"
-              >
-                <span aria-hidden className={cx('block h-[7px] w-[7px] rounded-full', i === index ? 'bg-[var(--ph-ink)]' : 'bg-[var(--ph-ink-3)] opacity-40')} />
-              </button>
-            ))}
-          </div>
+          <PageDots
+            names={cards.map((card) => card.label ?? card.name)}
+            index={index}
+            onSelect={scrollTo}
+            label="Cards shown"
+            dotButtonTestId="wallet-dot"
+            className="mt-2 mb-2"
+          />
         )}
       </div>
       {shown && (

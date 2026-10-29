@@ -9,7 +9,7 @@ import { Sheet } from '../../app/Sheet';
 import { keptForSpending } from '../../lib/account-types';
 import { moneyHolders, useCategoryColours, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
-import { ActionButtons, InsetGroup, InsetRow, type InsetRowProps, ProgressBar, SelectRow, TextRow, useSwipeStep, useWalletSlot } from '../../ui/native';
+import { ActionButtons, PageDots, InsetGroup, InsetRow, type InsetRowProps, ProgressBar, SelectRow, TextRow, useSwipeStep, useWalletSlot } from '../../ui/native';
 import { categoryMark } from '../categories/CategoryIcon';
 import { CardFace } from './CardFace';
 import { bonusStanding, activeDuring } from './catalog-panel';
@@ -456,22 +456,16 @@ export function CardHero({
         )}
         {/* One statement can carry several cards; the dots show each one's face in turn. */}
         {cards.length > 1 && (
-          <div className="mt-2 flex items-center justify-center gap-1.5" role="group" aria-label="Cards on this account">
-            {cards.map((piece, index) => (
-              <button
-                key={piece.id}
-                type="button"
-                aria-label={`Show card ending ${piece.last4 ?? 'unknown'}${piece.holderName ? `, ${piece.holderName}` : ''}`}
-                aria-pressed={index === shownIndex}
-                title={`···· ${piece.last4 ?? '????'}${piece.holderName ? ` ${piece.holderName}` : ''}`}
-                onClick={() => setShownIndex(index)}
-                className={cx(
-                  'ph-focus h-2 rounded-full transition-all',
-                  index === shownIndex ? 'w-5 bg-[var(--ph-ink)]' : 'w-2 bg-[var(--ph-chevron)]',
-                )}
-              />
-            ))}
-          </div>
+          <PageDots
+            names={cards.map((piece) => piece.id)}
+            index={shownIndex}
+            onSelect={setShownIndex}
+            label="Cards on this account"
+            semantics="pressed"
+            className="mt-2 mb-2"
+            ariaLabelOf={(i) => `Show card ending ${cards[i]?.last4 ?? 'unknown'}${cards[i]?.holderName ? `, ${cards[i]?.holderName}` : ''}`}
+            titleOf={(i) => `···· ${cards[i]?.last4 ?? '????'}${cards[i]?.holderName ? ` ${cards[i]?.holderName}` : ''}`}
+          />
         )}
         {/* Under the card on its own page; inside the Unpaid tile when the card is Wallet's raised pass. */}
         {!slot && limitBlock()}
