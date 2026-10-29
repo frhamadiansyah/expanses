@@ -1,4 +1,4 @@
-import { Trash2, X } from 'lucide-react';
+import { Pencil, Trash2, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { SwipeRow } from '../../ui/SwipeRow';
 import { type GroupChild, ROW_PAD_X, ROW_PAD_Y, rowHeight } from '../../ui/native';
@@ -74,7 +74,11 @@ export function CostRow({
       <SwipeRow enabled actions={[{ label: 'Delete', name: `Delete ${cost}`, icon: Trash2, tone: 'destructive', onPress: onDelete }]}>
         {() => (
           <div className="flex items-center gap-[10px]" style={{ minHeight: rowHeight(false), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}>
-            <input aria-label={`Cost ${index + 1} name`} value={fee.name} onChange={(e) => onName(e.target.value)} placeholder="Name" size={1} className={`${FIELD} min-w-0 flex-1 text-left`} />
+            {/* The pencil only shows the name can be edited; the tap lands on the field under it. */}
+            <span className="relative flex min-w-0 flex-1 items-center gap-[6px]">
+              <input aria-label={`Cost ${index + 1} name`} value={fee.name} onChange={(e) => onName(e.target.value)} placeholder="Name" size={1} className={`${FIELD} min-w-0 flex-1 text-left`} />
+              <Pencil size={14} aria-hidden data-testid={`cost-${index + 1}-pencil`} className="pointer-events-none shrink-0 text-[var(--ph-ink-3)]" />
+            </span>
             <span className="flex shrink-0 items-baseline justify-end gap-[5px]">
               {fee.amount && <span className="text-[13px] leading-[22px] text-[var(--ph-ink-3)]">{currency}</span>}
               <input

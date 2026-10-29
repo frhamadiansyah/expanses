@@ -67,11 +67,39 @@ export function addFee(level: LevelDraft): LevelDraft {
   return { ...level, fees: [...level.fees, { id: uuidv7(), name: '', amount: '', charged: 'once' }] };
 }
 
-const whole = (value: string, what: string) => {
-  const trimmed = value.trim();
-  const number = trimmed === '' ? Number.NaN : Number(trimmed);
-  if (!Number.isInteger(number)) throw new Error(`${what} must be a whole number`);
-  return number;
+export type YearField = 'start' | 'until';
+
+/** What a start or end figure of a level says when it does not read: empty, or typed but not a whole number. */
+export interface YearProblem {
+  text: string;
+  /** True when nothing has been typed: the form may keep quiet until the field is touched or saving is tried. */
+  empty: boolean;
+}
+
+/** The sentence for a level's start or end (a year, or an age when the child's birthday is given); null when it reads. */
+export function yearProblem(level: Pick<LevelDraft, 'name' | 'start' | 'until'>, field: YearField, byAge: boolean): YearProblem | null {
+  const typed = level[field].trim();
+  const name = level.name.trim() || 'Level';
+  const word = field === 'start' ? 'start' : 'end';
+  if (typed === '') return { text: `${name} needs ${field === 'start' ? 'a start' : 'an end'} ${byAge ? 'age' : 'year'}`, empty: true };
+  if (!Number.isInteger(Number(typed))) return { text: `${name} ${word} must be a whole number`, empty: false };
+  return null;
+}
+
+/** A level's start or end that did not read; `empty` says whether it was only left blank. */
+export class EducationYearError extends Error {
+  constructor(
+    message: string,
+    readonly empty: boolean,
+  ) {
+    super(message);
+  }
+}
+
+const whole = (level: LevelDraft, field: YearField, byAge: boolean) => {
+  const problem = yearProblem(level, field, byAge);
+  if (problem) throw new EducationYearError(problem.text, problem.empty);
+  return Number(level[field].trim());
 };
 
 /** "4,5" or "4.5" as basis points; anything that is not a number is refused, never read as NaN or 0. */
@@ -91,8 +119,8 @@ export function educationInputsOf(draft: EducationDraft, currency: string): Educ
     feeInflationBps: percentBps(draft.feeInflation, 'Fee inflation'),
     levels: draft.levels.map((level) => {
       const name = level.name.trim() || 'Level';
-      const start = whole(level.start, `${name}'s start`);
-      const until = whole(level.until, `${name}'s end`);
+      const start = whole(level, 'start', byAge);
+      const until = whole(level, 'until', byAge);
       // A typed return emptied again follows the band once more.
       const typed = level.returnTyped && level.returnPercent.trim() !== '';
       const returnBps = typed ? percentBps(level.returnPercent, `${name}'s return`) : null;

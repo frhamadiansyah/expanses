@@ -105,7 +105,6 @@ function LifeCoverForm({ initial, prefill, keep }: { initial: LifeCoverDraft; pr
         <TextRow
           label="Yearly amount the family needs"
           wrapLabel
-          info="At today's prices."
           prefix={ws.baseCurrency}
           hint={hint('annualNeed')}
           value={cover.annualNeed}

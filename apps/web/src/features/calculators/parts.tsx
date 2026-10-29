@@ -65,10 +65,10 @@ export function Answer({
  * A row of its own group rather than an outlined button under the fields — the same shape every adopted form on
  * this branch uses, dimmed and refusing the tap while there is no answer to keep.
  */
-export function SaveRow({ label, ready, onSave }: { label: string; ready: boolean; onSave: () => void }) {
+export function SaveRow({ label, ready, onSave, onRefused }: { label: string; ready: boolean; onSave: () => void; onRefused?: () => void }) {
   return (
     <InsetGroup>
-      <InsetRow title={label} action onClick={() => ready && onSave()} className={ready ? undefined : 'opacity-40'} />
+      <InsetRow title={label} action onClick={() => (ready ? onSave() : onRefused?.())} className={ready ? undefined : 'opacity-40'} />
     </InsetGroup>
   );
 }

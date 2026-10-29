@@ -1,6 +1,6 @@
 import { type EducationPlanInputs, educationPlanStages } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { addFee, addLevel, educationDraftFrom, educationInputsOf, levelWhen } from './education-model';
+import { addFee, addLevel, educationDraftFrom, educationInputsOf, levelWhen, yearProblem } from './education-model';
 
 describe('the education draft', () => {
   it('offers the next unused level name, and three default fees', () => {
@@ -115,6 +115,14 @@ describe('the education draft', () => {
     expect(stages[0]!.dueOn).toBe('2032-01-01');
   });
 
+  it('says which start or end is blank or not whole, so the form can stay quiet about a blank one', () => {
+    const level = { name: 'Primary', start: '', until: '2038' };
+    expect(yearProblem(level, 'start', false)).toEqual({ text: 'Primary needs a start year', empty: true });
+    expect(yearProblem(level, 'until', false)).toBeNull();
+    expect(yearProblem({ ...level, until: '12.5' }, 'until', true)).toEqual({ text: 'Primary end must be a whole number', empty: false });
+    expect(yearProblem({ ...level, name: ' ' }, 'start', true)).toEqual({ text: 'Level needs a start age', empty: true });
+  });
+
   it('adds an empty fee paid once', () => {
     const level = addFee(addLevel(educationDraftFrom(undefined, 'IDR')).levels[0]!);
     expect(level.fees).toHaveLength(4);
@@ -124,8 +132,13 @@ describe('the education draft', () => {
   it('refuses a half-typed year, rate or return with a sentence, never NaN', () => {
     const base = addLevel(educationDraftFrom(undefined, 'IDR'));
     const level = { ...base.levels[0]!, start: '2032', until: '2038', fees: [{ ...base.levels[0]!.fees[1]!, amount: '20000000' }] };
-    expect(() => educationInputsOf({ ...base, levels: [{ ...level, start: '2032,5' }] }, 'IDR')).toThrow(/whole number/);
-    expect(() => educationInputsOf({ ...base, levels: [{ ...level, start: '' }] }, 'IDR')).toThrow(/whole number/);
+    expect(() => educationInputsOf({ ...base, levels: [{ ...level, start: '2032,5' }] }, 'IDR')).toThrow('Preschool start must be a whole number');
+    expect(() => educationInputsOf({ ...base, levels: [{ ...level, until: '2038.5' }] }, 'IDR')).toThrow('Preschool end must be a whole number');
+    // Blank is not "a whole number": it is a missing start or end, in a year or, with a birthday, an age.
+    expect(() => educationInputsOf({ ...base, levels: [{ ...level, start: '' }] }, 'IDR')).toThrow('Preschool needs a start year');
+    expect(() => educationInputsOf({ ...base, levels: [{ ...level, until: ' ' }] }, 'IDR')).toThrow('Preschool needs an end year');
+    expect(() => educationInputsOf({ ...base, birthday: '2021-03-14', levels: [{ ...level, start: '' }] }, 'IDR')).toThrow('Preschool needs a start age');
+    expect(() => educationInputsOf({ ...base, birthday: '2021-03-14', levels: [{ ...level, until: '' }] }, 'IDR')).toThrow('Preschool needs an end age');
     expect(() => educationInputsOf({ ...base, feeInflation: ',' }, 'IDR')).toThrow(/percentage/);
     expect(() => educationInputsOf({ ...base, feeInflation: '-' }, 'IDR')).toThrow(/percentage/);
     expect(() => educationInputsOf({ ...base, levels: [{ ...level, returnPercent: '-', returnTyped: true }] }, 'IDR')).toThrow(/percentage/);
