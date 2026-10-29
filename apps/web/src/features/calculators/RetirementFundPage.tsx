@@ -1,12 +1,13 @@
 import { groupTypedAmount, isoDate } from '@expanses/core';
 import { createGoalFromCalculator } from '@expanses/db';
-import { type ReactNode, useState } from 'react';
+import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { InsetGroup, TextRow } from '../../ui/native';
 import { RETIREMENT_FUND } from './catalogue';
 import { refusal, Answer, CalculatorPage, SaveRow } from './parts';
-import { RETIREMENT_DEFAULTS, type RetirementDraft, retirementWorking } from './retirement-form';
+import { RETIREMENT_DEFAULTS, type RetirementDraft, retirementWorking, yearsNote } from './retirement-form';
+import { SpendBar, useSpendSuggestions } from './SpendBar';
 
 /** What the pot must hold the day you stop, drawn down while it keeps earning. */
 export function RetirementFundPage() {
@@ -17,11 +18,13 @@ export function RetirementFundPage() {
   const [saved, setSaved] = useState<string | null>(null);
   const [retirement, setRetirement] = useState<RetirementDraft>(RETIREMENT_DEFAULTS);
 
+  const [spendFocused, setSpendFocused] = useState(false);
+  const spend = useSpendSuggestions('retirement');
   const retirementAnswer = retirementWorking(retirement, ws.baseCurrency);
   const setRetirementBox = (key: keyof RetirementDraft) => (event: { target: { value: string } }) => setRetirement((draft) => ({ ...draft, [key]: event.target.value }));
   const setMoneyBox = (key: 'annualSpend' | 'alreadySaved') => (event: { target: { value: string } }) =>
     setRetirement((draft) => ({ ...draft, [key]: groupTypedAmount(event.target.value, ws.baseCurrency) }));
-  const retirementHint = (key: keyof RetirementDraft, otherwise?: ReactNode) => refusal(retirementAnswer.problems[key], otherwise);
+  const retirementHint = (key: keyof RetirementDraft) => refusal(retirementAnswer.problems[key]);
 
   async function save() {
     if (!retirementAnswer.inputs) return;
@@ -36,14 +39,17 @@ export function RetirementFundPage() {
   }
 
   return (
-    <CalculatorPage entry={RETIREMENT_FUND} error={error} saved={saved}>
+    <CalculatorPage entry={RETIREMENT_FUND} error={error} saved={saved} quiet>
       <InsetGroup>
         <TextRow
           label="Yearly spending in retirement"
+          wrapLabel
           prefix={ws.baseCurrency}
-          hint={retirementHint('annualSpend', "At today's prices.")}
+          hint={retirementHint('annualSpend')}
           value={retirement.annualSpend}
           onChange={setMoneyBox('annualSpend')}
+          onFocus={() => setSpendFocused(true)}
+          onBlur={() => setSpendFocused(false)}
           inputMode="decimal"
           placeholder="Amount"
         />
@@ -51,34 +57,42 @@ export function RetirementFundPage() {
         <TextRow label="Retirement age" hint={retirementHint('retireAge')} value={retirement.retireAge} onChange={setRetirementBox('retireAge')} inputMode="numeric" />
         <TextRow
           label="Years in retirement"
+          info={yearsNote(retirement)}
           hint={retirementHint('yearsInRetirement')}
           value={retirement.yearsInRetirement}
           onChange={setRetirementBox('yearsInRetirement')}
           inputMode="numeric"
         />
+        <TextRow
+          label="Already put aside"
+          prefix={ws.baseCurrency}
+          info="What is held for this today; it keeps earning until saving stops."
+          hint={retirementHint('alreadySaved')}
+          value={retirement.alreadySaved}
+          onChange={setMoneyBox('alreadySaved')}
+          inputMode="decimal"
+          placeholder="Amount"
+        />
+      </InsetGroup>
+      <SpendBar open={spendFocused} suggestions={spend} onPick={(typed) => setRetirement((draft) => ({ ...draft, annualSpend: typed }))} />
+
+      <InsetGroup header="The plan">
         <TextRow label="Inflation a year (%)" hint={retirementHint('inflation')} value={retirement.inflation} onChange={setRetirementBox('inflation')} inputMode="decimal" />
         <TextRow
           label="Return while saving (%)"
-          hint={retirementHint('returnBefore', 'What the money earns until saving stops. The monthly figure is saved at this.')}
+          info="What the money earns until saving stops. The monthly figure is saved at this."
+          hint={retirementHint('returnBefore')}
           value={retirement.returnBefore}
           onChange={setRetirementBox('returnBefore')}
           inputMode="decimal"
         />
         <TextRow
           label="Return while retired (%)"
-          hint={retirementHint('returnInRetirement', 'What the pot earns while it is being spent.')}
+          info="What the pot earns while it is being spent."
+          hint={retirementHint('returnInRetirement')}
           value={retirement.returnInRetirement}
           onChange={setRetirementBox('returnInRetirement')}
           inputMode="decimal"
-        />
-        <TextRow
-          label="Already put aside"
-          prefix={ws.baseCurrency}
-          hint={retirementHint('alreadySaved', 'What is held for this today; it keeps earning until saving stops.')}
-          value={retirement.alreadySaved}
-          onChange={setMoneyBox('alreadySaved')}
-          inputMode="decimal"
-          placeholder="Amount"
         />
       </InsetGroup>
 
@@ -92,7 +106,7 @@ export function RetirementFundPage() {
         }
         testId="answer-retirement"
       />
-      <SaveRow label="Save Retirement fund as a goal" ready={retirementAnswer.inputs !== null} onSave={() => void save()} />
+      <SaveRow label="Set a goal" ready={retirementAnswer.inputs !== null} onSave={() => void save()} />
     </CalculatorPage>
   );
 }

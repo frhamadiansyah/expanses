@@ -28,7 +28,8 @@ test('the catalogue says what each calculator answers, and opens its own page', 
   await page.getByRole('link', { name: /Retirement fund/ }).click();
   await expect(page).toHaveURL(/\/calculators\/retirement$/);
   await expect(page.getByRole('heading', { name: 'Retirement fund' })).toBeVisible();
-  await expect(page.getByText('What the pot must hold the day saving stops, drawn down while it earns.')).toBeVisible();
+  // The page says nothing outside its boxes: the subtitle the list row carries is not repeated.
+  await expect(page.getByText('What the pot must hold the day saving stops, drawn down while it earns.')).toHaveCount(0);
 
   // The way back names the list rather than "Back". Scoped by its own label: the sidebar has a Calculators link too.
   await page.getByLabel('Calculators', { exact: true }).click();
@@ -115,7 +116,7 @@ test('a half-typed rate is refused on its row and the page stays up', async ({ p
 test('turns the answer into a goal, which reaches the budget sheet', async ({ page }) => {
   await page.goto('/calculators/retirement');
   await retirementFigures(page);
-  await page.getByRole('button', { name: 'Save Retirement fund as a goal' }).click();
+  await page.getByRole('button', { name: 'Set a goal' }).click();
   await expect(page.getByText('Saved Retirement fund as a goal.')).toBeVisible();
 
   await page.goto('/goals');
@@ -131,10 +132,9 @@ test('turns the answer into a goal, which reaches the budget sheet', async ({ pa
 test('says what the levels will cost when the time comes, and saves them as a goal', async ({ page }) => {
   await page.goto('/calculators/education');
   // The page opens with one level to fill in.
-  await type(page, 'Starts in year', '2036');
-  await type(page, 'Until year', '2040');
+  await type(page, 'Years from', '2036');
+  await type(page, 'Years to', '2040');
   await type(page, 'Academic today', '100000000');
-  await expect(page.getByText('2036 to 2040 · due 1 January each year')).toBeVisible();
 
   // Four years at today's 100 juta, each inflated once to its own year, is far more than 400 juta.
   const answer = page.getByTestId('answer-education');
@@ -142,10 +142,68 @@ test('says what the levels will cost when the time comes, and saves them as a go
   const need = Number((await answer.locator('div > div').first().innerText()).replace(/\D/g, ''));
   expect(need).toBeGreaterThan(400_000_000);
 
-  await page.getByRole('button', { name: 'Save Education fund as a goal' }).click();
+  await page.getByRole('button', { name: 'Set a goal' }).click();
   await expect(page.getByText('Saved Education fund as a goal.')).toBeVisible();
   await page.goto('/goals');
   const education = await goalCard(page, 'Education fund');
   await expect(education.getByRole('heading', { name: 'Education fund' })).toBeVisible();
   await expect(education.getByRole('button', { name: / · year \d+: / })).toHaveCount(4);
+});
+
+test('each child is a goal of its own: switched by the Child row, never overwriting the one saved before', async ({ page }) => {
+  await page.goto('/calculators/education');
+  await expect(page.getByText("Each year at today's prices, raised to the year it is paid.")).toHaveCount(0);
+  await expect(page.getByLabel('Years from')).toBeVisible();
+  await type(page, 'Name', 'Nadia');
+  await expect(page.getByRole('button', { name: /^Child\s*Nadia/ })).toBeVisible();
+  await type(page, 'Years from', '2036');
+  await type(page, 'Years to', '2039');
+  await type(page, 'Academic today', '100000000');
+  await page.getByRole('button', { name: 'Set a goal' }).click();
+  await expect(page.getByText('Saved Education fund · Nadia as a goal.')).toBeVisible();
+
+  // A second child: its own empty editor; the first keeps what was typed.
+  await page.getByRole('button', { name: /^Child\s*Nadia/ }).click();
+  await page.getByRole('button', { name: 'Add a child' }).click();
+  await expect(page.getByLabel('Name', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Years from')).toHaveValue('');
+  await type(page, 'Name', 'Raka');
+  await type(page, 'Years from', '2040');
+  await type(page, 'Years to', '2042');
+  await type(page, 'Academic today', '50000000');
+  await page.getByRole('button', { name: 'Set a goal' }).click();
+  await expect(page.getByText('Saved Education fund · Raka as a goal.')).toBeVisible();
+
+  await page.getByRole('button', { name: /^Child\s*Raka/ }).click();
+  await page.getByRole('button', { name: 'Nadia' }).click();
+  await expect(page.getByLabel('Years from')).toHaveValue('2036');
+
+  await page.goto('/goals');
+  await goalCard(page, 'Education fund · Raka');
+  await page.goto('/goals');
+  await goalCard(page, 'Education fund · Nadia');
+});
+
+test('a cost is renamed in place and removed from its own line', async ({ page }) => {
+  await page.goto('/calculators/education');
+  await expect(page.getByLabel('Cost 1 name')).toHaveValue('Enrollment');
+  await page.getByLabel('Cost 1 name').fill('Registration');
+  await expect(page.getByLabel('Registration today')).toBeVisible();
+  await page.getByRole('button', { name: 'Remove Registration' }).click();
+  await expect(page.getByLabel('Cost 1 name')).toHaveValue('Academic');
+  await page.getByRole('button', { name: 'Add a cost to Preschool' }).click();
+  await expect(page.getByLabel('Cost 3 name')).toHaveValue('');
+});
+
+test('the retirement boxes keep their notes behind an i, worked from what is typed, closed by a tap outside', async ({ page }) => {
+  await page.goto('/calculators/retirement');
+  await type(page, 'Retirement age', '60');
+  await type(page, 'Years in retirement', '25');
+  await expect(page.getByText('How long the money has to last after retiring')).toHaveCount(0);
+  await page.getByRole('button', { name: 'About Years in retirement' }).click();
+  await expect(page.getByText('How long the money has to last after retiring: 25 years from age 60 runs to age 85.')).toBeVisible();
+  await page.getByRole('heading', { name: 'Retirement fund' }).click();
+  await expect(page.getByText('How long the money has to last after retiring')).toHaveCount(0);
+  await expect(page.getByText('What the pot earns while it is being spent.')).toHaveCount(0);
+  await expect(page.getByText('The plan', { exact: true })).toBeVisible();
 });

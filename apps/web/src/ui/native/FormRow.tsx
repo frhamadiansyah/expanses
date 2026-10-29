@@ -1,5 +1,5 @@
 import { Info, Search } from 'lucide-react';
-import { Children, isValidElement, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useId, useRef, useState } from 'react';
+import { Children, isValidElement, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useEffect, useId, useRef, useState } from 'react';
 import { cx } from '../index';
 import { currencyMatches, type FormKind, planFormRow, planSwitchRow } from './form-row';
 import { KeyboardStrip } from './KeyboardStrip';
@@ -145,6 +145,7 @@ export function TextRow({
   label,
   hint,
   info,
+  wrapLabel = false,
   middle,
   suffix,
   prefix,
@@ -172,25 +173,38 @@ export function TextRow({
    * The same ⓘ the transaction form's Exclude row carries.
    */
   info?: ReactNode;
+  /** A long label may wrap onto two lines rather than push the figure out of its row. */
+  wrapLabel?: boolean;
 } & InputHTMLAttributes<HTMLInputElement>) {
+  const labelClass = wrapLabel ? LABEL.replace('shrink-0', 'min-w-0 max-w-[52%] shrink') : LABEL;
   const generated = useId();
   const id = props.id ?? generated;
   const [explained, setExplained] = useState(false);
   const field = useRef<HTMLInputElement>(null);
+  const wrap = useRef<HTMLDivElement>(null);
   const filled = String(props.value ?? props.defaultValue ?? '') !== '';
+  // An open note closes on a tap anywhere outside the row.
+  useEffect(() => {
+    if (!explained) return;
+    const close = (event: PointerEvent) => {
+      if (!wrap.current?.contains(event.target as Node)) setExplained(false);
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [explained]);
   return (
-    <div className="relative">
+    <div className="relative" ref={wrap}>
       <Separator show={Boolean(position?.separator)} />
       <div className="flex items-center gap-3" style={shell(false)}>
         {info ? (
           <span className="flex shrink-0 items-center gap-[6px]">
-            <label htmlFor={id} className={LABEL}>
+            <label htmlFor={id} className={labelClass}>
               {label}
             </label>
             <InfoToggle label={label} explained={explained} onToggle={() => setExplained((was) => !was)} />
           </span>
         ) : (
-          <label htmlFor={id} className={LABEL}>
+          <label htmlFor={id} className={labelClass}>
             {label}
           </label>
         )}

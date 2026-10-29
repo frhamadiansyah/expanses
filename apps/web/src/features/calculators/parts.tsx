@@ -42,7 +42,8 @@ export function Answer({
   testId: string;
   problem?: string | null;
 }) {
-  if (!answer) return <Waiting problem={problem} />;
+  // No answer yet: nothing, unless a refusal has something to say. No "fill the figures in" line outside the boxes.
+  if (!answer) return problem ? <Waiting problem={problem} /> : null;
   return (
     <Panel wide testId={testId}>
       {/* Two figures, side by side where there is room: the desktop keeps both columns. */}
@@ -88,16 +89,19 @@ export function CalculatorPage({
   entry,
   error,
   saved,
+  quiet = false,
   children,
 }: {
   entry: CalculatorEntry;
   error: unknown;
   saved: string | null;
+  /** No subtitle under the title: the page says nothing outside its boxes. */
+  quiet?: boolean;
   children: ReactNode;
 }) {
   return (
     <div className={SCREEN}>
-      <LargeTitle title={entry.label} subtitle={entry.blurb} back="Calculators" backTo="/calculators" />
+      <LargeTitle title={entry.label} subtitle={quiet ? undefined : entry.blurb} back="Calculators" backTo="/calculators" />
       <ErrorBox error={error} />
       <SavedLine text={saved} />
       {children}

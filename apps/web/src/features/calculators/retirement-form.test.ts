@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { RETIREMENT_DEFAULTS, retirementWorking } from './retirement-form';
+import { RETIREMENT_DEFAULTS, retirementWorking, yearsNote } from './retirement-form';
+
+describe('yearsNote', () => {
+  it('works the end age out from what is typed', () => {
+    expect(yearsNote({ retireAge: '55', yearsInRetirement: '20' })).toBe('How long the money has to last after retiring: 20 years from age 55 runs to age 75.');
+    expect(yearsNote({ retireAge: '60', yearsInRetirement: '1' })).toContain('1 year from age 60 runs to age 61');
+  });
+  it('is generic while blank', () => {
+    expect(yearsNote({ retireAge: '', yearsInRetirement: '20' })).toBe('How long the money has to last after retiring.');
+  });
+});
 
 const filled = { ...RETIREMENT_DEFAULTS, annualSpend: '120000000', ageNow: '35', retireAge: '55', yearsInRetirement: '20' };
 

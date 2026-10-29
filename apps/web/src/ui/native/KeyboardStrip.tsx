@@ -22,7 +22,7 @@ export function useKeyboardInset(): number {
   return inset;
 }
 
-export type StripCell = { key: string; label: string; title: ReactNode; detail?: string; onPick: () => void };
+export type StripCell = { key: string; label: string; title: ReactNode; detail?: string; /** A small grey line above the title, which then reads bold: the figure under its name. */ caption?: string; onPick: () => void };
 
 /**
  * A strip over the keyboard offered the way iOS offers its own words there: up to three cells, each a line and a
@@ -71,7 +71,8 @@ export function KeyboardStrip({
             onClick={cell.onPick}
             className={`ph-focus-inset flex min-h-[48px] flex-col items-center justify-center px-2 py-1 text-center active:bg-[var(--ph-fill)] ${scroll ? 'min-w-[56px] shrink-0' : 'min-w-0 flex-1'}`}
           >
-            <span className="w-full truncate text-[15px] leading-5 text-[var(--ph-ink)]">{cell.title}</span>
+            {cell.caption && <span className="w-full truncate text-[11px] leading-[14px] text-[var(--ph-ink-3)]">{cell.caption}</span>}
+            <span className={`w-full truncate text-[15px] leading-5 text-[var(--ph-ink)]${cell.caption ? ' tabular font-semibold' : ''}`}>{cell.title}</span>
             {cell.detail && <span className="w-full truncate text-[11px] leading-[14px] text-[var(--ph-ink-3)]">{cell.detail}</span>}
           </button>
         </Fragment>
