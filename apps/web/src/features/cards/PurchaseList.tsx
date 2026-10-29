@@ -4,8 +4,11 @@ import { Link } from '@tanstack/react-router';
 import { type FormEvent, type ReactNode, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { cx } from '../../ui';
-import { InsetGroup, SegmentedControl } from '../../ui/native';
-import { Capsule, Line, SUBTITLE, TITLE } from './rows';
+import { Sheet } from '../../app/Sheet';
+import { useAccounts, useCategoryColours } from '../../lib/queries';
+import { InsetGroup, InsetRow, SegmentedControl } from '../../ui/native';
+import { categoryMark } from '../categories/CategoryIcon';
+import { Capsule, Line, SUBTITLE } from './rows';
 import { suggestPattern } from '../merchants/mcc-search';
 import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
 import { useWorkspaceBadges } from '../workspaces/queries';
@@ -85,6 +88,9 @@ function ActualCell({ programId, transactionId, description, actual, unit, run }
 /** Card purchases in this or the last cycle with estimated points, MCC and source, and per-purchase checking. */
 export function PurchaseList({ cp, run, currency, onlyNothing = false, onShowAll }: { cp: CardPoints; run: Run; currency: string; onlyNothing?: boolean; onShowAll?: () => void }) {
   const [lastCycle, setLastCycle] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const accounts = useAccounts().data ?? [];
+  const chosen = useCategoryColours().data;
   const result = lastCycle ? cp.previous : cp.current;
   const program = cp.program;
   // Explaining a purchase recomputes the cycle, so do it once per saved result rather than on every render.
@@ -111,66 +117,123 @@ export function PurchaseList({ cp, run, currency, onlyNothing = false, onShowAll
   const totals = checkedTotals(result, cp.transactionActuals);
 
   /**
-   * One purchase: a row whose figure is the bank's once recorded, the estimate before, and — where the bank credits per purchase — the field for what
-   * it really gave and that field's Save, beside it. Two controls, so it is drawn from the kit's parts.
+   * What a purchase shows under its amount: the points the bank credited once recorded, else the estimate. A ✓ marks a
+   * figure the bank confirmed, a ! one that differs from the estimate or was edited after checking.
    */
+  const pointsLine = (purchase: (typeof purchases)[number]) => {
+    const estimate = result.earn.pointsByTransaction[purchase.transactionId] ?? 0;
+    const actual = actuals.get(purchase.transactionId);
+    const differs = perPurchase && actual !== undefined && !sameTenths(actual.actualPoints, estimate);
+    const shown = actual ? actual.actualPoints : estimate;
+    const text = purchase.cardFee
+      ? 'Never earns'
+      : shown === 0
+        ? 'No points'
+        : `${approximate.has(purchase.transactionId) && !actual ? '≈ ' : ''}${shown < 0 ? '−' : '+'}${formatPoints(Math.abs(shown))} ${unit}`;
+    const checked = perPurchase && actual !== undefined;
+    const warn = checked && (differs || actual.editedAfterCheck);
+    return (
+      <span className={cx(warn ? 'text-[var(--ph-warn)]' : checked ? 'text-[var(--ph-tint)]' : 'text-[var(--ph-ink-3)]')} data-testid={`estimate-${purchase.transactionId}`}>
+        {checked ? (warn ? '! ' : '✓ ') : ''}
+        {text}
+      </span>
+    );
+  };
+
   const purchaseRow = (purchase: (typeof purchases)[number]) => {
+    const mark = categoryMark(purchase.categoryId, accounts, chosen);
+    return (
+      <InsetRow
+        key={purchase.transactionId}
+        testId="purchase"
+        icon={<mark.Glyph size={16} strokeWidth={2.2} />}
+        iconColour={mark.colour}
+        title={
+          <>
+            {mark.name || purchase.description || 'Purchase'}
+            <WorkspaceBadge book={badgeOf(purchase.transactionId)} />
+          </>
+        }
+        subtitle={[purchase.description, shortDate(purchase.occurredOn)].filter(Boolean).join(' · ')}
+        value={
+          <span className="flex flex-col items-end">
+            <span>{formatMinor(purchase.amountMinor, currency)}</span>
+            <span className="text-[12.5px] leading-[16px] font-normal">{pointsLine(purchase)}</span>
+          </span>
+        }
+        valueTone="ink"
+        chevron={false}
+        onClick={() => setOpenId(purchase.transactionId)}
+      />
+    );
+  };
+
+  /** The sheet a tap on a purchase opens: its category, MCC and estimate, and where the bank credits per purchase, the bank's own figure. */
+  const sheet = () => {
+    const purchase = all.find((row) => row.transactionId === openId);
+    if (!purchase) return null;
     const estimate = result.earn.pointsByTransaction[purchase.transactionId] ?? 0;
     const actual = actuals.get(purchase.transactionId);
     const differs = perPurchase && actual !== undefined && !sameTenths(actual.actualPoints, estimate);
     const hints = differs ? (hintsById.get(purchase.transactionId) ?? []) : [];
+    const mark = categoryMark(purchase.categoryId, accounts, chosen);
+    const mccText = purchase.cardFee ? 'Card fee · never earns' : purchase.mcc && purchase.mccSource ? `${purchase.mcc} · ${SOURCE_LABELS[purchase.mccSource]}` : 'No MCC';
     return (
-      <Line key={purchase.transactionId} testId="purchase">
-        <div className="flex items-center gap-[10px]">
-          <div className="min-w-0 flex-1">
-            <div className={cx('truncate', TITLE)}>
-              {purchase.description}
-              <WorkspaceBadge book={badgeOf(purchase.transactionId)} />
-            </div>
-            <div className={cx('mt-[2px] truncate', SUBTITLE)}>
-              {shortDate(purchase.occurredOn)} · {formatMinor(purchase.amountMinor, currency)} ·{' '}
-              <span className={cx(purchase.mccSource === 'category' || purchase.mccSource === null ? '' : 'font-medium text-[var(--ph-tint)]')}>
-                {purchase.cardFee ? 'Card fee · never earns' : purchase.mcc && purchase.mccSource ? `MCC ${purchase.mcc} · ${SOURCE_LABELS[purchase.mccSource]}` : 'No MCC'}
-              </span>
-            </div>
-          </div>
-          <div className="tabular shrink-0 text-right text-[15px] leading-[20px] text-[var(--ph-ink-2)]" data-testid={`estimate-${purchase.transactionId}`}>
-            {approximate.has(purchase.transactionId) && !actual ? '≈ ' : ''}
-            {formatPoints(actual ? actual.actualPoints : estimate)} {unit}
-          </div>
-          {perPurchase && (
-            <ActualCell
-              key={`${purchase.transactionId}:${actual?.actualPoints ?? ''}`}
-              programId={program.id}
-              transactionId={purchase.transactionId}
-              description={purchase.description}
-              actual={actual?.actualPoints}
-              unit={unit}
-              run={run}
-            />
-          )}
-        </div>
-        {perPurchase && actual && (
-          <div className="mt-[4px] text-[12.5px] leading-[16px]">
-            {actual.editedAfterCheck ? (
-              <span className="text-[var(--ph-warn)]">Edited after checking. Check it again.</span>
-            ) : differs ? (
-              <span className="text-[var(--ph-warn)]">
-                Bank credited {formatPoints(actual.actualPoints)} {unit}, estimate {formatPoints(estimate)}.
-              </span>
-            ) : (
-              <span className="text-[var(--ph-tint)]">Matches the bank</span>
-            )}
-          </div>
-        )}
-        {hints.map((hint, i) => (
-          <Hint key={i}>
-            <p>{describeSuggestion(hint, unit, currency, { [purchase.transactionId]: purchase.description })}</p>
-            <SuggestionFixes suggestion={hint} description={purchase.description} occurredOn={purchase.occurredOn} run={run} />
-          </Hint>
-        ))}
-        {differs && hints.length === 0 && <p className={cx('mt-[4px]', SUBTITLE)}>Saved. The bank's figure differs from the estimate. No rule explains the gap. Check the purchase's category or MCC.</p>}
-      </Line>
+      <Sheet title={purchase.description || mark.name || 'Purchase'} onClose={() => setOpenId(null)} grouped>
+        <InsetGroup>
+          {[
+            <InsetRow key="category" title="Category" value={mark.name ?? 'None'} valueTone="ink" chevron={false} plain />,
+            <InsetRow key="amount" title="Amount" value={formatMinor(purchase.amountMinor, currency)} valueTone="ink" chevron={false} plain />,
+            <InsetRow key="mcc" testId="purchase-mcc" title="MCC" value={mccText} valueTone="ink" chevron={false} plain />,
+            <InsetRow
+              key="estimate"
+              title="Estimated"
+              value={`${approximate.has(purchase.transactionId) ? '≈ ' : ''}${estimate < 0 ? '−' : ''}${formatPoints(Math.abs(estimate))} ${unit}`}
+              valueTone="ink"
+              chevron={false}
+              plain
+            />,
+            ...(perPurchase
+              ? [
+                  <Line key="credited" testId="purchase-check">
+                    <div className="flex items-center gap-[10px]">
+                      <span className="min-w-0 flex-1 text-[17px] leading-[22px] text-[var(--ph-ink)]">Bank credited</span>
+                      <ActualCell
+                        key={`${purchase.transactionId}:${actual?.actualPoints ?? ''}`}
+                        programId={program.id}
+                        transactionId={purchase.transactionId}
+                        description={purchase.description}
+                        actual={actual?.actualPoints}
+                        unit={unit}
+                        run={run}
+                      />
+                    </div>
+                    {actual && (
+                      <div className="mt-[4px] text-[12.5px] leading-[16px]">
+                        {actual.editedAfterCheck ? (
+                          <span className="text-[var(--ph-warn)]">Edited after checking. Check it again.</span>
+                        ) : differs ? (
+                          <span className="text-[var(--ph-warn)]">
+                            Bank credited {formatPoints(actual.actualPoints)} {unit}, estimate {formatPoints(estimate)}.
+                          </span>
+                        ) : (
+                          <span className="text-[var(--ph-tint)]">Matches the bank</span>
+                        )}
+                      </div>
+                    )}
+                    {hints.map((hint, i) => (
+                      <Hint key={i}>
+                        <p>{describeSuggestion(hint, unit, currency, { [purchase.transactionId]: purchase.description })}</p>
+                        <SuggestionFixes suggestion={hint} description={purchase.description} occurredOn={purchase.occurredOn} run={run} />
+                      </Hint>
+                    ))}
+                    {differs && hints.length === 0 && <p className={cx('mt-[4px]', SUBTITLE)}>Saved. The bank's figure differs from the estimate. No rule explains the gap. Check the purchase's category or MCC.</p>}
+                  </Line>,
+                ]
+              : []),
+          ]}
+        </InsetGroup>
+      </Sheet>
     );
   };
 
@@ -198,6 +261,7 @@ export function PurchaseList({ cp, run, currency, onlyNothing = false, onShowAll
       >
         {purchases.length === 0 ? <Line>{<span className="text-[15px] text-[var(--ph-ink-3)]">{onlyNothing ? 'No purchases earned nothing in this cycle.' : 'No card purchases in this cycle.'}</span>}</Line> : purchases.map(purchaseRow)}
       </InsetGroup>
+      {sheet()}
     </>
   );
 }

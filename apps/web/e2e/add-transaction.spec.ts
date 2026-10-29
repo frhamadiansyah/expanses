@@ -6,6 +6,7 @@ import { addForm, addTransaction, addTransfer, attachPhoto, closeDetails, fillAm
 import { addEvent } from './event-plan';
 import { openGoalForm } from './goals';
 import { cardPage, cardPurchases, saveCardTerms, chooseCatalogueCard } from './card-section';
+import { closePurchase, openPurchase } from './purchases';
 import { todayIn } from './today';
 import { setCurrency } from './currency-field';
 import { addPart, fillPart, removePart, openSplit, pickPartCategory, setChannel, splitRow } from './split-row';
@@ -769,8 +770,8 @@ test('every extra survives the save, and leaving it out of the report leaves onl
   await page.goto('/wallet');
   await page.getByRole('link', { name: /^BCA KF Signature(,|$)/ }).click();
   await cardPurchases(page);
-  const row = page.getByTestId('purchase').filter({ hasText: 'Superindo' });
-  await expect(row).toContainText('MCC 5411 · typed');
+  const detail = await openPurchase(page, 'Superindo');
+  await expect(detail.getByTestId('purchase-mcc')).toContainText('5411 · typed');
 });
 
 test('a split is read in the paying account’s own currency, exponent and all', async ({ page }) => {
@@ -1362,8 +1363,8 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
   await page.goto('/wallet');
   await page.getByRole('link', { name: /^BCA KF Signature(,|$)/ }).click();
   await cardPurchases(page);
-  const purchase = page.getByTestId('purchase').filter({ hasText: 'Superindo' });
-  await expect(purchase).toContainText('MCC 5411 · remembered');
+  const detail = await openPurchase(page, 'Superindo');
+  await expect(detail.getByTestId('purchase-mcc')).toContainText('5411 · remembered');
 });
 
 /**
@@ -1637,7 +1638,9 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
   await page.goto('/wallet');
   await page.getByRole('link', { name: /^BCA KF Signature(,|$)/ }).click();
   await cardPurchases(page);
-  await expect(page.getByTestId('purchase').filter({ hasText: 'Superindo' })).toContainText('MCC 5411 · typed');
+  const typed = await openPurchase(page, 'Superindo');
+  await expect(typed.getByTestId('purchase-mcc')).toContainText('5411 · typed');
+  await closePurchase(page, 'Superindo');
 
   // The refund, made from the receipt the purchase already has — reached from the event, which Cashflow leaves out.
   await openEventReceipt(page, 'Lebaran', 'Superindo');

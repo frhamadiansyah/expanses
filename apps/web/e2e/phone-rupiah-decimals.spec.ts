@@ -148,7 +148,7 @@ test('the card shows a purchase typed with cents at what it was charged, and sti
   await expect(purchase).toContainText('12.501');
   await expect(purchase).not.toContainText('12.500');
   // ... while the estimate is still worked out on 12.500: none at 1 per 12.501.
-  await expect(purchase).toContainText(/(^|\D)0 points?/);
+  await expect(purchase).toContainText('No points');
 });
 
 test('an income typed with cents posts rounded down', async ({ page }) => {

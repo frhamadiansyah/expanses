@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { addTransaction, choosePayment } from './add-transaction';
+import { closePurchase, openPurchase, purchaseRowOf } from './purchases';
 import { cardPage, cardPointsPage, saveCardTerms, chooseCatalogueCard } from './card-section';
 import { chooseMccCode, closeMccSheet, openMccSheet, rememberWord } from './mcc-sheet';
 
@@ -74,7 +75,7 @@ async function buy(page: Page, p: Purchase) {
 
 const thisCycle = (page: Page) => page.getByRole('main');
 // The statements panel lists the same purchases; these tests are about the points list, whose rows say so.
-const purchaseRow = (page: Page, description: string) => page.getByTestId('purchase').filter({ hasText: description });
+const purchaseRow = purchaseRowOf;
 
 /** A date in the statement cycle before the current one, for a card whose statement closes on day 25. */
 function lastCycleDate(): string {
@@ -91,12 +92,15 @@ test('remembering a merchant MCC removes the Maybank Platinum extra from past pu
   await openPurchases(page, 'Maybank Platinum');
   // Restaurants defaults to MCC 5812: 3 base plus 6 extra at restaurants.
   await expect(purchaseRow(page, 'BURGER BANGOR KEMANG')).toContainText('9 points');
-  await expect(purchaseRow(page, 'BURGER BANGOR KEMANG')).toContainText('MCC 5812 · category guess');
+  const sheet5812 = await openPurchase(page, 'BURGER BANGOR KEMANG');
+  await expect(sheet5812.getByTestId('purchase-mcc')).toContainText('5812 · category guess');
+  await closePurchase(page, 'BURGER BANGOR KEMANG');
 
   await buy(page, { card: 'Maybank Platinum', description: 'BURGER BANGOR PIM', category: 'Restaurants', amount: '60000', mcc: '5814', remember: 'burger bangor' });
   await openPurchases(page, 'Maybank Platinum');
-  await expect(purchaseRow(page, 'BURGER BANGOR KEMANG')).toContainText('0 points');
-  await expect(purchaseRow(page, 'BURGER BANGOR KEMANG')).toContainText('MCC 5814 · remembered');
+  await expect(purchaseRow(page, 'BURGER BANGOR KEMANG')).toContainText('No points');
+  const sheet5814 = await openPurchase(page, 'BURGER BANGOR KEMANG');
+  await expect(sheet5814.getByTestId('purchase-mcc')).toContainText('5814 · remembered');
 });
 
 test('a per-purchase actual of 0 suggests fast food, and remembering it matches the bank', async ({ page }) => {
@@ -105,12 +109,12 @@ test('a per-purchase actual of 0 suggests fast food, and remembering it matches 
   await buy(page, { card: 'Maybank Platinum', description: 'WARUNG STEAK JKT', category: 'Restaurants', amount: '60000' });
 
   await openPurchases(page, 'Maybank Platinum');
-  const row = purchaseRow(page, 'WARUNG STEAK JKT');
+  const row = await openPurchase(page, 'WARUNG STEAK JKT');
   await row.getByLabel('Actual points for WARUNG STEAK JKT').fill('0');
   await row.getByRole('button', { name: 'Save actual for WARUNG STEAK JKT' }).click();
   await expect(row).toContainText('WARUNG STEAK JKT as MCC 5814 Fast Food Restaurants would earn 0 points');
   await row.getByRole('button', { name: 'Remember “warung steak jkt” as 5814' }).click();
-  await expect(row).toContainText('MCC 5814 · remembered');
+  await expect(row.getByTestId('purchase-mcc')).toContainText('5814 · remembered');
   await expect(row).toContainText('Matches the bank');
 });
 

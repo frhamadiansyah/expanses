@@ -1,3 +1,4 @@
+import { closePurchase, openPurchase, purchaseRowOf } from './purchases';
 import { expect, type Page, test } from '@playwright/test';
 import { expectWalletFigure, openAccount, openSettings } from './accounts';
 import { openNewAsset, fillDay } from './add-asset';
@@ -302,8 +303,10 @@ test('a purchase paid by card reaches the points engine with the MCC and categor
   await cardPage(page, 'Points');
   await cardPointsPage(page, 'Purchases');
   // Units are recorded, so this is not spending — and it is still a card purchase, so it still earns.
-  const row = page.getByTestId('purchase').filter({ hasText: 'Bought 1 Antam gold bars' });
-  await expect(row).toContainText('MCC 5944 · typed');
+  const row = purchaseRowOf(page, 'Bought 1 Antam gold bars');
+  const detail = await openPurchase(page, 'Bought 1 Antam gold bars');
+  await expect(detail.getByTestId('purchase-mcc')).toContainText('5944 · typed');
+  await closePurchase(page, 'Bought 1 Antam gold bars');
   // Rp 1.350.000 on this card is 100 miles. Nought would mean the category never reached the engine.
   await expect(row).toContainText('100 miles');
 });

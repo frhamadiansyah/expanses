@@ -5,6 +5,7 @@ import { type CycleResult, formatPoints } from './useCardPoints';
 export interface PurchaseRow {
   transactionId: string;
   occurredOn: string;
+  categoryId: string;
   description: string;
   amountMinor: number;
   mcc: string | null;
@@ -18,7 +19,7 @@ export function purchasesOf(lines: readonly SpendLine[]): PurchaseRow[] {
   for (const line of lines) {
     const row = rows.get(line.transactionId);
     if (row) row.amountMinor += line.amountMinor;
-    else rows.set(line.transactionId, { transactionId: line.transactionId, occurredOn: line.occurredOn, description: line.description, amountMinor: line.amountMinor, mcc: line.mcc, mccSource: line.mccSource, cardFee: line.cardFee ?? false });
+    else rows.set(line.transactionId, { transactionId: line.transactionId, occurredOn: line.occurredOn, categoryId: line.categoryId, description: line.description, amountMinor: line.amountMinor, mcc: line.mcc, mccSource: line.mccSource, cardFee: line.cardFee ?? false });
   }
   return [...rows.values()];
 }
