@@ -254,7 +254,7 @@ export function CardHero({
   }, [setSlotSwipe, stepShown, lastIndex]);
   const faceBox = useRef<HTMLDivElement>(null);
   const faceSwipe = useSwipeStep({ enabled: lastIndex >= 1, onStep: stepShown, target: () => faceBox.current });
-  const limit = cp.terms?.creditLimitMinor ?? null;
+  const limit = cp.limitMinor;
   const plans = useInstallments(card.id);
   const holding = (plans.data ?? []).map((plan) => ({ plan, split: installmentSplit(plan, today) })).filter(({ split }) => split.unbilledMinor > 0);
   const usage = limitUsage(owedMinor, limit, holding.reduce((sum, { split }) => sum + split.unbilledMinor, 0));

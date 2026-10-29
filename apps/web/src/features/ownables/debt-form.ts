@@ -176,13 +176,15 @@ export interface NewCardDraft {
   issuer: string;
   last4: string;
   owed: string;
+  /** The credit limit, optional, in the card's currency. */
+  limit: string;
   /** The holder's standing with the bank, for an entry that publishes levels. */
   memberLevel: string;
   statementDay: string;
   dueDay: string;
 }
 
-export const emptyNewCardDraft = (): NewCardDraft => ({ name: '', issuer: '', last4: '', owed: '', memberLevel: '', statementDay: '', dueDay: '' });
+export const emptyNewCardDraft = (): NewCardDraft => ({ name: '', issuer: '', last4: '', owed: '', limit: '', memberLevel: '', statementDay: '', dueDay: '' });
 
 export interface NewCardPlan {
   name: string;
@@ -198,6 +200,8 @@ export interface NewCardPlan {
    * in beside them, until they are saved.
    */
   terms: { statementDay: number; dueDay: number } | null;
+  /** The credit limit typed, kept with or without the dates: null when none was given. */
+  creditLimitMinor: number | null;
 }
 
 /**
@@ -286,6 +290,16 @@ export function planNewCard(draft: NewCardDraft, entry: CatalogEntry | null, bas
     }
   }
 
+  let creditLimitMinor: number | null = null;
+  if (draft.limit.trim() !== '') {
+    try {
+      creditLimitMinor = parseMajor(draft.limit, currency);
+    } catch {
+      throw new Error('The credit limit must be a number');
+    }
+    if (creditLimitMinor <= 0) throw new Error('The credit limit must be more than zero');
+  }
+
   /*
    * Both days or neither: the terms are what a cycle is counted from, and half of them counts nothing. Neither is
    * fine for any card — it opens without terms, and its page asks for them. Some issuers close every cardholder's
@@ -305,5 +319,6 @@ export function planNewCard(draft: NewCardDraft, entry: CatalogEntry | null, bas
     openingBalanceMinor,
     memberLevel: memberLevel || null,
     terms,
+    creditLimitMinor,
   };
 }

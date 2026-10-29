@@ -223,7 +223,7 @@ export async function pickCatalogueCard(page: Page, query: string, product: stri
 /**
  * Opens a card by hand through the debt picker, typed on the bank-and-name row as the door the old inline form's
  * Type=credit_card was: the name in the name half, as given, and the bank in the bank half when the walk names one.
- * Currency and dates are the form's details, opened only when the walk gives one. It lands on the card's own page,
+ * Both boxes of the form are always open. It lands on the card's own page,
  * where the app takes a new card next.
  */
 export async function openCard(page: Page, o: NewCard) {
@@ -231,9 +231,8 @@ export async function openCard(page: Page, o: NewCard) {
   await page.getByRole('button', { name: 'Credit card' }).click();
   await page.getByLabel('Name', { exact: true }).fill(o.name);
   if (o.bank) await page.getByLabel('Bank', { exact: true }).fill(o.bank);
-  // An extra may fill any of the form's labels, the folded ones among them, so it gets the details open too.
-  if ((o.currency && o.currency !== 'IDR') || o.statementDay || o.dueDay || o.extra) await page.getByRole('button', { name: 'Add more details' }).click();
-  if (o.currency && o.currency !== 'IDR') await setCurrency(page.getByLabel('Currency', { exact: true }), o.currency);
+  // The currency is the symbol on the Current balance, as an account's: a figure is typed for it, then the owed one over it.
+  if (o.currency && o.currency !== 'IDR') await setBalanceCurrency(page, o.currency);
   if (o.last4) await page.getByLabel('Last 4 digits').fill(o.last4);
   if (o.owed) await page.getByLabel('Current balance').fill(o.owed);
   if (o.rate) await page.getByLabel(/^Rate:/).pressSequentially(o.rate);

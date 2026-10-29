@@ -105,6 +105,7 @@ import sinkingFundEntries from '../migrations/0103_sinking_fund_entries.sql?raw'
 import eventCurrency from '../migrations/0104_event_currency.sql?raw';
 import programmeValuePerPoint from '../migrations/0105_programme_value_per_point.sql?raw';
 import accountCountedFrom from '../migrations/0107_account_counted_from.sql?raw';
+import cardTermsDaysOptional from '../migrations/0108_card_terms_days_optional.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -220,6 +221,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 105, name: 'programme_value_per_point', sql: programmeValuePerPoint },
   { version: 106, name: 'card_fee_waivers', sql: cardFeeWaivers },
   { version: 107, name: 'account_counted_from', sql: accountCountedFrom },
+  { version: 108, name: 'card_terms_days_optional', sql: cardTermsDaysOptional },
 ];
 
 /** The highest version this build of the app knows how to produce. */

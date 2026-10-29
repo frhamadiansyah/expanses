@@ -727,10 +727,11 @@ test('Add credit card on the Credit cards tab is a step of the sheet, and the ca
   await nameCardByHand(page, 'UOB PRVI', step);
   await expect(step.getByLabel('Bank', { exact: true })).toHaveValue('UOB');
   await expect(step.getByLabel('Name', { exact: true })).toHaveValue('PRVI');
-  // The details ask its currency, and never a bank: the row has one.
-  await step.getByRole('button', { name: 'Add more details' }).click();
+  // The form has one bank row, and the currency is picked on the balance once a figure is typed.
   await expect(step.getByLabel('Bank', { exact: true })).toHaveCount(1);
-  await expect(step.getByLabel('Currency', { exact: true })).toBeVisible();
+  await step.getByLabel('Current balance', { exact: true }).fill('1');
+  await expect(step.getByRole('button', { name: /^Currency: [A-Z]{3}$/ })).toBeVisible();
+  await step.getByLabel('Current balance', { exact: true }).fill('');
   await step.getByLabel('Last 4 digits').fill('3310');
   await step.getByRole('button', { name: 'Save', exact: true }).click();
 

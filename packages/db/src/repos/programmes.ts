@@ -406,7 +406,7 @@ export async function refreshProgramme(database: Database, ws: WorkspaceContext,
   for (const earner of earners) {
     const [program] = await database.db.select({ cycleAnchor: rewardPrograms.cycleAnchor }).from(rewardPrograms).where(eq(rewardPrograms.id, earner.programId));
     const [terms] = await database.db.select({ statementDay: cardTerms.statementDay }).from(cardTerms).where(and(eq(cardTerms.accountId, earner.cardAccountId), eq(cardTerms.workspaceId, ws.workspaceId)));
-    if (program?.cycleAnchor === 'statement' && !terms) continue;
+    if (program?.cycleAnchor === 'statement' && terms?.statementDay == null) continue;
     await backfillCycles(database, ws, earner.programId, 2, today);
   }
   await expireDueEntries(database, ws, programmeId, today);

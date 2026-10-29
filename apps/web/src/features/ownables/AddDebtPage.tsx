@@ -1,5 +1,5 @@
 import { CATALOG, type CatalogEntry } from '@expanses/catalog';
-import { CURRENCIES, debtItem, isoDate } from '@expanses/core';
+import { CURRENCIES, debtItem, groupTypedAmount, isoDate } from '@expanses/core';
 import { applyCatalogEntry, createAccount, createCardAccount, openDebtBalance, saveCardTerms, saveLoanTerms, setLoanItem } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { Search } from 'lucide-react';
@@ -13,13 +13,12 @@ import { type GroupChild, InsetGroup, InsetRow, PushedTitle, SCREEN, SelectRow, 
 import { KeyboardStrip } from '../../ui/native/KeyboardStrip';
 import { issuerChoices, useWorkspaceIssuers } from '../cards/card-queries';
 import { memberLevelsOf } from '../cards/catalog-picker';
-import { detailsToggleLabel } from '../transactions/tx-form';
 import { catalogueOffers, entryOnRow } from './card-row';
 import { CardSearch } from './CardSearch';
 import { fieldsFor, handOverRows } from './catalogue-view';
 import { cardAccountName, type DebtItemDraft, emptyDebtItemDraft, planNewCard, planNewDebt, splitCardName } from './debt-form';
 import { OwnablePicker } from './OwnablePicker';
-import { BankNameRow, type EmbeddedForm } from './CashAccountForm';
+import { BankNameRow, type EmbeddedForm, MoneyRow } from './CashAccountForm';
 import { useShareOnAdd } from '../sharing/ShareWithHousehold';
 
 /**
@@ -217,10 +216,10 @@ export interface CardFormEmbedding extends EmbeddedForm {
  * keyboard to carry the offers and for a card whose name is easier found than typed. The bank is saved as the
  * card's issuer and the name without the bank's words, so the two compose again wherever the card is named.
  *
- * The billing and due dates are details too, for every card: a card opens without them, and its own page asks for
- * them until they are given — with the published fee beside them for a card from the catalogue, since the fee is
- * kept on the terms the dates make. Last 4 digits and the current balance stay in sight: the digits are how a
- * statement or an alert names the card, and the balance — what it owes today — is the one figure it is opened at.
+ * Two boxes, both always shown: the card, its level, last digits, current balance (in the currency picked on it, as an
+ * account's) and credit limit; then the billing and due dates, with the rate when the card is in a foreign currency. The
+ * dates can be left for the card's own page, which asks for them until they are given, with the published fee beside
+ * them for a card from the catalogue; a limit typed without them is kept all the same.
  */
 export function NewCardForm({
   onCreated,
@@ -249,11 +248,11 @@ export function NewCardForm({
   const [manualRate, setManualRate] = useState('');
   const [last4, setLast4] = useState('');
   const [owed, setOwed] = useState('');
+  const [limit, setLimit] = useState('');
   const [memberLevel, setMemberLevel] = useState('');
   const [statementDay, setStatementDay] = useState('');
   const [dueDay, setDueDay] = useState('');
   const [searching, setSearching] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const form = useRef<HTMLFormElement>(null);
@@ -273,6 +272,8 @@ export function NewCardForm({
   const levels = entry ? memberLevelsOf(entry) : [];
   const banks = issuerChoices(useWorkspaceIssuers().data ?? []);
   const foreign = currency !== ws.baseCurrency;
+  // The currency the card is in: the catalogue's for a card from it, else the one picked on the balance.
+  const cardCurrency = entry?.currency ?? currency;
   const fixedDay = entry?.program.fixedStatementDay;
   /** A product picked from the catalogue — offered over the keyboard or found by ⌕ — fills both halves of the row. */
   function pick(picked: CatalogEntry) {
@@ -319,7 +320,7 @@ export function NewCardForm({
       // Everything that can be refused is refused before the account exists: a card opened and then turned away
       // cannot be finished, since pressing the button again either opens a second one or hits the duplicate check.
       const plan = planNewCard(
-        { name, issuer: bank, last4, owed, memberLevel, statementDay, dueDay },
+        { name, issuer: bank, last4, owed, limit, memberLevel, statementDay, dueDay },
         entry,
         ws.baseCurrency,
         currency,
@@ -344,10 +345,17 @@ export function NewCardForm({
         openedOn: today,
         openingRateToBase,
       });
-      // The terms row has to exist before the catalogue can write the published fee onto it. With no dates there is
-      // no row: the earn rules are applied all the same, and the card's page offers the fee beside the dates it asks for.
-      if (plan.terms) {
-        await saveCardTerms(database, ws, { accountId: account.id, ...plan.terms, creditLimitMinor: null, annualFeeMinor: null });
+      // The terms row has to exist before the catalogue can write the published fee onto it. With no dates and no
+      // limit there is no row: the earn rules are applied all the same, and the card's page offers the fee beside the
+      // dates it asks for. A limit alone is kept on a row with no days (0108) until the card's page is given them.
+      if (plan.terms || plan.creditLimitMinor !== null) {
+        await saveCardTerms(database, ws, {
+          accountId: account.id,
+          statementDay: plan.terms?.statementDay ?? null,
+          dueDay: plan.terms?.dueDay ?? null,
+          creditLimitMinor: plan.creditLimitMinor,
+          annualFeeMinor: null,
+        });
       }
       if (entry) {
         await applyCatalogEntry(database, ws, { cardAccountId: account.id, entry, today, replaceManual: false, memberLevel: plan.memberLevel });
@@ -372,7 +380,7 @@ export function NewCardForm({
       {/* Still a real `<form>`: Enter in any box saves, exactly as it did when the button below was the submit. */}
       <form ref={form} id={embedded?.formId} onSubmit={submit}>
         <ErrorBox error={error} />
-        <InsetGroup header={embedded ? undefined : 'Credit card · filed as a debt, kept as a card'}>
+        <InsetGroup>
           {lead}
           {/* One row for which card it is, the New account form's own: the bank, then the name, offered the catalogue. */}
           <CardRow
@@ -397,53 +405,48 @@ export function NewCardForm({
             </SelectRow>
           )}
           <TextRow label="Last 4 digits" value={last4} onChange={(e) => setLast4(e.target.value)} inputMode="numeric" maxLength={4} placeholder="••••" />
-          <TextRow label="Current balance" value={owed} onChange={(e) => setOwed(e.target.value)} inputMode="decimal" placeholder="Amount" />
+          {/* A catalogue card is issued in one currency and fixes it; a card typed by hand picks its own on the balance, as an account does. */}
+          {entry ? (
+            <TextRow label="Current balance" prefix={cardCurrency} value={owed} onChange={(e) => setOwed(e.target.value)} inputMode="decimal" placeholder="Amount" />
+          ) : (
+            <MoneyRow
+              label="Current balance"
+              currencyLabel="Currency"
+              amountLabel="Current balance"
+              currency={currency}
+              onCurrency={setCurrency}
+              balance={owed}
+              onBalance={setOwed}
+              base={ws.baseCurrency}
+              rate={manualRate}
+              onRate={setManualRate}
+              ownRate={false}
+            />
+          )}
+          <TextRow label="Credit limit" prefix={cardCurrency} value={limit} onChange={(e) => setLimit(groupTypedAmount(e.target.value, cardCurrency))} inputMode="decimal" placeholder="Amount" />
           {household.row}
         </InsetGroup>
-        {/*
-          The rest is the fold's, as on the transaction form: a catalogue card already knows its currency, so only a
-          card typed by hand is asked it, and the dates can wait for the card's page.
-        */}
-        {detailsOpen && (
-          <InsetGroup>
-            {!entry && (
-              <SelectRow label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-                {CURRENCIES.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.code} — {c.name}
-                  </option>
-                ))}
-              </SelectRow>
-            )}
-            {!entry && foreign && (
-              <TextRow
-                label={`Rate: ${ws.baseCurrency} per 1 ${currency}`}
-                hint={ratePreview(manualRate, currency, ws.baseCurrency) ?? 'Leave empty to fetch the daily rate.'}
-                value={manualRate}
-                onChange={(e) => setManualRate(e.target.value)}
-                inputMode="decimal"
-              />
-            )}
-            {/* The card's own page calls these the billing and due dates; the same words here, so nothing is renamed halfway. */}
+        {/* The card's own page calls these the billing and due dates; the same words here, so nothing is renamed halfway. */}
+        <InsetGroup>
+          {!entry && foreign && (
             <TextRow
-              label="Billing date"
-              hint={fixedDay && !statementDay.trim() ? `Every statement of this card closes on day ${fixedDay}.` : undefined}
-              value={statementDay}
-              onChange={(e) => setStatementDay(e.target.value)}
-              inputMode="numeric"
-              placeholder="Day of month"
+              label={`Rate: ${ws.baseCurrency} per 1 ${currency}`}
+              hint={ratePreview(manualRate, currency, ws.baseCurrency) ?? 'Leave empty to fetch the daily rate.'}
+              value={manualRate}
+              onChange={(e) => setManualRate(e.target.value)}
+              inputMode="decimal"
             />
-            <TextRow label="Due date" value={dueDay} onChange={(e) => setDueDay(e.target.value)} inputMode="numeric" placeholder="Day of month" />
-          </InsetGroup>
-        )}
-        <button
-          type="button"
-          aria-expanded={detailsOpen}
-          onClick={() => setDetailsOpen((open) => !open)}
-          className="ph-focus mb-[18px] flex min-h-11 w-full items-center justify-center rounded-full text-[15px] font-medium text-[var(--ph-ink-2)]"
-        >
-          {detailsToggleLabel(detailsOpen)}
-        </button>
+          )}
+          <TextRow
+            label="Billing date"
+            hint={fixedDay && !statementDay.trim() ? `Every statement of this card closes on day ${fixedDay}.` : undefined}
+            value={statementDay}
+            onChange={(e) => setStatementDay(e.target.value)}
+            inputMode="numeric"
+            placeholder="Day of month"
+          />
+          <TextRow label="Due date" value={dueDay} onChange={(e) => setDueDay(e.target.value)} inputMode="numeric" placeholder="Day of month" />
+        </InsetGroup>
           {!embedded && (
           <InsetGroup>
             {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
