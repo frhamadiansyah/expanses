@@ -7,9 +7,9 @@ import { PickerRow, SelectCircle } from '../../ui/native';
 import { categoryGroups, offeredCategories } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
 
-/** The row's answer: nothing picked reads "All purchases"; else the first two names, and +N for the rest. */
-export function countsSummary(accounts: readonly AccountRow[], ids: readonly string[]): string {
-  if (ids.length === 0) return 'All purchases';
+/** The row's answer: nothing picked reads "All purchases" (or `none`, for a list that excludes); else the first two names, and +N for the rest. */
+export function countsSummary(accounts: readonly AccountRow[], ids: readonly string[], none = 'All purchases'): string {
+  if (ids.length === 0) return none;
   const names = ids.map((id) => accounts.find((a) => a.id === id)?.name ?? '?');
   return names.length <= 2 ? names.join(', ') : `${names.slice(0, 2).join(', ')} +${names.length - 2}`;
 }
@@ -21,14 +21,30 @@ const GROUP = 'overflow-hidden rounded-[18px] bg-[var(--ph-surface)] [&>*+*]:bor
  * a sheet picks them. Many categories, so no single select; the stored value is the list of ids, as the old box held.
  * Ticking a parent names the parent, which already covers its kinds; its kinds are not ticked for it.
  */
-export function CountsRow({ accounts, value, onChange, label = 'Counts' }: { accounts: readonly AccountRow[]; value: string[]; onChange: (ids: string[]) => void; label?: string }) {
+export function CountsRow({
+  accounts,
+  value,
+  onChange,
+  label = 'Counts',
+  never = false,
+  info,
+}: {
+  accounts: readonly AccountRow[];
+  value: string[];
+  onChange: (ids: string[]) => void;
+  label?: string;
+  /** The list of categories that never count: the row reads "None" when empty, and the sheet has no "All purchases" group. */
+  never?: boolean;
+  info?: string;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <PickerRow label={label} value={countsSummary(accounts, value)} onOpen={() => setOpen(true)} testId="counts-row" />
+      <PickerRow label={label} value={countsSummary(accounts, value, never ? 'None' : 'All purchases')} info={info} onOpen={() => setOpen(true)} testId={never ? 'never-row' : 'counts-row'} />
       {open && (
         <CountsSheet
           title={label}
+          never={never}
           accounts={accounts}
           value={value}
           onClose={() => setOpen(false)}
@@ -42,7 +58,7 @@ export function CountsRow({ accounts, value, onChange, label = 'Counts' }: { acc
   );
 }
 
-function CountsSheet({ title, accounts, value, onClose, onConfirm }: { title: string; accounts: readonly AccountRow[]; value: string[]; onClose: () => void; onConfirm: (ids: string[]) => void }) {
+function CountsSheet({ title, never, accounts, value, onClose, onConfirm }: { title: string; never: boolean; accounts: readonly AccountRow[]; value: string[]; onClose: () => void; onConfirm: (ids: string[]) => void }) {
   const membership = useCategorySetMembership().data ?? {};
   // Owner-wide: a card's rules belong to the owner and match spending in any book.
   const groups = categoryGroups(offeredCategories(accounts, 'expense', membership, () => true));
@@ -83,13 +99,17 @@ function CountsSheet({ title, accounts, value, onClose, onConfirm }: { title: st
   return (
     <Sheet grouped tall title={title} onClose={onClose} confirm={{ label: 'Done', run: () => onConfirm(draft) }}>
       <div className="flex flex-col gap-[10px]">
-        <div className={GROUP}>
-          <button type="button" role="checkbox" aria-checked={draft.length === 0} onClick={() => setDraft([])} className="ph-focus-inset flex min-h-[50px] w-full items-center gap-3 pl-[14px] text-left active:bg-[var(--ph-fill)]">
-            <SelectCircle picked={draft.length === 0} />
-            <span className="flex-1 text-[16px] text-[var(--ph-ink)]">All purchases</span>
-          </button>
-        </div>
-        <p className="px-4 pt-1 text-[13px] uppercase text-[var(--ph-ink-3)]">Or only these</p>
+        {!never && (
+          <>
+            <div className={GROUP}>
+              <button type="button" role="checkbox" aria-checked={draft.length === 0} onClick={() => setDraft([])} className="ph-focus-inset flex min-h-[50px] w-full items-center gap-3 pl-[14px] text-left active:bg-[var(--ph-fill)]">
+                <SelectCircle picked={draft.length === 0} />
+                <span className="flex-1 text-[16px] text-[var(--ph-ink)]">All purchases</span>
+              </button>
+            </div>
+            <p className="px-4 pt-1 text-[13px] uppercase text-[var(--ph-ink-3)]">Or only these</p>
+          </>
+        )}
         <div className={GROUP}>
           {groups.map(({ root, children }) => (
             <div key={root.id} className="[&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">

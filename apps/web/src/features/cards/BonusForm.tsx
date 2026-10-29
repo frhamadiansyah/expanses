@@ -5,12 +5,10 @@ import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { DestructiveRow, InsetGroup, TextRow } from '../../ui/native';
-import { ActionRow, GroupColumns, MultiSelectRow, SubmitRow } from './rows';
+import { ActionRow, GroupColumns, SubmitRow } from './rows';
 import { CountsRow } from './CountsRow';
-import { CategoryOptions } from './options';
 import { mergeMatch } from './rule-values';
 
-const selected = (select: HTMLSelectElement) => Array.from(select.selectedOptions, (o) => o.value).filter(Boolean);
 
 /** A stable key for a new bonus. Existing bonuses keep the key they were created or applied with. */
 const slug = (name: string) =>
@@ -140,9 +138,7 @@ export function BonusForm({
 
           <InsetGroup header="Where it counts">
             <CountsRow accounts={accounts} value={categoryIds} onChange={setCategoryIds} />
-            <MultiSelectRow label="Never these categories" hint="Spending here does not count toward the threshold." size={6} value={excludeIds} onChange={(e) => setExcludeIds(selected(e.target))}>
-              <CategoryOptions ownerWide accounts={accounts} kind="expense" placeholder={null} />
-            </MultiSelectRow>
+            <CountsRow never label="Never these" info="Spending here does not count toward the threshold." accounts={accounts} value={excludeIds} onChange={setExcludeIds} />
             <TextRow label="Merchant keywords" hint="Comma-separated, matched in the description. Empty = any merchant." value={merchants} onChange={(e) => setMerchants(e.target.value)} placeholder="grab, gojek" />
             <TextRow label="Valid from" type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
             <TextRow label="Valid until" type="date" value={validTo} onChange={(e) => setValidTo(e.target.value)} />

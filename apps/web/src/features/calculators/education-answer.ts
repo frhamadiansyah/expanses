@@ -1,5 +1,5 @@
 import { type EducationPlanInputs, educationPlanStages, type Goal, goalPlan } from '@expanses/core';
-import { type EducationDraft, educationInputsOf } from '../goals/education-model';
+import { type EducationDraft, EducationYearError, educationInputsOf } from '../goals/education-model';
 
 export interface EducationWorking {
   /** The sentence shown instead of an answer, or null. */
@@ -43,6 +43,8 @@ export function educationWorking(draft: EducationDraft, currency: string, today:
     }
     return { problem: null, inputs, answer: { totalMinor: plan.totalTargetMinor, monthlyMinor: plan.requiredMonthlyMinor } };
   } catch (error) {
+    // A start or end that does not read is said under the Years row, not as a line of its own.
+    if (error instanceof EducationYearError) return { problem: null, inputs: null, answer: null };
     return { problem: error instanceof Error ? error.message : 'Cannot be worked out', inputs: null, answer: null };
   }
 }

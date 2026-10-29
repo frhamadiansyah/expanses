@@ -47,6 +47,10 @@ describe('the education answer on the Calculators page', () => {
   it('says what is wrong, and never throws, whatever is typed', () => {
     expect(educationWorking(educationDraftFrom(undefined, 'IDR'), 'IDR', TODAY)).toEqual({ problem: null, inputs: null, answer: null });
     expect(educationWorking(oneLevel('-'), 'IDR', TODAY).problem).toMatch(/percentage/);
+    // A blank or half-typed start gives no answer and no line of its own: the Years row says it.
+    const blank = oneLevel();
+    blank.levels[0] = { ...blank.levels[0]!, start: '' };
+    expect(educationWorking(blank, 'IDR', TODAY)).toEqual({ problem: null, inputs: null, answer: null });
     for (const value of ['', '-', ',', '1e400', '999999999999999999999', 'x', '2032,5']) {
       for (const field of ['start', 'until', 'returnPercent'] as const) {
         const draft = oneLevel();

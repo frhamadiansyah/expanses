@@ -1,5 +1,5 @@
 import { Check, ChevronLeft, ChevronRight, Search } from 'lucide-react';
-import { Children, cloneElement, type CSSProperties, isValidElement, type ReactElement, type ReactNode, type SelectHTMLAttributes, useId } from 'react';
+import { Children, cloneElement, type CSSProperties, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { cx } from '../../ui';
 import { type SwipeAction, SwipeRow } from '../../ui/SwipeRow';
 import { GROUP_GAP, GROUP_RADIUS, type GroupChild, InsetGroup, InsetRow, type InsetRowProps, PanelHeader, ROW_PAD_X, ROW_PAD_Y, rowHeight, rowPositions, TAP, toneClass, type Tone } from '../../ui/native';
@@ -172,42 +172,6 @@ export function ActionRow({
       disabled={disabled}
       action
     />
-  );
-}
-
-/**
- * A choice of several, as a row: the label and its hint on top, the platform's own list under them.
- *
- * `SelectRow` is one answer on the right; a rule's categories are many, and a single-line picker would hide all but
- * one of them. The list is laid bare inside the row, with no box of its own, as `SelectRow` lays its select bare.
- */
-export function MultiSelectRow({
-  position,
-  label,
-  hint,
-  children,
-  ...props
-}: GroupChild & { label: string; hint?: ReactNode } & SelectHTMLAttributes<HTMLSelectElement>) {
-  const generated = useId();
-  const id = props.id ?? generated;
-  return (
-    <div className="relative">
-      <Separator show={position?.separator} />
-      <div style={ROW_BOX(true)}>
-        <label htmlFor={id} className="block text-[15px] leading-[20px] text-[var(--ph-ink)]">
-          {label}
-        </label>
-        {hint && <p className={cx('mt-[2px]', SUBTITLE)}>{hint}</p>}
-        <select
-          {...props}
-          id={id}
-          multiple
-          className="ph-focus mt-[8px] block w-full rounded-[8px] bg-[var(--ph-fill)] p-[4px] text-[16px] leading-[22px] text-[var(--ph-ink)] md:text-[14px]"
-        >
-          {children}
-        </select>
-      </div>
-    </div>
   );
 }
 

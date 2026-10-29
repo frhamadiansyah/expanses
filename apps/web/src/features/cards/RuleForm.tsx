@@ -5,9 +5,8 @@ import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, SelectRow, SwitchRow, TextRow } from '../../ui/native';
-import { ActionRow, GroupColumns, MultiSelectRow, SubmitRow } from './rows';
+import { ActionRow, GroupColumns, SubmitRow } from './rows';
 import { CountsRow } from './CountsRow';
-import { CategoryOptions } from './options';
 import { mergeMatch, parseRulePoints } from './rule-values';
 
 const optionalMinor = (value: string, currency: string) => (value.trim() ? parseGroupedMajor(value, currency) : null);
@@ -17,7 +16,6 @@ const optionalInt = (value: string) => {
   if (!Number.isInteger(n) || n < 0) throw new Error(`"${value}" must be a whole number`);
   return n;
 };
-const selected = (select: HTMLSelectElement) => Array.from(select.selectedOptions, (o) => o.value).filter(Boolean);
 
 /** suggestBase pre-fills a typical base earn rate for a card's first rule. */
 export function RuleForm({
@@ -103,9 +101,7 @@ export function RuleForm({
 
           <InsetGroup header="Where it applies">
             <CountsRow accounts={accounts} value={categoryIds} onChange={setCategoryIds} />
-            <MultiSelectRow label="Never these categories" hint="e.g. Fees, insurance, e-wallet top-ups." size={6} value={excludeIds} onChange={(e) => setExcludeIds(selected(e.target))}>
-              <CategoryOptions ownerWide accounts={accounts} kind="expense" placeholder={null} />
-            </MultiSelectRow>
+            <CountsRow never label="Never these" info="e.g. Fees, insurance, e-wallet top-ups." accounts={accounts} value={excludeIds} onChange={setExcludeIds} />
             <TextRow label="Merchant keywords" hint="Comma-separated, matched in the description. Empty = any merchant." value={merchants} onChange={(e) => setMerchants(e.target.value)} placeholder="grab, gojek" />
           </InsetGroup>
         </div>

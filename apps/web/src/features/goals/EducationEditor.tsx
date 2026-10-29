@@ -1,8 +1,8 @@
 import { groupTypedAmount, levelStartsOn, monthsUntil, type ReturnBand, returnBandFor } from '@expanses/core';
-import type { ReactElement } from 'react';
+import { type ReactElement, useState } from 'react';
 import { DestructiveRow, InsetGroup, InsetRow, TextRow } from '../../ui/native';
 import { readPercent, readWhole } from '../calculators/fields';
-import { addFee, addLevel, type EducationDraft, educationInputsOf, type FeeDraft, type LevelDraft } from './education-model';
+import { addFee, addLevel, type EducationDraft, educationInputsOf, type FeeDraft, type LevelDraft, type YearField, yearProblem } from './education-model';
 import { CostRow, YearsRow } from './EducationRows';
 
 /**
@@ -17,7 +17,10 @@ export function EducationEditor({
   today,
   name,
   onName,
+  attempted = false,
 }: {
+  /** True once saving has been tried: a start or end still blank is said then, not before. */
+  attempted?: boolean;
   /** The child's name, when the page holds more than one child; the goal's own editor leaves both out. */
   name?: string;
   onName?: (next: string) => void;
@@ -34,10 +37,19 @@ export function EducationEditor({
     if (!read.ok) return read.problem;
     return read.value < 0 ? 'Not below nothing' : undefined;
   };
-  const yearProblem = (typed: string) => {
-    if (typed.trim() === '') return undefined;
-    const read = readWhole(typed);
-    return read.ok ? undefined : read.problem.replace('years', byAge ? 'ages' : 'years').replace('like 10', byAge ? 'like 6' : 'like 2032');
+  // A start or end typed in that does not read says so at once; one still blank keeps quiet until it is touched or saving is tried.
+  const [touched, setTouched] = useState<ReadonlySet<string>>(new Set());
+  const touch = (level: LevelDraft, field: YearField) => setTouched((was) => new Set(was).add(`${level.id}:${field}`));
+  const yearsHint = (level: LevelDraft) => {
+    for (const field of ['start', 'until'] as const) {
+      const problem = yearProblem(level, field, byAge);
+      if (problem && (!problem.empty || attempted || touched.has(`${level.id}:${field}`))) return problem.text;
+      if (!problem) {
+        const read = readWhole(level[field]);
+        if (!read.ok) return read.problem.replace('years', byAge ? 'ages' : 'years').replace('like 10', byAge ? 'like 6' : 'like 2032');
+      }
+    }
+    return undefined;
   };
   const setLevel = (id: string, next: LevelDraft) => onChange({ ...value, levels: value.levels.map((level) => (level.id === id ? next : level)) });
   const setFee = (level: LevelDraft, id: string, patch: Partial<FeeDraft>) =>
@@ -91,9 +103,15 @@ export function EducationEditor({
                 byAge={byAge}
                 from={level.start}
                 to={level.until}
-                onFrom={(next) => setLevel(level.id, { ...level, start: next })}
-                onTo={(next) => setLevel(level.id, { ...level, until: next })}
-                hint={yearProblem(level.start) ?? yearProblem(level.until)}
+                onFrom={(next) => {
+                  touch(level, 'start');
+                  setLevel(level.id, { ...level, start: next });
+                }}
+                onTo={(next) => {
+                  touch(level, 'until');
+                  setLevel(level.id, { ...level, until: next });
+                }}
+                hint={yearsHint(level)}
               />
               {feeRows}
               <InsetRow title="Add a cost" label={`Add a cost to ${title}`} onClick={() => setLevel(level.id, addFee(level))} />

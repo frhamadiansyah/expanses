@@ -34,6 +34,8 @@ export function EducationFundPage() {
   const [children, setChildren] = useState<Child[]>(() => [freshChild()]);
   const [currentId, setCurrentId] = useState(() => children[0]!.id);
   const [choosing, setChoosing] = useState(false);
+  // Once "Set a goal" has been tried, a start or end still blank is named.
+  const [attempted, setAttempted] = useState(false);
 
   const index = Math.max(0, children.findIndex((child) => child.id === currentId));
   const current = children[index]!;
@@ -69,13 +71,14 @@ export function EducationFundPage() {
         onName={(name) => patch({ name })}
         currency={ws.baseCurrency}
         today={today}
+        attempted={attempted}
       />
       <Answer
         answer={educationAnswer.answer && { targetMinor: educationAnswer.answer.totalMinor, monthlyMinor: educationAnswer.answer.monthlyMinor, covered: false }}
         problem={educationAnswer.problem}
         testId="answer-education"
       />
-      <SaveRow label="Set a goal" ready={educationAnswer.answer !== null} onSave={() => void save()} />
+      <SaveRow label="Set a goal" ready={educationAnswer.answer !== null} onSave={() => void save()} onRefused={() => setAttempted(true)} />
 
       {choosing && (
         <Sheet grouped title="Child" onClose={() => setChoosing(false)}>
