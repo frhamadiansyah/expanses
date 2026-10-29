@@ -251,8 +251,8 @@ async function addGoal(page: Page, name: string, amount: string, dueOn: string) 
   await page.goto('/goals');
   await openGoalForm(page, 'Education');
   await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel(/Cost in today's money/).first().fill(amount);
-  await page.getByLabel('Needed by').first().fill(dueOn);
+  await page.getByLabel(/Cost today/).first().fill(amount);
+  await page.getByLabel('Due by').first().fill(dueOn);
   await page.getByRole('button', { name: 'Save goal' }).last().click();
   await expect(page.getByTestId('goal-row').filter({ hasText: name }).first()).toBeVisible();
 }

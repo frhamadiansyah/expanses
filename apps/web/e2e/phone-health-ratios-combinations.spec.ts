@@ -46,7 +46,7 @@ function emergencyCard(page: Page) {
 async function addFromTemplate(page: Page, template: string, amount?: string) {
   await page.goto('/goals');
   await openGoalForm(page, template);
-  if (amount) await type(page.getByLabel(/Cost in today's money/).first(), amount);
+  if (amount) await type(page.getByLabel(/Cost today/).first(), amount);
   await page.getByRole('button', { name: 'Save goal' }).last().click();
   // The save lands as a row on the list; the goal's own page is opened from it, where the working is opened next.
   await expect(goalRow(page, template)).toBeVisible();
@@ -138,7 +138,7 @@ test('row 11 — the sections hold: a holiday never lists under compulsory', asy
   // The 15 jt is the goal's cost in today's money: the list and the card read it grown to its date, so it is read
   // where it was typed, in the goal's own form.
   await editGoal(await goalCard(page, 'Holiday'));
-  await expect(page.getByLabel(/Cost in today's money/).first()).toHaveValue('15.000.000');
+  await expect(page.getByLabel(/Cost today/).first()).toHaveValue('15.000.000');
 });
 
 test('row 13 — the card grades against the household’s own months', async ({ page }) => {

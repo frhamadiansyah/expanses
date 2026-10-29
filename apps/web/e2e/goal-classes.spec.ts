@@ -11,7 +11,7 @@ async function addFromTemplate(page: Page, template: string, amount?: string) {
   await page.goto('/goals');
   await openGoalForm(page, template);
   if (amount) {
-    const cost = page.getByLabel(/Cost in today's money/).first();
+    const cost = page.getByLabel(/Cost today/).first();
     await cost.clear();
     await cost.pressSequentially(amount);
   }

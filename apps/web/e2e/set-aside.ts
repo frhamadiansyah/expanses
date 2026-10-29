@@ -74,17 +74,26 @@ export async function addGoal(page: Page, name: string, amount: string, dueOn = 
   await page.goto('/goals');
   await openGoalForm(page, 'Holiday');
   await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel(/Cost in today's money/).first().pressSequentially(amount);
-  await page.getByLabel('Needed by').first().fill(dueOn);
+  await page.getByLabel(/Cost today/).first().pressSequentially(amount);
+  await page.getByLabel('Due by').first().fill(dueOn);
   await page.getByRole('button', { name: 'Save goal' }).last().click();
   await expect(goalRow(page, name)).toBeVisible();
 }
 
-/** Adds an account as a row of Money set aside, through the Add an account row and its sheet; the row's amount is focused. */
+/** Adds an account as a row of the Funding sheet's cash group, through the Add an account row and its sheet; the row's amount is focused. */
 export async function addSetAsideRow(page: Page, account: string) {
+  // On a goal form the set-aside rows are behind the Money set aside row, in a sheet of their own.
+  const sheet = page.getByRole('dialog', { name: 'Funding' });
+  if ((await sheet.count()) === 0) await page.getByRole('button', { name: /^Funding/ }).click();
   await page.getByRole('button', { name: 'Add an account' }).click();
   await page.getByRole('dialog', { name: 'Add an account' }).getByRole('button', { name: account, exact: true }).click();
   await expect(page.getByLabel(account, { exact: true })).toBeFocused();
+}
+
+/** Puts the Funding sheet away (its figures stay on the form until Save goal). */
+export async function closeSetAsideRows(page: Page) {
+  await page.getByRole('dialog', { name: 'Funding' }).getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByRole('dialog', { name: 'Funding' })).toHaveCount(0);
 }
 
 /** The account's name without its currency, which the old boxes carried in brackets and a row does not. */

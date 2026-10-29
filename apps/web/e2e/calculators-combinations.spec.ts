@@ -2,8 +2,8 @@ import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { figure, firstLevel, neededAMonth, planTotal, row1, row5, row8, todayFigures } from './calculator-walk';
 import { addEducationGoal, stageLines, typeInto } from './education-walk';
-import { editGoal, openGoalForm, openWorking } from './goals';
-import { addSetAsideRow, goalCard, goalRow } from './set-aside';
+import { assumption, editGoal, openGoalForm, openWorking, setAssumption } from './goals';
+import { addSetAsideRow, closeSetAsideRows, goalCard, goalRow } from './set-aside';
 import { localIsoDate } from './today';
 
 test.beforeEach(({ page }) => {
@@ -86,6 +86,7 @@ test('row 6 — money set aside before a level is added: the target rises, what 
   await editGoal(page);
   await addSetAsideRow(page, 'BCA Tahapan');
   await typeInto(page, 'BCA Tahapan', '10000000');
+  await closeSetAsideRows(page);
   await page.getByRole('button', { name: 'Save goal' }).click();
   const held = page.getByTestId('goal-link').filter({ hasText: 'BCA Tahapan' }).first();
   await expect(held).toContainText('10.000.000');
@@ -127,8 +128,8 @@ test('row 7 — retirement saved from the Retirement page: 3,5% growth, 10% retu
   // The goal inflates its today's-money pot once, to the day you stop: the page's own figure.
   expect(await planTotal(page)).toBe(youNeed);
   await editGoal(retirement);
-  await expect(page.getByLabel('Cost growth a year', { exact: true })).toHaveValue('3.5');
-  await expect(page.getByLabel('Expected return a year', { exact: true })).toHaveValue('10');
+  expect(await assumption(page, 'Cost growth a year')).toBe('3.5');
+  expect(await assumption(page, 'Expected return a year')).toBe('10');
 });
 
 test('row 8 — life cover with more than enough: no further cover, and the surplus', async ({ page }) => {
@@ -139,7 +140,7 @@ test('row 9 — life cover opens on the loan and the education goal just added',
   await addAccount(page, 'KPR Bintaro', 'loan', 'Amount owed now', '300000000');
   await page.goto('/goals');
   await openGoalForm(page, 'Education');
-  await typeInto(page, "Cost in today's money", '150000000');
+  await typeInto(page, "Cost today", '150000000');
   await page.getByRole('button', { name: 'Save goal' }).last().click();
   await expect(goalRow(page, 'Education')).toBeVisible();
 
@@ -151,15 +152,13 @@ test('row 9 — life cover opens on the loan and the education goal just added',
 test('row 10 — a holiday’s return follows its date until one is typed, then stays', async ({ page }) => {
   await page.goto('/goals');
   await openGoalForm(page, 'Holiday');
-  const expectedReturn = page.getByLabel('Expected return a year', { exact: true });
-  await expect(expectedReturn).toHaveValue('4');
+  const expectedReturn = () => assumption(page, 'Expected return a year');
+  expect(await expectedReturn()).toBe('4');
 
-  await page.getByLabel('Needed by').first().fill(yearsAhead(4));
-  await expect(expectedReturn).toHaveValue('6');
+  await page.getByLabel('Due by').first().fill(yearsAhead(4));
+  await expect.poll(expectedReturn).toBe('6');
 
-  await expectedReturn.click();
-  await expectedReturn.press('ControlOrMeta+a');
-  await expectedReturn.pressSequentially('7', { delay: 30 });
-  await page.getByLabel('Needed by').first().fill(yearsAhead(0, 9));
-  await expect(expectedReturn).toHaveValue('7');
+  await setAssumption(page, 'Expected return a year', '7', true);
+  await page.getByLabel('Due by').first().fill(yearsAhead(0, 9));
+  expect(await expectedReturn()).toBe('7');
 });

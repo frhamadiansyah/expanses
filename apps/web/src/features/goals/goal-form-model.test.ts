@@ -1,5 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { addableAccounts, addedFromEarmarks, canSaveGoal, isNoAmount, setAsideWrites } from './goal-form-model';
+import { formatMinor } from '@expanses/core';
+import { addableAccounts, addedFromEarmarks, assumptionsSummary, canSaveGoal, isNoAmount, onlyPaymentName, setAsideSummary, setAsideWrites } from './goal-form-model';
+
+describe('onlyPaymentName', () => {
+  it('a new goal saves its only payment under the goal name', () => {
+    expect(onlyPaymentName(' Hajj or umrah ', 'Hajj', undefined)).toBe('Hajj or umrah');
+  });
+  it('a saved goal keeps a payment name of its own, and follows the goal name otherwise', () => {
+    expect(onlyPaymentName('Hajj trip', 'Down payment', 'Hajj')).toBe('Down payment');
+    expect(onlyPaymentName('Hajj trip', 'Hajj', 'Hajj')).toBe('Hajj trip');
+    expect(onlyPaymentName('Hajj', '', 'Hajj')).toBe('Hajj');
+  });
+});
+
+describe('setAsideSummary', () => {
+  it('says None, a total in one currency, or a count across several', () => {
+    expect(setAsideSummary([])).toBe('None');
+    expect(setAsideSummary([{ currency: 'IDR', minor: 0 }])).toBe('None');
+    expect(setAsideSummary([{ currency: 'IDR', minor: 1000000 }, { currency: 'IDR', minor: 500000 }])).toBe(formatMinor(1500000, 'IDR'));
+    expect(setAsideSummary([{ currency: 'IDR', minor: 1 }, { currency: 'USD', minor: 1 }])).toBe('2 accounts');
+  });
+});
+
+describe('assumptionsSummary', () => {
+  it('reads growth then return', () => {
+    expect(assumptionsSummary('5', '4')).toBe('Growth 5% · Return 4%');
+    expect(assumptionsSummary('', '4,5')).toBe('Growth 0% · Return 4,5%');
+  });
+});
 
 describe('addableAccounts', () => {
   it('leaves out the accounts already added', () => {
