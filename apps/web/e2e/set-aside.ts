@@ -80,12 +80,12 @@ export async function addGoal(page: Page, name: string, amount: string, dueOn = 
   await expect(goalRow(page, name)).toBeVisible();
 }
 
-/** Adds an account as a row of the Funding sheet's cash group, through the Add an account row and its sheet; the row's amount is focused. */
+/** Adds an account as a row of the Funding sheet's cash group, through the Set aside row and its sheet; the row's amount is focused. */
 export async function addSetAsideRow(page: Page, account: string) {
   // On a goal form the set-aside rows are behind the Money set aside row, in a sheet of their own.
   const sheet = page.getByRole('dialog', { name: 'Funding' });
   if ((await sheet.count()) === 0) await page.getByRole('button', { name: /^Funding/ }).click();
-  await page.getByRole('button', { name: 'Add an account' }).click();
+  await page.getByRole('button', { name: 'Set aside', exact: true }).click();
   await page.getByRole('dialog', { name: 'Add an account' }).getByRole('button', { name: account, exact: true }).click();
   await expect(page.getByLabel(account, { exact: true })).toBeFocused();
 }
@@ -106,7 +106,7 @@ export async function setAside(page: Page, goal: string, box: string, amount: st
   const sheet = page.getByRole('dialog', { name: 'Cash and cash equivalents' });
   const account = accountOf(box);
   if ((await sheet.getByLabel(account, { exact: true }).count()) === 0) {
-    await sheet.getByRole('button', { name: 'Add an account' }).click();
+    await sheet.getByRole('button', { name: 'Set aside', exact: true }).click();
     await page.getByRole('dialog', { name: 'Add an account' }).getByRole('button', { name: account, exact: true }).click();
   }
   const input = sheet.getByLabel(account, { exact: true });

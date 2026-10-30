@@ -56,12 +56,12 @@ test('set aside from a saved goal adds an account through the sheet, and a row c
 
   await card.getByRole('button', { name: 'Add cash', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'Cash and cash equivalents' });
-  await sheet.getByRole('button', { name: 'Add an account' }).click();
+  await sheet.getByRole('button', { name: 'Set aside', exact: true }).click();
   const chooser = page.getByRole('dialog', { name: 'Add an account' });
   await chooser.getByRole('button', { name: 'Jenius', exact: true }).click();
   await sheet.getByLabel('Jenius', { exact: true }).fill('3000000');
   // An account already added is not offered again.
-  await sheet.getByRole('button', { name: 'Add an account' }).click();
+  await sheet.getByRole('button', { name: 'Set aside', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Add an account' }).getByRole('button', { name: 'Jenius', exact: true })).toHaveCount(0);
   await page.getByRole('dialog', { name: 'Add an account' }).getByRole('button', { name: 'BCA', exact: true }).click();
   await sheet.getByLabel('BCA', { exact: true }).fill('1000000');
