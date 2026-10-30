@@ -148,7 +148,7 @@ test('says what the levels will cost when the time comes, and saves them as a go
   await page.goto('/goals');
   const education = await goalCard(page, 'Education fund');
   await expect(education.getByRole('heading', { name: 'Education fund' })).toBeVisible();
-  await expect(education.getByRole('button', { name: / · year \d+: / })).toHaveCount(4);
+  await expect(education.getByTestId('stage-line').filter({ hasText: / · year \d+/ })).toHaveCount(4);
 });
 
 test('each child is a goal of its own: switched by the Child row, never overwriting the one saved before', async ({ page }) => {

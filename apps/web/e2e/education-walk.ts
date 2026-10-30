@@ -23,7 +23,7 @@ export async function addEducationGoal(page: Page) {
 
 /** The goal's stage lines: each is named "<level> · year <n>: <state>". */
 export function stageLines(page: Page): Locator {
-  return page.getByRole('button', { name: / · year \d+: / });
+  return page.getByTestId('stage-line').filter({ hasText: / · year \d+/ });
 }
 
 /** How many stage lines say this figure in today's money. */

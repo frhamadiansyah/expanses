@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { openNewAsset, fillDay } from './add-asset';
-import { addPayment, assumption, closeAssumptions, editGoal, openAssumptions, openGoalForm, openWorking, setAssumption, workingSettled } from './goals';
+import { addPayment, assumption, closeAssumptions, editGoal, markPaymentPaid, openAssumptions, openGoalForm, openWorking, setAssumption, workingSettled } from './goals';
 import { openDrawers } from './drawers';
 import { addSetAsideRow, closeSetAsideRows, goalCard, goalRow } from './set-aside';
 import { localIsoDate } from './today';
@@ -313,4 +313,47 @@ test('money set aside on a foreign account is typed, saved and read back in that
   await expect(page.getByRole('button', { name: /^Funding/ })).toContainText('US$100,03');
   await page.getByRole('button', { name: /^Funding/ }).click();
   await expect(page.getByLabel('Wise USD', { exact: true })).toHaveValue('100.03');
+});
+
+test('a Stages row only reads: marking paid is done in Edit goal, and a goal with every payment paid is Done', async ({ page }) => {
+  const yearsAhead = (years: number) => {
+    const date = new Date();
+    date.setFullYear(date.getFullYear() + years);
+    return localIsoDate(date);
+  };
+  await page.goto('/goals');
+  await openGoalForm(page, 'Holiday');
+  await page.getByLabel('Name', { exact: true }).fill('Two payments');
+  await page.getByLabel(/Cost today/).first().fill('10000000');
+  await addPayment(page, { what: 'Balance', cost: '5000000', dueOn: yearsAhead(2) });
+  await page.getByRole('button', { name: 'Save goal' }).last().click();
+  await goalCard(page, 'Two payments');
+
+  // A tap on a row changes nothing, and the row is not a button.
+  const lines = page.getByTestId('stage-line');
+  await expect(lines).toHaveCount(2);
+  await expect(page.getByRole('button', { name: /Balance/ })).toHaveCount(0);
+  await expect(page.getByTestId('goal-paid')).toHaveCount(0);
+  await expect(page.getByTestId('goal-saved')).toBeVisible();
+  await lines.first().click({ force: true });
+  await expect(lines.first()).not.toContainText('Paid');
+  await expect(page.getByTestId('goal-status')).not.toHaveText('Done');
+
+  // Paid on, in Edit goal, marks it; the last one marks the goal Done.
+  await markPaymentPaid(page, 0, localIsoDate(new Date()));
+  await expect(lines.first()).toContainText('Paid');
+  // The hero's legend names the paid part, and says nothing about it before then.
+  await expect(page.getByTestId('goal-paid')).toBeVisible();
+  await expect(page.getByTestId('goal-status')).not.toHaveText('Done');
+  await markPaymentPaid(page, 1, localIsoDate(new Date()));
+  await expect(lines.nth(1)).toContainText('Paid');
+  await expect(page.getByTestId('goal-status')).toHaveText('Done');
+
+  // Cleared again, the payment is not paid and the goal is not Done.
+  await editGoal(page);
+  await page.getByTestId('payment-row').nth(1).click();
+  await page.getByRole('dialog', { name: 'Payment' }).getByRole('button', { name: 'Mark not paid' }).click();
+  await page.getByRole('dialog', { name: 'Payment' }).getByRole('button', { name: 'Save payment' }).click();
+  await page.getByRole('button', { name: 'Save goal' }).last().click();
+  await expect(page.getByTestId('goal-status')).not.toHaveText('Done');
 });

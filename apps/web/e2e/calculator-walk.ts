@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { openWorking } from './goals';
+import { markPaymentPaid, openWorking } from './goals';
 import { addEducationGoal, stageLines, todayLines, typeInto } from './education-walk';
 
 /**
@@ -52,8 +52,8 @@ export async function row1(page: Page) {
 /** Row 5: a stage marked paid keeps its mark when a level is added, and the target rises by exactly the new level. */
 export async function row5(page: Page) {
   await row1(page);
-  await page.getByRole('button', { name: 'Preschool · year 1: Saving for this' }).click();
-  await expect(page.getByRole('button', { name: 'Preschool · year 1: Paid' })).toBeVisible();
+  await markPaymentPaid(page, 0, '2026-10-01');
+  await expect(stageLines(page).first()).toContainText('Paid');
   const before = sum(await todayFigures(page));
   expect(before).toBe(165_000_000);
 
@@ -65,7 +65,7 @@ export async function row5(page: Page) {
   await page.getByRole('button', { name: 'Use this amount' }).click();
 
   await expect(stageLines(page)).toHaveCount(9);
-  await expect(page.getByRole('button', { name: 'Preschool · year 1: Paid' })).toBeVisible();
+  await expect(stageLines(page).first()).toContainText('Paid');
   // Three years of 30 jt: exactly 90 jt more in today's money.
   expect(sum(await todayFigures(page)) - before).toBe(90_000_000);
   await expect(todayLines(page, '30.000.000')).toHaveCount(3);

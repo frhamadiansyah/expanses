@@ -25,6 +25,8 @@ const plan = (partial: Partial<GoalPlanRow> = {}): GoalPlanRow => ({
   goalId: 'hajj',
   currentMinor: 30_000_000,
   totalTargetMinor: 60_000_000,
+  allTargetMinor: 60_000_000,
+  paidMinor: 0,
   stages: [
     { stageId: 'awal', name: 'First payment', dueOn: '2027-06-30', months: 10, todayMinor: 25_000_000, targetMinor: 26_000_000, state: 'covered' },
     { stageId: 'lunas', name: 'Pelunasan', dueOn: '2035-06-30', months: 105, todayMinor: 120_000_000, targetMinor: 190_000_000, state: 'saving' },
@@ -50,7 +52,33 @@ describe('goalCard', () => {
   it('measures progress against the target and never passes 100', () => {
     expect(goalCard(plan()).progressPercent).toBeCloseTo(50, 5);
     expect(goalCard(plan({ currentMinor: 90_000_000 })).progressPercent).toBe(100);
-    expect(goalCard(plan({ totalTargetMinor: 0 })).progressPercent).toBe(0);
+    expect(goalCard(plan({ allTargetMinor: 0 })).progressPercent).toBe(0);
+  });
+
+  it('counts a paid payment as progress without adding it to what is held', () => {
+    const stages = [
+      { stageId: 'a', name: 'First', dueOn: '2027-06-30', months: 10, todayMinor: 30_000_000, targetMinor: 30_000_000, state: 'paid' as const },
+      { stageId: 'b', name: 'Second', dueOn: '2028-06-30', months: 22, todayMinor: 30_000_000, targetMinor: 30_000_000, state: 'saving' as const },
+    ];
+    const card = goalCard(plan({ currentMinor: 12_000_000, totalTargetMinor: 30_000_000, allTargetMinor: 60_000_000, paidMinor: 30_000_000, stages }));
+    // Total 60M, held 12M, 30M paid: 18M to go, and the bar is (30 + 12) / 60.
+    expect(card.targetMinor).toBe(60_000_000);
+    expect(card.currentMinor).toBe(12_000_000);
+    expect(card.paidMinor).toBe(30_000_000);
+    expect(card.targetMinor - card.paidMinor - card.currentMinor).toBe(18_000_000);
+    expect(card.progressPercent).toBeCloseTo(70, 5);
+    expect(card.done).toBe(false);
+  });
+
+  it('is Done when every payment is paid, with the bar full', () => {
+    const stages = [
+      { stageId: 'a', name: 'First', dueOn: '2027-06-30', months: 10, todayMinor: 30_000_000, targetMinor: 30_000_000, state: 'paid' as const },
+      { stageId: 'b', name: 'Second', dueOn: '2028-06-30', months: 22, todayMinor: 30_000_000, targetMinor: 30_000_000, state: 'paid' as const },
+    ];
+    const card = goalCard(plan({ currentMinor: 0, totalTargetMinor: 0, allTargetMinor: 60_000_000, paidMinor: 60_000_000, stages }));
+    expect(card.done).toBe(true);
+    expect(card.statusLabel).toBe('Done');
+    expect(card.progressPercent).toBe(100);
   });
 
   it('says Behind with how much is missing each month', () => {

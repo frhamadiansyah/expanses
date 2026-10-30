@@ -81,6 +81,25 @@ describe('goalPlan', () => {
     expect(plan.totalTargetMinor).toBe(plan.stages[0]!.targetMinor);
   });
 
+  it('keeps every payment in the total and sums the paid ones apart, so marking one paid never shrinks the goal', () => {
+    const two = goal({
+      id: 'two',
+      name: 'Two payments',
+      kind: 'holiday',
+      growthBps: 0,
+      returnBps: 0,
+      stages: [
+        stage({ id: 'a', name: 'First', dueOn: '2027-06-15', targetMinor: 30_000_000, paidOn: '2026-10-01' }),
+        stage({ id: 'b', name: 'Second', dueOn: '2028-06-15', targetMinor: 30_000_000 }),
+      ],
+    });
+    const plan = goalPlan(two, [link(12_000_000)], 0, 0, TODAY);
+    expect(plan.allTargetMinor).toBe(60_000_000);
+    expect(plan.paidMinor).toBe(30_000_000);
+    expect(plan.totalTargetMinor).toBe(30_000_000);
+    expect(plan.currentMinor).toBe(12_000_000);
+  });
+
   it('needs nothing when the links already cover the target', () => {
     const plan = goalPlan(holiday, [link(60_000_000)], 0, 0, TODAY);
     expect(plan.stages[0]!.state).toBe('covered');
@@ -192,6 +211,8 @@ describe('fitByRank', () => {
     goalId: row.goalId,
     currentMinor: 0,
     totalTargetMinor: 0,
+    allTargetMinor: 0,
+    paidMinor: 0,
     stages: [],
     requiredMonthlyMinor: row.requiredMonthlyMinor,
     plannedMonthlyMinor: 0,

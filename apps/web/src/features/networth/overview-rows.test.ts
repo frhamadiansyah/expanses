@@ -110,6 +110,8 @@ const goalPlanRow = (partial: Partial<GoalPlanRow> = {}): GoalPlanRow => ({
   goalId: 'hajj',
   currentMinor: 1_000_000,
   totalTargetMinor: 50_000_000,
+  allTargetMinor: 50_000_000,
+  paidMinor: 0,
   stages: [],
   requiredMonthlyMinor: 1_000_000,
   plannedMonthlyMinor: 0,

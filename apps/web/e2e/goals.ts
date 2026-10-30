@@ -64,6 +64,18 @@ export async function addPayment(page: Page, payment: { what: string; cost: stri
   await expect(sheet).toHaveCount(0);
 }
 
+/** Marks one payment of the open goal paid: Edit goal, the payment's sheet, Paid on, and the goal saved. */
+export async function markPaymentPaid(page: Page, index: number, day: string) {
+  await editGoal(page);
+  await page.getByTestId('payment-row').nth(index).click();
+  const sheet = page.getByRole('dialog', { name: 'Payment' });
+  await sheet.getByLabel('Paid on').fill(day);
+  await sheet.getByRole('button', { name: 'Save payment' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(page.getByTestId('payment-row').nth(index)).toContainText('Paid');
+  await page.getByRole('button', { name: 'Save goal' }).last().click();
+}
+
 /**
  * The working behind a goal's amount. The pencil opens the goal's fields and the working together, and the row
  * inside it swaps the fields for the working — so this is one door, not two.

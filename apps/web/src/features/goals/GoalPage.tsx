@@ -9,6 +9,7 @@ import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox, Money } from '../../ui';
 import { ActionButtons, type CornerAction, InsetGroup, InsetRow, Panel, PushedTitle, type RoundAction, SCREEN } from '../../ui/native';
 import { UseBar } from '../budget/budget-rows';
+import { KeyItem } from '../bills/RepeatingBills';
 import { useTrades } from '../networth/queries';
 import { FundingRow } from './funding';
 import { TagPurchaseSheet } from './FundingSheet';
@@ -180,6 +181,10 @@ export function GoalPage({ goalId }: { goalId: string }) {
 
   const shares = stageShares(card);
   const due = card.kind === 'emergency' ? null : card.targetMinor > 0 || !card.done ? card.dueLabel : null;
+  // The three parts of the bar: what is marked paid, what is held, what is left. Held money never pushes past the whole.
+  const paidShare = card.targetMinor > 0 ? Math.min(1, card.paidMinor / card.targetMinor) : 0;
+  const savedShare = card.targetMinor > 0 ? Math.min(1 - paidShare, card.currentMinor / card.targetMinor) : 0;
+  const toGoMinor = card.targetMinor > 0 ? Math.max(0, card.targetMinor - card.paidMinor - card.currentMinor) : 0;
   const right = card.coverLabel ?? (card.monthsLeft !== null ? monthsLeftLabel(card.monthsLeft) : null);
 
   return (
@@ -220,24 +225,26 @@ export function GoalPage({ goalId }: { goalId: string }) {
             </div>
           )}
         </div>
-        {/* Clamped: saving more than was set out is not a warning, so the bar is full and in the tint, never past. */}
-        <UseBar share={card.done ? 1 : Math.min(1, card.progressPercent / 100)} height={6} warn={warn} label={`${card.name} progress`} />
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">Saved</p>
-            <p className="tabular text-[17px] leading-[22px] font-bold text-[var(--ph-ink)]" data-testid="goal-saved">
-              {formatMinor(card.currentMinor, currency)}
-            </p>
-          </div>
-          {card.targetMinor > 0 && (
-            <div className="text-right">
-              <p className="text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">To go</p>
-              <p className="tabular text-[17px] leading-[22px] font-bold text-[var(--ph-ink)]" data-testid="goal-togo">
-                {formatMinor(Math.max(0, card.targetMinor - card.currentMinor), currency)}
-              </p>
-            </div>
-          )}
-        </div>
+        {/* One bar, left to right: paid, then saved, then what is to go. Saving more than is asked fills it, never past. */}
+        <UseBar
+          share={card.done ? 1 : Math.min(1, card.progressPercent / 100)}
+          height={6}
+          warn={warn}
+          label={`${card.name} progress`}
+          segments={
+            card.targetMinor > 0
+              ? [
+                  { share: paidShare, colour: 'var(--ph-ink-3)' },
+                  { share: savedShare, colour: warn ? 'var(--ph-warn)' : 'var(--ph-up)' },
+                ]
+              : undefined
+          }
+        />
+        <ul className="flex flex-col text-[12.5px] leading-[26px] text-[var(--ph-ink-3)]">
+          {card.paidMinor > 0 && <KeyItem colour="var(--ph-ink-3)" label="Paid" minor={card.paidMinor} currency={currency} testId="goal-paid" />}
+          <KeyItem colour={warn ? 'var(--ph-warn)' : 'var(--ph-up)'} label="Saved" minor={card.currentMinor} currency={currency} testId="goal-saved" />
+          {toGoMinor > 0 && <KeyItem colour="color-mix(in srgb, var(--ph-ink-3) 35%, transparent)" label="To go" minor={toGoMinor} currency={currency} testId="goal-togo" />}
+        </ul>
         {(derived.has(card.goalId) || card.shortLines.length > 0) && (
           <p className="text-[13px] leading-[18px]">
             {derived.has(card.goalId) && <span className="block text-[var(--ph-tint)]">Worked out from these figures</span>}
@@ -251,9 +258,10 @@ export function GoalPage({ goalId }: { goalId: string }) {
       {card.stageLines.length > 1 && (
         <InsetGroup wide header="Stages">
           {card.stageLines.map((line, index) => (
-            /* The line itself is what marks a stage paid. */
+            /* Read-only: a payment is marked paid in Edit goal, on its own sheet. */
             <InsetRow
               key={line.stageId}
+              testId="stage-line"
               title={`${line.when} · ${line.name}`}
               subtitle={
                 <span className="mt-[4px] block">
@@ -263,13 +271,13 @@ export function GoalPage({ goalId }: { goalId: string }) {
               value={
                 <span className="block text-right">
                   <Money minor={line.targetMinor} currency={currency} />
-                  <span className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{formatMinor(line.todayMinor, currency)} today</span>
+                  <span className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
+                    {formatMinor(line.todayMinor, currency)} today · {line.stateLabel}
+                  </span>
                 </span>
               }
               valueTone="ink"
               chevron={false}
-              label={`${line.name}: ${line.stateLabel}`}
-              onClick={() => togglePaid(line.stageId, line.state === 'paid')}
             />
           ))}
         </InsetGroup>
