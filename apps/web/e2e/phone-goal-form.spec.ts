@@ -73,3 +73,36 @@ test('set aside from a saved goal adds an account through the sheet, and a row c
   await expect(card.getByTestId('goal-link').filter({ hasText: 'Jenius' }).first()).toBeVisible();
   await expect(card.getByTestId('goal-link').filter({ hasText: 'BCA' })).toHaveCount(0);
 });
+
+test('the Add an account sheet searches, groups by type, shows the room and lists an empty account as not available', async ({ page }) => {
+  await addMoneyAccount(page, 'Jenius', 'savings', '20000000');
+  await addMoneyAccount(page, 'Dompet', 'cash', '500000');
+  await addMoneyAccount(page, 'Kosong', 'savings', '0');
+  await page.goto('/goals');
+  await openGoalForm(page, 'Wedding');
+  await page.getByLabel(/Cost today/).first().fill('8000000');
+  await page.getByRole('button', { name: 'Save goal' }).click();
+  const card = await goalCard(page, 'Wedding');
+
+  await card.getByRole('button', { name: 'Set aside', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Set aside' }).getByRole('button', { name: 'Set aside', exact: true }).click();
+  const chooser = page.getByRole('dialog', { name: 'Add an account' });
+  // Grouped by type, each row with what can still be set aside from it and no "Free".
+  await expect(chooser.getByText('Savings', { exact: true })).toBeVisible();
+  await expect(chooser.getByText('Cash and e-money', { exact: true })).toBeVisible();
+  await expect(chooser.getByRole('button', { name: 'Jenius', exact: true })).toContainText(/20\.000\.000/);
+  await expect(chooser.getByRole('button', { name: 'Dompet', exact: true })).toContainText(/500\.000/);
+  await expect(chooser).not.toContainText('Free');
+  // Nothing available: last, greyed, not tappable.
+  await expect(chooser.getByText('Not available', { exact: true }).first()).toBeVisible();
+  const empty = chooser.getByTestId('not-available-row');
+  await expect(empty).toHaveCount(1);
+  await expect(empty).toContainText('Kosong');
+  await expect(chooser.getByRole('button', { name: 'Kosong', exact: true })).toBeDisabled();
+
+  // The search narrows by name, in any case.
+  await chooser.getByRole('searchbox').fill('dom');
+  await expect(chooser.getByRole('button', { name: 'Dompet', exact: true })).toBeVisible();
+  await expect(chooser.getByRole('button', { name: 'Jenius', exact: true })).toHaveCount(0);
+  await expect(empty).toHaveCount(0);
+});

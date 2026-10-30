@@ -164,14 +164,14 @@ function AccountChooser({ state, onPick, onClose }: { state: SetAsideState; onPi
       {groups.map((group) => (
         <InsetGroup key={group.title} header={group.title}>
           {group.items.map(({ account, room }) => (
-            <InsetRow key={account.id} title={account.name} value={formatMinor(room, state.currencyOf(account))} valueTone="ink-3" chevron={false} onClick={() => onPick(account.id)} />
+            <InsetRow key={account.id} title={account.name} label={account.name} value={formatMinor(room, state.currencyOf(account))} valueTone="ink-3" chevron={false} onClick={() => onPick(account.id)} />
           ))}
         </InsetGroup>
       ))}
       {unavailable.length > 0 && (
         <InsetGroup header="Not available">
           {unavailable.map(({ account }) => (
-            <InsetRow key={account.id} title={account.name} value="Not available" valueTone="ink-3" chevron={false} disabled testId="not-available-row" />
+            <InsetRow key={account.id} title={account.name} label={account.name} value="Not available" valueTone="ink-3" chevron={false} disabled testId="not-available-row" />
           ))}
         </InsetGroup>
       )}
