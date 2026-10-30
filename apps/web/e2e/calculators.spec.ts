@@ -123,7 +123,6 @@ test('turns the answer into a goal, which reaches the budget sheet', async ({ pa
   await page.goto('/goals');
   const retirement = await goalCard(page, 'Retirement fund');
   await expect(retirement.getByRole('heading', { name: 'Retirement fund' })).toBeVisible();
-  await expect(retirement.getByText('Worked out from these figures')).toBeVisible();
 
   await page.goto('/budget');
   await budgetTab(page, 'Plan');

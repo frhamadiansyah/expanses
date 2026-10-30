@@ -1,6 +1,6 @@
 import { bandHint, type GoalKind, formatMinor, groupedMajorString, groupTypedAmount, isoDate, monthsUntil, parseGroupedMajor, parseMajor, returnBandFor } from '@expanses/core';
-import { type GoalRow, goalIsFunded, retagTrade, saveGoal } from '@expanses/db';
-import { useParams } from '@tanstack/react-router';
+import { archiveGoal, deleteGoal, type GoalRow, goalIsFunded, retagTrade, saveGoal } from '@expanses/db';
+import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
 import { type FormEvent, useEffect, useState } from 'react';
 import { useBack } from '../../app/BackHeader';
@@ -68,6 +68,7 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const goBack = useBack('/goals');
+  const navigate = useNavigate();
   const today = isoDate();
   const calculators = useGoalCalculators();
 
@@ -172,6 +173,29 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
       return;
     }
     setStage(index, draft);
+  }
+
+  async function archive() {
+    if (!goal || !window.confirm(`Archive "${goal.name}"? Its tagged purchases keep their history.`)) return;
+    try {
+      await archiveGoal(database, ws, goal.id);
+      await invalidate();
+      // The list is where an archived goal stops being: staying here would read a page for nothing.
+      await navigate({ to: '/goals' });
+    } catch (e) {
+      setError(e);
+    }
+  }
+
+  async function remove() {
+    if (!goal || !window.confirm(`Delete "${goal.name}"? Money set aside goes back to its accounts and tagged purchases are untagged. The goal and its history are removed.`)) return;
+    try {
+      await deleteGoal(database, ws, goal.id);
+      await invalidate();
+      await navigate({ to: '/goals' });
+    } catch (e) {
+      setError(e);
+    }
   }
 
   async function submit(event?: FormEvent) {
@@ -317,6 +341,15 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
             <PickerRow key="funding" label="Funding" value={fundingSummary(setAsideSummary(setAsideEntries), taggedNow.length)} placeholder="None" onOpen={() => setFundingOpen(true)} />,
           ]}
         </InsetGroup>
+
+        {goal && (
+          <InsetGroup footer={stages.every((stage) => stage.paidOn) && kind !== 'emergency' ? 'Archiving keeps the history and stops the goal claiming money.' : undefined}>
+            {[
+              <InsetRow key="archive" label="Archive goal" title="Archive goal" action onClick={() => void archive()} />,
+              <InsetRow key="delete" label="Delete goal" title={<span className="text-[var(--ph-warn)]">Delete goal</span>} action onClick={() => void remove()} />,
+            ]}
+          </InsetGroup>
+        )}
 
         {/* For the goals whose amount is worked out rather than typed: the working is part of editing them. */}
         {goal && calculatorKindOf(kind) && goal.currency === ws.baseCurrency && currency === ws.baseCurrency && (

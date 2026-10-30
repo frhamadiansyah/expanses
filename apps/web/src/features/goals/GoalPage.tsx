@@ -1,7 +1,7 @@
 import { formatMinor, isoDate } from '@expanses/core';
-import { archiveGoal, deleteGoal, type GoalHistoryEntry, retagTrade, setStagePaid } from '@expanses/db';
+import { type GoalHistoryEntry, retagTrade, setStagePaid } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { Archive, ArrowRightLeft, CalendarClock, Check, HandCoins, MoreHorizontal, Pencil, PiggyBank, ShoppingBag, Tag, Trash2, Undo2 } from 'lucide-react';
+import { ArrowRightLeft, CalendarClock, Check, HandCoins, MoreHorizontal, Pencil, PiggyBank, ShoppingBag, Tag, Undo2 } from 'lucide-react';
 import { useState } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
@@ -18,7 +18,7 @@ import { MonthlySheet, MoveSheet, TakeBackSheet, useHasTaggedPurchase, UseSheet 
 import { setAsideOf } from './goal-actions';
 import { cardHistory, dayMonth, fundedWindow, type GoalCard, goalCard, historyDay, monthsLeftLabel, stageShares } from './goal-cards';
 import { InfoHeader } from './InfoHeader';
-import { useDraws, useEarmarks, useGoalCalculators, useGoalHistory, useGoalPlans } from './queries';
+import { useDraws, useEarmarks, useGoalHistory, useGoalPlans } from './queries';
 
 export function GoalRoute() {
   const { goalId } = useParams({ from: '/goals/$goalId' });
@@ -75,7 +75,6 @@ export function GoalPage({ goalId }: { goalId: string }) {
   const history = useGoalHistory().data ?? {};
   // A history line's key is its draw's id, so a borrow can be asked whether the goal was whole when it was taken.
   const wholeBorrows = new Set((useDraws().data ?? []).filter((draw) => draw.intent === 'borrow' && draw.wasWhole).map((draw) => draw.id));
-  const calculators = useGoalCalculators();
   const [settingAside, setSettingAside] = useState(false);
   // The one sheet open from the round actions or the ⋯, if any.
   const [open, setOpen] = useState<'use' | 'monthly' | 'take-back' | 'move' | null>(null);
@@ -84,29 +83,6 @@ export function GoalPage({ goalId }: { goalId: string }) {
 
   const plans = summary.data?.plans ?? [];
   const plan = plans.find((row) => row.goalId === goalId);
-
-  async function archive(name: string) {
-    if (!window.confirm(`Archive "${name}"? Its tagged purchases keep their history.`)) return;
-    try {
-      await archiveGoal(database, ws, goalId);
-      await invalidate();
-      // The list is where an archived goal stops being: staying here would read a page for nothing.
-      await navigate({ to: '/goals' });
-    } catch (e) {
-      setError(e);
-    }
-  }
-
-  async function remove(name: string) {
-    if (!window.confirm(`Delete "${name}"? Money set aside goes back to its accounts and tagged purchases are untagged. The goal and its history are removed.`)) return;
-    try {
-      await deleteGoal(database, ws, goalId);
-      await invalidate();
-      await navigate({ to: '/goals' });
-    } catch (e) {
-      setError(e);
-    }
-  }
 
   async function togglePaid(stageId: string, paid: boolean) {
     await setStagePaid(database, ws, stageId, paid ? null : today);
@@ -136,7 +112,6 @@ export function GoalPage({ goalId }: { goalId: string }) {
   const card = goalCard(plan);
   const currency = plan.currency;
   const warn = card.statusTone === 'warn';
-  const derived = new Set((calculators.data ?? []).map((row) => row.goalId));
   const full = history[card.goalId] ?? [];
   const { stood } = cardHistory(full, (key) => wholeBorrows.has(key));
   // A goal of one payment has no Stages group, so its paid mark waits behind the ⋯.
@@ -150,22 +125,13 @@ export function GoalPage({ goalId }: { goalId: string }) {
     ...(others.length > 0 && (held || hasPurchase)
       ? [{ key: 'move', label: 'Move to another goal', glyph: <ArrowRightLeft size={18} aria-hidden />, run: () => setOpen('move') }]
       : []),
-    ...(only
+    ...(only && card.kind !== 'emergency'
       ? [
           only.state === 'paid'
             ? { key: 'unpaid', label: 'Mark not paid', glyph: <Undo2 size={18} aria-hidden />, run: () => void togglePaid(only.stageId, true) }
             : { key: 'paid', label: 'Mark paid', glyph: <Check size={18} aria-hidden />, run: () => void togglePaid(only.stageId, false) },
         ]
       : []),
-    {
-      key: 'archive',
-      label: 'Archive',
-      glyph: <Archive size={18} aria-hidden />,
-      // What archiving a finished goal does, said where archiving is.
-      detail: card.done ? 'Keeps the history, stops it claiming money.' : undefined,
-      run: () => void archive(card.name),
-    },
-    { key: 'delete', label: 'Delete', glyph: <Trash2 size={18} aria-hidden />, run: () => void remove(card.name) },
   ];
   const actions: CornerAction[] = [{ key: 'more', label: 'More', glyph: <MoreHorizontal size={20} aria-hidden />, menu }];
 
@@ -246,9 +212,8 @@ export function GoalPage({ goalId }: { goalId: string }) {
           <KeyItem colour={warn ? 'var(--ph-warn)' : 'var(--ph-up)'} label="Saved" minor={card.currentMinor} currency={currency} testId="goal-saved" />
           {toGoMinor > 0 && <KeyItem colour="color-mix(in srgb, var(--ph-ink-3) 35%, transparent)" label="To go" minor={toGoMinor} currency={currency} testId="goal-togo" />}
         </ul>
-        {(derived.has(card.goalId) || card.shortLines.length > 0) && (
+        {card.shortLines.length > 0 && (
           <p className="text-[13px] leading-[18px]">
-            {derived.has(card.goalId) && <span className="block text-[var(--ph-tint)]">Worked out from these figures</span>}
             <ShortNote card={card} stood={stood} />
           </p>
         )}
@@ -284,6 +249,8 @@ export function GoalPage({ goalId }: { goalId: string }) {
         </InsetGroup>
       )}
 
+      {/* A goal that needs nothing more a month has nothing to plan: the box is for the ones still short of it. */}
+      {plan.status !== 'funded' && !card.done && (
       <InsetGroup wide header="Each month">
         <InsetRow title="Needed a month" value={<Money minor={card.neededMonthlyMinor} currency={currency} />} valueTone="ink" chevron={false} />
         <InsetRow title="Set up a month" value={<Money minor={card.plannedMonthlyMinor} currency={currency} />} valueTone="ink" chevron={false} />
@@ -294,6 +261,7 @@ export function GoalPage({ goalId }: { goalId: string }) {
           chevron={false}
         />
       </InsetGroup>
+      )}
 
       <section className="w-full">
         <InfoHeader

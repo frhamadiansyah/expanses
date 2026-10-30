@@ -101,19 +101,20 @@ export async function goalMenu(scope: Page | Locator, item: string | RegExp) {
   await root.getByRole('menuitem', { name: item }).first().click();
 }
 
-/** Edit is behind the goal page's ⋯ now, beside Archive. */
+/** Edit is behind the goal page's ⋯; Archive and Delete are on its page. */
 export const editGoal = (scope: Page | Locator) => goalMenu(scope, /^Edit$/);
 
 /**
- * What archiving says on a finished goal, read on Archive's line behind the ⋯ (and the menu put away again): the
- * note is there once the goal is done and only then.
+ * What archiving says on a finished goal, read where Archive is: the goal's Edit page, under its Delete and Archive rows.
+ * The note is there once the goal is done and only then.
  */
 export async function expectArchiveNote(goal: Locator, shown: boolean) {
-  await goal.getByRole('button', { name: 'More', exact: true }).first().click();
-  const archive = goal.getByRole('menuitem', { name: /^Archive/ }).first();
-  await expect(archive).toBeVisible();
-  if (shown) await expect(archive).toContainText('Keeps the history, stops it claiming money.');
-  else await expect(archive).not.toContainText('Keeps the history');
-  await goal.page().keyboard.press('Escape');
-  await expect(archive).toHaveCount(0);
+  await editGoal(goal);
+  const page = goal.page();
+  await expect(page.getByRole('button', { name: 'Archive goal' })).toBeVisible();
+  const note = page.getByText('Archiving keeps the history and stops the goal claiming money.');
+  if (shown) await expect(note).toBeVisible();
+  else await expect(note).toHaveCount(0);
+  await page.goBack();
+  await expect(goal).toBeVisible();
 }

@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { openAmount, addForm, saveButton, chooseGoal, chooseTo } from './add-transaction';
-import { expectArchiveNote, goalMenu, openGoalForm } from './goals';
+import { editGoal, expectArchiveNote, openGoalForm } from './goals';
 import { addBill, addGoal, addMoneyAccount, goalCard, goalRow, jeniusWithTwoGoals, openAccountPage, openExpense, openGoalHistory, setAside, transferOutBorrowingFromUmrah, typeAmount, typeSecondFigure } from './set-aside';
 
 /*
@@ -250,7 +250,8 @@ export const JOURNEYS: Journey[] = [
       await expectFree(page, 'Jenius', 'Rp.5\\.000\\.000');
 
       await page.goto('/goals');
-      await goalMenu(await goalCard(page, 'Umrah 2027'), /^Archive/);
+      await editGoal(await goalCard(page, 'Umrah 2027'));
+      await page.getByRole('button', { name: 'Archive goal' }).click();
       // Back on the list, where the goal's row went with it.
       await expect(page.getByRole('heading', { name: 'Umrah 2027', exact: true })).toHaveCount(0);
       // Free rises by the 1.500.000 Umrah still promised: 5.000.000 → 6.500.000.

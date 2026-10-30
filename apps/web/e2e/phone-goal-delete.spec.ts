@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { editGoal } from './goals';
 import { addGoal, addMoneyAccount, goalCard, goalRow, setAside } from './set-aside';
 
 test('a goal can be deleted: its set-aside is released and the goal is gone from the list', async ({ page }) => {
@@ -8,8 +9,8 @@ test('a goal can be deleted: its set-aside is released and the goal is gone from
   await setAside(page, 'Holiday fund', 'BCA Tahapan', '4000000');
 
   const card = await goalCard(page, 'Holiday fund');
-  await card.getByRole('button', { name: 'More' }).click();
-  await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
+  await editGoal(card);
+  await page.getByRole('button', { name: 'Delete goal' }).click();
 
   await expect(page).toHaveURL(/\/goals$/);
   await expect(goalRow(page, 'Holiday fund')).toHaveCount(0);
