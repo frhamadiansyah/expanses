@@ -98,7 +98,7 @@ test('the Add an account sheet searches, groups by type, shows the room and list
   const empty = chooser.getByTestId('not-available-row');
   await expect(empty).toHaveCount(1);
   await expect(empty).toContainText('Kosong');
-  await expect(chooser.getByRole('button', { name: 'Kosong', exact: true })).toBeDisabled();
+  await expect(empty.getByRole('button')).toHaveCount(0);
 
   // The search narrows by name, in any case.
   await chooser.getByRole('searchbox').fill('dom');

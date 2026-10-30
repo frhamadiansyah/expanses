@@ -6,7 +6,6 @@ import {
   addMonths,
   convertMinor,
   DEFAULT_EMERGENCY_BASE,
-  type EmergencyBase,
   emergencyOutgoingMinor,
   fitByRank,
   formatMinor,
@@ -327,14 +326,16 @@ export async function goalPlansFor(database: Database, ws: WorkspaceContext, dat
   const flows = await periodFlows(database, ownerScope(ws), { from: `${addMonths(monthOf(date), -11)}-01`, to: date });
   // What an emergency goal's months multiply: the function the ratio card divides by, on the base the goal's own
   // working chose — essential unless it said all. Loan principal is inside either way; the interest never twice.
-  const baseOf = new Map<string, EmergencyBase>(
-    (await listGoalCalculators(database, ws))
-      .filter((row) => row.kind === 'emergency')
-      .map((row) => [row.goalId, (row.inputs as EmergencyInputs).base ?? DEFAULT_EMERGENCY_BASE]),
+  const emergencyWorkings = new Map(
+    (await listGoalCalculators(database, ws)).filter((row) => row.kind === 'emergency').map((row) => [row.goalId, row.inputs as EmergencyInputs]),
   );
   // Summed signed inside emergencyOutgoingMinor, then clamped once here: refunds larger than spending make a month of
-  // nothing, never a negative target.
-  const outgoingFor = (goalId: string) => Math.max(0, perMonth(emergencyOutgoingMinor(flows, baseOf.get(goalId) ?? DEFAULT_EMERGENCY_BASE), flows.months));
+  // nothing, never a negative target. A working that typed its own monthly figure uses that instead of the records.
+  const outgoingFor = (goalId: string) => {
+    const working = emergencyWorkings.get(goalId);
+    if (working?.monthlyOutgoingMinor !== undefined) return working.monthlyOutgoingMinor;
+    return Math.max(0, perMonth(emergencyOutgoingMinor(flows, working?.base ?? DEFAULT_EMERGENCY_BASE), flows.months));
+  };
   // What is left over takes the same care: the interest is an expense, so subtracting the whole payment
   // beside spending would take it out twice and make every goal look further away than it is. The principal
   // is still subtracted — it builds equity, but the cash has left the account and cannot fund a goal.

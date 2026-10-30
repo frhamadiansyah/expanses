@@ -35,6 +35,15 @@ export interface EmergencyInputs {
   household?: Household;
   income?: IncomeStability;
   base?: EmergencyBase;
+  /**
+   * A fixed monthly outgoing, in the base currency, typed on the calculator. When set the months multiply it instead of
+   * the spending read from the records; absent, the goal follows spending as it always did.
+   */
+  monthlyOutgoingMinor?: number;
+  /** The months the fund is to be saved over: the goal falls due that far from the day it was worked out (two years when absent). */
+  horizonMonths?: number;
+  /** What the money earns a year while it waits, written as the goal's return when set. */
+  returnBps?: number;
 }
 
 export type CalculatorKind = 'emergency' | 'education' | 'retirement';
@@ -87,12 +96,28 @@ function derive(kind: CalculatorKind, raw: CalculatorInputs, today: string, goal
     if (household !== undefined && !HOUSEHOLDS.includes(household)) throw new GoalDbError('That household is not one this app knows');
     if (income !== undefined && !INCOME_STABILITIES.includes(income)) throw new GoalDbError('Income is salaried or irregular');
     if (base !== undefined && !EMERGENCY_BASES.includes(base)) throw new GoalDbError('An emergency fund counts essential or all spending');
-    // Months, not an amount: what it costs follows your spending, and is worked out when it is read — so no growth.
+    const { monthlyOutgoingMinor, horizonMonths, returnBps } = inputs;
+    if (monthlyOutgoingMinor !== undefined && (!Number.isSafeInteger(monthlyOutgoingMinor) || monthlyOutgoingMinor <= 0)) {
+      throw new GoalDbError('What goes out a month needs an amount above zero');
+    }
+    if (horizonMonths !== undefined && (!Number.isSafeInteger(horizonMonths) || horizonMonths < 1)) throw new GoalDbError('Save it over a whole number of months, one or more');
+    if (returnBps !== undefined && (!Number.isSafeInteger(returnBps) || returnBps < 0)) throw new GoalDbError('The return cannot be negative');
+    // Months, not an amount: what it costs is worked out when it is read — from spending, or from the fixed monthly
+    // figure when the working has one — so no growth.
     return {
       inputs: { ...inputs, version: 2 },
-      stages: [{ name: goalName, targetMinor: null, targetMonths: Math.round(months), dueOn: yearsFrom(today, 2), key: 'emergency', returnBps: null }],
+      stages: [
+        {
+          name: goalName,
+          targetMinor: null,
+          targetMonths: Math.round(months),
+          dueOn: horizonMonths === undefined ? yearsFrom(today, 2) : monthsFrom(today, horizonMonths),
+          key: 'emergency',
+          returnBps: null,
+        },
+      ],
       growthBps: 0,
-      returnBps: null,
+      returnBps: returnBps ?? null,
       computedMinor: 0,
     };
   }
@@ -130,6 +155,14 @@ function derive(kind: CalculatorKind, raw: CalculatorInputs, today: string, goal
 function yearsFrom(today: string, years: number): string {
   const [year, month, day] = today.split('-').map(Number);
   return new Date(Date.UTC(year! + Math.max(0, Math.round(years)), month! - 1, day!)).toISOString().slice(0, 10);
+}
+
+function monthsFrom(today: string, months: number): string {
+  const [year, month, day] = today.split('-').map(Number);
+  const first = new Date(Date.UTC(year!, month! - 1 + months, 1));
+  // The same day of the month, or the last day of a shorter one.
+  const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), Math.min(day!, last))).toISOString().slice(0, 10);
 }
 
 type StageRow = typeof goalStages.$inferSelect;
