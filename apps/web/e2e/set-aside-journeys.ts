@@ -100,11 +100,11 @@ async function expenseBorrowingEf(page: Page, amount: string, over: RegExp, note
 
 /**
  * Nothing in `scope` says a promise is short: neither the line under the figure ("Short by Rp 1.800.000") nor the
- * Funded-by row ("set aside · short by …"). The monthly plan's own "Short by" row is a different fact and is left alone.
+ * Funded-by row ("short by …"). The monthly plan's own "Short by" row is a different fact and is left alone.
  */
 async function expectNotShort(scope: Locator) {
   await expect(scope.getByText(/^Short by (Rp|US\$)/)).toHaveCount(0);
-  await expect(scope.getByText(/set aside · short by/)).toHaveCount(0);
+  await expect(scope.getByTestId('goal-link').getByText(/short by/)).toHaveCount(0);
 }
 
 export interface Journey {

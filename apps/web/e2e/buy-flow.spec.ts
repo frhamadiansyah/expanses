@@ -236,7 +236,7 @@ test('a card purchase with a fee, tagged to a goal, moves the units, the goal an
   // valuation and moves with the price; what the tag decides is which goal the units belong to.
   // What funds a goal is read on the goal's own page, under Funded by: the list no longer repeats it.
   const hajj = await goalCard(page, 'Hajj fund');
-  await expect(hajj.getByTestId('goal-link').filter({ hasText: 'Antam gold bars' })).toContainText('tagged');
+  await expect(hajj.getByTestId('goal-link').filter({ hasText: 'Antam gold bars' })).toBeVisible();
 
   // The card owes the cost **and the fee** — 3.980.000 + 15.000 — and the bank was never touched.
   await page.goto('/wallet');
