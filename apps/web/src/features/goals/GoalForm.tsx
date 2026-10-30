@@ -15,8 +15,8 @@ import { assumptionsSummary, canSaveGoal, onlyPaymentName, setAsideSummary } fro
 import { applyTagChanges, fundingSummary, tagChanges, taggedIds } from './goal-tags';
 import { FundingSheet, taggable } from './FundingSheet';
 import { useTrades } from '../networth/queries';
-import { CostRow, costLine, DATE, dueByLine, PaymentSheet, type StageDraft } from './PaymentRows';
-import { GOAL_KIND_LABELS, GOAL_TEMPLATES, type GoalTemplate, prefilledReturnBps, templateDueOn, templateFor } from './goal-cards';
+import { CostRow, costLine, DATE, PaymentSheet, type StageDraft } from './PaymentRows';
+import { GOAL_KIND_LABELS, GOAL_TEMPLATES, type GoalTemplate, monthYear, prefilledReturnBps, templateDueOn, templateFor } from './goal-cards';
 import { useEarmarks, useGoalPlans } from './queries';
 import { useSetAside } from './SetAside';
 
@@ -269,10 +269,18 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
                 <InsetRow
                   key={stage.id ?? index}
                   testId="payment-row"
-                  title={stage.name}
+                  title={
+                    // One line: the name gives way first, then the month it falls due; a ✓ leads a payment marked paid.
+                    <span className="flex min-w-0 items-baseline">
+                      <span className="min-w-0 truncate">
+                        {stage.paidOn && <Check size={15} className="mr-[4px] inline align-[-2px] text-[var(--ph-up)]" aria-label="Paid" />}
+                        {stage.name}
+                      </span>
+                      {DATE.test(stage.dueOn) && <span className="shrink-0 whitespace-pre text-[var(--ph-ink-3)]">{` · ${monthYear(stage.dueOn)}`}</span>}
+                    </span>
+                  }
                   value={costLine(stage, currency)}
-                  subtitle={dueByLine(stage)}
-                  plain
+                  valueTone="ink"
                   chevron={false}
                   onClick={() => setPaymentOpen(index)}
                 />

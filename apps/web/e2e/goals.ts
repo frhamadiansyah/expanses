@@ -72,7 +72,7 @@ export async function markPaymentPaid(page: Page, index: number, day: string) {
   await sheet.getByLabel('Paid on').fill(day);
   await sheet.getByRole('button', { name: 'Save payment' }).click();
   await expect(sheet).toHaveCount(0);
-  await expect(page.getByTestId('payment-row').nth(index)).toContainText('Paid');
+  await expect(page.getByTestId('payment-row').nth(index).getByLabel('Paid')).toBeVisible();
   await page.getByRole('button', { name: 'Save goal' }).last().click();
 }
 
