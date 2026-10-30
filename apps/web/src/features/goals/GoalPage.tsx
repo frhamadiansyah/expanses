@@ -69,22 +69,6 @@ function ShortNote({ card, stood }: { card: GoalCard; stood: ReturnType<typeof f
 /** How many history lines show before "See all". */
 const HISTORY_SHOWN = 3;
 
-/** The one status chip under the bar: good for On track, Funded and Done; warn for Behind, with what is short a month. */
-function StatusChip({ card, currency }: { card: GoalCard; currency: string }) {
-  const warn = card.statusTone === 'warn';
-  return (
-    <span
-      data-testid="goal-status"
-      className={
-        'inline-flex min-h-[26px] items-center rounded-full px-[10px] text-[13px] leading-[18px] font-medium ' +
-        (warn ? 'bg-[var(--ph-warn-panel)] text-[var(--ph-warn-ink)]' : 'bg-[var(--ph-up-panel)] text-[var(--ph-up-ink)]')
-      }
-    >
-      {warn && card.differenceMinor < 0 ? `${card.statusLabel} · ${formatMinor(-card.differenceMinor, currency)} a month short` : card.statusLabel}
-    </span>
-  );
-}
-
 /**
  * A goal on its own: the figure, its stages, what funds it and what has happened to it — everything the list
  * had no room for. The list is where goals are read as a set; this is where one is read on its own.
@@ -221,28 +205,40 @@ export function GoalPage({ goalId }: { goalId: string }) {
       {open === 'move' && <MoveSheet plan={plan} others={others} earmarks={earmarks.data ?? []} onClose={() => setOpen(null)} />}
 
       <Panel wide className="space-y-3" testId="goal-card">
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="min-w-0 truncate text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">{card.name}</p>
+          <span data-testid="goal-status" className={'shrink-0 text-[13px] leading-[18px] font-medium ' + (warn ? 'text-[var(--ph-warn)]' : 'text-[var(--ph-up-ink)]')}>
+            {card.statusLabel}
+          </span>
+        </div>
         <div>
-          <p className="text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">Saved</p>
-          <p className="tabular truncate text-[26px] leading-[32px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]" data-testid="goal-saved">
-            {formatMinor(card.currentMinor, currency)}
+          <p className="tabular truncate text-[26px] leading-[32px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]" data-testid="goal-target">
+            {formatMinor(card.targetMinor > 0 ? card.targetMinor : card.currentMinor, currency)}
           </p>
+          {(due || right) && (
+            <div className="flex items-baseline justify-between gap-3 text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
+              <span>{due}</span>
+              {right && <span className="shrink-0">{right}</span>}
+            </div>
+          )}
         </div>
         {/* Clamped: saving more than was set out is not a warning, so the bar is full and in the tint, never past. */}
         <UseBar share={card.done ? 1 : Math.min(1, card.progressPercent / 100)} height={6} warn={warn} label={`${card.name} progress`} />
-        <div className="flex items-baseline justify-between gap-3 text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
-          <span data-testid="goal-target">
-            {card.targetMinor > 0 && (
-              <>
-                of <Money minor={card.targetMinor} currency={currency} />
-              </>
-            )}
-            {card.targetMinor > 0 && due && ' · '}
-            {due}
-          </span>
-          {right && <span className="shrink-0">{right}</span>}
-        </div>
-        <div>
-          <StatusChip card={card} currency={currency} />
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">Saved</p>
+            <p className="tabular text-[17px] leading-[22px] font-bold text-[var(--ph-ink)]" data-testid="goal-saved">
+              {formatMinor(card.currentMinor, currency)}
+            </p>
+          </div>
+          {card.targetMinor > 0 && (
+            <div className="text-right">
+              <p className="text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">To go</p>
+              <p className="tabular text-[17px] leading-[22px] font-bold text-[var(--ph-ink)]" data-testid="goal-togo">
+                {formatMinor(Math.max(0, card.targetMinor - card.currentMinor), currency)}
+              </p>
+            </div>
+          )}
         </div>
         {(derived.has(card.goalId) || card.shortLines.length > 0) && (
           <p className="text-[13px] leading-[18px]">

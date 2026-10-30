@@ -18,10 +18,10 @@ export async function todayFigures(page: Page): Promise<number[]> {
 
 const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
 
-/** The goal card's "of Rp … · Dec 2027": the plan's total, each stage inflated to its own date. */
+/** The goal card's big figure: the plan's total, each stage inflated to its own date. */
 export async function planTotal(page: Page): Promise<number> {
   const text = await page.getByTestId('goal-target').first().textContent();
-  return figure(/of Rp\s?([\d.]+)/.exec(text ?? '')![1]!);
+  return figure(/Rp\s?([\d.]+)/.exec(text ?? '')![1]!);
 }
 
 export async function neededAMonth(page: Page): Promise<number> {
