@@ -64,7 +64,6 @@ export function CostRow({
         prefixAlways
         onPrefix={funded ? undefined : () => setPicking(true)}
         prefixLabel={`Currency: ${currency}`}
-        hint={funded ? 'Money is already counted toward this goal, so its currency is fixed.' : undefined}
         value={stage.amount}
         onChange={(e) => onAmount(groupTypedAmount(e.target.value, currency))}
         inputMode="decimal"
