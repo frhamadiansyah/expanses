@@ -1,5 +1,5 @@
-import { bandHint, type GoalKind, formatMinor, groupedMajorString, groupTypedAmount, isoDate, monthsUntil, parseGroupedMajor, parseMajor, returnBandFor } from '@expanses/core';
-import { archiveGoal, deleteGoal, type GoalRow, goalIsFunded, retagTrade, saveGoal } from '@expanses/db';
+import { bandHint, emergencyTargetMinor, type GoalKind, formatMinor, groupedMajorString, groupTypedAmount, isoDate, monthsUntil, parseGroupedMajor, parseMajor, returnBandFor } from '@expanses/core';
+import { archiveGoal, deleteGoal, type EmergencyInputs, type GoalRow, goalIsFunded, retagTrade, saveGoal, setEmergencyOwnTarget } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
 import { type FormEvent, useEffect, useState } from 'react';
@@ -10,6 +10,7 @@ import { ErrorBox } from '../../ui';
 import { type CornerAction, InsetGroup, InsetRow, PickerRow, PushedTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
 import { CurrencySheet } from '../transactions/CurrencySheet';
 import { Sheet } from '../../app/Sheet';
+import { useOwnTarget } from '../calculators/emergency-fields';
 import { Calculator, calculatorKindOf } from './Calculator';
 import { assumptionsSummary, canSaveGoal, onlyPaymentName, setAsideSummary } from './goal-form-model';
 import { applyTagChanges, fundingSummary, tagChanges, taggedIds } from './goal-tags';
@@ -100,6 +101,14 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
       : [draftFromTemplate(starting!, today, currency)],
   );
   const setAside = useSetAside(goal, earmarks);
+  // An emergency goal with a working can be given a Target amount of its own, rounding up from months x monthly outgoing.
+  const emergencyWorking = goal && goal.kind === 'emergency' ? ((calculators.data ?? []).find((row) => row.goalId === goal.id && row.kind === 'emergency')?.inputs as EmergencyInputs | undefined) : undefined;
+  const [monthsEdited, setMonthsEdited] = useState<string | null>(null);
+  const monthsText = monthsEdited ?? (stages[0]?.usesMonths ? stages[0].months : emergencyWorking ? String(emergencyWorking.months) : '');
+  const monthsNumber = Number(monthsText.replace(',', '.'));
+  const calculatedMinor =
+    emergencyWorking?.monthlyOutgoingMinor && Number.isFinite(monthsNumber) && monthsNumber > 0 ? emergencyTargetMinor(monthsNumber, emergencyWorking.monthlyOutgoingMinor) : null;
+  const ownTarget = useOwnTarget(calculatedMinor, emergencyWorking?.targetMinor);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   // The working opens in place of the fields: the goal's own page one step in, and Cancel brings the fields back.
@@ -206,14 +215,29 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
     try {
       const growthBps = Math.round(Number(growth.replace(',', '.')) * 100);
       const returnBps = Math.round(Number(expectedReturn.replace(',', '.')) * 100);
-      const payments = named.map((stage) => ({
-        id: stage.id,
-        name: stage.name,
-        targetMinor: stage.usesMonths ? null : parseGroupedMajor(stage.amount, currency),
-        targetMonths: stage.usesMonths ? Number(stage.months) : null,
-        dueOn: stage.dueOn,
-        paidOn: stage.paidOn,
-      }));
+      const ownable = !!emergencyWorking && single;
+      const payments = named.map((stage) =>
+        ownable
+          ? // Months or the typed target, whichever the working now rests on.
+            {
+              id: stage.id,
+              name: stage.name,
+              targetMinor: ownTarget.minor ?? null,
+              targetMonths: ownTarget.minor === undefined ? Number(monthsText.replace(',', '.')) : null,
+              dueOn: stage.dueOn,
+              paidOn: stage.paidOn,
+            }
+          : {
+              id: stage.id,
+              name: stage.name,
+              targetMinor: stage.usesMonths ? null : parseGroupedMajor(stage.amount, currency),
+              targetMonths: stage.usesMonths ? Number(stage.months) : null,
+              dueOn: stage.dueOn,
+              paidOn: stage.paidOn,
+            },
+      );
+      // The own target (and its reset) is written to the working too, so the stage and the working say the same.
+      const ownChanged = ownable && (ownTarget.minor !== emergencyWorking.targetMinor);
       // A goal worked out by a calculator stays linked to it when the only edit is which payments are marked paid:
       // a hand-typed save would drop the link and the keys a re-work finds its payments by.
       const keepsWorking =
@@ -225,7 +249,9 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
         goal.stages.length === payments.length &&
         payments.every((payment) => {
           const was = goal.stages.find((stage) => stage.id === payment.id);
-          return !!was && was.name === payment.name && was.targetMinor === payment.targetMinor && was.targetMonths === payment.targetMonths && was.dueOn === payment.dueOn;
+          // An own target set, changed or cleared here is carried into the working below, so it is no reason to unlink.
+          const sameAmount = ownChanged || ownTarget.minor !== undefined || (was?.targetMinor === payment.targetMinor && was?.targetMonths === payment.targetMonths);
+          return !!was && was.name === payment.name && sameAmount && was.dueOn === payment.dueOn;
         });
       const goalId = await saveGoal(database, ws, {
         id: goalIdNow,
@@ -241,6 +267,9 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
         stages: payments,
       });
       setCreatedId(goalId);
+      if (ownable && keepsWorking) {
+        await setEmergencyOwnTarget(database, ws, goalId, { targetMinor: ownTarget.minor, months: Number(monthsText.replace(',', '.')) });
+      }
       await setAside.write(goalId);
       const { failed } = await applyTagChanges((tradeId, to) => retagTrade(database, ws, tradeId, to), goalId, tagChanges(originalTags, taggedNow));
       await invalidate();
@@ -285,7 +314,17 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
             <TextRow key="name" label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Goal name" required />,
             ...(single
               ? [
-                  stages[0]!.usesMonths ? (
+                  emergencyWorking ? (
+                    <TextRow
+                      key="amount"
+                      label="Months of outgoings"
+                      value={ownTarget.minor === undefined ? monthsText : 'not used'}
+                      onChange={(e) => setMonthsEdited(e.target.value)}
+                      disabled={ownTarget.minor !== undefined}
+                      inputMode="numeric"
+                      placeholder="Months"
+                    />
+                  ) : stages[0]!.usesMonths ? (
                     <TextRow
                       key="amount"
                       label="Months of outgoings"
@@ -297,6 +336,7 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
                   ) : (
                     <CostRow key="amount" stage={stages[0]!} currency={currency} funded={funded} onAmount={(amount) => setStage(0, { amount })} onCurrency={setCurrency} />
                   ),
+                  ...(emergencyWorking ? [ownTarget.row("target")] : []),
                   <TextRow key="due" label="Due by" type="date" value={stages[0]!.dueOn} onChange={(e) => setStage(0, { dueOn: e.target.value })} />,
                   <InsetRow key="add" label="Add a payment" title={<span className="text-[var(--ph-tint)]">＋ Add a payment</span>} chevron={false} onClick={() => setPaymentOpen('new')} />,
                 ]

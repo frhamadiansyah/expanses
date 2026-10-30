@@ -220,7 +220,7 @@ function EmergencyWorkingForm({
   // The figure the goal reads today: what the working typed, else the goal's target spread over its months.
   const months = goal.stages.find((stage) => stage.targetMonths !== null)?.targetMonths ?? 0;
   const derived = months > 0 && targetMinor > 0 ? Math.round(targetMinor / months) : 0;
-  const { fields, inputs, answer } = useEmergencyFields({
+  const { fields, inputs, answer, targetRow } = useEmergencyFields({
     inputs: working,
     outgoing: working?.monthlyOutgoingMinor || derived === 0 ? undefined : groupedMajorString(derived, ws.baseCurrency),
     // A goal worked out before the horizon was asked fell due two years on.
@@ -247,6 +247,7 @@ function EmergencyWorkingForm({
     <div>
       {fields}
       <Answer answer={answer} testId="answer-emergency" />
+      {answer && <InsetGroup>{targetRow}</InsetGroup>}
       <ErrorBox error={error} />
       <InsetGroup>
         <InsetRow title="Save goal" action disabled={busy || answer === null || inputs === null} onClick={() => void save()} />

@@ -1,6 +1,7 @@
 import { EMERGENCY_RETURN_BPS, emergencyTargetMinor, groupedMajorString, groupTypedAmount, HOUSEHOLDS, type Household, INCOME_STABILITIES, type IncomeStability, parseGroupedMajor, savingPlanFor } from '@expanses/core';
 import type { EmergencyInputs } from '@expanses/db';
-import { useState } from 'react';
+import { RotateCcw } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { InsetGroup, SelectRow, TextRow } from '../../ui/native';
 import { emergencyDraftFrom, emergencyInputsOf, HOUSEHOLD_LABELS, INCOME_LABELS, monthsNote, typedMonths, withAnswers } from '../goals/emergency-form';
@@ -16,6 +17,62 @@ export interface EmergencyStart {
   horizon?: number;
   /** The return in percent when the working names none. */
   returnPercent?: number;
+}
+
+/**
+ * The Target amount an owner may set by themself: it opens on the calculated figure and follows it while untouched
+ * (`typed` is null); once typed it stays what was typed, until the reset icon clears it. `minor` is the own target to
+ * keep (undefined while following, or while it equals the calculated figure).
+ */
+export function useOwnTarget(calculatedMinor: number | null, savedMinor?: number) {
+  const { ws } = useApp();
+  const [typed, setTyped] = useState<string | null>(() => (savedMinor ? groupedMajorString(savedMinor, ws.baseCurrency) : null));
+  // A goal's working arrives after the form first draws: a saved target is picked up once, never over what is typed.
+  useEffect(() => {
+    if (savedMinor) setTyped((was) => was ?? groupedMajorString(savedMinor, ws.baseCurrency));
+  }, [savedMinor, ws.baseCurrency]);
+  const read = (value: string) => {
+    try {
+      return value.trim() === '' ? 0 : parseGroupedMajor(value, ws.baseCurrency);
+    } catch {
+      return 0;
+    }
+  };
+  const shown = typed ?? (calculatedMinor ? groupedMajorString(calculatedMinor, ws.baseCurrency) : '');
+  const typedMinor = typed === null ? 0 : read(typed);
+  const minor = typedMinor > 0 && typedMinor !== calculatedMinor ? typedMinor : undefined;
+  const row = (key?: string) => (
+    <TargetAmountRow
+      key={key}
+      value={shown}
+      differs={minor !== undefined}
+      onChange={(value) => setTyped(groupTypedAmount(value, ws.baseCurrency))}
+      onReset={() => setTyped(null)}
+    />
+  );
+  return { minor, row, reset: () => setTyped(null), typed: typed !== null };
+}
+
+/** The Target amount row, the same on the calculators and in Edit goal; the reset icon shows only while the figure differs from the calculated one. */
+export function TargetAmountRow({ value, differs, onChange, onReset }: { value: string; differs: boolean; onChange: (value: string) => void; onReset: () => void }) {
+  const { ws } = useApp();
+  return (
+    <TextRow
+      label="Target amount"
+      prefix={ws.baseCurrency}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      inputMode="decimal"
+      placeholder="Amount"
+      trailing={
+        differs ? (
+          <button type="button" aria-label="Use the calculated amount" title="Use the calculated amount" onClick={onReset} className="ph-focus -mr-[4px] shrink-0 rounded p-[4px] text-[var(--ph-ink-3)]">
+            <RotateCcw size={16} aria-hidden />
+          </button>
+        ) : undefined
+      }
+    />
+  );
 }
 
 /**
@@ -55,18 +112,28 @@ export function useEmergencyFields(start: EmergencyStart = {}) {
 
   // The months are read by the one reader the goal's own working uses, which takes "9,5"; a figure it refuses shows no answer.
   let inputs: EmergencyInputs | null = null;
-  let answer: { targetMinor: number; monthlyMinor: number; covered: boolean } | null = null;
+  let answer: { targetMinor: number; monthlyMinor: number; covered: boolean; own?: boolean } | null = null;
+  let calculatedMinor: number | null = null;
   try {
     const base = emergencyInputsOf(emergency);
     if (readMonths.ok && readMonths.value >= 1 && readReturn.ok && readReturn.value >= 0 && money(monthlyOutgoing) > 0) {
-      const targetMinor = emergencyTargetMinor(base.months, money(monthlyOutgoing));
-      const plan = savingPlanFor({ targetMinor, alreadySavedMinor: 0, returnBps: readReturn.value, months: readMonths.value });
-      answer = { targetMinor, monthlyMinor: plan.monthlyMinor, covered: plan.gapMinor === 0 };
-      inputs = { ...base, monthlyOutgoingMinor: money(monthlyOutgoing), horizonMonths: readMonths.value, returnBps: readReturn.value };
+      calculatedMinor = emergencyTargetMinor(base.months, money(monthlyOutgoing));
     }
   } catch {
-    inputs = null;
-    answer = null;
+    calculatedMinor = null;
+  }
+  const own = useOwnTarget(calculatedMinor, start.inputs?.targetMinor);
+  if (calculatedMinor !== null && readMonths.ok && readReturn.ok) {
+    try {
+      const base = emergencyInputsOf(emergency);
+      // A typed target is the amount the plan saves for; the calculated one stays in the answer beside it.
+      const plan = savingPlanFor({ targetMinor: own.minor ?? calculatedMinor, alreadySavedMinor: 0, returnBps: readReturn.value, months: readMonths.value });
+      answer = { targetMinor: calculatedMinor, monthlyMinor: plan.monthlyMinor, covered: plan.gapMinor === 0, own: own.minor !== undefined };
+      inputs = { ...base, monthlyOutgoingMinor: money(monthlyOutgoing), horizonMonths: readMonths.value, returnBps: readReturn.value, targetMinor: own.minor };
+    } catch {
+      inputs = null;
+      answer = null;
+    }
   }
 
   const fields = (
@@ -134,5 +201,6 @@ export function useEmergencyFields(start: EmergencyStart = {}) {
     </>
   );
 
-  return { fields, inputs, answer };
+  // Under the answer block, where the figure it gives can be rounded up.
+  return { fields, inputs, answer, targetRow: own.row() };
 }
