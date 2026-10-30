@@ -1,11 +1,12 @@
-import { groupTypedAmount, isoDate } from '@expanses/core';
-import { createGoalFromCalculator } from '@expanses/db';
+import { formatMinor, groupTypedAmount, isoDate } from '@expanses/core';
+import { createGoalFromCalculator, saveGoalCalculator } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { InsetGroup, TextRow } from '../../ui/native';
 import { RETIREMENT_FUND } from './catalogue';
-import { refusal, Answer, CalculatorPage, SaveRow } from './parts';
+import { useGoals } from '../goals/queries';
+import { refusal, Answer, CalculatorPage, type GoalAdded, GoalAddedAlert, SaveRow } from './parts';
 import { RETIREMENT_DEFAULTS, type RetirementDraft, retirementWorking, yearsNote } from './retirement-form';
 import { SpendBar, useSpendSuggestions } from './SpendBar';
 
@@ -15,7 +16,9 @@ export function RetirementFundPage() {
   const invalidate = useInvalidateAll();
   const today = isoDate();
   const [error, setError] = useState<unknown>(null);
-  const [saved, setSaved] = useState<string | null>(null);
+  const [added, setAdded] = useState<GoalAdded | null>(null);
+  // One retirement fund is the goal: a second working updates it rather than starting another.
+  const existing = (useGoals().data ?? []).find((goal) => goal.kind === 'retirement');
   const [retirement, setRetirement] = useState<RetirementDraft>(RETIREMENT_DEFAULTS);
 
   const [spendFocused, setSpendFocused] = useState(false);
@@ -30,16 +33,24 @@ export function RetirementFundPage() {
     if (!retirementAnswer.inputs) return;
     setError(null);
     try {
-      await createGoalFromCalculator(database, ws, { name: 'Retirement fund', kind: 'retirement', inputs: retirementAnswer.inputs as never, today });
+      let goalId: string;
+      if (existing) {
+        goalId = existing.id;
+        await saveGoalCalculator(database, ws, { goalId, kind: 'retirement', inputs: retirementAnswer.inputs as never, today });
+      } else {
+        goalId = await createGoalFromCalculator(database, ws, { name: 'Retirement fund', kind: 'retirement', inputs: retirementAnswer.inputs as never, today });
+      }
       await invalidate();
-      setSaved('Saved Retirement fund as a goal.');
+      const target = retirementAnswer.answer ? ` · ${formatMinor(retirementAnswer.answer.targetMinor, ws.baseCurrency)}` : '';
+      setAdded({ goalId, updated: Boolean(existing), detail: `${existing?.name ?? 'Retirement fund'}${target}` });
     } catch (e) {
       setError(e);
     }
   }
 
   return (
-    <CalculatorPage entry={RETIREMENT_FUND} error={error} saved={saved} quiet>
+    <CalculatorPage entry={RETIREMENT_FUND} error={error} quiet>
+      {added && <GoalAddedAlert added={added} onClose={() => setAdded(null)} />}
       <InsetGroup>
         <TextRow
           label="Yearly spending in retirement"
@@ -96,7 +107,7 @@ export function RetirementFundPage() {
         }
         testId="answer-retirement"
       />
-      <SaveRow label="Set a goal" ready={retirementAnswer.inputs !== null} onSave={() => void save()} />
+      <SaveRow label={existing ? 'Update goal' : 'Set a goal'} ready={retirementAnswer.inputs !== null} onSave={() => void save()} />
     </CalculatorPage>
   );
 }

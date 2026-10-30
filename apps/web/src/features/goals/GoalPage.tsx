@@ -9,6 +9,7 @@ import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox, Money } from '../../ui';
 import { ActionButtons, type CornerAction, InsetGroup, InsetRow, Panel, PushedTitle, type RoundAction, SCREEN } from '../../ui/native';
 import { UseBar } from '../budget/budget-rows';
+import { KeyItem } from '../bills/RepeatingBills';
 import { useTrades } from '../networth/queries';
 import { FundingRow } from './funding';
 import { TagPurchaseSheet } from './FundingSheet';
@@ -23,15 +24,6 @@ export function GoalRoute() {
   const { goalId } = useParams({ from: '/goals/$goalId' });
   return <GoalPage goalId={goalId} />;
 }
-
-const HISTORY_TITLES: Record<GoalHistoryEntry['kind'], string> = {
-  'set-aside': 'Set aside',
-  'taken-back': 'Taken back',
-  borrowed: 'Borrowed',
-  spent: 'Spent',
-  moved: 'Moved',
-  reached: 'Reached the target',
-};
 
 /**
  * Under the figure, what the goal is short and — when it was whole before it lent money — the days it stood whole,
@@ -66,25 +58,6 @@ function ShortNote({ card, stood }: { card: GoalCard; stood: ReturnType<typeof f
   );
 }
 
-/** How many history lines show before "See all". */
-const HISTORY_SHOWN = 3;
-
-/** The one status chip under the bar: good for On track, Funded and Done; warn for Behind, with what is short a month. */
-function StatusChip({ card, currency }: { card: GoalCard; currency: string }) {
-  const warn = card.statusTone === 'warn';
-  return (
-    <span
-      data-testid="goal-status"
-      className={
-        'inline-flex min-h-[26px] items-center rounded-full px-[10px] text-[13px] leading-[18px] font-medium ' +
-        (warn ? 'bg-[var(--ph-warn-panel)] text-[var(--ph-warn-ink)]' : 'bg-[var(--ph-up-panel)] text-[var(--ph-up-ink)]')
-      }
-    >
-      {warn && card.differenceMinor < 0 ? `${card.statusLabel} · ${formatMinor(-card.differenceMinor, currency)} a month short` : card.statusLabel}
-    </span>
-  );
-}
-
 /**
  * A goal on its own: the figure, its stages, what funds it and what has happened to it — everything the list
  * had no room for. The list is where goals are read as a set; this is where one is read on its own.
@@ -107,7 +80,6 @@ export function GoalPage({ goalId }: { goalId: string }) {
   // The one sheet open from the round actions or the ⋯, if any.
   const [open, setOpen] = useState<'use' | 'monthly' | 'take-back' | 'move' | null>(null);
   const hasPurchase = useHasTaggedPurchase(goalId);
-  const [allHistory, setAllHistory] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
   const plans = summary.data?.plans ?? [];
@@ -167,7 +139,6 @@ export function GoalPage({ goalId }: { goalId: string }) {
   const derived = new Set((calculators.data ?? []).map((row) => row.goalId));
   const full = history[card.goalId] ?? [];
   const { stood } = cardHistory(full, (key) => wholeBorrows.has(key));
-  const historyLines = allHistory ? full : full.slice(0, HISTORY_SHOWN);
   // A goal of one payment has no Stages group, so its paid mark waits behind the ⋯.
   const only = card.stageLines.length === 1 ? card.stageLines[0]! : null;
 
@@ -210,6 +181,10 @@ export function GoalPage({ goalId }: { goalId: string }) {
 
   const shares = stageShares(card);
   const due = card.kind === 'emergency' ? null : card.targetMinor > 0 || !card.done ? card.dueLabel : null;
+  // The three parts of the bar: what is marked paid, what is held, what is left. Held money never pushes past the whole.
+  const paidShare = card.targetMinor > 0 ? Math.min(1, card.paidMinor / card.targetMinor) : 0;
+  const savedShare = card.targetMinor > 0 ? Math.min(1 - paidShare, card.currentMinor / card.targetMinor) : 0;
+  const toGoMinor = card.targetMinor > 0 ? Math.max(0, card.targetMinor - card.paidMinor - card.currentMinor) : 0;
   const right = card.coverLabel ?? (card.monthsLeft !== null ? monthsLeftLabel(card.monthsLeft) : null);
 
   return (
@@ -233,29 +208,43 @@ export function GoalPage({ goalId }: { goalId: string }) {
       {open === 'move' && <MoveSheet plan={plan} others={others} earmarks={earmarks.data ?? []} onClose={() => setOpen(null)} />}
 
       <Panel wide className="space-y-3" testId="goal-card">
-        <div>
-          <p className="text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">Saved</p>
-          <p className="tabular truncate text-[26px] leading-[32px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]" data-testid="goal-saved">
-            {formatMinor(card.currentMinor, currency)}
-          </p>
-        </div>
-        {/* Clamped: saving more than was set out is not a warning, so the bar is full and in the tint, never past. */}
-        <UseBar share={card.done ? 1 : Math.min(1, card.progressPercent / 100)} height={6} warn={warn} label={`${card.name} progress`} />
-        <div className="flex items-baseline justify-between gap-3 text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
-          <span data-testid="goal-target">
-            {card.targetMinor > 0 && (
-              <>
-                of <Money minor={card.targetMinor} currency={currency} />
-              </>
-            )}
-            {card.targetMinor > 0 && due && ' · '}
-            {due}
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="min-w-0 truncate text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">{card.name}</p>
+          <span data-testid="goal-status" className={'shrink-0 text-[13px] leading-[18px] font-medium ' + (warn ? 'text-[var(--ph-warn)]' : 'text-[var(--ph-up-ink)]')}>
+            {card.statusLabel}
           </span>
-          {right && <span className="shrink-0">{right}</span>}
         </div>
         <div>
-          <StatusChip card={card} currency={currency} />
+          <p className="tabular truncate text-[26px] leading-[32px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]" data-testid="goal-target">
+            {formatMinor(card.targetMinor > 0 ? card.targetMinor : card.currentMinor, currency)}
+          </p>
+          {(due || right) && (
+            <div className="flex items-baseline justify-between gap-3 text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
+              <span>{due}</span>
+              {right && <span className="shrink-0">{right}</span>}
+            </div>
+          )}
         </div>
+        {/* One bar, left to right: paid, then saved, then what is to go. Saving more than is asked fills it, never past. */}
+        <UseBar
+          share={card.done ? 1 : Math.min(1, card.progressPercent / 100)}
+          height={6}
+          warn={warn}
+          label={`${card.name} progress`}
+          segments={
+            card.targetMinor > 0
+              ? [
+                  { share: paidShare, colour: 'var(--ph-ink-3)' },
+                  { share: savedShare, colour: warn ? 'var(--ph-warn)' : 'var(--ph-up)' },
+                ]
+              : undefined
+          }
+        />
+        <ul className="flex flex-col text-[12.5px] leading-[26px] text-[var(--ph-ink-3)]">
+          {card.paidMinor > 0 && <KeyItem colour="var(--ph-ink-3)" label="Paid" minor={card.paidMinor} currency={currency} testId="goal-paid" />}
+          <KeyItem colour={warn ? 'var(--ph-warn)' : 'var(--ph-up)'} label="Saved" minor={card.currentMinor} currency={currency} testId="goal-saved" />
+          {toGoMinor > 0 && <KeyItem colour="color-mix(in srgb, var(--ph-ink-3) 35%, transparent)" label="To go" minor={toGoMinor} currency={currency} testId="goal-togo" />}
+        </ul>
         {(derived.has(card.goalId) || card.shortLines.length > 0) && (
           <p className="text-[13px] leading-[18px]">
             {derived.has(card.goalId) && <span className="block text-[var(--ph-tint)]">Worked out from these figures</span>}
@@ -269,9 +258,10 @@ export function GoalPage({ goalId }: { goalId: string }) {
       {card.stageLines.length > 1 && (
         <InsetGroup wide header="Stages">
           {card.stageLines.map((line, index) => (
-            /* The line itself is what marks a stage paid. */
+            /* Read-only: a payment is marked paid in Edit goal, on its own sheet. */
             <InsetRow
               key={line.stageId}
+              testId="stage-line"
               title={`${line.when} · ${line.name}`}
               subtitle={
                 <span className="mt-[4px] block">
@@ -281,13 +271,13 @@ export function GoalPage({ goalId }: { goalId: string }) {
               value={
                 <span className="block text-right">
                   <Money minor={line.targetMinor} currency={currency} />
-                  <span className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{formatMinor(line.todayMinor, currency)} today</span>
+                  <span className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
+                    {formatMinor(line.todayMinor, currency)} today · {line.stateLabel}
+                  </span>
                 </span>
               }
               valueTone="ink"
               chevron={false}
-              label={`${line.name}: ${line.stateLabel}`}
-              onClick={() => togglePaid(line.stageId, line.state === 'paid')}
             />
           ))}
         </InsetGroup>
@@ -329,31 +319,12 @@ export function GoalPage({ goalId }: { goalId: string }) {
       {plan.unconvertedWarning && <p className="mb-[10px] px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-warn)]">{plan.unconvertedWarning}</p>}
 
       {full.length > 0 && (
-        <InsetGroup wide header="History">
-          {[
-            ...historyLines.map((entry) => (
-              <InsetRow
-                key={entry.key}
-                testId="goal-history"
-                title={HISTORY_TITLES[entry.kind]}
-                subtitle={entry.text ? `${historyDay(entry.occurredOn, today)} · ${entry.text}` : historyDay(entry.occurredOn, today)}
-                value={entry.amountMinor === null ? undefined : <Money minor={entry.amountMinor} currency={entry.currency} />}
-                valueTone="ink"
-                chevron={false}
-              />
-            )),
-            ...(full.length > HISTORY_SHOWN
-              ? [
-                  <InsetRow
-                    key="see-all"
-                    title={allHistory ? 'Show fewer' : 'See all'}
-                    label={allHistory ? 'Show fewer' : 'See all'}
-                    action
-                    onClick={() => setAllHistory((was) => !was)}
-                  />,
-                ]
-              : []),
-          ]}
+        <InsetGroup wide>
+          <InsetRow
+            title="History"
+            value={`${full.length} ${full.length === 1 ? 'entry' : 'entries'}`}
+            onClick={() => void navigate({ to: '/goals/$goalId/history', params: { goalId } })}
+          />
         </InsetGroup>
       )}
     </div>

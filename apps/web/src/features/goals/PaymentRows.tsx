@@ -2,7 +2,7 @@ import { formatMinor, groupTypedAmount, parseGroupedMajor } from '@expanses/core
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
-import { type GroupChild, DestructiveRow, InsetGroup, TextRow } from '../../ui/native';
+import { type GroupChild, DestructiveRow, InsetGroup, InsetRow, TextRow } from '../../ui/native';
 import { CurrencySheet } from '../transactions/CurrencySheet';
 import { longDay } from './goal-cards';
 
@@ -29,8 +29,11 @@ export function costLine(stage: StageDraft, currency: string): string {
   }
 }
 
-/** A payment's second line: when it is needed by. */
-export const dueByLine = (stage: StageDraft) => (DATE.test(stage.dueOn) ? `Due by ${longDay(stage.dueOn)}` : 'Due by');
+/** A payment's second line: when it is needed by, led by the day it was paid when it has been. */
+export const dueByLine = (stage: StageDraft) => {
+  const due = DATE.test(stage.dueOn) ? `Due by ${longDay(stage.dueOn)}` : 'Due by';
+  return stage.paidOn && DATE.test(stage.paidOn) ? `Paid ${longDay(stage.paidOn)} · ${due}` : due;
+};
 
 /**
  * The cost row: "Cost today" with the goal's currency as a small tag on it. The tag opens the app's currency
@@ -123,8 +126,15 @@ export function PaymentSheet({
             <CostRow key="amount" stage={draft} currency={currency} funded={funded} onAmount={(amount) => patch({ amount })} onCurrency={onCurrency} />
           ),
           <TextRow key="due" label="Due by" type="date" value={draft.dueOn} onChange={(e) => patch({ dueOn: e.target.value })} />,
+          // Empty is not paid; a day marks the payment paid on it.
+          <TextRow key="paid" label="Paid on" type="date" value={draft.paidOn ?? ''} onChange={(e) => patch({ paidOn: e.target.value === '' ? null : e.target.value })} />,
         ]}
       </InsetGroup>
+      {draft.paidOn && (
+        <InsetGroup>
+          <InsetRow title="Mark not paid" label="Mark not paid" action onClick={() => patch({ paidOn: null })} />
+        </InsetGroup>
+      )}
       {onRemove && (
         <InsetGroup>
           <DestructiveRow

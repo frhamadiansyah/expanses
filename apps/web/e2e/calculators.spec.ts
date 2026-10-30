@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { goalCard } from './set-aside';
 import { budgetTab } from './budget';
+import { closeAdded } from './calculator-walk';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -117,7 +118,7 @@ test('turns the answer into a goal, which reaches the budget sheet', async ({ pa
   await page.goto('/calculators/retirement');
   await retirementFigures(page);
   await page.getByRole('button', { name: 'Set a goal' }).click();
-  await expect(page.getByText('Saved Retirement fund as a goal.')).toBeVisible();
+  await closeAdded(page, 'Retirement fund');
 
   await page.goto('/goals');
   const retirement = await goalCard(page, 'Retirement fund');
@@ -143,11 +144,11 @@ test('says what the levels will cost when the time comes, and saves them as a go
   expect(need).toBeGreaterThan(400_000_000);
 
   await page.getByRole('button', { name: 'Set a goal' }).click();
-  await expect(page.getByText('Saved Education fund as a goal.')).toBeVisible();
+  await closeAdded(page, 'Education fund');
   await page.goto('/goals');
   const education = await goalCard(page, 'Education fund');
   await expect(education.getByRole('heading', { name: 'Education fund' })).toBeVisible();
-  await expect(education.getByRole('button', { name: / · year \d+: / })).toHaveCount(4);
+  await expect(education.getByTestId('stage-line').filter({ hasText: / · year \d+/ })).toHaveCount(4);
 });
 
 test('each child is a goal of its own: switched by the Child row, never overwriting the one saved before', async ({ page }) => {
@@ -160,7 +161,7 @@ test('each child is a goal of its own: switched by the Child row, never overwrit
   await type(page, 'Years to', '2039');
   await type(page, 'Academic today', '100000000');
   await page.getByRole('button', { name: 'Set a goal' }).click();
-  await expect(page.getByText('Saved Education fund · Nadia as a goal.')).toBeVisible();
+  await closeAdded(page, 'Education fund · Nadia');
 
   // A second child: its own empty editor; the first keeps what was typed.
   await page.getByRole('button', { name: /^Child\s*Nadia/ }).click();
@@ -172,7 +173,7 @@ test('each child is a goal of its own: switched by the Child row, never overwrit
   await type(page, 'Years to', '2042');
   await type(page, 'Academic today', '50000000');
   await page.getByRole('button', { name: 'Set a goal' }).click();
-  await expect(page.getByText('Saved Education fund · Raka as a goal.')).toBeVisible();
+  await closeAdded(page, 'Education fund · Raka');
 
   await page.getByRole('button', { name: /^Child\s*Raka/ }).click();
   await page.getByRole('button', { name: 'Nadia' }).click();

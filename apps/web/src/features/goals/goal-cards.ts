@@ -57,7 +57,10 @@ export interface GoalCard {
   currentMinor: number;
   /** What is saved in the base currency, for adding goals together; null when no rate is stored for the goal's currency. */
   currentBaseMinor: number | null;
+  /** What the goal asks in all, paid payments included. */
   targetMinor: number;
+  /** The payments marked paid, summed: progress made without money held. */
+  paidMinor: number;
   progressPercent: number;
   statusLabel: 'Done' | 'Funded' | 'On track' | 'Behind';
   statusTone: 'good' | 'warn';
@@ -186,8 +189,10 @@ export function goalCard(plan: GoalPlanRow): GoalCard {
     currency: plan.currency,
     currentMinor: plan.currentMinor,
     currentBaseMinor: plan.currentBaseMinor,
-    targetMinor: plan.totalTargetMinor,
-    progressPercent: plan.totalTargetMinor > 0 ? Math.max(0, Math.min(100, (plan.currentMinor / plan.totalTargetMinor) * 100)) : 0,
+    targetMinor: plan.allTargetMinor,
+    paidMinor: plan.paidMinor,
+    // Paid payments count as progress, so the bar only moves forward when one is marked.
+    progressPercent: plan.allTargetMinor > 0 ? Math.max(0, Math.min(100, ((plan.paidMinor + plan.currentMinor) / plan.allTargetMinor) * 100)) : 0,
     statusLabel,
     statusTone: done || plan.status !== 'behind' ? 'good' : 'warn',
     neededMonthlyMinor: plan.requiredMonthlyMinor,

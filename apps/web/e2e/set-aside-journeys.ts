@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { openAmount, addForm, saveButton, chooseGoal, chooseTo } from './add-transaction';
 import { expectArchiveNote, goalMenu, openGoalForm } from './goals';
-import { addBill, addGoal, addMoneyAccount, goalCard, goalRow, jeniusWithTwoGoals, openAccountPage, openExpense, setAside, transferOutBorrowingFromUmrah, typeAmount, typeSecondFigure } from './set-aside';
+import { addBill, addGoal, addMoneyAccount, goalCard, goalRow, jeniusWithTwoGoals, openAccountPage, openExpense, openGoalHistory, setAside, transferOutBorrowingFromUmrah, typeAmount, typeSecondFigure } from './set-aside';
 
 /*
  * The combination walk end to end (Task 14, step 2). Each journey is run by `set-aside-combinations.spec.ts` on the
@@ -147,7 +147,8 @@ export const JOURNEYS: Journey[] = [
       await page.goto('/goals');
       const ef = await goalCard(page, 'Emergency fund');
       await expectNotShort(ef);
-      await expect(ef.getByTestId('goal-history').filter({ hasText: 'Borrowed' })).toHaveCount(0);
+      await openGoalHistory(page);
+      await expect(page.getByTestId('goal-history').filter({ hasText: 'Borrowed' })).toHaveCount(0);
       // 42.500.000 − 4.000.000 − 37.500.000 promised.
       await expectFree(page, 'Jenius', 'Rp.1\\.000\\.000');
     },

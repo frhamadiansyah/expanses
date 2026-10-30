@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { openWorking } from './goals';
+import { markPaymentPaid, openWorking } from './goals';
 import { addEducationGoal, stageLines, todayLines, typeInto } from './education-walk';
 
 /**
@@ -18,10 +18,10 @@ export async function todayFigures(page: Page): Promise<number[]> {
 
 const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
 
-/** The goal card's "of Rp … · Dec 2027": the plan's total, each stage inflated to its own date. */
+/** The goal card's big figure: the plan's total, each stage inflated to its own date. */
 export async function planTotal(page: Page): Promise<number> {
   const text = await page.getByTestId('goal-target').first().textContent();
-  return figure(/of Rp\s?([\d.]+)/.exec(text ?? '')![1]!);
+  return figure(/Rp\s?([\d.]+)/.exec(text ?? '')![1]!);
 }
 
 export async function neededAMonth(page: Page): Promise<number> {
@@ -52,8 +52,8 @@ export async function row1(page: Page) {
 /** Row 5: a stage marked paid keeps its mark when a level is added, and the target rises by exactly the new level. */
 export async function row5(page: Page) {
   await row1(page);
-  await page.getByRole('button', { name: 'Preschool · year 1: Saving for this' }).click();
-  await expect(page.getByRole('button', { name: 'Preschool · year 1: Paid' })).toBeVisible();
+  await markPaymentPaid(page, 0, '2026-10-01');
+  await expect(stageLines(page).first()).toContainText('Paid');
   const before = sum(await todayFigures(page));
   expect(before).toBe(165_000_000);
 
@@ -65,7 +65,7 @@ export async function row5(page: Page) {
   await page.getByRole('button', { name: 'Use this amount' }).click();
 
   await expect(stageLines(page)).toHaveCount(9);
-  await expect(page.getByRole('button', { name: 'Preschool · year 1: Paid' })).toBeVisible();
+  await expect(stageLines(page).first()).toContainText('Paid');
   // Three years of 30 jt: exactly 90 jt more in today's money.
   expect(sum(await todayFigures(page)) - before).toBe(90_000_000);
   await expect(todayLines(page, '30.000.000')).toHaveCount(3);
@@ -92,4 +92,12 @@ export async function row8(page: Page) {
   await expect(answer).toContainText('915.358.073');
   await expect(answer).not.toContainText('Cover to hold');
   await expect(answer).not.toContainText('-');
+}
+
+/** The "Added to Goals" pop-up a calculator's Set a goal opens: it names the goal, and Done closes it. */
+export async function closeAdded(page: Page, goal: string): Promise<void> {
+  const added = page.getByRole('alertdialog', { name: 'Added to Goals' });
+  await expect(added).toContainText(goal);
+  await added.getByRole('button', { name: 'Done' }).click();
+  await expect(added).toHaveCount(0);
 }

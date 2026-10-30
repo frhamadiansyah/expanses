@@ -54,9 +54,9 @@ export function RepeatingHero({ needs, currency }: { needs: RepeatingNeeds; curr
   );
 }
 
-function KeyItem({ colour, label, minor, currency }: { colour: string; label: string; minor: number; currency: string }) {
+export function KeyItem({ colour, label, minor, currency, testId }: { colour: string; label: string; minor: number; currency: string; testId?: string }) {
   return (
-    <li className="flex h-[26px] items-center gap-[6px]">
+    <li className="flex h-[26px] items-center gap-[6px]" data-testid={testId}>
       <span aria-hidden className="block h-2 w-2 rounded-full" style={{ background: colour }} />
       {label}{' '}
       <span className="tabular text-[var(--ph-ink-2)]">

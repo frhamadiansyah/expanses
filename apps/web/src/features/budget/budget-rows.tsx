@@ -8,8 +8,24 @@ import { type GroupChild, InsetRow, ROW_PAD_X, ROW_PAD_Y, rowHeight } from '../.
 import { categoryMark } from '../categories/CategoryIcon';
 import { bareFigure } from '../networth/debt-rows';
 
-/** A thin bar of what is used: the tint, or the warn colour once it is full and past (or when `warn` says so). */
-export function UseBar({ share, height = 4, label, warn = false }: { share: number; height?: number; label?: string; warn?: boolean }) {
+/**
+ * A thin bar of what is used: the tint, or the warn colour once it is full and past (or when `warn` says so).
+ * With `segments` the one bar is cut into consecutive parts from the left, each its own colour; `share` then only
+ * says how far the bar is read as full.
+ */
+export function UseBar({
+  share,
+  height = 4,
+  label,
+  warn = false,
+  segments,
+}: {
+  share: number;
+  height?: number;
+  label?: string;
+  warn?: boolean;
+  segments?: readonly { share: number; colour: string }[];
+}) {
   const over = share > 1 || warn;
   return (
     <span
@@ -22,10 +38,18 @@ export function UseBar({ share, height = 4, label, warn = false }: { share: numb
       className="block w-full overflow-hidden rounded-full bg-[var(--ph-track)]"
       style={{ height }}
     >
-      <span
-        className="block h-full rounded-full"
-        style={{ width: `${Math.min(1, Math.max(0, share)) * 100}%`, background: over ? 'var(--ph-warn)' : 'var(--ph-up)' }}
-      />
+      {segments ? (
+        <span className="flex h-full w-full">
+          {segments.map((segment, index) => (
+            <span key={index} className="block h-full" style={{ width: `${Math.min(1, Math.max(0, segment.share)) * 100}%`, background: segment.colour }} />
+          ))}
+        </span>
+      ) : (
+        <span
+          className="block h-full rounded-full"
+          style={{ width: `${Math.min(1, Math.max(0, share)) * 100}%`, background: over ? 'var(--ph-warn)' : 'var(--ph-up)' }}
+        />
+      )}
     </span>
   );
 }

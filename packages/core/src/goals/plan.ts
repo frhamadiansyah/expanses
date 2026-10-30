@@ -83,7 +83,12 @@ export type GoalStatus = 'funded' | 'on_track' | 'behind';
 export interface GoalPlan {
   goalId: string;
   currentMinor: number;
+  /** What is still to be paid: the stages not yet marked paid. */
   totalTargetMinor: number;
+  /** What every stage asks, paid or not: a goal does not shrink when a payment is marked paid. */
+  allTargetMinor: number;
+  /** The stages marked paid, summed. A mark is not money held, so it is kept apart from `currentMinor`. */
+  paidMinor: number;
   stages: StagePlan[];
   requiredMonthlyMinor: number;
   plannedMonthlyMinor: number;
@@ -189,6 +194,8 @@ export function goalPlan(goal: Goal, links: GoalLink[], plannedMonthlyMinor: num
     goalId: goal.id,
     currentMinor,
     totalTargetMinor: unpaid.reduce((total, stage) => total + stage.targetMinor, 0),
+    allTargetMinor: stages.reduce((total, stage) => total + stage.targetMinor, 0),
+    paidMinor: stages.filter((stage) => stage.state === 'paid').reduce((total, stage) => total + stage.targetMinor, 0),
     stages,
     requiredMonthlyMinor: needed,
     plannedMonthlyMinor: planned,

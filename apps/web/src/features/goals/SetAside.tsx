@@ -1,4 +1,4 @@
-import { isoDate, minorToMajorString, parseMajor } from '@expanses/core';
+import { formatMinor, isoDate, minorToMajorString, parseMajor } from '@expanses/core';
 import { type EarmarkRow, type GoalRow, removeEarmark, saveEarmark } from '@expanses/db';
 import { X } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -7,7 +7,7 @@ import { Sheet } from '../../app/Sheet';
 import { MONEY_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { type GroupChild, InsetGroup, InsetRow, TextRow } from '../../ui/native';
+import { type GroupChild, InsetGroup, InsetRow, SearchPill, TextRow } from '../../ui/native';
 import { addableAccounts, addedFromEarmarks, setAsideWrites } from './goal-form-model';
 import { roomFor, setAsideHint } from './goal-cards';
 import { useSetAsideViews } from './queries';
@@ -130,6 +130,56 @@ function SetAsideRow({ state, account, position }: GroupChild & { state: SetAsid
   );
 }
 
+/** The chooser's groups, by what the account is: a bank or savings account, cash or e-money, a deposit; anything else last. */
+const CHOOSER_GROUPS: { title: string; subtypes: readonly string[] }[] = [
+  { title: 'Savings', subtypes: ['bank', 'savings'] },
+  { title: 'Cash and e-money', subtypes: ['cash', 'emoney', 'ewallet'] },
+  { title: 'Deposits', subtypes: ['time_deposit'] },
+];
+
+/**
+ * The sheet of accounts that can still be added: a search on top, the accounts grouped by type with what each can
+ * still give this goal on the right, and — last, greyed and not tappable — the ones with nothing left to set aside.
+ */
+function AccountChooser({ state, onPick, onClose }: { state: SetAsideState; onPick: (accountId: string) => void; onClose: () => void }) {
+  const views = useSetAsideViews().data ?? {};
+  // Today's balance, as the rows read it: a future-dated entry is not money here yet (ruling M4).
+  const balances = useBalances(isoDate()).data ?? {};
+  const [typed, setTyped] = useState('');
+  const wanted = typed.trim().toLowerCase();
+  const shown = state.addable
+    .filter((account) => account.name.toLowerCase().includes(wanted))
+    .map((account) => ({ account, room: roomFor(views[account.id]?.freeMinor ?? null, balances[account.id] ?? 0, state.earmarkOf(account.id)?.amountMinor ?? 0) }));
+  const available = shown.filter((item) => item.room > 0);
+  const named = CHOOSER_GROUPS.map((group) => ({ title: group.title, items: available.filter((item) => group.subtypes.includes(item.account.subtype)) }));
+  const listed = new Set(named.flatMap((group) => group.items));
+  const groups = [...named, { title: 'Other', items: available.filter((item) => !listed.has(item)) }].filter((group) => group.items.length > 0);
+  const unavailable = shown.filter((item) => item.room <= 0);
+
+  return (
+    <Sheet title="Add an account" onClose={onClose} grouped tall expanded>
+      <div className="mb-3">
+        <SearchPill value={typed} onChange={setTyped} onClose={() => setTyped('')} placeholder="Search accounts" label="Find an account" />
+      </div>
+      {groups.map((group) => (
+        <InsetGroup key={group.title} header={group.title}>
+          {group.items.map(({ account, room }) => (
+            <InsetRow key={account.id} title={account.name} label={account.name} value={formatMinor(room, state.currencyOf(account))} valueTone="ink-3" chevron={false} onClick={() => onPick(account.id)} />
+          ))}
+        </InsetGroup>
+      ))}
+      {unavailable.length > 0 && (
+        <InsetGroup header="Not available">
+          {unavailable.map(({ account }) => (
+            <InsetRow key={account.id} title={account.name} label={account.name} value="Not available" valueTone="ink-3" chevron={false} disabled testId="not-available-row" />
+          ))}
+        </InsetGroup>
+      )}
+      {shown.length === 0 && <p className="px-4 py-3 text-sm text-[var(--ph-ink-3)]">Nothing matches.</p>}
+    </Sheet>
+  );
+}
+
 /**
  * Money set aside: only the accounts added, each a row, and one row to add another. Adding opens a sheet of the
  * accounts not yet in the group and lands on the new row's amount.
@@ -156,21 +206,14 @@ export function SetAsideGroup({ state, header = 'Money set aside' }: { state: Se
         ]}
       </InsetGroup>
       {choosing && (
-        <Sheet title="Add an account" onClose={() => setChoosing(false)} grouped>
-          <InsetGroup>
-            {state.addable.map((account) => (
-              <InsetRow
-                key={account.id}
-                title={account.name}
-                chevron={false}
-                onClick={() => {
-                  setChoosing(false);
-                  state.add(account.id);
-                }}
-              />
-            ))}
-          </InsetGroup>
-        </Sheet>
+        <AccountChooser
+          state={state}
+          onClose={() => setChoosing(false)}
+          onPick={(id) => {
+            setChoosing(false);
+            state.add(id);
+          }}
+        />
       )}
     </>
   );

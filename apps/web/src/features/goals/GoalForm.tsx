@@ -15,9 +15,9 @@ import { assumptionsSummary, canSaveGoal, onlyPaymentName, setAsideSummary } fro
 import { applyTagChanges, fundingSummary, tagChanges, taggedIds } from './goal-tags';
 import { FundingSheet, taggable } from './FundingSheet';
 import { useTrades } from '../networth/queries';
-import { CostRow, costLine, DATE, dueByLine, PaymentSheet, type StageDraft } from './PaymentRows';
-import { GOAL_KIND_LABELS, GOAL_TEMPLATES, type GoalTemplate, prefilledReturnBps, templateDueOn, templateFor } from './goal-cards';
-import { useEarmarks, useGoalPlans } from './queries';
+import { CostRow, costLine, DATE, PaymentSheet, type StageDraft } from './PaymentRows';
+import { GOAL_KIND_LABELS, GOAL_TEMPLATES, type GoalTemplate, monthYear, prefilledReturnBps, templateDueOn, templateFor } from './goal-cards';
+import { useEarmarks, useGoalCalculators, useGoalPlans } from './queries';
 import { useSetAside } from './SetAside';
 
 function draftFromTemplate(template: GoalTemplate, today: string, currency: string): StageDraft {
@@ -69,6 +69,7 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
   const invalidate = useInvalidateAll();
   const goBack = useBack('/goals');
   const today = isoDate();
+  const calculators = useGoalCalculators();
 
   const starting = goal ? undefined : (templateFor(startKind ?? GOAL_TEMPLATES[0]!.kind) ?? GOAL_TEMPLATES[0]!);
   const [kind, setKind] = useState<GoalKind>(goal?.kind ?? starting!.kind);
@@ -179,24 +180,41 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
     setError(null);
     setBusy(true);
     try {
+      const growthBps = Math.round(Number(growth.replace(',', '.')) * 100);
+      const returnBps = Math.round(Number(expectedReturn.replace(',', '.')) * 100);
+      const payments = named.map((stage) => ({
+        id: stage.id,
+        name: stage.name,
+        targetMinor: stage.usesMonths ? null : parseGroupedMajor(stage.amount, currency),
+        targetMonths: stage.usesMonths ? Number(stage.months) : null,
+        dueOn: stage.dueOn,
+        paidOn: stage.paidOn,
+      }));
+      // A goal worked out by a calculator stays linked to it when the only edit is which payments are marked paid:
+      // a hand-typed save would drop the link and the keys a re-work finds its payments by.
+      const keepsWorking =
+        !!goal &&
+        (calculators.data ?? []).some((row) => row.goalId === goal.id) &&
+        goal.growthBps === growthBps &&
+        goal.returnBps === returnBps &&
+        goal.currency === currency &&
+        goal.stages.length === payments.length &&
+        payments.every((payment) => {
+          const was = goal.stages.find((stage) => stage.id === payment.id);
+          return !!was && was.name === payment.name && was.targetMinor === payment.targetMinor && was.targetMonths === payment.targetMonths && was.dueOn === payment.dueOn;
+        });
       const goalId = await saveGoal(database, ws, {
         id: goalIdNow,
+        derived: keepsWorking,
         name,
         kind,
-        growthBps: Math.round(Number(growth.replace(',', '.')) * 100),
-        returnBps: Math.round(Number(expectedReturn.replace(',', '.')) * 100),
+        growthBps,
+        returnBps,
         // The form has no field for it; what the Monthly button set on a saved goal is carried through.
         standingMonthlyMinor: goal?.standingMonthlyMinor ?? 0,
         standingNote: goal?.standingNote ?? null,
         currency,
-        stages: named.map((stage) => ({
-          id: stage.id,
-          name: stage.name,
-          targetMinor: stage.usesMonths ? null : parseGroupedMajor(stage.amount, currency),
-          targetMonths: stage.usesMonths ? Number(stage.months) : null,
-          dueOn: stage.dueOn,
-          paidOn: stage.paidOn,
-        })),
+        stages: payments,
       });
       setCreatedId(goalId);
       await setAside.write(goalId);
@@ -269,10 +287,18 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
                 <InsetRow
                   key={stage.id ?? index}
                   testId="payment-row"
-                  title={stage.name}
+                  title={
+                    // One line: the name gives way first, then the month it falls due; a ✓ leads a payment marked paid.
+                    <span className="flex min-w-0 items-baseline">
+                      <span className="min-w-0 truncate">
+                        {stage.paidOn && <Check size={15} className="mr-[4px] inline align-[-2px] text-[var(--ph-up)]" aria-label="Paid" />}
+                        {stage.name}
+                      </span>
+                      {DATE.test(stage.dueOn) && <span className="shrink-0 whitespace-pre text-[var(--ph-ink-3)]">{` · ${monthYear(stage.dueOn)}`}</span>}
+                    </span>
+                  }
                   value={costLine(stage, currency)}
-                  subtitle={dueByLine(stage)}
-                  plain
+                  valueTone="ink"
                   chevron={false}
                   onClick={() => setPaymentOpen(index)}
                 />

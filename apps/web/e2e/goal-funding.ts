@@ -6,7 +6,7 @@ import { openGoalForm } from './goals';
 import { addSetAsideRow, closeSetAsideRows, goalCard, goalRow } from './set-aside';
 
 /** A bank account, and a gold holding bought once for no goal. */
-async function bankAndGold(page: Page) {
+export async function bankAndGold(page: Page) {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
   await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
@@ -22,11 +22,17 @@ async function bankAndGold(page: Page) {
   await expect(page.getByText(/· Typed/)).toBeVisible();
 }
 
-async function newGoal(page: Page, name: string) {
+export async function newGoal(page: Page, name: string) {
   await page.goto('/goals');
   await openGoalForm(page, 'Hajj or umrah');
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel(/Cost today/).first().fill('50000000');
+}
+
+/** In the open Tag a purchase list, opens one holding's buys and returns the sheet they are in. */
+export async function openHolding(page: Page, name: string) {
+  await page.getByRole('dialog', { name: 'Tag a purchase' }).getByTestId('taggable-holding').filter({ hasText: name }).click();
+  return page.getByRole('dialog', { name, exact: true });
 }
 
 /**
@@ -47,7 +53,13 @@ export async function fundingSheetWalk(page: Page) {
   // Tag a purchase lists the earlier buys with their date, size and goal.
   await sheet.getByRole('button', { name: 'Tag a purchase' }).click();
   const list = page.getByRole('dialog', { name: 'Tag a purchase' });
-  const buy = list.getByTestId('taggable-row').filter({ hasText: 'Antam gold bars' }).first();
+  await expect(list.getByRole('tab')).toHaveText(['All', 'Gold']);
+  await expect(list.getByTestId('taggable-holding')).toContainText('1 buy');
+  await list.getByRole('searchbox').fill('zzz');
+  await expect(list.getByTestId('taggable-holding')).toHaveCount(0);
+  await list.getByRole('searchbox').fill('antam');
+  const holding = await openHolding(page, 'Antam gold bars');
+  const buy = holding.getByTestId('taggable-row').first();
   await expect(buy).toContainText('Bought');
   await expect(buy).toContainText('No goal');
   await buy.click();
@@ -70,7 +82,7 @@ export async function fundingSheetWalk(page: Page) {
   await page.getByRole('button', { name: /^Funding/ }).click();
   const second = page.getByRole('dialog', { name: 'Funding' });
   await second.getByRole('button', { name: 'Tag a purchase' }).click();
-  const again = page.getByRole('dialog', { name: 'Tag a purchase' }).getByTestId('taggable-row').filter({ hasText: 'Antam gold bars' }).first();
+  const again = (await openHolding(page, 'Antam gold bars')).getByTestId('taggable-row').first();
   await expect(again).toContainText('Hajj for two');
   await again.click();
   const ask = page.getByRole('dialog', { name: 'Move this purchase?' });

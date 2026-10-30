@@ -4,11 +4,6 @@ import {
   type EducationInputs,
   educationFromV1,
   type EducationPlanInputs,
-  type EmergencyBase,
-  HOUSEHOLDS,
-  type Household,
-  INCOME_STABILITIES,
-  type IncomeStability,
   groupedMajorString,
   groupTypedAmount,
   isoDate,
@@ -21,11 +16,12 @@ import { type FormEvent, type ReactElement, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, ReadOnlyRow, TextRow } from '../../ui/native';
+import { Answer } from '../calculators/parts';
 import { EducationEditor } from './EducationEditor';
 import { educationDraftFrom, educationInputsOf } from './education-model';
-import { emergencyDraftFrom, emergencyInputsOf, HOUSEHOLD_LABELS, INCOME_LABELS, monthsNote, typedMonths, withAnswers } from './emergency-form';
-import { useGoalCalculators } from './queries';
+import { useEmergencyFields } from '../calculators/emergency-fields';
+import { useGoalCalculators, useGoalPlans } from './queries';
 
 /** The kinds a calculator exists for. Everything else is typed in, because only you know the figure. */
 export const CALCULABLE: CalculatorKind[] = ['emergency', 'education', 'retirement'];
@@ -50,12 +46,6 @@ const BLURBS: Record<CalculatorKind, string> = {
   retirement: 'What the pot must hold the day saving stops, drawn down while it keeps earning.',
 };
 
-/** The goal's own base, said beside the switch: the ratio card on Net worth has a switch of its own, and the two can differ. */
-const BASE_HINTS: Record<EmergencyBase, string> = {
-  essential: 'Leaves out categories marked lifestyle. For this goal only; the emergency ratio on Net worth has its own switch.',
-  all: 'Every category, lifestyle included. For this goal only; the emergency ratio on Net worth has its own switch.',
-};
-
 /**
  * Waits for the saved workings before the form opens, so a working saved earlier reopens as it was saved rather
  * than on the defaults the form would otherwise start from.
@@ -64,6 +54,7 @@ export function Calculator({ goal, onDone, onCancel }: { goal: GoalRow; onDone: 
   const calculators = useGoalCalculators();
   if (!calculators.isSuccess) return null;
   const saved = calculators.data.find((row) => row.goalId === goal.id);
+  if (goal.kind === 'emergency') return <EmergencyWorking key={goal.id} goal={goal} saved={saved} onDone={onDone} onCancel={onCancel} />;
   return <CalculatorForm key={goal.id} goal={goal} saved={saved} onDone={onDone} onCancel={onCancel} />;
 }
 
@@ -81,8 +72,6 @@ function CalculatorForm({ goal, saved, onDone, onCancel }: { goal: GoalRow; save
   const [busy, setBusy] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
-  // Emergency
-  const [emergency, setEmergency] = useState(() => emergencyDraftFrom(saved?.kind === 'emergency' ? (saved.inputs as EmergencyInputs) : undefined));
   // Education: the saved levels come back as they were saved, ids and typed returns included.
   const [education, setEducation] = useState(() => educationDraftFrom(savedEducation(saved), ws.baseCurrency));
   // Retirement: the saved working, or the agreed prefills — 3.5% inflation, 10% while saving, 5% while retired.
@@ -100,19 +89,17 @@ function CalculatorForm({ goal, saved, onDone, onCancel }: { goal: GoalRow; save
     setBusy(true);
     try {
       const inputs =
-        kind === 'emergency'
-          ? emergencyInputsOf(emergency)
-          : kind === 'education'
-            ? educationInputsOf(education, ws.baseCurrency)
-            : {
-                version: 2 as const,
-                annualSpendTodayMinor: parseGroupedMajor(annualSpend, ws.baseCurrency),
-                yearsToRetirement: Number(yearsToRetirement.replace(',', '.')),
-                yearsInRetirement: Number(yearsInRetirement.replace(',', '.')),
-                inflationBps: percentToBps(inflation, 'Inflation'),
-                returnBeforeBps: percentToBps(returnBefore, 'The return while saving'),
-                returnInRetirementBps: percentToBps(returnInRetirement, 'The return while retired'),
-              };
+        kind === 'education'
+          ? educationInputsOf(education, ws.baseCurrency)
+          : {
+              version: 2 as const,
+              annualSpendTodayMinor: parseGroupedMajor(annualSpend, ws.baseCurrency),
+              yearsToRetirement: Number(yearsToRetirement.replace(',', '.')),
+              yearsInRetirement: Number(yearsInRetirement.replace(',', '.')),
+              inflationBps: percentToBps(inflation, 'Inflation'),
+              returnBeforeBps: percentToBps(returnBefore, 'The return while saving'),
+              returnInRetirementBps: percentToBps(returnInRetirement, 'The return while retired'),
+            };
       await saveGoalCalculator(database, ws, { goalId: goal.id, kind, inputs, today: isoDate() });
       await invalidate();
       onDone();
@@ -125,102 +112,56 @@ function CalculatorForm({ goal, saved, onDone, onCancel }: { goal: GoalRow; save
 
   // The group places each row it is handed, so the rows are a flat list rather than fragments.
   const rows: ReactElement[] =
-    kind === 'emergency'
-      ? [
-          <SelectRow
-            key="household"
-            label="Household"
-            value={emergency.household}
-            onChange={(e) => setEmergency((d) => withAnswers(d, { household: e.target.value as Household }))}
-          >
-            {HOUSEHOLDS.map((key) => (
-              <option key={key} value={key}>
-                {HOUSEHOLD_LABELS[key]}
-              </option>
-            ))}
-          </SelectRow>,
-          <SelectRow
-            key="income"
-            label="Income"
-            value={emergency.income}
-            onChange={(e) => setEmergency((d) => withAnswers(d, { income: e.target.value as IncomeStability }))}
-          >
-            {INCOME_STABILITIES.map((key) => (
-              <option key={key} value={key}>
-                {INCOME_LABELS[key]}
-              </option>
-            ))}
-          </SelectRow>,
+    kind === 'education'
+      ? []
+      : [
           <TextRow
-            key="months"
-            label="Months of outgoings"
-            hint={monthsNote(emergency)}
-            value={emergency.months}
-            onChange={(e) => setEmergency((d) => typedMonths(d, e.target.value))}
+            key="spend"
+            label="Yearly spending in retirement"
+            prefix={ws.baseCurrency}
+            hint="At today's prices. Inflation is applied automatically."
+            value={annualSpend}
+            onChange={(e) => setAnnualSpend(groupTypedAmount(e.target.value, ws.baseCurrency))}
+            inputMode="decimal"
+            placeholder="Amount"
+            required
+          />,
+          <TextRow
+            key="to"
+            label="Years until retirement"
+            value={yearsToRetirement}
+            onChange={(e) => setYearsToRetirement(e.target.value)}
+            inputMode="numeric"
+            required
+          />,
+          <TextRow
+            key="in"
+            label="Years in retirement"
+            value={yearsInRetirement}
+            onChange={(e) => setYearsInRetirement(e.target.value)}
+            inputMode="numeric"
+            required
+          />,
+          <TextRow key="inflation" label="Inflation a year (%)" value={inflation} onChange={(e) => setInflation(e.target.value)} inputMode="decimal" required />,
+          <TextRow
+            key="before"
+            label="Return while saving (%)"
+            hint="What the money earns until saving stops. Written as the goal's return."
+            value={returnBefore}
+            onChange={(e) => setReturnBefore(e.target.value)}
             inputMode="decimal"
             required
           />,
-          <SelectRow
-            key="base"
-            label="Counts"
-            hint={BASE_HINTS[emergency.base]}
-            value={emergency.base}
-            onChange={(e) => setEmergency((d) => ({ ...d, base: e.target.value as EmergencyBase }))}
-          >
-            <option value="essential">Essential spending</option>
-            <option value="all">All spending</option>
-          </SelectRow>,
-        ]
-      : kind === 'education'
-        ? []
-        : [
-            <TextRow
-              key="spend"
-              label="Yearly spending in retirement"
-              prefix={ws.baseCurrency}
-              hint="At today's prices. Inflation is applied automatically."
-              value={annualSpend}
-              onChange={(e) => setAnnualSpend(groupTypedAmount(e.target.value, ws.baseCurrency))}
-              inputMode="decimal"
-              placeholder="Amount"
-              required
-            />,
-            <TextRow
-              key="to"
-              label="Years until retirement"
-              value={yearsToRetirement}
-              onChange={(e) => setYearsToRetirement(e.target.value)}
-              inputMode="numeric"
-              required
-            />,
-            <TextRow
-              key="in"
-              label="Years in retirement"
-              value={yearsInRetirement}
-              onChange={(e) => setYearsInRetirement(e.target.value)}
-              inputMode="numeric"
-              required
-            />,
-            <TextRow key="inflation" label="Inflation a year (%)" value={inflation} onChange={(e) => setInflation(e.target.value)} inputMode="decimal" required />,
-            <TextRow
-              key="before"
-              label="Return while saving (%)"
-              hint="What the money earns until saving stops. Written as the goal's return."
-              value={returnBefore}
-              onChange={(e) => setReturnBefore(e.target.value)}
-              inputMode="decimal"
-              required
-            />,
-            <TextRow
-              key="return"
-              label="Return while retired (%)"
-              hint="What the pot earns while it is being spent."
-              value={returnInRetirement}
-              onChange={(e) => setReturnInRetirement(e.target.value)}
-              inputMode="decimal"
-              required
-            />,
-          ];
+          <TextRow
+            key="return"
+            label="Return while retired (%)"
+            hint="What the pot earns while it is being spent."
+            value={returnInRetirement}
+            onChange={(e) => setReturnInRetirement(e.target.value)}
+            inputMode="decimal"
+            required
+          />,
+        ];
 
   return (
     <form ref={formRef} onSubmit={submit}>
@@ -244,5 +185,74 @@ function CalculatorForm({ goal, saved, onDone, onCancel }: { goal: GoalRow; save
         <InsetRow title="Cancel" action onClick={onCancel ?? onDone} />
       </InsetGroup>
     </form>
+  );
+}
+
+/**
+ * An emergency fund's own Calculator: the standalone calculator's rows, in the same order, so nothing is learnt twice.
+ * It waits for the goal's plan, because what goes out a month opens on the figure the goal already uses.
+ */
+function EmergencyWorking({ goal, saved, onDone, onCancel }: { goal: GoalRow; saved: GoalCalculatorRow | undefined; onDone: () => void; onCancel?: () => void }) {
+  const plans = useGoalPlans(isoDate());
+  if (!plans.isSuccess) return null;
+  const plan = plans.data.plans.find((row) => row.goalId === goal.id);
+  return <EmergencyWorkingForm goal={goal} saved={saved} targetMinor={plan?.totalTargetMinor ?? 0} onDone={onDone} onCancel={onCancel} />;
+}
+
+function EmergencyWorkingForm({
+  goal,
+  saved,
+  targetMinor,
+  onDone,
+  onCancel,
+}: {
+  goal: GoalRow;
+  saved: GoalCalculatorRow | undefined;
+  targetMinor: number;
+  onDone: () => void;
+  onCancel?: () => void;
+}) {
+  const { database, ws } = useApp();
+  const invalidate = useInvalidateAll();
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  const working = saved?.kind === 'emergency' ? (saved.inputs as EmergencyInputs) : undefined;
+  // The figure the goal reads today: what the working typed, else the goal's target spread over its months.
+  const months = goal.stages.find((stage) => stage.targetMonths !== null)?.targetMonths ?? 0;
+  const derived = months > 0 && targetMinor > 0 ? Math.round(targetMinor / months) : 0;
+  const { fields, inputs, answer } = useEmergencyFields({
+    inputs: working,
+    outgoing: working?.monthlyOutgoingMinor || derived === 0 ? undefined : groupedMajorString(derived, ws.baseCurrency),
+    // A goal worked out before the horizon was asked fell due two years on.
+    horizon: 24,
+    returnPercent: goal.returnBps / 100,
+  });
+
+  async function save() {
+    if (!inputs) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await saveGoalCalculator(database, ws, { goalId: goal.id, kind: 'emergency', inputs, today: isoDate() });
+      await invalidate();
+      onDone();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      {fields}
+      <Answer answer={answer} testId="answer-emergency" />
+      <ErrorBox error={error} />
+      <InsetGroup>
+        <InsetRow title="Save goal" action disabled={busy || answer === null || inputs === null} onClick={() => void save()} />
+        {/* Back to the goal's fields when the working was opened from them: the same page, one step up. */}
+        <InsetRow title="Cancel" action onClick={onCancel ?? onDone} />
+      </InsetGroup>
+    </div>
   );
 }
