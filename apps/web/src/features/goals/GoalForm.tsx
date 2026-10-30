@@ -17,7 +17,7 @@ import { FundingSheet, taggable } from './FundingSheet';
 import { useTrades } from '../networth/queries';
 import { CostRow, costLine, DATE, PaymentSheet, type StageDraft } from './PaymentRows';
 import { GOAL_KIND_LABELS, GOAL_TEMPLATES, type GoalTemplate, monthYear, prefilledReturnBps, templateDueOn, templateFor } from './goal-cards';
-import { useEarmarks, useGoalPlans } from './queries';
+import { useEarmarks, useGoalCalculators, useGoalPlans } from './queries';
 import { useSetAside } from './SetAside';
 
 function draftFromTemplate(template: GoalTemplate, today: string, currency: string): StageDraft {
@@ -69,6 +69,7 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
   const invalidate = useInvalidateAll();
   const goBack = useBack('/goals');
   const today = isoDate();
+  const calculators = useGoalCalculators();
 
   const starting = goal ? undefined : (templateFor(startKind ?? GOAL_TEMPLATES[0]!.kind) ?? GOAL_TEMPLATES[0]!);
   const [kind, setKind] = useState<GoalKind>(goal?.kind ?? starting!.kind);
@@ -179,24 +180,41 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
     setError(null);
     setBusy(true);
     try {
+      const growthBps = Math.round(Number(growth.replace(',', '.')) * 100);
+      const returnBps = Math.round(Number(expectedReturn.replace(',', '.')) * 100);
+      const payments = named.map((stage) => ({
+        id: stage.id,
+        name: stage.name,
+        targetMinor: stage.usesMonths ? null : parseGroupedMajor(stage.amount, currency),
+        targetMonths: stage.usesMonths ? Number(stage.months) : null,
+        dueOn: stage.dueOn,
+        paidOn: stage.paidOn,
+      }));
+      // A goal worked out by a calculator stays linked to it when the only edit is which payments are marked paid:
+      // a hand-typed save would drop the link and the keys a re-work finds its payments by.
+      const keepsWorking =
+        !!goal &&
+        (calculators.data ?? []).some((row) => row.goalId === goal.id) &&
+        goal.growthBps === growthBps &&
+        goal.returnBps === returnBps &&
+        goal.currency === currency &&
+        goal.stages.length === payments.length &&
+        payments.every((payment) => {
+          const was = goal.stages.find((stage) => stage.id === payment.id);
+          return !!was && was.name === payment.name && was.targetMinor === payment.targetMinor && was.targetMonths === payment.targetMonths && was.dueOn === payment.dueOn;
+        });
       const goalId = await saveGoal(database, ws, {
         id: goalIdNow,
+        derived: keepsWorking,
         name,
         kind,
-        growthBps: Math.round(Number(growth.replace(',', '.')) * 100),
-        returnBps: Math.round(Number(expectedReturn.replace(',', '.')) * 100),
+        growthBps,
+        returnBps,
         // The form has no field for it; what the Monthly button set on a saved goal is carried through.
         standingMonthlyMinor: goal?.standingMonthlyMinor ?? 0,
         standingNote: goal?.standingNote ?? null,
         currency,
-        stages: named.map((stage) => ({
-          id: stage.id,
-          name: stage.name,
-          targetMinor: stage.usesMonths ? null : parseGroupedMajor(stage.amount, currency),
-          targetMonths: stage.usesMonths ? Number(stage.months) : null,
-          dueOn: stage.dueOn,
-          paidOn: stage.paidOn,
-        })),
+        stages: payments,
       });
       setCreatedId(goalId);
       await setAside.write(goalId);
