@@ -1,4 +1,3 @@
-import { formatMinor, formatUnits } from '@expanses/core';
 import type { GoalLinkRow } from '@expanses/db';
 import { useApp } from '../../app/context';
 import { Money } from '../../ui';
@@ -40,18 +39,13 @@ export function FundingRow({ link, goalCurrency, position }: GroupChild & { link
       <InsetRow
         position={position}
         title={link.name}
+        // Only a shortfall earns a second line; "set aside" and "tagged" are what the group's own name already says.
         subtitle={
-          link.kind === 'tagged' && link.unitsMicro !== null ? (
-            `${formatUnits(link.unitsMicro)} tagged`
-          ) : link.kind === 'tagged' && link.moneyMinor != null ? (
-            `${formatMinor(link.moneyMinor, link.currency)} put in`
-          ) : link.shortMinor > 0 ? (
+          link.kind !== 'tagged' && link.shortMinor > 0 ? (
             <>
-              set aside · short by <Money minor={link.shortMinor} currency={link.currency} />
+              short by <Money minor={link.shortMinor} currency={link.currency} />
             </>
-          ) : (
-            'set aside'
-          )
+          ) : undefined
         }
         value={<LinkAmount link={link} goalCurrency={goalCurrency} />}
         valueTone="ink"
