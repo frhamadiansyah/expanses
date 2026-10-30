@@ -150,6 +150,7 @@ export function TextRow({
   wrapLabel = false,
   middle,
   suffix,
+  trailing,
   prefix,
   onPrefix,
   prefixLabel,
@@ -180,8 +181,10 @@ export function TextRow({
   info?: ReactNode;
   /** A long label may wrap onto two lines rather than push the figure out of its row. */
   wrapLabel?: boolean;
+  /** Something at the right end of the row, after the figure — a small icon button such as a reset. */
+  trailing?: ReactNode;
 } & InputHTMLAttributes<HTMLInputElement>) {
-  const labelClass = wrapLabel ? LABEL.replace('shrink-0', 'min-w-0 max-w-[52%] shrink') : LABEL;
+  const labelClass = cx(wrapLabel ? LABEL.replace('shrink-0', 'min-w-0 max-w-[52%] shrink') : LABEL, props.disabled && 'opacity-40');
   const generated = useId();
   const id = props.id ?? generated;
   const [explained, setExplained] = useState(false);
@@ -276,6 +279,7 @@ export function TextRow({
             {suffix}
           </span>
         )}
+        {trailing}
       </div>
       {hint && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{hint}</p>}
       {info && explained && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{info}</p>}

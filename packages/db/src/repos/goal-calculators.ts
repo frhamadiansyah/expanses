@@ -44,6 +44,11 @@ export interface EmergencyInputs {
   horizonMonths?: number;
   /** What the money earns a year while it waits, written as the goal's return when set. */
   returnBps?: number;
+  /**
+   * An amount the owner set by themself, rounding up from what the months work out to. When set it is the stage's whole
+   * target (the months and the rest stay as the working); absent, the target is the months times the outgoing.
+   */
+  targetMinor?: number;
 }
 
 export type CalculatorKind = 'emergency' | 'education' | 'retirement';
@@ -96,7 +101,8 @@ function derive(kind: CalculatorKind, raw: CalculatorInputs, today: string, goal
     if (household !== undefined && !HOUSEHOLDS.includes(household)) throw new GoalDbError('That household is not one this app knows');
     if (income !== undefined && !INCOME_STABILITIES.includes(income)) throw new GoalDbError('Income is salaried or irregular');
     if (base !== undefined && !EMERGENCY_BASES.includes(base)) throw new GoalDbError('An emergency fund counts essential or all spending');
-    const { monthlyOutgoingMinor, horizonMonths, returnBps } = inputs;
+    const { monthlyOutgoingMinor, horizonMonths, returnBps, targetMinor: ownTargetMinor } = inputs;
+    if (ownTargetMinor !== undefined && (!Number.isSafeInteger(ownTargetMinor) || ownTargetMinor <= 0)) throw new GoalDbError('The target amount needs an amount above zero');
     if (monthlyOutgoingMinor !== undefined && (!Number.isSafeInteger(monthlyOutgoingMinor) || monthlyOutgoingMinor <= 0)) {
       throw new GoalDbError('What goes out a month needs an amount above zero');
     }
@@ -109,8 +115,9 @@ function derive(kind: CalculatorKind, raw: CalculatorInputs, today: string, goal
       stages: [
         {
           name: goalName,
-          targetMinor: null,
-          targetMonths: Math.round(months),
+          // An own target is a stage amount; the months stay in the working only (a stage has an amount or months, not both).
+          targetMinor: ownTargetMinor ?? null,
+          targetMonths: ownTargetMinor === undefined ? Math.round(months) : null,
           dueOn: horizonMonths === undefined ? yearsFrom(today, 2) : monthsFrom(today, horizonMonths),
           key: 'emergency',
           returnBps: null,
@@ -118,7 +125,7 @@ function derive(kind: CalculatorKind, raw: CalculatorInputs, today: string, goal
       ],
       growthBps: 0,
       returnBps: returnBps ?? null,
-      computedMinor: 0,
+      computedMinor: ownTargetMinor ?? 0,
     };
   }
 
@@ -346,6 +353,30 @@ export async function getGoalCalculator(database: Database, ws: WorkspaceContext
     computedMinor: row.computedMinor,
     computedAt: row.computedAt,
   };
+}
+
+/**
+ * Writes an emergency working's own target (and, when given, its months) without re-working the goal: Edit goal saves
+ * the stage itself, dates and all, and this keeps the working in step so the goal stays linked. `targetMinor`
+ * undefined clears the own target. A goal with no emergency working is left alone.
+ */
+export async function setEmergencyOwnTarget(
+  database: Database,
+  ws: WorkspaceContext,
+  goalId: string,
+  change: { targetMinor?: number; months?: number },
+): Promise<void> {
+  const { targetMinor, months } = change;
+  if (targetMinor !== undefined && (!Number.isSafeInteger(targetMinor) || targetMinor <= 0)) throw new GoalDbError('The target amount needs an amount above zero');
+  if (months !== undefined && (!Number.isFinite(months) || months <= 0)) throw new GoalDbError('An emergency fund needs a number of months above zero');
+  const row = await getGoalCalculator(database, ws, goalId);
+  if (!row || row.kind !== 'emergency') return;
+  const { targetMinor: _was, ...rest } = row.inputs as EmergencyInputs;
+  const inputs: EmergencyInputs = { ...rest, version: 2, ...(months === undefined ? {} : { months }), ...(targetMinor === undefined ? {} : { targetMinor }) };
+  await database.db
+    .update(goalCalculators)
+    .set({ inputsJson: JSON.stringify(inputs), computedMinor: targetMinor ?? 0 })
+    .where(and(eq(goalCalculators.goalId, goalId), eq(goalCalculators.workspaceId, ws.workspaceId)));
 }
 
 /** Breaks the link on purpose. The stages stay exactly as they are; they are simply no longer derived. */

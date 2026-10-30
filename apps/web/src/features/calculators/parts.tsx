@@ -40,7 +40,8 @@ export function Answer({
   testId,
   problem,
 }: {
-  answer: { targetMinor: number; monthlyMinor: number; covered: boolean } | null;
+  /** `own` marks a target typed over the calculated one: `targetMinor` is then the calculated figure, shown as such. */
+  answer: { targetMinor: number; monthlyMinor: number; covered: boolean; own?: boolean } | null;
   testId: string;
   problem?: string | null;
 }) {
@@ -50,7 +51,7 @@ export function Answer({
     <Panel wide testId={testId}>
       {/* Two figures, side by side where there is room: the desktop keeps both columns. */}
       <div className="grid gap-3 sm:grid-cols-2">
-        <Figure caption="Needed" minor={answer.targetMinor} />
+        <Figure caption={answer.own ? 'Calculated' : 'Needed'} minor={answer.targetMinor} />
         <Figure
           caption="Save each month"
           minor={answer.monthlyMinor}
