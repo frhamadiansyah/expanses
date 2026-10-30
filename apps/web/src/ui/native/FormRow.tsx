@@ -235,11 +235,11 @@ export function TextRow({
           <span className="flex min-w-0 flex-1 cursor-text items-baseline justify-end gap-[6px]" onClick={(event) => event.target === event.currentTarget && field.current?.focus()}>
             {prefix && prefixAlways && (
               onPrefix ? (
-                <button type="button" aria-label={prefixLabel} onClick={onPrefix} className="ph-focus shrink-0 rounded text-[17px] leading-[22px] text-[var(--ph-ink-3)] md:text-[15px] md:leading-[20px]">
+                <button type="button" aria-label={prefixLabel} onClick={onPrefix} className={cx('ph-focus shrink-0 rounded text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', filled ? 'text-[var(--ph-ink)]' : 'text-[var(--ph-ink-3)]')}>
                   {prefix}
                 </button>
               ) : (
-                <span className="shrink-0 text-[17px] leading-[22px] text-[var(--ph-ink-3)] md:text-[15px] md:leading-[20px]">{prefix}</span>
+                <span className={cx('shrink-0 text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', filled ? 'text-[var(--ph-ink)]' : 'text-[var(--ph-ink-3)]')}>{prefix}</span>
               )
             )}
             {prefix && onPrefix && !prefixAlways && (
