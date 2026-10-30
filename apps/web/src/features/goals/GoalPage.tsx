@@ -24,15 +24,6 @@ export function GoalRoute() {
   return <GoalPage goalId={goalId} />;
 }
 
-const HISTORY_TITLES: Record<GoalHistoryEntry['kind'], string> = {
-  'set-aside': 'Set aside',
-  'taken-back': 'Taken back',
-  borrowed: 'Borrowed',
-  spent: 'Spent',
-  moved: 'Moved',
-  reached: 'Reached the target',
-};
-
 /**
  * Under the figure, what the goal is short and — when it was whole before it lent money — the days it stood whole,
  * said as a fact rather than a failure (spec §7.2). The figures are the readers' own; nothing is worked out here.
@@ -66,9 +57,6 @@ function ShortNote({ card, stood }: { card: GoalCard; stood: ReturnType<typeof f
   );
 }
 
-/** How many history lines show before "See all". */
-const HISTORY_SHOWN = 3;
-
 /**
  * A goal on its own: the figure, its stages, what funds it and what has happened to it — everything the list
  * had no room for. The list is where goals are read as a set; this is where one is read on its own.
@@ -91,7 +79,6 @@ export function GoalPage({ goalId }: { goalId: string }) {
   // The one sheet open from the round actions or the ⋯, if any.
   const [open, setOpen] = useState<'use' | 'monthly' | 'take-back' | 'move' | null>(null);
   const hasPurchase = useHasTaggedPurchase(goalId);
-  const [allHistory, setAllHistory] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
   const plans = summary.data?.plans ?? [];
@@ -151,7 +138,6 @@ export function GoalPage({ goalId }: { goalId: string }) {
   const derived = new Set((calculators.data ?? []).map((row) => row.goalId));
   const full = history[card.goalId] ?? [];
   const { stood } = cardHistory(full, (key) => wholeBorrows.has(key));
-  const historyLines = allHistory ? full : full.slice(0, HISTORY_SHOWN);
   // A goal of one payment has no Stages group, so its paid mark waits behind the ⋯.
   const only = card.stageLines.length === 1 ? card.stageLines[0]! : null;
 
@@ -325,31 +311,12 @@ export function GoalPage({ goalId }: { goalId: string }) {
       {plan.unconvertedWarning && <p className="mb-[10px] px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-warn)]">{plan.unconvertedWarning}</p>}
 
       {full.length > 0 && (
-        <InsetGroup wide header="History">
-          {[
-            ...historyLines.map((entry) => (
-              <InsetRow
-                key={entry.key}
-                testId="goal-history"
-                title={HISTORY_TITLES[entry.kind]}
-                subtitle={entry.text ? `${historyDay(entry.occurredOn, today)} · ${entry.text}` : historyDay(entry.occurredOn, today)}
-                value={entry.amountMinor === null ? undefined : <Money minor={entry.amountMinor} currency={entry.currency} />}
-                valueTone="ink"
-                chevron={false}
-              />
-            )),
-            ...(full.length > HISTORY_SHOWN
-              ? [
-                  <InsetRow
-                    key="see-all"
-                    title={allHistory ? 'Show fewer' : 'See all'}
-                    label={allHistory ? 'Show fewer' : 'See all'}
-                    action
-                    onClick={() => setAllHistory((was) => !was)}
-                  />,
-                ]
-              : []),
-          ]}
+        <InsetGroup wide>
+          <InsetRow
+            title="History"
+            value={`${full.length} ${full.length === 1 ? 'entry' : 'entries'}`}
+            onClick={() => void navigate({ to: '/goals/$goalId/history', params: { goalId } })}
+          />
         </InsetGroup>
       )}
     </div>

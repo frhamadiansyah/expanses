@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { goalMenu } from './goals';
-import { addGoal, addMoneyAccount, goalCard, setAside } from './set-aside';
+import { addGoal, addMoneyAccount, goalCard, openGoalHistory, setAside } from './set-aside';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -31,6 +31,7 @@ test('Use records the spending from the account and lowers what is set aside for
   await expect(sheet).toHaveCount(0);
 
   await expect(jeniusLink(page)).toContainText('5.500.000');
+  await openGoalHistory(page);
   await expect(page.getByTestId('goal-history').filter({ hasText: 'Spent' }).first()).toContainText('Flight to Jeddah');
 
   await page.goto('/transactions');

@@ -5,6 +5,15 @@ import { openAssets } from './drawers';
 import { openGoalForm } from './goals';
 import { pickBillCategory, pickBillPaidFrom } from './bill-form';
 
+/** From a goal's own page, opens its History page: one row on the goal leads to every entry. A goal with no history has no row, and stays put. */
+export async function openGoalHistory(page: Page) {
+  const row = page.getByRole('button', { name: /^History/ });
+  if ((await row.count()) > 0) {
+    await row.click();
+    await expect(page.getByRole('heading', { name: 'History' })).toBeVisible();
+  }
+}
+
 /**
  * A goal's row on /goals, where each goal is one line of the list. The goal itself — its figure, stages, what
  * funds it, Edit — is on its own page, which `goalCard` opens.

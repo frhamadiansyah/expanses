@@ -2,7 +2,7 @@ import { showBalance } from './accounts';
 import { pickView } from './wallet';
 import { expect, test } from '@playwright/test';
 import { editGoal, expectArchiveNote } from './goals';
-import { addGoal, addMoneyAccount, addSetAsideRow, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, setAside, transferOutBorrowingFromUmrah, typeAmount } from './set-aside';
+import { addGoal, addMoneyAccount, addSetAsideRow, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, openGoalHistory, setAside, transferOutBorrowingFromUmrah, typeAmount } from './set-aside';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -52,7 +52,8 @@ test('the laptop: pick a goal, say it is borrowing, and the goal and the account
   // The Funded-by row says it in the account's own terms.
   await expect(ef.getByTestId('goal-link').filter({ hasText: 'Jenius' })).toContainText(/set aside · short by Rp.1\.800\.000/);
   // And the history keeps the borrow, signed, with what it was for.
-  const borrowed = ef.getByTestId('goal-history').filter({ hasText: 'Borrowed' });
+  await openGoalHistory(page);
+  const borrowed = page.getByTestId('goal-history').filter({ hasText: 'Borrowed' });
   await expect(borrowed).toHaveCount(1);
   await expect(borrowed).toContainText(/Laptop/);
   await expect(borrowed).toContainText(/-Rp.1\.800\.000/);
@@ -111,7 +112,8 @@ test('Umrah tickets from the Umrah fund: the goal is done, not short', async ({ 
   // Done — and Archive's line says what archiving now does.
   await expect(umrah.getByText('Done', { exact: true })).toBeVisible();
   await expectArchiveNote(umrah, true);
-  const spent = umrah.getByTestId('goal-history').filter({ hasText: 'Spent' });
+  await openGoalHistory(page);
+  const spent = page.getByTestId('goal-history').filter({ hasText: 'Spent' });
   await expect(spent).toContainText(/Umrah tickets/);
   await expect(spent).toContainText(/-Rp.7\.500\.000/);
   // The Emergency fund was not asked for a rupiah: 5.000.000 free + 2.500.000 of Umrah's = 7.500.000 — and it was
