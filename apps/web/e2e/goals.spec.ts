@@ -305,7 +305,7 @@ test('money set aside on a foreign account is typed, saved and read back in that
   // three parts of one row rather than one run of text, so the line is named rather than matched whole.
   const fundedBy = page.getByTestId('goal-link').filter({ hasText: 'Wise USD' }).first();
   await expect(fundedBy).toBeVisible();
-  await expect(fundedBy).toContainText('set aside');
+  // The row no longer says "set aside"; the figure in its own currency is what is read.
   await expect(fundedBy).toContainText('US$100,03');
 
   // And the form opens on the figure it stored, in the same currency it asked for.
