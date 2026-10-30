@@ -220,8 +220,9 @@ export function GoalPage({ goalId }: { goalId: string }) {
           </p>
           {(due || right) && (
             <div className="flex items-baseline justify-between gap-3 text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
-              <span>{due}</span>
-              {right && <span className="shrink-0">{right}</span>}
+              {/* An emergency fund has no due date: its cover then stands where the date would, under the figure, as drawn. */}
+              <span>{due ?? right}</span>
+              {due && right && <span className="shrink-0">{right}</span>}
             </div>
           )}
         </div>
