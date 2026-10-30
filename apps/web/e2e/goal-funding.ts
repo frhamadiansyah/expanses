@@ -6,7 +6,7 @@ import { openGoalForm } from './goals';
 import { addSetAsideRow, closeSetAsideRows, goalCard, goalRow } from './set-aside';
 
 /** A bank account, and a gold holding bought once for no goal. */
-async function bankAndGold(page: Page) {
+export async function bankAndGold(page: Page) {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
   await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
@@ -22,7 +22,7 @@ async function bankAndGold(page: Page) {
   await expect(page.getByText(/· Typed/)).toBeVisible();
 }
 
-async function newGoal(page: Page, name: string) {
+export async function newGoal(page: Page, name: string) {
   await page.goto('/goals');
   await openGoalForm(page, 'Hajj or umrah');
   await page.getByLabel('Name', { exact: true }).fill(name);
