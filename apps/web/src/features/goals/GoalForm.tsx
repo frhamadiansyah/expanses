@@ -321,6 +321,7 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
                       value={ownTarget.minor === undefined ? monthsText : 'not used'}
                       onChange={(e) => setMonthsEdited(e.target.value)}
                       disabled={ownTarget.minor !== undefined}
+                      className={ownTarget.minor !== undefined ? 'opacity-40' : undefined}
                       inputMode="numeric"
                       placeholder="Months"
                     />
