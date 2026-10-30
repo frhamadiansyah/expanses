@@ -75,15 +75,22 @@ export function SaveRow({ label, ready, onSave, onRefused }: { label: string; re
   );
 }
 
+/** What the receipt says: the goal's id, its name and figure, and whether it was updated rather than made. */
+export interface GoalAdded {
+  goalId: string;
+  detail: string;
+  updated?: boolean;
+}
+
 /**
  * The receipt for a goal made from a calculator: a centred pop-up, not a line in the page, with the way into the goal
  * it made. The detail is the goal's name and the figure it was saved with.
  */
-export function GoalAddedAlert({ goalId, detail, onClose }: { goalId: string; detail: string; onClose: () => void }) {
+export function GoalAddedAlert({ added: { goalId, detail, updated }, onClose }: { added: GoalAdded; onClose: () => void }) {
   const navigate = useNavigate();
   return (
     <NoticeAlert
-      title="Added to Goals"
+      title={updated ? 'Goal updated' : 'Added to Goals'}
       text={detail}
       closeLabel="Done"
       onClose={onClose}

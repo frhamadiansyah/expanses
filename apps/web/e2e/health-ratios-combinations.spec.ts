@@ -123,8 +123,9 @@ test('row 6 — the same goal worked out counting all spending', async ({ page }
   await openWorking(page);
   await type(page.getByLabel('Months of outgoings'), '6');
   await expect(page.getByText('Custom figure · the guide is 3')).toBeVisible();
-  await page.getByLabel('Counts', { exact: true }).selectOption('all');
-  await page.getByRole('button', { name: 'Use this amount' }).click();
+  // What goes out a month is typed, not read from records: all spending, lifestyle included, is Rp 3 jt.
+  await type(page.getByLabel('What goes out a month', { exact: true }), '3000000');
+  await page.getByRole('button', { name: 'Save goal' }).click();
   // Six months of Rp 3 jt, lifestyle included.
   await expect(page.getByTestId('goal-page')).toContainText('18.000.000');
   await expect(page.getByTestId('goal-page')).not.toContainText('12.000.000');
@@ -242,9 +243,9 @@ test('row 12 — a working reopens on the answers and base it was saved with', a
   await openWorking(page);
   await page.getByLabel('Household').selectOption('children');
   await page.getByLabel('Income').selectOption('irregular');
-  await page.getByLabel('Counts', { exact: true }).selectOption('all');
+  await type(page.getByLabel('What goes out a month', { exact: true }), '3000000');
   await expect(page.getByLabel('Months of outgoings')).toHaveValue('24');
-  await page.getByRole('button', { name: 'Use this amount' }).click();
+  await page.getByRole('button', { name: 'Save goal' }).click();
   // 24 months of Rp 3 jt, all spending — the target under the figure on the goal's own page.
   await expect(page.getByTestId('goal-page')).toContainText('72.000.000');
 
@@ -254,7 +255,7 @@ test('row 12 — a working reopens on the answers and base it was saved with', a
   await openWorking(page);
   await expect(page.getByLabel('Household')).toHaveValue('children');
   await expect(page.getByLabel('Income')).toHaveValue('irregular');
-  await expect(page.getByLabel('Counts', { exact: true })).toHaveValue('all');
+  await expect(page.getByLabel('What goes out a month', { exact: true })).toHaveValue('3.000.000');
   await expect(page.getByLabel('Months of outgoings')).toHaveValue('24');
   // The answers are the two rows above; the months row does not repeat them back.
   await expect(page.getByText(/with children, freelance/)).toHaveCount(0);
@@ -266,7 +267,7 @@ test('row 13 — the card grades against the household’s own months', async ({
   await openWorking(page);
   await page.getByLabel('Household').selectOption('children');
   await expect(page.getByLabel('Months of outgoings')).toHaveValue('12');
-  await page.getByRole('button', { name: 'Use this amount' }).click();
+  await page.getByRole('button', { name: 'Save goal' }).click();
   // 12 months of Rp 3 jt, under the figure on the goal's own page.
   await expect(page.getByTestId('goal-page')).toContainText('36.000.000');
 

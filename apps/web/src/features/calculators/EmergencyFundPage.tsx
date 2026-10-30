@@ -1,14 +1,12 @@
-import { EMERGENCY_RETURN_BPS, formatMinor, emergencyTargetMinor, HOUSEHOLDS, type Household, INCOME_STABILITIES, type IncomeStability, groupTypedAmount, isoDate, parseGroupedMajor, savingPlanFor } from '@expanses/core';
-import { createGoalFromCalculator, type EmergencyInputs } from '@expanses/db';
+import { formatMinor, isoDate } from '@expanses/core';
+import { createGoalFromCalculator, saveGoalCalculator } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { InsetGroup, SelectRow, TextRow } from '../../ui/native';
-import { emergencyDraftFrom, emergencyInputsOf, HOUSEHOLD_LABELS, INCOME_LABELS, monthsNote, typedMonths, withAnswers } from '../goals/emergency-form';
+import { useGoals } from '../goals/queries';
 import { EMERGENCY_FUND } from './catalogue';
-import { readPercent, readWhole } from './fields';
-import { Answer, CalculatorPage, GoalAddedAlert, SaveRow } from './parts';
-import { SpendBar, useSpendSuggestions } from './SpendBar';
+import { useEmergencyFields } from './emergency-fields';
+import { Answer, CalculatorPage, type GoalAdded, GoalAddedAlert, SaveRow } from './parts';
 
 /** Months of what goes out, loan principal included — and the monthly saving that gets there over a horizon and a rate you set. */
 export function EmergencyFundPage() {
@@ -16,57 +14,25 @@ export function EmergencyFundPage() {
   const invalidate = useInvalidateAll();
   const today = isoDate();
   const [error, setError] = useState<unknown>(null);
-  const [added, setAdded] = useState<{ goalId: string; detail: string } | null>(null);
-
-  const [emergency, setEmergency] = useState(() => emergencyDraftFrom());
-  const [monthlyOutgoing, setMonthlyOutgoing] = useState('');
-  const [outgoingFocused, setOutgoingFocused] = useState(false);
-  const spend = useSpendSuggestions('emergency', emergency.base);
-  // The two assumptions the answer used to bury, written into the boxes they were made in: a year, and `EMERGENCY_RETURN_BPS`.
-  const [horizon, setHorizon] = useState('12');
-  const [returnPercent, setReturnPercent] = useState(String(EMERGENCY_RETURN_BPS / 100));
-
-  const money = (value: string) => {
-    try {
-      return value.trim() === '' ? 0 : parseGroupedMajor(value, ws.baseCurrency);
-    } catch {
-      return 0;
-    }
-  };
-
-  // The plan's two boxes, read the way every other box on the page is: a figure they refuse says so on its own row.
-  const readMonths = readWhole(horizon);
-  const horizonProblem = readMonths.ok
-    ? readMonths.value >= 1
-      ? undefined
-      : 'Not below one month'
-    : readMonths.problem.replace('Whole years', 'Whole months').replace('like 10', 'like 12');
-  const readReturn = readPercent(returnPercent);
-  const returnProblem = readReturn.ok ? (readReturn.value >= 0 ? undefined : 'Not below nothing') : readReturn.problem;
-
-  // The months are read by the one reader the goal's own working uses, which takes "9,5"; a figure it refuses shows no answer.
-  let emergencyInputs: EmergencyInputs | null = null;
-  let emergencyAnswer: { targetMinor: number; monthlyMinor: number; covered: boolean } | null = null;
-  try {
-    emergencyInputs = emergencyInputsOf(emergency);
-    if (readMonths.ok && readMonths.value >= 1 && readReturn.ok && readReturn.value >= 0 && money(monthlyOutgoing) > 0) {
-      const targetMinor = emergencyTargetMinor(emergencyInputs.months, money(monthlyOutgoing));
-      const plan = savingPlanFor({ targetMinor, alreadySavedMinor: 0, returnBps: readReturn.value, months: readMonths.value });
-      emergencyAnswer = { targetMinor, monthlyMinor: plan.monthlyMinor, covered: plan.gapMinor === 0 };
-    }
-  } catch {
-    emergencyInputs = null;
-    emergencyAnswer = null;
-  }
+  const [added, setAdded] = useState<GoalAdded | null>(null);
+  const { fields, inputs, answer } = useEmergencyFields();
+  // One emergency fund is the goal: a second working updates it rather than starting another.
+  const existing = (useGoals().data ?? []).find((goal) => goal.kind === 'emergency');
 
   async function save() {
-    if (!emergencyInputs) return;
+    if (!inputs) return;
     setError(null);
     try {
-      const goalId = await createGoalFromCalculator(database, ws, { name: 'Emergency fund', kind: 'emergency', inputs: emergencyInputs as never, today });
+      let goalId: string;
+      if (existing) {
+        goalId = existing.id;
+        await saveGoalCalculator(database, ws, { goalId, kind: 'emergency', inputs, today });
+      } else {
+        goalId = await createGoalFromCalculator(database, ws, { name: 'Emergency fund', kind: 'emergency', inputs, today });
+      }
       await invalidate();
-      const target = emergencyAnswer ? `${formatMinor(emergencyAnswer.targetMinor, ws.baseCurrency)} for ${emergencyInputs.months} months of spending` : null;
-      setAdded({ goalId, detail: target ? `Emergency fund · ${target}` : 'Emergency fund' });
+      const target = answer ? `${formatMinor(answer.targetMinor, ws.baseCurrency)} for ${inputs.months} months of spending` : null;
+      setAdded({ goalId, updated: Boolean(existing), detail: target ? `${existing?.name ?? 'Emergency fund'} · ${target}` : (existing?.name ?? 'Emergency fund') });
     } catch (e) {
       setError(e);
     }
@@ -74,70 +40,10 @@ export function EmergencyFundPage() {
 
   return (
     <CalculatorPage entry={EMERGENCY_FUND} error={error} quiet>
-      {added && <GoalAddedAlert goalId={added.goalId} detail={added.detail} onClose={() => setAdded(null)} />}
-      <InsetGroup>
-        <SelectRow
-          label="Household"
-          value={emergency.household}
-          onChange={(e) => setEmergency((d) => withAnswers(d, { household: e.target.value as Household }))}
-        >
-          {HOUSEHOLDS.map((key) => (
-            <option key={key} value={key}>
-              {HOUSEHOLD_LABELS[key]}
-            </option>
-          ))}
-        </SelectRow>
-        <SelectRow
-          label="Income"
-          value={emergency.income}
-          onChange={(e) => setEmergency((d) => withAnswers(d, { income: e.target.value as IncomeStability }))}
-        >
-          {INCOME_STABILITIES.map((key) => (
-            <option key={key} value={key}>
-              {INCOME_LABELS[key]}
-            </option>
-          ))}
-        </SelectRow>
-        <TextRow
-          label="Months of outgoings"
-          hint={monthsNote(emergency)}
-          value={emergency.months}
-          onChange={(e) => setEmergency((d) => typedMonths(d, e.target.value))}
-          inputMode="decimal"
-        />
-        <TextRow
-          label="What goes out a month"
-          prefix={ws.baseCurrency}
-          value={monthlyOutgoing}
-          onChange={(e) => setMonthlyOutgoing(groupTypedAmount(e.target.value, ws.baseCurrency))}
-          onFocus={() => setOutgoingFocused(true)}
-          onBlur={() => setOutgoingFocused(false)}
-          inputMode="decimal"
-          placeholder="Amount"
-        />
-      </InsetGroup>
-      <SpendBar open={outgoingFocused} suggestions={spend} onPick={setMonthlyOutgoing} />
-
-      {/* How long to give it, and what the money earns while it waits. */}
-      <InsetGroup header="The plan">
-        <TextRow
-          label="Save it over (months)"
-          hint={horizonProblem}
-          value={horizon}
-          onChange={(e) => setHorizon(e.target.value)}
-          inputMode="numeric"
-        />
-        <TextRow
-          label="Est. return a year (%)"
-          hint={returnProblem}
-          value={returnPercent}
-          onChange={(e) => setReturnPercent(e.target.value)}
-          inputMode="decimal"
-        />
-      </InsetGroup>
-
-      <Answer answer={emergencyAnswer} testId="answer-emergency" />
-      <SaveRow label="Set a goal" ready={emergencyAnswer !== null && emergencyInputs !== null} onSave={() => void save()} />
+      {added && <GoalAddedAlert added={added} onClose={() => setAdded(null)} />}
+      {fields}
+      <Answer answer={answer} testId="answer-emergency" />
+      <SaveRow label={existing ? 'Update goal' : 'Set a goal'} ready={answer !== null && inputs !== null} onSave={() => void save()} />
     </CalculatorPage>
   );
 }

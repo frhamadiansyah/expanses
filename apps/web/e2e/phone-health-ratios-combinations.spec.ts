@@ -147,7 +147,7 @@ test('row 13 — the card grades against the household’s own months', async ({
   await openWorking(page);
   await page.getByLabel('Household').selectOption('children');
   await expect(page.getByLabel('Months of outgoings')).toHaveValue('12');
-  await page.getByRole('button', { name: 'Use this amount' }).click();
+  await page.getByRole('button', { name: 'Save goal' }).click();
   // 12 months of Rp 3 jt, under the figure on the goal's own page.
   await expect(page.getByTestId('goal-page')).toContainText('36.000.000');
 

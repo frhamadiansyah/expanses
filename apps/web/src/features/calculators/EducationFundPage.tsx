@@ -59,7 +59,7 @@ export function EducationFundPage() {
 
   return (
     <CalculatorPage entry={EDUCATION_FUND} error={error} quiet>
-      {added && <GoalAddedAlert goalId={added.goalId} detail={added.detail} onClose={() => setAdded(null)} />}
+      {added && <GoalAddedAlert added={added} onClose={() => setAdded(null)} />}
       <InsetGroup>
         <InsetRow title="Child" value={childLabel(current.name, index)} onClick={() => setChoosing(true)} />
         <InsetRow title="Levels" value={String(current.draft.levels.length)} chevron={false} />
