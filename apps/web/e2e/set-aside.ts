@@ -99,11 +99,11 @@ export async function closeSetAsideRows(page: Page) {
 /** The account's name without its currency, which the old boxes carried in brackets and a row does not. */
 export const accountOf = (box: string) => box.replace(/ \(.*\)$/, '');
 
-/** Through the goal page's round Add cash, whose sheet holds the goal form's set-aside rows and nothing else. */
+/** Through the goal page's round Set aside, whose sheet holds the goal form's set-aside rows and nothing else. */
 export async function setAside(page: Page, goal: string, box: string, amount: string) {
   const card = await goalCard(page, goal);
-  await card.getByRole('button', { name: 'Add cash', exact: true }).click();
-  const sheet = page.getByRole('dialog', { name: 'Cash and cash equivalents' });
+  await card.getByRole('button', { name: 'Set aside', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Set aside' });
   const account = accountOf(box);
   if ((await sheet.getByLabel(account, { exact: true }).count()) === 0) {
     await sheet.getByRole('button', { name: 'Set aside', exact: true }).click();

@@ -190,7 +190,7 @@ export function GoalPage({ goalId }: { goalId: string }) {
   // so Tag a purchase opens the same list of buys as the form's Funding sheet and tags the pick at once. Use is there
   // only while something is set aside to use.
   const round: RoundAction[] = [
-    { key: 'set-aside', label: 'Add cash', glyph: <PiggyBank size={20} aria-hidden />, run: () => setSettingAside(true) },
+    { key: 'set-aside', label: 'Set aside', glyph: <PiggyBank size={20} aria-hidden />, run: () => setSettingAside(true) },
     { key: 'tag', label: 'Tag a purchase', glyph: <Tag size={20} aria-hidden />, run: () => setTagging(true) },
     ...(held ? [{ key: 'use', label: 'Use', glyph: <ShoppingBag size={20} aria-hidden />, run: () => setOpen('use') }] : []),
     { key: 'monthly', label: 'Monthly', glyph: <CalendarClock size={20} aria-hidden />, run: () => setOpen('monthly') },

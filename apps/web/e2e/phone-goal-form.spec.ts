@@ -54,8 +54,8 @@ test('set aside from a saved goal adds an account through the sheet, and a row c
   await page.getByRole('button', { name: 'Save goal' }).click();
   const card = await goalCard(page, 'Wedding');
 
-  await card.getByRole('button', { name: 'Add cash', exact: true }).click();
-  const sheet = page.getByRole('dialog', { name: 'Cash and cash equivalents' });
+  await card.getByRole('button', { name: 'Set aside', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Set aside' });
   await sheet.getByRole('button', { name: 'Set aside', exact: true }).click();
   const chooser = page.getByRole('dialog', { name: 'Add an account' });
   await chooser.getByRole('button', { name: 'Jenius', exact: true }).click();
