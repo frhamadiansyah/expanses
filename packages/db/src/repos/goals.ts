@@ -9,6 +9,7 @@ import { goalStageTerms } from '../schema-health';
 import { MONEY_SUBTYPES } from './accounts';
 import { recordContributionTx } from './goal-contributions';
 import { healthTablesExist } from './health-tables';
+import { goalPartsTableExists } from './goal-parts';
 import { isPocketParentTx } from './set-aside-tx';
 
 const currencyColumn = new WeakMap<Db, boolean>();
@@ -288,6 +289,32 @@ async function nextRank(tx: Db, ws: WorkspaceContext): Promise<number> {
 
 export async function archiveGoal(database: Database, ws: WorkspaceContext, goalId: string): Promise<void> {
   await database.db.update(goals).set({ status: 'archived' }).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId)));
+}
+
+/**
+ * Deletes a goal and everything that only described it: what was set aside returns to its accounts, its purchases are
+ * untagged (the purchases, sales and spending stay, as the records they are), and its payments, working, history and
+ * contributions go. A goal other goals share a split purchase with leaves their parts as they were.
+ */
+export async function deleteGoal(database: Database, ws: WorkspaceContext, goalId: string): Promise<void> {
+  await database.transaction(async (tx) => {
+    const [goal] = await tx.select({ id: goals.id }).from(goals).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId)));
+    if (!goal) throw new GoalDbError('Goal not found in this workspace');
+    const w = ws.workspaceId;
+    await tx.run(sql`UPDATE investment_trades SET goal_id = NULL WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
+    await tx.run(sql`UPDATE trade_templates SET goal_id = NULL WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
+    await tx.run(sql`UPDATE asset_sales SET goal_id = NULL WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
+    await tx.run(sql`UPDATE transactions SET goal_id = NULL WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
+    await tx.run(sql`UPDATE events SET goal_id = NULL WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
+    if (await goalPartsTableExists(tx)) await tx.run(sql`DELETE FROM trade_goal_parts WHERE goal_id = ${goalId}`);
+    await tx.run(sql`DELETE FROM goal_draws WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
+    await tx.run(sql`DELETE FROM goal_contributions WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
+    await tx.run(sql`DELETE FROM goal_calculators WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
+    if (await healthTablesExist(tx)) await tx.run(sql`DELETE FROM goal_stage_terms WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
+    await tx.delete(goalEarmarks).where(and(eq(goalEarmarks.goalId, goalId), eq(goalEarmarks.workspaceId, w)));
+    await tx.delete(goalStages).where(and(eq(goalStages.goalId, goalId), eq(goalStages.workspaceId, w)));
+    await tx.delete(goals).where(and(eq(goals.id, goalId), eq(goals.workspaceId, w)));
+  });
 }
 
 /** Writes the order the owner dragged the goals into; the first is funded first. */

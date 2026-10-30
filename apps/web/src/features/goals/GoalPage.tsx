@@ -1,7 +1,7 @@
 import { formatMinor, isoDate } from '@expanses/core';
-import { archiveGoal, type GoalHistoryEntry, retagTrade, setStagePaid } from '@expanses/db';
+import { archiveGoal, deleteGoal, type GoalHistoryEntry, retagTrade, setStagePaid } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { Archive, ArrowRightLeft, CalendarClock, Check, HandCoins, MoreHorizontal, Pencil, PiggyBank, ShoppingBag, Tag, Undo2 } from 'lucide-react';
+import { Archive, ArrowRightLeft, CalendarClock, Check, HandCoins, MoreHorizontal, Pencil, PiggyBank, ShoppingBag, Tag, Trash2, Undo2 } from 'lucide-react';
 import { useState } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
@@ -125,6 +125,17 @@ export function GoalPage({ goalId }: { goalId: string }) {
     }
   }
 
+  async function remove(name: string) {
+    if (!window.confirm(`Delete "${name}"? Money set aside goes back to its accounts and tagged purchases are untagged. The goal and its history are removed.`)) return;
+    try {
+      await deleteGoal(database, ws, goalId);
+      await invalidate();
+      await navigate({ to: '/goals' });
+    } catch (e) {
+      setError(e);
+    }
+  }
+
   async function togglePaid(stageId: string, paid: boolean) {
     await setStagePaid(database, ws, stageId, paid ? null : today);
     await invalidate();
@@ -183,6 +194,7 @@ export function GoalPage({ goalId }: { goalId: string }) {
       detail: card.done ? 'Keeps the history, stops it claiming money.' : undefined,
       run: () => void archive(card.name),
     },
+    { key: 'delete', label: 'Delete', glyph: <Trash2 size={18} aria-hidden />, run: () => void remove(card.name) },
   ];
   const actions: CornerAction[] = [{ key: 'more', label: 'More', glyph: <MoreHorizontal size={20} aria-hidden />, menu }];
 
