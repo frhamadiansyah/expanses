@@ -199,7 +199,7 @@ export function SetAsideSheet({ goal, earmarks, onDone }: { goal: GoalRow; earma
   }
 
   return (
-    <Sheet title="Set aside" onClose={onDone} grouped confirm={{ label: 'Save', disabled: busy || state.eligible.length === 0, run: () => void save() }}>
+    <Sheet title="Cash and cash equivalents" onClose={onDone} grouped confirm={{ label: 'Save', disabled: busy || state.eligible.length === 0, run: () => void save() }}>
       <ErrorBox error={error} />
       <SetAsideGroup state={state} />
     </Sheet>
