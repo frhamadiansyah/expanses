@@ -1,5 +1,5 @@
 import { formatMinor, isoDate } from '@expanses/core';
-import { archiveGoal, type GoalHistoryEntry, setStagePaid } from '@expanses/db';
+import { archiveGoal, type GoalHistoryEntry, retagTrade, setStagePaid } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Archive, ArrowRightLeft, CalendarClock, Check, HandCoins, MoreHorizontal, Pencil, PiggyBank, ShoppingBag, Tag, Undo2 } from 'lucide-react';
 import { useState } from 'react';
@@ -9,7 +9,9 @@ import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox, Money } from '../../ui';
 import { ActionButtons, type CornerAction, InsetGroup, InsetRow, Panel, PushedTitle, type RoundAction, SCREEN } from '../../ui/native';
 import { UseBar } from '../budget/budget-rows';
+import { useTrades } from '../networth/queries';
 import { FundingRow } from './funding';
+import { TagPurchaseSheet } from './FundingSheet';
 import { SetAsideSheet } from './SetAside';
 import { MonthlySheet, MoveSheet, TakeBackSheet, useHasTaggedPurchase, UseSheet } from './GoalSheets';
 import { setAsideOf } from './goal-actions';
@@ -92,6 +94,8 @@ export function GoalPage({ goalId }: { goalId: string }) {
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
   const goBack = useBack('/goals');
+  const [tagging, setTagging] = useState(false);
+  const trades = useTrades().data ?? [];
   const today = isoDate();
   const summary = useGoalPlans(today);
   const earmarks = useEarmarks();
@@ -183,11 +187,11 @@ export function GoalPage({ goalId }: { goalId: string }) {
   const actions: CornerAction[] = [{ key: 'more', label: 'More', glyph: <MoreHorizontal size={20} aria-hidden />, menu }];
 
   // Set aside opens the form's set-aside part; tagging happens on a buy, retagged from its ⋮ on the holding's page,
-  // so Tag a purchase opens Income, where every buy is listed and opens its holding. Use is there only while
-  // something is set aside to use.
+  // so Tag a purchase opens the same list of buys as the form's Funding sheet and tags the pick at once. Use is there
+  // only while something is set aside to use.
   const round: RoundAction[] = [
     { key: 'set-aside', label: 'Set aside', glyph: <PiggyBank size={20} aria-hidden />, run: () => setSettingAside(true) },
-    { key: 'tag', label: 'Tag a purchase', glyph: <Tag size={20} aria-hidden />, to: '/net-worth/investments/dividends' },
+    { key: 'tag', label: 'Tag a purchase', glyph: <Tag size={20} aria-hidden />, run: () => setTagging(true) },
     ...(held ? [{ key: 'use', label: 'Use', glyph: <ShoppingBag size={20} aria-hidden />, run: () => setOpen('use') }] : []),
     { key: 'monthly', label: 'Monthly', glyph: <CalendarClock size={20} aria-hidden />, run: () => setOpen('monthly') },
   ];
@@ -203,6 +207,14 @@ export function GoalPage({ goalId }: { goalId: string }) {
 
       {settingAside && <SetAsideSheet goal={plan.goal} earmarks={earmarks.data ?? []} onDone={() => setSettingAside(false)} />}
 
+      {tagging && (
+        <TagPurchaseSheet
+          goalId={goalId}
+          tagged={trades.filter((trade) => trade.goalId === goalId).map((trade) => trade.id)}
+          onPick={(tradeId) => void retagTrade(database, ws, tradeId, goalId).then(invalidate, setError)}
+          onClose={() => setTagging(false)}
+        />
+      )}
       {open === 'use' && <UseSheet plan={plan} earmarks={earmarks.data ?? []} onClose={() => setOpen(null)} />}
       {open === 'monthly' && <MonthlySheet plan={plan} onClose={() => setOpen(null)} />}
       {open === 'take-back' && <TakeBackSheet plan={plan} earmarks={earmarks.data ?? []} onClose={() => setOpen(null)} />}

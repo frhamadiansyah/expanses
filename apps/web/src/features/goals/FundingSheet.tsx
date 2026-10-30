@@ -61,7 +61,7 @@ function TaggedRow({ trade, onRemove, position }: GroupChild & { trade: TradeRow
  * Tag a purchase: the earlier buys of bonds, shares, funds and gold, each with when and how much it was and which goal
  * it already serves. A tap tags it to this goal; one that serves another goal asks before it moves.
  */
-function TagPurchaseSheet({ goalId, tagged, onPick, onClose }: { goalId: string | undefined; tagged: readonly string[]; onPick: (tradeId: string) => void; onClose: () => void }) {
+export function TagPurchaseSheet({ goalId, tagged, onPick, onClose }: { goalId: string | undefined; tagged: readonly string[]; onPick: (tradeId: string) => void; onClose: () => void }) {
   const trades = taggable(useTrades().data ?? []).filter((trade) => !tagged.includes(trade.id));
   const goals = useGoals().data ?? [];
   const { nameOf, sizeOf } = useHoldingWords();
