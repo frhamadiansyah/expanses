@@ -1,4 +1,4 @@
-import { isoDate, uuidv7 } from '@expanses/core';
+import { formatMinor, isoDate, uuidv7 } from '@expanses/core';
 import { createGoalFromCalculator } from '@expanses/db';
 import { useState } from 'react';
 import { Sheet } from '../../app/Sheet';
@@ -10,7 +10,7 @@ import { addLevel, type EducationDraft, educationDraftFrom } from '../goals/educ
 import { EDUCATION_FUND } from './catalogue';
 import { childLabel, educationGoalName } from './education-children';
 import { educationWorking } from './education-answer';
-import { Answer, CalculatorPage, SaveRow } from './parts';
+import { Answer, CalculatorPage, GoalAddedAlert, SaveRow } from './parts';
 
 interface Child {
   id: string;
@@ -29,7 +29,7 @@ export function EducationFundPage() {
   const invalidate = useInvalidateAll();
   const today = isoDate();
   const [error, setError] = useState<unknown>(null);
-  const [saved, setSaved] = useState<string | null>(null);
+  const [added, setAdded] = useState<{ goalId: string; detail: string } | null>(null);
   const freshChild = (): Child => ({ id: uuidv7(), name: '', draft: addLevel(educationDraftFrom(undefined, ws.baseCurrency)) });
   const [children, setChildren] = useState<Child[]>(() => [freshChild()]);
   const [currentId, setCurrentId] = useState(() => children[0]!.id);
@@ -49,16 +49,17 @@ export function EducationFundPage() {
     setError(null);
     const name = educationGoalName(current.name);
     try {
-      await createGoalFromCalculator(database, ws, { name, kind: 'education', inputs: educationAnswer.inputs as never, today });
+      const goalId = await createGoalFromCalculator(database, ws, { name, kind: 'education', inputs: educationAnswer.inputs as never, today });
       await invalidate();
-      setSaved(`Saved ${name} as a goal.`);
+      setAdded({ goalId, detail: educationAnswer.answer ? `${name} · ${formatMinor(educationAnswer.answer.totalMinor, ws.baseCurrency)}` : name });
     } catch (e) {
       setError(e);
     }
   }
 
   return (
-    <CalculatorPage entry={EDUCATION_FUND} error={error} saved={saved} quiet>
+    <CalculatorPage entry={EDUCATION_FUND} error={error} quiet>
+      {added && <GoalAddedAlert goalId={added.goalId} detail={added.detail} onClose={() => setAdded(null)} />}
       <InsetGroup>
         <InsetRow title="Child" value={childLabel(current.name, index)} onClick={() => setChoosing(true)} />
         <InsetRow title="Levels" value={String(current.draft.levels.length)} chevron={false} />

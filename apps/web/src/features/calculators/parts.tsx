@@ -1,7 +1,9 @@
+import { useNavigate } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { useApp } from '../../app/context';
 import { ErrorBox, Money } from '../../ui';
 import { InsetGroup, InsetRow, LargeTitle, Panel, SCREEN } from '../../ui/native';
+import { ALERT_ROW, NoticeAlert } from '../../ui/native/NoticeAlert';
 import type { CalculatorEntry } from './catalogue';
 
 /** A refusal, said on the row whose box caused it, in the alarm ink. */
@@ -73,9 +75,25 @@ export function SaveRow({ label, ready, onSave, onRefused }: { label: string; re
   );
 }
 
-/** The receipt for a kept answer, in the tint the kit uses for a thing that went well. */
-export function SavedLine({ text }: { text: string | null }) {
-  return text ? <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-up)]">{text}</p> : null;
+/**
+ * The receipt for a goal made from a calculator: a centred pop-up, not a line in the page, with the way into the goal
+ * it made. The detail is the goal's name and the figure it was saved with.
+ */
+export function GoalAddedAlert({ goalId, detail, onClose }: { goalId: string; detail: string; onClose: () => void }) {
+  const navigate = useNavigate();
+  return (
+    <NoticeAlert
+      title="Added to Goals"
+      text={detail}
+      closeLabel="Done"
+      onClose={onClose}
+      actions={
+        <button type="button" onClick={() => void navigate({ to: '/goals/$goalId', params: { goalId } })} className={`${ALERT_ROW} font-semibold`}>
+          Open goal
+        </button>
+      }
+    />
+  );
 }
 
 /**
@@ -88,13 +106,11 @@ export function SavedLine({ text }: { text: string | null }) {
 export function CalculatorPage({
   entry,
   error,
-  saved,
   quiet = false,
   children,
 }: {
   entry: CalculatorEntry;
   error: unknown;
-  saved: string | null;
   /** No subtitle under the title: the page says nothing outside its boxes. */
   quiet?: boolean;
   children: ReactNode;
@@ -103,7 +119,6 @@ export function CalculatorPage({
     <div className={SCREEN}>
       <LargeTitle title={entry.label} subtitle={quiet ? undefined : entry.blurb} back="Calculators" backTo="/calculators" />
       <ErrorBox error={error} />
-      <SavedLine text={saved} />
       {children}
     </div>
   );

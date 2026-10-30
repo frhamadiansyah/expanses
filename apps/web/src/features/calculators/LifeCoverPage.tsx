@@ -41,7 +41,7 @@ export function LifeCoverPage() {
   const { totals, missing } = ratioTotals(sheetInputs.data);
   const prefill = lifeCoverPrefill(totals, goalPlans.data?.plans ?? [], missing, ws.baseCurrency);
   return (
-    <CalculatorPage entry={LIFE_COVER} error={error} saved={null} quiet>
+    <CalculatorPage entry={LIFE_COVER} error={error} quiet>
       {remembered.isSuccess && (
         <LifeCoverForm
           key={ws.workspaceId}

@@ -1,4 +1,4 @@
-import { EMERGENCY_RETURN_BPS, emergencyTargetMinor, HOUSEHOLDS, type Household, INCOME_STABILITIES, type IncomeStability, groupTypedAmount, isoDate, parseGroupedMajor, savingPlanFor } from '@expanses/core';
+import { EMERGENCY_RETURN_BPS, formatMinor, emergencyTargetMinor, HOUSEHOLDS, type Household, INCOME_STABILITIES, type IncomeStability, groupTypedAmount, isoDate, parseGroupedMajor, savingPlanFor } from '@expanses/core';
 import { createGoalFromCalculator, type EmergencyInputs } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -7,7 +7,7 @@ import { InsetGroup, SelectRow, TextRow } from '../../ui/native';
 import { emergencyDraftFrom, emergencyInputsOf, HOUSEHOLD_LABELS, INCOME_LABELS, monthsNote, typedMonths, withAnswers } from '../goals/emergency-form';
 import { EMERGENCY_FUND } from './catalogue';
 import { readPercent, readWhole } from './fields';
-import { Answer, CalculatorPage, SaveRow } from './parts';
+import { Answer, CalculatorPage, GoalAddedAlert, SaveRow } from './parts';
 import { SpendBar, useSpendSuggestions } from './SpendBar';
 
 /** Months of what goes out, loan principal included — and the monthly saving that gets there over a horizon and a rate you set. */
@@ -16,7 +16,7 @@ export function EmergencyFundPage() {
   const invalidate = useInvalidateAll();
   const today = isoDate();
   const [error, setError] = useState<unknown>(null);
-  const [saved, setSaved] = useState<string | null>(null);
+  const [added, setAdded] = useState<{ goalId: string; detail: string } | null>(null);
 
   const [emergency, setEmergency] = useState(() => emergencyDraftFrom());
   const [monthlyOutgoing, setMonthlyOutgoing] = useState('');
@@ -63,16 +63,18 @@ export function EmergencyFundPage() {
     if (!emergencyInputs) return;
     setError(null);
     try {
-      await createGoalFromCalculator(database, ws, { name: 'Emergency fund', kind: 'emergency', inputs: emergencyInputs as never, today });
+      const goalId = await createGoalFromCalculator(database, ws, { name: 'Emergency fund', kind: 'emergency', inputs: emergencyInputs as never, today });
       await invalidate();
-      setSaved('Saved Emergency fund as a goal.');
+      const target = emergencyAnswer ? `${formatMinor(emergencyAnswer.targetMinor, ws.baseCurrency)} for ${emergencyInputs.months} months of spending` : null;
+      setAdded({ goalId, detail: target ? `Emergency fund · ${target}` : 'Emergency fund' });
     } catch (e) {
       setError(e);
     }
   }
 
   return (
-    <CalculatorPage entry={EMERGENCY_FUND} error={error} saved={saved} quiet>
+    <CalculatorPage entry={EMERGENCY_FUND} error={error} quiet>
+      {added && <GoalAddedAlert goalId={added.goalId} detail={added.detail} onClose={() => setAdded(null)} />}
       <InsetGroup>
         <SelectRow
           label="Household"

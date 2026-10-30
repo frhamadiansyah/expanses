@@ -93,3 +93,11 @@ export async function row8(page: Page) {
   await expect(answer).not.toContainText('Cover to hold');
   await expect(answer).not.toContainText('-');
 }
+
+/** The "Added to Goals" pop-up a calculator's Set a goal opens: it names the goal, and Done closes it. */
+export async function closeAdded(page: Page, goal: string): Promise<void> {
+  const added = page.getByRole('alertdialog', { name: 'Added to Goals' });
+  await expect(added).toContainText(goal);
+  await added.getByRole('button', { name: 'Done' }).click();
+  await expect(added).toHaveCount(0);
+}

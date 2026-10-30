@@ -1,11 +1,11 @@
-import { groupTypedAmount, isoDate } from '@expanses/core';
+import { formatMinor, groupTypedAmount, isoDate } from '@expanses/core';
 import { createGoalFromCalculator } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { InsetGroup, TextRow } from '../../ui/native';
 import { RETIREMENT_FUND } from './catalogue';
-import { refusal, Answer, CalculatorPage, SaveRow } from './parts';
+import { refusal, Answer, CalculatorPage, GoalAddedAlert, SaveRow } from './parts';
 import { RETIREMENT_DEFAULTS, type RetirementDraft, retirementWorking, yearsNote } from './retirement-form';
 import { SpendBar, useSpendSuggestions } from './SpendBar';
 
@@ -15,7 +15,7 @@ export function RetirementFundPage() {
   const invalidate = useInvalidateAll();
   const today = isoDate();
   const [error, setError] = useState<unknown>(null);
-  const [saved, setSaved] = useState<string | null>(null);
+  const [added, setAdded] = useState<{ goalId: string; detail: string } | null>(null);
   const [retirement, setRetirement] = useState<RetirementDraft>(RETIREMENT_DEFAULTS);
 
   const [spendFocused, setSpendFocused] = useState(false);
@@ -30,16 +30,18 @@ export function RetirementFundPage() {
     if (!retirementAnswer.inputs) return;
     setError(null);
     try {
-      await createGoalFromCalculator(database, ws, { name: 'Retirement fund', kind: 'retirement', inputs: retirementAnswer.inputs as never, today });
+      const goalId = await createGoalFromCalculator(database, ws, { name: 'Retirement fund', kind: 'retirement', inputs: retirementAnswer.inputs as never, today });
       await invalidate();
-      setSaved('Saved Retirement fund as a goal.');
+      const target = retirementAnswer.answer ? ` · ${formatMinor(retirementAnswer.answer.targetMinor, ws.baseCurrency)}` : '';
+      setAdded({ goalId, detail: `Retirement fund${target}` });
     } catch (e) {
       setError(e);
     }
   }
 
   return (
-    <CalculatorPage entry={RETIREMENT_FUND} error={error} saved={saved} quiet>
+    <CalculatorPage entry={RETIREMENT_FUND} error={error} quiet>
+      {added && <GoalAddedAlert goalId={added.goalId} detail={added.detail} onClose={() => setAdded(null)} />}
       <InsetGroup>
         <TextRow
           label="Yearly spending in retirement"

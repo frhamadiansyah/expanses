@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { figure, firstLevel, neededAMonth, planTotal, row1, row5, row8, todayFigures } from './calculator-walk';
+import { closeAdded, figure, firstLevel, neededAMonth, planTotal, row1, row5, row8, todayFigures } from './calculator-walk';
 import { addEducationGoal, stageLines, typeInto } from './education-walk';
 import { assumption, editGoal, openGoalForm, openWorking, setAssumption } from './goals';
 import { addSetAsideRow, closeSetAsideRows, goalCard, goalRow } from './set-aside';
@@ -118,7 +118,7 @@ test('row 7 — retirement saved from the Retirement page: 3,5% growth, 10% retu
   const youNeed = figure((await answer.locator('div > div').first().locator('p').nth(1).textContent()) ?? '');
   expect(youNeed).toBe(4_120_008_061);
   await page.getByRole('button', { name: 'Set a goal' }).click();
-  await expect(page.getByText('Saved Retirement fund as a goal.')).toBeVisible();
+  await closeAdded(page, 'Retirement fund');
 
   await page.goto('/goals');
   // The saved goal is a row on the list; its figures and Edit are read on its own page.
