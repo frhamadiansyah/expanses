@@ -1,4 +1,4 @@
-import type { Safety, SnapshotStore } from './open';
+import type { ImportMarker, Safety, SnapshotStore } from './open';
 import { dailyDue, keepOne, keepTwo, MIN_COPY_BYTES, parseSnapshotName, roomFor, type SnapshotInfo, type SnapshotReason, snapshotName } from './snapshot-policy';
 
 /**
@@ -10,6 +10,9 @@ export const SAFETY_DIR = 'expanses-safety';
 
 /** The file the store's own bookkeeping lives in. Exported so the tests can break it the way a device does. */
 export const MANIFEST = 'manifest.json';
+
+/** The note a restore leaves while it rewrites the live file. See `restoreSnapshot`. */
+export const IMPORT_MARKER = 'import-in-progress.json';
 
 /** The first 16 bytes of every SQLite file: "SQLite format 3" and a NUL. */
 const MAGIC = 'SQLite format 3\0';
@@ -264,6 +267,24 @@ function storeOver(slot: Slot): SnapshotStore {
     unblock: async () => {
       await writeManifest(slot, { snapshots: await present(), blockedVersion: null, blockedBuild: null });
     },
+
+    importMarker: async () => {
+      const raw = await slot.read(IMPORT_MARKER).catch(() => null);
+      if (!raw) return null;
+      try {
+        const parsed = JSON.parse(decode(raw)) as Partial<ImportMarker>;
+        if (typeof parsed.startedAt !== 'string' || typeof parsed.source !== 'string') return null;
+        return { startedAt: parsed.startedAt, source: parsed.source, beforeCopy: typeof parsed.beforeCopy === 'string' ? parsed.beforeCopy : null };
+      } catch {
+        return null;
+      }
+    },
+    markImport: async (marker) => {
+      await slot.write(IMPORT_MARKER, new TextEncoder().encode(JSON.stringify(marker)));
+    },
+    clearImport: async () => {
+      await slot.remove(IMPORT_MARKER).catch(() => undefined);
+    },
   };
 }
 
@@ -389,6 +410,8 @@ export async function restoreSnapshot(deps: {
   snapshots: SnapshotStore;
   /** The kept copy to put back. */
   file: string;
+  /** Where the bytes come from, for the note below. The file name when not given. */
+  source?: string;
   /** The live bytes about to be replaced, or null when none can be read off the device. */
   live: () => Promise<Uint8Array | null>;
   /** Hands the chosen bytes to the engine. `restoreBytes` in the app. */
@@ -399,15 +422,29 @@ export async function restoreSnapshot(deps: {
   // by the engine afterwards, with a before-restore copy already written that pruned a good one away.
   const wrong = headerProblem(chosen);
   if (wrong) throw new Error(`That copy cannot be put back: ${wrong}.`);
+  let beforeCopy: string | null = null;
   try {
     const live = await deps.live();
-    if (live?.length) await deps.snapshots.write(live, 'before-restore', 0);
+    if (live?.length) beforeCopy = (await deps.snapshots.write(live, 'before-restore', 0)).file;
   } catch (error) {
     // Warned, not shown: the page reloads the instant the restore below lands, so there is no screen left
     // to tell. What the user loses is the undo, never the restore they asked for.
     console.warn('No copy could be kept of the database being replaced', error);
   }
-  await deps.restore(chosen);
+  /*
+   * The engine rewrites the live slot in place, holding the old bytes only in its own memory. An app killed
+   * half way leaves a torn file and nothing in memory, so a note goes down first naming the copy just kept;
+   * the next launch that cannot open puts that copy first. Removed once the engine answers either way — a
+   * refused file is put back by the engine itself. Never a gate, like the copy.
+   */
+  await deps.snapshots
+    .markImport?.({ startedAt: new Date().toISOString(), beforeCopy, source: deps.source ?? deps.file })
+    .catch((error: unknown) => console.warn('No note could be left of the restore in progress', error));
+  try {
+    await deps.restore(chosen);
+  } finally {
+    await deps.snapshots.clearImport?.().catch(() => undefined);
+  }
 }
 
 let dailyScheduled = false;

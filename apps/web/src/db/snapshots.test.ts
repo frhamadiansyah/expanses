@@ -3,7 +3,7 @@ import { createNodeExecutor, type NodeExecutor } from '@expanses/db/node';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { lastGoodCopy } from '../features/recovery/recovery-copy';
 import { dailyDue, snapshotName } from './snapshot-policy';
-import { memorySnapshots, restoreSnapshot, writeWhole } from './snapshots';
+import { IMPORT_MARKER, memorySnapshots, restoreSnapshot, writeWhole } from './snapshots';
 
 const engines: NodeExecutor[] = [];
 afterEach(() => {
@@ -105,6 +105,62 @@ describe('putting a copy back', () => {
       restoreSnapshot({ snapshots: store, file: snapshotName('2026-09-16T10:00:00.000Z', 108, 'daily'), live: async () => null, restore }),
     ).rejects.toThrow(/cannot be put back/);
     expect(restore).not.toHaveBeenCalled();
+  });
+});
+
+describe('a restore that is cut off half way', () => {
+  async function storeWithCopy() {
+    const bytes = await database();
+    const files = new Map<string, Uint8Array>();
+    const store = memorySnapshots(files);
+    const copy = await at('2026-09-15T10:00:00.000Z', () => store.write(bytes, 'daily', 108));
+    return { bytes, files, store, copy };
+  }
+
+  it('leaves a note naming the copy of what it replaced while it writes, and removes it once done', async () => {
+    const { bytes, store, copy } = await storeWithCopy();
+    let during: unknown = 'not asked';
+    await restoreSnapshot({
+      snapshots: store,
+      file: copy.file,
+      source: 'recovery screen',
+      live: async () => bytes,
+      restore: async () => {
+        during = await store.importMarker!();
+      },
+    });
+    const before = (await store.list()).find((s) => s.reason === 'before-restore');
+    expect(before).toBeDefined();
+    expect(during).toMatchObject({ beforeCopy: before!.file, source: 'recovery screen' });
+    expect(await store.importMarker!()).toBeNull();
+  });
+
+  it('removes the note when the engine refuses the copy and puts the old bytes back itself', async () => {
+    const { bytes, store, copy } = await storeWithCopy();
+    await expect(
+      restoreSnapshot({
+        snapshots: store,
+        file: copy.file,
+        live: async () => bytes,
+        restore: async () => {
+          throw new Error('That file is not an Expanses backup.');
+        },
+      }),
+    ).rejects.toThrow(/not an Expanses backup/);
+    expect(await store.importMarker!()).toBeNull();
+  });
+
+  it('keeps the note when the write never comes back, which is what an app killed mid-restore leaves', async () => {
+    const { bytes, store, copy } = await storeWithCopy();
+    void restoreSnapshot({ snapshots: store, file: copy.file, live: async () => bytes, restore: () => new Promise(() => undefined) });
+    await expect.poll(() => store.importMarker!()).not.toBeNull();
+    // A note is not a copy: it is never listed among them.
+    expect((await store.list()).every((s) => s.file.endsWith('.sqlite3'))).toBe(true);
+  });
+
+  it('reads a note that is not one as no note', async () => {
+    const files = new Map<string, Uint8Array>([[IMPORT_MARKER, new TextEncoder().encode('{half')]]);
+    expect(await memorySnapshots(files).importMarker!()).toBeNull();
   });
 });
 

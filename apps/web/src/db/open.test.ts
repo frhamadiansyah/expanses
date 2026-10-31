@@ -774,6 +774,29 @@ describe('a failed open is called corrupt only when SQLite said so', () => {
   });
 });
 
+describe('the note a cut-off restore leaves', () => {
+  it('is spent once the file opens', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    const store = memorySnapshots();
+    await store.markImport!({ startedAt: '2026-09-18T10:00:00.000Z', beforeCopy: null, source: 'backup file' });
+    const result = await openSafely({ database, snapshots: store, onStage: () => undefined });
+    expect(result.ok).toBe(true);
+    await expect.poll(() => store.importMarker!()).toBeNull();
+  });
+
+  it('is left for the recovery screen when the file does not open', async () => {
+    executor = createNodeExecutor();
+    const inner = executor;
+    const database = createDatabase({ ...inner, query: () => Promise.reject(new Error('disk I/O error')) } as SqlExecutor);
+    const store = memorySnapshots();
+    await store.markImport!({ startedAt: '2026-09-18T10:00:00.000Z', beforeCopy: 'x', source: 'backup file' });
+    const result = await openSafely({ database, snapshots: store, onStage: () => undefined });
+    expect(result.ok).toBe(false);
+    expect(await store.importMarker!()).toMatchObject({ beforeCopy: 'x' });
+  });
+});
+
 describe('the snapshot store', () => {
   /** A real database, and two copies of it taken on two different days, over a Map the test can reach into. */
   async function twoCopies() {

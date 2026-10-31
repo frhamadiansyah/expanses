@@ -2,7 +2,7 @@ import { App as Shell } from '@capacitor/app';
 import { type Database, dataCounts } from '@expanses/db';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import type { Safety } from '../../../db/open';
+import { NO_SNAPSHOTS, type Safety } from '../../../db/open';
 import { restoreSnapshot } from '../../../db/snapshots';
 import { holdPhotosOrRefuse } from '../../../photos/hold-before-restore';
 import { photos } from '../../../photos/store';
@@ -126,17 +126,15 @@ export function useICloudBackupAtStart(database: Database | undefined): void {
 export async function restoreContents(contents: CopyContents, app: { database: Database; safety?: Safety }): Promise<void> {
   if (!isSqliteFile(contents.database)) throw new Error('That iCloud copy holds no data cicis can read.');
   await holdPhotosOrRefuse();
-  if (app.safety) {
-    const snapshots = app.safety.snapshots;
-    await restoreSnapshot({
-      snapshots: { ...snapshots, read: async () => contents.database },
-      file: 'icloud',
-      live: () => app.database.exportBytes(),
-      restore: (bytes) => app.database.importBytes(bytes),
-    });
-  } else {
-    await app.database.importBytes(contents.database);
-  }
+  // One path with or without a store: without one no copy can be kept, but the bytes are still checked first.
+  const snapshots = app.safety?.snapshots ?? NO_SNAPSHOTS;
+  await restoreSnapshot({
+    snapshots: { ...snapshots, read: async () => contents.database },
+    file: 'icloud',
+    source: 'iCloud copy',
+    live: () => app.database.exportBytes(),
+    restore: (bytes) => app.database.importBytes(bytes),
+  });
   for (const photo of contents.photos) {
     try {
       await photos.putPhotoBytes(photo.name, photo.bytes);

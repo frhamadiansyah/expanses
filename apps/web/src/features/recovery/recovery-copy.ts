@@ -1,4 +1,4 @@
-import type { RecoveryKind, RecoveryReason, SnapshotInfo } from '../../db/open';
+import type { ImportMarker, RecoveryKind, RecoveryReason, SnapshotInfo } from '../../db/open';
 import { MIN_COPY_BYTES } from '../../db/snapshot-policy';
 import type { RecoveryWork } from './busy-controls';
 
@@ -148,6 +148,29 @@ export function lastGoodCopy(list: SnapshotInfo[]): SnapshotInfo | null {
   return (
     [...list].sort((a, b) => b.takenAt.localeCompare(a.takenAt)).find((copy) => copy.reason !== 'before-restore' && copy.bytes >= MIN_COPY_BYTES) ?? null
   );
+}
+
+/** The words for the first choice after a restore that was cut off. */
+export const INTERRUPTED_RESTORE = {
+  title: 'Put back the data from before the restore',
+  note: 'A restore started here did not finish, so the data it was replacing was kept first. This puts that back.',
+};
+
+/**
+ * What the screen offers to put back, in order.
+ *
+ * `interrupted` is the `before-restore` copy a cut-off restore names in its note: when the open fails after
+ * one, that copy is the data as it was a moment before, and it goes first. Then the last good copy, then
+ * every other copy.
+ */
+export function restoreChoices(
+  kept: SnapshotInfo[],
+  marker: ImportMarker | null,
+): { interrupted: SnapshotInfo | null; lastGood: SnapshotInfo | null; others: SnapshotInfo[] } {
+  const interrupted = (marker?.beforeCopy && kept.find((copy) => copy.file === marker.beforeCopy)) || null;
+  const lastGood = lastGoodCopy(kept);
+  const others = kept.filter((copy) => copy.file !== lastGood?.file && copy.file !== interrupted?.file);
+  return { interrupted, lastGood, others };
 }
 
 /** A size a person can weigh: "4.2 MB", not "4,404,019 bytes". */

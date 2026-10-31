@@ -2,7 +2,7 @@ import { isoDate } from '@expanses/core';
 import { LATEST_VERSION } from '@expanses/db';
 import { useEffect, useState } from 'react';
 import { refusedCopy } from '../../db/newer-database';
-import { NO_SNAPSHOTS, type RecoveryReason, type SnapshotInfo, type SnapshotStore } from '../../db/open';
+import { type ImportMarker, NO_SNAPSHOTS, type RecoveryReason, type SnapshotInfo, type SnapshotStore } from '../../db/open';
 import { restoreBytes, salvageBytes } from '../../db/salvage';
 import { restoreSnapshot } from '../../db/snapshots';
 import { saveBytes, savedWhere } from '../../lib/download';
@@ -10,7 +10,7 @@ import { holdPhotosOrRefuse } from '../../photos/hold-before-restore';
 import { Button, ErrorBox } from '../../ui';
 import { copyReasonWords } from '../backup/backupState';
 import { disabledWhileBusy, type RecoveryWork } from './busy-controls';
-import { formatBytes, formatWhen, lastGoodCopy, recoveryCopy, workingCopy } from './recovery-copy';
+import { formatBytes, formatWhen, INTERRUPTED_RESTORE, recoveryCopy, restoreChoices, workingCopy } from './recovery-copy';
 import { StartFreshDialog } from './StartFreshDialog';
 
 /** Dropping the query and the hash, so "Try again" leaves recovery mode instead of returning to it. */
@@ -36,6 +36,8 @@ export function RecoveryScreen({
   snapshots?: SnapshotStore;
 }) {
   const [kept, setKept] = useState<SnapshotInfo[]>([]);
+  // The note a restore cut off half way left behind, naming the copy of what it was replacing.
+  const [marker, setMarker] = useState<ImportMarker | null>(null);
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
   // What is in flight, not merely that something is: which controls stay pressable depends on it, and so
   // does what the screen says it is doing. See `busy-controls.ts`.
@@ -52,6 +54,7 @@ export function RecoveryScreen({
       .list()
       .then((list) => live && setKept([...list].sort((a, b) => b.takenAt.localeCompare(a.takenAt))))
       .catch(() => undefined);
+    void snapshots.importMarker?.().then((found) => live && setMarker(found)).catch(() => undefined);
     if (reason.exportable) void salvageBytes().then((found) => live && setBytes(found)).catch(() => undefined);
     return () => {
       live = false;
@@ -61,9 +64,8 @@ export function RecoveryScreen({
   const copy = recoveryCopy(reason, { hasSnapshot: kept.length > 0, requested });
   // The one the button promises, and the rest, which the user can go through themselves. A copy taken
   // before a restore is never the first of those, but it is always among the second.
-  const lastGood = lastGoodCopy(kept);
+  const { interrupted, lastGood, others } = restoreChoices(kept, marker);
   const canRestore = copy.actions.includes('restore');
-  const others = kept.filter((candidate) => candidate.file !== lastGood?.file);
 
   /** Puts `chosen` back, keeping a copy of what is on the device now so this is itself undoable. */
   const putBack = (chosen: SnapshotInfo) =>
@@ -77,6 +79,7 @@ export function RecoveryScreen({
         snapshots,
         file: chosen.file,
         live: async () => bytes ?? (await salvageBytes().catch(() => null)),
+        source: 'recovery screen',
         restore: restoreBytes,
       });
       reopen();
@@ -116,8 +119,17 @@ export function RecoveryScreen({
 
       {/* Stacked and 44px tall: on a phone this is the one screen where a missed tap costs the most. */}
       <div className="space-y-2">
+        {canRestore && interrupted && (
+          <Button variant="primary" className="min-h-11 w-full flex-col gap-0 py-2" disabled={disabledWhileBusy('restore', busy)} onClick={() => void putBack(interrupted)}>
+            <span className="block">{INTERRUPTED_RESTORE.title}</span>
+            <span className="mt-0.5 block text-xs font-normal opacity-80">
+              Kept {formatWhen(interrupted.takenAt)} · {formatBytes(interrupted.bytes)}
+            </span>
+          </Button>
+        )}
+        {canRestore && interrupted && <p className="text-xs text-slate-500">{INTERRUPTED_RESTORE.note}</p>}
         {canRestore && lastGood && (
-          <Button variant="primary" className="min-h-11 w-full flex-col gap-0 py-2" disabled={disabledWhileBusy('restore', busy)} onClick={() => void putBack(lastGood)}>
+          <Button variant={interrupted ? 'secondary' : 'primary'} className="min-h-11 w-full flex-col gap-0 py-2" disabled={disabledWhileBusy('restore', busy)} onClick={() => void putBack(lastGood)}>
             <span className="block">Restore the last good copy</span>
             {/* What is actually being put back, so nobody presses this without knowing what they lose. */}
             <span className="mt-0.5 block text-xs font-normal opacity-80">

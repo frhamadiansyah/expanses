@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { type ChangeEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { newerDatabaseVersion } from '../../db/newer-database';
-import type { SnapshotInfo, SnapshotStore } from '../../db/open';
+import { NO_SNAPSHOTS, type SnapshotInfo, type SnapshotStore } from '../../db/open';
 import { restoreSnapshot } from '../../db/snapshots';
 import { saveBytes, savedWhere } from '../../lib/download';
 import { holdPhotosOrRefuse } from '../../photos/hold-before-restore';
@@ -207,20 +207,20 @@ export function BackupPage() {
      * insisted on covers the data. This is the same insistence, for the one thing that has no second copy.
      */
     await holdPhotosOrRefuse();
-    if (!snapshots) {
-      // This open has no store to keep a copy in. The restore the user asked for still happens; the file
-      // downloaded a moment ago is what stands behind it.
-      await database.importBytes(restore.bytes);
-      return;
-    }
+    /*
+     * One path whatever this open has. Without a store there is nowhere to keep a copy (the file downloaded a
+     * moment ago stands behind the restore) but the bytes are still checked before anything is replaced.
+     */
+    const store = snapshots ?? NO_SNAPSHOTS;
     await restoreSnapshot({
       /*
        * A file from the user's downloads is not in the store, so the bytes already read and checked are
        * handed over through a `read` that answers with them. One of the app's own copies is read from the
        * store by name, as the recovery screen reads it.
        */
-      snapshots: restore.file ? snapshots : ({ ...snapshots, read: async () => restore.bytes } satisfies SnapshotStore),
+      snapshots: restore.file && snapshots ? snapshots : ({ ...store, read: async () => restore.bytes } satisfies SnapshotStore),
       file: restore.file ?? restore.name,
+      source: restore.file ? 'Backup page, a kept copy' : 'Backup page, a backup file',
       live: () => database.exportBytes(),
       restore: (bytes) => database.importBytes(bytes),
     });

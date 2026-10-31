@@ -81,6 +81,22 @@ export interface SnapshotStore {
   /** Records `version` as not to be attempted, and the build (its highest known version) that decided so. */
   block(version: number, build: number): Promise<void>;
   unblock(): Promise<void>;
+  /**
+   * The note a restore leaves while it rewrites the live file (see `restoreSnapshot`), or null. Optional:
+   * a store that keeps nothing keeps no note either.
+   */
+  importMarker?(): Promise<ImportMarker | null>;
+  markImport?(marker: ImportMarker): Promise<void>;
+  clearImport?(): Promise<void>;
+}
+
+/** What a restore in progress leaves on the device, so a restore cut off half way can be undone. */
+export interface ImportMarker {
+  startedAt: string;
+  /** The `before-restore` copy of what was being replaced, or null when none could be kept. */
+  beforeCopy: string | null;
+  /** Where the bytes going in came from, for Details. */
+  source: string;
 }
 
 /**
@@ -241,6 +257,9 @@ async function rollback(deps: {
 
   try {
     /*
+     * No import note here (see `restoreSnapshot`): the bytes going back are themselves a copy on disk, so an
+     * app killed half way through this still leaves the next launch something whole to put back.
+     *
      * The worker's `import` op keeps the current bytes and puts them back if the import fails, so a rollback
      * that cannot be done leaves the half-updated file rather than nothing at all — which is why the screen
      * this returns to can still offer Export either way.
@@ -451,12 +470,15 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
   }
 
   try {
+    const app = await openAppDb(database, allowed);
+    // A note left by a restore that was cut off is spent once the file opens. Not awaited: first paint never waits on it.
+    void snapshots.clearImport?.().catch(() => undefined);
     // The store rides along on the opened app: the day's copy is taken from the first idle callback after
     // the first paint, which is the one place that knows a screen has actually appeared.
     return {
       ok: true,
       app: {
-        ...(await openAppDb(database, allowed)),
+        ...app,
         // The version the file is really at, so a copy taken later in the session is labelled with what it
         // holds rather than with what this build could have produced.
         safety: { snapshots, bytes, schemaVersion: applied.length ? Math.max(...applied) : version },
