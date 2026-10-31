@@ -1,4 +1,5 @@
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
+import { engineStartError, guardPoolFolders, probeSlots, retryable, withRetries } from './engine-start';
 import { fatalKind, messageOf } from './fatal';
 import { NEWER_DATABASE } from './newer-database';
 
@@ -19,9 +20,27 @@ type Request =
 
 const FILE = '/expanses.sqlite3';
 
-const ready = (async () => {
-  const sqlite3 = await sqlite3InitModule();
-  const pool = await sqlite3.installOpfsSAHPoolVfs({ name: 'expanses' });
+// Before anything else in this worker can touch OPFS: see `guardPoolFolders` for what it stops.
+guardPoolFolders((globalThis as { FileSystemDirectoryHandle?: { prototype: Parameters<typeof guardPoolFolders>[0] } }).FileSystemDirectoryHandle?.prototype);
+
+type Sqlite3 = Awaited<ReturnType<typeof sqlite3InitModule>>;
+type Pool = Awaited<ReturnType<Sqlite3['installOpfsSAHPoolVfs']>>;
+
+const loadModule = retryable(() => sqlite3InitModule());
+/** The installed pool, once an install has worked. Never installed twice: its handles are this worker's for life. */
+let installed: Pool | null = null;
+
+async function startOnce() {
+  const sqlite3 = await loadModule();
+  if (!installed) {
+    // Looked at first, so a slot the app's previous process still holds is a retry rather than a torn-down pool.
+    await probeSlots(await navigator.storage.getDirectory());
+    // `forceReinitIfPreviouslyFailed` is real (sqlite-wasm documents it) but missing from its typings: without
+    // it the library hands every later install the first failure again.
+    const options = { name: 'expanses', forceReinitIfPreviouslyFailed: true } as Parameters<Sqlite3['installOpfsSAHPoolVfs']>[0];
+    installed = await sqlite3.installOpfsSAHPoolVfs(options);
+  }
+  const pool = installed;
   const open = () => {
     const db = new pool.OpfsSAHPoolDb(FILE);
     db.exec('PRAGMA foreign_keys = ON');
@@ -29,14 +48,25 @@ const ready = (async () => {
   };
   // `sqlite3` is kept so the snapshot op can reach `capi` for the autocommit guard.
   return { sqlite3, pool, open, db: open() };
-})();
+}
+
+/*
+ * Started on the first request, tried again after a wait, and — unlike the one start this worker used to
+ * cache for life — forgotten when it fails, so a later request starts again. What a request is told when it
+ * does fail carries `ENGINE_START`, so the opener can say "could not start" and not "damaged".
+ */
+const engine = retryable(() =>
+  withRetries(startOnce).catch((error: unknown) => {
+    throw engineStartError(error);
+  }),
+);
 
 const reply = (message: unknown, transfer: Transferable[] = []) => postMessage(message, { transfer });
 
 self.onmessage = async (event: MessageEvent<Request>) => {
   const req = event.data;
   try {
-    const state = await ready;
+    const state = await engine();
     if (req.op === 'query') {
       const bind = req.params.length ? (req.params as never) : undefined;
       if (req.method === 'run') {

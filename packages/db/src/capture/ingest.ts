@@ -278,10 +278,13 @@ async function alreadyRead(tx: Db, ref: string): Promise<boolean> {
     .limit(1);
   if (posted) return true;
   // A skipped capture is read too: the phone hands it over again if the app stopped before acknowledging it.
+  // `json_valid` first, so one unparseable row is passed over rather than raising "malformed JSON" mid-ingest.
   const [skipped] = await tx
     .select({ id: captureSkipped.id })
     .from(captureSkipped)
-    .where(sql`json_extract(${captureSkipped.captureJson}, '$.id') = ${ref.slice('capture:'.length)}`)
+    .where(
+      sql`CASE WHEN json_valid(${captureSkipped.captureJson}) THEN json_extract(${captureSkipped.captureJson}, '$.id') END = ${ref.slice('capture:'.length)}`,
+    )
     .limit(1);
   return skipped !== undefined;
 }

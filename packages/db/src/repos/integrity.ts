@@ -8,6 +8,11 @@ export interface IntegrityProblem {
   kind: 'quick_check' | 'integrity_check' | 'unbalanced' | 'orphan-entries' | 'orphan-transactions' | 'ledger-unreadable';
   /** One line, safe to show under "Details". Never a stack trace. */
   detail: string;
+  /**
+   * True when the check never answered: the query threw, so `detail` is why it could not be asked, not
+   * what SQLite found. A caller that must not call an engine that never started "corrupt" reads this.
+   */
+  thrown?: true;
 }
 
 export interface LedgerHealth {
@@ -37,7 +42,7 @@ export async function checkStructure(database: Database, pragma: 'quick_check' |
   try {
     rows = await database.db.values<unknown[]>(sql.raw(`PRAGMA ${pragma}(1)`));
   } catch (error) {
-    return [{ kind: pragma, detail: message(error) }];
+    return [{ kind: pragma, detail: message(error), thrown: true }];
   }
   const answers = rows.map((row) => String(row[0]));
   if (answers.length === 1 && answers[0] === 'ok') return [];

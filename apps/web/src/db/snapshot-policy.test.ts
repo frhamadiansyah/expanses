@@ -57,6 +57,29 @@ describe('keepTwo', () => {
   });
 });
 
+describe('keepTwo, against a copy far smaller than the one it would replace', () => {
+  const sized = (takenAt: string, bytes: number, reason: SnapshotInfo['reason'] = 'daily'): SnapshotInfo => ({ ...snap(takenAt, reason), bytes });
+
+  it('keeps the largest copy when the new one is less than half its size', () => {
+    const big = sized('2026-09-15T10:00:00.000Z', 8_000_000);
+    const list = [big, sized('2026-09-16T10:00:00.000Z', 900_000), sized('2026-09-17T10:00:00.000Z', 900_000)];
+    const incoming = sized('2026-09-18T10:00:00.000Z', 900_000);
+    expect(keepTwo(list, incoming).map((s) => s.takenAt)).toEqual(['2026-09-16T10:00:00.000Z']);
+  });
+
+  it('lets it go when the new copy is about the same size', () => {
+    const list = [sized('2026-09-15T10:00:00.000Z', 1_000_000), sized('2026-09-16T10:00:00.000Z', 900_000), sized('2026-09-17T10:00:00.000Z', 900_000)];
+    const incoming = sized('2026-09-18T10:00:00.000Z', 600_000);
+    expect(keepTwo(list, incoming).map((s) => s.takenAt)).toEqual(['2026-09-16T10:00:00.000Z', '2026-09-15T10:00:00.000Z']);
+  });
+
+  it('does not hold on to a large copy taken before a restore: that one is the undo, not a good copy', () => {
+    const list = [sized('2026-09-15T10:00:00.000Z', 8_000_000, 'before-restore'), sized('2026-09-16T10:00:00.000Z', 900_000), sized('2026-09-17T10:00:00.000Z', 900_000)];
+    const incoming = sized('2026-09-18T10:00:00.000Z', 900_000);
+    expect(keepTwo(list, incoming).map((s) => s.reason)).toEqual(['daily', 'before-restore']);
+  });
+});
+
 describe('keepOne', () => {
   it('names every older copy when there is only room for the one just written', () => {
     const list = [snap('2026-09-16T10:00:00.000Z'), snap('2026-09-17T10:00:00.000Z')];

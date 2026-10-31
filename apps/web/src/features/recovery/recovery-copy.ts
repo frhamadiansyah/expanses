@@ -1,4 +1,5 @@
-import type { RecoveryKind, RecoveryReason, SnapshotInfo } from '../../db/open';
+import type { ImportMarker, RecoveryKind, RecoveryReason, SnapshotInfo } from '../../db/open';
+import { MIN_COPY_BYTES } from '../../db/snapshot-policy';
 import type { RecoveryWork } from './busy-controls';
 
 /** The four things the screen can offer. Every one of them is a button; none of them is a dead end. */
@@ -81,7 +82,8 @@ export function recoveryCopy(reason: RecoveryReason, options: RecoveryOptions): 
 function actionsFor(reason: RecoveryReason, { hasSnapshot }: RecoveryOptions): RecoveryAction[] {
   const writable = reason.exportable && reason.kind !== 'locked' && !reason.held;
   const actions: RecoveryAction[] = [];
-  if (reason.exportable) actions.push('export');
+  // An empty file has nothing in it to hand over: the copies are the data there.
+  if (reason.exportable && reason.kind !== 'missing') actions.push('export');
   if (writable && hasSnapshot && reason.kind !== 'newer-database' && !reason.rolledBack) actions.push('restore');
   actions.push('retry');
   if (writable && reason.kind !== 'newer-database') actions.push('start-fresh');
@@ -139,9 +141,37 @@ export function workingCopy(work: RecoveryWork): WorkingCopy {
  * the device is a copy of the corruption. Offering that as "the last good copy" would hand the user their
  * own corruption back on the second press. It stays listed among the copies they can choose from by hand,
  * which is where an undo belongs, and never under the button that promises a good one.
+ *
+ * A copy under 512 bytes is skipped too. The store no longer lists one, but this button is the one place a
+ * 0-byte "last good copy" was ever offered, so it says no on its own account as well.
  */
 export function lastGoodCopy(list: SnapshotInfo[]): SnapshotInfo | null {
-  return [...list].sort((a, b) => b.takenAt.localeCompare(a.takenAt)).find((copy) => copy.reason !== 'before-restore') ?? null;
+  return (
+    [...list].sort((a, b) => b.takenAt.localeCompare(a.takenAt)).find((copy) => copy.reason !== 'before-restore' && copy.bytes >= MIN_COPY_BYTES) ?? null
+  );
+}
+
+/** The words for the first choice after a restore that was cut off. */
+export const INTERRUPTED_RESTORE = {
+  title: 'Put back the data from before the restore',
+  note: 'A restore started here did not finish, so the data it was replacing was kept first. This puts that back.',
+};
+
+/**
+ * What the screen offers to put back, in order.
+ *
+ * `interrupted` is the `before-restore` copy a cut-off restore names in its note: when the open fails after
+ * one, that copy is the data as it was a moment before, and it goes first. Then the last good copy, then
+ * every other copy.
+ */
+export function restoreChoices(
+  kept: SnapshotInfo[],
+  marker: ImportMarker | null,
+): { interrupted: SnapshotInfo | null; lastGood: SnapshotInfo | null; others: SnapshotInfo[] } {
+  const interrupted = (marker?.beforeCopy && kept.find((copy) => copy.file === marker.beforeCopy)) || null;
+  const lastGood = lastGoodCopy(kept);
+  const others = kept.filter((copy) => copy.file !== lastGood?.file && copy.file !== interrupted?.file);
+  return { interrupted, lastGood, others };
 }
 
 /** A size a person can weigh: "4.2 MB", not "4,404,019 bytes". */
@@ -192,6 +222,11 @@ function words(reason: RecoveryReason): { headline: string; body: string } {
       return {
         headline: 'Part of the data would not read',
         body: 'The file is still on this device and most of it is almost certainly fine. A copy can be taken of it exactly as it is now, and the last good copy put back if there is one. Nothing is removed unless asked for.',
+      };
+    case 'missing':
+      return {
+        headline: 'The data was not found where Expanses keeps it',
+        body: 'The data file on this device opened empty, but the safety copies Expanses keeps are still here. Put back the newest copy to carry on, or try again first if this appeared straight after an update. Nothing has been removed.',
       };
     case 'newer-database':
       return {

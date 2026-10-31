@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RecoveryReason, SnapshotInfo } from '../../db/open';
 import type { RecoveryWork } from './busy-controls';
-import { lastGoodCopy, MID_SESSION_NOTE, recoveryCopy, workingCopy } from './recovery-copy';
+import { INTERRUPTED_RESTORE, lastGoodCopy, MID_SESSION_NOTE, recoveryCopy, restoreChoices, workingCopy } from './recovery-copy';
 
 const reason = (kind: RecoveryReason['kind'], extra: Partial<RecoveryReason> = {}): RecoveryReason => ({
   kind,
@@ -117,6 +117,50 @@ describe('lastGoodCopy', () => {
   it('answers with nothing when every copy is an undo of a restore', () => {
     expect(lastGoodCopy([copy('2026-09-19T10:00:00.000Z', 'before-restore')])).toBe(null);
     expect(lastGoodCopy([])).toBe(null);
+  });
+
+  it('never offers a copy too small to be a database, however new', () => {
+    // The owner's phone offered "the last good copy" at 0 bytes: a file whose write had stopped half way.
+    const list = [copy('2026-09-18T09:00:00.000Z', 'daily'), { ...copy('2026-09-19T10:00:00.000Z', 'daily'), bytes: 0 }];
+    expect(lastGoodCopy(list)?.takenAt).toBe('2026-09-18T09:00:00.000Z');
+    expect(lastGoodCopy([{ ...copy('2026-09-19T10:00:00.000Z', 'daily'), bytes: 511 }])).toBe(null);
+  });
+});
+
+describe('an empty file beside kept copies', () => {
+  const reason = { kind: 'missing' as const, headline: 'x', detail: 'y', exportable: true };
+  it('offers the copies, Try again and Start fresh, but no export of a file with nothing in it', () => {
+    expect(recoveryCopy(reason, { hasSnapshot: true }).actions).toEqual(['restore', 'retry', 'start-fresh']);
+  });
+  it('says the copies are still here, without "you"', () => {
+    const copy = recoveryCopy(reason, { hasSnapshot: true });
+    expect(copy.body).toMatch(/copies/);
+    expect(`${copy.headline} ${copy.body}`).not.toMatch(/\byou(r)?\b/i);
+  });
+});
+
+describe('the copies the screen offers, after a restore that was cut off', () => {
+  const copy = (takenAt: string, reason: SnapshotInfo['reason']): SnapshotInfo => ({ file: `${takenAt}-${reason}`, reason, schemaVersion: 47, bytes: 4096, takenAt });
+  const daily = copy('2026-09-18T09:00:00.000Z', 'daily');
+  const before = copy('2026-09-19T10:00:00.000Z', 'before-restore');
+  const older = copy('2026-09-17T09:00:00.000Z', 'daily');
+
+  it('puts the copy of what the restore was replacing first, and the rest after it', () => {
+    const choices = restoreChoices([before, daily, older], { startedAt: '2026-09-19T10:00:01.000Z', beforeCopy: before.file, source: 'Backup page' });
+    expect(choices.interrupted?.file).toBe(before.file);
+    expect(choices.lastGood?.file).toBe(daily.file);
+    expect(choices.others.map((c) => c.file)).toEqual([older.file]);
+  });
+
+  it('is the ordinary choice when there is no note, or the note names a copy no longer here', () => {
+    expect(restoreChoices([before, daily], null)).toEqual({ interrupted: null, lastGood: daily, others: [before] });
+    expect(restoreChoices([daily], { startedAt: 'x', beforeCopy: before.file, source: 'y' }).interrupted).toBeNull();
+    expect(restoreChoices([daily], { startedAt: 'x', beforeCopy: null, source: 'y' }).interrupted).toBeNull();
+  });
+
+  it('words the first choice plainly, without "you"', () => {
+    expect(INTERRUPTED_RESTORE.title).not.toMatch(/\byou(r)?\b/i);
+    expect(INTERRUPTED_RESTORE.note).not.toMatch(/\byou(r)?\b/i);
   });
 });
 

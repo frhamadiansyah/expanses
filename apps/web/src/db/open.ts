@@ -12,12 +12,14 @@ import {
   pendingMigrations,
 } from '@expanses/db';
 import { type AppDb, openAppDb } from './bootstrap';
+import { isEngineStart, isHeld } from './engine-start';
+import { CORRUPT } from './fatal';
 import type { SnapshotInfo, SnapshotReason } from './snapshot-policy';
 
 /** The types describing a safety copy live in `snapshot-policy.ts`; re-exported so every existing import from `./open` keeps working. */
 export type { SnapshotInfo, SnapshotReason } from './snapshot-policy';
 
-export type RecoveryKind = 'cannot-open' | 'unreadable' | 'corrupt' | 'newer-database' | 'migration-failed' | 'verify-failed' | 'locked';
+export type RecoveryKind = 'cannot-open' | 'unreadable' | 'corrupt' | 'missing' | 'newer-database' | 'migration-failed' | 'verify-failed' | 'locked';
 
 export interface RecoveryReason {
   kind: RecoveryKind;
@@ -79,6 +81,22 @@ export interface SnapshotStore {
   /** Records `version` as not to be attempted, and the build (its highest known version) that decided so. */
   block(version: number, build: number): Promise<void>;
   unblock(): Promise<void>;
+  /**
+   * The note a restore leaves while it rewrites the live file (see `restoreSnapshot`), or null. Optional:
+   * a store that keeps nothing keeps no note either.
+   */
+  importMarker?(): Promise<ImportMarker | null>;
+  markImport?(marker: ImportMarker): Promise<void>;
+  clearImport?(): Promise<void>;
+}
+
+/** What a restore in progress leaves on the device, so a restore cut off half way can be undone. */
+export interface ImportMarker {
+  startedAt: string;
+  /** The `before-restore` copy of what was being replaced, or null when none could be kept. */
+  beforeCopy: string | null;
+  /** Where the bytes going in came from, for Details. */
+  source: string;
 }
 
 /**
@@ -148,6 +166,39 @@ const corrupt = (detail: string): RecoveryReason => ({
   exportable: true,
 });
 
+/** Every message on an error and the causes under it: Drizzle puts SQLite's own words on `.cause`. */
+const deepSay = (error: unknown): string => {
+  const parts: string[] = [];
+  for (let at: unknown = error; at !== undefined && at !== null && parts.length < 5; at = at instanceof Error ? at.cause : undefined) {
+    parts.push(say(at));
+  }
+  return parts.join(' — ');
+};
+
+/**
+ * A read that threw, named honestly.
+ *
+ * `corrupt` only when SQLite read the bytes and said so: a check that *answered* with something other than
+ * ok, or a thrown message that is SQLite's own word for a damaged file. Anything else — an engine that never
+ * started, a worker that went away, a handle the browser took back — is `unreadable`, with the raw words in
+ * `detail`. When those words say another process still holds the files, `held` withholds the two buttons
+ * that would write to them.
+ */
+function couldNotRead(error: unknown, problems: IntegrityProblem[] = []): RecoveryReason {
+  const answered = problems.filter((problem) => !problem.thrown);
+  if (answered.length) return corrupt(answered.map((p) => p.detail).join('; '));
+  const detail = deepSay(error);
+  const genuine = [detail, ...problems.map((p) => p.detail)].find((message) => CORRUPT.test(message));
+  if (genuine) return corrupt(genuine);
+  return {
+    kind: 'unreadable',
+    headline: isEngineStart(detail) ? 'The database engine could not start this time.' : 'We could not read the data this time.',
+    detail,
+    exportable: true,
+    ...(isHeld(detail) ? { held: true } : {}),
+  };
+}
+
 /**
  * The copy taken before an update, so a failed one can be undone.
  *
@@ -206,6 +257,9 @@ async function rollback(deps: {
 
   try {
     /*
+     * No import note here (see `restoreSnapshot`): the bytes going back are themselves a copy on disk, so an
+     * app killed half way through this still leaves the next launch something whole to put back.
+     *
      * The worker's `import` op keeps the current bytes and puts them back if the import fails, so a rollback
      * that cannot be done leaves the half-updated file rather than nothing at all — which is why the screen
      * this returns to can still offer Export either way.
@@ -243,13 +297,34 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
   } catch (error) {
     /*
      * A malformed file usually announces itself here, on the first read, rather than waiting for the
-     * check below — so ask SQLite what it thinks before naming this. checkStructure never throws, and
-     * "corrupt" is the kind whose screen says the data is still on the device; "unreadable" is kept
-     * for a file that reads as sound but would not answer.
+     * check below — so ask SQLite what it thinks before naming this. But an engine that never started has
+     * nothing to ask: the check would only start it again, retries and all, and fail the same way.
      */
-    const problems = await checkStructure(database);
-    if (problems.length) return { ok: false, reason: corrupt(problems.map((p) => p.detail).join('; ')) };
-    return { ok: false, reason: { kind: 'unreadable', headline: 'We could not read the data this time.', detail: say(error), exportable: true } };
+    const message = deepSay(error);
+    if (isEngineStart(message) && !CORRUPT.test(message)) return { ok: false, reason: couldNotRead(error) };
+    return { ok: false, reason: couldNotRead(error, await checkStructure(database)) };
+  }
+
+  /*
+   * A file with nothing in it, on a device holding safety copies, is not a new device. The pool opens a file
+   * it has no slot for by making an empty one — after a slot whose header failed its check was dropped, say
+   * — and that used to be met with a fresh empty app and no word about the copies beside it. A true first
+   * launch has no copies, and Start fresh removes them with the data, so both still open as new. Read only
+   * when the file is empty, so an ordinary launch pays nothing for it.
+   */
+  if (version === 0) {
+    const copies = await snapshots.list().catch(() => [] as SnapshotInfo[]);
+    if (copies.length) {
+      return {
+        ok: false,
+        reason: {
+          kind: 'missing',
+          headline: 'The data file is empty, but safety copies are on this device.',
+          detail: `The database opened with nothing in it. Copies kept: ${copies.map((c) => `${c.file} (${c.bytes} bytes)`).join(', ')}`,
+          exportable: true,
+        },
+      };
+    }
   }
 
   const future = await futureVersions(database, migrations);
@@ -294,7 +369,8 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
    */
   if (version > 0 && quickCheckAffordable(await databaseBytes(database))) {
     const problems = await checkStructure(database);
-    if (problems.length) return { ok: false, reason: corrupt(problems.map((p) => p.detail).join('; ')) };
+    // A check that threw is not a finding: `couldNotRead` calls it corrupt only on SQLite's own words.
+    if (problems.length) return { ok: false, reason: couldNotRead(new Error(problems.map((p) => p.detail).join('; ')), problems) };
   }
 
   const pending = await pendingMigrations(database, allowed);
@@ -416,12 +492,15 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
   }
 
   try {
+    const app = await openAppDb(database, allowed);
+    // A note left by a restore that was cut off is spent once the file opens. Not awaited: first paint never waits on it.
+    void snapshots.clearImport?.().catch(() => undefined);
     // The store rides along on the opened app: the day's copy is taken from the first idle callback after
     // the first paint, which is the one place that knows a screen has actually appeared.
     return {
       ok: true,
       app: {
-        ...(await openAppDb(database, allowed)),
+        ...app,
         // The version the file is really at, so a copy taken later in the session is labelled with what it
         // holds rather than with what this build could have produced.
         safety: { snapshots, bytes, schemaVersion: applied.length ? Math.max(...applied) : version },

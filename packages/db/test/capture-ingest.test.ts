@@ -460,6 +460,25 @@ describe('what is not worth a draft', () => {
     expect(await listSkipped(database, ws, DAY)).toHaveLength(1);
   });
 
+  it('reads past a skipped row whose capture is not JSON, rather than failing the whole ingest', async () => {
+    const { database, ws } = await workspace();
+    // A row a past build or a torn write left unparseable. `json_extract` on it raises "malformed JSON",
+    // which used to be read as a damaged database and take the app away.
+    await database.db.insert(captureSkipped).values({
+      id: 'bad-row',
+      workspaceId: ws.workspaceId,
+      reason: 'promo',
+      captureJson: '{not json',
+      readingJson: '{}',
+      skippedAt: `${DAY}T09:00:00.000Z`,
+    });
+    const offer = at('09:30', { body: 'Cashback voucher Rp10.000 untuk kamu' });
+
+    await expect(ingestCaptures(database, ws, [offer], { today: DAY })).resolves.toMatchObject({ skipped: 1 });
+    const again = await ingestCaptures(database, ws, [offer], { today: DAY });
+    expect(again).toMatchObject({ drafts: 0, merged: 0, skipped: 0 });
+  });
+
   it('skips what arrived when only money going out is wanted', async () => {
     const { database, ws, bank } = await workspace();
     await answer(database, ws, at('09:00'), bank.id);

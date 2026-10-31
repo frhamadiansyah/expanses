@@ -16,7 +16,7 @@ import {
 import { createNodeExecutor, type NodeExecutor } from '@expanses/db/node';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { lastGoodCopy } from '../features/recovery/recovery-copy';
-import { fatalKind } from './fatal';
+import { ENGINE_START, fatalKind } from './fatal';
 import { NO_SNAPSHOTS, openSafely, type OpenStage, quickCheckAffordable, QUICK_CHECK_LIMIT_BYTES } from './open';
 import { snapshotName } from './snapshot-policy';
 import { MANIFEST, memorySnapshots, restoreSnapshot } from './snapshots';
@@ -543,8 +543,9 @@ describe('openSafely', () => {
     ]);
 
     expect(outcome).not.toBe('HUNG');
-    // A typed reason, with Export, Restore and Try again on the screen it draws.
-    expect(outcome).toBe('reason:corrupt');
+    // A typed reason, with Export, Restore and Try again on the screen it draws — and an honest one: no
+    // engine ever read the file, so nothing can say it is damaged.
+    expect(outcome).toBe('reason:unreadable');
     // The second post is the point: nothing is issued to an engine that has already gone.
     expect(posted).toHaveLength(1);
   });
@@ -699,6 +700,142 @@ describe('openSafely', () => {
     await expect(store.write(new TextEncoder().encode('not a database at all'), 'daily', LATEST_VERSION)).rejects.toThrow(/did not verify/);
     // Nothing is advertised that is not there: a failed copy leaves the manifest exactly as it was.
     expect(await store.list()).toEqual([]);
+  });
+});
+
+/**
+ * "Part of the data would not read" is a claim about the bytes, and only SQLite reading them can make it.
+ * The owner's phone showed it on the first launch after most updates, when the engine never got the files.
+ */
+describe('a failed open is called corrupt only when SQLite said so', () => {
+  /** An executor whose every query fails with `message`, counting what it was asked. */
+  function failing(message: string | ((sql: string) => string | null)) {
+    executor = createNodeExecutor();
+    const inner = executor;
+    const asked: string[] = [];
+    const wrapped: SqlExecutor = {
+      query: (sql, params, method) => {
+        asked.push(sql);
+        const said = typeof message === 'string' ? message : message(sql);
+        return said ? Promise.reject(new Error(said)) : inner.query(sql, params, method);
+      },
+      execScript: (sql) => inner.execScript(sql),
+      exportBytes: () => inner.exportBytes(),
+      importBytes: (bytes) => inner.importBytes(bytes),
+    };
+    return { database: createDatabase(wrapped), asked, inner };
+  }
+
+  it('says the engine could not start, with the files held, and does not ask again', async () => {
+    const held = `${ENGINE_START}NoModificationAllowedError: Access Handles cannot be created if there is another open Access Handle`;
+    const { database, asked } = failing(held);
+    const result = await openSafely({ database, snapshots: memorySnapshots(), onStage: () => undefined });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toMatchObject({ kind: 'unreadable', held: true, exportable: true });
+    expect(result.reason.detail).toContain('NoModificationAllowedError');
+    // The check would only have started the engine a second time, for another few seconds of retries.
+    expect(asked).toHaveLength(1);
+  });
+
+  it('calls a failed start that is not about held files unreadable, with Restore still on offer', async () => {
+    const { database } = failing(`${ENGINE_START}Missing required OPFS APIs.`);
+    const result = await openSafely({ database, snapshots: memorySnapshots(), onStage: () => undefined });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason.kind).toBe('unreadable');
+      expect(result.reason.held).toBeUndefined();
+    }
+  });
+
+  it('calls a read that throws, and a check that throws too, unreadable rather than corrupt', async () => {
+    const { database } = failing('the worker went away');
+    const result = await openSafely({ database, snapshots: memorySnapshots(), onStage: () => undefined });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason.kind).toBe('unreadable');
+      expect(result.reason.detail).toContain('the worker went away');
+    }
+  });
+
+  it('still calls it corrupt when the thrown words are SQLite saying the file is damaged', async () => {
+    const { database } = failing('database disk image is malformed');
+    const result = await openSafely({ database, snapshots: memorySnapshots(), onStage: () => undefined });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason.kind).toBe('corrupt');
+  });
+
+  it('calls the check on the way in unreadable, not corrupt, when it throws rather than answers', async () => {
+    const { database, inner } = failing((sql) => (/quick_check/i.test(sql) ? 'disk I/O error' : null));
+    await migrate(createDatabase(inner));
+    const result = await openSafely({ database, snapshots: memorySnapshots(), onStage: () => undefined });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toMatchObject({ kind: 'unreadable', detail: expect.stringContaining('disk I/O error') });
+  });
+});
+
+/**
+ * The pool opens a file that is not there by making an empty one, so a slot the pool dropped looked like a
+ * brand-new device: version 0, a fresh empty app, and no word about the copies sitting beside it.
+ */
+describe('an empty database on a device that holds safety copies', () => {
+  async function copyOfARealDatabase(store: ReturnType<typeof memorySnapshots>) {
+    const other = createDatabase(spare());
+    await migrate(other);
+    return store.write(await other.exportBytes(), 'daily', LATEST_VERSION);
+  }
+
+  it('is not started fresh: the screen offers the copies instead, and nothing is written', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    const store = memorySnapshots();
+    await copyOfARealDatabase(store);
+    const stages: OpenStage[] = [];
+    const result = await openSafely({ database, snapshots: store, onStage: (s) => stages.push(s) });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toMatchObject({ kind: 'missing', exportable: true });
+    expect(await databaseVersion(database)).toBe(0);
+    expect(stages.map((s) => s.stage)).toEqual(['opening']);
+  });
+
+  it('opens as new on a device with no copies, or only copies that are not whole', async () => {
+    executor = createNodeExecutor();
+    const files = new Map<string, Uint8Array>([[snapshotName('2026-09-16T10:00:00.000Z', 108, 'daily'), new Uint8Array()]]);
+    const result = await openSafely({ database: createDatabase(executor), snapshots: memorySnapshots(files), onStage: () => undefined });
+    expect(result.ok).toBe(true);
+  });
+
+  it('opens as new when the copies cannot even be listed', async () => {
+    executor = createNodeExecutor();
+    const store = memorySnapshots();
+    store.list = async () => {
+      throw new Error('no private storage');
+    };
+    const result = await openSafely({ database: createDatabase(executor), snapshots: store, onStage: () => undefined });
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe('the note a cut-off restore leaves', () => {
+  it('is spent once the file opens', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    const store = memorySnapshots();
+    await store.markImport!({ startedAt: '2026-09-18T10:00:00.000Z', beforeCopy: null, source: 'backup file' });
+    const result = await openSafely({ database, snapshots: store, onStage: () => undefined });
+    expect(result.ok).toBe(true);
+    await expect.poll(() => store.importMarker!()).toBeNull();
+  });
+
+  it('is left for the recovery screen when the file does not open', async () => {
+    executor = createNodeExecutor();
+    const inner = executor;
+    const database = createDatabase({ ...inner, query: () => Promise.reject(new Error('disk I/O error')) } as SqlExecutor);
+    const store = memorySnapshots();
+    await store.markImport!({ startedAt: '2026-09-18T10:00:00.000Z', beforeCopy: 'x', source: 'backup file' });
+    const result = await openSafely({ database, snapshots: store, onStage: () => undefined });
+    expect(result.ok).toBe(false);
+    expect(await store.importMarker!()).toMatchObject({ beforeCopy: 'x' });
   });
 });
 

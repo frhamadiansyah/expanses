@@ -44,6 +44,13 @@ describe('checkStructure', () => {
     expect(problems[0]!.kind).toBe('quick_check');
     expect(problems[0]!.detail).toMatch(/malformed|not a database|disk image|ok$/i);
   });
+
+  it('says whether SQLite answered or the question itself failed', async () => {
+    const h = await household();
+    const engineGone = { ...h.database, db: { ...h.database.db, values: async () => Promise.reject(new Error('the engine could not start')) } };
+    const problems = await checkStructure(engineGone as never);
+    expect(problems).toEqual([{ kind: 'quick_check', detail: 'the engine could not start', thrown: true }]);
+  });
 });
 
 describe('checkLedgerHealth', () => {
