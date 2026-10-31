@@ -774,6 +774,48 @@ describe('a failed open is called corrupt only when SQLite said so', () => {
   });
 });
 
+/**
+ * The pool opens a file that is not there by making an empty one, so a slot the pool dropped looked like a
+ * brand-new device: version 0, a fresh empty app, and no word about the copies sitting beside it.
+ */
+describe('an empty database on a device that holds safety copies', () => {
+  async function copyOfARealDatabase(store: ReturnType<typeof memorySnapshots>) {
+    const other = createDatabase(spare());
+    await migrate(other);
+    return store.write(await other.exportBytes(), 'daily', LATEST_VERSION);
+  }
+
+  it('is not started fresh: the screen offers the copies instead, and nothing is written', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    const store = memorySnapshots();
+    await copyOfARealDatabase(store);
+    const stages: OpenStage[] = [];
+    const result = await openSafely({ database, snapshots: store, onStage: (s) => stages.push(s) });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toMatchObject({ kind: 'missing', exportable: true });
+    expect(await databaseVersion(database)).toBe(0);
+    expect(stages.map((s) => s.stage)).toEqual(['opening']);
+  });
+
+  it('opens as new on a device with no copies, or only copies that are not whole', async () => {
+    executor = createNodeExecutor();
+    const files = new Map<string, Uint8Array>([[snapshotName('2026-09-16T10:00:00.000Z', 108, 'daily'), new Uint8Array()]]);
+    const result = await openSafely({ database: createDatabase(executor), snapshots: memorySnapshots(files), onStage: () => undefined });
+    expect(result.ok).toBe(true);
+  });
+
+  it('opens as new when the copies cannot even be listed', async () => {
+    executor = createNodeExecutor();
+    const store = memorySnapshots();
+    store.list = async () => {
+      throw new Error('no private storage');
+    };
+    const result = await openSafely({ database: createDatabase(executor), snapshots: store, onStage: () => undefined });
+    expect(result.ok).toBe(true);
+  });
+});
+
 describe('the note a cut-off restore leaves', () => {
   it('is spent once the file opens', async () => {
     executor = createNodeExecutor();

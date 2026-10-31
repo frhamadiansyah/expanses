@@ -19,7 +19,7 @@ import type { SnapshotInfo, SnapshotReason } from './snapshot-policy';
 /** The types describing a safety copy live in `snapshot-policy.ts`; re-exported so every existing import from `./open` keeps working. */
 export type { SnapshotInfo, SnapshotReason } from './snapshot-policy';
 
-export type RecoveryKind = 'cannot-open' | 'unreadable' | 'corrupt' | 'newer-database' | 'migration-failed' | 'verify-failed' | 'locked';
+export type RecoveryKind = 'cannot-open' | 'unreadable' | 'corrupt' | 'missing' | 'newer-database' | 'migration-failed' | 'verify-failed' | 'locked';
 
 export interface RecoveryReason {
   kind: RecoveryKind;
@@ -303,6 +303,28 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
     const message = deepSay(error);
     if (isEngineStart(message) && !CORRUPT.test(message)) return { ok: false, reason: couldNotRead(error) };
     return { ok: false, reason: couldNotRead(error, await checkStructure(database)) };
+  }
+
+  /*
+   * A file with nothing in it, on a device holding safety copies, is not a new device. The pool opens a file
+   * it has no slot for by making an empty one — after a slot whose header failed its check was dropped, say
+   * — and that used to be met with a fresh empty app and no word about the copies beside it. A true first
+   * launch has no copies, and Start fresh removes them with the data, so both still open as new. Read only
+   * when the file is empty, so an ordinary launch pays nothing for it.
+   */
+  if (version === 0) {
+    const copies = await snapshots.list().catch(() => [] as SnapshotInfo[]);
+    if (copies.length) {
+      return {
+        ok: false,
+        reason: {
+          kind: 'missing',
+          headline: 'The data file is empty, but safety copies are on this device.',
+          detail: `The database opened with nothing in it. Copies kept: ${copies.map((c) => `${c.file} (${c.bytes} bytes)`).join(', ')}`,
+          exportable: true,
+        },
+      };
+    }
   }
 
   const future = await futureVersions(database, migrations);

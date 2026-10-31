@@ -127,6 +127,18 @@ describe('lastGoodCopy', () => {
   });
 });
 
+describe('an empty file beside kept copies', () => {
+  const reason = { kind: 'missing' as const, headline: 'x', detail: 'y', exportable: true };
+  it('offers the copies, Try again and Start fresh, but no export of a file with nothing in it', () => {
+    expect(recoveryCopy(reason, { hasSnapshot: true }).actions).toEqual(['restore', 'retry', 'start-fresh']);
+  });
+  it('says the copies are still here, without "you"', () => {
+    const copy = recoveryCopy(reason, { hasSnapshot: true });
+    expect(copy.body).toMatch(/copies/);
+    expect(`${copy.headline} ${copy.body}`).not.toMatch(/\byou(r)?\b/i);
+  });
+});
+
 describe('the copies the screen offers, after a restore that was cut off', () => {
   const copy = (takenAt: string, reason: SnapshotInfo['reason']): SnapshotInfo => ({ file: `${takenAt}-${reason}`, reason, schemaVersion: 47, bytes: 4096, takenAt });
   const daily = copy('2026-09-18T09:00:00.000Z', 'daily');

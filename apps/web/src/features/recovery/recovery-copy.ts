@@ -82,7 +82,8 @@ export function recoveryCopy(reason: RecoveryReason, options: RecoveryOptions): 
 function actionsFor(reason: RecoveryReason, { hasSnapshot }: RecoveryOptions): RecoveryAction[] {
   const writable = reason.exportable && reason.kind !== 'locked' && !reason.held;
   const actions: RecoveryAction[] = [];
-  if (reason.exportable) actions.push('export');
+  // An empty file has nothing in it to hand over: the copies are the data there.
+  if (reason.exportable && reason.kind !== 'missing') actions.push('export');
   if (writable && hasSnapshot && reason.kind !== 'newer-database' && !reason.rolledBack) actions.push('restore');
   actions.push('retry');
   if (writable && reason.kind !== 'newer-database') actions.push('start-fresh');
@@ -221,6 +222,11 @@ function words(reason: RecoveryReason): { headline: string; body: string } {
       return {
         headline: 'Part of the data would not read',
         body: 'The file is still on this device and most of it is almost certainly fine. A copy can be taken of it exactly as it is now, and the last good copy put back if there is one. Nothing is removed unless asked for.',
+      };
+    case 'missing':
+      return {
+        headline: 'The data was not found where Expanses keeps it',
+        body: 'The data file on this device opened empty, but the safety copies Expanses keeps are still here. Put back the newest copy to carry on, or try again first if this appeared straight after an update. Nothing has been removed.',
       };
     case 'newer-database':
       return {
