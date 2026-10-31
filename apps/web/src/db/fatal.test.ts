@@ -39,6 +39,17 @@ describe('what counts as a failure the session cannot carry on past', () => {
     expect(fatalKind(new Error(`${NEWER_DATABASE}999`))).toBeNull();
     expect(fatalKind(new Error('That copy did not check out: *** in database main ***'))).toBeNull();
   });
+
+  it('never reads a bad JSON value as a damaged database', () => {
+    // SQLite's JSON functions say "malformed" about a value, not the file. A row like that once replaced a
+    // working app with "Part of the data would not read".
+    expect(fatalKind(new Error('malformed JSON'))).toBeNull();
+    expect(fatalKind(new Error('Failed query: select json_extract(capture_json, ?)\nparams: $.id\nmalformed JSON'))).toBeNull();
+    expect(fatalKind(new Error('JSON cannot hold BLOB values'))).toBeNull();
+    // The real sentences still are.
+    expect(fatalKind(new Error('database disk image is malformed'))).toBe('corrupt');
+    expect(fatalKind(new Error('SQLITE_CORRUPT_INDEX: disk image is malformed'))).toBe('corrupt');
+  });
 });
 
 describe('the reason a mid-session failure is shown as', () => {
