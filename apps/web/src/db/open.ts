@@ -12,6 +12,8 @@ import {
   pendingMigrations,
 } from '@expanses/db';
 import { type AppDb, openAppDb } from './bootstrap';
+import { isEngineStart, isHeld } from './engine-start';
+import { CORRUPT } from './fatal';
 import type { SnapshotInfo, SnapshotReason } from './snapshot-policy';
 
 /** The types describing a safety copy live in `snapshot-policy.ts`; re-exported so every existing import from `./open` keeps working. */
@@ -148,6 +150,39 @@ const corrupt = (detail: string): RecoveryReason => ({
   exportable: true,
 });
 
+/** Every message on an error and the causes under it: Drizzle puts SQLite's own words on `.cause`. */
+const deepSay = (error: unknown): string => {
+  const parts: string[] = [];
+  for (let at: unknown = error; at !== undefined && at !== null && parts.length < 5; at = at instanceof Error ? at.cause : undefined) {
+    parts.push(say(at));
+  }
+  return parts.join(' — ');
+};
+
+/**
+ * A read that threw, named honestly.
+ *
+ * `corrupt` only when SQLite read the bytes and said so: a check that *answered* with something other than
+ * ok, or a thrown message that is SQLite's own word for a damaged file. Anything else — an engine that never
+ * started, a worker that went away, a handle the browser took back — is `unreadable`, with the raw words in
+ * `detail`. When those words say another process still holds the files, `held` withholds the two buttons
+ * that would write to them.
+ */
+function couldNotRead(error: unknown, problems: IntegrityProblem[] = []): RecoveryReason {
+  const answered = problems.filter((problem) => !problem.thrown);
+  if (answered.length) return corrupt(answered.map((p) => p.detail).join('; '));
+  const detail = deepSay(error);
+  const genuine = [detail, ...problems.map((p) => p.detail)].find((message) => CORRUPT.test(message));
+  if (genuine) return corrupt(genuine);
+  return {
+    kind: 'unreadable',
+    headline: isEngineStart(detail) ? 'The database engine could not start this time.' : 'We could not read the data this time.',
+    detail,
+    exportable: true,
+    ...(isHeld(detail) ? { held: true } : {}),
+  };
+}
+
 /**
  * The copy taken before an update, so a failed one can be undone.
  *
@@ -243,13 +278,12 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
   } catch (error) {
     /*
      * A malformed file usually announces itself here, on the first read, rather than waiting for the
-     * check below — so ask SQLite what it thinks before naming this. checkStructure never throws, and
-     * "corrupt" is the kind whose screen says the data is still on the device; "unreadable" is kept
-     * for a file that reads as sound but would not answer.
+     * check below — so ask SQLite what it thinks before naming this. But an engine that never started has
+     * nothing to ask: the check would only start it again, retries and all, and fail the same way.
      */
-    const problems = await checkStructure(database);
-    if (problems.length) return { ok: false, reason: corrupt(problems.map((p) => p.detail).join('; ')) };
-    return { ok: false, reason: { kind: 'unreadable', headline: 'We could not read the data this time.', detail: say(error), exportable: true } };
+    const message = deepSay(error);
+    if (isEngineStart(message) && !CORRUPT.test(message)) return { ok: false, reason: couldNotRead(error) };
+    return { ok: false, reason: couldNotRead(error, await checkStructure(database)) };
   }
 
   const future = await futureVersions(database, migrations);
@@ -294,7 +328,8 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
    */
   if (version > 0 && quickCheckAffordable(await databaseBytes(database))) {
     const problems = await checkStructure(database);
-    if (problems.length) return { ok: false, reason: corrupt(problems.map((p) => p.detail).join('; ')) };
+    // A check that threw is not a finding: `couldNotRead` calls it corrupt only on SQLite's own words.
+    if (problems.length) return { ok: false, reason: couldNotRead(new Error(problems.map((p) => p.detail).join('; ')), problems) };
   }
 
   const pending = await pendingMigrations(database, allowed);

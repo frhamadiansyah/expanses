@@ -16,7 +16,7 @@ import {
 import { createNodeExecutor, type NodeExecutor } from '@expanses/db/node';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { lastGoodCopy } from '../features/recovery/recovery-copy';
-import { fatalKind } from './fatal';
+import { ENGINE_START, fatalKind } from './fatal';
 import { NO_SNAPSHOTS, openSafely, type OpenStage, quickCheckAffordable, QUICK_CHECK_LIMIT_BYTES } from './open';
 import { snapshotName } from './snapshot-policy';
 import { MANIFEST, memorySnapshots, restoreSnapshot } from './snapshots';
@@ -543,8 +543,9 @@ describe('openSafely', () => {
     ]);
 
     expect(outcome).not.toBe('HUNG');
-    // A typed reason, with Export, Restore and Try again on the screen it draws.
-    expect(outcome).toBe('reason:corrupt');
+    // A typed reason, with Export, Restore and Try again on the screen it draws — and an honest one: no
+    // engine ever read the file, so nothing can say it is damaged.
+    expect(outcome).toBe('reason:unreadable');
     // The second post is the point: nothing is issued to an engine that has already gone.
     expect(posted).toHaveLength(1);
   });
@@ -699,6 +700,77 @@ describe('openSafely', () => {
     await expect(store.write(new TextEncoder().encode('not a database at all'), 'daily', LATEST_VERSION)).rejects.toThrow(/did not verify/);
     // Nothing is advertised that is not there: a failed copy leaves the manifest exactly as it was.
     expect(await store.list()).toEqual([]);
+  });
+});
+
+/**
+ * "Part of the data would not read" is a claim about the bytes, and only SQLite reading them can make it.
+ * The owner's phone showed it on the first launch after most updates, when the engine never got the files.
+ */
+describe('a failed open is called corrupt only when SQLite said so', () => {
+  /** An executor whose every query fails with `message`, counting what it was asked. */
+  function failing(message: string | ((sql: string) => string | null)) {
+    executor = createNodeExecutor();
+    const inner = executor;
+    const asked: string[] = [];
+    const wrapped: SqlExecutor = {
+      query: (sql, params, method) => {
+        asked.push(sql);
+        const said = typeof message === 'string' ? message : message(sql);
+        return said ? Promise.reject(new Error(said)) : inner.query(sql, params, method);
+      },
+      execScript: (sql) => inner.execScript(sql),
+      exportBytes: () => inner.exportBytes(),
+      importBytes: (bytes) => inner.importBytes(bytes),
+    };
+    return { database: createDatabase(wrapped), asked, inner };
+  }
+
+  it('says the engine could not start, with the files held, and does not ask again', async () => {
+    const held = `${ENGINE_START}NoModificationAllowedError: Access Handles cannot be created if there is another open Access Handle`;
+    const { database, asked } = failing(held);
+    const result = await openSafely({ database, snapshots: memorySnapshots(), onStage: () => undefined });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toMatchObject({ kind: 'unreadable', held: true, exportable: true });
+    expect(result.reason.detail).toContain('NoModificationAllowedError');
+    // The check would only have started the engine a second time, for another few seconds of retries.
+    expect(asked).toHaveLength(1);
+  });
+
+  it('calls a failed start that is not about held files unreadable, with Restore still on offer', async () => {
+    const { database } = failing(`${ENGINE_START}Missing required OPFS APIs.`);
+    const result = await openSafely({ database, snapshots: memorySnapshots(), onStage: () => undefined });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason.kind).toBe('unreadable');
+      expect(result.reason.held).toBeUndefined();
+    }
+  });
+
+  it('calls a read that throws, and a check that throws too, unreadable rather than corrupt', async () => {
+    const { database } = failing('the worker went away');
+    const result = await openSafely({ database, snapshots: memorySnapshots(), onStage: () => undefined });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason.kind).toBe('unreadable');
+      expect(result.reason.detail).toContain('the worker went away');
+    }
+  });
+
+  it('still calls it corrupt when the thrown words are SQLite saying the file is damaged', async () => {
+    const { database } = failing('database disk image is malformed');
+    const result = await openSafely({ database, snapshots: memorySnapshots(), onStage: () => undefined });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason.kind).toBe('corrupt');
+  });
+
+  it('calls the check on the way in unreadable, not corrupt, when it throws rather than answers', async () => {
+    const { database, inner } = failing((sql) => (/quick_check/i.test(sql) ? 'disk I/O error' : null));
+    await migrate(createDatabase(inner));
+    const result = await openSafely({ database, snapshots: memorySnapshots(), onStage: () => undefined });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toMatchObject({ kind: 'unreadable', detail: expect.stringContaining('disk I/O error') });
   });
 });
 

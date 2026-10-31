@@ -29,6 +29,13 @@ export type FatalKind = 'corrupt' | 'unreadable';
  * screen over nothing at all. So is "malformed JSON": SQLite's JSON functions say it about one value in one
  * row, and a bare `malformed` here once read that as a damaged file.
  */
+/**
+ * The prefix on every error a request gets when the worker could not start the engine for it (see
+ * `engine-start.ts`). A prefix rather than a reply flag, because it has to survive Drizzle wrapping the
+ * message on the main thread. Kept here so this module stays the one the worker and the opener share.
+ */
+export const ENGINE_START = 'The database engine could not start: ';
+
 export const CORRUPT = /disk image is malformed|malformed database schema|file is not a database|SQLITE_CORRUPT|SQLITE_NOTADB/i;
 
 /**
@@ -54,6 +61,8 @@ export const messageOf = (error: unknown): string => (error instanceof Error ? e
 export function fatalKind(error: unknown): FatalKind | null {
   const message = messageOf(error);
   if (CORRUPT.test(message)) return 'corrupt';
+  // A start that failed is the engine not reaching the file, whatever words the browser used for it.
+  if (message.includes(ENGINE_START)) return 'unreadable';
   if (GONE.test(message)) return 'unreadable';
   return null;
 }
