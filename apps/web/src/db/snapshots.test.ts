@@ -204,6 +204,33 @@ describe('writing a copy file', () => {
     });
   }
 
+  it('hands the write to the fallback writer when this thread has no createWritable', async () => {
+    const removed: string[] = [];
+    const dir = { getFileHandle: async () => ({}), removeEntry: async (name: string) => void removed.push(name) };
+    const fallback = vi.fn(async () => undefined);
+    await writeWhole(dir as never, 'snapshot-x.sqlite3', new Uint8Array(1024), fallback);
+    expect(fallback).toHaveBeenCalledWith('expanses-safety', 'snapshot-x.sqlite3', expect.any(Uint8Array));
+    expect(removed).toEqual([]);
+  });
+
+  it('removes the file when the fallback writer fails too', async () => {
+    const removed: string[] = [];
+    const dir = { getFileHandle: async () => ({}), removeEntry: async (name: string) => void removed.push(name) };
+    await expect(
+      writeWhole(dir as never, 'manifest.json', new Uint8Array(10), async () => {
+        throw new Error('NoModificationAllowedError');
+      }),
+    ).rejects.toThrow('NoModificationAllowedError');
+    expect(removed).toEqual(['manifest.json']);
+  });
+
+  it('never uses the fallback when createWritable is there', async () => {
+    const { dir } = directory(null);
+    const fallback = vi.fn(async () => undefined);
+    await writeWhole(dir as never, 'snapshot-x.sqlite3', new Uint8Array(1024), fallback);
+    expect(fallback).not.toHaveBeenCalled();
+  });
+
   it('leaves the file when every step worked', async () => {
     const { dir, files, removed } = directory(null);
     await writeWhole(dir as never, 'snapshot-x.sqlite3', new Uint8Array(1024));

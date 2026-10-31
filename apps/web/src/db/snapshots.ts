@@ -1,4 +1,5 @@
 import type { ImportMarker, Safety, SnapshotStore } from './open';
+import { hasCreateWritable, writeInSafetyWorker } from './safety-write';
 import { dailyDue, keepOne, keepTwo, MIN_COPY_BYTES, parseSnapshotName, roomFor, type SnapshotInfo, type SnapshotReason, snapshotName } from './snapshot-policy';
 
 /**
@@ -294,14 +295,22 @@ function storeOver(slot: Slot): SnapshotStore {
  * `getFileHandle(…, { create: true })` puts the name in the directory before a byte is written, so a write
  * that throws — or an app killed — after it leaves an empty file under a valid copy's name. Any failure
  * after the create removes it. (A kill cannot be caught; `looksWhole` keeps that file from ever being listed.)
+ *
+ * Where this thread has no `createWritable` (WebKit on older iOS), the bytes go to `fallback`: a worker of
+ * its own that writes through a sync access handle. See `safety-write.ts`.
  */
 export async function writeWhole(
   dir: Pick<FileSystemDirectoryHandle, 'getFileHandle' | 'removeEntry'>,
   file: string,
   bytes: Uint8Array,
+  fallback: (folder: string, file: string, bytes: Uint8Array) => Promise<void> = writeInSafetyWorker,
 ): Promise<void> {
   const handle = await dir.getFileHandle(file, { create: true });
   try {
+    if (!hasCreateWritable(handle)) {
+      await fallback(SAFETY_DIR, file, bytes);
+      return;
+    }
     const writable = await handle.createWritable();
     try {
       // A cast, not a copy: lib.dom insists the view sit on an ArrayBuffer rather than an ArrayBufferLike,
