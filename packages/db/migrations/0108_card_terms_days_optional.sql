@@ -14,7 +14,10 @@ CREATE TABLE card_terms_new (
 );
 
 INSERT INTO card_terms_new (account_id, workspace_id, credit_limit_minor, statement_day, due_day, annual_fee_minor, annual_fee_on, annual_fee_waived_year)
-SELECT account_id, workspace_id, credit_limit_minor, statement_day, due_day, annual_fee_minor, annual_fee_on, annual_fee_waived_year FROM card_terms;
+SELECT account_id, workspace_id, credit_limit_minor, statement_day, due_day, annual_fee_minor, annual_fee_on, annual_fee_waived_year FROM card_terms
+-- A row whose account or workspace is gone (left while foreign keys were off) would fail the whole copy; it describes
+-- no card, so it is left behind. Safe to edit after release: migrations are tracked by version and name, not content.
+WHERE account_id IN (SELECT id FROM accounts) AND workspace_id IN (SELECT id FROM workspaces);
 
 DROP TABLE card_terms;
 ALTER TABLE card_terms_new RENAME TO card_terms;
