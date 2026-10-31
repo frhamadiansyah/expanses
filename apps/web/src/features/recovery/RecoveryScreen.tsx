@@ -1,6 +1,7 @@
 import { isoDate } from '@expanses/core';
 import { LATEST_VERSION } from '@expanses/db';
 import { useEffect, useState } from 'react';
+import { type FailureEntry, formatFailureLog } from '../../db/failure-log';
 import { refusedCopy } from '../../db/newer-database';
 import { type ImportMarker, NO_SNAPSHOTS, type RecoveryReason, type SnapshotInfo, type SnapshotStore } from '../../db/open';
 import { restoreBytes, salvageBytes } from '../../db/salvage';
@@ -11,6 +12,7 @@ import { Button, ErrorBox } from '../../ui';
 import { copyReasonWords } from '../backup/backupState';
 import { disabledWhileBusy, type RecoveryWork } from './busy-controls';
 import { formatBytes, formatWhen, INTERRUPTED_RESTORE, recoveryCopy, restoreChoices, workingCopy } from './recovery-copy';
+import { readFailureLog, recordOnDevice } from './failure-record';
 import { StartFreshDialog } from './StartFreshDialog';
 
 /** Dropping the query and the hash, so "Try again" leaves recovery mode instead of returning to it. */
@@ -38,6 +40,8 @@ export function RecoveryScreen({
   const [kept, setKept] = useState<SnapshotInfo[]>([]);
   // The note a restore cut off half way left behind, naming the copy of what it was replacing.
   const [marker, setMarker] = useState<ImportMarker | null>(null);
+  // What happened, kept on the device: this failure and the four before it, for "Details".
+  const [log, setLog] = useState<FailureEntry[]>([]);
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
   // What is in flight, not merely that something is: which controls stay pressable depends on it, and so
   // does what the screen says it is doing. See `busy-controls.ts`.
@@ -60,6 +64,16 @@ export function RecoveryScreen({
       live = false;
     };
   }, [snapshots, reason.exportable]);
+
+  useEffect(() => {
+    let live = true;
+    // A screen asked for, or a second tab, is not a failure: the log is shown, not added to.
+    const pending = requested || reason.kind === 'locked' ? readFailureLog() : recordOnDevice(reason);
+    void pending.then((found) => live && setLog(found)).catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [reason, requested]);
 
   const copy = recoveryCopy(reason, { hasSnapshot: kept.length > 0, requested });
   // The one the button promises, and the rest, which the user can go through themselves. A copy taken
@@ -205,6 +219,12 @@ export function RecoveryScreen({
         <summary className="cursor-pointer py-2">Details</summary>
         <p className="mt-1 break-words">{reason.kind}</p>
         <p className="mt-1 break-words whitespace-pre-wrap">{reason.detail}</p>
+        {log.length > 0 && (
+          <>
+            <p className="mt-3 font-medium text-slate-600">Recorded on this device</p>
+            <pre className="mt-1 font-mono text-[11px] break-words whitespace-pre-wrap select-text">{formatFailureLog(log)}</pre>
+          </>
+        )}
       </details>
 
       {copy.actions.includes('start-fresh') && (

@@ -325,6 +325,32 @@ export async function writeWhole(
   }
 }
 
+/** One file of the safety folder, or null. For the files beside the copies: the failure log. */
+export async function readSafetyFile(file: string): Promise<Uint8Array | null> {
+  const dir = await safetyDirectory().catch(() => null);
+  const found = await (await dir?.getFileHandle(file).catch(() => null))?.getFile().catch(() => null);
+  return found ? new Uint8Array(await found.arrayBuffer()) : null;
+}
+
+/** Writes one file of the safety folder whole, or not at all (see `writeWhole`). */
+export async function writeSafetyFile(file: string, bytes: Uint8Array): Promise<void> {
+  await writeWhole(await safetyDirectory(), file, bytes);
+}
+
+/** Every file in the safety folder and its size, valid copy or not. For diagnostics only. */
+export async function safetyFolderFiles(): Promise<{ file: string; bytes: number }[]> {
+  if (!navigator.storage?.getDirectory) return [];
+  const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle(SAFETY_DIR).catch(() => null);
+  if (!dir) return [];
+  const found: { file: string; bytes: number }[] = [];
+  for await (const handle of dir.values()) {
+    if (handle.kind !== 'file') continue;
+    const opened = await (handle as FileSystemFileHandle).getFile().catch(() => null);
+    found.push({ file: handle.name, bytes: opened ? opened.size : -1 });
+  }
+  return found;
+}
+
 async function safetyDirectory(): Promise<FileSystemDirectoryHandle> {
   if (!navigator.storage?.getDirectory) throw new Error('This browser keeps no private storage for Expanses.');
   const root = await navigator.storage.getDirectory();
