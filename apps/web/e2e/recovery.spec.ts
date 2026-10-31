@@ -491,7 +491,8 @@ test('a database that goes wrong while the app is open swaps the app for the rec
 
   // Every route out is on it, and the technical text is under Details where it belongs, not above the fold.
   await page.getByText('Details', { exact: true }).click();
-  await expect(page.getByText(/malformed|disk image/i)).toBeVisible();
+  // `.first()`: the record kept on the device below it repeats the same words.
+  await expect(page.getByText(/malformed|disk image/i).first()).toBeVisible();
 
   // The one that matters most: the data is still there to be taken away, from the app's own engine having
   // died and let go of the files a moment ago.
