@@ -118,6 +118,13 @@ describe('lastGoodCopy', () => {
     expect(lastGoodCopy([copy('2026-09-19T10:00:00.000Z', 'before-restore')])).toBe(null);
     expect(lastGoodCopy([])).toBe(null);
   });
+
+  it('never offers a copy too small to be a database, however new', () => {
+    // The owner's phone offered "the last good copy" at 0 bytes: a file whose write had stopped half way.
+    const list = [copy('2026-09-18T09:00:00.000Z', 'daily'), { ...copy('2026-09-19T10:00:00.000Z', 'daily'), bytes: 0 }];
+    expect(lastGoodCopy(list)?.takenAt).toBe('2026-09-18T09:00:00.000Z');
+    expect(lastGoodCopy([{ ...copy('2026-09-19T10:00:00.000Z', 'daily'), bytes: 511 }])).toBe(null);
+  });
 });
 
 describe('what the screen says while it is working', () => {

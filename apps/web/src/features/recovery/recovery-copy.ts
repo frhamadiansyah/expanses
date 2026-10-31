@@ -1,4 +1,5 @@
 import type { RecoveryKind, RecoveryReason, SnapshotInfo } from '../../db/open';
+import { MIN_COPY_BYTES } from '../../db/snapshot-policy';
 import type { RecoveryWork } from './busy-controls';
 
 /** The four things the screen can offer. Every one of them is a button; none of them is a dead end. */
@@ -139,9 +140,14 @@ export function workingCopy(work: RecoveryWork): WorkingCopy {
  * the device is a copy of the corruption. Offering that as "the last good copy" would hand the user their
  * own corruption back on the second press. It stays listed among the copies they can choose from by hand,
  * which is where an undo belongs, and never under the button that promises a good one.
+ *
+ * A copy under 512 bytes is skipped too. The store no longer lists one, but this button is the one place a
+ * 0-byte "last good copy" was ever offered, so it says no on its own account as well.
  */
 export function lastGoodCopy(list: SnapshotInfo[]): SnapshotInfo | null {
-  return [...list].sort((a, b) => b.takenAt.localeCompare(a.takenAt)).find((copy) => copy.reason !== 'before-restore') ?? null;
+  return (
+    [...list].sort((a, b) => b.takenAt.localeCompare(a.takenAt)).find((copy) => copy.reason !== 'before-restore' && copy.bytes >= MIN_COPY_BYTES) ?? null
+  );
 }
 
 /** A size a person can weigh: "4.2 MB", not "4,404,019 bytes". */

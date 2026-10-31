@@ -1,5 +1,5 @@
 import type { Safety, SnapshotStore } from './open';
-import { dailyDue, keepOne, keepTwo, parseSnapshotName, roomFor, type SnapshotInfo, type SnapshotReason, snapshotName } from './snapshot-policy';
+import { dailyDue, keepOne, keepTwo, MIN_COPY_BYTES, parseSnapshotName, roomFor, type SnapshotInfo, type SnapshotReason, snapshotName } from './snapshot-policy';
 
 /**
  * Where the safety copies live: a **sibling** of the VFS's `.expanses`, never inside it. The sqlite-wasm
@@ -46,7 +46,8 @@ interface Slot {
   read(file: string): Promise<Uint8Array | null>;
   write(file: string, bytes: Uint8Array): Promise<void>;
   remove(file: string): Promise<void>;
-  size(file: string): Promise<number | null>;
+  /** The size of `file` and its first 16 bytes, without reading the rest; null when it is not there. */
+  probe(file: string): Promise<{ size: number; head: Uint8Array } | null>;
   names(): Promise<string[]>;
   estimate(): Promise<{ quota?: number; usage?: number }>;
 }
@@ -67,7 +68,12 @@ interface Slot {
  */
 function whatIsWrongWith(bytes: Uint8Array, expected: number): string | null {
   if (bytes.length !== expected) return `the copy is ${bytes.length} bytes where the database was ${expected}`;
-  if (bytes.length < HEADER) return 'the copy is too short to be a database';
+  return headerProblem(bytes);
+}
+
+/** The header half of {@link whatIsWrongWith}: everything that can be asked of bytes with no expected length. */
+function headerProblem(bytes: Uint8Array): string | null {
+  if (bytes.length < Math.max(HEADER, MIN_COPY_BYTES)) return 'the copy is too short to be a database';
   if (new TextDecoder().decode(bytes.subarray(0, 16)) !== MAGIC) return 'the copy does not begin like a SQLite file';
   const view = new DataView(bytes.buffer, bytes.byteOffset, HEADER);
   // A page size of 1 means 65536; SQLite stores it that way because the field is only two bytes wide.
@@ -109,20 +115,22 @@ async function readManifest(slot: Slot): Promise<Manifest | null> {
  * name written before reasons were part of one falls back to the common reason, `before-migration`, which
  * is also the conservative choice for pruning (it claims no grace period).
  */
-async function fromDirectory(slot: Slot): Promise<SnapshotInfo[]> {
-  const found: SnapshotInfo[] = [];
-  for (const file of await slot.names()) {
-    const parsed = parseSnapshotName(file);
-    if (!parsed) continue;
-    found.push({
-      file,
-      reason: parsed.reason ?? 'before-migration',
-      schemaVersion: parsed.schemaVersion,
-      bytes: (await slot.size(file)) ?? 0,
-      takenAt: parsed.takenAt,
-    });
-  }
-  return found;
+function fromName(file: string, bytes: number): SnapshotInfo | null {
+  const parsed = parseSnapshotName(file);
+  if (!parsed) return null;
+  return { file, reason: parsed.reason ?? 'before-migration', schemaVersion: parsed.schemaVersion, bytes, takenAt: parsed.takenAt };
+}
+
+/**
+ * Whether a file on the device is really a copy: at least one page, the size the manifest recorded when it
+ * recorded one, and SQLite's own first sixteen bytes. Only the header is read — never the whole file — so
+ * listing stays cheap. A write that stopped after the file was made leaves exactly the 0-byte copy this
+ * refuses, which the recovery screen used to offer as "the last good copy".
+ */
+function looksWhole(found: { size: number; head: Uint8Array } | null, recorded?: number): boolean {
+  if (!found || found.size < MIN_COPY_BYTES) return false;
+  if (recorded !== undefined && found.size !== recorded) return false;
+  return decode(found.head.subarray(0, 16)) === MAGIC;
 }
 
 async function writeManifest(slot: Slot, manifest: Manifest): Promise<void> {
@@ -142,15 +150,33 @@ function storeOver(slot: Slot): SnapshotStore {
    * by a prune that stopped half way — is listed, restorable and, crucially, a pruning candidate. Invisible
    * orphans leaked storage permanently, because nothing could ever name them for deletion.
    */
-  const present = async (): Promise<SnapshotInfo[]> => {
-    const names = new Set(await slot.names());
+  const survey = async (): Promise<{ valid: SnapshotInfo[]; invalid: string[] }> => {
+    const names = await slot.names();
     const manifest = await readManifest(slot);
-    // A manifest that names a file which is gone must never offer a Restore that cannot happen.
-    const listed = (manifest?.snapshots ?? []).filter((snapshot) => names.has(snapshot.file));
-    const known = new Set(listed.map((snapshot) => snapshot.file));
-    const orphans = (await fromDirectory(slot)).filter((snapshot) => !known.has(snapshot.file));
-    return [...listed, ...orphans];
+    const recorded = new Map((manifest?.snapshots ?? []).map((snapshot) => [snapshot.file, snapshot]));
+    const valid: SnapshotInfo[] = [];
+    const invalid: string[] = [];
+    // The manifest's entries first, in its order; then every copy on disk it does not mention.
+    const onDisk = new Set(names);
+    const ordered = [...[...recorded.keys()].filter((file) => onDisk.has(file)), ...names.filter((file) => !recorded.has(file))];
+    for (const file of ordered) {
+      const known = recorded.get(file);
+      const info = known ?? fromName(file, 0);
+      // Not one of ours: the manifest itself, the failure log, anything else the directory holds.
+      if (!info) continue;
+      const found = await slot.probe(file).catch(() => null);
+      if (!looksWhole(found, known?.bytes)) invalid.push(file);
+      else valid.push(known ?? { ...info, bytes: found!.size });
+    }
+    return { valid, invalid };
   };
+
+  /*
+   * A manifest entry whose file is gone is dropped (it must never offer a Restore that cannot happen), and a
+   * file that is not whole is left out entirely: not listed, not counted as the day's copy, not kept by
+   * pruning, and deleted at the next copy that is written and read back.
+   */
+  const present = async (): Promise<SnapshotInfo[]> => (await survey()).valid;
 
   const rewrite = async (snapshots: SnapshotInfo[]): Promise<void> => {
     const manifest = await readManifest(slot);
@@ -193,10 +219,13 @@ function storeOver(slot: Slot): SnapshotStore {
 
       const info: SnapshotInfo = { file, reason, schemaVersion, bytes: bytes.length, takenAt };
       // Written first, pruned second, so there is never a moment with zero copies on the device.
-      const others = (await present()).filter((snapshot) => snapshot.file !== file);
+      const { valid, invalid } = await survey();
+      const others = valid.filter((snapshot) => snapshot.file !== file);
       const doomed = room === 'prune-first' ? keepOne(others, info) : keepTwo(others, info);
       await rewrite([info, ...others.filter((snapshot) => !doomed.some((gone) => gone.file === snapshot.file))]);
       for (const snapshot of doomed) await slot.remove(snapshot.file).catch(() => undefined);
+      // And what was never whole goes too, now that a copy that is has been read back.
+      for (const broken of invalid) if (broken !== file) await slot.remove(broken).catch(() => undefined);
       return info;
     },
 
@@ -238,6 +267,34 @@ function storeOver(slot: Slot): SnapshotStore {
   };
 }
 
+/**
+ * One file written whole, or not at all.
+ *
+ * `getFileHandle(…, { create: true })` puts the name in the directory before a byte is written, so a write
+ * that throws — or an app killed — after it leaves an empty file under a valid copy's name. Any failure
+ * after the create removes it. (A kill cannot be caught; `looksWhole` keeps that file from ever being listed.)
+ */
+export async function writeWhole(
+  dir: Pick<FileSystemDirectoryHandle, 'getFileHandle' | 'removeEntry'>,
+  file: string,
+  bytes: Uint8Array,
+): Promise<void> {
+  const handle = await dir.getFileHandle(file, { create: true });
+  try {
+    const writable = await handle.createWritable();
+    try {
+      // A cast, not a copy: lib.dom insists the view sit on an ArrayBuffer rather than an ArrayBufferLike,
+      // and re-wrapping fifty megabytes to satisfy it would be the most expensive no-op in the app.
+      await writable.write(bytes as Uint8Array<ArrayBuffer>);
+    } finally {
+      await writable.close();
+    }
+  } catch (error) {
+    await dir.removeEntry(file).catch(() => undefined);
+    throw error;
+  }
+}
+
 async function safetyDirectory(): Promise<FileSystemDirectoryHandle> {
   if (!navigator.storage?.getDirectory) throw new Error('This browser keeps no private storage for Expanses.');
   const root = await navigator.storage.getDirectory();
@@ -262,22 +319,12 @@ export function opfsSnapshots(): SnapshotStore {
       const found = await handle?.getFile().catch(() => null);
       return found ? new Uint8Array(await found.arrayBuffer()) : null;
     },
-    size: async (file) => {
+    probe: async (file) => {
       const handle = await fileHandle(file).catch(() => null);
       const found = await handle?.getFile().catch(() => null);
-      return found ? found.size : null;
+      return found ? { size: found.size, head: new Uint8Array(await found.slice(0, 16).arrayBuffer()) } : null;
     },
-    write: async (file, bytes) => {
-      const handle = await fileHandle(file, true);
-      const writable = await handle.createWritable();
-      try {
-        // A cast, not a copy: lib.dom insists the view sit on an ArrayBuffer rather than an ArrayBufferLike,
-        // and re-wrapping fifty megabytes to satisfy it would be the most expensive no-op in the app.
-        await writable.write(bytes as Uint8Array<ArrayBuffer>);
-      } finally {
-        await writable.close();
-      }
-    },
+    write: async (file, bytes) => writeWhole(await safetyDirectory(), file, bytes),
     remove: async (file) => {
       const dir = await safetyDirectory();
       await dir.removeEntry(file);
@@ -305,7 +352,10 @@ export function memorySnapshots(
 ): SnapshotStore {
   return storeOver({
     read: async (file) => files.get(file) ?? null,
-    size: async (file) => files.get(file)?.length ?? null,
+    probe: async (file) => {
+      const found = files.get(file);
+      return found ? { size: found.length, head: found.slice(0, 16) } : null;
+    },
     write: async (file, bytes) => {
       files.set(file, bytes.slice());
     },
@@ -345,6 +395,10 @@ export async function restoreSnapshot(deps: {
   restore: (bytes: Uint8Array) => Promise<void>;
 }): Promise<void> {
   const chosen = await deps.snapshots.read(deps.file);
+  // Checked before anything is kept or replaced: bytes that are not a whole database would only be refused
+  // by the engine afterwards, with a before-restore copy already written that pruned a good one away.
+  const wrong = headerProblem(chosen);
+  if (wrong) throw new Error(`That copy cannot be put back: ${wrong}.`);
   try {
     const live = await deps.live();
     if (live?.length) await deps.snapshots.write(live, 'before-restore', 0);

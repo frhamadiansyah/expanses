@@ -21,6 +21,12 @@ export interface SnapshotInfo {
   takenAt: string;
 }
 
+/**
+ * The smallest file that can be a copy of a database: one 512-byte page, SQLite's smallest. Anything less
+ * is a write that stopped half way, and is never listed, kept or offered.
+ */
+export const MIN_COPY_BYTES = 512;
+
 const REASONS: SnapshotReason[] = ['before-migration', 'before-restore', 'before-start-fresh', 'before-delete', 'daily'];
 
 const NAME_PATTERN = new RegExp(`^snapshot-(\\d{4})(\\d{2})(\\d{2})T(\\d{2})(\\d{2})(\\d{2})Z-v(\\d+)(?:-(${REASONS.join('|')}))?\\.sqlite3$`);
@@ -79,7 +85,21 @@ function withinStartFreshGrace(snapshot: SnapshotInfo, now: Date): boolean {
 export function keepTwo(list: SnapshotInfo[], incoming: SnapshotInfo, now: Date = new Date()): SnapshotInfo[] {
   const sorted = [...list].sort((a, b) => b.takenAt.localeCompare(a.takenAt));
   const [, ...rest] = sorted; // the newest of `list` survives alongside `incoming`; `incoming` itself is never a candidate.
-  return rest.filter((snapshot) => !withinStartFreshGrace(snapshot, now));
+  const spared = largerThanIncoming(list, incoming);
+  return rest.filter((snapshot) => !withinStartFreshGrace(snapshot, now) && snapshot.file !== spared?.file);
+}
+
+/**
+ * The largest good copy, when `incoming` is less than half its size — or null.
+ *
+ * A database does not halve in a day. A copy that small next to the biggest one held is far likelier a
+ * device that has just lost most of its data than a user who deleted it, and two such copies in a row
+ * would otherwise prune away the last one that held everything. A `before-restore` copy is never the one
+ * spared: it is the undo of a restore, not a good copy.
+ */
+function largerThanIncoming(list: SnapshotInfo[], incoming: SnapshotInfo): SnapshotInfo | null {
+  const largest = list.filter((snapshot) => snapshot.reason !== 'before-restore').sort((a, b) => b.bytes - a.bytes)[0];
+  return largest && incoming.bytes < largest.bytes / 2 ? largest : null;
 }
 
 /**
@@ -87,6 +107,9 @@ export function keepTwo(list: SnapshotInfo[], incoming: SnapshotInfo, now: Date 
  * them, except a copy taken before "Start fresh" that is still inside its seven-day grace. `incoming` is
  * never a candidate, for the same reason it is never one in {@link keepTwo} — and because this runs only
  * after that copy has been written and read back, there is never a moment with no copy on the device.
+ *
+ * It does not spare the large copy {@link keepTwo} spares. This is the no-room path, where keeping it would
+ * mean keeping no new copy at all; a device that full is told so by `roomFor` before it gets here.
  */
 export function keepOne(list: SnapshotInfo[], incoming: SnapshotInfo, now: Date = new Date()): SnapshotInfo[] {
   return list.filter((snapshot) => snapshot.file !== incoming.file && !withinStartFreshGrace(snapshot, now));
