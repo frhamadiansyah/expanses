@@ -86,6 +86,22 @@ test('a purchase abroad is read in its own currency, and records as what the car
   await expect(page.getByRole('main')).toContainText('1.037.300');
 });
 
+test('a purchase abroad that is tapped opens at once, and its charge fills from the day’s rate', async ({ page }) => {
+  // One won is twelve rupiah on the day: 94.300 won is 1.131.600 rupiah.
+  await page.route('https://api.frankfurter.dev/**', (route) => {
+    const url = new URL(route.request().url());
+    return route.fulfill({ json: [{ date: url.searchParams.get('date'), base: 'KRW', quote: 'IDR', rate: 12 }] });
+  });
+  await openCard(page, { name: 'Travel card', last4: '5512' });
+  await page.goto('/review');
+  await inject(page, [ABROAD]);
+
+  await page.getByTestId('draft-row').filter({ hasText: 'TOKO KOPI CONTOH' }).click();
+  const form = page.getByRole('form', { name: 'Review TOKO KOPI CONTOH' });
+  await expect(form.getByRole('button', { name: 'Amount', exact: true })).toContainText('94.300');
+  await expect(form.getByRole('button', { name: 'Charged in IDR' })).toHaveText('1.131.600');
+});
+
 test('the form refuses to record a purchase abroad until the charge is typed, when no rate is to hand', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await openCard(page, { name: 'Travel card', last4: '5512' });

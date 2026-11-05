@@ -151,8 +151,9 @@ export function ReviewPage() {
 
   /**
    * Fetches the day's rate for a draft read in a currency its account does not hold, when this device has none for
-   * that day. Only a record gesture calls it — it is this queue's Save, and the fetch belongs to Save — never a draft
-   * merely opened. Null when the rates could not be read at all.
+   * that day. A record gesture waits for it; a draft merely opened asks for it behind the form (`openDraft`), because
+   * the owner asked for the charge to be worked out, and only the two currency codes and the day leave the device.
+   * Null when the rates could not be read at all.
    */
   async function dayRates(draft: DraftRow, pair: { from: string; to: string }) {
     const rates = await resolveRates([pair.from, pair.to], draft.occurredOn).catch(() => null);
@@ -302,6 +303,16 @@ export function ReviewPage() {
     setEditing(draft.id);
   }
 
+  /**
+   * Opens the form on a draft that was tapped. The form opens at once; for a figure in a currency its account does
+   * not hold, the day's rate is fetched behind it, and the untouched "Charged in …" row fills when it arrives.
+   */
+  function openDraft(draft: DraftRow) {
+    setEditing(draft.id);
+    const pair = foreignPair(draft, accounts);
+    if (pair) void dayRates(draft, pair);
+  }
+
   /** What stands behind a row dragged left: Discard, undoable from the toast. */
   const discardActions = (draft: DraftRow): SwipeAction[] => [
     { label: 'Discard', name: `Discard ${draft.description}`, icon: Trash2, tone: 'destructive', onPress: () => void discard(draft, true) },
@@ -428,7 +439,7 @@ export function ReviewPage() {
           accounts={accounts}
           sourceOf={sourceOf}
           busy={busy}
-          onOpen={(draft) => setEditing(draft.id)}
+          onOpen={openDraft}
           onSwipeRight={swipeRecord}
           discardActions={discardActions}
           recordHint={recordHint}
@@ -442,7 +453,7 @@ export function ReviewPage() {
           rowTestId={() => 'draft-row'}
           /* A row opens the sheet on a phone, and the sheet holds what the row had no width for. A desktop reads
              the very same fields as columns and has nowhere to open. */
-          detail={{ kind: 'screen', open: (draft) => setEditing(draft.id) }}
+          detail={{ kind: 'screen', open: openDraft }}
           rowSwipe={(draft) => ({ onSwipeRight: () => swipeRecord(draft), rightHint: recordHint, leftActions: discardActions(draft) })}
           shape={{
             key: (draft) => draft.id,
