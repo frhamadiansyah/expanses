@@ -60,7 +60,7 @@ import { ReceiptLink } from './ReceiptLink';
 import { SelectBar } from './SelectBar';
 import { AmountExtra, DraftSubtitle, PaidWith, TransactionRow, useRecategorise } from './TransactionRow';
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
-import { isQuickEditable, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
+import { isQuickEditable, keepsReadFigure, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
 import { accountsWithTransactions, amountExtraParts, billTagOf, buildRows, sharedTransferRow, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, hasNotCountedPart, type ListFilters, type ListRow, outsideEvents, type Sort, sortRows, totals } from './list-model';
 import { useAssetValues, useTrades } from '../networth/queries';
@@ -705,7 +705,7 @@ export function TransactionsPage() {
     setElsewhereId(null);
     if (row.kind === 'draft') {
       setEditingId(null);
-      setEditing({ kind: 'draft', id: row.id, values: quickFromDraft(row.draft!, today) });
+      setEditing({ kind: 'draft', id: row.id, values: quickFromDraft(row.draft!, today, accounts) });
       return;
     }
     const tx = row.tx!;
@@ -779,8 +779,12 @@ export function TransactionsPage() {
   async function saveDraft(id: string, values: QuickValues, record: boolean): Promise<boolean> {
     const fields = draftFields(values);
     if (!record) {
+      // A cell that never showed the draft's figure (read in another currency than the account's) says nothing of it.
+      const draft = (drafts.data ?? []).find((d) => d.id === id);
+      const { amountMinor: _amount, currency: _currency, ...rest } = fields;
+      const patch = draft && keepsReadFigure(draft, values, today, accounts) ? rest : fields;
       return run(id, async () => {
-        await editDraft(database, ws, id, fields);
+        await editDraft(database, ws, id, patch);
         close();
       });
     }

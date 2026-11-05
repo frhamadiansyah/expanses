@@ -182,6 +182,20 @@ describe('readCapture', () => {
     expect(reading.type.value).toBe('spent');
   });
 
+  it('reads a purchase abroad in the currency the bank printed: the merchant, the card, the day and the foreign figure', () => {
+    const reading = readCapture(
+      notification('Terima kasih utk trx kartukredit XXXX5512 tgl 03-11-2026 14:22:07 di TOKO KOPI CONTOH KRW94.300,00. Jika trx tidak Anda kenal, hub 10000', 'BANKCONTOH'),
+      WORDS,
+      null,
+    );
+    expect(reading.skipped).toBeNull();
+    expect(reading.amount?.value).toEqual({ minor: 94_300, currency: 'KRW' });
+    expect(reading.name?.value).toBe('TOKO KOPI CONTOH');
+    expect(reading.accountHint).toBe('5512');
+    expect(reading.occurredAt?.value).toBe('2026-11-03T14:22');
+    expect(reading.type.value).toBe('spent');
+  });
+
   it('reads money received, and who sent it', () => {
     const reading = readCapture(notification('Dana masuk Rp 5.000.000 dari PT MAJU JAYA'), WORDS, null);
     expect(reading.skipped).toBeNull();

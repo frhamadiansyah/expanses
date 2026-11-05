@@ -16,6 +16,7 @@ import {
   type IngestResult,
   ingestCaptures,
   purgeCaptureLeftovers,
+  rereadUnreadDrafts,
   type WorkspaceContext,
 } from '@expanses/db';
 import { App as Shell } from '@capacitor/app';
@@ -38,6 +39,24 @@ export interface CaptureBridge {
 const today = () => isoDate();
 
 const nothing = (): IngestResult => ({ drafts: 0, merged: 0, skipped: 0, discardedImages: [] });
+
+/** What one drain did: what the captures became, and how many drafts already waiting were read again. */
+export interface DrainResult extends IngestResult {
+  /** Messages an earlier reader left at 0 that now have their figure (`rereadUnreadDrafts`). */
+  reread: number;
+}
+
+/**
+ * Reads again the messages still waiting at 0. Best effort, like the sweep: a draft it could not reach is as it was,
+ * and the next drain tries again.
+ */
+async function rereadWaiting(database: Database, on: string): Promise<number> {
+  try {
+    return await rereadUnreadDrafts(database, { today: on });
+  } catch {
+    return 0;
+  }
+}
 
 /**
  * Pictures nothing keeps any more go from the phone, and so does whatever capture leaves behind past its week (skipped
@@ -72,16 +91,18 @@ export async function drainCaptures(
   ws: WorkspaceContext,
   bridge: CaptureBridge = native,
   on = today(),
-): Promise<IngestResult> {
+): Promise<DrainResult> {
   let found: number | null = null;
   try {
     // Made whole here as well as in `native`: a stand-in bridge hands captures over the way the phone does.
     const captures = (await bridge.drainCaptures()).captures.map(wholeCapture);
     found = captures.length;
+    // Before anything new is placed: a capture arriving now is matched against what the waiting drafts say.
+    const reread = await rereadWaiting(database, on);
     if (captures.length === 0) {
       await tidyImages(database, bridge, [], on);
       lastReport = { at: new Date().toISOString(), found, result: nothing(), error: null };
-      return nothing();
+      return { ...nothing(), reread };
     }
     // A single screenshot shared from Photos that is a statement page goes to the card picker, exactly as one
     // picked with "Choose from Photos" does: offered once the drafts are stored, its picture let go.
@@ -95,7 +116,7 @@ export async function drainCaptures(
     const letGo = statements.flatMap((statement) => (statement.imageFile ? [statement.imageFile] : []));
     await tidyImages(database, bridge, [...result.discardedImages, ...letGo], on);
     lastReport = { at: new Date().toISOString(), found, result, error: null };
-    return result;
+    return { ...result, reread };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     lastReport = { at: new Date().toISOString(), found, result: null, error: message };
@@ -202,7 +223,7 @@ async function exclusive<T>(work: () => Promise<T>): Promise<T> {
 }
 
 /** Drains now, at the owner's asking (Settings → Capture): the outcome, or the error a quiet drain would swallow. */
-export function drainNow(database: Database, ws: WorkspaceContext, bridge: CaptureBridge = native): Promise<IngestResult> {
+export function drainNow(database: Database, ws: WorkspaceContext, bridge: CaptureBridge = native): Promise<DrainResult> {
   return exclusive(() => drainCaptures(database, ws, bridge));
 }
 
@@ -220,7 +241,8 @@ export function watchCaptures(
   const drainOnce = async () => {
     try {
       const result = await drainCaptures(database, ws, bridge);
-      if (!stopped && (result.drafts > 0 || result.merged > 0)) onCaptured(result);
+      // A draft read again changed too: the queue on screen is told, as it is of a new one.
+      if (!stopped && (result.drafts > 0 || result.merged > 0 || result.reread > 0)) onCaptured(result);
     } catch {
       // A drain that fails before its write commits is never acknowledged, so the captures stay in the holding area
       // and the next activation reads them again. There is nothing to tell the owner here — a capture is not

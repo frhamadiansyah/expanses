@@ -831,6 +831,18 @@ function amounts(
   };
 }
 
+/**
+ * What the account was charged for a figure typed in another currency — `amounts`' own reading of the "Charged in …"
+ * row, for a caller that posts by a rule of its own (a capture's draft, which `confirmDraft` records). Null when the
+ * row does not apply; throws, in `amounts`' words, when it does and holds no positive figure.
+ */
+export function chargedFigure(draft: FormDraft, accounts: readonly AccountRow[]): { amountMinor: number; exactHundredths: number | null } | null {
+  const account = accountOf(draft, accounts);
+  if (!account || !chargedInNeeded(draft, accounts)) return null;
+  const { amountMinor, exactHundredths } = amounts(draft, account, typedCurrency(draft, accounts), null);
+  return { amountMinor, exactHundredths };
+}
+
 function typedMcc(draft: FormDraft): string | null {
   const mcc = draft.mcc.trim();
   if (!mcc) return null;
@@ -1576,10 +1588,30 @@ export function estimatedCharge({
 }): string | null {
   if (rate === null || !currency || !accountCurrency || currency === accountCurrency) return null;
   const minor = evaluateAmount(amount, currency);
-  if (minor === null || minor <= 0) return null;
+  if (minor === null) return null;
+  const charged = estimatedChargeMinor({ minor, currency, accountCurrency, rate });
+  return charged === null ? null : minorToMajorString(charged, accountCurrency);
+}
+
+/**
+ * `estimatedCharge`'s conversion, for a figure already in minor units: what a caller with no typed text converts by —
+ * a captured draft recorded from the queue — so the charge it posts is the one this form's row would have opened on.
+ */
+export function estimatedChargeMinor({
+  minor,
+  currency,
+  accountCurrency,
+  rate,
+}: {
+  minor: number;
+  currency: string;
+  accountCurrency: string;
+  rate: number | null;
+}): number | null {
+  if (rate === null || !currency || !accountCurrency || currency === accountCurrency) return null;
+  if (minor <= 0) return null;
   const charged = convertMinor(minor, currency, accountCurrency, rate);
-  if (charged <= 0) return null;
-  return minorToMajorString(charged, accountCurrency);
+  return charged > 0 ? charged : null;
 }
 
 /**

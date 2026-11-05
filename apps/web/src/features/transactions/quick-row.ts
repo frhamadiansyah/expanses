@@ -63,15 +63,30 @@ export function quickFromTransaction(tx: TransactionView, today: string): QuickV
   };
 }
 
-export function quickFromDraft(draft: DraftRow, today: string): QuickValues {
+/**
+ * A draft's cells. The amount cell is typed, read and recorded in the paying account's currency, so a figure read in
+ * another one (a purchase abroad, in the merchant's figure) is left out of it: shown there it would be recorded as
+ * the account's own money. Review is where that figure is kept and its charge asked.
+ */
+export function quickFromDraft(draft: DraftRow, today: string, accounts: readonly AccountRow[]): QuickValues {
+  const settled = accounts.find((a) => a.id === draft.accountId)?.currency;
+  const own = !settled || settled === draft.currency;
   return {
     date: ISO.test(draft.occurredOn) ? shortDate(draft.occurredOn, today) : draft.occurredOn,
     description: draft.description,
-    amount: draft.amountMinor > 0 ? minorToMajorString(draft.amountMinor, draft.currency) : '',
+    amount: own && draft.amountMinor > 0 ? minorToMajorString(draft.amountMinor, draft.currency) : '',
     accountId: draft.accountId ?? '',
     cardId: draft.cardId ?? '',
     categoryId: draft.categoryAccountId ?? '',
   };
+}
+
+/**
+ * Whether a draft row's empty amount cell says nothing about the draft's figure: the cell never showed it
+ * (`quickFromDraft`), so saving the row with the cell still empty must not write the figure away.
+ */
+export function keepsReadFigure(draft: DraftRow, values: QuickValues, today: string, accounts: readonly AccountRow[]): boolean {
+  return draft.amountMinor !== 0 && values.amount.trim() === '' && quickFromDraft(draft, today, accounts).amount === '';
 }
 
 /** Reads the cells: either everything a purchase needs, or the list of what is missing, in cell order. */

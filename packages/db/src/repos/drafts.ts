@@ -2,6 +2,7 @@ import { expenseLines, incomeLines, type Reading, transferLines, uuidv7 } from '
 import { and, asc, eq, getTableColumns, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
+import { accounts } from '../schema';
 import { draftTransactions } from '../schema-drafts';
 import { draftExactExists, exactForLinesTx, isExactFigure } from './exact-column';
 import { existingExternalRefs } from './imports';
@@ -299,29 +300,35 @@ export async function editDraft(
   database: Database,
   ws: WorkspaceContext,
   id: string,
-  patch: Partial<Pick<NewDraft, 'occurredOn' | 'description' | 'amountMinor' | 'exactHundredths' | 'currency' | 'kind' | 'accountId' | 'toAccountId' | 'categoryAccountId' | 'cardId'>>,
+  patch: DraftEdit,
 ): Promise<void> {
+  await database.transaction((tx) => editDraftTx(tx, ws, id, patch));
+}
+
+/** What `editDraft` can change about a draft. */
+export type DraftEdit = Partial<Pick<NewDraft, 'occurredOn' | 'description' | 'amountMinor' | 'exactHundredths' | 'currency' | 'kind' | 'accountId' | 'toAccountId' | 'categoryAccountId' | 'cardId'>>;
+
+/** `editDraft` inside a transaction already running: a draft read again is corrected beside the rest of what that writes. */
+export async function editDraftTx(tx: Db, ws: WorkspaceContext, id: string, patch: DraftEdit): Promise<void> {
   const { exactHundredths, ...fields } = patch;
-  await database.transaction(async (tx) => {
-    const where = and(eq(draftTransactions.workspaceId, ws.workspaceId), eq(draftTransactions.id, id), eq(draftTransactions.status, 'pending'));
-    const [before] = await tx
-      .select({ amountMinor: draftTransactions.amountMinor, currency: draftTransactions.currency, kind: draftTransactions.kind })
-      .from(draftTransactions)
-      .where(where);
-    if (!before) return;
-    if (Object.keys(fields).length > 0) await tx.update(draftTransactions).set(fields).where(where);
-    if (!(await draftExactExists(tx))) return;
-    const moved =
-      (fields.amountMinor !== undefined && fields.amountMinor !== before.amountMinor) ||
-      (fields.currency !== undefined && fields.currency !== before.currency) ||
-      (fields.kind !== undefined && fields.kind !== before.kind);
-    if (exactHundredths !== undefined) {
-      const kept = isExactFigure(exactHundredths) && exactHundredths % 100 !== 0 ? exactHundredths : null;
-      await tx.run(sql`UPDATE draft_transactions SET exact_hundredths = ${kept} WHERE id = ${id}`);
-    } else if (moved) {
-      await tx.run(sql`UPDATE draft_transactions SET exact_hundredths = NULL WHERE id = ${id}`);
-    }
-  });
+  const where = and(eq(draftTransactions.workspaceId, ws.workspaceId), eq(draftTransactions.id, id), eq(draftTransactions.status, 'pending'));
+  const [before] = await tx
+    .select({ amountMinor: draftTransactions.amountMinor, currency: draftTransactions.currency, kind: draftTransactions.kind })
+    .from(draftTransactions)
+    .where(where);
+  if (!before) return;
+  if (Object.keys(fields).length > 0) await tx.update(draftTransactions).set(fields).where(where);
+  if (!(await draftExactExists(tx))) return;
+  const moved =
+    (fields.amountMinor !== undefined && fields.amountMinor !== before.amountMinor) ||
+    (fields.currency !== undefined && fields.currency !== before.currency) ||
+    (fields.kind !== undefined && fields.kind !== before.kind);
+  if (exactHundredths !== undefined) {
+    const kept = isExactFigure(exactHundredths) && exactHundredths % 100 !== 0 ? exactHundredths : null;
+    await tx.run(sql`UPDATE draft_transactions SET exact_hundredths = ${kept} WHERE id = ${id}`);
+  } else if (moved) {
+    await tx.run(sql`UPDATE draft_transactions SET exact_hundredths = NULL WHERE id = ${id}`);
+  }
 }
 
 /**
@@ -354,6 +361,13 @@ export interface ConfirmDraftOptions {
    * transaction added by hand would. The figure, accounts and category are the draft's own, written first.
    */
   extras?: Pick<PostTransactionInput, 'eventId' | 'channel' | 'excludedFromReport' | 'mcc' | 'photoIds'>;
+  /**
+   * What the paying account was charged, in its own currency, for a draft read in another one (a purchase abroad, in
+   * the merchant's figure). It is the figure that posts; the draft's own is kept beside it as the original, the way
+   * the Add form's "Charged in …" row is. Its cents, when typed with any, are its own. Unread for a draft already in
+   * its account's currency.
+   */
+  charged?: { amountMinor: number; exactHundredths?: number | null } | null;
 }
 
 /** `confirmDraft` inside a transaction already running: a statement check confirms the drafts it matched in its own. */
@@ -376,9 +390,24 @@ export async function confirmDraftTx(
     throw new DraftError('NO_CATEGORY', 'Choose a category before confirming');
   }
 
+  /*
+   * A figure read in a currency the paying account does not hold cannot post as it stands: the account's lines are in
+   * its own currency. An expense or money received posts what the account was charged, which only the caller knows,
+   * and keeps the read figure as the original. A transfer has no such pair: its figure is the From account's own.
+   */
+  const [paying] = await tx.select({ currency: accounts.currency }).from(accounts).where(eq(accounts.id, draft.accountId));
+  const settled = paying?.currency ?? draft.currency;
+  const foreign = settled !== draft.currency;
+  if (foreign && draft.kind === 'transfer') throw new DraftError('TRANSFER_CURRENCY', `Enter the transfer amount in ${settled}`);
+  const charged = foreign ? (opts.charged ?? null) : null;
+  if (foreign && (charged === null || !Number.isSafeInteger(charged.amountMinor) || charged.amountMinor <= 0)) {
+    throw new DraftError('NO_CHARGED_AMOUNT', `Enter the amount charged in ${settled}`);
+  }
+  if (foreign && draft.amountMinor === 0) throw new DraftError('NO_AMOUNT', 'Enter the amount before confirming');
+
   // The magnitude: the draft's own sign is the reader's convention, and the lines decide the direction.
-  const amountMinor = Math.abs(draft.amountMinor);
-  const currency = draft.currency;
+  const amountMinor = charged ? charged.amountMinor : Math.abs(draft.amountMinor);
+  const currency = settled;
   const lines =
     draft.kind === 'income'
       ? incomeLines({ incomeAccountId: draft.categoryAccountId!, depositAccountId: draft.accountId, amountMinor, currency })
@@ -387,8 +416,10 @@ export async function confirmDraftTx(
         : expenseLines({ categoryAccountId: draft.categoryAccountId!, paymentAccountId: draft.accountId, amountMinor, currency });
 
   // The figure read with cents, on a single amount only: a transfer stays whole. A figure the amount no longer rounds
-  // from (a merge or a pairing changed it) is not posted: a capture's cents are best read, never refused over.
-  const exactHundredths = draft.kind === 'transfer' ? null : await exactForLinesTx(tx, await draftExactOf(tx, id), lines);
+  // from (a merge or a pairing changed it) is not posted: a capture's cents are best read, never refused over. The
+  // cents read on a foreign figure are that figure's, not the charge's: what posts then is the charge's own.
+  const cents = charged ? (charged.exactHundredths ?? null) : await draftExactOf(tx, id);
+  const exactHundredths = draft.kind === 'transfer' ? null : await exactForLinesTx(tx, cents, lines);
 
   const keptImage = opts.keepPhoto === true ? draft.imageFile : null;
   const now = new Date().toISOString();
@@ -401,6 +432,7 @@ export async function confirmDraftTx(
     cardId: draft.cardId,
     lines,
     exactHundredths,
+    ...(charged ? { originalCurrency: draft.currency, originalAmountMinor: Math.abs(draft.amountMinor) } : {}),
     ...opts.extras,
     setAside: opts.setAside ?? null,
   });

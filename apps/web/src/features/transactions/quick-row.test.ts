@@ -1,7 +1,7 @@
 import { matchPayment } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { isQuickEditable, parsePastedRows, payerOptions, paymentOptions, placeholderLabel, quickFromDraft, quickFromTransaction, quickToInput, readQuick, shortDate, valuesFromCells, withoutPlaceholders } from './quick-row';
+import { isQuickEditable, keepsReadFigure, parsePastedRows, payerOptions, paymentOptions, placeholderLabel, quickFromDraft, quickFromTransaction, quickToInput, readQuick, shortDate, valuesFromCells, withoutPlaceholders } from './quick-row';
 
 const TODAY = '2026-09-15';
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], currency: string | null, extra: Partial<AccountRow> = {}): AccountRow => ({
@@ -87,7 +87,62 @@ describe('cells', () => {
       externalRef: null,
       transactionId: null,
     };
-    expect(quickFromDraft(draft, TODAY)).toEqual({ date: '31/02', description: 'APOTEK', amount: '', accountId: '', cardId: '', categoryId: '' });
+    expect(quickFromDraft(draft, TODAY, accounts)).toEqual({ date: '31/02', description: 'APOTEK', amount: '', accountId: '', cardId: '', categoryId: '' });
+  });
+
+  describe('a draft read in a currency its account does not hold', () => {
+    const waiting = (over: Partial<DraftRow> = {}): DraftRow => ({
+      id: 'd2',
+      source: 'notification',
+      kind: 'expense',
+      status: 'pending',
+      rawPayload: null,
+      occurredOn: '2026-09-12',
+      description: 'TOKO KOPI CONTOH',
+      amountMinor: 94_300,
+      currency: 'KRW',
+      accountId: 'bonvoy',
+      toAccountId: null,
+      categoryAccountId: 'groceries',
+      cardId: null,
+      sourceId: null,
+      captureIds: [],
+      imageFile: null,
+      reading: null,
+      mergedInto: null,
+      confidence: null,
+      externalRef: null,
+      transactionId: null,
+      ...over,
+    });
+
+    it('leaves the amount cell empty: the cell is typed in the account’s currency, and the figure is not in it', () => {
+      const values = quickFromDraft(waiting(), TODAY, accounts);
+      expect(values).toMatchObject({ amount: '', accountId: 'bonvoy', categoryId: 'groceries', description: 'TOKO KOPI CONTOH' });
+      // So the row asks for its amount rather than offer to record won as rupiah.
+      expect(readQuick(values, accounts, TODAY, 'IDR').needs).toEqual(['amount']);
+    });
+
+    it('shows the figure of a draft in its account’s own currency, and of one with no account yet', () => {
+      expect(quickFromDraft(waiting({ currency: 'IDR' }), TODAY, accounts).amount).toBe('94300');
+      expect(quickFromDraft(waiting({ accountId: null }), TODAY, accounts).amount).toBe('94300');
+      expect(quickFromDraft(waiting({ currency: 'USD', amountMinor: 1_250, accountId: 'wise' }), TODAY, accounts).amount).toBe('12.50');
+    });
+
+    it('keeps the read figure when the row is saved with the cell still empty, and not once a figure is typed', () => {
+      const draft = waiting();
+      const values = quickFromDraft(draft, TODAY, accounts);
+      expect(keepsReadFigure(draft, values, TODAY, accounts)).toBe(true);
+      expect(keepsReadFigure(draft, { ...values, description: 'Kopi sama teman' }, TODAY, accounts)).toBe(true);
+      expect(keepsReadFigure(draft, { ...values, amount: '1034500' }, TODAY, accounts)).toBe(false);
+    });
+
+    it('lets an emptied cell empty a figure the cell was showing, and has nothing to keep on a draft of no figure', () => {
+      const own = waiting({ currency: 'IDR' });
+      expect(keepsReadFigure(own, { ...quickFromDraft(own, TODAY, accounts), amount: '' }, TODAY, accounts)).toBe(false);
+      const none = waiting({ amountMinor: 0 });
+      expect(keepsReadFigure(none, quickFromDraft(none, TODAY, accounts), TODAY, accounts)).toBe(false);
+    });
   });
 });
 
