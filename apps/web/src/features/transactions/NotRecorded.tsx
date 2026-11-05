@@ -2,7 +2,8 @@ import { type DraftRow } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { ChevronRight, CircleAlert } from 'lucide-react';
 import { Money } from '../../ui';
-import { useBookMoney } from '../workspaces/queries';
+import { useBillMoney } from '../bills/queries';
+import { notRecordedTotal } from './not-recorded';
 
 /**
  * Captured spending that has not reached the accounts yet, as one line in the box above the transactions — the
@@ -18,22 +19,12 @@ import { useBookMoney } from '../workspaces/queries';
  * promise of what is waiting, not a posting.
  */
 export function NotRecorded({ drafts }: { drafts: readonly DraftRow[] }) {
-  const money = useBookMoney();
+  // The money that converts a foreign figure even where the workspace reads in the owner's own currency.
+  const money = useBillMoney();
   if (drafts.length === 0) return null;
 
   const read = money.data;
-  const rows =
-    read === undefined
-      ? null
-      : drafts.map((draft) => {
-          const minor = Math.abs(draft.amountMinor);
-          if (!read.converts || draft.currency === read.currency) return { minor, approximate: false };
-          const converted = read.convert(minor, draft.currency, draft.occurredOn);
-          return converted === null ? null : { minor: converted, approximate: true };
-        });
-  const held = rows === null || rows.some((row) => row === null);
-  const total = (rows ?? []).reduce((sum, row) => sum + (row?.minor ?? 0), 0);
-  const approximate = (rows ?? []).some((row) => row?.approximate);
+  const total = read ? notRecordedTotal(drafts, read) : null;
 
   return (
     <Link to="/review" search={{ from: 'cashflow' }} className="flex w-full items-center gap-3 py-3 text-left" data-testid="not-recorded-card">
@@ -44,10 +35,10 @@ export function NotRecorded({ drafts }: { drafts: readonly DraftRow[] }) {
         <span className="block text-sm font-medium">Review transactions</span>
         <span className="block truncate text-xs text-slate-500">{drafts.length} not recorded</span>
       </span>
-      {read && !held && total > 0 && (
+      {read && total && total.minor > 0 && (
         <span className="shrink-0 text-sm font-semibold">
-          {approximate && '~'}
-          <Money minor={total} currency={read.currency} />
+          {total.approximate && '~'}
+          <Money minor={total.minor} currency={read.currency} />
         </span>
       )}
       <ChevronRight size={16} aria-hidden className="shrink-0 text-slate-300" />
