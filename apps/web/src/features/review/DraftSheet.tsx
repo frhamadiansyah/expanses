@@ -1,5 +1,6 @@
 import type { CaptureSource, DraftRow, SetAsideChoice } from '@expanses/db';
 import { useEffect, useState } from 'react';
+import { useAccounts } from '../../lib/queries';
 import { Chevron, FormRows, ROW_BODY, RowGlyph, RowLead } from '../transactions/FormRow';
 import { TransactionCard } from '../transactions/TransactionCard';
 import type { FormDraft } from '../transactions/tx-form';
@@ -49,6 +50,8 @@ export function DraftSheet({
   // form's own choices already, and refilling it would throw away what has been typed since.
   const [prefill] = useState(() => formFromDraft(draft));
   const ask = asksForSourceAccount(draft, source);
+  // What the form's figure is read against: the paying account's currency decides whether a charge is asked too.
+  const accounts = useAccounts().data ?? [];
   // Opened from partway down the queue: the form starts at its top, as a screen of its own does.
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -64,7 +67,7 @@ export function DraftSheet({
       finish={{
         prefill,
         saveLabel: 'Record',
-        canSubmit: (form) => canRecord(form, draft),
+        canSubmit: (form) => canRecord(form, draft, accounts),
         onSubmit: (form, setAside) => onRecord(form, { setAside }),
         accountAsk:
           ask && source

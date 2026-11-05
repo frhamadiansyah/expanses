@@ -13,6 +13,7 @@ import {
   unmerge,
   voidTransaction,
 } from '@expanses/db';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { Check, Camera, Images, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -23,7 +24,7 @@ import { captureBytes, native } from '../../capture/native';
 import { nextWaitingStatement, onWaitingStatement } from '../../capture/statements';
 import { useScanReceipt } from '../../capture/use-scan';
 import { canPayWith } from '../../lib/account-types';
-import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { photos } from '../../photos/store';
 import { cx, Empty, ErrorBox, Select } from '../../ui';
 import { type CornerAction, Figure, LargeTitle, PushedTitle, RecordTable, SCREEN } from '../../ui/native';
@@ -37,11 +38,14 @@ import { CaptureViewer } from './CaptureViewer';
 import { DraftDays } from './DraftDays';
 import { DraftSheet } from './DraftSheet';
 import { keepsPicture } from './keep-picture';
-import { corrections, draftPatch } from './draft-form';
-import type { FormDraft } from '../transactions/tx-form';
+import { corrections, draftPatch, foreignPair, quickCharge } from './draft-form';
+import { chargedFigure, type FormDraft } from '../transactions/tx-form';
 import { useCaptureSources, useDraftCategoryGuesses, useDrafts } from './queries';
 import { SkippedList } from './SkippedList';
 import type { SwipeAction, SwipeHint } from '../../ui/SwipeRow';
+
+/** What a draft's account was charged, in the account's own currency, for a figure read in another one. */
+type Charged = { amountMinor: number; currency: string };
 
 /**
  * Captured spending, waiting to be confirmed.
@@ -60,6 +64,8 @@ import type { SwipeAction, SwipeHint } from '../../ui/SwipeRow';
 export function ReviewPage() {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
+  const queryClient = useQueryClient();
+  const resolveRates = useResolveRates();
   const phone = usePhone();
   const drafts = useDrafts();
   const guesses = useDraftCategoryGuesses(drafts.data ?? []).data;
@@ -125,20 +131,35 @@ export function ReviewPage() {
     await invalidate();
   }
 
-  /** Says what the phone just did, with the way back on the toast. */
-  function resolved(draft: DraftRow, what: 'recorded' | 'discarded', transactionId: string | null, expire?: () => Promise<void>) {
+  /**
+   * Says what the phone just did, with the way back on the toast. A charge worked out from the day's rate is said
+   * with it: nobody saw that figure before it posted.
+   */
+  function resolved(draft: DraftRow, what: 'recorded' | 'discarded', transactionId: string | null, expire?: () => Promise<void>, charged?: Charged | null) {
     setEditing(null);
     void expiring.current?.();
     expiring.current = expire ?? null;
     setToast({
-      text: `${what === 'recorded' ? 'Recorded' : 'Discarded'} ${draft.description}`,
+      text: `${what === 'recorded' ? 'Recorded' : 'Discarded'} ${draft.description}${charged ? ` · ${formatMinor(charged.amountMinor, charged.currency)}` : ''}`,
       undo: () => undo(draft, transactionId),
       expire,
     });
   }
 
   /** A draft whose payment takes promised money: confirmed from the question's sheet once it is answered. */
-  const [asking, setAsking] = useState<{ id: string; door: Door; undoable: boolean; keepPhoto: boolean } | null>(null);
+  const [asking, setAsking] = useState<{ id: string; door: Door; undoable: boolean; keepPhoto: boolean; charged: Charged | null } | null>(null);
+
+  /**
+   * Fetches the day's rate for a draft read in a currency its account does not hold, when this device has none for
+   * that day. Only a record gesture calls it — it is this queue's Save, and the fetch belongs to Save — never a draft
+   * merely opened. Null when the rates could not be read at all.
+   */
+  async function dayRates(draft: DraftRow, pair: { from: string; to: string }) {
+    const rates = await resolveRates([pair.from, pair.to], draft.occurredOn).catch(() => null);
+    // The form's "Charged in …" row reads what is stored, and is never asked twice: it has to hear that a rate just was.
+    await queryClient.invalidateQueries({ queryKey: ['suggested-rate'] });
+    return rates;
+  }
 
   /**
    * Confirms the draft. A purchase that would take promised money gets its question first, in a sheet; money in
@@ -158,8 +179,23 @@ export function ReviewPage() {
         return;
       }
     }
+    /*
+     * A figure in a currency the account does not hold posts as what the account was charged: worked out here at the
+     * day's rate, as the form's own row would open on. Without that rate the form opens instead, and the row is typed.
+     */
+    let charged: Charged | null = null;
+    const pair = foreignPair(draft, accounts);
+    if (pair) {
+      const charge = quickCharge(draft, pair, await dayRates(draft, pair), ws.baseCurrency);
+      if (charge.kind === 'ask') {
+        setEditing(draft.id);
+        return;
+      }
+      charged = { amountMinor: charge.amountMinor, currency: charge.currency };
+    }
     if (draft.kind === 'expense') {
-      const door = spendingDoor(draft.accountId ?? '', Math.max(0, draft.amountMinor));
+      // The door weighs the money that leaves the account, in the account's own currency.
+      const door = spendingDoor(draft.accountId ?? '', charged ? charged.amountMinor : Math.max(0, draft.amountMinor));
       let asks = false;
       try {
         asks = await asksAboutSetAside(database, ws, door);
@@ -168,14 +204,15 @@ export function ReviewPage() {
         return;
       }
       if (asks) {
-        setAsking({ id: draft.id, door: door!, undoable: opts.undoable ?? false, keepPhoto });
+        setAsking({ id: draft.id, door: door!, undoable: opts.undoable ?? false, keepPhoto, charged });
         return;
       }
     }
     await run(draft.id, async () => {
-      const { transactionId, keptImage } = await confirmDraft(database, ws, draft.id, { setAside: null, keepPhoto });
+      const { transactionId, keptImage } = await confirmDraft(database, ws, draft.id, { setAside: null, keepPhoto, charged });
       await settlePicture(draft, transactionId, keptImage);
-      if (opts.undoable) resolved(draft, 'recorded', transactionId);
+      // A charge nobody saw before it posted is always said, with the way back, whichever button recorded it.
+      if (opts.undoable || charged) resolved(draft, 'recorded', transactionId, undefined, charged);
     });
   }
 
@@ -206,14 +243,17 @@ export function ReviewPage() {
    */
   async function recordForm(draft: DraftRow, form: FormDraft, opts: { setAside: SetAsideChoice | null }) {
     setError(null);
-    const patch = draftPatch(form, draft);
-    for (const { field, value } of corrections(form, draft)) {
+    const patch = draftPatch(form, draft, accounts);
+    // What the "Charged in …" row says, when the form shows one: the figure that posts, the draft's own kept beside it.
+    const charged = chargedFigure(form, accounts);
+    for (const { field, value } of corrections(form, draft, accounts)) {
       await learnFromCorrection(database, draft.id, field, value).catch(() => undefined);
     }
     await editDraft(database, ws, draft.id, patch);
     const { transactionId, keptImage } = await confirmDraft(database, ws, draft.id, {
       setAside: opts.setAside,
       keepPhoto: keepsPicture(draft),
+      charged,
       extras: {
         eventId: form.eventId || null,
         channel: form.channel || null,
@@ -247,8 +287,19 @@ export function ReviewPage() {
   function swipeRecord(draft: DraftRow) {
     // A category is a question too: the row no longer prints it, but recording without one is refused all the same.
     const uncategorised = draft.kind !== 'transfer' && !effectiveCategory(draft, guesses);
-    if (uncategorised || captureRowView(draft, sourceOf(draft)).needs.length > 0) setEditing(draft.id);
+    if (uncategorised || captureRowView(draft, sourceOf(draft)).needs.length > 0) void openToFinish(draft);
     else void record(draft, { undoable: true });
+  }
+
+  /**
+   * Opens the form on a draft a record gesture could not finish. For a figure in a currency its account does not
+   * hold, the gesture asked for it to be recorded, so the day's rate is fetched first and the "Charged in …" row
+   * opens on it.
+   */
+  async function openToFinish(draft: DraftRow) {
+    const pair = foreignPair(draft, accounts);
+    if (pair) await dayRates(draft, pair);
+    setEditing(draft.id);
   }
 
   /** What stands behind a row dragged left: Discard, undoable from the toast. */
@@ -284,11 +335,12 @@ export function ReviewPage() {
             const { transactionId, keptImage } = await confirmDraft(database, ws, asking.id, {
               setAside: choice,
               keepPhoto: asking.keepPhoto,
+              charged: asking.charged,
             });
             const draft = list.find((row) => row.id === asking.id);
             if (draft) await settlePicture(draft, transactionId, keptImage);
             await invalidate();
-            if (asking.undoable && draft) resolved(draft, 'recorded', transactionId);
+            if ((asking.undoable || asking.charged) && draft) resolved(draft, 'recorded', transactionId, undefined, asking.charged);
           }}
           onClose={() => setAsking(null)}
         />

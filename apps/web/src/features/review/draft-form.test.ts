@@ -1,7 +1,7 @@
-import type { DraftRow } from '@expanses/db';
+import type { AccountRow, DraftRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { DECIMALS_REFUSAL, emptyForm, type FormDraft } from '../transactions/tx-form';
-import { canRecord, corrections, draftPatch, formFromDraft } from './draft-form';
+import { chargedFigure, DECIMALS_REFUSAL, emptyForm, estimatedCharge, type FormDraft } from '../transactions/tx-form';
+import { canRecord, corrections, draftPatch, foreignPair, formFromDraft, quickCharge } from './draft-form';
 
 const draft = (over: Partial<DraftRow> = {}): DraftRow => ({
   id: 'd1',
@@ -27,6 +27,14 @@ const draft = (over: Partial<DraftRow> = {}): DraftRow => ({
   transactionId: null,
   ...over,
 });
+
+/** What the form is read against: the accounts a draft can name, each with the currency it settles in. */
+const ACCOUNTS = [
+  { id: 'bank', name: 'Everyday bank', kind: 'asset', subtype: 'bank', currency: 'IDR' },
+  { id: 'wallet', name: 'Pay wallet', kind: 'asset', subtype: 'ewallet', currency: 'IDR' },
+  { id: 'visa-account', name: 'Travel card', kind: 'liability', subtype: 'credit_card', currency: 'IDR' },
+  { id: 'cafe', name: 'Cafe', kind: 'expense', subtype: 'category', currency: null },
+] as AccountRow[];
 
 /** The form as the card holds it once the prefill is spread over an empty one. */
 const formOf = (row: DraftRow, over: Partial<FormDraft> = {}): FormDraft => ({ ...emptyForm('book', '2026-10-02'), ...formFromDraft(row), ...over });
@@ -70,7 +78,7 @@ describe('formFromDraft', () => {
 describe('draftPatch', () => {
   it('writes an expense back as money out of the paying account', () => {
     const row = draft();
-    expect(draftPatch(formOf(row, { amount: '52.000', description: ' SOTO BETAWI ' }), row)).toEqual({
+    expect(draftPatch(formOf(row, { amount: '52.000', description: ' SOTO BETAWI ' }), row, ACCOUNTS)).toEqual({
       kind: 'expense',
       accountId: 'bank',
       toAccountId: null,
@@ -85,17 +93,17 @@ describe('draftPatch', () => {
 
   it('writes income back negative, the draft convention for money in', () => {
     const row = draft({ kind: 'income', amountMinor: -899_000 });
-    expect(draftPatch(formOf(row), row)).toMatchObject({ kind: 'income', amountMinor: -899_000, cardId: null });
+    expect(draftPatch(formOf(row), row, ACCOUNTS)).toMatchObject({ kind: 'income', amountMinor: -899_000, cardId: null });
   });
 
   it('writes a tab change across: an expense recorded as income turns negative', () => {
     const row = draft();
-    expect(draftPatch(formOf(row, { mode: 'income' }), row)).toMatchObject({ kind: 'income', amountMinor: -38_000 });
+    expect(draftPatch(formOf(row, { mode: 'income' }), row, ACCOUNTS)).toMatchObject({ kind: 'income', amountMinor: -38_000 });
   });
 
   it('writes a transfer back positive, with its To and no category', () => {
     const row = draft({ kind: 'transfer', toAccountId: 'wallet', categoryAccountId: null });
-    expect(draftPatch(formOf(row), row)).toMatchObject({
+    expect(draftPatch(formOf(row), row, ACCOUNTS)).toMatchObject({
       kind: 'transfer',
       accountId: 'bank',
       toAccountId: 'wallet',
@@ -107,52 +115,52 @@ describe('draftPatch', () => {
 
   it('keeps the card a purchase was made on', () => {
     const row = draft();
-    expect(draftPatch(formOf(row, { cardId: 'visa' }), row).cardId).toBe('visa');
+    expect(draftPatch(formOf(row, { cardId: 'visa' }), row, ACCOUNTS).cardId).toBe('visa');
   });
 
   it('keeps the name that was read when the note is emptied', () => {
     const row = draft();
-    expect(draftPatch(formOf(row, { description: '  ' }), row).description).toBe('TOKO KOPI');
+    expect(draftPatch(formOf(row, { description: '  ' }), row, ACCOUNTS).description).toBe('TOKO KOPI');
   });
 
   it('refuses a figure that is not a positive amount', () => {
     const row = draft();
-    expect(() => draftPatch(formOf(row, { amount: '' }), row)).toThrow(/Amount/);
-    expect(() => draftPatch(formOf(row, { amount: '0' }), row)).toThrow(/Amount/);
+    expect(() => draftPatch(formOf(row, { amount: '' }), row, ACCOUNTS)).toThrow(/Amount/);
+    expect(() => draftPatch(formOf(row, { amount: '0' }), row, ACCOUNTS)).toThrow(/Amount/);
   });
 });
 
 describe('canRecord', () => {
   it('needs an account and a category for spending and income', () => {
     const row = draft();
-    expect(canRecord(formOf(row), row)).toBe(true);
-    expect(canRecord(formOf(row, { moneyId: '' }), row)).toBe(false);
-    expect(canRecord(formOf(row, { categoryId: '' }), row)).toBe(false);
-    expect(canRecord(formOf(row, { mode: 'income' }), row)).toBe(true);
+    expect(canRecord(formOf(row), row, ACCOUNTS)).toBe(true);
+    expect(canRecord(formOf(row, { moneyId: '' }), row, ACCOUNTS)).toBe(false);
+    expect(canRecord(formOf(row, { categoryId: '' }), row, ACCOUNTS)).toBe(false);
+    expect(canRecord(formOf(row, { mode: 'income' }), row, ACCOUNTS)).toBe(true);
   });
 
   it('needs a To, other than the From, for a transfer', () => {
     const row = draft({ kind: 'transfer', categoryAccountId: null, toAccountId: 'wallet' });
-    expect(canRecord(formOf(row), row)).toBe(true);
-    expect(canRecord(formOf(row, { toId: '' }), row)).toBe(false);
-    expect(canRecord(formOf(row, { toId: 'bank' }), row)).toBe(false);
+    expect(canRecord(formOf(row), row, ACCOUNTS)).toBe(true);
+    expect(canRecord(formOf(row, { toId: '' }), row, ACCOUNTS)).toBe(false);
+    expect(canRecord(formOf(row, { toId: 'bank' }), row, ACCOUNTS)).toBe(false);
   });
 
   it('needs a figure', () => {
-    expect(canRecord(formOf(draft(), { amount: '' }), draft())).toBe(false);
+    expect(canRecord(formOf(draft(), { amount: '' }), draft(), ACCOUNTS)).toBe(false);
   });
 });
 
 describe('corrections', () => {
   it('says nothing when the form holds what was read', () => {
     const row = draft();
-    expect(corrections(formOf(row), row)).toEqual([]);
+    expect(corrections(formOf(row), row, ACCOUNTS)).toEqual([]);
   });
 
   it('names each field the owner changed, with what they put there', () => {
     const row = draft({ amountMinor: -38_000, kind: 'income' });
     const form = formOf(row, { amount: '52.000', description: 'SOTO BETAWI', occurredOn: '2026-09-29' });
-    expect(corrections(form, row)).toEqual([
+    expect(corrections(form, row, ACCOUNTS)).toEqual([
       { field: 'amount', value: '52.000' },
       { field: 'name', value: 'SOTO BETAWI' },
       { field: 'date', value: '2026-09-29' },
@@ -161,7 +169,7 @@ describe('corrections', () => {
 
   it('does not count the same figure written another way as a correction', () => {
     const row = draft();
-    expect(corrections(formOf(row, { amount: '38.000' }), row)).toEqual([]);
+    expect(corrections(formOf(row, { amount: '38.000' }), row, ACCOUNTS)).toEqual([]);
   });
 });
 
@@ -171,23 +179,132 @@ describe('cents on a whole-unit currency under review', () => {
     const form = formOf(row);
     // The whole figure that posts is what the form shows.
     expect(form.amount).toBe('12501');
-    const patch = draftPatch(form, row);
+    const patch = draftPatch(form, row, ACCOUNTS);
     expect(patch.amountMinor).toBe(12_501);
     // Left out, so `editDraft` keeps the draft's own figure.
     expect('exactHundredths' in patch).toBe(false);
-    expect(corrections(form, row)).toEqual([]);
+    expect(corrections(form, row, ACCOUNTS)).toEqual([]);
   });
 
   it('writes a figure typed with cents as the rounded amount and the exact figure: up for money out, down for money in', () => {
     const row = draft();
-    expect(draftPatch(formOf(row, { amount: '12500.30' }), row)).toMatchObject({ amountMinor: 12_501, exactHundredths: 1_250_030 });
-    expect(draftPatch(formOf(row, { mode: 'income', amount: '12.345,67' }), row)).toMatchObject({ amountMinor: -12_345, exactHundredths: 1_234_567 });
-    expect(canRecord(formOf(row, { amount: '12500.30' }), row)).toBe(true);
+    expect(draftPatch(formOf(row, { amount: '12500.30' }), row, ACCOUNTS)).toMatchObject({ amountMinor: 12_501, exactHundredths: 1_250_030 });
+    expect(draftPatch(formOf(row, { mode: 'income', amount: '12.345,67' }), row, ACCOUNTS)).toMatchObject({ amountMinor: -12_345, exactHundredths: 1_234_567 });
+    expect(canRecord(formOf(row, { amount: '12500.30' }), row, ACCOUNTS)).toBe(true);
   });
 
   it('refuses cents on a transfer', () => {
     const row = draft({ kind: 'transfer', toAccountId: 'wallet', categoryAccountId: null });
-    expect(canRecord(formOf(row, { amount: '12500.30' }), row)).toBe(false);
-    expect(() => draftPatch(formOf(row, { amount: '12500.30' }), row)).toThrow(DECIMALS_REFUSAL);
+    expect(canRecord(formOf(row, { amount: '12500.30' }), row, ACCOUNTS)).toBe(false);
+    expect(() => draftPatch(formOf(row, { amount: '12500.30' }), row, ACCOUNTS)).toThrow(DECIMALS_REFUSAL);
+  });
+});
+
+describe('a draft read in a currency its account does not hold', () => {
+  /** A purchase abroad on a rupiah card, read in the merchant's own figure. */
+  const abroad = (over: Partial<DraftRow> = {}) => draft({ description: 'TOKO KOPI CONTOH', amountMinor: 94_300, currency: 'KRW', accountId: 'visa-account', ...over });
+
+  it('opens with the merchant’s figure under its own flag, and nothing charged yet', () => {
+    expect(formOf(abroad())).toMatchObject({ amount: '94300', currency: 'KRW', moneyId: 'visa-account', chargedAmount: '' });
+  });
+
+  it('cannot be recorded until the charged figure is there', () => {
+    const row = abroad();
+    expect(canRecord(formOf(row), row, ACCOUNTS)).toBe(false);
+    expect(canRecord(formOf(row, { chargedAmount: '0' }), row, ACCOUNTS)).toBe(false);
+    expect(canRecord(formOf(row, { chargedAmount: '1034500' }), row, ACCOUNTS)).toBe(true);
+    expect(() => chargedFigure(formOf(row), ACCOUNTS)).toThrow('Enter the amount charged in IDR');
+  });
+
+  it('reads the charged figure in the account’s currency, as the Add form posts it', () => {
+    const row = abroad();
+    expect(chargedFigure(formOf(row, { chargedAmount: '1.034.500' }), ACCOUNTS)).toEqual({ amountMinor: 1_034_500, exactHundredths: null });
+    // Cents on a whole-unit currency go on the figure that posts: the charge, rounded up for money out.
+    expect(chargedFigure(formOf(row, { chargedAmount: '1034500,25' }), ACCOUNTS)).toEqual({ amountMinor: 1_034_501, exactHundredths: 103_450_025 });
+    expect(chargedFigure(formOf(row, { mode: 'income', chargedAmount: '1034500,25' }), ACCOUNTS)).toEqual({ amountMinor: 1_034_500, exactHundredths: 103_450_025 });
+  });
+
+  it('has no charged figure when the amount is in the account’s own currency', () => {
+    const row = draft();
+    expect(chargedFigure(formOf(row, { chargedAmount: '999' }), ACCOUNTS)).toBeNull();
+    // The flag turned back to the account's currency: the figure on the amount row is the one that posts.
+    expect(chargedFigure(formOf(abroad(), { currency: 'IDR', chargedAmount: '999' }), ACCOUNTS)).toBeNull();
+  });
+
+  it('writes the draft back in the currency it was read in: the charge is the posting’s, not the draft’s', () => {
+    const row = abroad();
+    const form = formOf(row, { chargedAmount: '1034500' });
+    expect(draftPatch(form, row, ACCOUNTS)).toMatchObject({ kind: 'expense', accountId: 'visa-account', amountMinor: 94_300, currency: 'KRW' });
+    // What was read still stands, so nothing is taught to the source.
+    expect(corrections(form, row, ACCOUNTS)).toEqual([]);
+  });
+
+  it('counts a corrected foreign figure as a correction, in the currency it was read in', () => {
+    const row = abroad();
+    const form = formOf(row, { amount: '49300', chargedAmount: '540000' });
+    expect(draftPatch(form, row, ACCOUNTS)).toMatchObject({ amountMinor: 49_300, currency: 'KRW' });
+    expect(corrections(form, row, ACCOUNTS)).toEqual([{ field: 'amount', value: '49300' }]);
+  });
+
+  it('follows the flag when the owner says the figure was the account’s currency after all', () => {
+    const row = abroad();
+    const form = formOf(row, { currency: 'IDR' });
+    expect(canRecord(form, row, ACCOUNTS)).toBe(true);
+    expect(draftPatch(form, row, ACCOUNTS)).toMatchObject({ amountMinor: 94_300, currency: 'IDR' });
+  });
+
+  it('writes a transfer in the From account’s currency, which is what the form shows its figure in', () => {
+    const row = draft({ kind: 'transfer', currency: 'SGD', amountMinor: 5_000, toAccountId: 'wallet', categoryAccountId: null });
+    const form = formOf(row, { amount: '600000' });
+    expect(chargedFigure(form, ACCOUNTS)).toBeNull();
+    expect(draftPatch(form, row, ACCOUNTS)).toMatchObject({ kind: 'transfer', amountMinor: 600_000, currency: 'IDR' });
+  });
+
+  it('reads the figure in the draft’s currency until an account is chosen', () => {
+    const row = abroad({ accountId: null });
+    expect(draftPatch(formOf(row), row, ACCOUNTS)).toMatchObject({ accountId: null, amountMinor: 94_300, currency: 'KRW' });
+  });
+});
+
+describe('recording a foreign draft without opening the form', () => {
+  const abroad = (over: Partial<DraftRow> = {}) => draft({ description: 'TOKO KOPI CONTOH', amountMinor: 94_300, currency: 'KRW', accountId: 'visa-account', ...over });
+  const RATES = { rates: { KRW: 10.97 }, stale: [], missing: [] };
+
+  it('names the pair only when the draft’s currency is not its account’s', () => {
+    expect(foreignPair(abroad(), ACCOUNTS)).toEqual({ from: 'KRW', to: 'IDR' });
+    expect(foreignPair(draft(), ACCOUNTS)).toBeNull();
+    // No account yet: nothing says what it settles in, and the draft has that question to answer first.
+    expect(foreignPair(abroad({ accountId: null }), ACCOUNTS)).toBeNull();
+  });
+
+  it('works out the charge at the day’s rate, to the same figure the form’s row would open on', () => {
+    const row = abroad();
+    expect(quickCharge(row, { from: 'KRW', to: 'IDR' }, RATES, 'IDR')).toEqual({ kind: 'charged', amountMinor: 1_034_471, currency: 'IDR' });
+    expect(estimatedCharge({ amount: '94300', currency: 'KRW', accountCurrency: 'IDR', rate: 10.97 })).toBe('1034471');
+  });
+
+  it('crosses through the base currency for an account that is not in it', () => {
+    const rates = { rates: { KRW: 11, USD: 16_500 }, stale: [], missing: [] };
+    // 94.300 won at 11 rupiah is 1.037.300 rupiah, which is 62,87 dollars at 16.500.
+    expect(quickCharge(abroad(), { from: 'KRW', to: 'USD' }, rates, 'IDR')).toEqual({ kind: 'charged', amountMinor: 6_287, currency: 'USD' });
+  });
+
+  it('asks on the form rather than post a figure from a rate that is missing, or from another day', () => {
+    const pair = { from: 'KRW', to: 'IDR' };
+    expect(quickCharge(abroad(), pair, { rates: {}, stale: [], missing: ['KRW'] }, 'IDR')).toEqual({ kind: 'ask' });
+    expect(quickCharge(abroad(), pair, { rates: { KRW: 10.97 }, stale: ['KRW'], missing: [] }, 'IDR')).toEqual({ kind: 'ask' });
+    // The rates could not be read at all.
+    expect(quickCharge(abroad(), pair, null, 'IDR')).toEqual({ kind: 'ask' });
+  });
+
+  it('asks on the form for a figure of nothing, and for a transfer, whose figure is the From account’s own', () => {
+    const pair = { from: 'KRW', to: 'IDR' };
+    expect(quickCharge(abroad({ amountMinor: 0 }), pair, RATES, 'IDR')).toEqual({ kind: 'ask' });
+    expect(quickCharge(abroad({ kind: 'transfer', toAccountId: 'wallet' }), pair, RATES, 'IDR')).toEqual({ kind: 'ask' });
+  });
+
+  it('works out money received the same way, from the figure’s size', () => {
+    const row = abroad({ kind: 'income', amountMinor: -94_300, accountId: 'bank' });
+    expect(quickCharge(row, { from: 'KRW', to: 'IDR' }, RATES, 'IDR')).toEqual({ kind: 'charged', amountMinor: 1_034_471, currency: 'IDR' });
   });
 });
