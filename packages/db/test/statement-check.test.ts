@@ -292,6 +292,17 @@ describe('recording a check', () => {
     expect(await listStatementLinks(h.database, result.checkId)).toEqual([{ checkId: result.checkId, transactionId: posted!.id, kind: 'matched' }]);
   });
 
+  it('never matches a draft read in another currency: its figure is not the card’s, so the row is recorded and the draft waits', async () => {
+    const h = await household();
+    await createDraft(h.database, h.ws, { source: 'notification', occurredOn: '2026-05-16', description: 'KOPI SEBERANG', amountMinor: 40_000, currency: 'KRW', kind: 'expense', accountId: h.card.id });
+    const prepared = await h.prepare([image([['16MAY', 'KOPI SEBERANG', '40,000']])]);
+    expect(prepared.rows[0]!.outcome).toMatchObject({ status: 'missing' });
+    await recordStatementCheck(h.database, h.ws, { ...prepared, rows: categorised(prepared.rows, h.groceries) }, NO_DECISIONS);
+    expect(await listDrafts(h.database, h.ws)).toHaveLength(1);
+    const [posted] = await listTransactions(h.database, h.ws, { accountId: h.card.id });
+    expect(posted!.entries.find((e) => e.accountId === h.card.id)).toMatchObject({ amountMinor: -40_000, currency: 'IDR' });
+  });
+
   it('links the transaction chosen for an ask, and keeps the tied one nobody chose', async () => {
     const h = await household();
     const first = await h.buy('2026-05-31', 'WARUNG', 55_000);

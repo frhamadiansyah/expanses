@@ -336,7 +336,9 @@ export async function prepareStatementCheck(
   }
   const lo = addDays(period.start, -CANDIDATE_MARGIN_DAYS);
   const hi = addDays(period.end, CANDIDATE_MARGIN_DAYS);
-  const drafts = (await listDrafts(database, ws)).filter((d) => d.occurredOn >= lo && d.occurredOn <= hi);
+  // A draft read in another currency (a purchase abroad, in the merchant's figure) is no candidate: a row is matched by
+  // its amount, and that figure is not the card's. It waits in Review, where the charged figure is asked.
+  const drafts = (await listDrafts(database, ws)).filter((d) => d.occurredOn >= lo && d.occurredOn <= hi && d.currency === card.currency);
   const draftById = new Map(drafts.map((d) => [d.id, d]));
   for (const d of drafts) {
     const base = { id: `${DRAFT_PREFIX}${d.id}`, on: d.occurredOn, amountMinor: Math.abs(d.amountMinor), description: d.description, isDraft: true };
