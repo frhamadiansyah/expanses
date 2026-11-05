@@ -1,4 +1,4 @@
-import { currencyInfo, isSupportedCurrency } from '../money/currencies';
+import { CURRENCIES, currencyInfo, isSupportedCurrency } from '../money/currencies';
 import type { WordList } from './types';
 
 /**
@@ -31,12 +31,13 @@ export interface FoundAmount {
 }
 
 /**
- * Every mark a printed amount wears, longest first, with the currency it means.
+ * The marks the reader has always known, longest first, with the currency each means. Read in any case: `rp38.000`
+ * and `idr 5.000` are money as a person types them.
  *
  * `S$` before `$` and `RM` before nothing else, because the first match at a position wins and `S$12` is Singapore
  * dollars, not dollars.
  */
-const CURRENCY_MARKS: readonly (readonly [string, string])[] = [
+const KNOWN_MARKS: readonly (readonly [string, string])[] = [
   ['S$', 'SGD'],
   ['Rp', 'IDR'],
   ['IDR', 'IDR'],
@@ -51,6 +52,25 @@ const CURRENCY_MARKS: readonly (readonly [string, string])[] = [
   ['€', 'EUR'],
   ['¥', 'JPY'],
   ['£', 'GBP'],
+];
+
+/** One mark a printed amount wears: its text, the currency it means, and whether it counts in capitals only. */
+interface CurrencyMark {
+  mark: string;
+  code: string;
+  exactCase: boolean;
+}
+
+/**
+ * Every mark a printed amount wears: the known ones, then the code of every other currency the app keeps — taken
+ * from its own table, so a currency added there is read here. A bank prints `KRW94.300,00` for a purchase abroad, and
+ * a figure whose mark is not known is no figure at all.
+ *
+ * The codes from the table count in capitals only: `TRY`, `PHP` and `SAR` are also words, and "Try 3" is not three lira.
+ */
+const CURRENCY_MARKS: readonly CurrencyMark[] = [
+  ...KNOWN_MARKS.map(([mark, code]) => ({ mark, code, exactCase: false })),
+  ...CURRENCIES.filter(({ code }) => !KNOWN_MARKS.some(([mark]) => mark === code)).map(({ code }) => ({ mark: code, code, exactCase: true })),
 ];
 
 /** A digit run with its separators: `38.000`, `1,250,000.00`, `1.250.000,00`, `12.50`. */
@@ -93,8 +113,9 @@ export function parseNumber(raw: string): number | null {
 
 /** The currency mark at `i`, if one starts there. */
 function markAt(text: string, i: number): { code: string; length: number } | null {
-  for (const [mark, code] of CURRENCY_MARKS) {
-    if (text.slice(i, i + mark.length).toLowerCase() !== mark.toLowerCase()) continue;
+  for (const { mark, code, exactCase } of CURRENCY_MARKS) {
+    const here = text.slice(i, i + mark.length);
+    if (exactCase ? here !== mark : here.toLowerCase() !== mark.toLowerCase()) continue;
     // A letter mark must be a word of its own: "IDR" is money, "IDRX" is not, and the "rm" ending "confirm" is not
     // ringgit.
     const after = text[i + mark.length];

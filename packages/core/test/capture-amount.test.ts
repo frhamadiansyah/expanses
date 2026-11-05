@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findAmounts, WORDS } from '../src/index';
+import { CURRENCIES, findAmounts, WORDS } from '../src/index';
 
 const one = (t: string) => findAmounts(t, WORDS).map(({ minor, currency }) => ({ minor, currency }));
 
@@ -38,5 +38,45 @@ describe('findAmounts keeps the exact figure of a currency with no minor unit', 
     expect('exactHundredths' in findAmounts('Rp38.000', WORDS)[0]!).toBe(false);
     expect('exactHundredths' in findAmounts('$12.50', WORDS)[0]!).toBe(false);
     expect('exactHundredths' in findAmounts('1,25rb', WORDS)[0]!).toBe(false);
+  });
+});
+
+describe('findAmounts reads every currency the app keeps, by its code', () => {
+  const exact = (t: string) => findAmounts(t, WORDS).map(({ minor, currency, exactHundredths }) => ({ minor, currency, exactHundredths }));
+
+  it.each([
+    ['KRW94.300,00', 94_300, 'KRW'],
+    ['KRW 94,300', 94_300, 'KRW'],
+    ['THB1.250,50', 125_050, 'THB'],
+    ['VND 250.000', 250_000, 'VND'],
+    ['HKD 88.40', 8_840, 'HKD'],
+  ])('%s', (text, minor, currency) => expect(one(text)[0]).toEqual({ minor, currency }));
+
+  it('reads a figure after the code of each currency in the table, scaled by that currency', () => {
+    for (const { code, exponent } of CURRENCIES) {
+      expect(one(`${code} 1,234.00`)[0], code).toEqual({ minor: 1_234 * 10 ** exponent, currency: code });
+    }
+  });
+
+  it('keeps no exact figure for a whole won amount printed with zero cents, and keeps one when the cents are not zero', () => {
+    expect('exactHundredths' in findAmounts('KRW94.300,00', WORDS)[0]!).toBe(false);
+    expect(exact('KRW94.300,40')[0]).toEqual({ minor: 94_300, currency: 'KRW', exactHundredths: 9_430_040 });
+  });
+
+  it('reads the codes added from the table in capitals only: a word that happens to spell one is not money', () => {
+    expect(one('Try 3 times, php 8 or newer')).toEqual([]);
+    expect(one('krw 94.300')).toEqual([]);
+    expect(one('Sar 12')).toEqual([]);
+  });
+
+  it('still reads the marks it always knew in any case', () => {
+    expect(one('idr 5.000')[0]).toEqual({ minor: 5_000, currency: 'IDR' });
+    expect(one('usd 12.50')[0]).toEqual({ minor: 1_250, currency: 'USD' });
+    expect(one('rp38.000')[0]).toEqual({ minor: 38_000, currency: 'IDR' });
+  });
+
+  it('does not read a code out of a longer word, on either side', () => {
+    expect(one('SKRW 5000')).toEqual([]);
+    expect(one('KRWX 5000')).toEqual([]);
   });
 });
