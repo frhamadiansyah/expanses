@@ -136,7 +136,7 @@ function TypingRow({ options, accounts, today, baseCurrency, handlers }: { optio
 
 function EditableRow({ row, options, accounts, today, baseCurrency, handlers }: { row: ListRow; options: RowOptions; accounts: readonly AccountRow[]; today: string; baseCurrency: string; handlers: TableHandlers }) {
   const isDraft = row.kind === 'draft';
-  const initial = isDraft ? quickFromDraft(row.draft!, today) : quickFromTransaction(row.tx!, today);
+  const initial = isDraft ? quickFromDraft(row.draft!, today, accounts) : quickFromTransaction(row.tx!, today);
   const [values, setValuesState] = useState(initial);
   // Leaving the row saves a draft; the cell being left settles its own value in the same moment, so the
   // save reads the newest values from here rather than from a render that has not happened yet.
