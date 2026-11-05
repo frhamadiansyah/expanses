@@ -144,6 +144,12 @@ export async function setSourceAccount(
     .where(eq(captureSources.id, sourceId));
 }
 
+/** One source by its id, or null when it has been forgotten since. */
+export async function sourceById(tx: Db, id: string): Promise<CaptureSource | null> {
+  const [row] = await tx.select().from(captureSources).where(eq(captureSources.id, id));
+  return row ? toSource(row) : null;
+}
+
 /** Every source this device knows, oldest first: the order the owner met them in. */
 export async function listSources(database: Database): Promise<CaptureSource[]> {
   const rows = await database.db.select().from(captureSources).orderBy(asc(captureSources.createdAt), asc(captureSources.label));

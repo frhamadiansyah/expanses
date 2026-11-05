@@ -1,5 +1,5 @@
 import type { CaptureLine, RawCapture } from '@expanses/core';
-import { createDatabase, createWorkspace, listDrafts, migrate } from '@expanses/db';
+import { createDatabase, createDraft, createWorkspace, listDrafts, migrate, sourceFor } from '@expanses/db';
 import { createNodeExecutor } from '@expanses/db/node';
 import { describe, expect, it } from 'vitest';
 import { drainCaptures, drainNow, lastDrain, pickPhotos, scanReceipt, type CaptureBridge } from './drain';
@@ -410,6 +410,45 @@ describe('one screenshot shared from Photos', () => {
       const phone = bridge([chosen('shot-9', { kind: 'screen', body: null, lines: STATEMENT_PAGE })]);
       await drainCaptures(database, ws, phone, '2026-09-30');
       expect(nextWaitingStatement()).toBeNull();
+    } finally {
+      close();
+    }
+  });
+});
+
+describe('a drain reads again what an earlier reader left at nothing', () => {
+  it('fills a waiting message’s figure even when the phone hands nothing over, and says so', async () => {
+    const { database, ws, close } = await setup();
+    try {
+      const sms: RawCapture = {
+        ...notification,
+        id: 'sms-abroad',
+        app: 'BANKCONTOH',
+        title: 'BANKCONTOH',
+        body: 'Terima kasih utk trx kartukredit XXXX5512 tgl 03-11-2026 14:22:07 di TOKO KOPI CONTOH KRW94.300,00. Jika trx tidak Anda kenal, hub 10000',
+      };
+      const source = await sourceFor(database.db, sms);
+      // As the queue held it before the reader knew the currency: no figure, the sender for a name.
+      await createDraft(database, ws, {
+        source: 'notification',
+        kind: 'expense',
+        occurredOn: '2026-11-03',
+        description: 'BANKCONTOH',
+        amountMinor: 0,
+        currency: 'IDR',
+        sourceId: source.id,
+        captureIds: [sms.id],
+        externalRef: `capture:${sms.id}`,
+        rawPayload: `${sms.title}\n${sms.body}`,
+        reading: { skipped: 'unreadable', amount: null, occurredAt: null, type: { value: 'spent', confidence: 0, line: null }, name: null, accountHint: '5512', paymentMethod: null },
+      });
+
+      const result = await drainCaptures(database, ws, bridge([]), '2026-11-05');
+
+      expect(result).toMatchObject({ drafts: 0, merged: 0, skipped: 0, reread: 1 });
+      expect((await listDrafts(database, ws))[0]).toMatchObject({ amountMinor: 94_300, currency: 'KRW', description: 'TOKO KOPI CONTOH' });
+      // Read once: the next drain finds nothing left to read again.
+      expect((await drainCaptures(database, ws, bridge([]), '2026-11-05')).reread).toBe(0);
     } finally {
       close();
     }

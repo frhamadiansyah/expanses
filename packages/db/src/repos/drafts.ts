@@ -300,29 +300,35 @@ export async function editDraft(
   database: Database,
   ws: WorkspaceContext,
   id: string,
-  patch: Partial<Pick<NewDraft, 'occurredOn' | 'description' | 'amountMinor' | 'exactHundredths' | 'currency' | 'kind' | 'accountId' | 'toAccountId' | 'categoryAccountId' | 'cardId'>>,
+  patch: DraftEdit,
 ): Promise<void> {
+  await database.transaction((tx) => editDraftTx(tx, ws, id, patch));
+}
+
+/** What `editDraft` can change about a draft. */
+export type DraftEdit = Partial<Pick<NewDraft, 'occurredOn' | 'description' | 'amountMinor' | 'exactHundredths' | 'currency' | 'kind' | 'accountId' | 'toAccountId' | 'categoryAccountId' | 'cardId'>>;
+
+/** `editDraft` inside a transaction already running: a draft read again is corrected beside the rest of what that writes. */
+export async function editDraftTx(tx: Db, ws: WorkspaceContext, id: string, patch: DraftEdit): Promise<void> {
   const { exactHundredths, ...fields } = patch;
-  await database.transaction(async (tx) => {
-    const where = and(eq(draftTransactions.workspaceId, ws.workspaceId), eq(draftTransactions.id, id), eq(draftTransactions.status, 'pending'));
-    const [before] = await tx
-      .select({ amountMinor: draftTransactions.amountMinor, currency: draftTransactions.currency, kind: draftTransactions.kind })
-      .from(draftTransactions)
-      .where(where);
-    if (!before) return;
-    if (Object.keys(fields).length > 0) await tx.update(draftTransactions).set(fields).where(where);
-    if (!(await draftExactExists(tx))) return;
-    const moved =
-      (fields.amountMinor !== undefined && fields.amountMinor !== before.amountMinor) ||
-      (fields.currency !== undefined && fields.currency !== before.currency) ||
-      (fields.kind !== undefined && fields.kind !== before.kind);
-    if (exactHundredths !== undefined) {
-      const kept = isExactFigure(exactHundredths) && exactHundredths % 100 !== 0 ? exactHundredths : null;
-      await tx.run(sql`UPDATE draft_transactions SET exact_hundredths = ${kept} WHERE id = ${id}`);
-    } else if (moved) {
-      await tx.run(sql`UPDATE draft_transactions SET exact_hundredths = NULL WHERE id = ${id}`);
-    }
-  });
+  const where = and(eq(draftTransactions.workspaceId, ws.workspaceId), eq(draftTransactions.id, id), eq(draftTransactions.status, 'pending'));
+  const [before] = await tx
+    .select({ amountMinor: draftTransactions.amountMinor, currency: draftTransactions.currency, kind: draftTransactions.kind })
+    .from(draftTransactions)
+    .where(where);
+  if (!before) return;
+  if (Object.keys(fields).length > 0) await tx.update(draftTransactions).set(fields).where(where);
+  if (!(await draftExactExists(tx))) return;
+  const moved =
+    (fields.amountMinor !== undefined && fields.amountMinor !== before.amountMinor) ||
+    (fields.currency !== undefined && fields.currency !== before.currency) ||
+    (fields.kind !== undefined && fields.kind !== before.kind);
+  if (exactHundredths !== undefined) {
+    const kept = isExactFigure(exactHundredths) && exactHundredths % 100 !== 0 ? exactHundredths : null;
+    await tx.run(sql`UPDATE draft_transactions SET exact_hundredths = ${kept} WHERE id = ${id}`);
+  } else if (moved) {
+    await tx.run(sql`UPDATE draft_transactions SET exact_hundredths = NULL WHERE id = ${id}`);
+  }
 }
 
 /**

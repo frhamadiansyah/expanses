@@ -123,6 +123,7 @@ export * from './capture/learn';
 export * from './capture/match';
 export * from './capture/ingest';
 export * from './capture/skipped';
+export * from './capture/reread';
 export * from './repos/statements';
 export * as statementsSchema from './schema-statements';
 export * from './repos/statement-check';
