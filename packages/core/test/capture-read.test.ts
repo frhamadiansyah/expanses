@@ -165,6 +165,21 @@ describe('readCapture', () => {
     expect(accountHintOf('Transaksi Kartu Kredit Contoh 4410 di PT. TOKO')).toBe('4410');
   });
 
+  it('reads a purchase abroad whose figure comes before the day, with a ticket code of digits after it', () => {
+    const reading = readCapture(
+      notification('Trx KK XX31, KRW 215,400.00 Tgl 05-11-2026 di TOKO KOSMETIK CONTOH. Jk bukan trx anda mhn forward ke 80000, info 10000. Ticket code 1234_567890_123456', 'BANKCONTOH'),
+      WORDS,
+      null,
+    );
+    expect(reading.skipped).toBeNull();
+    expect(reading.amount?.value).toEqual({ minor: 215_400, currency: 'KRW' });
+    expect(reading.occurredAt?.value).toBe('2026-11-05');
+    expect(reading.name?.value).toBe('TOKO KOSMETIK CONTOH');
+    expect(reading.type.value).toBe('spent');
+    // Two digits name no card: the source's own account answers, and the ticket code is nobody's card either.
+    expect(reading.accountHint).toBeNull();
+  });
+
   it('reads a bank message end to end: the card, the day and time, the merchant and the amount', () => {
     const reading = readCapture(
       notification('Terima kasih utk trx kartukredit XXXX5512 tgl 03-09-2026 10:15:42 di TOKO ROTI CONTOH IDR48.300,00. Jika trx tidak Anda kenal, hub 10000', 'BANKCONTOH'),
