@@ -104,3 +104,38 @@ export function listenForStatementLinks(open: (batchId: string) => void): () => 
     void handle.then((h) => h.remove());
   };
 }
+
+/** The three ways in a `cicis://add/…` link opens: One line, Paste a list, and Scan a receipt. */
+export type AddLink = 'line' | 'paste' | 'receipt';
+
+/**
+ * The way in a `cicis://add/line`, `…/paste` or `…/receipt` link names — the widget's buttons and the Control Center
+ * control. Null for any other address, `cicis://add` alone included.
+ */
+export function addLinkOf(url: string): AddLink | null {
+  const match = /^cicis:\/\/add\/(line|paste|receipt)\/?$/i.exec(url.trim());
+  return match ? (match[1]!.toLowerCase() as AddLink) : null;
+}
+
+/**
+ * In the shell, opens the way in every `cicis://add/…` link names — the one the app was launched by, and each one
+ * after while it runs. Returns the way to stop listening. Does nothing in a browser.
+ */
+export function listenForAddLinks(open: (link: AddLink) => void): () => void {
+  if (!isNative()) return () => {};
+  let stopped = false;
+  const handle = Shell.addListener('appUrlOpen', ({ url }) => {
+    const link = addLinkOf(url);
+    if (link) open(link);
+  });
+  void Shell.getLaunchUrl()
+    .then((launch) => {
+      const link = launch?.url ? addLinkOf(launch.url) : null;
+      if (link && !stopped) open(link);
+    })
+    .catch(() => undefined);
+  return () => {
+    stopped = true;
+    void handle.then((h) => h.remove());
+  };
+}

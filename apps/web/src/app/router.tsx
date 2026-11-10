@@ -24,6 +24,7 @@ import { EducationFundPage } from '../features/calculators/EducationFundPage';
 import { EmergencyFundPage } from '../features/calculators/EmergencyFundPage';
 import { LifeCoverPage } from '../features/calculators/LifeCoverPage';
 import { RetirementFundPage } from '../features/calculators/RetirementFundPage';
+import { WidgetSettingsPage } from '../features/account/WidgetSettingsPage';
 import { CaptureSettingsPage } from '../features/capture/CaptureSettingsPage';
 import { SourcePage } from '../features/capture/SourcePage';
 import { WayPage } from '../features/capture/WayPage';
@@ -86,6 +87,7 @@ import { EarlierMonthsRoute, LinkBillMonthRoute, LinkPurchaseRoute, LinkToBillRo
 import { RecurringPage } from '../features/bills/RecurringPage';
 import { YearlyBillsPage } from '../features/bills/YearlyBillsPage';
 import { DuplicateTransactionRoute, EditTransactionRoute, NewTransactionRoute } from '../features/transactions/FormPage';
+import { OneLinePage } from '../features/transactions/OneLinePage';
 import { newTransactionSearch } from '../features/transactions/new-search';
 import { MoneyFlowPage, moneyFlowSearch } from '../features/transactions/MoneyFlow';
 import { PasteListPage } from '../features/transactions/PasteListPage';
@@ -130,6 +132,8 @@ export interface TransactionsSearch {
   month?: string;
   /** Which way the same month is shown: the list, which carries the chart, or the table. */
   view?: 'list' | 'table';
+  /** Start Scan a receipt on arrival: the hold-＋ menu's and the widget's Receipt. The page drops it once read. */
+  scan?: true;
 }
 
 export interface LendBorrowSearch {
@@ -205,6 +209,7 @@ const routeTree = rootRoute.addChildren([
       // Any period: a month as before, or a week, quarter, year, all time or two dates.
       month: typeof search.month === 'string' && parsePeriod(search.month) ? search.month : undefined,
       view: search.view === 'table' || search.view === 'list' ? search.view : undefined,
+      scan: search.scan === true || search.scan === 'true' ? true : undefined,
     }),
   }),
   // The card as a screen. "new" is a static segment, so it beats `$transactionId` below however the two are
@@ -223,6 +228,8 @@ const routeTree = rootRoute.addChildren([
       ...(typeof search.card === 'string' && search.card ? { card: search.card } : {}),
     }),
   }),
+  // One line: a purchase typed as one sentence, saved with Return. "line" is static too, so it beats `$transactionId`.
+  createRoute({ getParentRoute: () => rootRoute, path: '/transactions/line', component: OneLinePage }),
   // A restaurant bill divided by who had what, reached from With → By receipt: "receipt-split" is static too.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/receipt-split', component: ReceiptSplitPage }),
   // The same split started from Account: who is sharing and the photo, then the pages above.
@@ -500,6 +507,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/activity', component: ActivityPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/activity/$id', component: ActivityDetailPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/capture', component: CaptureSettingsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings/widget', component: WidgetSettingsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/capture/sources/$sourceId', component: SourcePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/capture/ways/$way', component: WayPage }),
   // The design kit's specimen sheet. Deliberately not in `nav.ts`: it is a place to look at the primitives

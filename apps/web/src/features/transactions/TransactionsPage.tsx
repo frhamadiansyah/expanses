@@ -28,10 +28,11 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
 import { CalendarDays, ChevronDown, CircleAlert, CircleCheck, Home, LayoutGrid, List, Pencil, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useRemembered } from '../../lib/page-memory';
 import { useApp } from '../../app/context';
-import { usePhone } from '../../app/use-phone';
+import { usePhone, useSideways } from '../../app/use-phone';
+import { isNative } from '../../lib/pwa';
 import { canPayWith } from '../../lib/account-types';
 import { loadPurchasePoints } from '../../lib/purchase-points';
 import { isMoneyAccount, moneyHolders, useAccounts, useInOpenBook, useInvalidateAll, useIsBookShared, useResolveRates } from '../../lib/queries';
@@ -71,6 +72,8 @@ import { useShareCategoryIds } from './queries';
 import { WaitingBox } from './WaitingBox';
 import { Sheet } from '../../app/Sheet';
 import { SpendingReport } from './SpendingReport';
+import { SidewaysTable } from './SidewaysTable';
+import { afterDismiss, afterSideways, afterVisit, readTip, tipShown, writeTip } from './sideways-tip';
 import { TransactionCard } from './TransactionCard';
 import { deleteTransaction } from './member-transfer';
 import { useDeferredDeletes } from './deferred-delete';
@@ -192,6 +195,49 @@ export function TransactionsPage() {
   // On a phone the search field and the filters are behind their buttons; a wide screen shows both.
   const [showSearch, setShowSearch] = useRemembered<boolean>('show-search', () => false);
   const phone = usePhone();
+  /*
+   * A phone held sideways shows the table full screen (`SidewaysTable`), whatever view the page was left in. The list
+   * stays mounted underneath, hidden, so its chart, its open category and its scroll are all there on turning back.
+   */
+  const sideways = useSideways();
+  const uprightScroll = useRef(0);
+  const sidewaysNow = useRef(sideways);
+  useEffect(() => {
+    // Where the list was, kept while upright: by the time the page knows it has turned, it is already being laid out sideways.
+    const keep = () => {
+      if (!sidewaysNow.current) uprightScroll.current = window.scrollY;
+    };
+    keep();
+    window.addEventListener('scroll', keep, { passive: true });
+    return () => window.removeEventListener('scroll', keep);
+  }, []);
+  useLayoutEffect(() => {
+    const was = sidewaysNow.current;
+    sidewaysNow.current = sideways;
+    // Upright again: the list is drawn again, and goes back to where it was before the turn.
+    if (was && !sideways) window.scrollTo(0, uprightScroll.current);
+  }, [sideways]);
+  /*
+   * "Turn sideways for the table": in the iOS app on a phone, the first few visits, until the table has been opened
+   * sideways or the tip closed. Decided once as the page opens, so the visit that uses up the count still shows it.
+   */
+  const [tipOn, setTipOn] = useState(() => isNative() && tipShown(readTip()));
+  const visitCounted = useRef(false);
+  useEffect(() => {
+    if (!tipOn || visitCounted.current) return;
+    visitCounted.current = true;
+    writeTip(afterVisit(readTip()));
+  }, [tipOn]);
+  useEffect(() => {
+    if (!sideways || !isNative()) return;
+    setTipOn(false);
+    const tip = readTip();
+    if (!tip.done) writeTip(afterSideways(tip));
+  }, [sideways]);
+  const dismissTip = () => {
+    setTipOn(false);
+    writeTip(afterDismiss(readTip()));
+  };
   // A phone's Paid with filter is a sheet (`PaidWithSheet`); a wide screen's hangs from its icon.
   const [pickingPaid, setPickingPaid] = useState(false);
   // One copy of the category gesture for the whole screen: the sheet it opens and the Undo toast it leaves.
@@ -214,6 +260,25 @@ export function TransactionsPage() {
   const [kindChosen, setKind] = useState<'expense' | 'income'>('expense');
   // Photographing a receipt is one more way in to the queue; it lands on Review, where the draft it made waits.
   const scan = useScanReceipt();
+  /*
+   * `?scan=true` — the hold-＋ menu's Scan a receipt and the widget's Receipt (`cicis://add/receipt`) — starts the same
+   * scan as the button, once. The address drops it first, so Back or a reload never opens the camera again; the ref
+   * keeps StrictMode's second run from starting a second scan.
+   */
+  const scanStarted = useRef(false);
+  useEffect(() => {
+    // Dropped from the address: the next Scan a receipt from the menu, while Cashflow stays open, starts its own.
+    if (!search.scan) {
+      scanStarted.current = false;
+      return;
+    }
+    if (scanStarted.current) return;
+    scanStarted.current = true;
+    void navigate({ search: (s: TransactionsSearch) => ({ ...s, scan: undefined }), replace: true });
+    // A Receipt link while a scan is still open (the app left with the scanner up) starts no second one.
+    if (scan.busy) return;
+    void scan.scan();
+  }, [search.scan]); // eslint-disable-line react-hooks/exhaustive-deps
   function chooseGrouping(next: 'date' | 'category') {
     setGrouping(next);
     try {
@@ -370,7 +435,7 @@ export function TransactionsPage() {
     enabled: shared && ws.bookId !== undefined && !scopeIds,
   });
   const rows = [
-    ...buildRows(recorded, view === 'table' || filters.onlyDrafts ? pending : [], accounts, everyCard, walletLast4, listWs.bookId),
+    ...buildRows(recorded, view === 'table' || sideways || filters.onlyDrafts ? pending : [], accounts, everyCard, walletLast4, listWs.bookId),
     ...(!shared || scopeIds || filters.onlyDrafts ? [] : (partnerTransfers.data ?? []).map(sharedTransferRow)),
   ];
   /*
@@ -1197,9 +1262,23 @@ export function TransactionsPage() {
     />
   );
 
+  /* baseCurrency is what a row typed into the table is parsed and recorded in, so it stays the owner's. */
+  const table = (
+    <TransactionsTable
+      rows={shown}
+      options={rowOptions}
+      accounts={accounts}
+      today={today}
+      baseCurrency={ws.baseCurrency}
+      handlers={tableHandlers}
+      empty={rows.length === 0 ? 'No transactions in this period yet. Type the first one above.' : 'Nothing matches the search and filters.'}
+    />
+  );
+
   return (
-    // Relative, so the ⋯ menu hangs from the header it opens from.
-    <div className="relative space-y-4">
+    <>
+    {/* Relative, so the ⋯ menu hangs from the header it opens from. Hidden, not unmounted, while the phone is sideways. */}
+    <div className="relative space-y-4" hidden={sideways}>
       {/*
        * The header is always the kit's title: searching swaps the field into the title's own row rather than replacing
        * the header, so the list and the chart below never move.
@@ -1219,6 +1298,14 @@ export function TransactionsPage() {
             : []
         }
       />
+      {tipOn && phone && (
+        <div data-testid="sideways-tip" className="-mt-2 flex items-center justify-between gap-2 px-0.5 text-sm text-slate-500">
+          Turn sideways for the table
+          <button type="button" aria-label="Dismiss" onClick={dismissTip} className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+            <X size={14} aria-hidden />
+          </button>
+        </div>
+      )}
       {/* A wide screen has room for the switcher and a named button, so its corners stay empty. */}
       {!phone && (
         <div className="mb-3 flex flex-wrap items-center justify-end gap-2.5">
@@ -1381,18 +1468,8 @@ export function TransactionsPage() {
         />
       )}
       {view === 'table' ? (
-        <>
-        {/* baseCurrency is what a row typed into the table is parsed and recorded in, so it stays the owner's. */}
-        <TransactionsTable
-          rows={shown}
-          options={rowOptions}
-          accounts={accounts}
-          today={today}
-          baseCurrency={ws.baseCurrency}
-          handlers={tableHandlers}
-          empty={rows.length === 0 ? 'No transactions in this period yet. Type the first one above.' : 'Nothing matches the search and filters.'}
-        />
-        </>
+        // Sideways, the one table is the full-screen one: two typing rows would be two editors of the same month.
+        !sideways && table
       ) : (
         <>
           {list.isSuccess && shown.length === 0 &&
@@ -1622,5 +1699,20 @@ export function TransactionsPage() {
         />
       )}
     </div>
+    {sideways && (
+      <SidewaysTable
+        month={month}
+        onMonth={(next) => setSearch({ month: next === monthOf(today) ? undefined : next })}
+        spentMinor={sum.spentMinor}
+        currency={listCurrency}
+      >
+        {/* The hidden page's own error line cannot be seen from here, so the table carries one too. */}
+        <div className="space-y-2">
+          <ErrorBox error={error ?? list.error ?? drafts.error} />
+          {table}
+        </div>
+      </SidewaysTable>
+    )}
+    </>
   );
 }

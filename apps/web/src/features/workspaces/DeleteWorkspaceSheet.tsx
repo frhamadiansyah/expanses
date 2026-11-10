@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
+import { eraseWidgetSummary } from '../../native/widget-summary';
 import { ErrorBox } from '../../ui';
 import { DestructiveRow, InsetGroup, TextRow } from '../../ui/native';
 import { ReadRow } from '../networth/listed-trade-parts';
@@ -50,6 +51,8 @@ export function DeleteWorkspaceSheet({
         }
       }
       await deleteBook(database, ws, book.id);
+      // The widget must not keep showing a deleted workspace (spec §E): erased now, written afresh for the next one.
+      await eraseWidgetSummary();
       await invalidate();
       await onDeleted();
     } catch (failure) {

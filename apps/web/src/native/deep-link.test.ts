@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../lib/pwa', () => ({ isNative: () => false }));
 
-import { isReviewLink, joinCodeOf, listenForJoinLinks, listenForReviewLinks, listenForStatementLinks, statementBatchOf } from './deep-link';
+import { addLinkOf, isReviewLink, joinCodeOf, listenForAddLinks, listenForJoinLinks, listenForReviewLinks, listenForStatementLinks, statementBatchOf } from './deep-link';
 
 describe('a join link (spec §8.1, §11)', () => {
   const code = 'ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345-6789-ABCD-EFGH-JKMN-PQRS-TVWX';
@@ -70,6 +70,27 @@ describe('the link the share sheet opens the app with for several screenshots (s
   it('is not listened for outside the shell', () => {
     const open = vi.fn();
     listenForStatementLinks(open)();
+    expect(open).not.toHaveBeenCalled();
+  });
+});
+
+describe('an add link (quick ways A, D, E)', () => {
+  it('names the way in, however iOS hands it over', () => {
+    expect(addLinkOf('cicis://add/line')).toBe('line');
+    expect(addLinkOf('CICIS://add/paste/')).toBe('paste');
+    expect(addLinkOf(' cicis://add/receipt ')).toBe('receipt');
+  });
+
+  it('is nothing for any other address', () => {
+    expect(addLinkOf('cicis://add')).toBeNull();
+    expect(addLinkOf('cicis://add/other')).toBeNull();
+    expect(addLinkOf('cicis://review')).toBeNull();
+    expect(addLinkOf('https://example.com/add/line')).toBeNull();
+  });
+
+  it('is not listened for outside the shell', () => {
+    const open = vi.fn();
+    listenForAddLinks(open)();
     expect(open).not.toHaveBeenCalled();
   });
 });

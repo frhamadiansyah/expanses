@@ -1,5 +1,5 @@
 import { useCouponsAtStart } from '../features/networth/coupons-at-start';
-import { Link, Outlet, useNavigate, useRouter } from '@tanstack/react-router';
+import { Link, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { ChevronsUpDown } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { sweepPhotosAtStart } from '../photos/sweep-at-start';
@@ -15,8 +15,10 @@ import { cx } from '../ui';
 import { ToastHost } from '../ui/Toast';
 import { useApp } from './context';
 import { TabBar } from './TabBar';
-import { usePhone } from './use-phone';
+import { usePhone, useSideways } from './use-phone';
+import { rotationFor, useCashflowRotation } from '../native/orientation';
 import { useYahooClosesAtStart } from '../features/prices/yahoo';
+import { useWidgetSummaryWriter } from '../features/account/use-widget-writer';
 import { useICloudBackupAtStart } from '../features/backup/icloud/runner';
 import { useForeignRecalcAtStart } from '../features/accounts/withdrawal-rate-start';
 import { WithdrawalRateNotice } from '../features/accounts/WithdrawalRateNotice';
@@ -69,6 +71,16 @@ export function Layout() {
   const [choosing, setChoosing] = useState(false);
   const openBook = useOpenBook();
   const phone = usePhone();
+  /*
+   * A phone on its side is wider than md, yet still a phone: the shell keeps its phone parts by "is this a phone",
+   * not by width alone. On Cashflow alone (the one route that may turn) it draws nothing of its own, and the page
+   * draws the full-screen table. In the native app the turn itself is unlocked there and locked everywhere else.
+   */
+  const sideways = useSideways();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  useCashflowRotation(pathname);
+  const phoneShell = phone || sideways;
+  const tableOnly = sideways && rotationFor(pathname) === 'free';
 
   /*
    * A form abandoned halfway leaves a picture in OPFS that no row names. Tidying them at start is the only
@@ -93,6 +105,8 @@ export function Layout() {
   useICloudBackupAtStart(database);
   // Withdrawal rate (R18): foreign accounts recalculated behind whatever is on screen, one at a time.
   useForeignRecalcAtStart();
+  // This month's spending for the home screen widget, when it is switched on (iOS app only).
+  useWidgetSummaryWriter();
 
   // Whether the page has scrolled under the status bar: the glass over it is clear until then, as on iOS.
   const top = useRef<HTMLDivElement>(null);
@@ -110,61 +124,62 @@ export function Layout() {
       className="min-h-dvh md:flex"
       style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}
     >
-      <aside className="hidden w-56 shrink-0 border-r border-[var(--ph-hair)] bg-[var(--ph-surface)] p-4 md:block">
-        <button
-          type="button"
-          aria-label="Workspace"
-          onClick={() => setChoosing(true)}
-          className="mb-6 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-[var(--ph-fill)]"
-        >
-          <WorkspaceDot book={openBook} />
-          <span className="min-w-0 flex-1">
-            <span className="block text-lg leading-tight font-semibold">Expanses</span>
-            <span className="block truncate text-xs text-[var(--ph-ink-3)]">
-              {openBook?.name ?? workspaceName} · {openBook?.baseCurrency ?? ws.baseCurrency} · on this device
+      {!phoneShell && (
+        <aside className="hidden w-56 shrink-0 border-r border-[var(--ph-hair)] bg-[var(--ph-surface)] p-4 md:block">
+          <button
+            type="button"
+            aria-label="Workspace"
+            onClick={() => setChoosing(true)}
+            className="mb-6 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-[var(--ph-fill)]"
+          >
+            <WorkspaceDot book={openBook} />
+            <span className="min-w-0 flex-1">
+              <span className="block text-lg leading-tight font-semibold">Expanses</span>
+              <span className="block truncate text-xs text-[var(--ph-ink-3)]">
+                {openBook?.name ?? workspaceName} · {openBook?.baseCurrency ?? ws.baseCurrency} · on this device
+              </span>
             </span>
-          </span>
-          <ChevronsUpDown size={14} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
-        </button>
-        {choosing && <WorkspaceSheet onClose={() => setChoosing(false)} />}
-        <nav className="space-y-1">
-          {NAV.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              className="block rounded-lg px-3 py-2 text-sm text-[var(--ph-ink-2)] hover:bg-[var(--ph-fill)]"
-              activeProps={{ className: 'bg-[var(--ph-fill)] font-medium text-[var(--ph-ink)]' }}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-        <div className="mt-6 space-y-1 border-t border-[var(--ph-hair)] pt-4">
-          <ReviewLink />
-          {MORE.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              className="block rounded-lg px-3 py-2 text-sm text-[var(--ph-ink-2)] hover:bg-[var(--ph-fill)]"
-              activeProps={{ className: 'bg-[var(--ph-fill)] font-medium text-[var(--ph-ink)]' }}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </div>
-      </aside>
+            <ChevronsUpDown size={14} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
+          </button>
+          {choosing && <WorkspaceSheet onClose={() => setChoosing(false)} />}
+          <nav className="space-y-1">
+            {NAV.map((item) => (
+              <Link
+                key={item.to}
+                to={item.to}
+                className="block rounded-lg px-3 py-2 text-sm text-[var(--ph-ink-2)] hover:bg-[var(--ph-fill)]"
+                activeProps={{ className: 'bg-[var(--ph-fill)] font-medium text-[var(--ph-ink)]' }}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+          <div className="mt-6 space-y-1 border-t border-[var(--ph-hair)] pt-4">
+            <ReviewLink />
+            {MORE.map((item) => (
+              <Link
+                key={item.to}
+                to={item.to}
+                className="block rounded-lg px-3 py-2 text-sm text-[var(--ph-ink-2)] hover:bg-[var(--ph-fill)]"
+                activeProps={{ className: 'bg-[var(--ph-fill)] font-medium text-[var(--ph-ink)]' }}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </div>
+        </aside>
+      )}
       {/* Frosted glass over the status bar, as iOS draws it: the page scrolls under the clock and battery
           rather than into them. Only as tall as the inset, so a desktop (inset 0) draws nothing. */}
-      <div
-        aria-hidden
-        className={cx(
-          'ph-status-glass pointer-events-none fixed inset-x-0 top-0 z-30 md:hidden',
-          scrolled && 'ph-edge-glass',
-        )}
-        style={{ boxSizing: 'content-box', height: 'env(safe-area-inset-top)' }}
-      />
+      {phoneShell && (
+        <div
+          aria-hidden
+          className={cx('ph-status-glass pointer-events-none fixed inset-x-0 top-0 z-30', scrolled && 'ph-edge-glass')}
+          style={{ boxSizing: 'content-box', height: 'env(safe-area-inset-top)' }}
+        />
+      )}
       {/* The phone draws under the status bar and the home indicator, so the shell gives both back. */}
-      <main className="relative flex-1 pb-32 md:pb-8" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+      <main className={cx('relative flex-1', phoneShell ? 'pb-32' : 'pb-8')} style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         {/* Out of view the moment anything has scrolled under the status bar; watched, not listened to. */}
         <div ref={top} aria-hidden className="pointer-events-none absolute top-0 left-0 h-px w-px" />
         <div className="mx-auto max-w-4xl p-4 md:p-8">
@@ -178,7 +193,7 @@ export function Layout() {
           <Outlet />
         </div>
       </main>
-      {phone && (
+      {phoneShell && !tableOnly && (
         <>
           {/* Adding is a screen of its own, drawn the way every other subpage is: the form is long enough to scroll,
               and a sheet over the page it was opened from left two screens half-visible at once. */}

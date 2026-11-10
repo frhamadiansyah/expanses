@@ -1,6 +1,12 @@
 import { Link, useRouterState } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { tapLight } from '../native/haptics';
+import { AddMenu } from './AddMenu';
 import { ACCOUNT_TAB, TABS } from './nav';
+
+/** How long a finger rests on ＋ before the press is a hold, and the menu of other ways in opens. */
+const HOLD_MS = 400;
 
 /**
  * The phone's tab bar: a capsule floating over the page rather than a strip welded to its foot.
@@ -8,6 +14,9 @@ import { ACCOUNT_TAB, TABS } from './nav';
  * Icons alone, evenly spaced, names carried for screen readers rather than printed. The tab you are on
  * wears a filled pill behind its icon. The + is a filled ink circle: recording a purchase is the
  * commonest thing done here, so the thumb finds it without looking, and everything else on the bar stays quiet.
+ *
+ * A plain tap on + opens the Add form, as it always has. Held, it opens a small menu instead (`AddMenu`): One line,
+ * Paste a list, Scan a receipt, and the Add form again.
  */
 export function TabBar({ onAdd }: { onAdd: () => void }) {
   /*
@@ -28,9 +37,22 @@ export function TabBar({ onAdd }: { onAdd: () => void }) {
       : to === '/transactions' && trading
         ? { className: cell, activeOptions: { exact: true }, activeProps: { className: here, 'aria-current': 'page' as const } }
         : { className: cell, activeProps: { className: here, 'aria-current': 'page' as const } };
+  const [menuOpen, setMenuOpen] = useState(false);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The click a finger's release sends after a hold has opened the menu: it is the hold's, not a tap.
+  const swallowClick = useRef(false);
+  const stopHold = () => {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = null;
+  };
+  const openMenu = () => {
+    swallowClick.current = true;
+    setMenuOpen(true);
+  };
+  useEffect(() => stopHold, []);
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-3 md:hidden"
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-3"
       style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
     >
       <nav
@@ -42,7 +64,39 @@ export function TabBar({ onAdd }: { onAdd: () => void }) {
             <tab.icon size={24} strokeWidth={1.9} aria-hidden />
           </Link>
         ))}
-        <button type="button" onClick={onAdd} aria-label="Add a transaction" className={cell}>
+        <button
+          type="button"
+          aria-label="Add a transaction"
+          className={`${cell} select-none`}
+          style={{ WebkitTouchCallout: 'none' }}
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
+            // A new press starts clean: a hold whose release sent no click leaves nothing behind for this one.
+            swallowClick.current = false;
+            stopHold();
+            holdTimer.current = setTimeout(() => {
+              holdTimer.current = null;
+              tapLight();
+              openMenu();
+            }, HOLD_MS);
+          }}
+          onPointerUp={stopHold}
+          onPointerCancel={stopHold}
+          onPointerLeave={stopHold}
+          // A long press the system reads as its own (a mouse's right button, a browser's long-press menu) opens it too.
+          onContextMenu={(event) => {
+            event.preventDefault();
+            stopHold();
+            openMenu();
+          }}
+          onClick={() => {
+            if (swallowClick.current) {
+              swallowClick.current = false;
+              return;
+            }
+            onAdd();
+          }}
+        >
           <span aria-hidden className="flex size-9 items-center justify-center rounded-full bg-[var(--ph-ink)] text-[var(--ph-surface)]">
             <Plus size={20} strokeWidth={2.4} />
           </span>
@@ -56,6 +110,7 @@ export function TabBar({ onAdd }: { onAdd: () => void }) {
           <ACCOUNT_TAB.icon size={24} strokeWidth={1.9} aria-hidden />
         </Link>
       </nav>
+      {menuOpen && <AddMenu onClose={() => setMenuOpen(false)} onAdd={onAdd} />}
     </div>
   );
 }

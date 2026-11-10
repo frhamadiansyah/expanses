@@ -11,5 +11,6 @@ class AppViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(IdxDownloadPlugin())
         bridge?.registerPluginInstance(ICloudBackupPlugin())
         bridge?.registerPluginInstance(CapturePlugin())
+        bridge?.registerPluginInstance(WidgetSummaryPlugin())
     }
 }

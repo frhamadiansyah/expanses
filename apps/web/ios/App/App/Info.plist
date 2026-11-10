@@ -94,6 +94,10 @@
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
+		<!-- Landscape is listed so the unlock can take effect, and is unlocked on Cashflow only (native/orientation.ts):
+		     the app locks portrait at start and on every other page. -->
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>

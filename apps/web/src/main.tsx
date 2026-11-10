@@ -10,8 +10,12 @@ import { ErrorBoundary } from './features/recovery/ErrorBoundary';
 import { OpeningScreen } from './features/recovery/OpeningScreen';
 import { paceStages } from './features/recovery/opening-copy';
 import { RecoveryScreen } from './features/recovery/RecoveryScreen';
-import { registerServiceWorker } from './lib/pwa';
+import { isNative, registerServiceWorker } from './lib/pwa';
+import { lockPortrait } from './native/orientation';
 import './styles.css';
+
+// Upright from the first frame in the iOS app: Info.plist lists landscape only so Cashflow can unlock it (native/orientation.ts).
+if (isNative()) void lockPortrait();
 
 registerServiceWorker();
 

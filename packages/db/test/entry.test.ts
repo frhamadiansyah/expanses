@@ -8,6 +8,7 @@ import {
   createDraft,
   editDraft,
   guessCategoryFromHistory,
+  lastPaidWith,
   listAccounts,
   listDrafts,
   listTransactions,
@@ -231,5 +232,31 @@ describe('suggesting a note from history', () => {
     // Income notes are not offered to a purchase, and a single letter offers nothing.
     expect(await noteSuggestions(t.database, t.ws, 'grab', 'income')).toEqual([]);
     expect(await noteSuggestions(t.database, t.ws, 'g', 'expense')).toEqual([]);
+  });
+});
+
+describe('the account a shop was last paid with', () => {
+  it('gives the account and card the same shop was last paid with', async () => {
+    const { database, ws, key } = await workspace();
+    const bank = (await createAccount(database, ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' })).id;
+    const card = await createCardAccount(database, ws, { name: 'Test Visa', issuer: 'Testbank', subtype: 'credit_card', currency: 'IDR', last4: '7720' });
+    const cardId = await addCard(database, ws, { accountId: card.id, last4: '7721', holderName: 'Spouse' });
+    await postTransaction(database, ws, {
+      occurredOn: '2026-09-01',
+      description: 'Kopi Pagi',
+      lines: expenseLines({ categoryAccountId: key('food_beverage.cafe_dessert'), paymentAccountId: bank, amountMinor: 30_000, currency: 'IDR' }),
+    });
+    await postTransaction(database, ws, {
+      occurredOn: '2026-09-05',
+      description: 'KOPI PAGI 0912',
+      cardId,
+      lines: expenseLines({ categoryAccountId: key('food_beverage.cafe_dessert'), paymentAccountId: card.id, amountMinor: 31_000, currency: 'IDR' }),
+    });
+    expect(await lastPaidWith(database, ws, 'kopi pagi')).toEqual({ accountId: card.id, cardId });
+  });
+
+  it('knows nothing about a shop never seen', async () => {
+    const { database, ws } = await workspace();
+    expect(await lastPaidWith(database, ws, 'Toko Sepatu')).toBeNull();
   });
 });
