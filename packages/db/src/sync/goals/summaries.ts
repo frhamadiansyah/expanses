@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../../context';
 import type { Database, Db } from '../../database';
 import { goalHistory, goalLinksFor, goalPlansFor } from '../../repos/goal-funding';
+import { goalSharingTablesExist } from '../../repos/goal-sharing-tables';
 import { withCapture } from '../capture';
 import { uuidv5 } from '../uuidv5';
 import { goalLinkOfTx, memberLeftTx } from './scope';
@@ -150,6 +151,8 @@ async function sendOneTx(tx: Db, goalId: string, date: string): Promise<boolean>
 
 /** Sends this member's summary and moves for each shared goal named, as far as they changed. */
 export async function sendGoalSummariesTx(tx: Db, goalIds: readonly string[], date: string): Promise<void> {
+  // A goal marked dirty on a database stopped before 0109 (a migration test's) is shared nowhere.
+  if (!(await goalSharingTablesExist(tx))) return;
   for (const goalId of new Set(goalIds)) await sendOneTx(tx, goalId, date);
 }
 

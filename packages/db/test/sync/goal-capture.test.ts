@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createBook, listGoals, personalBook, saveGoal } from '../../src/index';
+import { createBook, listGoals, personalBook, saveEarmark, saveGoal } from '../../src/index';
 import type { Database } from '../../src/database';
 import type { NodeExecutor } from '../../src/node';
 import { applyChangeSet } from '../../src/sync/apply';
@@ -233,6 +233,8 @@ describe('applying a shared goal', () => {
     const t = await household('member-r');
     const goalId = newId(1);
     await fromDevice(t.database, t.bookId, 'dev-f', [linkOp(goalId, 'on'), goalOp(goalId), stageOp(goalId, newId(2), 'Flights')]);
+    // Rina's line from her other phone: something of hers is in the goal, so the off keeps her a copy (Task 10).
+    await fromDevice(t.database, t.bookId, 'dev-r', [{ entity: 'goal_member_funding', id: `${goalId}|member-r`, op: 'upsert', fields: { lines: '[]', plannedMonthlyMinor: 0, asOf: '2030-02-01' } }]);
     await fromDevice(t.database, t.bookId, 'dev-f', [linkOp(goalId, 'off')]);
     await fromDevice(t.database, t.bookId, 'dev-r', [stageOp(goalId, newId(3), 'From afar', 1)]);
     // A partial edit names no goal: the stage stored here does.
@@ -434,6 +436,9 @@ describe('a shared goal between two phones', () => {
     await rina.database.transaction((tx) => withCapture(tx, { entity: 'goal_stage', id: stayId! }, () => tx.run(sql`UPDATE goal_stages SET target_minor = ${6_480_000} WHERE id = ${stayId!}`)));
     await home.settle();
     expect(await bima.database.db.values(sql`SELECT target_minor FROM goal_stages WHERE id = ${stayId!}`)).toEqual([[6_480_000]]);
+    // Money of Rina's own in it, so the off keeps her a private copy (Task 10: no money, no copy).
+    await saveEarmark(rina.database, rina.ws, { goalId, accountId: rina.bank, amountMinor: 1_000_000 });
+    await home.settle();
 
     // Bima turns sharing off while Rina, not yet told, renames a stage: the log has the off first.
     await bima.database.transaction((tx) =>

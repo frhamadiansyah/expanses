@@ -11,7 +11,7 @@ import { markForeignDirtyTx } from '../repos/fx-pending';
 import { bookSplitsExist, excludedLinesTx } from '../repos/book-splits';
 import { ensureUncategorisedRowTx } from '../repos/uncategorised';
 import { budgetSharesExist } from '../repos/share-tables';
-import { isRevivable, paidFromOf, projectPurchase, rememberLastHeadTx, ROW_CLOCK, withCapturePaused, type PaidFrom, type PurchaseFields, type PurchaseMoney } from './capture';
+import { addPendingSummaryGoalsTx, isRevivable, paidFromOf, projectPurchase, rememberLastHeadTx, ROW_CLOCK, withCapturePaused, type PaidFrom, type PurchaseFields, type PurchaseMoney } from './capture';
 import { decodeHlc, driftBlocks, receiveHlc } from './hlc';
 import {
   AuthorityError,
@@ -36,7 +36,7 @@ import type { ChangeSet, Op, SequencedEntry, SyncTransport } from './types';
 import { keepClocksTx, type SeenLog } from './seed';
 import { postTransferSideTx } from './net-worth/transfers';
 import { EVENT_ENTITIES } from './events/authority';
-import { goalLinkOfTx, goalOpDroppedTx, goalOpRefusalTx, noteGoalLinkTx } from './goals/scope';
+import { goalLinkOfTx, goalOfRowTx, goalOpDroppedTx, goalOpRefusalTx, noteGoalLinkTx } from './goals/scope';
 import { followGoalLeaveTx, followGoalShareTx } from './goals/follow';
 import { restoreRefusedOwnEventOpTx } from './events/log-rows';
 import { type EventPostingKind, followEventOpTx, followSharedEventTx, recordsReadingTx } from '../repos/shared-event-postings';
@@ -1186,7 +1186,12 @@ export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: Chan
       const goalWhy = await goalOpRefusalTx(tx, ctx.bookId, entity, op, await authorMemberOf(tx, ctx.bookId, author));
       if (goalWhy) throw new AuthorityError(goalWhy);
       const linkBefore = entity.entity === 'goal_share' ? await goalLinkOfTx(tx, op.id) : null;
+      // §8.5: a goal or stage edit (its currency above all) can change what this member's own money counts for it. Read
+      // before the op, while a deleted stage still names its goal; sent by this phone's next own transaction (R9).
+      const editedGoal =
+        entity.entity === 'goal' || entity.entity === 'goal_stage' ? await goalOfRowTx(tx, entity.entity, parseOpId(entity, op.id), op.op === 'upsert' ? op.fields : {}) : null;
       await applyRowOp(tx, ctx, entity, op, changeSet.hlc);
+      if (editedGoal !== null) await addPendingSummaryGoalsTx(tx, [editedGoal]);
       await noteGoalLinkTx(tx, ctx.bookId, op, changeSet.hlc);
       // §8.3: every phone makes its own follow-up of a link or a leave — a private copy, the others' lines dropped.
       if (entity.entity === 'goal_share' && op.op === 'upsert') await followGoalShareTx(tx, ctx, op.id, linkBefore);
