@@ -8,6 +8,7 @@ import { recalcPendingForeign } from '../repos/fx-pending';
 import { retryUnpostedEventRecords } from '../repos/shared-event-postings';
 import { captureConfigOf, configureCapture, LastOwnerError, rowUpsertsTx, withCapture, withCapturePaused, writeChangeSetsTx } from './capture';
 import { randomBytes, sealKeyFor } from './crypto';
+import { endSharedGoalsTx } from './goals/follow';
 import { localTick } from './hlc';
 import {
   encodeInviteCode,
@@ -927,6 +928,16 @@ export class SyncEngine {
   }
 
   /**
+   * Shared goals C15: the book's shared goals end here as an off, in the transaction that ends the share and once the
+   * book is no longer active, so nothing of it is a write to a shared book — the sharer keeps each goal, everyone else a
+   * private copy. Nothing is sent. A book in no workspace (an event's, a group log) has none.
+   */
+  private async endSharedGoalsHereTx(tx: Tx, bookId: string, memberId?: string): Promise<void> {
+    const [row] = await tx.values<[string, string]>(sql`SELECT b.workspace_id, w.base_currency FROM books b JOIN workspaces w ON w.id = b.workspace_id WHERE b.id = ${bookId}`);
+    if (row) await endSharedGoalsTx(tx, { workspaceId: row[0], baseCurrency: row[1] }, bookId, memberId);
+  }
+
+  /**
    * §6 (task 4 review round 1): out of the workspace here is out of its net-worth group log. Best effort on the relay
    * (`exitGroupOf` forgets the group locally either way); a no-op for a book with no group log here, a group log itself
    * included.
@@ -949,6 +960,8 @@ export class SyncEngine {
     // needs_invite): sharing it again or rejoining sends each field at its own clock (recovery review, N2).
     await keepClocksTx(tx, bookId);
     await tx.run(sql`DELETE FROM shared_books WHERE book_id = ${bookId}`);
+    // C15, before the clocks go: what was kept of the shared goals goes with them, so sharing again sends no delete.
+    await this.endSharedGoalsHereTx(tx, bookId, memberId);
     for (const table of ['sync_outbox', 'sync_cursor', 'book_epoch_keys', 'sync_field_clocks', 'sync_tombstones', 'sync_skipped', 'book_devices']) {
       await tx.run(sql`DELETE FROM ${sql.raw(table)} WHERE book_id = ${bookId}`);
     }
@@ -1057,6 +1070,7 @@ export class SyncEngine {
   private async endShared(bookId: string, by: string | null, reason: EndedReason): Promise<void> {
     await this.database.transaction(async (tx) => {
       await tx.run(sql`UPDATE shared_books SET state = 'unshared', unshared_by = ${by}, unshared_reason = ${reason} WHERE book_id = ${bookId}`);
+      await this.endSharedGoalsHereTx(tx, bookId);
       await tx.run(sql`DELETE FROM sync_outbox WHERE book_id = ${bookId}`); // nowhere to go now
     });
     // §6: a device out of the workspace is out of its group log (a leave, a removal, the sharing stopped).

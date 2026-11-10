@@ -238,7 +238,9 @@ describe('applying a shared goal', () => {
     // A partial edit names no goal: the stage stored here does.
     await fromDevice(t.database, t.bookId, 'dev-r', [{ entity: 'goal_stage', id: newId(2), op: 'upsert', fields: { name: 'Ferry' } }]);
     expect(await t.database.db.values(sql`SELECT count(*) FROM goal_stages WHERE goal_id = ${goalId} AND name = 'From afar'`)).toEqual([[0]]);
-    expect(await t.database.db.values(sql`SELECT name FROM goal_stages WHERE id = ${newId(2)}`)).toEqual([['Flights']]);
+    // The off made Rina's copy private under new ids (Task 8): the edit after it reached neither.
+    expect(await t.database.db.values(sql`SELECT name FROM goal_stages WHERE id = ${newId(2)}`)).toEqual([]);
+    expect(await t.database.db.values(sql`SELECT name FROM goal_stages WHERE goal_id <> ${goalId}`)).toEqual([['Flights']]);
     expect(await skipsOf(t.database)).toEqual([]);
   });
 
@@ -443,8 +445,10 @@ describe('a shared goal between two phones', () => {
     await rina.database.transaction((tx) => withCapture(tx, { entity: 'goal_stage', id: stayId! }, () => tx.run(sql`UPDATE goal_stages SET name = 'Hotel' WHERE id = ${stayId!}`)));
     await home.settle();
     expect(await rina.database.db.values(sql`SELECT state FROM goal_shares WHERE goal_id = ${goalId}`)).toEqual([['off']]);
-    // Nothing deleted: Rina's copy stays until her phone makes it private, and no tombstone ends the goal for a later round.
-    expect(await rina.database.db.values(sql`SELECT count(*) FROM goal_stages WHERE goal_id = ${goalId}`)).toEqual([[2]]);
+    // Nothing deleted: Rina's phone made its copy private under new ids (Task 8), her rename in it, and no tombstone
+    // ends the goal for a later round.
+    expect(await rina.database.db.values(sql`SELECT count(*) FROM goal_stages WHERE goal_id = ${goalId}`)).toEqual([[0]]);
+    expect(await rina.database.db.values(sql`SELECT name FROM goal_stages WHERE goal_id IN (SELECT id FROM goals WHERE name = 'Trip Fund') ORDER BY sort`)).toEqual([['Flights'], ['Hotel']]);
     expect(await rina.database.db.values(sql`SELECT count(*) FROM sync_tombstones WHERE id = ${goalId} OR id = ${stayId!}`)).toEqual([[0]]);
     // Rina's rename came after the off in the log: dropped on Bima's phone, and recorded nowhere.
     expect(await bima.database.db.values(sql`SELECT name FROM goal_stages WHERE id = ${stayId!}`)).toEqual([['Stay']]);

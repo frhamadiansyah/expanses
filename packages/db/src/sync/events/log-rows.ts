@@ -67,6 +67,11 @@ export async function dropEventLogRowsTx(tx: Db, bookId: string): Promise<void> 
   await tx.run(sql`DELETE FROM settings WHERE substr(key, 1, ${prefix.length}) = ${prefix}`);
 }
 
+/** One row's account of the log, gone (a shared goal's link forgotten when its book's share ends, C15). */
+export async function dropEventLogRowTx(tx: Db, bookId: string, entity: string, id: string): Promise<void> {
+  await tx.run(sql`DELETE FROM settings WHERE key = ${KEY(bookId, entity, id)}`);
+}
+
 /**
  * This phone's own write to an event row, refused by the log (I3): each field it wrote, while that field still holds
  * this write here, goes back to what the log has, with the log's clock, so a later op merges exactly as on every other

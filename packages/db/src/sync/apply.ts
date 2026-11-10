@@ -36,7 +36,8 @@ import type { ChangeSet, Op, SequencedEntry, SyncTransport } from './types';
 import { keepClocksTx, type SeenLog } from './seed';
 import { postTransferSideTx } from './net-worth/transfers';
 import { EVENT_ENTITIES } from './events/authority';
-import { goalOpDroppedTx, goalOpRefusalTx, noteGoalLinkTx } from './goals/scope';
+import { goalLinkOfTx, goalOpDroppedTx, goalOpRefusalTx, noteGoalLinkTx } from './goals/scope';
+import { followGoalLeaveTx, followGoalShareTx } from './goals/follow';
 import { restoreRefusedOwnEventOpTx } from './events/log-rows';
 import { type EventPostingKind, followEventOpTx, followSharedEventTx, recordsReadingTx } from '../repos/shared-event-postings';
 
@@ -1184,8 +1185,15 @@ export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: Chan
       if (await goalOpDroppedTx(tx, ctx.bookId, ctx.memberId, entity, op)) return;
       const goalWhy = await goalOpRefusalTx(tx, ctx.bookId, entity, op, await authorMemberOf(tx, ctx.bookId, author));
       if (goalWhy) throw new AuthorityError(goalWhy);
+      const linkBefore = entity.entity === 'goal_share' ? await goalLinkOfTx(tx, op.id) : null;
       await applyRowOp(tx, ctx, entity, op, changeSet.hlc);
       await noteGoalLinkTx(tx, ctx.bookId, op, changeSet.hlc);
+      // §8.3: every phone makes its own follow-up of a link or a leave — a private copy, the others' lines dropped.
+      if (entity.entity === 'goal_share' && op.op === 'upsert') await followGoalShareTx(tx, ctx, op.id, linkBefore);
+      if (entity.entity === 'goal_share_leave' && op.op === 'upsert') {
+        const key = parseOpId(entity, op.id);
+        await followGoalLeaveTx(tx, ctx, key.goal_id!, key.member_id!);
+      }
       // Joint net worth §7.2 (task 8): this device's side of a transfer between partners follows its row — posted only
       // for a party, while the group is active and the author (the authority view's, never the change-set's claim) is in it.
       if (entity.entity === 'member_transfer' && op.op === 'upsert') await postTransferSideTx(tx, ctx.bookId, op.id, await authorMemberOf(tx, ctx.bookId, author));
