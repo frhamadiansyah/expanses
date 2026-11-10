@@ -181,6 +181,9 @@ export { deviceIdOf } from './sync/relay-signing';
 export { SharingError, type SharingErrorCode } from './sync/seed';
 export { type PullResult } from './sync/apply';
 export * from './repos/sharing';
+// Shared goals (§8.6): the app-version gate and the workspaces a goal can be shared into.
+export { SHARED_GOALS_MIN_APP_VERSION } from './sync/goals/version';
+export { goalShareTargets, type GoalShareTarget } from './repos/goal-sharing';
 export { removedFromBook, SyncTransportError, type LogEntry, type SequencedEntry, type SyncTransport } from './sync/types';
 // The in-memory relay, for the app's own tests of its sync wiring (it is the reference the real relay matches).
 export { MemoryTransport } from './sync/memory-transport';
