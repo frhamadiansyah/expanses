@@ -50,9 +50,17 @@ const MARK = `(SELECT coalesce(max(seq), 0) FROM temp.__sealed)`;
 const jsonOf = (row: 'OLD' | 'NEW', columns: readonly string[]) => `json_object(${columns.map((c) => `'${c}', ${row}.${c}`).join(', ')})`;
 const changedNames = (columns: readonly string[]) => columns.map((c) => `CASE WHEN OLD.${c} IS NOT NEW.${c} THEN '${c},' ELSE '' END`).join(' || ');
 
-/** A row entity's synced columns: its key, its fields, and the columns its derived fields stand for. */
-function syncedColumns(entity: RowEntity): string[] {
-  return [...new Set([...entity.keyColumns, ...Object.values(entity.fields), ...Object.values(entity.derivedFields ?? {}).flat()])];
+/**
+ * The columns each watched table had when its triggers went in, per database: one stopped at an older version (a
+ * migration test) has not got every synced column yet (0091's currency, say), and its triggers and checks name only
+ * those it has. Triggers are made once, so a later migrate() on the handle does not widen them.
+ */
+const presentColumns = new WeakMap<Database, Map<string, ReadonlySet<string>>>();
+
+/** A row entity's synced columns: its key, its fields, and the columns its derived fields stand for, as far as the table has them. */
+function syncedColumns(entity: RowEntity, present?: ReadonlySet<string>): string[] {
+  const all = [...new Set([...entity.keyColumns, ...Object.values(entity.fields), ...Object.values(entity.derivedFields ?? {}).flat()])];
+  return present ? all.filter((column) => present.has(column)) : all;
 }
 
 /**
@@ -64,10 +72,10 @@ function syncedColumns(entity: RowEntity): string[] {
 const watching = (bookId: string) =>
   `NOT EXISTS (SELECT 1 FROM temp.__apply_paused) AND EXISTS (SELECT 1 FROM main.shared_books WHERE book_id = '${bookId.replace(/'/g, "''")}' AND state = 'active')`;
 
-function rowEntityDdl(entity: RowEntity, bookId: string): string {
+function rowEntityDdl(entity: RowEntity, bookId: string, present?: ReadonlySet<string>): string {
   const inBook = (row: 'NEW' | 'OLD') =>
     `${watching(bookId)} AND EXISTS (SELECT 1 FROM ${entity.table} t WHERE t.rowid = ${row}.rowid AND ${inline(entity.scope(bookId))})`;
-  const synced = syncedColumns(entity);
+  const synced = syncedColumns(entity, present);
   // `old` is the row as it stood before this write (NULL for an insert): the check compares the first write's `old`
   // with the row as it ends, so a row deleted and written back as it was is no change at all.
   const record = (row: 'NEW' | 'OLD', op: string, old: string) =>
@@ -141,9 +149,19 @@ export async function installCaptureTriggers(database: Database, bookId: string)
       columnsOf.set(table, new Set((await database.db.values<[string]>(sql`SELECT name FROM pragma_table_info(${table})`)).map(([name]) => name)));
     }
   }
+  const present = presentColumns.get(database) ?? new Map<string, ReadonlySet<string>>();
+  presentColumns.set(database, present);
   for (const entity of SHARED_ENTITIES) {
-    if (entity.kind === 'row' && !tables.has(entity.table)) continue;
-    ddl.push(entity.kind === 'row' ? rowEntityDdl(entity, bookId) : purchaseDdl(entity, bookId, columnsOf));
+    if (entity.kind !== 'row') {
+      ddl.push(purchaseDdl(entity, bookId, columnsOf));
+      continue;
+    }
+    if (!tables.has(entity.table)) continue;
+    // The goal entities are scoped by goal_shares (0109): on a database stopped before it, a trigger naming it would
+    // fail every write to goals, and no goal can be shared there anyway.
+    if (entity.table.startsWith('goal') && !tables.has('goal_shares')) continue;
+    if (!present.has(entity.table)) present.set(entity.table, new Set((await database.db.values<[string]>(sql`SELECT name FROM pragma_table_info(${entity.table})`)).map(([name]) => name)));
+    ddl.push(rowEntityDdl(entity, bookId, present.get(entity.table)));
   }
   await database.execScript(ddl.join('\n'));
 }
@@ -262,7 +280,7 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
   for (const w of writes) if (!purchase.tables.includes(w.table) && !firstWrite.has(`${w.table}\u0000${w.key}`)) firstWrite.set(`${w.table}\u0000${w.key}`, w);
   for (const w of firstWrite.values()) {
     const entity = SHARED_ENTITIES.find((e) => e.kind === 'row' && e.table === w.table) as RowEntity;
-    const columns = syncedColumns(entity);
+    const columns = syncedColumns(entity, presentColumns.get(database)?.get(entity.table));
     const key = parseOpId(entity, w.key);
     // The row as it stands in the watched book: a key alone (a member id) may name a row of another shared book too.
     const [nowRow] = await database.db.values<[string]>(
