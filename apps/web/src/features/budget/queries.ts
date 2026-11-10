@@ -4,9 +4,9 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { historyOf } from './budget-view';
 
-export function useBudgetSheet(month: string) {
+export function useBudgetSheet(month: string, enabled = true) {
   const { database, ws } = useApp();
-  return useQuery({ queryKey: ['budget-sheet', ws.workspaceId, ws.bookId ?? null, month], queryFn: () => budgetSheetFor(database, ws, month) });
+  return useQuery({ queryKey: ['budget-sheet', ws.workspaceId, ws.bookId ?? null, month], queryFn: () => budgetSheetFor(database, ws, month), enabled });
 }
 
 /** The plan rows themselves, so the sheet can mark which caps this month overrode. */

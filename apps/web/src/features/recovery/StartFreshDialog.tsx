@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import type { SnapshotInfo } from '../../db/open';
+import { WidgetSummary } from '../../native/widget-summary';
 import { wipeEverything } from '../../db/salvage';
 import { Button, ErrorBox } from '../../ui';
 import { disabledWhileBusy, type RecoveryWork } from './busy-controls';
@@ -51,6 +52,7 @@ export function StartFreshDialog({
     setBusy('wipe');
     try {
       await wipeEverything();
+      await WidgetSummary.erase().catch(() => undefined);
       window.location.href = window.location.pathname;
     } catch (e) {
       setError(e);
