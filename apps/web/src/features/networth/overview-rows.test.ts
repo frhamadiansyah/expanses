@@ -127,6 +127,9 @@ const goalPlanRow = (partial: Partial<GoalPlanRow> = {}): GoalPlanRow => ({
   plannedMonthlyBaseMinor: 0,
   currentBaseMinor: 1_000_000,
   rateToBase: 1,
+  othersPlannedMonthlyMinor: 0,
+  ownNeededMonthlyMinor: 1_000_000,
+  ownNeededMonthlyBaseMinor: 1_000_000,
   ...partial,
 });
 
