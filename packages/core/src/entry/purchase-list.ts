@@ -126,6 +126,20 @@ function addDays(iso: string, days: number): string {
 }
 
 /**
+ * A day typed as text (27/10 · 27 Oct · 2026-10-27) with Paste a list's year rule: no year takes this year, or last year
+ * when that would put it more than a month (31 days) ahead.
+ */
+export function readDayText(text: string, today: string): string | null {
+  const found = parseLooseDate(text, today);
+  if (!found) return null;
+  const year = Number(today.slice(0, 4));
+  const before = parseLooseDate(text, `${year - 1}-01-01`);
+  const yearless = before !== null && before.slice(0, 4) !== found.slice(0, 4);
+  if (yearless && found > addDays(today, 31)) return before;
+  return found;
+}
+
+/**
  * The day a line names when the whole line is a date: 27/10 · 27/10/2026 · 27-10 · 27 Oct · Oct 27 · 2026-10-27,
  * day first. Without a year it is this year, or last year when that would put it more than a month ahead.
  */
@@ -133,16 +147,48 @@ function dateLine(text: string, today: string): string | null {
   const s = text.replace(WEEKDAY, '').replace(/[\s:.\-–]+$/, '').trim();
   const shaped = /^\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?$/.test(s) || /^\d{4}-\d{1,2}-\d{1,2}$/.test(s) || /^\d{1,2}\s+[a-z]{3,}\.?(?:,?\s+\d{4})?$/i.test(s) || /^[a-z]{3,}\.?\s+\d{1,2}(?:,?\s+\d{4})?$/i.test(s);
   if (!shaped) return null;
-  const found = parseLooseDate(s, today);
-  if (!found) return null;
-  const year = Number(today.slice(0, 4));
-  const before = parseLooseDate(s, `${year - 1}-01-01`);
-  const yearless = before !== null && before.slice(0, 4) !== found.slice(0, 4);
-  if (yearless && found > addDays(today, 31)) return before;
-  return found;
+  return readDayText(s, today);
 }
 
-const trimNote = (text: string) =>
+/** "18.000,-" → "18.000": the closing dash Paste a list drops before reading. */
+export function withoutClosingDash(text: string): string {
+  return text.replace(/(\d)[.,]-+/g, '$1');
+}
+
+export interface LineFigure {
+  /** Index of the figure's first character (its "Rp" when it has one) and just past its suffix. */
+  start: number;
+  end: number;
+  /** Minor units of `currency`; null when its marks make no sense (1.2.3) or it does not fit a safe integer. */
+  minor: number | null;
+  /** Read two ways (18,000) or rounded to the currency's cents. */
+  ambiguous: boolean;
+  /** Written with "Rp" in front. */
+  rupiahMark: boolean;
+  /** A minus sign directly before it (with only spaces between). */
+  negative: boolean;
+}
+
+/** Every figure in `text`, left to right, read exactly as Paste a list reads its amount. */
+export function lineFigures(text: string, currency: string): LineFigure[] {
+  const { exponent } = currencyInfo(currency);
+  return [...text.matchAll(AMOUNT)].map((found) => {
+    const start = found.index;
+    const suffix = found[2]?.toLowerCase();
+    const read = readNumber(found[1]!, suffix !== undefined);
+    const minor = read ? toMinor(read, suffix ? SUFFIX_POWER[suffix]! : 0, exponent) : null;
+    return {
+      start,
+      end: start + found[0].length,
+      minor: minor ? minor.minor : null,
+      ambiguous: Boolean(read && minor && (read.ambiguous || minor.rounded)),
+      rupiahMark: /^rp/i.test(found[0]),
+      negative: /(?:^|\s)[-−–]\s*$/.test(text.slice(0, start)),
+    };
+  });
+}
+
+export const trimNote = (text: string) =>
   text
     .replace(/\s+/g, ' ')
     .replace(/^[\s:;,@=\-–]+|[\s:;,@=\-–]+$/g, '')
@@ -174,17 +220,16 @@ export function parsePurchaseList(text: string, options: ParsePurchaseListOption
     line = line.replace(BULLET, '').trim();
     if (!line) return;
     // "18.000,-" and "18.000.-": a closing dash after the figure.
-    const cleaned = line.replace(/(\d)[.,]-+/g, '$1');
+    const cleaned = withoutClosingDash(line);
 
-    const found = [...cleaned.matchAll(AMOUNT)].at(-1);
+    const found = lineFigures(cleaned, currency).at(-1);
     const unread = (): PurchaseLine => ({ lineNo, raw, note: trimNote(cleaned), amountMinor: null, occurredOn: day, status: 'no-amount', ambiguous: false });
     if (!found) {
       rows.push(unread());
       return;
     }
 
-    const start = found.index;
-    const end = start + found[0].length;
+    const { start, end } = found;
     const note = trimNote(`${cleaned.slice(0, start)} ${cleaned.slice(end)}`);
     // A minus in front of the figure is a refund or a negative: not a purchase, so not read.
     if (/(?:^|\s)[-−–]$/.test(cleaned.slice(0, start))) {
@@ -192,15 +237,13 @@ export function parsePurchaseList(text: string, options: ParsePurchaseListOption
       return;
     }
 
-    const suffix = found[2]?.toLowerCase();
-    const read = readNumber(found[1]!, suffix !== undefined);
-    const minor = read ? toMinor(read, suffix ? SUFFIX_POWER[suffix]! : 0, exponent) : null;
-    if (!read || !minor || minor.minor <= 0) {
+    if (!found.minor || found.minor <= 0) {
       rows.push(unread());
       return;
     }
 
-    const ambiguous = read.ambiguous || minor.rounded;
+    const minor = { minor: found.minor };
+    const ambiguous = found.ambiguous;
     const major = BigInt(minor.minor) / 10n ** BigInt(exponent);
     // Under 100 whole units where a currency has no cents (a ride for 2 rupiah), under 1 where it has: a dropped zero or a quantity.
     const small = exponent === 0 ? minor.minor < 100 : minor.minor < 10 ** exponent;
