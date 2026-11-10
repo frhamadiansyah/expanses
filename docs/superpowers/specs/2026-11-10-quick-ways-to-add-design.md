@@ -92,6 +92,17 @@ No "you"/"your" in app text. No sample numbers in placeholders (the One line pla
 - Web: One line screen (save, keep date and card, fix a tag, no-amount refusal); the long-press menu; landscape table on Cashflow at a phone landscape size (844×390) in the phone e2e project; other pages stay in the phone shell at that size.
 - iOS: widget and Control Center checked on device (TestFlight) — not testable in CI.
 
+## Settled after the builder check (my calls, owner to confirm)
+
+1. **Landscape stays on Cashflow only — no app-wide breakpoint rewrite.** In the native app only `/transactions` (that exact path) unlocks rotation; every other route, including the Add form, a receipt or Paste a list opened from Cashflow, locks portrait again, so no other page is ever laid out sideways. On that one route in landscape the shell draws nothing of its own (no sidebar, no tab bar) and the page draws the full-screen table; the table's own wide-screen (`md:`) styling is exactly what is wanted there. `usePhone` gains a "phone held sideways" signal (landscape and height under 500px) used by the shell and Cashflow; the 88 `md:` uses and the other 768px checks are left alone. In a phone *browser* other pages can still go wide when turned, as they do today — accepted.
+2. **Reading order for a line:** date words and dates first; then a currency code with its figure; then paid-with (a 4-digit group equal to a known card's or account's last digits is paid-with, not an amount; account and card names by `matchPayment`); then the amount is the last figure left; the rest is the description. Inline date reading (`kemarin`, `yesterday`, `28/10` inside a sentence) is new code built on `parseLooseDate`.
+3. **Amount reader:** export Paste a list's figure reader from `purchase-list.ts` (refactor only, Paste a list's behaviour and tests unchanged) and call it from One line. Currency-code reading is added in One line's reader only; Paste a list does not change. The day's rate comes from the same path the Add form uses for a foreign amount.
+4. **Widget summary:** the workspace open when the app was last used. Rewritten when spending changes or the workspace is switched. Not erased by the app's own lock (the owner switched it on knowing it shows on the home screen); erased when the switch is turned off, on erasing the app's data, and when leaving that workspace. Stored as plain values in the App Group (iOS file protection applies); no amounts on lock-screen widgets.
+5. **Deep links:** a new `cicis://add/...` listener beside the existing ones. A link that arrives before the app is unlocked or fully started is held and followed once it is. `cicis://add/receipt` opens Cashflow and starts the same "Scan a receipt" action the Cashflow page has.
+6. **iPhone only** (the app targets iPhone; no iPad layout). The share extension and App Intents extension are unaffected by the orientation lock.
+7. **Native order:** the widget target is built on its own branch from main, independent of feat/intents-extension; whichever merges second resolves `project.pbxproj`.
+8. **Hold-＋ menu** on both the native app and the phone web app (touch press-and-hold); its "Scan a receipt" is the same action as the widget's Receipt.
+
 ## Left to the builder
 
 File layout, component names, how the long-press is detected (press-and-hold ~400ms with a light haptic on the native app), the exact unsure-tag styling within the mockup's look, and how the widget summary is passed from the web view to the App Group (a small native method next to the existing native bridges is expected).
