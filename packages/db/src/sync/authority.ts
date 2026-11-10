@@ -455,6 +455,8 @@ const WRITER_FROZEN_FIELDS: Readonly<Record<string, readonly string[]>> = {
   nw_item: ['owner'],
   member_transfer: ['from', 'to', 'recordedBy'],
   book_transfer: ['recordedBy'],
+  // A move is its member's alone: whose line it is never changes, so nobody writes another's History (shared goals §8.1).
+  goal_member_move: ['memberId'],
   // The workspace's link to its group log (task 4 review round 1): which log, on which relay book, is written once, by
   // whoever made the group, and never deleted by an op. Any member may still add invites. A group member closes it when
   // the group dissolves (task 5, `writeOnceBroken`).

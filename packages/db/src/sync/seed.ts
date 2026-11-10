@@ -199,6 +199,17 @@ export async function rowsInScopeTx(tx: Tx, book: SharedBook, keep: (entity: str
   ops.push(...(await rows('budget')), ...(await rows('budget_frequency')), ...(await rows('budget_share')), ...(await rows('budget_override')));
   ops.push(...(await rows('book_income')), ...(await rows('book_income_override')));
   ops.push(...(await rows('bill')), ...(await rows('bill_window')), ...(await rows('bill_skip')), ...(await rows('bill_pause')), ...(await rows('book_transfer')));
+  // The link first, then the goal, its stages and the rest, so a reader never finds a stage before its goal.
+  ops.push(
+    ...(await rows('goal_share')),
+    ...(await rows('goal_share_leave')),
+    ...(await rows('goal')),
+    ...(await rows('goal_stage')),
+    ...(await rows('goal_stage_term')),
+    ...(await rows('goal_calculator')),
+    ...(await rows('goal_member_funding')),
+    ...(await rows('goal_member_move')),
+  );
 
   // Every non-void purchase, oldest first. A void one never existed for the other member. A purchase split across
   // workspaces (0084) with a part here goes as that part (`projectPurchase`).
