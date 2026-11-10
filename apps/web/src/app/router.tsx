@@ -24,6 +24,7 @@ import { EducationFundPage } from '../features/calculators/EducationFundPage';
 import { EmergencyFundPage } from '../features/calculators/EmergencyFundPage';
 import { LifeCoverPage } from '../features/calculators/LifeCoverPage';
 import { RetirementFundPage } from '../features/calculators/RetirementFundPage';
+import { WidgetSettingsPage } from '../features/account/WidgetSettingsPage';
 import { CaptureSettingsPage } from '../features/capture/CaptureSettingsPage';
 import { SourcePage } from '../features/capture/SourcePage';
 import { WayPage } from '../features/capture/WayPage';
@@ -503,6 +504,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/activity', component: ActivityPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/activity/$id', component: ActivityDetailPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/capture', component: CaptureSettingsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings/widget', component: WidgetSettingsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/capture/sources/$sourceId', component: SourcePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/capture/ways/$way', component: WayPage }),
   // The design kit's specimen sheet. Deliberately not in `nav.ts`: it is a place to look at the primitives

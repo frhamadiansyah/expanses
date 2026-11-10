@@ -8,6 +8,7 @@ import {
   CheckCheck,
   CreditCard,
   History,
+  LayoutGrid,
   FileSpreadsheet,
   HandCoins,
   PiggyBank,
@@ -57,6 +58,7 @@ export const ACCOUNT_TAB: NavItem = { to: '/account', label: 'Account', icon: Us
  */
 export const SETTINGS_ITEMS: readonly NavItem[] = [
   { to: '/settings/capture', label: 'Capture', icon: Smartphone },
+  { to: '/settings/widget', label: 'Widget', icon: LayoutGrid },
   { to: '/backup', label: 'Backup', icon: ArrowDownToLine },
   { to: '/settings/activity', label: 'Activity', icon: History },
   { to: '/settings/default', label: 'Default', icon: WalletCards },

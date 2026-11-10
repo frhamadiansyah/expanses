@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { MORE_GROUPS, type NavItem, SETTINGS_ITEMS } from '../../app/nav';
 import { isNative } from '../../lib/pwa';
+import { hasWidget } from '../../native/widget-summary';
 import { ErrorBox } from '../../ui';
 import { type GroupChild, InsetGroup, InsetRow, ROW_PAD_X, ROW_PAD_Y, SCREEN, TAP } from '../../ui/native';
 import { daysSince, getLastBackupAt } from '../backup/backupState';
@@ -147,7 +148,7 @@ export function AccountMenuPage() {
         ]}
       </InsetGroup>
 
-      <InsetGroup header="Settings">{rows(SETTINGS_ITEMS.filter((item) => item.to !== '/settings/capture' || isNative()))}</InsetGroup>
+      <InsetGroup header="Settings">{rows(SETTINGS_ITEMS.filter((item) => (item.to !== '/settings/capture' || isNative()) && (item.to !== '/settings/widget' || hasWidget())))}</InsetGroup>
 
       {MORE_GROUPS.map((group) => (
         <InsetGroup key={group.title} header={group.title}>

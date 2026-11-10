@@ -18,6 +18,7 @@ import { TabBar } from './TabBar';
 import { usePhone, useSideways } from './use-phone';
 import { rotationFor, useCashflowRotation } from '../native/orientation';
 import { useYahooClosesAtStart } from '../features/prices/yahoo';
+import { useWidgetSummaryWriter } from '../features/account/use-widget-writer';
 import { useICloudBackupAtStart } from '../features/backup/icloud/runner';
 import { useForeignRecalcAtStart } from '../features/accounts/withdrawal-rate-start';
 import { WithdrawalRateNotice } from '../features/accounts/WithdrawalRateNotice';
@@ -104,6 +105,8 @@ export function Layout() {
   useICloudBackupAtStart(database);
   // Withdrawal rate (R18): foreign accounts recalculated behind whatever is on screen, one at a time.
   useForeignRecalcAtStart();
+  // This month's spending for the home screen widget, when it is switched on (iOS app only).
+  useWidgetSummaryWriter();
 
   // Whether the page has scrolled under the status bar: the glass over it is clear until then, as on iOS.
   const top = useRef<HTMLDivElement>(null);
