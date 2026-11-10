@@ -1,6 +1,6 @@
 import type { GoalHistoryEntry } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { historySubtitle, historyTitle } from './history-lines';
+import { historyNamesPeople, historySubtitle, historyTitle } from './history-lines';
 
 const entry = (over: Partial<GoalHistoryEntry>): GoalHistoryEntry => ({
   key: 'k', kind: 'set-aside', by: null, occurredOn: '2026-11-02', amountMinor: 100, currency: 'IDR', text: '', ...over,
@@ -25,5 +25,16 @@ describe('history lines', () => {
     expect(historySubtitle(entry({ text: 'Main Savings' }), '2026-11-10', () => 'Rina', true)).toBe('2 Nov · Main Savings · Me');
     expect(historySubtitle(entry({ text: 'Main Savings' }), '2026-11-10', () => 'Rina', false)).toBe('2 Nov · Main Savings');
     expect(historySubtitle(entry({ kind: 'left', memberName: 'Rina', text: '' }), '2026-11-10', () => 'Rina', true)).toBe('2 Nov');
+  });
+  // Final review M13: a member's own move from another of their devices is theirs: "Me", as on that device.
+  it("names this member's own synced move Me", () => {
+    expect(historySubtitle(entry({ by: 'member-b', text: 'Main Savings' }), '2026-11-10', () => 'Bima', true, 'member-b')).toBe('2 Nov · Main Savings · Me');
+  });
+  // Final review M5: a goal whose sharing is off is a private goal again: no person on its lines.
+  it('names people only while the goal is shared', () => {
+    expect(historyNamesPeople(null)).toBe(false);
+    expect(historyNamesPeople({ state: 'off' })).toBe(false);
+    expect(historyNamesPeople({ state: 'deleted' })).toBe(false);
+    expect(historyNamesPeople({ state: 'on' })).toBe(true);
   });
 });

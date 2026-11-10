@@ -75,7 +75,11 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
   const calculators = useGoalCalculators();
   const targets = useGoalShareTargets();
   const shareNow = useGoalShare(goal?.id ?? '');
-  const shareRow = shareRowState(targets.data ?? [], goal ? (shareNow.data ?? null) : null);
+  // Not drawn until both have answered (final review M3): a switch drawn before the share is known would read off for a
+  // goal shared now, and a tap on it then would mean nothing.
+  const shareKnown = targets.isSuccess && (!goal || shareNow.isSuccess);
+  const shareRow = shareKnown ? shareRowState(targets.data ?? [], goal ? (shareNow.data ?? null) : null) : ({ kind: 'hidden' } as const);
+  const plansNow = useGoalPlans(today);
   // The wish to share: on for a saved goal that is shared now; for a new one it is applied after the goal is saved.
   const sharedAlready = shareNow.data?.state === 'on';
   const [wantsShare, setWantsShare] = useState<boolean | null>(null);
@@ -231,24 +235,43 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
     }
   }
 
-  /** After the goal is saved: turn sharing on or off as the switch was left. Stop asks first, and ✓ waits for the answer. */
-  async function applyShare(goalId: string): Promise<boolean> {
+  const stopping = wantsShare === false && sharedAlready && (shareRow.kind === 'switch' || shareRow.kind === 'picker');
+
+  /**
+   * Turning sharing off asks first, before anything is written (final review M1): declining leaves the goal as it was.
+   * A copy is promised only to the members whose money is in the goal.
+   */
+  function confirmStop(): boolean {
+    if (!stopping) return true;
+    const share = shareNow.data;
+    const others = (share?.members ?? []).filter((member) => member.memberId !== share?.me);
+    const plan = plansNow.data?.plans.find((row) => row.goalId === goal?.id);
+    const funders = new Set((plan?.links ?? []).map((link) => link.owner).filter((owner): owner is string => owner !== undefined));
+    return window.confirm(
+      GOAL_SHARING_COPY.stopConfirm(
+        goal?.name ?? name,
+        others.map((member) => member.name),
+        others.filter((member) => funders.has(member.memberId)).map((member) => member.name),
+      ),
+    );
+  }
+
+  /** After the goal is saved: turn sharing on or off as the switch was left (off was asked about before the save). */
+  async function applyShare(goalId: string): Promise<void> {
     const bookId = shareRow.kind === 'switch' ? shareRow.bookId : shareBook;
-    if (wantsShare === null || shareRow.kind === 'hidden' || shareRow.kind === 'locked') return true;
+    if (wantsShare === null || shareRow.kind === 'hidden' || shareRow.kind === 'locked') return;
     if (wantsShare && !sharedAlready) {
-      if (!bookId) return true;
+      if (!bookId) return;
       await shareGoal(database, ws, goalId, bookId);
-    } else if (!wantsShare && sharedAlready) {
-      const others = (shareNow.data?.members ?? []).filter((member) => member.memberId !== shareNow.data?.me).map((member) => member.name);
-      if (!window.confirm(GOAL_SHARING_COPY.stopConfirm(goal?.name ?? name, others))) return false;
+    } else if (stopping) {
       await stopSharingGoal(database, ws, goalId);
     }
-    return true;
   }
 
   async function submit(event?: FormEvent) {
     event?.preventDefault();
     if (!canSave) return;
+    if (!confirmStop()) return;
     setError(null);
     setBusy(true);
     try {
@@ -311,10 +334,7 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
         await setEmergencyOwnTarget(database, ws, goalId, { targetMinor: ownTarget.minor, months: Number(monthsText.replace(',', '.')) });
       }
       await setAside.write(goalId);
-      if (!(await applyShare(goalId))) {
-        await invalidate();
-        return;
-      }
+      await applyShare(goalId);
       const { failed } = await applyTagChanges((tradeId, to) => retagTrade(database, ws, tradeId, to), goalId, tagChanges(originalTags, taggedNow));
       await invalidate();
       if (failed.length > 0) {
@@ -430,7 +450,7 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
         {shareRow.kind !== 'hidden' && (
           <InsetGroup footer={shareRow.kind === 'locked' ? shareRow.footer : undefined}>
             {shareRow.kind === 'picker' ? (
-              <SelectRow key="share" label={GOAL_SHARING_COPY.pickerLabel} info={GOAL_SHARING_COPY.switchInfo} value={shareBook ?? ''} onChange={(e) => { setShareBook(e.target.value || null); setWantsShare(!!e.target.value); }}>
+              <SelectRow key="share" label={GOAL_SHARING_COPY.pickerLabel} info={shareRow.options.find((option) => option.bookId === shareBook)?.info ?? GOAL_SHARING_COPY.pickerInfo} value={shareBook ?? ''} onChange={(e) => { setShareBook(e.target.value || null); setWantsShare(!!e.target.value); }}>
                 <option value="">{GOAL_SHARING_COPY.pickerNone}</option>
                 {shareRow.options.map((option) => (
                   <option key={option.bookId} value={option.bookId}>
@@ -439,7 +459,7 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
                 ))}
               </SelectRow>
             ) : (
-              <SwitchRow key="share" testId="goal-share-switch" label={shareRow.label} info={GOAL_SHARING_COPY.switchInfo} checked={shareRow.kind === 'locked' || sharing} disabled={shareRow.kind === 'locked'} onChange={setWantsShare} />
+              <SwitchRow key="share" testId="goal-share-switch" label={shareRow.label} info={shareRow.kind === 'switch' ? shareRow.info : undefined} checked={shareRow.kind === 'locked' || sharing} disabled={shareRow.kind === 'locked'} onChange={setWantsShare} />
             )}
           </InsetGroup>
         )}

@@ -17,7 +17,7 @@ import { SetAsideSheet } from './SetAside';
 import { MonthlySheet, MoveSheet, TakeBackSheet, useHasTaggedPurchase, UseSheet } from './GoalSheets';
 import { setAsideOf } from './goal-actions';
 import { cardHistory, dayMonth, fundedWindow, type GoalCard, goalCard, historyDay, monthsLeftLabel, stageShares } from './goal-cards';
-import { fundingGroups, type FundingGroup, GOAL_SHARING_COPY, heroSegments, initialsLine, sharedWithLabel } from './goal-sharing';
+import { fundingCaption, fundingGroups, type FundingGroup, GOAL_SHARING_COPY, heroSegments, initialsLine, sharedWithLabel } from './goal-sharing';
 import { InfoHeader } from './InfoHeader';
 import { useDraws, useEarmarks, useGoalHistory, useGoalPlans, useGoalShare, usePrivateCopy } from './queries';
 
@@ -114,7 +114,7 @@ export function GoalPage({ goalId }: { goalId: string }) {
     );
   }
 
-  const card = goalCard(plan);
+  const card = goalCard(plan, { me: share?.state === 'on' ? share.me : null, baseCurrency: ws.baseCurrency });
   const currency = plan.currency;
   const warn = card.statusTone === 'warn';
   const full = history[card.goalId] ?? [];
@@ -171,7 +171,7 @@ export function GoalPage({ goalId }: { goalId: string }) {
   const toGoMinor = card.targetMinor > 0 ? Math.max(0, card.targetMinor - card.paidMinor - card.currentMinor) : 0;
   // A shared goal: one bar segment and one Funded-by group per member with money (C33); a private goal keeps its three parts.
   const otherMembers = share?.members.filter((member) => member.memberId !== share.me) ?? [];
-  const groups: FundingGroup[] = shared ? fundingGroups(plan.links, otherMembers) : [];
+  const groups: FundingGroup[] = shared ? fundingGroups(plan.links, otherMembers, share.me) : [];
   const meGroup: FundingGroup = groups.find((group) => group.memberId === null) ?? { memberId: null, label: 'Me', subtotalMinor: 0, links: [] };
   const sharedGroups = shared ? [meGroup, ...groups.filter((group) => group.memberId !== null)] : [];
   const MEMBER_COLOURS = ['var(--ph-tint)', '#af52de', '#ff9500', '#30b0c7'];
@@ -320,7 +320,7 @@ export function GoalPage({ goalId }: { goalId: string }) {
           sharedGroups.map((group) => (
             <InsetGroup key={group.memberId ?? 'me'} wide header={group.label} trailing={<Money minor={group.subtotalMinor} currency={currency} />}>
               {group.links.map((link) => (
-                <FundingRow key={`${link.accountId}-${link.kind}-${link.owner ?? 'me'}`} link={link} goalCurrency={plan.currency} caption={link.owner !== undefined ? GOAL_SHARING_COPY.partnerAccount(group.label) : undefined} />
+                <FundingRow key={`${link.accountId}-${link.kind}-${link.owner ?? 'me'}`} link={link} goalCurrency={plan.currency} caption={fundingCaption(link, group.label, share?.me)} />
               ))}
               {group.memberId === null && <InsetRow key="set-aside" title={<span className="text-[var(--ph-tint)]">{GOAL_SHARING_COPY.setAsideRow}</span>} chevron={false} onClick={() => setSettingAside(true)} />}
             </InsetGroup>

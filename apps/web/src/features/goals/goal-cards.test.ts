@@ -212,6 +212,27 @@ describe('done and short', () => {
     expect(stood).toEqual({ from: '2026-08-03', until: '2026-09-19', description: 'Laptop', amountMinor: 1_800_000, currency: 'IDR' });
   });
 
+  const syncedLink = (goalMinor: number, owner: string, currency = 'IDR') =>
+    ({ goalId: 'hajj', accountId: `ref-${owner}-${goalMinor}`, name: 'Line', kind: 'earmark', unitsMicro: null, valueMinor: goalMinor, currency, baseMinor: null, goalMinor, risk: null, promisedMinor: null, shortMinor: 0, overBalance: false, owner }) as GoalPlanRow['links'][number];
+
+  // Final review I3: on a member's second device their own synced lines are theirs, in the list total too (C21).
+  it("counts a member's own synced lines as theirs on their second device", () => {
+    const links = [syncedLink(20_000_000, 'member-b'), syncedLink(10_000_000, 'member-r')];
+    const card = goalCard(plan({ currentMinor: 30_000_000, currentBaseMinor: 30_000_000, links }), { me: 'member-b', baseCurrency: 'IDR' });
+    expect([card.ownMinor, card.othersMinor, card.ownBaseMinor]).toEqual([20_000_000, 10_000_000, 20_000_000]);
+  });
+
+  // Final review M4: this member's part in the base currency is their own figure converted at the plan's rate.
+  it('converts the own part of a foreign goal at the rate, not in proportion', () => {
+    // Two cents in all, one of them Rina's, at Rp 10.049 a dollar: the whole is Rp 200,98, stored rounded as Rp 201.
+    const links = [syncedLink(1, 'member-r', 'USD')];
+    const card = goalCard(plan({ currency: 'USD', goal: goal({ currency: 'USD' }), currentMinor: 2, currentBaseMinor: 201, rateToBase: 10_049, links }), { me: 'member-b', baseCurrency: 'IDR' });
+    expect(card.ownMinor).toBe(1);
+    // One cent is Rp 100,49: Rp 100. Half of the rounded whole would have read Rp 101.
+    expect(card.ownBaseMinor).toBe(100);
+    expect(goalCard(plan({ currency: 'USD', goal: goal({ currency: 'USD' }), currentMinor: 1_000, currentBaseMinor: null, rateToBase: null, links }), { me: 'member-b', baseCurrency: 'IDR' }).ownBaseMinor).toBeNull();
+  });
+
   it('lists what each account is short, in that account\'s money', () => {
     const card = goalCard(plan({ links: [{ goalId: 'g', accountId: 'wise', name: 'Wise USD', kind: 'earmark', unitsMicro: null, valueMinor: 5_000, currency: 'USD', baseMinor: null, goalMinor: null, risk: null, promisedMinor: 10_003, shortMinor: 5_003, overBalance: true }] }));
     expect(card.shortLines).toEqual([{ accountName: 'Wise USD', shortMinor: 5_003, currency: 'USD' }]);

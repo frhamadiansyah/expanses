@@ -96,7 +96,8 @@ export function GoalsPage() {
   const plans = summary.data?.plans ?? [];
   // The page's order is the funding order: compulsory goals first, each section in its own rank order.
   const ordered = fundingOrder(plans.map((plan) => ({ ...plan, kind: plan.goal.kind, rank: plan.goal.rank })));
-  const cards = ordered.map((plan) => goalCard(plan));
+  // A member's own lines from another of their devices are theirs in the total (I3, C21).
+  const cards = ordered.map((plan) => goalCard(plan, { me: shares[plan.goalId]?.me ?? null, baseCurrency: ws.baseCurrency }));
   const totals = goalsTotals(cards);
   const shortfall = (summary.data?.neededMonthlyMinor ?? 0) - (summary.data?.capacityMonthlyMinor ?? 0);
   const fitting = summary.data?.fits.filter((fit) => fit.fits === 'full').length ?? 0;

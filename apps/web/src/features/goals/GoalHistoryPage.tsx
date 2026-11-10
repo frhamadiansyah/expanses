@@ -2,7 +2,7 @@ import { isoDate } from '@expanses/core';
 import { useParams } from '@tanstack/react-router';
 import { Money } from '../../ui';
 import { InsetGroup, InsetRow, PushedTitle, SCREEN } from '../../ui/native';
-import { historySubtitle, historyTitle } from './history-lines';
+import { historyNamesPeople, historySubtitle, historyTitle } from './history-lines';
 import { useGoalHistory, useGoalShare } from './queries';
 
 export function GoalHistoryRoute() {
@@ -25,7 +25,7 @@ export function GoalHistoryPage({ goalId }: { goalId: string }) {
             key={entry.key}
             testId="goal-history"
             title={historyTitle(entry)}
-            subtitle={historySubtitle(entry, today, nameOf, share !== null)}
+            subtitle={historySubtitle(entry, today, nameOf, historyNamesPeople(share), share?.me)}
             value={entry.amountMinor === null ? undefined : <Money minor={entry.amountMinor} currency={entry.currency} />}
             valueTone="ink"
             chevron={false}
