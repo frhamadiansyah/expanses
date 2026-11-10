@@ -9,9 +9,11 @@ import { goalStageTerms } from '../schema-health';
 import { MONEY_SUBTYPES } from './accounts';
 import { recordContributionTx } from './goal-contributions';
 import { healthTablesExist } from './health-tables';
-import { goalPartsTableExists } from './goal-parts';
 import { isPocketParentTx } from './set-aside-tx';
-import { markGoalDirtyTx } from '../sync/capture';
+import { type CaptureTarget, markGoalDirtyTx, withCapture } from '../sync/capture';
+import { goalLinkOfTx } from '../sync/goals/scope';
+import { markGoalDeletedTx } from './goal-sharing';
+import { goalSharingTablesExist } from './goal-sharing-tables';
 
 const currencyColumn = new WeakMap<Db, boolean>();
 
@@ -191,63 +193,75 @@ export async function saveGoalTx(tx: Db, ws: WorkspaceContext, input: SaveGoalIn
     createdAt: existing[0]?.createdAt ?? new Date().toISOString(),
   };
   const { id: _id, createdAt: _createdAt, ...changes } = row;
-  if (await goalCurrencyExists(tx)) {
-    await tx.insert(goals).values(row).onConflictDoUpdate({ target: goals.id, set: changes });
-  } else {
-    const { currency: _currency, ...older } = row;
-    const { currency: _changed, ...olderChanges } = changes;
-    await tx.insert(goalsBefore0091).values(older).onConflictDoUpdate({ target: goalsBefore0091.id, set: olderChanges });
-  }
 
   const keptIds = input.stages.map((stage) => stage.id).filter((stageId): stageId is string => !!stageId);
   const current = await tx.select({ id: goalStages.id, name: goalStages.name }).from(goalStages).where(eq(goalStages.goalId, id));
   // A draw names the stage it paid, so that stage never goes (the set-aside ruling): a hand edit that drops it is
-  // refused, and a calculator's re-work keeps it (writeCalculatorTx passes it back).
+  // refused, and a calculator's re-work keeps it (writeCalculatorTx passes it back). A partner's spend counts too (§9.4).
   const drawn = await drawnStageIds(tx, id);
   const dropped = current.find((stage) => !keptIds.includes(stage.id) && drawn.has(stage.id));
   if (dropped) throw new GoalDbError(`Money was drawn against "${dropped.name}", so it cannot be removed. Archive the goal instead.`);
-  for (const stage of current) {
-    if (!keptIds.includes(stage.id)) await tx.delete(goalStages).where(eq(goalStages.id, stage.id));
-  }
-  const stageIds: string[] = [];
-  for (const [index, stage] of input.stages.entries()) {
-    const stageRow = {
-      id: stage.id ?? uuidv7(),
-      goalId: id,
-      workspaceId: ws.workspaceId,
-      name: stage.name.trim(),
-      targetMinor: stage.targetMinor ?? null,
-      targetMonths: stage.targetMonths ?? null,
-      dueOn: stage.dueOn,
-      sort: index,
-      paidOn: stage.paidOn ?? null,
-    };
-    stageIds.push(stageRow.id);
-    const { id: _stageId, goalId: _goalId, workspaceId: _workspaceId, ...stageChanges } = stageRow;
-    await tx.insert(goalStages).values(stageRow).onConflictDoUpdate({ target: goalStages.id, set: stageChanges });
-  }
-
-  if (await healthTablesExist(tx)) {
-    // A stage that went away takes its terms with it; a hand-typed save drops them all, like the calculator link.
-    const removed = current.map((stage) => stage.id).filter((stageId) => !keptIds.includes(stageId));
-    for (const stageId of removed) await tx.delete(goalStageTerms).where(eq(goalStageTerms.stageId, stageId));
-    if (!input.derived) {
-      await tx.delete(goalStageTerms).where(and(eq(goalStageTerms.goalId, id), eq(goalStageTerms.workspaceId, ws.workspaceId)));
+  // Named before the write, so capture sees every row this save can touch: a shared goal's edit goes out (C10).
+  const stageIds = input.stages.map((stage) => stage.id ?? uuidv7());
+  const touched = [...new Set([...current.map((stage) => stage.id), ...stageIds])];
+  const targets: CaptureTarget[] = [
+    { entity: 'goal', id },
+    ...touched.map((stageId) => ({ entity: 'goal_stage', id: stageId })),
+    ...touched.map((stageId) => ({ entity: 'goal_stage_term', id: stageId })),
+    { entity: 'goal_calculator', id },
+  ];
+  await withGoalCapture(tx, targets, async () => {
+    if (await goalCurrencyExists(tx)) {
+      await tx.insert(goals).values(row).onConflictDoUpdate({ target: goals.id, set: changes });
+    } else {
+      const { currency: _currency, ...older } = row;
+      const { currency: _changed, ...olderChanges } = changes;
+      await tx.insert(goalsBefore0091).values(older).onConflictDoUpdate({ target: goalsBefore0091.id, set: olderChanges });
     }
-  }
 
-  // An amount typed by hand is the owner's, so the goal stops being derived from a calculator.
-  // Only an existing goal can carry one, and saveGoal still has to work on a database that has
-  // not reached migration 0017 — creating a goal must not reach for a table that is not there yet.
-  if (!input.derived && existing.length > 0) {
-    await tx.delete(goalCalculators).where(and(eq(goalCalculators.goalId, id), eq(goalCalculators.workspaceId, ws.workspaceId)));
-  }
+    for (const stage of current) {
+      if (!keptIds.includes(stage.id)) await tx.delete(goalStages).where(eq(goalStages.id, stage.id));
+    }
+    for (const [index, stage] of input.stages.entries()) {
+      const stageRow = {
+        id: stageIds[index]!,
+        goalId: id,
+        workspaceId: ws.workspaceId,
+        name: stage.name.trim(),
+        targetMinor: stage.targetMinor ?? null,
+        targetMonths: stage.targetMonths ?? null,
+        dueOn: stage.dueOn,
+        sort: index,
+        paidOn: stage.paidOn ?? null,
+      };
+      const { id: _stageId, goalId: _goalId, workspaceId: _workspaceId, ...stageChanges } = stageRow;
+      await tx.insert(goalStages).values(stageRow).onConflictDoUpdate({ target: goalStages.id, set: stageChanges });
+    }
+
+    if (await healthTablesExist(tx)) {
+      // A stage that went away takes its terms with it; a hand-typed save drops them all, like the calculator link.
+      const removed = current.map((stage) => stage.id).filter((stageId) => !keptIds.includes(stageId));
+      for (const stageId of removed) await tx.delete(goalStageTerms).where(eq(goalStageTerms.stageId, stageId));
+      if (!input.derived) {
+        await tx.delete(goalStageTerms).where(and(eq(goalStageTerms.goalId, id), eq(goalStageTerms.workspaceId, ws.workspaceId)));
+      }
+    }
+
+    // An amount typed by hand is the owner's, so the goal stops being derived from a calculator.
+    // Only an existing goal can carry one, and saveGoal still has to work on a database that has
+    // not reached migration 0017 — creating a goal must not reach for a table that is not there yet.
+    if (!input.derived && existing.length > 0) {
+      await tx.delete(goalCalculators).where(and(eq(goalCalculators.goalId, id), eq(goalCalculators.workspaceId, ws.workspaceId)));
+    }
+  });
   return { goalId: id, stageIds };
 }
 
 /**
  * Whether anything is counted toward the goal: money set aside, a buy tagged to it (whole or in part), a monthly buy
- * template, a draw or a recorded movement. Read with plain SQL so a database without a table reads it as none.
+ * template, a draw or a recorded movement — this phone's, or, for a shared goal, any member's line with something in
+ * it or History line (§9.1), so the currency stays locked once anyone funds it. Read with plain SQL so a database
+ * without a table reads it as none.
  */
 export async function goalHasFunding(tx: Db, goalId: string): Promise<boolean> {
   const tables = new Set((await tx.values<[string]>(sql`SELECT name FROM sqlite_master WHERE type = 'table'`)).map((row) => row[0]));
@@ -264,6 +278,10 @@ export async function goalHasFunding(tx: Db, goalId: string): Promise<boolean> {
     const found = await tx.values<[number]>(sql.raw(`SELECT 1 FROM ${table} WHERE ${column} = '${goalId.replace(/'/g, "''")}' LIMIT 1`));
     if (found.length > 0) return true;
   }
+  if (tables.has('goal_member_funding')) {
+    if ((await tx.values(sql`SELECT 1 FROM goal_member_funding WHERE goal_id = ${goalId} AND lines_json <> '[]' LIMIT 1`)).length > 0) return true;
+    if ((await tx.values(sql`SELECT 1 FROM goal_member_moves WHERE goal_id = ${goalId} LIMIT 1`)).length > 0) return true;
+  }
   return false;
 }
 
@@ -273,14 +291,43 @@ export async function goalIsFunded(database: Database, goalId: string): Promise<
 }
 
 /**
- * The stages of a goal that money was drawn against. The table is the set-aside work's (0050); on a database without
- * it nothing was ever drawn. Read with plain SQL so this file needs nothing from that schema.
+ * The stages of a goal that money was drawn against: this phone's draws, and for a shared goal any member's spend in
+ * its History (§9.4). The tables are the set-aside work's (0050) and 0109; on a database without one nothing was
+ * drawn there. Read with plain SQL so this file needs nothing from those schemas.
  */
 export async function drawnStageIds(tx: Db, goalId: string): Promise<Set<string>> {
-  const table = await tx.values<[number]>(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'goal_draws'`);
-  if (table.length === 0) return new Set();
-  const rows = await tx.values<[string]>(sql`SELECT DISTINCT stage_id FROM goal_draws WHERE goal_id = ${goalId} AND stage_id IS NOT NULL`);
-  return new Set(rows.map((row) => row[0]));
+  const tables = new Set(
+    (await tx.values<[string]>(sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('goal_draws', 'goal_member_moves')`)).map((row) => row[0]),
+  );
+  const ids = new Set<string>();
+  for (const table of ['goal_draws', 'goal_member_moves']) {
+    if (!tables.has(table)) continue;
+    const rows = await tx.values<[string]>(sql`SELECT DISTINCT stage_id FROM ${sql.raw(table)} WHERE goal_id = ${goalId} AND stage_id IS NOT NULL`);
+    for (const [stageId] of rows) ids.add(stageId);
+  }
+  return ids;
+}
+
+/**
+ * `withCapture` for writes of a goal's synced rows (§8.5): a shared goal's edit goes out, judged as a peer's would be.
+ * A database before 0109 shares no goal, and its capture could not read the goal entities' scope.
+ */
+export async function withGoalCapture<T>(tx: Db, target: CaptureTarget | readonly CaptureTarget[], fn: () => Promise<T>): Promise<T> {
+  return (await goalSharingTablesExist(tx)) ? withCapture(tx, target, fn) : fn();
+}
+
+/**
+ * The sharer of a goal shared now, named, when this phone's member is someone else (C12, D10); null for a goal not
+ * shared, or shared by this phone's member.
+ */
+async function otherSharerTx(tx: Db, goalId: string): Promise<string | null> {
+  if (!(await goalSharingTablesExist(tx))) return null;
+  const link = await goalLinkOfTx(tx, goalId);
+  if (!link || link.state !== 'on') return null;
+  const [me] = await tx.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${link.bookId}`);
+  if (!me || me[0] === link.sharedBy) return null;
+  const [name] = await tx.values<[string]>(sql`SELECT name FROM book_members WHERE book_id = ${link.bookId} AND member_id = ${link.sharedBy}`);
+  return name?.[0] ?? 'Another member';
 }
 
 async function nextRank(tx: Db, ws: WorkspaceContext): Promise<number> {
@@ -288,34 +335,54 @@ async function nextRank(tx: Db, ws: WorkspaceContext): Promise<number> {
   return rows.length === 0 ? 0 : Math.max(...rows.map((row) => row.rank)) + 1;
 }
 
+/** Archives a goal. A shared one only its sharer archives (D10): it stops the goal claiming money on every phone. */
 export async function archiveGoal(database: Database, ws: WorkspaceContext, goalId: string): Promise<void> {
-  await database.db.update(goals).set({ status: 'archived' }).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId)));
+  await database.transaction(async (tx) => {
+    const sharer = await otherSharerTx(tx, goalId);
+    if (sharer !== null) throw new GoalDbError(`Only ${sharer} can archive this shared goal`);
+    await withGoalCapture(tx, { entity: 'goal', id: goalId }, () =>
+      tx.update(goals).set({ status: 'archived' }).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId))),
+    );
+    markGoalDirtyTx(tx, goalId);
+  });
 }
 
 /**
  * Deletes a goal and everything that only described it: what was set aside returns to its accounts, its purchases are
  * untagged (the purchases, sales and spending stay, as the records they are), and its payments, working, history and
- * contributions go. A goal other goals share a split purchase with leaves their parts as they were.
+ * contributions go. A goal other goals share a split purchase with leaves their parts as they were. A shared goal only
+ * its sharer deletes (C12): the link goes to 'deleted' first, the one op sent, and every other phone keeps a copy.
  */
 export async function deleteGoal(database: Database, ws: WorkspaceContext, goalId: string): Promise<void> {
   await database.transaction(async (tx) => {
     const [goal] = await tx.select({ id: goals.id }).from(goals).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId)));
     if (!goal) throw new GoalDbError('Goal not found in this workspace');
-    const w = ws.workspaceId;
-    await tx.run(sql`UPDATE investment_trades SET goal_id = NULL WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
-    await tx.run(sql`UPDATE trade_templates SET goal_id = NULL WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
-    await tx.run(sql`UPDATE asset_sales SET goal_id = NULL WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
-    await tx.run(sql`UPDATE transactions SET goal_id = NULL WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
-    await tx.run(sql`UPDATE events SET goal_id = NULL WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
-    if (await goalPartsTableExists(tx)) await tx.run(sql`DELETE FROM trade_goal_parts WHERE goal_id = ${goalId}`);
-    await tx.run(sql`DELETE FROM goal_draws WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
-    await tx.run(sql`DELETE FROM goal_contributions WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
-    await tx.run(sql`DELETE FROM goal_calculators WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
-    if (await healthTablesExist(tx)) await tx.run(sql`DELETE FROM goal_stage_terms WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
-    await tx.delete(goalEarmarks).where(and(eq(goalEarmarks.goalId, goalId), eq(goalEarmarks.workspaceId, w)));
-    await tx.delete(goalStages).where(and(eq(goalStages.goalId, goalId), eq(goalStages.workspaceId, w)));
-    await tx.delete(goals).where(and(eq(goals.id, goalId), eq(goals.workspaceId, w)));
+    const sharer = await otherSharerTx(tx, goalId);
+    if (sharer !== null) throw new GoalDbError(`${sharer} shared this goal; leave it instead`);
+    await markGoalDeletedTx(tx, goalId);
+    await deleteGoalRowsTx(tx, ws, goalId);
   });
+}
+
+/**
+ * The body of `deleteGoal`, and of a phone following a shared goal's delete (`sync/goals/follow.ts`): the goal and
+ * everything of this phone's that names it, the goal last. Tags on trades, templates, sales, transfers and events are
+ * cleared, never the records themselves; the members' lines and the share's History go too. Sends nothing: by now the
+ * goal's rows are out of any book. Plain SQL, so a table an older database lacks reads as none.
+ */
+export async function deleteGoalRowsTx(tx: Db, ws: WorkspaceContext, goalId: string): Promise<void> {
+  const tables = new Set((await tx.values<[string]>(sql`SELECT name FROM sqlite_master WHERE type = 'table'`)).map((row) => row[0]));
+  const w = ws.workspaceId;
+  for (const table of ['investment_trades', 'trade_templates', 'asset_sales', 'transactions', 'events']) {
+    if (tables.has(table)) await tx.run(sql`UPDATE ${sql.raw(table)} SET goal_id = NULL WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
+  }
+  for (const table of ['trade_goal_parts', 'goal_member_funding', 'goal_member_moves', 'goal_share_log']) {
+    if (tables.has(table)) await tx.run(sql`DELETE FROM ${sql.raw(table)} WHERE goal_id = ${goalId}`);
+  }
+  for (const table of ['goal_draws', 'goal_contributions', 'goal_calculators', 'goal_stage_terms', 'goal_earmarks', 'goal_stages']) {
+    if (tables.has(table)) await tx.run(sql`DELETE FROM ${sql.raw(table)} WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
+  }
+  await tx.run(sql`DELETE FROM goals WHERE id = ${goalId} AND workspace_id = ${w}`);
 }
 
 /** Writes the order the owner dragged the goals into; the first is funded first. */
@@ -329,7 +396,11 @@ export async function reorderGoals(database: Database, ws: WorkspaceContext, goa
 
 export async function setStagePaid(database: Database, ws: WorkspaceContext, stageId: string, paidOn: string | null): Promise<void> {
   if (paidOn !== null && !DATE.test(paidOn)) throw new GoalDbError('A paid date is YYYY-MM-DD');
-  await database.db.update(goalStages).set({ paidOn }).where(and(eq(goalStages.id, stageId), eq(goalStages.workspaceId, ws.workspaceId)));
+  await database.transaction((tx) =>
+    withGoalCapture(tx, { entity: 'goal_stage', id: stageId }, () =>
+      tx.update(goalStages).set({ paidOn }).where(and(eq(goalStages.id, stageId), eq(goalStages.workspaceId, ws.workspaceId))),
+    ),
+  );
 }
 
 export interface EarmarkRow {

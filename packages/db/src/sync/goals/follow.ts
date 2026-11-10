@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../../context';
 import type { Db } from '../../database';
 import { rekeyGoalTx } from '../../repos/goal-private-copy';
+import { deleteGoalRowsTx } from '../../repos/goals';
 import { goalSharingTablesExist } from '../../repos/goal-sharing-tables';
 import type { BookContext } from '../apply';
 import { withCaptureSuspended } from '../capture';
@@ -101,24 +102,22 @@ async function goalHereTx(tx: Db, ws: WorkspaceContext, goalId: string): Promise
   return (await tx.values(sql`SELECT 1 FROM goals WHERE id = ${goalId} AND workspace_id = ${ws.workspaceId}`)).length > 0;
 }
 
+/** Local tables whose rows are a member's own money or records naming a goal (not its plan, not the share's History). */
+const OWN_PARTS = ['goal_earmarks', 'goal_contributions', 'goal_draws', 'trade_goal_parts', 'investment_trades', 'trade_templates', 'asset_sales', 'transactions', 'events'];
+
 /**
- * The goal and everything of this phone's that names it, gone (the sharer's other phones, on a delete): what
- * `deleteGoal` removes, plus the members' lines and the share's History. Tags on trades, sales, transfers and events
- * are cleared, never the records themselves. Plain SQL, so a table an older database lacks reads as none.
+ * Whether this phone holds anything of `me`'s in a goal: money or a record of this phone's that names it, or a line or
+ * History line of the member's (sent from here or from their other device). Only then is there a private copy to keep.
  */
-async function deleteGoalHereTx(tx: Db, ws: WorkspaceContext, goalId: string): Promise<void> {
+async function hasOwnPartTx(tx: Db, goalId: string, me: string): Promise<boolean> {
   const tables = new Set((await tx.values<[string]>(sql`SELECT name FROM sqlite_master WHERE type = 'table'`)).map((row) => row[0]));
-  const w = ws.workspaceId;
-  for (const table of ['investment_trades', 'trade_templates', 'asset_sales', 'transactions', 'events']) {
-    if (tables.has(table)) await tx.run(sql`UPDATE ${sql.raw(table)} SET goal_id = NULL WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
+  for (const table of OWN_PARTS) {
+    if (tables.has(table) && (await tx.values(sql`SELECT 1 FROM ${sql.raw(table)} WHERE goal_id = ${goalId} LIMIT 1`)).length > 0) return true;
   }
-  if (tables.has('trade_goal_parts')) await tx.run(sql`DELETE FROM trade_goal_parts WHERE goal_id = ${goalId}`);
-  for (const table of ['goal_draws', 'goal_contributions', 'goal_calculators', 'goal_stage_terms', 'goal_earmarks', 'goal_stages']) {
-    if (tables.has(table)) await tx.run(sql`DELETE FROM ${sql.raw(table)} WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
+  for (const table of ['goal_member_funding', 'goal_member_moves']) {
+    if ((await tx.values(sql`SELECT 1 FROM ${sql.raw(table)} WHERE goal_id = ${goalId} AND member_id = ${me} LIMIT 1`)).length > 0) return true;
   }
-  await dropLinesTx(tx, goalId);
-  await tx.run(sql`DELETE FROM goal_share_log WHERE goal_id = ${goalId}`);
-  await tx.run(sql`DELETE FROM goals WHERE id = ${goalId} AND workspace_id = ${w}`);
+  return false;
 }
 
 export type UnlinkHow = 'off' | 'deleted' | 'ended';
@@ -134,7 +133,7 @@ export async function unlinkHereTx(tx: Db, ws: WorkspaceContext, link: GoalLink 
   await clearClocksTx(tx, bookId, goalId);
   if (me === link.sharedBy) {
     if (how === 'deleted') {
-      if (await goalHereTx(tx, ws, goalId)) await deleteGoalHereTx(tx, ws, goalId);
+      if (await goalHereTx(tx, ws, goalId)) await deleteGoalRowsTx(tx, ws, goalId);
       else await dropLinesTx(tx, goalId);
       return null;
     }
@@ -146,6 +145,12 @@ export async function unlinkHereTx(tx: Db, ws: WorkspaceContext, link: GoalLink 
   }
   if ((await memberLeftTx(tx, goalId, me)) || !(await goalHereTx(tx, ws, goalId))) {
     await dropLinesTx(tx, goalId);
+    return null;
+  }
+  // Nothing of this member's in it — a device that joined later and read the round's end from the log, or a member who
+  // never put money in: the goal just goes, with no empty copy. The household share ending keeps a copy as before.
+  if (how !== 'ended' && !(await hasOwnPartTx(tx, goalId, me))) {
+    await deleteGoalRowsTx(tx, ws, goalId);
     return null;
   }
   const copy = await rekeyGoalTx(tx, ws, goalId, {
