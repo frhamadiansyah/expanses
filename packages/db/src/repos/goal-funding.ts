@@ -194,11 +194,13 @@ export function viaBaseMinor(amountMinor: number, from: string, to: string, base
 interface LinksWithRates {
   links: GoalLinkRow[];
   rates: Record<string, number>;
+  /** The synced funding rows counted in `links`, by goal id. */
+  funding: Map<string, MemberFunding[]>;
 }
 
 async function goalLinksWithRates(database: Database, ws: WorkspaceContext, date: string): Promise<LinksWithRates> {
   const goalRows = await listGoals(database, ws);
-  if (goalRows.length === 0) return { links: [], rates: {} };
+  if (goalRows.length === 0) return { links: [], rates: {}, funding: new Map() };
   const known = new Set(goalRows.map((goal) => goal.id));
 
   const trades = await listTrades(database, ws);
@@ -296,30 +298,36 @@ async function goalLinksWithRates(database: Database, ws: WorkspaceContext, date
   return withBaseAmounts(database, ws, links, date, new Map(goalRows.map((goal) => [goal.id, goal.currency])));
 }
 
-interface OtherFunding {
+interface MemberFunding {
   memberId: string;
+  /** This device's own member, as another device of theirs sent it (§11): theirs, not another member's. */
+  self: boolean;
   lines: { ref: string; name: string; kind: 'earmark' | 'tagged'; amountMinor: number | null; risk: GoalLink['risk'] }[];
   plannedMonthlyMinor: number;
 }
 
 /**
- * The other members' funding of every goal shared now, by goal id (§9.1). Own row and members who left this round are
- * left out; a goal turned off or deleted has none. A database before 0109 has no shared goal.
+ * The synced funding of every goal shared now, by goal id (§9.1): the other members', and this member's own where this
+ * device would never write it — it holds none of the money (`ownGoalIds` are the goals it does) and never sent a summary
+ * for the goal, a second device of the member (§11). Anywhere else that row is this device's own records, already counted.
+ * Members who left this round are left out; a goal turned off or deleted has none. A database before 0109 has no shared goal.
  */
-async function otherFundingByGoal(database: Database): Promise<Map<string, OtherFunding[]>> {
-  const out = new Map<string, OtherFunding[]>();
+async function syncedFundingByGoal(database: Database, ownGoalIds: ReadonlySet<string>): Promise<Map<string, MemberFunding[]>> {
+  const out = new Map<string, MemberFunding[]>();
   if (!(await goalSharingTablesExist(database.db))) return out;
-  const rows = await database.db.values<[string, string, string, number]>(sql`
-    SELECT f.goal_id, f.member_id, f.lines_json, f.planned_monthly_minor
+  // The settings key is summaries.ts's: set once this device has written the goal's summary.
+  const rows = await database.db.values<[string, string, number, string, number]>(sql`
+    SELECT f.goal_id, f.member_id, f.member_id = b.member_id, f.lines_json, f.planned_monthly_minor
     FROM goal_member_funding f
     JOIN goal_shares s ON s.goal_id = f.goal_id AND s.state = 'on'
     JOIN shared_books b ON b.book_id = s.book_id
-    WHERE f.member_id <> b.member_id
+    WHERE (f.member_id <> b.member_id OR NOT EXISTS (SELECT 1 FROM settings w WHERE w.key = 'goal.summary.' || f.goal_id))
       AND NOT EXISTS (SELECT 1 FROM goal_share_leaves l WHERE l.goal_id = f.goal_id AND l.member_id = f.member_id AND l.round = s.round)
     ORDER BY f.goal_id, f.member_id`);
-  for (const [goalId, memberId, linesJson, planned] of rows) {
+  for (const [goalId, memberId, self, linesJson, planned] of rows) {
+    if (self && ownGoalIds.has(goalId)) continue;
     const list = out.get(goalId) ?? [];
-    list.push({ memberId, lines: JSON.parse(linesJson) as OtherFunding['lines'], plannedMonthlyMinor: Number(planned) });
+    list.push({ memberId, self: Boolean(self), lines: JSON.parse(linesJson) as MemberFunding['lines'], plannedMonthlyMinor: Number(planned) });
     out.set(goalId, list);
   }
   return out;
@@ -358,8 +366,9 @@ async function withBaseAmounts(
   });
   // Another member's line already is in the goal's money (C16): added as it is, so both phones' totals agree to the
   // unit. Only the base figure uses this phone's rate. No amount means no rate on the partner's phone: left out.
+  const funding = await syncedFundingByGoal(database, new Set(links.map((link) => link.goalId)));
   const others: GoalLinkRow[] = [];
-  for (const [goalId, members] of await otherFundingByGoal(database)) {
+  for (const [goalId, members] of funding) {
     const currency = goalCurrency.get(goalId);
     if (currency === undefined) continue;
     for (const member of members) {
@@ -383,15 +392,30 @@ async function withBaseAmounts(
       }
     }
   }
-  return { rates, links: [...own, ...others] };
+  return { rates, links: [...own, ...others], funding };
 }
 
 const perMonth = (totalMinor: number, months: number) => (months > 0 ? roundHalfAwayFromZero(totalMinor / months) : 0);
 
 /** Every goal's plan, what they need together, and how they fit into what you can save. */
 export async function goalPlansFor(database: Database, ws: WorkspaceContext, date: string): Promise<GoalSummary> {
+  return (await plansWithFunding(database, ws, date)).summary;
+}
+
+/**
+ * What this device itself plans a month for a goal — its standing amount and monthly buys — in the goal's money: the
+ * plan's planned figure less every synced row it counted, the member's own from another device included (§11).
+ */
+export async function devicePlannedMonthlyMinor(database: Database, ws: WorkspaceContext, goalId: string, date: string): Promise<number> {
+  const { summary, funding } = await plansWithFunding(database, ws, date);
+  const plan = summary.plans.find((row) => row.goalId === goalId);
+  if (!plan) return 0;
+  return plan.plannedMonthlyMinor - (funding.get(goalId) ?? []).reduce((total, member) => total + member.plannedMonthlyMinor, 0);
+}
+
+async function plansWithFunding(database: Database, ws: WorkspaceContext, date: string): Promise<{ summary: GoalSummary; funding: Map<string, MemberFunding[]> }> {
   const goalRows = await listGoals(database, ws);
-  const { links, rates } = await goalLinksWithRates(database, ws, date);
+  const { links, rates, funding } = await goalLinksWithRates(database, ws, date);
   const base = ws.baseCurrency;
   const inGoal = (goal: GoalRow, baseMinor: number) => viaBaseMinor(baseMinor, base, goal.currency, base, rates) ?? 0;
   const inBase = (goal: GoalRow, goalMinor: number) => viaBaseMinor(goalMinor, goal.currency, base, base, rates);
@@ -405,7 +429,6 @@ export async function goalPlansFor(database: Database, ws: WorkspaceContext, dat
   // Summed signed inside emergencyOutgoingMinor, then clamped once here: refunds larger than spending make a month of
   // nothing, never a negative target. A working that typed its own monthly figure uses that instead of the records.
   const shared = await sharedGoalIds(database);
-  const othersFunding = await otherFundingByGoal(database);
   const outgoingFor = (goalId: string) => {
     const working = emergencyWorkings.get(goalId);
     // A shared goal's target is the figure frozen when the working was saved (D8), the same on every phone.
@@ -434,8 +457,11 @@ export async function goalPlansFor(database: Database, ws: WorkspaceContext, dat
 
   const plans: GoalPlanRow[] = goalRows.map((goal) => {
     const mine = links.filter((link) => link.goalId === goal.id);
-    const othersPlanned = (othersFunding.get(goal.id) ?? []).reduce((total, member) => total + member.plannedMonthlyMinor, 0);
-    const plan = goalPlan(goal, mine, inGoal(goal, monthlyFromTemplates(goal.id)) + othersPlanned, inGoal(goal, outgoingFor(goal.id)), date);
+    const synced = funding.get(goal.id) ?? [];
+    const othersPlanned = synced.filter((member) => !member.self).reduce((total, member) => total + member.plannedMonthlyMinor, 0);
+    // This member's plan from their other device is theirs: in the total, never taken off their need as another's.
+    const sameMemberPlanned = synced.filter((member) => member.self).reduce((total, member) => total + member.plannedMonthlyMinor, 0);
+    const plan = goalPlan(goal, mine, inGoal(goal, monthlyFromTemplates(goal.id)) + othersPlanned + sameMemberPlanned, inGoal(goal, outgoingFor(goal.id)), date);
     const ownNeeded = ownShareOfNeedMinor(plan.requiredMonthlyMinor, othersPlanned);
     // A link with no rate is left out of the total, so the total is honest; saying so is what keeps the
     // *goal* honest, and `earmarkWarning` is the slot the screen already paints for exactly this.
@@ -473,13 +499,14 @@ export async function goalPlansFor(database: Database, ws: WorkspaceContext, dat
   // The totals and the fit against what can be saved are in the base currency, as that saving is.
   // This phone plans for its own part of a shared goal's need (C20).
   const inBasePlan = (plan: GoalPlanRow) => ({ ...plan, requiredMonthlyMinor: plan.ownNeededMonthlyBaseMinor ?? 0, plannedMonthlyMinor: plan.plannedMonthlyBaseMinor ?? 0 });
-  return {
+  const summary: GoalSummary = {
     plans,
     neededMonthlyMinor: plans.reduce((total, plan) => total + (plan.ownNeededMonthlyBaseMinor ?? 0), 0),
     plannedMonthlyMinor: plans.reduce((total, plan) => total + (plan.plannedMonthlyBaseMinor ?? 0), 0),
     capacityMonthlyMinor,
     fits: fitByRank(plans.map(inBasePlan), goalRows, capacityMonthlyMinor),
   };
+  return { summary, funding };
 }
 
 export interface GoalWholeness {

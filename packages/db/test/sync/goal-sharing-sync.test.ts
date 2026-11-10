@@ -198,12 +198,14 @@ describe('a shared goal across the household', () => {
     for (const d of [bima, rina, tablet]) expect(await skipsOf(d.database)).toEqual([]);
   });
 
-  // Known gap, found here (§11 "Its Me group shows the member's synced row"): the plan read takes only the *other*
-  // members' synced lines, so the tablet counts Rina's 14_000_000 and none of Bima's 28_000_000. The fix is one line in
-  // goal-funding.ts `otherFundingByGoal` (busy in another task); this turns red once it lands, then becomes an `it`.
-  it.fails("Bima's second phone reads his money from his synced line", async () => {
+  // §11 "Its Me group shows the member's synced row": the tablet holds none of Bima's accounts, so his 28_000_000 comes
+  // from the line his phone sent, once, as his; nothing of it goes back out.
+  it("Bima's second phone reads his money from his synced line", async () => {
     const { bima, tablet, goalId } = await withTablet();
-    expect(await read(tablet, goalId)).toEqual(await read(bima, goalId));
+    const onTablet = await read(tablet, goalId);
+    expect(onTablet).toEqual(await read(bima, goalId));
+    expect(onTablet).toMatchObject({ current: 42_000_000, toGo: 113_000_000, savedBy: { 'member-Bima': 28_000_000, 'member-Rina': 14_000_000 } });
+    expect((await sentOps(tablet)).filter((o) => o.entity.startsWith('goal'))).toEqual([]);
   });
 
   it('nothing private leaves a phone', async () => {
