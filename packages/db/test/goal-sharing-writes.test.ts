@@ -15,6 +15,9 @@ import {
   type SaveGoalInput,
   saveEarmark,
   saveGoal,
+  saveGoalCalculator,
+  getGoalCalculator,
+  shareGoal,
   setStagePaid,
   setStandingMonthly,
   upsertRate,
@@ -27,6 +30,7 @@ import { configureCapture } from '../src/sync/capture';
 import { encodeHlc } from '../src/sync/hlc';
 import type { Op } from '../src/sync/types';
 import { setupDb } from './helpers';
+import { Household, type Device } from './sync/household';
 import { clearOutbox, outboxOps } from './sync/sync-helpers';
 
 /*
@@ -402,5 +406,73 @@ describe('an edit saved over a partner’s change (I1)', () => {
     await fromDevice(database, bookId, 'dev-r', [{ entity: 'goal_stage', id: balanceId, op: 'delete' }]);
     await saveGoal(database, ws, { ...base, name: 'Coast Trip', base });
     expect((await listGoals(database, ws)).find((g) => g.id === goalId)!.stages.map((s) => s.name)).toEqual(['Deposit']);
+  });
+});
+
+/*
+ * The calculator half of I1 (final re-review, out-of-scope 1): Edit goal decides whether this save is a hand edit
+ * against the goal as it opened, so Rina's re-working and paid mark, arriving while Bima's form is open, do not make
+ * his untouched save a hand edit. The form then saves as derived, and the working and stage terms stay on both phones.
+ */
+describe('an edit saved over a partner’s re-working keeps the calculator (I1, out-of-scope 1)', () => {
+  const level = (id: string, startYear: number, feeMinor: number) => ({
+    id, name: id, startAge: null, untilAge: null, startYear, untilYear: startYear + 1, returnBps: null,
+    fees: [{ id: 'a', name: 'Academic', amountTodayMinor: feeMinor, charged: 'yearly' as const }],
+  });
+  const inputs = (feeMinor: number) => ({ version: 2 as const, birthday: null, feeInflationBps: 1000, levels: [level('pre', 2027, feeMinor), level('primary', 2040, feeMinor)] });
+
+  async function world() {
+    const h = new Household();
+    const bima = await h.device('Bima', 'member-Bima', 'IDR', '0.5.0');
+    const rina = await h.device('Rina', 'member-Rina', 'IDR', '0.5.0');
+    const bookId = await h.share(bima);
+    await h.join(rina, bima);
+    await h.settle();
+    const goalId = await saveGoal(bima.database, bima.ws, { name: 'Aisha School', kind: 'education', growthBps: 1000, returnBps: 800, stages: [{ name: 'x', targetMinor: 1, targetMonths: null, dueOn: '2032-01-01' }] });
+    await saveGoalCalculator(bima.database, bima.ws, { goalId, kind: 'education', today: DAY, inputs: inputs(20_000_000) });
+    await shareGoal(bima.database, bima.ws, goalId, bookId);
+    await h.settle();
+    return { h, bima, rina, goalId };
+  }
+  const goalOn = async (d: Device, goalId: string) => (await listGoals(d.database, d.ws)).find((g) => g.id === goalId)!;
+  const termsOn = async (d: Device, goalId: string) => d.database.db.values(sql`SELECT stage_id, derived_key FROM goal_stage_terms WHERE goal_id = ${goalId} ORDER BY derived_key`);
+
+  it("Bima's untouched save keeps Rina's re-working, her paid mark and the stage terms on both phones", async () => {
+    const { h, bima, rina, goalId } = await world();
+    const base = inputOf(await goalOn(bima, goalId));
+    expect(base.stages).toHaveLength(2);
+    // While Bima's form is open, Rina raises the fee in the calculator and marks the first year paid.
+    await saveGoalCalculator(rina.database, rina.ws, { goalId, kind: 'education', today: DAY, inputs: inputs(25_000_000) });
+    await setStagePaid(rina.database, rina.ws, base.stages[0]!.id!, DAY);
+    await h.settle();
+    const reworked = await goalOn(bima, goalId);
+    expect(reworked.stages.map((s) => s.targetMinor)).not.toEqual(base.stages.map((s) => s.targetMinor));
+    const terms = await termsOn(bima, goalId);
+    expect(terms).toHaveLength(2);
+    // Bima saves with nothing changed: against the goal as it opened, no calculator figure moved, so it stays derived.
+    await saveGoal(bima.database, bima.ws, { ...base, derived: true, base });
+    await h.settle();
+    for (const d of [bima, rina]) {
+      expect(await getGoalCalculator(d.database, d.ws, goalId)).toMatchObject({ inputs: { levels: [{ fees: [{ amountTodayMinor: 25_000_000 }] }, {}] } });
+      expect(await termsOn(d, goalId)).toEqual(terms);
+      const after = await goalOn(d, goalId);
+      expect(after.stages.map((s) => [s.id, s.targetMinor, s.paidOn])).toEqual(reworked.stages.map((s) => [s.id, s.targetMinor, s.paidOn]));
+      expect(after.stages[0]!.paidOn).toBe(DAY);
+      expect(await skipsOf(d.database)).toEqual([]);
+    }
+  });
+
+  it('a target Bima typed by hand still unlinks the working and drops the stage terms on both phones', async () => {
+    const { h, bima, rina, goalId } = await world();
+    const base = inputOf(await goalOn(bima, goalId));
+    const edited = base.stages.map((s, index) => (index === 0 ? { ...s, targetMinor: 30_000_000 } : s));
+    await saveGoal(bima.database, bima.ws, { ...base, stages: edited, derived: false, base });
+    await h.settle();
+    for (const d of [bima, rina]) {
+      expect(await getGoalCalculator(d.database, d.ws, goalId)).toBeNull();
+      expect(await termsOn(d, goalId)).toEqual([]);
+      expect((await goalOn(d, goalId)).stages[0]!.targetMinor).toBe(30_000_000);
+      expect(await skipsOf(d.database)).toEqual([]);
+    }
   });
 });
