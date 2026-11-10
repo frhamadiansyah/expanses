@@ -150,8 +150,21 @@ const MASK = /^x{2,}$/;
  * The part of a description that names the merchant, for matching it against earlier purchases:
  * "SUPERINDO KEBAYORAN 0912" and "Superindo Kebayoran" read the same, and so do "QRIS KOPI KENANGAN XXXX5512" and
  * "Kopi Kenangan" — the payment words, masked numbers, digits and punctuation a capture carries are not the name.
+ *
+ * A card descriptor with a star is the merchant before it and a reference after it ("Tokobaju* B-QX7TPLM22"), and
+ * the reference is new on every purchase: the key is what comes before the star, so each of them matches the last —
+ * as a statement line's category key reads it (`categoryKeyOf`). A star with nothing named before it is passed over.
  */
 export function merchantKey(description: string): string {
+  const star = description.indexOf('*');
+  if (star > 0) {
+    const before = keyOfWords(description.slice(0, star));
+    if (before !== '') return before;
+  }
+  return keyOfWords(description);
+}
+
+function keyOfWords(description: string): string {
   return description
     .toLowerCase()
     .replace(/[^\p{L}\s]/gu, ' ')

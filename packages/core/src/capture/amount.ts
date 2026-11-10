@@ -179,6 +179,19 @@ function exactOf(major: number, currency: string | null): number | null {
 }
 
 /**
+ * A figure printed bare, in a currency said somewhere else — a table's "Mata Uang" cell beside its "Jumlah" — as the
+ * amount it comes to: `245,500` in IDR is 245.500, `18.40` in SGD is 1.840 cents. Null when the digits are no figure.
+ */
+export function bareAmountOf(text: string, currency: string): { minor: number; exactHundredths?: number } | null {
+  const digits = /\d[\d.,]*/.exec(text);
+  if (!digits) return null;
+  const major = parseNumber(digits[0].replace(/[.,]+$/, ''));
+  if (major === null) return null;
+  const exact = exactOf(major, currency);
+  return { minor: toMinor(major, currency), ...(exact === null ? {} : { exactHundredths: exact }) };
+}
+
+/**
  * Every money figure in a text, in the order they were printed.
  *
  * A figure counts when it wears a currency mark or a shorthand (`Rp38.000`, `$12.50`, `50rb`, `1,2jt`). A bare number

@@ -26,6 +26,13 @@ export function mergeWords(...lists: readonly WordList[]): WordList {
     paymentLabels: [],
     cardWords: [],
     idLabels: [],
+    currencyLabels: [],
+    dateLabels: [],
+    accountLabels: [],
+    statusLabels: [],
+    approved: [],
+    declined: [],
+    tableLabels: [],
     thousand: [],
     million: [],
   };

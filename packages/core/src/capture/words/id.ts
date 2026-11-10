@@ -17,6 +17,13 @@ export const ID: WordList = {
   paymentLabels: ['metode pembayaran', 'sumber dana', 'dibayar dengan', 'bayar pakai'],
   cardWords: ['kartu kredit', 'kartu debit', 'kartu'],
   idLabels: ['hp', 'no. hp', 'no hp', 'nomor hp', 'nomor ponsel', 'nomor telepon', 'no. telp'],
+  currencyLabels: ['mata uang'],
+  dateLabels: ['waktu transaksi', 'tanggal transaksi', 'tgl transaksi', 'tanggal', 'waktu', 'tanggal & waktu'],
+  accountLabels: ['nomor kartu', 'no. kartu', 'no kartu', 'nomor rekening', 'no. rekening'],
+  statusLabels: ['status', 'status transaksi'],
+  approved: ['sukses', 'berhasil', 'disetujui'],
+  declined: ['ditolak', 'gagal', 'dibatalkan'],
+  tableLabels: ['jenis kartu', 'nomor referensi', 'no. referensi', 'kode otorisasi'],
   thousand: ['rb', 'ribu'],
   million: ['jt', 'juta'],
 };

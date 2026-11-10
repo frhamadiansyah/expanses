@@ -17,6 +17,13 @@ export const EN: WordList = {
   paymentLabels: ['payment method', 'paid with', 'pay with', 'source of funds', 'funding source', 'card used'],
   cardWords: ['credit card', 'debit card', 'card'],
   idLabels: ['id', 'user id', 'phone', 'phone number', 'mobile number'],
+  currencyLabels: ['currency'],
+  dateLabels: ['transaction time', 'transaction date', 'date', 'time', 'date & time', 'date/time', 'date and time'],
+  accountLabels: ['card number', 'card no', 'card no.', 'account number', 'account no.'],
+  statusLabels: ['status', 'transaction status'],
+  approved: ['approved', 'success', 'successful'],
+  declined: ['declined', 'failed', 'rejected', 'cancelled', 'canceled'],
+  tableLabels: ['card type', 'reference', 'reference number', 'reference no.', 'approval code'],
   thousand: ['k'],
   million: ['m'],
 };

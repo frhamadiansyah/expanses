@@ -1,6 +1,7 @@
-import { findAmounts } from './amount';
+import { bareAmountOf, findAmounts } from './amount';
 import { findDateTime } from './date';
 import type { CaptureLine, Field, MoveType, RawCapture, Reading, ReadAmount, Template, WordList } from './types';
+import { type LabelledTable, labelledTableOf, tableValue } from './table';
 import { WORDS } from './words';
 
 /**
@@ -456,6 +457,13 @@ const WORDS_FOR_CUT: WordList = {
   paymentLabels: [],
   cardWords: [],
   idLabels: [],
+  currencyLabels: [],
+  dateLabels: [],
+  accountLabels: [],
+  statusLabels: [],
+  approved: [],
+  declined: [],
+  tableLabels: [],
   thousand: ['rb', 'ribu', 'k'],
   million: ['jt', 'juta', 'm'],
 };
@@ -613,7 +621,65 @@ function withoutOffers(units: readonly Unit[], words: WordList, keepTransactions
   return hasFigure && saysWhat ? rest : null;
 }
 
-const SKIPPED = (skipped: 'promo' | 'unreadable', accountHint: string | null, paymentMethod: Reading['paymentMethod']): Reading => ({
+/** A labelled table's own reading: what each cell says, and whether its status lets it be recorded. */
+interface TableReading {
+  amount: Field<ReadAmount>;
+  occurredAt: Field<string> | null;
+  name: Field<string> | null;
+  accountHint: string | null;
+  /** True when the table printed a status and it does not say the purchase went through. */
+  declined: boolean;
+  /** The last line of the body the table was on: what comes after it is the footer. */
+  end: number;
+}
+
+/** A currency's code as a cell prints it: three letters and nothing else. */
+const CODE = /^[A-Za-z]{3}$/;
+
+/**
+ * A transaction printed as a labelled table (`table.ts`): an amount cell, and a currency said by the cell itself or by
+ * a currency cell beside it — a table of figures with no currency is not one this reader can be sure is money. Null
+ * when the capture is no such table, and the rest of the reader goes on as it always has.
+ *
+ * Each value is the whole cell, as printed: the merchant keeps its reference code ("Tokobaju* B-QX7TPLM22"), which is
+ * what the owner reads on the statement; a merchant's key for its category drops it (`merchantKey`).
+ */
+function tableReadingOf(capture: RawCapture, words: WordList): TableReading | null {
+  if (capture.lines.length > 0 || !capture.body) return null;
+  const table: LabelledTable = labelledTableOf(capture.body, words);
+  if (table.pairs.length < 2) return null;
+  const cell = tableValue(table, 'amount');
+  if (!cell) return null;
+  const marked = findAmounts(cell.value, words).find((figure) => figure.currency !== null);
+  const code = tableValue(table, 'currency')?.value.trim() ?? '';
+  let amount: ReadAmount | null = null;
+  if (marked) {
+    amount = { minor: marked.minor, currency: marked.currency };
+    if (marked.exactHundredths !== undefined) amount.exactHundredths = marked.exactHundredths;
+  } else if (CODE.test(code)) {
+    const currency = code.toUpperCase();
+    const bare = bareAmountOf(cell.value, currency);
+    if (bare) amount = { minor: bare.minor, currency, ...(bare.exactHundredths === undefined ? {} : { exactHundredths: bare.exactHundredths }) };
+  }
+  if (amount === null) return null;
+
+  const status = tableValue(table, 'status')?.value ?? null;
+  const declined = status !== null && (hasWord(status, words.declined) || !hasWord(status, words.approved));
+  const when = tableValue(table, 'date');
+  const printed = when ? findDateTime(when.value) : null;
+  const merchant = tableValue(table, 'name')?.value.trim() ?? '';
+  const card = tableValue(table, 'account');
+  return {
+    amount: { value: amount, confidence: 90, line: null },
+    occurredAt: printed ? { value: printed, confidence: 90, line: null } : null,
+    name: merchant ? { value: merchant, confidence: 90, line: null } : null,
+    accountHint: card ? accountHintOf(card.value, words) : null,
+    declined,
+    end: table.end,
+  };
+}
+
+const SKIPPED = (skipped: 'promo' | 'unreadable' | 'declined', accountHint: string | null, paymentMethod: Reading['paymentMethod']): Reading => ({
   skipped,
   amount: null,
   occurredAt: null,
@@ -652,6 +718,28 @@ export function readCapture(
   const hint = paymentMethod?.last4 ?? accountHintOf(text, words);
 
   if (all.length === 0) return SKIPPED('unreadable', hint, paymentMethod);
+
+  /*
+   * A transaction laid out as a labelled table is read from its cells. Its footer is no part of it: an issuer's email
+   * closes with offers, a fee, a word about refunds — so neither the offer filter nor the direction is read past the
+   * table's last line, and a field the table did not print is looked for in the same place.
+   */
+  const table = tableReadingOf(capture, words);
+  if (table) {
+    const accountHint = paymentMethod?.last4 ?? table.accountHint ?? hint;
+    if (table.declined) return SKIPPED('declined', accountHint, paymentMethod);
+    const head = unitsOf({ ...capture, body: capture.body!.split('\n').slice(0, table.end + 1).join('\n') });
+    return {
+      skipped: null,
+      amount: table.amount,
+      occurredAt: table.occurredAt ?? dateOf(head, capture, {}),
+      type: typeOf(head, words, false),
+      name: table.name ?? nameOf(head, words, capture, {}),
+      accountHint,
+      paymentMethod,
+    };
+  }
+
   const offers = opts.offers ?? 'skip';
   const units = offers === 'read' ? all : withoutOffers(all, words, offers === 'transactions');
   if (units === null) return SKIPPED('promo', hint, paymentMethod);

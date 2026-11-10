@@ -55,7 +55,7 @@ export interface ReadAmount {
 
 /** What one capture says. `skipped` is set when nothing is read at all, and why. */
 export interface Reading {
-  skipped: null | 'promo' | 'unreadable';
+  skipped: null | 'promo' | 'unreadable' | 'declined';
   /**
    * The amount in minor units, rounded to the nearest unit, and — for a currency with no minor unit whose printed
    * cents are not zero — the exact figure in hundredths. The draft rounds the exact figure by the money's direction.
@@ -131,6 +131,20 @@ export interface WordList {
   cardWords: string[];
   /** Labels of a number that names a person rather than an account: "ID", "no. hp". A mask beside one is no account. */
   idLabels: string[];
+  /** Labels of a table cell that holds a currency's code: "mata uang", "currency". */
+  currencyLabels: string[];
+  /** Labels of a table cell that holds when it happened: "waktu transaksi", "transaction time". */
+  dateLabels: string[];
+  /** Labels of a table cell that holds the (masked) card or account number: "nomor kartu", "card number". */
+  accountLabels: string[];
+  /** Labels of a table cell that says whether the purchase went through: "status". */
+  statusLabels: string[];
+  /** A status that says it went through: "sukses", "approved". */
+  approved: string[];
+  /** A status that says it did not: "ditolak", "declined". Any status that is not approved is not recorded either. */
+  declined: string[];
+  /** Labels of a table cell the reader steps past, so the cells after it still pair up: "jenis kartu", "card type". */
+  tableLabels: string[];
   /** Shorthands after a figure: "rb" = a thousand, "k" = a thousand. */
   thousand: string[];
   /** "jt" = a million, "m" = a million. */
