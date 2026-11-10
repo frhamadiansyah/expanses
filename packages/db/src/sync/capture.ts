@@ -4,9 +4,11 @@ import type { Database, Db, Tx } from '../database';
 import { bookSplitsExist, excludedLinesTx, splitExclusionExists } from '../repos/book-splits';
 import { dayOrderExists } from '../repos/day-order-column';
 import { exactExists } from '../repos/exact-column';
-import { buildOpId, entityOf, parseOpId, SHARED_ENTITIES, type RowEntity } from './shared-entities';
+import { buildOpId, entityOf, GOAL_FAMILY, parseOpId, SHARED_ENTITIES, type RowEntity } from './shared-entities';
 import { AuthorityError, eventBookWorkspaceOf, frozenFieldChanged, groupLogWorkspaceOf, isWriter, makesMember, viewIsLastOwner, viewRoleOfDevice, writeOnceBroken } from './authority';
 import { EVENT_ENTITIES, eventWriteRefusal } from './events/authority';
+import { GOAL_SHARE_ENTITIES, goalWriteRefusal } from './goals/authority';
+import { goalLinkOfTx, goalOfRowTx, leftWithLinkTx } from './goals/scope';
 import { activeNetWorthGroup, NetWorthError } from '../repos/net-worth-sharing';
 import { localDate, sendSummariesTx } from './net-worth/summaries';
 import { reserveAndSplit } from './split';
@@ -700,15 +702,37 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
   }
   const after = await snapshot(tx, books, targets);
   await refuseWrongLog(tx, before, after);
+  // Shared goals §8.3 (option b): a goal's rows that left the book with its link (off, deleted, or this member left)
+  // send nothing and are judged by nobody. Each phone does its own follow-up; a delete would end them for ever.
+  const leftWithLink = new Set<string>();
+  for (const [key, was] of before) {
+    const now = after.get(key);
+    if (GOAL_FAMILY.has(was.entity.entity) && (!now || now.bookId !== was.bookId) && (await leftWithLinkTx(tx, was.entity.entity, parseOpId(was.entity, was.id), was.values))) leftWithLink.add(key);
+  }
   // Joint-net-worth spec §5.1 (task 1 re-review round 1 ruling): a writer-only row's local write is judged here,
   // before anything commits or is emitted, against the pre-image — with the same predicate (`isWriter`,
   // `frozenFieldChanged`) `decideRowWriter` judges a peer's entry by — so a bad local write never lands and its
   // own device never has to catch it after the fact; the peer-side decision then skips a device's own entries
   // entirely, since by the time it runs the live row already holds this write, not what a peer still has.
   for (const key of new Set([...before.keys(), ...after.keys()])) {
+    if (leftWithLink.has(key)) continue;
     const was = before.get(key);
     const now = after.get(key);
     const entity = (was ?? now)!.entity;
+    if (GOAL_SHARE_ENTITIES.has(entity.entity)) {
+      // Shared goals §8.4: the predicate a peer's op meets on apply, against this write's pre-image and the link as
+      // this phone has it once the write is made. A row pointed at but left as it was emits nothing to judge.
+      if (was && now && was.bookId === now.bookId && Object.keys(diffFields(was.values, now.values)).length === 0) continue;
+      const gone = !now || (was !== undefined && now.bookId !== was.bookId);
+      const row = (was ?? now)!;
+      const member = books.find((b) => b.bookId === row.bookId)?.memberId ?? null;
+      const rowKey = parseOpId(entity, row.id);
+      const goalId = await goalOfRowTx(tx, entity.entity, rowKey, row.values);
+      const link = goalId === null ? null : await goalLinkOfTx(tx, goalId);
+      const why = goalWriteRefusal(entity.entity, was?.values ?? null, gone ? null : now!.values, rowKey, member, link);
+      if (why) throw new AuthorityError(why);
+      continue;
+    }
     if (EVENT_ENTITIES.has(entity.entity)) {
       // Shared events (rulings R1–R3): the same predicate a peer's op meets, against this write's pre-image — for a row
       // this write changed. A row it was pointed at but left as it was emits nothing, so there is nothing to judge: a
@@ -754,6 +778,7 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
   for (const [key, was] of before) {
     const now = after.get(key);
     if (!now || now.bookId !== was.bookId) {
+      if (leftWithLink.has(key)) continue;
       const gone: Op = { entity: was.entity.entity, id: was.id, op: 'delete' };
       // A revivable row's last values stay beside its tombstone, for a revive to merge with (§7.2).
       if (isRevivable(was.entity)) retainedValues.set(gone, was.values);
