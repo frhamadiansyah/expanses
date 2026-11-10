@@ -1,10 +1,12 @@
 import { sql } from 'drizzle-orm';
 import type { Db, Tx } from '../database';
 import { bookSplitsExist, filedInBook } from '../repos/book-splits';
-import { AuthorityError, viewRoleOfDevice } from './authority';
+import { AuthorityError, isWriter, viewRoleOfDevice } from './authority';
+import { GOAL_SHARE_ENTITIES, goalWriteRefusal, type GoalLinkView } from './goals/authority';
+import { goalOfRowTx } from './goals/scope';
 import { isRevivable, lineageOfTransaction, localDeviceId, paidFromOf, projectPurchase, rowUpsertsTx, writeChangeSetsTx, type CaptureConfig, type SharedBook } from './capture';
 import { localTick } from './hlc';
-import { entityOf } from './shared-entities';
+import { entityOf, GOAL_FAMILY, parseOpId, type RowEntity } from './shared-entities';
 import type { ChangeSet, DevicePublic, Op } from './types';
 
 /*
@@ -170,7 +172,47 @@ export async function seedBookTx(tx: Tx, config: Pick<CaptureConfig, 'now'>, inp
   const clocks = await clocksOfBook(tx, book.bookId);
   const ops = (await rowsInScopeTx(tx, book, () => true)).map((op) => atOwnClocks(op, clocks));
   for (const lineageId of await voidLineagesOf(tx, book.bookId)) ops.push(atOwnClocks({ entity: 'purchase', id: lineageId, op: 'upsert', fields: { void: true } }, clocks));
-  return writeChangeSetsTx(tx, config, book, [...ops, ...deletes]);
+  return writeChangeSetsTx(tx, config, book, await seedableGoalOpsTx(tx, [...ops, ...deletes], input.memberId));
+}
+
+/**
+ * Shared goals (carried b): a seed is the first word on a fresh log, so of a goal's rows it sends only what this member
+ * may write there, as every peer judges it (`goals/authority.ts`): a link only as its sharer makes one new ('on', round
+ * 1), a leave, line or move only this member's own, a goal's own rows only beside a link sent, and never the delete of
+ * a link or a leave. A share that ended leaves none of these behind (`endSharedGoalsTx`); this keeps a seed right even so.
+ */
+async function seedableGoalOpsTx(tx: Tx, ops: readonly Op[], memberId: string): Promise<Op[]> {
+  const links = new Map<string, GoalLinkView>();
+  for (const op of ops) {
+    if (op.entity !== 'goal_share' || op.op !== 'upsert') continue;
+    if (goalWriteRefusal('goal_share', null, op.fields, { goal_id: op.id }, memberId, null) === null) {
+      links.set(op.id, { sharedBy: String(op.fields.sharedBy), state: 'on', round: Number(op.fields.round) });
+    }
+  }
+  const out: Op[] = [];
+  for (const op of ops) {
+    if (!GOAL_SHARE_ENTITIES.has(op.entity) && !GOAL_FAMILY.has(op.entity)) {
+      out.push(op);
+      continue;
+    }
+    if (op.entity === 'goal_share') {
+      if (op.op === 'upsert' && links.has(op.id)) out.push(op);
+      continue;
+    }
+    if (op.op === 'delete') {
+      if (op.entity !== 'goal_share_leave') out.push(op);
+      continue;
+    }
+    const entity = entityOf(op.entity) as RowEntity;
+    const key = parseOpId(entity, op.id);
+    const goalId = await goalOfRowTx(tx, op.entity, key, op.fields);
+    const link = goalId === null ? undefined : links.get(goalId);
+    if (!link) continue;
+    if (op.entity === 'goal_share_leave' && goalWriteRefusal(op.entity, null, op.fields, key, memberId, link) !== null) continue;
+    if (!isWriter(entity, op.fields, key, memberId)) continue;
+    out.push(op);
+  }
+  return out;
 }
 
 interface RowsOptions {
