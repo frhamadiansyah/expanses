@@ -65,8 +65,12 @@ test('a goal shared by two phones: both fund it, each sees the other by name, a 
   // No cost growth, so the target is the typed 180.000.000 and not that sum grown to 2030.
   await setAssumption(bima, 'Cost growth a year', '0');
   const sharing = bima.getByTestId('goal-share-switch');
-  await expect(bima.getByText('Shared with Rina', { exact: true })).toBeVisible();
+  // The switch waits for Rina's phone and its version to reach Bima's (§8.6): a sync may still be on its way.
+  await eventually(bima, async () => {
+    await expect(bima.getByText('Shared with Rina', { exact: true })).toBeVisible({ timeout: 1_000 });
+  });
   await sharing.check({ force: true });
+  await expect(sharing).toBeChecked();
   await bima.getByRole('button', { name: 'Save goal' }).last().click();
   await expect(goalRow(bima, 'Trip Fund')).toBeVisible();
 
@@ -129,20 +133,27 @@ test('a goal shared by two phones: both fund it, each sees the other by name, a 
   await bima.goto('/goals');
   await goalRow(bima, 'Trip Fund').click();
   await editGoal(bima);
-  await bima.getByTestId('goal-share-switch').uncheck({ force: true });
+  // The switch reads the share as it stands before it is drawn: on, here. Unchecking it then turns sharing off.
+  const switchNow = bima.getByTestId('goal-share-switch');
+  await expect(switchNow).toBeChecked({ timeout: 15_000 });
+  await switchNow.uncheck({ force: true });
+  await expect(switchNow).not.toBeChecked();
   await bima.getByRole('button', { name: 'Save goal' }).last().click();
   const after = await goalCard(bima, 'Trip Fund');
   await expect(after.getByTestId('goal-shared-with')).toHaveCount(0);
   await expect(after.getByTestId('goal-link').filter({ hasText: 'Rina' })).toHaveCount(0);
   await expect(after.getByTestId('goal-link').filter({ hasText: 'Main Savings' })).toBeVisible();
 
+  // The row may still be the shared goal's when it is tapped, and the off arrive just after ("Goal not here"): the
+  // check is passed only on the copy's own page, with her money in it.
+  const copy = rina.getByTestId('goal-page');
   await eventually(rina, async () => {
     await rina.goto('/goals');
     await expect(goalRow(rina, 'Trip Fund')).toHaveCount(1, { timeout: 1_000 });
     await goalRow(rina, 'Trip Fund').click();
+    await expect(copy).toBeVisible({ timeout: 1_000 });
     await expect(rina.getByTestId('goal-shared-with')).toHaveCount(0, { timeout: 1_000 });
+    await expect(copy.getByTestId('goal-link').filter({ hasText: 'Partner Savings' })).toContainText('10.000.000', { timeout: 1_000 });
   });
-  const copy = rina.getByTestId('goal-page');
-  await expect(copy.getByTestId('goal-link').filter({ hasText: 'Partner Savings' })).toContainText('10.000.000');
   await expect(copy.getByTestId('goal-link').filter({ hasText: 'Bima' })).toHaveCount(0);
 });
