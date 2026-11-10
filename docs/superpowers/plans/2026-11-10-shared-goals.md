@@ -27,7 +27,7 @@
 
 1. **Shared, turned off, turned on again while the partner was offline** — the partner ends with a private copy (new id, own money, History intact) and the re-shared goal beside it; nothing is tombstoned, nothing skipped. Test: Task 8 `goal-share-lifecycle.test.ts` "off and on while Rina is offline".
 2. **A device on an older build in the book** — the switch is not offered while any device not removed reports below `0.5.0`; a removed old device does not block it. Test: Task 4 `goal-sharing-targets.test.ts` "an old device hides the switch".
-3. **Two edits to one stage at once** — Rina renames a stage while Fandri marks it paid: both land everywhere; Fandri removes a stage while Rina marks it paid: removed everywhere, no skips; a stage Rina spent against cannot be removed. Tests: Task 14 `goal-sharing-sync.test.ts` "crossing stage edits"; Task 10 `goal-sharing-writes.test.ts` "a stage the partner spent against stays".
+3. **Two edits to one stage at once** — Rina renames a stage while Bima marks it paid: both land everywhere; Bima removes a stage while Rina marks it paid: removed everywhere, no skips; a stage Rina spent against cannot be removed. Tests: Task 14 `goal-sharing-sync.test.ts` "crossing stage edits"; Task 10 `goal-sharing-writes.test.ts` "a stage the partner spent against stays".
 4. **The partner's account in another currency** — a USD set-aside on an IDR goal travels as the IDR figure at Rina's rate; with no rate it travels as `null` and both phones leave it out and warn; both totals agree to the unit. Tests: Task 7 `goal-summaries.test.ts` "foreign account"; Task 12 `goal-sharing-reads.test.ts` "no rate on the partner's phone".
 5. **A member who joins the workspace later** — reads every shared goal from the log, is named in the label on the others' phones, writes no empty funding summary; a second device of an existing member writes none either. Tests: Task 14 "a member who joins later"; Task 9 `goal-summary-send.test.ts` "a second device writes nothing".
 
@@ -285,11 +285,11 @@ it.each([
 // packages/db/test/goal-sharing-targets.test.ts  (Household from test/sync/household.ts; devices at appVersion '0.5.0' unless said)
 it('no shared workspace, no target', async () => { expect(await goalShareTargets(fandri.database)).toEqual([]); });
 it('one other member', async () => {
-  expect(await goalShareTargets(fandri.database)).toEqual([{ bookId: h.bookId, bookName: 'Personal', me: 'member-Fandri', others: [{ memberId: 'member-Rina', name: 'Rina' }] }]);
+  expect(await goalShareTargets(fandri.database)).toEqual([{ bookId: h.bookId, bookName: 'Personal', me: 'member-Bima', others: [{ memberId: 'member-Rina', name: 'Rina' }] }]);
 });
 it('an old device hides the switch', async () => { /* Rina's device at '0.4.0' */ expect(await goalShareTargets(fandri.database)).toEqual([]); });
 it('a removed old device does not', async () => { /* Rina's old device removed (engine.removeDevice), new one at 0.5.0 */ expect((await goalShareTargets(fandri.database)).length).toBe(1); });
-it('a book no longer shared is no target', async () => { /* Fandri stopSharing */ expect(await goalShareTargets(rina.database)).toEqual([]); });
+it('a book no longer shared is no target', async () => { /* Bima stopSharing */ expect(await goalShareTargets(rina.database)).toEqual([]); });
 ```
 
 - [ ] **Step 2: Run** `cd packages/db && npx vitest run test/sync/goal-authority.test.ts test/goal-sharing-targets.test.ts` — expected FAIL (modules not found).
@@ -317,7 +317,7 @@ Spec C30, D7.
 // saveEarmark 10_000_000; a spend draw against 'Deposit' of 2_000_000; a tagged buy; a monthly template on the goal.
 it('moves everything to new ids and changes no figure', async () => {
   const before = { plan: planOf(await goalPlansFor(database, ws, '2026-11-10'), goalId), put: await goalContributionsFor(database, ws, '2026-11'), history: (await goalHistory(database, ws, '2026-11-10', { limit: null }))[goalId] };
-  const { goalId: copy, stageIds } = await database.transaction((tx) => rekeyGoalTx(tx, ws, goalId, { copiedFrom: goalId, logLine: { kind: 'unshared', memberName: 'Fandri', occurredOn: '2026-11-10' } }));
+  const { goalId: copy, stageIds } = await database.transaction((tx) => rekeyGoalTx(tx, ws, goalId, { copiedFrom: goalId, logLine: { kind: 'unshared', memberName: 'Bima', occurredOn: '2026-11-10' } }));
   expect(copy).not.toBe(goalId);
   expect((await listGoals(database, ws)).map((g) => g.id)).toEqual([copy]);
   expect(await listEarmarks(database, ws)).toEqual([{ goalId: copy, accountId: savings, amountMinor: 10_000_000 }]);
@@ -478,16 +478,16 @@ Spec §8.2, §8.3 table, C13–C15, C30, D7, D10.
   - `followGoalShareTx(tx: Db, ctx: BookContext, goalId: string, before: GoalLinkView | null): Promise<void>`, `followGoalLeaveTx(tx: Db, ctx: BookContext, goalId: string, memberId: string): Promise<void>` — the follow-ups of the §8.3 table; the log line for a leave carries the leaver's last counted total (sum of their `lines[].amountMinor`, nulls left out).
   - `endSharedGoalsTx(tx: Db, ws: WorkspaceContext, bookId: string): Promise<void>` — C15: every goal linked to `bookId` handled as off, locally, nothing emitted, before the book turns read-only.
 
-- [ ] **Step 1: Write the failing test** (Household with Fandri (sharer) and Rina, both at `0.5.0`; goal 'Trip Fund', one stage 180_000_000 due 2030-06-01; Rina's account 'Partner Savings' 20_000_000)
+- [ ] **Step 1: Write the failing test** (Household with Bima (sharer) and Rina, both at `0.5.0`; goal 'Trip Fund', one stage 180_000_000 due 2030-06-01; Rina's account 'Partner Savings' 20_000_000)
 
 ```ts
-it('shared: Rina sees one goal, Fandri sees her line', async () => {
+it('shared: Rina sees one goal, Bima sees her line', async () => {
   await shareGoal(fandri.database, fandri.ws, goalId, h.bookId); await h.settle();
   expect((await listGoals(rina.database, rina.ws)).map((g) => [g.id, g.name])).toEqual([[goalId, 'Trip Fund']]);
   await saveEarmark(rina.database, rina.ws, { goalId, accountId: rinaSavings, amountMinor: 10_000_000 }); await h.settle();
   expect(JSON.parse((await rowOf(fandri.database, 'goal_member_funding', goalId, 'member-Rina')).lines_json)).toEqual([expect.objectContaining({ name: 'Partner Savings', amountMinor: 10_000_000 })]);
 });
-it('off: Fandri keeps the goal, Rina keeps a private copy with her money', async () => {
+it('off: Bima keeps the goal, Rina keeps a private copy with her money', async () => {
   await stopSharingGoal(fandri.database, fandri.ws, goalId); await h.settle();
   expect((await listGoals(fandri.database, fandri.ws)).map((g) => g.id)).toEqual([goalId]);
   expect(await rowsOf(fandri.database, 'goal_member_funding')).toEqual([]);
@@ -509,16 +509,16 @@ it('off and on while Rina is offline', async () => {
   expect(await skipsOf(rina.database)).toEqual([]);
   expect(await skipsOf(fandri.database)).toEqual([]);
 });
-it('Rina leaves: still shared for Fandri, her line gone, a History line with her total', async () => {
+it('Rina leaves: still shared for Bima, her line gone, a History line with her total', async () => {
   await leaveSharedGoal(rina.database, rina.ws, goalId); await h.settle();
   expect((await goalShareOf(fandri.database, goalId))!.state).toBe('on');
   expect(await rowsOf(fandri.database, 'goal_member_funding')).toEqual([]);
   expect(await logOf(fandri.database, goalId)).toEqual([expect.objectContaining({ kind: 'left', member_name: 'Rina', amount_minor: 10_000_000 })]);
-  // Fandri renames the shared goal; Rina's copy keeps its own name
+  // Bima renames the shared goal; Rina's copy keeps its own name
   expect((await listGoals(rina.database, rina.ws))[0]!.name).toBe('Trip Fund');
 });
-it('Fandri deletes it: Rina keeps a copy', async () => { /* deleteGoal via markGoalDeletedTx path: Fandri has no goal; Rina has one with her earmark */ });
-it('Fandri stops sharing the workspace: both keep private goals', async () => {
+it('Bima deletes it: Rina keeps a copy', async () => { /* deleteGoal via markGoalDeletedTx path: Bima has no goal; Rina has one with her earmark */ });
+it('Bima stops sharing the workspace: both keep private goals', async () => {
   await fandri.engine.stopSharing(h.bookId); await h.settle();
   expect((await listGoals(fandri.database, fandri.ws)).map((g) => g.id)).toEqual([goalId]);
   expect((await listGoals(rina.database, rina.ws))[0]!.id).not.toBe(goalId);
@@ -531,7 +531,7 @@ it('only the sharer turns it off, only another member leaves', async () => {
 ```
 
 - [ ] **Step 2: Run** `cd packages/db && npx vitest run test/sync/goal-share-lifecycle.test.ts` — expected FAIL.
-- [ ] **Step 3: Implement**. Error copy, impersonal: `'Only Fandri can stop sharing this goal'`, `'Fandri shared this goal, so it is turned off rather than left'`.
+- [ ] **Step 3: Implement**. Error copy, impersonal: `'Only Bima can stop sharing this goal'`, `'Bima shared this goal, so it is turned off rather than left'`.
 - [ ] **Step 4: Run** — expected PASS; `npx vitest run test/sync` and `npm run test:capture` — expected PASS.
 - [ ] **Step 5: Commit** `git add packages/db/src/repos/goal-sharing.ts packages/db/src/sync/goals/follow.ts packages/db/src/sync/apply.ts packages/db/src/sync/engine.ts packages/db/src/index.ts packages/db/test/sync/goal-share-lifecycle.test.ts && git commit -m "Shared goals: share, off, delete and Leave; each other member keeps a private copy"`
 
@@ -565,10 +565,10 @@ it('spending from the account below the promise sends the lower figure', async (
 });
 it('a goal not shared sends nothing', async () => { expect((await outboxOps(database)).filter((o) => o.entity.startsWith('goal'))).toEqual([]); });
 it('a second device writes nothing', async () => {
-  // Household: Fandri's second device (same member, no accounts of his) applies the goal and Fandri's summary
+  // Household: Bima's second device (same member, no accounts of his) applies the goal and Bima's summary
   await h.settle();
   expect((await outboxOps(fandriTablet.database)).filter((o) => o.entity === 'goal_member_funding')).toEqual([]);
-  expect(JSON.parse((await rowOf(fandriTablet.database, 'goal_member_funding', goalId, 'member-Fandri')).lines_json)[0].amountMinor).toBe(20_000_000);
+  expect(JSON.parse((await rowOf(fandriTablet.database, 'goal_member_funding', goalId, 'member-Bima')).lines_json)[0].amountMinor).toBe(20_000_000);
 });
 it('the daily resend sends only a change', async () => {
   expect(await resendGoalSummaries(database, '2026-11-10')).toBe(0);
@@ -593,7 +593,7 @@ Spec §8.5, §9.4, C10, C12/D10, §9.1 (`goalHasFunding`).
 
 **Interfaces:**
 - Consumes: `markGoalDeletedTx`, `goalShareOf` (Task 8); `withCapture`.
-- Produces: unchanged signatures; new `GoalDbError` texts: `'Only Fandri can archive this shared goal'`, `'Fandri shared this goal; leave it instead'`.
+- Produces: unchanged signatures; new `GoalDbError` texts: `'Only Bima can archive this shared goal'`, `'Bima shared this goal; leave it instead'`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -609,8 +609,8 @@ it('a rename goes out; standing amount and order do not', async () => {
   expect((await outboxOps(database)).filter((o) => o.entity === 'goal').map((o) => o.op === 'upsert' && Object.keys(o.fields))).toEqual([['name']]);
 });
 it('another member can neither archive nor delete', async () => {
-  await expect(archiveGoal(rina.database, rina.ws, goalId)).rejects.toThrow('Only Fandri can archive this shared goal');
-  await expect(deleteGoal(rina.database, rina.ws, goalId)).rejects.toThrow('Fandri shared this goal; leave it instead');
+  await expect(archiveGoal(rina.database, rina.ws, goalId)).rejects.toThrow('Only Bima can archive this shared goal');
+  await expect(deleteGoal(rina.database, rina.ws, goalId)).rejects.toThrow('Bima shared this goal; leave it instead');
 });
 it('the sharer\'s delete sends the link and no delete', async () => {
   await deleteGoal(database, ws, goalId);
@@ -648,7 +648,7 @@ Spec D8, C23, C25.
 
 ```ts
 it('sharing an emergency fund freezes the sharer\'s outgoing', async () => {
-  // Fandri's flows: 12 months of spending averaging 5_000_000; emergency goal, 6 months; shareGoal
+  // Bima's flows: 12 months of spending averaging 5_000_000; emergency goal, 6 months; shareGoal
   expect((await getGoalCalculator(fandri.database, fandri.ws, goalId))!.inputs).toMatchObject({ sharedOutgoingMinor: 5_000_000, sharedOutgoingOn: '2026-11-10' });
 });
 it('Rina recalculates: her outgoing is frozen and travels', async () => {
@@ -684,7 +684,7 @@ Spec §9.1, §9.3, C16, C19–C22, D8.
 - [ ] **Step 1: Write the failing test** (the mock-up, with invented account names)
 
 ```ts
-// Fandri's phone: 'Main Savings' 20_000_000 and 'Daily Account' 8_000_000 set aside; standing 2_000_000.
+// Bima's phone: 'Main Savings' 20_000_000 and 'Daily Account' 8_000_000 set aside; standing 2_000_000.
 // Rina's row (member-r): lines [{name:'Partner Savings', kind:'earmark', amountMinor:10_000_000}, {name:'Cash Fund', kind:'tagged', amountMinor:4_000_000, risk:'low'}], planned 1_000_000.
 it('counts both people', async () => {
   const plan = planOf(await goalPlansFor(database, ws, '2026-11-10'), goalId);
@@ -762,7 +762,7 @@ Spec §11, §12; Review Focus 3 and 5. Test-only task.
 
 **Interfaces:** consumes everything above; produces nothing.
 
-- [ ] **Step 1: Write the tests** (Household: Fandri, Rina; Adi joins later)
+- [ ] **Step 1: Write the tests** (Household: Bima, Rina; Adi joins later)
 
 ```ts
 it('every phone reads the same target, Saved per member, To go and stages', async () => {
@@ -771,9 +771,9 @@ it('every phone reads the same target, Saved per member, To go and stages', asyn
   expect((await read(fandri)).current).toBe(42_000_000);
 });
 it('crossing stage edits', async () => {
-  // offline: Rina renames 'Deposit' → 'First payment'; Fandri marks it paid 2026-11-10; settle
+  // offline: Rina renames 'Deposit' → 'First payment'; Bima marks it paid 2026-11-10; settle
   for (const d of [fandri, rina]) expect(stageOf(d, depositId)).toMatchObject({ name: 'First payment', paidOn: '2026-11-10' });
-  // offline: Fandri removes 'Balance'; Rina marks it paid; settle
+  // offline: Bima removes 'Balance'; Rina marks it paid; settle
   for (const d of [fandri, rina]) expect(await stageExists(d, balanceId)).toBe(false);
   expect([...(await skipsOf(fandri.database)), ...(await skipsOf(rina.database))]).toEqual([]);
 });
@@ -825,7 +825,7 @@ it('names who sees it', () => {
 });
 it('initials', () => {
   expect(initialsOf('Rina')).toBe('R'); expect(initialsOf('Adi Putra')).toBe('AP');
-  expect(initialsLine(['Fandri', 'Rina', 'Adi', 'Sari', 'Tono'])).toEqual(['F', 'R', 'A', '+2']);
+  expect(initialsLine(['Bima', 'Rina', 'Adi', 'Sari', 'Tono'])).toEqual(['F', 'R', 'A', '+2']);
 });
 it('the mock-up\'s groups and bar', () => {
   const groups = fundingGroups(mockLinks /* own 20_000_000 + 8_000_000; member-r 10_000_000 + 4_000_000 */, [{ memberId: 'member-r', name: 'Rina' }, { memberId: 'member-a', name: 'Adi' }]);
@@ -836,7 +836,7 @@ it('the row', () => {
   expect(shareRowState([], null)).toEqual({ kind: 'hidden' });
   expect(shareRowState([target('b1', 'Family', ['Rina'])], null)).toEqual({ kind: 'switch', label: 'Shared with Rina', bookId: 'b1' });
   expect(shareRowState([target('b1', 'Family', ['Rina']), target('b2', 'Business', ['Adi'])], null)).toMatchObject({ kind: 'picker', options: [{ bookId: 'b1', label: 'Family · Rina' }, { bookId: 'b2', label: 'Business · Adi' }] });
-  expect(shareRowState([], viewSharedBy('Fandri', { isSharer: false }))).toEqual({ kind: 'locked', label: 'Shared with Fandri', footer: 'Shared by Fandri' });
+  expect(shareRowState([], viewSharedBy('Bima', { isSharer: false }))).toEqual({ kind: 'locked', label: 'Shared with Bima', footer: 'Shared by Bima' });
 });
 it('no new string speaks to the reader', () => {
   for (const text of Object.values(GOAL_SHARING_COPY)) expect(text).not.toMatch(/\byou(r)?\b/i);
@@ -899,7 +899,7 @@ Spec §9.2, C27.
 it('titles the share\'s own lines', () => {
   expect(historyTitle(entry({ kind: 'left', memberName: 'Rina' }))).toBe('Rina left');
   expect(historyTitle(entry({ kind: 'stopped', memberName: 'Rina' }))).toBe('Stopped sharing with Rina');
-  expect(historyTitle(entry({ kind: 'unshared', memberName: 'Fandri' }))).toBe('No longer shared by Fandri');
+  expect(historyTitle(entry({ kind: 'unshared', memberName: 'Bima' }))).toBe('No longer shared by Bima');
   expect(historyTitle(entry({ kind: 'set-aside' }))).toBe('Set aside');
 });
 it('ends each line of a shared goal with its person', () => {
@@ -921,7 +921,7 @@ Spec §12 E2E.
 **Files:**
 - Create: `apps/web/e2e/phone-shared-goals.spec.ts` (helpers from `e2e/goals.ts`, `e2e/goal-funding.ts`, `e2e/workspace-page.ts`, `secondPhone` as `e2e/phone-shared-events.spec.ts:24-28`)
 
-- [ ] **Step 1: Write the test** — Fandri and Rina share the Personal workspace; Fandri adds goal "Trip Fund", Rp 180.000.000 due June 2030, switch "Shared with Rina" on; sets aside 20.000.000 from "Main Savings" and 8.000.000 from "Daily Account"; Rina sets aside 10.000.000 from "Partner Savings" and tags a buy of "Cash Fund" worth 4.000.000. Assert on both phones: legend Me 28.000.000 / Rina 14.000.000 / To go 138.000.000 (Rina's phone: Me 14.000.000 / Fandri 28.000.000); Rina's rows on Fandri's phone read "Rina's account" and are not links; Rina marks the payment paid → Fandri's reads paid; Fandri turns sharing off → Rina's Goals list has one "Trip Fund" with Partner Savings 10.000.000 set aside and no initials; Fandri's page shows only his own group. Every figure invented.
+- [ ] **Step 1: Write the test** — Bima and Rina share the Personal workspace; Bima adds goal "Trip Fund", Rp 180.000.000 due June 2030, switch "Shared with Rina" on; sets aside 20.000.000 from "Main Savings" and 8.000.000 from "Daily Account"; Rina sets aside 10.000.000 from "Partner Savings" and tags a buy of "Cash Fund" worth 4.000.000. Assert on both phones: legend Me 28.000.000 / Rina 14.000.000 / To go 138.000.000 (Rina's phone: Me 14.000.000 / Bima 28.000.000); Rina's rows on Bima's phone read "Rina's account" and are not links; Rina marks the payment paid → Bima's reads paid; Bima turns sharing off → Rina's Goals list has one "Trip Fund" with Partner Savings 10.000.000 set aside and no initials; Bima's page shows only his own group. Every figure invented.
 - [ ] **Step 2: Run** `cd apps/web && npx playwright test e2e/phone-shared-goals.spec.ts --project=phone` — expected PASS.
 - [ ] **Step 3: Commit** `git add apps/web/e2e/phone-shared-goals.spec.ts && git commit -m "E2E: a goal shared by two phones, funded by both, turned off"`
 

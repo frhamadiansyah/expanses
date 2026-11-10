@@ -35,7 +35,7 @@ ordinary private goal and every other member with a private copy holding their o
 **Non-goals (v1)**
 - Sharing with friends or with anyone outside a shared workspace (events cover friends).
 - Sharing with only some members of a workspace: every current and later member sees a shared goal (D6).
-- A per-person split of the monthly need ("Rina puts in Rp 2 juta, Fandri Rp 3 juta").
+- A per-person split of the monthly need ("Rina puts in Rp 2 juta, Bima Rp 3 juta").
 - Tapping through to the partner's account, even when joint net worth shows it.
 - A Share page row for goals (events have one, `apps/web/src/features/sharing/SharePage.tsx:53`).
 
@@ -187,7 +187,7 @@ Each is the writer's; one line of why.
 
 **Screens and copy**
 
-- **C26 (my call)** On another member's phone Edit goal shows the switch on and disabled, footer "Shared by Fandri", and
+- **C26 (my call)** On another member's phone Edit goal shows the switch on and disabled, footer "Shared by Bima", and
   a **Leave goal** row in place of Archive and Delete.
 - **C27 (my call)** History lines on a shared goal end with the person: "Me" for own lines, the member's name for the
   partner's, matching Funded by.
@@ -300,7 +300,7 @@ CREATE TABLE goal_member_moves (
 CREATE INDEX goal_member_moves_goal ON goal_member_moves (goal_id, occurred_on);
 
 -- Local only, never synced: the share's own History lines ("Shared with Rina", "Rina left", "Stopped sharing",
--- "No longer shared by Fandri"). A private copy (C30) keeps its lines under its new goal id.
+-- "No longer shared by Bima"). A private copy (C30) keeps its lines under its new goal id.
 CREATE TABLE goal_share_log (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
@@ -368,7 +368,7 @@ field clocks of the goal's synced rows, and then does its own follow-up:
 
 | Change | Sharer's phone | Every other member's phone |
 |---|---|---|
-| link → `off` | keeps the goal, private; log "Stopped sharing with Rina" | re-keys its copy into a private goal (C30) with its own set-asides, contributions, draws and History; log "No longer shared by Fandri" |
+| link → `off` | keeps the goal, private; log "Stopped sharing with Rina" | re-keys its copy into a private goal (C30) with its own set-asides, contributions, draws and History; log "No longer shared by Bima" |
 | link → `deleted` | the goal is deleted (`deleteGoal`) | as `off` |
 | Rina leaves (her phone writes the leave) | the goal stays shared; Rina's funding and moves dropped; log "Rina left" with her last counted total | Rina's phone: as `off`. Other members: as the sharer's column |
 | link → `on` again (round + 1) | the rows re-enter scope: capture emits every field at a fresh clock (as for any row entering a book) | inserts the goal as new, beside any private copy (whose ids differ, C30); a member who left is back in |
@@ -452,7 +452,7 @@ outgoing for a shared emergency goal (D8), and applies C20 to the fit and C22 to
 
 Entries gain `by: string | null` (null = this phone's member). For a shared goal the reader adds the other members'
 `goal_member_moves` and this phone's `goal_share_log` lines. New kinds: `shared`, `stopped`, `left`, `unshared`,
-`ended` (titles "Shared with Rina", "Stopped sharing with Rina", "Rina left", "No longer shared by Fandri", "Workspace
+`ended` (titles "Shared with Rina", "Stopped sharing with Rina", "Rina left", "No longer shared by Bima", "Workspace
 no longer shared"), amount = the member's last counted total when there is one. A private copy (C30) keeps its own
 moves and its log lines; the others' moves go. `GoalHistoryPage.tsx:9-16` gains their titles; the subtitle ends "· Me" or "· Rina" (C27).
 `cardHistory` (`goal-cards.ts:161`) is unchanged; its funded window gets nothing for a shared goal (C22).
@@ -541,10 +541,10 @@ partner spent against, as it does for this phone's own draws (`goals.ts:203-207`
 - **Web**: switch visibility and label (no household, one other member, three others, five others, old device, two
   books → picker); partner rows not
   tappable and captioned; hero legend; list initials; Leave; copy grep for "you".
-- **E2E** (two phones): the mock-up — Hajj 2030, Rp 180.000.000; Fandri sets aside BCA Tahapan 20.000.000 and Mandiri
+- **E2E** (two phones): the mock-up — Hajj 2030, Rp 180.000.000; Bima sets aside BCA Tahapan 20.000.000 and Mandiri
   Tabungan 8.000.000; Rina sets aside Jenius 10.000.000 and tags a money-market fund worth 4.000.000; both phones read
-  Me/Rina/To go 28/14/138 juta; Rina marks the first payment paid; Fandri turns sharing off; Rina's phone has a
-  private Hajj 2030 holding Jenius 10.000.000 and the money-market fund, Fandri's shows only his own. Fixture figures are invented, per the owner's rule on real data.
+  Me/Rina/To go 28/14/138 juta; Rina marks the first payment paid; Bima turns sharing off; Rina's phone has a
+  private Hajj 2030 holding Jenius 10.000.000 and the money-market fund, Bima's shows only his own. Fixture figures are invented, per the owner's rule on real data.
 
 ## 13. Conflicts with the household-sharing design and the brief
 
