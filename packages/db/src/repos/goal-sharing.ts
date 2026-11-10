@@ -5,9 +5,10 @@ import { type CaptureTarget, withCapture, withCaptureSuspended } from '../sync/c
 import { meetsVersion } from '../sync/events/version';
 import { followLeaveHereTx, forgetGoalLinesTx, othersNamesTx, shareLogLineTx, unlinkHereTx } from '../sync/goals/follow';
 import { type GoalLink, goalLinkOfTx } from '../sync/goals/scope';
-import { ownGoalFunding, ownGoalMoves } from '../sync/goals/summaries';
+import { sendGoalSummariesTx } from '../sync/goals/summaries';
 import { SHARED_GOALS_MIN_APP_VERSION } from '../sync/goals/version';
 import { localDate } from '../sync/net-worth/summaries';
+import { freezeEmergencyOutgoingTx } from './goal-calculators';
 import { goalSharingTablesExist } from './goal-sharing-tables';
 import { GoalDbError } from './goals';
 import { listSharedBooks } from './sharing';
@@ -72,16 +73,13 @@ async function onLinkTx(tx: Db, goalId: string): Promise<{ link: GoalLink & { go
 /**
  * Shares a goal into a household workspace (§8.2), or turns it on again there (round + 1). One transaction under
  * capture with the link and every row of the goal as targets, so the link goes out first and the goal, its stages,
- * terms and calculator follow whole, then this member's line (only once there is money in it, §11 second device) and
- * this member's History of the goal as moves, so the others see it from the start.
+ * terms and calculator follow whole, then this member's line and History go through the summary send, so the others see
+ * it from the start.
  */
 export async function shareGoal(database: Database, ws: WorkspaceContext, goalId: string, bookId: string): Promise<void> {
   const target = (await goalShareTargets(database)).find((t) => t.bookId === bookId);
   if (!target) throw new GoalDbError('A goal is shared only into a shared workspace with another member, where every phone runs a current version');
   const date = today();
-  // Worked out before the write: these readers take the database, not a transaction.
-  const funding = await ownGoalFunding(database, ws, goalId, date);
-  const moves = await ownGoalMoves(database, ws, goalId, target.me, date);
   await database.transaction(async (tx) => {
     await requireGoalTx(tx, ws, goalId);
     const link = await goalLinkOfTx(tx, goalId);
@@ -90,37 +88,26 @@ export async function shareGoal(database: Database, ws: WorkspaceContext, goalId
     if (link && link.bookId !== bookId) throw new GoalDbError('This goal was shared in another workspace, and is shared only there');
     if (link && link.sharedBy !== target.me) throw new GoalDbError(`Only ${await nameInTx(tx, bookId, link.sharedBy)} can share this goal again`);
     const stageIds = (await tx.values<[string]>(sql`SELECT id FROM goal_stages WHERE goal_id = ${goalId} ORDER BY sort, due_on, id`)).map((row) => row[0]);
-    const lineId = `${goalId}|${target.me}`;
     const targets: CaptureTarget[] = [
       { entity: 'goal_share', id: goalId },
       { entity: 'goal', id: goalId },
       ...stageIds.map((id) => ({ entity: 'goal_stage', id })),
       ...stageIds.map((id) => ({ entity: 'goal_stage_term', id })),
       { entity: 'goal_calculator', id: goalId },
-      { entity: 'goal_member_funding', id: lineId },
-      ...moves.map((move) => ({ entity: 'goal_member_move', id: move.id })),
     ];
     await withCapture(tx, targets, async () => {
+      // The sharer's outgoing is frozen into an emergency fund's working before the link is written (D8).
+      const [working] = await tx.values<[string]>(sql`SELECT kind FROM goal_calculators WHERE goal_id = ${goalId}`);
+      if (working?.[0] === 'emergency') await freezeEmergencyOutgoingTx(tx, ws, goalId, date);
       if (link) await tx.run(sql`UPDATE goal_shares SET state = 'on', state_on = ${date}, round = round + 1 WHERE goal_id = ${goalId}`);
       else {
         await tx.run(sql`
           INSERT INTO goal_shares (goal_id, book_id, workspace_id, shared_by, state, state_on, round)
           VALUES (${goalId}, ${bookId}, ${ws.workspaceId}, ${target.me}, 'on', ${date}, 1)`);
       }
-      if (funding.lines.length > 0) {
-        await tx.run(sql`
-          INSERT INTO goal_member_funding (goal_id, member_id, workspace_id, lines_json, planned_monthly_minor, as_of)
-          VALUES (${goalId}, ${target.me}, ${ws.workspaceId}, ${JSON.stringify(funding.lines)}, ${funding.plannedMonthlyMinor}, ${date})
-          ON CONFLICT (goal_id, member_id) DO UPDATE SET lines_json = excluded.lines_json, planned_monthly_minor = excluded.planned_monthly_minor, as_of = excluded.as_of`);
-      }
-      for (const move of moves) {
-        await tx.run(sql`
-          INSERT INTO goal_member_moves (id, goal_id, workspace_id, member_id, kind, occurred_on, amount_minor, currency, text, stage_id)
-          VALUES (${move.id}, ${goalId}, ${ws.workspaceId}, ${move.memberId}, ${move.kind}, ${move.occurredOn}, ${move.amountMinor}, ${move.currency}, ${move.text}, ${move.stageId})
-          ON CONFLICT (id) DO UPDATE SET kind = excluded.kind, occurred_on = excluded.occurred_on, amount_minor = excluded.amount_minor,
-            currency = excluded.currency, text = excluded.text, stage_id = excluded.stage_id`);
-      }
     });
+    // One path for sending: this member's line (once there is money in it, §11) and History go as the daily send does.
+    await sendGoalSummariesTx(tx, [goalId], date);
     await shareLogLineTx(tx, ws, goalId, { kind: 'shared', memberName: await othersNamesTx(tx, bookId, target.me), occurredOn: date });
   });
 }
