@@ -27,7 +27,7 @@ Some people keep expenses in a spreadsheet because typing a row there is fast: n
 
 ## Anti-goals
 
-- A guess the owner cannot see. Every part One line read must be visible before saving, and an unsure part must look unsure.
+- A guess the owner cannot see. Every part One line read must be visible in the preview row before saving, and an unsure part must look unsure.
 - A widget that shows money on a home or lock screen without being asked to.
 - Landscape breaking any other page.
 
@@ -38,18 +38,19 @@ Some people keep expenses in a spreadsheet because typing a row there is fast: n
 - the widget and Control Center (E);
 - the deep link `cicis://add/line`.
 
-**Screen:** the mockup's A. A list of rows saved in this sitting (count and total) at the top. One text field above the keyboard, with tags under it showing what was read: description, amount, category, paid with, date. Return (keyboard key and the "Save" above the keyboard) saves; the field empties for the next row and keeps the date and the last "paid with". Done or Cancel leaves; rows already saved stay saved. Tapping a saved row opens the existing edit screen for it.
+**Screen:** the mockup's A with the owner's chosen **preview row** (mockup "One line without pills", option 1) — no pills/tags. A list of rows saved in this sitting (count and total) at the top. Above the text field, under a small "Will be saved as" label, the row exactly as it will look in the Cashflow list: category icon, category name, "description · paid with · day", amount. Tapping the icon or category, the paid-with, the day or the amount in the preview opens that part's picker. An unsure part is shown in amber in the preview (e.g. "GoPay?" when paid-with was not typed). Return (keyboard key and the "Save" above the keyboard) saves; the field empties for the next row and keeps the date and the last "paid with". Done or Cancel leaves; rows already saved stay saved. Tapping a saved row opens the existing edit screen for it.
 
 **Reading a line** (a pure function in `packages/core`, unit-tested with invented lines):
 - **Amount:** a figure anywhere in the line, read with the same rules as Paste a list (`18000`, `18.000`, `38rb`, `38k`, `1,5jt`, `Rp 38.000`). If there are two figures, the last one is the amount. Reuse Paste a list's amount reader; do not write a second one.
 - **Currency:** a currency code next to the figure (`KRW 95000`, `95000 krw`) records in that currency at the day's rate, as the Add form does for a foreign amount. Otherwise the workspace's currency.
-- **Paid with:** a word that matches an account, card, wallet or card digits (existing `matchPayment`). Words used for it are taken out of the description. None matched: the last "paid with" used on this screen, else the one the Add form would default to — shown as an unsure tag.
+- **Paid with:** a word that matches an account, card, wallet or card digits (existing `matchPayment`). Words used for it are taken out of the description. None matched: the last "paid with" used on this screen, else the one the Add form would default to — shown as unsure (amber) in the preview row.
 - **Date:** today, unless the line has `kemarin` / `yesterday` or a date the Paste-a-list date reader understands (`28/10`, `28 Oct`). Taken out of the description.
 - **Description:** what is left, tidied (first letter of each word capitalised when typed all lower-case).
 - **Category:** from this merchant's past rows (existing `capturedCategory`), else a word match (existing `matchCategory`), else none. None is allowed: the row saves and shows under Needs category, as rows from bank messages do.
-- **Unsure parts** (paid-with fallback, a comma figure read as thousands, a category from a word match rather than history) show as dashed tags. Saving is still allowed.
+- **Unsure parts** (paid-with fallback, a comma figure read as thousands, a category from a word match rather than history) show in amber in the preview row. Saving is still allowed.
+- **The least that saves is a note and an amount** ("parkir 10rb"): the day is today, paid-with falls back as above, category from history or none (Needs category). A line with only an amount saves with an empty description if the Add form accepts one today; if it does not, the preview asks for a word ("Description?") — builder checks which. A line with no amount does not save.
 
-**Fixing a guess:** tapping a tag opens the same picker the Add form uses for that field (category picker, paid-with picker, amount, date). The tag then shows the chosen value as sure. A line with no amount cannot be saved; the amount tag says "Amount?".
+**Fixing a guess:** tapping a part of the preview row opens the same picker the Add form uses for that field (category picker, paid-with picker, amount, date). The part then shows the chosen value as sure. While no amount has been read, the preview's amount says "Amount?" and Save is dimmed.
 
 **Suggestions:** while typing, past descriptions that match show above the keyboard as chips (as in the mockup); tapping one fills description, category and paid with from that merchant's last row.
 
@@ -89,7 +90,7 @@ No "you"/"your" in app text. No sample numbers in placeholders (the One line pla
 ## Testing
 
 - Core: the line reader, with invented lines covering every rule above (figure positions, suffixes, currency codes, card words, card digits, dates, no amount, two figures).
-- Web: One line screen (save, keep date and card, fix a tag, no-amount refusal); the long-press menu; landscape table on Cashflow at a phone landscape size (844×390) in the phone e2e project; other pages stay in the phone shell at that size.
+- Web: One line screen (save, keep date and card, fix a part from the preview row, note-and-amount saves, no-amount refusal); the long-press menu; landscape table on Cashflow at a phone landscape size (844×390) in the phone e2e project; other pages stay in the phone shell at that size.
 - iOS: widget and Control Center checked on device (TestFlight) — not testable in CI.
 
 ## Settled after the builder check (my calls, owner to confirm)
@@ -105,4 +106,4 @@ No "you"/"your" in app text. No sample numbers in placeholders (the One line pla
 
 ## Left to the builder
 
-File layout, component names, how the long-press is detected (press-and-hold ~400ms with a light haptic on the native app), the exact unsure-tag styling within the mockup's look, and how the widget summary is passed from the web view to the App Group (a small native method next to the existing native bridges is expected).
+File layout, component names, how the long-press is detected (press-and-hold ~400ms with a light haptic on the native app), the exact amber styling of unsure parts within the mockup's look, and how the widget summary is passed from the web view to the App Group (a small native method next to the existing native bridges is expected).
