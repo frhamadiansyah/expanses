@@ -6,6 +6,8 @@ import { accounts, entries, transactions } from '../schema';
 import { assetProfiles } from '../schema-assets';
 import { goalDraws, goalEarmarks, goalStages, goals } from '../schema-goals';
 import { MONEY_SUBTYPES } from './accounts';
+import { markGoalDirtyTx } from '../sync/capture';
+import { withGoalCapture } from './goals';
 
 /**
  * Whether migration 0050 has run on this database. Every read and write of goal_draws asks first, so a database stopped
@@ -100,6 +102,7 @@ export async function adjustSetAsideTx(tx: Db, ws: WorkspaceContext, goalId: str
     .from(goalEarmarks)
     .where(and(eq(goalEarmarks.goalId, goalId), eq(goalEarmarks.accountId, accountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
   const next = Math.max(0, (existing?.amountMinor ?? 0) + deltaMinor);
+  markGoalDirtyTx(tx, goalId);
 
   if (next === 0) {
     if (existing) {
@@ -175,6 +178,7 @@ export interface TaggedMove {
  */
 export async function parkForGoalTx(tx: Db, ws: WorkspaceContext, transactionId: string, goalId: string, move: TaggedMove): Promise<number> {
   await tx.update(transactions).set({ goalId }).where(eq(transactions.id, transactionId));
+  markGoalDirtyTx(tx, goalId);
   if (!(await canHoldSetAside(tx, ws, move.toAccountId))) return 0;
   // The goal's own promise on the source follows its money, so the goal does not count it in both places.
   const [own] = await tx
@@ -375,7 +379,10 @@ export async function applySetAsideTx(
               .where(and(eq(goalStages.goalId, choice.goalId), eq(goalStages.workspaceId, ws.workspaceId), isNull(goalStages.paidOn)))
               .orderBy(asc(goalStages.dueOn), asc(goalStages.sort))
               .limit(1);
-    if (stage && stage.paidOn === null) await tx.update(goalStages).set({ paidOn: occurredOn }).where(eq(goalStages.id, stage.id));
+    // A shared goal's paid mark goes out (§8.5): anyone marks a payment paid (C10).
+    if (stage && stage.paidOn === null) {
+      await withGoalCapture(tx, { entity: 'goal_stage', id: stage.id }, () => tx.update(goalStages).set({ paidOn: occurredOn }).where(eq(goalStages.id, stage.id)));
+    }
     await tx.insert(goalDraws).values({ ...row, intent: 'spend', amountMinor: amount, stageId: stage?.id ?? null });
     return;
   }
@@ -409,10 +416,13 @@ async function unpayStageTx(tx: Db, ws: WorkspaceContext, draw: { goalId: string
   // goal: it is history, and the edit that re-files the payment which completed it drops the answer (it promises
   // nothing now), so un-paying here would leave the archive reading not done for a payment that still stands.
   if (!(await goalActiveTx(tx, ws, draw.goalId))) return;
-  await tx
-    .update(goalStages)
-    .set({ paidOn: null })
-    .where(and(eq(goalStages.id, draw.stageId), eq(goalStages.workspaceId, ws.workspaceId), eq(goalStages.paidOn, draw.occurredOn)));
+  const stageId = draw.stageId;
+  await withGoalCapture(tx, { entity: 'goal_stage', id: stageId }, () =>
+    tx
+      .update(goalStages)
+      .set({ paidOn: null })
+      .where(and(eq(goalStages.id, stageId), eq(goalStages.workspaceId, ws.workspaceId), eq(goalStages.paidOn, draw.occurredOn))),
+  );
 }
 
 /**
@@ -430,6 +440,7 @@ export async function undoSetAsideTx(tx: Db, ws: WorkspaceContext, transactionId
     .from(goalDraws)
     .where(and(eq(goalDraws.transactionId, transactionId), eq(goalDraws.workspaceId, ws.workspaceId)));
   const undone = rows.filter((draw) => (isAnswer(draw) ? !keep.answer : !keep.tagged));
+  for (const draw of undone) markGoalDirtyTx(tx, draw.goalId);
   for (const draw of undone) {
     if (draw.intent === 'spend') {
       await adjustSetAsideTx(tx, ws, draw.goalId, draw.accountId, draw.amountMinor);
@@ -570,10 +581,13 @@ export async function carryAnswerTx(
   if (!draw) return;
   await tx.update(goalDraws).set({ transactionId: toTransactionId, occurredOn }).where(eq(goalDraws.id, draw.id));
   if (draw.stageId && occurredOn !== draw.occurredOn) {
-    await tx
-      .update(goalStages)
-      .set({ paidOn: occurredOn })
-      .where(and(eq(goalStages.id, draw.stageId), eq(goalStages.workspaceId, ws.workspaceId), eq(goalStages.paidOn, draw.occurredOn)));
+    const stageId = draw.stageId;
+    await withGoalCapture(tx, { entity: 'goal_stage', id: stageId }, () =>
+      tx
+        .update(goalStages)
+        .set({ paidOn: occurredOn })
+        .where(and(eq(goalStages.id, stageId), eq(goalStages.workspaceId, ws.workspaceId), eq(goalStages.paidOn, draw.occurredOn))),
+    );
   }
   const oldOut = outflowFrom(oldLines, draw.accountId);
   const newOut = outflowFrom(newLines, draw.accountId);

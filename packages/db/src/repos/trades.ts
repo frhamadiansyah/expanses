@@ -39,7 +39,7 @@ import { categoryIdsByKeyTx } from './categories';
 import { systemAccountId } from './accounts';
 import { postTransactionTx, voidTransactionTx } from './ledger';
 import { byMoneyHistoryTx, isByMoneyTx, setTradeBasisTx, tradeBasesTx } from './by-money';
-import { goalPartsByTradeTx, writeGoalPartsTx } from './goal-parts';
+import { goalPartsByTradeTx, markTradeGoalsDirtyTx, writeGoalPartsTx } from './goal-parts';
 
 export interface TradeRow extends TradeRecord {
   workspaceId: string;
@@ -443,6 +443,7 @@ export async function writeTradeTx(
   });
   if (basisMinor !== null) await setTradeBasisTx(tx, id, basisMinor);
   if (split.parts.length > 0) await writeGoalPartsTx(tx, id, split.parts);
+  await markTradeGoalsDirtyTx(tx, id);
   /*
    * Money parked for a goal in the account that paid is now units: each goal of the buy is lowered by its share of
    * what left that account, in its currency — the whole of it for a buy with one goal, its part's share for a split.
@@ -591,6 +592,7 @@ async function retire(tx: Db, ws: WorkspaceContext, tradeId: string, status: 're
     .from(investmentTrades)
     .where(and(eq(investmentTrades.id, tradeId), eq(investmentTrades.workspaceId, ws.workspaceId), eq(investmentTrades.status, 'active')));
   if (!row) throw new AssetError('That trade was already changed or removed');
+  await markTradeGoalsDirtyTx(tx, tradeId);
   if (row.transactionId) await voidTransactionTx(tx, ws, row.transactionId);
   await tx.update(investmentTrades).set({ status }).where(eq(investmentTrades.id, tradeId));
   return toRow(row);

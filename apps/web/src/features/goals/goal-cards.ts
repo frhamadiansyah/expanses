@@ -1,5 +1,6 @@
 import {
   assumedReturnBps,
+  convertMinor,
   DEFAULT_INFLATION_BPS,
   EMERGENCY_RETURN_BPS,
   formatMinor,
@@ -57,6 +58,12 @@ export interface GoalCard {
   currentMinor: number;
   /** What is saved in the base currency, for adding goals together; null when no rate is stored for the goal's currency. */
   currentBaseMinor: number | null;
+  /** The part of `currentMinor` held on this phone; all of it for a private goal (C21). */
+  ownMinor: number;
+  /** The part held by the other members of a shared goal; 0 for a private one. */
+  othersMinor: number;
+  /** `ownMinor` in the base currency; null when no rate is stored. */
+  ownBaseMinor: number | null;
   /** What the goal asks in all, paid payments included. */
   targetMinor: number;
   /** The payments marked paid, summed: progress made without money held. */
@@ -104,10 +111,15 @@ export const longDay = (iso: string) => `${Number(iso.slice(8, 10))} ${monthYear
  * figure is everything held, a funded goal's surplus included.
  */
 export function goalsTotals(
-  cards: readonly (Pick<GoalCard, 'currentMinor' | 'done' | 'statusLabel'> & { currentBaseMinor?: number | null })[],
+  cards: readonly (Pick<GoalCard, 'currentMinor' | 'done' | 'statusLabel'> & { currentBaseMinor?: number | null; ownMinor?: number; ownBaseMinor?: number | null })[],
 ): { savedMinor: number; onTrack: number; count: number } {
   // In the base currency: goals in other currencies are converted for this total only (a goal with no rate adds nothing).
-  const savedMinor = cards.filter((card) => !card.done).reduce((total, card) => total + (card.currentBaseMinor === undefined ? card.currentMinor : (card.currentBaseMinor ?? 0)), 0);
+  // Only this person's money: a partner's lines on a shared goal sit in accounts that are not this person's (C21).
+  const saved = (card: (typeof cards)[number]) => {
+    const base = card.ownBaseMinor !== undefined ? card.ownBaseMinor : card.currentBaseMinor;
+    return base === undefined ? (card.ownMinor ?? card.currentMinor) : (base ?? 0);
+  };
+  const savedMinor = cards.filter((card) => !card.done).reduce((total, card) => total + saved(card), 0);
   const onTrack = cards.filter((card) => card.statusLabel !== 'Behind').length;
   return { savedMinor, onTrack, count: cards.length };
 }
@@ -172,12 +184,27 @@ function coverOf(plan: GoalPlanRow): string | null {
 /** "27 months left", "1 month left". */
 export const monthsLeftLabel = (months: number) => (months === 1 ? '1 month left' : `${months} months left`);
 
-export function goalCard(plan: GoalPlanRow): GoalCard {
+/**
+ * A goal's card. `me` is this phone's member in the book a shared goal is in: their own lines from another device
+ * (`owner` is `me`, §11) count as theirs here, as on that device (final review I3). `baseCurrency` converts their part.
+ */
+export function goalCard(plan: GoalPlanRow, { me, baseCurrency }: { me?: string | null; baseCurrency?: string } = {}): GoalCard {
   const unpaid = plan.stages.filter((stage) => stage.state !== 'paid');
   const last = unpaid[unpaid.length - 1] ?? plan.stages[plan.stages.length - 1];
   const done = plan.goal.kind !== 'emergency' && plan.stages.length > 0 && plan.stages.every((stage) => stage.state === 'paid');
   const statusLabel = done ? 'Done' : plan.status === 'funded' ? 'Funded' : plan.status === 'on_track' ? 'On track' : 'Behind';
   const paidDays = plan.goal.stages.map((stage) => stage.paidOn).filter((day): day is string => !!day).sort();
+  const othersMinor = plan.links.filter((link) => link.owner !== undefined && link.owner !== me).reduce((total, link) => total + (link.goalMinor ?? 0), 0);
+  const ownMinor = plan.currentMinor - othersMinor;
+  // This member's part in the base money: their own figure at the plan's rate, exact, not a share of a rounded whole (M4).
+  const ownBaseMinor =
+    othersMinor === 0 || plan.currentBaseMinor === null
+      ? plan.currentBaseMinor
+      : plan.rateToBase === null
+        ? null
+        : baseCurrency === undefined || baseCurrency === plan.currency
+          ? ownMinor
+          : convertMinor(ownMinor, plan.currency, baseCurrency, plan.rateToBase);
   return {
     goalId: plan.goalId,
     name: plan.goal.name,
@@ -189,6 +216,9 @@ export function goalCard(plan: GoalPlanRow): GoalCard {
     currency: plan.currency,
     currentMinor: plan.currentMinor,
     currentBaseMinor: plan.currentBaseMinor,
+    ownMinor,
+    othersMinor,
+    ownBaseMinor,
     targetMinor: plan.allTargetMinor,
     paidMinor: plan.paidMinor,
     // Paid payments count as progress, so the bar only moves forward when one is marked.
@@ -210,7 +240,7 @@ export function goalCard(plan: GoalPlanRow): GoalCard {
     riskWarning: plan.riskWarning,
     done,
     doneOn: done ? (paidDays.at(-1) ?? null) : null,
-    shortLines: plan.links.filter((link) => link.shortMinor > 0).map((link) => ({ accountName: link.name, shortMinor: link.shortMinor, currency: link.currency })),
+    shortLines: plan.links.filter((link) => link.shortMinor > 0 && link.owner === undefined).map((link) => ({ accountName: link.name, shortMinor: link.shortMinor, currency: link.currency })),
   };
 }
 

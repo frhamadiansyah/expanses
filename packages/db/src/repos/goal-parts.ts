@@ -2,6 +2,7 @@ import type { GoalPart } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Db } from '../database';
+import { markGoalDirtyTx } from '../sync/capture';
 
 /*
  * A split trade's parts (0083), read and written by name: a database stopped before 0083 has no such table, and every
@@ -39,4 +40,12 @@ export async function writeGoalPartsTx(db: Db, tradeId: string, parts: readonly 
   for (const part of parts) {
     await db.run(sql`INSERT INTO trade_goal_parts (trade_id, goal_id, units_micro, money_minor) VALUES (${tradeId}, ${part.goalId}, ${part.unitsMicro}, ${part.moneyMinor})`);
   }
+}
+
+/** Marks every goal a trade is tagged to (its one goal, or its parts) for a new summary of the member's own money. */
+export async function markTradeGoalsDirtyTx(db: Db, tradeId: string): Promise<void> {
+  const [trade] = await db.values<[string | null]>(sql`SELECT goal_id FROM investment_trades WHERE id = ${tradeId}`);
+  if (trade?.[0]) markGoalDirtyTx(db, trade[0]);
+  if (!(await goalPartsTableExists(db))) return;
+  for (const [goalId] of await db.values<[string]>(sql`SELECT goal_id FROM trade_goal_parts WHERE trade_id = ${tradeId}`)) markGoalDirtyTx(db, goalId);
 }

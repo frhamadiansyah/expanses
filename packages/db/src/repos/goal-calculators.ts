@@ -1,5 +1,8 @@
 import {
+  addMonths,
   assumedReturnBps,
+  DEFAULT_EMERGENCY_BASE,
+  emergencyOutgoingMinor,
   EMERGENCY_BASES,
   EMERGENCY_RETURN_BPS,
   type EducationInputs,
@@ -11,18 +14,24 @@ import {
   type Household,
   INCOME_STABILITIES,
   type IncomeStability,
+  monthOf,
   monthsUntil,
   RETIREMENT_RETURN_BPS,
   type RetirementInputs,
   retirementTodayMinor,
+  roundHalfAwayFromZero,
 } from '@expanses/core';
-import { and, asc, eq } from 'drizzle-orm';
-import type { WorkspaceContext } from '../context';
+import { and, asc, eq, sql } from 'drizzle-orm';
+import { ownerScope, type WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { goalCalculators } from '../schema-budget';
 import { goalStages, goals as goalsTable } from '../schema-goals';
 import { goalStageTerms } from '../schema-health';
-import { drawnStageIds, GoalDbError, goalColumns, type GoalRow, listGoals, type SaveGoalStageInput, saveGoalTx } from './goals';
+import { markGoalDirtyTx } from '../sync/capture';
+import { goalLinkOfTx } from '../sync/goals/scope';
+import { periodFlows } from './flows';
+import { goalSharingTablesExist } from './goal-sharing-tables';
+import { drawnStageIds, GoalDbError, goalColumns, type GoalRow, listGoals, type SaveGoalStageInput, saveGoalTx, withGoalCapture } from './goals';
 import { healthTablesExist } from './health-tables';
 
 /**
@@ -49,6 +58,13 @@ export interface EmergencyInputs {
    * target (the months and the rest stay as the working); absent, the target is the months times the outgoing.
    */
   targetMinor?: number;
+  /**
+   * A shared fund's monthly outgoing, frozen in the working (shared goals D8): the base currency, from the last twelve
+   * months of whoever shared or last recalculated, or the typed figure. Every phone's target reads it, so all show one.
+   */
+  sharedOutgoingMinor?: number;
+  /** The day `sharedOutgoingMinor` was read. */
+  sharedOutgoingOn?: string;
 }
 
 export type CalculatorKind = 'emergency' | 'education' | 'retirement';
@@ -220,6 +236,7 @@ async function writeCalculatorTx(
   kind: CalculatorKind,
   derived: Derived,
   computedAt = new Date().toISOString(),
+  andThen?: () => Promise<unknown>,
 ): Promise<void> {
   const current = await tx
     .select()
@@ -265,24 +282,30 @@ async function writeCalculatorTx(
     derived: true,
   });
 
-  if (withTerms) {
-    await tx.delete(goalStageTerms).where(and(eq(goalStageTerms.goalId, goal.id), eq(goalStageTerms.workspaceId, ws.workspaceId)));
-    for (const [index, stage] of derived.stages.entries()) {
-      await tx
-        .insert(goalStageTerms)
-        .values({ stageId: stageIds[index]!, workspaceId: ws.workspaceId, goalId: goal.id, returnBps: stage.returnBps, derivedKey: stage.key });
+  // saveGoalTx captured the goal and its stages itself; the terms and the working are captured here, once its capture
+  // has closed. A capture around saveGoalTx would see those rows change too, and send each of their ops twice.
+  await withGoalCapture(tx, [{ entity: 'goal_stage_term' }, { entity: 'goal_calculator', id: goal.id }], async () => {
+    if (withTerms) {
+      await tx.delete(goalStageTerms).where(and(eq(goalStageTerms.goalId, goal.id), eq(goalStageTerms.workspaceId, ws.workspaceId)));
+      for (const [index, stage] of derived.stages.entries()) {
+        await tx
+          .insert(goalStageTerms)
+          .values({ stageId: stageIds[index]!, workspaceId: ws.workspaceId, goalId: goal.id, returnBps: stage.returnBps, derivedKey: stage.key });
+      }
+      // A kept stage keeps its own terms, key included, so the level coming back finds it again.
+      const termOf = new Map(terms.map((term) => [term.stageId, term]));
+      for (const stage of kept) {
+        const term = termOf.get(stage.id);
+        if (term) await tx.insert(goalStageTerms).values(term);
+      }
     }
-    // A kept stage keeps its own terms, key included, so the level coming back finds it again.
-    const termOf = new Map(terms.map((term) => [term.stageId, term]));
-    for (const stage of kept) {
-      const term = termOf.get(stage.id);
-      if (term) await tx.insert(goalStageTerms).values(term);
-    }
-  }
 
-  const row = { goalId: goal.id, workspaceId: ws.workspaceId, kind, inputsJson: JSON.stringify(derived.inputs), computedMinor: derived.computedMinor, computedAt };
-  const { goalId: _goalId, workspaceId: _workspaceId, ...changes } = row;
-  await tx.insert(goalCalculators).values(row).onConflictDoUpdate({ target: goalCalculators.goalId, set: changes });
+    const row = { goalId: goal.id, workspaceId: ws.workspaceId, kind, inputsJson: JSON.stringify(derived.inputs), computedMinor: derived.computedMinor, computedAt };
+    const { goalId: _goalId, workspaceId: _workspaceId, ...changes } = row;
+    await tx.insert(goalCalculators).values(row).onConflictDoUpdate({ target: goalCalculators.goalId, set: changes });
+    // A further write of the working (a frozen outgoing) goes out in the same op.
+    await andThen?.();
+  });
 }
 
 /**
@@ -301,10 +324,51 @@ export async function saveGoalCalculator(database: Database, ws: WorkspaceContex
         : input.kind === 'education' && isV1Education(input.inputs)
           ? educationFromV1(input.inputs, input.today, goal.returnBps)
           : input.inputs;
-    const derived = derive(input.kind, inputs, input.today, goal.name);
-    await writeCalculatorTx(tx, ws, goal, input.kind, derived);
+    const shared = await isSharedOnTx(tx, goal.id);
+    // A frozen figure belongs to a share: a goal that is not shared (any more) carries none.
+    const derived = derive(input.kind, shared ? inputs : unfrozen(inputs), input.today, goal.name);
+    if (shared) markGoalDirtyTx(tx, goal.id);
+    // Whoever recalculates a shared fund freezes their own outgoing (D8).
+    const freeze = shared && input.kind === 'emergency' ? () => freezeEmergencyOutgoingTx(tx, ws, goal.id, input.today) : undefined;
+    await writeCalculatorTx(tx, ws, goal, input.kind, derived, undefined, freeze);
     return derived.computedMinor;
   });
+}
+
+const unfrozen = (inputs: CalculatorInputs): CalculatorInputs => {
+  const { sharedOutgoingMinor: _minor, sharedOutgoingOn: _on, ...rest } = inputs as EmergencyInputs;
+  return rest as CalculatorInputs;
+};
+
+/** Whether the goal's link is on here, so its working is a row of the household book. */
+async function isSharedOnTx(tx: Db, goalId: string): Promise<boolean> {
+  return (await goalSharingTablesExist(tx)) && (await goalLinkOfTx(tx, goalId))?.state === 'on';
+}
+
+/**
+ * Freezes this phone's monthly outgoing into a shared emergency fund's working (D8): the typed figure when the working
+ * has one, otherwise the last twelve months here as the plan reads them. The caller writes under capture. A phone with
+ * no spending to read freezes nothing, so a figure another member froze is not replaced by nothing. Returns the figure.
+ */
+export async function freezeEmergencyOutgoingTx(tx: Db, ws: WorkspaceContext, goalId: string, date: string): Promise<number> {
+  const [row] = await tx
+    .select()
+    .from(goalCalculators)
+    .where(and(eq(goalCalculators.goalId, goalId), eq(goalCalculators.workspaceId, ws.workspaceId)));
+  if (!row || row.kind !== 'emergency') throw new GoalDbError('This goal has no emergency fund working');
+  const inputs = JSON.parse(row.inputsJson) as EmergencyInputs;
+  let outgoing = inputs.monthlyOutgoingMinor;
+  if (outgoing === undefined) {
+    const flows = await periodFlows({ db: tx } as unknown as Database, ownerScope(ws), { from: `${addMonths(monthOf(date), -11)}-01`, to: date });
+    outgoing = flows.months > 0 ? Math.max(0, roundHalfAwayFromZero(emergencyOutgoingMinor(flows, inputs.base ?? DEFAULT_EMERGENCY_BASE) / flows.months)) : 0;
+  }
+  if (outgoing === 0) return 0;
+  const frozen: EmergencyInputs = { ...inputs, sharedOutgoingMinor: outgoing, sharedOutgoingOn: date };
+  await tx
+    .update(goalCalculators)
+    .set({ inputsJson: JSON.stringify(frozen) })
+    .where(and(eq(goalCalculators.goalId, goalId), eq(goalCalculators.workspaceId, ws.workspaceId)));
+  return outgoing;
 }
 
 export interface CreateGoalFromCalculatorInput extends Omit<SaveGoalCalculatorInput, 'goalId'> {
@@ -321,7 +385,7 @@ export interface CreateGoalFromCalculatorInput extends Omit<SaveGoalCalculatorIn
 export async function createGoalFromCalculator(database: Database, ws: WorkspaceContext, input: CreateGoalFromCalculatorInput): Promise<string> {
   const name = input.name.trim();
   if (!name) throw new GoalDbError('Give this goal a name');
-  const derived = derive(input.kind, input.inputs, input.today, name);
+  const derived = derive(input.kind, unfrozen(input.inputs), input.today, name);
   const firstDue = derived.stages.map((stage) => stage.dueOn).sort()[0]!;
   const returnBps =
     input.returnBps ?? derived.returnBps ?? (input.kind === 'emergency' ? EMERGENCY_RETURN_BPS : assumedReturnBps(monthsUntil(input.today, firstDue)));
@@ -373,17 +437,25 @@ export async function setEmergencyOwnTarget(
   if (!row || row.kind !== 'emergency') return;
   const { targetMinor: _was, ...rest } = row.inputs as EmergencyInputs;
   const inputs: EmergencyInputs = { ...rest, version: 2, ...(months === undefined ? {} : { months }), ...(targetMinor === undefined ? {} : { targetMinor }) };
-  await database.db
-    .update(goalCalculators)
-    .set({ inputsJson: JSON.stringify(inputs), computedMinor: targetMinor ?? 0 })
-    .where(and(eq(goalCalculators.goalId, goalId), eq(goalCalculators.workspaceId, ws.workspaceId)));
+  // A shared goal's working is a row of the household book: the change goes to the other phones.
+  await database.transaction((tx) =>
+    withGoalCapture(tx, { entity: 'goal_calculator', id: goalId }, () =>
+      tx
+        .update(goalCalculators)
+        .set({ inputsJson: JSON.stringify(inputs), computedMinor: targetMinor ?? 0 })
+        .where(and(eq(goalCalculators.goalId, goalId), eq(goalCalculators.workspaceId, ws.workspaceId))),
+    ),
+  );
 }
 
 /** Breaks the link on purpose. The stages stay exactly as they are; they are simply no longer derived. */
 export async function clearGoalCalculator(database: Database, ws: WorkspaceContext, goalId: string): Promise<void> {
-  await database.db
-    .delete(goalCalculators)
-    .where(and(eq(goalCalculators.goalId, goalId), eq(goalCalculators.workspaceId, ws.workspaceId)));
+  // On a shared goal the other phones' link breaks too.
+  await database.transaction((tx) =>
+    withGoalCapture(tx, { entity: 'goal_calculator', id: goalId }, () =>
+      tx.delete(goalCalculators).where(and(eq(goalCalculators.goalId, goalId), eq(goalCalculators.workspaceId, ws.workspaceId))),
+    ),
+  );
 }
 
 export async function listGoalCalculators(database: Database, ws: WorkspaceContext): Promise<GoalCalculatorRow[]> {
@@ -446,6 +518,15 @@ function v1WorkedOn(row: GoalCalculatorRow, goal: GoalRow): string {
   return [0, 1, -1].map((days) => shiftDay(utcDay, days)).find((day) => v1Due(day) === first) ?? utcDay;
 }
 
+/** A goal shared on and not by this phone's member: its working is the sharer's to re-work. */
+async function skipsSharedGoal(database: Database, goalId: string): Promise<boolean> {
+  if (!(await goalSharingTablesExist(database.db))) return false;
+  const link = await goalLinkOfTx(database.db, goalId);
+  if (link?.state !== 'on') return false;
+  const [me] = await database.db.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${link.bookId}`);
+  return me?.[0] !== link.sharedBy;
+}
+
 /**
  * Works every goal worked out before today's-money stages out again, silently, and only when the figure changes: a v1
  * working is dated from the day it was worked out (`v1WorkedOn`), so that day stays the day it was worked out. And (Part 2
@@ -463,6 +544,8 @@ export async function upgradeCalculatorGoals(database: Database, ws: WorkspaceCo
   for (const row of rows) {
     const goal = goals.find((candidate) => candidate.id === row.goalId);
     if (!goal) continue;
+    // A shared goal is re-worked only by the member who shared it (C25), so two phones never rewrite one working.
+    if (await skipsSharedGoal(database, goal.id)) continue;
     const workedOn = isV2(row) ? today : v1WorkedOn(row, goal);
     // A working from before kept the goal's own return (spec §8): retirement's stays the return while saving, and a
     // one-course education's becomes the course's typed return, so no band ever replaces it.
@@ -480,18 +563,24 @@ export async function upgradeCalculatorGoals(database: Database, ws: WorkspaceCo
     }
     const didChange = await database.transaction(async (tx) => {
       if (sameFigures(goal, derived, await drawnStageIds(tx, goal.id), await healthTablesExist(tx))) {
-        // Nothing moves; the working is only stamped as read in today's money, so it is not visited again.
+        // Nothing moves; the working is only stamped as read in today's money, so it is not visited again — on a shared
+        // goal, by the other phones too.
         if (!isV2(row)) {
-          await tx
-            .update(goalCalculators)
-            .set({ inputsJson: JSON.stringify(derived.inputs) })
-            .where(and(eq(goalCalculators.goalId, goal.id), eq(goalCalculators.workspaceId, ws.workspaceId)));
+          await withGoalCapture(tx, { entity: 'goal_calculator', id: goal.id }, () =>
+            tx
+              .update(goalCalculators)
+              .set({ inputsJson: JSON.stringify(derived.inputs) })
+              .where(and(eq(goalCalculators.goalId, goal.id), eq(goalCalculators.workspaceId, ws.workspaceId))),
+          );
         }
         return false;
       }
       const [goalRow] = await tx.select(await goalColumns(tx)).from(goalsTable).where(and(eq(goalsTable.id, goal.id), eq(goalsTable.workspaceId, ws.workspaceId)));
       // Keeps its computed_at: the working is re-stated, not redone on a new day.
-      await writeCalculatorTx(tx, ws, goalRow!, row.kind, derived, row.computedAt);
+      const shared = await isSharedOnTx(tx, goal.id);
+      if (shared) markGoalDirtyTx(tx, goal.id);
+      const freeze = shared && row.kind === 'emergency' ? () => freezeEmergencyOutgoingTx(tx, ws, goal.id, today) : undefined;
+      await writeCalculatorTx(tx, ws, goalRow!, row.kind, derived, row.computedAt, freeze);
       return true;
     });
     if (didChange) changed.push(goal.id);

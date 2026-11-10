@@ -308,6 +308,7 @@ export {
   type GoalStatus,
   monthlyNeededMinor,
   monthsUntil,
+  ownShareOfNeedMinor,
   type RankFit,
   RISK_HORIZON_MONTHS,
   type StagePlan,

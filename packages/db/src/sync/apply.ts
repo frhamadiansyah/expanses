@@ -11,7 +11,7 @@ import { markForeignDirtyTx } from '../repos/fx-pending';
 import { bookSplitsExist, excludedLinesTx } from '../repos/book-splits';
 import { ensureUncategorisedRowTx } from '../repos/uncategorised';
 import { budgetSharesExist } from '../repos/share-tables';
-import { isRevivable, paidFromOf, projectPurchase, rememberLastHeadTx, ROW_CLOCK, withCapturePaused, type PaidFrom, type PurchaseFields, type PurchaseMoney } from './capture';
+import { addPendingSummaryGoalsTx, isRevivable, paidFromOf, projectPurchase, rememberLastHeadTx, ROW_CLOCK, withCapturePaused, type PaidFrom, type PurchaseFields, type PurchaseMoney } from './capture';
 import { decodeHlc, driftBlocks, receiveHlc } from './hlc';
 import {
   AuthorityError,
@@ -36,6 +36,8 @@ import type { ChangeSet, Op, SequencedEntry, SyncTransport } from './types';
 import { keepClocksTx, type SeenLog } from './seed';
 import { postTransferSideTx } from './net-worth/transfers';
 import { EVENT_ENTITIES } from './events/authority';
+import { goalLinkOfTx, goalOfRowTx, goalOpDroppedTx, goalOpRefusalTx, noteGoalLinkTx } from './goals/scope';
+import { dropOthersLinesTx, followGoalLeaveTx, followGoalShareTx, followMemberGoneTx, memberInBookTx } from './goals/follow';
 import { restoreRefusedOwnEventOpTx } from './events/log-rows';
 import { type EventPostingKind, followEventOpTx, followSharedEventTx, recordsReadingTx } from '../repos/shared-event-postings';
 
@@ -231,6 +233,13 @@ const PARENTS: Record<string, { table: string; from: 'field' | 'key'; name: stri
   bill_window: { table: 'expense_templates', from: 'key', name: 'template_id' },
   bill_skip: { table: 'expense_templates', from: 'key', name: 'template_id' },
   bill_pause: { table: 'expense_templates', from: 'key', name: 'template_id' },
+  // Shared goals §8.1: a goal's rows need the goal. Its own link is no parent here (goal_shares is keyed by goal_id, not
+  // id): an op for a goal whose link is not 'on' is dropped before this (`goalOpDroppedTx`).
+  goal_stage: { table: 'goals', from: 'field', name: 'goalId' },
+  goal_stage_term: { table: 'goals', from: 'field', name: 'goalId' },
+  goal_member_move: { table: 'goals', from: 'field', name: 'goalId' },
+  goal_calculator: { table: 'goals', from: 'key', name: 'goal_id' },
+  goal_member_funding: { table: 'goals', from: 'key', name: 'goal_id' },
 };
 
 function keyWhere(entity: RowEntity, key: Record<string, string>, ctx: BookContext): SQL {
@@ -285,6 +294,11 @@ async function insertRow(tx: Db, ctx: BookContext, entity: RowEntity, key: Recor
     if (values.has(column)) continue;
     values.set(column, column === 'kind' ? 'shared' : column === 'book_id' ? ctx.bookId : now);
   }
+  // C29: a goal's place in the list is each person's own; one arriving here goes to the end.
+  if (entity.entity === 'goal') {
+    const [next] = await tx.values<[number]>(sql`SELECT coalesce(max(rank) + 1, 0) FROM goals WHERE workspace_id = ${ctx.ws.workspaceId}`);
+    values.set('rank', Number(next?.[0] ?? 0));
+  }
   const columns = [...values.keys()];
   await tx.run(
     sql`INSERT INTO ${sql.raw(entity.table)} (${sql.raw(columns.join(', '))}) VALUES (${sql.join(
@@ -299,7 +313,7 @@ async function insertRow(tx: Db, ctx: BookContext, entity: RowEntity, key: Recor
 }
 
 /** The entity a parent table's rows are, for reading its tombstone. */
-const PARENT_ENTITY: Record<string, string> = { accounts: 'category', budgets: 'budget', expense_templates: 'bill' };
+const PARENT_ENTITY: Record<string, string> = { accounts: 'category', budgets: 'budget', expense_templates: 'bill', goals: 'goal' };
 
 /**
  * Whether a row's parent is absent here: `'ended'` when the parent's own tombstone says it is gone for good (a deleted
@@ -1166,7 +1180,25 @@ export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: Chan
       if (decision instanceof AuthorityError) throw decision;
       const keptBecause = op.op === 'delete' && CATEGORY_SETTINGS.has(op.entity) ? kept.get(op.id) : undefined;
       if (keptBecause) throw new SkipOp(keptBecause);
+      // Shared goals §8.3–8.4: an op for a goal that is not shared here now, in log order, is dropped as ended; a write
+      // the goals predicate refuses is a recorded skip, as on its author's phone at capture.
+      if (await goalOpDroppedTx(tx, ctx.bookId, ctx.memberId, entity, op)) return;
+      const goalWhy = await goalOpRefusalTx(tx, ctx.bookId, entity, op, await authorMemberOf(tx, ctx.bookId, author));
+      if (goalWhy) throw new AuthorityError(goalWhy);
+      const linkBefore = entity.entity === 'goal_share' ? await goalLinkOfTx(tx, op.id) : null;
+      // §8.5: a goal or stage edit (its currency above all) can change what this member's own money counts for it. Read
+      // before the op, while a deleted stage still names its goal; sent by this phone's next own transaction (R9).
+      const editedGoal =
+        entity.entity === 'goal' || entity.entity === 'goal_stage' ? await goalOfRowTx(tx, entity.entity, parseOpId(entity, op.id), op.op === 'upsert' ? op.fields : {}) : null;
       await applyRowOp(tx, ctx, entity, op, changeSet.hlc);
+      if (editedGoal !== null) await addPendingSummaryGoalsTx(tx, [editedGoal]);
+      await noteGoalLinkTx(tx, ctx.bookId, op, changeSet.hlc);
+      // §8.3: every phone makes its own follow-up of a link or a leave — a private copy, the others' lines dropped.
+      if (entity.entity === 'goal_share' && op.op === 'upsert') await followGoalShareTx(tx, ctx, op.id, linkBefore);
+      if (entity.entity === 'goal_share_leave' && op.op === 'upsert') {
+        const key = parseOpId(entity, op.id);
+        await followGoalLeaveTx(tx, ctx, key.goal_id!, key.member_id!);
+      }
       // Joint net worth §7.2 (task 8): this device's side of a transfer between partners follows its row — posted only
       // for a party, while the group is active and the author (the authority view's, never the change-set's claim) is in it.
       if (entity.entity === 'member_transfer' && op.op === 'upsert') await postTransferSideTx(tx, ctx.bookId, op.id, await authorMemberOf(tx, ctx.bookId, author));
@@ -1400,6 +1432,19 @@ export async function pullAndApply(
                   for (const [i, decision] of run.decisions.entries()) {
                     // decision.message already reads "AUTHORITY: ..." (authority.ts): recorded as-is, matching guarded()'s format.
                     if (decision instanceof AuthorityError) await refuse(changeSet.ops[i]!.entity, changeSet.ops[i]!.id, decision.message);
+                    // Shared goals §8.3: our own link op, as every peer judges it against the log, moves the log's link.
+                    else if (decision.entity === 'goal_share') {
+                      const why = await goalOpRefusalTx(tx, bookId, entityOf('goal_share') as RowEntity, decision, await authorMemberOf(tx, bookId, entry.deviceId), true);
+                      if (why) await refuse(decision.entity, decision.id, `AUTHORITY: ${why}`);
+                      else {
+                        await noteGoalLinkTx(tx, bookId, decision, changeSet.hlc);
+                        // I8: an off or delete of ours, now in the log: a line that reached the log just ahead of it
+                        // was applied after our off dropped every line, and is gone again.
+                        if (decision.op === 'upsert' && decision.fields.state !== undefined && decision.fields.state !== 'on') {
+                          await dropOthersLinesTx(tx, bookId, decision.id, (await bookContextTx(tx, bookId)).memberId);
+                        }
+                      }
+                    }
                   }
                   // I3: an own write to an event row the log refused (a friend's takeover took it first) goes back to
                   // what the log has, and the record's lines here follow it, as on every other phone.
@@ -1425,7 +1470,12 @@ export async function pullAndApply(
                 if (why) await refuse('removal', entry.target, why);
                 else {
                   await recordRemovalTx(tx, bookId, entry.target, entry.seq);
-                  await applyRemovalTx(tx, await bookContextTx(tx, bookId), entry.target, entry.hlc);
+                  const ctx = await bookContextTx(tx, bookId);
+                  const [gone] = await tx.values<[string]>(sql`SELECT member_id FROM book_devices WHERE book_id = ${bookId} AND device_id = ${entry.target}`);
+                  const wasIn = gone ? await memberInBookTx(tx, bookId, gone[0]) : false;
+                  await applyRemovalTx(tx, ctx, entry.target, entry.hlc);
+                  // Shared goals, final review C1: a member whose last device this was stops counting in every shared goal.
+                  if (gone) await followMemberGoneTx(tx, ctx, gone[0], wasIn);
                   // Leave (§8.4, task 9a) counts only on a device removing itself.
                   const leave = entry.leave === true && entry.target === entry.deviceId;
                   removal = leave ? { epoch: entry.epoch, target: entry.target, seq: entry.seq, leave: true } : { epoch: entry.epoch, target: entry.target, seq: entry.seq };

@@ -455,6 +455,8 @@ const WRITER_FROZEN_FIELDS: Readonly<Record<string, readonly string[]>> = {
   nw_item: ['owner'],
   member_transfer: ['from', 'to', 'recordedBy'],
   book_transfer: ['recordedBy'],
+  // A move is its member's alone: whose line it is never changes, so nobody writes another's History (shared goals §8.1).
+  goal_member_move: ['memberId'],
   // The workspace's link to its group log (task 4 review round 1): which log, on which relay book, is written once, by
   // whoever made the group, and never deleted by an op. Any member may still add invites. A group member closes it when
   // the group dissolves (task 5, `writeOnceBroken`).
@@ -522,8 +524,10 @@ export function frozenFieldChanged(entity: RowEntity, before: Record<string, unk
 async function storedRowOf(tx: Db, entity: RowEntity, bookId: string, key: Record<string, string>): Promise<Record<string, unknown> | null> {
   const columns = Object.entries(entity.fields);
   if (columns.length === 0) return {};
+  // A shared goal's tables have no book_id (shared goals §7.2): their rows are found by their key alone.
+  const inBook = entity.keyColumns.includes('book_id') || entity.localOnInsert.includes('book_id') ? [sql`book_id = ${bookId}`] : [];
   const where = sql.join(
-    [sql`book_id = ${bookId}`, ...entity.keyColumns.map((c) => sql`${sql.raw(c)} = ${key[c]}`)],
+    [...inBook, ...entity.keyColumns.map((c) => sql`${sql.raw(c)} = ${key[c]}`)],
     sql` AND `,
   );
   const [row] = await tx.values<unknown[]>(sql`SELECT ${sql.raw(columns.map(([, c]) => c).join(', '))} FROM ${sql.raw(entity.table)} WHERE ${where}`);

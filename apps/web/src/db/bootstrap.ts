@@ -14,6 +14,7 @@ import {
   listWorkspaces,
   migrate,
   type Migration,
+  resendGoalSummaries,
   syncLinkedPrograms,
   type KeyStore,
   upgradeCalculatorGoals,
@@ -74,7 +75,37 @@ export interface AppDb {
   release?: (letGo?: () => void) => void;
 }
 
-export async function openAppDb(database: Database, migrations?: Migration[], options: { keyStore?: KeyStore } = {}): Promise<AppDb> {
+/**
+ * Runs `task` once the app has drawn its first screen: two animation frames, then the next turn, where there are frames
+ * at all (a test has none, and gets the next turn).
+ */
+export function afterFirstPaint(task: () => Promise<void>): void {
+  const run = () => setTimeout(() => void task(), 0);
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(run));
+  else run();
+}
+
+/**
+ * A rate or a price moves the amounts a shared goal counts without anyone touching it: its summary is sent again once
+ * a day, and only when it changed (shared goals §8.5). Upkeep after the open, never waited for (final review M6): it
+ * recomputes every shared goal's figures, which must not hold the first screen. A failure tries again at the next open.
+ */
+async function resendGoalSummariesDaily(database: Database): Promise<void> {
+  try {
+    const today = isoDate();
+    if (localStorage.getItem('goal.summaries.resent') === today) return;
+    await resendGoalSummaries(database, today);
+    localStorage.setItem('goal.summaries.resent', today);
+  } catch (error) {
+    console.warn('Shared goal summaries could not be resent; trying again at the next open', error);
+  }
+}
+
+export async function openAppDb(
+  database: Database,
+  migrations?: Migration[],
+  options: { keyStore?: KeyStore; afterOpen?: (task: () => Promise<void>) => void } = {},
+): Promise<AppDb> {
   // The same list the opener was allowed to run: a blocked update must not be slipped in through the back door.
   await migrate(database, migrations);
   /*
@@ -117,6 +148,8 @@ export async function openAppDb(database: Database, migrations?: Migration[], op
       console.warn(`Upgrading worked-out goals in ${each.name} failed`, error);
     }
   }
+  // Shared goals' daily resend waits for the first screen, and the open does not wait for it.
+  (options.afterOpen ?? afterFirstPaint)(() => resendGoalSummariesDaily(database));
   try {
     await syncLinkedPrograms(database, ws, CATALOG, isoDate());
   } catch (error) {
