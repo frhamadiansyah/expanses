@@ -12,6 +12,10 @@ export const GOAL_SHARING_COPY = {
   sharedBy: (name: string) => `Shared by ${name}`,
   pickerLabel: 'Share with',
   pickerNone: 'Not shared',
+  partnerAccount: (name: string) => `${name}'s account`,
+  noLongerShared: 'No longer shared',
+  openCopy: 'Open the copy',
+  setAsideRow: '＋ Set aside',
 } as const;
 
 /** Spec C31: who sees the goal, by name up to three, then the workspace and a head count. */

@@ -199,12 +199,12 @@ describe('done and short', () => {
   });
 
   it('shows six history lines and reads the funded window from all of them (M3)', () => {
-    const line = (day: number) => ({ key: `s${day}`, kind: 'set-aside' as const, occurredOn: `2026-09-${String(day).padStart(2, '0')}`, amountMinor: 100_000, currency: 'IDR', text: 'Jenius' });
+    const line = (day: number) => ({ key: `s${day}`, kind: 'set-aside' as const, occurredOn: `2026-09-${String(day).padStart(2, '0')}`, amountMinor: 100_000, currency: 'IDR', text: 'Jenius', by: null });
     // Newest first: the borrow, six set-asides after the target was reached, then the reached day itself — the eighth line.
     const full = [
-      { key: 'b', kind: 'borrowed' as const, occurredOn: '2026-09-19', amountMinor: -1_800_000, currency: 'IDR', text: 'Laptop' },
+      { key: 'b', kind: 'borrowed' as const, occurredOn: '2026-09-19', amountMinor: -1_800_000, currency: 'IDR', text: 'Laptop', by: null },
       line(18), line(17), line(16), line(15), line(14), line(13),
-      { key: 'r', kind: 'reached' as const, occurredOn: '2026-08-03', amountMinor: null, currency: 'IDR', text: 'Reached the target' },
+      { key: 'r', kind: 'reached' as const, occurredOn: '2026-08-03', amountMinor: null, currency: 'IDR', text: 'Reached the target', by: null },
     ];
     const { lines, stood } = cardHistory(full, () => true);
     expect(lines.map((entry) => entry.key)).toEqual(['b', 's18', 's17', 's16', 's15', 's14']);
@@ -224,8 +224,8 @@ describe('done and short', () => {
 
   it('keeps the dates a borrowed-from goal stood whole', () => {
     const history = [
-      { key: 'b', kind: 'borrowed' as const, occurredOn: '2026-09-19', amountMinor: -1_800_000, currency: 'IDR', text: 'Laptop' },
-      { key: 'r', kind: 'reached' as const, occurredOn: '2026-08-03', amountMinor: null, currency: 'IDR', text: 'Reached the target' },
+      { key: 'b', kind: 'borrowed' as const, occurredOn: '2026-09-19', amountMinor: -1_800_000, currency: 'IDR', text: 'Laptop', by: null },
+      { key: 'r', kind: 'reached' as const, occurredOn: '2026-08-03', amountMinor: null, currency: 'IDR', text: 'Reached the target', by: null },
     ];
     expect(fundedWindow(history)).toEqual({ from: '2026-08-03', until: '2026-09-19', description: 'Laptop', amountMinor: 1_800_000, currency: 'IDR' });
     expect(fundedWindow([history[0]!])).toMatchObject({ from: null, until: '2026-09-19' });
@@ -234,8 +234,8 @@ describe('done and short', () => {
 
   it('reads only a borrow taken while the goal was whole: a goal that was never whole never "stood whole" (spec §7.2)', () => {
     const history = [
-      { key: 'b2', kind: 'borrowed' as const, occurredOn: '2026-09-19', amountMinor: -1_800_000, currency: 'IDR', text: 'Laptop' },
-      { key: 'b1', kind: 'borrowed' as const, occurredOn: '2026-07-01', amountMinor: -500_000, currency: 'IDR', text: 'Phone' },
+      { key: 'b2', kind: 'borrowed' as const, occurredOn: '2026-09-19', amountMinor: -1_800_000, currency: 'IDR', text: 'Laptop', by: null },
+      { key: 'b1', kind: 'borrowed' as const, occurredOn: '2026-07-01', amountMinor: -500_000, currency: 'IDR', text: 'Phone', by: null },
     ];
     expect(fundedWindow(history, (key) => key === 'b1')).toEqual({ from: null, until: '2026-07-01', description: 'Phone', amountMinor: 500_000, currency: 'IDR' });
     expect(fundedWindow(history, () => false)).toBeNull();
@@ -243,10 +243,10 @@ describe('done and short', () => {
 
   it('reads the newest borrow, and no reached day after it', () => {
     const history = [
-      { key: 'r2', kind: 'reached' as const, occurredOn: '2026-10-01', amountMinor: null, currency: 'IDR', text: 'Reached the target' },
-      { key: 'b2', kind: 'borrowed' as const, occurredOn: '2026-09-19', amountMinor: -1_800_000, currency: 'IDR', text: 'Laptop' },
-      { key: 'b1', kind: 'borrowed' as const, occurredOn: '2026-07-01', amountMinor: -500_000, currency: 'IDR', text: 'Phone' },
-      { key: 's', kind: 'set-aside' as const, occurredOn: '2026-06-01', amountMinor: 30_000_000, currency: 'IDR', text: 'Jenius' },
+      { key: 'r2', kind: 'reached' as const, occurredOn: '2026-10-01', amountMinor: null, currency: 'IDR', text: 'Reached the target', by: null },
+      { key: 'b2', kind: 'borrowed' as const, occurredOn: '2026-09-19', amountMinor: -1_800_000, currency: 'IDR', text: 'Laptop', by: null },
+      { key: 'b1', kind: 'borrowed' as const, occurredOn: '2026-07-01', amountMinor: -500_000, currency: 'IDR', text: 'Phone', by: null },
+      { key: 's', kind: 'set-aside' as const, occurredOn: '2026-06-01', amountMinor: 30_000_000, currency: 'IDR', text: 'Jenius', by: null },
     ];
     expect(fundedWindow(history)).toEqual({ from: null, until: '2026-09-19', description: 'Laptop', amountMinor: 1_800_000, currency: 'IDR' });
   });
@@ -393,5 +393,29 @@ describe('goalsTotals across currencies', () => {
 
   it('carries the goal currency on the card', () => {
     expect(goalCard(plan({ currency: 'EUR' })).currency).toBe('EUR');
+  });
+
+  const link = (owner: string | undefined, goalMinor: number, shortMinor = 0) =>
+    ({ goalId: 'hajj', accountId: `a-${owner ?? 'me'}`, name: owner ? "Rina's savings" : 'Jenius', kind: 'earmark', unitsMicro: null, valueMinor: goalMinor, currency: 'IDR', baseMinor: goalMinor, goalMinor, risk: null, promisedMinor: goalMinor, shortMinor, overBalance: false, ...(owner ? { owner } : {}) }) as GoalPlanRow['links'][number];
+
+  it('a shared card splits own and others', () => {
+    const card = goalCard(plan({ currentMinor: 42_000_000, currentBaseMinor: 42_000_000, links: [link(undefined, 28_000_000), link('rina', 14_000_000)] }));
+    expect([card.currentMinor, card.ownMinor, card.othersMinor]).toEqual([42_000_000, 28_000_000, 14_000_000]);
+    expect(card.ownBaseMinor).toBe(28_000_000);
+  });
+
+  it('a private card is all own', () => {
+    const card = goalCard(plan({ links: [link(undefined, 30_000_000)] }));
+    expect([card.ownMinor, card.othersMinor, card.ownBaseMinor]).toEqual([30_000_000, 0, 30_000_000]);
+  });
+
+  it('the short lines are this phone\'s own', () => {
+    const card = goalCard(plan({ links: [link(undefined, 1, 5), link('rina', 1, 9)] }));
+    expect(card.shortLines.map((line) => line.shortMinor)).toEqual([5]);
+  });
+
+  it("the list total counts only this person's money", () => {
+    expect(goalsTotals([{ currentMinor: 42_000_000, ownMinor: 28_000_000, done: false, statusLabel: 'On track' }]).savedMinor).toBe(28_000_000);
+    expect(goalsTotals([{ currentMinor: 42_000_000, currentBaseMinor: 42_000_000, ownMinor: 28_000_000, ownBaseMinor: 28_000_000, done: false, statusLabel: 'On track' }]).savedMinor).toBe(28_000_000);
   });
 });

@@ -33,7 +33,9 @@ export function LinkAmount({ link, goalCurrency }: { link: GoalLinkRow; goalCurr
 }
 
 /** What funds a goal, as one row of its group, opening that account or holding. Named so the group can hand it its place and a test can name it. */
-export function FundingRow({ link, goalCurrency, position }: GroupChild & { link: GoalLinkRow; goalCurrency?: string }) {
+export function FundingRow({ link, goalCurrency, caption, position }: GroupChild & { link: GoalLinkRow; goalCurrency?: string; caption?: string }) {
+  // Another member's line is read-only here: its account is on their phone, so the row opens nothing.
+  const theirs = link.owner !== undefined;
   return (
     <div data-testid="goal-link">
       <InsetRow
@@ -41,7 +43,9 @@ export function FundingRow({ link, goalCurrency, position }: GroupChild & { link
         title={link.name}
         // Only a shortfall earns a second line; "set aside" and "tagged" are what the group's own name already says.
         subtitle={
-          link.kind !== 'tagged' && link.shortMinor > 0 ? (
+          caption ? (
+            caption
+          ) : link.kind !== 'tagged' && link.shortMinor > 0 ? (
             <>
               short by <Money minor={link.shortMinor} currency={link.currency} />
             </>
@@ -50,8 +54,8 @@ export function FundingRow({ link, goalCurrency, position }: GroupChild & { link
         value={<LinkAmount link={link} goalCurrency={goalCurrency} />}
         valueTone="ink"
         // The account or holding's own page: a money account's page is reached through the same address.
-        to="/net-worth/assets/$accountId"
-        params={{ accountId: link.accountId }}
+        to={theirs ? undefined : '/net-worth/assets/$accountId'}
+        params={theirs ? undefined : { accountId: link.accountId }}
       />
     </div>
   );

@@ -3,6 +3,8 @@ import {
   type AccountRow,
   goalHistory,
   goalShareOf,
+  goalSharesOf,
+  privateCopyOf,
   goalShareTargets,
   goalLinksFor,
   goalPlansFor,
@@ -115,4 +117,16 @@ export function useGoalShareTargets() {
 export function useGoalShare(goalId: string) {
   const { database } = useApp();
   return useQuery({ queryKey: ['goal-share', goalId], queryFn: () => goalShareOf(database, goalId) });
+}
+
+/** Every goal shared now, by goal id: the Goals list's initials. */
+export function useGoalShares() {
+  const { database } = useApp();
+  return useQuery({ queryKey: ['goal-shares'], queryFn: () => goalSharesOf(database) });
+}
+
+/** The private copy this phone made of a goal that is no longer shared, for a link opened after. */
+export function usePrivateCopy(goalId: string, enabled: boolean) {
+  const { database } = useApp();
+  return useQuery({ queryKey: ['goal-private-copy', goalId], queryFn: () => privateCopyOf(database, goalId), enabled });
 }
