@@ -427,6 +427,10 @@ export async function goalWholeness(database: Database, ws: WorkspaceContext, da
 
 export interface GoalHistoryEntry {
   key: string;
+  /** The local record behind the line (not `key`, which is an index): stable between reads. Absent on "reached". */
+  sourceId?: string;
+  /** The stage a spend paid. */
+  stageId?: string | null;
   kind: 'set-aside' | 'taken-back' | 'borrowed' | 'spent' | 'moved' | 'reached';
   occurredOn: string;
   /** Signed, in `currency`. Null for "reached the target", which is a day, not a movement. */
@@ -460,6 +464,7 @@ export async function goalHistory(
     const where = event.accountId ? account.get(event.accountId) : undefined;
     push(event.goalId, {
       key: `event-${index}`,
+      sourceId: event.sourceId,
       kind: event.amountMinor >= 0 ? 'set-aside' : 'taken-back',
       occurredOn: event.occurredOn,
       amountMinor: event.amountMinor,
@@ -477,6 +482,8 @@ export async function goalHistory(
     const kind = draw.intent === 'borrow' ? 'borrowed' : draw.intent === 'spend' ? 'spent' : 'moved';
     push(draw.goalId, {
       key: draw.id,
+      sourceId: draw.id,
+      stageId: draw.stageId,
       kind,
       occurredOn: draw.occurredOn,
       amountMinor: draw.intent === 'move' ? draw.amountMinor : -draw.amountMinor,
