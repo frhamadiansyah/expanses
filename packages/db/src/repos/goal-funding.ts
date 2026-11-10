@@ -409,7 +409,7 @@ export async function goalPlansFor(database: Database, ws: WorkspaceContext, dat
   const outgoingFor = (goalId: string) => {
     const working = emergencyWorkings.get(goalId);
     // A shared goal's target is the figure frozen when the working was saved (D8), the same on every phone.
-    const frozen = (working as (EmergencyInputs & { sharedOutgoingMinor?: number }) | undefined)?.sharedOutgoingMinor;
+    const frozen = working?.sharedOutgoingMinor;
     if (shared.has(goalId) && frozen !== undefined) return frozen;
     if (working?.monthlyOutgoingMinor !== undefined) return working.monthlyOutgoingMinor;
     return Math.max(0, perMonth(emergencyOutgoingMinor(flows, working?.base ?? DEFAULT_EMERGENCY_BASE), flows.months));
@@ -525,7 +525,11 @@ export interface GoalHistoryEntry {
   sourceId?: string;
   /** The stage a spend paid. */
   stageId?: string | null;
-  kind: 'set-aside' | 'taken-back' | 'borrowed' | 'spent' | 'moved' | 'reached';
+  kind: 'set-aside' | 'taken-back' | 'borrowed' | 'spent' | 'moved' | 'reached' | 'shared' | 'stopped' | 'left' | 'unshared' | 'ended';
+  /** Member id of the other member whose move this is; null = this phone's (C27). */
+  by: string | null;
+  /** The person a share line names (Rina in "Rina left"). */
+  memberName?: string;
   occurredOn: string;
   /** Signed, in `currency`. Null for "reached the target", which is a day, not a movement. */
   amountMinor: number | null;
@@ -558,6 +562,7 @@ export async function goalHistory(
     const where = event.accountId ? account.get(event.accountId) : undefined;
     push(event.goalId, {
       key: `event-${index}`,
+      by: null,
       sourceId: event.sourceId,
       kind: event.amountMinor >= 0 ? 'set-aside' : 'taken-back',
       occurredOn: event.occurredOn,
@@ -576,6 +581,7 @@ export async function goalHistory(
     const kind = draw.intent === 'borrow' ? 'borrowed' : draw.intent === 'spend' ? 'spent' : 'moved';
     push(draw.goalId, {
       key: draw.id,
+      by: null,
       sourceId: draw.id,
       stageId: draw.stageId,
       kind,
@@ -591,7 +597,38 @@ export async function goalHistory(
     const known = reached.get(draw.goalId);
     if (!known || known.occurredOn < draw.occurredOn) reached.set(draw.goalId, draw);
   }
-  for (const [goalId, draw] of reached) push(goalId, { key: `reached-${draw.id}`, kind: 'reached', occurredOn: draw.wholeSince!, amountMinor: null, currency: ws.baseCurrency, text: 'Reached the target' });
+  for (const [goalId, draw] of reached) push(goalId, { key: `reached-${draw.id}`, by: null, kind: 'reached', occurredOn: draw.wholeSince!, amountMinor: null, currency: ws.baseCurrency, text: 'Reached the target' });
+
+  if (await goalSharingTablesExist(database.db)) {
+    // The other members' moves, as their phones wrote them; a member who left this round has none, a goal not shared now none.
+    const moves = await database.db.values<[string, string, string, string, string, number, string, string, string | null]>(sql`
+      SELECT m.id, m.goal_id, m.member_id, m.kind, m.occurred_on, m.amount_minor, m.currency, m.text, m.stage_id
+      FROM goal_member_moves m
+      JOIN goal_shares s ON s.goal_id = m.goal_id AND s.state = 'on'
+      JOIN shared_books b ON b.book_id = s.book_id
+      WHERE m.member_id <> b.member_id AND m.occurred_on <= ${date}
+        AND NOT EXISTS (SELECT 1 FROM goal_share_leaves l WHERE l.goal_id = m.goal_id AND l.member_id = m.member_id AND l.round = s.round)`);
+    for (const [id, goalId, memberId, kind, occurredOn, amountMinor, currency, text, stageId] of moves) {
+      push(goalId, { key: `move-${id}`, sourceId: id, stageId, by: memberId, kind: kind as GoalHistoryEntry['kind'], occurredOn, amountMinor: Number(amountMinor), currency, text });
+    }
+    // This phone's own record of the share (local only); a line shows in the goal's currency.
+    const goalCurrency = new Map((await listGoals(database, ws)).map((goal) => [goal.id, goal.currency]));
+    const logs = await database.db.values<[string, string, string, string, number | null, string]>(
+      sql`SELECT id, goal_id, kind, member_name, amount_minor, occurred_on FROM goal_share_log WHERE workspace_id = ${ws.workspaceId} AND occurred_on <= ${date}`,
+    );
+    for (const [id, goalId, kind, memberName, amountMinor, occurredOn] of logs) {
+      push(goalId, {
+        key: `share-${id}`,
+        by: null,
+        kind: kind as GoalHistoryEntry['kind'],
+        memberName,
+        occurredOn,
+        amountMinor: amountMinor === null ? null : Number(amountMinor),
+        currency: goalCurrency.get(goalId) ?? ws.baseCurrency,
+        text: '',
+      });
+    }
+  }
 
   for (const goalId of Object.keys(byGoal)) {
     byGoal[goalId] = byGoal[goalId]!
