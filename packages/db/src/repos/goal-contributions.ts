@@ -37,6 +37,8 @@ export interface ContributionEvent {
   /** Exactly the figure the monthly total adds for this event. */
   amountMinor: number;
   accountId: string | null;
+  /** The local record behind the event (contribution, transaction, draw or trade id): the same on every read, so a synced line can be told apart. */
+  sourceId: string;
 }
 
 /** Every dated event that reached a goal: a set-aside change, a tagged transfer's arrival, a tagged buy from everyday money. */
@@ -48,16 +50,16 @@ export async function goalContributionEvents(database: Database, ws: WorkspaceCo
   const events: ContributionEvent[] = [];
 
   const changes = await database.db
-    .select({ goalId: goalContributions.goalId, accountId: goalContributions.accountId, deltaMinor: goalContributions.deltaMinor, occurredOn: goalContributions.occurredOn })
+    .select({ id: goalContributions.id, goalId: goalContributions.goalId, accountId: goalContributions.accountId, deltaMinor: goalContributions.deltaMinor, occurredOn: goalContributions.occurredOn })
     .from(goalContributions)
     .where(and(eq(goalContributions.workspaceId, ws.workspaceId), ...within(goalContributions.occurredOn)));
-  for (const row of changes) events.push({ goalId: row.goalId, kind: 'earmark', occurredOn: row.occurredOn, amountMinor: row.deltaMinor, accountId: row.accountId });
+  for (const row of changes) events.push({ goalId: row.goalId, kind: 'earmark', occurredOn: row.occurredOn, amountMinor: row.deltaMinor, accountId: row.accountId, sourceId: row.id });
 
   // A tagged transfer is the only thing that writes a goal onto a transaction. What arrived is the line on one of your
   // own accounts: a cross-currency transfer also credits the exchange account, which is the same money counted again,
   // and a fee beside the move is spending under a category — never money that reached the goal.
   const arrivals = await database.db
-    .select({ goalId: transactions.goalId, accountId: entries.accountId, occurredOn: transactions.occurredOn, amountBaseMinor: entries.amountBaseMinor })
+    .select({ transactionId: transactions.id, goalId: transactions.goalId, accountId: entries.accountId, occurredOn: transactions.occurredOn, amountBaseMinor: entries.amountBaseMinor })
     .from(entries)
     .innerJoin(transactions, eq(entries.transactionId, transactions.id))
     .innerJoin(accounts, eq(entries.accountId, accounts.id))
@@ -72,14 +74,14 @@ export async function goalContributionEvents(database: Database, ws: WorkspaceCo
         inArray(accounts.kind, ['asset', 'liability']),
       ),
     );
-  for (const row of arrivals) if (row.goalId) events.push({ goalId: row.goalId, kind: 'transfer', occurredOn: row.occurredOn, amountMinor: row.amountBaseMinor, accountId: row.accountId });
+  for (const row of arrivals) if (row.goalId) events.push({ goalId: row.goalId, kind: 'transfer', occurredOn: row.occurredOn, amountMinor: row.amountBaseMinor, accountId: row.accountId, sourceId: row.transactionId });
 
   // The goal's own promise a tagged transfer moved off its source (a move with no destination) is not fresh money: it is
   // taken back in base, as the arrival is counted, so moving money already set aside nets to nought whatever currency
   // it left in. The share of the source line's base figure, floored in BigInt, never a cent figure beside a rupiah one.
   if (await setAsideTablesExist(database.db)) {
     const moves = await database.db
-      .select({ goalId: goalDraws.goalId, accountId: goalDraws.accountId, transactionId: goalDraws.transactionId, amountMinor: goalDraws.amountMinor, occurredOn: goalDraws.occurredOn })
+      .select({ id: goalDraws.id, goalId: goalDraws.goalId, accountId: goalDraws.accountId, transactionId: goalDraws.transactionId, amountMinor: goalDraws.amountMinor, occurredOn: goalDraws.occurredOn })
       .from(goalDraws)
       .innerJoin(transactions, eq(goalDraws.transactionId, transactions.id))
       // Only a tagged transfer's: a buy's lowering is the same shape but its transaction carries no goal, and the buy is
@@ -105,7 +107,7 @@ export async function goalContributionEvents(database: Database, ws: WorkspaceCo
       const left = -source.reduce((total, line) => total + line.amountMinor, 0);
       const leftBase = -source.reduce((total, line) => total + line.amountBaseMinor, 0);
       const base = movedAmount(move.amountMinor, left, leftBase);
-      if (base > 0) events.push({ goalId: move.goalId, kind: 'transfer', occurredOn: move.occurredOn, amountMinor: -base, accountId: move.accountId });
+      if (base > 0) events.push({ goalId: move.goalId, kind: 'transfer', occurredOn: move.occurredOn, amountMinor: -base, accountId: move.accountId, sourceId: move.id });
     }
   }
 
@@ -138,7 +140,7 @@ export async function goalContributionEvents(database: Database, ws: WorkspaceCo
     const cost = buy.grossMinor + buy.feeMinor + buy.taxMinor;
     for (const [goalId, share] of goalShares({ ...buy, kind: 'buy', goalParts: split ?? null }, cost)) {
       if (goalId === UNTAGGED || share <= 0) continue;
-      events.push({ goalId, kind: 'buy', occurredOn: buy.occurredOn, amountMinor: share, accountId: buy.cashAccountId });
+      events.push({ goalId, kind: 'buy', occurredOn: buy.occurredOn, amountMinor: share, accountId: buy.cashAccountId, sourceId: buy.id });
     }
   }
   return events;
