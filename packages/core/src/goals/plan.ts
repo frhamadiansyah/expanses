@@ -226,3 +226,9 @@ export function fitByRank(plans: GoalPlan[], goals: Goal[], capacityMonthlyMinor
     return { goalId: plan.goalId, fundedMonthlyMinor: funded, fits: funded > 0 ? ('partial' as const) : ('none' as const) };
   });
 }
+
+// C20: a shared goal's monthly need is one figure for the household; the others' set-up amounts
+// come off it so this phone is asked only for what is left, never a negative.
+export function ownShareOfNeedMinor(neededMonthlyMinor: number, othersPlannedMonthlyMinor: number): number {
+  return Math.max(0, neededMonthlyMinor - othersPlannedMonthlyMinor);
+}
