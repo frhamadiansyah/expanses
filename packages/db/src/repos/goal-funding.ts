@@ -196,11 +196,13 @@ interface LinksWithRates {
   rates: Record<string, number>;
   /** The synced funding rows counted in `links`, by goal id. */
   funding: Map<string, MemberFunding[]>;
+  /** Synced lines left out because they were worked out in another currency than the goal's now (M8), by goal id. */
+  otherCurrency: Map<string, SyncedFundingLine[]>;
 }
 
 async function goalLinksWithRates(database: Database, ws: WorkspaceContext, date: string): Promise<LinksWithRates> {
   const goalRows = await listGoals(database, ws);
-  if (goalRows.length === 0) return { links: [], rates: {}, funding: new Map() };
+  if (goalRows.length === 0) return { links: [], rates: {}, funding: new Map(), otherCurrency: new Map() };
   const known = new Set(goalRows.map((goal) => goal.id));
 
   const trades = await listTrades(database, ws);
@@ -298,11 +300,55 @@ async function goalLinksWithRates(database: Database, ws: WorkspaceContext, date
   return withBaseAmounts(database, ws, links, date, new Map(goalRows.map((goal) => [goal.id, goal.currency])));
 }
 
+/** One funding line as a member's phone sent it (summaries.ts). `currency` is the goal's money it was worked out in. */
+export interface SyncedFundingLine {
+  ref: string;
+  name: string;
+  kind: 'earmark' | 'tagged';
+  amountMinor: number | null;
+  risk: GoalLink['risk'];
+  currency?: string;
+}
+
+const RISKS = new Set(['low', 'medium', 'high']);
+
+/**
+ * A peer's `lines_json`, read defensively (final review M7): text that does not parse reads as no lines, and a line of
+ * the wrong shape is left out, so one bad summary from one phone takes no goal read down with it.
+ */
+export function parseFundingLines(text: string): SyncedFundingLine[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const out: SyncedFundingLine[] = [];
+  for (const item of parsed) {
+    if (!item || typeof item !== 'object') continue;
+    const line = item as Record<string, unknown>;
+    if (typeof line.ref !== 'string' || typeof line.name !== 'string' || (line.kind !== 'earmark' && line.kind !== 'tagged')) continue;
+    if (line.amountMinor !== null && !Number.isSafeInteger(line.amountMinor)) continue;
+    if (line.risk !== null && line.risk !== undefined && !RISKS.has(line.risk as string)) continue;
+    if (line.currency !== undefined && typeof line.currency !== 'string') continue;
+    out.push({
+      ref: line.ref,
+      name: line.name,
+      kind: line.kind,
+      amountMinor: line.amountMinor as number | null,
+      risk: (line.risk ?? null) as GoalLink['risk'],
+      ...(typeof line.currency === 'string' ? { currency: line.currency } : {}),
+    });
+  }
+  return out;
+}
+
 interface MemberFunding {
   memberId: string;
   /** This device's own member, as another device of theirs sent it (§11): theirs, not another member's. */
   self: boolean;
-  lines: { ref: string; name: string; kind: 'earmark' | 'tagged'; amountMinor: number | null; risk: GoalLink['risk'] }[];
+  lines: SyncedFundingLine[];
   plannedMonthlyMinor: number;
 }
 
@@ -327,7 +373,7 @@ async function syncedFundingByGoal(database: Database, ownGoalIds: ReadonlySet<s
   for (const [goalId, memberId, self, linesJson, planned] of rows) {
     if (self && ownGoalIds.has(goalId)) continue;
     const list = out.get(goalId) ?? [];
-    list.push({ memberId, self: Boolean(self), lines: JSON.parse(linesJson) as MemberFunding['lines'], plannedMonthlyMinor: Number(planned) });
+    list.push({ memberId, self: Boolean(self), lines: parseFundingLines(linesJson), plannedMonthlyMinor: Number(planned) });
     out.set(goalId, list);
   }
   return out;
@@ -368,11 +414,18 @@ async function withBaseAmounts(
   // unit. Only the base figure uses this phone's rate. No amount means no rate on the partner's phone: left out.
   const funding = await syncedFundingByGoal(database, new Set(links.map((link) => link.goalId)));
   const others: GoalLinkRow[] = [];
+  const otherCurrency = new Map<string, SyncedFundingLine[]>();
   for (const [goalId, members] of funding) {
     const currency = goalCurrency.get(goalId);
     if (currency === undefined) continue;
     for (const member of members) {
       for (const line of member.lines) {
+        // Worked out before the goal's currency changed, on a phone that has not sent anew yet (§11): its figure is
+        // another money, so it is left out and said so until that phone sends it again (final review M8).
+        if (line.currency !== undefined && line.currency !== currency) {
+          otherCurrency.set(goalId, [...(otherCurrency.get(goalId) ?? []), line]);
+          continue;
+        }
         others.push({
           goalId,
           accountId: line.ref,
@@ -392,7 +445,7 @@ async function withBaseAmounts(
       }
     }
   }
-  return { rates, links: [...own, ...others], funding };
+  return { rates, links: [...own, ...others], funding, otherCurrency };
 }
 
 const perMonth = (totalMinor: number, months: number) => (months > 0 ? roundHalfAwayFromZero(totalMinor / months) : 0);
@@ -415,7 +468,7 @@ export async function devicePlannedMonthlyMinor(database: Database, ws: Workspac
 
 async function plansWithFunding(database: Database, ws: WorkspaceContext, date: string): Promise<{ summary: GoalSummary; funding: Map<string, MemberFunding[]> }> {
   const goalRows = await listGoals(database, ws);
-  const { links, rates, funding } = await goalLinksWithRates(database, ws, date);
+  const { links, rates, funding, otherCurrency } = await goalLinksWithRates(database, ws, date);
   const base = ws.baseCurrency;
   const inGoal = (goal: GoalRow, baseMinor: number) => viaBaseMinor(baseMinor, base, goal.currency, base, rates) ?? 0;
   const inBase = (goal: GoalRow, goalMinor: number) => viaBaseMinor(goalMinor, goal.currency, base, base, rates);
@@ -478,7 +531,9 @@ async function plansWithFunding(database: Database, ws: WorkspaceContext, date: 
     // The other phone had no rate: the line has no amount to show.
     const unconvertedOthersWarning =
       unconvertedOthers.length > 0 ? `${unconvertedOthers.map((link) => link.name).join(', ')} is not counted here: no ${goal.currency} rate on the phone that holds it.` : null;
-    const warnings = [shortWarning, unconvertedWarning, unconvertedOthersWarning].filter((warning): warning is string => warning !== null);
+    const stale = otherCurrency.get(goal.id) ?? [];
+    const otherCurrencyWarning = stale.length > 0 ? `${stale.map((line) => line.name).join(', ')} is not counted here: worked out in ${stale[0]!.currency} on the phone that holds it, not ${goal.currency}.` : null;
+    const warnings = [shortWarning, unconvertedWarning, unconvertedOthersWarning, otherCurrencyWarning].filter((warning): warning is string => warning !== null);
     return {
       ...plan,
       goal,
@@ -502,7 +557,9 @@ async function plansWithFunding(database: Database, ws: WorkspaceContext, date: 
   const summary: GoalSummary = {
     plans,
     neededMonthlyMinor: plans.reduce((total, plan) => total + (plan.ownNeededMonthlyBaseMinor ?? 0), 0),
-    plannedMonthlyMinor: plans.reduce((total, plan) => total + (plan.plannedMonthlyBaseMinor ?? 0), 0),
+    // Beside this person's own need and capacity, their own set-up only (final review I7, C21): the others' planned
+    // monthly is not theirs to put away; their own from another device is. The goal's page shows the combined (C18).
+    plannedMonthlyMinor: plans.reduce((total, plan) => total + (inBase(plan.goal, plan.plannedMonthlyMinor - (plan.othersPlannedMonthlyMinor ?? 0)) ?? 0), 0),
     capacityMonthlyMinor,
     fits: fitByRank(plans.map(inBasePlan), goalRows, capacityMonthlyMinor),
   };

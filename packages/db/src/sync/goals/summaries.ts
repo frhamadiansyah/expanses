@@ -22,6 +22,8 @@ export interface GoalFundingLine {
   /** In the goal's currency, as counted (a promise above the balance is already capped); null when this phone has no rate. */
   amountMinor: number | null;
   risk: Risk | null;
+  /** The goal's currency the amount is in, so a phone that reads the goal in another currency leaves it out (M8). */
+  currency: string;
 }
 
 export interface OwnGoalFunding {
@@ -34,6 +36,8 @@ export interface OwnGoalFunding {
 export async function ownGoalFunding(database: Database, ws: WorkspaceContext, goalId: string, date: string): Promise<OwnGoalFunding> {
   // Own links only: a partner's lines, once they exist, carry an owner and are not this phone's to send.
   const links = (await goalLinksFor(database, ws, date)).filter((link) => link.goalId === goalId && !('owner' in link && link.owner));
+  const [goal] = await database.db.values<[string | null]>(sql`SELECT currency FROM goals WHERE id = ${goalId}`);
+  const currency = goal?.[0] ?? ws.baseCurrency;
   const lines: GoalFundingLine[] = [];
   for (const link of links) {
     lines.push({
@@ -42,6 +46,7 @@ export async function ownGoalFunding(database: Database, ws: WorkspaceContext, g
       kind: link.kind,
       amountMinor: link.goalMinor,
       risk: link.risk,
+      currency,
     });
   }
   // The plan's planned figure counts the others' too, and the member's own from another device; only this phone's travels.
@@ -132,7 +137,7 @@ async function sendOneTx(tx: Db, goalId: string, date: string): Promise<boolean>
   if (funding.lines.length === 0 && moves.length === 0 && !wrote) return false;
   let changed = false;
 
-  const linesJson = JSON.stringify(funding.lines.map((line) => ({ ref: line.ref, name: line.name, kind: line.kind, amountMinor: line.amountMinor, risk: line.risk })));
+  const linesJson = JSON.stringify(funding.lines.map((line) => ({ ref: line.ref, name: line.name, kind: line.kind, amountMinor: line.amountMinor, risk: line.risk, currency: line.currency })));
   const [stored] = await tx.values<[string, number]>(sql`SELECT lines_json, planned_monthly_minor FROM goal_member_funding WHERE goal_id = ${goalId} AND member_id = ${memberId}`);
   if (!stored || stored[0] !== linesJson || Number(stored[1]) !== funding.plannedMonthlyMinor) {
     await withCapture(tx, { entity: 'goal_member_funding', id: `${goalId}|${memberId}`, bookId: link.bookId }, () =>

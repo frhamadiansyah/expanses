@@ -2,6 +2,7 @@ import { uuidv7 } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../../context';
 import type { Db } from '../../database';
+import { parseFundingLines } from '../../repos/goal-funding';
 import { rekeyGoalTx } from '../../repos/goal-private-copy';
 import { deleteGoalRowsTx } from '../../repos/goals';
 import { goalSharingTablesExist } from '../../repos/goal-sharing-tables';
@@ -196,10 +197,13 @@ export async function unlinkHereTx(tx: Db, ws: WorkspaceContext, link: GoalLink 
 
 /** Whose lines a leave takes out, and how much of the goal they counted: the sum of their lines, nulls left out. */
 async function lastTotalTx(tx: Db, goalId: string, memberId: string): Promise<number | null> {
-  const [row] = await tx.values<[string]>(sql`SELECT lines_json FROM goal_member_funding WHERE goal_id = ${goalId} AND member_id = ${memberId}`);
+  const [row] = await tx.values<[string, string | null]>(sql`
+    SELECT f.lines_json, g.currency FROM goal_member_funding f LEFT JOIN goals g ON g.id = f.goal_id WHERE f.goal_id = ${goalId} AND f.member_id = ${memberId}`);
   if (!row) return null;
-  const lines = JSON.parse(row[0]) as { amountMinor: number | null }[];
-  return lines.reduce((sum, line) => sum + (typeof line.amountMinor === 'number' ? line.amountMinor : 0), 0);
+  // Read as every goal read reads it (M7, M8): a line that does not parse, or in another money than the goal's, adds nothing.
+  const lines = parseFundingLines(row[0]).filter((line) => line.currency === undefined || row[1] === null || line.currency === row[1]);
+  if (lines.length === 0 && row[0] !== '[]') return null;
+  return lines.reduce((sum, line) => sum + (line.amountMinor ?? 0), 0);
 }
 
 /**

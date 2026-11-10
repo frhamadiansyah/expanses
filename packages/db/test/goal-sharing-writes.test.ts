@@ -5,6 +5,7 @@ import {
   archiveGoal,
   createAccount,
   deleteGoal,
+  goalPlansFor,
   type GoalRow,
   listEarmarks,
   listGoals,
@@ -339,5 +340,16 @@ describe("the sharer's other phone follows a delete as deleteGoal does", () => {
       await database.db.values(sql`SELECT 1 FROM goal_stages UNION ALL SELECT 1 FROM goal_contributions UNION ALL SELECT 1 FROM goal_share_log UNION ALL SELECT 1 FROM goal_member_funding`),
     ).toEqual([]);
     expect(await database.db.values(sql`SELECT 1 FROM accounts WHERE id = ${main}`)).toHaveLength(1);
+  });
+});
+
+describe('a malformed line from a peer (final review M7)', () => {
+  it("breaks no read here, and Rina's leave is still followed", async () => {
+    const { database, ws, bookId, goalId } = await sharedTrip('member-f');
+    await fromDevice(database, bookId, 'dev-r', [{ entity: 'goal_member_funding', id: `${goalId}|member-r`, op: 'upsert', fields: { lines: '{broken', plannedMonthlyMinor: 0, asOf: DAY } }]);
+    expect((await goalPlansFor(database, ws, DAY)).plans.find((plan) => plan.goalId === goalId)!.currentMinor).toBe(0);
+    await fromDevice(database, bookId, 'dev-r', [{ entity: 'goal_share_leave', id: `${goalId}|member-r`, op: 'upsert', fields: { round: 1, leftOn: DAY } }]);
+    expect(await database.db.values(sql`SELECT kind, member_name, amount_minor FROM goal_share_log WHERE goal_id = ${goalId}`)).toEqual([['left', 'Rina', null]]);
+    expect(await database.db.values(sql`SELECT 1 FROM goal_member_funding`)).toEqual([]);
   });
 });
