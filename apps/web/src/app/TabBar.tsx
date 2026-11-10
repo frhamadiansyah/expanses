@@ -30,7 +30,7 @@ export function TabBar({ onAdd }: { onAdd: () => void }) {
         : { className: cell, activeProps: { className: here, 'aria-current': 'page' as const } };
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-3 md:hidden"
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-3"
       style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
     >
       <nav

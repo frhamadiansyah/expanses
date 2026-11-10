@@ -15,6 +15,7 @@ let package = Package(
         .package(name: "AparajitaCapacitorSecureStorage", path: "../../../../../node_modules/@aparajita/capacitor-secure-storage"),
         .package(name: "CapacitorApp", path: "../../../../../node_modules/@capacitor/app"),
         .package(name: "CapacitorFilesystem", path: "../../../../../node_modules/@capacitor/filesystem"),
+        .package(name: "CapacitorScreenOrientation", path: "../../../../../node_modules/@capacitor/screen-orientation"),
         .package(name: "CapacitorShare", path: "../../../../../node_modules/@capacitor/share")
     ],
     targets: [
@@ -26,6 +27,7 @@ let package = Package(
                 .product(name: "AparajitaCapacitorSecureStorage", package: "AparajitaCapacitorSecureStorage"),
                 .product(name: "CapacitorApp", package: "CapacitorApp"),
                 .product(name: "CapacitorFilesystem", package: "CapacitorFilesystem"),
+                .product(name: "CapacitorScreenOrientation", package: "CapacitorScreenOrientation"),
                 .product(name: "CapacitorShare", package: "CapacitorShare")
             ]
         )

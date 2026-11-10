@@ -33,6 +33,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
     }
 
+    // Info.plist lists landscape so Cashflow can unlock it (native/orientation.ts). What the web view is locked to holds
+    // for anything presented over it too (a share sheet, the camera, the document scanner), so those stay upright
+    // wherever the page is. Read from the window passed in: under the UIScene lifecycle `self.window` is always nil.
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        guard let bridgeViewController = window?.rootViewController as? CAPBridgeViewController else {
+            return .all
+        }
+        return bridgeViewController.supportedInterfaceOrientations
+    }
+
     func application(_ application: UIApplication,
                      configurationForConnecting connectingSceneSession: UISceneSession,
                      options: UIScene.ConnectionOptions) -> UISceneConfiguration {
