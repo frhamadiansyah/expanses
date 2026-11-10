@@ -524,8 +524,10 @@ export function frozenFieldChanged(entity: RowEntity, before: Record<string, unk
 async function storedRowOf(tx: Db, entity: RowEntity, bookId: string, key: Record<string, string>): Promise<Record<string, unknown> | null> {
   const columns = Object.entries(entity.fields);
   if (columns.length === 0) return {};
+  // A shared goal's tables have no book_id (shared goals §7.2): their rows are found by their key alone.
+  const inBook = entity.keyColumns.includes('book_id') || entity.localOnInsert.includes('book_id') ? [sql`book_id = ${bookId}`] : [];
   const where = sql.join(
-    [sql`book_id = ${bookId}`, ...entity.keyColumns.map((c) => sql`${sql.raw(c)} = ${key[c]}`)],
+    [...inBook, ...entity.keyColumns.map((c) => sql`${sql.raw(c)} = ${key[c]}`)],
     sql` AND `,
   );
   const [row] = await tx.values<unknown[]>(sql`SELECT ${sql.raw(columns.map(([, c]) => c).join(', '))} FROM ${sql.raw(entity.table)} WHERE ${where}`);
