@@ -4,6 +4,7 @@ import type { WorkspaceContext } from '../../context';
 import type { Database, Db } from '../../database';
 import { devicePlannedMonthlyMinor, goalHistory, goalLinksFor } from '../../repos/goal-funding';
 import { goalSharingTablesExist } from '../../repos/goal-sharing-tables';
+import { goalCurrencyExists } from '../../repos/goals';
 import { withCapture } from '../capture';
 import { uuidv5 } from '../uuidv5';
 import { goalLinkOfTx, memberLeftTx } from './scope';
@@ -36,7 +37,8 @@ export interface OwnGoalFunding {
 export async function ownGoalFunding(database: Database, ws: WorkspaceContext, goalId: string, date: string): Promise<OwnGoalFunding> {
   // Own links only: a partner's lines, once they exist, carry an owner and are not this phone's to send.
   const links = (await goalLinksFor(database, ws, date)).filter((link) => link.goalId === goalId && !('owner' in link && link.owner));
-  const [goal] = await database.db.values<[string | null]>(sql`SELECT currency FROM goals WHERE id = ${goalId}`);
+  // A database before 0091 has no goal currency: every goal is in the base.
+  const [goal] = (await goalCurrencyExists(database.db)) ? await database.db.values<[string | null]>(sql`SELECT currency FROM goals WHERE id = ${goalId}`) : [];
   const currency = goal?.[0] ?? ws.baseCurrency;
   const lines: GoalFundingLine[] = [];
   for (const link of links) {
