@@ -106,6 +106,7 @@ import eventCurrency from '../migrations/0104_event_currency.sql?raw';
 import programmeValuePerPoint from '../migrations/0105_programme_value_per_point.sql?raw';
 import accountCountedFrom from '../migrations/0107_account_counted_from.sql?raw';
 import cardTermsDaysOptional from '../migrations/0108_card_terms_days_optional.sql?raw';
+import sharedGoals from '../migrations/0109_shared_goals.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -222,6 +223,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 106, name: 'card_fee_waivers', sql: cardFeeWaivers },
   { version: 107, name: 'account_counted_from', sql: accountCountedFrom },
   { version: 108, name: 'card_terms_days_optional', sql: cardTermsDaysOptional },
+  { version: 109, name: 'shared_goals', sql: sharedGoals },
 ];
 
 /** The highest version this build of the app knows how to produce. */
