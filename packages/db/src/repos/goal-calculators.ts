@@ -27,11 +27,11 @@ import type { Database, Db } from '../database';
 import { goalCalculators } from '../schema-budget';
 import { goalStages, goals as goalsTable } from '../schema-goals';
 import { goalStageTerms } from '../schema-health';
-import { markGoalDirtyTx, withCapture } from '../sync/capture';
+import { markGoalDirtyTx } from '../sync/capture';
 import { goalLinkOfTx } from '../sync/goals/scope';
 import { periodFlows } from './flows';
 import { goalSharingTablesExist } from './goal-sharing-tables';
-import { drawnStageIds, GoalDbError, goalColumns, type GoalRow, listGoals, type SaveGoalStageInput, saveGoalTx } from './goals';
+import { drawnStageIds, GoalDbError, goalColumns, type GoalRow, listGoals, type SaveGoalStageInput, saveGoalTx, withGoalCapture } from './goals';
 import { healthTablesExist } from './health-tables';
 
 /**
@@ -236,6 +236,7 @@ async function writeCalculatorTx(
   kind: CalculatorKind,
   derived: Derived,
   computedAt = new Date().toISOString(),
+  andThen?: () => Promise<unknown>,
 ): Promise<void> {
   const current = await tx
     .select()
@@ -281,24 +282,30 @@ async function writeCalculatorTx(
     derived: true,
   });
 
-  if (withTerms) {
-    await tx.delete(goalStageTerms).where(and(eq(goalStageTerms.goalId, goal.id), eq(goalStageTerms.workspaceId, ws.workspaceId)));
-    for (const [index, stage] of derived.stages.entries()) {
-      await tx
-        .insert(goalStageTerms)
-        .values({ stageId: stageIds[index]!, workspaceId: ws.workspaceId, goalId: goal.id, returnBps: stage.returnBps, derivedKey: stage.key });
+  // saveGoalTx captured the goal and its stages itself; the terms and the working are captured here, once its capture
+  // has closed. A capture around saveGoalTx would see those rows change too, and send each of their ops twice.
+  await withGoalCapture(tx, [{ entity: 'goal_stage_term' }, { entity: 'goal_calculator', id: goal.id }], async () => {
+    if (withTerms) {
+      await tx.delete(goalStageTerms).where(and(eq(goalStageTerms.goalId, goal.id), eq(goalStageTerms.workspaceId, ws.workspaceId)));
+      for (const [index, stage] of derived.stages.entries()) {
+        await tx
+          .insert(goalStageTerms)
+          .values({ stageId: stageIds[index]!, workspaceId: ws.workspaceId, goalId: goal.id, returnBps: stage.returnBps, derivedKey: stage.key });
+      }
+      // A kept stage keeps its own terms, key included, so the level coming back finds it again.
+      const termOf = new Map(terms.map((term) => [term.stageId, term]));
+      for (const stage of kept) {
+        const term = termOf.get(stage.id);
+        if (term) await tx.insert(goalStageTerms).values(term);
+      }
     }
-    // A kept stage keeps its own terms, key included, so the level coming back finds it again.
-    const termOf = new Map(terms.map((term) => [term.stageId, term]));
-    for (const stage of kept) {
-      const term = termOf.get(stage.id);
-      if (term) await tx.insert(goalStageTerms).values(term);
-    }
-  }
 
-  const row = { goalId: goal.id, workspaceId: ws.workspaceId, kind, inputsJson: JSON.stringify(derived.inputs), computedMinor: derived.computedMinor, computedAt };
-  const { goalId: _goalId, workspaceId: _workspaceId, ...changes } = row;
-  await tx.insert(goalCalculators).values(row).onConflictDoUpdate({ target: goalCalculators.goalId, set: changes });
+    const row = { goalId: goal.id, workspaceId: ws.workspaceId, kind, inputsJson: JSON.stringify(derived.inputs), computedMinor: derived.computedMinor, computedAt };
+    const { goalId: _goalId, workspaceId: _workspaceId, ...changes } = row;
+    await tx.insert(goalCalculators).values(row).onConflictDoUpdate({ target: goalCalculators.goalId, set: changes });
+    // A further write of the working (a frozen outgoing) goes out in the same op.
+    await andThen?.();
+  });
 }
 
 /**
@@ -320,11 +327,10 @@ export async function saveGoalCalculator(database: Database, ws: WorkspaceContex
     const shared = await isSharedOnTx(tx, goal.id);
     // A frozen figure belongs to a share: a goal that is not shared (any more) carries none.
     const derived = derive(input.kind, shared ? inputs : unfrozen(inputs), input.today, goal.name);
-    await whenSharedCapturedTx(tx, goal.id, shared, async () => {
-      await writeCalculatorTx(tx, ws, goal, input.kind, derived);
-      // Whoever recalculates a shared fund freezes their own outgoing (D8).
-      if (shared && input.kind === 'emergency') await freezeEmergencyOutgoingTx(tx, ws, goal.id, input.today);
-    });
+    if (shared) markGoalDirtyTx(tx, goal.id);
+    // Whoever recalculates a shared fund freezes their own outgoing (D8).
+    const freeze = shared && input.kind === 'emergency' ? () => freezeEmergencyOutgoingTx(tx, ws, goal.id, input.today) : undefined;
+    await writeCalculatorTx(tx, ws, goal, input.kind, derived, undefined, freeze);
     return derived.computedMinor;
   });
 }
@@ -337,17 +343,6 @@ const unfrozen = (inputs: CalculatorInputs): CalculatorInputs => {
 /** Whether the goal's link is on here, so its working is a row of the household book. */
 async function isSharedOnTx(tx: Db, goalId: string): Promise<boolean> {
   return (await goalSharingTablesExist(tx)) && (await goalLinkOfTx(tx, goalId))?.state === 'on';
-}
-
-/**
- * Runs a write of a goal's working under capture when the goal is shared: the goal, its stages, their terms and the
- * working are the targets, and the goal's summary is sent with the rest. Stages are named by entity as a re-work may
- * add or drop some.
- */
-async function whenSharedCapturedTx(tx: Db, goalId: string, shared: boolean, write: () => Promise<void>): Promise<void> {
-  if (!shared) return write();
-  markGoalDirtyTx(tx, goalId);
-  await withCapture(tx, [{ entity: 'goal', id: goalId }, { entity: 'goal_stage' }, { entity: 'goal_stage_term' }, { entity: 'goal_calculator', id: goalId }], write);
 }
 
 /**
@@ -572,10 +567,9 @@ export async function upgradeCalculatorGoals(database: Database, ws: WorkspaceCo
       const [goalRow] = await tx.select(await goalColumns(tx)).from(goalsTable).where(and(eq(goalsTable.id, goal.id), eq(goalsTable.workspaceId, ws.workspaceId)));
       // Keeps its computed_at: the working is re-stated, not redone on a new day.
       const shared = await isSharedOnTx(tx, goal.id);
-      await whenSharedCapturedTx(tx, goal.id, shared, async () => {
-        await writeCalculatorTx(tx, ws, goalRow!, row.kind, derived, row.computedAt);
-        if (shared && row.kind === 'emergency') await freezeEmergencyOutgoingTx(tx, ws, goal.id, today);
-      });
+      if (shared) markGoalDirtyTx(tx, goal.id);
+      const freeze = shared && row.kind === 'emergency' ? () => freezeEmergencyOutgoingTx(tx, ws, goal.id, today) : undefined;
+      await writeCalculatorTx(tx, ws, goalRow!, row.kind, derived, row.computedAt, freeze);
       return true;
     });
     if (didChange) changed.push(goal.id);
