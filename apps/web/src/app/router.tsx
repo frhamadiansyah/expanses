@@ -86,6 +86,7 @@ import { EarlierMonthsRoute, LinkBillMonthRoute, LinkPurchaseRoute, LinkToBillRo
 import { RecurringPage } from '../features/bills/RecurringPage';
 import { YearlyBillsPage } from '../features/bills/YearlyBillsPage';
 import { DuplicateTransactionRoute, EditTransactionRoute, NewTransactionRoute } from '../features/transactions/FormPage';
+import { OneLinePage } from '../features/transactions/OneLinePage';
 import { newTransactionSearch } from '../features/transactions/new-search';
 import { MoneyFlowPage, moneyFlowSearch } from '../features/transactions/MoneyFlow';
 import { PasteListPage } from '../features/transactions/PasteListPage';
@@ -223,6 +224,8 @@ const routeTree = rootRoute.addChildren([
       ...(typeof search.card === 'string' && search.card ? { card: search.card } : {}),
     }),
   }),
+  // One line: a purchase typed as one sentence, saved with Return. "line" is static too, so it beats `$transactionId`.
+  createRoute({ getParentRoute: () => rootRoute, path: '/transactions/line', component: OneLinePage }),
   // A restaurant bill divided by who had what, reached from With → By receipt: "receipt-split" is static too.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/receipt-split', component: ReceiptSplitPage }),
   // The same split started from Account: who is sharing and the photo, then the pages above.
