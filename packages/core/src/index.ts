@@ -39,7 +39,17 @@ export {
 } from './money/money';
 export { type AmountOptions, evaluateAmount, evaluateExact } from './money/keypad';
 export { groupedMajorString, parseGroupedMajor } from './money/grouped';
-export { parsePurchaseList, type ParsePurchaseListOptions, type PurchaseLine, type PurchaseLineStatus } from './entry/purchase-list';
+export {
+  lineFigures,
+  type LineFigure,
+  parsePurchaseList,
+  type ParsePurchaseListOptions,
+  type PurchaseLine,
+  type PurchaseLineStatus,
+  readDayText,
+  withoutClosingDash,
+} from './entry/purchase-list';
+export { readExpenseLine, type ExpenseLineReading, type ReadExpenseLineOptions, tidyDescription } from './entry/expense-line';
 export { exchangeCost, type ExchangeCost, impliedRate, sumToBase } from './money/exchange';
 export { zipStore, unzipStore } from './backup/zip';
 export {
