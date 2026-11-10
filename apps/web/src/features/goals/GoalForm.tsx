@@ -12,7 +12,7 @@ import { CurrencySheet } from '../transactions/CurrencySheet';
 import { Sheet } from '../../app/Sheet';
 import { useOwnTarget } from '../calculators/emergency-fields';
 import { Calculator, calculatorKindOf } from './Calculator';
-import { assumptionsSummary, canSaveGoal, editBaseOf, onlyPaymentName, setAsideSummary } from './goal-form-model';
+import { assumptionsSummary, canSaveGoal, editBaseOf, keepsCalculatorWorking, onlyPaymentName, setAsideSummary } from './goal-form-model';
 import { applyTagChanges, fundingSummary, tagChanges, taggedIds } from './goal-tags';
 import { FundingSheet, taggable } from './FundingSheet';
 import { useTrades } from '../networth/queries';
@@ -301,20 +301,14 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
       // The own target (and its reset) is written to the working too, so the stage and the working say the same.
       const ownChanged = ownable && (ownTarget.minor !== emergencyWorking.targetMinor);
       // A goal worked out by a calculator stays linked to it when the only edit is which payments are marked paid:
-      // a hand-typed save would drop the link and the keys a re-work finds its payments by.
+      // a hand-typed save would drop the link and the keys a re-work finds its payments by. Judged against the goal as
+      // the form opened on it, so a partner's change meanwhile is not taken for one made here.
+      // An own target set, changed or cleared here is carried into the working below, so it is no reason to unlink.
       const keepsWorking =
         !!goal &&
+        !!opened &&
         (calculators.data ?? []).some((row) => row.goalId === goal.id) &&
-        goal.growthBps === growthBps &&
-        goal.returnBps === returnBps &&
-        goal.currency === currency &&
-        goal.stages.length === payments.length &&
-        payments.every((payment) => {
-          const was = goal.stages.find((stage) => stage.id === payment.id);
-          // An own target set, changed or cleared here is carried into the working below, so it is no reason to unlink.
-          const sameAmount = ownChanged || ownTarget.minor !== undefined || (was?.targetMinor === payment.targetMinor && was?.targetMonths === payment.targetMonths);
-          return !!was && was.name === payment.name && sameAmount && was.dueOn === payment.dueOn;
-        });
+        keepsCalculatorWorking(opened, { growthBps, returnBps, currency, stages: payments }, ownChanged || ownTarget.minor !== undefined);
       const goalId = await saveGoal(database, ws, {
         id: goalIdNow,
         derived: keepsWorking,
