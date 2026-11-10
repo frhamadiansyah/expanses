@@ -19,13 +19,22 @@ const MONTHS: Record<string, number> = {
   aug: 8,
   agu: 8,
   ags: 8,
+  agt: 8,
   sep: 9,
   oct: 10,
   okt: 10,
   nov: 11,
+  nop: 11,
   dec: 12,
   des: 12,
 };
+
+/** The words that are a month and nothing else, both languages, in full and cut short. */
+const MONTH_NAMES = new Set([
+  ...Object.keys(MONTHS),
+  'january', 'february', 'march', 'april', 'june', 'july', 'august', 'september', 'sept', 'october', 'november', 'december',
+  'januari', 'februari', 'maret', 'juni', 'juli', 'agustus', 'oktober', 'nopember', 'desember',
+]);
 
 const pad = (value: number, width = 2) => String(value).padStart(width, '0');
 
@@ -87,6 +96,18 @@ const PATTERNS: readonly { source: RegExp; read: (m: RegExpExecArray) => { year:
     read: (m) => {
       const month = monthOf(m[1] ?? '');
       return month === null ? null : { year: Number(m[3]), month, day: Number(m[2]), time: timeOf(m[4], m[5], m[6]) };
+    },
+  },
+  {
+    /*
+     * 03 Nov 26 09:41 — a month by name with a two-digit year, the way a card issuer's email table writes it, read as
+     * this century. The word must be a month and nothing longer than one ("12 Menit 30" is no day), and digits run on
+     * past the year make it some other number.
+     */
+    source: /(?<!\d)(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{2})(?![\d:])(?:[,\s]+(\d{1,2}):(\d{2})(?::\d{2})?)?/g,
+    read: (m) => {
+      const month = MONTH_NAMES.has((m[2] ?? '').toLowerCase()) ? monthOf(m[2] ?? '') : null;
+      return month === null ? null : { year: 2000 + Number(m[3]), month, day: Number(m[1]), time: timeOf(m[4], m[5], undefined) };
     },
   },
   {

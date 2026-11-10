@@ -387,6 +387,12 @@ export async function ingestCaptures(
         result.skipped += 1;
         continue;
       }
+      /* A purchase the issuer says did not go through moved no money: there is no draft to make, and nothing to bring
+         back. Handed over again, it is read again the same way. */
+      if (reading.skipped === 'declined') {
+        result.skipped += 1;
+        continue;
+      }
       if (scope === 'expenses-only' && reading.type.value !== 'spent') {
         await skip(tx, home, 'expenses-only', capture, reading);
         result.skipped += 1;

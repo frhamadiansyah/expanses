@@ -63,9 +63,9 @@ export function WayPage() {
             Add Screen scanner
           </Button>
         )}
-        {(way === 'notifications' || way === 'screen-scanner') && (
+        {(way === 'notifications' || way === 'email' || way === 'screen-scanner') && (
           <Button
-            variant={way === 'notifications' ? 'primary' : 'secondary'}
+            variant={way === 'screen-scanner' ? 'secondary' : 'primary'}
             className="w-full"
             onClick={() => {
               // The shell may open it directly; a browser tab cannot, and a dead button would be a lie, so the

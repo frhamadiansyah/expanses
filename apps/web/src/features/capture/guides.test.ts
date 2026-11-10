@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { CAPTURE_GUIDES, isShortcutLink, SCREEN_SCANNER_SHORTCUT_URL } from './guides';
 
 describe('the capture setup guides', () => {
-  it('covers the four ways in, each with steps to follow', () => {
-    expect(CAPTURE_GUIDES.map((guide) => guide.key)).toEqual(['notifications', 'share-message', 'screen-scanner', 'receipt']);
+  it('covers the five ways in, each with steps to follow', () => {
+    expect(CAPTURE_GUIDES.map((guide) => guide.key)).toEqual(['notifications', 'email', 'share-message', 'screen-scanner', 'receipt']);
     for (const guide of CAPTURE_GUIDES) {
       expect(guide.title).not.toBe('');
       expect(guide.blurb).not.toBe('');
@@ -14,10 +14,28 @@ describe('the capture setup guides', () => {
 
   it('names no bank, wallet or merchant — the country-neutral rule reaches the copy too', () => {
     const copy = CAPTURE_GUIDES.flatMap((guide) => [guide.title, guide.blurb, guide.note ?? '', ...guide.steps]).join(' ');
-    const named = ['BCA', 'BNI', 'BRI', 'Mandiri', 'CIMB', 'Permata', 'GoPay', 'OVO', 'DANA', 'ShopeePay', 'Jenius'];
+    const named = ['BCA', 'BNI', 'BRI', 'Mandiri', 'CIMB', 'Permata', 'Maybank', 'GoPay', 'OVO', 'DANA', 'ShopeePay', 'Jenius'];
     for (const name of named) {
       expect(copy).not.toMatch(new RegExp(`\\b${name}\\b`, 'i'));
     }
+  });
+
+  it('sets up bank emails through a Mail automation that hands each one to Log notification', () => {
+    const guide = CAPTURE_GUIDES.find((each) => each.key === 'email');
+    expect(guide?.title).toBe('Bank emails');
+    const steps = guide?.steps.join(' ') ?? '';
+    for (const part of ['Automation', 'Email', 'Run Immediately', 'Get Details of Mail', 'Log notification', 'Subject', 'Body', 'Sender', 'Date Received']) {
+      expect(steps).toContain(part);
+    }
+    // Each added copy of the action reads the previous one's output unless its Mail is set back to the trigger's.
+    const details = guide!.steps.find((step) => step.includes('Get Details of Mail')) ?? '';
+    expect(details).toContain('Shortcut Input');
+    expect(steps).not.toMatch(/\d{2,}/);
+  });
+
+  it('speaks to nobody: no “you” in any guide', () => {
+    const copy = CAPTURE_GUIDES.flatMap((guide) => [guide.title, guide.blurb, guide.note ?? '', ...guide.steps]).join(' ');
+    expect(copy).not.toMatch(/\byou(r|rs|rself)?\b/i);
   });
 
   it('opens only an iCloud shared shortcut from the Add button', () => {

@@ -1,5 +1,5 @@
 /**
- * How capture gets its three kinds of input, as the steps to follow on the phone.
+ * How capture gets its kinds of input, as the steps to follow on the phone.
  *
  * They are data rather than markup so they can be checked: the country-neutral rule says no bank, wallet or
  * merchant is named anywhere in capture, and a settings guide is exactly where a name would sneak in. Each step
@@ -7,7 +7,7 @@
  */
 
 export interface CaptureGuide {
-  key: 'notifications' | 'share-message' | 'screen-scanner' | 'receipt';
+  key: 'notifications' | 'email' | 'share-message' | 'screen-scanner' | 'receipt';
   title: string;
   blurb: string;
   /** What the guide needs that a browser does not have, when there is something to say. */
@@ -50,6 +50,21 @@ export const CAPTURE_GUIDES: readonly CaptureGuide[] = [
       'Below the trigger, add the action “Log notification” (search for the app), then tap each of Title, Body, App and Date and insert the matching variable from the trigger. Left empty they capture nothing.',
       'Save, then pay once with that app: the draft appears in Review the next time the app is opened.',
       'If the only notification that card sends is about points or cashback, turn on “Read offers for the purchase” for that source under Capture sources — the purchase is read out of the rewards message.',
+    ],
+  },
+  {
+    key: 'email',
+    title: 'Bank emails',
+    blurb: 'A card transaction email becomes a draft as soon as it arrives in Mail.',
+    note: 'Works with the Mail app only: the email automation watches the accounts added there.',
+    steps: [
+      'Open Shortcuts, go to Automation and tap ＋.',
+      'Choose Email, then choose the bank’s sender address under Sender. To keep to transactions, also set Subject Contains to “Transaction”.',
+      'Choose “Run Immediately”, so each email is saved without a tap, then tap Next and choose New Blank Automation.',
+      'Add the action “Get Details of Mail” and pick Body. Add it three more times, for Subject, Sender and Date Received. In each copy, tap its Mail and choose Shortcut Input: a copy added below another otherwise reads that one’s result instead of the email.',
+      'Add the action “Log notification” (search for the app), then set Title to Subject, Body to Body, App to Sender and Date to Date Received.',
+      'Tap Done. The next transaction email from that sender is a draft in Review the next time the app is opened.',
+      'Each sender is a capture source of its own under Capture sources, the way an app is for notifications.',
     ],
   },
   {
