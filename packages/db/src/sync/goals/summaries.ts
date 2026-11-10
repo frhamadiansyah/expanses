@@ -78,7 +78,9 @@ export async function ownGoalMoves(database: Database, ws: WorkspaceContext, goa
       occurredOn: entry.occurredOn,
       amountMinor: entry.amountMinor,
       currency: entry.currency,
-      text: entry.text,
+      // Only a spend carries its purchase's description (C8, D9). A borrow paid for something else, which is private:
+      // its line names the account the money came from, as a set-aside's does (final review I5).
+      text: entry.kind === 'borrowed' ? (entry.accountName ?? '') : entry.text,
       stageId: entry.stageId ?? null,
     });
   }
@@ -87,6 +89,24 @@ export async function ownGoalMoves(database: Database, ws: WorkspaceContext, goa
 
 /** Set once this device has written a summary for the goal: only then does it write one with nothing to say. */
 const wroteKey = (goalId: string) => `goal.summary.${goalId}`;
+
+/**
+ * The ids of the moves this device wrote for the goal, as a JSON list (local, never synced). A member's other device
+ * writes moves of the same member: only those this device wrote are its to change or take out (final review I4), and
+ * only those are already shown here from its own records (`goalHistory`, M13).
+ */
+const movesKey = (goalId: string) => `goal.moves.${goalId}`;
+
+async function writtenMovesTx(tx: Db, goalId: string): Promise<Set<string>> {
+  const [row] = await tx.values<[string]>(sql`SELECT value FROM settings WHERE key = ${movesKey(goalId)}`);
+  if (!row) return new Set();
+  try {
+    const ids = JSON.parse(row[0]) as unknown;
+    return new Set(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
 
 type StoredMove = Omit<GoalMoveRow, 'goalId' | 'memberId'>;
 
@@ -134,7 +154,12 @@ async function sendOneTx(tx: Db, goalId: string, date: string): Promise<boolean>
     return !was || !sameMove(was, move);
   });
   const now = new Set(moves.map((move) => move.id));
-  const gone = [...have.keys()].filter((id) => !now.has(id));
+  const written = await writtenMovesTx(tx, goalId);
+  // Only a move this device wrote goes when its source does: another device's of the same member is not this one's.
+  const gone = [...have.keys()].filter((id) => written.has(id) && !now.has(id));
+  if (written.size !== now.size || [...now].some((id) => !written.has(id))) {
+    await tx.run(sql`INSERT INTO settings (key, value) VALUES (${movesKey(goalId)}, ${JSON.stringify([...now].sort())}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
+  }
   if (upserts.length + gone.length > 0) {
     const targets = [...upserts.map((move) => move.id), ...gone].map((id) => ({ entity: 'goal_member_move', id, bookId: link.bookId }));
     await withCapture(tx, targets, async () => {

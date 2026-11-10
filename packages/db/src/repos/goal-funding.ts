@@ -557,6 +557,8 @@ export interface GoalHistoryEntry {
   by: string | null;
   /** The person a share line names (Rina in "Rina left"). */
   memberName?: string;
+  /** A draw's account, named: what a borrow's line says on the other phones, in place of a description (C8, I5). */
+  accountName?: string;
   occurredOn: string;
   /** Signed, in `currency`. Null for "reached the target", which is a day, not a movement. */
   amountMinor: number | null;
@@ -616,6 +618,7 @@ export async function goalHistory(
       amountMinor: draw.intent === 'move' ? draw.amountMinor : -draw.amountMinor,
       currency,
       text: draw.intent === 'move' ? `to ${account.get(draw.toAccountId ?? '')?.name ?? 'another account'}` : draw.description,
+      accountName: account.get(draw.accountId)?.name ?? '',
     });
   }
   const reached = new Map<string, DrawRow>();
@@ -627,13 +630,17 @@ export async function goalHistory(
   for (const [goalId, draw] of reached) push(goalId, { key: `reached-${draw.id}`, by: null, kind: 'reached', occurredOn: draw.wholeSince!, amountMinor: null, currency: ws.baseCurrency, text: 'Reached the target' });
 
   if (await goalSharingTablesExist(database.db)) {
-    // The other members' moves, as their phones wrote them; a member who left this round has none, a goal not shared now none.
+    // The members' moves, as their phones wrote them: the other members', and this member's own that another of their
+    // devices wrote (M13) — every move but those this device wrote itself, which its own records already show (the
+    // settings key is summaries.ts's). A member who left this round has none, a goal not shared now none.
     const moves = await database.db.values<[string, string, string, string, string, number, string, string, string | null]>(sql`
       SELECT m.id, m.goal_id, m.member_id, m.kind, m.occurred_on, m.amount_minor, m.currency, m.text, m.stage_id
       FROM goal_member_moves m
       JOIN goal_shares s ON s.goal_id = m.goal_id AND s.state = 'on'
       JOIN shared_books b ON b.book_id = s.book_id
-      WHERE m.member_id <> b.member_id AND m.occurred_on <= ${date}
+      WHERE m.occurred_on <= ${date}
+        AND (m.member_id <> b.member_id OR NOT EXISTS (
+          SELECT 1 FROM settings w, json_each(CASE WHEN json_valid(w.value) THEN w.value ELSE '[]' END) j WHERE w.key = 'goal.moves.' || m.goal_id AND j.value = m.id))
         AND NOT EXISTS (SELECT 1 FROM goal_share_leaves l WHERE l.goal_id = m.goal_id AND l.member_id = m.member_id AND l.round = s.round)`);
     for (const [id, goalId, memberId, kind, occurredOn, amountMinor, currency, text, stageId] of moves) {
       push(goalId, { key: `move-${id}`, sourceId: id, stageId, by: memberId, kind: kind as GoalHistoryEntry['kind'], occurredOn, amountMinor: Number(amountMinor), currency, text });

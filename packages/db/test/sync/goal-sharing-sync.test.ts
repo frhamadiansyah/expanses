@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createAccount,
   createGoalFromCalculator,
+  goalHistory,
   goalPlansFor,
   goalShareTargets,
   listGoals,
@@ -208,6 +209,52 @@ describe('a shared goal across the household', () => {
     expect((await sentOps(tablet)).filter((o) => o.entity.startsWith('goal'))).toEqual([]);
   });
 
+  // Final review M13: the tablet's History shows Bima's own moves, from the lines his phone sent, as his.
+  it("Bima's second phone shows his own moves in History, once", async () => {
+    const { tablet, goalId } = await withTablet();
+    const lines = ((await goalHistory(tablet.database, tablet.ws, DAY, { limit: null }))[goalId] ?? []).filter((e) => e.kind === 'set-aside');
+    expect(lines.map((e) => [e.by, e.amountMinor, e.text]).sort()).toEqual([
+      ['member-Bima', 20_000_000, 'Bima Savings'],
+      ['member-Bima', 8_000_000, 'Bima Reserve'],
+      ['member-Rina', 10_000_000, 'Rina Savings'],
+      ['member-Rina', 4_000_000, 'Rina Reserve'],
+    ].sort());
+    // Bima's phone shows its own from its records, not a second time from the lines it sent.
+    expect((await sentOps(tablet)).filter((o) => o.entity.startsWith('goal'))).toEqual([]);
+  });
+
+  // Final review I4: two of Bima's devices that both hold money each send only their own moves, and neither deletes
+  // the other's: a delete would be tombstoned, and the other's line would never come back on any phone.
+  it("two of Bima's devices with money of their own keep each other's History lines", async () => {
+    const { h, bima, rina, tablet, goalId, accounts } = await withTablet();
+    const tabletSavings = await savings(tablet, 'Tablet Savings', 6_000_000);
+    await saveEarmark(tablet.database, tablet.ws, { goalId, accountId: tabletSavings, amountMinor: 3_000_000 });
+    await h.settle();
+    // Each device writes again: neither may take the other's lines out.
+    await saveEarmark(bima.database, bima.ws, { goalId, accountId: accounts.bimaMain, amountMinor: 21_000_000 });
+    await saveEarmark(tablet.database, tablet.ws, { goalId, accountId: tabletSavings, amountMinor: 3_500_000 });
+    await h.settle();
+    const deletes = [...(await sentOps(bima)), ...(await sentOps(tablet))].filter((o) => o.entity === 'goal_member_move' && o.op === 'delete');
+    expect(deletes).toEqual([]);
+    const bimaSetAsides = async (d: Device) =>
+      ((await goalHistory(d.database, d.ws, DAY, { limit: null }))[goalId] ?? [])
+        .filter((e) => e.kind === 'set-aside' && e.by === 'member-Bima')
+        .map((e) => [e.amountMinor, e.text])
+        .sort();
+    expect(await bimaSetAsides(rina)).toEqual(
+      [
+        [20_000_000, 'Bima Savings'],
+        [1_000_000, 'Bima Savings'],
+        [8_000_000, 'Bima Reserve'],
+        [3_000_000, 'Tablet Savings'],
+        [500_000, 'Tablet Savings'],
+      ].sort(),
+    );
+    const [tombstones] = await rina.database.db.values<[number]>(sql`SELECT count(*) FROM sync_tombstones WHERE entity = 'goal_member_move'`);
+    expect(Number(tombstones![0])).toBe(0);
+    for (const d of [bima, rina, tablet]) expect(await skipsOf(d.database)).toEqual([]);
+  });
+
   it('nothing private leaves a phone', async () => {
     const { h, bima, rina, goalId, depositId, accounts } = await world();
     // A month of goal activity on both phones: money taken back and set aside again, a spend out of a promise, a stage
@@ -221,6 +268,14 @@ describe('a shared goal across the household', () => {
       setAside: { accountId: accounts.rinaMain, goalId, intent: 'spend', overMinor: 2_000_000 },
     });
     await saveEarmark(rina.database, rina.ws, { goalId, accountId: accounts.rinaSpare, amountMinor: 3_000_000 });
+    // I5: a borrow pays for something else; its description is that private purchase's, and stays on Rina's phone.
+    const clinic = (await createAccount(rina.database, rina.ws, { name: 'Health', kind: 'expense', subtype: 'category', currency: null })).id;
+    await postTransaction(rina.database, rina.ws, {
+      occurredOn: DAY,
+      description: 'Clinic visit',
+      lines: expenseLines({ categoryAccountId: clinic, paymentAccountId: accounts.rinaSpare, amountMinor: 3_000_000, currency: 'IDR' }),
+      setAside: { accountId: accounts.rinaSpare, goalId, intent: 'borrow', overMinor: 1_000_000 },
+    });
     await setStagePaid(rina.database, rina.ws, depositId, DAY);
     await editStages(bima, goalId, (stages) => stages.map((s) => (s.id === depositId ? { ...s, targetMinor: 62_000_000 } : s)));
     await saveEarmark(bima.database, bima.ws, { goalId, accountId: accounts.bimaMain, amountMinor: 25_000_000 });
@@ -239,6 +294,10 @@ describe('a shared goal across the household', () => {
     const goalOps = sent.filter((o) => o.entity.startsWith('goal'));
     expect(new Set(goalOps.map((o) => o.entity))).toEqual(new Set(['goal_share', 'goal', 'goal_stage', 'goal_member_funding', 'goal_member_move']));
     expect(goalOps.filter((o) => o.op === 'upsert' && o.fields.kind === 'spent')).toHaveLength(1);
+    const borrowed = goalOps.filter((o) => o.op === 'upsert' && o.fields.kind === 'borrowed');
+    expect(borrowed).toHaveLength(1);
+    expect(borrowed[0]!.op === 'upsert' && borrowed[0]!.fields.text).toBe('Rina Reserve');
+    expect(JSON.stringify(sent)).not.toContain('Clinic visit');
     // No op of any kind names an account of money or a transaction.
     const text = JSON.stringify(sent);
     expect(transactionIds.length).toBeGreaterThan(0);
