@@ -1,7 +1,7 @@
 import { formatMinor, isoDate } from '@expanses/core';
 import { type AccountRow, replaceTransaction, type TransactionView } from '@expanses/db';
 import { Copy, Pencil, Trash2, Undo2 } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { type MouseEvent, type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
@@ -50,6 +50,8 @@ export function TransactionRow({
   className,
   itemProps,
   select,
+  still = false,
+  amount,
 }: {
   row: ListRow;
   accounts: readonly AccountRow[];
@@ -95,6 +97,14 @@ export function TransactionRow({
    * cannot be chosen passes no `onToggle`, and shows no tick at all.
    */
   select?: { selected: boolean; onToggle?: () => void };
+  /**
+   * The face drawn as a plain `<div>` rather than a `<button>`, so the caller's `label`, `subtitle` and `amount` may
+   * hold buttons of their own — One line's preview row, whose every part opens its picker — without a button inside a
+   * button.
+   */
+  still?: boolean;
+  /** Drawn in place of the formatted figure, inside the same coloured span: a button standing for the amount, say. */
+  amount?: ReactNode;
 }) {
   const transfer = row.type !== 'expense' && row.type !== 'income';
   // Money back on a purchase reads as money in: a plus, in green. Money a person paid back has a plus too, muted.
@@ -189,8 +199,8 @@ export function TransactionRow({
         <span className={cx('shrink-0', row.deleted && 'grayscale')}>{circle}</span>
       )}
       <div className="min-w-0 flex-1">
-      <button
-        type="button"
+      <Face
+        still={still}
         disabled={!faceTap}
         title={select ? undefined : title}
         onClick={(event) => {
@@ -198,7 +208,6 @@ export function TransactionRow({
           if (swiped?.suppressClick()) return;
           faceTap?.();
         }}
-        className="block w-full min-w-0 text-left focus-visible:outline-2 focus-visible:outline-slate-900 disabled:cursor-default"
       >
         <span className="block truncate text-sm font-medium">
           {label ?? ((row.categoryName && row.moreCounted ? `${row.categoryName} +${row.moreCounted}` : row.categoryName) || (row.type === 'correction' ? 'Balance correction' : transfer ? 'Transfer' : 'Uncategorised'))}
@@ -213,7 +222,7 @@ export function TransactionRow({
             </>
           )}
         </span>
-      </button>
+      </Face>
       {/* Outside the tap target, never inside it: what goes here can itself be a control, and a <button>
           within a <button> is invalid HTML whose name swallows the inner one's. */}
       {under}
@@ -230,7 +239,7 @@ export function TransactionRow({
             row.excluded && 'line-through',
           )}
         >
-          {money}
+          {amount ?? money}
         </span>
         {amountExtra ?? (row.leftOut ? <AmountExtra parts={amountExtraParts(row.tx ?? { originalCurrency: null, originalAmountMinor: null }, undefined, row)} /> : null)}
       </span>
@@ -274,6 +283,37 @@ export function TransactionRow({
     >
       {face()}
     </li>
+  );
+}
+
+/**
+ * The two lines' holder: the tap target a row's face is, or — `still` — a plain block whose contents bring their own
+ * controls. Either way it is laid out the same, so a still row reads exactly as the list's own.
+ */
+function Face({
+  still,
+  disabled,
+  title,
+  onClick,
+  children,
+}: {
+  still: boolean;
+  disabled: boolean;
+  title?: string;
+  onClick: (event: MouseEvent) => void;
+  children: ReactNode;
+}) {
+  if (still) return <div className="block w-full min-w-0 text-left">{children}</div>;
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      title={title}
+      onClick={onClick}
+      className="block w-full min-w-0 text-left focus-visible:outline-2 focus-visible:outline-slate-900 disabled:cursor-default"
+    >
+      {children}
+    </button>
   );
 }
 
