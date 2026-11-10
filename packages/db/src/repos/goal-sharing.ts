@@ -3,7 +3,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { type CaptureTarget, withCapture, withCaptureSuspended } from '../sync/capture';
 import { meetsVersion } from '../sync/events/version';
-import { followLeaveHereTx, forgetGoalLinesTx, IN_BOOK, othersNamesTx, shareLogLineTx, unlinkHereTx } from '../sync/goals/follow';
+import { dropOthersLinesTx, followLeaveHereTx, forgetGoalLinesTx, IN_BOOK, othersNamesTx, shareLogLineTx, unlinkHereTx } from '../sync/goals/follow';
 import { type GoalLink, goalLinkOfTx } from '../sync/goals/scope';
 import { sendGoalSummariesTx } from '../sync/goals/summaries';
 import { SHARED_GOALS_MIN_APP_VERSION } from '../sync/goals/version';
@@ -91,6 +91,8 @@ export async function shareGoal(database: Database, ws: WorkspaceContext, goalId
     if (link?.state === 'deleted') throw new GoalDbError('This goal was deleted');
     if (link && link.bookId !== bookId) throw new GoalDbError('This goal was shared in another workspace, and is shared only there');
     if (link && link.sharedBy !== target.me) throw new GoalDbError(`Only ${await nameInTx(tx, bookId, link.sharedBy)} can share this goal again`);
+    // Turning it on again (I8): no line here can be of the new round yet, so none of an earlier one may count in it.
+    if (link) await withCaptureSuspended(tx, () => dropOthersLinesTx(tx, bookId, goalId, target.me));
     const stageIds = (await tx.values<[string]>(sql`SELECT id FROM goal_stages WHERE goal_id = ${goalId} ORDER BY sort, due_on, id`)).map((row) => row[0]);
     const targets: CaptureTarget[] = [
       { entity: 'goal_share', id: goalId },
@@ -170,7 +172,7 @@ export async function leaveSharedGoal(database: Database, ws: WorkspaceContext, 
         INSERT INTO goal_share_leaves (goal_id, member_id, workspace_id, round, left_on) VALUES (${goalId}, ${me}, ${ws.workspaceId}, ${link.round}, ${date})
         ON CONFLICT (goal_id, member_id) DO UPDATE SET round = excluded.round, left_on = excluded.left_on`),
     );
-    const copy = await withCaptureSuspended(tx, () => followLeaveHereTx(tx, ws, link, me, me, date));
+    const copy = await withCaptureSuspended(tx, () => followLeaveHereTx(tx, ws, link, me, me, date, { tapped: true }));
     return { copyGoalId: copy! };
   });
 }

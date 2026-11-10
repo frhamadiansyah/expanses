@@ -6,7 +6,7 @@ import { rekeyGoalTx } from '../../repos/goal-private-copy';
 import { deleteGoalRowsTx } from '../../repos/goals';
 import { goalSharingTablesExist } from '../../repos/goal-sharing-tables';
 import type { BookContext } from '../apply';
-import { withCaptureSuspended } from '../capture';
+import { addPendingSummaryGoalsTx, withCaptureSuspended } from '../capture';
 import { dropEventLogRowTx } from '../events/log-rows';
 import { localDate } from '../net-worth/summaries';
 import type { GoalLinkView } from './authority';
@@ -103,6 +103,29 @@ async function dropLinesTx(tx: Db, goalId: string, who: { only?: string; except?
   await tx.run(sql`DELETE FROM goal_member_moves WHERE goal_id = ${goalId}${by}`);
 }
 
+/**
+ * What this device remembers of having sent for a goal (summaries.ts's keys): forgotten when the goal leaves 'on' here,
+ * so a later round starts as a first send — a device whose money went into its private copy then has nothing to say,
+ * and writes no empty line that would count as a part of its own at the next off (final review M2).
+ */
+export async function forgetSentTx(tx: Db, goalId: string): Promise<void> {
+  await tx.run(sql`DELETE FROM settings WHERE key IN (${`goal.summary.${goalId}`}, ${`goal.moves.${goalId}`})`);
+}
+
+/**
+ * Final review I8: the other members' lines of a goal this phone's own off or delete just came back from the log for.
+ * Every line here then is from before that off in log order — one that reached the log just ahead of it was applied
+ * after the off had dropped the lines here — and must not count again if sharing is turned on again. This member's own
+ * line stays: a later round's is worked out afresh.
+ */
+export async function dropOthersLinesTx(tx: Db, bookId: string, goalId: string, me: string): Promise<void> {
+  const members = await tx.values<[string]>(sql`
+    SELECT member_id FROM goal_member_funding WHERE goal_id = ${goalId} AND member_id <> ${me}
+    UNION SELECT member_id FROM goal_member_moves WHERE goal_id = ${goalId} AND member_id <> ${me}`);
+  for (const [member] of members) await clearClocksTx(tx, bookId, goalId, member);
+  await dropLinesTx(tx, goalId, { except: me });
+}
+
 /** Every line of a goal and the clocks of its rows, gone here (a delete, before the goal's rows go). */
 export async function forgetGoalLinesTx(tx: Db, bookId: string, goalId: string): Promise<void> {
   await clearClocksTx(tx, bookId, goalId);
@@ -117,17 +140,16 @@ async function goalHereTx(tx: Db, ws: WorkspaceContext, goalId: string): Promise
 const OWN_PARTS = ['goal_earmarks', 'goal_contributions', 'goal_draws', 'trade_goal_parts', 'investment_trades', 'trade_templates', 'asset_sales', 'transactions', 'events'];
 
 /**
- * Whether this phone holds anything of `me`'s in a goal: money or a record of this phone's that names it, or a line or
- * History line of the member's (sent from here or from their other device). Only then is there a private copy to keep.
+ * Whether this phone holds anything of its member's own in a goal: money or a record of this phone's that names it. Only
+ * then is there a private copy to keep.
  */
-async function hasOwnPartTx(tx: Db, goalId: string, me: string): Promise<boolean> {
+async function hasOwnPartTx(tx: Db, goalId: string): Promise<boolean> {
   const tables = new Set((await tx.values<[string]>(sql`SELECT name FROM sqlite_master WHERE type = 'table'`)).map((row) => row[0]));
   for (const table of OWN_PARTS) {
     if (tables.has(table) && (await tx.values(sql`SELECT 1 FROM ${sql.raw(table)} WHERE goal_id = ${goalId} LIMIT 1`)).length > 0) return true;
   }
-  for (const table of ['goal_member_funding', 'goal_member_moves']) {
-    if ((await tx.values(sql`SELECT 1 FROM ${sql.raw(table)} WHERE goal_id = ${goalId} AND member_id = ${me} LIMIT 1`)).length > 0) return true;
-  }
+  // The member's synced line or History (from another of their devices, or an empty line sent from here) is not: the
+  // copy leaves every line of the shared goal behind, so it would hold nothing (final review M2).
   return false;
 }
 
@@ -142,6 +164,7 @@ export type UnlinkHow = 'off' | 'deleted' | 'ended';
 export async function unlinkHereTx(tx: Db, ws: WorkspaceContext, link: GoalLink & { goalId: string }, me: string, how: UnlinkHow, on: string): Promise<string | null> {
   const { goalId, bookId } = link;
   await clearClocksTx(tx, bookId, goalId);
+  await forgetSentTx(tx, goalId);
   if (me === link.sharedBy) {
     if (how === 'deleted') {
       if (await goalHereTx(tx, ws, goalId)) await deleteGoalRowsTx(tx, ws, goalId);
@@ -160,7 +183,7 @@ export async function unlinkHereTx(tx: Db, ws: WorkspaceContext, link: GoalLink 
   }
   // Nothing of this member's in it — a device that joined later and read the round's end from the log, or a member who
   // never put money in: the goal just goes, with no empty copy. The household share ending keeps a copy as before.
-  if (how !== 'ended' && !(await hasOwnPartTx(tx, goalId, me))) {
+  if (how !== 'ended' && !(await hasOwnPartTx(tx, goalId))) {
     await deleteGoalRowsTx(tx, ws, goalId);
     return null;
   }
@@ -183,11 +206,26 @@ async function lastTotalTx(tx: Db, goalId: string, memberId: string): Promise<nu
  * Another phone's side of `memberId` leaving this round (§8.3): the leaver's own other phones keep a private copy; every
  * other phone drops the leaver's lines and notes it in History with their last counted total. Capture is off.
  */
-export async function followLeaveHereTx(tx: Db, ws: WorkspaceContext, link: GoalLink & { goalId: string }, me: string, memberId: string, on: string): Promise<string | null> {
+export async function followLeaveHereTx(
+  tx: Db,
+  ws: WorkspaceContext,
+  link: GoalLink & { goalId: string },
+  me: string,
+  memberId: string,
+  on: string,
+  { tapped = false }: { tapped?: boolean } = {},
+): Promise<string | null> {
   const { goalId, bookId } = link;
   if (memberId === me) {
     if (!(await goalHereTx(tx, ws, goalId))) return null;
     await clearClocksTx(tx, bookId, goalId);
+    await forgetSentTx(tx, goalId);
+    // The leaver's other device with nothing of theirs in the goal keeps no empty copy (M2); the phone Leave was
+    // tapped on always keeps one, as its confirm says.
+    if (!tapped && !(await hasOwnPartTx(tx, goalId))) {
+      await deleteGoalRowsTx(tx, ws, goalId);
+      return null;
+    }
     const copy = await rekeyGoalTx(tx, ws, goalId, { copiedFrom: goalId, logLine: { kind: 'unshared', memberName: await nameOfTx(tx, bookId, link.sharedBy), occurredOn: on } });
     return copy.goalId;
   }
@@ -211,6 +249,9 @@ export async function followGoalShareTx(tx: Db, ctx: BookContext, goalId: string
     if (!wasOn && ctx.memberId === link.sharedBy && (await goalHereTx(tx, ctx.ws, goalId))) {
       await shareLogLineTx(tx, ctx.ws, goalId, { kind: 'shared', memberName: await othersNamesTx(tx, ctx.bookId, ctx.memberId), occurredOn: on });
     }
+    // Final review M12: this phone's own line of the new round, if it holds money for the goal (a sharer's phone the
+    // switch was turned on from another of their devices), goes with its next own transaction, as any apply waits (R9).
+    if (!wasOn) await addPendingSummaryGoalsTx(tx, [goalId]);
     return;
   }
   if (!wasOn) return;

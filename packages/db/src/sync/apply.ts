@@ -37,7 +37,7 @@ import { keepClocksTx, type SeenLog } from './seed';
 import { postTransferSideTx } from './net-worth/transfers';
 import { EVENT_ENTITIES } from './events/authority';
 import { goalLinkOfTx, goalOfRowTx, goalOpDroppedTx, goalOpRefusalTx, noteGoalLinkTx } from './goals/scope';
-import { followGoalLeaveTx, followGoalShareTx, followMemberGoneTx, memberInBookTx } from './goals/follow';
+import { dropOthersLinesTx, followGoalLeaveTx, followGoalShareTx, followMemberGoneTx, memberInBookTx } from './goals/follow';
 import { restoreRefusedOwnEventOpTx } from './events/log-rows';
 import { type EventPostingKind, followEventOpTx, followSharedEventTx, recordsReadingTx } from '../repos/shared-event-postings';
 
@@ -1436,7 +1436,14 @@ export async function pullAndApply(
                     else if (decision.entity === 'goal_share') {
                       const why = await goalOpRefusalTx(tx, bookId, entityOf('goal_share') as RowEntity, decision, await authorMemberOf(tx, bookId, entry.deviceId), true);
                       if (why) await refuse(decision.entity, decision.id, `AUTHORITY: ${why}`);
-                      else await noteGoalLinkTx(tx, bookId, decision, changeSet.hlc);
+                      else {
+                        await noteGoalLinkTx(tx, bookId, decision, changeSet.hlc);
+                        // I8: an off or delete of ours, now in the log: a line that reached the log just ahead of it
+                        // was applied after our off dropped every line, and is gone again.
+                        if (decision.op === 'upsert' && decision.fields.state !== undefined && decision.fields.state !== 'on') {
+                          await dropOthersLinesTx(tx, bookId, decision.id, (await bookContextTx(tx, bookId)).memberId);
+                        }
+                      }
                     }
                   }
                   // I3: an own write to an event row the log refused (a friend's takeover took it first) goes back to

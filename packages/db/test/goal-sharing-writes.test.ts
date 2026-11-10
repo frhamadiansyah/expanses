@@ -315,15 +315,14 @@ describe('a phone with nothing of its own in a goal keeps no copy when it ends',
     expect(await listEarmarks(database, ws)).toEqual([{ goalId: copy!.id, accountId: savings, amountMinor: 10_000_000 }]);
   });
 
-  it("her own line from her other phone keeps a private copy", async () => {
+  // Final review M2: her line from her other phone stays with the shared goal, so a copy here would hold nothing.
+  it('her own line from her other phone keeps no empty copy', async () => {
     const { database, ws, bookId } = await phone('member-r');
     await fromDevice(database, bookId, 'dev-f', arrive);
     await fromDevice(database, bookId, 'dev-r', [{ entity: 'goal_member_funding', id: `${goalId}|member-r`, op: 'upsert', fields: { lines: '[]', plannedMonthlyMinor: 0, asOf: DAY } }]);
     await fromDevice(database, bookId, 'dev-f', [link('off')]);
-    const goals = await listGoals(database, ws);
-    expect(goals).toHaveLength(1);
-    expect(goals[0]!.id).not.toBe(goalId);
-    expect(goals[0]!.name).toBe('Trip Fund');
+    expect(await listGoals(database, ws, { includeArchived: true })).toEqual([]);
+    expect(await skipsOf(database)).toEqual([]);
   });
 });
 

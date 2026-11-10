@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createBook, listGoals, personalBook, saveEarmark, saveGoal } from '../../src/index';
+import { createAccount, createBook, listGoals, personalBook, saveEarmark, saveGoal } from '../../src/index';
 import type { Database } from '../../src/database';
 import type { NodeExecutor } from '../../src/node';
 import { applyChangeSet } from '../../src/sync/apply';
@@ -233,8 +233,9 @@ describe('applying a shared goal', () => {
     const t = await household('member-r');
     const goalId = newId(1);
     await fromDevice(t.database, t.bookId, 'dev-f', [linkOp(goalId, 'on'), goalOp(goalId), stageOp(goalId, newId(2), 'Flights')]);
-    // Rina's line from her other phone: something of hers is in the goal, so the off keeps her a copy (Task 10).
-    await fromDevice(t.database, t.bookId, 'dev-r', [{ entity: 'goal_member_funding', id: `${goalId}|member-r`, op: 'upsert', fields: { lines: '[]', plannedMonthlyMinor: 0, asOf: '2030-02-01' } }]);
+    // Money of Rina's set aside here: something of hers is in the goal, so the off keeps her a copy (Task 10).
+    const savings = (await createAccount(t.database, t.ws, { name: 'Partner Savings', kind: 'asset', subtype: 'savings', currency: 'IDR', openingBalanceMinor: 9_000_000, openedOn: '2026-01-01' })).id;
+    await saveEarmark(t.database, t.ws, { goalId, accountId: savings, amountMinor: 4_000_000 });
     await fromDevice(t.database, t.bookId, 'dev-f', [linkOp(goalId, 'off')]);
     await fromDevice(t.database, t.bookId, 'dev-r', [stageOp(goalId, newId(3), 'From afar', 1)]);
     // A partial edit names no goal: the stage stored here does.
