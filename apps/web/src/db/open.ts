@@ -14,6 +14,7 @@ import {
 import { type AppDb, openAppDb } from './bootstrap';
 import { isEngineStart, isHeld } from './engine-start';
 import { CORRUPT } from './fatal';
+import type { CheckedSnapshot } from './live-health';
 import type { SnapshotInfo, SnapshotReason } from './snapshot-policy';
 
 /** The types describing a safety copy live in `snapshot-policy.ts`; re-exported so every existing import from `./open` keeps working. */
@@ -108,6 +109,12 @@ export interface Safety {
   /** A file copy of the live database, taken between statements. */
   bytes: () => Promise<Uint8Array>;
   /**
+   * The copy taken as the app leaves the foreground: no bytes when nothing has changed since `since`, and
+   * otherwise the file once it has passed `quick_check`. The worker's `checked-snapshot` op, which is never
+   * fatal. Absent where there is no worker (the Node-backed tests), and then no background copy is taken.
+   */
+  checked?: (since: number) => Promise<CheckedSnapshot>;
+  /**
    * The schema version the live database is really at, so a copy taken later in the session is named for
    * what it holds. Deliberately not `LATEST_VERSION`: on a device holding a blocked update the file sits
    * one or more versions below this build's newest, and a copy labelled with the build would tell the
@@ -152,6 +159,8 @@ export interface OpenDeps {
    * is what the Node-backed unit tests get.
    */
   snapshotBytes?: () => Promise<Uint8Array>;
+  /** The worker's `checked-snapshot` op, carried onto `Safety.checked`. Absent without a worker. */
+  checkedSnapshot?: (since: number) => Promise<CheckedSnapshot>;
 }
 
 export type OpenResult = { ok: true; app: AppDb; applied: number[] } | { ok: false; reason: RecoveryReason };
@@ -287,7 +296,7 @@ async function rollback(deps: {
  * than a thrown error. Nothing before `migrate` writes a byte: the version is read, the future is
  * refused, and the file is checked, all read-only.
  */
-export async function openSafely({ database, migrations = MIGRATIONS, snapshots, onStage, snapshotBytes }: OpenDeps): Promise<OpenResult> {
+export async function openSafely({ database, migrations = MIGRATIONS, snapshots, onStage, snapshotBytes, checkedSnapshot }: OpenDeps): Promise<OpenResult> {
   onStage({ stage: 'opening' });
   const bytes = snapshotBytes ?? (() => database.exportBytes());
 
@@ -503,7 +512,7 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
         ...app,
         // The version the file is really at, so a copy taken later in the session is labelled with what it
         // holds rather than with what this build could have produced.
-        safety: { snapshots, bytes, schemaVersion: applied.length ? Math.max(...applied) : version },
+        safety: { snapshots, bytes, ...(checkedSnapshot ? { checked: checkedSnapshot } : {}), schemaVersion: applied.length ? Math.max(...applied) : version },
         // What this open did to the schema, and what it deliberately left alone, for the card above the page.
         update: { applied, from: version, blocked },
       },

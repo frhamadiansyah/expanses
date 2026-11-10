@@ -1,6 +1,7 @@
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
 import { engineStartError, guardPoolFolders, probeSlots, retryable, withRetries } from './engine-start';
 import { fatalKind, messageOf } from './fatal';
+import { liveProblem } from './live-health';
 import { NEWER_DATABASE } from './newer-database';
 
 type Method = 'run' | 'all' | 'values' | 'get';
@@ -9,6 +10,12 @@ type Request =
   | { id: number; op: 'script'; sql: string }
   | { id: number; op: 'export' }
   | { id: number; op: 'snapshot' }
+  /**
+   * The copy taken as the app leaves the foreground (`background-copy.ts`). `since` is the connection's change
+   * count at the last such copy: an unchanged count answers at once with no bytes, and otherwise the file is
+   * checked before it is read. One message, so the count, the checks and the bytes all describe the same file.
+   */
+  | { id: number; op: 'checked-snapshot'; since: number }
   /**
    * `latestVersion` is the highest migration the *asking* build knows. It rides in on the request because
    * `LATEST_VERSION` lives in `@expanses/db`, which this worker deliberately does not bundle. A caller
@@ -97,6 +104,29 @@ self.onmessage = async (event: MessageEvent<Request>) => {
       if (!state.sqlite3.capi.sqlite3_get_autocommit(state.db)) throw new Error('busy');
       const bytes = await state.pool.exportFile(FILE);
       reply({ id: req.id, result: bytes }, [bytes.buffer]);
+    } else if (req.op === 'checked-snapshot') {
+      /*
+       * `total_changes()` counts every row this connection has inserted, updated or deleted since it opened, so
+       * an unchanged count means nothing has been written since the last copy and there is nothing to keep. A
+       * restore or a wipe reopens the connection and starts the count again, which the caller reads as a
+       * change (it compares for equality, not size).
+       *
+       * Then the same guard as `snapshot`, and two questions before a byte is read: a file with no
+       * `schema_migrations` is not one of ours, and one that does not pass `quick_check` must never become the
+       * newest copy on the device. A no here throws, and this op is never tagged fatal (see below): the copy
+       * is skipped and the session carries on.
+       */
+      const changes = Number(state.db.selectValue('SELECT total_changes()') ?? 0);
+      if (changes === req.since) {
+        reply({ id: req.id, result: { changes, bytes: null } });
+      } else {
+        if (!state.sqlite3.capi.sqlite3_get_autocommit(state.db)) throw new Error('busy');
+        const hasSchema = Boolean(state.db.selectValue("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'"));
+        const problem = liveProblem({ hasSchema, structure: hasSchema ? state.db.selectValue('PRAGMA quick_check(1)') : null });
+        if (problem) throw new Error(`No copy was taken: ${problem}`);
+        const bytes = await state.pool.exportFile(FILE);
+        reply({ id: req.id, result: { changes, bytes } }, [bytes.buffer]);
+      }
     } else if (req.op === 'import') {
       // Keep the current database so a failed or foreign file restores the previous state instead of an empty one.
       const previous = await state.pool.exportFile(FILE);
@@ -157,8 +187,9 @@ self.onmessage = async (event: MessageEvent<Request>) => {
      *
      * - `import` already has an answer for a file it does not like — it puts the previous bytes straight
      *   back — so a rejected restore must leave the app standing, not replace it with a recovery screen.
-     * - `snapshot` is allowed to fail: the open carries on without a copy and says so. A safety copy that
-     *   could not be taken is not a reason to take the app away from someone using it.
+     * - `snapshot` and `checked-snapshot` are allowed to fail: the open carries on without a copy and says
+     *   so, and a background copy is skipped. A safety copy that could not be taken — even one refused because
+     *   `quick_check` did not answer ok — is not a reason to take the app away from someone using it.
      * - `export` and `wipe` are pressed on screens that show their own errors.
      *
      * What is left is `query` and `script`: the ordinary traffic of a running app, which is exactly where

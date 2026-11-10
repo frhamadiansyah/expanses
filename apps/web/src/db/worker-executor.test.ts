@@ -170,6 +170,18 @@ describe('a failure the session cannot carry on past', () => {
     await expect(executor.exportBytes()).rejects.toThrow(/disk I\/O error/);
   });
 
+  it('never takes the app away over the copy on leaving the app, even one refused as malformed', async () => {
+    const worker = scriptedWorker((message) => ({ id: message.id, error: 'No copy was taken: the live database did not check out: database disk image is malformed' }));
+    const executor = createWorkerExecutor(worker as unknown as Worker);
+    executor.arm();
+    const heard: RecoveryReason[] = [];
+    executor.onFatal((reason) => heard.push(reason));
+
+    await expect(executor.checkedSnapshot(3)).rejects.toThrow(/malformed/);
+    expect(heard).toEqual([]);
+    expect(worker.sent.map((m) => [m.op, (m as { since?: number }).since])).toEqual([['checked-snapshot', 3]]);
+  });
+
   it('leaves an ordinary failure ordinary', async () => {
     const worker = scriptedWorker((message) => ({ id: message.id, error: 'UNIQUE constraint failed: accounts.id' }));
     const executor = createWorkerExecutor(worker as unknown as Worker);
