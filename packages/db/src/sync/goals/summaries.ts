@@ -2,7 +2,7 @@ import type { Risk } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../../context';
 import type { Database, Db } from '../../database';
-import { goalHistory, goalLinksFor, goalPlansFor } from '../../repos/goal-funding';
+import { devicePlannedMonthlyMinor, goalHistory, goalLinksFor } from '../../repos/goal-funding';
 import { goalSharingTablesExist } from '../../repos/goal-sharing-tables';
 import { withCapture } from '../capture';
 import { uuidv5 } from '../uuidv5';
@@ -44,9 +44,8 @@ export async function ownGoalFunding(database: Database, ws: WorkspaceContext, g
       risk: link.risk,
     });
   }
-  const plan = (await goalPlansFor(database, ws, date)).plans.find((row) => row.goalId === goalId);
-  // The plan's planned figure counts the others' too; only this phone's own part travels.
-  return { lines, plannedMonthlyMinor: plan ? plan.plannedMonthlyMinor - plan.othersPlannedMonthlyMinor : 0 };
+  // The plan's planned figure counts the others' too, and the member's own from another device; only this phone's travels.
+  return { lines, plannedMonthlyMinor: await devicePlannedMonthlyMinor(database, ws, goalId, date) };
 }
 
 export interface GoalMoveRow {

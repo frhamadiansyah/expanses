@@ -2,11 +2,13 @@ import { addMonths, monthOf } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import {
   categoryIdsByKey,
+  clearGoalCalculator,
   createGoalFromCalculator,
   getGoalCalculator,
   postTransaction,
   saveGoal,
   saveGoalCalculator,
+  setEmergencyOwnTarget,
   shareGoal,
   upgradeCalculatorGoals,
   type Database,
@@ -15,6 +17,7 @@ import {
 import { goalCalculators } from '../src/schema-budget';
 import { localDate } from '../src/sync/net-worth/summaries';
 import { Household, skipsOf, type Device } from './sync/household';
+import { clearOutbox, outboxOps } from './sync/sync-helpers';
 
 /*
  * A shared calculator goal (shared goals D8, C23, C25): its saved workings sync, and an emergency fund's monthly
@@ -112,5 +115,81 @@ describe('the silent re-working', () => {
     // What the sharer re-worked reaches Rina as saved.
     expect(await inputsOf(rina, goalId)).toMatchObject({ version: 2 });
     expect(await skipsOf(rina.database)).toEqual([]);
+  });
+});
+
+/** An emergency goal as the old calculator left it (v1 working, no version), whose figures come out the same today. */
+async function oldEmergencyGoal(device: Device): Promise<string> {
+  const goalId = await saveGoal(device.database, device.ws, {
+    name: 'Rainy Day', kind: 'emergency', growthBps: 0, returnBps: 200, derived: true,
+    stages: [{ name: 'Rainy Day', targetMinor: null, targetMonths: 6, dueOn: '2028-09-13' }],
+  });
+  await device.database.db.insert(goalCalculators).values({
+    goalId, workspaceId: device.ws.workspaceId, kind: 'emergency', computedMinor: 0, computedAt: '2026-09-13T00:00:00.000Z', inputsJson: JSON.stringify({ months: 6 }),
+  });
+  return goalId;
+}
+
+/** The goal ops waiting in a phone's outbox, one string each. */
+const goalOpsOf = async (device: Device) =>
+  (await outboxOps(device.database)).filter((op) => op.entity.startsWith('goal')).map((op) => `${op.entity}|${op.id}|${op.op}`);
+
+describe("edits to a shared goal's working reach the other phones (§8.5)", () => {
+  it("an own target set on Edit goal reaches Bima's phone", async () => {
+    const { h, bima, rina, bookId, goalId } = await world();
+    await shareGoal(bima.database, bima.ws, goalId, bookId);
+    await h.settle();
+    await clearOutbox(rina.database);
+    await setEmergencyOwnTarget(rina.database, rina.ws, goalId, { targetMinor: 45_000_000, months: 8 });
+    expect(await goalOpsOf(rina)).toEqual([`goal_calculator|${goalId}|upsert`]);
+    await h.settle();
+    expect(await getGoalCalculator(bima.database, bima.ws, goalId)).toMatchObject({ inputs: { months: 8, targetMinor: 45_000_000 }, computedMinor: 45_000_000 });
+    // And cleared again: the working follows the months once more.
+    await setEmergencyOwnTarget(rina.database, rina.ws, goalId, {});
+    await h.settle();
+    expect(await getGoalCalculator(bima.database, bima.ws, goalId)).toMatchObject({ computedMinor: 0 });
+    expect(await inputsOf(bima, goalId)).not.toHaveProperty('targetMinor');
+    for (const d of [bima, rina]) expect(await skipsOf(d.database)).toEqual([]);
+  });
+
+  it("breaking the calculator link reaches Rina's phone", async () => {
+    const { h, bima, rina, bookId, goalId } = await world();
+    await shareGoal(bima.database, bima.ws, goalId, bookId);
+    await h.settle();
+    expect(await getGoalCalculator(rina.database, rina.ws, goalId)).not.toBeNull();
+    await clearOutbox(bima.database);
+    await clearGoalCalculator(bima.database, bima.ws, goalId);
+    expect(await goalOpsOf(bima)).toEqual([`goal_calculator|${goalId}|delete`]);
+    await h.settle();
+    expect(await getGoalCalculator(rina.database, rina.ws, goalId)).toBeNull();
+    for (const d of [bima, rina]) expect(await skipsOf(d.database)).toEqual([]);
+  });
+
+  it("the silent re-working's stamp reaches Rina's phone", async () => {
+    const { h, bima, rina, bookId } = await world();
+    const goalId = await oldEmergencyGoal(bima);
+    await shareGoal(bima.database, bima.ws, goalId, bookId);
+    await h.settle();
+    expect(await inputsOf(rina, goalId)).not.toHaveProperty('version');
+    await clearOutbox(bima.database);
+    // The figures come out the same, so only the working is stamped as read in today's money.
+    expect(await upgradeCalculatorGoals(bima.database, bima.ws, '2026-11-10')).toEqual([]);
+    expect(await goalOpsOf(bima)).toEqual([`goal_calculator|${goalId}|upsert`]);
+    await h.settle();
+    expect(await inputsOf(rina, goalId)).toMatchObject({ version: 2, months: 6 });
+    for (const d of [bima, rina]) expect(await skipsOf(d.database)).toEqual([]);
+  });
+
+  it('a private goal sends none of the three', async () => {
+    const { bima, goalId } = await world();
+    const old = await oldEmergencyGoal(bima);
+    await clearOutbox(bima.database);
+    await setEmergencyOwnTarget(bima.database, bima.ws, goalId, { targetMinor: 45_000_000 });
+    expect(await getGoalCalculator(bima.database, bima.ws, goalId)).toMatchObject({ inputs: { months: 6, targetMinor: 45_000_000 }, computedMinor: 45_000_000 });
+    expect(await upgradeCalculatorGoals(bima.database, bima.ws, '2026-11-10')).toEqual([]);
+    expect(await inputsOf(bima, old)).toMatchObject({ version: 2 });
+    await clearGoalCalculator(bima.database, bima.ws, goalId);
+    expect(await getGoalCalculator(bima.database, bima.ws, goalId)).toBeNull();
+    expect(await goalOpsOf(bima)).toEqual([]);
   });
 });

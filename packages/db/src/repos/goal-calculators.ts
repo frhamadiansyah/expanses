@@ -437,17 +437,25 @@ export async function setEmergencyOwnTarget(
   if (!row || row.kind !== 'emergency') return;
   const { targetMinor: _was, ...rest } = row.inputs as EmergencyInputs;
   const inputs: EmergencyInputs = { ...rest, version: 2, ...(months === undefined ? {} : { months }), ...(targetMinor === undefined ? {} : { targetMinor }) };
-  await database.db
-    .update(goalCalculators)
-    .set({ inputsJson: JSON.stringify(inputs), computedMinor: targetMinor ?? 0 })
-    .where(and(eq(goalCalculators.goalId, goalId), eq(goalCalculators.workspaceId, ws.workspaceId)));
+  // A shared goal's working is a row of the household book: the change goes to the other phones.
+  await database.transaction((tx) =>
+    withGoalCapture(tx, { entity: 'goal_calculator', id: goalId }, () =>
+      tx
+        .update(goalCalculators)
+        .set({ inputsJson: JSON.stringify(inputs), computedMinor: targetMinor ?? 0 })
+        .where(and(eq(goalCalculators.goalId, goalId), eq(goalCalculators.workspaceId, ws.workspaceId))),
+    ),
+  );
 }
 
 /** Breaks the link on purpose. The stages stay exactly as they are; they are simply no longer derived. */
 export async function clearGoalCalculator(database: Database, ws: WorkspaceContext, goalId: string): Promise<void> {
-  await database.db
-    .delete(goalCalculators)
-    .where(and(eq(goalCalculators.goalId, goalId), eq(goalCalculators.workspaceId, ws.workspaceId)));
+  // On a shared goal the other phones' link breaks too.
+  await database.transaction((tx) =>
+    withGoalCapture(tx, { entity: 'goal_calculator', id: goalId }, () =>
+      tx.delete(goalCalculators).where(and(eq(goalCalculators.goalId, goalId), eq(goalCalculators.workspaceId, ws.workspaceId))),
+    ),
+  );
 }
 
 export async function listGoalCalculators(database: Database, ws: WorkspaceContext): Promise<GoalCalculatorRow[]> {
@@ -555,12 +563,15 @@ export async function upgradeCalculatorGoals(database: Database, ws: WorkspaceCo
     }
     const didChange = await database.transaction(async (tx) => {
       if (sameFigures(goal, derived, await drawnStageIds(tx, goal.id), await healthTablesExist(tx))) {
-        // Nothing moves; the working is only stamped as read in today's money, so it is not visited again.
+        // Nothing moves; the working is only stamped as read in today's money, so it is not visited again — on a shared
+        // goal, by the other phones too.
         if (!isV2(row)) {
-          await tx
-            .update(goalCalculators)
-            .set({ inputsJson: JSON.stringify(derived.inputs) })
-            .where(and(eq(goalCalculators.goalId, goal.id), eq(goalCalculators.workspaceId, ws.workspaceId)));
+          await withGoalCapture(tx, { entity: 'goal_calculator', id: goal.id }, () =>
+            tx
+              .update(goalCalculators)
+              .set({ inputsJson: JSON.stringify(derived.inputs) })
+              .where(and(eq(goalCalculators.goalId, goal.id), eq(goalCalculators.workspaceId, ws.workspaceId))),
+          );
         }
         return false;
       }

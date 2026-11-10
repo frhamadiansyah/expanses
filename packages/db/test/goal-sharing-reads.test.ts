@@ -15,6 +15,7 @@ import {
   type GoalSummary,
   type WorkspaceContext,
 } from '../src/index';
+import { ownGoalFunding } from '../src/sync/goals/summaries';
 import { setupDb } from './helpers';
 
 /* Shared goals §9.1, §9.3, C16, C19-C22: the plan counts both people's money, this phone plans its own part, and a
@@ -43,12 +44,18 @@ const RINA_LINES: Line[] = [
   { ref: 'ref-2', name: 'Cash Fund', kind: 'tagged', amountMinor: 4_000_000, risk: 'low' },
 ];
 
-async function giveRina(lines: Line[], plannedMonthlyMinor: number, member = 'member-r') {
+async function giveRina(lines: Line[], plannedMonthlyMinor: number, member = 'member-r', goal = goalId) {
   await database.db.run(sql`
     INSERT INTO goal_member_funding (goal_id, member_id, workspace_id, lines_json, planned_monthly_minor, as_of)
-    VALUES (${goalId}, ${member}, ${ws.workspaceId}, ${JSON.stringify(lines)}, ${plannedMonthlyMinor}, ${TODAY})
+    VALUES (${goal}, ${member}, ${ws.workspaceId}, ${JSON.stringify(lines)}, ${plannedMonthlyMinor}, ${TODAY})
     ON CONFLICT (goal_id, member_id) DO UPDATE SET lines_json = excluded.lines_json, planned_monthly_minor = excluded.planned_monthly_minor`);
 }
+
+/** Bima's own line as his other device sent it: this phone is member-b too. */
+const BIMA_LINES: Line[] = [
+  { ref: 'ref-b1', name: 'Home Savings', kind: 'earmark', amountMinor: 20_000_000, risk: null },
+  { ref: 'ref-b2', name: 'Spare Account', kind: 'earmark', amountMinor: 8_000_000, risk: null },
+];
 
 async function shareGoalRaw(id: string) {
   await database.db.run(sql`INSERT OR IGNORE INTO books (id, workspace_id, name, kind, base_currency, count_events_in_budget, sort_order, created_at)
@@ -202,5 +209,74 @@ describe('plan reads on a shared goal', () => {
     const summary = await plans();
     expect(planOf(summary, shared).allTargetMinor).toBe(6 * 5_000_000);
     expect(planOf(summary, alone).allTargetMinor).toBe(0);
+  });
+});
+
+describe('a second device of the same member (§11)', () => {
+  /** A goal shared here with none of Bima's money on this device: his tablet. */
+  async function onTablet() {
+    const id = await saveGoal(database, ws, { ...oneStage('Home Fund', 162_000_000), standingMonthlyMinor: 500_000 });
+    await shareGoalRaw(id);
+    await giveRina(BIMA_LINES, 1_500_000, 'member-b', id);
+    await giveRina(RINA_LINES, 1_000_000, 'member-r', id);
+    return id;
+  }
+
+  it("counts the member's synced line once, as that member's", async () => {
+    const id = await onTablet();
+    const plan = planOf(await plans(), id);
+    expect(plan.currentMinor).toBe(42_000_000);
+    expect(plan.links.map((l) => [l.owner, l.name, l.goalMinor])).toEqual([
+      ['member-b', 'Home Savings', 20_000_000],
+      ['member-b', 'Spare Account', 8_000_000],
+      ['member-r', 'Partner Savings', 10_000_000],
+      ['member-r', 'Cash Fund', 4_000_000],
+    ]);
+    // This device's standing 500.000, Bima's other device's 1.500.000, Rina's 1.000.000
+    expect(plan.plannedMonthlyMinor).toBe(3_000_000);
+    // Bima's own plan is not another member's: only Rina's comes off his need.
+    expect(plan.othersPlannedMonthlyMinor).toBe(1_000_000);
+    // (162.000.000 - 42.000.000) over 48 months, less Rina's 1.000.000
+    expect(plan.requiredMonthlyMinor).toBe(2_500_000);
+    expect(plan.ownNeededMonthlyMinor).toBe(1_500_000);
+  });
+
+  it('sends nothing of the line back: its own part is only what it holds', async () => {
+    const id = await onTablet();
+    expect(await ownGoalFunding(database, ws, id, TODAY)).toEqual({ lines: [], plannedMonthlyMinor: 500_000 });
+  });
+
+  it("the member's synced line on this device reaches no other reader", async () => {
+    const id = await saveGoal(database, ws, oneStage('Home Fund', 162_000_000));
+    await shareGoalRaw(id);
+    const read = async () => ({
+      nw: await netWorthAt(database, ws, TODAY, {}),
+      views: await setAsideViews(database, ws),
+      put: await goalContributionsFor(database, ws, '2026-11'),
+    });
+    const before = await read();
+    await giveRina(BIMA_LINES, 1_500_000, 'member-b', id);
+    expect(await read()).toEqual(before);
+  });
+
+  it('the device that sent the line counts its own records, not the line as well', async () => {
+    await database.db.run(sql`INSERT INTO settings (key, value) VALUES (${`goal.summary.${goalId}`}, '1')`);
+    await giveRina(BIMA_LINES, 2_000_000, 'member-b');
+    await giveRina(RINA_LINES, 1_000_000);
+    const plan = planOf(await plans(), goalId);
+    expect(plan.currentMinor).toBe(42_000_000);
+    expect(plan.links.filter((l) => l.owner === 'member-b')).toEqual([]);
+    expect(plan.plannedMonthlyMinor).toBe(3_000_000);
+    expect(plan.othersPlannedMonthlyMinor).toBe(1_000_000);
+  });
+
+  it('a device holding money of its own counts that, even before it sends', async () => {
+    // No summary written here yet; this device's 28.000.000 is the member's money it knows, not 28.000.000 more.
+    await giveRina(BIMA_LINES, 2_000_000, 'member-b');
+    await giveRina(RINA_LINES, 1_000_000);
+    const plan = planOf(await plans(), goalId);
+    expect(plan.currentMinor).toBe(42_000_000);
+    expect(plan.links.filter((l) => l.owner === 'member-b')).toEqual([]);
+    expect(plan.plannedMonthlyMinor).toBe(3_000_000);
   });
 });
