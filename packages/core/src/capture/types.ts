@@ -139,9 +139,15 @@ export interface WordList {
   accountLabels: string[];
   /** Labels of a table cell that says whether the purchase went through: "status". */
   statusLabels: string[];
-  /** A status that says it went through: "sukses", "approved". */
-  approved: string[];
-  /** A status that says it did not: "ditolak", "declined". Any status that is not approved is not recorded either. */
+  /**
+   * Labels of a table cell that names the shop, and only a shop: "merchant". A table with one is a purchase, where a
+   * "Pengirim" or "Penerima" cell may be money arriving or a transfer.
+   */
+  merchantLabels: string[];
+  /**
+   * A status that says the purchase did not go through: "ditolak", "tidak berhasil", "declined". Only such a status
+   * is skipped; one that says nothing either way ("Pending", "cek di aplikasi") is read like any other.
+   */
   declined: string[];
   /** Labels of a table cell the reader steps past, so the cells after it still pair up: "jenis kartu", "card type". */
   tableLabels: string[];

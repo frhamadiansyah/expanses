@@ -27,6 +27,10 @@ describe('the capture setup guides', () => {
     for (const part of ['Automation', 'Email', 'Run Immediately', 'Get Details of Mail', 'Log notification', 'Subject', 'Body', 'Sender', 'Date Received']) {
       expect(steps).toContain(part);
     }
+    // Each added copy of the action reads the previous one's output unless its Mail is set back to the trigger's.
+    const details = guide!.steps.find((step) => step.includes('Get Details of Mail')) ?? '';
+    expect(details).toContain('Shortcut Input');
+    expect(steps).not.toMatch(/\d{2,}/);
   });
 
   it('speaks to nobody: no “you” in any guide', () => {

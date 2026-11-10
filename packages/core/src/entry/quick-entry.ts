@@ -151,13 +151,16 @@ const MASK = /^x{2,}$/;
  * "SUPERINDO KEBAYORAN 0912" and "Superindo Kebayoran" read the same, and so do "QRIS KOPI KENANGAN XXXX5512" and
  * "Kopi Kenangan" — the payment words, masked numbers, digits and punctuation a capture carries are not the name.
  *
- * A card descriptor with a star is the merchant before it and a reference after it ("Tokobaju* B-QX7TPLM22"), and
- * the reference is new on every purchase: the key is what comes before the star, so each of them matches the last —
- * as a statement line's category key reads it (`categoryKeyOf`). A star with nothing named before it is passed over.
+ * A card descriptor with a star and a reference after it ("Tokobaju* B-QX7TPLM22") is the merchant before the star,
+ * and the reference is new on every purchase: the key is what comes before it, so each one matches the last. A
+ * reference carries a digit; what follows a star without one is a name — the service or the shop behind a platform,
+ * "GOJEK*GORIDE", "PAYPAL *STEAM" — and is kept, so each stays its own. A star with nothing named before it is passed
+ * over.
  */
 export function merchantKey(description: string): string {
   const star = description.indexOf('*');
-  if (star > 0) {
+  const after = star >= 0 ? (description.slice(star + 1).trim().split(/\s+/)[0] ?? '') : '';
+  if (star > 0 && /\d/.test(after)) {
     const before = keyOfWords(description.slice(0, star));
     if (before !== '') return before;
   }

@@ -61,7 +61,7 @@ export const CAPTURE_GUIDES: readonly CaptureGuide[] = [
       'Open Shortcuts, go to Automation and tap ＋.',
       'Choose Email, then choose the bank’s sender address under Sender. To keep to transactions, also set Subject Contains to “Transaction”.',
       'Choose “Run Immediately”, so each email is saved without a tap, then tap Next and choose New Blank Automation.',
-      'Add the action “Get Details of Mail” and pick Body. Add it three more times, for Subject, Sender and Date Received.',
+      'Add the action “Get Details of Mail” and pick Body. Add it three more times, for Subject, Sender and Date Received. In each copy, tap its Mail and choose Shortcut Input: a copy added below another otherwise reads that one’s result instead of the email.',
       'Add the action “Log notification” (search for the app), then set Title to Subject, Body to Body, App to Sender and Date to Date Received.',
       'Tap Done. The next transaction email from that sender is a draft in Review the next time the app is opened.',
       'Each sender is a capture source of its own under Capture sources, the way an app is for notifications.',

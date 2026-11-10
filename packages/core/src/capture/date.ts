@@ -19,10 +19,12 @@ const MONTHS: Record<string, number> = {
   aug: 8,
   agu: 8,
   ags: 8,
+  agt: 8,
   sep: 9,
   oct: 10,
   okt: 10,
   nov: 11,
+  nop: 11,
   dec: 12,
   des: 12,
 };
@@ -31,7 +33,7 @@ const MONTHS: Record<string, number> = {
 const MONTH_NAMES = new Set([
   ...Object.keys(MONTHS),
   'january', 'february', 'march', 'april', 'june', 'july', 'august', 'september', 'sept', 'october', 'november', 'december',
-  'januari', 'februari', 'maret', 'juni', 'juli', 'agustus', 'oktober', 'desember',
+  'januari', 'februari', 'maret', 'juni', 'juli', 'agustus', 'oktober', 'nopember', 'desember',
 ]);
 
 const pad = (value: number, width = 2) => String(value).padStart(width, '0');

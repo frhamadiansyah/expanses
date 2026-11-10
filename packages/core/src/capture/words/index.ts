@@ -30,7 +30,7 @@ export function mergeWords(...lists: readonly WordList[]): WordList {
     dateLabels: [],
     accountLabels: [],
     statusLabels: [],
-    approved: [],
+    merchantLabels: [],
     declined: [],
     tableLabels: [],
     thousand: [],

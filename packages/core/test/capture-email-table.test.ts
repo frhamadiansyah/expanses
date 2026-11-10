@@ -120,6 +120,10 @@ describe('a transaction email read as a labelled table', () => {
     ['Ditolak/', 'Declined'],
     ['Gagal', ''],
     ['Failed', ''],
+    ['Transaksi Tidak Berhasil', ''],
+    ['Tidak Sukses', ''],
+    ['Not approved', ''],
+    ['Unsuccessful', ''],
   ])('skips a purchase whose status is %s %s', (one, two) => {
     const reading = readCapture(email(perCell({ status: [one, two].filter(Boolean) })), WORDS, null);
     expect(reading.skipped).toBe('declined');
@@ -127,12 +131,47 @@ describe('a transaction email read as a labelled table', () => {
     expect(reading.accountHint).toBe('4732');
   });
 
-  it('skips a status that does not say the purchase went through', () => {
-    expect(readCapture(email(perCell({ status: ['Pending'] })), WORDS, null).skipped).toBe('declined');
+  it.each([['Berhasil'], ['Success'], ['Pending'], ['Selesai'], ['Completed'], ['Paid'], ['Authorized'], ['cek di aplikasi']])(
+    'records a status of %s: only a status that says it failed is skipped',
+    (status) => {
+      const reading = readCapture(email(perCell({ status: [status] })), WORDS, null);
+      expect(reading.skipped).toBeNull();
+      expect(reading.amount?.value).toEqual({ minor: 245_500, currency: 'IDR' });
+    },
+  );
+
+  it('records a status written after its label on one line that says nothing either way', () => {
+    const body = perCell().replace(/\nStatus\nSukses\/\nApproved/, '\nStatus: cek di aplikasi');
+    expect(readCapture(email(body), WORDS, null).skipped).toBeNull();
   });
 
-  it.each([['Berhasil'], ['Success']])('records a status of %s', (status) => {
-    expect(readCapture(email(perCell({ status: [status] })), WORDS, null).skipped).toBeNull();
+  it('skips a status written after its label on one line that says it failed', () => {
+    const body = perCell().replace(/\nStatus\nSukses\/\nApproved/, '\nStatus: Transaksi Tidak Berhasil');
+    expect(readCapture(email(body), WORDS, null).skipped).toBe('declined');
+  });
+
+  it('makes no amount of a currency the app does not keep', () => {
+    const reading = readCapture(email(perCell({ currency: 'AED', amount: '245.50' })), WORDS, null);
+    expect(reading.amount?.value.currency ?? null).not.toBe('AED');
+  });
+
+  it.each([
+    ['12.500', 12_500],
+    ['1,012.500', 1_012_500],
+    ['0.750', 750],
+  ])('reads %s in a currency of three decimals as that many thousandths', (amount, minor) => {
+    const reading = readCapture(email(perCell({ currency: 'KWD', amount })), WORDS, null);
+    expect(reading.amount?.value).toEqual({ minor, currency: 'KWD' });
+  });
+
+  it('reads a marked figure in a currency of three decimals the same way', () => {
+    const reading = readCapture(email(perCell({ currency: 'KWD', amount: 'KWD 12.500' })), WORDS, null);
+    expect(reading.amount?.value).toEqual({ minor: 12_500, currency: 'KWD' });
+  });
+
+  it('reads money in when the words naming it come after the table, and the table names no card or merchant', () => {
+    const body = ['Mata Uang', 'Jumlah', 'IDR', '500,000', 'Dana telah masuk ke rekening Anda.'].join('\n');
+    expect(readCapture(email(body, 'Notifikasi'), WORDS, null).type.value).toBe('received');
   });
 
   it('reads a table with no status at all as it reads any other', () => {
@@ -165,6 +204,8 @@ describe('a transaction email read as a labelled table', () => {
     ['07 Des 26 07:30', '2026-12-07T07:30'],
     ['21 Mei 26 00:00', '2026-05-21T00:00'],
     ['09 Okt 26 13:15', '2026-10-09T13:15'],
+    ['17 Agt 26 11:00', '2026-08-17T11:00'],
+    ['02 Nop 26 08:05', '2026-11-02T08:05'],
   ])('reads the time %s with an Indonesian month', (time, iso) => {
     expect(readCapture(email(perCell({ time })), WORDS, null).occurredAt?.value).toBe(iso);
   });
@@ -207,6 +248,9 @@ describe('a short-year date with a month name', () => {
   it('reads DD Mon YY HH:MM as this century', () => {
     expect(findDateTime('03 Nov 26 09:41')).toBe('2026-11-03T09:41');
     expect(findDateTime('3 Agustus 26')).toBe('2026-08-03');
+    expect(findDateTime('3 Nopember 26')).toBe('2026-11-03');
+    expect(findDateTime('3 Nopember 2026')).toBe('2026-11-03');
+    expect(findDateTime('17 Agt 2026')).toBe('2026-08-17');
   });
 
   it('does not read a word that is no month, or a number run into more digits', () => {
@@ -223,6 +267,13 @@ describe('a merchant with a reference code after its star', () => {
     expect(merchantKey('Tokobaju* B-QX7TPLM22')).toBe('tokobaju');
     expect(merchantKey('Ojek* A-7HNQWERTY31')).toBe(merchantKey('OJEK* B-2MZPLOKIJ90'));
     expect(merchantKey('Ojek* A-7HNQWERTY31')).not.toBe(merchantKey('Tokobaju* B-QX7TPLM22'));
+  });
+
+  it('keeps both sides of a star with no reference after it, so each service and shop stays its own', () => {
+    expect(merchantKey('GOJEK*GORIDE')).not.toBe(merchantKey('GOJEK*GOFOOD'));
+    expect(merchantKey('PAYPAL *STEAM')).not.toBe(merchantKey('PAYPAL *SPOTIFY'));
+    expect(merchantKey('SHOPEEPAY*TOKO MAWAR')).not.toBe(merchantKey('SHOPEEPAY*KEDAI SENJA'));
+    expect(merchantKey('Ojek* A-6XYZ123')).toBe('ojek');
   });
 
   it('files the next one under the category the last one went to', () => {

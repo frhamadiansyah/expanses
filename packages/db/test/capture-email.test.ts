@@ -2,8 +2,9 @@ import { expenseLines, type RawCapture } from '@expanses/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ingestCaptures } from '../src/capture/ingest';
 import { listSkipped } from '../src/capture/skipped';
-import { listSources } from '../src/capture/sources';
-import { addCard, createCardAccount, listAccounts, listDrafts, postTransaction } from '../src/index';
+import { listSources, setSourceAccount } from '../src/capture/sources';
+import { captureSources } from '../src/schema-capture';
+import { addCard, createAccount, createCardAccount, listAccounts, listDrafts, postTransaction } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
 /*
@@ -85,6 +86,36 @@ describe('a bank email', () => {
       ['app', 'notify@mail.lain.com', 'Lain'],
     ]);
     expect(sources.find((source) => source.key === 'alerts@bankcontoh.co.id')!.capturedCount).toBe(2);
+  });
+
+  it('keeps a source made before senders were keyed by address, with the account it learned', async () => {
+    const { database, ws } = await withCard();
+    const bank = await createAccount(database, ws, { name: 'Everyday bank', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    // A message app that hands over an email address as its sender made this source, keyed on the address as it came.
+    const now = new Date().toISOString();
+    await database.db.insert(captureSources).values({
+      id: 'legacy-source',
+      workspaceId: null,
+      keyKind: 'app',
+      key: 'Kawan.Contoh@Example.com',
+      label: 'Com',
+      accountId: null,
+      templateJson: null,
+      readOffers: 0,
+      capturedCount: 3,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await setSourceAccount(database, 'legacy-source', bank.id, ws.workspaceId);
+
+    const message = { ...mail('msg-1', 'Pembayaran Rp38.000 berhasil. Merchant: TOKO KOPI', 'Kawan.Contoh@Example.com'), title: 'Kawan' };
+    await ingestCaptures(database, ws, [message], { today: DAY });
+
+    const sources = await listSources(database);
+    expect(sources).toHaveLength(1);
+    expect(sources[0]).toMatchObject({ id: 'legacy-source', key: 'Kawan.Contoh@Example.com', capturedCount: 4, accountId: bank.id });
+    const [draft] = await listDrafts(database, ws, 'pending');
+    expect(draft).toMatchObject({ accountId: bank.id, amountMinor: 38_000 });
   });
 
   it('is recorded in the currency it was charged in', async () => {

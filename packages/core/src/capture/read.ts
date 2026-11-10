@@ -1,4 +1,5 @@
-import { bareAmountOf, findAmounts } from './amount';
+import { isSupportedCurrency } from '../money/currencies';
+import { bareAmountOf, exponentOf, findAmounts } from './amount';
 import { findDateTime } from './date';
 import type { CaptureLine, Field, MoveType, RawCapture, Reading, ReadAmount, Template, WordList } from './types';
 import { type LabelledTable, labelledTableOf, tableValue } from './table';
@@ -461,7 +462,7 @@ const WORDS_FOR_CUT: WordList = {
   dateLabels: [],
   accountLabels: [],
   statusLabels: [],
-  approved: [],
+  merchantLabels: [],
   declined: [],
   tableLabels: [],
   thousand: ['rb', 'ribu', 'k'],
@@ -627,8 +628,10 @@ interface TableReading {
   occurredAt: Field<string> | null;
   name: Field<string> | null;
   accountHint: string | null;
-  /** True when the table printed a status and it does not say the purchase went through. */
+  /** True when the table printed a status that says the purchase did not go through. */
   declined: boolean;
+  /** Whether the table names a card or a merchant: then it is a purchase, whatever its footer says. */
+  purchase: boolean;
   /** The last line of the body the table was on: what comes after it is the footer. */
   end: number;
 }
@@ -637,9 +640,11 @@ interface TableReading {
 const CODE = /^[A-Za-z]{3}$/;
 
 /**
- * A transaction printed as a labelled table (`table.ts`): an amount cell, and a currency said by the cell itself or by
- * a currency cell beside it — a table of figures with no currency is not one this reader can be sure is money. Null
- * when the capture is no such table, and the rest of the reader goes on as it always has.
+ * A transaction printed as a labelled table (`table.ts`): an amount cell, a currency said by the cell itself or by a
+ * currency cell beside it — a table of figures with no currency is not one this reader can be sure is money — and
+ * something only a transaction table has: a currency cell, a card number or a merchant. "Jumlah" over a figure and
+ * "Pengirim" over a name is a notification like any other, and is read as one. Null when the capture is no such
+ * table, and the rest of the reader goes on as it always has.
  *
  * Each value is the whole cell, as printed: the merchant keeps its reference code ("Tokobaju* B-QX7TPLM22"), which is
  * what the owner reads on the statement; a merchant's key for its category drops it (`merchantKey`).
@@ -650,31 +655,39 @@ function tableReadingOf(capture: RawCapture, words: WordList): TableReading | nu
   if (table.pairs.length < 2) return null;
   const cell = tableValue(table, 'amount');
   if (!cell) return null;
+  // Only a currency the app keeps: any other code is no currency this reader can file money in.
+  const printedCode = tableValue(table, 'currency')?.value.trim().toUpperCase() ?? '';
+  const code = CODE.test(printedCode) && isSupportedCurrency(printedCode) ? printedCode : null;
+  const card = tableValue(table, 'account');
+  const merchantPair = table.pairs.find((pair) => pair.field === 'name' && words.merchantLabels.includes(pair.label));
+  if (code === null && !card && !merchantPair) return null;
+
   const marked = findAmounts(cell.value, words).find((figure) => figure.currency !== null);
-  const code = tableValue(table, 'currency')?.value.trim() ?? '';
+  const currency = marked?.currency ?? code;
   let amount: ReadAmount | null = null;
-  if (marked) {
+  if (marked && exponentOf(marked.currency) !== 3) {
     amount = { minor: marked.minor, currency: marked.currency };
     if (marked.exactHundredths !== undefined) amount.exactHundredths = marked.exactHundredths;
-  } else if (CODE.test(code)) {
-    const currency = code.toUpperCase();
-    const bare = bareAmountOf(cell.value, currency);
+  } else if (currency !== null) {
+    // A figure with no mark, or one in a currency of three decimals, is read in the currency it is in.
+    const bare = bareAmountOf(cell.value.slice(marked?.start ?? 0), currency);
     if (bare) amount = { minor: bare.minor, currency, ...(bare.exactHundredths === undefined ? {} : { exactHundredths: bare.exactHundredths }) };
   }
   if (amount === null) return null;
 
+  // Only a status that says it failed is skipped: "Pending" or "cek di aplikasi" says nothing either way.
   const status = tableValue(table, 'status')?.value ?? null;
-  const declined = status !== null && (hasWord(status, words.declined) || !hasWord(status, words.approved));
+  const declined = status !== null && hasWord(status, words.declined);
   const when = tableValue(table, 'date');
   const printed = when ? findDateTime(when.value) : null;
   const merchant = tableValue(table, 'name')?.value.trim() ?? '';
-  const card = tableValue(table, 'account');
   return {
     amount: { value: amount, confidence: 90, line: null },
     occurredAt: printed ? { value: printed, confidence: 90, line: null } : null,
     name: merchant ? { value: merchant, confidence: 90, line: null } : null,
     accountHint: card ? accountHintOf(card.value, words) : null,
     declined,
+    purchase: card !== null || merchantPair !== undefined,
     end: table.end,
   };
 }
@@ -729,12 +742,19 @@ export function readCapture(
     const accountHint = paymentMethod?.last4 ?? table.accountHint ?? hint;
     if (table.declined) return SKIPPED('declined', accountHint, paymentMethod);
     const head = unitsOf({ ...capture, body: capture.body!.split('\n').slice(0, table.end + 1).join('\n') });
+    /*
+     * The direction is what the title and the table say. When they name none, a table with a card or a merchant is a
+     * purchase — its footer's "kredit" or "pengembalian dana" is an advert, not this money — and any other table is
+     * read whole, so "Dana telah masuk" under the figures is still money arriving.
+     */
+    let type = typeOf(head, words, false);
+    if (type.confidence < 85) type = table.purchase ? { value: 'spent', confidence: 70, line: null } : typeOf(all, words, false);
     return {
       skipped: null,
       amount: table.amount,
-      occurredAt: table.occurredAt ?? dateOf(head, capture, {}),
-      type: typeOf(head, words, false),
-      name: table.name ?? nameOf(head, words, capture, {}),
+      occurredAt: table.occurredAt ?? dateOf(head, capture, {}) ?? dateOf(all, capture, {}),
+      type,
+      name: table.name ?? nameOf(head, words, capture, {}) ?? nameOf(all, words, capture, {}),
       accountHint,
       paymentMethod,
     };

@@ -179,13 +179,31 @@ function exactOf(major: number, currency: string | null): number | null {
 }
 
 /**
+ * A figure in a currency of three decimals (KWD, BHD), where the last separator before three digits is the decimal
+ * point when it is the only one of its kind: `12.500` is twelve and a half, `1,012.500` a thousand and twelve and a
+ * half. The same separator twice (`1,250,000`) is thousands, and null leaves the figure to `parseNumber`.
+ */
+function thousandthsNumber(raw: string): number | null {
+  const lastSep = Math.max(raw.lastIndexOf('.'), raw.lastIndexOf(','));
+  if (lastSep < 0) return null;
+  const tail = raw.slice(lastSep + 1);
+  const head = raw.slice(0, lastSep);
+  if (!/^\d{3}$/.test(tail) || head.includes(raw[lastSep]!)) return null;
+  if (!/^\d+$/.test(head) && !/^\d{1,3}(?:[.,]\d{3})+$/.test(head)) return null;
+  const whole = Number(head.replace(/[.,]/g, ''));
+  return whole + Number(tail) / 1000;
+}
+
+/**
  * A figure printed bare, in a currency said somewhere else — a table's "Mata Uang" cell beside its "Jumlah" — as the
- * amount it comes to: `245,500` in IDR is 245.500, `18.40` in SGD is 1.840 cents. Null when the digits are no figure.
+ * amount it comes to: `245,500` in IDR is 245.500, `18.40` in SGD is 1.840 cents, `12.500` in KWD is 12.500 fils.
+ * Null when the digits are no figure.
  */
 export function bareAmountOf(text: string, currency: string): { minor: number; exactHundredths?: number } | null {
   const digits = /\d[\d.,]*/.exec(text);
   if (!digits) return null;
-  const major = parseNumber(digits[0].replace(/[.,]+$/, ''));
+  const raw = digits[0].replace(/[.,]+$/, '');
+  const major = (exponentOf(currency) === 3 ? thousandthsNumber(raw) : null) ?? parseNumber(raw);
   if (major === null) return null;
   const exact = exactOf(major, currency);
   return { minor: toMinor(major, currency), ...(exact === null ? {} : { exactHundredths: exact }) };

@@ -20,6 +20,8 @@ export type TableField = 'amount' | 'currency' | 'date' | 'name' | 'account' | '
 /** One label with its value, and the line of the text the value was on. */
 export interface TablePair {
   field: TableField;
+  /** The label as it reads folded: lower case, single spaces, no colon. */
+  label: string;
   value: string;
   line: number;
 }
@@ -53,6 +55,7 @@ function labelsOf(words: WordList): Map<string, TableField> {
     [words.amountLabels, 'amount'],
     [words.currencyLabels, 'currency'],
     [words.dateLabels, 'date'],
+    [words.merchantLabels, 'name'],
     [words.nameLabels, 'name'],
     [words.accountLabels, 'account'],
     [words.statusLabels, 'status'],
@@ -104,7 +107,7 @@ export function labelledTableOf(text: string, words: WordList): LabelledTable {
       // A status written after its label on one line, "Status: Approved", is still the table's status.
       const colon = row.cells.length === 1 ? row.cells[0]!.indexOf(':') : -1;
       if (colon > 0 && fieldOf(row.cells[0]!.slice(0, colon)) === 'status') {
-        pairs.push({ field: 'status', value: row.cells[0]!.slice(colon + 1).trim(), line: row.line });
+        pairs.push({ field: 'status', label: asLabel(row.cells[0]!.slice(0, colon)), value: row.cells[0]!.slice(colon + 1).trim(), line: row.line });
       }
       i += 1;
       continue;
@@ -113,13 +116,13 @@ export function labelledTableOf(text: string, words: WordList): LabelledTable {
       if (row.fields.every((field) => field !== null)) {
         const next = rows[i + 1];
         if (next && next.cells.length === row.cells.length && next.fields.every((field) => field === null)) {
-          row.fields.forEach((field, k) => pairs.push({ field: field!, value: next.cells[k]!, line: next.line }));
+          row.fields.forEach((field, k) => pairs.push({ field: field!, label: asLabel(row.cells[k]!), value: next.cells[k]!, line: next.line }));
           end = next.line;
           i += 2;
           continue;
         }
       } else if (row.fields.slice(1).every((field) => field === null)) {
-        pairs.push({ field: first, value: row.cells.slice(1).join(' '), line: row.line });
+        pairs.push({ field: first, label: asLabel(row.cells[0]!), value: row.cells.slice(1).join(' '), line: row.line });
         end = row.line;
       }
       i += 1;
@@ -131,7 +134,7 @@ export function labelledTableOf(text: string, words: WordList): LabelledTable {
     while (v < rows.length && v - k < k - i && rows[v]!.cells.length === 1 && rows[v]!.fields[0] === null) v += 1;
     if (v - k === k - i) {
       for (let n = 0; n < k - i; n += 1) {
-        pairs.push({ field: rows[i + n]!.fields[0]!, value: rows[k + n]!.cells[0]!, line: rows[k + n]!.line });
+        pairs.push({ field: rows[i + n]!.fields[0]!, label: asLabel(rows[i + n]!.cells[0]!), value: rows[k + n]!.cells[0]!, line: rows[k + n]!.line });
       }
       end = rows[v - 1]!.line;
       i = v;

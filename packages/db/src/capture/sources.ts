@@ -95,13 +95,18 @@ function senderOf(app: string): { key: string; label: string } | null {
   return { key: address, label: name === '' ? address : name.charAt(0).toUpperCase() + name.slice(1) };
 }
 
-/** What a capture's source is keyed on: the app that sent it, or the layout of the screen it is a picture of. */
-function keyOf(capture: RawCapture): { keyKind: 'app' | 'fingerprint'; key: string; label: string } {
+/**
+ * What a capture's source is keyed on: the app that sent it, or the layout of the screen it is a picture of.
+ *
+ * `legacy` is the key the same capture had before senders were keyed by address — the app exactly as handed over — so
+ * a source made then (a message app that names its sender by an email address) is still found, with what it learned.
+ */
+function keyOf(capture: RawCapture): { keyKind: 'app' | 'fingerprint'; key: string; label: string; legacy?: string } {
   const app = capture.app?.trim();
   if (app) {
     // An email's sender is its app: each bank's address is a source of its own, as an SMS sender is.
     const sender = senderOf(app);
-    if (sender) return { keyKind: 'app', ...sender };
+    if (sender) return { keyKind: 'app', ...sender, ...(sender.key === app ? {} : { legacy: app }) };
     return { keyKind: 'app', key: app, label: appNameOf(app) };
   }
   // An image has no app: its top band — the brand, the title bar, the masked digits — is what names it.
@@ -129,6 +134,8 @@ export async function sourceFor(tx: Db, capture: RawCapture, count = true): Prom
      an empty fingerprint is like no other fingerprint, but it is like every other empty one, and making a new source
      for each of them would fill the Capture sources list with strangers. */
   const found =
+    // A source already kept under the app exactly as it came is that source: its key is never changed under it.
+    (wanted.legacy === undefined ? undefined : sameKind.find((row) => row.key === wanted.legacy)) ??
     sameKind.find((row) => row.key === wanted.key) ??
     (wanted.keyKind === 'fingerprint' ? sameKind.find((row) => sameSource(wordsOf(row.key), wordsOf(wanted.key))) : undefined);
 
