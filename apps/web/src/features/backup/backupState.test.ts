@@ -77,6 +77,7 @@ describe('copyReasonWords', () => {
     expect(copyReasonWords('daily')).toBe('The day’s copy');
     expect(copyReasonWords('before-restore')).toBe('Taken before a restore');
     expect(copyReasonWords('before-start-fresh')).toBe('Taken before starting fresh');
+    expect(copyReasonWords('background')).toBe('Taken on leaving the app');
   });
 });
 

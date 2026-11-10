@@ -1,5 +1,6 @@
 import { LATEST_VERSION, type SqlExecutor } from '@expanses/db';
 import { type FatalKind, fatalKind, fatalReason, messageOf } from './fatal';
+import type { CheckedSnapshot } from './live-health';
 import type { RecoveryReason } from './open';
 
 interface Reply {
@@ -16,6 +17,12 @@ export interface SnapshotExecutor extends SqlExecutor {
    * from `exportBytes` because it is allowed to refuse: a safety copy is never worth a torn read.
    */
   snapshotBytes(): Promise<Uint8Array>;
+  /**
+   * The background copy's bytes: nothing when the connection's change count is still `since`, and otherwise
+   * the file, once it has passed `quick_check` and still holds `schema_migrations`. Waits out a transaction
+   * the way `snapshotBytes` does, and like it is never fatal: a refusal skips the copy, nothing more.
+   */
+  checkedSnapshot(since: number): Promise<CheckedSnapshot>;
   /**
    * Registers the one handler that hears a failure this session cannot carry on past (spec §3.4).
    *
@@ -123,6 +130,22 @@ const isBusy = (error: unknown): boolean => /busy/i.test(error instanceof Error 
 
 /** What a query still in flight is told when the app lets go of the engine on purpose. Never shown above the fold. */
 const RELEASED = 'Expanses let go of the database so this screen could offer to put a copy back.';
+
+/** Asks for a copy, waiting out a transaction in flight between attempts (see `BUSY_RETRY_MS`). */
+async function outlastingTransactions<T>(ask: () => Promise<T>): Promise<T> {
+  for (const wait of BUSY_RETRY_MS) {
+    try {
+      return await ask();
+    } catch (error) {
+      // Anything but "a transaction is open" is the answer, not a reason to ask again.
+      if (!isBusy(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+  }
+  // The last attempt, and the one whose failure is reported: the copy is given up on rather than
+  // waited for, the open carries on without it, and the user is told there is none.
+  return ask();
+}
 
 export function createWorkerExecutor(worker: Worker): SnapshotExecutor {
   let nextId = 0;
@@ -293,20 +316,8 @@ export function createWorkerExecutor(worker: Worker): SnapshotExecutor {
       await call({ op: 'script', sql });
     },
     exportBytes: async () => (await call({ op: 'export' })) as Uint8Array,
-    snapshotBytes: async () => {
-      for (const wait of BUSY_RETRY_MS) {
-        try {
-          return (await call({ op: 'snapshot' })) as Uint8Array;
-        } catch (error) {
-          // Anything but "a transaction is open" is the answer, not a reason to ask again.
-          if (!isBusy(error)) throw error;
-          await new Promise((resolve) => setTimeout(resolve, wait));
-        }
-      }
-      // The last attempt, and the one whose failure is reported: the copy is given up on rather than
-      // waited for, the open carries on without it, and the user is told there is none.
-      return (await call({ op: 'snapshot' })) as Uint8Array;
-    },
+    snapshotBytes: () => outlastingTransactions(async () => (await call({ op: 'snapshot' })) as Uint8Array),
+    checkedSnapshot: (since) => outlastingTransactions(async () => (await call({ op: 'checked-snapshot', since })) as CheckedSnapshot),
     importBytes: async (bytes) => {
       const copy = bytes.slice();
       // What this build knows goes with the file, so the engine can refuse one written by a newer build

@@ -114,6 +114,18 @@ describe('lastGoodCopy', () => {
     expect(lastGoodCopy(list)?.reason).toBe('before-migration');
   });
 
+  it('offers a background copy when it is the newest good one, still passing over an undo and a stub', () => {
+    // Taken when the app last left the foreground, of a file that had just passed quick_check: a real copy.
+    const list = [
+      copy('2026-11-10T08:00:00.000Z', 'daily'),
+      copy('2026-11-10T09:00:00.000Z', 'background'),
+      copy('2026-11-10T10:00:00.000Z', 'before-restore'),
+      { ...copy('2026-11-10T11:00:00.000Z', 'background'), bytes: 100 },
+    ];
+    expect(lastGoodCopy(list)?.takenAt).toBe('2026-11-10T09:00:00.000Z');
+    expect(lastGoodCopy([copy('2026-11-10T08:00:00.000Z', 'background'), copy('2026-11-10T09:00:00.000Z', 'daily')])?.reason).toBe('daily');
+  });
+
   it('answers with nothing when every copy is an undo of a restore', () => {
     expect(lastGoodCopy([copy('2026-09-19T10:00:00.000Z', 'before-restore')])).toBe(null);
     expect(lastGoodCopy([])).toBe(null);

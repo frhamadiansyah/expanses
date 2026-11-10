@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { watchCaptures } from '../capture/drain';
 import { installCaptureTestHook } from '../capture/test-hook';
 import type { AppDb } from '../db/bootstrap';
+import { backgroundCopyFor, watchLeaving } from '../db/background-copy';
 import { scheduleDailyCopy } from '../db/snapshots';
 import { listenForJoinLinks, listenForReviewLinks, listenForStatementLinks } from '../native/deep-link';
 import type { SyncService } from '../sync/sync-service';
@@ -52,6 +53,12 @@ export function App({ app, sync: given }: { app: AppDb; sync?: SyncService }) {
   // had an update in months.
   useEffect(() => {
     if (app.safety) scheduleDailyCopy(app.safety);
+  }, [app.safety]);
+  // And a copy each time the app goes to the background with something new written, at most every ten minutes,
+  // so the entries made since the day's copy have one too. Only the newest such copy is kept.
+  useEffect(() => {
+    const copy = app.safety ? backgroundCopyFor(app.safety) : null;
+    return copy ? watchLeaving(() => void copy()) : undefined;
   }, [app.safety]);
   // E2E builds only: a journey's way to hand the queue the captures a phone would have drained. A no-op otherwise.
   useEffect(() => {

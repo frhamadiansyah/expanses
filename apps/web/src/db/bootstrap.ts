@@ -189,6 +189,7 @@ export async function bootstrap(onStage: (stage: OpenStage) => void, deps: Boots
       database,
       snapshots: opfsSnapshots(),
       snapshotBytes: () => executor.snapshotBytes(),
+      checkedSnapshot: (since) => executor.checkedSnapshot(since),
       onStage,
     });
     if (result.ok) {

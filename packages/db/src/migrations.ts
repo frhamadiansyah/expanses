@@ -285,10 +285,18 @@ export async function migrate(
    * and the divergence surfaces much later as an opaque failed query against a missing column. The
    * row is dropped so the real migration runs; if its change is somehow already present the attempt
    * fails loudly and rolls back, which is the outcome worth having.
+   *
+   * The row is dropped *inside* that migration's own `BEGIN IMMEDIATE … COMMIT`, not by a DELETE of its
+   * own ahead of it. Run separately, an app killed between the two left the record gone and the migration
+   * not run — and a failure rolled back only the migration, so the old row was lost either way. In the
+   * same script, the drop, the change and the new record land together or not at all. Only versions this
+   * build is about to run are touched, which is every one found here: each is taken out of `recorded` and
+   * so lands in `todo` below.
    */
+  const renamed = new Set<number>();
   for (const [version, name] of recorded) {
     if (!expected.has(version) || expected.get(version) === name) continue;
-    await database.execScript(`DELETE FROM schema_migrations WHERE version = ${version}`);
+    renamed.add(version);
     recorded.delete(version);
   }
 
@@ -297,7 +305,8 @@ export async function migrate(
   const applied: number[] = [];
   for (const m of todo) {
     options.onProgress?.(applied.length, todo.length, m.name, m.version);
-    const script = `BEGIN IMMEDIATE;\n${m.sql}\nINSERT INTO schema_migrations (version, name, applied_at) VALUES (${m.version}, '${m.name}', '${new Date().toISOString()}');\nCOMMIT;`;
+    const drop = renamed.has(m.version) ? `DELETE FROM schema_migrations WHERE version = ${m.version};\n` : '';
+    const script = `BEGIN IMMEDIATE;\n${drop}${m.sql}\nINSERT INTO schema_migrations (version, name, applied_at) VALUES (${m.version}, '${m.name}', '${new Date().toISOString()}');\nCOMMIT;`;
     try {
       await database.execScript(script);
     } catch (error) {

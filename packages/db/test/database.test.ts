@@ -122,6 +122,59 @@ describe('a version recorded under another name', () => {
     expect(columns.map((column) => column[1])).toContain('tax_treatment');
   });
 
+  it('records the re-run under the new name, in the same transaction that drops the old one', async () => {
+    executor = createNodeExecutor();
+    const scripts: string[] = [];
+    const watched = { ...executor, execScript: async (text: string) => { scripts.push(text); return executor.execScript(text); } };
+    const database = createDatabase(watched);
+    const steps = [
+      { version: 1, name: 'first', sql: 'CREATE TABLE first_table (x INTEGER);' },
+      { version: 2, name: 'second_renamed', sql: 'CREATE TABLE second_table (y INTEGER);' },
+    ];
+    await migrate(database, steps.slice(0, 1));
+    await database.execScript(`INSERT INTO schema_migrations (version, name, applied_at) VALUES (2, 'second_old', '2026-09-13T00:00:00Z')`);
+    scripts.length = 0;
+    const progress: [number, number, string, number][] = [];
+
+    const applied = await migrate(database, steps, { onProgress: (done, total, name, version) => progress.push([done, total, name, version]) });
+
+    expect(applied).toEqual([2]);
+    expect(progress).toEqual([
+      [0, 1, 'second_renamed', 2],
+      [1, 1, 'second_renamed', 2],
+    ]);
+    const rows = await database.db.values<[number, string]>(sql`SELECT version, name FROM schema_migrations ORDER BY version`);
+    expect(rows.map((r) => [Number(r[0]), String(r[1])])).toEqual([
+      [1, 'first'],
+      [2, 'second_renamed'],
+    ]);
+    // No DELETE of its own, outside the migration's BEGIN … COMMIT: a kill between the two would lose the record.
+    expect(scripts.some((text) => /^\s*DELETE/i.test(text))).toBe(false);
+    const run = scripts.find((text) => text.includes('second_table'))!;
+    expect(run).toMatch(/^BEGIN IMMEDIATE;[\s\S]*DELETE FROM schema_migrations WHERE version = 2;[\s\S]*CREATE TABLE second_table[\s\S]*COMMIT;$/);
+  });
+
+  it('leaves the old row in place when the re-run migration fails', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    const steps = [
+      { version: 1, name: 'first', sql: 'CREATE TABLE first_table (x INTEGER);' },
+      { version: 2, name: 'second_renamed', sql: 'CREATE TABLE second_table (y INTEGER);\nINSERT INTO no_such_table VALUES (1);' },
+    ];
+    await migrate(database, steps.slice(0, 1));
+    await database.execScript(`INSERT INTO schema_migrations (version, name, applied_at) VALUES (2, 'second_old', '2026-09-13T00:00:00Z')`);
+
+    await expect(migrate(database, steps)).rejects.toThrow();
+
+    const rows = await database.db.values<[number, string]>(sql`SELECT version, name FROM schema_migrations ORDER BY version`);
+    expect(rows.map((r) => [Number(r[0]), String(r[1])])).toEqual([
+      [1, 'first'],
+      [2, 'second_old'],
+    ]);
+    const tables = await database.db.values<[string]>(sql`SELECT name FROM sqlite_master WHERE name = 'second_table'`);
+    expect(tables).toEqual([]);
+  });
+
   it('leaves a version alone when the name agrees', async () => {
     executor = createNodeExecutor();
     const database = createDatabase(executor);

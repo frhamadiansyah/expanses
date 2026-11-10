@@ -116,6 +116,9 @@ export function copyReasonWords(reason: SnapshotReason): string {
       return 'Taken before deleting a workspace';
     case 'daily':
       return 'The day’s copy';
+    case 'background':
+      // The newest copy taken as the app left the foreground; only one is ever kept.
+      return 'Taken on leaving the app';
   }
 }
 

@@ -144,6 +144,10 @@ export function workingCopy(work: RecoveryWork): WorkingCopy {
  *
  * A copy under 512 bytes is skipped too. The store no longer lists one, but this button is the one place a
  * 0-byte "last good copy" was ever offered, so it says no on its own account as well.
+ *
+ * A `background` copy is a candidate like any other. It is only ever taken of a live file that has just
+ * answered `quick_check` ok and still holds `schema_migrations`, so it is a real copy of healthy data — and,
+ * taken as the app last left the foreground, usually the newest one there is.
  */
 export function lastGoodCopy(list: SnapshotInfo[]): SnapshotInfo | null {
   return (
