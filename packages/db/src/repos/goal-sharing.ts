@@ -3,7 +3,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { type CaptureTarget, withCapture, withCaptureSuspended } from '../sync/capture';
 import { meetsVersion } from '../sync/events/version';
-import { followLeaveHereTx, forgetGoalLinesTx, othersNamesTx, shareLogLineTx, unlinkHereTx } from '../sync/goals/follow';
+import { followLeaveHereTx, forgetGoalLinesTx, IN_BOOK, othersNamesTx, shareLogLineTx, unlinkHereTx } from '../sync/goals/follow';
 import { type GoalLink, goalLinkOfTx } from '../sync/goals/scope';
 import { sendGoalSummariesTx } from '../sync/goals/summaries';
 import { SHARED_GOALS_MIN_APP_VERSION } from '../sync/goals/version';
@@ -31,7 +31,11 @@ export async function goalShareTargets(database: Database): Promise<GoalShareTar
   const out: GoalShareTarget[] = [];
   for (const shared of await listSharedBooks(database)) {
     if (shared.state !== 'active' || shared.kind !== 'workspace') continue;
-    const others = shared.members.filter((m) => m.memberId !== shared.memberId).map(({ memberId, name }) => ({ memberId, name }));
+    const inBook = new Set(
+      (await database.db.values<[string]>(sql`SELECT DISTINCT member_id FROM book_devices WHERE book_id = ${shared.bookId} AND removed_at IS NULL`)).map((row) => row[0]),
+    );
+    // Only who is still in the workspace sees the goal (C1, C31): `book_members` keeps a member who left.
+    const others = shared.members.filter((m) => m.memberId !== shared.memberId && inBook.has(m.memberId)).map(({ memberId, name }) => ({ memberId, name }));
     if (others.length === 0) continue;
     const versions = await database.db.values<[string | null]>(sql`SELECT app_version FROM book_devices WHERE book_id = ${shared.bookId} AND removed_at IS NULL`);
     if (!versions.every(([v]) => meetsVersion(v, SHARED_GOALS_MIN_APP_VERSION))) continue;
@@ -194,9 +198,11 @@ async function viewOf(database: Database, goalId: string, bookId: string, shared
   const me = await memberInTx(database.db, bookId);
   if (me === null) return null;
   const [book] = await database.db.values<[string]>(sql`SELECT name FROM books WHERE id = ${bookId}`);
-  const members = (await database.db.values<[string, string]>(sql`SELECT member_id, name FROM book_members WHERE book_id = ${bookId} ORDER BY joined_at, member_id`)).map(
-    ([memberId, name]) => ({ memberId, name }),
-  );
+  const everyone = (await database.db.values<[string, string, number]>(
+    sql`SELECT m.member_id, m.name, ${IN_BOOK} FROM book_members m WHERE m.book_id = ${bookId} ORDER BY m.joined_at, m.member_id`,
+  )).map(([memberId, name, inBook]) => ({ memberId, name, inBook: Boolean(inBook) }));
+  // Who sees the goal now (C31): a member who left the workspace, or whose devices were all removed, no longer does (C1).
+  const members = everyone.filter((m) => m.inBook || m.memberId === me).map(({ memberId, name }) => ({ memberId, name }));
   const left = (await database.db.values<[string]>(sql`SELECT member_id FROM goal_share_leaves WHERE goal_id = ${goalId} AND round = ${round} ORDER BY left_on, member_id`)).map(
     (row) => row[0],
   );
@@ -205,7 +211,7 @@ async function viewOf(database: Database, goalId: string, bookId: string, shared
     bookId,
     bookName: book?.[0] ?? '',
     sharedBy,
-    sharedByName: members.find((m) => m.memberId === sharedBy)?.name ?? 'Another member',
+    sharedByName: everyone.find((m) => m.memberId === sharedBy)?.name ?? 'Another member',
     state: state as GoalShareView['state'],
     round,
     me,

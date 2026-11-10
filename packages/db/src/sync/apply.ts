@@ -37,7 +37,7 @@ import { keepClocksTx, type SeenLog } from './seed';
 import { postTransferSideTx } from './net-worth/transfers';
 import { EVENT_ENTITIES } from './events/authority';
 import { goalLinkOfTx, goalOfRowTx, goalOpDroppedTx, goalOpRefusalTx, noteGoalLinkTx } from './goals/scope';
-import { followGoalLeaveTx, followGoalShareTx } from './goals/follow';
+import { followGoalLeaveTx, followGoalShareTx, followMemberGoneTx, memberInBookTx } from './goals/follow';
 import { restoreRefusedOwnEventOpTx } from './events/log-rows';
 import { type EventPostingKind, followEventOpTx, followSharedEventTx, recordsReadingTx } from '../repos/shared-event-postings';
 
@@ -1463,7 +1463,12 @@ export async function pullAndApply(
                 if (why) await refuse('removal', entry.target, why);
                 else {
                   await recordRemovalTx(tx, bookId, entry.target, entry.seq);
-                  await applyRemovalTx(tx, await bookContextTx(tx, bookId), entry.target, entry.hlc);
+                  const ctx = await bookContextTx(tx, bookId);
+                  const [gone] = await tx.values<[string]>(sql`SELECT member_id FROM book_devices WHERE book_id = ${bookId} AND device_id = ${entry.target}`);
+                  const wasIn = gone ? await memberInBookTx(tx, bookId, gone[0]) : false;
+                  await applyRemovalTx(tx, ctx, entry.target, entry.hlc);
+                  // Shared goals, final review C1: a member whose last device this was stops counting in every shared goal.
+                  if (gone) await followMemberGoneTx(tx, ctx, gone[0], wasIn);
                   // Leave (§8.4, task 9a) counts only on a device removing itself.
                   const leave = entry.leave === true && entry.target === entry.deviceId;
                   removal = leave ? { epoch: entry.epoch, target: entry.target, seq: entry.seq, leave: true } : { epoch: entry.epoch, target: entry.target, seq: entry.seq };

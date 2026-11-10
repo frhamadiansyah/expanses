@@ -33,9 +33,20 @@ async function nameOfTx(tx: Db, bookId: string, memberId: string): Promise<strin
   return row?.[0] ?? 'Another member';
 }
 
-/** "Rina", "Rina and Adi", "Rina, Adi and Sari": the book's other members, in the order they joined. */
+/**
+ * A member still in the book: one of their devices is not removed (C1). `book_members` keeps a member who left or was
+ * removed, so on its own it does not say who still sees a goal. Plain SQL, for a `book_members` row aliased `m`.
+ */
+export const IN_BOOK = sql.raw(`EXISTS (SELECT 1 FROM book_devices d WHERE d.book_id = m.book_id AND d.member_id = m.member_id AND d.removed_at IS NULL)`);
+
+/** Whether `memberId` still has a device in the book. */
+export async function memberInBookTx(tx: Db, bookId: string, memberId: string): Promise<boolean> {
+  return (await tx.values(sql`SELECT 1 FROM book_devices WHERE book_id = ${bookId} AND member_id = ${memberId} AND removed_at IS NULL LIMIT 1`)).length > 0;
+}
+
+/** "Rina", "Rina and Adi", "Rina, Adi and Sari": the book's other members still in it, in the order they joined. */
 export async function othersNamesTx(tx: Db, bookId: string, me: string): Promise<string> {
-  const names = (await tx.values<[string]>(sql`SELECT name FROM book_members WHERE book_id = ${bookId} AND member_id <> ${me} ORDER BY joined_at, member_id`)).map((row) => row[0]);
+  const names = (await tx.values<[string]>(sql`SELECT m.name FROM book_members m WHERE m.book_id = ${bookId} AND m.member_id <> ${me} AND ${IN_BOOK} ORDER BY m.joined_at, m.member_id`)).map((row) => row[0]);
   if (names.length === 0) return 'nobody else';
   return names.length === 1 ? names[0]! : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
@@ -233,14 +244,51 @@ export async function endSharedGoalsTx(tx: Db, ws: WorkspaceContext, bookId: str
       const link = { goalId, bookId, sharedBy, state: state as GoalLink['state'], round: Number(round) };
       if (member !== undefined && link.state === 'on') await unlinkHereTx(tx, ws, link, member, 'ended', today());
       else await clearClocksTx(tx, bookId, goalId);
-      await dropLinesTx(tx, goalId);
-      for (const table of ['sync_field_clocks', 'sync_kept_clocks']) {
-        await tx.run(sql`DELETE FROM ${sql.raw(table)} WHERE book_id = ${bookId} AND entity = 'goal_share' AND id = ${goalId}`);
-        await tx.run(sql`DELETE FROM ${sql.raw(table)} WHERE book_id = ${bookId} AND entity = 'goal_share_leave' AND substr(id, 1, ${goalId.length + 1}) = ${`${goalId}|`}`);
+      await forgetLinkTx(tx, bookId, goalId);
+    }
+  });
+}
+
+/**
+ * A goal's link, its leaves and every line go here altogether, with their clocks and the log's note of the link: the
+ * goal is shared again only by its switch, as a new share at round 1, which no peer refuses for a round it never saw.
+ */
+async function forgetLinkTx(tx: Db, bookId: string, goalId: string): Promise<void> {
+  await dropLinesTx(tx, goalId);
+  for (const table of ['sync_field_clocks', 'sync_kept_clocks']) {
+    await tx.run(sql`DELETE FROM ${sql.raw(table)} WHERE book_id = ${bookId} AND entity = 'goal_share' AND id = ${goalId}`);
+    await tx.run(sql`DELETE FROM ${sql.raw(table)} WHERE book_id = ${bookId} AND entity = 'goal_share_leave' AND substr(id, 1, ${goalId.length + 1}) = ${`${goalId}|`}`);
+  }
+  await dropEventLogRowTx(tx, bookId, 'goal_share', goalId);
+  await tx.run(sql`DELETE FROM goal_share_leaves WHERE goal_id = ${goalId}`);
+  await tx.run(sql`DELETE FROM goal_shares WHERE goal_id = ${goalId}`);
+}
+
+/**
+ * Final review C1: a removal apply just took (a member leaving the workspace, or an owner removing a device). When it
+ * took the last device of a member out of the book (`wasIn`: the member had one before it), every phone still in it
+ * stops counting that member in each goal shared there, at the same place in the log, locally and with no op:
+ * - a goal another member shared: as that member's Leave (C13) — their lines, planned monthly and History go, and a
+ *   "Rina left" line keeps their last counted total;
+ * - a goal that member shared: nobody left could turn it off (D10), so it ends here as the household share ending
+ *   does (C15) — each remaining member with money of their own keeps a private copy — and the link goes, so a share
+ *   started again later by its switch is a new one.
+ * This phone's own member is not followed here: their devices end the household share themselves (C15).
+ */
+export async function followMemberGoneTx(tx: Db, ctx: BookContext, memberId: string, wasIn: boolean): Promise<void> {
+  if (!wasIn || memberId === ctx.memberId || !(await goalSharingTablesExist(tx))) return;
+  if (await memberInBookTx(tx, ctx.bookId, memberId)) return;
+  const links = await tx.values<[string, string, number]>(sql`SELECT goal_id, shared_by, round FROM goal_shares WHERE book_id = ${ctx.bookId} AND state = 'on' ORDER BY goal_id`);
+  const on = today();
+  await withCaptureSuspended(tx, async () => {
+    for (const [goalId, sharedBy, round] of links) {
+      const link = { goalId, bookId: ctx.bookId, sharedBy, state: 'on' as const, round: Number(round) };
+      if (sharedBy === memberId) {
+        await unlinkHereTx(tx, ctx.ws, link, ctx.memberId, 'off', on);
+        await forgetLinkTx(tx, ctx.bookId, goalId);
+      } else if (!(await memberLeftTx(tx, goalId, memberId))) {
+        await followLeaveHereTx(tx, ctx.ws, link, ctx.memberId, memberId, on);
       }
-      await dropEventLogRowTx(tx, bookId, 'goal_share', goalId);
-      await tx.run(sql`DELETE FROM goal_share_leaves WHERE goal_id = ${goalId}`);
-      await tx.run(sql`DELETE FROM goal_shares WHERE goal_id = ${goalId}`);
     }
   });
 }
