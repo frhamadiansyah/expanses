@@ -1,7 +1,8 @@
 # Shared goals — design
 
-Status: draft for the owner's review · 2026-11-10. Decisions D1–D5 are the owner's (2026-11-10); every **(my call)** is
-the writer's and waits for the owner's check.
+Status: draft v2 · 2026-11-10. Decisions D1–D10 are the owner's (2026-11-10; D6–D10 answer the five questions of
+draft v1). Every remaining **(my call)** is the writer's and waits for the owner's check. Calls that D6–D10 replaced
+keep their numbers, struck through to the decision, so references stay stable.
 Builds on: household sharing (`2026-09-26-household-sharing-design.md`, cited **S§n**), joint net worth
 (`2026-09-29-joint-net-worth-design.md`, **J§n**), shared events (`2026-10-15-shared-events-design.md`, **E§n**),
 set-aside (`2026-09-21-set-aside-design.md`).
@@ -18,22 +19,22 @@ one set of stages, and what each person has put toward it, by account name. The 
 set-asides and holdings stay on their own phone and in their own accounts, and only the goal and a summary of each
 person's funding travel.
 
-Success: both phones show the same target, the same Saved split Me / partner, the same To go and the same stages; a
-stage marked paid on one phone reads paid on the other; turning sharing off leaves the sharer with an ordinary private
-goal and the partner with nothing of it.
+Success: every phone in the household shows the same target, the same Saved split per person, the same To go and the
+same stages; a stage marked paid on one phone reads paid on the others; turning sharing off leaves the sharer with an
+ordinary private goal and every other member with a private copy holding their own money and History.
 
 ## 2. Goals, non-goals, anti-goals
 
 **Goals**
-- A per-goal switch that shares a goal with the other member of a shared workspace, and turns it off again.
-- One goal on both phones: name, kind, target, due dates, stages and payments, assumptions, a calculator's working.
-- Each person's funding of the goal (set-asides by account name, tagged holdings by name) shown on both phones, with a
+- A per-goal switch that shares a goal with the other members of a shared workspace, and turns it off again.
+- One goal on every member's phone: name, kind, target, due dates, stages and payments, assumptions, a calculator's working.
+- Each person's funding of the goal (set-asides by account name, tagged holdings by name) shown on every phone, with a
   subtotal per person, counted in the goal's status, bar and monthly figures.
 - History with both people's moves, each named.
 
 **Non-goals (v1)**
 - Sharing with friends or with anyone outside a shared workspace (events cover friends).
-- A workspace of three or more members (§5, C2).
+- Sharing with only some members of a workspace: every current and later member sees a shared goal (D6).
 - A per-person split of the monthly need ("Rina puts in Rp 2 juta, Fandri Rp 3 juta").
 - Tapping through to the partner's account, even when joint net worth shows it.
 - A Share page row for goals (events have one, `apps/web/src/features/sharing/SharePage.tsx:53`).
@@ -42,7 +43,8 @@ goal and the partner with nothing of it.
 - A partner's balance, other transactions, account id or "short by" figure leaving their phone.
 - A partner's money counted in this person's net worth, tax report, health ratios, idle cash or monthly put-away.
 - Money moving between people or workspaces because a goal is shared.
-- A goal deleted for real coming back on any phone, or a goal turned off staying on the partner's phone.
+- A goal deleted for real coming back on any phone, or a goal turned off still syncing to anyone.
+- A member's own money, contributions or History lost because someone else tapped off, delete or archive (D7).
 
 ## 3. Constraints
 
@@ -74,7 +76,12 @@ goal and the partner with nothing of it.
 | D2 | **Option A — accounts shown.** "Funded by" is grouped per person (Me / partner's name), each with a subtotal. Each person's set-asides are listed by **account name**. The partner's rows carry the caption "<Name>'s account" and are not tappable. Both phones see the same list. |
 | D3 | Hero: one target; the bar splits **Me / partner / To go** with a legend of amounts; a "Shared with <name>" line with both initials under the title. The Goals list marks a shared goal with both initials. |
 | D4 | One target, one set of stages and payments for both. **Either person can mark a stage paid.** Purchases and holdings tagged to the goal count from either phone. History lists both people's moves, each with the person's name. |
-| D5 | A **real on/off**, unlike events: nothing moves between workspaces, each person's money stays in their own accounts, only the goal and set-aside rows sync. **Turning it off removes the goal from the partner's phone.** |
+| D5 | A **real on/off**, unlike events: nothing moves between workspaces, each person's money stays in their own accounts, only the goal and set-aside rows sync. **Turning it off removes the shared goal from the partner's phone** — amended by D7: a private copy with the partner's own money stays. |
+| D6 | **Everyone in the household workspace sees a shared goal**, with account names and amounts, including a member who joins later. It rides the household book's log; no per-goal log. The switch label says who will see it (C31). Replaces C2. |
+| D7 | When the sharer turns sharing off or deletes the goal, or another member leaves, **that member keeps a private copy**: it becomes their own goal on their phone with their set-asides, contributions, draws and History intact, and their past "put away" figures do not change. Replaces C13 and C14 in part. |
+| D8 | **Shared emergency fund:** the months-of-spending target is frozen when the calculator is saved (the figure travels in the calculator's saved inputs), so every phone shows the same target. Either person can recalculate, which re-reads spending on their own phone and saves a new frozen figure. Replaces C24. |
+| D9 | **Privacy accepted:** the others see the amount actually counted per account (even when it reveals an account holds less than promised), and "Spent" History lines carry the purchase description. Confirms C6 and C8. |
+| D10 | **Only the sharer archives** (as delete); the other members can Leave. Confirms C12. |
 
 **The approved mock-up, in words** (goal page, sharer's phone): title **Hajj 2030**; under it "Shared with Rina" and two
 initials (F, R). Hero: target **Rp 180.000.000**, the bar in three parts with the legend **Me Rp 28.000.000 · Rina
@@ -90,15 +97,14 @@ Each is the writer's; one line of why.
 
 **Who, and where it travels**
 
-- **C1 (my call) Transport: the household book's own log**, rows scoped by a new link row naming the book — not a relay
+- **C1 (decided by D6) Transport: the household book's own log**, rows scoped by a new link row naming the book — not a relay
   book per goal as events have. Why: only workspace members are eligible (D1), their devices are already pinned, so no
   invite, key or rotation machinery is needed, and seeding, rejoin and restore (S§6.5, S§8.7) already carry the log to a
   partner's new phone. Alternatives in §8.7.
-- **C2 (my call) Two-member workspaces only.** The switch is offered only in an active shared book with exactly one
-  other current member. Why: the workspace log reaches every member (J§4), and D1–D3 are drawn for two people. A member
-  who joins later still reads the log (S§8.1 invites carry every epoch key); see §11 (whether a later member may see shared goals is the owner's to say).
-- **C3 (my call) Several eligible workspaces:** the row becomes a picker "Shared with: Off / Rina / Adi". A goal is in
-  one book at a time. Why: a person may share Family with a spouse and Business with a partner.
+- **C2 → replaced by D6.** Any active shared book with at least one other current member is eligible; every member,
+  later ones too, sees the goal. A member who joins later reads it from the log (S§8.1: invites carry every epoch key).
+- **C3 (my call) Several eligible workspaces:** the row becomes a picker "Shared with: Off / Family · Rina /
+  Business · Adi" (book name · its other members, C31). A goal is in one book at a time. Why: a person may share Family with a spouse and Business with a partner.
 - **C4 (my call) A link row, not a column on `goals`.** The brief said "a shared-book column"; the link needs its own
   writer rules and states, and a new column on an ORM table needs the 0091 workaround (`goals.ts:15-36`). The
   workspaces spec §4.1 prefers membership tables for the same reason.
@@ -108,15 +114,15 @@ Each is the writer's; one line of why.
 - **C5 (my call)** The partner sees each account's **name** and the **amount counted for the goal** — never the
   balance, other transactions, account id or "short by". Short-by is worked out only on the owner's phone from its own
   balances (`goal-funding.ts:257-281`). Why: D2 needs names and amounts, nothing else.
-- **C6 (my call)** The amount that travels is the **counted** figure (`coveredMinor`, capped at what the account holds),
-  not the promise. Why: both phones must add up to the same Saved. Cost: when an account holds less than promised, the
-  smaller figure tells the partner roughly what it holds (the owner's to accept).
+- **C6 (decided by D9)** The amount that travels is the **counted** figure (`coveredMinor`, capped at what the account
+  holds), not the promise, so every phone adds up to the same Saved. The owner accepts that a figure below the promise
+  tells the others roughly what the account holds.
 - **C7 (my call)** A tagged holding of the partner's appears as a **Funded by line** (name, value, "Rina's account").
   The trade and `transactions.goal_id` never sync (`shared-entities.ts:574` stays). History keeps today's kinds, which
   do not include buys (`goal-funding.ts:459`). Why: History shows no buys today for anyone; adding a "Bought" line is a
   change for every goal, not this build. (The brief asked for a contribution line with description and date — this
   differs; see §13.)
-- **C8 (my call)** A **Spent** move carries its draw's description (the transaction it paid for, as History shows today,
+- **C8 (decided by D9)** A **Spent** move carries its draw's description (the transaction it paid for, as History shows today,
   `goal-funding.ts:484`). Why: "Spent Rp 30.000.000 · Garuda tickets" is what the goal was for; nothing else of the
   transaction travels.
 - **C9 (my call)** Each funding line carries the holding's **risk** band. Why: the "can fall in value before it is
@@ -128,16 +134,19 @@ Each is the writer's; one line of why.
   calculator, and marks a stage paid or not paid — last writer wins per field by the existing HLC rules (S§7.3).
 - **C11 (my call)** Each person sets aside, takes back, uses, moves and tags only **their own** money. Nothing new is
   needed: set-asides are local rows.
-- **C12 (my call)** Only the **sharer** (the member who turned it on) turns sharing off, deletes the goal, or archives
-  it. Why: archiving stops a goal claiming money on every phone (`set-aside.ts:71`), which is the same reach as off.
-- **C13 (my call)** The other member can **Leave**: the goal goes from their phone, their set-asides are released, and
-  the sharer's History gets "Rina left". On the sharer's phone the goal is then private again.
-- **C14 (my call)** When the sharer turns it off or deletes it, the partner's phone removes its copy and releases the
-  partner's set-asides, as a delete of a private goal does today (`goals.ts:294-318`); the sharer's History records
-  "Stopped sharing with Rina · Rp 14.000.000 released" (or the goal is gone, on delete).
+- **C12 (decided by D10)** Only the **sharer** (the member who turned it on) turns sharing off, deletes the goal, or
+  archives it. Archiving stops a goal claiming money on every phone (`set-aside.ts:71`), the same reach as off.
+- **C13 (my call, amended by D7)** Any other member can **Leave**. The leaver keeps a private copy (D7, C30); for
+  everyone else the goal stays shared, with the leaver's lines gone and a History line "Rina left". The leaver is out
+  until the sharer turns sharing off and on again (a new round, §7.2). Why: with several members (D6), one person
+  leaving must not end the share for the rest.
+- **C14 (my call, amended by D7)** When the sharer turns it off, every other member's phone turns its copy into a
+  private goal (C30) with that member's own money and History; the others' lines are dropped. The sharer's History
+  records "Stopped sharing with Rina". On delete, the sharer's goal is deleted (`goals.ts:294-318`) and every other
+  member keeps a private copy the same way.
 - **C15 (my call)** When the household share itself ends on a phone (stopped, left, removed, kept as own copy — S§8.6),
-  each shared goal is **kept as a private goal on both phones**, each with its own money, partner lines dropped.
-  Why: S§8.6 promises "nobody's rows are deleted by someone else's tap", and a share ending is not a goal switch.
+  each shared goal is handled as an off: the sharer keeps it private, everyone else keeps a private copy. Why: S§8.6
+  promises "nobody's rows are deleted by someone else's tap", and D7 says the same for goals.
 
 **Money and figures**
 
@@ -155,8 +164,8 @@ Each is the writer's; one line of why.
 - **C19 (my call) Status counts both.** The plan's links are this phone's own plus the partner's lines; status, bar and
   "To go" read the total (`plan.ts:143-206`).
 - **C20 (my call) What this phone plans for.** In the goals fit (`goal-funding.ts:393`) and the budget's savings plan
-  (`budget-sheet.ts:109-112`) a shared goal counts **its monthly need less the partner's planned monthly**, floored at
-  nought. Why: the partner's standing order covers part of the need; with neither set up, both phones count it whole,
+  (`budget-sheet.ts:109-112`) a shared goal counts **its monthly need less the other members' planned monthly**,
+  floored at nought. Why: the partner's standing order covers part of the need; with neither set up, both phones count it whole,
   which errs on the side of saving.
 - **C21 (my call) The Goals list total counts only this person's money**; the shared goal's own row and card show both.
   Why: the total sits beside this person's other figures and must not include money in someone else's accounts.
@@ -168,25 +177,44 @@ Each is the writer's; one line of why.
 - **C23 (my call)** Calculator goals (Emergency fund, Education, Retirement) can be shared; the working
   (`goal_calculators`, `goal_stage_terms`) syncs, so both phones show the same figures. Inputs read from spending are
   re-read only on the phone that opens and saves the calculator.
-- **C24 (my call) Emergency fund: allowed, with the outgoing frozen in the working.** Today its target is months ×
-  this phone's own monthly outgoing, read live from flows (`goal-funding.ts:334-338`): the two phones would show two
-  targets. A shared emergency goal carries the outgoing it multiplies in its working (written at share time and each
-  time either phone saves the calculator), and both phones read that. It is a question because that figure is **one
-  person's spending**, not the household's (whose spending is the owner's to say). Retirement has the same shape in milder form: its ages
-  are one person's.
+- **C24 → replaced by D8.** Today an emergency target is months × this phone's own monthly outgoing, read live from
+  flows (`goal-funding.ts:334-338`), so two phones would show two targets. A shared emergency goal reads the outgoing
+  frozen in its working instead: written at share time (from the sharer's spending) and each time anyone saves the
+  calculator (from that phone's spending). A working with a typed `monthlyOutgoingMinor` already is frozen.
 - **C25 (my call)** The silent re-working at app open (`upgradeCalculatorGoals`, `apps/web/src/db/bootstrap.ts:115`)
   runs for a shared goal **only on the sharer's phone**. Why: two phones re-working the same rows every day, on
   different days near midnight, write over each other.
 
 **Screens and copy**
 
-- **C26 (my call)** On the partner's phone Edit goal shows the switch on and disabled, footer "Shared by Fandri", and a
-  **Leave goal** row in place of Archive and Delete.
+- **C26 (my call)** On another member's phone Edit goal shows the switch on and disabled, footer "Shared by Fandri", and
+  a **Leave goal** row in place of Archive and Delete.
 - **C27 (my call)** History lines on a shared goal end with the person: "Me" for own lines, the member's name for the
   partner's, matching Funded by.
 - **C28 (my call)** All partner rows carry "<Name>'s account" as decided, holdings included.
 - **C29 (my call)** A shared goal arriving on the partner's phone goes to the end of their list (`rank` is each
   person's own order and does not sync).
+
+**Added with D6–D10**
+
+- **C30 (my call) A private copy gets a new id.** When a non-sharer's copy becomes private (off, delete, Leave, share
+  ended), their phone re-keys it locally: the goal and its stages get new ids, and every local row naming them
+  (`goal_earmarks`, `goal_contributions`, `goal_draws`, `goal_calculators`, `goal_stage_terms`, `trade_goal_parts`,
+  `investment_trades`, `trade_templates`, `asset_sales`, `transactions`, `events`) follows. Why: if the sharer turns
+  sharing on again, the shared goal arrives as a new goal beside the private copy; keeping the old ids would make the
+  arriving rows collide with private edits and leave stages one phone has and the others never hear of.
+  The sharer's own goal keeps its id.
+- **C31 (my call) The label names who sees it.** "Shared with" + the other current members' names from
+  `book_members` ("Rina", "Rina and Adi", "Rina, Adi and Sari"); with four or more others, the workspace name and a
+  count ("Family · 4 people"). It is read live, so it changes when a member joins. Why: names say exactly who will see
+  the goal, and match the approved mock-up's "Shared with Rina".
+- **C32 (my call) Rounds.** The link counts how many times sharing was turned on (`round`). A Leave records the round
+  it left in; a member is in when they have no Leave for the current round. Why: lets one member leave without ending
+  the share, and lets the sharer bring everyone back by off and on.
+- **C33 (my call) Many members on screen.** The bar and legend carry one segment per member with money in the goal
+  (Me first, then the others in the order they joined the workspace); Funded by has one group per such member; a member
+  with no money has no group. The title line shows up to three initials, then "+N". Why: D2/D3 drawn for two, kept
+  readable for more.
 
 ## 6. Left to the builder
 
@@ -208,7 +236,7 @@ Each is the writer's; one line of why.
 | `goals` (0008, 0091) | **yes**: `name`, `kind`, `growth_bps`, `return_bps`, `currency`, `status` | never: `workspace_id` (stamped), `rank` (C29), `standing_monthly_minor`, `standing_note` (C17), `created_at` (local on insert) |
 | `goal_stages` (0008) | **yes**: `goal_id`, `name`, `target_minor`, `target_months`, `due_on`, `sort`, `paid_on` | never: `workspace_id` |
 | `goal_stage_terms` (0053) | **yes**, key `stage_id`: `goal_id`, `return_bps`, `derived_key` | never: `workspace_id`. Needed so an education goal's per-level returns agree |
-| `goal_calculators` (0017) | **yes**, key `goal_id`: `kind`, `inputs_json`, `computed_minor`, `computed_at` | never: `workspace_id`. Emergency outgoing per C24 |
+| `goal_calculators` (0017) | **yes**, key `goal_id`: `kind`, `inputs_json`, `computed_minor`, `computed_at` | never: `workspace_id`. Emergency outgoing frozen in `inputs_json` (D8) |
 | `goal_earmarks` (0008) | **never** | names a local account (FK). Reaches the partner as a funding line |
 | `goal_contributions` (0016) | **never** | this person's put-away (`goal-contributions.ts:155`). Reaches the partner as a move |
 | `goal_draws` (0050) | **never** | names a transaction and accounts. Reaches the partner as a move |
@@ -226,11 +254,21 @@ CREATE TABLE goal_shares (
   book_id TEXT NOT NULL,
   workspace_id TEXT NOT NULL,
   shared_by TEXT NOT NULL,                 -- member id of the sharer; written once
-  state TEXT NOT NULL CHECK (state IN ('on', 'off', 'left', 'deleted')),
-  state_by TEXT NOT NULL,                  -- member who set the state
-  state_on TEXT NOT NULL                   -- YYYY-MM-DD
+  state TEXT NOT NULL CHECK (state IN ('on', 'off', 'deleted')),
+  state_on TEXT NOT NULL,                  -- YYYY-MM-DD
+  round INTEGER NOT NULL DEFAULT 1 CHECK (round >= 1)  -- +1 each time it is turned on again (C32)
 );
 CREATE INDEX goal_shares_book ON goal_shares (book_id, state);
+
+-- A member who left a shared goal, and in which round. Written only by that member, never by the sharer.
+CREATE TABLE goal_share_leaves (
+  goal_id TEXT NOT NULL,
+  member_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  round INTEGER NOT NULL,
+  left_on TEXT NOT NULL,
+  PRIMARY KEY (goal_id, member_id)
+);
 
 -- What one member's money does for a shared goal, as that member's phone worked it out. Written only by that member.
 CREATE TABLE goal_member_funding (
@@ -261,14 +299,15 @@ CREATE TABLE goal_member_moves (
 );
 CREATE INDEX goal_member_moves_goal ON goal_member_moves (goal_id, occurred_on);
 
--- Local only, never synced: the share's own History lines ("Shared with Rina", "Rina left", "Stopped sharing").
+-- Local only, never synced: the share's own History lines ("Shared with Rina", "Rina left", "Stopped sharing",
+-- "No longer shared by Fandri"). A private copy (C30) keeps its lines under its new goal id.
 CREATE TABLE goal_share_log (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
   goal_id TEXT NOT NULL,
-  kind TEXT NOT NULL CHECK (kind IN ('shared', 'stopped', 'left', 'ended')),
+  kind TEXT NOT NULL CHECK (kind IN ('shared', 'stopped', 'left', 'unshared', 'ended')),
   member_name TEXT NOT NULL,
-  released_minor INTEGER,                  -- goal currency: the partner's last counted total, when released
+  amount_minor INTEGER,                    -- goal currency: the member's last counted total, when one stops counting
   occurred_on TEXT NOT NULL
 );
 ```
@@ -280,12 +319,14 @@ Follow 0050's rule: depend on nothing another migration made, so the set-based r
 ### 8.1 New entities in `SHARED_ENTITIES`
 
 All in the household book's log. "On links" below is
-`SELECT goal_id FROM goal_shares WHERE book_id = ${bookId} AND state = 'on'`.
+`SELECT goal_id FROM goal_shares WHERE book_id = ${bookId} AND state = 'on'`. Every member's phone holds every row in
+scope (D6); a member who left reads but does not show them (§8.3).
 
 | Entity | Table | Key | Scope | Fields | Writer |
 |---|---|---|---|---|---|
-| `goal_share` | `goal_shares` | `goal_id` | `t.book_id = bookId` (any state) | `sharedBy`, `state`, `stateBy`, `stateOn` | the predicate in §8.4 |
-| `goal` | `goals` | `id` | `t.id IN (on links)` | `name`, `kind`, `growthBps`, `returnBps`, `currency`, `status` | anyone; `status` the sharer (C12) |
+| `goal_share` | `goal_shares` | `goal_id` | `t.book_id = bookId` (any state) | `sharedBy`, `state`, `stateOn`, `round` | the predicate in §8.4 |
+| `goal_share_leave` | `goal_share_leaves` | `goal_id`, `member_id` | `t.goal_id IN (SELECT goal_id FROM goal_shares WHERE book_id = bookId)` | `round`, `leftOn` | `key.member_id`, never the link's `sharedBy` |
+| `goal` | `goals` | `id` | `t.id IN (on links)` | `name`, `kind`, `growthBps`, `returnBps`, `currency`, `status` | anyone; `status` the sharer (D10) |
 | `goal_stage` | `goal_stages` | `id` | `t.goal_id IN (on links)` | `goalId`, `name`, `targetMinor`, `targetMonths`, `dueOn`, `sort`, `paidOn` | anyone |
 | `goal_stage_term` | `goal_stage_terms` | `stage_id` | `t.goal_id IN (on links)` | `goalId`, `returnBps`, `derivedKey` | anyone |
 | `goal_calculator` | `goal_calculators` | `goal_id` | `t.goal_id IN (on links)` | `kind`, `inputs`, `computedMinor`, `computedAt` | anyone |
@@ -300,18 +341,20 @@ goal → link, stage/term/calculator/funding/move → goal, term → stage, so a
 ### 8.2 Turning sharing on
 
 One transaction on the sharer's phone, inside `withCapture` with targets for the link and every row of the goal:
-insert `goal_shares (state 'on', shared_by = state_by = this member)`, then let capture emit, in order: the link, the
+insert `goal_shares (state 'on', shared_by = this member, round 1)` — or, turning it on again, set `state 'on'` and
+`round + 1` — then let capture emit, in order: the link, the
 goal, its stages, terms, calculator, this member's funding summary, and this member's existing History of the goal as
-moves (so the partner sees the goal's whole history from the start), and a `goal_share_log` line "Shared with Rina" (local).
-For an emergency goal, the working's outgoing is written first (C24).
+moves (so the others see the goal's whole history from the start), and a `goal_share_log` line "Shared with Rina"
+(local). For an emergency goal, the working's outgoing is frozen first (D8).
 
-On the partner's phone apply inserts each row with the partner's own `workspace_id` (`apply.ts:282`). The partner's
-phone writes its own funding summary only once it holds money for the goal (§9.6, second device).
+On every other member's phone apply inserts each row with that member's own `workspace_id` (`apply.ts:282`). A phone
+writes its own funding summary only once it holds money for the goal (§11, second device).
 
 ### 8.3 Turning it off, Leave, delete — without tombstones
 
-Off, Leave and delete are **state changes on the link** (`'off'`, `'left'`, `'deleted'`), never a delete of the link.
-The goal's other rows then leave scope. Two things in today's code stop that working as plain deletes:
+Off and delete are **state changes on the link** (`'off'`, `'deleted'`), never a delete of the link; Leave is a
+`goal_share_leave` row for the current round. On off and delete the goal's other rows leave scope. Two things in
+today's code stop that working as plain deletes:
 
 1. An entity keyed by its own `id` (goal, stage, move) would be tombstoned for ever (`apply.ts:349-354`), so turning
    it on again would never bring it back.
@@ -319,15 +362,20 @@ The goal's other rows then leave scope. Two things in today's code stop that wor
    writer (`capture.ts:745`): the write is refused and the whole off rolls back.
 
 **Recommended (option b):** a row that leaves scope **because its link left `'on'`** emits no op. Every phone, on
-applying (or making) the link's state change, drops the goal's synced rows locally with no tombstone and clears their
-field clocks, then does its own follow-up:
+applying (or making) the change, drops the other members' funding and move rows locally with no tombstone, clears the
+field clocks of the goal's synced rows, and then does its own follow-up:
 
-| Link becomes | Sharer's phone | Partner's phone |
+| Change | Sharer's phone | Every other member's phone |
 |---|---|---|
-| `off` | keeps the goal, private; drops partner funding and moves; log "Stopped sharing with Rina · <released>" | removes the goal as `deleteGoal` does (set-asides released, tags cleared, its contributions and draws go) |
-| `left` | as `off`; log "Rina left · <released>" | (the leaver) removes the goal the same way |
-| `deleted` | the goal is deleted (`deleteGoal`) | removes the goal |
-| `on` again | the rows re-enter scope: capture emits every field at a fresh clock (as for any row entering a book) | inserts them again; nothing of the earlier copy is left to collide |
+| link → `off` | keeps the goal, private; log "Stopped sharing with Rina" | re-keys its copy into a private goal (C30) with its own set-asides, contributions, draws and History; log "No longer shared by Fandri" |
+| link → `deleted` | the goal is deleted (`deleteGoal`) | as `off` |
+| Rina leaves (her phone writes the leave) | the goal stays shared; Rina's funding and moves dropped; log "Rina left" with her last counted total | Rina's phone: as `off`. Other members: as the sharer's column |
+| link → `on` again (round + 1) | the rows re-enter scope: capture emits every field at a fresh clock (as for any row entering a book) | inserts the goal as new, beside any private copy (whose ids differ, C30); a member who left is back in |
+| household share ends (C15) | as `off`, locally, no op | as `off`, locally |
+
+A member who left keeps receiving the goal's ops (the log reaches everyone, D6); their phone drops them while their
+leave names the current round. That drop is the leaver's own devices', not a refusal, so it is not recorded in
+`sync_skipped`.
 
 **Option c, considered:** mark the goal entities revivable (a `revivable` flag beside `isRevivable`,
 `capture.ts:635`). It reuses the re-make path, but still needs (2) solved, and lets a late edit revive a goal deleted
@@ -342,10 +390,11 @@ unsent local state, or a sharer's second device and a third device could disagre
 A goals predicate in the shape of `events/authority.ts:46-60`: pure, read from the stored row, the new row, the key and
 the writing member, applied at capture (`capture.ts:712-731` does this for events) and on apply alike.
 
-- `goal_share`: insert only with `state 'on'` and `sharedBy = stateBy =` the writer. `sharedBy` never changes.
-  `'on' ↔ 'off'` and `→ 'deleted'` only by `sharedBy`. `→ 'left'` only by a member who is not `sharedBy`. Nothing
-  leaves `'deleted'`. `stateBy` is always the writer.
-- `goal.status`: only the link's `sharedBy` (C12).
+- `goal_share`: insert only with `state 'on'`, `round 1` and `sharedBy` = the writer. `sharedBy` never changes. Every
+  later write only by `sharedBy`. `round` rises by exactly one, and only on `'off' → 'on'`. Nothing leaves `'deleted'`.
+- `goal_share_leave`: only by `key.member_id`, never by the link's `sharedBy`, and only with the link's current
+  `round`; never deleted (a later round makes it stale).
+- `goal.status`: only the link's `sharedBy` (D10).
 - A delete op of `goal` is refused (a goal ends by its link). Stage, term and calculator deletes are anyone's (Edit goal
   removes a payment; typing a target by hand drops the working, `goals.ts:241-243`).
 - Funding and move rows: their member only (table above).
@@ -381,30 +430,30 @@ No goal repo calls `withCapture` today. Each write below needs it; the S§6.4 ha
 
 | Option | For | Against |
 |---|---|---|
-| **A. Household book log (recommended)** | no invite, keys or rotation; joiners, restores and second devices already handled; a goal sits beside the book it belongs to | every member of the workspace reads it (C2); an old build in the book stalls |
+| **A. Household book log (decided, D6)** | no invite, keys or rotation; joiners, restores and second devices already handled; every member sees it, as D6 wants | an old build in the book stalls |
 | B. A relay book per goal (events, E§3) | only the people in it; not tied to a workspace | invites, epochs, rotation and Leave all again; the partner joins each goal by link; nothing here needs a non-member |
 | C. The net-worth group log (J§4) | already limited to opted-in members | exists only when net worth sharing is set up; mixes two features' lifetimes |
 
-If the owner rules that a later member must not see shared goals, B (or a per-pair log built like C) is the way, and §8.3 still applies.
 
 ## 9. Reads
 
 ### 9.1 Funding, plan and status (`goal-funding.ts`)
 
-`goalLinksWithRates` (186) adds, for each shared goal, one `GoalLinkRow` per line of the **other** member's
-`goal_member_funding`: `kind` as sent, `name`, `valueMinor = goalMinor = baseMinor-in-goal = amountMinor`,
+`goalLinksWithRates` (186) adds, for each shared goal, one `GoalLinkRow` per line of every **other** member's
+`goal_member_funding` (members who left this round excluded): `kind` as sent, `name`, `valueMinor = goalMinor = baseMinor-in-goal = amountMinor`,
 `currency` = the goal's, `shortMinor 0`, `overBalance false`, `promisedMinor null`, `risk` as sent, and a new
 `owner` (member id; absent = this phone's own). This phone's own lines stay as today, with their short-by.
-`goalPlansFor` (319) adds the partner's `plannedMonthlyMinor` to `plannedMonthlyMinor`, uses the working's frozen
-outgoing for a shared emergency goal (C24), and applies C20 to the fit and C22 to wholeness. `goalHasFunding`
-(`goals.ts:251`) also reads the partner's funding and moves, so the currency stays locked once either person funds it.
+`goalPlansFor` (319) adds the others' `plannedMonthlyMinor` to `plannedMonthlyMinor`, uses the working's frozen
+outgoing for a shared emergency goal (D8), and applies C20 to the fit and C22 to wholeness. `goalHasFunding`
+(`goals.ts:251`) also reads the others' funding and moves, so the currency stays locked once anyone funds it.
 
 ### 9.2 History (`goalHistory`, `goal-funding.ts:445-501`)
 
-Entries gain `by: string | null` (null = this phone's member). For a shared goal the reader adds the partner's
-`goal_member_moves` and this phone's `goal_share_log` lines. New kinds: `shared`, `stopped`, `left`, `ended` (titles
-"Shared with Rina", "Stopped sharing with Rina", "Rina left", "No longer shared"), amount = the released figure when
-there is one. `GoalHistoryPage.tsx:9-16` gains their titles; the subtitle ends "· Me" or "· Rina" (C27).
+Entries gain `by: string | null` (null = this phone's member). For a shared goal the reader adds the other members'
+`goal_member_moves` and this phone's `goal_share_log` lines. New kinds: `shared`, `stopped`, `left`, `unshared`,
+`ended` (titles "Shared with Rina", "Stopped sharing with Rina", "Rina left", "No longer shared by Fandri", "Workspace
+no longer shared"), amount = the member's last counted total when there is one. A private copy (C30) keeps its own
+moves and its log lines; the others' moves go. `GoalHistoryPage.tsx:9-16` gains their titles; the subtitle ends "· Me" or "· Rina" (C27).
 `cardHistory` (`goal-cards.ts:161`) is unchanged; its funded window gets nothing for a shared goal (C22).
 
 ### 9.3 Readers that must not see the partner's money
@@ -420,28 +469,31 @@ partner spent against, as it does for this phone's own draws (`goals.ts:203-207`
 
 ## 10. Screens
 
-- **Add goal / Edit goal** (`GoalForm.tsx`): a `SwitchRow` "Shared with Rina" in the group with Currency and Funding
-  (`GoalForm.tsx:376-384`), off by default, shown only when eligible (C2, C3, §8.6), with an info line naming what the
-  partner sees ("Rina sees this goal, its payments, and the names and amounts of the accounts funding it"). The model is
-  the net-worth add-form switch (`sharing/ShareWithHousehold.tsx:100-122`). Turning it off on a goal with partner money
-  asks first: "Stop sharing Hajj 2030? It leaves Rina's phone and Rina's Rp 14.000.000 set aside is released." On the
-  partner's phone: C26.
-- **Goal page** (`GoalPage.tsx`): under the title, "Shared with Rina" and both initials. Hero bar segments Paid / Me /
-  partner (`GoalPage.tsx:196-209`), legend Paid (when any) · Me · Rina · To go (`GoalPage.tsx:210-214`). Each month as
-  C18 (`GoalPage.tsx:252-264`). Funded by (`GoalPage.tsx:266-284`) in two groups with subtotals; own rows as today
+- **Add goal / Edit goal** (`GoalForm.tsx`): a `SwitchRow` labelled per C31 ("Shared with Rina") in the group with
+  Currency and Funding (`GoalForm.tsx:376-384`), off by default, shown only when eligible (D6, C3, §8.6), with an info
+  line naming what the others see ("Rina sees this goal, its payments, and the names and amounts of the accounts
+  funding it; so does anyone who joins Family later"). The model is the net-worth add-form switch
+  (`sharing/ShareWithHousehold.tsx:100-122`). Turning it off asks first: "Stop sharing Hajj 2030? Rina keeps a copy
+  with Rina's own money in it." On another member's phone: C26; Leave asks "Leave Hajj 2030? A copy with the money
+  set aside from this phone stays here."
+- **Goal page** (`GoalPage.tsx`): under the title, the C31 line and the members' initials (C33). Hero bar segments
+  Paid / Me / each other member (`GoalPage.tsx:196-209`), legend Paid (when any) · Me · Rina · To go
+  (`GoalPage.tsx:210-214`). Each month as
+  C18 (`GoalPage.tsx:252-264`). Funded by (`GoalPage.tsx:266-284`) in one group per member with money (C33), each with a subtotal; own rows as today
   (`funding.tsx:36-57`, tappable, short-by); a "＋ Set aside" row closing the Me group; partner rows without `to`,
   captioned "Rina's account". ⋯ menu: Leave goal on the partner's phone. Short-by under the figure is own only.
-- **Goals list** (`GoalsPage.tsx:40-72`): both initials on a shared goal's row; the total per C21.
-- **Goal gone** from the partner's phone: the existing "Goal not here" page (`GoalPage.tsx:100-110`) says "No longer
-  shared" when this phone's log says so.
+- **Goals list** (`GoalsPage.tsx:40-72`): the members' initials on a shared goal's row (C33); the total per C21.
+- **A link to the shared goal** opened after it became a private copy (a notification, a back stack): the existing
+  "Goal not here" page (`GoalPage.tsx:100-110`) offers the private copy ("No longer shared · Open the copy").
 - Initials and names come from `book_members.name`. New strings are checked for "you"/"your".
 
 ## 11. Edge cases
 
-- **Off then on while the partner is offline.** The partner applies both in order: removed (set-asides released), then
-  back with no money of theirs. Accepted; the History line says what was released.
+- **Off then on while the partner is offline.** The partner applies both in order: a private copy (new id) with
+  their money, then the shared goal again, new, with none of their money. Moving money across is theirs to do
+  (Move to another goal, `goals.ts:408`; retag a buy). Accepted.
 - **Partner sets aside while the sharer turns off.** On the sharer's phone the partner's summary op arrives for a goal
-  not on: dropped. On the partner's phone the off releases the new set-aside too. Both end private / gone.
+  not on: dropped. On the partner's phone the new set-aside is in the private copy. Nothing is lost.
 - **Both edit one stage offline.** Per field, later HLC wins. A stage removed on one phone while marked paid on the
   other: the removal wins (rule 3), and so does a removal crossing a spend (the spend's `stage_id` then names a stage
   that is gone; History still reads).
@@ -449,12 +501,12 @@ partner spent against, as it does for this phone's own draws (`goals.ts:203-207`
   recomputes its lines in the new currency after apply. The moves keep their own currency.
 - **No rate** on the owner's phone: the line travels with no amount; both phones leave it out and say so (C16).
 - **Partner renames, archives or deletes an account.** Its line's name changes or the line goes at the next summary.
-- **Third member joins the workspace.** Their phone reads and shows every shared goal, since the log reaches every
-  member (C2), and §8.4 lets any member edit a goal's fields. No new goal can be shared while the workspace has three
-  members. Whether that is acceptable is the owner's to say.
+- **A member joins the workspace later.** Their phone reads the log from its first entry and shows every goal shared
+  in it, as D6 wants; the switch label on every phone now names them (C31).
+- **A member who left, while the goal stays shared.** Their phone keeps receiving its ops and drops them (§8.3).
 - **Household share ends** (S§8.6 stop, Leave workspace, removal, Keep as my own copy): C15. If the book is shared
-  again later, a goal that arrives with an id this phone already holds as a private copy is adopted (the arriving
-  fields win; this phone's set-asides stay), not inserted twice.
+  again later, the seed carries the sharer's goal with its old id; every other phone's private copy has a new id
+  (C30), so nothing collides.
 - **Second device of the same member** (S§8.3) holds the goal but none of the member's accounts. It must never write
   that member's funding summary (it would write an empty one over the real one): a device writes a summary only while
   it holds the member's funding for the goal, or after having written one. Its Me group shows the member's synced row.
@@ -472,31 +524,32 @@ partner spent against, as it does for this phone's own draws (`goals.ts:203-207`
   planned adds the partner's; risk from a partner line warns; the C20 need-less-partner figure, floored.
 - **DB, sync**
   - `SHARED_ENTITIES` completeness: every column of the five synced tables sorted (the existing test).
-  - Capture: share-on emits link, goal, stages, terms, calculator, summary, moves in that order; off/left/delete emit
-    only the link; no write path to a synced goal table escapes (S§6.4 harness, every function in §8.5).
+  - Capture: share-on emits link, goal, stages, terms, calculator, summary, moves in that order; off/delete emit
+    only the link, Leave only the leave row; no write path to a synced goal table escapes (S§6.4 harness, every function in §8.5).
   - Apply: off drops rows with no tombstone and clears clocks; on again re-inserts; an op for a goal not on is dropped
     alike on three devices (two of one member); delete-for-real never comes back after a late edit.
   - Authority: each rule in §8.4 refused at capture and on apply, recorded in `sync_skipped`.
   - Privacy: no op payload for a shared goal contains an account id, a balance, a short-by figure or a transaction id
     (scan every op in the outbox after a scripted month of activity).
   - Convergence: two phones on `MemoryTransport` end with the same target, Saved per member, To go and stage marks.
-  - Partner release: off/Leave on the partner's phone leaves its `goal_earmarks`, contributions and draws as
-    `deleteGoal` would; the sharer's History gets the line with the released figure.
+  - Private copy (D7, C30): off, delete, Leave and share-end each leave the member's `goal_earmarks`, contributions,
+    draws, tags and History intact under a new goal id; `goalContributionsFor` for a past month is unchanged; turning
+    sharing on again brings a second goal, no collision; the sharer's History gets "Rina left" with her last total.
   - Readers in §9.3 unchanged by partner rows.
   - Version gate and second-device rule.
-- **Web**: switch visibility (no household, three members, old device, two books → picker); partner rows not
+- **Web**: switch visibility and label (no household, one other member, three others, five others, old device, two
+  books → picker); partner rows not
   tappable and captioned; hero legend; list initials; Leave; copy grep for "you".
 - **E2E** (two phones): the mock-up — Hajj 2030, Rp 180.000.000; Fandri sets aside BCA Tahapan 20.000.000 and Mandiri
   Tabungan 8.000.000; Rina sets aside Jenius 10.000.000 and tags a money-market fund worth 4.000.000; both phones read
-  Me/Rina/To go 28/14/138 juta; Rina marks the first payment paid; Fandri turns sharing off; Rina's phone has no goal
-  and Jenius has nothing set aside. Fixture figures are invented, per the owner's rule on real data.
+  Me/Rina/To go 28/14/138 juta; Rina marks the first payment paid; Fandri turns sharing off; Rina's phone has a
+  private Hajj 2030 holding Jenius 10.000.000 and the money-market fund, Fandri's shows only his own. Fixture figures are invented, per the owner's rule on real data.
 
 ## 13. Conflicts with the household-sharing design and the brief
 
-1. **S§8.6 "Nobody's rows are deleted by someone else's tap"** vs D5: turning off removes the partner's copy and their
-   set-asides on the sharer's tap. D5 stands for the goal switch; C15 keeps S§8.6 for the end of a household share.
-2. **J§4: the workspace log reaches every member.** "Shared only with the partner" holds only in a two-member
-   workspace (C2).
+1. **S§8.6 "Nobody's rows are deleted by someone else's tap"** vs D5 as first drawn: resolved by D7 (a private copy
+   stays) and C15.
+2. **J§4: the workspace log reaches every member.** Resolved by D6: every member is meant to see shared goals.
 3. **Rule 3** (S§7.3) makes a plain on/off impossible for id-keyed rows; §8.3 adds a scope-leave rule to capture.
 4. **New entities in the workspace log stall older builds** (§3): the first time the workspace log gains an entity
    since sharing shipped (net-worth entities sit in their own group log, events in their own books).
@@ -504,12 +557,13 @@ partner spent against, as it does for this phone's own draws (`goals.ts:203-207`
 6. **Brief, "a tagged purchase appears as a contribution line in History"** → today History lists no buys for any
    goal (`goal-funding.ts:459`); a partner's tagged holding shows in Funded by instead (C7).
 7. **Brief, Emergency fund "spending-based inputs re-read on the phone that opens the calculator"** holds only once the
-   outgoing is frozen in the working; today it is read live on every open of the goal (C24).
+   outgoing is frozen in the working; today it is read live on every open of the goal. Resolved by D8.
 
 ## 14. Build order
 
 1. Migration 0109, `SHARED_ENTITIES` records, never-synced lists, `PARENTS`, the predicate (§8.4), with tests.
-2. Capture: wrap every goal write (§8.5); the scope-leave rule and apply's local drop and follow-ups (§8.3).
+2. Capture: wrap every goal write (§8.5); the scope-leave rule, apply's local drop, re-key into a private copy (C30)
+   and follow-ups (§8.3).
 3. Summaries and moves: compute, mark dirty, send at flush, second-device rule; `goal_share_log`.
 4. Reads: links, plan, fit, budget, wholeness, history, `goalHasFunding`, `drawnStageIds`; reader isolation tests.
 5. Version gate and eligibility; the switch, goal page, list, Leave.
