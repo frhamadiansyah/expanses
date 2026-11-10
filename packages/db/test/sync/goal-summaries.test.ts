@@ -46,7 +46,7 @@ describe('a member\'s own funding for a goal', () => {
   it('names each account and the amount it counts', async () => {
     const { database, ws, main, goalId } = await world();
     await saveEarmark(database, ws, { goalId, accountId: main, amountMinor: 20_000_000 });
-    expect((await ownGoalFunding(database, ws, goalId, DAY)).lines).toEqual([{ ref: expect.any(String), name: 'Main Savings', kind: 'earmark', amountMinor: 20_000_000, risk: null }]);
+    expect((await ownGoalFunding(database, ws, goalId, DAY)).lines).toEqual([{ ref: expect.any(String), name: 'Main Savings', kind: 'earmark', amountMinor: 20_000_000, risk: null, currency: 'IDR' }]);
   });
 
   it('a promise above the balance travels as what is counted', async () => {

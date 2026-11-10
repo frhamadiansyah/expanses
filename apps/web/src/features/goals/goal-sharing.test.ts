@@ -1,6 +1,6 @@
 import type { GoalLinkRow, GoalShareTarget, GoalShareView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { fundingGroups, GOAL_SHARING_COPY, heroSegments, initialsLine, initialsOf, shareRowState, sharedWithLabel } from './goal-sharing';
+import { fundingCaption, fundingGroups, GOAL_SHARING_COPY, heroSegments, initialsLine, initialsOf, shareRowState, sharedWithLabel } from './goal-sharing';
 
 const link = (goalMinor: number | null, owner?: string) => ({ goalId: 'g1', goalMinor, ...(owner ? { owner } : {}) }) as unknown as GoalLinkRow;
 const target = (bookId: string, bookName: string, others: string[]): GoalShareTarget => ({
@@ -62,7 +62,7 @@ describe('shared goals model', () => {
   });
   it('the row', () => {
     expect(shareRowState([], null)).toEqual({ kind: 'hidden' });
-    expect(shareRowState([target('b1', 'Family', ['Rina'])], null)).toEqual({ kind: 'switch', label: 'Shared with Rina', bookId: 'b1' });
+    expect(shareRowState([target('b1', 'Family', ['Rina'])], null)).toMatchObject({ kind: 'switch', label: 'Shared with Rina', bookId: 'b1' });
     expect(shareRowState([target('b1', 'Family', ['Rina']), target('b2', 'Business', ['Adi'])], null)).toMatchObject({
       kind: 'picker',
       options: [
@@ -77,12 +77,58 @@ describe('shared goals model', () => {
     expect(shareRowState(both, viewSharedBy('Bima', { state: 'off' }))).toMatchObject({ kind: 'switch', bookId: 'b1' });
   });
   it('no new string speaks to the reader', () => {
-    const texts = Object.values(GOAL_SHARING_COPY).map((v) => (typeof v === 'function' ? (v as (...a: unknown[]) => string)('Trip Fund', ['Rina', 'Adi']) : v));
+    const texts = [
+      ...Object.values(GOAL_SHARING_COPY).map((v) => (typeof v === 'function' ? (v as (...a: unknown[]) => string)('Trip Fund', ['Rina', 'Adi'], ['Rina']) : v)),
+      GOAL_SHARING_COPY.switchInfo(['Rina'], 'Family'),
+      GOAL_SHARING_COPY.switchInfo(['Rina', 'Adi', 'Sari', 'Tono'], 'Family'),
+      GOAL_SHARING_COPY.stopConfirm('Trip Fund', ['Rina'], []),
+    ];
     for (const text of texts) expect(text).not.toMatch(/\byou(r)?\b/i);
   });
   it('the confirms', () => {
-    expect(GOAL_SHARING_COPY.stopConfirm('Trip Fund', ['Rina', 'Adi'])).toBe('Stop sharing Trip Fund? Rina and Adi each keep a copy with their own money in it.');
-    expect(GOAL_SHARING_COPY.stopConfirm('Trip Fund', ['Rina'])).toBe("Stop sharing Trip Fund? Rina keeps a copy with Rina's own money in it.");
     expect(GOAL_SHARING_COPY.leaveConfirm('Trip Fund')).toBe('Leave Trip Fund? A copy with the money set aside from this phone stays here.');
+  });
+  // Final review M1: a copy is promised only to a member with money in the goal; the others are told they stop seeing it.
+  it('the stop confirm promises a copy only where there is money', () => {
+    expect(GOAL_SHARING_COPY.stopConfirm('Trip Fund', ['Rina'], ['Rina'])).toBe("Stop sharing Trip Fund? Rina keeps a copy with the money set aside from Rina's phone.");
+    expect(GOAL_SHARING_COPY.stopConfirm('Trip Fund', ['Rina', 'Adi'], ['Rina', 'Adi'])).toBe('Stop sharing Trip Fund? Rina and Adi each keep a copy with the money set aside from their phones.');
+    expect(GOAL_SHARING_COPY.stopConfirm('Trip Fund', ['Rina'], [])).toBe('Stop sharing Trip Fund? Rina will no longer see it.');
+    expect(GOAL_SHARING_COPY.stopConfirm('Trip Fund', ['Rina', 'Adi', 'Sari'], ['Adi'])).toBe(
+      "Stop sharing Trip Fund? Rina and Sari will no longer see it. Adi keeps a copy with the money set aside from Adi's phone.",
+    );
+  });
+  // Final review I6: the consent line says what the others see, with names: never that balances or accounts stay private.
+  it('the switch says what the others will see', () => {
+    expect(GOAL_SHARING_COPY.switchInfo(['Rina'], 'Family')).toBe(
+      'Rina sees this goal, its payments, and the names and amounts of the accounts funding it; so does anyone who joins Family later.',
+    );
+    expect(GOAL_SHARING_COPY.switchInfo(['Rina', 'Adi'], 'Family')).toBe(
+      'Rina and Adi see this goal, its payments, and the names and amounts of the accounts funding it; so does anyone who joins Family later.',
+    );
+    expect(GOAL_SHARING_COPY.switchInfo(['Rina', 'Adi', 'Sari', 'Tono'], 'Family')).toBe(
+      'Everyone in Family sees this goal, its payments, and the names and amounts of the accounts funding it; so does anyone who joins later.',
+    );
+    expect(GOAL_SHARING_COPY.switchInfo(['Rina'], 'Family')).not.toMatch(/private/i);
+    expect(shareRowState([target('b1', 'Family', ['Rina'])], null)).toMatchObject({ kind: 'switch', info: GOAL_SHARING_COPY.switchInfo(['Rina'], 'Family') });
+  });
+  // Final review I2: eligibility gates turning sharing on, never the sharer's way to turn it off.
+  it('the sharer keeps the switch of a goal shared now, whatever the targets say', () => {
+    const on = viewSharedBy('Bima', { sharedBy: 'member-b', me: 'member-b', members: [{ memberId: 'member-b', name: 'Bima' }, { memberId: 'member-r', name: 'Rina' }] });
+    expect(shareRowState([], on)).toEqual({ kind: 'switch', label: 'Shared with Rina', bookId: 'b1', info: GOAL_SHARING_COPY.switchInfo(['Rina'], 'Family') });
+    // Off, it is offered again only where it can go.
+    expect(shareRowState([], { ...on, state: 'off' })).toEqual({ kind: 'hidden' });
+  });
+  // Final review I3: on a member's second device, their own synced lines (owner = this member) are Me.
+  it("a member's own synced lines are in Me, and To go matches the other phones", () => {
+    const links = [link(20_000_000, 'member-b'), link(8_000_000, 'member-b'), link(10_000_000, 'member-r'), link(4_000_000, 'member-r')];
+    const groups = fundingGroups(links, [{ memberId: 'member-r', name: 'Rina' }], 'member-b');
+    expect(groups.map((g) => [g.memberId, g.label, g.subtotalMinor, g.links.length])).toEqual([
+      [null, 'Me', 28_000_000, 2],
+      ['member-r', 'Rina', 14_000_000, 2],
+    ]);
+    expect(heroSegments(0, groups, 180_000_000).find((s) => s.key === 'to-go')!.minor).toBe(138_000_000);
+    expect(fundingCaption(links[0]!, 'Me', 'member-b')).toBe(GOAL_SHARING_COPY.syncedOwn);
+    expect(fundingCaption(links[2]!, 'Rina', 'member-b')).toBe("Rina's account");
+    expect(fundingCaption(link(1), 'Me', 'member-b')).toBeUndefined();
   });
 });

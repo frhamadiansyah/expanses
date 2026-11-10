@@ -76,7 +76,62 @@ export interface SaveGoalInput {
   stages: SaveGoalStageInput[];
   /** Set only by a calculator writing its own working. Anything else typed here breaks the link. */
   derived?: boolean;
+  /**
+   * The goal as the form opened on it, for an edit (final review I1): only what differs from it is written, onto the
+   * goal as it is now. Another phone's edit made meanwhile — a stage marked paid, a payment added — then survives the
+   * save, as C10's last-writer-wins per field promises, and only stages the form removed go.
+   */
+  base?: GoalEditBase;
 }
+
+export type GoalEditBase = Pick<SaveGoalInput, 'name' | 'kind' | 'growthBps' | 'returnBps' | 'currency' | 'stages'>;
+
+type StageRow = { id: string; name: string; targetMinor: number | null; targetMonths: number | null; dueOn: string; paidOn: string | null; sort: number };
+
+/**
+ * `input` laid onto `current` field by field, where it differs from `base` (I1). Stages the form knew keep the form's
+ * order, with each field the form left alone taken from the stage as it is now; a stage gone meanwhile stays gone
+ * (a removal wins, §11); stages added meanwhile follow, as they are; stages the form added or removed are as it says.
+ * An amount and a number of months are one field: a stage asks one or the other.
+ */
+function mergeEdit(input: SaveGoalInput, base: GoalEditBase, current: GoalRowFields, currentStages: StageRow[]): SaveGoalInput {
+  const pick = <K extends keyof GoalEditBase>(key: K, now: SaveGoalInput[K]): SaveGoalInput[K] => (input[key] !== base[key] ? input[key] : now);
+  const baseStages = new Map(base.stages.filter((stage) => stage.id).map((stage) => [stage.id!, stage]));
+  const nowStages = new Map(currentStages.map((stage) => [stage.id, stage]));
+  const stages: SaveGoalStageInput[] = [];
+  for (const stage of input.stages) {
+    const was = stage.id ? baseStages.get(stage.id) : undefined;
+    if (!stage.id || !was) {
+      stages.push(stage);
+      continue;
+    }
+    const now = nowStages.get(stage.id);
+    if (!now) continue;
+    const amountChanged = stage.targetMinor !== was.targetMinor || stage.targetMonths !== was.targetMonths;
+    stages.push({
+      id: stage.id,
+      name: stage.name !== was.name ? stage.name : now.name,
+      targetMinor: amountChanged ? stage.targetMinor : now.targetMinor,
+      targetMonths: amountChanged ? stage.targetMonths : now.targetMonths,
+      dueOn: stage.dueOn !== was.dueOn ? stage.dueOn : now.dueOn,
+      paidOn: (stage.paidOn ?? null) !== (was.paidOn ?? null) ? (stage.paidOn ?? null) : now.paidOn,
+    });
+  }
+  for (const now of [...currentStages].sort((a, b) => a.sort - b.sort)) {
+    if (!baseStages.has(now.id)) stages.push({ id: now.id, name: now.name, targetMinor: now.targetMinor, targetMonths: now.targetMonths, dueOn: now.dueOn, paidOn: now.paidOn });
+  }
+  return {
+    ...input,
+    name: pick('name', current.name),
+    kind: pick('kind', current.kind),
+    growthBps: pick('growthBps', current.growthBps),
+    returnBps: pick('returnBps', current.returnBps),
+    currency: pick('currency', current.currency ?? undefined),
+    stages,
+  };
+}
+
+type GoalRowFields = { name: string; kind: GoalKind; growthBps: number; returnBps: number; currency: string | null };
 
 export async function listGoals(database: Database, ws: WorkspaceContext, opts: { includeArchived?: boolean } = {}): Promise<GoalRow[]> {
   const rows = await database.db
@@ -162,10 +217,23 @@ function checkGoal(input: SaveGoalInput): void {
 }
 
 /** The body of `saveGoal`, for a caller already inside a transaction. Stage ids come back in the order given. */
-export async function saveGoalTx(tx: Db, ws: WorkspaceContext, input: SaveGoalInput): Promise<{ goalId: string; stageIds: string[] }> {
-  checkGoal(input);
-  const id = input.id ?? uuidv7();
+export async function saveGoalTx(tx: Db, ws: WorkspaceContext, typed: SaveGoalInput): Promise<{ goalId: string; stageIds: string[] }> {
+  checkGoal(typed);
+  const id = typed.id ?? uuidv7();
   const existing = await tx.select(await goalColumns(tx)).from(goals).where(and(eq(goals.id, id), eq(goals.workspaceId, ws.workspaceId)));
+  const input =
+    typed.base && existing[0]
+      ? mergeEdit(
+          typed,
+          typed.base,
+          { ...existing[0], currency: existing[0].currency ?? ws.baseCurrency },
+          await tx
+            .select({ id: goalStages.id, name: goalStages.name, targetMinor: goalStages.targetMinor, targetMonths: goalStages.targetMonths, dueOn: goalStages.dueOn, paidOn: goalStages.paidOn, sort: goalStages.sort })
+            .from(goalStages)
+            .where(eq(goalStages.goalId, id)),
+        )
+      : typed;
+  checkGoal(input);
   const rank = input.rank ?? existing[0]?.rank ?? (await nextRank(tx, ws));
   const before = existing[0] ? (existing[0].currency ?? ws.baseCurrency) : null;
   const currency = (input.currency ?? before ?? ws.baseCurrency).trim().toUpperCase();

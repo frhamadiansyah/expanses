@@ -4,6 +4,7 @@ import type { WorkspaceContext } from '../../context';
 import type { Database, Db } from '../../database';
 import { devicePlannedMonthlyMinor, goalHistory, goalLinksFor } from '../../repos/goal-funding';
 import { goalSharingTablesExist } from '../../repos/goal-sharing-tables';
+import { goalCurrencyExists } from '../../repos/goals';
 import { withCapture } from '../capture';
 import { uuidv5 } from '../uuidv5';
 import { goalLinkOfTx, memberLeftTx } from './scope';
@@ -22,6 +23,8 @@ export interface GoalFundingLine {
   /** In the goal's currency, as counted (a promise above the balance is already capped); null when this phone has no rate. */
   amountMinor: number | null;
   risk: Risk | null;
+  /** The goal's currency the amount is in, so a phone that reads the goal in another currency leaves it out (M8). */
+  currency: string;
 }
 
 export interface OwnGoalFunding {
@@ -34,6 +37,9 @@ export interface OwnGoalFunding {
 export async function ownGoalFunding(database: Database, ws: WorkspaceContext, goalId: string, date: string): Promise<OwnGoalFunding> {
   // Own links only: a partner's lines, once they exist, carry an owner and are not this phone's to send.
   const links = (await goalLinksFor(database, ws, date)).filter((link) => link.goalId === goalId && !('owner' in link && link.owner));
+  // A database before 0091 has no goal currency: every goal is in the base.
+  const [goal] = (await goalCurrencyExists(database.db)) ? await database.db.values<[string | null]>(sql`SELECT currency FROM goals WHERE id = ${goalId}`) : [];
+  const currency = goal?.[0] ?? ws.baseCurrency;
   const lines: GoalFundingLine[] = [];
   for (const link of links) {
     lines.push({
@@ -42,6 +48,7 @@ export async function ownGoalFunding(database: Database, ws: WorkspaceContext, g
       kind: link.kind,
       amountMinor: link.goalMinor,
       risk: link.risk,
+      currency,
     });
   }
   // The plan's planned figure counts the others' too, and the member's own from another device; only this phone's travels.
@@ -78,7 +85,9 @@ export async function ownGoalMoves(database: Database, ws: WorkspaceContext, goa
       occurredOn: entry.occurredOn,
       amountMinor: entry.amountMinor,
       currency: entry.currency,
-      text: entry.text,
+      // Only a spend carries its purchase's description (C8, D9). A borrow paid for something else, which is private:
+      // its line names the account the money came from, as a set-aside's does (final review I5).
+      text: entry.kind === 'borrowed' ? (entry.accountName ?? '') : entry.text,
       stageId: entry.stageId ?? null,
     });
   }
@@ -87,6 +96,24 @@ export async function ownGoalMoves(database: Database, ws: WorkspaceContext, goa
 
 /** Set once this device has written a summary for the goal: only then does it write one with nothing to say. */
 const wroteKey = (goalId: string) => `goal.summary.${goalId}`;
+
+/**
+ * The ids of the moves this device wrote for the goal, as a JSON list (local, never synced). A member's other device
+ * writes moves of the same member: only those this device wrote are its to change or take out (final review I4), and
+ * only those are already shown here from its own records (`goalHistory`, M13).
+ */
+const movesKey = (goalId: string) => `goal.moves.${goalId}`;
+
+async function writtenMovesTx(tx: Db, goalId: string): Promise<Set<string>> {
+  const [row] = await tx.values<[string]>(sql`SELECT value FROM settings WHERE key = ${movesKey(goalId)}`);
+  if (!row) return new Set();
+  try {
+    const ids = JSON.parse(row[0]) as unknown;
+    return new Set(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
 
 type StoredMove = Omit<GoalMoveRow, 'goalId' | 'memberId'>;
 
@@ -112,7 +139,7 @@ async function sendOneTx(tx: Db, goalId: string, date: string): Promise<boolean>
   if (funding.lines.length === 0 && moves.length === 0 && !wrote) return false;
   let changed = false;
 
-  const linesJson = JSON.stringify(funding.lines.map((line) => ({ ref: line.ref, name: line.name, kind: line.kind, amountMinor: line.amountMinor, risk: line.risk })));
+  const linesJson = JSON.stringify(funding.lines.map((line) => ({ ref: line.ref, name: line.name, kind: line.kind, amountMinor: line.amountMinor, risk: line.risk, currency: line.currency })));
   const [stored] = await tx.values<[string, number]>(sql`SELECT lines_json, planned_monthly_minor FROM goal_member_funding WHERE goal_id = ${goalId} AND member_id = ${memberId}`);
   if (!stored || stored[0] !== linesJson || Number(stored[1]) !== funding.plannedMonthlyMinor) {
     await withCapture(tx, { entity: 'goal_member_funding', id: `${goalId}|${memberId}`, bookId: link.bookId }, () =>
@@ -134,7 +161,12 @@ async function sendOneTx(tx: Db, goalId: string, date: string): Promise<boolean>
     return !was || !sameMove(was, move);
   });
   const now = new Set(moves.map((move) => move.id));
-  const gone = [...have.keys()].filter((id) => !now.has(id));
+  const written = await writtenMovesTx(tx, goalId);
+  // Only a move this device wrote goes when its source does: another device's of the same member is not this one's.
+  const gone = [...have.keys()].filter((id) => written.has(id) && !now.has(id));
+  if (written.size !== now.size || [...now].some((id) => !written.has(id))) {
+    await tx.run(sql`INSERT INTO settings (key, value) VALUES (${movesKey(goalId)}, ${JSON.stringify([...now].sort())}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
+  }
   if (upserts.length + gone.length > 0) {
     const targets = [...upserts.map((move) => move.id), ...gone].map((id) => ({ entity: 'goal_member_move', id, bookId: link.bookId }));
     await withCapture(tx, targets, async () => {

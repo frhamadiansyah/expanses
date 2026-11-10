@@ -5,6 +5,8 @@ import {
   deleteGoal,
   GoalDbError,
   goalContributionsFor,
+  goalHistory,
+  goalPlansFor,
   goalShareOf,
   goalSharesOf,
   leaveSharedGoal,
@@ -273,14 +275,13 @@ describe('leaving', () => {
     expect(await skipsOf(bima.database)).toEqual([]);
   });
 
-  it("Rina's tablet follows her leave with a copy of its own; Bima's phone counts her total once", async () => {
+  it("Rina's tablet follows her leave, with no empty copy of its own; Bima's phone counts her total once", async () => {
     const { h, bima, rina, rinaTablet, goalId } = await shared({ rinaTablet: true });
     expect((await listGoals(rinaTablet!.database, rinaTablet!.ws)).map((g) => g.id)).toEqual([goalId]);
     await leaveSharedGoal(rina.database, rina.ws, goalId);
     await h.settle();
-    const [copy] = await listGoals(rinaTablet!.database, rinaTablet!.ws);
-    expect(copy!.id).not.toBe(goalId);
-    expect(await logOf(rinaTablet!.database, copy!.id)).toEqual([expect.objectContaining({ kind: 'unshared', member_name: 'Bima', copied_from: goalId })]);
+    // Final review M2: the tablet holds none of Rina's money, so the goal goes from it; her copy is on her phone.
+    expect(await listGoals(rinaTablet!.database, rinaTablet!.ws)).toEqual([]);
     expect(await rowsOf(rinaTablet!.database, 'goal_member_funding')).toEqual([]);
     expect((await logOf(bima.database, goalId)).filter((line) => line.kind === 'left')).toEqual([expect.objectContaining({ member_name: 'Rina', amount_minor: 10_000_000 })]);
     for (const d of [bima, rina, rinaTablet!]) expect(await skipsOf(d.database)).toEqual([]);
@@ -397,5 +398,76 @@ describe('seeding a workspace with goal rows in it (carried b)', () => {
       ['goal_stage', expect.any(String)],
       ['goal_member_funding', `${own}|member-Bima`],
     ]);
+  });
+});
+
+/** An own write of the device's that touches no goal: the transaction that sends whatever apply left pending. */
+const anyOwnWrite = (device: Device) =>
+  createAccount(device.database, device.ws, { name: `${device.name} Spare`, kind: 'asset', subtype: 'savings', currency: 'IDR', openingBalanceMinor: 0, openedOn: '2026-01-01' });
+
+const pendingGoals = async (database: Database) =>
+  JSON.parse((await database.db.values<[string]>(sql`SELECT value FROM settings WHERE key = 'goal.pending_summaries'`))[0]?.[0] ?? '[]') as string[];
+
+describe('final review fixes', () => {
+  it('I8: an off that crosses Rina’s update leaves none of her lines on Bima’s phone, and none count on re-share', async () => {
+    const { h, bima, rina, rinaSavings, goalId, bookId } = await shared();
+    // Rina's new figure reaches the log before Bima's off does: his phone pulls it after its own off dropped her lines.
+    await saveEarmark(rina.database, rina.ws, { goalId, accountId: rinaSavings, amountMinor: 12_000_000 });
+    await rina.engine.syncOnce(h.bookId);
+    await stopSharingGoal(bima.database, bima.ws, goalId);
+    await h.settle();
+    expect(await rowsOf(bima.database, 'goal_member_funding')).toEqual([]);
+    expect(await rowsOf(bima.database, 'goal_member_moves')).toEqual([]);
+    await shareGoal(bima.database, bima.ws, goalId, bookId);
+    await h.settle();
+    // Rina's money is in her private copy now: the shared goal counts none of it, and none of her History shows.
+    const plan = (await goalPlansFor(bima.database, bima.ws, today())).plans.find((row) => row.goalId === goalId)!;
+    expect(plan.currentMinor).toBe(0);
+    expect(((await goalHistory(bima.database, bima.ws, today(), { limit: null }))[goalId] ?? []).filter((entry) => entry.by !== null)).toEqual([]);
+    for (const d of [bima, rina]) expect(await skipsOf(d.database)).toEqual([]);
+  });
+
+  it('M2: Rina, whose money went into her copy, sends no empty line in the next round, and gets no second copy', async () => {
+    const { h, bima, rina, goalId, bookId } = await shared();
+    await stopSharingGoal(bima.database, bima.ws, goalId);
+    await h.settle();
+    await shareGoal(bima.database, bima.ws, goalId, bookId);
+    await h.settle();
+    await anyOwnWrite(rina);
+    await h.settle();
+    expect(await rowsOf(bima.database, 'goal_member_funding', sql`member_id = 'member-Rina'`)).toEqual([]);
+    await stopSharingGoal(bima.database, bima.ws, goalId);
+    await h.settle();
+    expect((await listGoals(rina.database, rina.ws)).map((g) => g.name)).toEqual(['Trip Fund']);
+  });
+
+  it("M2: Rina's tablet, holding none of her money, keeps no empty copy when Bima turns sharing off", async () => {
+    const { h, bima, rinaTablet, goalId } = await shared({ rinaTablet: true });
+    expect(await rowsOf(rinaTablet!.database, 'goal_member_funding', sql`member_id = 'member-Rina'`)).not.toEqual([]);
+    await stopSharingGoal(bima.database, bima.ws, goalId);
+    await h.settle();
+    expect(await listGoals(rinaTablet!.database, rinaTablet!.ws)).toEqual([]);
+    expect(await skipsOf(rinaTablet!.database)).toEqual([]);
+  });
+
+  it("M12: sharing turned on again from Bima's tablet sends his phone's line again at its next write", async () => {
+    const { h, bima, rina, tablet, goalId, bookId } = await shared({ tablet: true });
+    const bimaSavings = (
+      await createAccount(bima.database, bima.ws, { name: 'Home Savings', kind: 'asset', subtype: 'savings', currency: 'IDR', openingBalanceMinor: 9_000_000, openedOn: '2026-01-01' })
+    ).id;
+    await saveEarmark(bima.database, bima.ws, { goalId, accountId: bimaSavings, amountMinor: 5_000_000 });
+    await h.settle();
+    await stopSharingGoal(tablet!.database, tablet!.ws, goalId);
+    await h.settle();
+    await shareGoal(tablet!.database, tablet!.ws, goalId, bookId);
+    await h.settle();
+    // Queued by apply; the phone's next own transaction (here its next sync's own write) sends it.
+    await anyOwnWrite(bima);
+    await h.settle();
+    expect(await pendingGoals(bima.database)).toEqual([]);
+    expect(JSON.parse(String((await rowOf(rina.database, 'goal_member_funding', goalId, 'member-Bima')).lines_json))).toEqual([
+      expect.objectContaining({ name: 'Home Savings', amountMinor: 5_000_000 }),
+    ]);
+    for (const d of [bima, rina, tablet!]) expect(await skipsOf(d.database)).toEqual([]);
   });
 });

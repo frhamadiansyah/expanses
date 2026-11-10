@@ -5,6 +5,7 @@ import {
   archiveGoal,
   createAccount,
   deleteGoal,
+  goalPlansFor,
   type GoalRow,
   listEarmarks,
   listGoals,
@@ -315,15 +316,14 @@ describe('a phone with nothing of its own in a goal keeps no copy when it ends',
     expect(await listEarmarks(database, ws)).toEqual([{ goalId: copy!.id, accountId: savings, amountMinor: 10_000_000 }]);
   });
 
-  it("her own line from her other phone keeps a private copy", async () => {
+  // Final review M2: her line from her other phone stays with the shared goal, so a copy here would hold nothing.
+  it('her own line from her other phone keeps no empty copy', async () => {
     const { database, ws, bookId } = await phone('member-r');
     await fromDevice(database, bookId, 'dev-f', arrive);
     await fromDevice(database, bookId, 'dev-r', [{ entity: 'goal_member_funding', id: `${goalId}|member-r`, op: 'upsert', fields: { lines: '[]', plannedMonthlyMinor: 0, asOf: DAY } }]);
     await fromDevice(database, bookId, 'dev-f', [link('off')]);
-    const goals = await listGoals(database, ws);
-    expect(goals).toHaveLength(1);
-    expect(goals[0]!.id).not.toBe(goalId);
-    expect(goals[0]!.name).toBe('Trip Fund');
+    expect(await listGoals(database, ws, { includeArchived: true })).toEqual([]);
+    expect(await skipsOf(database)).toEqual([]);
   });
 });
 
@@ -340,5 +340,67 @@ describe("the sharer's other phone follows a delete as deleteGoal does", () => {
       await database.db.values(sql`SELECT 1 FROM goal_stages UNION ALL SELECT 1 FROM goal_contributions UNION ALL SELECT 1 FROM goal_share_log UNION ALL SELECT 1 FROM goal_member_funding`),
     ).toEqual([]);
     expect(await database.db.values(sql`SELECT 1 FROM accounts WHERE id = ${main}`)).toHaveLength(1);
+  });
+});
+
+describe('a malformed line from a peer (final review M7)', () => {
+  it("breaks no read here, and Rina's leave is still followed", async () => {
+    const { database, ws, bookId, goalId } = await sharedTrip('member-f');
+    await fromDevice(database, bookId, 'dev-r', [{ entity: 'goal_member_funding', id: `${goalId}|member-r`, op: 'upsert', fields: { lines: '{broken', plannedMonthlyMinor: 0, asOf: DAY } }]);
+    expect((await goalPlansFor(database, ws, DAY)).plans.find((plan) => plan.goalId === goalId)!.currentMinor).toBe(0);
+    await fromDevice(database, bookId, 'dev-r', [{ entity: 'goal_share_leave', id: `${goalId}|member-r`, op: 'upsert', fields: { round: 1, leftOn: DAY } }]);
+    expect(await database.db.values(sql`SELECT kind, member_name, amount_minor FROM goal_share_log WHERE goal_id = ${goalId}`)).toEqual([['left', 'Rina', null]]);
+    expect(await database.db.values(sql`SELECT 1 FROM goal_member_funding`)).toEqual([]);
+  });
+});
+
+/*
+ * Final review I1: Edit goal sends back only what this edit changed, against the goal as the form opened on it (`base`),
+ * so what another phone did meanwhile — a stage marked paid, a payment added — survives the save (C10: last writer
+ * wins per field, not per form).
+ */
+describe('an edit saved over a partner’s change (I1)', () => {
+  it("keeps Rina's paid mark and the payment she added; only Bima's own change goes out", async () => {
+    const { database, ws, bookId, goalId, goal, stageId } = await sharedTrip('member-f');
+    const base = inputOf(goal);
+    const added = '01a0e100-0000-7000-8000-0000000000a1';
+    // While Bima's form is open, Rina marks the deposit paid and adds a payment.
+    await fromDevice(database, bookId, 'dev-r', [
+      { entity: 'goal_stage', id: stageId, op: 'upsert', fields: { paidOn: DAY } },
+      { entity: 'goal_stage', id: added, op: 'upsert', fields: { goalId, name: 'Visa', targetMinor: 900_000, targetMonths: null, dueOn: '2031-02-01', sort: 2, paidOn: null } },
+    ]);
+    await clearOutbox(database);
+    await saveGoal(database, ws, { ...base, name: 'Coast Trip', base });
+    const after = (await listGoals(database, ws)).find((g) => g.id === goalId)!;
+    expect(after.name).toBe('Coast Trip');
+    expect(after.stages.map((s) => [s.name, s.targetMinor, s.paidOn])).toEqual([
+      ['Visa', 900_000, null],
+      ['Deposit', 4_350_000, DAY],
+      ['Balance', 6_120_000, null],
+    ]);
+    const ops = await outboxOps(database);
+    expect(ops.filter((o) => o.op === 'delete')).toEqual([]);
+    expect(ops.filter((o) => o.entity === 'goal_stage' && o.op === 'upsert' && 'paidOn' in o.fields && o.id === stageId)).toEqual([]);
+    expect(ops.find((o) => o.entity === 'goal')).toMatchObject({ op: 'upsert', fields: expect.objectContaining({ name: 'Coast Trip' }) });
+    expect(await skipsOf(database)).toEqual([]);
+  });
+
+  it("still writes what Bima did change: his own paid mark, a target, a payment he removed", async () => {
+    const { database, ws, bookId, goalId, goal, stageId, balanceId } = await sharedTrip('member-f');
+    const base = inputOf(goal);
+    // Rina renames the deposit meanwhile; Bima changes its target, so her name stays and his target lands.
+    await fromDevice(database, bookId, 'dev-r', [{ entity: 'goal_stage', id: stageId, op: 'upsert', fields: { name: 'First payment' } }]);
+    const edited = base.stages.filter((s) => s.id !== balanceId).map((s) => (s.id === stageId ? { ...s, targetMinor: 5_000_000, paidOn: DAY } : s));
+    await saveGoal(database, ws, { ...base, stages: edited, base });
+    const after = (await listGoals(database, ws)).find((g) => g.id === goalId)!;
+    expect(after.stages.map((s) => [s.id, s.name, s.targetMinor, s.paidOn])).toEqual([[stageId, 'First payment', 5_000_000, DAY]]);
+  });
+
+  it('a payment Rina removed meanwhile is not brought back', async () => {
+    const { database, ws, bookId, goalId, goal, balanceId } = await sharedTrip('member-f');
+    const base = inputOf(goal);
+    await fromDevice(database, bookId, 'dev-r', [{ entity: 'goal_stage', id: balanceId, op: 'delete' }]);
+    await saveGoal(database, ws, { ...base, name: 'Coast Trip', base });
+    expect((await listGoals(database, ws)).find((g) => g.id === goalId)!.stages.map((s) => s.name)).toEqual(['Deposit']);
   });
 });

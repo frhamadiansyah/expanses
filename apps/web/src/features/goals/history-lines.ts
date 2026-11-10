@@ -37,10 +37,18 @@ export function historyTitle(entry: GoalHistoryEntry): string {
 
 const SHARE_KINDS: ReadonlySet<GoalHistoryEntry['kind']> = new Set(['shared', 'stopped', 'left', 'unshared', 'ended']);
 
-/** Day, the account text, and on a shared goal the person who moved the money ("Me" for this phone's own). */
-export function historySubtitle(entry: GoalHistoryEntry, today: string, nameOf: (memberId: string) => string, shared: boolean): string {
+/**
+ * Day, the account text, and on a shared goal the person who moved the money: "Me" for this phone's own and for this
+ * member's own from another of their devices (`me`, final review M13), the member's name for anyone else's.
+ */
+export function historySubtitle(entry: GoalHistoryEntry, today: string, nameOf: (memberId: string) => string, shared: boolean, me?: string): string {
   const parts = [historyDay(entry.occurredOn, today)];
   if (entry.text) parts.push(entry.text);
-  if (shared && !SHARE_KINDS.has(entry.kind)) parts.push(entry.by === null ? 'Me' : nameOf(entry.by));
+  if (shared && !SHARE_KINDS.has(entry.kind)) parts.push(entry.by === null || entry.by === me ? 'Me' : nameOf(entry.by));
   return parts.join(' · ');
+}
+
+/** Whether a goal's History names who moved the money: only while it is shared (M5); off, it is a private goal again. */
+export function historyNamesPeople(share: { state: string } | null): boolean {
+  return share?.state === 'on';
 }

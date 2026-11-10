@@ -45,7 +45,9 @@ describe('goalShareTargets', () => {
   it('a removed old device does not', async () => {
     const { h, bima, rina, bookId } = await pair('0.4.0');
     const newer = await h.device('Rina2', 'member-Rina', 'IDR', '0.5.0');
-    await h.join(newer, bima);
+    // Rina's newer phone joins as Rina (S§8.3): once her old one is removed she is still in, on a current build.
+    const { code } = await bima.engine.createInvite(bookId, { inviterName: 'Bima', sameMember: true, memberId: rina.memberId });
+    await newer.engine.joinBook(code, { ws: newer.ws, memberName: 'Rina', deviceName: "Rina's new phone", memberId: rina.memberId });
     await h.settle();
     await bima.engine.removeDevice(bookId, rina.deviceId);
     await h.settle([bima, newer]);

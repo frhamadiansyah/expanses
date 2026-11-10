@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formatMinor } from '@expanses/core';
-import { addableAccounts, addedFromEarmarks, assumptionsSummary, canSaveGoal, isNoAmount, onlyPaymentName, setAsideSummary, setAsideWrites } from './goal-form-model';
+import { addableAccounts, addedFromEarmarks, assumptionsSummary, canSaveGoal, editBaseOf, isNoAmount, onlyPaymentName, setAsideSummary, setAsideWrites } from './goal-form-model';
 
 describe('onlyPaymentName', () => {
   it('a new goal saves its only payment under the goal name', () => {
@@ -87,5 +87,23 @@ describe('canSaveGoal', () => {
     expect(canSaveGoal('Trip', [{ ...monthsStage, months: ' ' }])).toBe(false);
     expect(canSaveGoal('Trip', [{ ...amountStage, name: '' }])).toBe(false);
     expect(canSaveGoal('Trip', [])).toBe(false);
+  });
+});
+
+describe('editBaseOf (final review I1)', () => {
+  it('keeps the fields a save compares against, and none of what does not travel', () => {
+    const goal = {
+      id: 'g1', workspaceId: 'w', name: 'Trip Fund', kind: 'holiday', rank: 0, growthBps: 300, returnBps: 450, standingMonthlyMinor: 500_000, standingNote: null,
+      currency: 'IDR', status: 'active', createdAt: '2026-01-01T00:00:00Z',
+      stages: [{ id: 's1', name: 'Deposit', targetMinor: 4_350_000, targetMonths: null, dueOn: '2031-03-01', paidOn: '2026-11-10', returnBps: null }],
+    } as const;
+    expect(editBaseOf(goal as unknown as Parameters<typeof editBaseOf>[0])).toEqual({
+      name: 'Trip Fund',
+      kind: 'holiday',
+      growthBps: 300,
+      returnBps: 450,
+      currency: 'IDR',
+      stages: [{ id: 's1', name: 'Deposit', targetMinor: 4_350_000, targetMonths: null, dueOn: '2031-03-01', paidOn: '2026-11-10' }],
+    });
   });
 });

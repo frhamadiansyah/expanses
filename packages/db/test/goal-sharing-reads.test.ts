@@ -108,6 +108,37 @@ describe('plan reads on a shared goal', () => {
     expect(plan.ownNeededMonthlyBaseMinor).toBe(1_875_000);
   });
 
+  // Final review I7: the Goals page's "Set up a month" sits beside this person's own need and capacity: their own
+  // planned monthly only. The goal's own page keeps the combined figure (C18).
+  it("the summary's planned total is this phone's own, the plan's the household's", async () => {
+    await giveRina(RINA_LINES, 1_000_000);
+    const summary = await plans();
+    expect(planOf(summary, goalId).plannedMonthlyMinor).toBe(3_000_000);
+    expect(summary.plannedMonthlyMinor).toBe(2_000_000);
+  });
+
+  // Final review M7: a peer's line text that does not parse breaks no read; a line of the wrong shape is left out.
+  it('a malformed partner line is left out, and every read still works', async () => {
+    await database.db.run(sql`
+      INSERT INTO goal_member_funding (goal_id, member_id, workspace_id, lines_json, planned_monthly_minor, as_of)
+      VALUES (${goalId}, 'member-r', ${ws.workspaceId}, 'not json', 1000000, ${TODAY})`);
+    expect(planOf(await plans(), goalId).currentMinor).toBe(28_000_000);
+    await giveRina([RINA_LINES[0]!, { name: 7 } as unknown as Line, { ...RINA_LINES[1]!, amountMinor: '4000000' } as unknown as Line], 1_000_000);
+    const plan = planOf(await plans(), goalId);
+    expect(plan.currentMinor).toBe(38_000_000);
+    expect(plan.links.filter((l) => l.owner === 'member-r').map((l) => l.name)).toEqual(['Partner Savings']);
+  });
+
+  // Final review M8: a line worked out in another currency than the goal's now (a currency change crossing it) is
+  // left out and said so, never added as if it were the goal's money.
+  it("a partner line in another currency than the goal's is left out and warned", async () => {
+    await giveRina([{ ...RINA_LINES[0]!, currency: 'IDR' } as Line, { ...RINA_LINES[1]!, currency: 'USD' } as Line], 1_000_000);
+    const plan = planOf(await plans(), goalId);
+    expect(plan.currentMinor).toBe(38_000_000);
+    expect(plan.links.filter((l) => l.owner === 'member-r').map((l) => l.name)).toEqual(['Partner Savings']);
+    expect(plan.earmarkWarning).toContain('Cash Fund is not counted here');
+  });
+
   it('a partner who plans more than the need leaves nothing for this phone', async () => {
     await giveRina(RINA_LINES, 5_000_000);
     expect(planOf(await plans(), goalId).ownNeededMonthlyMinor).toBe(0);
