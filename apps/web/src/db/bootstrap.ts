@@ -14,6 +14,7 @@ import {
   listWorkspaces,
   migrate,
   type Migration,
+  resendGoalSummaries,
   syncLinkedPrograms,
   type KeyStore,
   upgradeCalculatorGoals,
@@ -116,6 +117,17 @@ export async function openAppDb(database: Database, migrations?: Migration[], op
     } catch (error) {
       console.warn(`Upgrading worked-out goals in ${each.name} failed`, error);
     }
+  }
+  // A rate or a price moves the amounts a shared goal counts without anyone touching it: its summary is sent again once
+  // a day, and only when it changed (shared goals §8.5).
+  try {
+    const today = isoDate();
+    if (localStorage.getItem('goal.summaries.resent') !== today) {
+      await resendGoalSummaries(database, today);
+      localStorage.setItem('goal.summaries.resent', today);
+    }
+  } catch (error) {
+    console.warn('Shared goal summaries could not be resent; trying again at the next open', error);
   }
   try {
     await syncLinkedPrograms(database, ws, CATALOG, isoDate());

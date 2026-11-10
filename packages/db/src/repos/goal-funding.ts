@@ -42,7 +42,7 @@ import { type EmergencyInputs, listGoalCalculators } from './goal-calculators';
 import { type GoalRow, GoalDbError, listEarmarks, listGoals } from './goals';
 import { type DrawRow, listDraws, setAsideViews } from './set-aside';
 import { activeTrades, listTrades, switchPairTx } from './trades';
-import { writeGoalPartsTx } from './goal-parts';
+import { markTradeGoalsDirtyTx, writeGoalPartsTx } from './goal-parts';
 import { listTradeTemplates } from './trade-templates';
 
 /** A switch's two trades carry money with no goal, and only that: neither is given one. */
@@ -114,8 +114,10 @@ export async function resplitTrade(database: Database, ws: WorkspaceContext, tra
     }
     const whole = byMoney ? trade.grossMinor : trade.unitsMicro;
     const one = kept.length === 1 && (byMoney ? kept[0]!.moneyMinor : kept[0]!.unitsMicro) === whole ? kept[0]!.goalId : null;
+    await markTradeGoalsDirtyTx(tx, tradeId);
     await tx.update(investmentTrades).set({ goalId: one }).where(eq(investmentTrades.id, tradeId));
     await writeGoalPartsTx(tx, tradeId, one ? [] : kept);
+    await markTradeGoalsDirtyTx(tx, tradeId);
     await tx.insert(auditLog).values({
       id: uuidv7(),
       workspaceId: ws.workspaceId,
@@ -146,7 +148,9 @@ export async function retagTrade(database: Database, ws: WorkspaceContext, trade
     if (!retagFits(await activeTrades(tx, ws, trade.accountId), tradeId, goalId)) {
       throw new GoalDbError('Units from this purchase were already sold from its goal, so it cannot move');
     }
+    await markTradeGoalsDirtyTx(tx, tradeId);
     await tx.update(investmentTrades).set({ goalId }).where(eq(investmentTrades.id, tradeId));
+    await markTradeGoalsDirtyTx(tx, tradeId);
     // One goal now: a split it had is gone with the move.
     await writeGoalPartsTx(tx, tradeId, []);
     await tx.insert(auditLog).values({
