@@ -12,7 +12,7 @@ import { CurrencySheet } from '../transactions/CurrencySheet';
 import { Sheet } from '../../app/Sheet';
 import { useOwnTarget } from '../calculators/emergency-fields';
 import { Calculator, calculatorKindOf } from './Calculator';
-import { assumptionsSummary, canSaveGoal, onlyPaymentName, setAsideSummary } from './goal-form-model';
+import { assumptionsSummary, canSaveGoal, editBaseOf, onlyPaymentName, setAsideSummary } from './goal-form-model';
 import { applyTagChanges, fundingSummary, tagChanges, taggedIds } from './goal-tags';
 import { FundingSheet, taggable } from './FundingSheet';
 import { useTrades } from '../networth/queries';
@@ -109,6 +109,9 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
         }))
       : [draftFromTemplate(starting!, today, currency)],
   );
+  // The goal as the form opened on it: the save sends only what this edit changed (I1), so another phone's paid mark or
+  // added payment, arriving while the form is open, is kept.
+  const [opened] = useState(() => (goal ? editBaseOf(goal) : undefined));
   const setAside = useSetAside(goal, earmarks);
   // An emergency goal with a working can be given a Target amount of its own, rounding up from months x monthly outgoing.
   const emergencyWorking = goal && goal.kind === 'emergency' ? ((calculators.data ?? []).find((row) => row.goalId === goal.id && row.kind === 'emergency')?.inputs as EmergencyInputs | undefined) : undefined;
@@ -301,6 +304,7 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
         standingNote: goal?.standingNote ?? null,
         currency,
         stages: payments,
+        ...(opened ? { base: opened } : {}),
       });
       setCreatedId(goalId);
       if (ownable && keepsWorking) {

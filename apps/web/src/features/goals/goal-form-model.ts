@@ -1,4 +1,5 @@
 import { formatMinor } from '@expanses/core';
+import type { GoalEditBase, GoalRow } from '@expanses/db';
 
 /**
  * The goal form's decisions that are not drawing: which accounts can still be added to Money set aside, what the
@@ -75,4 +76,20 @@ export interface StageText {
 export function canSaveGoal(name: string, stages: readonly StageText[]): boolean {
   if (name.trim() === '' || stages.length === 0) return false;
   return stages.every((stage) => stage.name.trim() !== '' && (stage.usesMonths ? stage.months.trim() !== '' : stage.amount.trim() !== ''));
+}
+
+/**
+ * The goal as Edit goal opened on it, kept for the save (final review I1): the save writes only what differs from it,
+ * so a payment another phone marked paid or added while the form was open is not undone. Taken once, when the form
+ * opens — the goal it is given later already holds the other phone's change.
+ */
+export function editBaseOf(goal: GoalRow): GoalEditBase {
+  return {
+    name: goal.name,
+    kind: goal.kind,
+    growthBps: goal.growthBps,
+    returnBps: goal.returnBps,
+    currency: goal.currency,
+    stages: goal.stages.map(({ id, name, targetMinor, targetMonths, dueOn, paidOn }) => ({ id, name, targetMinor, targetMonths, dueOn, paidOn })),
+  };
 }
