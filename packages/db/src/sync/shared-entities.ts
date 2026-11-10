@@ -73,6 +73,12 @@ const budgetsOfBook = (bookId: string) =>
 const billsOfBook = (bookId: string) =>
   sql`SELECT x.id FROM expense_templates x JOIN book_categories bc ON bc.category_account_id = x.category_account_id WHERE bc.book_id = ${bookId}`;
 
+/** The goals whose link to the book is on: what the goal-family entities are scoped by. */
+const goalsOn = (bookId: string) => sql`(SELECT goal_id FROM goal_shares WHERE book_id = ${bookId} AND state = 'on')`;
+
+/** The six entities scoped by "on links": they leave the book together when a goal's sharing is turned off. */
+export const GOAL_FAMILY: ReadonlySet<string> = new Set(['goal', 'goal_stage', 'goal_stage_term', 'goal_calculator', 'goal_member_funding', 'goal_member_move']);
+
 export const SHARED_ENTITIES: readonly SharedEntity[] = [
   {
     kind: 'row',
@@ -487,6 +493,116 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
     },
     localOnInsert: ['book_id'],
   },
+  /*
+   * Shared goals (shared goals spec §8.1): one goal at a time rides the household book. goal_share is the link, in the
+   * book whatever its state; the six goal-family entities are in the book only while a link to it is 'on' (GOAL_FAMILY),
+   * so turning sharing off takes the rest out of scope. Who may write the link and the goal's own rows is
+   * `goals/authority.ts`'s (judged from the op, the stored row and the author): they have no `writer` here. A member's
+   * summary and moves are that member's alone. Rank, the standing amount and note, and every account stay on the phone.
+   */
+  {
+    kind: 'row',
+    entity: 'goal_share',
+    table: 'goal_shares',
+    scopeRule: 'book_id = bookId (any state)',
+    scope: (bookId) => sql`t.book_id = ${bookId}`,
+    keyColumns: ['goal_id'],
+    fields: { sharedBy: 'shared_by', state: 'state', stateOn: 'state_on', round: 'round' },
+    localOnInsert: ['book_id'],
+  },
+  {
+    kind: 'row',
+    entity: 'goal_share_leave',
+    table: 'goal_share_leaves',
+    scopeRule: 'goal_id has a link in the book (any state)',
+    scope: (bookId) => sql`t.goal_id IN (SELECT goal_id FROM goal_shares WHERE book_id = ${bookId})`,
+    keyColumns: ['goal_id', 'member_id'],
+    fields: { round: 'round', leftOn: 'left_on' },
+    localOnInsert: [],
+    // A member leaves for themselves only, never the link's sharer for them.
+    writer: (_fields, key) => key.member_id ?? null,
+  },
+  {
+    kind: 'row',
+    entity: 'goal',
+    table: 'goals',
+    scopeRule: "id has a link in the book that is 'on'",
+    scope: (bookId) => sql`t.id IN ${goalsOn(bookId)}`,
+    keyColumns: ['id'],
+    fields: { name: 'name', kind: 'kind', growthBps: 'growth_bps', returnBps: 'return_bps', currency: 'currency', status: 'status' },
+    localOnInsert: ['created_at'],
+  },
+  {
+    kind: 'row',
+    entity: 'goal_stage',
+    table: 'goal_stages',
+    scopeRule: "goal_id has a link in the book that is 'on'",
+    scope: (bookId) => sql`t.goal_id IN ${goalsOn(bookId)}`,
+    keyColumns: ['id'],
+    fields: {
+      goalId: 'goal_id',
+      name: 'name',
+      targetMinor: 'target_minor',
+      targetMonths: 'target_months',
+      dueOn: 'due_on',
+      sort: 'sort',
+      paidOn: 'paid_on',
+    },
+    localOnInsert: [],
+  },
+  {
+    kind: 'row',
+    entity: 'goal_stage_term',
+    table: 'goal_stage_terms',
+    scopeRule: "goal_id has a link in the book that is 'on'",
+    scope: (bookId) => sql`t.goal_id IN ${goalsOn(bookId)}`,
+    keyColumns: ['stage_id'],
+    fields: { goalId: 'goal_id', returnBps: 'return_bps', derivedKey: 'derived_key' },
+    localOnInsert: [],
+  },
+  {
+    kind: 'row',
+    entity: 'goal_calculator',
+    table: 'goal_calculators',
+    scopeRule: "goal_id has a link in the book that is 'on'",
+    scope: (bookId) => sql`t.goal_id IN ${goalsOn(bookId)}`,
+    keyColumns: ['goal_id'],
+    fields: { kind: 'kind', inputs: 'inputs_json', computedMinor: 'computed_minor', computedAt: 'computed_at' },
+    localOnInsert: [],
+  },
+  {
+    kind: 'row',
+    entity: 'goal_member_funding',
+    table: 'goal_member_funding',
+    scopeRule: "goal_id has a link in the book that is 'on'",
+    scope: (bookId) => sql`t.goal_id IN ${goalsOn(bookId)}`,
+    keyColumns: ['goal_id', 'member_id'],
+    fields: { lines: 'lines_json', plannedMonthlyMinor: 'planned_monthly_minor', asOf: 'as_of' },
+    localOnInsert: [],
+    // Each member's phone writes its own summary, as each answers a proposal for themselves.
+    writer: (_fields, key) => key.member_id ?? null,
+  },
+  {
+    kind: 'row',
+    entity: 'goal_member_move',
+    table: 'goal_member_moves',
+    scopeRule: "goal_id has a link in the book that is 'on'",
+    scope: (bookId) => sql`t.goal_id IN ${goalsOn(bookId)}`,
+    keyColumns: ['id'],
+    fields: {
+      goalId: 'goal_id',
+      memberId: 'member_id',
+      kind: 'kind',
+      occurredOn: 'occurred_on',
+      amountMinor: 'amount_minor',
+      currency: 'currency',
+      text: 'text',
+      stageId: 'stage_id',
+    },
+    localOnInsert: [],
+    // The member a line names writes it; memberId is frozen once the row exists (authority.ts).
+    writer: (fields) => (typeof fields.memberId === 'string' ? fields.memberId : null),
+  },
   {
     kind: 'purchase',
     entity: 'purchase',
@@ -602,6 +718,15 @@ export const NEVER_SYNCED_COLUMNS: Readonly<Record<string, readonly string[]>> =
   event_expense_details: ['book_id'],
   event_settlements: ['book_id'],
   event_items_shared: ['book_id'],
+  // Shared goals (migration 0109 and the goals' own tables): a goal's rank, standing amount and note stay on the phone.
+  goals: ['workspace_id', 'rank', 'standing_monthly_minor', 'standing_note', 'created_at'],
+  goal_stages: ['workspace_id'],
+  goal_stage_terms: ['workspace_id'],
+  goal_calculators: ['workspace_id'],
+  goal_share_leaves: ['workspace_id'],
+  goal_member_funding: ['workspace_id'],
+  goal_member_moves: ['workspace_id'],
+  goal_shares: ['book_id', 'workspace_id'],
 };
 
 export function entityOf(name: string): SharedEntity {
