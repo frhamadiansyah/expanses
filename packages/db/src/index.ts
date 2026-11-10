@@ -183,6 +183,7 @@ export { type PullResult } from './sync/apply';
 export * from './repos/sharing';
 // Shared goals (§8.6): the app-version gate and the workspaces a goal can be shared into.
 export { SHARED_GOALS_MIN_APP_VERSION } from './sync/goals/version';
+export { resendGoalSummaries } from './sync/goals/summaries';
 export {
   goalShareOf,
   goalSharesOf,
