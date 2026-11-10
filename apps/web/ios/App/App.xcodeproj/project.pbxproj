@@ -32,6 +32,14 @@
 		95F1D0012FEA000000000003 /* ICloudBackupPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95F1D0002FEA000000000003 /* ICloudBackupPlugin.swift */; };
 		CB5801012FEB000000000001 /* WidgetSummaryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB5802012FEB000000000001 /* WidgetSummaryStore.swift */; };
 		CB5801012FEB000000000002 /* WidgetSummaryPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB5802012FEB000000000002 /* WidgetSummaryPlugin.swift */; };
+		CC5901012FEC000000000001 /* CicisWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC5902012FEC000000000001 /* CicisWidgetsBundle.swift */; };
+		CC5901012FEC000000000002 /* AddExpenseWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC5902012FEC000000000002 /* AddExpenseWidget.swift */; };
+		CC5901012FEC000000000003 /* QuickAddWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC5902012FEC000000000003 /* QuickAddWidget.swift */; };
+		CC5901012FEC000000000004 /* AddExpenseControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC5902012FEC000000000004 /* AddExpenseControl.swift */; };
+		CC5901012FEC000000000005 /* WidgetSummaryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB5802012FEB000000000001 /* WidgetSummaryStore.swift */; };
+		CC5901012FEC000000000006 /* OpenOneLineIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC5902012FEC000000000007 /* OpenOneLineIntent.swift */; };
+		CC5901012FEC000000000007 /* OpenOneLineIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC5902012FEC000000000007 /* OpenOneLineIntent.swift */; };
+		CC5901012FEC000000000008 /* CicisWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CC5902012FEC000000000008 /* CicisWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -64,6 +72,14 @@
 		CA5705052FE9A10100000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		CA5705062FE9A10100000006 /* CaptureShare.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CaptureShare.entitlements; sourceTree = "<group>"; };
 		CA5705072FE9A10100000007 /* CaptureShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CaptureShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		CC5902012FEC000000000001 /* CicisWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CicisWidgetsBundle.swift; sourceTree = "<group>"; };
+		CC5902012FEC000000000002 /* AddExpenseWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddExpenseWidget.swift; sourceTree = "<group>"; };
+		CC5902012FEC000000000003 /* QuickAddWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickAddWidget.swift; sourceTree = "<group>"; };
+		CC5902012FEC000000000004 /* AddExpenseControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddExpenseControl.swift; sourceTree = "<group>"; };
+		CC5902012FEC000000000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		CC5902012FEC000000000006 /* CicisWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CicisWidgets.entitlements; sourceTree = "<group>"; };
+		CC5902012FEC000000000007 /* OpenOneLineIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenOneLineIntent.swift; sourceTree = "<group>"; };
+		CC5902012FEC000000000008 /* CicisWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CicisWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -74,6 +90,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				CA5704072FE9A10100000007 /* CaptureShare.appex in Embed Foundation Extensions */,
+				CC5901012FEC000000000008 /* CicisWidgets.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -96,6 +113,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CC5904012FEC000000000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -105,6 +129,7 @@
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
 				504EC3061FED79650016851F /* App */,
 				CA5706012FE9A10100000001 /* CaptureShare */,
+				CC5903012FEC000000000001 /* CicisWidgets */,
 				504EC3051FED79650016851F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -114,6 +139,7 @@
 			children = (
 				504EC3041FED79650016851F /* App.app */,
 				CA5705072FE9A10100000007 /* CaptureShare.appex */,
+				CC5902012FEC000000000008 /* CicisWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -127,6 +153,7 @@
 				95F1D0002FEA000000000003 /* ICloudBackupPlugin.swift */,
 				CB5802012FEB000000000001 /* WidgetSummaryStore.swift */,
 				CB5802012FEB000000000002 /* WidgetSummaryPlugin.swift */,
+				CC5902012FEC000000000007 /* OpenOneLineIntent.swift */,
 				95F1D0002FEA000000000004 /* App.entitlements */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
@@ -166,6 +193,19 @@
 			path = CaptureShare;
 			sourceTree = "<group>";
 		};
+		CC5903012FEC000000000001 /* CicisWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				CC5902012FEC000000000001 /* CicisWidgetsBundle.swift */,
+				CC5902012FEC000000000002 /* AddExpenseWidget.swift */,
+				CC5902012FEC000000000003 /* QuickAddWidget.swift */,
+				CC5902012FEC000000000004 /* AddExpenseControl.swift */,
+				CC5902012FEC000000000005 /* Info.plist */,
+				CC5902012FEC000000000006 /* CicisWidgets.entitlements */,
+			);
+			path = CicisWidgets;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -182,6 +222,7 @@
 			);
 			dependencies = (
 				CA5707082FE9A10100000008 /* PBXTargetDependency */,
+				CC5904012FEC000000000008 /* PBXTargetDependency */,
 			);
 			name = App;
 			packageProductDependencies = (
@@ -206,6 +247,23 @@
 			name = CaptureShare;
 			productName = CaptureShare;
 			productReference = CA5705072FE9A10100000007 /* CaptureShare.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		CC5904012FEC000000000001 /* CicisWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CC5904012FEC000000000005 /* Build configuration list for PBXNativeTarget "CicisWidgets" */;
+			buildPhases = (
+				CC5904012FEC000000000002 /* Sources */,
+				CC5904012FEC000000000003 /* Frameworks */,
+				CC5904012FEC000000000004 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CicisWidgets;
+			productName = CicisWidgets;
+			productReference = CC5902012FEC000000000008 /* CicisWidgets.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
@@ -236,6 +294,15 @@
 							};
 						};
 					};
+					CC5904012FEC000000000001 = {
+						CreatedOnToolsVersion = 26.3;
+						ProvisioningStyle = Automatic;
+						SystemCapabilities = {
+							com.apple.ApplicationGroups.iOS = {
+								enabled = 1;
+							};
+						};
+					};
 				};
 			};
 			buildConfigurationList = 504EC2FF1FED79650016851F /* Build configuration list for PBXProject "App" */;
@@ -256,6 +323,7 @@
 			targets = (
 				504EC3031FED79650016851F /* App */,
 				CA5707012FE9A10100000001 /* CaptureShare */,
+				CC5904012FEC000000000001 /* CicisWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -282,6 +350,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CC5904012FEC000000000004 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -302,6 +377,7 @@
 				95F1D0012FEA000000000003 /* ICloudBackupPlugin.swift in Sources */,
 				CB5801012FEB000000000001 /* WidgetSummaryStore.swift in Sources */,
 				CB5801012FEB000000000002 /* WidgetSummaryPlugin.swift in Sources */,
+				CC5901012FEC000000000007 /* OpenOneLineIntent.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -312,6 +388,19 @@
 				CA5704042FE9A10100000004 /* ShareViewController.swift in Sources */,
 				CA5704052FE9A10100000005 /* HoldingArea.swift in Sources */,
 				CA5704062FE9A10100000006 /* TextRecognizer.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CC5904012FEC000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC5901012FEC000000000001 /* CicisWidgetsBundle.swift in Sources */,
+				CC5901012FEC000000000002 /* AddExpenseWidget.swift in Sources */,
+				CC5901012FEC000000000003 /* QuickAddWidget.swift in Sources */,
+				CC5901012FEC000000000004 /* AddExpenseControl.swift in Sources */,
+				CC5901012FEC000000000005 /* WidgetSummaryStore.swift in Sources */,
+				CC5901012FEC000000000006 /* OpenOneLineIntent.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -342,6 +431,11 @@
 			target = CA5707012FE9A10100000001 /* CaptureShare */;
 			targetProxy = CA5707092FE9A10100000009 /* PBXContainerItemProxy */;
 		};
+		CC5904012FEC000000000008 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CC5904012FEC000000000001 /* CicisWidgets */;
+			targetProxy = CC5904012FEC000000000009 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin PBXContainerItemProxy section */
@@ -351,6 +445,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = CA5707012FE9A10100000001;
 			remoteInfo = CaptureShare;
+		};
+		CC5904012FEC000000000009 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CC5904012FEC000000000001;
+			remoteInfo = CicisWidgets;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -566,6 +667,58 @@
 			};
 			name = Release;
 		};
+		CC5904012FEC000000000006 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = CicisWidgets/CicisWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = JPMPS53HUZ;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CicisWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cicis.app.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		CC5904012FEC000000000007 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = CicisWidgets/CicisWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = JPMPS53HUZ;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CicisWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cicis.app.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -592,6 +745,15 @@
 			buildConfigurations = (
 				CA5707062FE9A10100000006 /* Debug */,
 				CA5707072FE9A10100000007 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CC5904012FEC000000000005 /* Build configuration list for PBXNativeTarget "CicisWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CC5904012FEC000000000006 /* Debug */,
+				CC5904012FEC000000000007 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
