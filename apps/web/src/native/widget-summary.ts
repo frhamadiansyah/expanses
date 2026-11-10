@@ -35,6 +35,26 @@ class WidgetSummaryWeb extends WebPlugin implements WidgetSummaryPluginApi {
 
 export const WidgetSummary = registerPlugin<WidgetSummaryPluginApi>('WidgetSummary', { web: () => new WidgetSummaryWeb() });
 
+const erasedListeners = new Set<() => void>();
+
+/** The writer hears of an erase here, so it writes the next workspace's summary afresh. Returns the unsubscribe. */
+export function onWidgetSummaryErased(listener: () => void): () => void {
+  erasedListeners.add(listener);
+  return () => {
+    erasedListeners.delete(listener);
+  };
+}
+
+/**
+ * Erases the widget's summary — after leaving a shared workspace or deleting one (spec §E) — and then tells the writer,
+ * which forgets what it last wrote and writes the open workspace's figure again. Never throws: an erase that fails is
+ * logged, and the writer is told all the same.
+ */
+export async function eraseWidgetSummary(plugin: Pick<WidgetSummaryPluginApi, 'erase'> = WidgetSummary): Promise<void> {
+  await plugin.erase().catch((error: unknown) => console.warn('The widget summary was not erased', error));
+  for (const listener of [...erasedListeners]) listener();
+}
+
 /** The widget exists only in the iOS app. */
 export const hasWidget = (): boolean => Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
 

@@ -5,6 +5,7 @@ import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll } from '../../lib/queries';
+import { eraseWidgetSummary } from '../../native/widget-summary';
 import { ErrorBox } from '../../ui';
 import { DestructiveRow, type GroupChild, InsetGroup, InsetRow, PushedTitle, SCREEN, SubmitRow, TextRow } from '../../ui/native';
 import { useEvents } from '../events/queries';
@@ -211,6 +212,8 @@ function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
     await run(async () => {
       try {
         await sync.leave(book.id);
+        // The widget must not keep showing a workspace left (spec §E): erased now, written afresh for the next one.
+        await eraseWidgetSummary();
       } catch (failure) {
         incomplete = failure instanceof LeaveIncompleteError;
         throw failure;

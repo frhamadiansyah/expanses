@@ -40,12 +40,14 @@ import {
   baseOf,
   canSaveLine,
   categoryGuess,
+  choicesAfterTyping,
   foreignCharge,
   type LineChoices,
   type LineContext,
   type LinePart,
   type LinePreview,
   lineDraft,
+  missingRateMessage,
   previewDay,
   previewOf,
   previewRow,
@@ -211,15 +213,20 @@ export function OneLinePage() {
         charged = foreignCharge({ amountMinor, currency: line.currency, payerCurrency, base: ws.baseCurrency, rates });
         // Never a figure at a made-up rate: the save stops, says which pair is missing, and the line stays to try again.
         if (!charged) {
-          setError(new Error(`No ${line.currency}→${payerCurrency} rate for ${day}. Record it from the Add screen.`));
+          setError(new Error(missingRateMessage(line.currency, payerCurrency, day)));
           return;
         }
       }
       const drafted = lineDraft(line, ws.bookId ?? '', charged?.text ?? '');
       const draft = line.categoryId ? drafted : withCategoryLater(drafted, await uncategorisedCategory(database, ws, 'expense'));
       const post = formToPost(draft, accounts);
+      const rateDate = rateDateFor(draft);
+      // This screen has no rate row to point at, so a missing rate is told in this screen's words.
+      let missing: string | null = null;
       const ratesToBase = await ratesForSave({
-        database, ws, draft, post, accounts, rateDate: rateDateFor(draft), needsRate: null, resolveRates, onMissing: () => {}, where: 'the Add screen',
+        database, ws, draft, post, accounts, rateDate, needsRate: null, resolveRates, onMissing: (code) => (missing = code), where: 'Add',
+      }).catch((failure: unknown) => {
+        throw missing ? new Error(missingRateMessage(missing, ws.baseCurrency, rateDate)) : failure;
       });
       if (post.kind !== 'post') throw new Error('This line cannot be saved here. Record it from the Add screen.');
       const id = await postTransaction(database, ws, {
@@ -227,7 +234,7 @@ export function OneLinePage() {
         ratesToBase,
         ...(moneyAccount && isPastDefault(openedOn, day) ? { pastPurchase: true } : {}),
       });
-      await invalidate();
+      // Posted: from here a failure (the refresh below) must not let the same line be saved again.
       posted = true;
       const settled = charged?.minor ?? amountMinor;
       setSaved((rows) => [...rows, { id, row: previewRow(line, id, categoryName(line.categoryId)), baseMinor: baseOf(settled, payerCurrency, ws.baseCurrency, ratesToBase) }]);
@@ -237,6 +244,7 @@ export function OneLinePage() {
       setSittingDay(kept.sittingDay);
       setLastPaid(kept.lastPaid);
       field.current?.focus();
+      await invalidate();
     } catch (e) {
       setError(e);
     } finally {
@@ -277,6 +285,9 @@ export function OneLinePage() {
     return (
       <div className={SCREEN}>
         <PushedTitle title="One line" back="Cashflow" onBack={back} />
+        <p className="px-[13px] text-[15px] text-[var(--ph-ink-2)]" data-testid="line-read-only">
+          This workspace is read-only, so nothing can be added to it.
+        </p>
       </div>
     );
   }
@@ -408,7 +419,10 @@ export function OneLinePage() {
               spellCheck={false}
               value={text}
               onChange={(e) => {
-                setText(e.target.value);
+                const next = e.target.value;
+                const was = firstReading;
+                setText(next);
+                setChoices((now) => choicesAfterTyping(now, was, readExpenseLine(next, { today, currency: ws.baseCurrency, payments: options }), next));
                 setError(null);
               }}
               onFocus={() => setFocused(true)}

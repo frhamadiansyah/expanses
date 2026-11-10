@@ -275,6 +275,8 @@ export function TransactionsPage() {
     if (scanStarted.current) return;
     scanStarted.current = true;
     void navigate({ search: (s: TransactionsSearch) => ({ ...s, scan: undefined }), replace: true });
+    // A Receipt link while a scan is still open (the app left with the scanner up) starts no second one.
+    if (scan.busy) return;
     void scan.scan();
   }, [search.scan]); // eslint-disable-line react-hooks/exhaustive-deps
   function chooseGrouping(next: 'date' | 'category') {

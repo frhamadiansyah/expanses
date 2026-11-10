@@ -13,7 +13,7 @@ import { emptyForm, estimatedChargeMinor, suggestedRate, type FormDraft } from '
 
 export type LinePart = 'category' | 'paid' | 'day' | 'amount';
 
-/** Parts picked from the preview: they read as sure. Cleared after each save. */
+/** Parts picked from the preview: they read as sure. Cleared after each save, and as the line changes (`choicesAfterTyping`). */
 export interface LineChoices {
   categoryId?: string;
   paid?: PaymentOption;
@@ -64,6 +64,37 @@ function optionFor(payment: { accountId: string; cardId: string | null }, option
   return { accountId: payment.accountId, cardId: null, accountName: same[0]!.accountName, last4: null, holderName: null };
 }
 
+/** A day read from the line further than this from today reads unsure. */
+const FAR_DAYS = 31;
+
+const dayNumber = (iso: string): number => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return Date.UTC(y!, m! - 1, d!) / 86_400_000;
+};
+const daysBetween = (a: string, b: string): number => dayNumber(a) - dayNumber(b);
+
+const sameText = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+const samePayment = (a: ExpenseLineReading['payment'], b: ExpenseLineReading['payment']) =>
+  a === b || (!!a && !!b && a.accountId === b.accountId && a.cardId === b.cardId);
+
+/**
+ * What is still picked once the line is typed over: nothing once the field is emptied, and a pick only while the
+ * part of the reading it stands over is unchanged — so a picked 25.000 does not outlive "kopi 20rb" being retyped as
+ * "kopi 30rb", nor a picked category a different shop.
+ */
+export function choicesAfterTyping(choices: LineChoices, was: ExpenseLineReading, now: ExpenseLineReading, text: string): LineChoices {
+  if (!text.trim()) return {};
+  const kept: LineChoices = { ...choices };
+  if (was.amountMinor !== now.amountMinor || was.currency !== now.currency) delete kept.amountMinor;
+  if (!sameText(was.description, now.description)) delete kept.categoryId;
+  if (!samePayment(was.payment, now.payment)) delete kept.paid;
+  if (was.occurredOn !== now.occurredOn) delete kept.occurredOn;
+  return kept;
+}
+
+/** The words a save stops with when a rate it needs is missing; the line stays in the field. */
+export const missingRateMessage = (from: string, to: string, day: string): string => `No ${from}→${to} rate for ${day}. Record it from the Add screen.`;
+
 export function previewOf(reading: ExpenseLineReading, context: LineContext, choices: LineChoices): LinePreview {
   const unsure = new Set<LinePart>();
 
@@ -72,7 +103,10 @@ export function previewOf(reading: ExpenseLineReading, context: LineContext, cho
   const picked = choices.amountMinor ?? null;
   const read = picked ?? reading.amountMinor;
   const amountMinor = read !== null && read > 0 ? read : null;
-  if (reading.ambiguous && picked === null && amountMinor !== null) unsure.add('amount');
+  // Read two ways, or tiny (Paste a list's small rule: a dropped zero or a quantity), until picked.
+  if ((reading.ambiguous || reading.small) && picked === null && amountMinor !== null) unsure.add('amount');
+  // A day read from the line far from today is more likely a quantity ("1/2 kg") than a date, until picked.
+  if (choices.occurredOn === undefined && reading.occurredOn !== null && Math.abs(daysBetween(reading.occurredOn, context.today)) > FAR_DAYS) unsure.add('day');
 
   let paid: PaymentOption | null = choices.paid ?? (reading.payment ? optionFor(reading.payment, context.options) : null);
   if (!paid) {

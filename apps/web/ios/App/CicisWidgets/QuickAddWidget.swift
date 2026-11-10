@@ -62,6 +62,8 @@ struct QuickAddView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
+                    // Redacted by iOS while the device is locked: the buttons stay, the figure does not.
+                    .privacySensitive()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

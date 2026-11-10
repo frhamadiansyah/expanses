@@ -6,8 +6,10 @@ import {
   baseOf,
   canSaveLine,
   categoryGuess,
+  choicesAfterTyping,
   foreignCharge,
   lineDraft,
+  missingRateMessage,
   previewDay,
   previewOf,
   previewRow,
@@ -106,6 +108,53 @@ describe('previewOf', () => {
     const preview = previewOf(read('kopi 18rb'), context({ lastPaid: NUSA, category: { id: 'cat-a', from: 'history' } }), {});
     expect(preview.categoryId).toBe('cat-a');
     expect(preview.unsure.has('category')).toBe(false);
+  });
+
+  it('a tiny amount reads unsure until picked (Paste a list\'s small rule)', () => {
+    const tiny = previewOf(read('kopi 25 nusa'), context(), {});
+    expect(tiny.amountMinor).toBe(25);
+    expect(tiny.unsure.has('amount')).toBe(true);
+    expect(previewOf(read('kopi 25 nusa'), context(), { amountMinor: 25_000 }).unsure.has('amount')).toBe(false);
+    const suffixed = previewOf(read('kopi 50rb 2 gelas'), context({ lastPaid: NUSA }), {});
+    expect(suffixed.amountMinor).toBe(50_000);
+    expect(suffixed.description).toBe('Kopi 2 Gelas');
+    expect(suffixed.unsure.has('amount')).toBe(false);
+  });
+
+  it('a day read from the line more than a month from today reads unsure', () => {
+    const far = previewOf(read('beli 1/2 kg daging 60rb'), context({ lastPaid: NUSA }), {});
+    expect(far.occurredOn).toBe('2026-02-01');
+    expect(far.unsure.has('day')).toBe(true);
+    expect(previewOf(read('roti 28/10 15rb'), context(), {}).unsure.has('day')).toBe(false);
+    expect(previewOf(read('roti 15rb'), context({ sittingDay: '2026-01-02' }), {}).unsure.has('day')).toBe(false);
+    expect(previewOf(read('beli 1/2 kg daging 60rb'), context(), { occurredOn: '2026-02-01' }).unsure.has('day')).toBe(false);
+  });
+});
+
+describe('choicesAfterTyping', () => {
+  const picked = { amountMinor: 25_000, categoryId: 'cat-b', paid: BIRU, occurredOn: '2026-11-05' };
+  const after = (from: string, to: string) => choicesAfterTyping(picked, read(from), read(to), to);
+
+  it('drops every pick when the field is emptied', () => {
+    expect(after('kopi 20rb', '')).toEqual({});
+    expect(after('kopi 20rb', '   ')).toEqual({});
+  });
+
+  it('drops the picked amount when the read amount changes, keeping the rest', () => {
+    expect(after('kopi 20rb', 'kopi 30rb')).toEqual({ categoryId: 'cat-b', paid: BIRU, occurredOn: '2026-11-05' });
+    expect(after('kopi 20rb', 'kopi 20rb ')).toEqual(picked);
+  });
+
+  it('drops a pick when the part it stands over changes', () => {
+    expect(after('kopi 20rb', 'teh 20rb')).toEqual({ amountMinor: 25_000, paid: BIRU, occurredOn: '2026-11-05' });
+    expect(after('kopi 20rb', 'kopi 20rb nusa')).toEqual({ amountMinor: 25_000, categoryId: 'cat-b', occurredOn: '2026-11-05' });
+    expect(after('kopi 20rb', 'kemarin kopi 20rb')).toEqual({ amountMinor: 25_000, categoryId: 'cat-b', paid: BIRU });
+  });
+});
+
+describe('missingRateMessage', () => {
+  it('names the pair and the day, and sends the line to the Add screen', () => {
+    expect(missingRateMessage('KRW', 'IDR', '2026-11-10')).toBe('No KRW→IDR rate for 2026-11-10. Record it from the Add screen.');
   });
 });
 
