@@ -260,6 +260,23 @@ export function TransactionsPage() {
   const [kindChosen, setKind] = useState<'expense' | 'income'>('expense');
   // Photographing a receipt is one more way in to the queue; it lands on Review, where the draft it made waits.
   const scan = useScanReceipt();
+  /*
+   * `?scan=true` — the hold-＋ menu's Scan a receipt and the widget's Receipt (`cicis://add/receipt`) — starts the same
+   * scan as the button, once. The address drops it first, so Back or a reload never opens the camera again; the ref
+   * keeps StrictMode's second run from starting a second scan.
+   */
+  const scanStarted = useRef(false);
+  useEffect(() => {
+    // Dropped from the address: the next Scan a receipt from the menu, while Cashflow stays open, starts its own.
+    if (!search.scan) {
+      scanStarted.current = false;
+      return;
+    }
+    if (scanStarted.current) return;
+    scanStarted.current = true;
+    void navigate({ search: (s: TransactionsSearch) => ({ ...s, scan: undefined }), replace: true });
+    void scan.scan();
+  }, [search.scan]); // eslint-disable-line react-hooks/exhaustive-deps
   function chooseGrouping(next: 'date' | 'category') {
     setGrouping(next);
     try {
