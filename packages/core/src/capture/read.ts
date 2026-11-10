@@ -463,6 +463,7 @@ const WORDS_FOR_CUT: WordList = {
   accountLabels: [],
   statusLabels: [],
   merchantLabels: [],
+  cardNumberLabels: [],
   declined: [],
   tableLabels: [],
   thousand: ['rb', 'ribu', 'k'],
@@ -630,7 +631,7 @@ interface TableReading {
   accountHint: string | null;
   /** True when the table printed a status that says the purchase did not go through. */
   declined: boolean;
-  /** Whether the table names a card or a merchant: then it is a purchase, whatever its footer says. */
+  /** Whether the table names a card's number or a merchant: then it is a purchase, whatever its footer says. */
   purchase: boolean;
   /** The last line of the body the table was on: what comes after it is the footer. */
   end: number;
@@ -659,8 +660,9 @@ function tableReadingOf(capture: RawCapture, words: WordList): TableReading | nu
   const printedCode = tableValue(table, 'currency')?.value.trim().toUpperCase() ?? '';
   const code = CODE.test(printedCode) && isSupportedCurrency(printedCode) ? printedCode : null;
   const card = tableValue(table, 'account');
+  const cardNumber = table.pairs.some((pair) => pair.field === 'account' && words.cardNumberLabels.includes(pair.label));
   const merchantPair = table.pairs.find((pair) => pair.field === 'name' && words.merchantLabels.includes(pair.label));
-  if (code === null && !card && !merchantPair) return null;
+  if (code === null && !cardNumber && !merchantPair) return null;
 
   const marked = findAmounts(cell.value, words).find((figure) => figure.currency !== null);
   const currency = marked?.currency ?? code;
@@ -687,9 +689,20 @@ function tableReadingOf(capture: RawCapture, words: WordList): TableReading | nu
     name: merchant ? { value: merchant, confidence: 90, line: null } : null,
     accountHint: card ? accountHintOf(card.value, words) : null,
     declined,
-    purchase: card !== null || merchantPair !== undefined,
+    purchase: cardNumber || merchantPair !== undefined,
     end: table.end,
   };
+}
+
+/** The first `count` lines with any words on them after line `end` of a body, as one text. */
+function linesUnder(body: string, end: number, count: number): string {
+  const under: string[] = [];
+  for (const line of body.split('\n').slice(end + 1)) {
+    if (line.trim() === '') continue;
+    under.push(line);
+    if (under.length === count) break;
+  }
+  return under.join('\n');
 }
 
 const SKIPPED = (skipped: 'promo' | 'unreadable' | 'declined', accountHint: string | null, paymentMethod: Reading['paymentMethod']): Reading => ({
@@ -743,12 +756,18 @@ export function readCapture(
     if (table.declined) return SKIPPED('declined', accountHint, paymentMethod);
     const head = unitsOf({ ...capture, body: capture.body!.split('\n').slice(0, table.end + 1).join('\n') });
     /*
-     * The direction is what the title and the table say. When they name none, a table with a card or a merchant is a
-     * purchase — its footer's "kredit" or "pengembalian dana" is an advert, not this money — and any other table is
-     * read whole, so "Dana telah masuk" under the figures is still money arriving.
+     * The direction is what the title and the table say. When they name none, the few lines right under the table
+     * are the email's own words about this money — "Pengembalian dana berhasil", "This refund has been credited" —
+     * and a refund, money in or a top-up they name is the answer. Past those, a table with a card's number or a
+     * merchant is a purchase: further down is the footer, whose "kredit" or "pengembalian dana" is an advert, not this
+     * money. Any other table is read whole, so "Dana telah masuk" under the figures is still money arriving.
      */
     let type = typeOf(head, words, false);
-    if (type.confidence < 85) type = table.purchase ? { value: 'spent', confidence: 70, line: null } : typeOf(all, words, false);
+    if (type.confidence < 85) {
+      const under = typeOf(unitsOf({ ...capture, title: null, body: linesUnder(capture.body!, table.end, 3) }), words, false);
+      if (under.confidence >= 85 && under.value !== 'spent') type = { value: under.value, confidence: 85, line: null };
+      else type = table.purchase ? { value: 'spent', confidence: 70, line: null } : typeOf(all, words, false);
+    }
     return {
       skipped: null,
       amount: table.amount,

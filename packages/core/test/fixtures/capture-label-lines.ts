@@ -13,5 +13,6 @@ export const LABEL_LINES: readonly { name: string; title: string | null; body: s
   { name: 'a bare Total and Merchant', title: null, body: 'Total\nRp38.000\nMerchant\nKOPI CONTOH' },
   { name: 'a shared card message with its labels', title: 'Transaksi Kartu Kredit', body: 'No. Kartu\n****5512\nMerchant\nTOKO ROTI\nJumlah\nIDR 48.300,00\nTgl\n03/09/26' },
   { name: 'money in, with Status', title: 'Dana Masuk', body: 'Jumlah\nRp 320.000\nDari\nANDI CONTOH\nStatus\nBerhasil' },
+  { name: 'money in on an account number', title: null, body: 'Nomor Rekening\n1234567890\nJumlah\nRp 500.000\nDana masuk ke rekening Anda' },
   { name: 'a wallet payment with Status and Waktu', title: null, body: 'Pembayaran ke WARUNG CONTOH\nTotal Bayar\nRp 27.500\nWaktu\n12 Okt 2026 18:20\nStatus\nSukses' },
 ];

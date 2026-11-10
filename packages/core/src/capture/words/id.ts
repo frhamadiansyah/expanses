@@ -22,6 +22,7 @@ export const ID: WordList = {
   accountLabels: ['nomor kartu', 'no. kartu', 'no kartu', 'nomor rekening', 'no. rekening'],
   statusLabels: ['status', 'status transaksi'],
   merchantLabels: ['merchant', 'nama merchant'],
+  cardNumberLabels: ['nomor kartu', 'no. kartu', 'no kartu'],
   declined: ['tidak berhasil', 'tidak sukses', 'tidak disetujui', 'ditolak', 'gagal', 'dibatalkan'],
   tableLabels: ['jenis kartu', 'nomor referensi', 'no. referensi', 'kode otorisasi'],
   thousand: ['rb', 'ribu'],

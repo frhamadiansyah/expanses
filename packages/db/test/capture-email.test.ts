@@ -20,7 +20,7 @@ afterEach(() => {
 
 const DAY = new Date().toISOString().slice(0, 10);
 
-const body = (over: { merchant?: string; currency?: string; amount?: string; status?: string } = {}) =>
+const body = (over: { merchant?: string; currency?: string; amount?: string; status?: string; under?: string } = {}) =>
   [
     'Hi Pemegang Kartu Kredit Bank Contoh,',
     '',
@@ -32,7 +32,12 @@ const body = (over: { merchant?: string; currency?: string; amount?: string; sta
     `03 Nov 26 09:41\t${over.currency ?? 'IDR'}\t${over.amount ?? '245,500'}`,
     `Status\t${over.status ?? 'Sukses/ Approved'}`,
     '',
-    'Untuk pengembalian dana atau promo cashback, kunjungi situs kami.',
+    over.under ?? 'Jika Anda tidak merasa melakukan transaksi ini, hubungi layanan nasabah kami.',
+    'Email ini dikirim secara otomatis.',
+    'Terima kasih.',
+    '',
+    // The advert, five lines and more below the table: its refund and its credit are not this money.
+    'Ajukan kredit sekarang. Untuk pengembalian dana atau promo cashback, kunjungi situs kami.',
   ].join('\n');
 
 const mail = (id: string, text: string, sender = 'Bank Contoh <alerts@bankcontoh.co.id>'): RawCapture => ({
@@ -124,6 +129,14 @@ describe('a bank email', () => {
 
     const [draft] = await listDrafts(database, ws, 'pending');
     expect(draft).toMatchObject({ amountMinor: 1_840, currency: 'SGD' });
+  });
+
+  it('is money back when the email says so right under the table', async () => {
+    const { database, ws } = await withCard();
+    await ingestCaptures(database, ws, [mail('mail-back', body({ under: 'Dana dikembalikan ke kartu Anda. Pengembalian dana berhasil.' }))], { today: DAY });
+
+    const [draft] = await listDrafts(database, ws, 'pending');
+    expect(draft).toMatchObject({ kind: 'income', amountMinor: -245_500, currency: 'IDR' });
   });
 
   it('makes nothing of a purchase the bank declined, and lists nothing to bring back', async () => {

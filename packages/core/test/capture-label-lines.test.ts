@@ -17,6 +17,7 @@ const BEFORE: Record<string, unknown> = {
   'a bare Total and Merchant': { skipped: null, amount: { minor: 38000, currency: 'IDR' }, type: 'spent', name: 'KOPI CONTOH', occurredAt: null, accountHint: null },
   'a shared card message with its labels': { skipped: null, amount: { minor: 48300, currency: 'IDR' }, type: 'spent', name: 'TOKO ROTI', occurredAt: '2026-09-03', accountHint: '5512' },
   'money in, with Status': { skipped: null, amount: { minor: 320000, currency: 'IDR' }, type: 'received', name: 'ANDI CONTOH', occurredAt: null, accountHint: null },
+  'money in on an account number': { skipped: null, amount: { minor: 500000, currency: 'IDR' }, type: 'received', name: null, occurredAt: null, accountHint: null },
   'a wallet payment with Status and Waktu': { skipped: null, amount: { minor: 27500, currency: 'IDR' }, type: 'spent', name: 'WARUNG CONTOH', occurredAt: '2026-10-12T18:20', accountHint: null },
 };
 

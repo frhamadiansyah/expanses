@@ -22,6 +22,7 @@ export const EN: WordList = {
   accountLabels: ['card number', 'card no', 'card no.', 'account number', 'account no.'],
   statusLabels: ['status', 'transaction status'],
   merchantLabels: ['merchant', 'merchant name'],
+  cardNumberLabels: ['card number', 'card no', 'card no.'],
   declined: ['not approved', 'not successful', 'unsuccessful', 'declined', 'failed', 'rejected', 'cancelled', 'canceled'],
   tableLabels: ['card type', 'reference', 'reference number', 'reference no.', 'approval code'],
   thousand: ['k'],

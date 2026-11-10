@@ -18,11 +18,16 @@ const email = (body: string, title = 'Contoh Credit Card Transaction Notificatio
 });
 
 const GREETING = ['Hi Pemegang Kartu Kredit Bank Contoh,', '', 'Anda baru saja melakukan transaksi dengan', 'Bank Contoh Kartu Kredit', ''];
+/** What closes the email: its own words first, then — five lines and more below the table — an advert and legal text. */
 const FOOTER = [
   '',
   'Jika Anda tidak merasa melakukan transaksi ini, segera hubungi layanan nasabah kami.',
-  'Untuk pengembalian dana atau pembayaran tagihan, kunjungi situs kami. Biaya meterai Rp10.000 berlaku.',
   'Email ini dikirim secara otomatis, mohon tidak membalas email ini.',
+  'Terima kasih.',
+  '',
+  'Layanan Nasabah 24 Jam',
+  'Ajukan kredit tanpa agunan sekarang. Untuk pengembalian dana atau pembayaran tagihan, kunjungi situs kami.',
+  'Biaya meterai Rp10.000 berlaku. Dana masuk ke rekening tujuan dalam satu hari kerja.',
 ];
 
 /** One cell per line: three labels, three values, three labels, three values, then the status. */
@@ -167,6 +172,30 @@ describe('a transaction email read as a labelled table', () => {
   it('reads a marked figure in a currency of three decimals the same way', () => {
     const reading = readCapture(email(perCell({ currency: 'KWD', amount: 'KWD 12.500' })), WORDS, null);
     expect(reading.amount?.value).toEqual({ minor: 12_500, currency: 'KWD' });
+  });
+
+  it('reads a refund the email states right under the table', () => {
+    const body = ['Nomor Kartu', 'Merchant', 'Mata Uang', 'Jumlah', '**** 4732', 'Tokobaju', 'IDR', '245.000', 'Status', 'Approved', 'Dana dikembalikan ke kartu Anda. Pengembalian dana berhasil.'].join('\n');
+    const reading = readCapture(email(body, 'Notifikasi Kartu Kredit'), WORDS, null);
+    expect(reading.type.value).toBe('refund');
+    expect(reading.amount?.value).toEqual({ minor: 245_000, currency: 'IDR' });
+  });
+
+  it('reads a refund the email states right under the table, in English', () => {
+    const body = ['Card Number\tMerchant\tCurrency\tAmount', 'XXXX 9051\tKEDAICONTOH\tSGD\t18.40', 'Status\tApproved', '', 'This refund has been credited to your card.'].join('\n');
+    expect(readCapture(email(body, 'Credit Card Notification'), WORDS, null).type.value).toBe('refund');
+  });
+
+  it('never reads the credit of a credit card in the title or the table as money in', () => {
+    const indonesian = ['Nomor Kartu', 'Jenis Kartu', 'Mata Uang', 'Jumlah', '**** 4732', 'Kartu Kredit', 'IDR', '245.000'].join('\n');
+    expect(readCapture(email(indonesian, 'Transaksi Kartu Kredit'), WORDS, null).type.value).toBe('spent');
+    const english = ['Card Number\tCard Type\tCurrency\tAmount', 'XXXX 9051\tCredit Card\tSGD\t18.40'].join('\n');
+    expect(readCapture(email(english, 'Credit Card Transaction'), WORDS, null).type.value).toBe('spent');
+  });
+
+  it('reads a card email whose advert below mentions refunds and credit as a purchase', () => {
+    const reading = readCapture(email(perCell()), WORDS, null);
+    expect(reading.type).toEqual({ value: 'spent', confidence: 70, line: null });
   });
 
   it('reads money in when the words naming it come after the table, and the table names no card or merchant', () => {

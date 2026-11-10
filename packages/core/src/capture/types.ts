@@ -145,6 +145,11 @@ export interface WordList {
    */
   merchantLabels: string[];
   /**
+   * The labels of `accountLabels` that name a card, not a bank account: "nomor kartu", "card number". A table with a
+   * card's number is a card purchase; a "Nomor Rekening" may be money arriving as easily as leaving.
+   */
+  cardNumberLabels: string[];
+  /**
    * A status that says the purchase did not go through: "ditolak", "tidak berhasil", "declined". Only such a status
    * is skipped; one that says nothing either way ("Pending", "cek di aplikasi") is read like any other.
    */
