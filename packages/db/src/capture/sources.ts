@@ -71,10 +71,39 @@ function appNameOf(app: string): string {
   return name === '' ? app : name.charAt(0).toUpperCase() + name.slice(1);
 }
 
+/** An email sender as Mail hands it over: an address, alone or after a display name ("Bank <alerts@bank.example>"). */
+const SENDER = /^(?:(.*?)\s*<\s*)?([^\s<>@]+@[^\s<>@]+\.[^\s<>@]+?)\s*>?$/;
+
+/** The words of a domain that say what kind of domain it is, not whose: "alerts.bank.co.id" is the bank's. */
+const DOMAIN_KINDS = new Set(['co', 'com', 'net', 'org', 'or', 'ac', 'go', 'gov', 'edu', 'biz', 'mail', 'email']);
+
+/**
+ * A sender's source: keyed on its address in lower case, so "Bank <alerts@bank.example>" and "alerts@bank.example"
+ * are the same source, and named for the display name it gave — or, with none, for the domain's own name.
+ */
+function senderOf(app: string): { key: string; label: string } | null {
+  if (app.length > 320) return null;
+  const match = SENDER.exec(app);
+  if (!match) return null;
+  const address = match[2]!.toLowerCase();
+  const display = (match[1] ?? '').replace(/^["']|["']$/g, '').trim();
+  if (display !== '') return { key: address, label: display };
+  const parts = address.slice(address.indexOf('@') + 1).split('.');
+  parts.pop();
+  while (parts.length > 1 && DOMAIN_KINDS.has(parts[parts.length - 1]!)) parts.pop();
+  const name = parts[parts.length - 1] ?? '';
+  return { key: address, label: name === '' ? address : name.charAt(0).toUpperCase() + name.slice(1) };
+}
+
 /** What a capture's source is keyed on: the app that sent it, or the layout of the screen it is a picture of. */
 function keyOf(capture: RawCapture): { keyKind: 'app' | 'fingerprint'; key: string; label: string } {
   const app = capture.app?.trim();
-  if (app) return { keyKind: 'app', key: app, label: appNameOf(app) };
+  if (app) {
+    // An email's sender is its app: each bank's address is a source of its own, as an SMS sender is.
+    const sender = senderOf(app);
+    if (sender) return { keyKind: 'app', ...sender };
+    return { keyKind: 'app', key: app, label: appNameOf(app) };
+  }
   // An image has no app: its top band — the brand, the title bar, the masked digits — is what names it.
   return { keyKind: 'fingerprint', key: JSON.stringify(fingerprintOf(capture)), label: appNameOfScreen(capture) ?? labelOf(capture) };
 }
