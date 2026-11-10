@@ -167,6 +167,17 @@ export interface LineFigure {
   rupiahMark: boolean;
   /** A minus sign directly before it (with only spaces between). */
   negative: boolean;
+  /** Written with k, rb, ribu, jt or juta after it. */
+  suffixed: boolean;
+}
+
+/**
+ * Under 100 whole units where a currency has no cents (a ride for 2 rupiah), under 1 where it has: a dropped zero or a
+ * quantity, so the amount is flagged rather than trusted.
+ */
+export function isSmallAmount(minor: number, currency: string): boolean {
+  const { exponent } = currencyInfo(currency);
+  return exponent === 0 ? minor < 100 : minor < 10 ** exponent;
 }
 
 /** Every figure in `text`, left to right, read exactly as Paste a list reads its amount. */
@@ -184,6 +195,7 @@ export function lineFigures(text: string, currency: string): LineFigure[] {
       ambiguous: Boolean(read && minor && (read.ambiguous || minor.rounded)),
       rupiahMark: /^rp/i.test(found[0]),
       negative: /(?:^|\s)[-−–]\s*$/.test(text.slice(0, start)),
+      suffixed: suffix !== undefined,
     };
   });
 }
@@ -245,8 +257,7 @@ export function parsePurchaseList(text: string, options: ParsePurchaseListOption
     const minor = { minor: found.minor };
     const ambiguous = found.ambiguous;
     const major = BigInt(minor.minor) / 10n ** BigInt(exponent);
-    // Under 100 whole units where a currency has no cents (a ride for 2 rupiah), under 1 where it has: a dropped zero or a quantity.
-    const small = exponent === 0 ? minor.minor < 100 : minor.minor < 10 ** exponent;
+    const small = isSmallAmount(minor.minor, currency);
     const suspicious = ambiguous || small || major >= HUGE_MAJOR;
     rows.push({ lineNo, raw, note, amountMinor: minor.minor, occurredOn: day, status: suspicious ? 'suspicious' : 'ok', ambiguous });
   });

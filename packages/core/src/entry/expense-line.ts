@@ -1,11 +1,12 @@
 import { CURRENCIES } from '../money/currencies';
-import { lineFigures, readDayText, trimNote, withoutClosingDash } from './purchase-list';
+import { isSmallAmount, lineFigures, readDayText, trimNote, withoutClosingDash } from './purchase-list';
 import { matchPayment, type PaymentOption } from './quick-entry';
 
 /*
  * One typed line, read into parts: "kopi kenangan 38rb gopay", "kemarin toko buku 249k nusa", "KRW 95000 tteokbokki".
  * Pure and never throws. The order of reading is fixed: the day, then the currency with its figure, then what the
- * expense was paid with, then (when no currency mark picked one) the last figure as the amount. What is left is the
+ * expense was paid with, then (when no currency mark picked one) the last figure as the amount — unless that figure is
+ * tiny and bare and an earlier one carries k/rb/jt ("kopi 50rb 2 gelas"), which is then the amount. What is left is the
  * description.
  */
 
@@ -23,6 +24,8 @@ export interface ExpenseLineReading {
   occurredOn: string | null;
   payment: { accountId: string; cardId: string | null } | null;
   ambiguous: boolean;
+  /** The amount is under Paste a list's small threshold (`isSmallAmount`): a dropped zero or a quantity, so unsure. */
+  small: boolean;
   /** The line without the description's words: its date, currency, amount and paid-with words in typed order. */
   rest: string;
 }
@@ -42,7 +45,10 @@ const YESTERDAY = /(?<![\p{L}\p{N}])(kemarin|yesterday)(?![\p{L}\p{N}])/iu;
 
 const SYMBOLS: Record<string, string> = { 'S$': 'SGD', $: 'USD', '€': 'EUR', '£': 'GBP', '¥': 'JPY', RM: 'MYR' };
 const CODES = new Set(CURRENCIES.map((c) => c.code));
-const MARK_BEFORE = /(?:(?<![\p{L}\p{N}])(S\$|RM)|(\$|€|£|¥)|(?<![\p{L}\p{N}])([A-Za-z]{3}))\s*$/u;
+// S$ and RM in any case (the field does not capitalise): "s$4,50", "rm 15".
+const MARK_BEFORE = /(?:(?<![\p{L}\p{N}])([Ss]\$|[Rr][Mm])|(\$|€|£|¥)|(?<![\p{L}\p{N}])([A-Za-z]{3}))\s*$/u;
+// A letter mark touching its figure ("RM15", "s$4.50") is spaced from it first, so the figure reads as a figure.
+const MARK_TOUCHING = /(?<![\p{L}\p{N}])([Ss]\$|[Rr][Mm])(?=\d)/gu;
 const CODE_AFTER = /^\s*([A-Za-z]{3})(?![\p{L}\p{N}])/u;
 const MINUS_BEFORE = /(?:^|\s)[-−–]\s*$/;
 
@@ -67,7 +73,7 @@ const wordsOf = (text: string | null): string[] => (text ?? '').toLowerCase().ma
 
 /** Reads one typed line (see the notes at the top of the file). */
 export function readExpenseLine(line: string, options: ReadExpenseLineOptions): ExpenseLineReading {
-  const s = withoutClosingDash(line.replace(/\s+/g, ' ').trim());
+  const s = withoutClosingDash(line.replace(/\s+/g, ' ').trim()).replace(MARK_TOUCHING, '$1 ');
   let masked = s;
   const removed: Span[] = [];
   const remove = (span: Span) => {
@@ -108,7 +114,7 @@ export function readExpenseLine(line: string, options: ReadExpenseLineOptions): 
     } else {
       const before = MARK_BEFORE.exec(masked.slice(0, fig.start));
       if (before) {
-        code = before[1] ? SYMBOLS[before[1]]! : before[2] ? SYMBOLS[before[2]]! : codeOf(before[3]!);
+        code = before[1] ? SYMBOLS[before[1].toUpperCase()]! : before[2] ? SYMBOLS[before[2]]! : codeOf(before[3]!);
         if (code) span = { start: before.index, end: fig.end };
       }
       if (!code) {
@@ -156,11 +162,15 @@ export function readExpenseLine(line: string, options: ReadExpenseLineOptions): 
     }
   }
 
-  // 4. The amount, when no currency mark picked one.
+  // 4. The amount, when no currency mark picked one: the last figure, unless it is tiny and bare and an earlier one
+  // carries k/rb/jt — then that one, and the tiny figure stays in the description as typed.
   if (!amountFound) {
-    const last = lineFigures(masked, options.currency)
-      .filter((f) => f.minor !== null)
-      .at(-1);
+    const left = lineFigures(masked, options.currency).filter((f) => f.minor !== null);
+    let last = left.at(-1);
+    if (last && !last.suffixed && isSmallAmount(last.minor!, options.currency)) {
+      const marked = left.filter((f) => f.suffixed && !f.negative && f.minor! > 0 && !isSmallAmount(f.minor!, options.currency)).at(-1);
+      if (marked) last = marked;
+    }
     if (last && !last.negative && last.minor! > 0) {
       amountMinor = last.minor;
       ambiguous = last.ambiguous;
@@ -176,5 +186,6 @@ export function readExpenseLine(line: string, options: ReadExpenseLineOptions): 
     .replace(/\s+/g, ' ')
     .trim();
 
-  return { description: tidyDescription(trimNote(masked)), amountMinor, currency, currencyRead, occurredOn, payment, ambiguous, rest };
+  const small = amountMinor !== null && isSmallAmount(amountMinor, currency);
+  return { description: tidyDescription(trimNote(masked)), amountMinor, currency, currencyRead, occurredOn, payment, ambiguous, small, rest };
 }

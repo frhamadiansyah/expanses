@@ -20,6 +20,7 @@ describe('readExpenseLine', () => {
       occurredOn: null,
       payment: null,
       ambiguous: false,
+      small: false,
       rest: '10rb',
     });
   });
@@ -154,5 +155,52 @@ describe('readExpenseLine', () => {
   it('gives back what is not the description, for a picked suggestion', () => {
     expect(read('kopi ke 38rb nusa').rest).toBe('38rb nusa');
     expect(read('kemarin kopi 20rb').rest).toBe('kemarin 20rb');
+  });
+
+  it('reads S$ and RM in any case, also touching the figure', () => {
+    const a = read('s$4,50 kaya toast');
+    expect(a.currency).toBe('SGD');
+    expect(a.amountMinor).toBe(450);
+    expect(a.description).toBe('Kaya Toast');
+    for (const line of ['beli rm 15', 'beli RM15', 'beli Rm 15', 'beli rm15']) {
+      const r = read(line);
+      expect(r.currency).toBe('MYR');
+      expect(r.currencyRead).toBe(true);
+      expect(r.amountMinor).toBe(1_500);
+      expect(r.description).toBe('Beli');
+    }
+    expect(read('RM15 nasi lemak').description).toBe('Nasi Lemak');
+    expect(read('S$12 chicken rice').amountMinor).toBe(1_200);
+  });
+
+  it('still reads rm inside a word as a word, and try never as lira', () => {
+    const r = read('farm 15rb');
+    expect(r.currency).toBe('IDR');
+    expect(r.amountMinor).toBe(15_000);
+    const eatery = read('rm sedap 25rb');
+    expect(eatery.currency).toBe('IDR');
+    expect(eatery.amountMinor).toBe(25_000);
+    expect(eatery.description).toBe('Rm Sedap');
+    expect(read('try 50000').currency).toBe('IDR');
+    expect(read('try50000').currency).toBe('IDR');
+  });
+
+  it('marks a tiny amount as small, as Paste a list does', () => {
+    const r = read('kopi 25 nusa');
+    expect(r.amountMinor).toBe(25);
+    expect(r.small).toBe(true);
+    expect(read('kopi 25rb').small).toBe(false);
+    expect(read('usd 0,50 gum').small).toBe(true);
+    expect(read('usd 2 gum').small).toBe(false);
+  });
+
+  it('prefers a figure with rb, k or jt over a tiny bare one after it, leaving that in the note', () => {
+    const r = read('kopi 50rb 2 gelas');
+    expect(r.amountMinor).toBe(50_000);
+    expect(r.small).toBe(false);
+    expect(r.description).toBe('Kopi 2 Gelas');
+    expect(read('nasi 1,5 juta 3 porsi').amountMinor).toBe(1_500_000);
+    // A bare figure that is not tiny is still the amount, as the last figure.
+    expect(read('gojek 2 kali 38000').amountMinor).toBe(38_000);
   });
 });
