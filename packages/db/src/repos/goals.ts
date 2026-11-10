@@ -11,6 +11,7 @@ import { recordContributionTx } from './goal-contributions';
 import { healthTablesExist } from './health-tables';
 import { goalPartsTableExists } from './goal-parts';
 import { isPocketParentTx } from './set-aside-tx';
+import { markGoalDirtyTx } from '../sync/capture';
 
 const currencyColumn = new WeakMap<Db, boolean>();
 
@@ -372,6 +373,7 @@ export async function saveEarmark(database: Database, ws: WorkspaceContext, inpu
       .onConflictDoUpdate({ target: [goalEarmarks.goalId, goalEarmarks.accountId], set: { amountMinor: input.amountMinor } });
     // Only the difference is a contribution: re-saving the same amount moved nothing.
     await recordContributionTx(tx, ws, input.goalId, input.accountId, input.amountMinor - (before?.amountMinor ?? 0));
+    markGoalDirtyTx(tx, input.goalId);
   });
 }
 
@@ -387,6 +389,7 @@ export async function removeEarmark(database: Database, ws: WorkspaceContext, go
       .delete(goalEarmarks)
       .where(and(eq(goalEarmarks.goalId, goalId), eq(goalEarmarks.accountId, accountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
     await recordContributionTx(tx, ws, goalId, accountId, -before.amountMinor);
+    markGoalDirtyTx(tx, goalId);
   });
 }
 
@@ -398,7 +401,10 @@ export async function setStandingMonthly(database: Database, ws: WorkspaceContex
   if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) throw new GoalDbError('A monthly amount is a whole figure, nought or more');
   const [goal] = await database.db.select({ id: goals.id }).from(goals).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId)));
   if (!goal) throw new GoalDbError('Goal not found in this workspace');
-  await database.db.update(goals).set({ standingMonthlyMinor: amountMinor }).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId)));
+  await database.transaction(async (tx) => {
+    await tx.update(goals).set({ standingMonthlyMinor: amountMinor }).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId)));
+    markGoalDirtyTx(tx, goalId);
+  });
 }
 
 /**
@@ -434,5 +440,7 @@ export async function moveSetAside(
       .onConflictDoUpdate({ target: [goalEarmarks.goalId, goalEarmarks.accountId], set: { amountMinor: sql`${goalEarmarks.amountMinor} + ${input.amountMinor}` } });
     await recordContributionTx(tx, ws, input.fromGoalId, input.accountId, -input.amountMinor);
     await recordContributionTx(tx, ws, input.toGoalId, input.accountId, input.amountMinor);
+    markGoalDirtyTx(tx, input.fromGoalId);
+    markGoalDirtyTx(tx, input.toGoalId);
   });
 }

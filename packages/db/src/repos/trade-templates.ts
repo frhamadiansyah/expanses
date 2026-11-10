@@ -3,6 +3,7 @@ import { and, asc, eq, gte, lte } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { investmentTrades, tradeTemplates } from '../schema-assets';
+import { markGoalDirtyTx } from '../sync/capture';
 import { isByMoneyTx } from './by-money';
 import { AssetError, assertAccountInWorkspace } from './assets';
 
@@ -82,7 +83,11 @@ export async function saveTradeTemplate(database: Database, ws: WorkspaceContext
     await assertAccountInWorkspace(tx, ws, input.accountId, 'Asset');
     await assertAccountInWorkspace(tx, ws, input.cashAccountId, 'Cash account');
     const { createdAt, ...changes } = row;
+    const [was] = await tx.select({ goalId: tradeTemplates.goalId }).from(tradeTemplates).where(eq(tradeTemplates.id, id));
     await tx.insert(tradeTemplates).values(row).onConflictDoUpdate({ target: tradeTemplates.id, set: changes });
+    // The monthly plan of the goal it left and of the one it joined both change.
+    if (was?.goalId) markGoalDirtyTx(tx, was.goalId);
+    if (row.goalId) markGoalDirtyTx(tx, row.goalId);
   });
   return id;
 }
@@ -98,7 +103,11 @@ export async function listTradeTemplates(database: Database, ws: WorkspaceContex
 
 /** Removes a monthly buy. Buys it already made stay, with the template's id on them. */
 export async function deleteTradeTemplate(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
-  await database.db.delete(tradeTemplates).where(and(eq(tradeTemplates.id, id), eq(tradeTemplates.workspaceId, ws.workspaceId)));
+  await database.transaction(async (tx) => {
+    const [was] = await tx.select({ goalId: tradeTemplates.goalId }).from(tradeTemplates).where(and(eq(tradeTemplates.id, id), eq(tradeTemplates.workspaceId, ws.workspaceId)));
+    await tx.delete(tradeTemplates).where(and(eq(tradeTemplates.id, id), eq(tradeTemplates.workspaceId, ws.workspaceId)));
+    if (was?.goalId) markGoalDirtyTx(tx, was.goalId);
+  });
 }
 
 /** What one monthly buy recorded in a month: the day of its last buy and the money of all of them. */

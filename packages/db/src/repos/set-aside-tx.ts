@@ -6,6 +6,7 @@ import { accounts, entries, transactions } from '../schema';
 import { assetProfiles } from '../schema-assets';
 import { goalDraws, goalEarmarks, goalStages, goals } from '../schema-goals';
 import { MONEY_SUBTYPES } from './accounts';
+import { markGoalDirtyTx } from '../sync/capture';
 
 /**
  * Whether migration 0050 has run on this database. Every read and write of goal_draws asks first, so a database stopped
@@ -100,6 +101,7 @@ export async function adjustSetAsideTx(tx: Db, ws: WorkspaceContext, goalId: str
     .from(goalEarmarks)
     .where(and(eq(goalEarmarks.goalId, goalId), eq(goalEarmarks.accountId, accountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
   const next = Math.max(0, (existing?.amountMinor ?? 0) + deltaMinor);
+  markGoalDirtyTx(tx, goalId);
 
   if (next === 0) {
     if (existing) {
@@ -175,6 +177,7 @@ export interface TaggedMove {
  */
 export async function parkForGoalTx(tx: Db, ws: WorkspaceContext, transactionId: string, goalId: string, move: TaggedMove): Promise<number> {
   await tx.update(transactions).set({ goalId }).where(eq(transactions.id, transactionId));
+  markGoalDirtyTx(tx, goalId);
   if (!(await canHoldSetAside(tx, ws, move.toAccountId))) return 0;
   // The goal's own promise on the source follows its money, so the goal does not count it in both places.
   const [own] = await tx
@@ -430,6 +433,7 @@ export async function undoSetAsideTx(tx: Db, ws: WorkspaceContext, transactionId
     .from(goalDraws)
     .where(and(eq(goalDraws.transactionId, transactionId), eq(goalDraws.workspaceId, ws.workspaceId)));
   const undone = rows.filter((draw) => (isAnswer(draw) ? !keep.answer : !keep.tagged));
+  for (const draw of undone) markGoalDirtyTx(tx, draw.goalId);
   for (const draw of undone) {
     if (draw.intent === 'spend') {
       await adjustSetAsideTx(tx, ws, draw.goalId, draw.accountId, draw.amountMinor);
