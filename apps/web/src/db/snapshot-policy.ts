@@ -5,8 +5,14 @@
  * real OPFS-backed store and the real clock.
  */
 
-/** Why a copy was taken. Only a copy taken for one of these reasons is ever written. */
-export type SnapshotReason = 'before-migration' | 'before-restore' | 'before-start-fresh' | 'before-delete' | 'daily';
+/**
+ * Why a copy was taken. Only a copy taken for one of these reasons is ever written.
+ *
+ * `background` is the copy taken as the app leaves the foreground, when something changed since the last
+ * one (`background-copy.ts`). It is kept apart from the others in every rule below: at most one is kept,
+ * it never takes a regular copy's place, and it is never the day's copy.
+ */
+export type SnapshotReason = 'before-migration' | 'before-restore' | 'before-start-fresh' | 'before-delete' | 'daily' | 'background';
 
 /** One copy in the store, as the store describes it. Task 7 writes the store that produces these. */
 export interface SnapshotInfo {
@@ -27,8 +33,16 @@ export interface SnapshotInfo {
  */
 export const MIN_COPY_BYTES = 512;
 
-const REASONS: SnapshotReason[] = ['before-migration', 'before-restore', 'before-start-fresh', 'before-delete', 'daily'];
+const REASONS: SnapshotReason[] = ['before-migration', 'before-restore', 'before-start-fresh', 'before-delete', 'daily', 'background'];
 
+/*
+ * Adding a reason widens this pattern, and it must only ever widen: every name an older build wrote has to keep
+ * parsing. The reverse is worth knowing too. An older build's pattern has no `background` in it, so a
+ * `-background.sqlite3` name does not match there at all and that build's survey skips the file as "not one of
+ * ours": never listed, offered, counted or pruned. Background copies are also never written into the manifest
+ * (`snapshots.ts`), so an older build installed over this one simply does not see them; the one file stays on
+ * the device until a build that knows the name prunes it.
+ */
 const NAME_PATTERN = new RegExp(`^snapshot-(\\d{4})(\\d{2})(\\d{2})T(\\d{2})(\\d{2})(\\d{2})Z-v(\\d+)(?:-(${REASONS.join('|')}))?\\.sqlite3$`);
 
 /**
@@ -75,16 +89,41 @@ function withinStartFreshGrace(snapshot: SnapshotInfo, now: Date): boolean {
   return now.getTime() - new Date(snapshot.takenAt).getTime() < SEVEN_DAYS_MS;
 }
 
+const isBackground = (snapshot: SnapshotInfo): boolean => snapshot.reason === 'background';
+
+const newestFirst = (list: SnapshotInfo[]): SnapshotInfo[] => [...list].sort((a, b) => b.takenAt.localeCompare(a.takenAt));
+
 /**
  * Which of `list` should be deleted now that `incoming` has just been written. The copy just
  * written is never returned, whatever its own timestamp says — a clock that has jumped must not
- * cost the user the copy they just took. Ordinarily this keeps `incoming` plus the single newest
- * survivor of `list` and marks the rest for deletion, except a copy taken before "Start fresh" is
- * spared for seven days regardless of how many that leaves kept.
+ * cost the user the copy they just took.
+ *
+ * Two pools, pruned apart:
+ *
+ * - **The regular copies** (every reason but `background`). Ordinarily this keeps `incoming` plus the single
+ *   newest survivor and marks the rest for deletion, except a copy taken before "Start fresh" is spared for
+ *   seven days regardless of how many that leaves kept. Exactly as if background copies did not exist: a
+ *   background copy is never the "newest survivor" that pushes the copy before an update out, and writing
+ *   one never deletes a regular copy at all. Background copies can be taken every ten minutes; without this,
+ *   an afternoon of them would leave nothing older than the afternoon.
+ * - **Background copies**: only the newest is kept — `incoming` itself when it is one.
+ *
+ * Across both, the largest good copy is spared when `incoming` is under half its size (see
+ * {@link largerThanIncoming}), so on the rare device that has just lost most of its data a second background
+ * copy can be kept: the one that held everything, beside the newest.
  */
 export function keepTwo(list: SnapshotInfo[], incoming: SnapshotInfo, now: Date = new Date()): SnapshotInfo[] {
-  const sorted = [...list].sort((a, b) => b.takenAt.localeCompare(a.takenAt));
-  const [, ...rest] = sorted; // the newest of `list` survives alongside `incoming`; `incoming` itself is never a candidate.
+  const background = newestFirst(list.filter(isBackground));
+  const regular = list.filter((snapshot) => !isBackground(snapshot));
+  const backgroundGone = isBackground(incoming) ? background : background.slice(1);
+  const regularGone = isBackground(incoming) ? [] : keepNewestRegular(regular, incoming, now);
+  const spared = largerThanIncoming(list, incoming);
+  return [...backgroundGone, ...regularGone].filter((snapshot) => snapshot.file !== incoming.file && snapshot.file !== spared?.file);
+}
+
+/** The rule {@link keepTwo} has always applied, over the regular copies alone. */
+function keepNewestRegular(list: SnapshotInfo[], incoming: SnapshotInfo, now: Date): SnapshotInfo[] {
+  const [, ...rest] = newestFirst(list); // the newest of `list` survives alongside `incoming`; `incoming` itself is never a candidate.
   const spared = largerThanIncoming(list, incoming);
   return rest.filter((snapshot) => !withinStartFreshGrace(snapshot, now) && snapshot.file !== spared?.file);
 }
@@ -110,6 +149,11 @@ function largerThanIncoming(list: SnapshotInfo[], incoming: SnapshotInfo): Snaps
  *
  * It does not spare the large copy {@link keepTwo} spares. This is the no-room path, where keeping it would
  * mean keeping no new copy at all; a device that full is told so by `roomFor` before it gets here.
+ *
+ * Nor does it keep background copies apart, and this is the one way a background copy can remove a daily,
+ * before-update or before-restore copy: on a device with room for the copy just written but not for three, the
+ * newest copy is the one kept whatever its reason, as it always was for a daily one. A background copy is only
+ * taken of a file that has just passed `quick_check`, so it is as good a copy as the day's — and the newest.
  */
 export function keepOne(list: SnapshotInfo[], incoming: SnapshotInfo, now: Date = new Date()): SnapshotInfo[] {
   return list.filter((snapshot) => snapshot.file !== incoming.file && !withinStartFreshGrace(snapshot, now));
@@ -127,13 +171,15 @@ const localDay = (when: Date): string => {
 
 /**
  * True once a full calendar day has passed, **in the user's own time zone**, without any copy being
- * taken. Not UTC: for a user at UTC+7 a UTC day rolls over at seven in the morning, so "once a day"
+ * taken (a background copy does not count). Not UTC: for a user at UTC+7 a UTC day rolls over at seven in the morning, so "once a day"
  * would mean "once a working day, some time after breakfast". The rest of the branch counts local days;
  * this is the same day.
  */
 export function dailyDue(list: SnapshotInfo[], now: Date = new Date()): boolean {
   const today = localDay(now);
-  return !list.some((snapshot) => localDay(new Date(snapshot.takenAt)) === today);
+  // A background copy is not the day's copy: it is pruned by the next one, ten minutes later, and the day
+  // still gets a copy of its own that the regular rules keep.
+  return !list.some((snapshot) => !isBackground(snapshot) && localDay(new Date(snapshot.takenAt)) === today);
 }
 
 export type Room = 'yes' | 'prune-first' | 'no';

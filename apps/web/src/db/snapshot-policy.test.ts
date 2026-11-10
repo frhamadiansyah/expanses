@@ -132,3 +132,93 @@ describe('roomFor', () => {
     expect(roomFor({}, 1_372_160)).toBe('yes');
   });
 });
+
+describe('copies taken when the app goes to the background', () => {
+  const at = (minute: number) => new Date(Date.UTC(2026, 10, 10, 9, minute)).toISOString();
+  /** What the store does after each write: the incoming copy joins, and whatever the rule names goes. */
+  const write = (list: SnapshotInfo[], incoming: SnapshotInfo, rule = keepTwo): SnapshotInfo[] => {
+    const doomed = new Set(rule(list, incoming, new Date(incoming.takenAt)).map((s) => s.file));
+    return [incoming, ...list.filter((s) => !doomed.has(s.file))];
+  };
+
+  it('are named for their reason, and a name an older build wrote still reads', () => {
+    const name = snapshotName('2026-11-10T09:12:00.412Z', 108, 'background');
+    expect(name).toBe('snapshot-20261110T091200Z-v108-background.sqlite3');
+    expect(parseSnapshotName(name)).toEqual({ takenAt: '2026-11-10T09:12:00.000Z', schemaVersion: 108, reason: 'background' });
+    expect(parseSnapshotName('snapshot-20261110T091200Z-v108.sqlite3')).toMatchObject({ reason: null });
+    expect(parseSnapshotName('snapshot-20261110T091200Z-v108-daily.sqlite3')).toMatchObject({ reason: 'daily' });
+  });
+
+  /**
+   * An older build's pattern, as it shipped: the reasons before `background` existed. It does not match a
+   * background copy's name at all, so that build's survey skips the file as "not one of ours" — never listed,
+   * never offered, never pruned — and since a background copy is never written into the manifest either, an
+   * older build installed over this one simply does not see it.
+   */
+  it('are invisible to an older build, which does not recognise the name', () => {
+    const older = /^snapshot-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z-v(\d+)(?:-(before-migration|before-restore|before-start-fresh|before-delete|daily))?\.sqlite3$/;
+    expect(older.test(snapshotName('2026-11-10T09:12:00.000Z', 108, 'background'))).toBe(false);
+    expect(older.test(snapshotName('2026-11-10T09:12:00.000Z', 108, 'daily'))).toBe(true);
+  });
+
+  it('ten in a row leave one of them, and the daily and before-update copies untouched', () => {
+    const update = snap(at(0), 'before-migration');
+    const daily = snap(at(1), 'daily');
+    let list = [daily, update];
+    for (let i = 0; i < 10; i += 1) list = write(list, snap(at(10 + i * 11), 'background'));
+    const background = list.filter((s) => s.reason === 'background');
+    expect(background.map((s) => s.takenAt)).toEqual([at(10 + 9 * 11)]);
+    expect(list.filter((s) => s.reason !== 'background').map((s) => s.file).sort()).toEqual([daily.file, update.file].sort());
+  });
+
+  it('never cost a before-restore copy its place either', () => {
+    const undo = snap(at(0), 'before-restore');
+    const daily = snap(at(1), 'daily');
+    let list = [daily, undo];
+    for (let i = 0; i < 3; i += 1) list = write(list, snap(at(10 + i * 11), 'background'));
+    expect(list.map((s) => s.reason).sort()).toEqual(['background', 'before-restore', 'daily']);
+  });
+
+  it('do not count as the newer copy a daily one keeps beside itself', () => {
+    // Before this, the background copy was "the newest survivor" and the copy before the update was the one to go.
+    const update = snap(at(0), 'before-migration');
+    const background = snap(at(30), 'background');
+    const daily = snap(at(40), 'daily');
+    expect(keepTwo([update, background], daily, new Date(daily.takenAt))).toEqual([]);
+    // And the next day's copy prunes among the regular copies as it always did, leaving the background one be.
+    const next = snap(new Date(Date.UTC(2026, 10, 11, 9)).toISOString(), 'daily');
+    expect(keepTwo([update, background, daily], next, new Date(next.takenAt)).map((s) => s.file)).toEqual([update.file]);
+  });
+
+  it('a daily copy clears a stray second background copy, keeping the newest', () => {
+    const older = snap(at(10), 'background');
+    const newer = snap(at(20), 'background');
+    const daily = snap(at(30), 'daily');
+    expect(keepTwo([older, newer], daily, new Date(daily.takenAt)).map((s) => s.file)).toEqual([older.file]);
+  });
+
+  it('keep the copy that held everything when the next one is under half its size', () => {
+    const whole = { ...snap(at(10), 'background'), bytes: 8_000_000 };
+    let list = [whole];
+    for (let i = 0; i < 3; i += 1) list = write(list, { ...snap(at(20 + i * 11), 'background'), bytes: 900_000 });
+    expect(list.map((s) => s.file)).toContain(whole.file);
+    // Bounded all the same: the big one and the newest, never a pile.
+    expect(list).toHaveLength(2);
+  });
+
+  it('on a device without room for three, keep only the newest copy whatever its reason, as before', () => {
+    const grace = snap(at(0), 'before-start-fresh');
+    const update = snap(at(1), 'before-migration');
+    const daily = snap(at(2), 'daily');
+    const older = snap(at(3), 'background');
+    const incoming = snap(at(20), 'background');
+    const doomed = keepOne([grace, update, daily, older], incoming, new Date(incoming.takenAt));
+    expect(doomed.map((s) => s.file).sort()).toEqual([update.file, daily.file, older.file].sort());
+  });
+
+  it('never stand in for the day’s copy', () => {
+    const now = new Date(at(50));
+    expect(dailyDue([snap(at(10), 'background')], now)).toBe(true);
+    expect(dailyDue([snap(at(10), 'background'), snap(at(5), 'daily')], now)).toBe(false);
+  });
+});

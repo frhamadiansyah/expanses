@@ -2,8 +2,8 @@ import { createDatabase } from '@expanses/db';
 import { createNodeExecutor, type NodeExecutor } from '@expanses/db/node';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { lastGoodCopy } from '../features/recovery/recovery-copy';
-import { dailyDue, snapshotName } from './snapshot-policy';
-import { IMPORT_MARKER, memorySnapshots, restoreSnapshot, writeWhole } from './snapshots';
+import { dailyDue, type SnapshotInfo, snapshotName } from './snapshot-policy';
+import { IMPORT_MARKER, MANIFEST, memorySnapshots, restoreSnapshot, SnapshotSpaceError, writeWhole } from './snapshots';
 
 const engines: NodeExecutor[] = [];
 afterEach(() => {
@@ -236,5 +236,81 @@ describe('writing a copy file', () => {
     await writeWhole(dir as never, 'snapshot-x.sqlite3', new Uint8Array(1024));
     expect(removed).toEqual([]);
     expect(files.get('snapshot-x.sqlite3')).toBe(1024);
+  });
+});
+
+describe('background copies in the store', () => {
+  const minute = (m: number) => new Date(Date.UTC(2026, 10, 10, 9, m)).toISOString();
+
+  it('are listed from their name alone, and never written into the manifest', async () => {
+    const bytes = await database();
+    const files = new Map<string, Uint8Array>();
+    const store = memorySnapshots(files);
+    const daily = await at(minute(0), () => store.write(bytes, 'daily', 108));
+    const background = await at(minute(10), () => store.write(bytes, 'background', 108));
+    const manifest = new TextDecoder().decode(files.get(MANIFEST)!);
+    expect(manifest).toContain(daily.file);
+    expect(manifest).not.toContain(background.file);
+    expect((await store.list()).map((s) => [s.file, s.reason, s.bytes])).toEqual([
+      [daily.file, 'daily', bytes.length],
+      [background.file, 'background', bytes.length],
+    ]);
+    // Nor by the other writers of the manifest.
+    await store.block(109, 109);
+    await store.unblock();
+    expect(new TextDecoder().decode(files.get(MANIFEST)!)).not.toContain(background.file);
+  });
+
+  it('ten in a row leave one, beside the daily and before-update copies', async () => {
+    const bytes = await database();
+    const store = memorySnapshots();
+    const update = await at(minute(0), () => store.write(bytes, 'before-migration', 108));
+    const daily = await at(minute(1), () => store.write(bytes, 'daily', 108));
+    let last: SnapshotInfo | null = null;
+    for (let i = 0; i < 10; i += 1) last = await at(minute(10 + i * 11), () => store.write(bytes, 'background', 108));
+    const listed = await store.list();
+    expect(listed.map((s) => s.file).sort()).toEqual([update.file, daily.file, last!.file].sort());
+    expect(lastGoodCopy(listed)?.file).toBe(last!.file);
+  });
+
+  /**
+   * iOS may suspend or kill the app while the copy is being written: nothing after the cut runs, so no clean-up
+   * and no manifest update. What is left is a file under a valid background name holding nothing, or only its
+   * first pages. Neither may be listed, offered or counted, and the next copy that verifies removes it.
+   */
+  for (const cut of ['nothing', 'the first page'] as const) {
+    it(`lists nothing of a background copy cut off after ${cut} was written`, async () => {
+      const bytes = await database(400_000);
+      const files = new Map<string, Uint8Array>();
+      const store = memorySnapshots(files);
+      const daily = await at(minute(0), () => store.write(bytes, 'daily', 108));
+      const torn = snapshotName(minute(10), 108, 'background');
+      files.set(torn, cut === 'nothing' ? new Uint8Array() : bytes.slice(0, 4096));
+
+      const listed = await store.list();
+      expect(listed.map((s) => s.file)).toEqual([daily.file]);
+      expect(lastGoodCopy(listed)?.file).toBe(daily.file);
+
+      const next = await at(minute(30), () => store.write(bytes, 'background', 108));
+      expect(files.has(torn)).toBe(false);
+      expect((await store.list()).map((s) => s.file)).toEqual([daily.file, next.file]);
+    });
+  }
+
+  it('on a device short of room keep only the newest copy, and with no room change nothing', async () => {
+    const bytes = await database();
+    let free = 100 * bytes.length;
+    const files = new Map<string, Uint8Array>();
+    const store = memorySnapshots(files, async () => ({ quota: 1_000_000_000, usage: 1_000_000_000 - free }));
+    await at(minute(0), () => store.write(bytes, 'before-migration', 108));
+    await at(minute(1), () => store.write(bytes, 'daily', 108));
+
+    free = 0.5 * bytes.length;
+    await expect(at(minute(10), () => store.write(bytes, 'background', 108))).rejects.toThrow(SnapshotSpaceError);
+    expect((await store.list()).map((s) => s.reason).sort()).toEqual(['before-migration', 'daily']);
+
+    free = 2 * bytes.length;
+    const kept = await at(minute(20), () => store.write(bytes, 'background', 108));
+    expect((await store.list()).map((s) => s.file)).toEqual([kept.file]);
   });
 });

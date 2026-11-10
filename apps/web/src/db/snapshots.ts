@@ -50,7 +50,7 @@ interface Slot {
   read(file: string): Promise<Uint8Array | null>;
   write(file: string, bytes: Uint8Array): Promise<void>;
   remove(file: string): Promise<void>;
-  /** The size of `file` and its first 16 bytes, without reading the rest; null when it is not there. */
+  /** The size of `file` and its first 32 bytes (`HEADER`), without reading the rest; null when it is not there. */
   probe(file: string): Promise<{ size: number; head: Uint8Array } | null>;
   names(): Promise<string[]>;
   estimate(): Promise<{ quota?: number; usage?: number }>;
@@ -79,12 +79,20 @@ function whatIsWrongWith(bytes: Uint8Array, expected: number): string | null {
 function headerProblem(bytes: Uint8Array): string | null {
   if (bytes.length < Math.max(HEADER, MIN_COPY_BYTES)) return 'the copy is too short to be a database';
   if (new TextDecoder().decode(bytes.subarray(0, 16)) !== MAGIC) return 'the copy does not begin like a SQLite file';
-  const view = new DataView(bytes.buffer, bytes.byteOffset, HEADER);
+  return shortOfItsHeader(bytes.subarray(0, HEADER), bytes.length);
+}
+
+/**
+ * Whether a file `size` bytes long is shorter than its own header (`head`, at least `HEADER` bytes) says it is:
+ * the shape of a write that stopped part way, with the first page down and the rest never written.
+ */
+function shortOfItsHeader(head: Uint8Array, size: number): string | null {
+  const view = new DataView(head.buffer, head.byteOffset, HEADER);
   // A page size of 1 means 65536; SQLite stores it that way because the field is only two bytes wide.
   const declared = view.getUint16(16);
   const pageSize = declared === 1 ? 65536 : declared;
   const pages = view.getUint32(28);
-  if (pageSize * pages > bytes.length) return `the header says ${pages} pages of ${pageSize} bytes, but the copy is only ${bytes.length}`;
+  if (pageSize * pages > size) return `the header says ${pages} pages of ${pageSize} bytes, but the copy is only ${size}`;
   return null;
 }
 
@@ -127,18 +135,38 @@ function fromName(file: string, bytes: number): SnapshotInfo | null {
 
 /**
  * Whether a file on the device is really a copy: at least one page, the size the manifest recorded when it
- * recorded one, and SQLite's own first sixteen bytes. Only the header is read — never the whole file — so
- * listing stays cheap. A write that stopped after the file was made leaves exactly the 0-byte copy this
- * refuses, which the recovery screen used to offer as "the last good copy".
+ * recorded one, SQLite's own first sixteen bytes, and no shorter than its own header's page count. Only the
+ * header is read — never the whole file — so listing stays cheap. A write that stopped after the file was
+ * made leaves exactly the 0-byte copy this refuses, which the recovery screen used to offer as "the last
+ * good copy"; one that stopped after the first page leaves a file the header check refuses.
+ *
+ * The header check matters most for a copy the manifest does not record, whose size nothing else vouches
+ * for: every background copy (they are kept out of the manifest, see `manifestOf`), and any orphan a crash
+ * left. An app that iOS suspends or kills while a background copy is being written leaves exactly that.
  */
 function looksWhole(found: { size: number; head: Uint8Array } | null, recorded?: number): boolean {
   if (!found || found.size < MIN_COPY_BYTES) return false;
   if (recorded !== undefined && found.size !== recorded) return false;
-  return decode(found.head.subarray(0, 16)) === MAGIC;
+  if (decode(found.head.subarray(0, 16)) !== MAGIC) return false;
+  // A slot that cannot hand back the whole header (an older probe) is judged on the rest, as it always was.
+  return found.head.length < HEADER || shortOfItsHeader(found.head, found.size) === null;
+}
+
+/**
+ * What goes into `manifest.json`: everything but background copies.
+ *
+ * A background copy is listed from its name alone (the reason is in it), so leaving it out costs this build
+ * nothing. It is left out for the builds before this one: they read the manifest's entries as copies whatever
+ * the reason says, so an entry would be listed under a reason they have no words for, and counted by their
+ * `keepTwo` as the newest copy — pruning the copy before an update to make room for it. Kept out of the
+ * manifest, the file is one their name pattern does not recognise, and they leave it alone.
+ */
+function manifestOf(manifest: Manifest): Manifest {
+  return { ...manifest, snapshots: manifest.snapshots.filter((snapshot) => snapshot.reason !== 'background') };
 }
 
 async function writeManifest(slot: Slot, manifest: Manifest): Promise<void> {
-  await slot.write(MANIFEST, new TextEncoder().encode(JSON.stringify(manifest, null, 2)));
+  await slot.write(MANIFEST, new TextEncoder().encode(JSON.stringify(manifestOf(manifest), null, 2)));
 }
 
 /** Every rule of the store, over whatever `slot` can actually hold files. */
@@ -378,7 +406,7 @@ export function opfsSnapshots(): SnapshotStore {
     probe: async (file) => {
       const handle = await fileHandle(file).catch(() => null);
       const found = await handle?.getFile().catch(() => null);
-      return found ? { size: found.size, head: new Uint8Array(await found.slice(0, 16).arrayBuffer()) } : null;
+      return found ? { size: found.size, head: new Uint8Array(await found.slice(0, HEADER).arrayBuffer()) } : null;
     },
     write: async (file, bytes) => writeWhole(await safetyDirectory(), file, bytes),
     remove: async (file) => {
@@ -410,7 +438,7 @@ export function memorySnapshots(
     read: async (file) => files.get(file) ?? null,
     probe: async (file) => {
       const found = files.get(file);
-      return found ? { size: found.length, head: found.slice(0, 16) } : null;
+      return found ? { size: found.length, head: found.slice(0, HEADER) } : null;
     },
     write: async (file, bytes) => {
       files.set(file, bytes.slice());
