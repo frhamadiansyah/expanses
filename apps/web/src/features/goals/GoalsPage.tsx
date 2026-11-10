@@ -9,7 +9,8 @@ import { FigureRow, InfoButton, UseBar } from '../budget/budget-rows';
 import { bareFigure } from '../networth/debt-rows';
 import { InfoHeader } from './InfoHeader';
 import { type GoalCard, goalCard, GOAL_KIND_MARKS, goalsTotals, onTrackLine } from './goal-cards';
-import { useGoalPlans } from './queries';
+import { initialsLine } from './goal-sharing';
+import { useGoalPlans, useGoalShares } from './queries';
 
 /** The page's two sections, in funding order: what is saved reaches the compulsory goals first. */
 const SECTIONS: { key: GoalClass; title: string; note: string }[] = [
@@ -37,7 +38,7 @@ function ShortChip({ shortMinor, currency, why }: { shortMinor: number; currency
 }
 
 /** One goal: its kind's circle, name, date and status, a thin bar, and what is saved of what it costs. */
-function GoalListRow({ card, currency, position }: GroupChild & { card: GoalCard; currency: string }) {
+function GoalListRow({ card, currency, members, position }: GroupChild & { card: GoalCard; currency: string; members?: readonly string[] }) {
   const { Glyph, colour } = GOAL_KIND_MARKS[card.kind];
   const warn = card.statusTone === 'warn';
   return (
@@ -46,7 +47,22 @@ function GoalListRow({ card, currency, position }: GroupChild & { card: GoalCard
       testId="goal-row"
       icon={<Glyph size={15} strokeWidth={2.2} aria-hidden />}
       iconColour={colour}
-      title={card.name}
+      title={
+        members ? (
+          <span className="flex min-w-0 items-center gap-[6px]">
+            <span className="truncate">{card.name}</span>
+            <span className="flex shrink-0 gap-[2px]" data-testid="goal-row-initials" aria-hidden>
+              {initialsLine(members).map((initials, index) => (
+                <span key={index} className="rounded-full bg-[var(--ph-fill)] px-[5px] text-[10.5px] leading-[16px] font-semibold text-[var(--ph-ink-2)]">
+                  {initials}
+                </span>
+              ))}
+            </span>
+          </span>
+        ) : (
+          card.name
+        )
+      }
       subtitle={
         <>
           <span className="block truncate">
@@ -75,6 +91,7 @@ export function GoalsPage() {
   const today = isoDate();
   const summary = useGoalPlans(today);
   const navigate = useNavigate();
+  const shares = useGoalShares().data ?? {};
 
   const plans = summary.data?.plans ?? [];
   // The page's order is the funding order: compulsory goals first, each section in its own rank order.
@@ -144,7 +161,7 @@ export function GoalsPage() {
             {/* One row a goal: the figure is read at a glance here, and the goal itself opens on its own page. */}
             <InsetGroup>
               {inSection.map(({ card }) => (
-                <GoalListRow key={card.goalId} card={card} currency={card.currency} />
+                <GoalListRow key={card.goalId} card={card} currency={card.currency} members={shares[card.goalId]?.state === 'on' ? shares[card.goalId]!.members.map((member) => member.name) : undefined} />
               ))}
             </InsetGroup>
           </section>
