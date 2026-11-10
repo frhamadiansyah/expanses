@@ -45,7 +45,8 @@ export async function ownGoalFunding(database: Database, ws: WorkspaceContext, g
     });
   }
   const plan = (await goalPlansFor(database, ws, date)).plans.find((row) => row.goalId === goalId);
-  return { lines, plannedMonthlyMinor: plan?.plannedMonthlyMinor ?? 0 };
+  // The plan's planned figure counts the others' too; only this phone's own part travels.
+  return { lines, plannedMonthlyMinor: plan ? plan.plannedMonthlyMinor - plan.othersPlannedMonthlyMinor : 0 };
 }
 
 export interface GoalMoveRow {
