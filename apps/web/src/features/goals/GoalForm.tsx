@@ -1,5 +1,5 @@
 import { bandHint, emergencyTargetMinor, type GoalKind, formatMinor, groupedMajorString, groupTypedAmount, isoDate, monthsUntil, parseGroupedMajor, parseMajor, returnBandFor } from '@expanses/core';
-import { archiveGoal, deleteGoal, type EmergencyInputs, type GoalRow, goalIsFunded, retagTrade, saveGoal, setEmergencyOwnTarget } from '@expanses/db';
+import { archiveGoal, deleteGoal, type EmergencyInputs, type GoalRow, goalIsFunded, leaveSharedGoal, retagTrade, saveGoal, setEmergencyOwnTarget, shareGoal, stopSharingGoal } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
 import { type FormEvent, useEffect, useState } from 'react';
@@ -7,7 +7,7 @@ import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { type CornerAction, InsetGroup, InsetRow, PickerRow, PushedTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { type CornerAction, InsetGroup, InsetRow, PickerRow, PushedTitle, SCREEN, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { CurrencySheet } from '../transactions/CurrencySheet';
 import { Sheet } from '../../app/Sheet';
 import { useOwnTarget } from '../calculators/emergency-fields';
@@ -18,7 +18,8 @@ import { FundingSheet, taggable } from './FundingSheet';
 import { useTrades } from '../networth/queries';
 import { CostRow, costLine, DATE, PaymentSheet, type StageDraft } from './PaymentRows';
 import { GOAL_KIND_LABELS, GOAL_TEMPLATES, type GoalTemplate, monthYear, prefilledReturnBps, templateDueOn, templateFor } from './goal-cards';
-import { useEarmarks, useGoalCalculators, useGoalPlans } from './queries';
+import { GOAL_SHARING_COPY, shareRowState } from './goal-sharing';
+import { useEarmarks, useGoalCalculators, useGoalPlans, useGoalShare, useGoalShareTargets } from './queries';
 import { useSetAside } from './SetAside';
 
 function draftFromTemplate(template: GoalTemplate, today: string, currency: string): StageDraft {
@@ -72,6 +73,14 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
   const navigate = useNavigate();
   const today = isoDate();
   const calculators = useGoalCalculators();
+  const targets = useGoalShareTargets();
+  const shareNow = useGoalShare(goal?.id ?? '');
+  const shareRow = shareRowState(targets.data ?? [], goal ? (shareNow.data ?? null) : null);
+  // The wish to share: on for a saved goal that is shared now; for a new one it is applied after the goal is saved.
+  const sharedAlready = shareNow.data?.state === 'on';
+  const [wantsShare, setWantsShare] = useState<boolean | null>(null);
+  const [shareBook, setShareBook] = useState<string | null>(null);
+  const sharing = wantsShare ?? sharedAlready;
 
   const starting = goal ? undefined : (templateFor(startKind ?? GOAL_TEMPLATES[0]!.kind) ?? GOAL_TEMPLATES[0]!);
   const [kind, setKind] = useState<GoalKind>(goal?.kind ?? starting!.kind);
@@ -207,6 +216,33 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
     }
   }
 
+  /** Leave in place of Archive and Delete on a goal someone else shared: this phone's copy stays private. */
+  async function leave() {
+    if (!goal || !window.confirm(GOAL_SHARING_COPY.leaveConfirm(goal.name))) return;
+    try {
+      await leaveSharedGoal(database, ws, goal.id);
+      await invalidate();
+      await navigate({ to: '/goals' });
+    } catch (e) {
+      setError(e);
+    }
+  }
+
+  /** After the goal is saved: turn sharing on or off as the switch was left. Stop asks first, and ✓ waits for the answer. */
+  async function applyShare(goalId: string): Promise<boolean> {
+    const bookId = shareRow.kind === 'switch' ? shareRow.bookId : shareBook;
+    if (wantsShare === null || shareRow.kind === 'hidden' || shareRow.kind === 'locked') return true;
+    if (wantsShare && !sharedAlready) {
+      if (!bookId) return true;
+      await shareGoal(database, ws, goalId, bookId);
+    } else if (!wantsShare && sharedAlready) {
+      const others = (shareNow.data?.members ?? []).filter((member) => member.memberId !== shareNow.data?.me).map((member) => member.name);
+      if (!window.confirm(GOAL_SHARING_COPY.stopConfirm(goal?.name ?? name, others))) return false;
+      await stopSharingGoal(database, ws, goalId);
+    }
+    return true;
+  }
+
   async function submit(event?: FormEvent) {
     event?.preventDefault();
     if (!canSave) return;
@@ -271,6 +307,10 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
         await setEmergencyOwnTarget(database, ws, goalId, { targetMinor: ownTarget.minor, months: Number(monthsText.replace(',', '.')) });
       }
       await setAside.write(goalId);
+      if (!(await applyShare(goalId))) {
+        await invalidate();
+        return;
+      }
       const { failed } = await applyTagChanges((tradeId, to) => retagTrade(database, ws, tradeId, to), goalId, tagChanges(originalTags, taggedNow));
       await invalidate();
       if (failed.length > 0) {
@@ -383,7 +423,30 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
           ]}
         </InsetGroup>
 
-        {goal && (
+        {shareRow.kind !== 'hidden' && (
+          <InsetGroup footer={shareRow.kind === 'locked' ? shareRow.footer : undefined}>
+            {shareRow.kind === 'picker' ? (
+              <SelectRow key="share" label={GOAL_SHARING_COPY.pickerLabel} info={GOAL_SHARING_COPY.switchInfo} value={shareBook ?? ''} onChange={(e) => { setShareBook(e.target.value || null); setWantsShare(!!e.target.value); }}>
+                <option value="">{GOAL_SHARING_COPY.pickerNone}</option>
+                {shareRow.options.map((option) => (
+                  <option key={option.bookId} value={option.bookId}>
+                    {option.label}
+                  </option>
+                ))}
+              </SelectRow>
+            ) : (
+              <SwitchRow key="share" testId="goal-share-switch" label={shareRow.label} info={GOAL_SHARING_COPY.switchInfo} checked={shareRow.kind === 'locked' || sharing} disabled={shareRow.kind === 'locked'} onChange={setWantsShare} />
+            )}
+          </InsetGroup>
+        )}
+
+        {goal && shareRow.kind === 'locked' && (
+          <InsetGroup>
+            <InsetRow key="leave" label={GOAL_SHARING_COPY.leaveRow} title={<span className="text-[var(--ph-warn)]">{GOAL_SHARING_COPY.leaveRow}</span>} action onClick={() => void leave()} />
+          </InsetGroup>
+        )}
+
+        {goal && shareRow.kind !== 'locked' && (
           <InsetGroup footer={stages.every((stage) => stage.paidOn) && kind !== 'emergency' ? 'Archiving keeps the history and stops the goal claiming money.' : undefined}>
             {[
               <InsetRow key="archive" label="Archive goal" title="Archive goal" action onClick={() => void archive()} />,

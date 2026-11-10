@@ -2,6 +2,8 @@ import { isoDate } from '@expanses/core';
 import {
   type AccountRow,
   goalHistory,
+  goalShareOf,
+  goalShareTargets,
   goalLinksFor,
   goalPlansFor,
   goalWholeness,
@@ -101,4 +103,16 @@ export function useCanHold(): (accountId: string) => boolean {
 export function canHoldOf(accounts: readonly AccountRow[], profiles: readonly { accountId: string; planGroup: string | null }[], accountId: string): boolean {
   const account = moneyHolders(accounts).find((row) => row.id === accountId);
   return !!account && isSetAsideHolder(account.subtype, profiles.find((row) => row.accountId === accountId)?.planGroup ?? null);
+}
+
+/** The workspaces a goal could be shared into: shared, with another member, every phone on a current version. */
+export function useGoalShareTargets() {
+  const { database } = useApp();
+  return useQuery({ queryKey: ['goal-share-targets'], queryFn: () => goalShareTargets(database) });
+}
+
+/** A goal's link as this phone has it, or null when it is not shared. */
+export function useGoalShare(goalId: string) {
+  const { database } = useApp();
+  return useQuery({ queryKey: ['goal-share', goalId], queryFn: () => goalShareOf(database, goalId) });
 }
