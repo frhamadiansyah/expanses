@@ -132,6 +132,8 @@ export interface TransactionsSearch {
   month?: string;
   /** Which way the same month is shown: the list, which carries the chart, or the table. */
   view?: 'list' | 'table';
+  /** Start Scan a receipt on arrival: the hold-＋ menu's and the widget's Receipt. The page drops it once read. */
+  scan?: true;
 }
 
 export interface LendBorrowSearch {
@@ -207,6 +209,7 @@ const routeTree = rootRoute.addChildren([
       // Any period: a month as before, or a week, quarter, year, all time or two dates.
       month: typeof search.month === 'string' && parsePeriod(search.month) ? search.month : undefined,
       view: search.view === 'table' || search.view === 'list' ? search.view : undefined,
+      scan: search.scan === true || search.scan === 'true' ? true : undefined,
     }),
   }),
   // The card as a screen. "new" is a static segment, so it beats `$transactionId` below however the two are

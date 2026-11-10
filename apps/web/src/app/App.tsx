@@ -7,7 +7,7 @@ import { installCaptureTestHook } from '../capture/test-hook';
 import type { AppDb } from '../db/bootstrap';
 import { backgroundCopyFor, watchLeaving } from '../db/background-copy';
 import { scheduleDailyCopy } from '../db/snapshots';
-import { listenForJoinLinks, listenForReviewLinks, listenForStatementLinks } from '../native/deep-link';
+import { listenForAddLinks, listenForJoinLinks, listenForReviewLinks, listenForStatementLinks } from '../native/deep-link';
 import type { SyncService } from '../sync/sync-service';
 import { type AppState, AppContext } from './context';
 import { createAppQueryClient } from './query-client';
@@ -39,6 +39,16 @@ export function App({ app, sync: given }: { app: AppDb; sync?: SyncService }) {
   // Several statement screenshots shared from Photos: already read on the phone, they wait for the owner to say which
   // card they belong to (statement-check S2).
   useEffect(() => listenForStatementLinks((batch) => void router.navigate({ to: '/statement/shared', search: { batch } })), []);
+  // The widget's buttons and the Control Center control (`cicis://add/line|paste|receipt`): One line, Paste a list, or
+  // Cashflow starting Scan a receipt — the same three ways the hold-＋ menu offers.
+  useEffect(
+    () =>
+      listenForAddLinks(
+        (link) =>
+          void router.navigate(link === 'line' ? { to: '/transactions/line' } : link === 'paste' ? { to: '/transactions/paste' } : { to: '/transactions', search: { scan: true } }),
+      ),
+    [],
+  );
   /*
    * Captures wait in the phone's holding area while the app is closed — a shortcut or the share sheet cannot reach
    * the database. Draining turns them into drafts when the app opens and every time it comes back to the front,
