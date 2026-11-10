@@ -1,5 +1,5 @@
 import { capturedCategory, merchantKey, UNCATEGORISED } from '@expanses/core';
-import { and, desc, eq, isNull, like, notInArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, like, notInArray, or, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, entries, transactions } from '../schema';
@@ -10,6 +10,36 @@ const notUncategorised = or(isNull(accounts.systemKey), notInArray(accounts.syst
 
 /** How far back to look for a merchant already seen. Enough for a year of daily spending. */
 const HISTORY_LIMIT = 3000;
+
+/**
+ * The account (and card, when one was named) a shop was last paid from: the money line of the newest posted purchase
+ * whose note reads as the same shop. Null when the note says nothing or the shop was never seen.
+ */
+export async function lastPaidWith(
+  database: Database,
+  ws: WorkspaceContext,
+  description: string,
+): Promise<{ accountId: string; cardId: string | null } | null> {
+  const key = merchantKey(description);
+  if (!key) return null;
+  const rows = await database.db
+    .select({ description: transactions.description, accountId: entries.accountId, cardId: transactions.cardId })
+    .from(entries)
+    .innerJoin(transactions, eq(entries.transactionId, transactions.id))
+    .innerJoin(accounts, eq(entries.accountId, accounts.id))
+    .where(
+      and(
+        eq(entries.workspaceId, ws.workspaceId),
+        eq(transactions.status, 'posted'),
+        inArray(accounts.kind, ['asset', 'liability']),
+        sql`${entries.amountMinor} < 0`,
+      ),
+    )
+    .orderBy(desc(transactions.occurredOn), desc(transactions.createdAt))
+    .limit(HISTORY_LIMIT);
+  const hit = rows.find((row) => merchantKey(row.description) === key);
+  return hit ? { accountId: hit.accountId, cardId: hit.cardId } : null;
+}
 
 /**
  * The category last used for the same merchant, to fill in a typed row before the owner has to: the newest one filed
