@@ -45,10 +45,14 @@ const YESTERDAY = /(?<![\p{L}\p{N}])(kemarin|yesterday)(?![\p{L}\p{N}])/iu;
 
 const SYMBOLS: Record<string, string> = { 'S$': 'SGD', $: 'USD', '€': 'EUR', '£': 'GBP', '¥': 'JPY', RM: 'MYR' };
 const CODES = new Set(CURRENCIES.map((c) => c.code));
-// S$ and RM in any case (the field does not capitalise): "s$4,50", "rm 15".
-const MARK_BEFORE = /(?:(?<![\p{L}\p{N}])([Ss]\$|[Rr][Mm])|(\$|€|£|¥)|(?<![\p{L}\p{N}])([A-Za-z]{3}))\s*$/u;
+// S$ in any case (the field does not capitalise): "s$4,50". RM only capitalised ("RM", "Rm"): a lower-case "rm" is
+// rumah makan, an eatery, never ringgit — and even RM is ringgit only before a plain figure (see `ringgitFigure`).
+const MARK_BEFORE = /(?:(?<![\p{L}\p{N}])([Ss]\$|R[Mm])|(\$|€|£|¥)|(?<![\p{L}\p{N}])([A-Za-z]{3}))\s*$/u;
 // A letter mark touching its figure ("RM15", "s$4.50") is spaced from it first, so the figure reads as a figure.
-const MARK_TOUCHING = /(?<![\p{L}\p{N}])([Ss]\$|[Rr][Mm])(?=\d)/gu;
+const MARK_TOUCHING = /(?<![\p{L}\p{N}])([Ss]\$|R[Mm])(?=\d)/gu;
+
+/** RM is ringgit before "15" or "12.50", but not before "45rb" or "45.000": those are rupiah at a rumah makan. */
+const ringgitFigure = (figure: { suffixed: boolean }, text: string): boolean => !figure.suffixed && !/\d\.\d{3}(?!\d)/.test(text);
 const CODE_AFTER = /^\s*([A-Za-z]{3})(?![\p{L}\p{N}])/u;
 const MINUS_BEFORE = /(?:^|\s)[-−–]\s*$/;
 
@@ -114,7 +118,9 @@ export function readExpenseLine(line: string, options: ReadExpenseLineOptions): 
     } else {
       const before = MARK_BEFORE.exec(masked.slice(0, fig.start));
       if (before) {
-        code = before[1] ? SYMBOLS[before[1].toUpperCase()]! : before[2] ? SYMBOLS[before[2]]! : codeOf(before[3]!);
+        const ringgitMark = !!before[1] && before[1].toUpperCase() === 'RM';
+        if (ringgitMark && !ringgitFigure(fig, masked.slice(fig.start, fig.end))) code = null;
+        else code = before[1] ? SYMBOLS[before[1].toUpperCase()]! : before[2] ? SYMBOLS[before[2]]! : codeOf(before[3]!);
         if (code) span = { start: before.index, end: fig.end };
       }
       if (!code) {

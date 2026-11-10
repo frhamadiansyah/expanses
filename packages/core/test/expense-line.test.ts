@@ -162,7 +162,7 @@ describe('readExpenseLine', () => {
     expect(a.currency).toBe('SGD');
     expect(a.amountMinor).toBe(450);
     expect(a.description).toBe('Kaya Toast');
-    for (const line of ['beli rm 15', 'beli RM15', 'beli Rm 15', 'beli rm15']) {
+    for (const line of ['beli RM 15', 'beli RM15', 'beli Rm 15', 'beli Rm15']) {
       const r = read(line);
       expect(r.currency).toBe('MYR');
       expect(r.currencyRead).toBe(true);
@@ -171,6 +171,42 @@ describe('readExpenseLine', () => {
     }
     expect(read('RM15 nasi lemak').description).toBe('Nasi Lemak');
     expect(read('S$12 chicken rice').amountMinor).toBe(1_200);
+  });
+
+  it('never reads lower-case rm (rumah makan) as ringgit', () => {
+    const cases: [string, number][] = [
+      ['makan di rm 45.000 gopay', 45_000],
+      ['makan rm 45rb', 45_000],
+      ['rm 35rb', 35_000],
+      ['rm2 padang 35rb', 35_000],
+      ['rm padang 35rb', 35_000],
+    ];
+    for (const [line, minor] of cases) {
+      const r = read(line);
+      expect(r.currency, line).toBe('IDR');
+      expect(r.currencyRead, line).toBe(false);
+      expect(r.amountMinor, line).toBe(minor);
+    }
+    const tiny = read('beli rm 15');
+    expect(tiny.currency).toBe('IDR');
+    expect(tiny.amountMinor).toBe(15);
+    expect(tiny.small).toBe(true);
+  });
+
+  it('reads RM as ringgit only before a plain figure, not one with rb/jt or dot thousands', () => {
+    const a = read('RM15 nasi lemak');
+    expect(a.currency).toBe('MYR');
+    expect(a.amountMinor).toBe(1_500);
+    expect(a.description).toBe('Nasi Lemak');
+    expect(read('beli RM 15').currency).toBe('MYR');
+    expect(read('beli RM 15').amountMinor).toBe(1_500);
+    expect(read('RM12.50 teh tarik').amountMinor).toBe(1_250);
+    expect(read('RM12.50 teh tarik').currency).toBe('MYR');
+    for (const line of ['RM 45rb', 'RM 45.000']) {
+      const r = read(line);
+      expect(r.currency, line).toBe('IDR');
+      expect(r.amountMinor, line).toBe(45_000);
+    }
   });
 
   it('still reads rm inside a word as a word, and try never as lira', () => {
