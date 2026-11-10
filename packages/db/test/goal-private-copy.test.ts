@@ -112,7 +112,8 @@ describe('rekeyGoalTx', () => {
     expect((await goalContributionsFor(database, ws, '2026-11'))[goalId]).toBeUndefined();
     expect((await listDraws(database, ws))[0]).toMatchObject({ goalId: copy, stageId: stageIds[depositId], amountMinor: 2_000_000 });
     expect(planOf(await goalPlansFor(database, ws, TODAY), copy).currentMinor).toBe(before.plan.currentMinor);
-    expect((await goalHistory(database, ws, TODAY, { limit: null }))[copy]!.map((e) => [e.kind, e.amountMinor])).toEqual(
+    // The copy's own 'unshared' line is the share's record, not a move.
+    expect((await goalHistory(database, ws, TODAY, { limit: null }))[copy]!.filter((e) => e.kind !== 'unshared').map((e) => [e.kind, e.amountMinor])).toEqual(
       before.history!.map((e) => [e.kind, e.amountMinor]),
     );
     expect(await database.db.values(sql`SELECT kind, member_name, copied_from, occurred_on FROM goal_share_log WHERE goal_id = ${copy}`)).toEqual([

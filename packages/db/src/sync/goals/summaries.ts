@@ -68,7 +68,9 @@ export async function ownGoalMoves(database: Database, ws: WorkspaceContext, goa
   const rows: GoalMoveRow[] = [];
   for (const entry of entries) {
     // "Reached the target" is a day, not a movement, and has no local source.
-    if (entry.kind === 'reached' || entry.amountMinor === null || !entry.sourceId) continue;
+    // A partner's line is theirs to write, and the share's own lines stay on this phone.
+    if (entry.by !== null || entry.amountMinor === null || !entry.sourceId) continue;
+    if (entry.kind === 'reached' || entry.kind === 'shared' || entry.kind === 'stopped' || entry.kind === 'left' || entry.kind === 'unshared' || entry.kind === 'ended') continue;
     rows.push({
       id: await uuidv5(GOAL_MOVE_NS, `${goalId}|${entry.sourceId}`),
       goalId,
