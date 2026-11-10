@@ -308,6 +308,7 @@ CREATE TABLE goal_share_log (
   kind TEXT NOT NULL CHECK (kind IN ('shared', 'stopped', 'left', 'unshared', 'ended')),
   member_name TEXT NOT NULL,
   amount_minor INTEGER,                    -- goal currency: the member's last counted total, when one stops counting
+  copied_from TEXT,                        -- on a private copy's 'unshared' line: the shared goal's id (C30)
   occurred_on TEXT NOT NULL
 );
 ```
