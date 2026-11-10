@@ -63,6 +63,7 @@ export * from './repos/idle-cash';
 export * from './repos/trade-templates';
 export * from './repos/flows';
 export * as goalsSchema from './schema-goals';
+export * as goalSharingSchema from './schema-goal-sharing';
 export * from './repos/goals';
 export * from './repos/goal-funding';
 export * from './repos/goal-transfers';
