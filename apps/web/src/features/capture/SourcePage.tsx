@@ -61,7 +61,7 @@ export function SourcePage() {
 
       <InsetGroup header="Recognised as">
         <InsetRow
-          title={source.keyKind === 'app' ? 'An app' : 'A screen layout'}
+          title={source.keyKind === 'app' ? (source.key.includes('@') ? 'An email sender' : 'An app') : 'A screen layout'}
           subtitle={source.keyKind === 'app' ? source.key : 'The top band of the screen, recognised again by its words'}
           chevron={false}
         />
