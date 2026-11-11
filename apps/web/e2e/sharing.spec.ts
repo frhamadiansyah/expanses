@@ -976,3 +976,225 @@ test('net worth sharing: one Shared list with switches, search, N of M, and a ne
   await expect(page.getByRole('checkbox', { name: 'Private gold' })).not.toBeChecked();
   await shot(page, info, 'nw-list-active');
 });
+
+/*
+ * The couple's clean-up, end to end (sharing resilience Task A9, spec §11 in its join-first order). Dewi shares Home and
+ * Fandri joins; both record. Her phone then comes back from a copy taken before the share, with Home under a new id
+ * (the incident: the test writes the new id into her downloaded copy, the one step no screen can do). She shares again
+ * (share 2); Fandri joins beside his first copy, which holds its rows. She stops share 2 and he deletes its empty copy.
+ * She records one more purchase and shares a third time, linking a device for Fandri; he joins first, then Leave and
+ * delete of his first copy, lands on the new share and taps Place them now: both Cashflow totals are the same.
+ */
+
+/** Account's lines for every copy of a workspace called `name`: their book ids, from each line's ›. */
+async function copyIds(page: Page, name: string): Promise<string[]> {
+  await page.goto('/account');
+  await expect(page.getByTestId('account-workspace').first()).toBeVisible();
+  const links = page.getByTestId('account-workspace').filter({ hasText: name }).getByTestId('workspace-open');
+  const ids: string[] = [];
+  for (const href of await links.evaluateAll((els) => els.map((el) => el.getAttribute('href') ?? ''))) ids.push(href.split('/').pop()!);
+  return ids;
+}
+
+/** Backup → Download backup, kept as a file of its own. */
+async function downloadBackup(page: Page, info: TestInfo, name: string): Promise<string> {
+  await page.goto('/backup');
+  const downloaded = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download backup' }).click();
+  const file = join(info.outputDir, `${name}.sqlite3`);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, readFileSync((await (await downloaded).path())!));
+  return file;
+}
+
+/** The workspace called `name` in a downloaded copy, given a new book id everywhere the copy names it. */
+function moveBookToNewId(file: string, name: string): { from: string; to: string } {
+  const copy = new BetterSqlite3(file);
+  try {
+    copy.pragma('foreign_keys = OFF');
+    const { id: from } = copy.prepare('SELECT id FROM books WHERE name = ?').get(name) as { id: string };
+    const to = crypto.randomUUID();
+    const tables = copy.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[];
+    for (const { name: table } of tables) {
+      const columns = copy.prepare(`SELECT name FROM pragma_table_info(?)`).all(table) as { name: string }[];
+      for (const { name: column } of columns) {
+        if (column === 'book_id' || (column.endsWith('_book_id') && column !== 'relay_book_id')) copy.prepare(`UPDATE "${table}" SET "${column}" = ? WHERE "${column}" = ?`).run(to, from);
+      }
+    }
+    copy.prepare('UPDATE books SET id = ? WHERE id = ?').run(to, from);
+    copy.prepare('UPDATE settings SET value = ? WHERE value = ?').run(to, from);
+    return { from, to };
+  } finally {
+    copy.close();
+  }
+}
+
+/** Backup → choose the file → Replace my data with it (a safety copy downloads first); the page reloads. */
+async function restoreBackup(page: Page, file: string) {
+  await page.goto('/backup');
+  const safety = page.waitForEvent('download');
+  await page.locator('input[accept*="sqlite3"]').setInputFiles(file);
+  await safety;
+  await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: /Replace my data with/ }).click()]);
+  await expect(page.getByRole('heading', { name: 'Backup', exact: true })).toBeVisible();
+}
+
+/** Account → the workspace line's body: it becomes the open one. */
+async function switchTo(page: Page, bookId: string) {
+  await page.goto('/account');
+  const line = page.getByTestId('account-workspace').filter({ has: page.locator(`a[href$="/${bookId}"]`) });
+  await line.getByTestId('workspace-switch').click();
+  await expect(line.getByTestId('workspace-switch')).toHaveAttribute('aria-current', 'true');
+}
+
+/** Cashflow's total for the month on show, as it reads. */
+async function total(page: Page): Promise<string> {
+  await page.goto('/transactions');
+  const figure = page.getByTestId('period-total');
+  await expect(figure).toBeVisible();
+  return (await figure.textContent())!.trim();
+}
+
+test('leave and delete, share again, join: the couple’s clean-up through the screens, both totals equal', async ({ page, browser }, info) => {
+  test.setTimeout(600_000);
+  page.on('dialog', (dialog) => void dialog.accept());
+  const fandri = await secondDevice(browser, info);
+  await openAccount(page, { subtype: 'bank', name: 'Dewi Bank', balance: '5000000' });
+  await openAccount(fandri, { subtype: 'bank', name: 'Fandri Bank', balance: '10000000' });
+
+  // Dewi's Home, with one purchase before any share: the copy her phone will come back to.
+  await openWorkspaceSettings(page, 'Personal');
+  await renameWorkspace(page, 'Home');
+  await expect(page.getByText('Now called Home.')).toBeVisible();
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Dewi before', paidWith: 'Dewi Bank', category: 'Groceries', amount: '20000' });
+  await page.goto('/account');
+  await expect(page.getByTestId('account-workspace').filter({ hasText: 'Home' })).toHaveCount(1);
+  const preShare = await downloadBackup(page, info, 'dewi-before-share');
+
+  // Share 1: Dewi shares, Fandri joins, both record.
+  await openWorkspaceSharePage(page, 'Home');
+  const code1 = await shareWorkspace(page, 'Dewi');
+  await fandri.goto(`/join#${code1}`);
+  const join1 = fandri.getByTestId('join-workspace');
+  await expect(join1.getByText('Home', { exact: true })).toBeVisible({ timeout: 30_000 });
+  await join1.getByLabel('Name').fill('Fandri');
+  await join1.getByRole('button', { name: 'Join', exact: true }).click();
+  await expect(join1).toHaveCount(0, { timeout: 60_000 });
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Dewi shared', paidWith: 'Dewi Bank', category: 'Groceries', amount: '15000' });
+  await fandri.goto('/transactions');
+  await addTransaction(fandri, { description: 'Fandri shared', paidWith: 'Fandri Bank', category: 'Restaurants', amount: '30000' });
+  await eventually(fandri, () => expect(rowOf(fandri, 'Dewi shared')).toBeVisible({ timeout: 1_000 }));
+  await eventually(page, () => expect(rowOf(page, 'Fandri shared')).toBeVisible({ timeout: 1_000 }));
+  const [firstCopy] = await copyIds(fandri, 'Home');
+  expect(firstCopy).toBeTruthy();
+
+  // The incident: Dewi's phone comes back from the copy before the share, Home under a new id. Not shared here.
+  moveBookToNewId(preShare, 'Home');
+  await restoreBackup(page, preShare);
+  await openWorkspacePage(page, 'Home');
+  await expect(page.getByTestId('ws-share-row')).toContainText('Off');
+  await page.goto('/transactions');
+  await expect(rowOf(page, 'Dewi before')).toBeVisible();
+  await expect(rowOf(page, 'Dewi shared')).toHaveCount(0);
+
+  // Share 2: Fandri joins beside his first copy, warned; the join completes, the rows his first copy holds wait.
+  await openWorkspaceSharePage(page, 'Home');
+  const code2 = await shareWorkspace(page, 'Dewi');
+  await fandri.goto(`/join#${code2}`);
+  const join2 = fandri.getByTestId('join-workspace');
+  await expect(join2.getByText('Home', { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(join2.getByTestId('join-other-copies')).toContainText('Another copy of this workspace is on this phone: Home · joined today.');
+  await join2.getByLabel('Name').fill('Fandri');
+  await join2.getByRole('button', { name: 'Join', exact: true }).click();
+  await expect(join2).toHaveCount(0, { timeout: 60_000 });
+  const secondCopy = (await copyIds(fandri, 'Home')).find((id) => id !== firstCopy)!;
+  expect(secondCopy).toBeTruthy();
+
+  // Dewi stops share 2; Fandri's copy of it reads so, and he deletes it.
+  await openWorkspaceSharePage(page, 'Home');
+  await confirmDestructive(page, 'Stop sharing', 'Stop sharing?', 'Stop sharing');
+  await expect(page.getByTestId('ws-share-row')).toContainText('Off', { timeout: 30_000 });
+  await fandri.goto(`/account/workspaces/${secondCopy}/share`);
+  await eventually(fandri, () => expect(fandri.getByTestId('sharing-status')).toContainText('No longer shared by Dewi', { timeout: 1_000 }));
+  await fandri.goto(`/account/workspaces/${secondCopy}`);
+  await fandri.getByTestId('delete-workspace').click();
+  const deleteSheet = fandri.getByRole('dialog', { name: 'Delete workspace' });
+  await expect(deleteSheet.getByTestId('delete-erase-note')).toBeVisible();
+  await deleteSheet.getByPlaceholder('Type the workspace’s name').fill('Home');
+  await deleteSheet.getByTestId('delete-everything').click();
+  await expect(deleteSheet).toHaveCount(0, { timeout: 30_000 });
+  expect(await copyIds(fandri, 'Home')).toEqual([firstCopy]);
+
+  // Dewi records one more purchase, on a category his first copy holds, and shares a third time, linking his device.
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Dewi new', paidWith: 'Dewi Bank', category: 'Groceries', amount: '5000' });
+  await openWorkspaceSharePage(page, 'Home');
+  await expect(page.getByTestId('share-name')).toHaveValue('Dewi');
+  const first3 = await shareWorkspace(page, 'Dewi');
+  await openMemberPage(page, 'Fandri');
+  await page.getByRole('button', { name: 'Link a device for Fandri' }).click();
+  await expect(page.getByTestId('invite-code')).not.toHaveText(first3, { timeout: 30_000 });
+  const code3 = (await page.getByTestId('invite-code').textContent())!.trim();
+
+  // Fandri joins first: the warning names his first copy and the order.
+  await fandri.goto(`/join#${code3}`);
+  const join3 = fandri.getByTestId('join-workspace');
+  await expect(join3.getByText('Home', { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(join3.getByText('This device joins as Fandri.')).toBeVisible();
+  await expect(join3.getByTestId('join-other-copies')).toHaveText(
+    'Another copy of this workspace is on this phone: Home · joined today. Join first, then Leave and delete the old copy; its rows come in with Place them now.',
+  );
+  await shot(fandri, info, 'a9-1-join-warning');
+  await join3.getByRole('button', { name: 'Join', exact: true }).click();
+  await expect(join3).toHaveCount(0, { timeout: 60_000 });
+  const newCopy = (await copyIds(fandri, 'Home')).find((id) => id !== firstCopy)!;
+  expect(newCopy).toBeTruthy();
+  await fandri.goto(`/account/workspaces/${newCopy}`);
+  await eventually(fandri, () => expect(fandri.getByTestId('ws-share-lines')).toContainText('Part of this share is held by Home · joined today on this phone.', { timeout: 1_000 }));
+
+  // Then Leave and delete of the first copy: the sheet names it as the one holding the newer share's rows, keep on.
+  await fandri.goto(`/account/workspaces/${firstCopy}`);
+  await expect(fandri.getByTestId('delete-workspace')).toHaveText('Leave and delete');
+  await fandri.getByTestId('delete-workspace').click();
+  const leaveSheet = fandri.getByRole('dialog', { name: 'Leave and delete Home · joined today?' });
+  await expect(leaveSheet).toBeVisible();
+  await expect(leaveSheet.getByTestId('delete-copy-lines')).toContainText('This copy holds rows of the newer share, Home · joined today; deleting it lets them come in.');
+  await expect(leaveSheet.getByTestId('delete-keep-own')).toBeChecked();
+  await expect(leaveSheet.getByTestId('delete-keep-lines')).toContainText('1 purchase paid from own accounts moves to Personal');
+  await shot(fandri, info, 'a9-2-leave-and-delete');
+  await leaveSheet.getByRole('button', { name: 'Leave and delete', exact: true }).click();
+  await expect(leaveSheet).toHaveCount(0, { timeout: 60_000 });
+
+  // It lands on the new share's page, where Place them now is offered; tapped, the waiting rows come in.
+  await expect(fandri).toHaveURL(new RegExp(`/account/workspaces/${newCopy}$`), { timeout: 30_000 });
+  await expect(fandri.getByTestId('ws-share-lines')).toContainText('Part of this share is waiting. Place it now.');
+  await fandri.getByTestId('ws-place-row').click();
+  const placeSheet = fandri.getByRole('dialog', { name: 'Place them now?' });
+  await placeSheet.getByRole('button', { name: 'Place them now', exact: true }).click();
+  await expect(placeSheet).toHaveCount(0, { timeout: 60_000 });
+  await expect(fandri.getByTestId('ws-share-lines')).toContainText(/rows? placed/);
+  await expect(fandri.getByTestId('ws-place-row')).toHaveCount(0);
+  await shot(fandri, info, 'a9-3-placed');
+
+  // Both phones: the same Home, the same total; his own purchase once, in his Personal.
+  expect(await copyIds(fandri, 'Home')).toEqual([newCopy]);
+  await switchTo(fandri, newCopy);
+  await fandri.goto('/transactions');
+  await eventually(fandri, () => expect(rowOf(fandri, 'Dewi before')).toBeVisible({ timeout: 1_000 }));
+  await expect(rowOf(fandri, 'Dewi new')).toHaveCount(1);
+  await expect(rowOf(fandri, 'Fandri shared')).toHaveCount(0);
+  await cashflowTotal(page, 'Rp 25.000');
+  await cashflowTotal(fandri, 'Rp 25.000');
+  expect(await total(page)).toBe(await total(fandri));
+  const shots = join(info.outputDir, 'a9-final');
+  mkdirSync(shots, { recursive: true });
+  await page.screenshot({ path: join(shots, `${info.project.name}-dewi-cashflow.png`), fullPage: true });
+  await fandri.screenshot({ path: join(shots, `${info.project.name}-fandri-cashflow.png`), fullPage: true });
+  const [personal] = await copyIds(fandri, 'Personal');
+  await switchTo(fandri, personal!);
+  await fandri.goto('/transactions');
+  await expect(rowOf(fandri, 'Fandri shared')).toHaveCount(1);
+  await expect(fandri.getByTestId('period-total')).toHaveText('Rp 30.000');
+});
