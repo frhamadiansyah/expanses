@@ -1,6 +1,6 @@
 import type { TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { effectiveRateText, flatEffectiveHint, loanPayments, monthYearLabel, percentBps, rateText, rateTextPer, repaidPercent, soonerText } from './loan-view';
+import { DELETE_LOAN_BODY, effectiveRateText, flatEffectiveHint, loanPayments, monthYearLabel, percentBps, rateText, rateTextPer, repaidPercent, soonerText } from './loan-view';
 
 describe('the words on a loan page', () => {
   it('writes a rate with a decimal comma and no trailing zeros', () => {
@@ -77,5 +77,12 @@ describe('loanPayments', () => {
       { id: 'extra', occurredOn: '2026-02-10', principalMinor: 50_000_000, charges: [{ name: 'Fees & charges', minor: 500_000 }], totalMinor: 50_500_000 },
       { id: 'jan', occurredOn: '2026-01-25', principalMinor: 1_849_866, charges: [{ name: 'Interest', minor: 5_250_000 }], totalMinor: 7_099_866 },
     ]);
+  });
+});
+
+describe('the Delete loan words', () => {
+  it('says what goes with the loan, impersonally', () => {
+    expect(DELETE_LOAN_BODY).toContain('payments recorded against it are removed too');
+    expect(DELETE_LOAN_BODY).not.toMatch(/\byou(r)?\b/i);
   });
 });

@@ -1,7 +1,7 @@
 import { debtItem, loanRatePer, extraPaymentEffect, flatToEffectiveBps, formatMinor, groupTypedAmount, isoDate, minorToMajorString, parseGroupedMajor, payoffQuote, periodOn, rateBpsFromTyped } from '@expanses/core';
-import { addRatePeriod, type LoanTermsRow, payOffLoan, recordExtraPayment, recordLoanPayment, setLoanCode } from '@expanses/db';
-import { useParams, useSearch } from '@tanstack/react-router';
-import { Banknote, CircleCheck, CirclePlus, FileText, MoreHorizontal, Pencil, Percent } from 'lucide-react';
+import { addRatePeriod, deleteLoanAccount, type LoanTermsRow, payOffLoan, recordExtraPayment, recordLoanPayment, setLoanCode } from '@expanses/db';
+import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
+import { Banknote, CircleCheck, CirclePlus, FileText, MoreHorizontal, Pencil, Percent, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -20,7 +20,7 @@ import { CashRow, CashSheet, ResultRow, TypedRow, useCashSide } from '../networt
 import { UTANG_CHOICES } from '../ownables/catalogue-view';
 import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
 import { type PaymentDraft, extraPaymentMinor, paymentDraftFrom, paymentDraftToInput } from './loan-form';
-import { loanPayments, monthYearLabel, effectiveRateText, percentBps, rateTextPer, repaidPercent, soonerText } from './loan-view';
+import { DELETE_LOAN_BODY, loanPayments, monthYearLabel, effectiveRateText, percentBps, rateTextPer, repaidPercent, soonerText } from './loan-view';
 import { TermsForm } from './TermsForm';
 import { useLoan, useLoanItems, useNextPayment, useSchedule } from './queries';
 import { useOpenFromSearch } from '../../lib/open-once';
@@ -606,7 +606,40 @@ function RepaidBar({ percent, end }: { percent: number; end: string }) {
   );
 }
 
-type Opened = 'pay' | 'extra' | 'rate' | 'pay-off' | 'schedule' | 'terms' | 'code' | null;
+/**
+ * Delete loan, behind its own sheet: for a loan added by mistake or to try things out. The loan, its terms and every
+ * payment recorded against it go, and the accounts the payments came from go back up. Then back to Liabilities.
+ */
+function DeleteLoanSheet({ accountId, name, onClose }: { accountId: string; name: string; onClose: () => void }) {
+  const { database, ws } = useApp();
+  const navigate = useNavigate();
+  const invalidate = useInvalidateAll();
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function remove() {
+    if (busy) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await deleteLoanAccount(database, ws, accountId);
+      await invalidate();
+      await navigate({ to: '/net-worth/loans' });
+    } catch (e) {
+      setError(e);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Sheet grouped title={`Delete ${name}?`} onClose={onClose} confirm={{ label: 'Delete loan', disabled: busy, run: () => void remove() }}>
+      <Empty>{DELETE_LOAN_BODY}</Empty>
+      <ErrorBox error={error} />
+    </Sheet>
+  );
+}
+
+type Opened = 'pay' | 'extra' | 'rate' | 'pay-off' | 'schedule' | 'terms' | 'code' | 'delete' | null;
 
 const TERMS_FORM = 'loan-edit-terms';
 
@@ -663,15 +696,20 @@ export function LoanDetailPage() {
   const paidOff = terms?.status === 'paid_off' || (terms !== null && terms !== undefined && balances.isSuccess && balanceMinor === 0);
   const next = rows[0];
 
-  const menu: CornerAction[] = terms
+  const menu: CornerAction[] = account
     ? [
         {
           key: 'more',
           label: 'More',
           glyph: <MoreHorizontal size={20} aria-hidden />,
           menu: [
-            { key: 'terms', label: 'Edit terms', glyph: <Pencil size={18} aria-hidden />, run: () => setOpened('terms'), disabled: !kindKnown },
-            { key: 'code', label: 'Tax report code', glyph: <FileText size={18} aria-hidden />, run: () => setOpened('code') },
+            ...(terms
+              ? [
+                  { key: 'terms', label: 'Edit terms', glyph: <Pencil size={18} aria-hidden />, run: () => setOpened('terms'), disabled: !kindKnown },
+                  { key: 'code', label: 'Tax report code', glyph: <FileText size={18} aria-hidden />, run: () => setOpened('code') },
+                ]
+              : []),
+            { key: 'delete', label: 'Delete loan', destructive: true, glyph: <Trash2 size={18} aria-hidden />, run: () => setOpened('delete') },
           ],
         },
       ]
@@ -751,6 +789,7 @@ export function LoanDetailPage() {
       {terms && kindKnown && opened === 'rate' && <RateChangeSheet accountId={accountId} currency={currency} per={ratePer} onClose={close} />}
       {terms && opened === 'pay-off' && <PayOffSheet accountId={accountId} currency={currency} balanceMinor={balanceMinor} onClose={close} />}
       {opened === 'schedule' && <ScheduleSheet rows={rows} currency={currency} onClose={close} />}
+      {opened === 'delete' && <DeleteLoanSheet accountId={accountId} name={name} onClose={close} />}
       {terms && opened === 'code' && <LoanCodeSheet terms={terms} onClose={close} />}
       {terms && kindKnown && opened === 'terms' && (
         <Sheet

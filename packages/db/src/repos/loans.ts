@@ -10,14 +10,17 @@ import {
   type ScheduleRow,
   uuidv7,
 } from '@expanses/core';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, or, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { loanItems, loanRatePeriods, loanTerms } from '../schema-loans';
 import { categoryIdsByKeyTx } from './categories';
-import { postTransactionTx } from './ledger';
-import type { SetAsideChoice } from './set-aside-tx';
+import { postTransactionTx, voidTransactionTx } from './ledger';
+import { archiveAccountTx } from './accounts';
+import { goalDraws, goalEarmarks, goals } from '../schema-goals';
+import { expenseTemplates } from '../schema-recurring';
+import { type SetAsideChoice, setAsideTablesExist } from './set-aside-tx';
 
 export class LoanDbError extends Error {
   constructor(message: string) {
@@ -612,4 +615,65 @@ export async function scheduledAsks(database: Database, ws: WorkspaceContext, fr
 export async function scheduledPayments(database: Database, ws: WorkspaceContext, fromDate: string): Promise<Record<string, number>> {
   const asks = await scheduledAsks(database, ws, fromDate);
   return Object.fromEntries(Object.entries(asks).map(([accountId, ask]) => [accountId, ask.paymentMinor]));
+}
+
+/**
+ * Deletes a bank-style loan entered by mistake or to try things out: every transaction that touched it (the opening
+ * and each payment, with the interest and fees on it) is voided through the ledger, so the bank a payment came from
+ * goes back up and every other balance reads as if the loan had never been added. The loan's terms, rate periods and
+ * kind go, and its account is archived. The voided transactions stay in the ledger, as with any delete.
+ *
+ * Refused, with the thing named, when a goal has money set aside on or drawn through the loan, or a recurring bill
+ * pays from it. A shared workspace that is read-only refuses through the ledger's own void.
+ */
+export async function deleteLoanAccount(database: Database, ws: WorkspaceContext, accountId: string): Promise<void> {
+  await database.transaction(async (tx) => {
+    await loanAccountTx(tx, ws, accountId);
+    const name = await accountNameTx(tx, ws, accountId);
+
+    const bills = await tx
+      .select({ name: expenseTemplates.name })
+      .from(expenseTemplates)
+      .where(
+        and(
+          eq(expenseTemplates.workspaceId, ws.workspaceId),
+          eq(expenseTemplates.active, 1),
+          or(eq(expenseTemplates.moneyAccountId, accountId), eq(expenseTemplates.categoryAccountId, accountId)),
+        ),
+      );
+    if (bills.length > 0) throw new LoanDbError(`${name} is used by the recurring bill ${bills[0]!.name}. Remove that bill first.`);
+
+    if (await setAsideTablesExist(tx)) {
+      const used = await tx
+        .select({ name: goals.name })
+        .from(goalEarmarks)
+        .innerJoin(goals, eq(goals.id, goalEarmarks.goalId))
+        .where(eq(goalEarmarks.accountId, accountId))
+        .limit(1);
+      const drawn = await tx
+        .select({ name: goals.name })
+        .from(goalDraws)
+        .innerJoin(goals, eq(goals.id, goalDraws.goalId))
+        .where(and(eq(goalDraws.workspaceId, ws.workspaceId), or(eq(goalDraws.accountId, accountId), eq(goalDraws.toAccountId, accountId))))
+        .limit(1);
+      const goal = used[0] ?? drawn[0];
+      if (goal) throw new LoanDbError(`${name} is used by the goal ${goal.name}. Take it off that goal first.`);
+    }
+
+    const touched = await tx
+      .selectDistinct({ id: transactions.id })
+      .from(entries)
+      .innerJoin(transactions, eq(entries.transactionId, transactions.id))
+      .where(and(eq(entries.workspaceId, ws.workspaceId), eq(entries.accountId, accountId), eq(transactions.status, 'posted')));
+    for (const { id } of touched) {
+      // A void can take others with it (a settlement), so each is checked before it is voided.
+      const [row] = await tx.select({ status: transactions.status }).from(transactions).where(eq(transactions.id, id));
+      if (row?.status === 'posted') await voidTransactionTx(tx, ws, id);
+    }
+
+    for (const table of [loanRatePeriods, loanItems, loanTerms]) {
+      await tx.delete(table).where(and(eq(table.accountId, accountId), eq(table.workspaceId, ws.workspaceId)));
+    }
+    await archiveAccountTx(tx, ws, accountId);
+  });
 }

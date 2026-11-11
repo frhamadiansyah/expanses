@@ -84,3 +84,7 @@ export function loanPayments(transactions: readonly TransactionView[], loanAccou
   }
   return payments.sort((a, b) => b.occurredOn.localeCompare(a.occurredOn));
 }
+
+/** What the Delete loan sheet says: the loan and its terms go, and so does every payment recorded against it. */
+export const DELETE_LOAN_BODY =
+  'For a loan added by mistake or to try things out. It and its terms are removed; payments recorded against it are removed too, and the accounts they were paid from go back up.';
