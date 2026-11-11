@@ -187,6 +187,25 @@ export interface SharingDiagnostics {
   skipped: { count: number; entities: string[] };
 }
 
+/** Every `shared_books` row, a net-worth group log's and an event's too: for diagnostics, ids, states and times only. */
+export async function sharedBookRows(database: Database): Promise<({ bookId: string } & NonNullable<SharingDiagnostics['shared']>)[]> {
+  if (!(await sharingTablesExist(database.db))) return [];
+  const rows = await database.db.values<[string, string, number, string, string, string, string | null, string | null, string | null]>(
+    sql`SELECT book_id, relay_book_id, epoch, member_id, state, shared_at, synced_at, unshared_by, unshared_reason FROM shared_books ORDER BY shared_at, book_id`,
+  );
+  return rows.map(([bookId, relayBookId, epoch, memberId, state, sharedAt, syncedAt, unsharedBy, unsharedReason]) => ({
+    bookId,
+    relayBookId,
+    epoch: Number(epoch),
+    memberId,
+    state: state as SharedBookState,
+    sharedAt,
+    syncedAt,
+    unsharedBy,
+    unsharedReason,
+  }));
+}
+
 export async function sharingDiagnostics(database: Database, bookId: string): Promise<SharingDiagnostics> {
   const empty: SharingDiagnostics = { shared: null, outbox: 0, cursor: null, members: [], devices: [], epochKeys: [], skipped: { count: 0, entities: [] } };
   if (!(await sharingTablesExist(database.db))) return empty;

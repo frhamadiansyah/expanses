@@ -1,7 +1,7 @@
 import { expenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { devicesSeen, listSharedBooks, outboxOps, postTransaction, purchasePayers, recordDevicesSeen, sharingDetail, sharingDiagnostics } from '../../src/index';
+import { devicesSeen, listSharedBooks, outboxOps, postTransaction, purchasePayers, recordDevicesSeen, sharedBookRows, sharingDetail, sharingDiagnostics } from '../../src/index';
 import { categoryOf, Household, type Device } from './household';
 
 /*
@@ -59,7 +59,9 @@ describe('sharing reads', () => {
       epochKeys: [],
       skipped: { count: 0, entities: [] },
     });
+    expect(await sharedBookRows(fandri.database)).toEqual([]);
     const bookId = await home.share(fandri);
+    expect(await sharedBookRows(fandri.database)).toEqual([expect.objectContaining({ bookId, epoch: 1, state: 'active' })]);
     const waiting = await sharingDiagnostics(fandri.database, bookId);
     expect(waiting.shared).toMatchObject({ epoch: 1, state: 'active', syncedAt: null });
     expect(waiting.outbox).toBeGreaterThan(0);

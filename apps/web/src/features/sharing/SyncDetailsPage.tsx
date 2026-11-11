@@ -30,7 +30,7 @@ export function SyncDetailsPage() {
   }, [sync, queryClient, bookId]);
   const details = useQuery({
     queryKey: ['sync-details', bookId],
-    queryFn: async () => syncDetailsText(await collectSyncDetails({ database, sync, bookId, build: await buildName() })),
+    queryFn: async () => syncDetailsText(await collectSyncDetails({ database, sync, bookId, build: await buildName().catch(() => null) })),
   });
 
   async function copy(text: string) {

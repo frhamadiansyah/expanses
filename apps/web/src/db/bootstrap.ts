@@ -119,6 +119,8 @@ export async function openAppDb(
   // Sharing failures are kept on the device (expanses-safety/sync-log.json), outside the database: never synced.
   const sync = new SyncService({ database, log: new SyncLog(deviceSyncLogStore()), ...(options.keyStore ? { keyStore: options.keyStore } : {}) });
   await sync.prepare().catch((error: unknown) => console.warn('Sharing could not get ready', error));
+  // `window.__expansesSync` for Safari's Web Inspector (src/sync/sync-console.ts): reads only. Loaded aside, off the open.
+  void import('../sync/sync-console').then((loaded) => loaded.installSyncConsole(database, sync)).catch(() => undefined);
   let [workspace] = await listWorkspaces(database);
   if (!workspace) {
     await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
