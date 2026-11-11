@@ -6,11 +6,17 @@ import { type SyncService, statusInShort } from '../../sync/sync-service';
 /*
  * A workspace's sharing, as the Share page's Details shows it and "Copy details" copies it: what this device holds
  * for the book, what the engine makes of it, this device's own standing in it, and the sync log. Ids are cut to
- * their first eight characters; nothing a person wrote is read — no names, amounts, descriptions or keys.
+ * their first eight characters, and no amount, description or key is read. The tables are read as ids, states,
+ * counts and times; error messages are kept in their own words, and a sharing error's words can name a workspace, an
+ * event or a person (SYNC_DETAILS_FOOTER says so on the page).
  *
  * Read with or without a `shared_books` row: a book whose row went missing (a database lost and restored) shows
  * what is left of it, and the log is kept by the local book id, so its history is still there.
  */
+
+/** What the Details page says the text holds. True of it: error messages can carry names, so it says so. */
+export const SYNC_DETAILS_FOOTER =
+  'Ids (shortened), states, counts, times and error messages. An error message can name a workspace, an event or a person. No amounts, descriptions or keys are included.';
 
 /** The book's state in one word: `active`, `needs_invite`, `unshared`, `frozen`, `stale`, or `none` without a row. */
 export type DetailsState = 'active' | 'needs_invite' | 'unshared' | 'frozen' | 'stale' | 'none';

@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../../lib/pwa', () => ({ isNative: () => false }));
 
 import { SyncService } from '../../sync/sync-service';
-import { collectSyncDetails, detailsStateOf, type SyncDetails, syncDetailsText } from './sync-details';
+import { collectSyncDetails, detailsStateOf, SYNC_DETAILS_FOOTER, type SyncDetails, syncDetailsText } from './sync-details';
 
 vi.setConfig({ testTimeout: 30_000 });
 
@@ -63,6 +63,14 @@ const base: SyncDetails = {
     },
   ],
 };
+
+describe('the details footer', () => {
+  it('says names can appear in error messages, and never claims there are none', () => {
+    expect(SYNC_DETAILS_FOOTER).toMatch(/error message can name a workspace, an event or a person/);
+    expect(SYNC_DETAILS_FOOTER).not.toMatch(/no names/i);
+    expect(SYNC_DETAILS_FOOTER).not.toMatch(/\byou(r)?\b/i);
+  });
+});
 
 describe('the details text', () => {
   it('says every part on its own line, ids cut to eight', () => {

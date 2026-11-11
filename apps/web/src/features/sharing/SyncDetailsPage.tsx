@@ -6,7 +6,7 @@ import { shareText } from '../../native/share';
 import { ErrorBox } from '../../ui';
 import { type GroupChild, InsetGroup, InsetRow, PushedTitle, SCREEN } from '../../ui/native';
 import { buildName } from '../recovery/failure-record';
-import { collectSyncDetails, syncDetailsText } from './sync-details';
+import { collectSyncDetails, SYNC_DETAILS_FOOTER, syncDetailsText } from './sync-details';
 
 /**
  * The route's page: Share › Details. What this device holds for the workspace's sharing and its sync log, as plain
@@ -60,7 +60,7 @@ export function SyncDetailsPage() {
         <ErrorBox error={error ?? details.error} />
         {details.data ? (
           <>
-            <InsetGroup wide footer={`Ids are shortened. No names, amounts or keys are included.${note ? ` ${note}.` : ''}`}>
+            <InsetGroup wide footer={`${SYNC_DETAILS_FOOTER}${note ? ` ${note}.` : ''}`}>
               <InsetRow testId="sync-details-copy" title="Copy details" action onClick={() => void copy(details.data)} />
             </InsetGroup>
             <InsetGroup wide>
