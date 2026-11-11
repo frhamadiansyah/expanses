@@ -98,8 +98,8 @@ test('a workspace page renames through the Name sheet, toggles Budget and opens 
 
   await page.getByTestId('ws-currency-row').click();
   const currencies = page.getByRole('dialog', { name: 'Currency' });
-  await expect(currencies.getByTestId('currency-IDR')).toBeVisible();
-  await currencies.getByTestId('currency-USD').click();
+  await expect(currencies.getByRole('button', { name: /^IDR / }).first()).toBeVisible();
+  await currencies.getByRole('button', { name: /^USD / }).first().click();
   await expect(currencies).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Change currency' })).toBeVisible();
 

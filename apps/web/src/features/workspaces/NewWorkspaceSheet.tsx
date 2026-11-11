@@ -1,10 +1,10 @@
-import { CURRENCIES } from '@expanses/core';
 import { applyCategoryStart, type BookKind, type CategoryStart, createBook } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { cx, ErrorBox } from '../../ui';
-import { InsetGroup, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { InsetGroup, PickerRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { CurrencySheet } from '../currency/CurrencySheet';
 import { useBooks } from './queries';
 
 const KINDS: { value: BookKind; label: string }[] = [
@@ -37,6 +37,7 @@ export function NewWorkspaceSheet({ onClose }: { onClose: () => void }) {
   const categoriesChoice = kind === 'business' && copyFrom === '';
   const personalBookId = (books.data ?? []).find((book) => book.kind === 'personal')?.id ?? null;
   const [baseCurrency, setBaseCurrency] = useState(ws.baseCurrency);
+  const [pickingCurrency, setPickingCurrency] = useState(false);
   // Null while nobody has touched the switch: a business counts an event as spending like any other, where a
   // personal budget is usually kept for the ordinary month with the holiday counted apart.
   const [events, setEvents] = useState<boolean | null>(null);
@@ -66,6 +67,7 @@ export function NewWorkspaceSheet({ onClose }: { onClose: () => void }) {
   // ✓ in the header saves, as every grouped sheet does; Enter in the name saves too.
   const canSave = name.trim() !== '' && !busy;
   return (
+    <>
     <Sheet grouped title="New workspace" onClose={onClose} confirm={{ label: 'Create workspace', disabled: !canSave, run: () => void submit() }}>
       <form
         onSubmit={(event) => {
@@ -121,13 +123,7 @@ export function NewWorkspaceSheet({ onClose }: { onClose: () => void }) {
               <option value="empty">Empty</option>
             </SelectRow>
           )}
-          <SelectRow label="Reads in" value={baseCurrency} onChange={(e) => setBaseCurrency(e.target.value)}>
-            {CURRENCIES.map((currency) => (
-              <option key={currency.code} value={currency.code}>
-                {currency.code} — {currency.name}
-              </option>
-            ))}
-          </SelectRow>
+          <PickerRow label="Reads in" value={baseCurrency} onOpen={() => setPickingCurrency(true)} />
         </InsetGroup>
 
         <InsetGroup>
@@ -135,5 +131,7 @@ export function NewWorkspaceSheet({ onClose }: { onClose: () => void }) {
         </InsetGroup>
       </form>
     </Sheet>
+      {pickingCurrency && <CurrencySheet value={baseCurrency} baseCurrency={ws.baseCurrency} onPick={setBaseCurrency} onClose={() => setPickingCurrency(false)} />}
+    </>
   );
 }

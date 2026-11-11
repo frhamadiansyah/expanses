@@ -1,4 +1,5 @@
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
+import { currencyRow, setCurrency } from './currency-field';
 import { openAccount, walletCard } from './accounts';
 import { addTransaction } from './add-transaction';
 import { mockRates } from './pockets';
@@ -42,7 +43,7 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   await corner(rina, 'Share this event');
   const share = rina.getByRole('form', { name: 'Share this event' });
   await share.getByLabel('Name', { exact: true }).fill('Rina');
-  await share.getByLabel('Currency').selectOption('TRY');
+  await setCurrency(currencyRow(share, 'Currency'), 'TRY');
   await share.getByLabel('Without the app').fill('Budi');
   await share.getByRole('button', { name: 'Share', exact: true }).click();
   const link = (await rina.getByTestId('invite-link').textContent({ timeout: 60_000 }))!.trim();

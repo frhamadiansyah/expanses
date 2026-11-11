@@ -9,10 +9,10 @@ import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { openingRateFor, ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
-import { CurrencyCode, type GroupChild, InsetGroup, InsetRow, ROW_PAD_X, SelectRow, SwitchRow, TAP, TextRow } from '../../ui/native';
+import { type GroupChild, InsetGroup, InsetRow, ROW_PAD_X, SelectRow, SwitchRow, TAP, TextRow } from '../../ui/native';
 import { InfoToggle } from '../../ui/native/FormRow';
 import { KeyboardStrip } from '../../ui/native/KeyboardStrip';
-import { CurrencySheet } from '../transactions/CurrencySheet';
+import { CurrencySheet } from '../currency/CurrencySheet';
 import { currencyFlag } from '../transactions/tx-form';
 import { choosePocketCurrency, nextPocketCurrency, type PocketDraft, readPockets } from '../accounts/pockets';
 import { fieldsFor } from './catalogue-view';
@@ -348,7 +348,9 @@ export function MoneyRow({
       <div className="flex items-center gap-3" style={{ minHeight: TAP, padding: `0 ${ROW_PAD_X}px` }}>
         <span className="flex shrink-0 items-center gap-[6px] text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px]">
           <span aria-hidden>{currencyFlag(currency)}</span>
-          <CurrencyCode label={currencyLabel} value={currency} onChange={onCurrency} codes={CURRENCIES} className="font-medium text-[var(--ph-ink)]" />
+          <button type="button" aria-label={`${currencyLabel}: ${currency}`} onClick={() => setPicking(true)} className="ph-focus rounded font-medium tracking-[0.5px] text-[var(--ph-ink)]">
+            {currency}
+          </button>
           <span aria-hidden className="text-[17px] leading-none text-[var(--ph-chevron)]">
             {'›'}
           </span>
@@ -365,6 +367,7 @@ export function MoneyRow({
           className="ph-focus min-w-0 shrink-0 rounded bg-transparent text-right text-[17px] leading-[22px] text-[var(--ph-ink)] tabular placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
         />
       </div>
+      {picking && <CurrencySheet value={currency} accountCurrency={currency} baseCurrency={base} onPick={onCurrency} onClose={() => setPicking(false)} />}
       {hint && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{hint}</p>}
     </div>
   );

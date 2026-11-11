@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { walletCard } from './accounts';
 import { openAssets } from './drawers';
 import { mockRates, openWithPockets } from './pockets';
-import { setCurrency } from './currency-field';
+import { currencyRow, setCurrency } from './currency-field';
 
 test('by thumb: open the account, a pocket, and move between pockets one key at a time', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
@@ -42,7 +42,7 @@ test('by thumb: add a pocket, then see the account once on Assets at its ≈ tot
   await expect(page.getByText(/across 1 account/)).toHaveCount(0);
   await walletCard(page, 'Thumb Valas').tap();
   await page.getByRole('button', { name: /^Add (a )?currency$/ }).first().tap();
-  await setCurrency(page.getByLabel('Currency', { exact: true }), 'IDR');
+  await setCurrency(currencyRow(page), 'IDR');
   await page.getByLabel('Opening IDR').pressSequentially('5400000');
   await page.getByRole('dialog', { name: 'Add a currency' }).getByRole('button', { name: 'Add', exact: true }).tap();
   await expect(page.getByTestId('pocket-IDR')).toContainText('5.400.000');

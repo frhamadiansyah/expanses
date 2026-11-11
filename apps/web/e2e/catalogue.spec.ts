@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { addTransaction, choosePayment } from './add-transaction';
+import { currencyRow, setCurrency } from './currency-field';
 import { cardPage, cardSettingsPage, saveCardTerms, chooseCatalogueCard, showCardBack } from './card-section';
 
 test.beforeEach(({ page }) => {
@@ -124,7 +125,7 @@ test('comparing in KrisFlyer ranks UnionPay converted miles above Signature mile
 
   await page.goto('/recommend');
   await page.getByLabel('Amount', { exact: true }).fill('540000');
-  await page.getByLabel('Spent in').selectOption('SGD');
+  await setCurrency(currencyRow(page, 'Spent in'), 'SGD');
   await page.getByLabel('Category', { exact: true }).selectOption({ label: 'Restaurants' });
   await expect(page.getByLabel('Compare in').locator('option', { hasText: 'KrisFlyer' })).toHaveCount(1);
   await page.getByLabel('Compare in').selectOption('KrisFlyer');

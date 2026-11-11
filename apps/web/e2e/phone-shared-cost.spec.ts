@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { currencyRow, setCurrency } from './currency-field';
 import { openAccount } from './accounts';
 import { mockRates } from './pockets';
 import { addSharedCost, corner, newEvent, openTrip, recordSharedSpend, showCard } from './shared-events';
@@ -25,7 +26,7 @@ test('a shared cost: add with category, link and remarks, pay, link, unlink, set
   await corner(page, 'Share this event');
   const share = page.getByRole('form', { name: 'Share this event' });
   await share.getByLabel('Name', { exact: true }).fill('Rina');
-  await share.getByLabel('Currency').selectOption('TRY');
+  await setCurrency(currencyRow(share, 'Currency'), 'TRY');
   await share.getByRole('button', { name: 'Share', exact: true }).click();
   await expect(page.getByTestId('invite-link')).toBeVisible({ timeout: 60_000 });
   await openTrip(page);

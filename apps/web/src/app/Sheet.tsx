@@ -40,9 +40,12 @@ export function Sheet({
   tall = false,
   expanded = false,
   closeOnly = false,
+  largeTitle = false,
 }: {
   /** The saving-sheet header (✕, centred title) without the ✓: the sheet's own last row records, as the listed Buy / Sell. */
   closeOnly?: boolean;
+  /** A big left-aligned title with a round ✕ at the right, as an iOS list sheet draws its header (the currency list). */
+  largeTitle?: boolean;
   title: string;
   onClose: () => void;
   children: ReactNode;
@@ -302,7 +305,19 @@ export function Sheet({
         {/* The grabber and the header are where the sheet is dragged between its detents, as on iOS. */}
         <div onPointerDown={onDown} className={detents ? 'touch-none' : undefined} data-testid="sheet-drag">
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--ph-chevron)] md:hidden" aria-hidden />
-        {confirm || back || closeOnly ? (
+        {largeTitle && !confirm && !back && !closeOnly ? (
+          <div className="mb-3 flex min-h-11 items-center justify-between gap-3">
+            <h2 className="flex-1 text-[34px] font-bold leading-[41px] tracking-[-0.01em]">{title}</h2>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="ph-focus flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-[0.5px] border-[var(--ph-hair)] bg-[var(--ph-surface)] text-[var(--ph-ink)] shadow-sm"
+            >
+              <X size={20} strokeWidth={1.8} absoluteStrokeWidth aria-hidden />
+            </button>
+          </div>
+        ) : confirm || back || closeOnly ? (
           <div className="mb-3 flex items-center gap-3">
             <button
               type="button"

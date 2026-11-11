@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
+import { currencyRow, setCurrency } from './currency-field';
 import BetterSqlite3 from 'better-sqlite3';
 import { openAccount, openCard, walletCard } from './accounts';
 import { fillDay, openNewAsset } from './add-asset';
@@ -289,7 +290,7 @@ test('a workspace in another currency than yours cannot be shared, and says why'
   await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Singapore');
-  await sheet.getByLabel('Reads in').selectOption('SGD');
+  await setCurrency(currencyRow(sheet, 'Reads in'), 'SGD');
   await sheet.getByRole('button', { name: 'Create workspace' }).click();
   await expect(sheet).toHaveCount(0);
 

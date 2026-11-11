@@ -8,7 +8,7 @@ import { openGoalForm } from './goals';
 import { cardPage, cardPurchases, saveCardTerms, chooseCatalogueCard } from './card-section';
 import { closePurchase, openPurchase } from './purchases';
 import { todayIn } from './today';
-import { setCurrency } from './currency-field';
+import { currencyRow, setCurrency } from './currency-field';
 import { addPart, fillPart, removePart, openSplit, pickPartCategory, setChannel, splitRow } from './split-row';
 import { chooseMccCode, closeMccSheet, mccSheet, openMccSheet, rememberWord } from './mcc-sheet';
 
@@ -777,7 +777,7 @@ test('every extra survives the save, and leaving it out of the report leaves onl
 test('a split is read in the paying account’s own currency, exponent and all', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addAccount(page, 'Wise Card', 'credit_card', async () => {
-    await setCurrency(page.getByLabel('Currency', { exact: true }), 'USD');
+    await setCurrency(currencyRow(page), 'USD');
     await page.getByLabel('Current balance').fill('0');
   });
 

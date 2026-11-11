@@ -1,4 +1,4 @@
-import { CURRENCIES, formatMinor, formatUnits, isoDate } from '@expanses/core';
+import { formatMinor, formatUnits, isoDate } from '@expanses/core';
 import { type AccountRow, addHolding, type AddHoldingInput, type RecordTradeInput } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
@@ -6,7 +6,8 @@ import { useApp } from '../../app/context';
 import { useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, rateLine, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, rateLine, PickerRow, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
+import { CurrencySheet } from '../currency/CurrencySheet';
 import { useHeldRates } from '../accounts/queries';
 import { tradeDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
@@ -98,6 +99,7 @@ export function AddHoldingForm({ picked, brokers, heldAt, onConfirm, onTicker }:
     }
   }
 
+  const [pickingCurrency, setPickingCurrency] = useState(false);
   const label = security.ticker ?? security.name;
   return (
     // Still a real `<form>`: Enter in any box saves, as the ✓ does.
@@ -126,13 +128,7 @@ export function AddHoldingForm({ picked, brokers, heldAt, onConfirm, onTicker }:
           <TextRow label="Broker name" value={draft.brokerName} onChange={(e) => change({ brokerName: e.target.value })} placeholder="Required" required />
         ) : null}
         {draft.brokerChoice === NEW_BROKER ? (
-          <SelectRow label="Its currency" value={draft.brokerCurrency} onChange={(e) => change({ brokerCurrency: e.target.value })}>
-            {CURRENCIES.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.code}
-              </option>
-            ))}
-          </SelectRow>
+          <PickerRow label="Its currency" value={draft.brokerCurrency} onOpen={() => setPickingCurrency(true)} />
         ) : null}
       </InsetGroup>
 
@@ -184,6 +180,7 @@ export function AddHoldingForm({ picked, brokers, heldAt, onConfirm, onTicker }:
 
       {setAside.node}
       <ErrorBox error={error} />
+      {pickingCurrency && <CurrencySheet value={draft.brokerCurrency} baseCurrency={ws.baseCurrency} onPick={(brokerCurrency) => change({ brokerCurrency })} onClose={() => setPickingCurrency(false)} />}
     </form>
   );
 }

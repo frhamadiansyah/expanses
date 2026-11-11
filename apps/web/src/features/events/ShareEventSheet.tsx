@@ -1,11 +1,11 @@
-import { CURRENCIES } from '@expanses/core';
 import { type CreatedInvite, type EventRow, type MoveRefusal, ownerScope } from '@expanses/db';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, SelectRow, SubmitRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, PickerRow, SubmitRow, TextRow } from '../../ui/native';
+import { CurrencySheet } from '../currency/CurrencySheet';
 import { InviteCard } from '../sharing/InviteCard';
 import { finishConversion, freshShare, markConversionDone, runShare } from './share-event';
 import { conversionSteps, fetchConversionRates } from './shared-queries';
@@ -26,6 +26,7 @@ export function ShareEventSheet({ event, onClose }: { event: EventRow; onClose: 
   const tapped = useRef(false);
   const [name, setName] = useState('');
   const [currency, setCurrency] = useState(ws.baseCurrency);
+  const [pickingCurrency, setPickingCurrency] = useState(false);
   const [names, setNames] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -71,6 +72,7 @@ export function ShareEventSheet({ event, onClose }: { event: EventRow; onClose: 
   }
 
   return (
+    <>
     <Sheet grouped title={`Share ${event.name}`} onClose={onClose}>
       <ErrorBox error={error} />
       {done ? (
@@ -88,13 +90,7 @@ export function ShareEventSheet({ event, onClose }: { event: EventRow; onClose: 
         <form aria-label="Share this event" onSubmit={(e) => void share(e)}>
           <InsetGroup footer={`Everyone in ${event.name} sees every expense of it, who paid and how it is split. What is tagged to it moves out of its workspace: in each person's own books only their own share counts.`}>
             <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="As the others will see it" required />
-            <SelectRow label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-              {CURRENCIES.map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.code} · {c.name}
-                </option>
-              ))}
-            </SelectRow>
+            <PickerRow label="Currency" value={currency} onOpen={() => setPickingCurrency(true)} />
             <TextRow label="Without the app" value={names} onChange={(e) => setNames(e.target.value)} placeholder="Names, with commas" />
           </InsetGroup>
           <InsetGroup>
@@ -103,5 +99,7 @@ export function ShareEventSheet({ event, onClose }: { event: EventRow; onClose: 
         </form>
       )}
     </Sheet>
+      {pickingCurrency && <CurrencySheet value={currency} baseCurrency={ws.baseCurrency} onPick={setCurrency} onClose={() => setPickingCurrency(false)} />}
+    </>
   );
 }

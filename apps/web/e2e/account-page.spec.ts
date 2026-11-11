@@ -3,7 +3,7 @@ import { openAccount, openWalletAccount, showBalance } from './accounts';
 import { addForm, addTransaction, saveButton } from './add-transaction';
 import { openDrawers } from './drawers';
 import { mockRates, openWithPockets } from './pockets';
-import { setCurrency } from './currency-field';
+import { currencyRow, pickInSheet, setCurrency } from './currency-field';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -54,8 +54,9 @@ test('a current account takes a second currency and becomes one with pockets, ke
   await page.getByTestId('add-currency').click();
   await expect(page.getByRole('dialog', { name: 'Add a currency' })).toBeVisible();
   // The currency it already holds is not offered again.
-  await expect(page.getByLabel('Currency', { exact: true }).locator('option[value="IDR"]')).toHaveCount(0);
-  await setCurrency(page.getByLabel('Currency', { exact: true }), 'USD');
+  await currencyRow(page).click();
+  await expect(page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: /^IDR / })).toHaveCount(0);
+  await pickInSheet(page, 'USD');
   await page.getByLabel('Opening USD').pressSequentially('500');
   await page.getByLabel('Rate: IDR per 1 USD', { exact: true }).pressSequentially('16250');
   await page.getByRole('dialog', { name: 'Add a currency' }).getByRole('button', { name: 'Add', exact: true }).click();
@@ -101,7 +102,7 @@ test('a cash account with pockets: Record, Move, Withdraw, Adjust; Withdraw is i
   await openAccount(page, { subtype: 'cash', name: 'Pocket cash', balance: '300000' });
   await openMoney(page, 'Pocket cash');
   await page.getByTestId('add-currency').click();
-  await setCurrency(page.getByLabel('Currency', { exact: true }), 'TRY');
+  await setCurrency(currencyRow(page), 'TRY');
   await page.getByLabel('Opening TRY').pressSequentially('1000');
   await page.getByLabel('Rate: IDR per 1 TRY', { exact: true }).pressSequentially('480');
   await page.getByRole('dialog', { name: 'Add a currency' }).getByRole('button', { name: 'Add', exact: true }).click();
@@ -152,7 +153,7 @@ test('cash takes a second currency like a bank account: it becomes one with pock
   await expect(page.getByTestId('account-recent')).not.toContainText('Opening balance');
   // The last row of the account's facts: the corner holds only its ⚙.
   await page.getByTestId('add-currency').click();
-  await setCurrency(page.getByLabel('Currency', { exact: true }), 'TRY');
+  await setCurrency(currencyRow(page), 'TRY');
   await page.getByLabel('Opening TRY').pressSequentially('1000');
   await page.getByLabel('Rate: IDR per 1 TRY', { exact: true }).pressSequentially('480');
   await page.getByRole('dialog', { name: 'Add a currency' }).getByRole('button', { name: 'Add', exact: true }).click();
