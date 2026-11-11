@@ -1,4 +1,4 @@
-import { formatMinor, groupTypedAmount, type PayoffMethod } from '@expanses/core';
+import { groupTypedAmount, type PayoffMethod } from '@expanses/core';
 import type { DebtPlanSettings } from '@expanses/db';
 import { useState } from 'react';
 import { Money } from '../../ui';
@@ -33,12 +33,13 @@ export function settingsOf(saved: DebtPlanSettings | null | undefined): DebtPlan
 /** The debts in line now, late ones left out: what By hand starts from when nothing was moved yet. */
 export const handOrderOf = (model: DebtPlanModel) => model.effect.plan.order.filter((key) => !model.debts.find((d) => d.key === key)?.late);
 
-export function MethodControl({ model, saved, save }: { model: DebtPlanModel; saved: DebtPlanSettings; save: (next: DebtPlanSettings) => void }) {
+export function MethodControl({ model, saved, save, width }: { model: DebtPlanModel; saved: DebtPlanSettings; save: (next: DebtPlanSettings) => void; width?: number }) {
   const suggestion = suggestionWords(model.suggestion, model.debts);
   return (
     <>
       <SegmentedControl
         label="Order"
+        width={width}
         segments={METHODS}
         value={model.method}
         onChange={(key) => {
@@ -116,10 +117,4 @@ export function ExtraControls({ model, saved, save, baseCurrency }: { model: Deb
       )}
     </InsetGroup>
   );
-}
-
-/** "Extra a month Rp 500.000 → debt-free Mar 2028", the wide Plan's one line under the field. */
-export function extraLine(model: DebtPlanModel, baseCurrency: string): string | null {
-  if (!(model.extraMinor > 0) || !model.effect.plan.debtFreeMonth) return null;
-  return `Extra a month ${formatMinor(model.extraMinor, baseCurrency)} → debt-free ${monthYearLabel(model.effect.plan.debtFreeMonth)}`;
 }

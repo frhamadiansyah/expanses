@@ -22,7 +22,7 @@ export function PlanHeader({ model, baseCurrency }: { model: DebtPlanModel; base
               No {summary.missing.join(', ')} rate yet
             </p>
           ) : (
-            <p data-testid="plan-left" className="text-[28px] leading-[34px] font-extrabold tracking-[-0.03em] text-[var(--ph-ink)]">
+            <p data-testid="plan-left" className="text-[28px] leading-[34px] font-extrabold tracking-[-0.03em] text-[var(--ph-ink)] md:text-[20px] md:leading-[26px]">
               <Money minor={summary.leftMinor} currency={baseCurrency} />
             </p>
           )}
