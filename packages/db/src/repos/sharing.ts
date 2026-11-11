@@ -160,6 +160,70 @@ export async function sharingDetail(database: Database, bookId: string, deviceId
 }
 
 /**
+ * A book's sharing bookkeeping for a diagnostics screen: ids, counts and times only — never a name, an amount, a
+ * description or a key. Every part is answered whether or not `shared_books` holds a row for the book, so a book whose
+ * row went missing (a restored database) still shows what is left of it.
+ */
+export interface SharingDiagnostics {
+  shared: {
+    relayBookId: string;
+    epoch: number;
+    memberId: string;
+    state: SharedBookState;
+    sharedAt: string;
+    syncedAt: string | null;
+    unsharedBy: string | null;
+    unsharedReason: string | null;
+  } | null;
+  /** Change-sets waiting in `sync_outbox`. */
+  outbox: number;
+  /** `sync_cursor.applied_seq`, or null with no cursor row. */
+  cursor: number | null;
+  members: { memberId: string; role: string }[];
+  devices: { deviceId: string; memberId: string; removed: boolean }[];
+  /** The epochs whose sealed key this database holds (whether this device can open them is the engine's to say). */
+  epochKeys: number[];
+  /** Ops refused on apply, kept in `sync_skipped`: how many, and of which entities. */
+  skipped: { count: number; entities: string[] };
+}
+
+export async function sharingDiagnostics(database: Database, bookId: string): Promise<SharingDiagnostics> {
+  const empty: SharingDiagnostics = { shared: null, outbox: 0, cursor: null, members: [], devices: [], epochKeys: [], skipped: { count: 0, entities: [] } };
+  if (!(await sharingTablesExist(database.db))) return empty;
+  const [row] = await database.db.values<[string, number, string, string, string, string | null, string | null, string | null]>(
+    sql`SELECT relay_book_id, epoch, member_id, state, shared_at, synced_at, unshared_by, unshared_reason FROM shared_books WHERE book_id = ${bookId}`,
+  );
+  const [[outbox]] = (await database.db.values<[number]>(sql`SELECT count(*) FROM sync_outbox WHERE book_id = ${bookId}`)) as [[number]];
+  const [cursor] = await database.db.values<[number]>(sql`SELECT applied_seq FROM sync_cursor WHERE book_id = ${bookId}`);
+  const members = await database.db.values<[string, string]>(sql`SELECT member_id, role FROM book_members WHERE book_id = ${bookId} ORDER BY joined_at, member_id`);
+  const devices = await database.db.values<[string, string, string | null]>(
+    sql`SELECT device_id, member_id, removed_at FROM book_devices WHERE book_id = ${bookId} ORDER BY added_at, device_id`,
+  );
+  const epochs = await database.db.values<[number]>(sql`SELECT epoch FROM book_epoch_keys WHERE book_id = ${bookId} ORDER BY epoch`);
+  const skipped = await database.db.values<[string, number]>(sql`SELECT entity, count(*) FROM sync_skipped WHERE book_id = ${bookId} GROUP BY entity ORDER BY entity`);
+  return {
+    shared: row
+      ? {
+          relayBookId: row[0],
+          epoch: Number(row[1]),
+          memberId: row[2],
+          state: row[3] as SharedBookState,
+          sharedAt: row[4],
+          syncedAt: row[5],
+          unsharedBy: row[6],
+          unsharedReason: row[7],
+        }
+      : null,
+    outbox: Number(outbox),
+    cursor: cursor ? Number(cursor[0]) : null,
+    members: members.map(([memberId, role]) => ({ memberId, role })),
+    devices: devices.map(([deviceId, memberId, removedAt]) => ({ deviceId, memberId, removed: removedAt !== null })),
+    epochKeys: epochs.map(([epoch]) => Number(epoch)),
+    skipped: { count: skipped.reduce((sum, [, n]) => sum + Number(n), 0), entities: skipped.map(([entity]) => entity) },
+  };
+}
+
+/**
  * How much of the book's outbox is left, counted in ops (rows and purchases) — what "Preparing N of M" counts while a
  * newly shared book's history goes up (§6.5 step 4).
  */

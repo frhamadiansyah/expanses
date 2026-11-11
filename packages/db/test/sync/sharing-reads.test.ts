@@ -1,7 +1,7 @@
 import { expenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { devicesSeen, listSharedBooks, outboxOps, postTransaction, purchasePayers, recordDevicesSeen, sharingDetail } from '../../src/index';
+import { devicesSeen, listSharedBooks, outboxOps, postTransaction, purchasePayers, recordDevicesSeen, sharingDetail, sharingDiagnostics } from '../../src/index';
 import { categoryOf, Household, type Device } from './household';
 
 /*
@@ -44,6 +44,42 @@ describe('sharing reads', () => {
     await fandri.engine.syncOnce(bookId);
     expect(await outboxOps(fandri.database, bookId)).toBe(0);
     expect((await sharingDetail(fandri.database, bookId, fandri.deviceId))!.waiting).toBe(0);
+  });
+
+  it('reads a book’s sharing bookkeeping for diagnostics: ids, counts and times, with or without a shared_books row', async () => {
+    const home = new Household();
+    const fandri = await home.device('Fandri');
+    const dewi = await home.device('Dewi');
+    expect(await sharingDiagnostics(fandri.database, 'no-such-book')).toEqual({
+      shared: null,
+      outbox: 0,
+      cursor: null,
+      members: [],
+      devices: [],
+      epochKeys: [],
+      skipped: { count: 0, entities: [] },
+    });
+    const bookId = await home.share(fandri);
+    const waiting = await sharingDiagnostics(fandri.database, bookId);
+    expect(waiting.shared).toMatchObject({ epoch: 1, state: 'active', syncedAt: null });
+    expect(waiting.outbox).toBeGreaterThan(0);
+    expect(waiting.devices).toEqual([{ deviceId: fandri.deviceId, memberId: waiting.shared!.memberId, removed: false }]);
+    expect(waiting.epochKeys).toEqual([1]);
+    await home.join(dewi, fandri);
+    await home.settle();
+    const joined = await sharingDiagnostics(dewi.database, bookId);
+    expect(joined.shared!.relayBookId).toBe(waiting.shared!.relayBookId);
+    expect(joined.outbox).toBe(0);
+    expect(joined.cursor).toBeGreaterThan(0);
+    expect(joined.members.map((m) => m.role)).toEqual(['owner', 'member']);
+    expect(joined.devices.map((d) => d.deviceId).sort()).toEqual([fandri.deviceId, dewi.deviceId].sort());
+    // Nothing a person wrote: no names (the harness's member ids carry them, its device names do not), no keys.
+    expect(JSON.stringify(joined)).not.toMatch(/phone|"name"|sealed|Jwk/);
+    // The row gone (a restored database): what is left of the book is still read.
+    await dewi.database.db.run(sql`DELETE FROM shared_books WHERE book_id = ${bookId}`);
+    const orphan = await sharingDiagnostics(dewi.database, bookId);
+    expect(orphan.shared).toBeNull();
+    expect(orphan.devices).toHaveLength(2);
   });
 
   it('names both members and their devices on both sides, and who of them is me and who owns the book', async () => {
