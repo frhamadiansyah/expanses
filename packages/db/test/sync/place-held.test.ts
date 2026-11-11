@@ -51,14 +51,13 @@ async function placeholderBalance(d: Device, bookId: string, memberId: string): 
 
 /**
  * Money to the unit on both phones once B's rows are placed. Dewi's bank is unchanged throughout. Fandri's own purchase
- * was erased with A; it comes back once, from B's log: on this build onto his own placeholder in B (an own purchase
- * with no head here has no account to land on until Task B1 matches its label), so his bank stays where the delete
- * left it and the purchase is counted exactly once.
+ * was erased with A; it comes back once, from B's log, onto the own account its label names (D-B6: "Fandri Bank"), so
+ * his bank is back where it was before the delete and nothing sits on his own placeholder.
  */
 async function expectMoney(dewi: Device, fandri: Device, newBook: string, oldBook: string): Promise<void> {
   expect(await balanceOf(dewi, dewi.bank)).toBe(-41_300);
-  expect(await balanceOf(fandri, fandri.bank)).toBe(0);
-  expect(await placeholderBalance(fandri, newBook, fandri.memberId)).toBe(-27_500);
+  expect(await balanceOf(fandri, fandri.bank)).toBe(-27_500);
+  expect(await placeholderBalance(fandri, newBook, fandri.memberId)).toBe(0);
   expect(await placeholderBalance(fandri, newBook, dewi.memberId)).toBe(-41_300);
   // Dewi's phone keeps Fandri's money where it always was (the copy into B moved only the filing rows), to the unit.
   expect(await placeholderBalance(dewi, oldBook, fandri.memberId)).toBe(-27_500);
@@ -151,6 +150,7 @@ describe('Place them now (§4.3)', () => {
     expect(placed.stillHeld).toBe(0);
     expect(placed.placed).toBe(held.length);
     expect(placed.result.stopped).toBeUndefined();
+    expect(placed.result.needsAccount).toBe(0); // his purchase found its own account
     await settleBook([dewi, fandri], newBook);
     await expectPlaced(dewi, fandri, newBook);
     await expectMoney(dewi, fandri, newBook, oldBook);
@@ -163,7 +163,7 @@ describe('Place them now (§4.3)', () => {
     expect(await skipsOf(fandri.database)).toEqual([]);
     expect(await projectBook(fandri.database, newBook)).toEqual(await projectBook(dewi.database, newBook));
     expect(await balanceOf(dewi, dewi.bank)).toBe(-49_500);
-    expect(await balanceOf(fandri, fandri.bank)).toBe(-6_450);
+    expect(await balanceOf(fandri, fandri.bank)).toBe(-33_950);
     expect(await spentIn(fandri, newBook)).toEqual(await spentIn(dewi, newBook));
   });
 
@@ -231,8 +231,8 @@ describe('Place them now (§4.3)', () => {
     expect(await fandri.database.db.values(sql`
       SELECT t.description FROM transactions t JOIN book_transactions bt ON bt.transaction_id = t.id
       WHERE bt.book_id = ${personal.id} AND t.status = 'posted'`)).toEqual([['Fandri pharmacy']]);
-    expect(await balanceOf(fandri, fandri.bank)).toBe(-12_300);
-    expect(await placeholderBalance(fandri, newBook, fandri.memberId)).toBe(-27_500);
+    expect(await balanceOf(fandri, fandri.bank)).toBe(-39_800); // as before the delete, to the unit
+    expect(await placeholderBalance(fandri, newBook, fandri.memberId)).toBe(0);
     expect(await balanceOf(dewi, dewi.bank)).toBe(-41_300);
   });
 
@@ -252,6 +252,84 @@ describe('Place them now (§4.3)', () => {
     await settleBook([dewi, fandri], newBook);
     await expectPlaced(dewi, fandri, newBook);
     await expectMoney(dewi, fandri, newBook, oldBook);
+  });
+
+  it('a sync already waiting on the relay when Place starts finishes first, and every row is placed', async () => {
+    const { dewi, fandri, oldBook, newBook, held } = await joinBeside();
+    await leaveAndDelete(fandri, oldBook);
+    // Something new in the log for the ordinary sync to bring.
+    await spend(dewi, newBook, 'Dewi late', 1_100);
+    await dewi.engine.syncOnce(newBook);
+    const cursorBefore = await cursorOf(fandri, newBook);
+    // The ordinary sync's first pull answers only when let go: it is in flight when Place is asked for.
+    const transport = fandri.transport as { pull: typeof fandri.transport.pull };
+    const realPull = transport.pull.bind(fandri.transport);
+    let letGo!: () => void;
+    const gate = new Promise<void>((resolve) => (letGo = resolve));
+    let pulledOnce: () => void;
+    const pulled = new Promise<void>((resolve) => (pulledOnce = resolve));
+    let first = true;
+    transport.pull = async (relayBookId, since) => {
+      const answer = await realPull(relayBookId, since);
+      if (first) {
+        first = false;
+        pulledOnce();
+        await gate;
+      }
+      return answer;
+    };
+    try {
+      const ordinary = fandri.engine.syncOnce(newBook);
+      await pulled;
+      const placing = fandri.engine.placeHeldRows(newBook);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(await cursorOf(fandri, newBook)).toBe(cursorBefore); // Place has not reset under the waiting pull
+      letGo();
+      const [, placed] = await Promise.all([ordinary, placing]);
+      expect(placed).toMatchObject({ placed: held.length, stillHeld: 0 });
+    } finally {
+      transport.pull = realPull;
+    }
+    await settleBook([dewi, fandri], newBook);
+    expect(await cursorOf(fandri, newBook)).toBe(await relayHead(fandri, newBook));
+    expect(await skipsOf(fandri.database)).toEqual([]);
+    expect(await projectBook(fandri.database, newBook)).toEqual(await projectBook(dewi.database, newBook));
+    expect(await spentIn(fandri, newBook)).toEqual({ 'Dewi late': 1_100, 'Dewi market': 41_300, 'Fandri market': 27_500 });
+    expect(await balanceOf(fandri, fandri.bank)).toBe(-27_500);
+  });
+
+  it('a purchase that came on a set-aside category between the delete and Place is filed under it once placed', async () => {
+    const { dewi, fandri, oldBook, newBook } = await joinBeside();
+    await leaveAndDelete(fandri, oldBook);
+    // The scheduler's ordinary sync brings Dewi's new purchase before Place: its category is not here yet.
+    await spend(dewi, newBook, 'Dewi late', 1_100);
+    await settleBook([dewi, fandri], newBook);
+    const fallback = await fandri.database.db.values<[string]>(sql`
+      SELECT a.system_key FROM transactions t JOIN entries e ON e.transaction_id = t.id JOIN accounts a ON a.id = e.account_id
+      WHERE t.description = 'Dewi late' AND t.status = 'posted' AND a.kind = 'expense'`);
+    expect(fallback).toEqual([['uncategorised']]);
+
+    expect(await fandri.engine.placeHeldRows(newBook)).toMatchObject({ stillHeld: 0 });
+    await settleBook([dewi, fandri], newBook);
+    expect(await skipsOf(fandri.database)).toEqual([]);
+    expect(await projectBook(fandri.database, newBook)).toEqual(await projectBook(dewi.database, newBook));
+    expect(await spentIn(fandri, newBook)).toEqual({ 'Dewi late': 1_100, 'Dewi market': 41_300, 'Fandri market': 27_500 });
+    const groceries = await categoryOf(fandri.database, newBook, 'Groceries');
+    const [[onGroceries]] = (await fandri.database.db.values<[number]>(sql`
+      SELECT sum(e.amount_minor) FROM entries e JOIN transactions t ON t.id = e.transaction_id
+      WHERE e.account_id = ${groceries} AND t.status = 'posted'`)) as [[number]];
+    expect(Number(onGroceries)).toBe(41_300 + 27_500 + 1_100);
+    expect(await placeholderBalance(fandri, newBook, dewi.memberId)).toBe(-(41_300 + 1_100));
+    expect(await balanceOf(fandri, fandri.bank)).toBe(-27_500);
+  });
+
+  it('a net-worth group log is not a share Place them now pulls again', async () => {
+    const { fandri, newBook } = await joinBeside();
+    await fandri.database.db.run(sql`INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at)
+      VALUES ('group-log-test', 'relay-group-test', 1, ${fandri.memberId}, 'active', '2026-09-12T00:00:00.000Z')`);
+    await fandri.database.db.run(sql`INSERT INTO nw_group_books (group_book_id, book_id) VALUES ('group-log-test', ${newBook})`);
+    // Its sync removes devices and syncs itself again inside: a whole-log pull holding it would wait on itself.
+    await expect(fandri.engine.placeHeldRows('group-log-test')).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
   it('a book that is not shared and active here is NOT_FOUND', async () => {
