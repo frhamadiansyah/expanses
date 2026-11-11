@@ -8,9 +8,11 @@ import { InsetGroup, InsetRow, LargeTitle, SCREEN } from '../../ui/native';
 import { isCardOption, paymentLabel } from '../transactions/PaymentSheet';
 import { paymentKey } from '../transactions/quick-row';
 import { resolveDefaultPaidWith, usePayableOptions, useStoredDefaultPaidWith, writeDefaultPaidWith } from './default-paid-with';
+import { HOLD_CHOICES, type HoldChoice, useHoldChoice, writeHoldChoice } from './hold-plus';
 
 /**
- * Account → Settings → Default: the Paid with a plain, blank New transaction opens with.
+ * Account → Settings → Default: the Paid with a plain, blank New transaction opens with, and what holding ＋ does on
+ * the Cashflow page (`hold-plus.ts`).
  *
  * Tapping a row only moves the tick. The ✓ in the corner saves it and returns to the Account page; ‹ leaves the
  * page with nothing saved. The lists are the ones Paid with offers (`payableOptions`), named the way it names them.
@@ -23,6 +25,9 @@ export function DefaultPaidWithPage() {
   const { options, accounts, ready } = usePayableOptions();
   // The tick as it stands on the page; null until the first reading, then a key or '' for None.
   const [ticked, setTicked] = useState<string | null>(null);
+  const holdStored = useHoldChoice();
+  // The hold's tick as it stands on the page; null until it is read.
+  const [holdTicked, setHoldTicked] = useState<HoldChoice | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -33,7 +38,11 @@ export function DefaultPaidWithPage() {
   }, [current]);
 
   const shown = ticked ?? current;
-  const changed = shown !== null && shown !== current;
+  const paidChanged = shown !== null && shown !== current;
+  const holdCurrent = holdStored.data ?? null;
+  const holdShown = holdTicked ?? holdCurrent;
+  const holdChanged = holdShown !== null && holdShown !== holdCurrent;
+  const changed = paidChanged || holdChanged;
   const accountOf = (id: string) => accounts.find((account) => account.id === id);
   const money = options.filter((option) => !isCardOption(option, accountOf(option.accountId)));
   const cards = options.filter((option) => isCardOption(option, accountOf(option.accountId)));
@@ -43,8 +52,14 @@ export function DefaultPaidWithPage() {
     setBusy(true);
     setError(null);
     try {
-      await writeDefaultPaidWith(database, ws.workspaceId, shown || null);
-      await queryClient.invalidateQueries({ queryKey: ['default-paid-with'] });
+      if (paidChanged) {
+        await writeDefaultPaidWith(database, ws.workspaceId, shown || null);
+        await queryClient.invalidateQueries({ queryKey: ['default-paid-with'] });
+      }
+      if (holdChanged && holdShown) {
+        await writeHoldChoice(database, holdShown);
+        await queryClient.invalidateQueries({ queryKey: ['hold-plus'] });
+      }
       await navigate({ to: '/account' });
     } catch (failure) {
       setError(failure);
@@ -67,12 +82,24 @@ export function DefaultPaidWithPage() {
         backTo="/account"
         actions={[{ key: 'save', label: 'Save', glyph: <Check size={20} aria-hidden />, disabled: !changed || busy, run: () => void save() }]}
       />
-      <ErrorBox error={error ?? stored.error} />
+      <ErrorBox error={error ?? stored.error ?? holdStored.error} />
       <InsetGroup footer="Where Paid with starts on a new transaction. Choosing another for one purchase does not change it.">
         <InsetRow title="None" label="None" chevron={false} value={tick(shown === '')} onClick={() => setTicked('')} />
       </InsetGroup>
       {money.length > 0 && <InsetGroup header="Money">{money.map(rowFor)}</InsetGroup>}
       {cards.length > 0 && <InsetGroup header="Cards">{cards.map(rowFor)}</InsetGroup>}
+      <InsetGroup header="Hold ＋ on Cashflow" footer="Only on the Cashflow page. Everywhere else, holding ＋ opens the full form, the same as a tap.">
+        {HOLD_CHOICES.map((choice) => (
+          <InsetRow
+            key={choice.value}
+            title={choice.label}
+            label={choice.label}
+            chevron={false}
+            value={holdShown === choice.value ? <span data-testid="hold-ticked"><Check size={18} aria-label="Chosen" className="text-[var(--ph-ink)]" /></span> : undefined}
+            onClick={() => setHoldTicked(choice.value)}
+          />
+        ))}
+      </InsetGroup>
     </div>
   );
 }
