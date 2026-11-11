@@ -509,7 +509,7 @@ export async function activityLine(database: Database, ws: WorkspaceContext, id:
 // ---------------------------------------------------------------------------------------------------------- undo
 
 /** A saved transaction as the input that would post it again: the same lines at the same rates, day, words and flags. */
-async function inputOfTx(tx: Db, ws: WorkspaceContext, id: string): Promise<PostTransactionInput> {
+export async function inputOfTx(tx: Db, ws: WorkspaceContext, id: string): Promise<PostTransactionInput> {
   const v = await versionOf(tx, ws, id);
   if (!v) throw new ActivityError('That transaction is not here any more');
   const ratesToBase: Record<string, number> = {};

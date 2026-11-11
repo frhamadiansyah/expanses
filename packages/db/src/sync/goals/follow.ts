@@ -144,7 +144,7 @@ const OWN_PARTS = ['goal_earmarks', 'goal_contributions', 'goal_draws', 'trade_g
  * Whether this phone holds anything of its member's own in a goal: money or a record of this phone's that names it. Only
  * then is there a private copy to keep.
  */
-async function hasOwnPartTx(tx: Db, goalId: string): Promise<boolean> {
+export async function hasOwnPartTx(tx: Db, goalId: string): Promise<boolean> {
   const tables = new Set((await tx.values<[string]>(sql`SELECT name FROM sqlite_master WHERE type = 'table'`)).map((row) => row[0]));
   for (const table of OWN_PARTS) {
     if (tables.has(table) && (await tx.values(sql`SELECT 1 FROM ${sql.raw(table)} WHERE goal_id = ${goalId} LIMIT 1`)).length > 0) return true;
