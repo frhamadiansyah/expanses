@@ -99,6 +99,8 @@ export class Household {
       usd: usd.id,
       memberId,
     };
+    // The app's open (sharing resilience §6.2): the share records are checked before any record is written.
+    await device.engine.checkShareRecords();
     this.devices.push(device);
     return device;
   }
@@ -130,6 +132,7 @@ export class Household {
     const records = new MemoryShareRecordStore();
     const engine = new SyncEngine(database, transport, keys, undefined, { shareRecords: records });
     const device: Device = { ...lost, database, keys, deviceId: keys.deviceId, public: keys.public, transport, engine, records };
+    await engine.checkShareRecords();
     this.devices.splice(this.devices.indexOf(lost), 1, device);
     return device;
   }

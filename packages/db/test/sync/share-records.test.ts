@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createDatabase, postTransaction, type Database } from '../../src/index';
 import { createNodeExecutor } from '../../src/node';
 import { SyncEngine } from '../../src/sync/engine';
+import { SharingError } from '../../src/sync/seed';
 import { MemoryShareRecordStore, type ShareRecord } from '../../src/sync/share-records';
 import { categoryOf, Household, type Device } from './household';
 
@@ -221,6 +222,7 @@ describe('share records (spec §6.1)', () => {
       for (const d of [dewi, fandri]) {
         d.records = new BrokenStore();
         d.engine = new SyncEngine(d.database, d.transport, d.keys, undefined, { shareRecords: d.records, onShareRecordProblem: (bookId) => problems.push(bookId) });
+        await d.engine.checkShareRecords();
       }
       const bookId = await home.share(dewi);
       await home.join(fandri, dewi);
@@ -427,5 +429,90 @@ describe('share records (spec §6.1)', () => {
       values.mockRestore();
       warn.mockRestore();
     }
+  });
+
+  /* ---- fix round 2: detection comes first, and Share does not drop a lost share (re-review N1, N2) ---- */
+
+  /** A copy taken after the share, then an own purchase that reached the log: the copy is behind once restored. */
+  async function behindSetup() {
+    const home = new Household();
+    const dewi = await home.device('Dewi');
+    const fandri = await home.device('Fandri');
+    const bookId = await home.share(dewi);
+    await home.join(fandri, dewi);
+    await home.settle();
+    const backup = await dewi.database.exportBytes();
+    const copied = await cursorOf(dewi, bookId);
+    await spend(dewi, bookId, 'Own, after the copy');
+    await home.settle();
+    await dewi.engine.flushShareRecord(bookId);
+    const head = (await dewi.records.get(bookId))!.appliedSeq;
+    return { home, dewi, bookId, backup, copied, head };
+  }
+
+  it('a flush before the check writes nothing: the copy is still found behind', async () => {
+    const { dewi, bookId, backup, copied, head } = await behindSetup();
+    const lost = await lose(dewi, backup);
+    await lost.engine.flushShareRecord(bookId);
+    expect(await lost.engine.backfillShareRecords()).toBe(0);
+    expect((await dewi.records.get(bookId))!.appliedSeq).toBe(head);
+    expect(await lost.engine.checkShareRecords()).toEqual([{ kind: 'behind', bookId, bookName: 'Personal', fromSeq: copied, toSeq: head }]);
+  });
+
+  it('a sync before the check writes nothing: the copy is still found behind', async () => {
+    const { dewi, bookId, backup, copied, head } = await behindSetup();
+    const lost = await lose(dewi, backup);
+    await lost.engine.syncOnce(bookId);
+    expect((await dewi.records.get(bookId))!.appliedSeq).toBe(head);
+    const [finding] = await lost.engine.checkShareRecords();
+    expect(finding).toEqual({ kind: 'behind', bookId, bookName: 'Personal', fromSeq: copied, toSeq: head });
+  });
+
+  it('Share on a copy that lost its share is refused until the old share is discarded', async () => {
+    const home = new Household();
+    const dewi = await home.device('Dewi');
+    const fandri = await home.device('Fandri');
+    const preShare = await dewi.database.exportBytes();
+    const bookId = await home.share(dewi);
+    const r1 = home.relayBookId;
+    await home.join(fandri, dewi);
+    await home.settle();
+    const record = (await dewi.records.get(bookId))!;
+
+    const lost = await lose(dewi, preShare);
+    expect(await lost.engine.checkShareRecords()).toEqual([{ kind: 'lost', bookId, bookName: 'Personal', relayBookId: r1 }]);
+    const books = home.relay.peek(r1) ? 1 : 0;
+    const refusal = await lost.engine.shareBook(bookId, { memberId: dewi.memberId, memberName: 'Dewi', deviceName: "Dewi's phone" }).catch((e: unknown) => e);
+    expect(refusal).toBeInstanceOf(SharingError);
+    expect((refusal as SharingError).code).toBe('RECORD_ELSEWHERE');
+    expect((refusal as SharingError).message).not.toMatch(/\b(you|your|my)\b/i);
+    expect(await dewi.records.get(bookId)).toEqual(record);
+    expect(await lost.database.db.values(sql`SELECT 1 FROM shared_books WHERE book_id = ${bookId}`)).toEqual([]);
+    expect(books).toBe(1);
+
+    // Refused from the record alone too, on an engine whose check has not run.
+    const fresh = new SyncEngine(lost.database, dewi.transport, dewi.keys, undefined, { shareRecords: dewi.records });
+    await expect(fresh.shareBook(bookId, { memberId: dewi.memberId, memberName: 'Dewi', deviceName: "Dewi's phone" })).rejects.toMatchObject({ code: 'RECORD_ELSEWHERE' });
+
+    expect(await lost.engine.discardShareRecord(bookId)).toBe(true);
+    expect(await dewi.records.get(bookId)).toBeNull();
+    const again = await lost.engine.shareBook(bookId, { memberId: dewi.memberId, memberName: 'Dewi', deviceName: "Dewi's phone" });
+    expect(again.relayBookId).not.toBe(r1);
+    expect((await dewi.records.get(bookId))!.relayBookId).toBe(again.relayBookId);
+  });
+
+  it('stopping the share here and sharing again is never refused', async () => {
+    const home = new Household();
+    const dewi = await home.device('Dewi');
+    const fandri = await home.device('Fandri');
+    const bookId = await home.share(dewi);
+    const r1 = home.relayBookId;
+    await home.join(fandri, dewi);
+    await home.settle();
+    await dewi.engine.stopSharing(bookId);
+    expect(await dewi.records.get(bookId)).toBeNull();
+    const again = await dewi.engine.shareBook(bookId, { memberName: 'Dewi', deviceName: "Dewi's phone" });
+    expect(again.relayBookId).not.toBe(r1);
+    expect((await dewi.records.get(bookId))!.relayBookId).toBe(again.relayBookId);
   });
 });

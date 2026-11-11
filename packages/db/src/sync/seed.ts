@@ -56,7 +56,10 @@ export type SharingErrorCode =
   | 'SHARE_ENDED'
   | 'DEVICE_REMOVED'
   | 'NO_RECORD'
-  | 'HELD_ELSEWHERE';
+  | 'HELD_ELSEWHERE'
+  // This phone holds the record of an earlier share of the book (a lost share, §6.2): Share waits until it is brought
+  // back or discarded (review N2).
+  | 'RECORD_ELSEWHERE';
 
 /** The settings key under which a device remembers its own member in a book it stopped sharing or kept as its own (§8.6, final review C1). */
 export const REMEMBERED_MEMBER_KEY = (bookId: string) => `sharing.member.${bookId}`;

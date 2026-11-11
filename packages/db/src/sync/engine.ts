@@ -262,6 +262,14 @@ export class SyncEngine {
   private readonly recordDirty = new Set<string>();
   /** What this engine last wrote of each book's record, and when: the cursor alone waits `recordEveryMs`. */
   private readonly recordWritten = new Map<string, { at: number; record: ShareRecord }>();
+  /**
+   * Whether `checkShareRecords` has read the records once on this engine (review N1). Until then no record is written
+   * but by `shareBook` and `joinBook`: a sync or flush of a restored copy would otherwise overwrite the very record
+   * that shows it is behind.
+   */
+  private recordsChecked = false;
+  /** Books the check found `lost` here (review N2): Share waits for `discardShareRecord`. */
+  private readonly lostHere = new Set<string>();
 
   constructor(
     private readonly database: Database,
@@ -293,6 +301,7 @@ export class SyncEngine {
    */
   async shareBook(bookId: string, input: ShareInput): Promise<{ relayBookId: string; memberId: string; changeSets: number }> {
     await this.database.transaction((tx) => assertShareableTx(tx, bookId));
+    await this.refuseOverLostShare(bookId);
     const { bookId: relayBookId } = await this.transport.createBook(this.device.public);
     const [remembered] = await this.database.db.values<[string]>(sql`SELECT value FROM settings WHERE key = ${REMEMBERED_MEMBER_KEY(bookId)}`);
     const memberId = input.memberId ?? remembered?.[0] ?? uuidv7();
@@ -381,6 +390,10 @@ export class SyncEngine {
    * and cursor stay put.
    */
   async syncOnce(bookId: string, seen?: SeenLog): Promise<SyncOnceResult> {
+    // Review N1: detection comes first. A pull moves the cursor past own entries it does not apply, so a copy restored
+    // from after the share would read as caught up; the check, run once here if the app has not run it, keeps its
+    // replay point first. It never throws, and findings stay for the app's own call.
+    if (this.records && !this.recordsChecked) await this.checkShareRecords();
     const result = await this.syncBook(bookId, seen);
     // Withdrawal rate (R9): what apply just put on this phone's own foreign accounts was queued, since capture was
     // paused; recalculated now, with capture on, so the new figures go to the household as an ordinary edit (sent on
@@ -1302,12 +1315,55 @@ export class SyncEngine {
   /* --------------------------------------------------------- share records */
 
   /**
+   * Review N2: Share is refused while this phone holds its own record of an earlier share of the book, or the check
+   * found the book `lost`: a new share would replace the record that can bring the old one back (and the partner
+   * still on it). `discardShareRecord`, after the screen asks, lets it through. Before any relay book is made.
+   */
+  private async refuseOverLostShare(bookId: string): Promise<void> {
+    let held = this.lostHere.has(bookId);
+    if (!held && this.records) {
+      try {
+        const found = await this.records.get(bookId);
+        held = found !== null && found.deviceId === this.deviceId;
+      } catch (error) {
+        this.recordProblem(bookId, error);
+      }
+    }
+    if (held) {
+      throw new SharingError('RECORD_ELSEWHERE', 'This workspace was shared before on this phone. Bring that share back, or discard it, before sharing again.');
+    }
+  }
+
+  /**
+   * Discards this device's record of an earlier share of the book, and its replay point, after the screen asked
+   * (review N2): that share can no longer be brought back here, and Share goes through. A record of another device
+   * stays. Whether a record was removed.
+   */
+  async discardShareRecord(bookId: string): Promise<boolean> {
+    this.lostHere.delete(bookId);
+    this.recordWritten.delete(bookId);
+    this.recordDirty.delete(bookId);
+    await this.clearReplayPoint(bookId);
+    if (!this.records) return false;
+    try {
+      const found = await this.records.get(bookId);
+      if (!found || found.deviceId !== this.deviceId) return false;
+      await this.records.remove(bookId);
+      return true;
+    } catch (error) {
+      this.recordProblem(bookId, error);
+      return false;
+    }
+  }
+
+  /**
    * Every active book here with no share record gets one (§6.1 backfill): shares made on an older build are covered
    * from now on. A book whose keys do not open here (a restored copy, §8.7) and a book in no workspace (an event's, a
-   * group log) get none. Returns how many were written.
+   * group log) get none. Returns how many were written. Writes nothing until `checkShareRecords` has run on this
+   * engine (review N1): call it after the check.
    */
   async backfillShareRecords(): Promise<number> {
-    if (!this.records) return 0;
+    if (!this.records || !this.recordsChecked) return 0;
     let have: Set<string>;
     try {
       have = new Set((await this.records.list()).map((r) => r.bookId));
@@ -1338,17 +1394,21 @@ export class SyncEngine {
       records = await this.records.list();
     } catch (error) {
       this.recordProblem(null, error);
-      return [];
+      return []; // nothing read: record writes stay held until a check reads them
     }
     const findings: ShareRecordFinding[] = [];
     for (const record of records) {
       if (record.deviceId !== this.deviceId) continue;
       try {
-        findings.push(await this.findingOf(record));
+        const finding = await this.findingOf(record);
+        if (finding.kind === 'lost') this.lostHere.add(record.bookId);
+        else this.lostHere.delete(record.bookId);
+        findings.push(finding);
       } catch (error) {
         this.recordProblem(record.bookId, error);
       }
     }
+    this.recordsChecked = true;
     return findings;
   }
 
@@ -1454,6 +1514,7 @@ export class SyncEngine {
    * Writes the book's record now; whether one was written. Never throws: a store failure is warned and reported.
    * Only `replace` (`shareBook`, `joinBook`: this device's own act starts the share) writes over a record of another
    * relay book; every other write leaves one alone (review C1): the database may be an older copy than the record.
+   * Before `checkShareRecords` has run on this engine only `replace` writes (review N1).
    */
   private async writeRecord(bookId: string, replace = false): Promise<boolean> {
     if (!this.records) return false;
@@ -1471,6 +1532,7 @@ export class SyncEngine {
   }
 
   private async putRecord(record: ShareRecord, replace: boolean): Promise<boolean> {
+    if (!replace && !this.recordsChecked) return false;
     try {
       if (!replace) {
         const stored = await this.records!.get(record.bookId);
@@ -1495,7 +1557,7 @@ export class SyncEngine {
    * once `recordEveryMs` has passed since this engine last wrote the record. The first sync after start writes.
    */
   private async recordAfterSync(bookId: string, pushed: number): Promise<void> {
-    if (!this.records) return;
+    if (!this.records || !this.recordsChecked) return;
     const last = this.recordWritten.get(bookId);
     if (!last || this.recordDirty.has(bookId)) {
       await this.writeRecord(bookId);
