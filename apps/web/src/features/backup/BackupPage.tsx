@@ -6,6 +6,7 @@ import { useApp } from '../../app/context';
 import { newerDatabaseVersion } from '../../db/newer-database';
 import { NO_SNAPSHOTS, type SnapshotInfo, type SnapshotStore } from '../../db/open';
 import { restoreSnapshot } from '../../db/snapshots';
+import { RestoreCancelledError, sharingGate } from '../../db/restore-sharing';
 import { saveBytes, savedWhere } from '../../lib/download';
 import { holdPhotosOrRefuse } from '../../photos/hold-before-restore';
 import { photos } from '../../photos/store';
@@ -223,6 +224,7 @@ export function BackupPage() {
       source: restore.file ? 'Backup page, a kept copy' : 'Backup page, a backup file',
       live: () => database.exportBytes(),
       restore: (bytes) => database.importBytes(bytes),
+      checkSharing: sharingGate(),
     });
   }
 
@@ -240,6 +242,12 @@ export function BackupPage() {
        * until the app is updated — so the sentence says what is actually left to do rather than "try it
        * again", which from here would mean choosing the file and downloading the safety copy all over.
        */
+      if (e instanceof RestoreCancelledError) {
+        // Called off at the sharing warning: the data here is as it was.
+        setPending(null);
+        setBusy(false);
+        return;
+      }
       const version = newerDatabaseVersion(e);
       if (version === null) {
         setError(e);

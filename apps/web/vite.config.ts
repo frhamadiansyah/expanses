@@ -2,6 +2,12 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
+/*
+ * A diagnostic build (CICIS_INSPECTABLE=1, see capacitor.config.ts) installs `window.__expansesSync`. One variable for
+ * both halves, so the web view and the helper cannot be turned on apart; VITE_INSPECTABLE=1 alone does the web half.
+ */
+if (process.env.CICIS_INSPECTABLE === '1') process.env.VITE_INSPECTABLE = '1';
+
 export default defineConfig({
   plugins: [
     react(),

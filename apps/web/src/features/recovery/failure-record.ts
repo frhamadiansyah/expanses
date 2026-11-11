@@ -5,7 +5,7 @@ import type { RecoveryReason } from '../../db/open';
 import { readSafetyFile, safetyFolderFiles, writeSafetyFile } from '../../db/snapshots';
 
 /** The app's version and build from the native shell, or null on the web or when it will not say in time. */
-async function buildName(): Promise<string | null> {
+export async function buildName(): Promise<string | null> {
   const info = Shell.getInfo().then((found) => `${found.version} (${found.build})`);
   const late = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500));
   return Promise.race([info, late]);
