@@ -63,6 +63,7 @@ import {
   type MemberTransferInput,
   type MemberTransferPatch,
 } from './net-worth/transfers';
+import { heldElsewhereOf } from './held';
 import { MissingEpochKeyError, Sealer } from './seal';
 import type { ShareRecord, ShareRecordStore } from './share-records';
 import { assertShareableTx, catchUpTx, emitNewerTx, keepClocksTx, REMEMBERED_MEMBER_KEY, SeenLog, SharingError, seedBookTx } from './seed';
@@ -731,30 +732,57 @@ export class SyncEngine {
     const now = new Date(this.now()).toISOString();
 
     this.sealer.forget();
-    await this.database.transaction(async (tx) => {
-      if (rejoin) {
-        await tx.run(sql`DELETE FROM book_epoch_keys WHERE book_id = ${bookId}`);
-        await tx.run(sql`DELETE FROM sync_outbox WHERE book_id = ${bookId}`); // what waited for the old relay book goes out again as unknown rows below
-        await tx.run(sql`DELETE FROM sync_skipped WHERE book_id = ${bookId}`); // replayed refusals are recorded once, not twice (final review, minor 5)
-        // Every other device is pinned again by its introduction in the log this rejoin pulls (§5.4): a device row
-        // from before — a device the new share never admitted, or one admitted afresh at another time — would keep its
-        // fixed fields (C1 of the authority rules) and leave this copy different from its peers'.
-        await tx.run(sql`DELETE FROM book_devices WHERE book_id = ${bookId} AND device_id <> ${this.deviceId}`);
-        await tx.run(sql`DELETE FROM sync_field_clocks WHERE book_id = ${bookId} AND entity = 'device'`);
-        await tx.run(sql`DELETE FROM sync_tombstones WHERE book_id = ${bookId} AND entity = 'device'`);
-        // A copy kept as its own has no row left (N3): it gets one, as its remembered member.
+    const storeKeys = async (tx: Tx) => {
+      for (const k of keys) await this.sealer.storeEpochKeyTx(tx, bookId, k.epoch, base64UrlToBytes(k.key));
+    };
+    // The introduction (§8.2 step 7, §5.4): this device, unless linking or rejoining this member, and the signed terms
+    // it joins on. Written as one change-set of its own, so the terms travel with the device op they vouch for.
+    const introduce = async () => {
+      await this.database.transaction(async (tx) => {
+        const newMember = !terms.sameMember && !rejoin;
+        if (newMember) {
+          await tx.run(sql`INSERT INTO book_members (book_id, member_id, name, role, joined_at) VALUES (${bookId}, ${memberId}, ${input.memberName}, 'member', ${now})`);
+        }
+        // The same device rejoining (an unshared copy, C1) already has its row: it is this device's again.
         await tx.run(sql`
-          INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${bookId}, ${claim.bookId}, ${epoch}, ${memberId}, 'active', ${now})
-          ON CONFLICT (book_id) DO UPDATE SET relay_book_id = excluded.relay_book_id, epoch = excluded.epoch, state = 'active', synced_at = NULL, unshared_by = NULL, unshared_reason = NULL`);
-        await tx.run(sql`INSERT INTO sync_cursor (book_id, applied_seq) VALUES (${bookId}, 0) ON CONFLICT (book_id) DO UPDATE SET applied_seq = 0`);
-        await clearAuthorityTx(tx, bookId); // rebuilt from the log, entry by entry, as the pull applies it again
-        // What changed here while nothing was captured gets its clock before the pull, so the log's older values do
-        // not overwrite it; a copy kept as its own gets back the clocks it kept (recovery review, N2).
-        // D-A6: once every lineage points at its posted head, a purchase here with no lineage (a copy from before the
-        // share) gets one, so the pull finds it and edits this row instead of posting the purchase again under another
-        // id; the log's values win on it.
-        await catchUpTx(tx, { bookId, memberId, epoch }, this.now(), { recordLineages: true });
-      } else {
+          INSERT INTO book_devices (book_id, device_id, member_id, name, sign_jwk, agree_jwk, added_at, removed_at, app_version)
+          VALUES (${bookId}, ${this.deviceId}, ${memberId}, ${input.deviceName}, ${JSON.stringify(this.device.public.signJwk)}, ${JSON.stringify(this.device.public.agreeJwk)}, ${now}, NULL, ${this.appVersion ?? null})
+          ON CONFLICT (book_id, device_id) DO UPDATE SET member_id = excluded.member_id, name = excluded.name, added_at = excluded.added_at, removed_at = NULL, app_version = excluded.app_version`);
+        const book = { bookId, memberId, epoch };
+        const ops = [
+          ...(await rowUpsertsTx(tx, book, 'device')).filter((op) => op.id === this.deviceId),
+          ...(newMember ? (await rowUpsertsTx(tx, book, 'member')).filter((op) => op.id === memberId) : []),
+        ];
+        await writeChangeSetsTx(tx, captureConfigOf(this.database), book, ops, { invite: terms });
+      });
+      await this.writeRecord(bookId, true); // before the sync, which may fail: the share is this device's from here
+    };
+
+    let result: SyncOnceResult;
+    if (rejoin) {
+      result = await this.resetAndPull(
+        { bookId, memberId, epoch },
+        {
+          resetTx: async (tx) => {
+            await tx.run(sql`DELETE FROM book_epoch_keys WHERE book_id = ${bookId}`);
+            await tx.run(sql`DELETE FROM sync_outbox WHERE book_id = ${bookId}`); // what waited for the old relay book goes out again as unknown rows below
+            // Every other device is pinned again by its introduction in the log this rejoin pulls (§5.4): a device row
+            // from before — a device the new share never admitted, or one admitted afresh at another time — would keep its
+            // fixed fields (C1 of the authority rules) and leave this copy different from its peers'.
+            await tx.run(sql`DELETE FROM book_devices WHERE book_id = ${bookId} AND device_id <> ${this.deviceId}`);
+            await tx.run(sql`DELETE FROM sync_field_clocks WHERE book_id = ${bookId} AND entity = 'device'`);
+            await tx.run(sql`DELETE FROM sync_tombstones WHERE book_id = ${bookId} AND entity = 'device'`);
+            // A copy kept as its own has no row left (N3): it gets one, as its remembered member.
+            await tx.run(sql`
+              INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${bookId}, ${claim.bookId}, ${epoch}, ${memberId}, 'active', ${now})
+              ON CONFLICT (book_id) DO UPDATE SET relay_book_id = excluded.relay_book_id, epoch = excluded.epoch, state = 'active', synced_at = NULL, unshared_by = NULL, unshared_reason = NULL`);
+          },
+          afterResetTx: storeKeys,
+          beforePull: introduce,
+        },
+      );
+    } else {
+      await this.database.transaction(async (tx) => {
         await tx.run(sql`
           INSERT INTO books (id, workspace_id, name, kind, base_currency, count_events_in_budget, sort_order, archived_at, created_at)
           VALUES (${bookId}, ${input.ws.workspaceId}, ${preview.bookName}, 'shared', ${preview.baseCurrency}, 0,
@@ -762,43 +790,99 @@ export class SyncEngine {
         await tx.run(
           sql`INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${bookId}, ${claim.bookId}, ${epoch}, ${memberId}, 'active', ${now})`,
         );
-      }
-      for (const k of keys) await this.sealer.storeEpochKeyTx(tx, bookId, k.epoch, base64UrlToBytes(k.key));
-    });
-    // The introduction (§8.2 step 7, §5.4): this device, unless linking or rejoining this member, and the signed terms
-    // it joins on. Written as one change-set of its own, so the terms travel with the device op they vouch for.
-    await this.database.transaction(async (tx) => {
-      const newMember = !terms.sameMember && !rejoin;
-      if (newMember) {
-        await tx.run(sql`INSERT INTO book_members (book_id, member_id, name, role, joined_at) VALUES (${bookId}, ${memberId}, ${input.memberName}, 'member', ${now})`);
-      }
-      // The same device rejoining (an unshared copy, C1) already has its row: it is this device's again.
-      await tx.run(sql`
-        INSERT INTO book_devices (book_id, device_id, member_id, name, sign_jwk, agree_jwk, added_at, removed_at, app_version)
-        VALUES (${bookId}, ${this.deviceId}, ${memberId}, ${input.deviceName}, ${JSON.stringify(this.device.public.signJwk)}, ${JSON.stringify(this.device.public.agreeJwk)}, ${now}, NULL, ${this.appVersion ?? null})
-        ON CONFLICT (book_id, device_id) DO UPDATE SET member_id = excluded.member_id, name = excluded.name, added_at = excluded.added_at, removed_at = NULL, app_version = excluded.app_version`);
-      const book = { bookId, memberId, epoch };
-      const ops = [
-        ...(await rowUpsertsTx(tx, book, 'device')).filter((op) => op.id === this.deviceId),
-        ...(newMember ? (await rowUpsertsTx(tx, book, 'member')).filter((op) => op.id === memberId) : []),
-      ];
-      await writeChangeSetsTx(tx, captureConfigOf(this.database), book, ops, { invite: terms });
-    });
-    await this.writeRecord(bookId, true); // before the sync, which may fail: the share is this device's from here
+        await storeKeys(tx);
+      });
+      await introduce();
+      result = await this.syncOnce(bookId);
+    }
+    await this.writeRecord(bookId, true);
+    return { bookId, memberId, result };
+  }
 
-    const seen = rejoin ? new SeenLog() : undefined;
+  /**
+   * The reset a same-book rejoin (§8.7) and Place them now (sharing resilience §4.3) share, then the whole log pulled
+   * again over the rows here. In one transaction: every skip of the book goes (a pull from 0 records each refusal again,
+   * once), then `resetTx`'s own steps, the cursor back to 0, the authority view cleared to be rebuilt entry by entry,
+   * and `catchUpTx` (D-A6: lineages for purchases here that have none, after every lineage points at its head), then
+   * `afterResetTx`. `beforePull` runs between that transaction and the pull. After a pull that did not stop, every
+   * member row goes to the view's (S4, task 9a) and what this device holds that the log does not say goes out, each
+   * field at its own clock (§8.7, N2).
+   *
+   * `replayOwn` is for this device's own entries past `fromSeq` (D-B5); the pull takes it from Task B1 on.
+   */
+  private async resetAndPull(
+    book: { bookId: string; memberId: string; epoch: number },
+    steps: {
+      replayOwn?: { fromSeq: number };
+      resetTx?: (tx: Tx) => Promise<void>;
+      afterResetTx?: (tx: Tx) => Promise<void>;
+      beforePull?: () => Promise<void>;
+    },
+  ): Promise<SyncOnceResult> {
+    const { bookId } = book;
+    await this.database.transaction(async (tx) => {
+      await tx.run(sql`DELETE FROM sync_skipped WHERE book_id = ${bookId}`); // replayed refusals are recorded once, not twice (final review, minor 5)
+      await steps.resetTx?.(tx);
+      await tx.run(sql`INSERT INTO sync_cursor (book_id, applied_seq) VALUES (${bookId}, 0) ON CONFLICT (book_id) DO UPDATE SET applied_seq = 0`);
+      await clearAuthorityTx(tx, bookId); // rebuilt from the log, entry by entry, as the pull applies it again
+      // What changed here while nothing was captured gets its clock before the pull, so the log's older values do
+      // not overwrite it; a copy kept as its own gets back the clocks it kept (recovery review, N2).
+      // D-A6: once every lineage points at its posted head, a purchase here with no lineage (a copy from before the
+      // share) gets one, so the pull finds it and edits this row instead of posting the purchase again under another
+      // id; the log's values win on it.
+      await catchUpTx(tx, book, this.now(), { recordLineages: true });
+      await steps.afterResetTx?.(tx);
+    });
+    await steps.beforePull?.();
+    const seen = new SeenLog();
     let result = await this.syncOnce(bookId, seen);
-    if (rejoin && !result.stopped) {
+    if (!result.stopped) {
       // S4 (task 9a): an edit the backup made and drained before it was taken comes back under the old device's id,
       // no longer "own", so the pull refused it without putting the row back. Every member row goes to the view's.
       await this.database.transaction((tx) => withCapturePaused(tx, () => reconcileAllMembersTx(tx, bookId)));
       // §8.7, N2: what this device holds that the log does not say — rows it never names, fields and voids newer here
       // than there, rows deleted here — goes out, each field at its own clock.
-      const emitted = await this.database.transaction((tx) => emitNewerTx(tx, captureConfigOf(this.database), { bookId, memberId, epoch }, seen!));
+      const emitted = await this.database.transaction((tx) => emitNewerTx(tx, captureConfigOf(this.database), book, seen));
       if (emitted > 0) result = { ...result, pushed: result.pushed + (await this.drain(bookId)) };
     }
-    await this.writeRecord(bookId, true);
-    return { bookId, memberId, result };
+    return result;
+  }
+
+  /**
+   * Place them now (sharing resilience §4.3): rows the share sent while another copy on this phone held them (D-A3,
+   * `HELD_ELSEWHERE` skips) come in once that copy is gone. The book must be shared and active here (`NOT_FOUND`), and
+   * no holder may still exist (`HELD_ELSEWHERE`, naming it). A holder whose book is gone from here is dead: a lineage
+   * row it left behind (a copy deleted by an older build, which kept them) goes first, so the purchase posts as new.
+   * Then the reset a rejoin does, without a claim, and the whole log again: applying it over rows already applied
+   * changes nothing (equal clocks never win), so a second run places nothing. `placed` counts the held rows that came
+   * in; `stillHeld` those set aside again (a holder that turned up meanwhile).
+   */
+  async placeHeldRows(bookId: string): Promise<{ placed: number; stillHeld: number; result: SyncOnceResult }> {
+    const shared = await this.requireActive(bookId);
+    const held = await heldElsewhereOf(this.database, bookId);
+    const live = held.find((row) => row.holderExists);
+    if (live) {
+      const holder = live.holderName ?? 'another copy on this phone';
+      throw new SharingError('HELD_ELSEWHERE', `Part of this share is held by ${holder} on this phone. Delete that copy to bring it in.`);
+    }
+    const book = { bookId, memberId: shared.memberId, epoch: shared.epoch };
+    const result = await this.resetAndPull(book, {
+      resetTx: async (tx) => {
+        for (const row of held) {
+          // A lineage another book here still files is that book's (D-A5); only one of a book gone from here goes.
+          const gone = await tx.values(sql`
+            SELECT 1 FROM sync_lineage WHERE lineage_id = ${row.id} AND book_id = ${row.holderBookId}
+              AND book_id NOT IN (SELECT id FROM books) AND book_id NOT IN (SELECT book_id FROM shared_books)`);
+          if (gone.length === 0) continue;
+          await tx.run(sql`DELETE FROM sync_lineage WHERE lineage_id = ${row.id}`);
+          await tx.run(sql`DELETE FROM sync_lineage_last WHERE lineage_id = ${row.id}`);
+        }
+      },
+    });
+    const after = new Set((await heldElsewhereOf(this.database, bookId)).map((row) => `${row.entity}:${row.id}`));
+    const placed = held.filter((row) => !after.has(`${row.entity}:${row.id}`)).length;
+    await this.writeRecord(bookId);
+    return { placed, stillHeld: after.size, result };
   }
 
   /* ------------------------------------------------------- removal, rotation */
