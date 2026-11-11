@@ -179,7 +179,7 @@ describe('debts', () => {
   it('lists them the way someone would say them, with the code behind each', () => {
     expect(DEBT_ITEMS.map((item) => item.code)).toEqual(['101', '101', '101', '102', '101', '101', '101', '103', '109']);
     expect(debtItem('home_mortgage').behaviour).toMatchObject({ opens: 'loan', asksRate: true });
-    expect(debtItem('online_loan').behaviour).toMatchObject({ opens: 'loan', asksRate: false });
+    expect(debtItem('online_loan').behaviour).toMatchObject({ opens: 'loan', asksRate: true, ratePer: 'month' });
     expect(debtItem('credit_card').behaviour).toMatchObject({ opens: 'card' });
     expect(debtItem('affiliate_debt').behaviour).toMatchObject({ opens: 'person', direction: 'borrowed' });
     expect(debtItem('other_debt')).toMatchObject({ code: '109', behaviour: { opens: 'person', direction: 'borrowed' } });
