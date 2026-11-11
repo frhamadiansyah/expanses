@@ -6,7 +6,8 @@ import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { openingRateFor, ratePreview } from '../../lib/rates';
 import { Empty, ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, LargeTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, LargeTitle, PickerRow, SCREEN, TextRow } from '../../ui/native';
+import { CurrencySheet } from '../currency/CurrencySheet';
 import { pocketsOf, readPockets } from './pockets';
 
 export function AddPocketPage() {
@@ -61,6 +62,7 @@ export function AddCurrencyForm({
   const taken = new Set(plain ? [parent!.currency] : pocketsOf(accountId, accounts).map((p) => p.currency));
   const offered = CURRENCIES.filter((c) => !taken.has(c.code));
   const [currency, setCurrency] = useState('');
+  const [pickingCurrency, setPickingCurrency] = useState(false);
   const [balance, setBalance] = useState('');
   // The currency's opening is dated today: asking for a day made the sheet a form for backdating, which it is not.
   const openedOn = isoDate();
@@ -102,13 +104,7 @@ export function AddCurrencyForm({
     <form ref={formRef} id={formId} onSubmit={submit}>
       <ErrorBox error={error} />
       <InsetGroup className="!mb-0">
-        <SelectRow label="Currency" value={code} onChange={(e) => { setCurrency(e.target.value); setRate(''); }}>
-          {offered.map((c) => (
-            <option key={c.code} value={c.code}>
-              {`${c.code} · ${c.name}`}
-            </option>
-          ))}
-        </SelectRow>
+        <PickerRow label="Currency" value={code} onOpen={() => setPickingCurrency(true)} />
         <TextRow label={`Opening ${code}`} value={balance} onChange={(e) => setBalance(e.target.value)} inputMode="decimal" placeholder="Amount" />
         {code !== ws.baseCurrency && (
           <TextRow
@@ -122,6 +118,18 @@ export function AddCurrencyForm({
           />
         )}
       </InsetGroup>
+      {pickingCurrency && (
+        <CurrencySheet
+          value={code}
+          baseCurrency={ws.baseCurrency}
+          exclude={[...taken].filter((c): c is string => !!c)}
+          onPick={(next) => {
+            setCurrency(next);
+            setRate('');
+          }}
+          onClose={() => setPickingCurrency(false)}
+        />
+      )}
     </form>
   );
 }

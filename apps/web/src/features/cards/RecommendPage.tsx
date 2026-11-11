@@ -1,11 +1,12 @@
-import { type CompareTarget, comparisonRedemption, CURRENCIES, formatMinor, groupTypedAmount, isoDate, mccName, parseGroupedMajor, type Recommendation, recommendCards, resolveMcc } from '@expanses/core';
+import { type CompareTarget, comparisonRedemption, formatMinor, groupTypedAmount, isoDate, mccName, parseGroupedMajor, type Recommendation, recommendCards, resolveMcc } from '@expanses/core';
 import { mccSourcesFor, spendingSwitchOn } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
-import { InsetGroup, InsetRow, LargeTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, LargeTitle, PickerRow, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { CurrencySheet } from '../currency/CurrencySheet';
 import { CategoryOptions } from './options';
 import { useProgramAccounts } from './card-queries';
 import { compareTargets } from './recommend-targets';
@@ -18,6 +19,7 @@ export function RecommendPage() {
   const all = useAccounts().data ?? [];
   const [amount, setAmount] = useState('');
   const [spentIn, setSpentIn] = useState('');
+  const [pickingCurrency, setPickingCurrency] = useState(false);
   const [categoryId, setCategoryId] = useState('');
   const [merchant, setMerchant] = useState('');
   const [date, setDate] = useState(isoDate());
@@ -93,19 +95,12 @@ export function RecommendPage() {
             placeholder="Amount"
             required
           />
-          <SelectRow
+          <PickerRow
             label="Spent in"
             hint="Currency the merchant charges. Some cards earn more in certain currencies."
-            value={spentIn}
-            onChange={(e) => setSpentIn(e.target.value)}
-          >
-            <option value="">{ws.baseCurrency}</option>
-            {CURRENCIES.filter((c) => c.code !== ws.baseCurrency).map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.code}
-              </option>
-            ))}
-          </SelectRow>
+            value={spentIn || ws.baseCurrency}
+            onOpen={() => setPickingCurrency(true)}
+          />
           <SelectRow label="Category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
             <CategoryOptions ownerWide accounts={all} kind="expense" />
           </SelectRow>
@@ -132,6 +127,15 @@ export function RecommendPage() {
         </InsetGroup>
       </form>
 
+      {pickingCurrency && (
+        <CurrencySheet
+          value={spentIn || ws.baseCurrency}
+          baseCurrency={ws.baseCurrency}
+          // The workspace's own currency is the empty answer: nothing is converted.
+          onPick={(code) => setSpentIn(code === ws.baseCurrency ? '' : code)}
+          onClose={() => setPickingCurrency(false)}
+        />
+      )}
       <ErrorBox error={error} />
 
       {results && results.list.length === 0 && <Empty>No credit cards yet.</Empty>}

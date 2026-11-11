@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { fillDay } from './add-asset';
-import { setCurrency } from './currency-field';
+import { currencyRow, setCurrency } from './currency-field';
 
 /** The owner's preview switch (developer settings, linked from nowhere): the US list, granted on this device. */
 export async function setForeignList(page: Page, on: boolean) {
@@ -49,7 +49,7 @@ export async function addHoldingFlow(
     await page.getByLabel('Ticker', { exact: true }).pressSequentially(o.nameIt.ticker);
     await page.getByLabel('Name', { exact: true }).pressSequentially(o.nameIt.name);
     await page.getByLabel('Market', { exact: true }).pressSequentially(o.nameIt.market);
-    await setCurrency(page.getByLabel('Currency', { exact: true }), o.nameIt.currency);
+    await setCurrency(currencyRow(page), o.nameIt.currency);
     if (o.nameIt.lotSize) await page.getByLabel('Shares in a lot', { exact: true }).pressSequentially(o.nameIt.lotSize);
     await page.getByRole('button', { name: 'Continue' }).click();
   } else {
@@ -59,7 +59,7 @@ export async function addHoldingFlow(
   else {
     await page.getByLabel('Broker', { exact: true }).selectOption({ label: 'Another broker…' });
     await page.getByLabel('Broker name').pressSequentially(o.broker.new);
-    if (o.broker.currency) await page.getByLabel('Its currency').selectOption(o.broker.currency);
+    if (o.broker.currency) await setCurrency(currencyRow(page, 'Its currency'), o.broker.currency);
   }
   await page.getByLabel(/^(Lots|Shares)$/).pressSequentially(o.quantity);
   await page.getByLabel(/^Price per share/).pressSequentially(o.price);

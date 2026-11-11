@@ -1,4 +1,4 @@
-import { CURRENCIES, isoDate } from '@expanses/core';
+import { isoDate } from '@expanses/core';
 import { applyCategoryStart, archiveBook, BookError, type BookDeletePlan, type BookKind, type BookRow, deleteBook, findRate, planBookDelete, renameBook, restoreBook, setBookBaseCurrency, setBookEventsInBudget, setBookKind } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
@@ -13,6 +13,7 @@ import { useSharedBooks } from '../sharing/queries';
 import { ShareRow } from '../sharing/SharingSection';
 import { BusinessListAlert } from './BusinessListAlert';
 import { DeleteWorkspaceSheet } from './DeleteWorkspaceSheet';
+import { CurrencySheet } from '../currency/CurrencySheet';
 import { useArchivedBooks, useBooks } from './queries';
 
 export const KIND_LABEL: Record<string, string> = { personal: 'Personal', business: 'Business', family: 'Family', shared: 'Shared' };
@@ -59,28 +60,6 @@ function NameSheet({ current, busy, onSave, onClose }: { current: string; busy: 
           <SubmitRow label="Save" disabled={!ok} />
         </InsetGroup>
       </form>
-    </Sheet>
-  );
-}
-
-/** The choice of currency: every code, the current one ticked. */
-function CurrencySheet({ current, onChoose, onClose }: { current: string; onChoose: (code: string) => void; onClose: () => void }) {
-  return (
-    <Sheet title="Currency" onClose={onClose} grouped>
-      <InsetGroup wide>
-        {CURRENCIES.map((option) => (
-          <InsetRow
-            key={option.code}
-            testId={`currency-${option.code}`}
-            title={option.code}
-            subtitle={option.name}
-            value={option.code === current ? <Check size={18} aria-label="Current" /> : undefined}
-            valueTone="ink"
-            chevron={false}
-            onClick={() => onChoose(option.code)}
-          />
-        ))}
-      </InsetGroup>
     </Sheet>
   );
 }
@@ -330,11 +309,9 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
       {renaming && <NameSheet current={book.name} busy={busy} onSave={rename} onClose={() => setRenaming(false)} />}
       {choosingCurrency && (
         <CurrencySheet
-          current={currency}
-          onChoose={(code) => {
-            setCurrency(code);
-            setChoosingCurrency(false);
-          }}
+          value={currency}
+          baseCurrency={book.baseCurrency}
+          onPick={setCurrency}
           onClose={() => setChoosingCurrency(false)}
         />
       )}

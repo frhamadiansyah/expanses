@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { currencyRow, setCurrency } from './currency-field';
 import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
 import { addCap, budgetTab, capField, openCapOf, openDrawer, openEditBudgets } from './budget';
@@ -106,7 +107,7 @@ test('row 9 — a workspace that reads in dollars types and converts in cents', 
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Studio');
   await sheet.getByLabel('Starts with').selectOption({ label: 'Copy from Personal' });
-  await sheet.getByLabel('Reads in').selectOption('USD');
+  await setCurrency(currencyRow(sheet, 'Reads in'), 'USD');
   await sheet.getByRole('button', { name: 'Create workspace' }).click();
   await expect(sheet).toHaveCount(0);
   await page.goto('/transactions');

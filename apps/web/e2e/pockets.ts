@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs';
-import { setCurrency } from './currency-field';
+import { currencyRow, setCurrency } from './currency-field';
 import { expect, type Page } from '@playwright/test';
 import BetterSqlite3 from 'better-sqlite3';
 import { walletCard } from './accounts';
@@ -27,7 +27,7 @@ export async function openWithPockets(
   await page.getByLabel('Multi-currency', { exact: true }).check();
   for (let i = 2; i < account.pockets.length; i += 1) await page.getByRole('button', { name: 'Add another currency' }).click();
   for (const [i, pocket] of account.pockets.entries()) {
-    await setCurrency(page.getByLabel(`Pocket ${i + 1}`, { exact: true }), pocket.currency);
+    await setCurrency(currencyRow(page, `Pocket ${i + 1}`), pocket.currency);
     await page.getByLabel(`Opening ${pocket.currency}`, { exact: true }).pressSequentially(pocket.balance);
     if (pocket.rate) await page.getByLabel(new RegExp(`^Rate: \\w+ per 1 ${pocket.currency}$`)).pressSequentially(pocket.rate);
   }

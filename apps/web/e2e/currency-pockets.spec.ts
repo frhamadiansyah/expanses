@@ -5,7 +5,7 @@ import { openNewAsset } from './add-asset';
 import { openDrawers } from './drawers';
 import { ageRates, forgetRates, mockRates, openWithPockets, pickPocket } from './pockets';
 import { chooseTo } from './add-transaction';
-import { setCurrency } from './currency-field';
+import { currencyRow, pickInSheet, setCurrency } from './currency-field';
 import { pickView } from './wallet';
 
 test.beforeEach(({ page }) => {
@@ -81,8 +81,9 @@ test('a pocket can be added, in a currency with no decimals, at a typed rate', a
   await walletCard(page, 'Bank One Valas Plus').click();
   await page.getByRole('button', { name: /^Add (a )?currency$/ }).first().click();
   // Currencies it already has are not offered.
-  await expect(page.getByLabel('Currency', { exact: true }).locator('option[value="USD"]')).toHaveCount(0);
-  await setCurrency(page.getByLabel('Currency', { exact: true }), 'JPY');
+  await currencyRow(page).click();
+  await expect(page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: /^USD / })).toHaveCount(0);
+  await pickInSheet(page, 'JPY');
   await page.getByLabel('Opening JPY').pressSequentially('30000');
   await page.getByLabel('Rate: IDR per 1 JPY', { exact: true }).pressSequentially('108,3');
   await page.getByRole('dialog', { name: 'Add a currency' }).getByRole('button', { name: 'Add', exact: true }).click();
@@ -231,7 +232,7 @@ test('an account without pockets opened at the pockets routes says it has none (
   // And the route that *adds* a pocket refuses it: a pocket cannot hold a pocket.
   await page.goto(`/accounts/${id}/pocket`);
   await expect(page.getByText('it has no pockets')).toBeVisible();
-  await expect(page.getByLabel('Currency', { exact: true })).toHaveCount(0);
+  await expect(currencyRow(page)).toHaveCount(0);
 });
 
 test('a pocket’s ≈ line marks a rate held for an earlier day as last known (M5)', async ({ page }, testInfo) => {
@@ -428,7 +429,7 @@ test('a USD pocket added to an account reads its opening balance in dollars, not
   await openWithPockets(page, { name: 'Two Pocket', pockets: [{ currency: 'IDR', balance: '5400000' }, { currency: 'SGD', balance: '1150' }] });
   await walletCard(page, 'Two Pocket').click();
   await page.getByRole('button', { name: /^Add (a )?currency$/ }).first().click();
-  await setCurrency(page.getByLabel('Currency', { exact: true }), 'USD');
+  await setCurrency(currencyRow(page), 'USD');
   await page.getByLabel('Opening USD').pressSequentially('2400');
   await page.getByLabel('Rate: IDR per 1 USD', { exact: true }).pressSequentially('16250');
   await page.getByRole('dialog', { name: 'Add a currency' }).getByRole('button', { name: 'Add', exact: true }).click();

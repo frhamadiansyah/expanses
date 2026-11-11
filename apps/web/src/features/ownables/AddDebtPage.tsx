@@ -1,5 +1,5 @@
 import { CATALOG, type CatalogEntry } from '@expanses/catalog';
-import { CURRENCIES, debtItem, groupTypedAmount, isoDate } from '@expanses/core';
+import { debtItem, groupTypedAmount, isoDate } from '@expanses/core';
 import { applyCatalogEntry, createAccount, createCardAccount, openDebtBalance, saveCardTerms, saveLoanTerms, setLoanItem } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { Search } from 'lucide-react';
@@ -9,7 +9,7 @@ import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { openingRateFor, ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
-import { type GroupChild, InsetGroup, InsetRow, PushedTitle, SCREEN, SelectRow, TAP, TextRow } from '../../ui/native';
+import { type GroupChild, InsetGroup, InsetRow, PickerRow, PushedTitle, SCREEN, SelectRow, TAP, TextRow } from '../../ui/native';
 import { KeyboardStrip } from '../../ui/native/KeyboardStrip';
 import { issuerChoices, useWorkspaceIssuers } from '../cards/card-queries';
 import { memberLevelsOf } from '../cards/catalog-picker';
@@ -17,6 +17,7 @@ import { catalogueOffers, entryOnRow } from './card-row';
 import { CardSearch } from './CardSearch';
 import { fieldsFor, handOverRows } from './catalogue-view';
 import { cardAccountName, type DebtItemDraft, emptyDebtItemDraft, planNewCard, planNewDebt, splitCardName } from './debt-form';
+import { CurrencySheet } from '../currency/CurrencySheet';
 import { OwnablePicker } from './OwnablePicker';
 import { BankNameRow, type EmbeddedForm, MoneyRow } from './CashAccountForm';
 import { useShareOnAdd } from '../sharing/ShareWithHousehold';
@@ -77,6 +78,7 @@ function DebtItemForm({ item }: { item: string }) {
   // A debt in another currency is ordinary — a dollar car loan is a dollar car loan — so the workspace's own is
   // only the answer already filled in. The figure is read in whichever currency is chosen.
   const [currency, setCurrency] = useState(ws.baseCurrency);
+  const [pickingCurrency, setPickingCurrency] = useState(false);
   // A debt in a currency the device holds no rate for: the same row the money accounts ask for, for the same
   // reason — the ledger converts with a rate, and a typed one is stored for the day it is owed from.
   const [manualRate, setManualRate] = useState('');
@@ -162,13 +164,7 @@ function DebtItemForm({ item }: { item: string }) {
         {/* A person's debt is filed under their name, so there is nothing else to call it. */}
         {!owedToAPerson && <TextRow label="Name" value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder="Loan name" />}
         <TextRow label="Owed now" value={draft.owed} onChange={(e) => set({ owed: e.target.value })} inputMode="decimal" placeholder="Amount" required />
-        <SelectRow label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-          {CURRENCIES.map((c) => (
-            <option key={c.code} value={c.code}>
-              {c.code} — {c.name}
-            </option>
-          ))}
-        </SelectRow>
+        <PickerRow label="Currency" value={currency} onOpen={() => setPickingCurrency(true)} />
         {opensLoan && foreign && (
           <TextRow
             label={`Rate: ${ws.baseCurrency} per 1 ${currency}`}
@@ -189,6 +185,7 @@ function DebtItemForm({ item }: { item: string }) {
         {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
         <InsetRow title="Add debt" action onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
       </InsetGroup>
+      {pickingCurrency && <CurrencySheet value={currency} baseCurrency={ws.baseCurrency} onPick={setCurrency} onClose={() => setPickingCurrency(false)} />}
     </form>
   );
 }

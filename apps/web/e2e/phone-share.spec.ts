@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { currencyRow, setCurrency } from './currency-field';
 import { openWorkspacePage, openWorkspaceSharePage, renameWorkspace } from './workspace-page';
 
 test.describe.configure({ timeout: 120_000 });
@@ -58,7 +59,7 @@ test('by thumb: a workspace in another currency says why it cannot be shared, in
   await page.getByTestId('new-workspace').tap();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Singapore');
-  await sheet.getByLabel('Reads in').selectOption('SGD');
+  await setCurrency(currencyRow(sheet, 'Reads in'), 'SGD');
   await sheet.getByRole('button', { name: 'Create workspace' }).tap();
   await expect(sheet).toHaveCount(0);
 

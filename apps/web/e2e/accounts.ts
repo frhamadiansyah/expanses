@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { openDrawers } from './drawers';
-import { setBalanceCurrency, setCurrency } from './currency-field';
+import { currencyRow, setBalanceCurrency, setCurrency } from './currency-field';
 import { todayIn } from './today';
 
 /**
@@ -264,7 +264,7 @@ export async function openLoan(page: Page, o: NewLoan) {
   await page.getByRole('button', { name: o.kind }).click();
   await page.getByLabel('Name', { exact: true }).fill(o.name);
   if (o.owed) await page.getByLabel('Owed now').fill(o.owed);
-  if (o.currency && o.currency !== 'IDR') await setCurrency(page.getByLabel('Currency', { exact: true }), o.currency);
+  if (o.currency && o.currency !== 'IDR') await setCurrency(currencyRow(page), o.currency);
   if (o.rate) await page.getByLabel(/^Rate:/).pressSequentially(o.rate);
   if (o.lender) await page.getByLabel('Lender').fill(o.lender);
   if (o.interestRate) await page.getByLabel('Interest rate').fill(o.interestRate);

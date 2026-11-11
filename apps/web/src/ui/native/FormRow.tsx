@@ -1,8 +1,7 @@
 import { Info, Search } from 'lucide-react';
 import { Children, isValidElement, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useEffect, useId, useRef, useState } from 'react';
 import { cx } from '../index';
-import { currencyMatches, type FormKind, planFormRow, planSwitchRow } from './form-row';
-import { KeyboardStrip } from './KeyboardStrip';
+import { type FormKind, planFormRow, planSwitchRow } from './form-row';
 import { type GroupChild, toneClass, RowIcon } from './InsetList';
 import { ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP } from './metrics';
 import type { Tone } from './row';
@@ -607,86 +606,3 @@ export function SearchField({ className, ...props }: InputHTMLAttributes<HTMLInp
 
 /** The kinds this file draws, named so a caller can see the set is closed. */
 export const FORM_KINDS: readonly FormKind[] = ['picker', 'typed', 'static'];
-
-/**
- * A currency typed as its three-letter code — no list of 160 to scroll. The field is only as wide as its code, so
- * the › drawn after it by the caller sits right beside it. A code counts once all three letters are a known one;
- * anything else goes back to the last good code when the field is left. While typing, a phone offers matching
- * currencies over the keyboard and a desktop gets the browser's own list.
- */
-export function CurrencyCode({
-  label,
-  value,
-  onChange,
-  codes,
-  className,
-}: {
-  label: string;
-  value: string;
-  onChange: (code: string) => void;
-  codes: readonly { code: string; name: string }[];
-  className?: string;
-}) {
-  const id = useId();
-  const listId = `${id}-codes`;
-  const [typed, setTyped] = useState<string | null>(null);
-  const known = (code: string) => codes.some((c) => c.code === code);
-  const desktop = typeof window !== 'undefined' && window.matchMedia?.('(min-width: 768px)').matches;
-  const offered = typed === null || desktop ? [] : currencyMatches(codes, typed);
-  const sized = cx('text-[17px] leading-[22px] md:leading-[20px] tracking-[0.5px] uppercase md:text-[15px]', className);
-  return (
-    <>
-      {/* As wide as the code it shows, so the caller's › sits right after it: an unseen copy sets the width. */}
-      <span className="inline-grid shrink-0">
-        <span aria-hidden className={cx('invisible col-start-1 row-start-1 whitespace-pre', sized)}>
-          {(typed ?? value) || 'IDR'}
-        </span>
-      <input
-        aria-label={label}
-        // A desktop gets the browser's own list of codes while typing. A phone gets the strip over the keyboard
-        // instead: iOS floats its list in a bubble that lands over the sheet's title, and keeps room for a
-        // suggestion button at the field's end that pushes the code off the right edge.
-        list={typed !== null && desktop ? listId : undefined}
-        value={typed ?? value}
-        onFocus={(e) => {
-          setTyped(value);
-          e.currentTarget.select();
-        }}
-        onChange={(e) => {
-          const next = e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
-          setTyped(next);
-          if (next.length === 3 && known(next)) onChange(next);
-        }}
-        onBlur={() => setTyped(null)}
-        autoCapitalize="characters"
-        autoComplete="off"
-        spellCheck={false}
-        maxLength={3}
-        placeholder="IDR"
-        size={1}
-        className={cx('ph-focus col-start-1 row-start-1 w-full min-w-0 rounded bg-transparent placeholder:text-[var(--ph-ink-3)]', sized)}
-      />
-      </span>
-      <KeyboardStrip
-        label="Currencies"
-        cells={offered.map((c) => ({
-          key: c.code,
-          label: `${c.code}, ${c.name}`,
-          title: c.code,
-          detail: c.name,
-          onPick: () => {
-            onChange(c.code);
-            setTyped(c.code);
-          },
-        }))}
-      />
-      <datalist id={listId}>
-        {codes.map((c) => (
-          <option key={c.code} value={c.code}>
-            {c.name}
-          </option>
-        ))}
-      </datalist>
-    </>
-  );
-}
