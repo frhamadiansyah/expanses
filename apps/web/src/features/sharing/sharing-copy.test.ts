@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { BookReadOnlyError, FrozenBookError, LastOwnerError, LeaveIncompleteError, NotOwnerError, SharingError, SyncTransportError } from '@expanses/db';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { stringLiterals } from '../../lib/string-literals';
+import { DISCARD_LABEL, deleteFirstLabel, discardConfirm, heldLine, JOIN_ANYWAY, KEEP_OWN_LABEL, keepOwnTitle, lastChangeLine, LOST_LINE, otherCopiesLine, ownersGoneConfirm, PLACE_LABEL, placedLine, shareSilenceLine, silenceLine } from './sharing-copy';
 import { currencyRefusal, endedLine, lastFailedLine, lastSyncedLine, shareStatusLine, FORGET_ROW, forgetConfirm, replaceConfirm, FROZEN_NOTE, leaveConfirm, postedAgainstPlaceholder, READ_ONLY_NOTE, sayError, statusLineOf, stopConfirm, deviceName, ownerName, payerLine, preparing, sharedWith, sinceWhen, syncedAgo } from './sharing-copy';
 
 const fandri = { memberId: 'f', name: 'Fandri', role: 'owner' as const };
@@ -206,5 +210,94 @@ describe('what a sharing edge refusal says (task 9b)', () => {
     expect(said(new FrozenBookError())).toBe('Nobody can do that: no owner has a device in this workspace any more.');
     expect(said(new BookReadOnlyError('b'))).toBe('This workspace is no longer shared and is kept read-only. Nothing in it can be changed.');
     expect(said(new NotOwnerError('Only an owner can stop sharing'))).toBe('Only an owner can stop sharing');
+  });
+});
+
+describe('sharing resilience: what the Share page says (spec §4.4, §7, §8.1)', () => {
+  // 12 Oct 2026 at noon, local time; "now" is a whole number of days later.
+  const LAST = new Date(2026, 9, 12, 12, 0).getTime();
+  const DAY = 86_400_000;
+  const dewiQuiet = (days: number) => ({ memberId: 'd', name: 'Dewi', role: 'owner' as const, lastChangeAt: new Date(LAST).toISOString(), silentDays: days });
+
+  it('names a quiet member from the seventh day on, and claims only a change', () => {
+    expect(silenceLine(dewiQuiet(6), LAST + 6 * DAY)).toBeNull();
+    expect(silenceLine(dewiQuiet(7), LAST + 7 * DAY)).toBe('No changes from Dewi since 12 Oct.');
+    expect(silenceLine({ ...dewiQuiet(0), lastChangeAt: null, silentDays: null }, LAST + 30 * DAY)).toBeNull();
+    expect(silenceLine(dewiQuiet(40), LAST + 40 * DAY)).not.toMatch(/gone|left|offline/i);
+  });
+
+  it('puts the quiet line on the status only when every owner is quiet and this phone synced in the last hour', () => {
+    const now = LAST + 9 * DAY;
+    const fresh = { syncedAt: now - 10 * 60_000, nowMs: now };
+    expect(shareSilenceLine([dewiQuiet(9)], fresh)).toBe('No changes from Dewi since 12 Oct.');
+    expect(shareSilenceLine([dewiQuiet(9)], { syncedAt: now - 2 * 3_600_000, nowMs: now })).toBeNull();
+    expect(shareSilenceLine([dewiQuiet(9)], { syncedAt: null, nowMs: now })).toBeNull();
+    // Another owner heard from yesterday: the share is not quiet.
+    const budi = { memberId: 'b', name: 'Budi', role: 'owner' as const, lastChangeAt: new Date(now - DAY).toISOString(), silentDays: 1 };
+    expect(shareSilenceLine([dewiQuiet(9), budi], fresh)).toBeNull();
+    // No other owner: the only other member counts; two members and no owner, nobody to name.
+    const member = { ...dewiQuiet(9), role: 'member' as const };
+    expect(shareSilenceLine([member], fresh)).toBe('No changes from Dewi since 12 Oct.');
+    expect(shareSilenceLine([member, { ...member, memberId: 'x', name: 'Sari' }], fresh)).toBeNull();
+  });
+
+  it('gives every other member a last change, or says none was heard', () => {
+    expect(lastChangeLine(dewiQuiet(9), LAST + 9 * DAY)).toBe('Last change 12 Oct');
+    expect(lastChangeLine({ ...dewiQuiet(0), lastChangeAt: null, silentDays: null }, LAST)).toBe('No change heard yet');
+  });
+
+  it('says part of the share is held by another copy here, or waiting once that copy is gone', () => {
+    expect(heldLine([])).toBeNull();
+    expect(heldLine([{ holderName: 'Home (old)', holderExists: true }, { holderName: 'Home (old)', holderExists: true }])).toBe(
+      'Part of this share is held by Home (old) on this phone. Delete that copy to bring it in.',
+    );
+    expect(heldLine([{ holderName: 'Home (old)', holderExists: true }, { holderName: null, holderExists: false }])).toBe(
+      'Part of this share is held by Home (old) on this phone. Delete that copy to bring it in.',
+    );
+    expect(heldLine([{ holderName: null, holderExists: true }])).toBe('Part of this share is held by another copy on this phone. Delete that copy to bring it in.');
+    expect(heldLine([{ holderName: 'A', holderExists: true }, { holderName: 'B', holderExists: true }])).toBe(
+      'Part of this share is held by A and B on this phone. Delete those copies to bring it in.',
+    );
+    expect(heldLine([{ holderName: null, holderExists: false }])).toBe('Part of this share is waiting. Place it now.');
+    expect(PLACE_LABEL).toBe('Place them now');
+    expect(placedLine({ placed: 3, stillHeld: 0 })).toBe('3 rows placed.');
+    expect(placedLine({ placed: 1, stillHeld: 0 })).toBe('1 row placed.');
+    expect(placedLine({ placed: 0, stillHeld: 0 })).toBe('Nothing was waiting.');
+  });
+
+  it('says a lost share keeps the records here and promises no reconnection in this update', () => {
+    expect(LOST_LINE('Home')).toBe('Home lost its share on this phone. Records here are safe. To share it again, discard the old share first.');
+    expect(LOST_LINE('Home')).not.toMatch(/reconnect/i);
+    expect(DISCARD_LABEL).toBe('Discard old share');
+    expect(discardConfirm('Home')).toBe(
+      'Home was shared from this phone before, and that share cannot be brought back here in this update. Discarding it lets Home be shared again. Nothing in Home changes, and no other copy is touched.',
+    );
+  });
+
+  it('keeps a copy as own once the owners went quiet, naming what is known', () => {
+    expect(KEEP_OWN_LABEL).toBe('Keep as own copy');
+    expect(keepOwnTitle('Home')).toBe('Keep Home as own copy?');
+    expect(ownersGoneConfirm('Home', ['Dewi'], new Date(LAST).toISOString())).toBe(
+      "No changes from Dewi since 12 Oct. This phone's copy of Home leaves the share: Home stops syncing on this phone and stays here with every row, editable. Dewi's phone is not told. Home can be shared again later.",
+    );
+    expect(ownersGoneConfirm('Home', ['Dewi', 'Budi'], null)).toBe(
+      "No changes from Dewi and Budi for two weeks. This phone's copy of Home leaves the share: Home stops syncing on this phone and stays here with every row, editable. Their phones are not told. Home can be shared again later.",
+    );
+  });
+
+  it('warns before joining beside another copy of the same workspace (D-A7)', () => {
+    expect(otherCopiesLine([{ name: 'Home (old)' }], 'Dewi')).toBe('This phone also holds Home (old) from Dewi. Rows that copy still holds are left out until it is deleted.');
+    expect(otherCopiesLine([{ name: 'A' }, { name: 'B' }], 'Dewi')).toBe('This phone also holds A and B from Dewi. Rows those copies still hold are left out until they are deleted.');
+    expect(deleteFirstLabel('Home (old)')).toBe('Delete Home (old) first');
+    expect(JOIN_ANYWAY).toBe('Join anyway');
+  });
+});
+
+describe('no string the sharing screens show speaks to the reader as "you"', () => {
+  it('holds for every string literal in sharing-copy.ts', () => {
+    const source = readFileSync(fileURLToPath(new URL('./sharing-copy.ts', import.meta.url)), 'utf8');
+    const strings = stringLiterals(source);
+    expect(strings.length).toBeGreaterThan(40);
+    for (const text of strings) expect(text, text).not.toMatch(/\b(you|your|my)\b/i);
   });
 });

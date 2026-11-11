@@ -2,6 +2,8 @@ import {
   type BookSyncStatus as EngineBookStatus,
   type CreatedInvite,
   type Database,
+  deleteBook,
+  type DeleteBookOptions,
   type DeviceKeys,
   type KeyStore,
   listSharedBooks,
@@ -12,6 +14,8 @@ import {
   requestSignerOf,
   SEEN_WRITE_MS,
   type SequencedEntry,
+  type ShareRecordFinding,
+  type ShareRecordStore,
   SyncEngine,
   type SyncOnceResult,
   type SyncTransport,
@@ -19,6 +23,7 @@ import {
 } from '@expanses/db';
 import { createKeyStore } from './key-store';
 import { createRelayTransport } from './relay';
+import { createShareRecordStore } from './share-record-store';
 import { SyncScheduler } from './sync-scheduler';
 import { SyncLog, type SyncLogOp } from './sync-log';
 // This app's own version (joint-net-worth spec §9), written on this device's book_devices row so a peer can tell
@@ -64,6 +69,11 @@ export interface SyncServiceOptions {
   onError?: (error: unknown) => void;
   /** Where failures are recorded (src/sync/sync-log.ts); a log in memory when none is given. */
   log?: SyncLog;
+  /**
+   * This device's share records (sharing resilience §6.1), beside its keys and outside the database: the keychain on
+   * native, IndexedDB on the web, by default (`createShareRecordStore`). `null` keeps none.
+   */
+  shareRecords?: ShareRecordStore | null;
   now?: () => number;
   intervalMs?: number;
 }
@@ -134,8 +144,18 @@ export class SyncService {
   private readonly onError: (error: unknown) => void;
   private readonly now: () => number;
   private readonly intervalMs: number | undefined;
+  private readonly shareRecords: () => ShareRecordStore | null;
   /** This device's record of sharing failures: local only, never synced. */
   readonly log: SyncLog;
+  /** What the share records said at open (§6.2), but `ok`: a `lost` one is the Share row's line until it is dealt with. */
+  private found: ShareRecordFinding[] = [];
+  /**
+   * Set while the database is replaced under the service (a restore, review R1): no run starts, and nothing starts
+   * again before the reload — but a restore that did not happen.
+   */
+  private halted = false;
+  /** Every run in flight, so a restore waits for them before the rows are swapped. */
+  private readonly inFlight = new Set<Promise<unknown>>();
 
   private engineMade: Promise<SyncEngine> | undefined;
   private prepared: Promise<void> | undefined;
@@ -150,6 +170,8 @@ export class SyncService {
   private started = false;
   private readonly onVisible = () => {
     if (typeof document === 'undefined' || document.visibilityState === 'visible') this.triggerAll();
+    // §6.1: the cursor reaches each share record when the app goes to the background, not only every 30 s.
+    else void this.flushRecords();
   };
 
   constructor(options: SyncServiceOptions) {
@@ -162,6 +184,8 @@ export class SyncService {
     this.now = options.now ?? Date.now;
     this.intervalMs = options.intervalMs;
     this.log = options.log ?? new SyncLog(undefined, () => new Date(this.now()));
+    let records: ShareRecordStore | null | undefined = options.shareRecords;
+    this.shareRecords = () => (records === undefined ? (records = createShareRecordStore()) : records);
   }
 
   /** The engine, made once: this device's keys (made on first need), then the engine over the relay. */
@@ -169,7 +193,13 @@ export class SyncService {
     this.engineMade ??= (async () => {
       const device = await this.keyStore().getOrCreateDevice();
       const transport = new ObservedTransport(this.transportFor(device), (relayBookId, entries) => this.hear(relayBookId, entries));
-      return new SyncEngine(this.database, transport, device, this.now, { appVersion: pkg.version });
+      const shareRecords = this.shareRecords();
+      return new SyncEngine(this.database, transport, device, this.now, {
+        appVersion: pkg.version,
+        ...(shareRecords ? { shareRecords } : {}),
+        // A record that could not be read or written never fails a share or a sync; it is a line in the log.
+        onShareRecordProblem: (bookId, error) => void this.note('records', bookId, { error }),
+      });
     })();
     this.engineMade.catch(() => (this.engineMade = undefined));
     return this.engineMade;
@@ -198,21 +228,27 @@ export class SyncService {
 
   /**
    * At open, before the first write: when the device holds a shared book, makes the engine — so every change the app
-   * captures carries this device's own id (spec §5.1) — and checks for a restored backup (§8.7). Local only.
+   * captures carries this device's own id (spec §5.1) — and checks for a restored backup (§8.7). Then the share
+   * records (sharing resilience §6.2): checked against the rows here — even with no shared book left, since a database
+   * that lost its shares is exactly when a record outlives them — and, after the check, written for every share that
+   * has none yet (§6.1 backfill). A device that never had keys never shared, holds no record, and makes none. Local only.
    */
   prepare(): Promise<void> {
     this.prepared ??= (async () => {
       if (devSampleLoaded()) return;
       try {
         const books = await listSharedBooks(this.database);
-        if (books.length === 0) return;
+        if (books.length === 0 && !(await this.hasKeys())) return;
         const engine = await this.engine();
-        const switched = await engine.checkRestore();
-        // A restored copy (§8.7) is not a failure, but it is the moment a share goes quiet here: worth a line.
-        for (const bookId of switched) {
-          await this.note('restore', bookId, { message: 'At open: this device has no device row or no epoch key that opens, so the book waits for a new invite (needs_invite) and its outbox was cleared' });
+        if (books.length > 0) {
+          const switched = await engine.checkRestore();
+          // A restored copy (§8.7) is not a failure, but it is the moment a share goes quiet here: worth a line.
+          for (const bookId of switched) {
+            await this.note('restore', bookId, { message: 'At open: this device has no device row or no epoch key that opens, so the book waits for a new invite (needs_invite) and its outbox was cleared' });
+          }
+          if (switched.length > 0) this.onApplied();
         }
-        if (switched.length > 0) this.onApplied();
+        await this.checkRecords(engine);
       } catch (error) {
         await this.note('prepare', null, { error });
         throw error;
@@ -222,9 +258,37 @@ export class SyncService {
     return this.prepared;
   }
 
+  /** §6.2 then §6.1: the check first (the engine holds every record write until it has run), then the backfill. */
+  private async checkRecords(engine: SyncEngine): Promise<void> {
+    const findings = await engine.checkShareRecords();
+    this.found = findings.filter((finding) => finding.kind !== 'ok');
+    for (const finding of this.found) {
+      const what =
+        finding.kind === 'lost'
+          ? `share record found lost: relay book ${finding.relayBookId.slice(0, 8)} is not active here; Share waits until it is discarded`
+          : finding.kind === 'behind'
+            ? `share record found behind: cursor ${finding.fromSeq}, the record had ${finding.toSeq}; own entries after the cursor are not here`
+            : `share record found for a workspace not here (relay book ${finding.kind === 'missing_book' ? finding.relayBookId.slice(0, 8) : 'unknown'})`;
+      await this.note('records', finding.bookId, { message: `At open: ${what}` });
+    }
+    const written = await engine.backfillShareRecords();
+    if (written > 0) await this.note('records', null, { message: `At open: ${written} share ${written === 1 ? 'record' : 'records'} written for shares made before this build` });
+    if (this.found.length > 0) this.emit();
+  }
+
+  /** What the share records said at open (§6.2), `ok` left out; a finding goes once its book is dealt with. */
+  findings(): ShareRecordFinding[] {
+    return [...this.found];
+  }
+
+  /** Whether the book lost its share on this phone (§6.2 `lost`): the Share row says so, and Share waits for a discard. */
+  lostHere(bookId: string): boolean {
+    return this.found.some((finding) => finding.kind === 'lost' && finding.bookId === bookId);
+  }
+
   /** Starts syncing every active shared book, and again whenever the app comes back to the foreground. */
   async start(): Promise<void> {
-    if (this.started) return;
+    if (this.started || this.halted) return;
     this.started = true;
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this.onVisible);
     await this.prepare();
@@ -251,7 +315,8 @@ export class SyncService {
     for (const bookId of active) {
       if (this.schedulers.has(bookId)) continue;
       const scheduler = new SyncScheduler({
-        syncOnce: () => this.runOnce(bookId).then(() => undefined),
+        // A follow-up queued before a restore halted the service is dropped, not run against the swapped rows.
+        syncOnce: () => (this.halted ? Promise.resolve() : this.runOnce(bookId).then(() => undefined)),
         onError: (error) => this.onError(error),
         ...(this.intervalMs === undefined ? {} : { intervalMs: this.intervalMs }),
       });
@@ -268,6 +333,7 @@ export class SyncService {
 
   /** Syncs one book now and waits for it; never throws (a failure shows on the status line). */
   async syncNow(bookId: string): Promise<void> {
+    if (this.halted) return;
     const scheduler = this.schedulers.get(bookId);
     if (scheduler) return scheduler.trigger();
     await this.runOnce(bookId).catch((error: unknown) => this.onError(error));
@@ -415,9 +481,125 @@ export class SyncService {
     await this.act(bookId, (engine) => engine.stopSharing(bookId), 'stop');
   }
 
-  /** Keep the book as this device's own (final review, C1): the way out of a share that is dead here. Local only. */
+  /**
+   * Keep the book as this device's own (final review, C1): the way out of a share that is dead here — or whose owners
+   * have made no change for two weeks while this phone kept syncing (sharing resilience D-A11). Local only.
+   */
   async forgetSharing(bookId: string): Promise<void> {
     await this.act(bookId, (engine) => engine.forgetSharing(bookId));
+  }
+
+  /* ------------------------------------------------- sharing resilience (spec §4.3, §5, §6.2) */
+
+  /**
+   * Discard old share (§7, review N2): this device's record of a share it lost goes, after the screen asked, and Share
+   * goes through again. Whether a record was removed.
+   */
+  async discardShareRecord(bookId: string): Promise<boolean> {
+    const removed = await this.logged('records', bookId, async () => (await this.engine()).discardShareRecord(bookId));
+    this.found = this.found.filter((finding) => finding.bookId !== bookId);
+    await this.note('records', bookId, { message: removed ? 'Old share discarded: its record is removed from this device' : 'Old share discarded: no record of this device was left' });
+    this.emit();
+    this.onApplied();
+    return removed;
+  }
+
+  /**
+   * Place them now (§4.3): rows another copy here held come in once that copy is gone. It runs in the book's turn, so
+   * no ordinary sync of the book runs while it reads the log again from the start.
+   */
+  async placeHeldRows(bookId: string): Promise<{ placed: number; stillHeld: number }> {
+    const engine = await this.logged('place', bookId, () => this.engine());
+    const done = await this.logged('place', bookId, () => this.exclusive(bookId, () => engine.placeHeldRows(bookId)));
+    await this.note('place', bookId, { message: `Place them now: placed ${done.placed}, still held ${done.stillHeld}, ${done.result.applied} entries applied` });
+    await this.touched(bookId, done.result);
+    this.onApplied();
+    return { placed: done.placed, stillHeld: done.stillHeld };
+  }
+
+  /**
+   * Delete a workspace (§5): through its plan, so a once-shared one is erased and a joined copy's own purchases are
+   * kept in Personal unless `keepOwnInPersonal` is false. The share record goes too, by the relay book read before
+   * the rows went (review I2). The caller takes the safety copy first.
+   */
+  async deleteWorkspace(ws: WorkspaceContext, bookId: string, options: DeleteBookOptions = {}): Promise<{ erased: boolean; keptInPersonal: number; transactions: number }> {
+    const relays = await this.relaysOf(bookId);
+    const done = await this.logged('erase', bookId, () => this.exclusive(bookId, () => deleteBook(this.database, ws, bookId, options)));
+    let dropped = 0;
+    const engine = await this.madeEngine();
+    if (engine) for (const relay of relays) if (await engine.dropShareRecord(bookId, relay)) dropped += 1;
+    this.found = this.found.filter((finding) => finding.bookId !== bookId);
+    if (done.erased || dropped > 0) {
+      await this.note('erase', bookId, {
+        message: `Deleted (${done.erased ? 'erased' : 'voided'}): ${done.transactions} transactions, ${done.categories} categories, ${done.keptInPersonal} kept in Personal, ${dropped} share ${dropped === 1 ? 'record' : 'records'} removed`,
+      });
+    }
+    await this.refresh().catch((error: unknown) => this.failed('refresh', bookId, error));
+    this.emit();
+    this.onApplied();
+    return { erased: done.erased, keptInPersonal: done.keptInPersonal, transactions: done.transactions };
+  }
+
+  /**
+   * Leave and delete (§5.1, D-A8): this phone leaves the share, then the copy is erased. A failed leave changes
+   * nothing and throws as it came: a `LastOwnerError`, or the relay out of reach — then the screen offers Delete here only.
+   */
+  async leaveAndDelete(ws: WorkspaceContext, bookId: string, options: DeleteBookOptions = {}): Promise<{ erased: boolean; keptInPersonal: number; transactions: number }> {
+    await this.leave(bookId);
+    await this.note('leave', bookId, { message: 'Left the share, for Leave and delete' });
+    return this.deleteWorkspace(ws, bookId, options);
+  }
+
+  /**
+   * Delete here only (§5.1): Leave could not reach the relay, so the share is forgotten on this phone alone — the
+   * share still lists this phone until an owner removes it — and the copy is erased.
+   */
+  async deleteHereOnly(ws: WorkspaceContext, bookId: string, options: DeleteBookOptions = {}): Promise<{ erased: boolean; keptInPersonal: number; transactions: number }> {
+    const relays = await this.relaysOf(bookId);
+    await this.act(bookId, (engine) => engine.forgetSharing(bookId, { deleting: true }), 'erase');
+    const done = await this.deleteWorkspace(ws, bookId, options);
+    // Forgetting removed this device's record of the share it was on; a lost one of another relay book goes here.
+    const engine = await this.madeEngine();
+    if (engine) for (const relay of relays) await engine.dropShareRecord(bookId, relay);
+    return done;
+  }
+
+  /** The relay books a share record of the book may name: its `shared_books` row's, and a lost finding's. */
+  private async relaysOf(bookId: string): Promise<string[]> {
+    const relays = new Set<string>();
+    const row = (await listSharedBooks(this.database)).find((book) => book.bookId === bookId);
+    if (row) relays.add(row.relayBookId);
+    for (const finding of this.found) if (finding.bookId === bookId && 'relayBookId' in finding) relays.add(finding.relayBookId);
+    return [...relays];
+  }
+
+  /**
+   * A restore (Backup page, iCloud; spec §6.7, review R1): every schedule stops and every run in flight is waited
+   * for, so no pull moves the restored rows' cursor past own entries before the check at the next open. Then `work`
+   * swaps the rows, and the engine is told they were replaced. Nothing starts again — the page reloads — unless
+   * `work` failed, which leaves the rows as they were: then syncing carries on.
+   */
+  async whileReplacing(work: () => Promise<void>): Promise<void> {
+    const wasStarted = this.started;
+    this.halted = true;
+    this.stop();
+    while (this.inFlight.size > 0) await Promise.allSettled([...this.inFlight]);
+    try {
+      await work();
+    } catch (error) {
+      this.halted = false;
+      (await this.madeEngine())?.databaseReplaced();
+      if (wasStarted) await this.start().catch((failure: unknown) => this.failed('refresh', null, failure));
+      throw error;
+    }
+    (await this.madeEngine())?.databaseReplaced();
+  }
+
+  /** Every active book's share record written now, cursor included (§6.1: on app hide). Never throws. */
+  private async flushRecords(): Promise<void> {
+    const engine = await this.madeEngine();
+    if (!engine || this.halted) return;
+    for (const bookId of this.schedulers.keys()) await engine.flushShareRecord(bookId).catch((error: unknown) => this.note('records', bookId, { error }));
   }
 
   /* ------------------------------------------------------------- shared events */
@@ -528,7 +710,14 @@ export class SyncService {
     return { ops: total, pushed, left: await outboxOps(this.database, bookId) };
   }
 
-  private async runOnce(bookId: string): Promise<SyncOnceResult> {
+  private runOnce(bookId: string): Promise<SyncOnceResult> {
+    const run = this.runOnceNow(bookId);
+    this.inFlight.add(run);
+    void run.catch(() => undefined).finally(() => this.inFlight.delete(run));
+    return run;
+  }
+
+  private async runOnceNow(bookId: string): Promise<SyncOnceResult> {
     this.setStatus(bookId, { running: true });
     try {
       const engine = await this.engine();
@@ -641,6 +830,8 @@ export class SyncService {
     const before = this.queues.get(bookId) ?? Promise.resolve();
     const run = before.catch(() => undefined).then(work);
     this.queues.set(bookId, run);
+    this.inFlight.add(run);
+    void run.catch(() => undefined).finally(() => this.inFlight.delete(run));
     return run;
   }
 

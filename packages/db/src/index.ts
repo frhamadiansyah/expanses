@@ -133,7 +133,7 @@ export * from './repos/cards';
 export * as booksSchema from './schema-books';
 export * from './repos/books';
 export * from './repos/book-delete';
-export { eraseBookTx, keepInPersonalTx, keptByRecordsTx, ownPurchasesTx, wasEverShared, wasEverSharedTx } from './repos/book-erase';
+export { eraseBookTx, keepInPersonalTx, keptByRecordsTx, ownPurchasesTx, ownRecordsMessage, wasEverShared, wasEverSharedTx } from './repos/book-erase';
 export * from './repos/book-currency';
 export { billTablesExist } from './repos/bill-months';
 export * as extrasSchema from './schema-extras';

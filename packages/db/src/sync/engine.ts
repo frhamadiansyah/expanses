@@ -194,6 +194,13 @@ export interface PreviewedInvite extends InvitePreview {
    * share". `bookName` is the book's name here. `null` for a new book, or a rejoin of the same relay book (§8.7).
    */
   replaces: { bookName: string } | null;
+  /**
+   * Other books here from the same owner (sharing resilience D-A7): books, but the invite's own, whose members include
+   * the inviter's member id, or a member of the inviter's name who is an owner — an earlier copy of the same workspace,
+   * most likely. Rows such a copy still holds are set aside on join (`HELD_ELSEWHERE`) until it is deleted, so the join
+   * screen warns. `state` is the copy's `shared_books` state, `own` with none.
+   */
+  otherCopies: { bookId: string; name: string; state: string }[];
 }
 
 /** A copy of the invited book already on this device, and what joining would do to it (§8.2, §8.6, §8.7). */
@@ -633,7 +640,19 @@ export class SyncEngine {
     });
     const copy = await this.copyHere(preview);
     const replaces = copy.kind === 'rejoin' && copy.moving ? { bookName: copy.bookName } : null;
-    return { ...preview, inviteId, expiresAt: found.expiresAt, claimed: found.claimed, expired: Date.parse(found.expiresAt) <= this.now(), replaces };
+    const otherCopies = await this.otherCopiesOf(preview);
+    return { ...preview, inviteId, expiresAt: found.expiresAt, claimed: found.claimed, expired: Date.parse(found.expiresAt) <= this.now(), replaces, otherCopies };
+  }
+
+  /** D-A7: the books here that are likely another copy of the invite's workspace, from the inviter. Reads only. */
+  private async otherCopiesOf(preview: InvitePreview): Promise<{ bookId: string; name: string; state: string }[]> {
+    const rows = await this.database.db.values<[string, string, string | null]>(sql`
+      SELECT b.id, b.name, s.state FROM books b LEFT JOIN shared_books s ON s.book_id = b.id
+      WHERE b.id <> ${preview.bookId} AND EXISTS (
+        SELECT 1 FROM book_members m WHERE m.book_id = b.id
+          AND (m.member_id = ${preview.inviterMemberId ?? ''} OR (m.name = ${preview.inviterName} AND m.role = 'owner')))
+      ORDER BY b.name, b.id`);
+    return rows.map(([bookId, name, state]) => ({ bookId, name, state: state ?? 'own' }));
   }
 
   /**
@@ -1076,13 +1095,15 @@ export class SyncEngine {
    * Locally it is what `stopSharing` does: `shared_books` and every piece of sync state go; every row stays, and so
    * do `book_members`, `book_member_accounts` and `sync_lineage`. The relay is not told; the book can be shared again.
    */
-  async forgetSharing(bookId: string): Promise<void> {
+  async forgetSharing(bookId: string, options: { deleting?: boolean } = {}): Promise<void> {
     const shared = await this.sharedRow(bookId);
     if (!shared) throw new SharingError('NOT_FOUND', 'This workspace is not shared from this device');
     // Active is allowed only when frozen, by the same test the status line uses (recovery review, minor): a view with
     // no device in yet — a share made here and not synced back — is live, not dead.
     // Or when every owner has been silent for two weeks while this phone synced in the last hour (sharing resilience D-A11).
-    if (shared.state === 'active' && !(await this.isFrozen(bookId)) && !(await ownersGone(this.database, bookId, this.deviceId, this.now())).gone) {
+    // Or for Delete here only (sharing resilience §5.1): Leave could not reach the relay, and the caller erases the book
+    // at once, so nothing is left here to edit outside the share.
+    if (!options.deleting && shared.state === 'active' && !(await this.isFrozen(bookId)) && !(await ownersGone(this.database, bookId, this.deviceId, this.now())).gone) {
       throw new SharingError('STILL_SHARED', 'This workspace is still shared and has an owner: leave it, or ask an owner to stop sharing');
     }
     this.sealer.forget();

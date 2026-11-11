@@ -4,10 +4,12 @@ import {
   FrozenBookError,
   LastOwnerError,
   LeaveIncompleteError,
+  type MemberSilence,
   type PurchasePayer,
   removedFromBook,
   type SharedBookMember,
   SharingError,
+  SILENT_NOTE_DAYS,
   SyncTransportError,
 } from '@expanses/db';
 
@@ -130,6 +132,9 @@ export function stopConfirm(bookName: string): string {
 /** The row that ends a dead share on this device alone (final review, C1). */
 export const FORGET_ROW = 'Stop sharing on this device';
 
+/** That row's confirm button (spec §8.1: once "Keep as my own copy"). */
+export const KEEP_OWN_LABEL = 'Keep as own copy';
+
 /**
  * Before that: what keeping the copy as your own does, and what it does not. The way back is true (recovery review,
  * N3): an owner's invite that links this device as you rejoins the share, and what you recorded meanwhile goes with it.
@@ -221,3 +226,105 @@ export function postedAgainstPlaceholder(tx: { entries: readonly { accountId: st
   if (known.size === 0) return false;
   return tx.entries.some((entry) => (entry.accountKind === 'asset' || entry.accountKind === 'liability') && !known.has(entry.accountId));
 }
+
+/* ------------------------------------------------- sharing resilience (spec §4.4, §7, §8.1) */
+
+const DAY_MS = 86_400_000;
+const HOUR_MS = 3_600_000;
+
+/** "12 Oct": the day a change was last heard, whatever the week. */
+function dayMonth(ms: number): string {
+  return new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+/**
+ * "No changes from Dewi since 12 Oct." once a member has made no change for `SILENT_NOTE_DAYS` (D-A10). It claims a
+ * change, never a sync or a departure: silence is no edits, not a phone gone. Null before then, or when nothing was heard.
+ */
+export function silenceLine(s: Pick<MemberSilence, 'name' | 'lastChangeAt'> & Partial<MemberSilence>, nowMs: number): string | null {
+  const last = s.lastChangeAt ? Date.parse(s.lastChangeAt) : Number.NaN;
+  if (!Number.isFinite(last)) return null;
+  if (Math.floor((nowMs - last) / DAY_MS) < SILENT_NOTE_DAYS) return null;
+  return `No changes from ${s.name.trim() || 'the other side'} since ${dayMonth(last)}.`;
+}
+
+/**
+ * The status's second line (D-A10): every other owner — or, with none, the only other member — quiet for a week, and
+ * this phone synced within the hour, so the quiet is theirs. The newest of them is named. Null otherwise.
+ */
+export function shareSilenceLine(silences: readonly MemberSilence[], input: { syncedAt: number | null; nowMs: number }): string | null {
+  if (input.syncedAt === null || input.nowMs - input.syncedAt > HOUR_MS) return null;
+  const owners = silences.filter((s) => s.role === 'owner');
+  const watched = owners.length > 0 ? owners : silences.length === 1 ? silences : [];
+  if (watched.length === 0 || watched.some((s) => silenceLine(s, input.nowMs) === null)) return null;
+  const newest = [...watched].sort((a, b) => Date.parse(b.lastChangeAt!) - Date.parse(a.lastChangeAt!))[0]!;
+  return silenceLine(newest, input.nowMs);
+}
+
+/** A member row's second line (D-A10): "Last change 12 Oct", from the newest change heard from their devices. */
+export function lastChangeLine(s: Pick<MemberSilence, 'lastChangeAt'> & Partial<MemberSilence>, nowMs: number): string {
+  const last = s.lastChangeAt ? Date.parse(s.lastChangeAt) : Number.NaN;
+  return Number.isFinite(last) ? `Last change ${sinceWhen(last, nowMs)}` : 'No change heard yet';
+}
+
+/**
+ * Rows of the share set aside because another copy here holds them (D-A3, §4.4): named while that copy exists, then
+ * "waiting" with Place them now. Null with none.
+ */
+export function heldLine(held: readonly { holderName: string | null; holderExists: boolean }[]): string | null {
+  if (held.length === 0) return null;
+  const live = held.filter((row) => row.holderExists);
+  if (live.length === 0) return 'Part of this share is waiting. Place it now.';
+  const names = [...new Set(live.map((row) => row.holderName?.trim() || 'another copy'))];
+  return `Part of this share is held by ${nameList(names)} on this phone. ${names.length === 1 ? 'Delete that copy' : 'Delete those copies'} to bring it in.`;
+}
+
+/** The action once nothing here holds them (§4.3). */
+export const PLACE_LABEL = 'Place them now';
+export const PLACE_TITLE = 'Place them now?';
+export const PLACE_CONFIRM = 'The share is read again from its start, and the rows that were waiting come in. Rows already here stay as they are.';
+
+/** After Place them now: how many came in, from the result. */
+export function placedLine(done: { placed: number; stillHeld: number }): string {
+  if (done.placed === 0) return 'Nothing was waiting.';
+  return `${done.placed} ${done.placed === 1 ? 'row' : 'rows'} placed.`;
+}
+
+/**
+ * A share this phone held and lost (§6.2 `lost`, §7): Drop A cannot bring it back, so it promises nothing — the rows are
+ * safe, and a fresh share needs the old one discarded first.
+ */
+export const LOST_LINE = (book: string) => `${book} lost its share on this phone. Records here are safe. To share it again, discard the old share first.`;
+export const DISCARD_LABEL = 'Discard old share';
+export const DISCARD_TITLE = 'Discard the old share?';
+export function discardConfirm(book: string): string {
+  return `${book} was shared from this phone before, and that share cannot be brought back here in this update. Discarding it lets ${book} be shared again. Nothing in ${book} changes, and no other copy is touched.`;
+}
+
+/** Keep as own copy, asked (D-A11). */
+export function keepOwnTitle(book: string): string {
+  return `Keep ${book} as own copy?`;
+}
+
+/**
+ * Before keeping a copy whose owners have made no change for two weeks (D-A11): this phone's copy leaves the share,
+ * locally — the owners' phones are not told. `since` is the newest change heard from them.
+ */
+export function ownersGoneConfirm(book: string, owners: readonly string[], since: string | null): string {
+  const who = nameList(owners.map((name) => name.trim() || 'the owner'));
+  const last = since ? Date.parse(since) : Number.NaN;
+  const quiet = Number.isFinite(last) ? `No changes from ${who} since ${dayMonth(last)}.` : `No changes from ${who} for two weeks.`;
+  const told = owners.length === 1 ? `${who}'s phone is not told.` : 'Their phones are not told.';
+  return `${quiet} This phone's copy of ${book} leaves the share: ${book} stops syncing on this phone and stays here with every row, editable. ${told} ${book} can be shared again later.`;
+}
+
+/** Before joining beside another copy of the same workspace (D-A7): a warning, never a stop. */
+export function otherCopiesLine(copies: readonly { name: string }[], inviterName: string): string {
+  const names = copies.map((copy) => copy.name);
+  const rest = names.length === 1 ? 'Rows that copy still holds are left out until it is deleted.' : 'Rows those copies still hold are left out until they are deleted.';
+  return `This phone also holds ${nameList(names)} from ${inviterName}. ${rest}`;
+}
+export function deleteFirstLabel(name: string): string {
+  return `Delete ${name} first`;
+}
+export const JOIN_ANYWAY = 'Join anyway';

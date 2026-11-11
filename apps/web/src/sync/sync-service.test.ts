@@ -1,6 +1,7 @@
 import { expenseLines } from '@expanses/core';
 import {
   createAccount,
+  createBook,
   createDatabase,
   createWorkspace,
   type Database,
@@ -8,6 +9,7 @@ import {
   devicesSeen,
   listSharedBooks,
   MemoryKeyStore,
+  MemoryShareRecordStore,
   MemoryTransport,
   migrate,
   personalBook,
@@ -45,6 +47,8 @@ interface Phone {
   errors: ReturnType<typeof vi.fn>;
   /** Relay books whose pulls fail (503) for this phone. */
   failing: Set<string>;
+  /** This phone's share records (sharing resilience §6.1), beside its keys. */
+  records: MemoryShareRecordStore;
 }
 
 async function phone(relay: MemoryTransport, name: string): Promise<Phone> {
@@ -73,8 +77,9 @@ async function phone(relay: MemoryTransport, name: string): Promise<Phone> {
     return transport;
   });
   const errors = vi.fn();
-  const service = new SyncService({ database, keyStore: keys, transportFor: transports, onApplied: applied, onError: errors, intervalMs: 60 * 60_000 });
-  return { database, ws, bank: bank.id, service, applied, transports, keys, errors, failing };
+  const records = new MemoryShareRecordStore();
+  const service = new SyncService({ database, keyStore: keys, shareRecords: records, transportFor: transports, onApplied: applied, onError: errors, intervalMs: 60 * 60_000 });
+  return { database, ws, bank: bank.id, service, applied, transports, keys, errors, failing, records };
 }
 
 /** An expense category of the book, the same one on every device (categories sync under the owner's ids). */
@@ -213,7 +218,7 @@ describe('SyncService', () => {
     // A clock ahead of the wall clock, so the entries this device pulls back (stamped by capture at wall time) never
     // count as heard later than the run itself.
     let now = Date.now() + 60 * 60_000;
-    const service = new SyncService({ database: fandri.database, keyStore: fandri.keys, transportFor: fandri.transports, onError: () => {}, now: () => now, intervalMs: 60 * 60_000 });
+    const service = new SyncService({ database: fandri.database, keyStore: fandri.keys, shareRecords: fandri.records, transportFor: fandri.transports, onError: () => {}, now: () => now, intervalMs: 60 * 60_000 });
     await service.start();
     const bookId = (await personalBook(fandri.database, fandri.ws)).id;
     await service.share(bookId, { memberName: 'Fandri', deviceName: 'Mac' });
@@ -238,7 +243,7 @@ describe('SyncService', () => {
     fandri.service.stop();
 
     // The same database opened again, by a new service over the same keys.
-    const again = new SyncService({ database: fandri.database, keyStore: fandri.keys, transportFor: fandri.transports, onError: () => {} });
+    const again = new SyncService({ database: fandri.database, keyStore: fandri.keys, shareRecords: fandri.records, transportFor: fandri.transports, onError: () => {} });
     expect(await again.deviceId()).toBeNull();
     await again.prepare();
     expect(await again.deviceId()).toBe((await fandri.keys.getOrCreateDevice()).deviceId);
@@ -252,6 +257,7 @@ describe('SyncService', () => {
     const flaky = new SyncService({
       database: fandri.database,
       keyStore: fandri.keys,
+      shareRecords: fandri.records,
       transportFor: (device) => {
         const inner = relay.as(requestSignerOf(device));
         return {
@@ -384,6 +390,211 @@ describe('SyncService', () => {
       expect(dewi.applied).toHaveBeenCalled();
       fandri.service.stop();
       dewi.service.stop();
+    });
+  });
+  describe('sharing resilience (spec §4, §5, §6.2, §7)', () => {
+    /** A second workspace of the phone, shared by its owner: deletable, unlike Personal. */
+    async function sharedHome(p: Phone, name = 'Home') {
+      const bookId = await createBook(p.database, p.ws, { name, kind: 'family', baseCurrency: 'IDR' });
+      const invite = await p.service.share(bookId, { memberName: 'Fandri', deviceName: 'Mac' });
+      return { bookId, invite };
+    }
+    const again = (p: Phone) => new SyncService({ database: p.database, keyStore: p.keys, shareRecords: p.records, transportFor: p.transports, onError: () => {}, log: p.service.log, intervalMs: 60 * 60_000 });
+
+    it('at open, a record whose share is gone here is found lost, logged, and checked even with no shared book left', async () => {
+      const relay = new MemoryTransport();
+      const fandri = await phone(relay, 'Fandri');
+      await fandri.service.start();
+      const homeId = await createBook(fandri.database, fandri.ws, { name: 'Home', kind: 'family', baseCurrency: 'IDR' });
+      const beforeShare = await fandri.database.exportBytes();
+      await fandri.service.share(homeId, { memberName: 'Fandri', deviceName: 'Mac' });
+      const bookId = homeId;
+      expect(await fandri.records.get(bookId)).toMatchObject({ bookId });
+      fandri.service.stop();
+      // The database lost the share: a copy from before it is restored. The record outside the database is still there.
+      await fandri.database.importBytes(beforeShare);
+      expect(await listSharedBooks(fandri.database)).toEqual([]);
+
+      const opened = again(fandri);
+      await opened.prepare();
+      expect(opened.findings()).toEqual([{ kind: 'lost', bookId, bookName: 'Home', relayBookId: expect.any(String) }]);
+      expect(opened.lostHere(bookId)).toBe(true);
+      const [line] = (await opened.log.forBook(bookId)).filter((entry) => entry.op === 'records');
+      expect(line).toMatchObject({ level: 'info', op: 'records', bookId });
+      expect(line!.message).toMatch(/lost/);
+
+      // Share is refused over it until the old share is discarded; then it goes through.
+      await opened.start();
+      await expect(opened.share(bookId, { memberName: 'Fandri', deviceName: 'Mac' })).rejects.toMatchObject({ code: 'RECORD_ELSEWHERE' });
+      expect(await opened.discardShareRecord(bookId)).toBe(true);
+      expect(opened.findings()).toEqual([]);
+      await expect(opened.share(bookId, { memberName: 'Fandri', deviceName: 'Mac' })).resolves.toMatchObject({ code: expect.any(String) });
+      opened.stop();
+    });
+
+    it('a phone that never shared makes no keys at open, record store or not', async () => {
+      const relay = new MemoryTransport();
+      const alone = await phone(relay, 'Alone');
+      await alone.service.prepare();
+      expect(alone.keys.made).not.toHaveBeenCalled();
+      expect(alone.service.findings()).toEqual([]);
+    });
+
+    it('records the shares made before this build at open, once the check has run', async () => {
+      const relay = new MemoryTransport();
+      const fandri = await phone(relay, 'Fandri');
+      await fandri.service.start();
+      const { bookId } = await sharedHome(fandri);
+      fandri.service.stop();
+      await fandri.records.remove(bookId);
+      const opened = again(fandri);
+      await opened.prepare();
+      expect(await fandri.records.get(bookId)).toMatchObject({ bookId });
+      expect(opened.findings()).toEqual([]);
+    });
+
+    it('Delete of a lost copy erases it and removes its record, read before the rows went', async () => {
+      const relay = new MemoryTransport();
+      const fandri = await phone(relay, 'Fandri');
+      await fandri.service.start();
+      const { bookId } = await sharedHome(fandri);
+      fandri.service.stop();
+      await fandri.database.db.run(sql`DELETE FROM shared_books`);
+      const opened = again(fandri);
+      await opened.prepare();
+      // Nothing in the rows says it was shared (no lineage, no share row): it voids like a never-shared one, and the
+      // record, which still says so, goes all the same.
+      await opened.deleteWorkspace(fandri.ws, bookId);
+      expect(await fandri.records.get(bookId)).toBeNull();
+      expect(opened.findings()).toEqual([]);
+      expect((await fandri.database.db.values(sql`SELECT 1 FROM books WHERE id = ${bookId}`)).length).toBe(0);
+      expect((await opened.log.forBook(bookId)).map((entry) => entry.op)).toContain('erase');
+    });
+
+    it('Leave and delete: the member leaves the share and the copy is erased; Dewi’s purchase kept in Personal by default', async () => {
+      const relay = new MemoryTransport();
+      const fandri = await phone(relay, 'Fandri');
+      const dewi = await phone(relay, 'Dewi');
+      await fandri.service.start();
+      await dewi.service.start();
+      const { bookId, invite } = await sharedHome(fandri);
+      await dewi.service.join(invite.code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'iPhone' });
+      await postTransaction(dewi.database, { ...dewi.ws, bookId }, {
+        occurredOn: '2026-09-02',
+        description: 'Corner bakery',
+        lines: expenseLines({ categoryAccountId: await groceries(dewi.database, bookId), paymentAccountId: dewi.bank, amountMinor: 23_400, currency: 'IDR' }),
+      });
+      await dewi.service.syncNow(bookId);
+      const balance = async () => Number((await dewi.database.db.values<[number]>(sql`SELECT COALESCE(SUM(e.amount_minor), 0) FROM entries e JOIN transactions t ON t.id = e.transaction_id WHERE e.account_id = ${dewi.bank} AND t.status = 'posted'`))[0]![0]);
+      expect(await balance()).toBe(-23_400);
+
+      const done = await dewi.service.leaveAndDelete(dewi.ws, bookId);
+      expect(done).toMatchObject({ erased: true, keptInPersonal: 1 });
+      expect(await balance()).toBe(-23_400);
+      expect((await dewi.database.db.values(sql`SELECT 1 FROM books WHERE id = ${bookId}`)).length).toBe(0);
+      expect(await dewi.records.get(bookId)).toBeNull();
+      expect(dewi.service.syncing()).not.toContain(bookId);
+      const ops = (await dewi.service.log.forBook(bookId)).map((entry) => entry.op);
+      expect(ops).toEqual(expect.arrayContaining(['leave', 'erase']));
+
+      // The owner's next run sees the device gone from the share.
+      await fandri.service.syncNow(bookId);
+      const detail = (await sharingDetail(fandri.database, bookId, await fandri.service.deviceId()))!;
+      expect(detail.members.find((m) => m.name === 'Dewi')!.devices).toHaveLength(0);
+      fandri.service.stop();
+      dewi.service.stop();
+    });
+
+    it('Leave and delete with the relay out of reach changes nothing; Delete here only then erases the copy alone', async () => {
+      const relay = new MemoryTransport();
+      const fandri = await phone(relay, 'Fandri');
+      const dewi = await phone(relay, 'Dewi');
+      await fandri.service.start();
+      await dewi.service.start();
+      const { bookId, invite } = await sharedHome(fandri);
+      await dewi.service.join(invite.code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'iPhone' });
+      const relayBookId = (await listSharedBooks(dewi.database))[0]!.relayBookId;
+      dewi.failing.add(relayBookId);
+
+      await expect(dewi.service.leaveAndDelete(dewi.ws, bookId)).rejects.toBeInstanceOf(SyncTransportError);
+      expect((await dewi.database.db.values(sql`SELECT 1 FROM books WHERE id = ${bookId}`)).length).toBe(1);
+      expect((await listSharedBooks(dewi.database))[0]).toMatchObject({ bookId, state: 'active' });
+
+      const done = await dewi.service.deleteHereOnly(dewi.ws, bookId);
+      expect(done.erased).toBe(true);
+      expect((await dewi.database.db.values(sql`SELECT 1 FROM books WHERE id = ${bookId}`)).length).toBe(0);
+      expect(await listSharedBooks(dewi.database)).toEqual([]);
+      expect(await dewi.records.get(bookId)).toBeNull();
+      expect(dewi.service.syncing()).not.toContain(bookId);
+      // The relay was not told: the owner still lists Dewi's phone.
+      await fandri.service.syncNow(bookId);
+      const detail = (await sharingDetail(fandri.database, bookId, await fandri.service.deviceId()))!;
+      expect(detail.members.find((m) => m.name === 'Dewi')!.devices).toHaveLength(1);
+      fandri.service.stop();
+      dewi.service.stop();
+    });
+
+    it('Place them now runs in the book’s turn and is logged; with nothing held it places nothing', async () => {
+      const relay = new MemoryTransport();
+      const fandri = await phone(relay, 'Fandri');
+      await fandri.service.start();
+      const { bookId } = await sharedHome(fandri);
+      await expect(fandri.service.placeHeldRows(bookId)).resolves.toEqual({ placed: 0, stillHeld: 0 });
+      expect((await fandri.service.log.forBook(bookId)).find((entry) => entry.op === 'place')).toMatchObject({ level: 'info', message: expect.stringMatching(/placed 0/) });
+      fandri.service.stop();
+    });
+
+    it('an invite beside another copy from the same owner names that copy before the join (D-A7)', async () => {
+      const relay = new MemoryTransport();
+      const fandri = await phone(relay, 'Fandri');
+      const dewi = await phone(relay, 'Dewi');
+      await fandri.service.start();
+      await dewi.service.start();
+      const first = await sharedHome(fandri, 'Home');
+      await dewi.service.join(first.invite.code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'iPhone' });
+      const second = await sharedHome(fandri, 'Home again');
+      const preview = await dewi.service.preview(second.invite.code);
+      expect(preview.otherCopies).toEqual([{ bookId: first.bookId, name: 'Home', state: 'active' }]);
+      // Nothing else on Fandri's own phone is another copy of a book he owns there.
+      const own = await fandri.service.preview(first.invite.code).catch(() => null);
+      expect(own?.otherCopies ?? []).not.toContainEqual(expect.objectContaining({ bookId: first.bookId }));
+      fandri.service.stop();
+      dewi.service.stop();
+    });
+
+    it('a restore stops every sync and waits for the one running, tells the engine its rows were replaced, and does not start again', async () => {
+      const relay = new MemoryTransport();
+      const fandri = await phone(relay, 'Fandri');
+      await fandri.service.start();
+      const { bookId } = await sharedHome(fandri);
+      const engine = await fandri.service.engine();
+      const replaced = vi.spyOn(engine, 'databaseReplaced');
+      const backup = await fandri.database.exportBytes();
+      const running = fandri.service.syncNow(bookId);
+      let syncedDuring = false;
+      await fandri.service.whileReplacing(async () => {
+        expect(fandri.service.syncing()).toEqual([]);
+        const spy = vi.spyOn(engine, 'syncOnce');
+        await fandri.service.syncNow(bookId);
+        syncedDuring = spy.mock.calls.length > 0;
+        await fandri.database.importBytes(backup);
+      });
+      await running;
+      expect(syncedDuring).toBe(false);
+      expect(replaced).toHaveBeenCalled();
+      await fandri.service.start();
+      expect(fandri.service.syncing()).toEqual([]);
+      fandri.service.stop();
+    });
+
+    it('a restore that fails starts syncing again', async () => {
+      const relay = new MemoryTransport();
+      const fandri = await phone(relay, 'Fandri');
+      await fandri.service.start();
+      const { bookId } = await sharedHome(fandri);
+      await expect(fandri.service.whileReplacing(async () => Promise.reject(new Error('cancelled')))).rejects.toThrow('cancelled');
+      expect(fandri.service.syncing()).toContain(bookId);
+      fandri.service.stop();
     });
   });
 });
