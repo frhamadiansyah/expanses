@@ -1,0 +1,185 @@
+import { calculatorSchedule } from '@expanses/core';
+import { describe, expect, it } from 'vitest';
+import { emptyLoanCalcDraft, emptyLoanKindDraft, type LoanKindDraft, loanCalcDraftFrom, loanWorking } from './loan-calc-form';
+import {
+  debtPrefill,
+  feeLine,
+  flatNote,
+  halfRepaidText,
+  incomeShare,
+  interestOfLoan,
+  jumpWarning,
+  kindOfItem,
+  loanResult,
+  priceVsPaid,
+  principalLabel,
+  stageRate,
+  stageTitle,
+  totalCaption,
+  yearlyCostWarning,
+} from './loan-calc-view';
+
+const TODAY = '2026-11-11';
+/** Money is formatted with a no-break space after the symbol; the expectations are written with a plain one. */
+const plain = (text: string | null | undefined) => text?.replace(/\u00a0/g, ' ');
+const homeDraft = (patch: Partial<LoanKindDraft> = {}): LoanKindDraft => ({
+  ...emptyLoanKindDraft('home'),
+  price: '900.000.000',
+  down: '20',
+  years: '20',
+  stages: [
+    { kind: 'fixed', years: '3', rate: '5,5' },
+    { kind: 'floating', years: '', rate: '11' },
+  ],
+  income: '30.000.000',
+  ...patch,
+});
+
+describe('reading the loan calculator’s boxes', () => {
+  it('works a home loan out from its price, down payment, years and stages, first paid next month', () => {
+    const working = loanWorking('home', homeDraft(), 'IDR', TODAY);
+    expect(working.problems).toEqual({});
+    expect(working.input).toEqual({
+      principalMinor: 720_000_000,
+      method: 'annuity',
+      stages: [
+        { months: 36, rateBps: 550, kind: 'fixed' },
+        { months: 204, rateBps: 1100, kind: 'floating' },
+      ],
+      firstPaymentOn: '2026-12-11',
+      paymentDay: 11,
+    });
+    expect(working.facts).toMatchObject({ priceMinor: 900_000_000, downMinor: 180_000_000, loanMinor: 720_000_000, incomeMinor: 30_000_000 });
+  });
+
+  it('takes the down payment as an amount too, and the loan typed when no price is given', () => {
+    expect(loanWorking('home', homeDraft({ down: '180.000.000', downAs: 'amount' }), 'IDR', TODAY).input?.principalMinor).toBe(720_000_000);
+    expect(loanWorking('home', homeDraft({ price: '', amount: '500.000.000' }), 'IDR', TODAY).input?.principalMinor).toBe(500_000_000);
+  });
+
+  it('waits quietly for empty boxes, and names a box that does not read', () => {
+    const empty = loanWorking('home', emptyLoanKindDraft('home'), 'IDR', TODAY);
+    expect(empty).toEqual({ problems: {}, input: null, facts: null });
+    const bad = loanWorking('home', homeDraft({ down: '120', years: '2,5' }), 'IDR', TODAY);
+    expect(bad.input).toBeNull();
+    expect(bad.problems).toMatchObject({ down: 'Less than the price', years: expect.any(String) });
+    const tooLong = loanWorking('home', homeDraft({ years: '3' }), 'IDR', TODAY);
+    expect(tooLong.problems['stage2.years']).toMatch(/fill the whole loan/);
+  });
+
+  it('reads a vehicle as flat, an online loan as flat a month with its fee, and any other by its switch', () => {
+    const vehicle = loanWorking('vehicle', { ...emptyLoanKindDraft('vehicle'), price: '350.000.000', down: '25', months: '48', rate: '4,5' }, 'IDR', TODAY);
+    expect(vehicle.input).toMatchObject({ principalMinor: 262_500_000, method: 'flat', stages: [{ months: 48, rateBps: 450, kind: 'fixed' }] });
+    const online = loanWorking('online', { ...emptyLoanKindDraft('online'), amount: '6.000.000', months: '6', rate: '2,95', fee: '3' }, 'IDR', TODAY);
+    expect(online.input).toMatchObject({ method: 'flat', stages: [{ months: 6, rateBps: 3540 }] });
+    expect(online.facts?.feeMinor).toBe(180_000);
+    const other = (flat: boolean) => loanWorking('other', { ...emptyLoanKindDraft('other'), amount: '50.000.000', months: '24', rate: '9', flat }, 'IDR', TODAY).input?.method;
+    expect(other(true)).toBe('flat');
+    expect(other(false)).toBe('annuity');
+    expect(loanWorking('other', { ...emptyLoanKindDraft('other'), amount: '50.000.000', months: '24', rate: '0' }, 'IDR', TODAY).input?.method).toBe('zero');
+  });
+
+  it('reads what was kept back, and anything it cannot read as the empty box', () => {
+    const kept = { ...emptyLoanCalcDraft(), kind: 'vehicle' as const };
+    kept.drafts.home = homeDraft();
+    expect(loanCalcDraftFrom(JSON.parse(JSON.stringify(kept)))).toEqual(kept);
+    expect(loanCalcDraftFrom(null)).toEqual(emptyLoanCalcDraft());
+    expect(loanCalcDraftFrom({ kind: 'boat', drafts: { home: { price: 5, stages: 'x' } } })).toEqual({
+      ...emptyLoanCalcDraft(),
+      drafts: { ...emptyLoanCalcDraft().drafts, home: { ...emptyLoanKindDraft('home'), price: '' } },
+    });
+  });
+});
+
+describe('the loan calculator’s result', () => {
+  const working = loanWorking('home', homeDraft(), 'IDR', TODAY);
+  const result = loanResult(working.input!);
+
+  it('totals the schedule and splits it into principal and interest that add up to 100%', () => {
+    expect(result.rows).toEqual(calculatorSchedule(working.input!));
+    expect(result.totalPaidMinor).toBe(1_629_625_844);
+    expect(result.interestMinor).toBe(909_625_844);
+    expect([result.principalPercent, result.interestPercent]).toEqual([44, 56]);
+    expect(totalCaption('home', 240)).toBe('Total paid over 20 years');
+    expect(totalCaption('vehicle', 48)).toBe('Total paid over 48 months');
+    expect(principalLabel('home', 44)).toBe('Principal (loan) · 44%');
+    expect(principalLabel('online', 85)).toBe('Principal · 85%');
+    expect(interestOfLoan(result)).toBe('Interest is 126% of the loan.');
+  });
+
+  it('names each stage and warns when the fixed rate ends', () => {
+    expect(stageTitle(result.lines[0]!, 'home')).toEqual({ months: 'Months 1–36', years: 'years 1–3' });
+    expect(stageTitle(result.lines[1]!, 'home')).toEqual({ months: 'Months 37–240', years: 'years 4–20' });
+    expect(stageTitle(result.lines[0]!, 'vehicle').years).toBeNull();
+    expect(stageRate(result.lines[0]!, 'home', 'annuity')).toBe('5,5% a year · fixed');
+    expect(stageRate(result.lines[1]!, 'home', 'annuity')).toBe('11% a year · floating');
+    expect(result.lines.map((line) => line.paymentMinor)).toEqual([4_952_789, 7_114_340]);
+    expect(plain(jumpWarning(result.jump, 'IDR'))).toBe('Up Rp 2.161.551 a month (+43,6%) when the fixed rate ends. A floating rate can move again later.');
+    expect(jumpWarning(null, 'IDR')).toBeNull();
+  });
+
+  it('sets the price against everything paid, and the month half the loan is repaid', () => {
+    const paid = priceVsPaid('home', working.facts!, result.interestMinor, 'IDR')!;
+    expect(paid.caption).toBe('House price vs everything paid');
+    expect(paid.parts.map((part) => [part.label, part.minor])).toEqual([
+      ['Down payment', 180_000_000],
+      ['Loan', 720_000_000],
+      ['Interest', 909_625_844],
+    ]);
+    expect(plain(paid.total)).toBe('Total Rp 1.809.625.844 for a Rp 900.000.000 house');
+    expect(priceVsPaid('home', { ...working.facts!, priceMinor: 0 }, 1, 'IDR')).toBeNull();
+    expect(halfRepaidText(result.halfMonth)).toEqual({ month: 'month 172', year: '(year 15)' });
+  });
+
+  it('bands the share of income on the highest payment', () => {
+    expect(incomeShare(result.lines, 30_000_000)).toEqual({ tag: '17% → 24%', widthPercent: 24, band: 'comfortable', note: 'Under 30% stays comfortable.' });
+    expect(incomeShare(result.lines, 20_000_000)).toMatchObject({ tag: '25% → 36%', band: 'stretched', note: 'Between 30% and 40% is stretched.' });
+    expect(incomeShare(result.lines, 15_000_000)).toMatchObject({ band: 'heavy', note: 'Over 40% leaves little room.' });
+    expect(incomeShare(result.lines.slice(0, 1), 30_000_000)?.tag).toBe('17%');
+    expect(incomeShare(result.lines, 0)).toBeNull();
+  });
+
+  it('says what a flat rate a year really costs', () => {
+    const vehicle = loanWorking('vehicle', { ...emptyLoanKindDraft('vehicle'), price: '350.000.000', down: '25', months: '48', rate: '4,5' }, 'IDR', TODAY);
+    const note = flatNote(vehicle.input!, 'vehicle')!;
+    expect(`${note.lead}${note.figure}${note.tail}`).toBe(
+      'Flat 4,5% a year works out to about 8,36% a year on what is still owed, because flat interest stays on the full loan the whole time.',
+    );
+    expect(stageRate(loanResult(vehicle.input!).lines[0]!, 'vehicle', 'flat')).toBe('4,5% a year · flat');
+    expect(flatNote(working.input!, 'home')).toBeNull();
+  });
+
+  it('shows an online loan’s fee, its cost of borrowing, and what it adds up to a year', () => {
+    const online = loanWorking('online', { ...emptyLoanKindDraft('online'), amount: '6.000.000', months: '6', rate: '2,95', fee: '3' }, 'IDR', TODAY);
+    const res = loanResult(online.input!);
+    expect(res.totalPaidMinor).toBe(7_062_000);
+    expect(stageRate(res.lines[0]!, 'online', 'flat')).toBe('2,95% a month');
+    expect(plain(feeLine(online.facts!, res.interestMinor, 'IDR'))).toBe('Fee at the start Rp 180.000 · cost of borrowing Rp 1.242.000 (20,7%)');
+    const warning = yearlyCostWarning(online.facts!, res.rows, 'IDR')!;
+    expect(plain(`${warning.lead}${warning.figure}${warning.tail}`)).toBe(
+      'Adds up to about 97% a year. Only Rp 5.820.000 arrives after the fee, and the payments are on the full Rp 6.000.000.',
+    );
+    expect(feeLine({ ...online.facts!, feeMinor: 0 }, res.interestMinor, 'IDR')).toBeNull();
+  });
+
+  it('hands Add debt the debt, its figures and the loan’s shape', () => {
+    expect(debtPrefill('home', working.input!, 'IDR')).toEqual({
+      item: 'home_mortgage',
+      name: 'Home loan',
+      owed: '720.000.000',
+      months: 240,
+      firstPaymentOn: '2026-12-11',
+      method: 'annuity',
+      stages: working.input!.stages,
+    });
+    expect(debtPrefill('home', working.input!, 'IDR', 'apartment_mortgage').item).toBe('apartment_mortgage');
+    expect(kindOfItem('apartment_mortgage')).toBe('home');
+    expect(kindOfItem('online_loan')).toBe('online');
+    expect(kindOfItem('multi_purpose_loan')).toBe('other');
+  });
+
+  it('says nothing with “you” in it', () => {
+    const lines = [jumpWarning(result.jump, 'IDR'), interestOfLoan(result), incomeShare(result.lines, 15_000_000)?.note, priceVsPaid('home', working.facts!, 1, 'IDR')?.total];
+    for (const line of lines) expect(line).not.toMatch(/\byou(r)?\b/i);
+  });
+});

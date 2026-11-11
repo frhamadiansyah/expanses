@@ -1,5 +1,5 @@
 import type { CatalogEntry } from '@expanses/catalog';
-import { addMonths, debtItem, type LoanMethod, monthOf, parseMajor, rateBpsFromTyped } from '@expanses/core';
+import { addMonths, calculatorLoan, debtItem, type LoanCalcStage, type LoanMethod, monthOf, parseMajor, rateBpsFromTyped } from '@expanses/core';
 import { memberLevelsOf } from '../cards/catalog-picker';
 
 /**
@@ -25,6 +25,18 @@ export interface DebtItemDraft {
   term: string;
   person: string;
   openedOn: string;
+  /**
+   * Set only when the form was filled in by the loan calculator: the first payment, how interest is charged, and the
+   * rate stages, which replace the one rate box. Months left still decides the length; the last stage takes the rest.
+   */
+  fromCalculator?: CalculatorTerms;
+}
+
+/** What the loan calculator hands Add debt beyond the boxes it fills: the agreed shape of the loan. */
+export interface CalculatorTerms {
+  firstPaymentOn: string;
+  method: LoanMethod;
+  stages: LoanCalcStage[];
 }
 
 export const emptyDebtItemDraft = (itemId: string, today: string): DebtItemDraft => ({
@@ -57,7 +69,15 @@ export interface DebtTermsPlan {
   method: LoanMethod;
   paymentDay: number;
   rateBps: number;
+  rateKind: 'fixed' | 'floating';
   coretaxCode: string;
+}
+
+/** A rate change written after the terms: a later stage from the loan calculator. */
+export interface DebtRatePeriodPlan {
+  fromOn: string;
+  rateBps: number;
+  kind: 'fixed' | 'floating';
 }
 
 /** Money owed to a person, which the Lend & borrow ledger opens and keeps. */
@@ -80,10 +100,21 @@ export interface NewDebtPlan {
   handOver: 'card' | null;
   account: DebtAccountPlan | null;
   terms: DebtTermsPlan | null;
+  /** Rate changes to write once the terms exist, in order. Empty unless the calculator gave stages. */
+  laterPeriods: DebtRatePeriodPlan[];
   person: DebtPersonPlan | null;
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * The first payment of a loan added today: today's day of the month, clamped to the 28th so every month has it, next
+ * month — a debt brought in has already paid this month's instalment, or it would not be being typed in now.
+ */
+export function firstPaymentFor(today: string): { firstPaymentOn: string; paymentDay: number } {
+  const paymentDay = Math.min(Number(today.slice(8, 10)), 28);
+  return { firstPaymentOn: `${addMonths(monthOf(today), 1)}-${pad(paymentDay)}`, paymentDay };
+}
 
 /** What is still owed, as minor units, refusing anything that is not a positive amount. */
 function owedMinor(typed: string, currency: string): number {
@@ -108,7 +139,7 @@ function owedMinor(typed: string, currency: string): number {
 export function planNewDebt(draft: DebtItemDraft, currency: string, today: string): NewDebtPlan {
   const item = debtItem(draft.itemId);
   const { behaviour } = item;
-  const empty: NewDebtPlan = { handOver: null, account: null, terms: null, person: null };
+  const empty: NewDebtPlan = { handOver: null, account: null, terms: null, laterPeriods: [], person: null };
 
   if (behaviour.opens === 'card') return { ...empty, handOver: 'card' };
 
@@ -141,7 +172,10 @@ export function planNewDebt(draft: DebtItemDraft, currency: string, today: strin
   const tenorMonths = Number(draft.term.trim());
   if (!Number.isInteger(tenorMonths) || tenorMonths < 1) throw new Error('A loan runs for at least one month');
 
-  const paymentDay = Math.min(Number(today.slice(8, 10)), 28);
+  const calc = draft.fromCalculator;
+  if (calc) return { ...empty, account, ...calculatorPlan(calc, tenorMonths, originalMinor, lenderName, item.code) };
+
+  const first = firstPaymentFor(today);
   // Stored as yearly basis points whichever way it was typed; a paylater's monthly figure is that times twelve.
   // Empty is no interest, which is the 'zero' method exactly as before the rate was asked.
   const rateBps = behaviour.asksRate ? rateBpsFromTyped(draft.rate, behaviour.ratePer ?? 'year') : 0;
@@ -151,13 +185,98 @@ export function planNewDebt(draft: DebtItemDraft, currency: string, today: strin
     terms: {
       lenderName,
       originalMinor,
-      firstPaymentOn: `${addMonths(monthOf(today), 1)}-${pad(paymentDay)}`,
+      firstPaymentOn: first.firstPaymentOn,
       tenorMonths,
       method: rateBps > 0 ? 'annuity' : 'zero',
-      paymentDay,
+      paymentDay: first.paymentDay,
       rateBps,
+      rateKind: 'fixed',
       coretaxCode: item.code,
     },
+  };
+}
+
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * The calculator's loan as terms and rate changes: the first stage is the opening rate, each later stage a rate change
+ * on its first payment — the periods `calculatorLoan` works the calculator's own table from, so the saved loan's
+ * schedule is that table. Months left decides the length: the last stage takes whatever the stages before it leave.
+ */
+function calculatorPlan(calc: CalculatorTerms, tenorMonths: number, originalMinor: number, lenderName: string, coretaxCode: string): Pick<NewDebtPlan, 'terms' | 'laterPeriods'> {
+  if (!DATE.test(calc.firstPaymentOn)) throw new Error('Choose the date of the first payment');
+  const before = calc.stages.slice(0, -1);
+  const last = calc.stages.at(-1);
+  if (!last) throw new Error('A loan needs a rate');
+  const used = before.reduce((total, stage) => total + stage.months, 0);
+  if (used >= tenorMonths) throw new Error('The rate stages run longer than the months left');
+  const paymentDay = Math.min(Number(calc.firstPaymentOn.slice(8, 10)), 28);
+  const firstPaymentOn = `${calc.firstPaymentOn.slice(0, 8)}${pad(paymentDay)}`;
+  const { terms, periods } = calculatorLoan({
+    principalMinor: originalMinor,
+    method: calc.method,
+    stages: [...before, { ...last, months: tenorMonths - used }],
+    firstPaymentOn,
+    paymentDay,
+  });
+  const [opening, ...later] = periods;
+  return {
+    terms: { lenderName, ...terms, rateBps: opening!.rateBps, rateKind: opening!.kind, coretaxCode },
+    laterPeriods: later.map((period) => ({ fromOn: period.fromOn, rateBps: period.rateBps, kind: period.kind })),
+  };
+}
+
+/**
+ * What the loan calculator's Save as debt carries to Add debt, in the page's address: which debt it is, its name, what
+ * is owed (as the box shows it), the months, and the agreed shape of the loan. The lender is never guessed.
+ */
+export interface CalculatorPrefill extends CalculatorTerms {
+  item: string;
+  name: string;
+  owed: string;
+  months: number;
+}
+
+const isStage = (value: unknown): value is LoanCalcStage => {
+  if (typeof value !== 'object' || value === null) return false;
+  const stage = value as Record<string, unknown>;
+  return Number.isInteger(stage.months) && (stage.months as number) > 0 && Number.isInteger(stage.rateBps) && (stage.rateBps as number) >= 0 && (stage.kind === 'fixed' || stage.kind === 'floating');
+};
+const METHODS: readonly LoanMethod[] = ['annuity', 'flat', 'zero'];
+
+/** The prefill read back from an address, or null when anything in it is not what the calculator writes. */
+export function readCalculatorPrefill(value: unknown): CalculatorPrefill | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const v = value as Record<string, unknown>;
+  if (typeof v.item !== 'string' || typeof v.name !== 'string' || typeof v.owed !== 'string') return null;
+  if (!Number.isInteger(v.months) || (v.months as number) < 1) return null;
+  if (typeof v.firstPaymentOn !== 'string' || !DATE.test(v.firstPaymentOn)) return null;
+  if (!METHODS.includes(v.method as LoanMethod)) return null;
+  if (!Array.isArray(v.stages) || v.stages.length === 0 || !v.stages.every(isStage)) return null;
+  try {
+    if (debtItem(v.item).behaviour.opens !== 'loan') return null;
+  } catch {
+    return null;
+  }
+  return {
+    item: v.item,
+    name: v.name,
+    owed: v.owed,
+    months: v.months as number,
+    firstPaymentOn: v.firstPaymentOn,
+    method: v.method as LoanMethod,
+    stages: (v.stages as LoanCalcStage[]).map((stage) => ({ months: stage.months, rateBps: stage.rateBps, kind: stage.kind })),
+  };
+}
+
+/** The debt form as the calculator fills it in: everything but the lender, owed as of today. */
+export function draftFromCalculator(prefill: CalculatorPrefill, today: string): DebtItemDraft {
+  return {
+    ...emptyDebtItemDraft(prefill.item, today),
+    name: prefill.name,
+    owed: prefill.owed,
+    term: String(prefill.months),
+    fromCalculator: { firstPaymentOn: prefill.firstPaymentOn, method: prefill.method, stages: prefill.stages },
   };
 }
 

@@ -1,6 +1,7 @@
 import { CATALOG } from '@expanses/catalog';
 import { describe, expect, it } from 'vitest';
-import { cardAccountName, emptyDebtItemDraft, emptyNewCardDraft, issuerInName, type NewCardDraft, planNewCard, planNewDebt, splitCardName } from './debt-form';
+import { calculatorLoan, type LoanCalcInput } from '@expanses/core';
+import { type CalculatorPrefill, cardAccountName, draftFromCalculator, emptyDebtItemDraft, emptyNewCardDraft, firstPaymentFor, issuerInName, type NewCardDraft, planNewCard, planNewDebt, readCalculatorPrefill, splitCardName } from './debt-form';
 
 const draft = (id: string, patch: Record<string, string>) => ({ ...emptyDebtItemDraft(id, '2026-09-18'), ...patch });
 
@@ -200,5 +201,59 @@ describe('a hand-typed card name on the bank-and-name row, and back', () => {
       const { bank, name } = splitCardName(typed, banks);
       expect(cardAccountName(bank, name)).toBe(typed);
     }
+  });
+});
+
+describe('a debt filled in by the loan calculator', () => {
+  const prefill: CalculatorPrefill = {
+    item: 'home_mortgage',
+    name: 'Home loan',
+    owed: '720.000.000',
+    months: 240,
+    firstPaymentOn: '2026-12-11',
+    method: 'annuity',
+    stages: [
+      { months: 36, rateBps: 550, kind: 'fixed' },
+      { months: 204, rateBps: 1100, kind: 'floating' },
+    ],
+  };
+  const home: LoanCalcInput = { principalMinor: 720_000_000, method: 'annuity', stages: prefill.stages, firstPaymentOn: '2026-12-11', paymentDay: 11 };
+
+  it('saves the terms and rate changes the calculator worked its table from', () => {
+    const plan = planNewDebt({ ...draftFromCalculator(prefill, '2026-11-11'), lender: 'Lender' }, 'IDR', '2026-11-11');
+    const { terms, periods } = calculatorLoan(home);
+    expect(plan.account).toMatchObject({ name: 'Home loan', openingBalanceMinor: 720_000_000, openedOn: '2026-11-11' });
+    expect(plan.terms).toEqual({ lenderName: 'Lender', ...terms, rateBps: 550, rateKind: 'fixed', coretaxCode: '101' });
+    expect(plan.laterPeriods).toEqual([{ fromOn: periods[1]!.fromOn, rateBps: 1100, kind: 'floating' }]);
+  });
+
+  it('lets the months left change, the last stage taking what the others leave', () => {
+    const plan = planNewDebt({ ...draftFromCalculator(prefill, '2026-11-11'), lender: 'Lender', term: '120' }, 'IDR', '2026-11-11');
+    expect(plan.terms).toMatchObject({ tenorMonths: 120 });
+    expect(plan.laterPeriods).toHaveLength(1);
+    expect(() => planNewDebt({ ...draftFromCalculator(prefill, '2026-11-11'), lender: 'Lender', term: '36' }, 'IDR', '2026-11-11')).toThrow(/stages run longer/);
+  });
+
+  it('keeps a flat loan flat', () => {
+    const plan = planNewDebt(
+      { ...draftFromCalculator({ ...prefill, item: 'vehicle_leasing', owed: '262.500.000', months: 48, method: 'flat', stages: [{ months: 48, rateBps: 450, kind: 'fixed' }] }, '2026-11-11'), lender: 'Lender' },
+      'IDR',
+      '2026-11-11',
+    );
+    expect(plan.terms).toMatchObject({ method: 'flat', rateBps: 450, tenorMonths: 48 });
+    expect(plan.laterPeriods).toEqual([]);
+  });
+
+  it('reads only what the calculator writes back from the address', () => {
+    expect(readCalculatorPrefill(prefill)).toEqual(prefill);
+    expect(readCalculatorPrefill(JSON.parse(JSON.stringify(prefill)))).toEqual(prefill);
+    for (const bad of [null, 'x', { ...prefill, item: 'credit_card' }, { ...prefill, item: 'nope' }, { ...prefill, stages: [] }, { ...prefill, method: 'odd' }, { ...prefill, months: 0 }, { ...prefill, firstPaymentOn: 'soon' }]) {
+      expect(readCalculatorPrefill(bad)).toBeNull();
+    }
+  });
+
+  it('dates the first payment of any new loan next month on today’s day, the 28th at most', () => {
+    expect(firstPaymentFor('2026-11-11')).toEqual({ firstPaymentOn: '2026-12-11', paymentDay: 11 });
+    expect(firstPaymentFor('2026-12-30')).toEqual({ firstPaymentOn: '2027-01-28', paymentDay: 28 });
   });
 });
