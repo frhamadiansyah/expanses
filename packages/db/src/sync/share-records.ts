@@ -63,7 +63,17 @@ export function parseShareRecord(raw: unknown): ShareRecord | null {
   return { v: 1, bookId, relayBookId, memberId, deviceId, role, bookName, bookKind, workspaceId, baseCurrency, epochKeys: keys, appliedSeq, updatedAt };
 }
 
-/** Records in memory, by book id. Every read and write is a copy, so no caller holds the store's own objects. */
+/** The record as a store keeps it: checked, its known fields only. Throws a TypeError for one that would not read back. */
+export function storableShareRecord(record: ShareRecord): ShareRecord {
+  const stored = parseShareRecord(record);
+  if (!stored) throw new TypeError(`Share record of ${String((record as { bookId?: unknown }).bookId)} is not a v1 record`);
+  return stored;
+}
+
+/**
+ * Records in memory, by book id. Every read and write is a copy, so no caller holds the store's own objects; only a
+ * record `parseShareRecord` reads is stored, with its known fields only.
+ */
 export class MemoryShareRecordStore implements ShareRecordStore {
   private readonly records = new Map<string, ShareRecord>();
 
@@ -76,8 +86,10 @@ export class MemoryShareRecordStore implements ShareRecordStore {
     return found ? structuredClone(found) : null;
   }
 
+  /** Refuses (TypeError) a record that would not read back, as the app's stores do: a write never stores one. */
   async put(record: ShareRecord): Promise<void> {
-    this.records.set(record.bookId, structuredClone(record));
+    const stored = storableShareRecord(record);
+    this.records.set(stored.bookId, stored);
   }
 
   async remove(bookId: string): Promise<void> {

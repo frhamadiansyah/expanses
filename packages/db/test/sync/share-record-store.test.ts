@@ -39,6 +39,12 @@ describe('MemoryShareRecordStore', () => {
     (await store.list())[0]!.epochKeys.length = 0;
     expect((await store.get('b1'))!.epochKeys).toEqual([{ epoch: 1, sealed: '{"x":1}' }]);
   });
+  it('refuses to store a record that would not read back', async () => {
+    const store = new MemoryShareRecordStore();
+    await expect(store.put({ ...record('b1'), appliedSeq: Number.NaN })).rejects.toThrow(TypeError);
+    await expect(store.put({ ...record('b1'), epochKeys: [{ epoch: 1, sealed: 7 as unknown as string }] })).rejects.toThrow(TypeError);
+    expect(await store.list()).toEqual([]);
+  });
   it('removing a book it does not hold is a no-op', async () => {
     const store = new MemoryShareRecordStore();
     await store.put(record('b1'));

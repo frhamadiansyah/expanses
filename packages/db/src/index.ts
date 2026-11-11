@@ -178,7 +178,7 @@ export {
 } from './sync/keys';
 export { inviteLink, parseInviteCode, JOIN_LINK_PREFIX, InviteCodeError } from './sync/invite';
 // The share record kept beside the device keys, outside the database (sharing resilience §6.1).
-export { MemoryShareRecordStore, parseShareRecord, type ShareRecord, type ShareRecordStore } from './sync/share-records';
+export { MemoryShareRecordStore, parseShareRecord, storableShareRecord, type ShareRecord, type ShareRecordStore } from './sync/share-records';
 export { deviceIdOf } from './sync/relay-signing';
 export { SharingError, type SharingErrorCode } from './sync/seed';
 export { type PullResult } from './sync/apply';
