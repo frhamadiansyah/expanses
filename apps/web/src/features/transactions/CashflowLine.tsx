@@ -197,7 +197,7 @@ export function CashflowLine() {
       <div aria-hidden style={{ height: inset + height + (card ? 8 : 0) }} />
       {card ? (
         <>
-          <div aria-hidden data-testid="line-dim" className="fixed inset-0 z-40 md:hidden" style={{ background: 'rgba(0,0,0,.14)' }} />
+          <div aria-hidden data-testid="line-dim" className="fixed inset-0 z-[25] md:hidden" style={{ background: 'rgba(0,0,0,.14)' }} />
           <div
             ref={composer}
             data-testid="line-composer"
