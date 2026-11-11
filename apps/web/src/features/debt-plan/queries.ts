@@ -110,7 +110,8 @@ export function useDebtPlan(): { model: DebtPlanModel | null; error: unknown; is
   const held = useHeldRates([...liabilities.map((a) => a.currency ?? baseCurrency), ...owedTo.map((p) => p.currency), ...(people.data?.settled ?? []).map((p) => p.currency)]);
   const facts = useLoanPlanFacts(today);
   const plans = useInstallments();
-  const movements = useDebtMovements(liabilities.map((a) => a.id));
+  // Cards' movements are never read (a card's figures come from its statement), and they are most of the rows.
+  const movements = useDebtMovements(liabilities.filter((a) => a.subtype !== 'credit_card').map((a) => a.id));
   const settings = useDebtPlanSettings();
 
   const queries = [accounts, balances, loans, items, people, cards, held, facts, plans, movements, settings];
