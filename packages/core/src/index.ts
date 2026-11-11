@@ -381,6 +381,20 @@ export { type DebtStatus, DUE_SOON_DAYS, type DueState, dueLabel, dueStateFor, s
 export { equalShares, yourShare } from './debts/shares';
 export { type RatePer, rateBpsFromTyped, typedFromRateBps } from './loans/rate-input';
 export { annuityPaymentMinor, type LoanMethod, type LoanTerms, loanSchedule, paymentDate, periodOn, type RatePeriod, type ScheduleRow } from './loans/schedule';
+export {
+  calculatorLoan,
+  calculatorSchedule,
+  effectiveYearlyCostBps,
+  halfRepaidMonth,
+  type LoanCalcInput,
+  type LoanCalcStage,
+  type PaymentJump,
+  paymentJump,
+  type StageLine,
+  stageLines,
+  type YearRow,
+  yearlyRows,
+} from './loans/calculator';
 export { type InstalmentDue, instalmentDates, type InstalmentPayment, type InstalmentState, instalmentStanding, type InstalmentStatus } from './loans/standing';
 export {
   type ExtraPayment,
