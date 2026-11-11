@@ -124,6 +124,18 @@ describe('monthItems and monthSections', () => {
     expect(titles(monthItems(input('2026-11-04', { bills: [electricity('skipped')] })))).not.toContain('Electricity');
   });
 
+  it('a bill belongs to the month its pay-by day falls in; an earlier month’s overdue one is carried into this one', () => {
+    const outLate = electricity('upcoming', { month: '2026-11', window: { month: '2026-11', opensOn: '2026-11-28', payBy: '2026-12-05' } });
+    expect(titles(monthItems(input('2026-11-04', { bills: [outLate] })))).not.toContain('Electricity');
+    const october = electricity('overdue', { month: '2026-10', window: { month: '2026-10', opensOn: '2026-10-10', payBy: '2026-10-20' } });
+    const items = monthItems(input('2026-11-04', { bills: [october, electricity()] }));
+    const s = monthSections(items, '2026-11', '2026-11-04');
+    expect(s.late.find((i) => i.kind === 'bill')).toMatchObject({ title: 'Electricity', dueOn: '2026-10-20', daysLate: 15 });
+    expect(monthTotals(items, '2026-11').dueMinor).toBe(kreditNov('2026-11-04') + 6_214_300 + 780_000 + 2_480_000);
+    // Looking back at October, the same bill is October's.
+    expect(titles(monthItems(input('2026-11-04', { month: '2026-10', cards: [], bills: [october] })))).toContain('Electricity');
+  });
+
   it('a month ahead shows scheduled instalments as upcoming, numbered from the first', () => {
     const items = monthItems(input('2026-11-04', { month: '2026-12', cards: [], bills: [] }));
     expect(items.find((i) => i.title.startsWith('KPR BCA'))).toMatchObject({ title: 'KPR BCA · 64/120', status: 'upcoming', dueOn: '2026-12-01' });

@@ -24,7 +24,10 @@ export interface MonthInput {
   debts: readonly PlanDebt[];
   loanFacts: readonly LoanPlanFact[];
   cards: readonly CardMonth[];
-  /** The open book's bills owed in the month, each with the currency it is written in. */
+  /**
+   * The open book's bills owed in this month and the one before (a bill out late in a month is paid by a day in the
+   * next), each with the currency it is written in. Only those whose pay-by day is in the month are its items.
+   */
   bills: readonly { row: BillMonthRow; currency: string }[];
   show: { loans: boolean; cards: boolean; bills: boolean };
   baseCurrency: string;
@@ -151,8 +154,13 @@ function cardItems(input: MonthInput): PlanItem[] {
 }
 
 function billItems(input: MonthInput): PlanItem[] {
+  const current = monthOf(input.today);
   return input.bills.flatMap(({ row, currency }) => {
     if (row.state === 'skipped' || row.state === 'paused') return [];
+    // A bill is due in the month of its pay-by day (spec §6.4); the current month also carries an earlier one still overdue.
+    const payMonth = monthOf(row.window.payBy);
+    const carried = input.month === current && row.state === 'overdue' && payMonth < input.month;
+    if (payMonth !== input.month && !carried) return [];
     const paid = row.state === 'paid';
     const late = row.state === 'overdue';
     const dueOn = row.window.payBy;
