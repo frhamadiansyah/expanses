@@ -188,9 +188,9 @@ test('a rate missing only for an earlier month leaves today’s net worth standi
   await page.getByRole('button', { name: 'Saving account' }).click();
   await page.getByLabel('Name', { exact: true }).pressSequentially('Old Valas');
   await page.getByLabel('Multi-currency', { exact: true }).check();
-  await setCurrency(page.getByLabel('Pocket 1', { exact: true }), 'IDR');
+  await setCurrency(currencyRow(page, 'Pocket 1'), 'IDR');
   await page.getByLabel('Opening IDR', { exact: true }).pressSequentially('5400000');
-  await setCurrency(page.getByLabel('Pocket 2', { exact: true }), 'USD');
+  await setCurrency(currencyRow(page, 'Pocket 2'), 'USD');
   await page.getByLabel('Opening USD', { exact: true }).pressSequentially('100');
   await page.getByLabel('Rate: IDR per 1 USD', { exact: true }).pressSequentially('16250');
   await page.getByRole('button', { name: 'Add account' }).click();
@@ -282,7 +282,7 @@ test('a blank rate that cannot be resolved stops the save, names the currency, a
   await page.getByRole('button', { name: 'Saving account' }).click();
   await page.getByLabel('Name', { exact: true }).pressSequentially('Nowhere Valas');
   await page.getByLabel('Multi-currency', { exact: true }).check();
-  await setCurrency(page.getByLabel('Pocket 2', { exact: true }), 'SGD');
+  await setCurrency(currencyRow(page, 'Pocket 2'), 'SGD');
   await page.getByLabel('Opening SGD').pressSequentially('10.00');
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page.getByRole('alert')).toContainText('No SGD→IDR rate available. Enter it manually.');
@@ -298,10 +298,10 @@ test('one currency twice cannot be chosen: the two pockets swap, each keeping it
   await page.getByRole('button', { name: 'Current account' }).click();
   await page.getByLabel('Name', { exact: true }).pressSequentially('Twice');
   await page.getByLabel('Multi-currency', { exact: true }).check();
-  await expect(page.getByLabel('Pocket 1', { exact: true })).toHaveValue('IDR');
+  await expect(currencyRow(page, 'Pocket 1')).toHaveAccessibleName('Pocket 1: IDR');
   await page.getByLabel('Opening IDR').pressSequentially('5400000');
-  await setCurrency(page.getByLabel('Pocket 2', { exact: true }), 'IDR');
-  await expect(page.getByLabel('Pocket 1', { exact: true })).toHaveValue('USD');
+  await setCurrency(currencyRow(page, 'Pocket 2'), 'IDR');
+  await expect(currencyRow(page, 'Pocket 1')).toHaveAccessibleName('Pocket 1: USD');
   await expect(page.getByLabel('Opening IDR')).toHaveCount(1);
   await expect(page.getByLabel('Opening IDR')).toHaveValue('5400000');
   await page.getByRole('button', { name: 'Add account' }).click();
@@ -445,9 +445,13 @@ test('Add a pocket says so when the account already holds every currency (P2-M5)
   await page.getByLabel('Name', { exact: true }).pressSequentially('Every Currency');
   await page.getByLabel('Multi-currency', { exact: true }).check();
   // Each added row takes the next currency not yet held; empty balances need no rate.
-  const all = await page.locator('datalist').first().locator('option').count();
+  // How many currencies there are: the distinct codes in the sheet Pocket 1 opens.
+  await currencyRow(page, 'Pocket 1').click();
+  const labels = await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: /^[A-Z]{3} / }).evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')!.slice(0, 3)));
+  const all = new Set(labels).size;
+  await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'Close' }).click();
   for (let i = 2; i < all; i += 1) await page.getByRole('button', { name: 'Add another currency' }).click();
-  await expect(page.getByLabel(`Pocket ${all}`, { exact: true })).toBeVisible();
+  await expect(currencyRow(page, `Pocket ${all}`)).toBeVisible();
   await page.getByRole('button', { name: 'Add account' }).click();
   await walletCard(page, 'Every Currency').click();
   await page.getByRole('button', { name: /^Add (a )?currency$/ }).first().click();
