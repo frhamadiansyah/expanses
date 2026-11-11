@@ -169,19 +169,20 @@ describe('a restore that is cut off half way', () => {
 
 describe('writing a copy file', () => {
   /** A directory handle whose writable stream fails at `failAt`. */
-  function directory(failAt: 'write' | 'close' | 'create' | null) {
-    const files = new Map<string, number>();
+  function directory(failAt: 'write' | 'close' | 'create' | null, files = new Map<string, number>()) {
     const removed: string[] = [];
     const dir = {
-      getFileHandle: async (name: string) => {
-        files.set(name, 0);
+      getFileHandle: async (name: string, options?: { create?: boolean }) => {
+        if (!options?.create && !files.has(name)) throw new DOMException('A requested file was not found.', 'NotFoundError');
+        if (!files.has(name)) files.set(name, 0);
         return {
           createWritable: async () => {
             if (failAt === 'create') throw new Error('no writable');
             return {
               write: async (bytes: Uint8Array) => {
                 if (failAt === 'write') throw new Error('QuotaExceededError');
-                files.set(name, bytes.length);
+                // Like the real stream, the new bytes land only on close: here, at once when nothing fails after.
+                if (failAt !== 'close') files.set(name, bytes.length);
               },
               close: async () => {
                 if (failAt === 'close') throw new Error('close failed');
@@ -209,7 +210,7 @@ describe('writing a copy file', () => {
 
   it('hands the write to the fallback writer when this thread has no createWritable', async () => {
     const removed: string[] = [];
-    const dir = { getFileHandle: async () => ({}), removeEntry: async (name: string) => void removed.push(name) };
+    const dir = { getFileHandle: async (_: string, options?: { create?: boolean }) => (options?.create ? {} : Promise.reject(new Error('NotFoundError'))), removeEntry: async (name: string) => void removed.push(name) };
     const fallback = vi.fn(async () => undefined);
     await writeWhole(dir as never, 'snapshot-x.sqlite3', new Uint8Array(1024), fallback);
     expect(fallback).toHaveBeenCalledWith('expanses-safety', 'snapshot-x.sqlite3', expect.any(Uint8Array));
@@ -218,7 +219,7 @@ describe('writing a copy file', () => {
 
   it('removes the file when the fallback writer fails too', async () => {
     const removed: string[] = [];
-    const dir = { getFileHandle: async () => ({}), removeEntry: async (name: string) => void removed.push(name) };
+    const dir = { getFileHandle: async (_: string, options?: { create?: boolean }) => (options?.create ? {} : Promise.reject(new Error('NotFoundError'))), removeEntry: async (name: string) => void removed.push(name) };
     await expect(
       writeWhole(dir as never, 'manifest.json', new Uint8Array(10), async () => {
         throw new Error('NoModificationAllowedError');
@@ -233,6 +234,15 @@ describe('writing a copy file', () => {
     await writeWhole(dir as never, 'snapshot-x.sqlite3', new Uint8Array(1024), fallback);
     expect(fallback).not.toHaveBeenCalled();
   });
+
+  for (const failAt of ['create', 'write', 'close'] as const) {
+    it(`keeps a file that was already there when the ${failAt} step of writing it again fails`, async () => {
+      const { dir, files, removed } = directory(failAt, new Map([['sync-log.json', 300]]));
+      await expect(writeWhole(dir as never, 'sync-log.json', new Uint8Array(1024))).rejects.toThrow();
+      expect(removed).toEqual([]);
+      expect(files.get('sync-log.json')).toBe(300);
+    });
+  }
 
   it('leaves the file when every step worked', async () => {
     const { dir, files, removed } = directory(null);

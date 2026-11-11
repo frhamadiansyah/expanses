@@ -376,6 +376,12 @@ function storeOver(slot: Slot, options: StoreOptions = {}): SnapshotStore {
  * that throws — or an app killed — after it leaves an empty file under a valid copy's name. Any failure
  * after the create removes it. (A kill cannot be caught; `looksWhole` keeps that file from ever being listed.)
  *
+ * Only a file this call made, though. A file that was already there (the sync log, the failure log, the manifest,
+ * written over again and again) is left as it is when its new write fails: a full device must not cost the log it
+ * already had. `createWritable` writes to a side file and swaps it in on close, so a failed write leaves the old
+ * content whole. The fallback writer truncates first, so there a failed write can leave the file short; every reader
+ * of these files takes one that does not parse as empty, which is no worse than the file being gone.
+ *
  * Where this thread has no `createWritable` (WebKit on older iOS), the bytes go to `fallback`: a worker of
  * its own that writes through a sync access handle. See `safety-write.ts`.
  */
@@ -385,6 +391,10 @@ export async function writeWhole(
   bytes: Uint8Array,
   fallback: (folder: string, file: string, bytes: Uint8Array) => Promise<void> = writeInSafetyWorker,
 ): Promise<void> {
+  const existed = await dir.getFileHandle(file).then(
+    () => true,
+    () => false,
+  );
   const handle = await dir.getFileHandle(file, { create: true });
   try {
     if (!hasCreateWritable(handle)) {
@@ -400,7 +410,7 @@ export async function writeWhole(
       await writable.close();
     }
   } catch (error) {
-    await dir.removeEntry(file).catch(() => undefined);
+    if (!existed) await dir.removeEntry(file).catch(() => undefined);
     throw error;
   }
 }
