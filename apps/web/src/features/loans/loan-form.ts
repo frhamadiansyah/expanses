@@ -194,3 +194,18 @@ export function paymentDraftToInput(
       .map((extra) => ({ categoryId: extra.categoryId, amountMinor: amount(extra.amount, 'amount') })),
   };
 }
+
+/**
+ * The rate text after the kind of loan changes: the stored yearly rate stays the same, so the text is re-expressed
+ * in the period the new kind quotes. A text that is not a number is left for save to refuse.
+ */
+export function rateTextAfterKindChange(rate: string, fromItemId: string, toItemId: string): string {
+  const before = loanRatePer(fromItemId);
+  const after = loanRatePer(toItemId);
+  if (before === after) return rate;
+  try {
+    return typedFromRateBps(rateBpsFromTyped(rate, before), after);
+  } catch {
+    return rate;
+  }
+}
