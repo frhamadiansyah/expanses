@@ -36,7 +36,7 @@ test('captured rows wait in the queue, and reach the ledger only when confirmed'
    * it holds only what was recorded. A draft is not a transaction; Not recorded is how the list is asked for it.
    */
   const queue = page.getByTestId('not-recorded-card');
-  await expect(queue).toContainText('Review transactions');
+  await expect(queue).toContainText('To review');
   await expect(queue).toContainText('2 not recorded');
   await expect(queue).toContainText('325.000');
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
@@ -123,7 +123,7 @@ test('the queue row is the way in to Review, and leaves with the last draft', as
 
   await page.goto('/transactions');
   const queue = page.getByTestId('not-recorded-card');
-  await expect(queue).toContainText('Review transactions');
+  await expect(queue).toContainText('To review');
   await expect(queue).toContainText('2 not recorded');
   // The row opens the queue's own screen, where the whole queue can be worked off.
   await queue.click();
