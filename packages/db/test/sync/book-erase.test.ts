@@ -12,8 +12,12 @@ import {
   nativeBalances,
   personalBook,
   planBookDelete,
+  positionsFor,
   postTransaction,
+  recordTrade,
   replaceTransaction,
+  saveAssetProfile,
+  voidTransaction,
   saveEarmark,
   saveExpenseTemplate,
   saveGoal,
@@ -496,9 +500,22 @@ describe('fix round 1: nothing outside the copy changes but by the erased rows',
     await fandri.database.db.run(sql`INSERT INTO member_transfer_postings (book_id, transfer_id, transaction_id) VALUES ('group-1', 'tr-2', ${w.own[0]})`);
     const bank = await balanceOf(fandri, fandri.bank);
     const plan = await planBookDelete(fandri.database, fandri.ws, bookId);
-    expect(plan).toMatchObject({ refusalCode: 'RECORDS', kept: 1 });
+    expect(plan).toMatchObject({ refusalCode: 'RECORDS', kept: 1, ownRecords: 0 });
     expect(plan.refusal).toContain('1 transaction');
     await expect(deleteBook(fandri.database, fandri.ws, bookId)).rejects.toMatchObject({ code: 'RECORDS' });
+    // The copy is read-only: the words ask for nothing the app would refuse (fix round 2, N1; probe 3).
+    expect(plan.refusal).toContain('cannot be deleted yet');
+    expect(plan.refusal).not.toMatch(/undo|move/i);
+    await expect(voidTransaction(fandri.database, inBook(fandri.ws, bookId), w.own[0]!)).rejects.toMatchObject({ name: 'BookReadOnlyError' });
+    await expect(
+      replaceTransaction(fandri.database, inBook(fandri.ws, bookId), w.own[0]!, {
+        occurredOn: ON,
+        description: 'Night market',
+        lines: expenseLines({ categoryAccountId: w.personalGroceries, paymentAccountId: fandri.bank, amountMinor: 30_000, currency: 'IDR' }),
+        moveToBook: true,
+        toBookId: w.personal.id,
+      }),
+    ).rejects.toMatchObject({ name: 'BookReadOnlyError' });
     expect(await balanceOf(fandri, fandri.bank)).toBe(bank);
     expect(await fandri.database.db.values(sql`SELECT status FROM transactions WHERE id = ${w.own[0]}`)).toEqual([['posted']]);
     expect(await count(fandri, 'shared_books', bookId)).toBe(1);
@@ -512,6 +529,132 @@ describe('fix round 1: nothing outside the copy changes but by the erased rows',
     );
     await expect(deleteBook(fandri.database, fandri.ws, bookId)).rejects.toMatchObject({ code: 'SPLIT' });
     expect(await fandri.database.db.values(sql`SELECT status FROM transactions WHERE id = ${w.own[0]}`)).toEqual([['posted']]);
+  });
+});
+
+describe('fix round 2: a left copy’s own trades and sales (N1)', () => {
+  /** Fandri buys gold on his card in the shared workspace, its spending on the copy's Groceries, then leaves. */
+  async function traded(options: { leave?: boolean } = {}) {
+    const w = await world();
+    const { fandri, bookId, home } = w;
+    const card = (await createAccount(fandri.database, fandri.ws, { name: 'Fandri Card', kind: 'liability', subtype: 'credit_card', currency: 'IDR' })).id;
+    const gold = (await createAccount(fandri.database, fandri.ws, { name: 'Fandri Gold', kind: 'asset', subtype: 'investment', currency: 'IDR' })).id;
+    await saveAssetProfile(fandri.database, fandri.ws, { accountId: gold, assetKind: 'gold' });
+    const { tradeId, transactionId } = await recordTrade(fandri.database, fandri.ws, {
+      accountId: gold,
+      kind: 'buy',
+      occurredOn: ON,
+      unitsMicro: 3_000_000,
+      grossMinor: 2_715_000,
+      feeMinor: 0,
+      taxMinor: 0,
+      cashAccountId: card,
+      spendCategoryId: await categoryOf(fandri.database, bookId, 'Groceries'),
+    });
+    await home.settle();
+    if (options.leave ?? true) await fandri.engine.leave(bookId);
+    const money = async () => {
+      const balances = await nativeBalances(fandri.database, fandri.ws);
+      return { gold: balances[gold] ?? 0, card: balances[card] ?? 0, bank: balances[fandri.bank] ?? 0, units: (await positionsFor(fandri.database, fandri.ws))[gold]?.unitsMicro ?? 0 };
+    };
+    return { ...w, card, gold, tradeId, transactionId: transactionId!, money };
+  }
+
+  it('is not a dead end: kept in Personal in place, holdings and balances unchanged to the unit', async () => {
+    const t = await traded();
+    const { fandri, bookId } = t;
+    expect(await fandri.database.db.values(sql`SELECT transaction_id FROM investment_trades WHERE id = ${t.tradeId}`)).toEqual([[t.transactionId]]);
+    const before = await t.money();
+    expect(before).toMatchObject({ gold: 2_715_000, card: -2_715_000, units: 3_000_000 });
+    const plan = await planBookDelete(fandri.database, fandri.ws, bookId);
+    expect(plan).toMatchObject({ refusal: null, refusalCode: null, ownRecords: 1, kept: 1 });
+    const done = await deleteBook(fandri.database, fandri.ws, bookId);
+    expect(done.keptInPersonal).toBe(3); // the trade, and the two own purchases
+    expect(await t.money()).toEqual(before);
+    // The same transaction, still the trade's, now filed in Personal and on Personal's Groceries.
+    expect(await fandri.database.db.values(sql`SELECT status FROM transactions WHERE id = ${t.transactionId}`)).toEqual([['posted']]);
+    expect(await fandri.database.db.values(sql`SELECT transaction_id, status FROM investment_trades WHERE id = ${t.tradeId}`)).toEqual([[t.transactionId, 'active']]);
+    expect(await fandri.database.db.values(sql`SELECT book_id FROM book_transactions WHERE transaction_id = ${t.transactionId}`)).toEqual([[t.personal.id]]);
+    expect(await fandri.database.db.values(sql`SELECT spend_category_id FROM entries WHERE transaction_id = ${t.transactionId} AND account_id = ${t.card}`)).toEqual([[t.personalGroceries]]);
+    for (const table of SYNC_TABLES) expect([table, await count(fandri, table, bookId)]).toEqual([table, 0]);
+  });
+
+  it('with Keep them in Personal off, refuses in words naming the switch, nothing changed', async () => {
+    const t = await traded();
+    const before = await t.money();
+    await expect(deleteBook(t.fandri.database, t.fandri.ws, t.bookId, { keepOwnInPersonal: false })).rejects.toMatchObject({
+      code: 'RECORDS',
+      message: expect.stringContaining('Keep them in Personal on'),
+    });
+    expect(await t.money()).toEqual(before);
+    expect(await count(t.fandri, 'shared_books', t.bookId)).toBe(1);
+  });
+
+  it('a copy that can still be changed (needs_invite) keeps today’s refusal: undo or move it first', async () => {
+    const t = await traded({ leave: false });
+    await t.fandri.database.db.run(sql`UPDATE shared_books SET state = 'needs_invite' WHERE book_id = ${t.bookId}`);
+    const plan = await planBookDelete(t.fandri.database, t.fandri.ws, t.bookId);
+    expect(plan).toMatchObject({ refusalCode: 'RECORDS', ownRecords: 0, kept: 1 });
+    expect(plan.refusal).toContain('Undo or move it first');
+  });
+});
+
+describe('the couple cleanup (owner’s real path, review probe 2)', () => {
+  it('ordinary purchases, an own filed transfer, a partner transfer and a purchase moved out: deleted, own balances to the unit', async () => {
+    const home = new Household();
+    const dewi = await home.device('Dewi', 'member-Dewi', 'IDR', '0.5.0');
+    const fandri = await home.device('Fandri', 'member-Fandri', 'IDR', '0.5.0');
+    const bookId = await home.share(dewi);
+    await home.join(fandri, dewi);
+    const groceries = await categoryOf(fandri.database, bookId, 'Groceries');
+    const personal = await personalBook(fandri.database, fandri.ws);
+    const personalGroceries = await categoryOf(fandri.database, personal.id, 'Groceries');
+    await spend(fandri, bookId, 'Night market', 30_000);
+    const pharmacy = await postTransaction(fandri.database, fandri.ws, {
+      occurredOn: ON,
+      description: 'Pharmacy',
+      lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: fandri.bank, amountMinor: 11_000, currency: 'IDR' }),
+    });
+    await postTransaction(fandri.database, inBook(fandri.ws, bookId), {
+      occurredOn: ON,
+      description: 'Top up wallet',
+      fileTransfer: true,
+      lines: [
+        { accountId: fandri.bank, amountMinor: -25_000, currency: 'IDR' },
+        { accountId: fandri.cash, amountMinor: 25_000, currency: 'IDR' },
+      ],
+    });
+    await spend(dewi, bookId, 'Weekly shop', 50_000);
+    await home.settle();
+    // One purchase moved out to Personal while still shared (the app's Move to workspace).
+    const moved = await replaceTransaction(fandri.database, inBook(fandri.ws, bookId), pharmacy, {
+      occurredOn: ON,
+      description: 'Pharmacy',
+      lines: expenseLines({ categoryAccountId: personalGroceries, paymentAccountId: fandri.bank, amountMinor: 11_000, currency: 'IDR' }),
+      moveToBook: true,
+      toBookId: personal.id,
+    });
+    await home.settle();
+    // A transfer between partners on Dewi's placeholder, filed nowhere.
+    const [[placeholder]] = (await fandri.database.db.values<[string]>(
+      sql`SELECT account_id FROM book_member_accounts WHERE book_id = ${bookId} AND member_id = ${dewi.memberId}`,
+    )) as [[string]];
+    const toDewi = await postTransaction(fandri.database, fandri.ws, {
+      occurredOn: ON,
+      description: 'Transfer to Dewi',
+      lines: [
+        { accountId: fandri.bank, amountMinor: -100_000, currency: 'IDR' },
+        { accountId: placeholder, amountMinor: 100_000, currency: 'IDR' },
+      ],
+    });
+    await fandri.database.db.run(sql`INSERT INTO member_transfer_postings (book_id, transfer_id, transaction_id) VALUES ('group-1', 'tr-1', ${toDewi})`);
+    await fandri.engine.leave(bookId);
+    const before = [await balanceOf(fandri, fandri.bank), await balanceOf(fandri, fandri.cash)];
+    expect((await planBookDelete(fandri.database, fandri.ws, bookId)).refusal).toBeNull();
+    await deleteBook(fandri.database, fandri.ws, bookId);
+    expect([await balanceOf(fandri, fandri.bank), await balanceOf(fandri, fandri.cash)]).toEqual(before);
+    expect(before).toEqual([-30_000 - 11_000 - 25_000 - 100_000, 25_000]);
+    expect(await fandri.database.db.values(sql`SELECT status FROM transactions WHERE id IN (${moved}, ${toDewi}) ORDER BY id`)).toEqual([['posted'], ['posted']]);
   });
 });
 

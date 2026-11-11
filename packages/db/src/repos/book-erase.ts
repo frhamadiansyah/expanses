@@ -7,7 +7,7 @@ import { createAccountTx } from './accounts';
 import { inputOfTx } from './activity';
 import { BookError, personalBookIdTx, type BookKind } from './books';
 import { healthTablesExist } from './health-tables';
-import { eraseVoidTransactionsTx, LedgerError, replaceTransactionTx, voidTransactionTx } from './ledger';
+import { eraseVoidTransactionsTx, LedgerError, refileInPlaceTx, replaceTransactionTx, voidTransactionTx } from './ledger';
 import { categoryInBookTx } from './move-group';
 import { deleteGoalRowsTx } from './goals';
 
@@ -138,36 +138,63 @@ const CLEARED_WITH_TRANSACTION: readonly [table: string, column: string, also?: 
   ['shared_transfers', 'transaction_id'],
 ];
 
+/** The records of this phone's own money that name a transaction and keep it (never synced: always this member's). */
+const OWN_RECORDS: ReadonlySet<string> = new Set(['investment_trades.transaction_id', 'asset_sales.transaction_id']);
+
+export interface KeptByRecords {
+  /** Named only by a trade or a sale of this phone's own (`OWN_RECORDS`): re-filed into Personal in place when kept. */
+  own: string[];
+  /** Named by any other record (a transfer between partners' posting, a table added later): never taken. */
+  other: string[];
+}
+
 /**
  * The book's transactions that a record this erase does not take still names — a trade, a sale of an asset, a
  * transfer between partners' posting, or any table added later that names a transaction (found by foreign key and
  * column name). Erasing would leave that record pointing at nothing, and voiding it and keeping it would keep an id
- * that stands in a later share's way: the delete refuses instead (`RECORDS`), with nothing changed.
+ * that stands in a later share's way. From a read-only joined copy a trade's or sale's is kept in Personal in place
+ * (`refileRecordsInPersonalTx`); anything else refuses the delete (`RECORDS`), with nothing changed.
  */
-async function keptByRecordsTx(tx: Db, ws: WorkspaceContext, bookId: string, tables: Set<string>): Promise<string[]> {
+export async function keptByRecordsTx(tx: Db, ws: WorkspaceContext, bookId: string, tables?: Set<string>): Promise<KeptByRecords> {
+  const known = tables ?? (await tablesOf(tx));
   const handled = new Set([
     ...[...GOES_WITH_TRANSACTION, ...CLEARED_WITH_TRANSACTION].map(([t, c]) => `${t}.${c}`),
     'entries.transaction_id',
     'sync_lineage.head_transaction_id',
   ]);
-  const kept = new Set<string>();
-  for (const [table, column] of await referencesTo(tx, tables, 'transactions')) {
+  const own = new Set<string>();
+  const other = new Set<string>();
+  for (const [table, column] of await referencesTo(tx, known, 'transactions')) {
     if (handled.has(`${table}.${column}`)) continue;
     const rows = await tx.values<[string]>(
-      sql`SELECT DISTINCT ${sql.raw(column)} FROM ${sql.raw(table)} WHERE ${sql.raw(column)} IN (${eraseSetSql(ws, bookId, tables)})`,
+      sql`SELECT DISTINCT ${sql.raw(column)} FROM ${sql.raw(table)} WHERE ${sql.raw(column)} IN (${eraseSetSql(ws, bookId, known)})`,
     );
-    for (const [id] of rows) kept.add(id);
+    for (const [id] of rows) (OWN_RECORDS.has(`${table}.${column}`) ? own : other).add(id);
   }
-  return [...kept].sort();
+  return { own: [...own].filter((id) => !other.has(id)).sort(), other: [...other].sort() };
 }
 
-/** `keptByRecordsTx` for the plan: how many, and the words the screen shows. */
-export async function keptByRecordsOfTx(tx: Db, ws: WorkspaceContext, bookId: string): Promise<number> {
-  return (await keptByRecordsTx(tx, ws, bookId, await tablesOf(tx))).length;
+/** A joined copy that has left its share here (`unshared`): read-only, so nothing in it can be undone or moved first. */
+export async function readOnlyCopyTx(tx: Db, bookId: string, kind: BookKind): Promise<boolean> {
+  if (kind !== 'shared' || !(await tablesOf(tx)).has('shared_books')) return false;
+  const [row] = await tx.values<[string]>(sql`SELECT state FROM shared_books WHERE book_id = ${bookId}`);
+  return row?.[0] === 'unshared';
 }
 
-export function recordsMessage(count: number): string {
-  return `${count} ${count === 1 ? 'transaction' : 'transactions'} in this workspace ${count === 1 ? 'belongs' : 'belong'} to a trade, a sale or a transfer between partners. Undo or move ${count === 1 ? 'it' : 'them'} first, then delete this workspace.`;
+/**
+ * Why a delete refuses over transactions a record keeps. In a workspace that can still be changed, the way out is to
+ * undo or move them. A read-only joined copy cannot be changed, so the words say it cannot be deleted yet rather than
+ * ask for what the app would refuse.
+ */
+export function recordsMessage(count: number, readOnly = false): string {
+  const what = `${count} ${count === 1 ? 'transaction' : 'transactions'} in this workspace ${count === 1 ? 'belongs' : 'belong'} to`;
+  if (readOnly) return `${what} a transfer between partners or another record kept outside it, so this workspace cannot be deleted yet.`;
+  return `${what} a trade, a sale or a transfer between partners. Undo or move ${count === 1 ? 'it' : 'them'} first, then delete this workspace.`;
+}
+
+/** Why a read-only copy's own trades and sales refuse a delete that would not keep them: the switch that keeps them. */
+export function ownRecordsMessage(count: number): string {
+  return `${count} ${count === 1 ? 'trade or sale' : 'trades or sales'} in this workspace ${count === 1 ? 'holds' : 'hold'} money of this phone's own accounts and cannot be erased. Delete it with Keep them in Personal on.`;
 }
 
 /**
@@ -198,20 +225,16 @@ export async function ownPurchasesTx(tx: Db, ws: WorkspaceContext, bookId: strin
       AND EXISTS (SELECT 1 FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = t.id AND a.kind IN ('asset', 'liability'))
       ${notReceived} ${byMe} ${derived}
     ORDER BY t.occurred_on, t.created_at, t.id`);
-  const kept = new Set(await keptByRecordsTx(tx, ws, bookId, tables));
+  const records = await keptByRecordsTx(tx, ws, bookId, tables);
+  const kept = new Set([...records.own, ...records.other]);
   return rows.map(([id]) => id).filter((id) => !kept.has(id));
 }
 
 /**
- * Moves this member's own purchases out of the copy into Personal before the copy is erased (owner decision), by the
- * move Move to workspace makes (`replaceTransactionTx` with `moveToBook`): each category swapped for its copy in
- * Personal, made there when Personal has none. What lands in Personal is an ordinary local purchase: it replaces
- * nothing (the copy's row it replaced is erased) and has no lineage. Returns the new transaction ids.
+ * The copy in Personal of each of the copy's categories, made there (under its parent's copy, with its key) when
+ * Personal has none; any other category as it is.
  */
-export async function keepOwnInPersonalTx(tx: Tx, ws: WorkspaceContext, bookId: string, ids: readonly string[]): Promise<string[]> {
-  if (ids.length === 0) return [];
-  const personal = await personalBookIdTx(tx, ws.workspaceId);
-  if (!personal || personal === bookId) throw new BookError('NOT_FOUND', 'Personal is not here to keep the purchases in');
+async function personalCategoryOfTx(tx: Db, ws: WorkspaceContext, bookId: string, personal: string): Promise<(categoryId: string) => Promise<string>> {
   const inCopy = new Set((await tx.values<[string]>(sql`SELECT category_account_id FROM book_categories WHERE book_id = ${bookId}`)).map(([id]) => id));
   const made = new Map<string, string>();
   const there = async (categoryId: string): Promise<string> => {
@@ -232,6 +255,34 @@ export async function keepOwnInPersonalTx(tx: Tx, ws: WorkspaceContext, bookId: 
     made.set(categoryId, created.id);
     return created.id;
   };
+  return there;
+}
+
+/**
+ * A read-only joined copy's own trades and sales kept in Personal before the copy is erased (fix round 2, N1): each
+ * transaction a trade or a sale record names is re-filed in place (`refileInPlaceTx`), void versions too, so the record
+ * keeps the id it names and every balance and holding stays to the unit. Returns how many were re-filed.
+ */
+export async function refileRecordsInPersonalTx(tx: Db, ws: WorkspaceContext, bookId: string, ids: readonly string[]): Promise<number> {
+  if (ids.length === 0) return 0;
+  const personal = await personalBookIdTx(tx, ws.workspaceId);
+  if (!personal || personal === bookId) throw new BookError('NOT_FOUND', 'Personal is not here to keep the trades in');
+  const there = await personalCategoryOfTx(tx, ws, bookId, personal);
+  for (const id of ids) await refileInPlaceTx(tx, ws, id, bookId, personal, there);
+  return ids.length;
+}
+
+/**
+ * Moves this member's own purchases out of the copy into Personal before the copy is erased (owner decision), by the
+ * move Move to workspace makes (`replaceTransactionTx` with `moveToBook`): each category swapped for its copy in
+ * Personal, made there when Personal has none. What lands in Personal is an ordinary local purchase: it replaces
+ * nothing (the copy's row it replaced is erased) and has no lineage. Returns the new transaction ids.
+ */
+export async function keepOwnInPersonalTx(tx: Tx, ws: WorkspaceContext, bookId: string, ids: readonly string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const personal = await personalBookIdTx(tx, ws.workspaceId);
+  if (!personal || personal === bookId) throw new BookError('NOT_FOUND', 'Personal is not here to keep the purchases in');
+  const there = await personalCategoryOfTx(tx, ws, bookId, personal);
   const moved: string[] = [];
   for (const id of ids) {
     const input = await inputOfTx(tx, ws, id);
@@ -345,7 +396,11 @@ export async function eraseBookTx(tx: Db, ws: WorkspaceContext, bookId: string):
 
     /* ---- 2. Which transactions (`eraseSetSql`). One a record still names refuses the whole delete, before any void. */
     const kept = await keptByRecordsTx(tx, ws, bookId, tables);
-    if (kept.length > 0) throw new BookError('RECORDS', recordsMessage(kept.length));
+    const count = kept.own.length + kept.other.length;
+    if (count > 0) {
+      const [kind] = await tx.values<[BookKind]>(sql`SELECT kind FROM books WHERE id = ${bookId}`);
+      throw new BookError('RECORDS', recordsMessage(count, await readOnlyCopyTx(tx, bookId, kind?.[0] ?? 'family')));
+    }
     await tx.run(sql`CREATE TEMP TABLE IF NOT EXISTS book_erase_ids (id TEXT PRIMARY KEY)`);
     await tx.run(sql`DELETE FROM ${ERASE}`);
     await tx.run(sql`INSERT OR IGNORE INTO ${ERASE} (id) ${eraseSetSql(ws, bookId, tables)}`);

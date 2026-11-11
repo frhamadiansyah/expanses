@@ -9,7 +9,18 @@ import { budgets } from '../schema-budget';
 import { viewActiveDevices, viewOwnerDevices } from '../sync/authority';
 import { BookError, personalBookIdTx, type BookRow } from './books';
 import { archiveAccountTx } from './accounts';
-import { deleteBookPlanTx, eraseBookTx, keepOwnInPersonalTx, keptByRecordsOfTx, ownPurchasesTx, recordsMessage, wasEverSharedTx } from './book-erase';
+import {
+  deleteBookPlanTx,
+  eraseBookTx,
+  keepOwnInPersonalTx,
+  keptByRecordsTx,
+  ownPurchasesTx,
+  ownRecordsMessage,
+  readOnlyCopyTx,
+  recordsMessage,
+  refileRecordsInPersonalTx,
+  wasEverSharedTx,
+} from './book-erase';
 import { bookSplitsExist } from './book-splits';
 import { categoryUsesTx } from './category-delete';
 import { LedgerError, voidTransactionTx } from './ledger';
@@ -63,6 +74,11 @@ export interface BookDeletePlan {
    * partners): any refuses the delete (`RECORDS`). 0 when the workspace voids.
    */
   kept: number;
+  /**
+   * In a read-only joined copy (left, stopped, removed): the trades and sales of this phone's own among `kept`, which
+   * the delete keeps in Personal in place and cannot erase — so it needs `keepOwnInPersonal` on. 0 for anything else.
+   */
+  ownRecords: number;
 }
 
 export interface DeleteBookOptions {
@@ -120,7 +136,13 @@ async function planTx(tx: Db, ws: WorkspaceContext, book: BookRow): Promise<Book
   const [{ n }] = (await tx.values<[number]>(sql`SELECT count(*) FROM (${filedSql(bookId, splits)})`)).map(([n]) => ({ n: Number(n) })) as [{ n: number }];
   const erases = await wasEverSharedTx(tx, bookId, book.kind);
   const ownPurchases = erases && book.kind === 'shared' ? (await ownPurchasesTx(tx, ws, bookId)).length : 0;
-  const kept = erases ? await keptByRecordsOfTx(tx, ws, bookId) : 0;
+  const records = erases ? await keptByRecordsTx(tx, ws, bookId) : { own: [], other: [] };
+  const kept = records.own.length + records.other.length;
+  // A read-only joined copy cannot have them undone or moved first (fix round 2, N1): its own trades and sales are kept
+  // in Personal by the delete itself; only the rest refuse, in words that ask for nothing the app would refuse.
+  const readOnly = erases && (await readOnlyCopyTx(tx, bookId, book.kind));
+  const ownRecords = readOnly ? records.own.length : 0;
+  const refusedRecords = kept - ownRecords;
 
   const plan = (refusalCode: BookDeletePlan['refusalCode'], refusal: string | null, uses = 0): BookDeletePlan => ({
     transactions: n,
@@ -132,6 +154,7 @@ async function planTx(tx: Db, ws: WorkspaceContext, book: BookRow): Promise<Book
     erases,
     ownPurchases,
     kept,
+    ownRecords,
   });
 
   if (book.kind === 'personal') return plan('PERSONAL_BOOK', PERSONAL_MESSAGE);
@@ -153,7 +176,7 @@ async function planTx(tx: Db, ws: WorkspaceContext, book: BookRow): Promise<Book
     if (straddling.length > 0) return plan('SPLIT', SPLIT_MESSAGE);
   }
   // Erasing would leave a trade, a sale or a partner transfer naming a transaction that is gone (fix round 1, I3).
-  if (kept > 0) return plan('RECORDS', recordsMessage(kept));
+  if (refusedRecords > 0) return plan('RECORDS', recordsMessage(refusedRecords, readOnly));
 
   // Live things that name one of its categories would be left pointing at an archived one. A joined copy's bills are
   // the share's, and are erased with it (§5.3); this phone's own drafts and event plans still refuse.
@@ -227,11 +250,17 @@ export async function deleteBook(
       });
 
     if (plan.erases) {
-      const keep = (options.keepOwnInPersonal ?? true) && plan.ownPurchases > 0;
-      const kept = keep ? await withCaptureSuspended(tx, async () => keepOwnInPersonalTx(tx, ws, bookId, await ownPurchasesTx(tx, ws, bookId))) : [];
+      const keepOn = options.keepOwnInPersonal ?? true;
+      // A trade or a sale names its transaction by id: it can only be kept, in place, never erased with the copy.
+      if (plan.ownRecords > 0 && !keepOn) throw new BookError('RECORDS', ownRecordsMessage(plan.ownRecords));
+      const kept = await withCaptureSuspended(tx, async () => {
+        const refiled = plan.ownRecords > 0 ? await refileRecordsInPersonalTx(tx, ws, bookId, (await keptByRecordsTx(tx, ws, bookId)).own) : 0;
+        const moved = keepOn && plan.ownPurchases > 0 ? await keepOwnInPersonalTx(tx, ws, bookId, await ownPurchasesTx(tx, ws, bookId)) : [];
+        return refiled + moved.length;
+      });
       const erased = await eraseBookTx(tx, ws, bookId);
-      await audit({ erased: true, transactions: erased.transactions, categories: erased.categories, budgets: erased.budgets, keptInPersonal: kept.length });
-      return { ...erased, erased: true, keptInPersonal: kept.length };
+      await audit({ erased: true, transactions: erased.transactions, categories: erased.categories, budgets: erased.budgets, keptInPersonal: kept });
+      return { ...erased, erased: true, keptInPersonal: kept };
     }
     const splits = await bookSplitsExist(tx);
 

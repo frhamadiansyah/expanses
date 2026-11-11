@@ -767,6 +767,36 @@ export async function eraseVoidTransactionsTx(tx: Db, ws: WorkspaceContext, ids:
   return rows.length;
 }
 
+/**
+ * Re-files a transaction from one workspace into another IN PLACE, keeping its id (sharing resilience §5, fix round 2):
+ * for a trade's or a sale's transaction in a read-only joined copy being deleted, whose id the trade or sale record
+ * needs. Only which categories its lines name changes — each category line, and each line's spending category, of
+ * `fromBookId` swapped by `swap` — and its filing row; every amount, money account, rate and date stays, so no balance,
+ * holding or foreign-currency figure moves. Plain writes with no capture: the caller has capture suspended.
+ */
+export async function refileInPlaceTx(tx: Db, ws: WorkspaceContext, id: string, fromBookId: string, toBookId: string, swap: (categoryId: string) => Promise<string>): Promise<void> {
+  const inFrom = sql`SELECT category_account_id FROM book_categories WHERE book_id = ${fromBookId}`;
+  const lines = await tx.values<[string, string, string | null]>(sql`
+    SELECT id, account_id, spend_category_id FROM entries WHERE transaction_id = ${id} AND workspace_id = ${ws.workspaceId}
+      AND (account_id IN (${inFrom}) OR spend_category_id IN (${inFrom}))`);
+  const swapped = new Map<string, string>();
+  const to = async (categoryId: string) => swapped.get(categoryId) ?? swapped.set(categoryId, await swap(categoryId)).get(categoryId)!;
+  const inBookFrom = new Set((await tx.values<[string]>(inFrom)).map(([c]) => c));
+  for (const [entryId, accountId, spendCategoryId] of lines) {
+    const account = inBookFrom.has(accountId) ? await to(accountId) : accountId;
+    const spend = spendCategoryId && inBookFrom.has(spendCategoryId) ? await to(spendCategoryId) : spendCategoryId;
+    await tx.run(sql`UPDATE entries SET account_id = ${account}, spend_category_id = ${spend} WHERE id = ${entryId}`);
+  }
+  const excludes = (await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'transaction_line_excluded'`)).length > 0;
+  for (const [from, there] of excludes ? swapped : new Map<string, string>()) {
+    await tx.run(sql`UPDATE transaction_line_excluded SET account_id = ${there} WHERE transaction_id = ${id} AND account_id = ${from}`);
+  }
+  await tx.run(sql`DELETE FROM book_transactions WHERE transaction_id = ${id} AND book_id = ${fromBookId}`);
+  if (await bookSplitsExist(tx)) await tx.run(sql`DELETE FROM book_transaction_splits WHERE transaction_id = ${id} AND book_id = ${fromBookId}`);
+  const [filed] = await tx.values(sql`SELECT 1 FROM book_transactions WHERE transaction_id = ${id}`);
+  if (!filed) await tx.insert(bookTransactions).values({ transactionId: id, workspaceId: ws.workspaceId, bookId: toBookId });
+}
+
 /** Who is coming through a void or a replace. Only a shared event's derivation says `eventDerivation`. */
 export interface LedgerDoor {
   /** An edit: a shared workspace's redacted transfer row follows the replacement instead of going void and back. */
