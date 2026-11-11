@@ -1,6 +1,6 @@
 import { expenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createAccount,
   createGoalFromCalculator,
@@ -30,6 +30,16 @@ import { clearOutbox, outboxOps } from './sync-helpers';
  */
 
 const DAY = '2026-11-10';
+
+// A set-aside is dated by the clock (`recordContributionTx`), and History reads up to DAY: the clock is DAY's, or every
+// line written after DAY on the real calendar falls past it and History reads empty.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(`${DAY}T09:00:00Z`));
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 /**
  * Every change-set this device ever wrote to its outbox, kept by a trigger: the engine empties the outbox as it drains
@@ -164,6 +174,8 @@ describe('a shared goal across the household', () => {
 
   it('a member who joins later (Review Focus 5)', async () => {
     const { h, bima, rina, goalId } = await world();
+    // Later the same day: members are listed by when they joined, and on a still clock Adi's join would tie Rina's.
+    vi.setSystemTime(new Date(`${DAY}T10:00:00Z`));
     const adi = await newDevice(h, 'Adi');
     await h.join(adi, bima);
     await h.settle();

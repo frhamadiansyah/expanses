@@ -32,6 +32,7 @@ import { openSealedKey } from './crypto';
 import { deviceIdOf } from './relay-signing';
 import { MissingEpochKeyError, verifyEntry, type ChangeLogEntry, type Sealer } from './seal';
 import { entityOf, NEVER_SYNCED_COLUMNS, parseOpId, type RowEntity } from './shared-entities';
+import { adoptRowTx, freeTransactionIdTx, HeldElsewhere, rowPlaceTx } from './held';
 import type { ChangeSet, Op, SequencedEntry, SyncTransport } from './types';
 import { keepClocksTx, type SeenLog } from './seed';
 import { postTransferSideTx } from './net-worth/transfers';
@@ -404,6 +405,11 @@ async function applyRowOp(tx: Db, ctx: BookContext, entity: RowEntity, op: Op, h
     if (alive === null || hlc > alive) await setClock(tx, ctx, entity.entity, op.id, ROW_CLOCK, hlc);
   }
   if (exists) {
+    // Sharing resilience D-A3, D-A4: a row under this id that is not this book's is either another copy's here — set
+    // aside, never edited in this book's name — or a dead leftover no book reaches, which this book adopts.
+    const place = await rowPlaceTx(tx, entity, op.id, ctx.bookId);
+    if (place.place === 'elsewhere') throw new HeldElsewhere(place.bookId);
+    if (place.place === 'dead') await adoptRowTx(tx, ctx, entity, op.id);
     if (winners.size === 0) return;
     const sets = await columnValues(tx, ctx, entity, Object.fromEntries([...winners].map(([f, { value }]) => [f, value])), where, true);
     if (sets.length) {
@@ -441,11 +447,16 @@ interface LineageRow {
   paidFrom: PaidFrom | null;
 }
 
-async function lineageOf(tx: Db, lineageId: string): Promise<LineageRow | null> {
-  const rows = await tx.values<[string | null, string, string, string | null, string | null]>(
-    sql`SELECT head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item FROM sync_lineage WHERE lineage_id = ${lineageId}`,
+/**
+ * The book's lineage row, or null when none is here (D-A5). A lineage id names one lineage on a phone
+ * (`sync_lineage.lineage_id` is its key): one another book holds is never edited in this book's name (D-A3).
+ */
+async function lineageOf(tx: Db, lineageId: string, bookId: string): Promise<LineageRow | null> {
+  const rows = await tx.values<[string | null, string, string, string | null, string | null, string]>(
+    sql`SELECT head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item, book_id FROM sync_lineage WHERE lineage_id = ${lineageId}`,
   );
   const row = rows[0];
+  if (row && row[5] !== bookId) throw new HeldElsewhere(row[5]);
   return row ? { head: row[0], paidBy: row[1], paidLabel: row[2], paidFrom: paidFromOf(row[3], row[4]) } : null;
 }
 
@@ -850,7 +861,7 @@ export type HeldOps = Map<string, { op: Extract<Op, { op: 'upsert' }>; changeSet
 
 /** §7.2 `applyPurchase`. Returns false when the op had to be held. */
 async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'upsert' }>, changeSet: ChangeSet, authorDevice: string): Promise<boolean> {
-  const lineage = await lineageOf(tx, op.id);
+  const lineage = await lineageOf(tx, op.id, ctx.bookId);
   if (lineage && lineage.head === null) return true; // void wins, for ever
   const won = await purchaseWinnersOf(tx, ctx, op, changeSet.hlc);
   if (won.size === 0) return true;
@@ -933,7 +944,9 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
   // its own item (the money side went on the payer's placeholder), so nothing reads it as on that item later.
   const from = refused ? null : state.money.paidFrom;
   if (!lineage) {
-    const id = await postTransactionTx(tx, ctx.ws, { ...input, id: op.id });
+    // D-A2: under the lineage id while it is free here, else a local id (`remapId`). The lineage keeps its id; the row
+    // already under it (a voided leftover, a pre-share copy's own) is left as it is.
+    const id = await postTransactionTx(tx, ctx.ws, { ...input, id: await freeTransactionIdTx(tx, ctx.bookId, op.id) });
     await tx.run(
       sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item)
           VALUES (${op.id}, ${ctx.bookId}, ${id}, ${state.money.paidBy}, ${state.money.paidLabel}, ${from?.owner ?? null}, ${from?.itemId ?? null})`,
@@ -1020,6 +1033,17 @@ async function guarded(tx: Db, ctx: BookContext, run: ApplyRun, op: Op, fn: () =
   } catch (error) {
     await tx.run(sql`ROLLBACK TO ${name}`);
     await tx.run(sql`RELEASE ${name}`);
+    if (error instanceof HeldElsewhere) {
+      // Sharing resilience D-A3: the one skip that depends on rows only this phone has — another copy here holds the
+      // row. Kept apart from the refusals every receiver makes alike (`deterministicRefusal`), never sent, and cleared
+      // by Place them now once that copy is gone.
+      const skip: SkippedOp = { seq: run.seq, entity: op.entity, id: op.id, error: error.message };
+      await tx.run(
+        sql`INSERT INTO sync_skipped (book_id, seq, entity, id, error, at) VALUES (${ctx.bookId}, ${skip.seq}, ${skip.entity}, ${skip.id}, ${skip.error}, ${new Date().toISOString()})`,
+      );
+      run.skipped.push(skip);
+      return;
+    }
     const refusal = deterministicRefusal(error);
     if (!refusal) throw error;
     // An AuthorityError's own message already reads "AUTHORITY: ..." (authority.ts): recorded as-is, not doubled up
@@ -1213,7 +1237,7 @@ export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: Chan
   if (eventTouched) await takeLogCurrencyTx(tx, ctx.bookId);
   // A held op whose lineage this change-set started is applied now, its clocks deciding as for any op.
   for (const [lineageId, ops] of [...held]) {
-    if (!(await lineageOf(tx, lineageId))) continue;
+    if ((await tx.values(sql`SELECT 1 FROM sync_lineage WHERE lineage_id = ${lineageId} AND book_id = ${ctx.bookId}`)).length === 0) continue;
     held.delete(lineageId);
     for (const { op, changeSet: from, author: by } of ops) await guarded(tx, ctx, run, op, async () => void (await applyPurchase(tx, ctx, op, from, by)));
   }

@@ -1,4 +1,6 @@
 import type { ImportMarker, Safety, SnapshotStore } from './open';
+import { RestoreCancelledError } from './restore-sharing';
+import { isKeptCopy, KEEP_OLDER_COPIES, KEPT_COPIES_FILE, KEPT_HEADROOM_BYTES, type KeptCopies, parseKeptCopies } from './retention';
 import { hasCreateWritable, writeInSafetyWorker } from './safety-write';
 import { dailyDue, keepOne, keepTwo, MIN_COPY_BYTES, parseSnapshotName, roomFor, type SnapshotInfo, type SnapshotReason, snapshotName } from './snapshot-policy';
 
@@ -169,8 +171,35 @@ async function writeManifest(slot: Slot, manifest: Manifest): Promise<void> {
   await slot.write(MANIFEST, new TextEncoder().encode(JSON.stringify(manifestOf(manifest), null, 2)));
 }
 
+export interface StoreOptions {
+  /** Whether the copies from before this build are kept whatever the rules say (src/db/retention.ts). */
+  keepOlder?: boolean;
+  /** Told when a copy is not written for want of room, before `SnapshotSpaceError` is thrown. Must not throw. */
+  onSkipped?: (reason: SnapshotReason, error: SnapshotSpaceError) => void;
+}
+
+const isCopyName = (file: string): boolean => parseSnapshotName(file) !== null;
+
+/**
+ * The record of the copies kept from before this build (src/db/retention.ts), made now if there is none: the copies
+ * in the folder at this moment, and the moment. Null when it cannot be read or written, which keeps every copy. A
+ * record that is there but will not parse is never written over: that would hand its copies to the rules.
+ */
+async function keptOver(slot: Pick<Slot, 'names' | 'read' | 'write'>, names: string[]): Promise<KeptCopies | null> {
+  if (names.includes(KEPT_COPIES_FILE)) return parseKeptCopies(await slot.read(KEPT_COPIES_FILE).catch(() => null));
+  const record: KeptCopies = { recordedAt: new Date().toISOString(), files: names.filter(isCopyName) };
+  try {
+    await slot.write(KEPT_COPIES_FILE, new TextEncoder().encode(JSON.stringify(record, null, 2)));
+    return record;
+  } catch (error) {
+    console.warn('The record of the copies kept could not be written; every copy is kept', error);
+    return null;
+  }
+}
+
 /** Every rule of the store, over whatever `slot` can actually hold files. */
-function storeOver(slot: Slot): SnapshotStore {
+function storeOver(slot: Slot, options: StoreOptions = {}): SnapshotStore {
+  const keepOlder = options.keepOlder ?? KEEP_OLDER_COPIES;
   /**
    * What is really on the device: the manifest filtered down to the files that are still there, plus
    * every copy on disk the manifest does not mention.
@@ -233,8 +262,29 @@ function storeOver(slot: Slot): SnapshotStore {
        * through `keepOne`, which honours the same seven-day grace for a before-start-fresh copy that
        * `keepTwo` does.
        */
-      const room = roomFor(await slot.estimate(), bytes.length);
-      if (room === 'no') throw new SnapshotSpaceError();
+      /*
+       * The copies kept from before this build are space that is never given back. While any are on the device, a
+       * copy is written only with room for three more and `KEPT_HEADROOM_BYTES` besides; "room for one" is no room,
+       * since the copies it would prune to make space are not the ones holding it. The live database and new photos
+       * need that space more than one more copy does.
+       */
+      const names = await slot.names();
+      const kept = keepOlder ? await keptOver(slot, names) : undefined;
+      const isKept = (file: string): boolean => kept !== undefined && isKeptCopy(kept, { file, takenAt: parseSnapshotName(file)?.takenAt ?? '' });
+      const keeping = names.some((name) => isCopyName(name) && isKept(name));
+      let room = roomFor(await slot.estimate(), bytes.length, keeping ? KEPT_HEADROOM_BYTES : 0);
+      if (keeping && room === 'prune-first') room = 'no';
+      if (room === 'no') {
+        const error = keeping
+          ? new SnapshotSpaceError('There is not enough free space on this device for a safety copy beside the older copies being kept.')
+          : new SnapshotSpaceError();
+        try {
+          options.onSkipped?.(reason, error);
+        } catch {
+          // Telling about it must not change what happens.
+        }
+        throw error;
+      }
 
       const takenAt = new Date().toISOString();
       const file = snapshotName(takenAt, schemaVersion, reason);
@@ -253,11 +303,13 @@ function storeOver(slot: Slot): SnapshotStore {
       // Written first, pruned second, so there is never a moment with zero copies on the device.
       const { valid, invalid } = await survey();
       const others = valid.filter((snapshot) => snapshot.file !== file);
-      const doomed = room === 'prune-first' ? keepOne(others, info) : keepTwo(others, info);
+      // The kept copies are not in the running at all: the rules see only the copies this build took.
+      const candidates = others.filter((snapshot) => !isKept(snapshot.file));
+      const doomed = room === 'prune-first' ? keepOne(candidates, info) : keepTwo(candidates, info);
       await rewrite([info, ...others.filter((snapshot) => !doomed.some((gone) => gone.file === snapshot.file))]);
       for (const snapshot of doomed) await slot.remove(snapshot.file).catch(() => undefined);
-      // And what was never whole goes too, now that a copy that is has been read back.
-      for (const broken of invalid) if (broken !== file) await slot.remove(broken).catch(() => undefined);
+      // And what was never whole goes too, now that a copy that is has been read back; a kept one stays as it is.
+      for (const broken of invalid) if (broken !== file && !isKept(broken)) await slot.remove(broken).catch(() => undefined);
       return info;
     },
 
@@ -324,6 +376,12 @@ function storeOver(slot: Slot): SnapshotStore {
  * that throws — or an app killed — after it leaves an empty file under a valid copy's name. Any failure
  * after the create removes it. (A kill cannot be caught; `looksWhole` keeps that file from ever being listed.)
  *
+ * Only a file this call made, though. A file that was already there (the sync log, the failure log, the manifest,
+ * written over again and again) is left as it is when its new write fails: a full device must not cost the log it
+ * already had. `createWritable` writes to a side file and swaps it in on close, so a failed write leaves the old
+ * content whole. The fallback writer truncates first, so there a failed write can leave the file short; every reader
+ * of these files takes one that does not parse as empty, which is no worse than the file being gone.
+ *
  * Where this thread has no `createWritable` (WebKit on older iOS), the bytes go to `fallback`: a worker of
  * its own that writes through a sync access handle. See `safety-write.ts`.
  */
@@ -333,6 +391,10 @@ export async function writeWhole(
   bytes: Uint8Array,
   fallback: (folder: string, file: string, bytes: Uint8Array) => Promise<void> = writeInSafetyWorker,
 ): Promise<void> {
+  const existed = await dir.getFileHandle(file).then(
+    () => true,
+    () => false,
+  );
   const handle = await dir.getFileHandle(file, { create: true });
   try {
     if (!hasCreateWritable(handle)) {
@@ -348,7 +410,7 @@ export async function writeWhole(
       await writable.close();
     }
   } catch (error) {
-    await dir.removeEntry(file).catch(() => undefined);
+    if (!existed) await dir.removeEntry(file).catch(() => undefined);
     throw error;
   }
 }
@@ -391,13 +453,30 @@ async function safetyDirectory(): Promise<FileSystemDirectoryHandle> {
  * Deliberately not in the worker. The copies have to be listable and restorable on the device where the
  * worker is exactly what will not start, which is the only day any of this matters.
  */
-export function opfsSnapshots(): SnapshotStore {
+export function opfsSnapshots(options: StoreOptions = {}): SnapshotStore {
+  return storeOver(opfsSlot(), options);
+}
+
+/**
+ * The record of the copies kept from before this build (src/db/retention.ts), made now if there is none; null when
+ * it cannot be read or made, which keeps every copy. Never throws. For iCloud, whose copies are kept by its time.
+ */
+export async function keptCopiesRecord(): Promise<KeptCopies | null> {
+  try {
+    const slot = opfsSlot();
+    return await keptOver(slot, await slot.names());
+  } catch {
+    return null;
+  }
+}
+
+function opfsSlot(): Slot {
   const fileHandle = async (file: string, create = false) => {
     const dir = await safetyDirectory();
     return dir.getFileHandle(file, { create });
   };
 
-  return storeOver({
+  return {
     read: async (file) => {
       const handle = await fileHandle(file).catch(() => null);
       const found = await handle?.getFile().catch(() => null);
@@ -421,7 +500,7 @@ export function opfsSnapshots(): SnapshotStore {
       return names;
     },
     estimate: async () => (await navigator.storage?.estimate?.().catch(() => ({}))) ?? {},
-  });
+  };
 }
 
 /**
@@ -433,6 +512,7 @@ export function memorySnapshots(
   files = new Map<string, Uint8Array>(),
   /** What `navigator.storage.estimate()` would say, so a test can put the store on a device that is nearly full. */
   estimate: () => Promise<{ quota?: number; usage?: number }> = async () => ({}),
+  options: StoreOptions = {},
 ): SnapshotStore {
   return storeOver({
     read: async (file) => files.get(file) ?? null,
@@ -449,7 +529,7 @@ export function memorySnapshots(
     names: async () => [...files.keys()],
     // No quota to speak of by default, and `roomFor` answers 'yes' to an estimate it cannot read.
     estimate,
-  });
+  }, options);
 }
 
 /**
@@ -479,15 +559,29 @@ export async function restoreSnapshot(deps: {
   live: () => Promise<Uint8Array | null>;
   /** Hands the chosen bytes to the engine. `restoreBytes` in the app. */
   restore: (bytes: Uint8Array) => Promise<void>;
+  /**
+   * Asked before anything is kept or replaced, with the live bytes and the copy's: false calls the restore off with
+   * `RestoreCancelledError`. `live` is null when `live()` found none; `liveFailed` when it threw. `sharingGate`
+   * (restore-sharing.ts) in the app: it warns when the copy lacks a workspace shared here.
+   */
+  checkSharing?: (sides: { live: Uint8Array | null; chosen: Uint8Array; liveFailed: boolean }) => Promise<boolean>;
 }): Promise<void> {
   const chosen = await deps.snapshots.read(deps.file);
   // Checked before anything is kept or replaced: bytes that are not a whole database would only be refused
   // by the engine afterwards, with a before-restore copy already written that pruned a good one away.
   const wrong = headerProblem(chosen);
   if (wrong) throw new Error(`That copy cannot be put back: ${wrong}.`);
+  let live: Uint8Array | null = null;
+  let liveError: unknown = null;
+  try {
+    live = await deps.live();
+  } catch (error) {
+    liveError = error;
+  }
+  if (deps.checkSharing && !(await deps.checkSharing({ live, chosen, liveFailed: liveError !== null }))) throw new RestoreCancelledError();
   let beforeCopy: string | null = null;
   try {
-    const live = await deps.live();
+    if (liveError) throw liveError;
     if (live?.length) beforeCopy = (await deps.snapshots.write(live, 'before-restore', 0)).file;
   } catch (error) {
     // Warned, not shown: the page reloads the instant the restore below lands, so there is no screen left

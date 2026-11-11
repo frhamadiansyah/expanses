@@ -1,3 +1,5 @@
+import { isKeptCopy, type KeptCopies } from '../../../db/retention';
+
 /**
  * The copies in iCloud, as names. Everything the Restore list shows about a copy — when, which device, how big,
  * whether photos are in it — is written into its file name, so listing the folder never downloads anything.
@@ -72,9 +74,15 @@ export function localDay(at: Date): string {
  *
  * Days are counted by the days that have a copy rather than by the calendar, so a phone left in a drawer for a month
  * comes back to find its last week of copies still there, not an empty folder.
+ *
+ * `kept`, when given, is the record of the copies kept from before this build (src/db/retention.ts): a copy taken
+ * before it is never removed and is not counted by the rule, which then runs over the newer copies alone. `null` is a
+ * record that could not be read: nothing is removed.
  */
-export function copiesToRemove(copies: readonly CloudCopy[], device: string): string[] {
-  const mine = copies.filter((copy) => copy.device === shortDevice(device)).sort((a, b) => b.takenAt.localeCompare(a.takenAt));
+export function copiesToRemove(copies: readonly CloudCopy[], device: string, kept?: KeptCopies | null): string[] {
+  const mine = copies
+    .filter((copy) => copy.device === shortDevice(device) && (kept === undefined || !isKeptCopy(kept, { takenAt: copy.takenAt })))
+    .sort((a, b) => b.takenAt.localeCompare(a.takenAt));
   const days: string[] = [];
   const remove: string[] = [];
   mine.forEach((copy, index) => {

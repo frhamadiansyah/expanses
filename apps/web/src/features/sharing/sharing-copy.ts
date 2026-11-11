@@ -36,6 +36,8 @@ export function ownerName(members: readonly SharedBookMember[], me: string): str
 
 /** "14:05" today, "Tue" within the week, "12 Sep" before that. */
 export function sinceWhen(ms: number, now: number): string {
+  // A time Safari cannot parse is NaN: "an unknown time" is true, "Invalid Date" is not a sentence.
+  if (!Number.isFinite(ms)) return 'an unknown time';
   const then = new Date(ms);
   const today = new Date(now);
   if (then.toDateString() === today.toDateString()) {
@@ -65,21 +67,54 @@ export function endedLine(ended: { byName: string | null; byYou: boolean; remove
  * says so at once, before the five minutes after which the engine calls the book stale.
  */
 export function statusLineOf(status: BookSyncStatus, live: { failing: boolean; now: number }): string {
+  // Never empty (the husband's Share row in the restore incident showed only "Sync now"): whatever the engine hands
+  // back — an unknown state, a blank name, a time that does not parse — the row says something true.
+  return statusLineOrNothing(status, live).trim() || `Sharing state: ${String((status as { state?: unknown }).state ?? 'not known')}`;
+}
+
+function statusLineOrNothing(status: BookSyncStatus, live: { failing: boolean; now: number }): string {
   switch (status.state) {
     case 'unshared':
-      return endedLine({ ...status, removed: status.reason === 'removed' });
+      return endedLine({ ...status, byName: status.byName?.trim() || null, removed: status.reason === 'removed' });
     case 'needs_invite':
-      return `Ask ${status.askName ?? 'an owner'} for a new invite to keep sharing`;
+      return `Ask ${status.askName?.trim() || 'an owner'} for a new invite to keep sharing`;
     case 'frozen':
       return 'Frozen: no owner has a device here';
     case 'stale':
       return `Not synced since ${sinceWhen(Date.parse(status.since), live.now)}`;
-    default: {
+    case 'up_to_date':
+    case 'waiting': {
       if (live.failing) return status.syncedAt ? `Not synced since ${sinceWhen(Date.parse(status.syncedAt), live.now)}` : 'Not synced yet';
       if (status.state === 'waiting') return `${status.changes} ${status.changes === 1 ? 'change' : 'changes'} waiting`;
       return 'Up to date';
     }
+    default:
+      return '';
   }
+}
+
+/**
+ * The Share page's status row before and around the engine's answer: still reading, the read failed, or no status at
+ * all (no engine on this device, or no `shared_books` row) — each says so instead of "Checking…" for ever.
+ */
+export function shareStatusLine(input: { status: BookSyncStatus | null; pending: boolean; error: unknown; failing: boolean; now: number }): string {
+  if (input.status) return statusLineOf(input.status, input);
+  if (input.error) return 'Sync status could not be read';
+  if (input.pending) return 'Checking…';
+  return 'Sync status not known on this device yet';
+}
+
+/** Under the status row: when this device last finished a sync, from the run this session or the stored time. */
+export function lastSyncedLine(ms: number | null, now: number): string {
+  return ms === null ? 'Not synced on this device yet' : `Last synced ${syncedAgo(ms, now).replace(/^synced /, '')}`;
+}
+
+/** Under the status row after a failed run: the failure in words, short. */
+export function lastFailedLine(error: unknown): string {
+  const said = sayError(error);
+  const message = said instanceof Error ? said.message : String(said);
+  const short = message.length > 140 ? `${message.slice(0, 139)}…` : message;
+  return `Last sync failed: ${short || 'no reason given'}`;
 }
 
 /** Before Leave: what leaving does, and what stays. */

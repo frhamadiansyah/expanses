@@ -8,6 +8,7 @@ import { LATEST_VERSION } from '@expanses/db';
 import type { CloudCopy } from './names';
 import { ICloudBackup } from './plugin';
 import { ICLOUD_QUERY, restoreFromICloud } from './runner';
+import { RestoreCancelledError } from '../../../db/restore-sharing';
 import { cloudCopies } from './service';
 import { copyLine, whenShort } from './words';
 
@@ -30,6 +31,11 @@ export function ICloudRestorePage() {
       await restoreFromICloud(copy.name, app);
       window.location.replace('/backup');
     } catch (e) {
+      if (e instanceof RestoreCancelledError) {
+        // Called off at the sharing warning: nothing here changed.
+        setBusy(null);
+        return;
+      }
       const version = newerDatabaseVersion(e);
       setError(
         version === null

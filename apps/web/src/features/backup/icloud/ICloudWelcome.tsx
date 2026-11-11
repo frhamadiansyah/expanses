@@ -9,6 +9,7 @@ import type { CopyContents } from './envelope';
 import type { CloudCopy } from './names';
 import { hasICloud, ICloudBackup } from './plugin';
 import { restoreContents } from './runner';
+import { RestoreCancelledError } from '../../../db/restore-sharing';
 import { cloudCopies, openCopy } from './service';
 import { whenShort } from './words';
 
@@ -74,7 +75,8 @@ export function ICloudWelcome({ copy, database, safety, onDone }: { copy: CloudC
       await restoreContents(contents, { database, safety });
       window.location.replace('/');
     } catch (e) {
-      setError(e);
+      // Called off at the sharing warning: nothing here changed, and there is nothing to say.
+      if (!(e instanceof RestoreCancelledError)) setError(e);
       setBusy(false);
     }
   }
