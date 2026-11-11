@@ -29,6 +29,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../lib/pwa', () => ({ isNative: () => false }));
 
 import { SyncService } from './sync-service';
+import { copyRolesOf, heldLineOf } from '../features/sharing/copy-roles';
 
 /*
  * The app's sync wiring (spec §9.4, §11): no keys and no request while nothing is shared; Share drains the whole history
@@ -655,12 +656,96 @@ describe('SyncService', () => {
       await dewi.service.start();
       const first = await sharedHome(fandri, 'Home');
       await dewi.service.join(first.invite.code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'iPhone' });
-      const second = await sharedHome(fandri, 'Home again');
+      const second = await sharedHome(fandri, 'Home');
       const preview = await dewi.service.preview(second.invite.code);
       expect(preview.otherCopies).toEqual([{ bookId: first.bookId, name: 'Home', state: 'active', sharedAt: expect.any(String), joined: true }]);
       // Nothing else on Fandri's own phone is another copy of a book he owns there.
       const own = await fandri.service.preview(first.invite.code).catch(() => null);
       expect(own?.otherCopies ?? []).not.toContainEqual(expect.objectContaining({ bookId: first.bookId }));
+      fandri.service.stop();
+      dewi.service.stop();
+    });
+
+    /**
+     * The couple's second share: the owner's phone holds the old share's rows again under a new book of the same name
+     * and shares it as the same member; the member joins it beside the old copy, which holds part of it.
+     */
+    async function secondShareBeside(fandri: Phone, dewi: Phone, oldBook: string): Promise<string> {
+      const newBook = uuidv7();
+      const columns = (await fandri.database.db.values<[string]>(sql`SELECT name FROM pragma_table_info('books')`)).map(([name]) => name);
+      const select = columns.map((c) => (c === 'id' ? sql`${newBook}` : c === 'kind' ? sql`'family'` : sql.raw(c)));
+      await fandri.database.db.run(sql`INSERT INTO books (${sql.raw(columns.join(', '))}) SELECT ${sql.join(select, sql`, `)} FROM books WHERE id = ${oldBook}`);
+      await fandri.database.db.run(sql`UPDATE book_categories SET book_id = ${newBook} WHERE book_id = ${oldBook}`);
+      await fandri.database.db.run(sql`UPDATE book_transactions SET book_id = ${newBook} WHERE book_id = ${oldBook}`);
+      await fandri.database.db.run(sql`UPDATE sync_lineage SET book_id = ${newBook} WHERE book_id = ${oldBook}`);
+      const memberOf = async (p: Phone) => (await listSharedBooks(p.database)).find((b) => b.bookId === oldBook)!.memberId;
+      const owner = await fandri.service.engine();
+      await owner.shareBook(newBook, { memberId: await memberOf(fandri), memberName: 'Fandri', deviceName: 'Mac' });
+      await fandri.service.syncNow(newBook);
+      const { code } = await owner.createInvite(newBook, { inviterName: 'Fandri' });
+      await (await dewi.service.engine()).joinBook(code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'iPhone', memberId: await memberOf(dewi) });
+      await dewi.service.refresh();
+      return newBook;
+    }
+
+    it('a copy whose share ended is neither the newer share nor waited on, though it keeps its held records (re-review N-1)', async () => {
+      const relay = new MemoryTransport();
+      const fandri = await phone(relay, 'Fandri');
+      const dewi = await phone(relay, 'Dewi');
+      await fandri.service.start();
+      await dewi.service.start();
+      const { bookId: oldBook, invite } = await sharedHome(fandri);
+      await dewi.service.join(invite.code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'iPhone' });
+      await postTransaction(dewi.database, { ...dewi.ws, bookId: oldBook }, {
+        occurredOn: '2026-09-12',
+        description: 'Member market',
+        lines: expenseLines({ categoryAccountId: await groceries(dewi.database, oldBook), paymentAccountId: dewi.bank, amountMinor: 27_500, currency: 'IDR' }),
+      });
+      await dewi.service.syncNow(oldBook);
+      await fandri.service.syncNow(oldBook);
+      const newBook = await secondShareBeside(fandri, dewi, oldBook);
+      const roles = (bookId: string) => copyRolesOf(dewi.database, dewi.ws, bookId, Date.now());
+
+      // While the second share is active: it is the newer share, held by the old copy, and the old copy holds for it.
+      expect((await roles(newBook)).heldBy.map((ref) => ref.bookId)).toEqual([oldBook]);
+      expect((await roles(oldBook)).holdsFor.map((ref) => ref.bookId)).toEqual([newBook]);
+
+      // The owner stops the second share (cleanup step 1). The member's copy of it keeps its held records, and plays no role.
+      await fandri.service.stopSharing(newBook);
+      await dewi.service.syncNow(newBook);
+      expect((await listSharedBooks(dewi.database)).find((b) => b.bookId === newBook)).toMatchObject({ state: 'unshared' });
+      expect((await heldElsewhereOf(dewi.database, newBook)).length).toBeGreaterThan(0);
+      const ended = await roles(newBook);
+      expect(ended).toMatchObject({ heldBy: [], alsoIn: [], holdsFor: [] });
+      expect((await roles(oldBook)).holdsFor).toEqual([]);
+      fandri.service.stop();
+      dewi.service.stop();
+    });
+
+    it('two separate workspaces shared by the same owner are never taken for copies of each other (re-review N-2)', async () => {
+      const relay = new MemoryTransport();
+      const fandri = await phone(relay, 'Fandri');
+      const dewi = await phone(relay, 'Dewi');
+      await fandri.service.start();
+      await dewi.service.start();
+      const home = await sharedHome(fandri, 'Home');
+      const business = await sharedHome(fandri, 'Business');
+      await dewi.service.join(home.invite.code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'iPhone' });
+      // Joining Business beside Home names no old copy.
+      expect((await dewi.service.preview(business.invite.code)).otherCopies).toEqual([]);
+      await dewi.service.join(business.invite.code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'iPhone' });
+      // Even a row of Business set aside as held by Home (a category in both) makes neither the other's old copy.
+      await dewi.database.db.run(
+        sql`INSERT INTO sync_skipped (book_id, seq, entity, id, error, at) VALUES (${business.bookId}, 1, 'category', ${uuidv7()}, ${`HELD_ELSEWHERE: ${home.bookId}`}, ${new Date().toISOString()})`,
+      );
+      const ofBusiness = await copyRolesOf(dewi.database, dewi.ws, business.bookId, Date.now());
+      expect(ofBusiness.heldBy).toEqual([]);
+      expect(ofBusiness.alsoIn.map((ref) => ref.bookId)).toEqual([home.bookId]);
+      const line = heldLineOf(await heldElsewhereOf(dewi.database, business.bookId), ofBusiness);
+      expect(line).toMatch(/^Part of this share is also in Home · joined today, which is still shared; it stays there\.$/);
+      expect(line).not.toMatch(/Delete|Leave/);
+      const ofHome = await copyRolesOf(dewi.database, dewi.ws, home.bookId, Date.now());
+      expect(ofHome).toMatchObject({ holdsFor: [], heldBy: [], alsoIn: [], newShareLikely: false });
       fandri.service.stop();
       dewi.service.stop();
     });

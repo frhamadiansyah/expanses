@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { InsetGroup, InsetRow } from '../../ui/native';
 import { PlaceHeldSheet } from './PlaceHeldSheet';
 import { useCopyRoles, useLostHere, useShareHealth, useSharingDetail } from './queries';
-import { deviceName, heldLine, LOST_LINE, PLACE_LABEL } from './sharing-copy';
+import { heldLineOf } from './copy-roles';
+import { deviceName, LOST_LINE, PLACE_LABEL } from './sharing-copy';
 
 /*
  * Settings → Workspaces → a workspace → Share. The workspace page carries one row (`ShareRow`: Off or On); the pages it
@@ -43,7 +44,7 @@ export function ShareRow({ book }: { book: BookRow }) {
   const health = useShareHealth(book.id).data;
   const held = active ? (health?.held ?? []) : [];
   const roles = useCopyRoles(book.id).data;
-  const heldText = heldLine(held.map((row) => ({ holderName: roles?.labels[row.holderBookId] ?? row.holderName, holderExists: row.holderExists, holderStillShared: roles?.stillShared[row.holderBookId] ?? false })));
+  const heldText = heldLineOf(held, roles);
   const placeable = held.length > 0 && held.every((row) => !row.holderExists);
   const [placing, setPlacing] = useState(false);
   const [placed, setPlaced] = useState<string | null>(null);

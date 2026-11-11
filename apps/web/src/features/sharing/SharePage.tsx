@@ -16,6 +16,7 @@ import { InviteCard } from './InviteCard';
 import { type ShareEventRow, shareEventRows } from './share-events';
 import { useNetWorthGroup } from './net-worth-queries';
 import { netWorthRowOf, netWorthValue } from './net-worth-state';
+import { heldLineOf } from './copy-roles';
 import { PlaceHeldSheet } from './PlaceHeldSheet';
 import { useBookStatus, useCopyRoles, useLostHere, useShareHealth, useSharingDetail, useSyncStatus } from './queries';
 import { keepOpenInvite, useActionRunner, useOpenInvite, useShareBook } from './share-hooks';
@@ -28,7 +29,6 @@ import {
   FORGET_ROW,
   forgetConfirm,
   FROZEN_NOTE,
-  heldLine,
   KEEP_OWN_LABEL,
   keepOwnTitle,
   lastChangeLine,
@@ -287,7 +287,7 @@ function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
   // Under the status, in this order (§4.4, §8.1): rows another copy here holds, then a quiet other side.
   const held = active ? (health?.held ?? []) : [];
   // Each holder by its label, so two copies called Home are told apart (review I-2).
-  const heldText = heldLine(held.map((row) => ({ holderName: roles?.labels[row.holderBookId] ?? row.holderName, holderExists: row.holderExists, holderStillShared: roles?.stillShared[row.holderBookId] ?? false })));
+  const heldText = heldLineOf(held, roles);
   const placeable = held.length > 0 && held.every((row) => !row.holderExists);
   const silenceText = active && health ? shareSilenceLine(health.silence, { syncedAt: lastSynced, nowMs: now }) : null;
   const silenceOf = new Map((health?.silence ?? []).map((s) => [s.memberId, s]));

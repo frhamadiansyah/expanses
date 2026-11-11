@@ -39,7 +39,7 @@ export function nameMatches(typed: string, name: string): boolean {
  * purchases (and, in a left copy, own trades and sales) in Personal, the counts from the plan, and that what is kept
  * is never sent anywhere. Nothing when there is nothing of this phone's own in it.
  */
-function KeepGroup({ plan, keep, onKeep, holdsFor }: { plan: BookDeletePlan; keep: boolean; onKeep: (on: boolean) => void; holdsFor: readonly CopyRef[] }) {
+function KeepGroup({ plan, keep, onKeep, holdsFor, newShareLikely }: { plan: BookDeletePlan; keep: boolean; onKeep: (on: boolean) => void; holdsFor: readonly CopyRef[]; newShareLikely: boolean }) {
   const arriving = plan.arrivingInShare;
   if (plan.ownPurchases === 0 && plan.ownRecords === 0 && arriving === 0) return null;
   const lines = [
@@ -47,8 +47,9 @@ function KeepGroup({ plan, keep, onKeep, holdsFor }: { plan: BookDeletePlan; kee
     plan.ownRecords > 0 ? ownRecordsLine(plan.ownRecords) : null,
     arriving > 0 ? arrivingLine(arriving, holdsFor[0]?.label ?? null) : null,
   ].filter((line): line is string => line !== null);
-  // No newer share of this workspace here yet (review I-3): the safe order is to join it before deleting this copy.
-  const joinFirst = keep && plan.ownPurchases > 0 && holdsFor.length === 0;
+  // A newer share of this workspace is likely and does not wait on this copy yet (review I-3, re-review m-2): the
+  // safe order is to join it before deleting this copy. A copy left for good is not told so.
+  const joinFirst = keep && plan.ownPurchases > 0 && holdsFor.length === 0 && newShareLikely;
   return (
     <InsetGroup
       footer={
@@ -153,7 +154,7 @@ export function DeleteWorkspaceSheet({
         <ReadRow label="Categories" value={String(plan.categories)} />
         <ReadRow label="Budgets" value={String(plan.budgets)} />
       </InsetGroup>
-      {plan.erases ? <KeepGroup plan={plan} keep={keep} onKeep={setKeep} holdsFor={roles?.holdsFor ?? []} /> : null}
+      {plan.erases ? <KeepGroup plan={plan} keep={keep} onKeep={setKeep} holdsFor={roles?.holdsFor ?? []} newShareLikely={roles?.newShareLikely ?? false} /> : null}
       <InsetGroup>
         <TextRow
           label="Name"
@@ -247,7 +248,7 @@ export function LeaveAndDeleteSheet({
 
   if (step === 'last-owner') {
     return (
-      <Sheet title={leaveDeleteTitle(book.name)} onClose={onClose}>
+      <Sheet title={leaveDeleteTitle(label)} onClose={onClose}>
         <p data-testid="leave-delete-last-owner" className="text-[15px] leading-[20px]">
           {LAST_OWNER_LINE}
         </p>
@@ -256,7 +257,7 @@ export function LeaveAndDeleteSheet({
   }
   if (step === 'here-only') {
     return (
-      <Sheet title={leaveDeleteTitle(book.name)} onClose={onClose} confirm={{ label: DELETE_HERE_ONLY_LABEL, disabled: busy, run: () => void go(true) }}>
+      <Sheet title={leaveDeleteTitle(label)} onClose={onClose} confirm={{ label: DELETE_HERE_ONLY_LABEL, disabled: busy, run: () => void go(true) }}>
         <ErrorBox error={error} />
         <p data-testid="leave-delete-here-only" className="text-[15px] leading-[20px]">
           {DELETE_HERE_ONLY_ASK}
@@ -265,12 +266,12 @@ export function LeaveAndDeleteSheet({
     );
   }
   return (
-    <Sheet grouped title={leaveDeleteTitle(book.name)} onClose={onClose} confirm={{ label: 'Leave and delete', disabled: busy || refusal !== null, run: () => void go(false) }}>
+    <Sheet grouped title={leaveDeleteTitle(label)} onClose={onClose} confirm={{ label: 'Leave and delete', disabled: busy || refusal !== null, run: () => void go(false) }}>
       <p data-testid="leave-delete-confirm" className="px-[13px] pb-[8px] text-[15px] leading-[20px]">
         {leaveDeleteConfirm({ bookName: label, others, keep, ownPurchases: plan.ownPurchases })}
       </p>
       <CopyLines holdsFor={roles?.holdsFor ?? []} heldBy={roles?.heldBy ?? []} />
-      <KeepGroup plan={plan} keep={keep} onKeep={setKeep} holdsFor={roles?.holdsFor ?? []} />
+      <KeepGroup plan={plan} keep={keep} onKeep={setKeep} holdsFor={roles?.holdsFor ?? []} newShareLikely={roles?.newShareLikely ?? false} />
       {refusal ? (
         <p data-testid="delete-refusal" className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-warn)]">
           {refusal}

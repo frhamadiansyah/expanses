@@ -271,18 +271,25 @@ export function lastChangeLine(s: Pick<MemberSilence, 'lastChangeAt'> & Partial<
  * Rows of the share set aside because another copy here holds them (D-A3, §4.4): named while that copy exists, then
  * "waiting" with Place them now. Null with none.
  */
-export function heldLine(held: readonly { holderName: string | null; holderExists: boolean; holderStillShared?: boolean }[]): string | null {
+export function heldLine(
+  held: readonly { holderName: string | null; holderExists: boolean; holderSeparate?: boolean; holderActive?: boolean }[],
+): string | null {
   if (held.length === 0) return null;
   const live = held.filter((row) => row.holderExists);
   if (live.length === 0) return 'Part of this share is waiting. Place it now.';
   const name = (row: { holderName: string | null }) => row.holderName?.trim() || 'another copy';
-  // A holder that is a live share of its own, not an old copy of this one (A6 round): deleting it is not the step.
-  const shared = [...new Set(live.filter((row) => row.holderStillShared).map(name))];
-  if (shared.length > 0) {
-    return `Part of this share is used by ${nameList(shared)}, which ${shared.length === 1 ? 'is' : 'are'} still shared. Leave that share first.`;
+  // An old copy of this workspace holds them: the step is to delete it, in its own row's words (re-review m-5).
+  const old = live.filter((row) => !row.holderSeparate);
+  if (old.length > 0) {
+    const names = [...new Set(old.map(name))];
+    const how = old.some((row) => row.holderActive) ? 'Leave and delete' : 'Delete';
+    return `Part of this share is held by ${nameList(names)} on this phone. ${how} ${names.length === 1 ? 'that copy' : 'those copies'} to bring it in.`;
   }
-  const names = [...new Set(live.map(name))];
-  return `Part of this share is held by ${nameList(names)} on this phone. ${names.length === 1 ? 'Delete that copy' : 'Delete those copies'} to bring it in.`;
+  // Only a separate workspace — Business beside Home — holds them (re-review N-2): it is never to be left or deleted
+  // for this share's sake, so the line only says where they are.
+  const separate = [...new Set(live.map(name))];
+  const shared = live.some((row) => row.holderActive);
+  return `Part of this share is also in ${nameList(separate)}${shared ? `, which ${separate.length === 1 ? 'is' : 'are'} still shared` : ''}; it stays there.`;
 }
 
 /** The action once nothing here holds them (§4.3). */
@@ -291,7 +298,7 @@ export const PLACE_TITLE = 'Place them now?';
 export const PLACE_CONFIRM = 'The share is read again from its start, and the rows that were waiting come in. Rows already here stay as they are.';
 
 /** After Place them now: how many came in, from the result. */
-export function placedLine(done: { placed: number; stillHeld: number; needsAccount?: number }): string {
+export function placedLine(done: { placed: number; stillHeld: number; needsAccount?: number }, where: string | null = null): string {
   const rows = (n: number) => `${n} ${n === 1 ? 'row' : 'rows'}`;
   const waiting = `${rows(done.stillHeld)} still ${done.stillHeld === 1 ? 'waits' : 'wait'}`;
   const base =
@@ -304,12 +311,16 @@ export function placedLine(done: { placed: number; stillHeld: number; needsAccou
         : `${rows(done.placed)} placed; ${waiting}.`;
   // Own purchases that came in on no own account (A6: the recorded account was gone): said, short.
   const n = done.needsAccount ?? 0;
-  return n > 0 ? `${base} ${needsAccountLine(n)}` : base;
+  return n > 0 ? `${base} ${needsAccountLine(n, where)}` : base;
 }
 
-/** Own purchases that came back onto no own account (A6 `needsAccount`): "2 purchases need an account." */
-export function needsAccountLine(n: number): string {
-  return `${n} ${n === 1 ? 'purchase needs' : 'purchases need'} an account.`;
+/**
+ * Own purchases that came back onto no own account (A6 `needsAccount`), and where to fix them (re-review m-4): "2
+ * purchases need an account: open them in Home · joined today and choose the account paid from."
+ */
+export function needsAccountLine(n: number, where: string | null = null): string {
+  const what = `${n} ${n === 1 ? 'purchase needs' : 'purchases need'} an account`;
+  return `${what}: open ${n === 1 ? 'it' : 'them'} in ${where ?? 'the workspace'} and choose the account paid from.`;
 }
 
 /**

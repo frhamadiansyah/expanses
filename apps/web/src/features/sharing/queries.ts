@@ -1,5 +1,5 @@
-import { heldElsewhereOf, listArchivedBooks, listBooks, listSharedBooks, memberSilence, ownersGone, purchasePayers, type ShareRecordFinding, sharingDetail } from '@expanses/db';
-import { copyLabel } from './sharing-copy';
+import { heldElsewhereOf, listSharedBooks, memberSilence, ownersGone, purchasePayers, type ShareRecordFinding, sharingDetail } from '@expanses/db';
+import { copyRolesOf } from './copy-roles';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -111,56 +111,11 @@ export function useLostHere(bookId: string): boolean {
   return useShareFindings().some((finding) => finding.kind === 'lost' && finding.bookId === bookId);
 }
 
-export interface CopyRef {
-  bookId: string;
-  /** "Home · joined 3 Oct": the name, and when, so two copies of one name are told apart (A8 review I-2). */
-  label: string;
-}
+export type { CopyRef, CopyRoles } from './copy-roles';
 
-/**
- * Which copy a workspace is, beside others of the same workspace here (A8 review I-2, I-5): its own label; the newer
- * shares that wait on rows this copy holds (`holdsFor`: deleting this copy lets them come in); and the copies that
- * hold rows of this one's share (`heldBy`: this is the newer share). Local reads only, re-read after every run.
- */
+/** `copyRolesOf` for a screen (A8 review I-2, I-5; re-review N-1, N-2), re-read after every run. */
 export function useCopyRoles(bookId: string) {
   const { database, ws } = useApp();
-  return useQuery({
-    queryKey: ['sharing', bookId, 'roles'],
-    queryFn: async () => {
-      const now = Date.now();
-      const shared = workspaceBooks(await listSharedBooks(database));
-      const books = [...(await listBooks(database, ws)), ...(await listArchivedBooks(database, ws))];
-      const labelOf = (id: string): string => {
-        const book = books.find((each) => each.id === id);
-        const row = shared.find((each) => each.bookId === id);
-        if (!book) return 'another copy';
-        return copyLabel({ name: book.name, joined: book.kind === 'shared', sharedAt: row?.sharedAt ?? null }, now);
-      };
-      const heldBy = [...new Set((await heldElsewhereOf(database, bookId)).filter((row) => row.holderExists).map((row) => row.holderBookId))];
-      const holdsFor: string[] = [];
-      for (const other of shared) {
-        if (other.bookId === bookId || other.state !== 'active') continue;
-        if ((await heldElsewhereOf(database, other.bookId)).some((row) => row.holderBookId === bookId)) holdsFor.push(other.bookId);
-      }
-      const ref = (id: string): CopyRef => ({ bookId: id, label: labelOf(id) });
-      // A holder still shared that is no old copy of this workspace — not of the same name, no owner in common — is a
-      // share of its own (A6 round): the held line asks to leave it, never to delete it.
-      const ownersOf = (id: string) => new Set((shared.find((each) => each.bookId === id)?.members ?? []).filter((m) => m.role === 'owner').map((m) => m.name));
-      const nameOf = (id: string) => books.find((each) => each.id === id)?.name ?? null;
-      const stillShared: Record<string, boolean> = {};
-      for (const holder of heldBy) {
-        const row = shared.find((each) => each.bookId === holder);
-        const sameName = nameOf(holder) !== null && nameOf(holder) === nameOf(bookId);
-        const commonOwner = [...ownersOf(holder)].some((name) => ownersOf(bookId).has(name));
-        stillShared[holder] = row?.state === 'active' && !sameName && !commonOwner;
-      }
-      return {
-        label: labelOf(bookId),
-        holdsFor: holdsFor.map(ref),
-        heldBy: heldBy.map(ref),
-        labels: Object.fromEntries(books.map((b) => [b.id, labelOf(b.id)])) as Record<string, string>,
-        stillShared,
-      };
-    },
-  });
+  const lost = useLostHere(bookId);
+  return useQuery({ queryKey: ['sharing', bookId, 'roles', lost], queryFn: () => copyRolesOf(database, ws, bookId, Date.now(), lost) });
 }

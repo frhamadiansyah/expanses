@@ -204,9 +204,9 @@ export interface PreviewedInvite extends InvitePreview {
    */
   replaces: { bookName: string } | null;
   /**
-   * Other books here from the same owner (sharing resilience D-A7): books, but the invite's own, whose members include
-   * the inviter's member id, or a member of the inviter's name who is an owner — an earlier copy of the same workspace,
-   * most likely. Rows such a copy still holds are set aside on join (`HELD_ELSEWHERE`) until it is deleted, so the join
+   * Other copies here of the invite's workspace (sharing resilience D-A7): books, but the invite's own, of the same
+   * name whose members include the inviter's member id, or a member of the inviter's name who is an owner — an earlier
+   * copy of the same workspace, most likely. Rows such a copy still holds are set aside on join (`HELD_ELSEWHERE`) until it is deleted, so the join
    * screen warns. `state` is the copy's `shared_books` state, `own` with none.
    */
   otherCopies: { bookId: string; name: string; state: string; sharedAt: string | null; joined: boolean }[];
@@ -693,11 +693,15 @@ export class SyncEngine {
     return { ...preview, inviteId, expiresAt: found.expiresAt, claimed: found.claimed, expired: Date.parse(found.expiresAt) <= this.now(), replaces, otherCopies };
   }
 
-  /** D-A7: the books here that are likely another copy of the invite's workspace, from the inviter. Reads only. */
+  /**
+   * D-A7: the books here that are likely another copy of the invite's workspace, from the inviter. Reads only. A copy
+   * has the workspace's own name and the inviter among its owners (or members, by member id): a separate workspace the
+   * same person shares — Business beside Home — is never one (A8 re-review N-2).
+   */
   private async otherCopiesOf(preview: InvitePreview): Promise<{ bookId: string; name: string; state: string; sharedAt: string | null; joined: boolean }[]> {
     const rows = await this.database.db.values<[string, string, string | null, string | null, string]>(sql`
       SELECT b.id, b.name, s.state, s.shared_at, b.kind FROM books b LEFT JOIN shared_books s ON s.book_id = b.id
-      WHERE b.id <> ${preview.bookId} AND EXISTS (
+      WHERE b.id <> ${preview.bookId} AND b.name = ${preview.bookName} AND EXISTS (
         SELECT 1 FROM book_members m WHERE m.book_id = b.id
           AND (m.member_id = ${preview.inviterMemberId ?? ''} OR (m.name = ${preview.inviterName} AND m.role = 'owner')))
       ORDER BY b.name, b.id`);
