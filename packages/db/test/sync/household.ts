@@ -7,6 +7,7 @@ import { SyncEngine } from '../../src/sync/engine';
 import { generateDevice, requestSignerOf, type DeviceKeys } from '../../src/sync/keys';
 import { MemoryTransport } from '../../src/sync/memory-transport';
 import { SHARED_ENTITIES, buildOpId, type RowEntity } from '../../src/sync/shared-entities';
+import { MemoryShareRecordStore } from '../../src/sync/share-records';
 import type { DevicePublic, SyncTransport } from '../../src/sync/types';
 
 /*
@@ -46,6 +47,11 @@ export interface Device {
   keys: DeviceKeys;
   transport: SyncTransport;
   engine: SyncEngine;
+  /**
+   * This device's share records, beside its keys and outside its database (sharing resilience §6.1): a restored
+   * phone is a new device, so it starts with none. Handed to the engine from Task A2.
+   */
+  records: MemoryShareRecordStore;
   /** This device's own bank account, in the workspace currency. */
   bank: string;
   /** A second own account in the workspace currency, for purchases paid from two places. */
@@ -78,6 +84,7 @@ export class Household {
       keys,
       transport,
       engine: new SyncEngine(database, transport, keys, undefined, { appVersion }),
+      records: new MemoryShareRecordStore(),
       bank: bank.id,
       cash: cash.id,
       usd: usd.id,
@@ -111,7 +118,7 @@ export class Household {
     await database.importBytes(backup);
     const keys = await generateDevice();
     const transport = this.relay.as(requestSignerOf(keys));
-    const device: Device = { ...lost, database, keys, deviceId: keys.deviceId, public: keys.public, transport, engine: new SyncEngine(database, transport, keys) };
+    const device: Device = { ...lost, database, keys, deviceId: keys.deviceId, public: keys.public, transport, engine: new SyncEngine(database, transport, keys), records: new MemoryShareRecordStore() };
     this.devices.splice(this.devices.indexOf(lost), 1, device);
     return device;
   }
