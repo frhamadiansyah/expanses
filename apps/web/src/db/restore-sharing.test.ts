@@ -1,7 +1,8 @@
-import { createDatabase } from '@expanses/db';
+import { createDatabase, createWorkspace, MemoryKeyStore, MemoryTransport, migrate, personalBook, requestSignerOf } from '@expanses/db';
 import { createNodeExecutor, type NodeExecutor } from '@expanses/db/node';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RestoreCancelledError, restoreSharingCheck, restoreSharingMessage, type SharedWorkspace, sharedWorkspacesInBytes, sharingGate } from './restore-sharing';
+import { SyncService } from '../sync/sync-service';
 import { memorySnapshots, restoreSnapshot } from './snapshots';
 
 const engines: NodeExecutor[] = [];
@@ -77,6 +78,29 @@ describe('reading the shared workspaces out of a database file', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     expect(await sharedWorkspacesInBytes(new TextEncoder().encode('not a database at all, not even close'))).toBeNull();
     vi.restoreAllMocks();
+  });
+});
+
+describe('reading a real app database', () => {
+  it('finds the workspace shared on a migrated database, and none in a copy from before it was shared', async () => {
+    const engine = createNodeExecutor();
+    engines.push(engine);
+    const database = createDatabase(engine);
+    await migrate(database);
+    const ws = await createWorkspace(database, { name: 'Household', type: 'personal', baseCurrency: 'IDR' });
+    // A book is what the app calls a workspace: its name is the one the warning gives.
+    const { id: bookId, name } = await personalBook(database, ws);
+    const before = await database.exportBytes();
+    const relay = new MemoryTransport();
+    const sync = new SyncService({ database, keyStore: new MemoryKeyStore(), transportFor: (device) => relay.as(requestSignerOf(device)), onError: () => {}, intervalMs: 60 * 60_000 });
+    await sync.start();
+    await sync.share(bookId, { memberName: 'Owner', deviceName: 'Phone' });
+    sync.stop();
+    const after = await database.exportBytes();
+    const here = await sharedWorkspacesInBytes(after);
+    expect(here).toEqual([{ bookId, name, state: 'active' }]);
+    expect(await sharedWorkspacesInBytes(before)).toEqual([]);
+    expect(restoreSharingCheck(here, await sharedWorkspacesInBytes(before))).toEqual({ kind: 'differs', workspaces: [{ name, here: 'active', inCopy: null }] });
   });
 });
 
