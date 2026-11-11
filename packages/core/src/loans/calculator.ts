@@ -27,6 +27,11 @@ export interface LoanCalcInput {
 
 const BPS = 10_000;
 
+/** The longest loan worked out: fifty years. Beyond it the payment dates and the annuity factor stop being sound. */
+export const MAX_LOAN_MONTHS = 600;
+/** The dearest rate worked out, in yearly basis points: 100% a year (a rate a month of about 8,33%). */
+export const MAX_LOAN_RATE_BPS = 10_000;
+
 /**
  * The terms and rate periods a saved loan would carry. The first period starts on the first payment — what
  * `saveLoanTerms` writes — and each later one on the first payment of its stage, which is where `periodOn` starts
@@ -37,7 +42,9 @@ export function calculatorLoan(input: LoanCalcInput): { terms: LoanTerms; period
   if (input.stages.length === 0) throw new Error('A loan needs a rate');
   if (input.stages.some((stage) => !Number.isInteger(stage.months) || stage.months < 1)) throw new Error('Each stage runs for at least one month');
   if (input.stages.some((stage) => !Number.isInteger(stage.rateBps) || stage.rateBps < 0)) throw new Error('A rate cannot be below nothing');
+  if (input.stages.some((stage) => stage.rateBps > MAX_LOAN_RATE_BPS)) throw new Error('A rate is at most 100% a year');
   const tenorMonths = input.stages.reduce((total, stage) => total + stage.months, 0);
+  if (tenorMonths > MAX_LOAN_MONTHS) throw new Error('A loan runs for at most 50 years');
   const periods: RatePeriod[] = [];
   let start = 0;
   for (const stage of input.stages) {

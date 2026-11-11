@@ -7,6 +7,8 @@ import {
   halfRepaidMonth,
   type LoanCalcInput,
   loanSchedule,
+  MAX_LOAN_MONTHS,
+  MAX_LOAN_RATE_BPS,
   paymentJump,
   stageLines,
   yearlyRows,
@@ -75,6 +77,19 @@ describe('the calculator loan', () => {
     expect(rows.map((row) => row.paymentMinor)).toEqual([333_333, 333_334, 333_333]);
     expect(sum(rows.map((row) => row.paymentMinor))).toBe(1_000_000);
     expect(rows.every((row) => row.interestMinor === 0)).toBe(true);
+    expect(rows.at(-1)!.balanceMinor).toBe(0);
+  });
+
+  it('refuses a loan longer than fifty years or dearer than 100% a year, so nothing overflows or runs for ever', () => {
+    expect(MAX_LOAN_MONTHS).toBe(600);
+    expect(MAX_LOAN_RATE_BPS).toBe(10_000);
+    expect(() => calculatorLoan({ ...home, stages: [{ months: 601, rateBps: 0, kind: 'fixed' }] })).toThrow(/at most/i);
+    expect(() => calculatorLoan({ ...home, stages: [{ months: 36, rateBps: 550, kind: 'fixed' }, { months: 565, rateBps: 1100, kind: 'floating' }] })).toThrow(/at most/i);
+    expect(() => calculatorLoan({ ...home, stages: [{ months: 240, rateBps: 10_001, kind: 'fixed' }] })).toThrow(/at most/i);
+    // The dearest loan at the longest length still works out in whole figures.
+    const rows = calculatorSchedule({ ...home, stages: [{ months: 600, rateBps: 10_000, kind: 'fixed' }] });
+    expect(rows).toHaveLength(600);
+    expect(rows.every((row) => Number.isSafeInteger(row.paymentMinor) && Number.isSafeInteger(row.balanceMinor))).toBe(true);
     expect(rows.at(-1)!.balanceMinor).toBe(0);
   });
 

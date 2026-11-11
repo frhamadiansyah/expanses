@@ -388,6 +388,8 @@ export {
   halfRepaidMonth,
   type LoanCalcInput,
   type LoanCalcStage,
+  MAX_LOAN_MONTHS,
+  MAX_LOAN_RATE_BPS,
   type PaymentJump,
   paymentJump,
   type StageLine,

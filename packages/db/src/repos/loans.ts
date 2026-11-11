@@ -71,6 +71,11 @@ export interface SaveLoanTermsInput {
   rateBps: number;
   paymentMinor?: number;
   rateKind?: 'fixed' | 'floating';
+  /**
+   * Rate changes already agreed — a loan calculator's later stages — written in the same transaction as the terms, so a
+   * loan never lands with its opening rate and without the stages after it. Only with a loan's first terms.
+   */
+  laterPeriods?: { fromOn: string; rateBps: number; kind: 'fixed' | 'floating' }[];
 }
 
 const DEFAULT_CORETAX_CODE = '101';
@@ -147,6 +152,20 @@ export async function saveLoanTerms(database: Database, ws: WorkspaceContext, in
       paymentMinor: input.paymentMinor ?? 0,
     };
     await tx.insert(loanRatePeriods).values(period).onConflictDoUpdate({ target: loanRatePeriods.id, set: period });
+
+    const later = input.laterPeriods ?? [];
+    if (later.length > 0 && firstPeriod) throw new LoanDbError('Rate stages can be given only with a loan’s first terms');
+    for (const stage of later) {
+      await tx.insert(loanRatePeriods).values({
+        id: uuidv7(),
+        accountId: input.accountId,
+        workspaceId: ws.workspaceId,
+        fromOn: stage.fromOn,
+        rateBps: stage.rateBps,
+        kind: stage.kind,
+        paymentMinor: 0,
+      });
+    }
   });
 }
 

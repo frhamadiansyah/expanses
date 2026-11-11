@@ -1,6 +1,6 @@
 import { calculatorLoan, calculatorSchedule, type LoanCalcInput } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { addRatePeriod, createAccount, getLoanCalculatorDraft, saveLoanCalculatorDraft, saveLoanTerms, scheduleFor } from '../src/index';
+import { createAccount, getLoanCalculatorDraft, LoanDbError, loanFor, saveLoanCalculatorDraft, saveLoanTerms, scheduleFor } from '../src/index';
 import { setupDb } from './helpers';
 
 /** Invented figures: 720.000.000 over 20 years, 5,5% fixed for 3 years then 11% floating, first paid next month. */
@@ -22,13 +22,46 @@ describe('a loan saved from the calculator', () => {
     // and one rate change for each later stage.
     const account = await createAccount(database, ws, { name: 'Home loan', kind: 'liability', subtype: 'loan', currency: 'IDR', openingBalanceMinor: 720_000_000, openedOn: '2026-11-11' });
     const { terms, periods } = calculatorLoan(home);
-    await saveLoanTerms(database, ws, { accountId: account.id, lenderName: 'Lender', ...terms, rateBps: periods[0]!.rateBps, rateKind: periods[0]!.kind });
-    for (const period of periods.slice(1)) await addRatePeriod(database, ws, { accountId: account.id, fromOn: period.fromOn, rateBps: period.rateBps, kind: period.kind });
+    await saveLoanTerms(database, ws, {
+      accountId: account.id,
+      lenderName: 'Lender',
+      ...terms,
+      rateBps: periods[0]!.rateBps,
+      rateKind: periods[0]!.kind,
+      laterPeriods: periods.slice(1).map((period) => ({ fromOn: period.fromOn, rateBps: period.rateBps, kind: period.kind })),
+    });
 
     const saved = await scheduleFor(database, ws, account.id, '2026-11-11');
     expect(saved).toEqual(calculatorSchedule(home));
     expect(saved).toHaveLength(240);
     expect(saved.at(-1)!.balanceMinor).toBe(0);
+  });
+
+  it('writes the terms and every later stage together, or none of them', async () => {
+    const { database, ws } = await setupDb();
+    const account = await createAccount(database, ws, { name: 'Home loan', kind: 'liability', subtype: 'loan', currency: 'IDR', openingBalanceMinor: 720_000_000, openedOn: '2026-11-11' });
+    const { terms } = calculatorLoan(home);
+    await expect(
+      saveLoanTerms(database, ws, {
+        accountId: account.id,
+        lenderName: 'Lender',
+        ...terms,
+        rateBps: 550,
+        laterPeriods: [{ fromOn: '2029-12-11', rateBps: 1100, kind: 'odd' as never }],
+      }),
+    ).rejects.toThrow();
+    expect(await loanFor(database, ws, account.id)).toBeUndefined();
+  });
+
+  it('takes later stages only with a loan’s first terms, never over periods already recorded', async () => {
+    const { database, ws } = await setupDb();
+    const account = await createAccount(database, ws, { name: 'Home loan', kind: 'liability', subtype: 'loan', currency: 'IDR', openingBalanceMinor: 720_000_000, openedOn: '2026-11-11' });
+    const { terms } = calculatorLoan(home);
+    await saveLoanTerms(database, ws, { accountId: account.id, lenderName: 'Lender', ...terms, rateBps: 550 });
+    await expect(
+      saveLoanTerms(database, ws, { accountId: account.id, lenderName: 'Lender', ...terms, rateBps: 550, laterPeriods: [{ fromOn: '2029-12-11', rateBps: 1100, kind: 'floating' }] }),
+    ).rejects.toThrow(LoanDbError);
+    expect((await loanFor(database, ws, account.id))!.periods).toHaveLength(1);
   });
 
   it('is the same flat loan too', async () => {
