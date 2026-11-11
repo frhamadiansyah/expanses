@@ -22,7 +22,7 @@ async function setup() {
   const fandri: Device = { ...fandri0, engine: new SyncEngine(fandri0.database, fandri0.transport, fandri0.keys, () => clock.at) };
   home.devices.splice(home.devices.indexOf(fandri0), 1, fandri);
   // Dewi's last change at day 0, as the sync service feeds it from each pulled entry's hlc.
-  await recordDevicesSeen(fandri.database, bookId, { [dewi.deviceId]: T0 });
+  await recordDevicesSeen(fandri.database, bookId, { [dewi.deviceId]: T0 }, T0);
   const syncAt = async (days: number) => {
     clock.at = T0 + days * DAY;
     await fandri.engine.syncOnce(bookId);
@@ -77,5 +77,33 @@ describe('ownersGone and keeping a copy as own', () => {
     const now = Date.now() + 30 * DAY;
     await dewi.database.db.run(sql`UPDATE shared_books SET synced_at = ${new Date(now).toISOString()}`);
     expect((await ownersGone(dewi.database, bookId, dewi.deviceId, now)).gone).toBe(false);
+  });
+
+  it('a phone clock 20 days ahead does not make an active owner look gone: the phone’s own receive time counts', async () => {
+    const { dewi, fandri, bookId, syncAt } = await setup();
+    // Dewi keeps editing on her own clock; this phone receives each entry on its skewed one.
+    await recordDevicesSeen(fandri.database, bookId, { [dewi.deviceId]: T0 + 3 * DAY }, T0 + 20 * DAY);
+    await syncAt(20);
+    const gone = await ownersGone(fandri.database, bookId, fandri.deviceId, T0 + 20 * DAY);
+    expect(gone.gone).toBe(false);
+    await expect(fandri.engine.forgetSharing(bookId)).rejects.toMatchObject({ code: 'STILL_SHARED' });
+  });
+
+  it('two owner devices, one silent for 14 days and one active: not gone', async () => {
+    const { dewi, fandri, bookId, syncAt } = await setup();
+    await fandri.database.db.run(sql`INSERT INTO sync_authority_devices (book_id, device_id, member_id) VALUES (${bookId}, 'dewi-tablet', ${dewi.memberId})`).catch(async () => {
+      const cols = await fandri.database.db.values<[string]>(sql`SELECT name FROM pragma_table_info('sync_authority_devices')`);
+      throw new Error(`insert failed; columns ${cols.map((c) => c[0]).join(',')}`);
+    });
+    await recordDevicesSeen(fandri.database, bookId, { 'dewi-tablet': T0 + 13 * DAY }, T0 + 13 * DAY);
+    await syncAt(14);
+    expect((await ownersGone(fandri.database, bookId, fandri.deviceId, T0 + 14 * DAY)).gone).toBe(false);
+  });
+
+  it('an owner device never heard from keeps it false', async () => {
+    const { dewi, fandri, bookId, syncAt } = await setup();
+    await fandri.database.db.run(sql`INSERT INTO sync_authority_devices (book_id, device_id, member_id) VALUES (${bookId}, 'dewi-tablet', ${dewi.memberId})`);
+    await syncAt(30);
+    expect((await ownersGone(fandri.database, bookId, fandri.deviceId, T0 + 30 * DAY)).gone).toBe(false);
   });
 });
