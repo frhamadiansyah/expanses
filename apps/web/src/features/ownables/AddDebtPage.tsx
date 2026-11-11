@@ -175,9 +175,9 @@ function DebtItemForm({ item, prefill }: { item: string; prefill: CalculatorPref
       <InsetGroup
         header={chosen.label}
         footer={
-          asks.includes('term') || owedToAPerson ? (
+          (asks.includes('term') && !calc) || owedToAPerson ? (
             <>
-              {asks.includes('term') && 'Leave the months left empty if not known: the debt still opens at what is owed, and its terms can be added on Debts.'}
+              {asks.includes('term') && !calc && 'Leave the months left empty if not known: the debt still opens at what is owed, and its terms can be added on Debts.'}
               {owedToAPerson && 'Money owed to a person is kept under Lend & borrow, and what is left there is what the tax report uses.'}
             </>
           ) : undefined
