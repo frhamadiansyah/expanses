@@ -45,6 +45,13 @@ describe('allDebtsSubtitle', () => {
     expect(allDebtsSubtitle(by('L2'), TODAY)).toBe('0% repaid · No terms yet');
     expect(allDebtsSubtitle(by('L3'), TODAY)).toBe('Sep 2026');
   });
+  it('two months late: an earlier late instalment is not counted as paid', () => {
+    const fact = readings().loanFacts[0]!;
+    const missedOct = { ...fact, instalments: fact.instalments.map((i) => (i.number === 3 ? { ...i, status: 'late' as const, paidOn: null, paymentId: null, paidMinor: null, daysLate: 34 } : i)) };
+    const kredit = planDebts(readings({ loanFacts: [missedOct] }), TODAY).find((d) => d.key === 'L1')!;
+    expect(allDebtsSubtitle(kredit, TODAY)).toMatch(/^Late · \d+% repaid · 2 of 6 paid$/);
+  });
+
   it('a loan on time: repaid share and the month it ends', () => {
     const onTime = planDebts(readings({ loanFacts: [{ ...readings().loanFacts[0]!, instalments: readings().loanFacts[0]!.instalments.map((i) => ({ ...i, status: 'paid' as const })) }] }), TODAY).find((d) => d.key === 'L1')!;
     expect(allDebtsSubtitle(onTime, TODAY)).toMatch(/^\d+% repaid · ends Jan 2027$/);

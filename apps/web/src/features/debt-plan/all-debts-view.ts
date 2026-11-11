@@ -60,8 +60,8 @@ export function allDebtsSubtitle(debt: PlanDebt, today: string): string {
   if (debt.kind === 'payable') return 'No fixed months';
   const repaid = `${repaidPercent(debt.borrowedMinor, debt.leftMinor)}% repaid`;
   if (!debt.hasTerms) return `${repaid} · No terms yet`;
-  if (debt.late && debt.instalmentOf !== null && debt.instalmentsLeft !== null) {
-    return `Late · ${repaid} · ${Math.max(0, debt.instalmentOf - debt.instalmentsLeft)} of ${debt.instalmentOf} paid`;
+  if (debt.late && debt.instalmentOf !== null && debt.instalmentsPaid !== null) {
+    return `Late · ${repaid} · ${debt.instalmentsPaid} of ${debt.instalmentOf} paid`;
   }
   return debt.endsMonth ? `${late}${repaid} · ends ${monthYearLabel(debt.endsMonth)}` : `${late}${repaid}`;
 }
