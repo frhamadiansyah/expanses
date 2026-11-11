@@ -18,12 +18,16 @@ export function readPercent(typed: string): Field<number> {
   return { ok: true, value: bps };
 }
 
-/** Whole years, not below nothing. */
-export function readWhole(typed: string): Field<number> {
+/**
+ * Whole years, not below nothing. Given its unit, a box says so in words alone ("Whole months only"); without one it keeps
+ * the older calculators' sentence.
+ */
+export function readWhole(typed: string, unit?: 'years' | 'months'): Field<number> {
   const text = typed.trim();
-  if (!/^-?\d+$/.test(text)) return refuse('Whole years, like 10');
+  const notWhole = unit ? `Whole ${unit} only` : 'Whole years, like 10';
+  if (!/^-?\d+$/.test(text)) return refuse(notWhole);
   const value = Number(text);
-  if (!Number.isSafeInteger(value)) return refuse('Whole years, like 10');
+  if (!Number.isSafeInteger(value)) return refuse(notWhole);
   if (value < 0) return refuse('Not below nothing');
   return { ok: true, value };
 }

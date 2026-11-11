@@ -1,7 +1,7 @@
-import { GraduationCap, ShieldCheck, Sunset, Umbrella, type LucideIcon } from 'lucide-react';
+import { GraduationCap, Landmark, ShieldCheck, Sunset, Umbrella, type LucideIcon } from 'lucide-react';
 
 /**
- * The four calculators, and the one sentence that says what each answers.
+ * The calculators, and the one sentence that says what each answers.
  *
  * The list is read twice: the catalogue draws a row from an entry, and the calculator's own page takes its title
  * and subtitle from the same entry — so the line a person chose it by is the line they land on, and the two can
@@ -42,4 +42,11 @@ export const LIFE_COVER: CalculatorEntry = {
   blurb: 'What the family would need, minus what is already there.',
 };
 
-export const CATALOGUE: readonly CalculatorEntry[] = [EMERGENCY_FUND, EDUCATION_FUND, RETIREMENT_FUND, LIFE_COVER];
+export const LOAN_CALCULATOR: CalculatorEntry = {
+  to: '/calculators/loan',
+  icon: Landmark,
+  label: 'Loan',
+  blurb: 'What a home, vehicle or online loan costs in full, before it is a debt.',
+};
+
+export const CATALOGUE: readonly CalculatorEntry[] = [EMERGENCY_FUND, EDUCATION_FUND, RETIREMENT_FUND, LIFE_COVER, LOAN_CALCULATOR];

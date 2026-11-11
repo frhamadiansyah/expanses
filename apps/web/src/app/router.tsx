@@ -23,6 +23,7 @@ import { CalculatorsPage } from '../features/calculators/CalculatorsPage';
 import { EducationFundPage } from '../features/calculators/EducationFundPage';
 import { EmergencyFundPage } from '../features/calculators/EmergencyFundPage';
 import { LifeCoverPage } from '../features/calculators/LifeCoverPage';
+import { LoanCalculatorPage, loanSearch } from '../features/calculators/LoanCalculatorPage';
 import { RetirementFundPage } from '../features/calculators/RetirementFundPage';
 import { WidgetSettingsPage } from '../features/account/WidgetSettingsPage';
 import { CaptureSettingsPage } from '../features/capture/CaptureSettingsPage';
@@ -307,6 +308,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators/education', component: EducationFundPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators/retirement', component: RetirementFundPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators/life-cover', component: LifeCoverPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/calculators/loan', component: LoanCalculatorPage, validateSearch: loanSearch }),
   // Before /accounts only for reading: a route is ranked by how specific its path is, never by where it sits here.
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/new', component: AddAccountPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/add', component: AddMoneyAccountPage }),
@@ -490,7 +492,13 @@ const routeTree = rootRoute.addChildren([
   }),
   // The debt picker stands on its own path: a debt is a card, a loan or money owed to a person, and each of them
   // lands somewhere different.
-  createRoute({ getParentRoute: () => rootRoute, path: '/debts/new', component: AddDebtPage }),
+  // The loan calculator's Save as debt carries the loan in `calc`: read, and refused if odd, by the page itself.
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/debts/new',
+    component: AddDebtPage,
+    validateSearch: (search: Record<string, unknown>): { calc?: unknown } => (search.calc !== undefined ? { calc: search.calc } : {}),
+  }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/new', component: AddCardPage }),
   // Debts — everything owed — keeps the address the Loans page had, so a loan's own page stays where it was.
   // The Debt-free plan: a page of its own over every debt, and its Pay first page (spec §4.0, §4.1).
