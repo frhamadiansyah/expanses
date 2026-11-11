@@ -53,6 +53,8 @@ import { type PaidChoice, PaidWithSheet } from './PaidWithSheet';
 import { ConvertForm } from './ConvertForm';
 import { isCorrection, isEditable } from './draft';
 import { DayHeader } from './DayHeader';
+import { CashflowLine } from './CashflowLine';
+import { useLineState } from './cashflow-line-store';
 import { DayReorder, landed, movedBy, ReorderControls, reorderAttrs, ReorderScope } from './DayReorder';
 import { EventSheet } from './EventSheet';
 import { keptText, moveHint } from './shared-move';
@@ -480,6 +482,23 @@ export function TransactionsPage() {
     return { ...day, rows: day.rows.map((row) => (at.has(row.id) ? moving[next++]! : row)) };
   });
   const movableIds = new Map(days.map((day) => [day.date, day.rows.filter(movable).map((row) => row.id)]));
+  /*
+   * One line, opened by a held ＋ (`CashflowLine`): while the line reads as something, its dashed row is drawn at the
+   * top of the day it will land on, in a place (`lineSlot`) this list keeps there. A day with nothing yet gets a group
+   * of its own where it falls; a list not by day (by category, by amount, the table) keeps the place above it.
+   */
+  const lineOn = phone && !sideways && !readOnly;
+  const [lineSlot, setLineSlot] = useState<HTMLElement | null>(null);
+  const { day: lineDay, flashId } = useLineState();
+  const lineByDay = view === 'list' && grouping === 'date' && sort.key === 'date';
+  const lineDays: { date: string; rows: ListRow[] }[] = (() => {
+    if (!lineOn || !lineDay || !lineByDay || days.some((day) => day.date === lineDay)) return days;
+    const later = (date: string) => (sort.dir === 'desc' ? date === '' || date > lineDay : date !== '' && date < lineDay);
+    const at = days.findIndex((day) => !later(day.date));
+    const fresh = { date: lineDay, rows: [] as ListRow[] };
+    return at < 0 ? [...days, fresh] : [...days.slice(0, at), fresh, ...days.slice(at)];
+  })();
+  const lineSlotHere = (date: string) => lineOn && lineByDay && lineDay === date ? <div ref={setLineSlot} data-testid="line-slot" className="pt-1" /> : null;
   function reorder(date: string, movedId: string, order: string[]) {
     setDropped((was) => ({ ...was, [date]: order }));
     void run(movedId, () => moveTransactionInDay(database, ws, movedId, order)).finally(() => setDropped((was) => landed(was, date, order)));
@@ -1098,6 +1117,8 @@ export function TransactionsPage() {
         row={row}
         accounts={accounts}
         phone={phone}
+        // Just saved from One line on this page: lit for a moment where it landed.
+        className={flashId === tx.id ? 'ph-line-flash' : undefined}
         itemProps={dayIds ? reorderAttrs(tx.id) : undefined}
         title={clickable ? 'Click to edit' : elsewhere ? openToEditMessage(elsewhere) : undefined}
         // A phone taps for the receipt and swipes for the rest; a desktop keeps its editor in place, untouched.
@@ -1467,12 +1488,17 @@ export function TransactionsPage() {
           needsCategory={{ count: needCategoryCount, active: filters.needsCategory === true, onShow: showNeedsCategory, onClear: hideNeedsCategory }}
         />
       )}
+      {lineOn && lineDay && !lineByDay && (
+        <Card>
+          <div ref={setLineSlot} data-testid="line-slot" />
+        </Card>
+      )}
       {view === 'table' ? (
         // Sideways, the one table is the full-screen one: two typing rows would be two editors of the same month.
         !sideways && table
       ) : (
         <>
-          {list.isSuccess && shown.length === 0 &&
+          {list.isSuccess && shown.length === 0 && !(lineOn && lineDay) &&
             (rows.length === 0 ? (
               <Empty>No transactions in this period.</Empty>
             ) : (
@@ -1604,9 +1630,10 @@ export function TransactionsPage() {
             ) : (
               // One scope around every day: its one touch listener keeps a lifted row's drag from scrolling the page.
               <ReorderScope enabled={phone && reorderable} className="space-y-4">
-              {days.map((day) => (
+              {lineDays.map((day) => (
                 <Card key={day.date || 'undated'}>
                   <DayHeader date={day.date} net={dayTotal(day.rows)} currency={listCurrency} />
+                  {lineSlotHere(day.date)}
                   <DayReorder
                     className="divide-y divide-slate-100"
                     enabled={(movableIds.get(day.date)?.length ?? 0) > 1}
@@ -1622,6 +1649,9 @@ export function TransactionsPage() {
           )}
         </>
       )}
+
+      {/* One line's field on the keyboard, opened by a held ＋; its dashed row goes in the list's `lineSlot`. */}
+      {lineOn && <CashflowLine slot={lineSlot} />}
 
       {/* The category sheet and its Undo toast, once for the screen rather than once per row. */}
       {recategorise.overlay}

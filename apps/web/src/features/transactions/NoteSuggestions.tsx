@@ -33,6 +33,7 @@ export function NoteSuggestions({
   open,
   categoryName,
   onPick,
+  lift,
 }: {
   typed: string;
   /** Which kind of category a pick may bring; null for a transfer or a trade, which get no suggestions. */
@@ -40,6 +41,8 @@ export function NoteSuggestions({
   open: boolean;
   categoryName: (id: string) => string | undefined;
   onPick: (suggestion: NoteSuggestion) => void;
+  /** Stands this far above the keyboard (`KeyboardStrip`'s `lift`). */
+  lift?: number;
 }) {
   const { database, ws } = useApp();
   const want = typed.trim();
@@ -54,6 +57,7 @@ export function NoteSuggestions({
   return (
     <KeyboardStrip
       label="Suggested notes"
+      lift={lift}
       cells={rows.map((suggestion) => {
         const category = suggestion.categoryId ? categoryName(suggestion.categoryId) : undefined;
         return {

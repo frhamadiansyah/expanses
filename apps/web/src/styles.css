@@ -127,3 +127,25 @@ input[list]::-webkit-list-button {
     animation: none;
   }
 }
+
+/*
+ * A row just saved from One line on Cashflow (`CashflowLine`): lit green where it landed, fading back to the list's own
+ * ground. With reduced motion it is simply not lit.
+ */
+@keyframes line-saved-flash {
+  from {
+    background-color: var(--ph-up-panel);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.ph-line-flash {
+  animation: line-saved-flash 1.6s ease-out;
+  border-radius: 10px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ph-line-flash {
+    animation: none;
+  }
+}

@@ -1,12 +1,21 @@
 import { expect, type Page, test } from '@playwright/test';
 
 /*
- * The tab bar's ＋: a plain tap opens the Add form exactly as before; press and hold opens a small menu of the other
- * ways in. The hold is driven with touch pointer events, the way a finger on a phone sends it.
+ * The tab bar's ＋: a plain tap opens the Add form exactly as before. On Cashflow, with Settings › Default's hold set to
+ * Show the menu, press and hold opens a small menu of the other ways in. The hold is driven with touch pointer events,
+ * the way a finger on a phone sends it.
  */
 const plus = (page: Page) => page.getByRole('button', { name: 'Add a transaction' });
 const menu = (page: Page) => page.getByRole('dialog', { name: 'Add' });
 const touch = { pointerType: 'touch', isPrimary: true };
+
+/** Settings › Default: holding ＋ on Cashflow shows the menu (One line is the default). */
+async function chooseMenu(page: Page) {
+  await page.goto('/settings/default');
+  await page.getByRole('button', { name: 'Show the menu', exact: true }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page).toHaveURL(/\/account$/);
+}
 
 async function open(page: Page, at = '/transactions') {
   await page.goto(at);
@@ -14,6 +23,7 @@ async function open(page: Page, at = '/transactions') {
 }
 
 async function hold(page: Page) {
+  await expect(plus(page)).toHaveAttribute('data-hold', 'menu');
   await plus(page).dispatchEvent('pointerdown', touch);
   await page.waitForTimeout(600);
   await plus(page).dispatchEvent('pointerup', touch);
@@ -28,6 +38,7 @@ test('a plain tap on ＋ still opens the Add form', async ({ page }) => {
 });
 
 test('holding ＋ opens the menu with the four ways', async ({ page }) => {
+  await chooseMenu(page);
   await open(page);
   const before = page.url();
   await hold(page);
@@ -40,6 +51,7 @@ test('holding ＋ opens the menu with the four ways', async ({ page }) => {
 });
 
 test('each way goes where it says', async ({ page }) => {
+  await chooseMenu(page);
   await test.step('One line', async () => {
     await open(page);
     await hold(page);
@@ -63,7 +75,7 @@ test('each way goes where it says', async ({ page }) => {
   });
 
   await test.step('Scan a receipt: Cashflow, the scan started, and the address left clean', async () => {
-    await open(page, '/net-worth');
+    await open(page);
     await hold(page);
     await menu(page).getByRole('button', { name: 'Scan a receipt', exact: true }).click();
     await expect(page).toHaveURL(/\/transactions$/);
@@ -74,7 +86,9 @@ test('each way goes where it says', async ({ page }) => {
 });
 
 test('a press shorter than the hold is a tap', async ({ page }) => {
+  await chooseMenu(page);
   await open(page);
+  await expect(plus(page)).toHaveAttribute('data-hold', 'menu');
   await plus(page).dispatchEvent('pointerdown', touch);
   await page.waitForTimeout(100);
   await plus(page).dispatchEvent('pointerup', touch);

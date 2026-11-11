@@ -3,7 +3,8 @@ import { InsetGroup, InsetRow } from '../ui/native/InsetList';
 import { Sheet } from './Sheet';
 
 /**
- * What holding the tab bar's ＋ opens: the other ways in, beside the Add form a plain tap still opens. Scan a receipt is
+ * What holding the tab bar's ＋ on Cashflow opens when Settings › Default says Show the menu: the other ways in, beside
+ * the Add form a plain tap still opens. Scan a receipt is
  * the same action as Cashflow's own button and the widget's Receipt: it opens Cashflow, which starts the scan.
  */
 export function AddMenu({ onClose, onAdd }: { onClose: () => void; onAdd: () => void }) {
