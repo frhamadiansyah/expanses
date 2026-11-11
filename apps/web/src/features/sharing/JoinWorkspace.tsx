@@ -5,7 +5,7 @@ import { Sheet } from '../../app/Sheet';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, ReadOnlyRow, SubmitRow, TextRow } from '../../ui/native';
 import { JoinEvent } from './JoinEvent';
-import { currencyRefusal, replaceConfirm, sayError } from './sharing-copy';
+import { copyLabel, currencyRefusal, otherCopyLine, replaceConfirm, sayError } from './sharing-copy';
 import { thisDeviceName } from './SharingSection';
 
 /*
@@ -13,7 +13,9 @@ import { thisDeviceName } from './SharingSection';
  * preview — the workspace, who invited you, and the currency check — and only then Join, which claims the invite. A
  * workspace in another currency is refused with §8.2's sentence before anything is claimed, so the invite stays good
  * for someone else. A join that would move this device's copy of the workspace onto another share asks first
- * (recovery review, N1).
+ * (recovery review, N1). Another copy here from the same owner is said before the join (sharing resilience D-A7): a
+ * warning only — the join beside it is safe and leaves out what that copy holds; the safe order is join first, then
+ * delete the old copy, then Place them now.
  */
 
 const NAME_KEY = 'cicis.sharing.name';
@@ -106,6 +108,7 @@ export function JoinWorkspace({
   }
 
   const refusal = preview && !preview.event && preview.baseCurrency !== ws.baseCurrency ? currencyRefusal(preview.baseCurrency, ws.baseCurrency) : null;
+  const otherCopies = preview?.otherCopies ?? [];
   const unusable = preview?.claimed ? 'Someone has already used this invite. Ask for a new one.' : preview?.expired ? 'This invite has expired. Ask for a new one.' : null;
 
   return (
@@ -166,7 +169,7 @@ export function JoinWorkspace({
             </InsetGroup>
           )}
           {refusal || unusable ? null : (
-            <InsetGroup wide>
+            <InsetGroup wide footer={otherCopies.length > 0 ? <span data-testid="join-other-copies">{otherCopyLine(otherCopies.map((copy) => ({ label: copyLabel(copy, Date.now()), active: copy.state === 'active' })))}</span> : undefined}>
               <SubmitRow label={busy ? 'Joining…' : 'Join'} disabled={busy || (!preview.terms.sameMember && !name.trim())} />
             </InsetGroup>
           )}

@@ -114,6 +114,9 @@ export function copyReasonWords(reason: SnapshotReason): string {
       return 'Taken before starting fresh';
     case 'before-delete':
       return 'Taken before deleting a workspace';
+    case 'before-place':
+      // Place them now (sharing resilience §4.3): rows a share kept waiting come in, and balances move with them.
+      return 'Taken before placing waiting rows of a share';
     case 'daily':
       return 'The day’s copy';
     case 'background':

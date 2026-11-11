@@ -41,13 +41,19 @@ export type SyncLogOp =
   | 'leave'
   | 'stop'
   | 'act'
-  | 'copy';
+  | 'copy'
+  /** Sharing resilience: a share record read, written or discarded (§6.1, §6.2). */
+  | 'records'
+  /** Place them now (§4.3). */
+  | 'place'
+  /** A once-shared workspace erased by Delete (§5). */
+  | 'erase';
 
 /**
  * The ops that happen once, when someone does something, kept in a list of their own that background runs (`sync`,
- * `group`, `apply`, `pull`, `refresh`, `seen`) cannot push out. `copy` is a safety copy skipped for want of room.
+ * `group`, `apply`, `pull`, `refresh`, `seen`) cannot push out. `copy` is a safety copy skipped for want of room; `records`, `place` and `erase` are sharing resilience's.
  */
-export const KEPT_OPS: ReadonlySet<SyncLogOp> = new Set<SyncLogOp>(['share', 'seed', 'drain', 'invite', 'preview', 'join', 'restore', 'remove', 'leave', 'stop', 'act', 'prepare', 'copy']);
+export const KEPT_OPS: ReadonlySet<SyncLogOp> = new Set<SyncLogOp>(['share', 'seed', 'drain', 'invite', 'preview', 'join', 'restore', 'remove', 'leave', 'stop', 'act', 'prepare', 'copy', 'records', 'place', 'erase']);
 
 export interface SyncLogEntry {
   /** ISO time. */

@@ -1,6 +1,6 @@
-import { type BookRow, LeaveIncompleteError, type SharingDetail } from '@expanses/db';
+import { type BookRow, LeaveIncompleteError, SharingError, type SharingDetail } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { CalendarDays, FileText, Landmark, RefreshCw, User } from 'lucide-react';
+import { CalendarDays, FileText, Inbox, Landmark, RefreshCw, TriangleAlert, User } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -16,10 +16,35 @@ import { InviteCard } from './InviteCard';
 import { type ShareEventRow, shareEventRows } from './share-events';
 import { useNetWorthGroup } from './net-worth-queries';
 import { netWorthRowOf, netWorthValue } from './net-worth-state';
-import { useBookStatus, useSharingDetail, useSyncStatus } from './queries';
+import { heldLineOf } from './copy-roles';
+import { PlaceHeldSheet } from './PlaceHeldSheet';
+import { useBookStatus, useCopyRoles, useLostHere, useShareHealth, useSharingDetail, useSyncStatus } from './queries';
 import { keepOpenInvite, useActionRunner, useOpenInvite, useShareBook } from './share-hooks';
 import { rememberedName, rememberName, thisDeviceName } from './SharingSection';
-import { currencyRefusal, FORGET_ROW, forgetConfirm, FROZEN_NOTE, lastFailedLine, lastSyncedLine, leaveConfirm, preparing, READ_ONLY_NOTE, sayError, shareStatusLine, stopConfirm } from './sharing-copy';
+import {
+  currencyRefusal,
+  DISCARD_LABEL,
+  DISCARD_TITLE,
+  discardConfirm,
+  FORGET_ROW,
+  forgetConfirm,
+  FROZEN_NOTE,
+  KEEP_OWN_LABEL,
+  keepOwnTitle,
+  lastChangeLine,
+  lastFailedLine,
+  lastSyncedLine,
+  leaveConfirm,
+  LOST_LINE,
+  ownersGoneConfirm,
+  PLACE_LABEL,
+  preparing,
+  READ_ONLY_NOTE,
+  sayError,
+  shareSilenceLine,
+  shareStatusLine,
+  stopConfirm,
+} from './sharing-copy';
 
 /** What the person being invited will and will not see, and the one thing about devices worth knowing up front. */
 const EXPLAINER = [
@@ -42,16 +67,54 @@ export function SharePage() {
 
 function ShareBody({ book }: { book: BookRow }) {
   const detail = useSharingDetail(book.id);
+  const lost = useLostHere(book.id);
+  const [discarding, setDiscarding] = useState(false);
   if (detail.isPending) return null;
   return (
     <>
-      {detail.data ? <Shared book={book} detail={detail.data} /> : <ShareForm book={book} refetch={async () => void (await detail.refetch())} />}
+      {/* A share this phone held and lost (sharing resilience §6.2, §7): said first, with the one way on in this update. */}
+      {lost ? (
+        <InsetGroup wide footer={<span data-testid="share-lost-line">{LOST_LINE(book.name)}</span>}>
+          <InsetRow testId="share-discard-row" icon={<TriangleAlert size={15} aria-hidden />} title={DISCARD_LABEL} onClick={() => setDiscarding(true)} chevron={false} />
+        </InsetGroup>
+      ) : null}
+      {detail.data ? (
+        <Shared book={book} detail={detail.data} />
+      ) : (
+        <ShareForm book={book} refetch={async () => void (await detail.refetch())} onLostShare={() => setDiscarding(true)} />
+      )}
+      {discarding ? <DiscardSheet book={book} onClose={() => setDiscarding(false)} /> : null}
       {/* Shared or not: a book whose sharing went missing here still has its history in the log, kept by its local id. */}
       <InsetGroup wide>
         <InsetRow testId="sync-details-row" icon={<FileText size={15} aria-hidden />} title="Details" to="/account/workspaces/$bookId/share/details" params={{ bookId: book.id }} />
       </InsetGroup>
       <ShareEvents />
     </>
+  );
+}
+
+/** Discard old share (§7, review N2): asked, then this phone's record of the lost share goes and Share works again. */
+function DiscardSheet({ book, onClose }: { book: BookRow; onClose: () => void }) {
+  const joined = book.kind === 'shared';
+  const { sync } = useApp();
+  const { busy, error, run } = useActionRunner();
+  return (
+    <Sheet
+      title={DISCARD_TITLE}
+      onClose={onClose}
+      confirm={{
+        label: DISCARD_LABEL,
+        disabled: busy,
+        run: () =>
+          void run(async () => {
+            await sync.discardShareRecord(book.id);
+            onClose();
+          }),
+      }}
+    >
+      <ErrorBox error={error} />
+      <p className="text-[15px] leading-[20px]">{discardConfirm(book.name, joined)}</p>
+    </Sheet>
   );
 }
 
@@ -110,7 +173,7 @@ function ShareEventLine({ row, onShare, onLeave, position }: GroupChild & { row:
 }
 
 /** Not shared yet: a Name and a Share button; the button becomes the progress while the history goes up. */
-function ShareForm({ book, refetch }: { book: BookRow; refetch: () => Promise<void> }) {
+function ShareForm({ book, refetch, onLostShare }: { book: BookRow; refetch: () => Promise<void>; onLostShare: () => void }) {
   const { ws, sync } = useApp();
   const [name, setName] = useState(rememberedName);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -138,6 +201,11 @@ function ShareForm({ book, refetch }: { book: BookRow; refetch: () => Promise<vo
       keepOpenInvite(book.id, made);
       await refetch();
     } catch (failure) {
+      // A share this phone lost is in the way (review N2): nothing was made; the discard is asked for.
+      if (failure instanceof SharingError && failure.code === 'RECORD_ELSEWHERE') {
+        onLostShare();
+        return;
+      }
       setError(sayError(failure));
       // Once the history was written the workspace is shared even though it has not gone up yet: the shared view
       // says so ("N changes waiting", "Not synced"), keeps trying, and Invite someone asks again (fix round 1).
@@ -181,7 +249,7 @@ function ShareForm({ book, refetch }: { book: BookRow; refetch: () => Promise<vo
   );
 }
 
-type Confirming = { kind: 'leave' } | { kind: 'stop' } | { kind: 'forget' } | null;
+type Confirming = { kind: 'leave' } | { kind: 'stop' } | { kind: 'forget' } | { kind: 'place' } | null;
 
 /** Shared: the status line, the invite while nobody has joined, the members, Net worth, and the ways out. */
 function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
@@ -189,10 +257,13 @@ function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
   const navigate = useNavigate();
   const live = useSyncStatus(book.id);
   const engineStatus = useBookStatus(book.id);
+  const health = useShareHealth(book.id).data;
+  const roles = useCopyRoles(book.id).data;
   const group = useNetWorthGroup(book.id);
   const invite = useOpenInvite(book.id);
   const [confirming, setConfirming] = useState<Confirming>(null);
   const [retryLeave, setRetryLeave] = useState(false);
+  const [placed, setPlaced] = useState<string | null>(null);
   const { busy, error, run } = useActionRunner();
   const me = detail.members.find((member) => member.me) ?? null;
   const now = Date.now();
@@ -200,8 +271,10 @@ function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
   const frozen = engineStatus.data?.frozen ?? false;
   const active = detail.state === 'active';
   // A share that is dead here — ended, waiting for an invite nobody may be able to give, or frozen — can be kept as
-  // this device's own copy (final review, C1). While an owner device is in, the way out is Leave.
-  const forgettable = !active || frozen;
+  // this device's own copy (final review, C1). So can one whose owners have made no change for two weeks while this
+  // phone kept syncing (sharing resilience D-A11). While an owner device is in otherwise, the way out is Leave.
+  const ownersQuiet = active && !frozen && (health?.ownersGone.gone ?? false);
+  const forgettable = !active || frozen || ownersQuiet;
   // Joined means a device of theirs is in the book: a member remembered from an earlier share has none yet.
   const someoneJoined = detail.members.some((member) => !member.me && member.devices.length > 0);
   const showInvite = invite !== null && active && !frozen && !someoneJoined && new Date(invite.expiresAt).getTime() > now;
@@ -211,6 +284,15 @@ function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
   const lastSynced = live.lastSyncedAt ?? (storedSync !== null && Number.isFinite(storedSync) ? storedSync : null);
   const note = status?.state === 'frozen' ? FROZEN_NOTE : status?.state === 'unshared' ? READ_ONLY_NOTE : active ? lastSyncedLine(lastSynced, now) : undefined;
   const failedLine = live.failing && live.lastError ? lastFailedLine(live.lastError) : undefined;
+  // Under the status, in this order (§4.4, §8.1): rows another copy here holds, then a quiet other side.
+  const held = active ? (health?.held ?? []) : [];
+  // Each holder by its label, so two copies called Home are told apart (review I-2).
+  const heldText = heldLineOf(held, roles);
+  const placeable = held.length > 0 && held.every((row) => !row.holderExists);
+  const silenceText = active && health ? shareSilenceLine(health.silence, { syncedAt: lastSynced, nowMs: now }) : null;
+  const silenceOf = new Map((health?.silence ?? []).map((s) => [s.memberId, s]));
+  const statusFooter = [failedLine, heldText, silenceText].filter((line): line is string => Boolean(line));
+  const ownerNames = detail.members.filter((member) => member.role === 'owner' && !member.me).map((member) => member.name);
   const netWorth = netWorthRowOf(group.data, detail.members);
 
   async function leave() {
@@ -232,7 +314,18 @@ function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
   return (
     <div data-testid="sharing-section">
       <ErrorBox error={error} />
-      <InsetGroup wide footer={failedLine ? <span data-testid="sharing-last-failure">{failedLine}</span> : undefined}>
+      <InsetGroup
+        wide
+        footer={
+          statusFooter.length > 0 ? (
+            <>
+              {failedLine ? <span data-testid="sharing-last-failure" className="block">{failedLine}</span> : null}
+              {heldText ? <span data-testid="sharing-held-line" className="block">{heldText}</span> : null}
+              {silenceText ? <span data-testid="sharing-silence-line" className="block">{silenceText}</span> : null}
+            </>
+          ) : undefined
+        }
+      >
         <InsetRow
           testId="sharing-status"
           icon={<RefreshCw size={15} aria-hidden />}
@@ -244,6 +337,21 @@ function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
         />
       </InsetGroup>
 
+      {/* Place them now (§4.3): offered once nothing here holds the waiting rows any more. */}
+      {placeable || placed ? (
+        <InsetGroup wide footer={placed ?? undefined}>
+          {placeable ? <InsetRow testId="sharing-place-row" icon={<Inbox size={15} aria-hidden />} title={PLACE_LABEL} disabled={busy} onClick={() => setConfirming({ kind: 'place' })} chevron={false} /> : null}
+        </InsetGroup>
+      ) : null}
+      {/* The copy that holds part of this share, one tap away: its page is where it is deleted (review I-2). */}
+      {roles && roles.heldBy.length > 0 ? (
+        <InsetGroup wide>
+          {roles.heldBy.map((holder) => (
+            <InsetRow key={holder.bookId} testId="sharing-holder-row" icon={<TriangleAlert size={15} aria-hidden />} title={holder.label} to="/account/workspaces/$bookId" params={{ bookId: holder.bookId }} />
+          ))}
+        </InsetGroup>
+      ) : null}
+
       {showInvite && invite ? <InviteCard invite={invite} bookName={book.name} inviterName={me?.name ?? ''} header="Invite" /> : null}
 
       {active ? (
@@ -254,6 +362,7 @@ function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
               testId="sharing-member"
               icon={<User size={15} aria-hidden />}
               title={member.me ? `${member.name} (me)` : member.name}
+              subtitle={member.me ? undefined : lastChangeLine(silenceOf.get(member.memberId) ?? { lastChangeAt: null }, now)}
               value={member.role === 'owner' ? 'Owner' : 'Member'}
               to="/account/workspaces/$bookId/share/members/$memberId"
               params={{ bookId: book.id, memberId: member.memberId }}
@@ -285,7 +394,7 @@ function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
         </InsetGroup>
       ) : null}
 
-      {/* Keep as my own copy (C1): the way out of a share that is dead here. Local only, confirmed. */}
+      {/* Keep as own copy (C1, D-A11): the way out of a share that is dead here, or whose owners went quiet. Local only, confirmed. */}
       {forgettable ? (
         <InsetGroup wide>
           <DestructiveRow label={FORGET_ROW} onClick={() => setConfirming({ kind: 'forget' })} />
@@ -299,10 +408,10 @@ function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
       ) : null}
       {confirming?.kind === 'forget' ? (
         <Sheet
-          title="Keep as its own copy?"
+          title={ownersQuiet ? keepOwnTitle(book.name) : 'Keep as its own copy?'}
           onClose={() => setConfirming(null)}
           confirm={{
-            label: 'Keep as my own copy',
+            label: KEEP_OWN_LABEL,
             disabled: busy,
             run: () => {
               setConfirming(null);
@@ -310,8 +419,11 @@ function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
             },
           }}
         >
-          <p className="text-[15px] leading-[20px]">{forgetConfirm(book.name)}</p>
+          <p className="text-[15px] leading-[20px]">{ownersQuiet ? ownersGoneConfirm(book.name, ownerNames, health?.ownersGone.since ?? null) : forgetConfirm(book.name)}</p>
         </Sheet>
+      ) : null}
+      {confirming?.kind === 'place' ? (
+        <PlaceHeldSheet bookId={book.id} onClose={() => setConfirming(null)} onPlaced={setPlaced} />
       ) : null}
       {confirming?.kind === 'stop' ? (
         <Sheet

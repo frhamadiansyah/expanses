@@ -7,6 +7,11 @@ import { defineConfig } from 'vite';
  * both halves, so the web view and the helper cannot be turned on apart; VITE_INSPECTABLE=1 alone does the web half.
  */
 if (process.env.CICIS_INSPECTABLE === '1') process.env.VITE_INSPECTABLE = '1';
+/*
+ * A developer build (CICIS_DEVTOOLS=1) adds the Developer page's sharing test (sharing resilience A8 review I-6). Its
+ * own flag, never set for a TestFlight build: an inspectable build that goes to people's phones carries none of it.
+ */
+if (process.env.CICIS_DEVTOOLS === '1') process.env.VITE_DEVTOOLS = '1';
 
 export default defineConfig({
   plugins: [

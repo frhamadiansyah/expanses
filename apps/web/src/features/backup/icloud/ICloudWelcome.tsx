@@ -2,6 +2,7 @@ import type { Database } from '@expanses/db';
 import { Cloud } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { Safety } from '../../../db/open';
+import type { SyncService } from '../../../sync/sync-service';
 import { ErrorBox } from '../../../ui';
 import { InsetGroup, InsetRow } from '../../../ui/native';
 import { hasData } from './data';
@@ -52,7 +53,7 @@ const count = (n: number) => n.toLocaleString('id-ID');
  * The first screen on a new iPhone, or after reinstalling: a copy was found in iCloud, here is what is in it, and
  * Restore or Start fresh. Starting fresh leaves the iCloud copies exactly where they are.
  */
-export function ICloudWelcome({ copy, database, safety, onDone }: { copy: CloudCopy; database: Database; safety?: Safety; onDone: () => void }) {
+export function ICloudWelcome({ copy, database, safety, sync, onDone }: { copy: CloudCopy; database: Database; safety?: Safety; sync?: SyncService; onDone: () => void }) {
   const [contents, setContents] = useState<CopyContents | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -72,7 +73,7 @@ export function ICloudWelcome({ copy, database, safety, onDone }: { copy: CloudC
     setBusy(true);
     setError(null);
     try {
-      await restoreContents(contents, { database, safety });
+      await restoreContents(contents, { database, safety, ...(sync ? { sync } : {}) });
       window.location.replace('/');
     } catch (e) {
       // Called off at the sharing warning: nothing here changed, and there is nothing to say.

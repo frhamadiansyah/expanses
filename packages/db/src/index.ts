@@ -1,5 +1,5 @@
 export type { SqlExecutor, SqlMethod } from './executor';
-export { createDatabase, type Database, type Db } from './database';
+export { createDatabase, replacementsOf, type Database, type Db } from './database';
 export {
   databaseVersion,
   futureVersions,
@@ -134,6 +134,7 @@ export * from './repos/cards';
 export * as booksSchema from './schema-books';
 export * from './repos/books';
 export * from './repos/book-delete';
+export { eraseBookTx, keepInPersonalTx, keptByRecordsTx, ownPurchasesOfTx, ownPurchasesTx, ownRecordsMessage, wasEverShared, wasEverSharedTx } from './repos/book-erase';
 export * from './repos/book-currency';
 export { billTablesExist } from './repos/bill-months';
 export * as extrasSchema from './schema-extras';
@@ -151,6 +152,8 @@ export {
   FrozenBookError,
   LeaveIncompleteError,
   NotOwnerError,
+  RECORD_EVERY_MS,
+  REPLAY_POINT_KEY,
   SEEN_WRITE_MS,
   STALE_AFTER_MS,
   SyncEngine,
@@ -160,6 +163,7 @@ export {
   type JoinInput,
   type PreviewedInvite,
   type ShareInput,
+  type ShareRecordFinding,
   type SyncEngineOptions,
   type SyncOnceResult,
 } from './sync/engine';
@@ -178,6 +182,8 @@ export {
   type KeyStore,
 } from './sync/keys';
 export { inviteLink, parseInviteCode, JOIN_LINK_PREFIX, InviteCodeError } from './sync/invite';
+// The share record kept beside the device keys, outside the database (sharing resilience §6.1).
+export { MemoryShareRecordStore, parseShareRecord, storableShareRecord, type ShareRecord, type ShareRecordStore } from './sync/share-records';
 export { deviceIdOf } from './sync/relay-signing';
 export { SharingError, type SharingErrorCode } from './sync/seed';
 export { type PullResult } from './sync/apply';
@@ -256,4 +262,6 @@ export { type JointReport, reportInputsFor } from './repos/joint-tax';
 export { SHARED_EVENTS_MIN_APP_VERSION, meetsVersion } from './sync/events/version';
 export type { EventInviteDetails } from './sync/invite';
 export type { ShareEventInput, JoinEventInput } from './sync/events/event-log';
+// Sharing resilience §4.2 (D-A3): the rows of a share another copy on this phone holds, set aside until it is gone.
+export { heldElsewhereOf, HELD_PREFIX, type HeldRow } from './sync/held';
 export * from './repos/bond-coupons';

@@ -1,3 +1,4 @@
+import { uuidv7 } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { vi } from 'vitest';
 import { createAccount, createDatabase, createWorkspace, migrate, personalBook, type Database, type WorkspaceContext } from '../../src/index';
@@ -7,6 +8,7 @@ import { SyncEngine } from '../../src/sync/engine';
 import { generateDevice, requestSignerOf, type DeviceKeys } from '../../src/sync/keys';
 import { MemoryTransport } from '../../src/sync/memory-transport';
 import { SHARED_ENTITIES, buildOpId, type RowEntity } from '../../src/sync/shared-entities';
+import { MemoryShareRecordStore } from '../../src/sync/share-records';
 import type { DevicePublic, SyncTransport } from '../../src/sync/types';
 
 /*
@@ -46,6 +48,11 @@ export interface Device {
   keys: DeviceKeys;
   transport: SyncTransport;
   engine: SyncEngine;
+  /**
+   * This device's share records, beside its keys and outside its database (sharing resilience §6.1): a restored
+   * phone is a new device, so it starts with none. The engine keeps them (`SyncEngineOptions.shareRecords`).
+   */
+  records: MemoryShareRecordStore;
   /** This device's own bank account, in the workspace currency. */
   bank: string;
   /** A second own account in the workspace currency, for purchases paid from two places. */
@@ -61,7 +68,13 @@ export class Household {
   bookId = '';
   relayBookId = '';
 
-  async device(name: string, memberId: string = `member-${name}`, baseCurrency = 'IDR', appVersion = '0.3.0'): Promise<Device> {
+  async device(
+    name: string,
+    memberId: string = `member-${name}`,
+    baseCurrency = 'IDR',
+    appVersion = '0.3.0',
+    engine: { now?: () => number; recordEveryMs?: number } = {},
+  ): Promise<Device> {
     const { database, ws } = await freshDatabase(baseCurrency);
     const keys = await generateDevice();
     const { deviceId, public: pub } = keys;
@@ -69,6 +82,8 @@ export class Household {
     const usd = await createAccount(database, ws, { name: `${name} Dollars`, kind: 'asset', subtype: 'bank', currency: 'USD' });
     const cash = await createAccount(database, ws, { name: `${name} Wallet`, kind: 'asset', subtype: 'cash', currency: baseCurrency });
     const transport = this.relay.as(requestSignerOf(keys));
+    const records = new MemoryShareRecordStore();
+    const recordEvery = engine.recordEveryMs === undefined ? {} : { recordEveryMs: engine.recordEveryMs };
     const device: Device = {
       name,
       database,
@@ -77,12 +92,15 @@ export class Household {
       public: pub,
       keys,
       transport,
-      engine: new SyncEngine(database, transport, keys, undefined, { appVersion }),
+      engine: new SyncEngine(database, transport, keys, engine.now, { appVersion, shareRecords: records, ...recordEvery }),
+      records,
       bank: bank.id,
       cash: cash.id,
       usd: usd.id,
       memberId,
     };
+    // The app's open (sharing resilience §6.2): the share records are checked before any record is written.
+    await device.engine.checkShareRecords();
     this.devices.push(device);
     return device;
   }
@@ -111,7 +129,10 @@ export class Household {
     await database.importBytes(backup);
     const keys = await generateDevice();
     const transport = this.relay.as(requestSignerOf(keys));
-    const device: Device = { ...lost, database, keys, deviceId: keys.deviceId, public: keys.public, transport, engine: new SyncEngine(database, transport, keys) };
+    const records = new MemoryShareRecordStore();
+    const engine = new SyncEngine(database, transport, keys, undefined, { shareRecords: records });
+    const device: Device = { ...lost, database, keys, deviceId: keys.deviceId, public: keys.public, transport, engine, records };
+    await engine.checkShareRecords();
     this.devices.splice(this.devices.indexOf(lost), 1, device);
     return device;
   }
@@ -207,4 +228,21 @@ export async function categoryOf(database: Database, bookId: string, name: strin
   );
   if (!row) throw new Error(`no category ${name} in ${bookId}`);
   return row[0];
+}
+
+/**
+ * Sharing resilience tests only (task A3): a second book on `d`'s phone holding the very rows of `from` — its `books`
+ * row under a new id (as a 'family' workspace, so the phone keeps one Personal), with the same category and transaction
+ * ids. A category and a transaction are filed in one book at most (`book_categories`, `book_transactions` are keyed by
+ * them), so their filing rows move to the new book; `from` keeps its relay share and its lineages. Sharing the new book
+ * sends ids another copy already holds on a partner's phone.
+ */
+export async function copyBookUnderNewIdForTest(d: Device, from: string): Promise<string> {
+  const to = uuidv7();
+  const columns = (await d.database.db.values<[string]>(sql`SELECT name FROM pragma_table_info('books')`)).map(([name]) => name);
+  const select = columns.map((c) => (c === 'id' ? sql`${to}` : c === 'kind' ? sql`'family'` : sql.raw(c)));
+  await d.database.db.run(sql`INSERT INTO books (${sql.raw(columns.join(', '))}) SELECT ${sql.join(select, sql`, `)} FROM books WHERE id = ${from}`);
+  await d.database.db.run(sql`UPDATE book_categories SET book_id = ${to} WHERE book_id = ${from}`);
+  await d.database.db.run(sql`UPDATE book_transactions SET book_id = ${to} WHERE book_id = ${from}`);
+  return to;
 }

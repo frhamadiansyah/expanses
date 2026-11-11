@@ -66,6 +66,15 @@ export async function openChangeSet(key: Uint8Array, bookId: string, entry: Chan
   return JSON.parse(fromUtf8(await inflate(plain))) as ChangeSet;
 }
 
+export interface SealerOptions {
+  /**
+   * Told after an epoch key is kept at rest (sharing resilience §6.1), with what was sealed: the engine marks the book's
+   * share record for a write. Called inside the caller's transaction, which may still roll back; the engine reads the
+   * rows back after commit, so it only notes the book here. A throw is not caught.
+   */
+  onStored?: (bookId: string, epoch: number, sealedJson: string) => void;
+}
+
 /** One device's sealing: its keys, and the epoch keys of every book it shares, opened on first use and kept in memory. */
 export class Sealer {
   private readonly keys = new Map<string, Uint8Array>();
@@ -73,6 +82,7 @@ export class Sealer {
   constructor(
     private readonly database: Database,
     readonly device: DeviceKeys,
+    private readonly options: SealerOptions = {},
   ) {}
 
   get deviceId(): string {
@@ -109,8 +119,10 @@ export class Sealer {
   /** Keeps an epoch key at rest (§5.5), sealed for this device's own agreement key. Keeps the first copy of an epoch. */
   async storeEpochKeyTx(tx: Db, bookId: string, epoch: number, key: Uint8Array): Promise<void> {
     const sealed = await sealKeyFor({ deviceId: this.deviceId, agreeJwk: this.device.public.agreeJwk }, bookId, epoch, key, AT_REST_INFO);
-    await tx.run(sql`INSERT INTO book_epoch_keys (book_id, epoch, key_sealed) VALUES (${bookId}, ${epoch}, ${JSON.stringify(sealed)}) ON CONFLICT (book_id, epoch) DO NOTHING`);
+    const sealedJson = JSON.stringify(sealed);
+    await tx.run(sql`INSERT INTO book_epoch_keys (book_id, epoch, key_sealed) VALUES (${bookId}, ${epoch}, ${sealedJson}) ON CONFLICT (book_id, epoch) DO NOTHING`);
     this.keys.set(`${bookId}:${epoch}`, key);
+    this.options.onStored?.(bookId, epoch, sealedJson);
   }
 
   /** Forgets what it opened, so the next read goes to the database again (a restore replaced it). */

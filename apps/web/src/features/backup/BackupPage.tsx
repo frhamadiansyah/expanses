@@ -29,7 +29,7 @@ interface PendingRestore {
 const photoWords = (count: number): string => `${count} photo${count === 1 ? '' : 's'}`;
 
 export function BackupPage() {
-  const { database, safety, ws } = useApp();
+  const { database, safety, ws, sync } = useApp();
   const invalidate = useInvalidateAll();
   /*
    * The pictures are not in the sqlite backup: that file holds the rows, and a row only names a file. So they
@@ -223,7 +223,9 @@ export function BackupPage() {
       file: restore.file ?? restore.name,
       source: restore.file ? 'Backup page, a kept copy' : 'Backup page, a backup file',
       live: () => database.exportBytes(),
-      restore: (bytes) => database.importBytes(bytes),
+      // Sharing stops first and waits for a run in flight, so nothing pulls into the restored rows before the reload
+      // checks them against the share records (sharing resilience §6.7, review R1).
+      restore: (bytes) => sync.whileReplacing(() => database.importBytes(bytes)),
       checkSharing: sharingGate(),
     });
   }

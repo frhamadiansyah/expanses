@@ -153,7 +153,7 @@ async function start() {
         </ErrorBoundary>
       </StrictMode>,
     );
-    if (welcome) root.render(<ICloudWelcome copy={welcome} database={app.database} safety={app.safety} onDone={renderApp} />);
+    if (welcome) root.render(<ICloudWelcome copy={welcome} database={app.database} safety={app.safety} sync={app.sync} onDone={renderApp} />);
     else renderApp();
   } catch (error) {
     // openSafely names every failure it knows about; anything that still lands here is unnamed, so it is

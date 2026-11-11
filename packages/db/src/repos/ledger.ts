@@ -754,6 +754,77 @@ export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string
   }
 }
 
+/**
+ * Erases void transactions for good, with their lines: the one door that deletes ledger rows (sharing resilience §5,
+ * `eraseBookTx`). `ids` selects the candidates; only rows already void go, so no balance or figure changes here — the
+ * void before it marked whatever needed working out again. The caller has taken every other row that names them.
+ * Returns how many went.
+ */
+export async function eraseVoidTransactionsTx(tx: Db, ws: WorkspaceContext, ids: SQL): Promise<number> {
+  const gone = sql`SELECT id FROM transactions WHERE workspace_id = ${ws.workspaceId} AND status <> 'posted' AND id IN (${ids})`;
+  await tx.run(sql`DELETE FROM entries WHERE transaction_id IN (${gone})`);
+  const rows = await tx.values<[string]>(sql`DELETE FROM transactions WHERE id IN (${gone}) RETURNING id`);
+  return rows.length;
+}
+
+/**
+ * Re-files a transaction from one workspace into another IN PLACE, keeping its id (sharing resilience §5, fix round 2):
+ * for a trade's or a sale's transaction in a read-only joined copy being deleted, whose id the trade or sale record
+ * needs. Only which categories its lines name changes — each category line, and each line's spending category, of
+ * `fromBookId` swapped by `swap` — and its filing row; every amount, money account, rate and date stays, so no balance,
+ * holding or foreign-currency figure moves. Plain writes with no capture: the caller has capture suspended.
+ */
+export async function refileInPlaceTx(tx: Db, ws: WorkspaceContext, id: string, fromBookId: string, toBookId: string, swap: (categoryId: string) => Promise<string>): Promise<void> {
+  const inFrom = sql`SELECT category_account_id FROM book_categories WHERE book_id = ${fromBookId}`;
+  const lines = await tx.values<[string, string, string | null]>(sql`
+    SELECT id, account_id, spend_category_id FROM entries WHERE transaction_id = ${id} AND workspace_id = ${ws.workspaceId}
+      AND (account_id IN (${inFrom}) OR spend_category_id IN (${inFrom}))`);
+  const swapped = new Map<string, string>();
+  const to = async (categoryId: string) => swapped.get(categoryId) ?? swapped.set(categoryId, await swap(categoryId)).get(categoryId)!;
+  const inBookFrom = new Set((await tx.values<[string]>(inFrom)).map(([c]) => c));
+  for (const [entryId, accountId, spendCategoryId] of lines) {
+    const account = inBookFrom.has(accountId) ? await to(accountId) : accountId;
+    const spend = spendCategoryId && inBookFrom.has(spendCategoryId) ? await to(spendCategoryId) : spendCategoryId;
+    await tx.run(sql`UPDATE entries SET account_id = ${account}, spend_category_id = ${spend} WHERE id = ${entryId}`);
+  }
+  const excludes = (await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'transaction_line_excluded'`)).length > 0;
+  // Two of the copy's categories can map to one there: their exclusions become one row, never a second one (its key).
+  for (const [from, there] of excludes ? swapped : new Map<string, string>()) {
+    await tx.run(sql`UPDATE OR IGNORE transaction_line_excluded SET account_id = ${there} WHERE transaction_id = ${id} AND account_id = ${from}`);
+    await tx.run(sql`DELETE FROM transaction_line_excluded WHERE transaction_id = ${id} AND account_id = ${from}`);
+  }
+  await tx.run(sql`DELETE FROM book_transactions WHERE transaction_id = ${id} AND book_id = ${fromBookId}`);
+  if (await bookSplitsExist(tx)) await tx.run(sql`DELETE FROM book_transaction_splits WHERE transaction_id = ${id} AND book_id = ${fromBookId}`);
+  const [filed] = await tx.values(sql`SELECT 1 FROM book_transactions WHERE transaction_id = ${id}`);
+  if (!filed) await tx.insert(bookTransactions).values({ transactionId: id, workspaceId: ws.workspaceId, bookId: toBookId });
+}
+
+/**
+ * Gives a transaction a new id in place (sharing resilience §5, fix round 3): the same row, lines and figures under a
+ * fresh uuidv7, every local row that names it (`refs`: table and column) following. For a trade's or a sale's
+ * transaction kept from a joined copy being erased, whose old id is a lineage id in the relay's log and in the
+ * partners' copies: kept under it, a later share of the same workspace would book it a second time. Nothing moves:
+ * entry ids, amounts, accounts, rates and dates stay. The caller leaves the copy's own sync rows (its lineages) out of
+ * `refs`; they go with the copy. Returns the new id.
+ */
+export async function rekeyTransactionTx(tx: Db, ws: WorkspaceContext, id: string, refs: readonly (readonly [table: string, column: string])[]): Promise<string> {
+  const next = uuidv7();
+  const columns = (await tx.values<[string]>(sql`SELECT name FROM pragma_table_info('transactions')`)).map(([name]) => name);
+  const [[ref]] = (await tx.values<[string | null]>(sql`SELECT external_ref FROM transactions WHERE id = ${id} AND workspace_id = ${ws.workspaceId}`)) as [[string | null]];
+  // The copy goes in first (its lines must have a row to name) without its import identity, which is unique among posted
+  // rows; the identity follows once the old row is gone.
+  const picked = columns.map((column) => (column === 'id' ? sql`${next}` : column === 'external_ref' ? sql`NULL` : sql.raw(column)));
+  await tx.run(sql`INSERT INTO transactions (${sql.raw(columns.join(', '))}) SELECT ${sql.join(picked, sql`, `)} FROM transactions WHERE id = ${id}`);
+  for (const [table, column] of refs) {
+    await tx.run(sql`UPDATE ${sql.raw(table)} SET ${sql.raw(column)} = ${next} WHERE ${sql.raw(column)} = ${id}`);
+  }
+  // History and Activity name a transaction by `audit_log.entity_id`, which no foreign key holds: they follow too.
+  await tx.run(sql`UPDATE audit_log SET entity_id = ${next} WHERE entity = 'transaction' AND entity_id = ${id}`);
+  await tx.run(sql`DELETE FROM transactions WHERE id = ${id}`);
+  if (ref !== null) await tx.run(sql`UPDATE transactions SET external_ref = ${ref} WHERE id = ${next}`);
+  return next;
+}
+
 /** Who is coming through a void or a replace. Only a shared event's derivation says `eventDerivation`. */
 export interface LedgerDoor {
   /** An edit: a shared workspace's redacted transfer row follows the replacement instead of going void and back. */

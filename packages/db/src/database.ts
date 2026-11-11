@@ -32,6 +32,17 @@ export interface Database {
   importBytes(bytes: Uint8Array): Promise<void>;
 }
 
+/** How many times each database's contents were replaced through `importBytes` (sharing resilience, review R1). */
+const replacements = new WeakMap<Database, number>();
+
+/**
+ * How many times `importBytes` has replaced this database's contents. Whatever keeps state about the rows — the sync
+ * engine's share-record check (sharing resilience §6.2) — compares it, so a restore under a running engine is seen.
+ */
+export function replacementsOf(database: Database): number {
+  return replacements.get(database) ?? 0;
+}
+
 export function createDatabase(executor: SqlExecutor): Database {
   const mutex = new Mutex();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -69,7 +80,16 @@ export function createDatabase(executor: SqlExecutor): Database {
       }),
     execScript: (sql) => mutex.run(() => executor.execScript(sql)),
     exportBytes: () => mutex.run(() => executor.exportBytes()),
-    importBytes: (bytes) => mutex.run(() => executor.importBytes(bytes)),
+    importBytes: (bytes) =>
+      mutex.run(async () => {
+        // Counted before as well as after: a failed import may have replaced part of the file.
+        replacements.set(database, replacementsOf(database) + 1);
+        try {
+          await executor.importBytes(bytes);
+        } finally {
+          replacements.set(database, replacementsOf(database) + 1);
+        }
+      }),
   };
   registerCaptureConfig(database, captureConfig);
   return database;

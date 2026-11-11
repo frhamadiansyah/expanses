@@ -1,4 +1,5 @@
-import { listSharedBooks, purchasePayers, sharingDetail } from '@expanses/db';
+import { heldElsewhereOf, listSharedBooks, memberSilence, ownersGone, purchasePayers, type ShareRecordFinding, sharingDetail } from '@expanses/db';
+import { copyRolesOf } from './copy-roles';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -71,4 +72,50 @@ export function useOpenBookReadOnly(): boolean {
   const { ws } = useApp();
   const shared = useSharedBooks();
   return (shared.data ?? []).some((book) => book.bookId === ws.bookId && book.state === 'unshared');
+}
+
+/**
+ * What the Share page says beside the status line (sharing resilience §4.4, §8.1): the rows another copy here holds,
+ * how long since each other member last changed anything, and whether the owners have been quiet long enough to keep
+ * the copy as own. Re-read after every run (the `sharing` key). Local reads only.
+ */
+export function useShareHealth(bookId: string) {
+  const { database, sync } = useApp();
+  return useQuery({
+    queryKey: ['sharing', bookId, 'health'],
+    queryFn: async () => {
+      const deviceId = await sync.deviceId();
+      const now = Date.now();
+      return {
+        held: await heldElsewhereOf(database, bookId),
+        silence: deviceId ? await memberSilence(database, bookId, deviceId, now) : [],
+        ownersGone: deviceId ? await ownersGone(database, bookId, deviceId, now) : { gone: false, since: null },
+      };
+    },
+  });
+}
+
+/** What the share records said at open (§6.2), kept current as findings are dealt with. */
+export function useShareFindings(): ShareRecordFinding[] {
+  const { sync } = useApp();
+  const [found, setFound] = useState(() => sync.findings());
+  useEffect(() => {
+    setFound(sync.findings());
+    return sync.subscribe(() => setFound(sync.findings()));
+  }, [sync]);
+  return found;
+}
+
+/** Whether this workspace lost its share on this phone (§6.2 `lost`): the Share row, the workspace page and Share say so. */
+export function useLostHere(bookId: string): boolean {
+  return useShareFindings().some((finding) => finding.kind === 'lost' && finding.bookId === bookId);
+}
+
+export type { CopyRef, CopyRoles } from './copy-roles';
+
+/** `copyRolesOf` for a screen (A8 review I-2, I-5; re-review N-1, N-2), re-read after every run. */
+export function useCopyRoles(bookId: string) {
+  const { database, ws } = useApp();
+  const lost = useLostHere(bookId);
+  return useQuery({ queryKey: ['sharing', bookId, 'roles', lost], queryFn: () => copyRolesOf(database, ws, bookId, Date.now(), lost) });
 }

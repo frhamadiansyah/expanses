@@ -12,7 +12,7 @@
  * one (`background-copy.ts`). It is kept apart from the others in every rule below: at most one is kept,
  * it never takes a regular copy's place, and it is never the day's copy.
  */
-export type SnapshotReason = 'before-migration' | 'before-restore' | 'before-start-fresh' | 'before-delete' | 'daily' | 'background';
+export type SnapshotReason = 'before-migration' | 'before-restore' | 'before-start-fresh' | 'before-delete' | 'before-place' | 'daily' | 'background';
 
 /** One copy in the store, as the store describes it. Task 7 writes the store that produces these. */
 export interface SnapshotInfo {
@@ -33,7 +33,7 @@ export interface SnapshotInfo {
  */
 export const MIN_COPY_BYTES = 512;
 
-const REASONS: SnapshotReason[] = ['before-migration', 'before-restore', 'before-start-fresh', 'before-delete', 'daily', 'background'];
+const REASONS: SnapshotReason[] = ['before-migration', 'before-restore', 'before-start-fresh', 'before-delete', 'before-place', 'daily', 'background'];
 
 /*
  * Adding a reason widens this pattern, and it must only ever widen: every name an older build wrote has to keep

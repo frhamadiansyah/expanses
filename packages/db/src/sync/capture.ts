@@ -13,6 +13,7 @@ import { activeNetWorthGroup, NetWorthError } from '../repos/net-worth-sharing';
 import { localDate, sendSummariesTx } from './net-worth/summaries';
 import { sendGoalSummariesTx } from './goals/summaries';
 import { reserveAndSplit } from './split';
+import { holderLineageId } from './held';
 import type { ChangeSet, Op } from './types';
 
 /*
@@ -1082,6 +1083,24 @@ async function lineageRowOf(tx: Db, lineageId: string): Promise<LineageRow | nul
 export async function lineageOfTransaction(tx: Db, transactionId: string): Promise<string> {
   const headOf = await tx.values<[string]>(sql`SELECT lineage_id FROM sync_lineage WHERE head_transaction_id = ${transactionId}`);
   if (headOf[0]) return headOf[0][0];
+  const rows = await tx.values<[string]>(sql`
+    WITH RECURSIVE chain(id, prev, depth) AS (
+      SELECT id, replaces_transaction_id, 0 FROM transactions WHERE id = ${transactionId}
+      UNION ALL
+      SELECT t.id, t.replaces_transaction_id, c.depth + 1 FROM transactions t JOIN chain c ON t.id = c.prev
+    )
+    SELECT id FROM chain ORDER BY depth DESC LIMIT 1`);
+  const root = rows[0]?.[0] ?? transactionId;
+  // Sharing resilience D-A2: a purchase apply posted under a local id (`remapId`) because its lineage id was taken here
+  // has a head whose chain starts at that local id. The row under the lineage id, and its replacements, are the holder,
+  // not the purchase: they are a lineage of their own, never the purchase's.
+  const [live] = await tx.values<[string]>(sql`SELECT head_transaction_id FROM sync_lineage WHERE lineage_id = ${root} AND head_transaction_id IS NOT NULL`);
+  if (live && (await chainRootOf(tx, live[0])) !== root) return holderLineageId(root);
+  return root;
+}
+
+/** The first row of a transaction's `replaces_transaction_id` chain. */
+async function chainRootOf(tx: Db, transactionId: string): Promise<string> {
   const rows = await tx.values<[string]>(sql`
     WITH RECURSIVE chain(id, prev, depth) AS (
       SELECT id, replaces_transaction_id, 0 FROM transactions WHERE id = ${transactionId}
