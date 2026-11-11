@@ -38,10 +38,23 @@ export async function seedPlan(page: Page) {
   await owedTo(page, 'Dewi', '850000');
 }
 
+/** A paylater through the debt picker, whose rate is typed a month. */
+export async function openPaylater(page: Page, o: { name: string; owed: string; perMonth: string; months: string }) {
+  await page.goto('/debts/new');
+  await page.getByRole('button', { name: 'Online loan or paylater' }).click();
+  await page.getByLabel('Name', { exact: true }).fill(o.name);
+  await page.getByLabel('Owed now').fill(o.owed);
+  await page.getByLabel('Lender').fill(o.name);
+  await page.getByLabel('Interest a month').fill(o.perMonth);
+  await page.getByLabel('Months left').fill(o.months);
+  await page.getByRole('button', { name: 'Add debt' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/loans$/);
+}
+
 export async function seedLatePaylater(page: Page) {
   await page.clock.setSystemTime(at('2026-10-01'));
   await bank(page);
-  await openLoan(page, { kind: 'Online loan or paylater', name: 'Kredit', owed: '6000000', lender: 'Kredit', interestRate: '2', months: '6' });
+  await openPaylater(page, { name: 'Kredit', owed: '6000000', perMonth: '2', months: '6' });
   await page.clock.setSystemTime(at('2026-11-04'));
 }
 
