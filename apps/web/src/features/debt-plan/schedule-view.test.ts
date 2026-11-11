@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { account, card, kreditFact, loanRow, readings } from './plan-fixtures';
 import { planDebts } from './plan-inputs';
 import { billPay, cardPay, loanPay } from './pay-target';
-import { type CardMonth, dueRow, dueThisMonthCount, type MonthInput, monthItems, monthSections, monthTotals } from './schedule-view';
+import { type CardMonth, dueItems, dueRow, dueThisMonthCount, type MonthInput, monthItems, monthSections, monthTotals } from './schedule-view';
 
 /**
  * November 2026: the paylater's 4/6 (due 1 Nov) unpaid, BCA Visa's October statement due 18 Nov, Electricity pay-by
@@ -223,6 +223,24 @@ describe('a bill paid from a credit card', () => {
     expect(bill).toMatchObject({ detail: 'Bill · 20 Nov · on BCA Visa', inTotals: false });
     expect(monthTotals(items, '2026-11').dueMinor).toBe(kreditNov('2026-11-04') + 6_214_300 + 2_480_000);
     expect(dueRow(items, '2026-11-18')?.item.kind).not.toBe('bill');
+  });
+});
+
+describe('the Cashflow row from what is already read', () => {
+  it('says what the month model says, without reading a month', () => {
+    for (const day of ['2026-11-16', '2026-11-17']) {
+      const full = input(day);
+      const bills = full.bills.map(({ row, currency }) => ({ bill: { ...row.bill, window: row.window, state: row.state, estimateMinor: row.estimateMinor }, currency, onCard: null }));
+      const pick = (row: ReturnType<typeof dueRow>) => row && { title: row.title, subtitle: row.subtitle, tone: row.tone, rest: row.rest, key: row.item.key, minor: row.item.minor, pay: row.item.pay };
+      expect(pick(dueRow(dueItems({ debts: full.debts, loanFacts: full.loanFacts, bills, today: day }), day))).toEqual(pick(dueRow(monthItems(full), day)));
+    }
+  });
+  it('a bill on a card and a paid bill are not asked for', () => {
+    const full = input('2026-11-18');
+    const row = full.bills[0]!.row;
+    const bill = { ...row.bill, window: row.window, state: 'dueSoon' as const, estimateMinor: 780_000 };
+    const items = dueItems({ debts: [], loanFacts: [], bills: [{ bill, currency: 'IDR', onCard: 'BCA Visa' }, { bill: { ...bill, id: 'B2', state: 'paid' as const }, currency: 'IDR', onCard: null }], today: '2026-11-18' });
+    expect(dueRow(items, '2026-11-18')).toBeNull();
   });
 });
 

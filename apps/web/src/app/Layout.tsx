@@ -169,7 +169,7 @@ export function Layout() {
                 >
                   {item.label}
                 </Link>
-                {item.to === '/net-worth' && <PlanLink />}
+                {/* A phone never shows the sidebar, so it never reads the plan for it. */ item.to === '/net-worth' && !phone && <PlanLink />}
               </div>
             ))}
           </nav>

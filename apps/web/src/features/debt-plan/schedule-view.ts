@@ -232,6 +232,69 @@ export function monthItems(input: MonthInput): PlanItem[] {
   ];
 }
 
+/** A bill as the Recurring list already reads it this month (`monthlyBills`), for the Cashflow row. */
+export interface DueBill {
+  bill: { id: string; name: string; amountMinor: number | null; window: { payBy: string }; state: BillMonthRow['state']; estimateMinor: number | null };
+  currency: string;
+  onCard: string | null;
+}
+
+/**
+ * The Cashflow row's items from what is already read (spec §4.6): each loan's late instalments and next one, each
+ * card's statement (the plan's own reading, `useCardFacts`), and this month's bills as Recurring lists them. No month is
+ * read for it. Paid, skipped and paused bills are left out, and a bill paid from a card (its statement asks).
+ */
+export function dueItems(input: { debts: readonly PlanDebt[]; loanFacts: readonly LoanPlanFact[]; bills: readonly DueBill[]; today: string; baseCurrency?: string; ratesToBase?: Readonly<Record<string, number>> }): PlanItem[] {
+  const month = monthOf(input.today);
+  const context = {
+    month,
+    today: input.today,
+    debts: input.debts,
+    loanFacts: input.loanFacts,
+    cards: [],
+    bills: [],
+    show: { loans: true, cards: true, bills: true },
+    baseCurrency: input.baseCurrency ?? input.debts[0]?.currency ?? 'IDR',
+    ratesToBase: input.ratesToBase ?? {},
+  } satisfies MonthInput;
+  const items: PlanItem[] = [];
+  for (const debt of input.debts) {
+    if (debt.paidOff || !debt.next) continue;
+    if (debt.kind === 'loan') {
+      // Every late instalment (the oldest is also `next`), then the next one when nothing is late.
+      const late = loanItems({ ...context, debts: [debt] }).filter((i) => i.status === 'late');
+      items.push(...late);
+      if (debt.next.status === 'upcoming') items.push(debt.next);
+    } else if (debt.kind === 'card') items.push(debt.next);
+  }
+  for (const { bill, currency, onCard } of input.bills) {
+    if (onCard || bill.state === 'paid' || bill.state === 'skipped' || bill.state === 'paused') continue;
+    const late = bill.state === 'overdue';
+    const dueOn = bill.window.payBy;
+    items.push(
+      build(
+        {
+          kind: 'bill',
+          debtKey: null,
+          name: bill.name,
+          title: bill.name,
+          detail: `Bill · ${dayMonth(dueOn)}`,
+          dueOn,
+          status: late ? 'late' : 'upcoming',
+          daysLate: late ? Math.max(1, daysFrom(dueOn, input.today)) : 0,
+          minor: bill.amountMinor ?? bill.estimateMinor,
+          currency,
+          approximate: bill.amountMinor === null,
+          pay: billPay(bill.id),
+        },
+        bill.id,
+        context,
+      ),
+    );
+  }
+  return items;
+}
+
 /** Late (oldest first), coming up (soonest first), paid (newest first). */
 export function monthSections(items: readonly PlanItem[], month: string, today: string): { late: PlanItem[]; comingUp: PlanItem[]; paid: PlanItem[] } {
   void month;

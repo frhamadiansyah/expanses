@@ -10,9 +10,9 @@ import {
   type PayoffPlan,
   suggestMethod,
 } from '@expanses/core';
-import { type BillMonthRow, billsInMonth, cardStatement, debtMovements, type DebtPlanSettings, getDebtPlanSettings, listCardTerms, type LoanPlanFact, loanPlanFacts, paidOffLoanFacts, saveDebtPlanSettings } from '@expanses/db';
+import { type BillMonthRow, billsInMonth, cardStatements, debtMovements, type DebtPlanSettings, getDebtPlanSettings, listCardTerms, type LoanPlanFact, loanPlanFacts, paidOffLoanFacts, saveDebtPlanSettings } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { useHeldRates } from '../accounts/queries';
@@ -23,7 +23,8 @@ import { methodOf, type PlanSummary, planSummary } from './plan-view';
 import { billCurrencyOf } from '../bills/bill-view';
 import { cycleDueIn, dueDateAfter } from '../cards/statement-dates';
 import type { PlanItem } from './plan-inputs';
-import { type CardMonth, dueRow, type DueRowModel, type MonthInput, monthItems } from './schedule-view';
+import { type CardMonth, type DueBill, dueItems, dueRow, type DueRowModel, type MonthInput, monthItems } from './schedule-view';
+import { useMonthlyBills } from '../bills/queries';
 
 /** Every open loan's standing and schedule from today (spec §6.2). */
 export function useLoanPlanFacts(today?: string) {
@@ -138,21 +139,27 @@ export function useDebtPlan(): { model: DebtPlanModel | null; error: unknown; is
   const queries = [accounts, balances, loans, items, people, cards, held, facts, plans, movements, settings];
   const error = queries.find((q) => q.error)?.error ?? null;
   const ready = queries.every((q) => q.isSuccess);
-  if (!ready) return { model: null, error, isPending: !error };
-  const readings: PlanReadings = {
-    accounts: all,
-    balances: balances.data!,
-    loans: loans.data!,
-    items: items.data!,
-    loanFacts: facts.data!,
-    cards: cards.data!,
-    cardPlans: plans.data!,
-    people: people.data!,
-    movements: movements.data!,
-    baseCurrency,
-    ratesToBase: held.data?.rates ?? {},
-  };
-  return { model: planModel(readings, settings.data ?? null, today), error: null, isPending: false };
+  // Worked out again only when a reading changes, not on every render of every screen that asks.
+  const model = useMemo(() => {
+    if (!ready) return null;
+    const readings: PlanReadings = {
+      accounts: all,
+      balances: balances.data!,
+      loans: loans.data!,
+      items: items.data!,
+      loanFacts: facts.data!,
+      cards: cards.data!,
+      cardPlans: plans.data!,
+      people: people.data!,
+      movements: movements.data!,
+      baseCurrency,
+      ratesToBase: held.data?.rates ?? {},
+    };
+    return planModel(readings, settings.data ?? null, today);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the query data references are the inputs
+  }, [ready, accounts.data, balances.data, loans.data, items.data, facts.data, cards.data, plans.data, people.data, movements.data, held.data, settings.data, baseCurrency, today]);
+  if (!model) return { model: null, error, isPending: !error };
+  return { model, error: null, isPending: false };
 }
 
 /** The late count for the Account row, the sidebar and the corners; 0 until read. */
@@ -177,18 +184,21 @@ export function useCardMonths(months: readonly (string | null)[]) {
     enabled: accounts.isSuccess && wanted.length > 0,
     queryFn: async (): Promise<Record<string, CardMonth[]>> => {
       const terms = await listCardTerms(database, ws);
-      const out: Record<string, CardMonth[]> = {};
-      for (const month of wanted) {
-        out[month] = [];
-        for (const card of cards) {
-          const term = terms.find((t) => t.accountId === card.id);
-          if (!term) continue;
+      const out: Record<string, CardMonth[]> = Object.fromEntries(wanted.map((month) => [month, []]));
+      for (const card of cards) {
+        const term = terms.find((t) => t.accountId === card.id);
+        if (!term) continue;
+        // A statement that has not begun yet has nothing on it.
+        const asked = wanted.flatMap((month) => {
           const cycle = cycleDueIn(month, term.statementDay, term.dueDay);
-          // A statement that has not begun yet has nothing on it.
-          if (!cycle || cycle.start > today) continue;
-          const statement = await cardStatement(database, ws, card.id, cycle, today);
-          out[month].push({ cardId: card.id, name: card.name, currency: card.currency ?? ws.baseCurrency, dueOn: dueDateAfter(cycle.end, term.dueDay), statement });
-        }
+          return cycle && cycle.start <= today ? [{ month, cycle }] : [];
+        });
+        if (asked.length === 0) continue;
+        // One read of the card's lines for every month asked.
+        const statements = await cardStatements(database, ws, card.id, asked.map((a) => a.cycle), today);
+        asked.forEach(({ month, cycle }, index) => {
+          out[month]!.push({ cardId: card.id, name: card.name, currency: card.currency ?? ws.baseCurrency, dueOn: dueDateAfter(cycle.end, term.dueDay), statement: statements[index]! });
+        });
       }
       return out;
     },
@@ -273,19 +283,20 @@ export function usePlanMonths(months: readonly string[]): { byMonth: Record<stri
 
 /** The Cashflow row: what is late or due within three days, this month and — near its end — the start of the next. */
 export function useDueRow(): DueRowModel | null {
+  const { ws } = useApp();
   const today = isoDate();
-  const month = monthOf(today);
-  const next = addMonths(month, 1);
-  // Only reach into next month when three days from today are already in it.
-  const soon = monthOf(addDaysIso(today, 3)) === next ? next : null;
-  const current = usePlanMonth(month);
-  const ahead = usePlanMonth(soon);
-  if (!current.items || (soon !== null && !ahead.items)) return null;
-  return dueRow([...current.items, ...(ahead.items ?? []).filter((i) => i.status !== 'late')], today);
-}
-
-function addDaysIso(date: string, days: number): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
+  // Nothing read for it alone: the plan (each card's statement through useCardFacts), the loans' standing, and the
+  // bills exactly as the Recurring line beside it has them.
+  const { model } = useDebtPlan();
+  const facts = useLoanPlanFacts(today);
+  const bills = useMonthlyBills(today);
+  const accounts = useAccounts();
+  if (!model || !facts.data || !bills.data || !accounts.data) return null;
+  const all = accounts.data;
+  const onCard = (accountId: string) => {
+    const payer = all.find((a) => a.id === accountId);
+    return payer?.subtype === 'credit_card' ? payer.name : null;
+  };
+  const due: DueBill[] = bills.data.map((bill) => ({ bill, currency: billCurrencyOf(bill, all, ws.baseCurrency), onCard: onCard(bill.moneyAccountId) }));
+  return dueRow(dueItems({ debts: model.debts, loanFacts: facts.data, bills: due, today, baseCurrency: ws.baseCurrency, ratesToBase: model.ratesToBase }), today);
 }
