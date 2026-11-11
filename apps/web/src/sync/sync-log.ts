@@ -5,12 +5,19 @@
  *
  * - Local only. The safety folder is outside the database, so nothing here is synced to the relay or reaches anyone
  *   in a shared workspace, and it outlives a database that was lost and restored.
- * - Ids, op names and error text only: never an amount, a description, a name or a key. An error's message is
- *   trimmed of what a failed query appends (`params: …`, the row's values) and of anything long enough to be a key.
- * - The newest 50 entries, newest first. Recording never throws: a log that cannot be written stays in memory.
+ * - Ids, op names and error text: never an amount, a description or a key. An error's message is trimmed of what a
+ *   failed query appends (`params: …`, the row's values) and of anything long enough to be a key. It is kept in its
+ *   own words otherwise, and a sharing error's words can name a workspace, an event or a person.
+ * - Newest first. The same entry again (same op, book, level and error) is not a new line: the one already there
+ *   counts it (`count`, `firstAt`, `at` the latest) and moves to the top, so an offline phone failing every few
+ *   minutes holds one line, not fifty.
+ * - Two lists of up to 50 each, in one file: the one-off acts (`KEPT_OPS`: a share and its stages, a join, an invite,
+ *   a restore check, a stop or a leave) and the background runs. However many background entries come, they never
+ *   push a one-off out.
+ * - Recording never throws: a log that cannot be written stays in memory.
  */
 
-/** How many entries are kept. */
+/** How many entries each of the two lists keeps. */
 export const SYNC_LOG_KEEP = 50;
 export const SYNC_LOG_FILE = 'sync-log.json';
 
@@ -33,7 +40,14 @@ export type SyncLogOp =
   | 'remove'
   | 'leave'
   | 'stop'
-  | 'act';
+  | 'act'
+  | 'copy';
+
+/**
+ * The ops that happen once, when someone does something, kept in a list of their own that background runs (`sync`,
+ * `group`, `apply`, `pull`, `refresh`, `seen`) cannot push out. `copy` is a safety copy skipped for want of room.
+ */
+export const KEPT_OPS: ReadonlySet<SyncLogOp> = new Set<SyncLogOp>(['share', 'seed', 'drain', 'invite', 'preview', 'join', 'restore', 'remove', 'leave', 'stop', 'act', 'prepare', 'copy']);
 
 export interface SyncLogEntry {
   /** ISO time. */
@@ -56,10 +70,14 @@ export interface SyncLogEntry {
   frame: string | null;
   /** The engine's `bookSyncStatus` right after, in short: `waiting 3`, `needs_invite`, `none`. */
   state: string | null;
+  /** How many times this same entry happened; `at` is the latest. */
+  count: number;
+  /** When it first happened, ISO. `at` when it happened once. */
+  firstAt: string;
 }
 
 /** The fields every entry has, and no others: what the shape test holds the log to. */
-export const SYNC_LOG_FIELDS = ['at', 'level', 'op', 'bookId', 'relayBookId', 'name', 'message', 'code', 'status', 'frame', 'state'] as const;
+export const SYNC_LOG_FIELDS = ['at', 'level', 'op', 'bookId', 'relayBookId', 'name', 'message', 'code', 'status', 'frame', 'state', 'count', 'firstAt'] as const;
 
 export interface SyncLogInput {
   op: SyncLogOp;
@@ -139,14 +157,38 @@ const isEntry = (value: unknown): value is SyncLogEntry => {
   return !!e && typeof e.at === 'string' && typeof e.op === 'string' && typeof e.message === 'string' && typeof e.name === 'string';
 };
 
+/** An entry from the file, with the counting fields an earlier file did not have. */
+const counted = (entry: SyncLogEntry): SyncLogEntry => ({
+  ...entry,
+  count: typeof entry.count === 'number' && entry.count >= 1 ? entry.count : 1,
+  firstAt: typeof entry.firstAt === 'string' ? entry.firstAt : entry.at,
+});
+
 export function parseSyncLog(raw: Uint8Array | null): SyncLogEntry[] {
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(new TextDecoder().decode(raw));
-    return Array.isArray(parsed) ? parsed.filter(isEntry) : [];
+    return Array.isArray(parsed) ? parsed.filter(isEntry).map(counted) : [];
   } catch {
     return [];
   }
+}
+
+/** The same thing happening again: same op, book, level and error. The state and the relay id are taken from the newest. */
+const sameEntry = (a: SyncLogEntry, b: SyncLogEntry): boolean =>
+  a.op === b.op && a.bookId === b.bookId && a.level === b.level && a.name === b.name && a.message === b.message && a.code === b.code && a.status === b.status;
+
+/**
+ * `entry` added to `log` (newest first): counted into the same entry if there is one, which moves to the top; then
+ * each of the two lists cut to `keep`.
+ */
+export function addToSyncLog(log: readonly SyncLogEntry[], entry: SyncLogEntry, keep = SYNC_LOG_KEEP): SyncLogEntry[] {
+  const same = log.find((old) => sameEntry(old, entry));
+  const top = same ? { ...entry, count: same.count + entry.count, firstAt: same.firstAt } : entry;
+  const all = [top, ...log.filter((old) => old !== same)];
+  let kept = 0;
+  let background = 0;
+  return all.filter((one) => (KEPT_OPS.has(one.op) ? ++kept : ++background) <= keep);
 }
 
 export interface SyncLogStore {
@@ -180,17 +222,20 @@ export class SyncLog {
   /** Adds an entry, newest first, and writes the log. Never throws; resolves once written (or given up on). */
   record(input: SyncLogInput): Promise<void> {
     const failure = input.error !== undefined;
+    const at = this.now().toISOString();
     const entry: SyncLogEntry = {
-      at: this.now().toISOString(),
+      at,
       level: failure ? 'error' : 'info',
       op: input.op,
       bookId: input.bookId ?? null,
       relayBookId: shortId(input.relayBookId),
       ...(failure ? describeError(input.error) : { name: 'Info', message: cleanMessage(input.message ?? ''), code: null, status: null, frame: null }),
       state: input.state ?? null,
+      count: 1,
+      firstAt: at,
     };
     const run = this.chain.then(async () => {
-      const log = [entry, ...(await this.entries())].slice(0, this.keep);
+      const log = addToSyncLog(await this.entries(), entry, this.keep);
       this.loaded = Promise.resolve(log);
       try {
         await this.store.write(new TextEncoder().encode(JSON.stringify(log)));
@@ -224,5 +269,6 @@ export class SyncLog {
 export function formatSyncLogEntry(entry: SyncLogEntry): string {
   const where = [entry.bookId ? `book ${shortId(entry.bookId)}` : 'device', entry.relayBookId ? `relay ${entry.relayBookId}` : null].filter(Boolean).join(' ');
   const what = entry.level === 'info' ? entry.message : `${entry.name}${entry.code ? ` ${entry.code}` : ''}${entry.status !== null ? ` ${entry.status}` : ''}: ${entry.message}`;
-  return [`${entry.at} ${entry.op} (${where})`, what, entry.frame ? `at ${entry.frame}` : null, entry.state ? `state ${entry.state}` : null].filter(Boolean).join(' · ');
+  const times = entry.count > 1 ? `${entry.count} times since ${entry.firstAt}` : null;
+  return [`${entry.at} ${entry.op} (${where})`, what, entry.frame ? `at ${entry.frame}` : null, entry.state ? `state ${entry.state}` : null, times].filter(Boolean).join(' · ');
 }

@@ -1,6 +1,6 @@
 import { SharingError, SyncTransportError } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { cleanMessage, describeError, firstFrame, formatSyncLogEntry, memorySyncLogStore, SYNC_LOG_FIELDS, SYNC_LOG_KEEP, SyncLog } from './sync-log';
+import { cleanMessage, describeError, firstFrame, formatSyncLogEntry, memorySyncLogStore, SYNC_LOG_FIELDS, SYNC_LOG_KEEP, SyncLog, type SyncLogOp } from './sync-log';
 
 const clock = () => {
   let ms = Date.parse('2026-11-11T08:00:00.000Z');
@@ -64,6 +64,70 @@ describe('the sync log', () => {
     for (const entry of entries) expect(Object.keys(entry).sort()).toEqual([...SYNC_LOG_FIELDS].sort());
     expect(entries[2]!.message).toContain('UNIQUE constraint failed: transactions.id');
     expect(entries[0]).toMatchObject({ code: 'INVITE_CLAIMED', name: 'SharingError', bookId: null });
+  });
+});
+
+describe('the sync log under a flood', () => {
+  it('counts the same failure again into one entry, with when it first and last happened', async () => {
+    const log = new SyncLog(memorySyncLogStore(), clock());
+    for (let i = 0; i < 200; i += 1) await log.record({ op: 'sync', bookId: 'b', relayBookId: 'r-1', error: new SyncTransportError(0, 'Load failed'), state: `waiting ${i}` });
+    const [entry, ...rest] = await log.entries();
+    expect(rest).toEqual([]);
+    expect(entry).toMatchObject({ op: 'sync', count: 200, firstAt: '2026-11-11T08:00:01.000Z', at: '2026-11-11T08:03:20.000Z', state: 'waiting 199' });
+    expect(formatSyncLogEntry(entry!)).toContain('200 times since 2026-11-11T08:00:01.000Z');
+  });
+
+  it('counts each of two alternating failures, and keeps a different book or op apart', async () => {
+    const log = new SyncLog(memorySyncLogStore(), clock());
+    for (let i = 0; i < 10; i += 1) {
+      await log.record({ op: 'sync', bookId: 'a', error: new Error('Load failed') });
+      await log.record({ op: 'pull', bookId: 'a', message: 'pull stopped at seq 41: gap' });
+    }
+    await log.record({ op: 'sync', bookId: 'b', error: new Error('Load failed') });
+    await log.record({ op: 'sync', bookId: 'a', error: new Error('The network connection was lost.') });
+    const entries = await log.entries();
+    expect(entries.map((entry) => [entry.op, entry.bookId, entry.message, entry.count])).toEqual([
+      ['sync', 'a', 'The network connection was lost.', 1],
+      ['sync', 'b', 'Load failed', 1],
+      ['pull', 'a', 'pull stopped at seq 41: gap', 10],
+      ['sync', 'a', 'Load failed', 10],
+    ]);
+  });
+
+  it('keeps the one-off acts however many background entries come after them', async () => {
+    const store = memorySyncLogStore();
+    const log = new SyncLog(store, clock());
+    const oneOff: [SyncLogOp, string][] = [
+      ['share', 'Shared: seeded, 40 ops in 2 entries sent, 0 ops left in the outbox'],
+      ['invite', 'Invite made'],
+      ['join', 'Joined: 40 applied, 0 refused'],
+      ['restore', 'Moved to needs_invite at open'],
+      ['stop', 'Stopped sharing'],
+      ['leave', 'Left'],
+    ];
+    for (const [op, message] of oneOff) await log.record({ op, bookId: 'b', message });
+    for (let i = 0; i < 300; i += 1) await log.record({ op: i % 2 ? 'sync' : 'apply', bookId: 'b', error: new Error(`failure ${i}`) });
+    const entries = await new SyncLog(store, clock()).entries();
+    expect(entries.filter((entry) => entry.op === 'sync' || entry.op === 'apply')).toHaveLength(SYNC_LOG_KEEP);
+    expect(entries.filter((entry) => !['sync', 'apply'].includes(entry.op)).map((entry) => entry.op)).toEqual(oneOff.map(([op]) => op).reverse());
+    // Newest first across both lists.
+    expect(entries[0]!.message).toBe('failure 299');
+  });
+
+  it('keeps at most fifty one-off entries too', async () => {
+    const log = new SyncLog(memorySyncLogStore(), clock());
+    for (let i = 0; i < 70; i += 1) await log.record({ op: 'join', error: new Error(`claim ${i}`) });
+    const entries = await log.entries();
+    expect(entries).toHaveLength(SYNC_LOG_KEEP);
+    expect(entries.at(-1)!.message).toBe('claim 20');
+  });
+
+  it('reads a file written before entries were counted as entries seen once', async () => {
+    const old = [{ at: '2026-11-10T01:00:00.000Z', level: 'error', op: 'sync', bookId: 'b', relayBookId: null, name: 'Error', message: 'Load failed', code: null, status: null, frame: null, state: null }];
+    const log = new SyncLog(memorySyncLogStore(new TextEncoder().encode(JSON.stringify(old))), clock());
+    expect((await log.entries())[0]).toMatchObject({ count: 1, firstAt: '2026-11-10T01:00:00.000Z' });
+    await log.record({ op: 'sync', bookId: 'b', error: new Error('Load failed') });
+    expect(await log.entries()).toMatchObject([{ count: 2, firstAt: '2026-11-10T01:00:00.000Z', at: '2026-11-11T08:00:01.000Z' }]);
   });
 });
 

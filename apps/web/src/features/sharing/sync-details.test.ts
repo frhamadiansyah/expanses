@@ -58,6 +58,8 @@ const base: SyncDetails = {
       status: 503,
       frame: null,
       state: 'waiting 3',
+      count: 1,
+      firstAt: '2026-11-11T07:59:00.000Z',
     },
   ],
 };
