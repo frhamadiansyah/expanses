@@ -259,19 +259,32 @@ describe('sharing resilience: what the Share page says (spec §4.4, §7, §8.1)'
       'Part of this share is held by A and B on this phone. Delete those copies to bring it in.',
     );
     expect(heldLine([{ holderName: null, holderExists: false }])).toBe('Part of this share is waiting. Place it now.');
-    // A holder that is a live share of its own, not an old copy: deleting it is not the step (A6 round).
-    expect(heldLine([{ holderName: 'Trips · shared 2 Oct', holderExists: true, holderStillShared: true }])).toBe(
-      'Part of this share is used by Trips · shared 2 Oct, which is still shared. Leave that share first.',
+    // An old copy still shared is left and deleted, in its row's own words (re-review m-5).
+    expect(heldLine([{ holderName: 'Home · joined 3 Oct', holderExists: true, holderActive: true }])).toBe(
+      'Part of this share is held by Home · joined 3 Oct on this phone. Leave and delete that copy to bring it in.',
     );
-    expect(heldLine([{ holderName: 'Trips · shared 2 Oct', holderExists: true, holderStillShared: true }])).not.toMatch(/Delete/);
+    // A separate workspace is never told to leave or delete for this share (re-review N-2).
+    const separate = heldLine([{ holderName: 'Business · joined 2 Oct', holderExists: true, holderSeparate: true, holderActive: true }]);
+    expect(separate).toBe('Part of this share is also in Business · joined 2 Oct, which is still shared; it stays there.');
+    expect(separate).not.toMatch(/Delete|Leave/);
+    expect(heldLine([{ holderName: 'Business', holderExists: true, holderSeparate: true }])).toBe('Part of this share is also in Business; it stays there.');
+    // An old copy and a separate one: the old copy's step is the one said.
+    expect(
+      heldLine([
+        { holderName: 'Home · joined 3 Oct', holderExists: true },
+        { holderName: 'Business', holderExists: true, holderSeparate: true, holderActive: true },
+      ]),
+    ).toBe('Part of this share is held by Home · joined 3 Oct on this phone. Delete that copy to bring it in.');
     expect(PLACE_LABEL).toBe('Place them now');
     expect(placedLine({ placed: 3, stillHeld: 0 })).toBe('3 rows placed.');
     expect(placedLine({ placed: 1, stillHeld: 0 })).toBe('1 row placed.');
     expect(placedLine({ placed: 0, stillHeld: 0 })).toBe('Nothing was waiting.');
     expect(placedLine({ placed: 0, stillHeld: 2 })).toBe('Nothing placed; 2 rows still wait.');
     expect(placedLine({ placed: 3, stillHeld: 1 })).toBe('3 rows placed; 1 row still waits.');
-    expect(placedLine({ placed: 3, stillHeld: 0, needsAccount: 2 })).toBe('3 rows placed. 2 purchases need an account.');
-    expect(placedLine({ placed: 3, stillHeld: 0, needsAccount: 1 })).toBe('3 rows placed. 1 purchase needs an account.');
+    expect(placedLine({ placed: 3, stillHeld: 0, needsAccount: 2 }, 'Home · joined today')).toBe(
+      '3 rows placed. 2 purchases need an account: open them in Home · joined today and choose the account paid from.',
+    );
+    expect(placedLine({ placed: 3, stillHeld: 0, needsAccount: 1 })).toBe('3 rows placed. 1 purchase needs an account: open it in the workspace and choose the account paid from.');
     expect(placedLine({ placed: 3, stillHeld: 0, needsAccount: 0 })).toBe('3 rows placed.');
   });
 
