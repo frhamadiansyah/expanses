@@ -18,6 +18,7 @@ import {
   TrendingUp,
   Store,
   Tags,
+  Target,
   UserRound,
   WalletCards,
   type LucideIcon,
@@ -74,6 +75,8 @@ export const MORE_GROUPS: readonly NavGroup[] = [
       { to: '/bills', label: 'Recurring', icon: Bell },
       { to: '/events', label: 'Events', icon: CalendarRange },
       { to: '/goals', label: 'Goals', icon: Sparkles },
+      // The Debt-free plan is a place: every debt, what is left and what to pay next. Its value is the late count.
+      { to: '/net-worth/plan', label: 'Debt-free plan', icon: Target },
       // No "Add a debt" here. This page is a list of places, and a debt is added from the screens that list debts:
       // the Debts page's own +, and Lend & borrow's Add a loan. A door among the places made one line of this menu
       // open a form where every other line opens a screen.

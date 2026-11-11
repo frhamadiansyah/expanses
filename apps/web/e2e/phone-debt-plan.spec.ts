@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { at, bank, openPaylater, planRows, seedLatePaylater, seedPlan } from './debt-plan';
+import { at, bank, openPaylater, owedTo, planRows, seedLatePaylater, seedPlan } from './debt-plan';
 import { digits } from './debts-page';
 
 test.beforeEach(({ page }) => {
@@ -99,4 +99,53 @@ test('a loan with no terms makes the debt-free month unknown, named, and has no 
   const row = page.getByTestId('pay-first-row').filter({ hasText: 'Dollar car loan' });
   await expect(row).toContainText('No terms yet');
   await expect(row.getByRole('link', { name: /^Pay / })).toHaveCount(0);
+});
+
+test('late on top: the count, Pay next pays the late instalment and comes back to the plan', async ({ page }) => {
+  await seedLatePaylater(page);
+  await owedTo(page, 'Dewi', '850000');
+  await page.goto('/net-worth/plan');
+  await expect(page.getByTestId('plan-count-late')).toHaveText('1 late');
+  await expect(page.getByTestId('plan-pay-next')).toContainText('Pay next · Kredit');
+  await expect(page.getByTestId('plan-pay-next')).toContainText('3 days late');
+
+  await page.goto('/account');
+  await expect(page.getByRole('link', { name: /^Debt-free plan/ })).toContainText('1 late');
+
+  await page.goto('/net-worth/plan/pay-first');
+  const first = page.getByTestId('pay-first-row').first();
+  await expect(first).toContainText('!');
+  await expect(first).toContainText('Kredit');
+  await expect(first).toContainText('3 days late');
+
+  await page.goto('/net-worth/plan');
+  await page.getByTestId('plan-pay-next').getByRole('link').click();
+  await expect(page).toHaveURL(/\/net-worth\/loans\/[^?]+\?pay=due$/);
+  const sheet = page.getByRole('dialog', { name: 'Pay' });
+  await sheet.getByRole('button', { name: 'Save payment' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/plan$/);
+  await expect(page.getByTestId('plan-count-late')).toHaveText('0 late');
+});
+
+test('ways in: the corners of Net worth and Liabilities, and Account → Money', async ({ page }) => {
+  await page.clock.setSystemTime(at('2026-11-11'));
+  await page.goto('/net-worth');
+  await expect(page.getByRole('heading', { name: 'Net worth' })).toBeVisible();
+  // Nothing owed yet: no plan to open from Net worth.
+  await expect(page.getByRole('link', { name: 'Debt-free plan' })).toHaveCount(0);
+
+  await bank(page);
+  await owedTo(page, 'Dewi', '850000');
+  await page.goto('/net-worth');
+  await page.getByRole('link', { name: 'Debt-free plan' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/plan$/);
+
+  await page.goto('/net-worth/loans');
+  await expect(page.getByRole('link', { name: 'Add a debt' })).toBeVisible();
+  await page.getByRole('link', { name: 'Debt-free plan' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/plan$/);
+
+  await page.goto('/account');
+  await page.getByRole('link', { name: /^Debt-free plan/ }).click();
+  await expect(page).toHaveURL(/\/net-worth\/plan$/);
 });

@@ -22,6 +22,8 @@ import { useWidgetSummaryWriter } from '../features/account/use-widget-writer';
 import { useICloudBackupAtStart } from '../features/backup/icloud/runner';
 import { useForeignRecalcAtStart } from '../features/accounts/withdrawal-rate-start';
 import { WithdrawalRateNotice } from '../features/accounts/WithdrawalRateNotice';
+import { lateNote } from '../features/debt-plan/plan-view';
+import { useLateDebtCount } from '../features/debt-plan/queries';
 
 const NAV = [
   { to: '/transactions', label: 'Transactions' },
@@ -46,6 +48,21 @@ const MORE = [
  * The queue is only useful if you can tell from anywhere that something is waiting in it, so the
  * count rides on the link rather than being something to remember to go and look at.
  */
+/** The Debt-free plan, one step in under Net worth, with a red pill while a debt is late (spec §4.5). */
+function PlanLink() {
+  const late = useLateDebtCount();
+  return (
+    <Link
+      to="/net-worth/plan"
+      className="flex items-center justify-between rounded-lg py-2 pr-3 pl-6 text-sm text-[var(--ph-ink-2)] hover:bg-[var(--ph-fill)]"
+      activeProps={{ className: 'bg-[var(--ph-fill)] font-medium text-[var(--ph-ink)]' }}
+    >
+      Debt-free plan
+      {late > 0 && <span className="rounded-full bg-[var(--ph-alarm)] px-2 py-0.5 text-[11px] font-medium text-white">{lateNote(late)}</span>}
+    </Link>
+  );
+}
+
 function ReviewLink() {
   const pending = usePendingDraftCount().data ?? 0;
   return (
@@ -144,14 +161,16 @@ export function Layout() {
           {choosing && <WorkspaceSheet onClose={() => setChoosing(false)} />}
           <nav className="space-y-1">
             {NAV.map((item) => (
-              <Link
-                key={item.to}
-                to={item.to}
-                className="block rounded-lg px-3 py-2 text-sm text-[var(--ph-ink-2)] hover:bg-[var(--ph-fill)]"
-                activeProps={{ className: 'bg-[var(--ph-fill)] font-medium text-[var(--ph-ink)]' }}
-              >
-                {item.label}
-              </Link>
+              <div key={item.to} className="space-y-1">
+                <Link
+                  to={item.to}
+                  className="block rounded-lg px-3 py-2 text-sm text-[var(--ph-ink-2)] hover:bg-[var(--ph-fill)]"
+                  activeProps={{ className: 'bg-[var(--ph-fill)] font-medium text-[var(--ph-ink)]' }}
+                >
+                  {item.label}
+                </Link>
+                {item.to === '/net-worth' && <PlanLink />}
+              </div>
             ))}
           </nav>
           <div className="mt-6 space-y-1 border-t border-[var(--ph-hair)] pt-4">

@@ -1,7 +1,7 @@
 import { balanceSheet, formatMinor, isoDate, lastNMonths, monthOf, type SheetGroup, type SheetLiability, type SheetRow, type SheetSectionKey } from '@expanses/core';
 import type { AccountSubtype, LiabilityKind } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
-import { ChartCandlestick, ChartColumn, ChartLine, ChevronRight, Gauge, type LucideIcon } from 'lucide-react';
+import { ChartCandlestick, ChartColumn, ChartLine, ChevronRight, Gauge, type LucideIcon, Target } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox, Money, cx } from '../../ui';
@@ -20,6 +20,7 @@ import { shortMoney } from './value-chart';
 import { isMoneyAccount, useAccounts } from '../../lib/queries';
 import { accountDestination, type AccountDestination } from '../accounts/destination';
 import { foldPockets, type ShownSheetRow } from './overview-rows';
+import { useHasDebts } from '../debt-plan/queries';
 
 const MONTH_LABEL = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
 
@@ -413,11 +414,15 @@ export function OverviewPage() {
    * Income, behind Assets' corner. Recording one came back here (owner, 24 Oct) as a corner of its own, taken off the
    * Add form's tabs: Trade opens the Add screen on the very form that tab drew, once there is a holding to trade.
    */
+  const hasDebts = useHasDebts();
   const canTrade = buyChoices(assetValues.data ?? [], assetProfiles.data ?? []).buys.length > 0;
   const actions: CornerAction[] = [
     ...(canTrade
       ? [{ key: 'trade', label: 'Trade', glyph: <ChartCandlestick size={18} aria-hidden />, to: '/transactions/new' as const, search: { mode: 'trade' as const } }]
       : []),
+    // The Debt-free plan, once there is a debt to plan for (active or paid off): Trade, the plan and Financial health
+    // are three, so the corner still needs no ⋯.
+    ...(hasDebts ? [{ key: 'plan', label: 'Debt-free plan', glyph: <Target size={18} aria-hidden />, to: '/net-worth/plan' as const }] : []),
     /*
      * The ratios are a screen of their own too: a question of how you are doing rather than what you have, and the
      * period they are read over belongs to that screen with them.

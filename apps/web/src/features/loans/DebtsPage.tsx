@@ -1,6 +1,6 @@
 import { formatMinor, isoDate } from '@expanses/core';
 import { Link, type LinkProps } from '@tanstack/react-router';
-import { Plus } from 'lucide-react';
+import { Plus, Target } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances } from '../../lib/queries';
@@ -151,7 +151,7 @@ export function DebtsPage() {
       </>
     ) : null;
 
-  const actions: CornerAction[] = [{ key: 'add', label: 'Add a debt', glyph: <Plus size={22} aria-hidden />, to: '/debts/new' }];
+  const actions: CornerAction[] = [{ key: 'plan', label: 'Debt-free plan', glyph: <Target size={20} aria-hidden />, to: '/net-worth/plan' }, { key: 'add', label: 'Add a debt', glyph: <Plus size={22} aria-hidden />, to: '/debts/new' }];
 
   const due = debts?.due;
   const dueLine =

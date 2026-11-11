@@ -17,6 +17,8 @@ import { WorkspaceDot } from '../workspaces/WorkspaceBadge';
 import { AddWorkspaceSheet } from './AddWorkspaceSheet';
 import { paymentLabel } from '../transactions/PaymentSheet';
 import { resolveDefaultPaidWith, usePayableOptions, useStoredDefaultPaidWith } from './default-paid-with';
+import { lateNote } from '../debt-plan/plan-view';
+import { useLateDebtCount } from '../debt-plan/queries';
 
 /** How long ago the last backup was, in the fewest words that still answer "am I covered?". */
 function backupNote(last: string | null): string {
@@ -104,9 +106,14 @@ export function AccountMenuPage() {
     }
   }
 
+  const lateDebts = useLateDebtCount();
   const note = (to: string) => {
     if (to === '/backup') return lastBackup.isSuccess ? backupNote(lastBackup.data) : undefined;
     if (to === '/review' && pending > 0) return `${pending} waiting`;
+    if (to === '/net-worth/plan') {
+      const late = lateNote(lateDebts);
+      return late ? <span className="text-[var(--ph-alarm)]">{late}</span> : undefined;
+    }
     if (to === '/settings/default') {
       if (!storedDefault.isSuccess || !payable.ready) return undefined;
       const found = resolveDefaultPaidWith(storedDefault.data, payable.options);
