@@ -257,4 +257,6 @@ export { type JointReport, reportInputsFor } from './repos/joint-tax';
 export { SHARED_EVENTS_MIN_APP_VERSION, meetsVersion } from './sync/events/version';
 export type { EventInviteDetails } from './sync/invite';
 export type { ShareEventInput, JoinEventInput } from './sync/events/event-log';
+// Sharing resilience §4.2 (D-A3): the rows of a share another copy on this phone holds, set aside until it is gone.
+export { heldElsewhereOf, HELD_PREFIX, type HeldRow } from './sync/held';
 export * from './repos/bond-coupons';

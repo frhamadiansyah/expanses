@@ -1,3 +1,4 @@
+import { uuidv7 } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { vi } from 'vitest';
 import { createAccount, createDatabase, createWorkspace, migrate, personalBook, type Database, type WorkspaceContext } from '../../src/index';
@@ -214,4 +215,21 @@ export async function categoryOf(database: Database, bookId: string, name: strin
   );
   if (!row) throw new Error(`no category ${name} in ${bookId}`);
   return row[0];
+}
+
+/**
+ * Sharing resilience tests only (task A3): a second book on `d`'s phone holding the very rows of `from` — its `books`
+ * row under a new id (as a 'family' workspace, so the phone keeps one Personal), with the same category and transaction
+ * ids. A category and a transaction are filed in one book at most (`book_categories`, `book_transactions` are keyed by
+ * them), so their filing rows move to the new book; `from` keeps its relay share and its lineages. Sharing the new book
+ * sends ids another copy already holds on a partner's phone.
+ */
+export async function copyBookUnderNewIdForTest(d: Device, from: string): Promise<string> {
+  const to = uuidv7();
+  const columns = (await d.database.db.values<[string]>(sql`SELECT name FROM pragma_table_info('books')`)).map(([name]) => name);
+  const select = columns.map((c) => (c === 'id' ? sql`${to}` : c === 'kind' ? sql`'family'` : sql.raw(c)));
+  await d.database.db.run(sql`INSERT INTO books (${sql.raw(columns.join(', '))}) SELECT ${sql.join(select, sql`, `)} FROM books WHERE id = ${from}`);
+  await d.database.db.run(sql`UPDATE book_categories SET book_id = ${to} WHERE book_id = ${from}`);
+  await d.database.db.run(sql`UPDATE book_transactions SET book_id = ${to} WHERE book_id = ${from}`);
+  return to;
 }
