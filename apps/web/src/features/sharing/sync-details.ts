@@ -1,4 +1,4 @@
-import { type BookSyncStatus, type Database, type SharingDiagnostics, sharingDiagnostics } from '@expanses/db';
+import { type BookSyncStatus, type Database, heldElsewhereOf, type HeldRow, type SharingDiagnostics, sharingDiagnostics } from '@expanses/db';
 import pkg from '../../../package.json';
 import { describeError, formatSyncLogEntry, shortId, type SyncLogEntry } from '../../sync/sync-log';
 import { type SyncService, statusInShort } from '../../sync/sync-service';
@@ -39,6 +39,10 @@ export interface SyncDetails {
   epochKey: 'opens' | 'held, does not open' | 'missing' | 'unknown';
   live: { polled: boolean; running: boolean; failing: boolean; lastSyncedAt: number | null; lastError: string | null };
   log: SyncLogEntry[];
+  /** Rows set aside because another copy here holds them (sharing resilience §4.4): entity, id, holder book. */
+  held?: HeldRow[];
+  /** What the share record said at open (§6.2): `lost`, `behind`, …; none when it was `ok` or there is none. */
+  finding?: string | null;
 }
 
 export function detailsStateOf(shared: SharingDiagnostics['shared'], status: BookSyncStatus | null): DetailsState {
@@ -91,6 +95,8 @@ export async function collectSyncDetails(input: { database: Database; sync: Sync
     epochKey,
     live: { polled: sync.syncing().includes(bookId), running: live.running, failing: live.failing, lastSyncedAt: live.lastSyncedAt, lastError: errorText(live.lastError) },
     log: await sync.log.forBook(bookId),
+    held: await heldElsewhereOf(database, bookId).catch(() => []),
+    finding: sync.findings().find((f) => f.bookId === bookId)?.kind ?? null,
   };
 }
 
@@ -117,6 +123,9 @@ export function syncDetailsText(d: SyncDetails): string {
     `This device ${shortId(d.deviceId) ?? 'none'} · keys ${yesNo(d.hasKeys)} · device row ${d.deviceRow} · epoch key ${d.epochKey}`,
     `This session: polled ${yesNo(d.live.polled)} · running ${yesNo(d.live.running)} · failing ${yesNo(d.live.failing)} · last run ${d.live.lastSyncedAt ? new Date(d.live.lastSyncedAt).toISOString() : 'none'}`,
     d.live.lastError ? `Last error ${d.live.lastError}` : null,
+    d.finding ? `Share record at open: ${d.finding}` : null,
+    d.held?.length ? `Held by another copy here ${d.held.length}` : null,
+    ...(d.held ?? []).map((row) => `  ${row.entity} ${shortId(row.id)} · holder ${shortId(row.holderBookId)}${row.holderExists ? '' : ' (gone)'}`),
     '',
     d.log.length ? `Log, newest first (${d.log.length})` : 'Log: nothing recorded on this device',
     ...d.log.map(formatSyncLogEntry),

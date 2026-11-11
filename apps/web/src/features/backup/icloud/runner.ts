@@ -13,6 +13,9 @@ import type { CopyContents } from './envelope';
 import { hasICloud, ICloudBackup } from './plugin';
 import { backUpIfDue, backUpNow, type CopySource, openCopy } from './service';
 
+/** The sync service's restore door (sharing resilience §6.7): sharing halted around the swap of the rows. */
+type Replacer = { whileReplacing: (work: () => Promise<void>) => Promise<void> };
+
 /** The query every iCloud row reads: whether iCloud is there, and the copies in it. */
 export const ICLOUD_QUERY = ['icloud-copies'] as const;
 
@@ -124,7 +127,7 @@ export function useICloudBackupAtStart(database: Database | undefined): void {
  *
  * The caller reloads the page once this resolves.
  */
-export async function restoreContents(contents: CopyContents, app: { database: Database; safety?: Safety }): Promise<void> {
+export async function restoreContents(contents: CopyContents, app: { database: Database; safety?: Safety; sync?: Replacer }): Promise<void> {
   if (!isSqliteFile(contents.database)) throw new Error('That iCloud copy holds no data cicis can read.');
   await holdPhotosOrRefuse();
   // One path with or without a store: without one no copy can be kept, but the bytes are still checked first.
@@ -134,7 +137,8 @@ export async function restoreContents(contents: CopyContents, app: { database: D
     file: 'icloud',
     source: 'iCloud copy',
     live: () => app.database.exportBytes(),
-    restore: (bytes) => app.database.importBytes(bytes),
+    // Sharing stops first and waits for a run in flight (sharing resilience §6.7, review R1).
+    restore: (bytes) => (app.sync ? app.sync.whileReplacing(() => app.database.importBytes(bytes)) : app.database.importBytes(bytes)),
     checkSharing: sharingGate(),
   });
   for (const photo of contents.photos) {
@@ -148,6 +152,6 @@ export async function restoreContents(contents: CopyContents, app: { database: D
 }
 
 /** Opens the named copy and restores it. */
-export async function restoreFromICloud(name: string, app: { database: Database; safety?: Safety }): Promise<void> {
+export async function restoreFromICloud(name: string, app: { database: Database; safety?: Safety; sync?: Replacer }): Promise<void> {
   await restoreContents(await openCopy(ICloudBackup, name), app);
 }

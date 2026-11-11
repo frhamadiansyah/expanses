@@ -1,5 +1,5 @@
 import { isoDate } from '@expanses/core';
-import { applyCategoryStart, archiveBook, BookError, type BookDeletePlan, type BookKind, type BookRow, deleteBook, findRate, planBookDelete, renameBook, restoreBook, setBookBaseCurrency, setBookEventsInBudget, setBookKind } from '@expanses/db';
+import { applyCategoryStart, archiveBook, BookError, type BookDeletePlan, type BookKind, type BookRow, findRate, planBookDelete, renameBook, restoreBook, setBookBaseCurrency, setBookEventsInBudget, setBookKind } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check, Coins, Layers, Pencil, PiggyBank } from 'lucide-react';
@@ -9,10 +9,10 @@ import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { DestructiveRow, InsetGroup, InsetRow, PushedTitle, ReadOnlyRow, SCREEN, SubmitRow, SwitchRow, TextRow } from '../../ui/native';
-import { useSharedBooks } from '../sharing/queries';
+import { useBookStatus, useSharedBooks } from '../sharing/queries';
 import { ShareRow } from '../sharing/SharingSection';
 import { BusinessListAlert } from './BusinessListAlert';
-import { DeleteWorkspaceSheet } from './DeleteWorkspaceSheet';
+import { DeleteWorkspaceSheet, LeaveAndDeleteSheet } from './DeleteWorkspaceSheet';
 import { CurrencySheet } from '../currency/CurrencySheet';
 import { useArchivedBooks, useBooks } from './queries';
 
@@ -94,7 +94,7 @@ export function WorkspacePage() {
 }
 
 function WorkspaceDetail({ book }: { book: BookRow }) {
-  const { database, ws, switchBook } = useApp();
+  const { database, ws, switchBook, sync } = useApp();
   const books = useBooks();
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
@@ -105,6 +105,8 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
   // Delete asks once for an empty workspace (armed) and opens the typed-name sheet for one that holds transactions.
   const [armedDelete, setArmedDelete] = useState(false);
   const [deleting, setDeleting] = useState<BookDeletePlan | null>(null);
+  // Leave and delete (sharing resilience §5.1): a joined copy still active here is left, then erased, in one confirm.
+  const [leavingDelete, setLeavingDelete] = useState<BookDeletePlan | null>(null);
   const [busy, setBusy] = useState(false);
   const [choosingType, setChoosingType] = useState(false);
   const [offering, setOffering] = useState(false);
@@ -113,7 +115,11 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
   const isArchived = book.archivedAt !== null;
   // A shared workspace keeps the currency and the type it was shared in (sharing spec §6.5 step 0): neither row is
   // offered, and the repository refuses both anyway.
-  const shared = book.kind === 'shared' || (useSharedBooks().data ?? []).some((each) => each.bookId === book.id);
+  const sharedRow = (useSharedBooks().data ?? []).find((each) => each.bookId === book.id);
+  const shared = book.kind === 'shared' || sharedRow !== undefined;
+  const frozen = useBookStatus(book.id).data?.frozen ?? false;
+  // A joined copy still live here is deleted by leaving it first (D-A8); frozen, it is deleted as it is.
+  const leaveFirst = book.kind === 'shared' && sharedRow?.state === 'active' && !frozen;
   // The only Personal workspace stays Personal: it is where categories and expected income fall back to.
   const onlyPersonal = book.kind === 'personal' && !(books.data ?? []).some((other) => other.kind === 'personal' && other.id !== book.id);
 
@@ -211,13 +217,19 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
   const remove = () =>
     run(async () => {
       if (armedDelete) {
-        await deleteBook(database, ws, book.id);
+        await sync.deleteWorkspace(ws, book.id);
         await leave();
         return null;
       }
       const plan = await planBookDelete(database, ws, book.id);
+      // An active joined copy is refused only until it is left: Leave and delete asks once and does both.
+      if (plan.refusalCode === 'SHARED' && book.kind === 'shared') {
+        setLeavingDelete(plan);
+        return null;
+      }
       if (plan.refusal) throw new BookError(plan.refusalCode ?? 'IN_USE', plan.refusal);
-      if (plan.empty) setArmedDelete(true);
+      // A once-shared workspace always goes through the sheet, empty or not: a safety copy first, and what is kept.
+      if (plan.empty && !plan.erases) setArmedDelete(true);
       else setDeleting(plan);
       return null;
     });
@@ -299,12 +311,13 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
             {/* Its own group: the air between two groups is the only undo a finger gets before an archive. */}
             <InsetGroup wide>
               <DestructiveRow calm label={armed ? 'Click again to archive' : 'Archive'} onClick={() => !busy && (armed ? void archive() : setArmed(true))} />
-              <DestructiveRow testId="delete-workspace" label={armedDelete ? 'Click again to delete' : 'Delete'} onClick={() => !busy && void remove()} />
+              <DestructiveRow testId="delete-workspace" label={armedDelete ? 'Click again to delete' : leaveFirst ? 'Leave and delete' : 'Delete'} onClick={() => !busy && void remove()} />
             </InsetGroup>
           </>
         )}
       </div>
       {deleting && <DeleteWorkspaceSheet book={book} plan={deleting} onClose={() => setDeleting(null)} onDeleted={leave} />}
+      {leavingDelete && <LeaveAndDeleteSheet book={book} plan={leavingDelete} onClose={() => setLeavingDelete(null)} onDeleted={leave} />}
       {offering && <BusinessListAlert onUse={() => void useBusinessList()} onClose={() => setOffering(false)} />}
       {renaming && <NameSheet current={book.name} busy={busy} onSave={rename} onClose={() => setRenaming(false)} />}
       {choosingCurrency && (

@@ -318,13 +318,8 @@ export function ownersGoneConfirm(book: string, owners: readonly string[], since
   return `${quiet} This phone's copy of ${book} leaves the share: ${book} stops syncing on this phone and stays here with every row, editable. ${told} ${book} can be shared again later.`;
 }
 
-/** Before joining beside another copy of the same workspace (D-A7): a warning, never a stop. */
-export function otherCopiesLine(copies: readonly { name: string }[], inviterName: string): string {
-  const names = copies.map((copy) => copy.name);
-  const rest = names.length === 1 ? 'Rows that copy still holds are left out until it is deleted.' : 'Rows those copies still hold are left out until they are deleted.';
-  return `This phone also holds ${nameList(names)} from ${inviterName}. ${rest}`;
-}
-export function deleteFirstLabel(name: string): string {
-  return `Delete ${name} first`;
-}
-export const JOIN_ANYWAY = 'Join anyway';
+/**
+ * Before joining beside another copy of the same workspace (D-A7): a warning, never a stop. The safe order (A6 review)
+ * is join first, then delete the old copy, then Place them now — deleting first can count own purchases twice.
+ */
+export const OTHER_COPY_LINE = 'Another copy of this workspace is on this phone. Join first, then delete the old copy; its rows come in with Place them now.';

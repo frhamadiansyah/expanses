@@ -3,7 +3,7 @@ import { BookReadOnlyError, FrozenBookError, LastOwnerError, LeaveIncompleteErro
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { stringLiterals } from '../../lib/string-literals';
-import { DISCARD_LABEL, deleteFirstLabel, discardConfirm, heldLine, JOIN_ANYWAY, KEEP_OWN_LABEL, keepOwnTitle, lastChangeLine, LOST_LINE, otherCopiesLine, ownersGoneConfirm, PLACE_LABEL, placedLine, shareSilenceLine, silenceLine } from './sharing-copy';
+import { DISCARD_LABEL, discardConfirm, heldLine, KEEP_OWN_LABEL, keepOwnTitle, lastChangeLine, LOST_LINE, OTHER_COPY_LINE, ownersGoneConfirm, PLACE_LABEL, placedLine, shareSilenceLine, silenceLine } from './sharing-copy';
 import { currencyRefusal, endedLine, lastFailedLine, lastSyncedLine, shareStatusLine, FORGET_ROW, forgetConfirm, replaceConfirm, FROZEN_NOTE, leaveConfirm, postedAgainstPlaceholder, READ_ONLY_NOTE, sayError, statusLineOf, stopConfirm, deviceName, ownerName, payerLine, preparing, sharedWith, sinceWhen, syncedAgo } from './sharing-copy';
 
 const fandri = { memberId: 'f', name: 'Fandri', role: 'owner' as const };
@@ -285,11 +285,9 @@ describe('sharing resilience: what the Share page says (spec §4.4, §7, §8.1)'
     );
   });
 
-  it('warns before joining beside another copy of the same workspace (D-A7)', () => {
-    expect(otherCopiesLine([{ name: 'Home (old)' }], 'Dewi')).toBe('This phone also holds Home (old) from Dewi. Rows that copy still holds are left out until it is deleted.');
-    expect(otherCopiesLine([{ name: 'A' }, { name: 'B' }], 'Dewi')).toBe('This phone also holds A and B from Dewi. Rows those copies still hold are left out until they are deleted.');
-    expect(deleteFirstLabel('Home (old)')).toBe('Delete Home (old) first');
-    expect(JOIN_ANYWAY).toBe('Join anyway');
+  it('warns before joining beside another copy, in the safe order: join first, then delete, then place (D-A7)', () => {
+    expect(OTHER_COPY_LINE).toBe('Another copy of this workspace is on this phone. Join first, then delete the old copy; its rows come in with Place them now.');
+    expect(OTHER_COPY_LINE).not.toMatch(/first\.$|Delete .* first/);
   });
 });
 

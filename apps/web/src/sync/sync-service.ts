@@ -23,6 +23,7 @@ import {
 } from '@expanses/db';
 import { createKeyStore } from './key-store';
 import { createRelayTransport } from './relay';
+import { isNative } from '../lib/pwa';
 import { createShareRecordStore } from './share-record-store';
 import { SyncScheduler } from './sync-scheduler';
 import { SyncLog, type SyncLogOp } from './sync-log';
@@ -185,7 +186,8 @@ export class SyncService {
     this.intervalMs = options.intervalMs;
     this.log = options.log ?? new SyncLog(undefined, () => new Date(this.now()));
     let records: ShareRecordStore | null | undefined = options.shareRecords;
-    this.shareRecords = () => (records === undefined ? (records = createShareRecordStore()) : records);
+    // Outside a browser and the shell (a test run under node) there is no IndexedDB to keep records in: none is kept.
+    this.shareRecords = () => (records === undefined ? (records = isNative() || typeof indexedDB !== 'undefined' ? createShareRecordStore() : null) : records);
   }
 
   /** The engine, made once: this device's keys (made on first need), then the engine over the relay. */

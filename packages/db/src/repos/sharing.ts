@@ -396,3 +396,11 @@ export async function purchasePayers(database: Database, transactionIds: readonl
   }
   return out;
 }
+
+/**
+ * The device checklist's lost share (sharing resilience plan, Task A8/A10), for a diagnostic build's Developer page
+ * only: the book's `shared_books` row is deleted and nothing else, so the next open finds its share record `lost`.
+ */
+export async function forgetSharedBookRowForTest(database: Database, bookId: string): Promise<void> {
+  await database.db.run(sql`DELETE FROM shared_books WHERE book_id = ${bookId}`);
+}
