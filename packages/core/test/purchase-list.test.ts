@@ -200,6 +200,26 @@ describe('parsePurchaseList: lines that are not purchases', () => {
 });
 
 describe('parsePurchaseList: date lines', () => {
+  it('reads a date at the start of a purchase line as that line\'s own day', () => {
+    const rows = read('25/10 grabcar 50000\nkopi 12000\n24 Oct gocar 18000\n2026-10-20 teh 5000');
+    expect(rows.map((r) => [r.note, r.amountMinor, r.occurredOn])).toEqual([
+      ['grabcar', 50000, '2026-10-25'],
+      // The day of a line of its own carries down; a day inside a line does not.
+      ['kopi', 12000, null],
+      ['gocar', 18000, '2026-10-24'],
+      ['teh', 5000, '2026-10-20'],
+    ]);
+  });
+
+  it('keeps a quantity or a word that only looks like a date in the note', () => {
+    const rows = read('1/2 kg gula 15000\n2 martabak 30000\n3 kopi 45000');
+    expect(rows.map((r) => [r.note, r.occurredOn])).toEqual([
+      ['1/2 kg gula', null],
+      ['2 martabak', null],
+      ['3 kopi', null],
+    ]);
+  });
+
   it('sets the day of the lines below it until the next date line', () => {
     const rows = read('before 1000\n27/10\ngocar 18000\nkopi 12000\n25 Oct\nteh 5000');
     expect(rows.map((r) => [r.note, r.occurredOn])).toEqual([

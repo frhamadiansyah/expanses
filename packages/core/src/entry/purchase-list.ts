@@ -150,6 +150,24 @@ function dateLine(text: string, today: string): string | null {
   return readDayText(s, today);
 }
 
+/** A word that names a measure, so a figure such as 1/2 in front of it is a quantity, not a day. */
+const UNIT_AFTER = /^(?:kg|kilo|g|gr|gram|ons|l|lt|liter|litre|ml|pcs|pc|porsi|bungkus|buah|lusin|dozen|pack|box|btl|botol|x)\b/i;
+const LEADING_DAY = /^(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december)\.?)(?=\s)\s+(.+)$/i;
+
+/**
+ * A day typed at the start of a purchase line (25/10 grabcar 50000 · 24 Oct gocar 18000): that line's own day, and the
+ * rest of the line. Only the shapes a date line takes, and a month word in full or as its usual abbreviation, so
+ * "2 martabak" stays a note; a figure followed by a measure (1/2 kg) is a quantity. Null when the line does not start so.
+ */
+function leadingDay(line: string, today: string): { day: string; rest: string } | null {
+  const m = LEADING_DAY.exec(line);
+  if (!m) return null;
+  const rest = m[2]!.trim();
+  if (!rest || UNIT_AFTER.test(rest)) return null;
+  const day = readDayText(m[1]!, today);
+  return day ? { day, rest } : null;
+}
+
 /** "18.000,-" → "18.000": the closing dash Paste a list drops before reading. */
 export function withoutClosingDash(text: string): string {
   return text.replace(/(\d)[.,]-+/g, '$1');
@@ -231,11 +249,15 @@ export function parsePurchaseList(text: string, options: ParsePurchaseListOption
 
     line = line.replace(BULLET, '').trim();
     if (!line) return;
+    // A day at the start of the line is this line's own; a date line of its own still sets the lines below.
+    const own = leadingDay(line, options.today);
+    if (own) line = own.rest;
+    const lineDay = own?.day ?? day;
     // "18.000,-" and "18.000.-": a closing dash after the figure.
     const cleaned = withoutClosingDash(line);
 
     const found = lineFigures(cleaned, currency).at(-1);
-    const unread = (): PurchaseLine => ({ lineNo, raw, note: trimNote(cleaned), amountMinor: null, occurredOn: day, status: 'no-amount', ambiguous: false });
+    const unread = (): PurchaseLine => ({ lineNo, raw, note: trimNote(cleaned), amountMinor: null, occurredOn: lineDay, status: 'no-amount', ambiguous: false });
     if (!found) {
       rows.push(unread());
       return;
@@ -259,7 +281,7 @@ export function parsePurchaseList(text: string, options: ParsePurchaseListOption
     const major = BigInt(minor.minor) / 10n ** BigInt(exponent);
     const small = isSmallAmount(minor.minor, currency);
     const suspicious = ambiguous || small || major >= HUGE_MAJOR;
-    rows.push({ lineNo, raw, note, amountMinor: minor.minor, occurredOn: day, status: suspicious ? 'suspicious' : 'ok', ambiguous });
+    rows.push({ lineNo, raw, note, amountMinor: minor.minor, occurredOn: lineDay, status: suspicious ? 'suspicious' : 'ok', ambiguous });
   });
 
   return rows;
