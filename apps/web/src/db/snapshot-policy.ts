@@ -190,11 +190,13 @@ export type Room = 'yes' | 'prune-first' | 'no';
  * the two already kept; `'prune-first'` means there is room for one more copy but not three;
  * `'no'` means there is not even room for one. A browser that will not estimate (`quota` or
  * `usage` missing) must never stop a rescue copy being taken, so that case answers `'yes'`.
+ *
+ * `headroom` is space that must stay free whatever the copies need: counted as already used.
  */
-export function roomFor(estimate: { quota?: number; usage?: number }, dbBytes: number): Room {
+export function roomFor(estimate: { quota?: number; usage?: number }, dbBytes: number, headroom = 0): Room {
   const { quota, usage } = estimate;
   if (quota == null || usage == null) return 'yes';
-  const free = quota - usage;
+  const free = quota - usage - headroom;
   if (free >= dbBytes * 3) return 'yes';
   if (free >= dbBytes) return 'prune-first';
   return 'no';

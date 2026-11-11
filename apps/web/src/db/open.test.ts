@@ -22,8 +22,8 @@ import { snapshotName } from './snapshot-policy';
 import { MANIFEST, memorySnapshots, restoreSnapshot } from './snapshots';
 import { createWorkerExecutor } from './worker-executor';
 
-// These tests hold the retention rules themselves; the pause on them (src/db/retention.ts) has its own test.
-vi.mock('./retention', () => ({ PRUNING_PAUSED: false }));
+// These tests hold the retention rules themselves; keeping the older copies (src/db/retention.ts) has its own test.
+vi.mock('./retention', async (importOriginal) => ({ ...(await importOriginal<typeof import('./retention')>()), KEEP_OLDER_COPIES: false }));
 
 /**
  * The version one update behind the newest. Not `LATEST_VERSION - 1`: migration numbers may skip, and they have —

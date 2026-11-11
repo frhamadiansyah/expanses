@@ -1,6 +1,6 @@
 import type { ImportMarker, Safety, SnapshotStore } from './open';
 import { RestoreCancelledError } from './restore-sharing';
-import { PRUNING_PAUSED } from './retention';
+import { isKeptCopy, KEEP_OLDER_COPIES, KEPT_COPIES_FILE, KEPT_HEADROOM_BYTES, type KeptCopies, parseKeptCopies } from './retention';
 import { hasCreateWritable, writeInSafetyWorker } from './safety-write';
 import { dailyDue, keepOne, keepTwo, MIN_COPY_BYTES, parseSnapshotName, roomFor, type SnapshotInfo, type SnapshotReason, snapshotName } from './snapshot-policy';
 
@@ -171,14 +171,35 @@ async function writeManifest(slot: Slot, manifest: Manifest): Promise<void> {
   await slot.write(MANIFEST, new TextEncoder().encode(JSON.stringify(manifestOf(manifest), null, 2)));
 }
 
-/** Every rule of the store, over whatever `slot` can actually hold files. */
-/** `pruning`: whether a written copy removes older ones; off while `PRUNING_PAUSED` (src/db/retention.ts). */
 export interface StoreOptions {
-  pruning?: boolean;
+  /** Whether the copies from before this build are kept whatever the rules say (src/db/retention.ts). */
+  keepOlder?: boolean;
+  /** Told when a copy is not written for want of room, before `SnapshotSpaceError` is thrown. Must not throw. */
+  onSkipped?: (reason: SnapshotReason, error: SnapshotSpaceError) => void;
 }
 
+const isCopyName = (file: string): boolean => parseSnapshotName(file) !== null;
+
+/**
+ * The record of the copies kept from before this build (src/db/retention.ts), made now if there is none: the copies
+ * in the folder at this moment, and the moment. Null when it cannot be read or written, which keeps every copy. A
+ * record that is there but will not parse is never written over: that would hand its copies to the rules.
+ */
+async function keptOver(slot: Pick<Slot, 'names' | 'read' | 'write'>, names: string[]): Promise<KeptCopies | null> {
+  if (names.includes(KEPT_COPIES_FILE)) return parseKeptCopies(await slot.read(KEPT_COPIES_FILE).catch(() => null));
+  const record: KeptCopies = { recordedAt: new Date().toISOString(), files: names.filter(isCopyName) };
+  try {
+    await slot.write(KEPT_COPIES_FILE, new TextEncoder().encode(JSON.stringify(record, null, 2)));
+    return record;
+  } catch (error) {
+    console.warn('The record of the copies kept could not be written; every copy is kept', error);
+    return null;
+  }
+}
+
+/** Every rule of the store, over whatever `slot` can actually hold files. */
 function storeOver(slot: Slot, options: StoreOptions = {}): SnapshotStore {
-  const pruning = options.pruning ?? !PRUNING_PAUSED;
+  const keepOlder = options.keepOlder ?? KEEP_OLDER_COPIES;
   /**
    * What is really on the device: the manifest filtered down to the files that are still there, plus
    * every copy on disk the manifest does not mention.
@@ -241,8 +262,29 @@ function storeOver(slot: Slot, options: StoreOptions = {}): SnapshotStore {
        * through `keepOne`, which honours the same seven-day grace for a before-start-fresh copy that
        * `keepTwo` does.
        */
-      const room = roomFor(await slot.estimate(), bytes.length);
-      if (room === 'no') throw new SnapshotSpaceError();
+      /*
+       * The copies kept from before this build are space that is never given back. While any are on the device, a
+       * copy is written only with room for three more and `KEPT_HEADROOM_BYTES` besides; "room for one" is no room,
+       * since the copies it would prune to make space are not the ones holding it. The live database and new photos
+       * need that space more than one more copy does.
+       */
+      const names = await slot.names();
+      const kept = keepOlder ? await keptOver(slot, names) : undefined;
+      const isKept = (file: string): boolean => kept !== undefined && isKeptCopy(kept, { file, takenAt: parseSnapshotName(file)?.takenAt ?? '' });
+      const keeping = names.some((name) => isCopyName(name) && isKept(name));
+      let room = roomFor(await slot.estimate(), bytes.length, keeping ? KEPT_HEADROOM_BYTES : 0);
+      if (keeping && room === 'prune-first') room = 'no';
+      if (room === 'no') {
+        const error = keeping
+          ? new SnapshotSpaceError('There is not enough free space on this device for a safety copy beside the older copies being kept.')
+          : new SnapshotSpaceError();
+        try {
+          options.onSkipped?.(reason, error);
+        } catch {
+          // Telling about it must not change what happens.
+        }
+        throw error;
+      }
 
       const takenAt = new Date().toISOString();
       const file = snapshotName(takenAt, schemaVersion, reason);
@@ -261,12 +303,13 @@ function storeOver(slot: Slot, options: StoreOptions = {}): SnapshotStore {
       // Written first, pruned second, so there is never a moment with zero copies on the device.
       const { valid, invalid } = await survey();
       const others = valid.filter((snapshot) => snapshot.file !== file);
-      // While pruning is paused nothing already on the device goes, not even a copy that never verified.
-      const doomed = !pruning ? [] : room === 'prune-first' ? keepOne(others, info) : keepTwo(others, info);
+      // The kept copies are not in the running at all: the rules see only the copies this build took.
+      const candidates = others.filter((snapshot) => !isKept(snapshot.file));
+      const doomed = room === 'prune-first' ? keepOne(candidates, info) : keepTwo(candidates, info);
       await rewrite([info, ...others.filter((snapshot) => !doomed.some((gone) => gone.file === snapshot.file))]);
       for (const snapshot of doomed) await slot.remove(snapshot.file).catch(() => undefined);
-      // And what was never whole goes too, now that a copy that is has been read back.
-      if (pruning) for (const broken of invalid) if (broken !== file) await slot.remove(broken).catch(() => undefined);
+      // And what was never whole goes too, now that a copy that is has been read back; a kept one stays as it is.
+      for (const broken of invalid) if (broken !== file && !isKept(broken)) await slot.remove(broken).catch(() => undefined);
       return info;
     },
 
@@ -401,12 +444,29 @@ async function safetyDirectory(): Promise<FileSystemDirectoryHandle> {
  * worker is exactly what will not start, which is the only day any of this matters.
  */
 export function opfsSnapshots(options: StoreOptions = {}): SnapshotStore {
+  return storeOver(opfsSlot(), options);
+}
+
+/**
+ * The record of the copies kept from before this build (src/db/retention.ts), made now if there is none; null when
+ * it cannot be read or made, which keeps every copy. Never throws. For iCloud, whose copies are kept by its time.
+ */
+export async function keptCopiesRecord(): Promise<KeptCopies | null> {
+  try {
+    const slot = opfsSlot();
+    return await keptOver(slot, await slot.names());
+  } catch {
+    return null;
+  }
+}
+
+function opfsSlot(): Slot {
   const fileHandle = async (file: string, create = false) => {
     const dir = await safetyDirectory();
     return dir.getFileHandle(file, { create });
   };
 
-  return storeOver({
+  return {
     read: async (file) => {
       const handle = await fileHandle(file).catch(() => null);
       const found = await handle?.getFile().catch(() => null);
@@ -430,7 +490,7 @@ export function opfsSnapshots(options: StoreOptions = {}): SnapshotStore {
       return names;
     },
     estimate: async () => (await navigator.storage?.estimate?.().catch(() => ({}))) ?? {},
-  }, options);
+  };
 }
 
 /**

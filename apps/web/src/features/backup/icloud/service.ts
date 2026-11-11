@@ -1,3 +1,5 @@
+import { KEEP_OLDER_COPIES } from '../../../db/retention';
+import { keptCopiesRecord } from '../../../db/snapshots';
 import { type CopyContents, keyIdOf, seal, unseal } from './envelope';
 import { backupDue, type CloudCopy, copiesToRemove, copyName, listCopies, parseName } from './names';
 import { codeOf, fromBase64, type ICloudBackupPlugin, toBase64 } from './plugin';
@@ -43,7 +45,9 @@ export async function backUpNow(plugin: ICloudBackupPlugin, source: CopySource, 
   await plugin.write({ name, base64: toBase64(sealed) });
   try {
     const { names } = await plugin.list();
-    for (const old of copiesToRemove(listCopies(names), status.deviceId)) {
+    // The copies from before this build are kept (src/db/retention.ts); the rule runs over the newer ones.
+    const kept = KEEP_OLDER_COPIES ? await keptCopiesRecord() : undefined;
+    for (const old of copiesToRemove(listCopies(names), status.deviceId, kept)) {
       if (old !== name) await plugin.remove({ name: old });
     }
   } catch (error) {

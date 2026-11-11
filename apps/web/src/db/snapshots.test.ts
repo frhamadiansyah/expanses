@@ -5,8 +5,8 @@ import { lastGoodCopy } from '../features/recovery/recovery-copy';
 import { dailyDue, type SnapshotInfo, snapshotName } from './snapshot-policy';
 import { IMPORT_MARKER, MANIFEST, memorySnapshots, restoreSnapshot, SnapshotSpaceError, writeWhole } from './snapshots';
 
-// These tests hold the retention rules themselves; the pause on them (src/db/retention.ts) has its own test.
-vi.mock('./retention', () => ({ PRUNING_PAUSED: false }));
+// These tests hold the retention rules themselves; keeping the older copies (src/db/retention.ts) has its own test.
+vi.mock('./retention', async (importOriginal) => ({ ...(await importOriginal<typeof import('./retention')>()), KEEP_OLDER_COPIES: false }));
 
 const engines: NodeExecutor[] = [];
 afterEach(() => {
