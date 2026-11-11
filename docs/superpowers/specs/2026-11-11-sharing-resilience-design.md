@@ -335,16 +335,19 @@ D-D2. On the Share page Members list, this member's own row opens **Name** (sing
 
 Before anything: on both phones, Share page → Details → Copy details, and keep the text (it records which ids collided and which book ids each copy has).
 
+**Order (A6 and A8 reviews): join the new share first, then delete the old copy, then Place them now.** Deleting the old copy before joining, with Keep them in Personal on, moves his own purchases to Personal while the new share also brings them back, and counts them twice.
+
 1. **Her phone (owner of the new, empty share):** Home → Share → **Stop sharing**. The relay deletes the second relay book. His empty copy goes "No longer shared by Dewi" on its next sync.
 2. **His phone, the empty copy:** Workspace → **Delete**. It erases (§5). A safety copy is taken first.
-3. **His phone, the first copy (still active on the old relay book):** Workspace → **Leave and delete**. He leaves the old share (his device is taken off the old relay book) and the copy is erased. If he wants to keep anything from it, export first; the before-delete safety copy is kept 30 days either way.
-4. **Her phone:** Home → Share → share again. Her phone remembers her member id from step 1, so she is the same person.
-5. **Her phone:** the Members list still has Fandri from the second share (member rows stay after a stop). Open his row → **Link a device for Fandri**, so he joins as the same person rather than a second "Fandri". Send him the link.
-6. **His phone:** open the link → Join. No other copy of Home is on his phone, so the warning (D-A7) does not show; everything arrives.
-7. **Her phone:** the co-owner card (Drop D) or Fandri's row → **Make owner**. Until Drop D ships, use Make owner on his row (it exists today).
-8. Both phones: the status line reads "Up to date"; Details shows no `HELD_ELSEWHERE` skips.
+3. **Her phone:** Home → Share → share again. Her phone remembers her member id from step 1, so she is the same person.
+4. **Her phone:** the Members list still has Fandri from the second share (member rows stay after a stop). Open his row → **Link a device for Fandri**, so he joins as the same person rather than a second "Fandri". Send him the link.
+5. **His phone: join first.** Open the link → Join. His first copy of Home is still here, so the warning (D-A7) names it ("Home · joined …") and says to join first. Rows that copy still holds are set aside (`HELD_ELSEWHERE`); the new copy's Share row says so.
+6. **His phone, the first copy (still active on the old relay book): then delete.** Workspace → **Leave and delete** on the copy the sheet names as holding rows of the newer share. He leaves the old share and the copy is erased; his own purchases the new share carries are not kept in Personal (they come back through it). If he wants to keep anything else from it, export first; the before-delete safety copy is kept 30 days either way. The app then opens the new copy's Workspace page.
+7. **His phone, the new copy: then Place them now.** Workspace → the Share row's **Place them now** (or Share → Place them now). A safety copy is taken first; the rows the old copy held come in.
+8. **Her phone:** the co-owner card (Drop D) or Fandri's row → **Make owner**. Until Drop D ships, use Make owner on his row (it exists today).
+9. Both phones: the status line reads "Up to date"; Details shows no `HELD_ELSEWHERE` skips.
 
-If either phone is on Drop A but the other is not, wait: a pre-A phone still stalls on step 6.
+If either phone is on Drop A but the other is not, wait: a pre-A phone still stalls on step 5.
 
 **One-time cleanup of a stale copy whose owner device is gone** (any user, not just the couple): on the stale copy, after 14 days with no change from any owner, the Share page offers **Keep as own copy** (D-A11) or **Leave and delete** (D-A8). Leave works for a member whatever the owner's state, because the relay knows the member's device.
 

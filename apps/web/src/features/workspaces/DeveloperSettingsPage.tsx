@@ -14,7 +14,8 @@ import { useBooks } from './queries';
  * the owner switches on before the app can sell it: today, the US ticker list (the owner's ruling, 2026-09-21).
  * When store purchases exist, the switch goes and the purchase grants the same entitlement.
  *
- * A diagnostic build (CICIS_INSPECTABLE=1) adds the sharing test below; any other build has none of it.
+ * A developer build (CICIS_DEVTOOLS=1, never a TestFlight build) adds the sharing test below; any other build has
+ * none of it, an inspectable build included (A8 review I-6).
  */
 export function DeveloperSettingsPage() {
   const foreign = useEntitlement('foreign_securities');
@@ -27,7 +28,7 @@ export function DeveloperSettingsPage() {
       >
         <SwitchRow label="US ticker list" hint="The paid list, before purchases exist." checked={foreign} onChange={(on) => setPreviewEntitlement('foreign_securities', on)} />
       </InsetGroup>
-      {import.meta.env.VITE_INSPECTABLE === '1' ? <ForgetSharingRows /> : null}
+      {import.meta.env.VITE_DEVTOOLS === '1' ? <ForgetSharingRows /> : null}
     </div>
   );
 }
@@ -62,7 +63,7 @@ function ForgetSharingRows() {
     <>
       <ErrorBox error={error} />
       <InsetGroup
-        header="Sharing test (diagnostic build)"
+        header="Sharing test (developer build)"
         footer={done ?? 'Deletes one workspace’s sharing row on this device and nothing else, so the next open finds its share lost. For the device checklist only.'}
       >
         {rows.length === 0 ? <InsetRow title="No shared workspace here" chevron={false} /> : null}

@@ -33,6 +33,8 @@ export interface SharedBookSummary {
   unsharedReason: 'stopped' | 'left' | 'removed' | null;
   /** A workspace's book, or a shared event's (shared events §3): the sharing screens list workspaces only. */
   kind: 'workspace' | 'event';
+  /** When it was shared or joined here, ISO: what tells two copies of one name apart (sharing resilience, A8 review I-2). */
+  sharedAt?: string | null;
 }
 
 export interface SharedDevice {
@@ -78,16 +80,16 @@ async function membersOf(database: Database, bookId: string): Promise<SharedBook
 export async function listSharedBooks(database: Database): Promise<SharedBookSummary[]> {
   if (!(await sharingTablesExist(database.db))) return [];
   const groups = (await database.db.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'nw_group_books'`)).length > 0;
-  const rows = await database.db.values<[string, string, string, string, string | null, SharedBookSummary['unsharedReason']]>(
+  const rows = await database.db.values<[string, string, string, string, string | null, SharedBookSummary['unsharedReason'], string | null]>(
     groups
-      ? sql`SELECT book_id, relay_book_id, state, member_id, unshared_by, unshared_reason FROM shared_books
+      ? sql`SELECT book_id, relay_book_id, state, member_id, unshared_by, unshared_reason, shared_at FROM shared_books
             WHERE book_id NOT IN (SELECT group_book_id FROM nw_group_books) ORDER BY shared_at, book_id`
-      : sql`SELECT book_id, relay_book_id, state, member_id, unshared_by, unshared_reason FROM shared_books ORDER BY shared_at, book_id`,
+      : sql`SELECT book_id, relay_book_id, state, member_id, unshared_by, unshared_reason, shared_at FROM shared_books ORDER BY shared_at, book_id`,
   );
   // A shared event's relay book has no `books` row either (shared events §3); it is listed, marked as an event's.
   const eventBooks = new Set((await database.db.values<[string]>(sql`SELECT book_id FROM event_books`).catch(() => [] as [string][])).map(([id]) => id));
   const out: SharedBookSummary[] = [];
-  for (const [bookId, relayBookId, state, memberId, unsharedBy, unsharedReason] of rows) {
+  for (const [bookId, relayBookId, state, memberId, unsharedBy, unsharedReason, sharedAt] of rows) {
     out.push({
       bookId,
       relayBookId,
@@ -97,6 +99,7 @@ export async function listSharedBooks(database: Database): Promise<SharedBookSum
       unsharedBy,
       unsharedReason,
       kind: eventBooks.has(bookId) ? 'event' : 'workspace',
+      sharedAt,
     });
   }
   return out;

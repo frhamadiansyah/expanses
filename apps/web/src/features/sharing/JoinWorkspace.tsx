@@ -5,7 +5,7 @@ import { Sheet } from '../../app/Sheet';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, ReadOnlyRow, SubmitRow, TextRow } from '../../ui/native';
 import { JoinEvent } from './JoinEvent';
-import { currencyRefusal, OTHER_COPY_LINE, replaceConfirm, sayError } from './sharing-copy';
+import { copyLabel, currencyRefusal, otherCopyLine, replaceConfirm, sayError } from './sharing-copy';
 import { thisDeviceName } from './SharingSection';
 
 /*
@@ -169,7 +169,7 @@ export function JoinWorkspace({
             </InsetGroup>
           )}
           {refusal || unusable ? null : (
-            <InsetGroup wide footer={otherCopies.length > 0 ? <span data-testid="join-other-copies">{OTHER_COPY_LINE}</span> : undefined}>
+            <InsetGroup wide footer={otherCopies.length > 0 ? <span data-testid="join-other-copies">{otherCopyLine(otherCopies.map((copy) => ({ label: copyLabel(copy, Date.now()), active: copy.state === 'active' })))}</span> : undefined}>
               <SubmitRow label={busy ? 'Joining…' : 'Join'} disabled={busy || (!preview.terms.sameMember && !name.trim())} />
             </InsetGroup>
           )}

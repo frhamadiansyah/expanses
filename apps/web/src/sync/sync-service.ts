@@ -1,6 +1,7 @@
 import {
   type BookSyncStatus as EngineBookStatus,
   type CreatedInvite,
+  BookError,
   type Database,
   deleteBook,
   type DeleteBookOptions,
@@ -9,6 +10,8 @@ import {
   listSharedBooks,
   type NetWorthGroupView,
   outboxOps,
+  ownRecordsMessage,
+  planBookDelete,
   type PreviewedInvite,
   recordDevicesSeen,
   requestSignerOf,
@@ -44,6 +47,20 @@ import pkg from '../../package.json';
  *   drain or pull the same book at once.
  * - After a run applies anything, `onApplied` is called, which drops the screens' cached figures.
  */
+
+/**
+ * Leave and delete, or Delete here only, got past the leave (or the local forget) and the delete then failed (A8 review
+ * I-1): the share is over here, the workspace is still here. `cause` is the delete's own failure.
+ */
+export class LeftNotDeletedError extends Error {
+  constructor(
+    readonly cause: unknown,
+    readonly how: 'left' | 'forgotten',
+  ) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.name = 'LeftNotDeletedError';
+  }
+}
 
 export interface BookSyncStatus {
   /** The last run that reached the relay and finished, in ms. */
@@ -547,9 +564,24 @@ export class SyncService {
    * nothing and throws as it came: a `LastOwnerError`, or the relay out of reach — then the screen offers Delete here only.
    */
   async leaveAndDelete(ws: WorkspaceContext, bookId: string, options: DeleteBookOptions = {}): Promise<{ erased: boolean; keptInPersonal: number; transactions: number }> {
+    await this.refuseBeforeLeaving(ws, bookId, options);
     await this.leave(bookId);
     await this.note('leave', bookId, { message: 'Left the share, for Leave and delete' });
-    return this.deleteWorkspace(ws, bookId, options);
+    try {
+      return await this.deleteWorkspace(ws, bookId, options);
+    } catch (error) {
+      throw new LeftNotDeletedError(error, 'left');
+    }
+  }
+
+  /**
+   * Leaving cannot be undone, so the delete is planned first as if the copy were already left (A8 review I-1): a
+   * split, a record, a draft or own trades with keep off refuse here, with the share untouched.
+   */
+  private async refuseBeforeLeaving(ws: WorkspaceContext, bookId: string, options: DeleteBookOptions): Promise<void> {
+    const plan = await this.logged('erase', bookId, () => planBookDelete(this.database, ws, bookId, { asIfLeft: true }));
+    if (plan.refusal && plan.refusalCode) throw new BookError(plan.refusalCode, plan.refusal);
+    if (plan.ownRecords > 0 && options.keepOwnInPersonal === false) throw new BookError('RECORDS', ownRecordsMessage(plan.ownRecords));
   }
 
   /**
@@ -557,9 +589,15 @@ export class SyncService {
    * share still lists this phone until an owner removes it — and the copy is erased.
    */
   async deleteHereOnly(ws: WorkspaceContext, bookId: string, options: DeleteBookOptions = {}): Promise<{ erased: boolean; keptInPersonal: number; transactions: number }> {
+    await this.refuseBeforeLeaving(ws, bookId, options);
     const relays = await this.relaysOf(bookId);
     await this.act(bookId, (engine) => engine.forgetSharing(bookId, { deleting: true }), 'erase');
-    const done = await this.deleteWorkspace(ws, bookId, options);
+    let done: { erased: boolean; keptInPersonal: number; transactions: number };
+    try {
+      done = await this.deleteWorkspace(ws, bookId, { ...options, asIfLeft: true });
+    } catch (error) {
+      throw new LeftNotDeletedError(error, 'forgotten');
+    }
     // Forgetting removed this device's record of the share it was on; a lost one of another relay book goes here.
     const engine = await this.madeEngine();
     if (engine) for (const relay of relays) await engine.dropShareRecord(bookId, relay);

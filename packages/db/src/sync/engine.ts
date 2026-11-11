@@ -200,7 +200,7 @@ export interface PreviewedInvite extends InvitePreview {
    * most likely. Rows such a copy still holds are set aside on join (`HELD_ELSEWHERE`) until it is deleted, so the join
    * screen warns. `state` is the copy's `shared_books` state, `own` with none.
    */
-  otherCopies: { bookId: string; name: string; state: string }[];
+  otherCopies: { bookId: string; name: string; state: string; sharedAt: string | null; joined: boolean }[];
 }
 
 /** A copy of the invited book already on this device, and what joining would do to it (§8.2, §8.6, §8.7). */
@@ -645,14 +645,14 @@ export class SyncEngine {
   }
 
   /** D-A7: the books here that are likely another copy of the invite's workspace, from the inviter. Reads only. */
-  private async otherCopiesOf(preview: InvitePreview): Promise<{ bookId: string; name: string; state: string }[]> {
-    const rows = await this.database.db.values<[string, string, string | null]>(sql`
-      SELECT b.id, b.name, s.state FROM books b LEFT JOIN shared_books s ON s.book_id = b.id
+  private async otherCopiesOf(preview: InvitePreview): Promise<{ bookId: string; name: string; state: string; sharedAt: string | null; joined: boolean }[]> {
+    const rows = await this.database.db.values<[string, string, string | null, string | null, string]>(sql`
+      SELECT b.id, b.name, s.state, s.shared_at, b.kind FROM books b LEFT JOIN shared_books s ON s.book_id = b.id
       WHERE b.id <> ${preview.bookId} AND EXISTS (
         SELECT 1 FROM book_members m WHERE m.book_id = b.id
           AND (m.member_id = ${preview.inviterMemberId ?? ''} OR (m.name = ${preview.inviterName} AND m.role = 'owner')))
       ORDER BY b.name, b.id`);
-    return rows.map(([bookId, name, state]) => ({ bookId, name, state: state ?? 'own' }));
+    return rows.map(([bookId, name, state, sharedAt, kind]) => ({ bookId, name, state: state ?? 'own', sharedAt, joined: kind === 'shared' }));
   }
 
   /**

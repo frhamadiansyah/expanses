@@ -205,13 +205,15 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
     });
 
   // The app cannot stay in a workspace that has just gone: it falls back to Personal, as every other fallback does.
-  const leave = async () => {
+  // A delete that let a newer share's waiting rows in lands on that share's page, where Place them now is (review I-5).
+  const leave = async (nextBookId?: string) => {
     if (book.id === ws.bookId) {
       const rest = (books.data ?? []).filter((other) => other.id !== book.id);
       const next = rest.find((other) => other.kind === 'personal') ?? rest[0];
       if (next) await switchBook(next.id);
     }
-    void navigate({ to: '/account' });
+    if (nextBookId) void navigate({ to: '/account/workspaces/$bookId', params: { bookId: nextBookId } });
+    else void navigate({ to: '/account' });
   };
 
   const remove = () =>
@@ -222,9 +224,12 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
         return null;
       }
       const plan = await planBookDelete(database, ws, book.id);
-      // An active joined copy is refused only until it is left: Leave and delete asks once and does both.
+      // An active joined copy is refused only until it is left: Leave and delete asks once and does both. It is
+      // planned as if left (review I-1), so a split, a record, a draft or own trades refuse here, before the leave.
       if (plan.refusalCode === 'SHARED' && book.kind === 'shared') {
-        setLeavingDelete(plan);
+        const asLeft = await planBookDelete(database, ws, book.id, { asIfLeft: true });
+        if (asLeft.refusal) throw new BookError(asLeft.refusalCode ?? 'IN_USE', asLeft.refusal);
+        setLeavingDelete(asLeft);
         return null;
       }
       if (plan.refusal) throw new BookError(plan.refusalCode ?? 'IN_USE', plan.refusal);
@@ -317,7 +322,9 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
         )}
       </div>
       {deleting && <DeleteWorkspaceSheet book={book} plan={deleting} onClose={() => setDeleting(null)} onDeleted={leave} />}
-      {leavingDelete && <LeaveAndDeleteSheet book={book} plan={leavingDelete} onClose={() => setLeavingDelete(null)} onDeleted={leave} />}
+      {leavingDelete && (
+        <LeaveAndDeleteSheet book={book} plan={leavingDelete} onClose={() => setLeavingDelete(null)} onDeleted={leave} onLeftNotDeleted={(line) => setError(new Error(line))} />
+      )}
       {offering && <BusinessListAlert onUse={() => void useBusinessList()} onClose={() => setOffering(false)} />}
       {renaming && <NameSheet current={book.name} busy={busy} onSave={rename} onClose={() => setRenaming(false)} />}
       {choosingCurrency && (

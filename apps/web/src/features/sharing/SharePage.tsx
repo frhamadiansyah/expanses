@@ -16,7 +16,8 @@ import { InviteCard } from './InviteCard';
 import { type ShareEventRow, shareEventRows } from './share-events';
 import { useNetWorthGroup } from './net-worth-queries';
 import { netWorthRowOf, netWorthValue } from './net-worth-state';
-import { useBookStatus, useLostHere, useShareHealth, useSharingDetail, useSyncStatus } from './queries';
+import { PlaceHeldSheet } from './PlaceHeldSheet';
+import { useBookStatus, useCopyRoles, useLostHere, useShareHealth, useSharingDetail, useSyncStatus } from './queries';
 import { keepOpenInvite, useActionRunner, useOpenInvite, useShareBook } from './share-hooks';
 import { rememberedName, rememberName, thisDeviceName } from './SharingSection';
 import {
@@ -36,10 +37,7 @@ import {
   leaveConfirm,
   LOST_LINE,
   ownersGoneConfirm,
-  PLACE_CONFIRM,
   PLACE_LABEL,
-  PLACE_TITLE,
-  placedLine,
   preparing,
   READ_ONLY_NOTE,
   sayError,
@@ -97,6 +95,7 @@ function ShareBody({ book }: { book: BookRow }) {
 
 /** Discard old share (§7, review N2): asked, then this phone's record of the lost share goes and Share works again. */
 function DiscardSheet({ book, onClose }: { book: BookRow; onClose: () => void }) {
+  const joined = book.kind === 'shared';
   const { sync } = useApp();
   const { busy, error, run } = useActionRunner();
   return (
@@ -114,7 +113,7 @@ function DiscardSheet({ book, onClose }: { book: BookRow; onClose: () => void })
       }}
     >
       <ErrorBox error={error} />
-      <p className="text-[15px] leading-[20px]">{discardConfirm(book.name)}</p>
+      <p className="text-[15px] leading-[20px]">{discardConfirm(book.name, joined)}</p>
     </Sheet>
   );
 }
@@ -259,6 +258,7 @@ function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
   const live = useSyncStatus(book.id);
   const engineStatus = useBookStatus(book.id);
   const health = useShareHealth(book.id).data;
+  const roles = useCopyRoles(book.id).data;
   const group = useNetWorthGroup(book.id);
   const invite = useOpenInvite(book.id);
   const [confirming, setConfirming] = useState<Confirming>(null);
@@ -286,7 +286,8 @@ function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
   const failedLine = live.failing && live.lastError ? lastFailedLine(live.lastError) : undefined;
   // Under the status, in this order (§4.4, §8.1): rows another copy here holds, then a quiet other side.
   const held = active ? (health?.held ?? []) : [];
-  const heldText = heldLine(held);
+  // Each holder by its label, so two copies called Home are told apart (review I-2).
+  const heldText = heldLine(held.map((row) => ({ holderName: roles?.labels[row.holderBookId] ?? row.holderName, holderExists: row.holderExists })));
   const placeable = held.length > 0 && held.every((row) => !row.holderExists);
   const silenceText = active && health ? shareSilenceLine(health.silence, { syncedAt: lastSynced, nowMs: now }) : null;
   const silenceOf = new Map((health?.silence ?? []).map((s) => [s.memberId, s]));
@@ -340,6 +341,14 @@ function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
       {placeable || placed ? (
         <InsetGroup wide footer={placed ?? undefined}>
           {placeable ? <InsetRow testId="sharing-place-row" icon={<Inbox size={15} aria-hidden />} title={PLACE_LABEL} disabled={busy} onClick={() => setConfirming({ kind: 'place' })} chevron={false} /> : null}
+        </InsetGroup>
+      ) : null}
+      {/* The copy that holds part of this share, one tap away: its page is where it is deleted (review I-2). */}
+      {roles && roles.heldBy.length > 0 ? (
+        <InsetGroup wide>
+          {roles.heldBy.map((holder) => (
+            <InsetRow key={holder.bookId} testId="sharing-holder-row" icon={<TriangleAlert size={15} aria-hidden />} title={holder.label} to="/account/workspaces/$bookId" params={{ bookId: holder.bookId }} />
+          ))}
         </InsetGroup>
       ) : null}
 
@@ -414,21 +423,7 @@ function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
         </Sheet>
       ) : null}
       {confirming?.kind === 'place' ? (
-        <Sheet
-          title={PLACE_TITLE}
-          onClose={() => setConfirming(null)}
-          confirm={{
-            label: PLACE_LABEL,
-            disabled: busy,
-            run: () => {
-              setConfirming(null);
-              setPlaced(null);
-              void run(async () => setPlaced(placedLine(await sync.placeHeldRows(book.id))));
-            },
-          }}
-        >
-          <p className="text-[15px] leading-[20px]">{PLACE_CONFIRM}</p>
-        </Sheet>
+        <PlaceHeldSheet bookId={book.id} onClose={() => setConfirming(null)} onPlaced={setPlaced} />
       ) : null}
       {confirming?.kind === 'stop' ? (
         <Sheet

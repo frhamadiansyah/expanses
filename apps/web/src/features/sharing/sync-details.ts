@@ -125,7 +125,7 @@ export function syncDetailsText(d: SyncDetails): string {
     d.live.lastError ? `Last error ${d.live.lastError}` : null,
     d.finding ? `Share record at open: ${d.finding}` : null,
     d.held?.length ? `Held by another copy here ${d.held.length}` : null,
-    ...(d.held ?? []).map((row) => `  ${row.entity} ${shortId(row.id)} · holder ${shortId(row.holderBookId)}${row.holderExists ? '' : ' (gone)'}`),
+    ...(d.held ?? []).map((row) => `  ${row.entity} ${shortId(row.id)} · holder ${shortId(row.holderBookId)}${row.holderExists ? '' : ' (deleted)'}`),
     '',
     d.log.length ? `Log, newest first (${d.log.length})` : 'Log: nothing recorded on this device',
     ...d.log.map(formatSyncLogEntry),

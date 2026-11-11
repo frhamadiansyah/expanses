@@ -505,6 +505,36 @@ describe('SyncService', () => {
       dewi.service.stop();
     });
 
+    it('Leave and delete over a purchase split with Personal is refused before the leave: the share stays active (A8 review I-1)', async () => {
+      const relay = new MemoryTransport();
+      const fandri = await phone(relay, 'Fandri');
+      const dewi = await phone(relay, 'Dewi');
+      await fandri.service.start();
+      await dewi.service.start();
+      const { bookId, invite } = await sharedHome(fandri);
+      await dewi.service.join(invite.code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'iPhone' });
+      const personalId = (await personalBook(dewi.database, dewi.ws)).id;
+      const ownGroceries = await groceries(dewi.database, personalId);
+      // One purchase, one part on the copy's category and one on Personal's: a split across workspaces.
+      await postTransaction(dewi.database, { ...dewi.ws, bookId: personalId }, {
+        occurredOn: '2026-09-03',
+        description: 'Market run',
+        acrossBooks: true,
+        lines: [
+          { accountId: await groceries(dewi.database, bookId), amountMinor: 12_300, currency: 'IDR' },
+          { accountId: ownGroceries, amountMinor: 4_100, currency: 'IDR' },
+          { accountId: dewi.bank, amountMinor: -16_400, currency: 'IDR' },
+        ],
+      });
+      await expect(dewi.service.leaveAndDelete(dewi.ws, bookId)).rejects.toMatchObject({ code: 'SPLIT' });
+      expect((await listSharedBooks(dewi.database)).find((b) => b.bookId === bookId)).toMatchObject({ state: 'active' });
+      await expect(dewi.service.deleteHereOnly(dewi.ws, bookId)).rejects.toMatchObject({ code: 'SPLIT' });
+      expect((await listSharedBooks(dewi.database)).find((b) => b.bookId === bookId)).toMatchObject({ state: 'active' });
+      expect(dewi.service.syncing()).toContain(bookId);
+      fandri.service.stop();
+      dewi.service.stop();
+    });
+
     it('Leave and delete with the relay out of reach changes nothing; Delete here only then erases the copy alone', async () => {
       const relay = new MemoryTransport();
       const fandri = await phone(relay, 'Fandri');
@@ -554,7 +584,7 @@ describe('SyncService', () => {
       await dewi.service.join(first.invite.code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'iPhone' });
       const second = await sharedHome(fandri, 'Home again');
       const preview = await dewi.service.preview(second.invite.code);
-      expect(preview.otherCopies).toEqual([{ bookId: first.bookId, name: 'Home', state: 'active' }]);
+      expect(preview.otherCopies).toEqual([{ bookId: first.bookId, name: 'Home', state: 'active', sharedAt: expect.any(String), joined: true }]);
       // Nothing else on Fandri's own phone is another copy of a book he owns there.
       const own = await fandri.service.preview(first.invite.code).catch(() => null);
       expect(own?.otherCopies ?? []).not.toContainEqual(expect.objectContaining({ bookId: first.bookId }));

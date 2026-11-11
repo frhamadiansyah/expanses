@@ -286,8 +286,10 @@ export const PLACE_CONFIRM = 'The share is read again from its start, and the ro
 
 /** After Place them now: how many came in, from the result. */
 export function placedLine(done: { placed: number; stillHeld: number }): string {
-  if (done.placed === 0) return 'Nothing was waiting.';
-  return `${done.placed} ${done.placed === 1 ? 'row' : 'rows'} placed.`;
+  const rows = (n: number) => `${n} ${n === 1 ? 'row' : 'rows'}`;
+  const waiting = `${rows(done.stillHeld)} still ${done.stillHeld === 1 ? 'waits' : 'wait'}`;
+  if (done.placed === 0) return done.stillHeld === 0 ? 'Nothing was waiting.' : `Nothing placed; ${waiting}.`;
+  return done.stillHeld === 0 ? `${rows(done.placed)} placed.` : `${rows(done.placed)} placed; ${waiting}.`;
 }
 
 /**
@@ -297,8 +299,9 @@ export function placedLine(done: { placed: number; stillHeld: number }): string 
 export const LOST_LINE = (book: string) => `${book} lost its share on this phone. Records here are safe. To share it again, discard the old share first.`;
 export const DISCARD_LABEL = 'Discard old share';
 export const DISCARD_TITLE = 'Discard the old share?';
-export function discardConfirm(book: string): string {
-  return `${book} was shared from this phone before, and that share cannot be brought back here in this update. Discarding it lets ${book} be shared again. Nothing in ${book} changes, and no other copy is touched.`;
+export function discardConfirm(book: string, joined = false): string {
+  const before = joined ? `${book} was in a share on this phone before` : `${book} was shared from this phone before`;
+  return `${before}, and that share cannot be brought back here in this update. Discarding it lets ${book} be shared again. Nothing in ${book} changes, and no other copy is touched.`;
 }
 
 /** Keep as own copy, asked (D-A11). */
@@ -319,7 +322,43 @@ export function ownersGoneConfirm(book: string, owners: readonly string[], since
 }
 
 /**
- * Before joining beside another copy of the same workspace (D-A7): a warning, never a stop. The safe order (A6 review)
- * is join first, then delete the old copy, then Place them now — deleting first can count own purchases twice.
+ * Which copy a workspace is, where two of the same name sit on this phone (A8 review I-2): "Home · joined 3 Oct",
+ * "Home · joined today", "Home · shared 1 Sept". The name alone when no share date is known.
  */
-export const OTHER_COPY_LINE = 'Another copy of this workspace is on this phone. Join first, then delete the old copy; its rows come in with Place them now.';
+export function copyLabel(copy: { name: string; joined: boolean; sharedAt: string | null }, nowMs: number): string {
+  const at = copy.sharedAt ? Date.parse(copy.sharedAt) : Number.NaN;
+  if (!Number.isFinite(at)) return copy.name;
+  const day = new Date(at).toDateString() === new Date(nowMs).toDateString() ? 'today' : dayMonth(at);
+  return `${copy.name} · ${copy.joined ? 'joined' : 'shared'} ${day}`;
+}
+
+/**
+ * Before joining beside another copy of the same workspace (D-A7), naming it: a warning, never a stop. The safe order
+ * (A6 review) is join first, then delete the old copy — Leave and delete while it is still shared — then Place them
+ * now; deleting first can count own purchases twice.
+ */
+export function otherCopyLine(copies: readonly { label: string; active: boolean }[]): string {
+  const how = copies.some((copy) => copy.active) ? 'Leave and delete' : 'delete';
+  const which = nameList(copies.map((copy) => copy.label));
+  const one = copies.length === 1;
+  return `${one ? 'Another copy' : 'Other copies'} of this workspace ${one ? 'is' : 'are'} on this phone: ${which}. Join first, then ${how} the old ${one ? 'copy' : 'copies'}; ${one ? 'its' : 'their'} rows come in with Place them now.`;
+}
+
+/** Which of two copies a delete sheet is on (A8 review I-2): this one, and what it is to the other. */
+export function thisCopyLine(label: string): string {
+  return `This is ${label}.`;
+}
+/** A copy whose rows a newer share here waits for: deleting it is the step. */
+export function holdsForLine(newer: string): string {
+  return `This copy holds rows of the newer share, ${newer}; deleting it lets them come in.`;
+}
+/** The newer share itself, waiting on an old copy: deleting this one is the wrong tap. */
+export function isNewerLine(older: string): string {
+  return `This is the newer share; the copy to delete is ${older}.`;
+}
+
+/** After Leave and delete (or Delete here only) left the share but the delete refused (A8 review I-1). */
+export function leftNotDeletedLine(book: string, reason: string, how: 'left' | 'forgotten'): string {
+  const first = how === 'left' ? 'Left the share.' : 'The share was forgotten on this phone.';
+  return `${first} ${book} was not deleted: ${reason}`;
+}

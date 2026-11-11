@@ -7,6 +7,7 @@ import {
   arrivingLine,
   DELETE_HERE_ONLY_ASK,
   DELETE_HERE_ONLY_LABEL,
+  JOIN_FIRST_WARNING,
   deleteCopyConfirm,
   deleteRefusal,
   deleteStep,
@@ -88,8 +89,9 @@ describe('Delete of a copy that is no longer shared (D-A8, D-A9)', () => {
     expect(ownPurchasesLine(3, false)).toBe("3 purchases paid from own accounts are erased, and those accounts' balances change");
     expect(ownRecordsLine(1)).toBe('1 trade or sale is kept in Personal');
     expect(ownRecordsLine(2)).toBe('2 trades or sales are kept in Personal');
-    expect(arrivingLine(1)).toBe('1 purchase will come back through the new share');
-    expect(arrivingLine(5)).toBe('5 purchases will come back through the new share');
+    expect(arrivingLine(1, 'Home · joined today')).toBe('1 purchase will come back with Place them now on Home · joined today');
+    expect(arrivingLine(5, null)).toBe('5 purchases will come back with Place them now on the new share');
+    expect(JOIN_FIRST_WARNING).toBe('Join the new share first; purchases it brings back would otherwise be counted twice.');
     expect(KEEP_LABEL).toBe('Keep them in Personal');
     expect(NOT_SENT_NOTE).toBe('What is kept stays on this phone in Personal. It is not sent to anyone, even when Personal is shared.');
   });

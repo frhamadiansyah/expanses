@@ -82,6 +82,17 @@ export interface BookDeletePlan {
 export interface DeleteBookOptions {
   /** A joined copy's own purchases (`BookDeletePlan.ownPurchases`) move into Personal first. Default true. */
   keepOwnInPersonal?: boolean;
+  /** See `PlanOptions.asIfLeft`: a joined copy whose share was just forgotten here deletes as a left one would. */
+  asIfLeft?: boolean;
+}
+
+export interface PlanOptions {
+  /**
+   * Leave and delete, Delete here only (sharing resilience §5.1, A8 review I-1): plan a joined copy as if it were
+   * already left — no `SHARED` refusal, read-only — so every other refusal and the own trades and sales are known
+   * before the leave, which cannot be undone.
+   */
+  asIfLeft?: boolean;
 }
 
 export const PERSONAL_MESSAGE = 'Personal is where categories and expected income fall back to, so it cannot be deleted.';
@@ -118,7 +129,7 @@ async function shareRefusal(tx: Db, book: BookRow): Promise<string | null> {
 }
 
 /** What deleting the workspace would take, and whether it may. Reads only. */
-async function planTx(tx: Db, ws: WorkspaceContext, book: BookRow): Promise<BookDeletePlan> {
+async function planTx(tx: Db, ws: WorkspaceContext, book: BookRow, options: PlanOptions = {}): Promise<BookDeletePlan> {
   const splits = await bookSplitsExist(tx);
   const bookId = book.id;
   const categoryRows = await tx
@@ -138,7 +149,8 @@ async function planTx(tx: Db, ws: WorkspaceContext, book: BookRow): Promise<Book
   const kept = records.own.length + records.other.length;
   // A read-only joined copy cannot have them undone or moved first (fix round 2, N1): its own trades and sales are kept
   // in Personal by the delete itself; only the rest refuse, in words that ask for nothing the app would refuse.
-  const readOnly = erases && (await readOnlyCopyTx(tx, bookId, book.kind));
+  const asIfLeft = options.asIfLeft === true && book.kind === 'shared';
+  const readOnly = erases && (asIfLeft || (await readOnlyCopyTx(tx, bookId, book.kind)));
   const ownRecords = readOnly ? records.own.length : 0;
   const refusedRecords = kept - ownRecords;
 
@@ -156,7 +168,7 @@ async function planTx(tx: Db, ws: WorkspaceContext, book: BookRow): Promise<Book
   });
 
   if (book.kind === 'personal') return plan('PERSONAL_BOOK', PERSONAL_MESSAGE);
-  const shared = await shareRefusal(tx, book);
+  const shared = asIfLeft ? null : await shareRefusal(tx, book);
   if (shared) return plan('SHARED', shared);
   const [{ open }] = (await tx.values<[number]>(sql`SELECT count(*) FROM books WHERE workspace_id = ${ws.workspaceId} AND archived_at IS NULL`)).map(([open]) => ({ open: Number(open) })) as [{ open: number }];
   if (!book.archivedAt && open <= 1) return plan('LAST_BOOK', 'The last workspace cannot be deleted.');
@@ -196,7 +208,7 @@ async function planTx(tx: Db, ws: WorkspaceContext, book: BookRow): Promise<Book
 }
 
 /** What deleting the workspace would take and whether it may, for the page to show before anything is asked. */
-export async function planBookDelete(database: Database, ws: WorkspaceContext, bookId: string): Promise<BookDeletePlan> {
+export async function planBookDelete(database: Database, ws: WorkspaceContext, bookId: string, options: PlanOptions = {}): Promise<BookDeletePlan> {
   const [row] = await database.db.select().from(books).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId)));
   if (!row) throw new BookError('NOT_FOUND', 'That workspace is not here');
   return planTx(database.db, ws, {
@@ -206,7 +218,7 @@ export async function planBookDelete(database: Database, ws: WorkspaceContext, b
     baseCurrency: row.baseCurrency,
     countEventsInBudget: row.countEventsInBudget === 1,
     archivedAt: row.archivedAt,
-  });
+  }, options);
 }
 
 /**
@@ -234,7 +246,9 @@ export async function deleteBook(
       countEventsInBudget: row.countEventsInBudget === 1,
       archivedAt: row.archivedAt,
     };
-    const plan = await planTx(tx, ws, book);
+    // As if left only once no share is active here (Delete here only, after its forget): a live copy still refuses.
+    const live = (await tableExists(tx, 'shared_books')) && (await tx.values(sql`SELECT 1 FROM shared_books WHERE book_id = ${bookId} AND state = 'active'`)).length > 0;
+    const plan = await planTx(tx, ws, book, { asIfLeft: options.asIfLeft === true && !live });
     if (plan.refusal && plan.refusalCode) throw new BookError(plan.refusalCode, plan.refusal);
     const audit = async (payload: Record<string, unknown>) =>
       tx.insert(auditLog).values({

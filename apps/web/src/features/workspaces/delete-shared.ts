@@ -49,10 +49,19 @@ export function ownRecordsLine(n: number): string {
   return `${plural(n, 'trade or sale', 'trades or sales')} ${n === 1 ? 'is' : 'are'} kept in Personal`;
 }
 
-/** Purchases the copy holds that a new share already carries (A6 fix): they come back through it, not through the keep. */
-export function arrivingLine(n: number): string {
-  return `${plural(n, 'purchase', 'purchases')} will come back through the new share`;
+/**
+ * Purchases the copy holds that a new share already carries (A6 fix): they come back through it, not through the
+ * keep — once Place them now runs on that copy (A8 review I-5).
+ */
+export function arrivingLine(n: number, newCopy: string | null): string {
+  return `${plural(n, 'purchase', 'purchases')} will come back with Place them now on ${newCopy ?? 'the new share'}`;
 }
+
+/**
+ * Under the keep switch while no newer share of this workspace is here yet (A8 review I-3; the safe order is join
+ * first): kept purchases that a later share also brings back would be counted twice.
+ */
+export const JOIN_FIRST_WARNING = 'Join the new share first; purchases it brings back would otherwise be counted twice.';
 
 /**
  * Why Delete cannot run, in the plan's own words: any refusal but the active copy's (which Leave and delete answers by
