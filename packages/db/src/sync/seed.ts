@@ -263,36 +263,68 @@ export async function rowsInScopeTx(tx: Tx, book: SharedBook, keep: (entity: str
     ...(await rows('goal_member_move')),
   );
 
+  if (record) await recordLineagesTx(tx, book);
   // Every non-void purchase, oldest first. A void one never existed for the other member. A purchase split across
   // workspaces (0084) with a part here goes as that part (`projectPurchase`).
-  const heads = await tx.values<[string]>(sql`
-    SELECT t.id FROM transactions t
-    WHERE ${filedInBook(sql`t.id`, book.bookId, await bookSplitsExist(tx))} AND t.status = 'posted'
-    ORDER BY t.occurred_on, t.created_at, t.rowid`);
-  for (const [head] of heads) {
-    let lineageId = await lineageOfTransaction(tx, head);
-    let [known] = await tx.values<[string, string, string | null, string | null, string | null]>(
-      sql`SELECT paid_by, paid_label, paid_from_owner, paid_from_item, head_transaction_id FROM sync_lineage WHERE lineage_id = ${lineageId}`,
-    );
-    // Void wins for ever: a row of a void lineage back in the book (moved out and back, a split's part taken off and
-    // put back) is a new purchase, under a lineage of its own rooted at it — as capture makes one (`resolveLineage`).
-    if (known && known[4] === null) {
-      lineageId = head;
-      known = undefined;
-    }
+  for (const [head] of await postedHeadsTx(tx, book.bookId)) {
+    const { lineageId, known } = await purchaseLineageTx(tx, head);
     if (!keep('purchase', lineageId)) continue;
-    if (!known && !record) continue;
-    const purchase = (await projectPurchase(tx, head, book.memberId, known ? { paidBy: known[0], paidLabel: known[1], paidFrom: paidFromOf(known[2], known[3]) } : null))!;
-    if (!known) {
-      purchase.money.paidBy = book.memberId;
-      await tx.run(
-        sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item)
-            VALUES (${lineageId}, ${book.bookId}, ${head}, ${book.memberId}, ${purchase.money.paidLabel}, ${purchase.money.paidFrom?.owner ?? null}, ${purchase.money.paidFrom?.itemId ?? null})`,
-      );
-    }
+    if (!known) continue; // only without `record`: a snapshot writes nothing, and a purchase with no lineage is not sent
+    const purchase = (await projectPurchase(tx, head, book.memberId, { paidBy: known[0], paidLabel: known[1], paidFrom: paidFromOf(known[2], known[3]) }))!;
     ops.push({ entity: 'purchase', id: lineageId, op: 'upsert', fields: { ...purchase } });
   }
   return ops;
+}
+
+/** The posted transactions filed in the book, oldest first: each the head of one purchase. */
+async function postedHeadsTx(tx: Db, bookId: string): Promise<[string][]> {
+  return tx.values<[string]>(sql`
+    SELECT t.id FROM transactions t
+    WHERE ${filedInBook(sql`t.id`, bookId, await bookSplitsExist(tx))} AND t.status = 'posted'
+    ORDER BY t.occurred_on, t.created_at, t.rowid`);
+}
+
+/**
+ * The lineage a posted head travels as, and its `sync_lineage` row when one is here. Void wins for ever: a row of a void
+ * lineage back in the book (moved out and back, a split's part taken off and put back) is a new purchase, under a
+ * lineage of its own rooted at it — as capture makes one (`resolveLineage`).
+ */
+async function purchaseLineageTx(tx: Db, head: string): Promise<{ lineageId: string; known: [string, string, string | null, string | null] | undefined }> {
+  const lineageId = await lineageOfTransaction(tx, head);
+  const [known] = await tx.values<[string, string, string | null, string | null, string | null]>(
+    sql`SELECT paid_by, paid_label, paid_from_owner, paid_from_item, head_transaction_id FROM sync_lineage WHERE lineage_id = ${lineageId}`,
+  );
+  if (known && known[4] === null) return { lineageId: head, known: undefined };
+  return { lineageId, known: known ? [known[0], known[1], known[2], known[3]] : undefined };
+}
+
+/**
+ * Every posted purchase filed in the book with no `sync_lineage` row gets one (seeding, a rejoin before its pull, D-A6),
+ * rooted where capture would root it and headed by the row here, so a pull that names it edits that row instead of
+ * posting the purchase a second time. Paid by this member, unless its money side sits wholly on another member's
+ * placeholder: that member paid it (`projectPurchase` reads it so), and the lineage says the same. Returns how many.
+ *
+ * `rejoin`: a field clock of such a purchase, live or kept (N2), goes too. It vouches for a version of the purchase this
+ * phone no longer ties to any row here, so the log's values win on the pull (as for any copy from before the share,
+ * §6.6), and who paid and the label it was paid as come back exactly as every other phone has them.
+ */
+export async function recordLineagesTx(tx: Tx, book: SharedBook, options: { rejoin?: boolean } = {}): Promise<number> {
+  let recorded = 0;
+  for (const [head] of await postedHeadsTx(tx, book.bookId)) {
+    const { lineageId, known } = await purchaseLineageTx(tx, head);
+    if (known) continue;
+    const purchase = (await projectPurchase(tx, head, book.memberId, null))!;
+    await tx.run(
+      sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item)
+          VALUES (${lineageId}, ${book.bookId}, ${head}, ${purchase.money.paidBy}, ${purchase.money.paidLabel}, ${purchase.money.paidFrom?.owner ?? null}, ${purchase.money.paidFrom?.itemId ?? null})`,
+    );
+    if (options.rejoin) {
+      await tx.run(sql`DELETE FROM sync_field_clocks WHERE book_id = ${book.bookId} AND entity = 'purchase' AND id = ${lineageId}`);
+      await tx.run(sql`DELETE FROM sync_kept_clocks WHERE book_id = ${book.bookId} AND entity = 'purchase' AND id = ${lineageId}`);
+    }
+    recorded += 1;
+  }
+  return recorded;
 }
 
 /* ------------------------------------------------ clocks kept while a share is down (N2) */
