@@ -1,7 +1,7 @@
 import { CATALOG, type CatalogEntry } from '@expanses/catalog';
 import { debtItem, groupTypedAmount, isoDate, loanRatePer } from '@expanses/core';
-import { applyCatalogEntry, createAccount, createCardAccount, openDebtBalance, saveCardTerms, saveLoanTerms, setLoanItem } from '@expanses/db';
-import { useNavigate } from '@tanstack/react-router';
+import { addRatePeriod, applyCatalogEntry, createAccount, createCardAccount, openDebtBalance, saveCardTerms, saveLoanTerms, setLoanItem } from '@expanses/db';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Search } from 'lucide-react';
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -16,7 +16,20 @@ import { memberLevelsOf } from '../cards/catalog-picker';
 import { catalogueOffers, entryOnRow } from './card-row';
 import { CardSearch } from './CardSearch';
 import { fieldsFor, handOverRows } from './catalogue-view';
-import { cardAccountName, type DebtItemDraft, emptyDebtItemDraft, planNewCard, planNewDebt, splitCardName } from './debt-form';
+import { kindOfItem } from '../calculators/loan-calc-view';
+import {
+  type CalculatorPrefill,
+  calculatorStageSpans,
+  cardAccountName,
+  type DebtItemDraft,
+  draftFromCalculator,
+  emptyDebtItemDraft,
+  planNewCard,
+  planNewDebt,
+  readCalculatorPrefill,
+  splitCardName,
+  stageSpanText,
+} from './debt-form';
 import { CurrencySheet } from '../currency/CurrencySheet';
 import { OwnablePicker } from './OwnablePicker';
 import { BankNameRow, type EmbeddedForm, MoneyRow } from './CashAccountForm';
@@ -30,7 +43,10 @@ import { useShareOnAdd } from '../sharing/ShareWithHousehold';
  * form rather than opening half a card.
  */
 export function AddDebtPage() {
-  const [chosen, setChosen] = useState<string | null>(null);
+  // The loan calculator's Save as debt lands here with the loan in the address: its debt chosen, its form filled in.
+  const { calc } = useSearch({ strict: false }) as { calc?: unknown };
+  const [prefill] = useState<CalculatorPrefill | null>(() => readCalculatorPrefill(calc));
+  const [chosen, setChosen] = useState<string | null>(prefill?.item ?? null);
   const card = chosen !== null && debtItem(chosen).behaviour.opens === 'card';
   return (
     <OwnablePicker
@@ -41,7 +57,7 @@ export function AddDebtPage() {
       onChoose={setChosen}
       handOver={handOverRows('debt')}
     >
-      {chosen && (card ? <NewCardForm key={chosen} /> : <DebtItemForm key={chosen} item={chosen} />)}
+      {chosen && (card ? <NewCardForm key={chosen} /> : <DebtItemForm key={chosen} item={chosen} prefill={prefill?.item === chosen ? prefill : null} />)}
     </OwnablePicker>
   );
 }
@@ -67,14 +83,16 @@ export function AddCardPage() {
  * terms that give it a schedule; money owed to a person is opened by the Lend & borrow ledger instead, which
  * keeps both sides of it.
  */
-function DebtItemForm({ item }: { item: string }) {
+function DebtItemForm({ item, prefill }: { item: string; prefill: CalculatorPrefill | null }) {
   const { database, ws } = useApp();
   const household = useShareOnAdd('debt-shared-switch');
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
   const today = isoDate();
-  const [draft, setDraft] = useState<DebtItemDraft>(() => emptyDebtItemDraft(item, today));
+  const [draft, setDraft] = useState<DebtItemDraft>(() => (prefill ? draftFromCalculator(prefill, today) : emptyDebtItemDraft(item, today)));
+  const calc = draft.fromCalculator;
+  const spans = calc ? calculatorStageSpans(calc, draft.term) : [];
   // A debt in another currency is ordinary — a dollar car loan is a dollar car loan — so the workspace's own is
   // only the answer already filled in. The figure is read in whichever currency is chosen.
   const [currency, setCurrency] = useState(ws.baseCurrency);
@@ -136,6 +154,8 @@ function DebtItemForm({ item }: { item: string }) {
         openingRateToBase,
       });
       if (plan.terms) await saveLoanTerms(database, ws, { accountId: account.id, ...plan.terms });
+      // The calculator's later stages, each a rate change from its first payment: the schedule it showed, to the unit.
+      for (const period of plan.laterPeriods) await addRatePeriod(database, ws, { accountId: account.id, ...period });
       // Which kind of loan it is, in the words of the item that was just chosen: what the Debts page folds by.
       await setLoanItem(database, ws, account.id, item);
       await household.save([account.id]);
@@ -178,7 +198,7 @@ function DebtItemForm({ item }: { item: string }) {
         )}
         {asks.includes('lender') && <TextRow label="Lender" value={draft.lender} onChange={(e) => set({ lender: e.target.value })} placeholder="Bank or lender" required />}
         {asks.includes('person') && <TextRow label="Who" value={draft.person} onChange={(e) => set({ person: e.target.value })} placeholder="Name" required />}
-        {asks.includes('rate') && (
+        {asks.includes('rate') && !calc && (
           <TextRow
             label={monthly ? 'Interest a month' : 'Interest rate'}
             value={draft.rate}
@@ -188,9 +208,31 @@ function DebtItemForm({ item }: { item: string }) {
           />
         )}
         {asks.includes('term') && <TextRow label="Months left" value={draft.term} onChange={(e) => set({ term: e.target.value })} inputMode="numeric" placeholder="Months" />}
+        {calc && (
+          <TextRow
+            label="First payment"
+            type="date"
+            value={calc.firstPaymentOn}
+            onChange={(e) => set({ fromCalculator: { ...calc, firstPaymentOn: e.target.value } })}
+          />
+        )}
         {household.row}
         <TextRow label="Owed as of" type="date" value={draft.openedOn} max={today} onChange={(e) => set({ openedOn: e.target.value })} />
       </InsetGroup>
+      {/* The calculator's rate stages, as they will be saved: the first is the loan's rate, each later one a rate change. */}
+      {calc && (
+        <InsetGroup header="Rate" footer="From the calculator. Each figure can still be changed before saving.">
+          {spans.map((span, index) => {
+            const words = stageSpanText(spans, index, calc.method, monthly ? 'month' : 'year');
+            return <InsetRow key={span.fromMonth} testId="calculator-stage" title={words.title} subtitle={words.subtitle} chevron={false} />;
+          })}
+        </InsetGroup>
+      )}
+      {opensLoan && !calc && (
+        <InsetGroup>
+          <InsetRow title="Work it out first" to="/calculators/loan" search={{ kind: kindOfItem(item), item }} />
+        </InsetGroup>
+      )}
       <InsetGroup>
         {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
         <InsetRow title="Add debt" action onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />

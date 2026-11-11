@@ -1,6 +1,8 @@
 import type { CatalogEntry } from '@expanses/catalog';
-import { addMonths, calculatorLoan, debtItem, type LoanCalcStage, type LoanMethod, monthOf, parseMajor, rateBpsFromTyped } from '@expanses/core';
+import { addMonths, calculatorLoan, debtItem, type LoanCalcStage, type LoanMethod, monthOf, parseMajor, paymentDate, rateBpsFromTyped } from '@expanses/core';
 import { memberLevelsOf } from '../cards/catalog-picker';
+import { longMonth } from '../debt-plan/plan-view';
+import { rateTextPer } from '../loans/loan-view';
 
 /**
  * What a choice on the debt picker turns into, worked out without a browser.
@@ -278,6 +280,60 @@ export function draftFromCalculator(prefill: CalculatorPrefill, today: string): 
     term: String(prefill.months),
     fromCalculator: { firstPaymentOn: prefill.firstPaymentOn, method: prefill.method, stages: prefill.stages },
   };
+}
+
+/** A stage as Add debt lists it under Rate: its rate, how it is charged, and the months it runs, `2029-12`. */
+export interface CalculatorStageSpan {
+  rateBps: number;
+  kind: 'fixed' | 'floating';
+  fromMonth: string;
+  toMonth: string;
+}
+
+/**
+ * The calculator's stages over the months left as typed now: the last stage takes what the others leave, and the
+ * stages that no longer fit are not listed (saving refuses them). Empty while the months left do not read.
+ */
+export function calculatorStageSpans(calc: CalculatorTerms, term: string): CalculatorStageSpan[] {
+  const months = Number(term.trim());
+  if (!Number.isInteger(months) || months < 1 || !DATE.test(calc.firstPaymentOn)) return [];
+  const day = Math.min(Number(calc.firstPaymentOn.slice(8, 10)), 28);
+  const spans: CalculatorStageSpan[] = [];
+  let start = 0;
+  calc.stages.forEach((stage, index) => {
+    const last = index === calc.stages.length - 1;
+    const length = last ? months - start : stage.months;
+    if (length < 1 || start + length > months) return;
+    spans.push({
+      rateBps: stage.rateBps,
+      kind: stage.kind,
+      fromMonth: paymentDate(calc.firstPaymentOn, day, start).slice(0, 7),
+      toMonth: paymentDate(calc.firstPaymentOn, day, start + length - 1).slice(0, 7),
+    });
+    start += length;
+  });
+  return spans;
+}
+
+/**
+ * A stage's two lines under Rate: "5,5% a year, fixed" over "until November 2029"; the last floating one "from
+ * December 2029 · changes recorded as they come". A rate a month is written a month.
+ */
+export function stageSpanText(spans: readonly CalculatorStageSpan[], index: number, method: LoanMethod, per: 'month' | 'year'): { title: string; subtitle: string } {
+  const span = spans[index]!;
+  const rate = method === 'zero' || span.rateBps === 0 ? 'No interest' : per === 'month' ? rateTextPer(span.rateBps, 'month') : `${rateTextPer(span.rateBps, 'year')} a year`;
+  const how = method === 'zero' || span.rateBps === 0 ? '' : `, ${method === 'flat' ? 'flat' : span.kind}`;
+  const only = spans.length === 1;
+  const first = index === 0;
+  const last = index === spans.length - 1;
+  const subtitle = only
+    ? `${longMonth(span.fromMonth)} to ${longMonth(span.toMonth)}`
+    : first
+      ? `until ${longMonth(span.toMonth)}`
+      : last
+        ? `from ${longMonth(span.fromMonth)}${span.kind === 'floating' ? ' · changes recorded as they come' : ''}`
+        : `${longMonth(span.fromMonth)} to ${longMonth(span.toMonth)}`;
+  return { title: `${rate}${how}`, subtitle };
 }
 
 /** What the card form asks for, as typed. The chosen catalogue entry is passed beside it, not held in here. */

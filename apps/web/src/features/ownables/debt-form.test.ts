@@ -1,7 +1,7 @@
 import { CATALOG } from '@expanses/catalog';
 import { describe, expect, it } from 'vitest';
 import { calculatorLoan, type LoanCalcInput } from '@expanses/core';
-import { type CalculatorPrefill, cardAccountName, draftFromCalculator, emptyDebtItemDraft, emptyNewCardDraft, firstPaymentFor, issuerInName, type NewCardDraft, planNewCard, planNewDebt, readCalculatorPrefill, splitCardName } from './debt-form';
+import { type CalculatorPrefill, calculatorStageSpans, cardAccountName, stageSpanText, draftFromCalculator, emptyDebtItemDraft, emptyNewCardDraft, firstPaymentFor, issuerInName, type NewCardDraft, planNewCard, planNewDebt, readCalculatorPrefill, splitCardName } from './debt-form';
 
 const draft = (id: string, patch: Record<string, string>) => ({ ...emptyDebtItemDraft(id, '2026-09-18'), ...patch });
 
@@ -255,5 +255,34 @@ describe('a debt filled in by the loan calculator', () => {
   it('dates the first payment of any new loan next month on today’s day, the 28th at most', () => {
     expect(firstPaymentFor('2026-11-11')).toEqual({ firstPaymentOn: '2026-12-11', paymentDay: 11 });
     expect(firstPaymentFor('2026-12-30')).toEqual({ firstPaymentOn: '2027-01-28', paymentDay: 28 });
+  });
+});
+
+describe('the calculator’s stages as Add debt lists them', () => {
+  const calc = { firstPaymentOn: '2026-12-11', method: 'annuity' as const, stages: [{ months: 36, rateBps: 550, kind: 'fixed' as const }, { months: 204, rateBps: 1100, kind: 'floating' as const }] };
+
+  it('runs each stage over its months, the last to the end of the months left', () => {
+    expect(calculatorStageSpans(calc, '240')).toEqual([
+      { rateBps: 550, kind: 'fixed', fromMonth: '2026-12', toMonth: '2029-11' },
+      { rateBps: 1100, kind: 'floating', fromMonth: '2029-12', toMonth: '2046-11' },
+    ]);
+    expect(calculatorStageSpans(calc, '48').at(-1)).toEqual({ rateBps: 1100, kind: 'floating', fromMonth: '2029-12', toMonth: '2030-11' });
+  });
+
+  it('lists nothing that no longer fits', () => {
+    expect(calculatorStageSpans(calc, '36')).toEqual([{ rateBps: 550, kind: 'fixed', fromMonth: '2026-12', toMonth: '2029-11' }]);
+    expect(calculatorStageSpans(calc, '')).toEqual([]);
+  });
+});
+
+describe('a stage’s lines under Rate', () => {
+  const spans = calculatorStageSpans({ firstPaymentOn: '2026-12-11', method: 'annuity', stages: [{ months: 36, rateBps: 550, kind: 'fixed' }, { months: 204, rateBps: 1100, kind: 'floating' }] }, '240');
+
+  it('says the rate and when it runs, in the mockup’s words', () => {
+    expect(stageSpanText(spans, 0, 'annuity', 'year')).toEqual({ title: '5,5% a year, fixed', subtitle: 'until November 2029' });
+    expect(stageSpanText(spans, 1, 'annuity', 'year')).toEqual({ title: '11% a year, floating', subtitle: 'from December 2029 · changes recorded as they come' });
+    expect(stageSpanText(spans.slice(0, 1), 0, 'flat', 'year')).toEqual({ title: '5,5% a year, flat', subtitle: 'December 2026 to November 2029' });
+    expect(stageSpanText([{ rateBps: 3540, kind: 'fixed', fromMonth: '2026-12', toMonth: '2027-05' }], 0, 'flat', 'month').title).toBe('2,95% a month, flat');
+    expect(stageSpanText([{ rateBps: 0, kind: 'fixed', fromMonth: '2026-12', toMonth: '2027-05' }], 0, 'zero', 'month').title).toBe('No interest');
   });
 });
