@@ -1,7 +1,8 @@
 import { expenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
-import { postTransaction } from '../../src/index';
+import { createDatabase, postTransaction, type Database } from '../../src/index';
+import { createNodeExecutor } from '../../src/node';
 import { SyncEngine } from '../../src/sync/engine';
 import { MemoryShareRecordStore, type ShareRecord } from '../../src/sync/share-records';
 import { categoryOf, Household, type Device } from './household';
@@ -19,6 +20,13 @@ async function spend(d: Device, bookId: string, description: string, amountMinor
     description,
     lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: d.bank, amountMinor, currency: 'IDR' }),
   });
+}
+
+/** The phone's database lost and a copy put back: same keys, same share records (they live outside the database). */
+async function lose(d: Device, backup: Uint8Array): Promise<{ database: Database; engine: SyncEngine }> {
+  const database = createDatabase(createNodeExecutor());
+  await database.importBytes(backup);
+  return { database, engine: new SyncEngine(database, d.transport, d.keys, undefined, { shareRecords: d.records }) };
 }
 
 const cursorOf = async (d: Device, bookId: string) =>
@@ -78,12 +86,14 @@ describe('share records (spec §6.1)', () => {
     expect((await fandri.records.get(bookId))!.role).toBe('owner');
   });
 
-  it('carry the cursor once it moves, at most every 30 s, and at once on flush', async () => {
-    let t = Date.parse('2026-10-04T08:00:00Z');
+  it('carry the cursor once it moves, at most every 30 s, and at once on flush or when own entries went out', async () => {
+    let t = Date.now();
     const home = new Household();
     const dewi = await home.device('Dewi', undefined, 'IDR', '0.3.0', { now: () => t, recordEveryMs: 30_000 });
+    const fandri = await home.device('Fandri');
     const bookId = await home.share(dewi);
-    expect((await dewi.records.get(bookId))!.appliedSeq).toBe(0);
+    await home.join(fandri, dewi);
+    await home.settle();
 
     t += 31_000;
     await dewi.engine.syncOnce(bookId);
@@ -91,9 +101,11 @@ describe('share records (spec §6.1)', () => {
     expect(first).toBeGreaterThan(0);
     expect((await dewi.records.get(bookId))!.appliedSeq).toBe(first);
 
-    await spend(dewi, bookId, 'Market, morning');
+    // Only a partner's entry moves the cursor: it waits for the 30 s.
+    await spend(fandri, bookId, 'Market, morning');
+    await fandri.engine.syncOnce(bookId);
     t += 5_000;
-    await dewi.engine.syncOnce(bookId);
+    expect((await dewi.engine.syncOnce(bookId)).pushed).toBe(0);
     const second = await cursorOf(dewi, bookId);
     expect(second).toBeGreaterThan(first);
     expect((await dewi.records.get(bookId))!.appliedSeq).toBe(first);
@@ -101,12 +113,21 @@ describe('share records (spec §6.1)', () => {
     await dewi.engine.flushShareRecord(bookId);
     expect((await dewi.records.get(bookId))!.appliedSeq).toBe(second);
 
-    await spend(dewi, bookId, 'Market, evening');
+    await spend(fandri, bookId, 'Market, evening');
+    await fandri.engine.syncOnce(bookId);
     t += 30_000;
     await dewi.engine.syncOnce(bookId);
     const third = await cursorOf(dewi, bookId);
     expect(third).toBeGreaterThan(second);
     expect((await dewi.records.get(bookId))!.appliedSeq).toBe(third);
+
+    // Review M3: a sync that sent this device's own entries writes at once — they are the ones a replay needs.
+    await spend(dewi, bookId, 'Bakery');
+    t += 1_000;
+    expect((await dewi.engine.syncOnce(bookId)).pushed).toBeGreaterThan(0);
+    const fourth = await cursorOf(dewi, bookId);
+    expect(fourth).toBeGreaterThan(third);
+    expect((await dewi.records.get(bookId))!.appliedSeq).toBe(fourth);
   });
 
   it('are removed on stop, leave, a 410, a removal and forget', async () => {
@@ -255,5 +276,156 @@ describe('share records (spec §6.1)', () => {
     // Detection writes nothing over what it found: the record keeps the cursor the copy is behind.
     expect((await dewi.records.get(bookId))!.appliedSeq).toBe(rec.appliedSeq);
     expect((await dewi.records.get('book-of-another-phone'))!.deviceId).toBe('device-other');
+  });
+
+  /* ---- fix round 1: a database older than the record never rewrites or removes it (review C1, C2, I1) ---- */
+
+  it('a restored copy active on an older relay book reports lost, and neither its sync nor its 410 touches the newer record', async () => {
+    const home = new Household();
+    const dewi = await home.device('Dewi');
+    const fandri = await home.device('Fandri');
+    const bookId = await home.share(dewi);
+    const r1 = home.relayBookId;
+    await home.join(fandri, dewi);
+    await home.settle();
+    const onR1 = (await fandri.records.get(bookId))!;
+    const backup = await fandri.database.exportBytes();
+
+    await dewi.engine.stopSharing(bookId);
+    expect((await fandri.engine.syncOnce(bookId)).ended).toBe('unshared');
+    // As if the removal at the 410 had been missed: a join onto another share replaces it all the same.
+    await fandri.records.put(onR1);
+    const again = await dewi.engine.shareBook(bookId, { memberName: 'Dewi', deviceName: "Dewi's phone" });
+    home.relayBookId = again.relayBookId;
+    await dewi.engine.syncOnce(bookId);
+    const { code } = await dewi.engine.createInvite(bookId, { inviterName: 'Dewi', sameMember: true, memberId: fandri.memberId });
+    await fandri.engine.joinBook(code, { ws: fandri.ws, memberName: 'Fandri', deviceName: "Fandri's phone" });
+    await home.settle([dewi, fandri]);
+    const onR2 = (await fandri.records.get(bookId))!;
+    expect(onR2.relayBookId).toBe(again.relayBookId);
+    expect(again.relayBookId).not.toBe(r1);
+
+    const lost = await lose(fandri, backup);
+    expect(await lost.engine.checkRestore()).toEqual([]);
+    expect(await lost.engine.checkShareRecords()).toEqual([{ kind: 'lost', bookId, bookName: 'Personal', relayBookId: again.relayBookId }]);
+    expect(await fandri.records.get(bookId)).toEqual(onR2);
+    expect((await lost.engine.syncOnce(bookId)).ended).toBe('unshared'); // R1 is gone: 410
+    expect(await fandri.records.get(bookId)).toEqual(onR2);
+    await lost.engine.flushShareRecord(bookId);
+    expect(await fandri.records.get(bookId)).toEqual(onR2);
+  });
+
+  it('a record on an older relay book than the database is left alone by sync, flush and the check (a missed write)', async () => {
+    const home = new Household();
+    const dewi = await home.device('Dewi');
+    const fandri = await home.device('Fandri');
+    const bookId = await home.share(dewi);
+    await home.join(fandri, dewi);
+    await home.settle();
+    const stale: ShareRecord = { ...(await fandri.records.get(bookId))!, relayBookId: 'relay-before' };
+    await fandri.records.put(stale);
+    await spend(dewi, bookId, 'Pharmacy');
+    await home.settle();
+    await fandri.engine.flushShareRecord(bookId);
+    expect(await fandri.engine.checkShareRecords()).toEqual([{ kind: 'lost', bookId, bookName: 'Personal', relayBookId: 'relay-before' }]);
+    expect(await fandri.records.get(bookId)).toEqual(stale);
+  });
+
+  it('a restored copy unshared on the very relay book it was rejoined on reports lost and keeps the record', async () => {
+    const home = new Household();
+    const dewi = await home.device('Dewi');
+    const fandri = await home.device('Fandri');
+    const bookId = await home.share(dewi);
+    await home.join(fandri, dewi);
+    await home.settle();
+    await fandri.engine.leave(bookId);
+    const backup = await fandri.database.exportBytes();
+    const { code } = await dewi.engine.createInvite(bookId, { inviterName: 'Dewi', sameMember: true, memberId: fandri.memberId });
+    await fandri.engine.joinBook(code, { ws: fandri.ws, memberName: 'Fandri', deviceName: "Fandri's phone" });
+    await home.settle([dewi, fandri]);
+    const live = (await fandri.records.get(bookId))!;
+    expect(live.relayBookId).toBe(home.relayBookId);
+
+    const lost = await lose(fandri, backup);
+    expect(await lost.engine.checkShareRecords()).toEqual([{ kind: 'lost', bookId, bookName: 'Personal', relayBookId: home.relayBookId }]);
+    expect(await fandri.records.get(bookId)).toEqual(live);
+  });
+
+  it('a copy behind stays behind after an ordinary sync and a flush, until its replay point is cleared', async () => {
+    const home = new Household();
+    const dewi = await home.device('Dewi');
+    const fandri = await home.device('Fandri');
+    const bookId = await home.share(dewi);
+    await home.join(fandri, dewi);
+    await home.settle();
+    const backup = await dewi.database.exportBytes();
+    const copied = await cursorOf(dewi, bookId);
+    await spend(dewi, bookId, 'Own, after the copy');
+    await home.settle();
+    await dewi.engine.flushShareRecord(bookId);
+    const head = (await dewi.records.get(bookId))!.appliedSeq;
+    expect(head).toBeGreaterThan(copied);
+
+    const lost = await lose(dewi, backup);
+    const behind = { kind: 'behind', bookId, bookName: 'Personal', fromSeq: copied, toSeq: head };
+    expect(await lost.engine.checkShareRecords()).toEqual([behind]);
+    await lost.engine.syncOnce(bookId);
+    await lost.engine.flushShareRecord(bookId);
+    expect((await dewi.records.get(bookId))!.appliedSeq).toBeGreaterThanOrEqual(head); // the record carries on
+    const reopened = new SyncEngine(lost.database, dewi.transport, dewi.keys, undefined, { shareRecords: dewi.records });
+    expect(await reopened.checkShareRecords()).toEqual([behind]);
+    expect(await reopened.replayPointOf(bookId)).toEqual({ relayBookId: home.relayBookId, fromSeq: copied, toSeq: head });
+
+    await reopened.clearReplayPoint(bookId);
+    expect(await reopened.replayPointOf(bookId)).toBeNull();
+    expect(await reopened.checkShareRecords()).toEqual([{ kind: 'ok', bookId }]);
+  });
+
+  it('dropShareRecord removes the record of the share here, and never one of another relay book or device', async () => {
+    const home = new Household();
+    const dewi = await home.device('Dewi');
+    const fandri = await home.device('Fandri');
+    const bookId = await home.share(dewi);
+    await home.join(fandri, dewi);
+    await home.settle();
+    const rec = (await fandri.records.get(bookId))!;
+
+    await fandri.records.put({ ...rec, relayBookId: 'relay-other' });
+    expect(await fandri.engine.dropShareRecord(bookId)).toBe(false);
+    expect((await fandri.records.get(bookId))!.relayBookId).toBe('relay-other');
+    await fandri.records.put({ ...rec, deviceId: 'device-other' });
+    expect(await fandri.engine.dropShareRecord(bookId)).toBe(false);
+    expect((await fandri.records.get(bookId))!.deviceId).toBe('device-other');
+
+    await fandri.records.put(rec);
+    expect(await fandri.engine.dropShareRecord(bookId)).toBe(true);
+    expect(await fandri.records.get(bookId)).toBeNull();
+
+    // After the book is deleted here its relay book is named by the caller, read before the delete.
+    await fandri.records.put(rec);
+    await fandri.database.db.run(sql`DELETE FROM shared_books WHERE book_id = ${bookId}`);
+    expect(await fandri.engine.dropShareRecord(bookId)).toBe(false);
+    expect(await fandri.records.get(bookId)).toEqual(rec);
+    expect(await fandri.engine.dropShareRecord(bookId, home.relayBookId)).toBe(true);
+    expect(await fandri.records.get(bookId)).toBeNull();
+  });
+
+  it('one record that cannot be read against the database is skipped; the others are still found', async () => {
+    const home = new Household();
+    const dewi = await home.device('Dewi');
+    const bookId = await home.share(dewi);
+    await dewi.engine.syncOnce(bookId);
+    const rec = (await dewi.records.get(bookId))!;
+    await dewi.records.put({ ...rec, bookId: 'book-gone', bookName: 'Holiday house' });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const values = vi.spyOn(dewi.database.db, 'values').mockRejectedValueOnce(new Error('disk I/O error'));
+    try {
+      const findings = await dewi.engine.checkShareRecords();
+      expect(findings).toHaveLength(1);
+      expect(warn).toHaveBeenCalled();
+    } finally {
+      values.mockRestore();
+      warn.mockRestore();
+    }
   });
 });

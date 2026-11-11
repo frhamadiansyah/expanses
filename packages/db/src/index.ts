@@ -151,6 +151,7 @@ export {
   LeaveIncompleteError,
   NotOwnerError,
   RECORD_EVERY_MS,
+  REPLAY_POINT_KEY,
   SEEN_WRITE_MS,
   STALE_AFTER_MS,
   SyncEngine,
