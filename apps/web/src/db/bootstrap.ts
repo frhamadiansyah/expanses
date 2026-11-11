@@ -20,8 +20,7 @@ import {
   upgradeCalculatorGoals,
   type WorkspaceContext,
 } from '@expanses/db';
-import { SyncLog } from '../sync/sync-log';
-import { deviceSyncLogStore } from '../sync/sync-log-device';
+import { deviceSyncLog, noteSkippedCopy } from '../sync/sync-log-device';
 import { SyncService } from '../sync/sync-service';
 import { type OpenResult, type OpenStage, openSafely, type RecoveryReason, type Safety, say } from './open';
 import { opfsSnapshots } from './snapshots';
@@ -117,7 +116,7 @@ export async function openAppDb(
    * write into a shared book would then refuse (`localDeviceId`) rather than stamp a stand-in id.
    */
   // Sharing failures are kept on the device (expanses-safety/sync-log.json), outside the database: never synced.
-  const sync = new SyncService({ database, log: new SyncLog(deviceSyncLogStore()), ...(options.keyStore ? { keyStore: options.keyStore } : {}) });
+  const sync = new SyncService({ database, log: deviceSyncLog(), ...(options.keyStore ? { keyStore: options.keyStore } : {}) });
   await sync.prepare().catch((error: unknown) => console.warn('Sharing could not get ready', error));
   // `window.__expansesSync` for Safari's Web Inspector (src/sync/sync-console.ts): reads only. Loaded aside, off the open.
   void import('../sync/sync-console').then((loaded) => loaded.installSyncConsole(database, sync)).catch(() => undefined);
@@ -225,7 +224,8 @@ export async function bootstrap(onStage: (stage: OpenStage) => void, deps: Boots
   try {
     result = await open({
       database,
-      snapshots: opfsSnapshots(),
+      // A copy skipped for want of room goes into the sync log, where Share › Details shows it.
+      snapshots: opfsSnapshots({ onSkipped: noteSkippedCopy }),
       snapshotBytes: () => executor.snapshotBytes(),
       checkedSnapshot: (since) => executor.checkedSnapshot(since),
       onStage,
