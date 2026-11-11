@@ -14,10 +14,16 @@ import { isNative } from '../lib/pwa';
  *   imported non-extractable.
  *
  * `createKeyStore()` picks one by `isNative()`.
+ *
+ * The share records (sharing resilience §6.1) live beside the keys, in the same places: object store `shares` of this
+ * IndexedDB database and keychain item `shares` under the same prefix (`share-record-store.ts`).
  */
 
 export const KEYS_DB = 'cicis-keys';
+/** 1: the device keys alone. 2: adds the store `shares` (sharing resilience §6.1); an upgrade keeps `device`. */
+export const KEYS_DB_VERSION = 2;
 const STORE = 'device';
+export const SHARES_STORE = 'shares';
 const RECORD = 'current';
 
 interface StoredPairs {
@@ -32,15 +38,32 @@ function request<T>(req: IDBRequest<T>): Promise<T> {
   });
 }
 
+/**
+ * Opens `cicis-keys` at the current version, making each store that is missing and touching none that is there: an
+ * upgrade from version 1 keeps the device keys. Every opener of the database goes through here, so a store opened
+ * first by either the keys or the share records upgrades it the same way.
+ */
+export function openKeysDb(idb: IDBFactory): Promise<IDBDatabase> {
+  const req = idb.open(KEYS_DB, KEYS_DB_VERSION);
+  req.onupgradeneeded = () => {
+    const db = req.result;
+    if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+    if (!db.objectStoreNames.contains(SHARES_STORE)) db.createObjectStore(SHARES_STORE, { keyPath: 'bookId' });
+  };
+  return request(req).then((db) => {
+    // A later build upgrading the database from another tab: this connection steps aside rather than block it.
+    db.onversionchange = () => db.close();
+    return db;
+  });
+}
+
 export class WebKeyStore implements KeyStore {
   private device: Promise<DeviceKeys> | undefined;
 
   constructor(private readonly idb: IDBFactory = globalThis.indexedDB) {}
 
   private open(): Promise<IDBDatabase> {
-    const req = this.idb.open(KEYS_DB, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
-    return request(req);
+    return openKeysDb(this.idb);
   }
 
   private async read(): Promise<StoredPairs | undefined> {
@@ -97,19 +120,21 @@ export interface SecureStore {
 const KEYCHAIN_PREFIX = 'cicis-keys.';
 const KEYCHAIN_ITEM = 'device';
 
+/** Every item: this device only, readable after the first unlock (sync runs in the background), never in iCloud. */
+export async function configureKeychain(storage: SecureStore): Promise<void> {
+  await storage.setKeyPrefix(KEYCHAIN_PREFIX);
+  await storage.setSynchronize(false);
+  await storage.setDefaultKeychainAccess(KeychainAccess.afterFirstUnlockThisDeviceOnly);
+}
+
 export class NativeKeyStore implements KeyStore {
   private device: Promise<DeviceKeys> | undefined;
   private ready: Promise<void> | undefined;
 
   constructor(private readonly storage: SecureStore = SecureStorage as unknown as SecureStore) {}
 
-  /** Every item: this device only, readable after the first unlock (sync runs in the background), never in iCloud. */
   private configure(): Promise<void> {
-    this.ready ??= (async () => {
-      await this.storage.setKeyPrefix(KEYCHAIN_PREFIX);
-      await this.storage.setSynchronize(false);
-      await this.storage.setDefaultKeychainAccess(KeychainAccess.afterFirstUnlockThisDeviceOnly);
-    })();
+    this.ready ??= configureKeychain(this.storage);
     return this.ready;
   }
 
