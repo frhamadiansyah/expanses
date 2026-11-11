@@ -1,0 +1,86 @@
+<!doctype html><html><head><meta charset="utf-8"><title>One line field options</title><style>
+:root{--bg:#f2f2f7;--surface:#fff;--ink:#1c1c1e;--ink2:#3a3a3c;--ink3:#8e8e93;--hair:#e5e5ea;--fill:#eeeef2;--tint:#1c1c1e;--amber:#b25000;--green:#248a3d}
+*{box-sizing:border-box}
+body{margin:0;padding:28px 16px 48px;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:var(--ink)}
+h1{text-align:center;margin:0 0 6px;font-size:26px}
+.lead{text-align:center;color:#6e6e73;max-width:900px;margin:0 auto 22px;font-size:14.5px;line-height:1.45}
+.grid{display:grid;grid-template-columns:repeat(4,330px);gap:26px;justify-content:center}
+.cap{font-weight:700;font-size:15px}.cap span{display:block;font-weight:400;color:#6e6e73;font-size:12.5px;margin-top:3px;line-height:1.4;min-height:70px}
+.ph{width:330px;height:700px;border-radius:42px;background:var(--bg);box-shadow:0 0 0 9px #1c1c1e,0 16px 36px rgba(0,0,0,.22);overflow:hidden;position:relative;font-size:14px;margin-top:8px}
+.sb{height:42px;display:flex;justify-content:space-between;align-items:center;padding:0 24px;font-weight:600;font-size:14px}
+.scr{padding:0 14px}
+.nav{display:flex;justify-content:space-between;color:var(--ink);font-size:15px;height:30px;align-items:center}
+.lt{font-size:28px;font-weight:700;margin:0 0 10px}
+.k{font-size:12px;color:var(--ink3);padding:0 4px 5px}
+.g{background:var(--surface);border-radius:12px;overflow:hidden;margin-bottom:12px}
+.row{display:flex;align-items:center;gap:9px;padding:0 12px;min-height:50px;border-top:.5px solid var(--hair)}.row:first-child{border-top:none}
+.ic{width:30px;height:30px;border-radius:15px;background:var(--fill);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.mid{flex:1;min-width:0}.t{font-size:14.5px}.s{font-size:12px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.amt{font-variant-numeric:tabular-nums;white-space:nowrap}.am{color:var(--amber)}
+.kb{position:absolute;left:0;right:0;bottom:0;height:236px;background:#d1d4db;padding:7px 3px 0}
+.kr{display:flex;gap:5px;justify-content:center;margin-bottom:10px}
+.kr i{display:flex;align-items:center;justify-content:center;width:28px;height:38px;background:#fff;border-radius:5px;box-shadow:0 1px 0 #898a8d;font-style:normal;font-size:12px}
+.kr i.w{width:40px;background:#abb0ba}.kr i.sp{width:160px}.kr i.go{width:78px;background:#0a66d8;color:#fff;font-weight:600;font-size:14px}
+.dim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;color:var(--ink2)}
+.notes{max-width:1420px;margin:26px auto 0;display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.nb{background:#f5f5f7;border-radius:10px;padding:11px 13px;font-size:13px;line-height:1.45}.nb b{display:block;margin-bottom:2px}
+</style></head><body>
+<h1>One line: the field on the keyboard, four looks</h1>
+<p class="lead">Same behaviour as build 112: hold ＋ on Cashflow, type, blue key saves. Only the look of the field (and where the preview sits) changes. 0 is what is in the app now, for comparison.</p>
+<div class="grid">
+
+<div><div class="cap">0 · Now (build 112)<span>Grey bar with a framed field; suggestions above it; the dashed preview row sits in the list.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●●</span></div><div class="scr">
+<div class="nav"><span>Workspace</span><span>⋯</span></div><div class="lt">Cashflow</div>
+<div class="k">Today</div>
+<div class="g"><div class="row" style="outline:1.5px dashed #1c1c1e;outline-offset:-3px;border-radius:10px"><div class="ic">☕</div><div class="mid"><div class="t">Food &amp; drink</div><div class="s">kopi kenangan · <span class="am">GoPay?</span></div></div><div class="amt">Rp 38.000</div></div>
+<div class="row"><div class="ic">🛒</div><div class="mid"><div class="t">Groceries</div><div class="s">Superindo · Cash</div></div><div class="amt">Rp 112.300</div></div></div></div>
+<div style="position:absolute;left:0;right:0;bottom:236px;background:#d1d4db;padding:6px 8px 8px;border-top:.5px solid #b9bcc4"><div style="display:flex;justify-content:space-around;font-size:13px;color:#3a3a3c;padding:0 0 7px">Kopi Kenangan<span style="border-left:.5px solid #a8abb3;padding-left:16px">Kopi Janji Jiwa</span></div><div style="background:#fff;border-radius:10px;height:42px;display:flex;align-items:center;padding:0 12px;font-size:16px;box-shadow:0 0 0 2px #1c1c1e">kopi kenangan 38rb</div></div>
+<div class="kb"><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i class="w"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="w"></i></div><div class="kr"><i class="w">123</i><i class="sp">space</i><i class="go">Done</i></div></div>
+</div></div>
+
+<div><div class="cap">A · Message bar<span>Like a chat app: a round field with the send arrow inside. The preview is one line of text just above the field, not a row in the list. The list does not move while typing.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●●</span></div><div class="scr">
+<div class="nav"><span>Workspace</span><span>⋯</span></div><div class="lt">Cashflow</div>
+<div class="k">Today</div>
+<div class="g"><div class="row"><div class="ic">🛒</div><div class="mid"><div class="t">Groceries</div><div class="s">Superindo · Cash</div></div><div class="amt">Rp 112.300</div></div>
+<div class="row"><div class="ic">🚕</div><div class="mid"><div class="t">Transport</div><div class="s">Grab · BCA ••12</div></div><div class="amt">Rp 24.500</div></div></div></div>
+<div style="position:absolute;left:0;right:0;bottom:236px;background:rgba(249,249,251,.97);border-top:.5px solid #e0e0e4;padding:7px 10px 8px">
+<div style="display:flex;gap:6px;font-size:12.5px;color:#3a3a3c;padding:0 6px 7px;align-items:center"><span>☕ Food &amp; drink</span><span style="color:#8e8e93">·</span><span class="am">GoPay?</span><span style="color:#8e8e93">·</span><span>Today</span><span style="margin-left:auto;font-weight:600">Rp 38.000</span></div>
+<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;background:#fff;border:1px solid #d1d1d6;border-radius:20px;height:38px;display:flex;align-items:center;padding:0 14px;font-size:16px">kopi kenangan 38rb</div><div style="width:32px;height:32px;border-radius:16px;background:#1c1c1e;color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px">↑</div></div></div>
+<div class="kb"><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i class="w"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="w"></i></div><div class="kr"><i class="w">123</i><i class="sp">space</i><i class="go">Done</i></div></div>
+</div></div>
+
+<div><div class="cap">B · Card above the keyboard<span>A white card floats over the page: the preview row on top (tap a part to change it), the field underneath. The page dims slightly, so the eye stays on the card.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●●</span></div><div class="scr">
+<div class="nav"><span>Workspace</span><span>⋯</span></div><div class="lt">Cashflow</div>
+<div class="k">Today</div>
+<div class="g"><div class="row"><div class="ic">🛒</div><div class="mid"><div class="t">Groceries</div><div class="s">Superindo · Cash</div></div><div class="amt">Rp 112.300</div></div>
+<div class="row"><div class="ic">🚕</div><div class="mid"><div class="t">Transport</div><div class="s">Grab · BCA ••12</div></div><div class="amt">Rp 24.500</div></div></div></div>
+<div class="dim"></div>
+<div style="position:absolute;left:10px;right:10px;bottom:246px;background:#fff;border-radius:16px;box-shadow:0 8px 28px rgba(0,0,0,.18);overflow:hidden">
+<div class="row" style="min-height:54px"><div class="ic">☕</div><div class="mid"><div class="t">Food &amp; drink</div><div class="s">kopi kenangan · <span class="am">GoPay?</span> · Today</div></div><div class="amt" style="font-weight:600">Rp 38.000</div></div>
+<div style="border-top:.5px solid #e5e5ea;padding:10px 12px;font-size:16px">kopi kenangan 38rb<span style="display:inline-block;width:2px;height:18px;background:#1c1c1e;vertical-align:-3px;margin-left:1px"></span></div></div>
+<div class="kb"><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i class="w"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="w"></i></div><div class="kr"><i class="w">123</i><i class="sp">space</i><i class="go">Done</i></div></div>
+</div></div>
+
+<div><div class="cap">C · Big type, nothing else<span>Only the typed words, large, on the keyboard bar. Underneath in small grey: how it reads ("Food &amp; drink · GoPay · Rp 38.000"). Calmest look; parts are changed by tapping the small line.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●●</span></div><div class="scr">
+<div class="nav"><span>Workspace</span><span>⋯</span></div><div class="lt">Cashflow</div>
+<div class="k">Today</div>
+<div class="g"><div class="row"><div class="ic">🛒</div><div class="mid"><div class="t">Groceries</div><div class="s">Superindo · Cash</div></div><div class="amt">Rp 112.300</div></div>
+<div class="row"><div class="ic">🚕</div><div class="mid"><div class="t">Transport</div><div class="s">Grab · BCA ••12</div></div><div class="amt">Rp 24.500</div></div></div></div>
+<div style="position:absolute;left:0;right:0;bottom:236px;background:#fff;border-top:.5px solid #e0e0e4;padding:12px 16px 10px">
+<div style="font-size:21px;font-weight:500;letter-spacing:-.2px">kopi kenangan 38rb<span style="display:inline-block;width:2px;height:22px;background:#1c1c1e;vertical-align:-3px;margin-left:1px"></span></div>
+<div style="font-size:12.5px;color:#8e8e93;margin-top:4px">Food &amp; drink · <span class="am">GoPay?</span> · Today · <b style="color:#3a3a3c">Rp 38.000</b></div></div>
+<div class="kb"><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i class="w"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="w"></i></div><div class="kr"><i class="w">123</i><i class="sp">space</i><i class="go">Done</i></div></div>
+</div></div>
+</div>
+<div class="notes">
+<div class="nb"><b>0 · Now</b>The framed field and grey bar feel heavy; the preview jumps into the list.</div>
+<div class="nb"><b>A · Message bar</b>Most familiar (WhatsApp/iMessage). Send arrow and the blue key both save. Preview stays next to the thumb.</div>
+<div class="nb"><b>B · Card</b>Clearest "what will be saved", with the row exactly as it will look. Dims the page a little.</div>
+<div class="nb"><b>C · Big type</b>Lightest. Good for fast runs; the reading line is small, so guessed parts are less obvious.</div>
+</div>
+</body></html>
