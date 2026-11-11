@@ -712,6 +712,31 @@ async function allBills(database: Database, ws: WorkspaceContext, onDate: string
     .sort((a, b) => a.window.payBy.localeCompare(b.window.payBy) || a.name.localeCompare(b.name));
 }
 
+/** A bill in any month: where that month stands, and what it is expected to come to. */
+export interface BillMonthRow extends BillHistoryRow {
+  bill: ExpenseTemplateRow;
+  /** The fixed amount, else what it came to the last time it was paid. */
+  estimateMinor: number | null;
+}
+
+/**
+ * Every active bill owed in `month` (its repeat, on or after its first month), where that month stands on `today`.
+ * Skipped and paused months are included with their state. The open book's bills only, as `listExpenseTemplates` is.
+ */
+export async function billsInMonth(database: Database, ws: WorkspaceContext, month: string, today: string): Promise<BillMonthRow[]> {
+  const templates = (await listExpenseTemplates(database, ws)).filter(
+    (template) => template.active && month >= template.startsMonth && isOwedMonth(month, template.repeatMonth, template.repeatEvery, template.startsMonth),
+  );
+  const facts = await billFacts(database, ws, templates);
+  return templates
+    .map((template) => ({
+      ...monthOfBill(template, facts, month, today),
+      bill: template,
+      estimateMinor: template.amountMinor ?? paidMinorOf(facts.payments.get(template.id)?.[0]) ?? null,
+    }))
+    .sort((a, b) => a.window.payBy.localeCompare(b.window.payBy) || a.bill.name.localeCompare(b.bill.name));
+}
+
 /** One bill with its months, newest first: every month paid or skipped, and every month since it was tracked. */
 export async function billDetail(database: Database, ws: WorkspaceContext, templateId: string, onDate: string): Promise<BillDetail> {
   const template = (await listExpenseTemplates(database, ws)).find((t) => t.id === templateId);
