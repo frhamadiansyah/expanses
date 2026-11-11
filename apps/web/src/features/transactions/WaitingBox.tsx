@@ -1,5 +1,6 @@
 import type { DraftRow } from '@expanses/db';
 import { Card } from '../../ui';
+import { DueRow } from '../debt-plan/DueRow';
 import { NeedsCategory } from './NeedsCategory';
 import { NotRecorded } from './NotRecorded';
 import { Recurring } from './Recurring';
@@ -23,6 +24,7 @@ export function WaitingBox({
 }) {
   return (
     <Card className="divide-y divide-slate-100 py-1 empty:hidden">
+      <DueRow />
       <Recurring today={today} />
       <NotRecorded drafts={drafts} />
       {needsCategory && <NeedsCategory count={needsCategory.count} active={needsCategory.active} onShow={needsCategory.onShow} onClear={needsCategory.onClear} />}
