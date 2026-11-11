@@ -788,13 +788,39 @@ export async function refileInPlaceTx(tx: Db, ws: WorkspaceContext, id: string, 
     await tx.run(sql`UPDATE entries SET account_id = ${account}, spend_category_id = ${spend} WHERE id = ${entryId}`);
   }
   const excludes = (await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'transaction_line_excluded'`)).length > 0;
+  // Two of the copy's categories can map to one there: their exclusions become one row, never a second one (its key).
   for (const [from, there] of excludes ? swapped : new Map<string, string>()) {
-    await tx.run(sql`UPDATE transaction_line_excluded SET account_id = ${there} WHERE transaction_id = ${id} AND account_id = ${from}`);
+    await tx.run(sql`UPDATE OR IGNORE transaction_line_excluded SET account_id = ${there} WHERE transaction_id = ${id} AND account_id = ${from}`);
+    await tx.run(sql`DELETE FROM transaction_line_excluded WHERE transaction_id = ${id} AND account_id = ${from}`);
   }
   await tx.run(sql`DELETE FROM book_transactions WHERE transaction_id = ${id} AND book_id = ${fromBookId}`);
   if (await bookSplitsExist(tx)) await tx.run(sql`DELETE FROM book_transaction_splits WHERE transaction_id = ${id} AND book_id = ${fromBookId}`);
   const [filed] = await tx.values(sql`SELECT 1 FROM book_transactions WHERE transaction_id = ${id}`);
   if (!filed) await tx.insert(bookTransactions).values({ transactionId: id, workspaceId: ws.workspaceId, bookId: toBookId });
+}
+
+/**
+ * Gives a transaction a new id in place (sharing resilience §5, fix round 3): the same row, lines and figures under a
+ * fresh uuidv7, every local row that names it (`refs`: table and column) following. For a trade's or a sale's
+ * transaction kept from a joined copy being erased, whose old id is a lineage id in the relay's log and in the
+ * partners' copies: kept under it, a later share of the same workspace would book it a second time. Nothing moves:
+ * entry ids, amounts, accounts, rates and dates stay. The caller leaves the copy's own sync rows (its lineages) out of
+ * `refs`; they go with the copy. Returns the new id.
+ */
+export async function rekeyTransactionTx(tx: Db, ws: WorkspaceContext, id: string, refs: readonly (readonly [table: string, column: string])[]): Promise<string> {
+  const next = uuidv7();
+  const columns = (await tx.values<[string]>(sql`SELECT name FROM pragma_table_info('transactions')`)).map(([name]) => name);
+  const [[ref]] = (await tx.values<[string | null]>(sql`SELECT external_ref FROM transactions WHERE id = ${id} AND workspace_id = ${ws.workspaceId}`)) as [[string | null]];
+  // The copy goes in first (its lines must have a row to name) without its import identity, which is unique among posted
+  // rows; the identity follows once the old row is gone.
+  const picked = columns.map((column) => (column === 'id' ? sql`${next}` : column === 'external_ref' ? sql`NULL` : sql.raw(column)));
+  await tx.run(sql`INSERT INTO transactions (${sql.raw(columns.join(', '))}) SELECT ${sql.join(picked, sql`, `)} FROM transactions WHERE id = ${id}`);
+  for (const [table, column] of refs) {
+    await tx.run(sql`UPDATE ${sql.raw(table)} SET ${sql.raw(column)} = ${next} WHERE ${sql.raw(column)} = ${id}`);
+  }
+  await tx.run(sql`DELETE FROM transactions WHERE id = ${id}`);
+  if (ref !== null) await tx.run(sql`UPDATE transactions SET external_ref = ${ref} WHERE id = ${next}`);
+  return next;
 }
 
 /** Who is coming through a void or a replace. Only a shared event's derivation says `eventDerivation`. */

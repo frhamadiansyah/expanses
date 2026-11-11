@@ -24,7 +24,9 @@ import {
   shareGoal,
   type Database,
 } from '../../src/index';
+import { refileInPlaceTx } from '../../src/repos/ledger';
 import { setupDb } from '../helpers';
+import { outboxOps } from './sync-helpers';
 import { categoryOf, Household, type Device } from './household';
 
 /*
@@ -571,11 +573,14 @@ describe('fix round 2: a left copy’s own trades and sales (N1)', () => {
     const done = await deleteBook(fandri.database, fandri.ws, bookId);
     expect(done.keptInPersonal).toBe(3); // the trade, and the two own purchases
     expect(await t.money()).toEqual(before);
-    // The same transaction, still the trade's, now filed in Personal and on Personal's Groceries.
-    expect(await fandri.database.db.values(sql`SELECT status FROM transactions WHERE id = ${t.transactionId}`)).toEqual([['posted']]);
-    expect(await fandri.database.db.values(sql`SELECT transaction_id, status FROM investment_trades WHERE id = ${t.tradeId}`)).toEqual([[t.transactionId, 'active']]);
-    expect(await fandri.database.db.values(sql`SELECT book_id FROM book_transactions WHERE transaction_id = ${t.transactionId}`)).toEqual([[t.personal.id]]);
-    expect(await fandri.database.db.values(sql`SELECT spend_category_id FROM entries WHERE transaction_id = ${t.transactionId} AND account_id = ${t.card}`)).toEqual([[t.personalGroceries]]);
+    // The trade's transaction, under a new id (fix round 3), now filed in Personal and on Personal's Groceries; the old id is gone.
+    const [[now, status]] = (await fandri.database.db.values<[string, string]>(sql`SELECT transaction_id, status FROM investment_trades WHERE id = ${t.tradeId}`)) as [[string, string]];
+    expect(status).toBe('active');
+    expect(now).not.toBe(t.transactionId);
+    expect(await fandri.database.db.values(sql`SELECT 1 FROM transactions WHERE id = ${t.transactionId}`)).toEqual([]);
+    expect(await fandri.database.db.values(sql`SELECT status FROM transactions WHERE id = ${now}`)).toEqual([['posted']]);
+    expect(await fandri.database.db.values(sql`SELECT book_id FROM book_transactions WHERE transaction_id = ${now}`)).toEqual([[t.personal.id]]);
+    expect(await fandri.database.db.values(sql`SELECT spend_category_id FROM entries WHERE transaction_id = ${now} AND account_id = ${t.card}`)).toEqual([[t.personalGroceries]]);
     for (const table of SYNC_TABLES) expect([table, await count(fandri, table, bookId)]).toEqual([table, 0]);
   });
 
@@ -655,6 +660,106 @@ describe('the couple cleanup (owner’s real path, review probe 2)', () => {
     expect([await balanceOf(fandri, fandri.bank), await balanceOf(fandri, fandri.cash)]).toEqual(before);
     expect(before).toEqual([-30_000 - 11_000 - 25_000 - 100_000, 25_000]);
     expect(await fandri.database.db.values(sql`SELECT status FROM transactions WHERE id IN (${moved}, ${toDewi}) ORDER BY id`)).toEqual([['posted'], ['posted']]);
+  });
+});
+
+describe('fix round 3: a kept trade leaves no id of the copy behind (R2-I1, R2-M1, R2-M2)', () => {
+  /** Fandri buys 3 g of gold from his bank in the copy, then sells 1 g with fee and tax there (review probe 7). */
+  async function sold(options: { sharePersonal?: boolean } = {}) {
+    const w = await world();
+    const { fandri, bookId, home } = w;
+    const ctx = inBook(fandri.ws, bookId);
+    const gold = (await createAccount(fandri.database, fandri.ws, { name: 'Fandri Gold', kind: 'asset', subtype: 'investment', currency: 'IDR' })).id;
+    await saveAssetProfile(fandri.database, fandri.ws, { accountId: gold, assetKind: 'gold' });
+    const buy = await recordTrade(fandri.database, ctx, { accountId: gold, kind: 'buy', occurredOn: '2026-10-01', unitsMicro: 3_000_000, grossMinor: 2_700_000, feeMinor: 0, taxMinor: 0, cashAccountId: fandri.bank });
+    const sell = await recordTrade(fandri.database, ctx, { accountId: gold, kind: 'sell', occurredOn: ON, unitsMicro: 1_000_000, grossMinor: 1_000_000, feeMinor: 10_000, taxMinor: 5_000, cashAccountId: fandri.bank });
+    await home.settle();
+    // The sell is a shared purchase: its id is a lineage on both phones (and in the relay's log).
+    expect(await fandri.database.db.values(sql`SELECT lineage_id FROM sync_lineage WHERE head_transaction_id = ${sell.transactionId}`)).toHaveLength(1);
+    expect(await w.dewi.database.db.values(sql`SELECT 1 FROM sync_lineage WHERE lineage_id = ${sell.transactionId}`)).toEqual([[1]]);
+    if (options.sharePersonal) {
+      await fandri.engine.shareBook(w.personal.id, { memberId: fandri.memberId, memberName: 'Fandri', deviceName: 'Fandri phone' });
+      await fandri.database.db.run(sql`DELETE FROM sync_outbox`);
+    }
+    await fandri.engine.leave(bookId);
+    const money = async () => {
+      const balances = await nativeBalances(fandri.database, fandri.ws);
+      return { bank: balances[fandri.bank] ?? 0, gold: balances[gold] ?? 0, units: (await positionsFor(fandri.database, fandri.ws))[gold]?.unitsMicro ?? 0 };
+    };
+    return { ...w, gold, buy, sell, money };
+  }
+
+  it('re-posts a sell under a new id: no id of the copy’s lineages survives; gold, bank and units exact; gains and tax once in Personal', async () => {
+    const t = await sold();
+    const { fandri, bookId } = t;
+    const before = await t.money();
+    expect(before).toEqual({ bank: -20_000 - 30_000 - 12_500 - 2_700_000 + 985_000, gold: 1_800_000, units: 2_000_000 });
+    const copyIds = (
+      await fandri.database.db.values<[string]>(sql`
+        SELECT lineage_id FROM sync_lineage WHERE book_id = ${bookId}
+        UNION SELECT head_transaction_id FROM sync_lineage WHERE book_id = ${bookId} AND head_transaction_id IS NOT NULL
+        UNION SELECT l.transaction_id FROM sync_lineage_last l JOIN sync_lineage s ON s.lineage_id = l.lineage_id WHERE s.book_id = ${bookId}`)
+    ).map(([id]) => id);
+    expect(copyIds).toContain(t.sell.transactionId);
+    // The buy from the bank carries no category of the copy, so only the sell is the copy's.
+    expect(await planBookDelete(fandri.database, fandri.ws, bookId)).toMatchObject({ refusal: null, ownRecords: 1 });
+    await deleteBook(fandri.database, fandri.ws, bookId);
+
+    expect(await fandri.database.db.values(sql`SELECT id FROM transactions WHERE id IN ${copyIds}`)).toEqual([]);
+    expect(await fandri.database.db.values(sql`SELECT lineage_id FROM sync_lineage WHERE lineage_id IN ${copyIds} OR head_transaction_id IN ${copyIds}`)).toEqual([]);
+    expect(await t.money()).toEqual(before);
+    const [[sellNow]] = (await fandri.database.db.values<[string]>(sql`SELECT transaction_id FROM investment_trades WHERE id = ${t.sell.tradeId}`)) as [[string]];
+    expect(sellNow).not.toBe(t.sell.transactionId);
+    // Personal shows the realised gain and the tax once each, on its own categories.
+    const lines = await fandri.database.db.values<[string, number, string]>(sql`
+      SELECT a.name, e.amount_minor, b.book_id FROM entries e JOIN accounts a ON a.id = e.account_id JOIN book_categories b ON b.category_account_id = a.id
+      JOIN transactions t ON t.id = e.transaction_id
+      WHERE t.status = 'posted' AND a.kind IN ('income', 'expense') AND a.name IN ('Realized Gains', 'Estimated tax') ORDER BY a.name`);
+    expect(lines).toEqual([
+      ['Estimated tax', 5_000, t.personal.id],
+      ['Realized Gains', -90_000, t.personal.id],
+    ]);
+    expect(await fandri.database.db.values(sql`SELECT 1 FROM entries WHERE transaction_id = ${sellNow}`)).toHaveLength(4);
+  });
+
+  it('two of the copy’s categories landing on one in Personal leave one exclusion row, not a key clash (R2-M1)', async () => {
+    const w = await world();
+    const { fandri, bookId } = w;
+    const groceries = await categoryOf(fandri.database, bookId, 'Groceries');
+    const [[other]] = (await fandri.database.db.values<[string]>(sql`
+      SELECT a.id FROM accounts a JOIN book_categories b ON b.category_account_id = a.id
+      WHERE b.book_id = ${bookId} AND a.kind = 'expense' AND a.id <> ${groceries} AND a.parent_id IS NOT NULL LIMIT 1`)) as [[string]];
+    const id = await postTransaction(fandri.database, inBook(fandri.ws, bookId), {
+      occurredOn: ON,
+      description: 'Two lines',
+      lines: splitExpenseLines({ paymentAccountId: fandri.bank, currency: 'IDR', splits: [{ categoryAccountId: groceries, amountMinor: 3_000 }, { categoryAccountId: other, amountMinor: 2_000 }] }),
+    });
+    await w.home.settle();
+    await fandri.engine.leave(bookId);
+    await fandri.database.db.run(sql`DELETE FROM transaction_line_excluded WHERE transaction_id = ${id}`);
+    await fandri.database.db.run(sql`
+      INSERT INTO transaction_line_excluded (transaction_id, workspace_id, account_id) VALUES (${id}, ${fandri.ws.workspaceId}, ${groceries}), (${id}, ${fandri.ws.workspaceId}, ${other})`);
+    await fandri.database.transaction((tx) => refileInPlaceTx(tx, fandri.ws, id, bookId, w.personal.id, async () => w.personalGroceries));
+    expect(await fandri.database.db.values(sql`SELECT account_id FROM transaction_line_excluded WHERE transaction_id = ${id}`)).toEqual([[w.personalGroceries]]);
+  });
+
+  it('a Personal shared and active here takes what lands in it as any write: its partner gets it (R2-M2)', async () => {
+    const t = await sold({ sharePersonal: true });
+    const { fandri, bookId } = t;
+    await deleteBook(fandri.database, fandri.ws, bookId);
+    const landed = (
+      await fandri.database.db.values<[string]>(sql`
+        SELECT t.id FROM transactions t JOIN book_transactions b ON b.transaction_id = t.id
+        WHERE b.book_id = ${t.personal.id} AND t.status = 'posted' AND t.description IN ('Night market', 'Bakery')`)
+    ).map(([id]) => id);
+    const [[sellNow]] = (await fandri.database.db.values<[string]>(sql`SELECT transaction_id FROM investment_trades WHERE id = ${t.sell.tradeId}`)) as [[string]];
+    expect(landed).toHaveLength(2);
+    // Each is a purchase of shared Personal now: a lineage of its own there, and an op waiting to go out.
+    for (const id of [...landed, sellNow]) {
+      expect(await fandri.database.db.values(sql`SELECT book_id FROM sync_lineage WHERE head_transaction_id = ${id}`)).toEqual([[t.personal.id]]);
+    }
+    const sent = (await outboxOps(fandri.database)).filter((op) => op.entity === 'purchase').map((op) => op.id);
+    expect(sent).toEqual(expect.arrayContaining([...landed, sellNow]));
   });
 });
 

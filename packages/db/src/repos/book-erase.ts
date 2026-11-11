@@ -1,13 +1,14 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { inBook, type WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
-import { withCaptureSuspended } from '../sync/capture';
+import { capturePostedTx, withCaptureSuspended } from '../sync/capture';
 import { endSharedGoalsTx, hasOwnPartTx } from '../sync/goals/follow';
 import { createAccountTx } from './accounts';
 import { inputOfTx } from './activity';
 import { BookError, personalBookIdTx, type BookKind } from './books';
 import { healthTablesExist } from './health-tables';
-import { eraseVoidTransactionsTx, LedgerError, refileInPlaceTx, replaceTransactionTx, voidTransactionTx } from './ledger';
+import { eraseVoidTransactionsTx, LedgerError, refileInPlaceTx, rekeyTransactionTx, replaceTransactionTx, voidTransactionTx } from './ledger';
+import { fileSharedTransferTx } from './shared-transfers';
 import { categoryInBookTx } from './move-group';
 import { deleteGoalRowsTx } from './goals';
 
@@ -259,48 +260,81 @@ async function personalCategoryOfTx(tx: Db, ws: WorkspaceContext, bookId: string
 }
 
 /**
- * A read-only joined copy's own trades and sales kept in Personal before the copy is erased (fix round 2, N1): each
- * transaction a trade or a sale record names is re-filed in place (`refileInPlaceTx`), void versions too, so the record
- * keeps the id it names and every balance and holding stays to the unit. Returns how many were re-filed.
+ * What the delete keeps in Personal from the copy before erasing it (owner decision; fix rounds 2 and 3), with capture
+ * off only where the read-only copy is touched:
+ *
+ * - `purchases`, this member's own (`ownPurchasesTx`): moved as Move to workspace moves them (`replaceTransactionTx`
+ *   with `moveToBook`), each category swapped for its copy in Personal. What lands there is an ordinary local purchase
+ *   under a new id: it replaces nothing (the copy's row is erased) and has no lineage of the copy.
+ * - `records`, the transactions this phone's own trades and sales name (`keptByRecordsTx`): re-filed in place
+ *   (`refileInPlaceTx`), then given a new id (`rekeyTransactionTx`) with the trade or sale row following it. A sell is a
+ *   shared purchase whose id is in the relay's log, so the old id goes with the copy, as every purchase's does.
+ *
+ * Every figure — balances, holdings, units, rates, days — stays to the unit. Categories Personal has no copy of are
+ * made there first, with capture on, and when Personal is itself shared and active, what lands in it is captured
+ * afterwards as any write to it would be, so the partner of Personal sees it. Returns the new ids, purchases first.
  */
-export async function refileRecordsInPersonalTx(tx: Db, ws: WorkspaceContext, bookId: string, ids: readonly string[]): Promise<number> {
-  if (ids.length === 0) return 0;
+export async function keepInPersonalTx(tx: Tx, ws: WorkspaceContext, bookId: string, keep: { purchases: readonly string[]; records: readonly string[] }): Promise<string[]> {
+  const all = [...keep.purchases, ...keep.records];
+  if (all.length === 0) return [];
   const personal = await personalBookIdTx(tx, ws.workspaceId);
-  if (!personal || personal === bookId) throw new BookError('NOT_FOUND', 'Personal is not here to keep the trades in');
+  if (!personal || personal === bookId) throw new BookError('NOT_FOUND', 'Personal is not here to keep them in');
+  const tables = await tablesOf(tx);
   const there = await personalCategoryOfTx(tx, ws, bookId, personal);
-  for (const id of ids) await refileInPlaceTx(tx, ws, id, bookId, personal, there);
-  return ids.length;
-}
+  // Phase 0, capture on: every category these need in Personal, made there now if it has none (captured like any new one).
+  const named = await tx.values<[string]>(sql`
+    SELECT account_id FROM entries WHERE transaction_id IN ${all}
+    UNION SELECT spend_category_id FROM entries WHERE transaction_id IN ${all} AND spend_category_id IS NOT NULL`);
+  for (const [categoryId] of named) await there(categoryId);
 
-/**
- * Moves this member's own purchases out of the copy into Personal before the copy is erased (owner decision), by the
- * move Move to workspace makes (`replaceTransactionTx` with `moveToBook`): each category swapped for its copy in
- * Personal, made there when Personal has none. What lands in Personal is an ordinary local purchase: it replaces
- * nothing (the copy's row it replaced is erased) and has no lineage. Returns the new transaction ids.
- */
-export async function keepOwnInPersonalTx(tx: Tx, ws: WorkspaceContext, bookId: string, ids: readonly string[]): Promise<string[]> {
-  if (ids.length === 0) return [];
-  const personal = await personalBookIdTx(tx, ws.workspaceId);
-  if (!personal || personal === bookId) throw new BookError('NOT_FOUND', 'Personal is not here to keep the purchases in');
-  const there = await personalCategoryOfTx(tx, ws, bookId, personal);
-  const moved: string[] = [];
-  for (const id of ids) {
-    const input = await inputOfTx(tx, ws, id);
-    const lines = [];
-    for (const line of input.lines) {
-      lines.push({ ...line, accountId: await there(line.accountId), ...(line.spendCategoryId ? { spendCategoryId: await there(line.spendCategoryId) } : {}) });
+  // Phase 1, capture off: the copy is read-only (§8.6), and nothing written to it is sent.
+  const landed = await withCaptureSuspended(tx, async () => {
+    const out: string[] = [];
+    for (const id of keep.purchases) {
+      const input = await inputOfTx(tx, ws, id);
+      const lines = [];
+      for (const line of input.lines) {
+        lines.push({ ...line, accountId: await there(line.accountId), ...(line.spendCategoryId ? { spendCategoryId: await there(line.spendCategoryId) } : {}) });
+      }
+      try {
+        const next = await replaceTransactionTx(tx, inBook(ws, bookId), id, { ...input, lines, moveToBook: true, toBookId: personal });
+        await tx.run(sql`UPDATE transactions SET replaces_transaction_id = NULL WHERE id = ${next}`);
+        out.push(next);
+      } catch (failure) {
+        if (failure instanceof LedgerError) throw new BookError('CANNOT_MOVE', `${input.description || 'A purchase'} cannot move to Personal: ${failure.message} Nothing was deleted.`);
+        throw failure;
+      }
     }
-    try {
-      const next = await replaceTransactionTx(tx, inBook(ws, bookId), id, { ...input, lines, moveToBook: true, toBookId: personal });
-      await tx.run(sql`UPDATE transactions SET replaces_transaction_id = NULL WHERE id = ${next}`);
-      moved.push(next);
-    } catch (failure) {
-      if (failure instanceof LedgerError) throw new BookError('CANNOT_MOVE', `${input.description || 'A purchase'} cannot move to Personal: ${failure.message} Nothing was deleted.`);
-      throw failure;
+    // Every local row that names a transaction follows its new id, but the copy's own lineages (erased with it).
+    const local = (await referencesTo(tx, tables, 'transactions')).filter(([table]) => !COPY_SYNC_REFS.has(table));
+    for (const id of keep.records) {
+      await refileInPlaceTx(tx, ws, id, bookId, personal, there);
+      out.push(await rekeyTransactionTx(tx, ws, id, local));
+    }
+    return out;
+  });
+
+  // Phase 2, capture on: Personal shared and active here takes them as any write to it (its partner sees them).
+  const [shared] = tables.has('shared_books') ? await tx.values<[string]>(sql`SELECT state FROM shared_books WHERE book_id = ${personal}`) : [];
+  if (shared?.[0] === 'active') {
+    for (const id of landed) {
+      if ((await tx.values(sql`SELECT 1 FROM book_transactions WHERE transaction_id = ${id} AND book_id = ${personal}`)).length > 0) {
+        await capturePostedTx(tx, id, personal, null);
+        continue;
+      }
+      // A bare transfer travels as its redacted row: the one written while capture was off is written again, captured.
+      const [shadow] = tables.has('shared_transfers') ? await tx.values(sql`SELECT 1 FROM shared_transfers WHERE book_id = ${personal} AND transaction_id = ${id}`) : [];
+      if (shadow) {
+        await tx.run(sql`DELETE FROM shared_transfers WHERE book_id = ${personal} AND transaction_id = ${id}`);
+        await fileSharedTransferTx(tx, ws, id, personal);
+      }
     }
   }
-  return moved;
+  return landed;
 }
+
+/** The copy's sync rows that name a transaction: they go with the copy, and never follow a kept row's new id. */
+const COPY_SYNC_REFS: ReadonlySet<string> = new Set(['sync_lineage', 'sync_lineage_last', 'shared_transfers']);
 
 /**
  * The plan of the book (shared by void and erase): its caps with their month overrides, shares and units, its expected

@@ -3,7 +3,6 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, auditLog, settings } from '../schema';
-import { withCaptureSuspended } from '../sync/capture';
 import { bookBudgetSettings, bookCategories, bookIncomeOverrides, books, bookTransactions } from '../schema-books';
 import { budgets } from '../schema-budget';
 import { viewActiveDevices, viewOwnerDevices } from '../sync/authority';
@@ -12,13 +11,12 @@ import { archiveAccountTx } from './accounts';
 import {
   deleteBookPlanTx,
   eraseBookTx,
-  keepOwnInPersonalTx,
+  keepInPersonalTx,
   keptByRecordsTx,
   ownPurchasesTx,
   ownRecordsMessage,
   readOnlyCopyTx,
   recordsMessage,
-  refileRecordsInPersonalTx,
   wasEverSharedTx,
 } from './book-erase';
 import { bookSplitsExist } from './book-splits';
@@ -253,11 +251,12 @@ export async function deleteBook(
       const keepOn = options.keepOwnInPersonal ?? true;
       // A trade or a sale names its transaction by id: it can only be kept, in place, never erased with the copy.
       if (plan.ownRecords > 0 && !keepOn) throw new BookError('RECORDS', ownRecordsMessage(plan.ownRecords));
-      const kept = await withCaptureSuspended(tx, async () => {
-        const refiled = plan.ownRecords > 0 ? await refileRecordsInPersonalTx(tx, ws, bookId, (await keptByRecordsTx(tx, ws, bookId)).own) : 0;
-        const moved = keepOn && plan.ownPurchases > 0 ? await keepOwnInPersonalTx(tx, ws, bookId, await ownPurchasesTx(tx, ws, bookId)) : [];
-        return refiled + moved.length;
-      });
+      const kept = (
+        await keepInPersonalTx(tx, ws, bookId, {
+          purchases: keepOn && plan.ownPurchases > 0 ? await ownPurchasesTx(tx, ws, bookId) : [],
+          records: plan.ownRecords > 0 ? (await keptByRecordsTx(tx, ws, bookId)).own : [],
+        })
+      ).length;
       const erased = await eraseBookTx(tx, ws, bookId);
       await audit({ erased: true, transactions: erased.transactions, categories: erased.categories, budgets: erased.budgets, keptInPersonal: kept });
       return { ...erased, erased: true, keptInPersonal: kept };
