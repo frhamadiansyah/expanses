@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { currencyRow, setCurrency } from './currency-field';
 import { corner, newEvent, openTrip } from './shared-events';
 
 /*
@@ -15,7 +16,7 @@ test('categories of a shared event: add, rename, change the icon, archive; read-
   await corner(page, 'Share this event');
   const share = page.getByRole('form', { name: 'Share this event' });
   await share.getByLabel('Name', { exact: true }).fill('Rina');
-  await share.getByLabel('Currency').selectOption('TRY');
+  await setCurrency(currencyRow(share, 'Currency'), 'TRY');
   await share.getByRole('button', { name: 'Share', exact: true }).click();
   await expect(page.getByTestId('invite-link')).toBeVisible({ timeout: 60_000 });
   await openTrip(page);

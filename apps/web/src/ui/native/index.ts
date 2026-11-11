@@ -15,7 +15,7 @@ export { SegmentedControl } from './Segmented';
 export { Hero, ProgressBar } from './Hero';
 export { PageDots } from './PageDots';
 export { SearchPill } from './SearchPill';
-export { CurrencyCode, DestructiveRow, optionLabel, PickerRow, ReadOnlyRow, SearchField, SelectRow, SubmitRow, SwitchRow, TextRow, FORM_KINDS } from './FormRow';
+export { DestructiveRow, optionLabel, PickerRow, ReadOnlyRow, SearchField, SelectRow, SubmitRow, SwitchRow, TextRow, FORM_KINDS } from './FormRow';
 export { CardStack, Face as WalletFace, type WalletCard } from './CardStack';
 export { Drawer, useDrawers } from './Drawer';
 export { useWalletSlot, type WalletSlot } from './wallet-slot';

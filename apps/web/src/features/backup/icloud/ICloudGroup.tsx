@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useApp } from '../../../app/context';
+import { KEEP_OLDER_COPIES } from '../../../db/retention';
 import { ErrorBox } from '../../../ui';
 import { InsetGroup, InsetRow, Notice, NoticeButton, SwitchRow } from '../../../ui/native';
 import { iCloudSettings, ICLOUD_KEY, ICLOUD_OFFER_KEY, ICLOUD_PHOTOS_KEY, putSetting } from './data';
@@ -16,7 +17,7 @@ const SETTINGS_QUERY = ['icloud-settings'] as const;
 const ABOUT = (
   <ul className="list-disc space-y-[4px] pl-[16px]">
     <li>Once a day, and after big changes, cicis saves a copy to iCloud Drive in the cicis folder.</li>
-    <li>The last 7 days are kept. Older copies are removed.</li>
+    <li>The last 7 days are kept. Older copies are removed.{KEEP_OLDER_COPIES ? ' Copies made before this version of cicis are kept for now.' : ''}</li>
     <li>The copy is encrypted. Only devices signed in to the same Apple ID can open it.</li>
     <li>Uses iCloud storage. About as much as a downloaded backup each copy, more with photos.</li>
     <li>Restoring replaces the data on this iPhone. A safety copy is kept first.</li>

@@ -1,11 +1,12 @@
-import { flatToEffectiveBps, groupTypedAmount, isoDate, LOAN_ITEMS, type LoanMethod, loanRatePer, rateBpsFromTyped, typedFromRateBps } from '@expanses/core';
+import { flatToEffectiveBps, groupTypedAmount, isoDate, LOAN_ITEMS, type LoanMethod, loanRatePer, rateBpsFromTyped } from '@expanses/core';
 import { saveLoanTerms, setLoanItem, type LoanTermsRow } from '@expanses/db';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
-import { emptyLoanTermsDraft, type LoanTermsDraft, loanTermsDraftFromTerms, loanTermsDraftToInput } from './loan-form';
+import { flatEffectiveHint } from './loan-view';
+import { emptyLoanTermsDraft, type LoanTermsDraft, loanTermsDraftFromTerms, loanTermsDraftToInput, rateTextAfterKindChange } from './loan-form';
 
 const METHOD_LABELS: Record<LoanMethod, string> = {
   annuity: 'Annuity — interest on what is left',
@@ -62,19 +63,7 @@ export function TermsForm({
     }
   })();
   // Choosing another kind of loan can change the period the rate is quoted in; the rate carries over as the same loan.
-  const setItem = (itemId: string) =>
-    setDraft((current) => {
-      const before = loanRatePer(current.itemId);
-      const after = loanRatePer(itemId);
-      if (before === after) return { ...current, itemId };
-      let rate = current.rate;
-      try {
-        rate = typedFromRateBps(rateBpsFromTyped(current.rate, before), after);
-      } catch {
-        // A rate that is not a number is left for save to refuse.
-      }
-      return { ...current, itemId, rate };
-    });
+  const setItem = (itemId: string) => setDraft((current) => ({ ...current, itemId, rate: rateTextAfterKindChange(current.rate, current.itemId, itemId) }));
   const effective = draft.method === 'flat' && tenor > 1 && rateBps > 0 ? flatToEffectiveBps(rateBps, tenor) : null;
 
   async function submit(event?: FormEvent) {
@@ -125,7 +114,7 @@ export function TermsForm({
         </SelectRow>
         <TextRow
           label={per === 'month' ? 'Rate a month (%)' : 'Rate a year (%)'}
-          hint={effective ? `A flat ${draft.rate}% is about ${(effective / 100).toFixed(2)}% effective.` : 'Type 9 or 9,25.'}
+          hint={effective ? flatEffectiveHint(draft.rate, per, effective) : per === 'month' ? 'A percentage a month; a comma or a dot for decimals.' : 'A percentage a year; a comma or a dot for decimals.'}
           value={draft.rate}
           inputMode="decimal"
           onChange={(e) => set({ rate: e.target.value })}
@@ -175,7 +164,7 @@ export function TermsForm({
       </InsetGroup>
 
       <InsetGroup header="What it is for">
-        <SelectRow label="What kind of loan" hint="How it is filed on the Debts list: a mortgage with the mortgages." value={draft.itemId} onChange={(e) => setItem(e.target.value)}>
+        <SelectRow label="What kind of loan" hint={`How it is filed on the Debts list: a mortgage with the mortgages.${per === 'month' ? ' Rate shown a month.' : ''}`} value={draft.itemId} onChange={(e) => setItem(e.target.value)}>
           <option value="">Not said</option>
           {LOAN_ITEMS.map((item) => (
             <option key={item.id} value={item.id}>

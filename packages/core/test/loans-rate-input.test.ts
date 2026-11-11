@@ -43,4 +43,8 @@ describe('loan rate typed a month or a year', () => {
     expect(loanRatePer(null)).toBe('year');
     expect(debtItem('online_loan').behaviour).toMatchObject({ asksRate: true, ratePer: 'month' });
   });
+
+  it('gives back the same yearly bps from what a monthly field shows, for every value', () => {
+    for (let bps = 1; bps <= 6000; bps += 1) expect(rateBpsFromTyped(typedFromRateBps(bps, 'month'), 'month')).toBe(bps);
+  });
 });

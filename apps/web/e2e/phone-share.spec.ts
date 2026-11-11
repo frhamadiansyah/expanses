@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { currencyRow, setCurrency } from './currency-field';
 import { openWorkspacePage, openWorkspaceSharePage, renameWorkspace } from './workspace-page';
 
 test.describe.configure({ timeout: 120_000 });
@@ -52,13 +53,44 @@ test('by thumb: Share is one page — a name, a button, then the invite with Cop
   await expect(page.getByTestId('ws-share-row')).toContainText('On');
 });
 
+test('by thumb: Share › Details shows the sharing bookkeeping and the sync log, before and after sharing', async ({ page }) => {
+  await page.goto('/account');
+  await openWorkspacePage(page, 'Personal');
+  await page.getByTestId('ws-share-row').tap();
+
+  // Before anything is shared: no shared_books row, nothing logged, and still a page to copy.
+  await page.getByTestId('sync-details-row').tap();
+  const details = page.getByTestId('sync-details-text');
+  await expect(details).toContainText('State none');
+  await expect(details).toContainText('Relay book none');
+  await expect(details).toContainText('Log: nothing recorded on this device');
+  await expect(page.getByTestId('sync-details-copy')).toBeVisible();
+  await page.goBack();
+
+  await page.getByTestId('share-name').fill('Ana');
+  await page.getByTestId('share-button').tap();
+  await expect(page.getByTestId('invite-code')).toBeVisible({ timeout: 60_000 });
+  // The status row always has words, and a second line saying when this device last synced.
+  await expect(page.getByTestId('sharing-status')).toContainText('Up to date');
+  await expect(page.getByTestId('sharing-status')).toContainText('Last synced');
+
+  // After: the relay book by its short id, and the share in the log; ids only, no names.
+  await page.getByTestId('sync-details-row').tap();
+  await expect(details).toContainText('State active');
+  await expect(details).toContainText(/Relay book [0-9a-f]{8} · epoch 1/);
+  await expect(details).toContainText('device row yes · epoch key opens');
+  await expect(details).toContainText(' share (book ');
+  await expect(details).not.toContainText('Ana');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 test('by thumb: a workspace in another currency says why it cannot be shared, in one line', async ({ page }) => {
   await page.goto('/account');
   await page.getByTestId('add-workspace').tap();
   await page.getByTestId('new-workspace').tap();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
   await sheet.getByLabel('Name', { exact: true }).fill('Singapore');
-  await sheet.getByLabel('Reads in').selectOption('SGD');
+  await setCurrency(currencyRow(sheet, 'Reads in'), 'SGD');
   await sheet.getByRole('button', { name: 'Create workspace' }).tap();
   await expect(sheet).toHaveCount(0);
 

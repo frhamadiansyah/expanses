@@ -18,6 +18,8 @@ export interface RoundAction {
   params?: LinkProps['params'];
   search?: LinkProps['search'];
   run?: () => void;
+  /** True while the action cannot be taken yet: the button dims and refuses. */
+  disabled?: boolean;
   testId?: string;
 }
 
@@ -54,7 +56,7 @@ export function ActionButtons({ actions }: { actions: RoundAction[] }) {
             {face}
           </Link>
         ) : (
-          <button key={action.key} type="button" onClick={action.run} className={shell} data-testid={action.testId}>
+          <button key={action.key} type="button" onClick={action.run} disabled={action.disabled} className={`${shell} disabled:opacity-40`} data-testid={action.testId}>
             {face}
           </button>
         );

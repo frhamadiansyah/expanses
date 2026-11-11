@@ -1,6 +1,6 @@
 import type { TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { loanPayments, monthYearLabel, percentBps, rateText, rateTextPer, repaidPercent, soonerText } from './loan-view';
+import { effectiveRateText, flatEffectiveHint, loanPayments, monthYearLabel, percentBps, rateText, rateTextPer, repaidPercent, soonerText } from './loan-view';
 
 describe('the words on a loan page', () => {
   it('writes a rate with a decimal comma and no trailing zeros', () => {
@@ -13,6 +13,12 @@ describe('the words on a loan page', () => {
     expect(rateTextPer(2400, 'month')).toBe('2% a month');
     expect(rateTextPer(3540, 'month')).toBe('2,95% a month');
     expect(rateTextPer(900, 'year')).toBe('9%');
+  });
+
+  it('names the year on a flat loan\'s effective rate, and the period on both sides of the hint', () => {
+    expect(effectiveRateText(4005)).toBe('about 40,05% a year effective');
+    expect(flatEffectiveHint('2', 'month', 4005)).toBe('A flat 2% a month is about 40,05% a year effective.');
+    expect(flatEffectiveHint('9', 'year', 1670)).toBe('A flat 9% a year is about 16,7% a year effective.');
   });
 
   it('names a month and its year', () => {

@@ -20,5 +20,5 @@ export function rateBpsFromTyped(typed: string, per: RatePer = 'year'): number {
 export function typedFromRateBps(rateBps: number, per: RatePer = 'year'): string {
   if (!(rateBps > 0)) return '';
   const value = per === 'month' ? rateBps / 12 / 100 : rateBps / 100;
-  return Number(value.toFixed(per === 'month' ? 3 : 2)).toString().replace('.', ',');
+  return Number(value.toFixed(per === 'month' ? 4 : 2)).toString().replace('.', ',');
 }

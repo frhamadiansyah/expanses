@@ -7,6 +7,9 @@ import { type CheckedSnapshot, liveProblem } from './live-health';
 import type { Safety } from './open';
 import { memorySnapshots } from './snapshots';
 
+// These tests hold the retention rules themselves; keeping the older copies (src/db/retention.ts) has its own test.
+vi.mock('./retention', async (importOriginal) => ({ ...(await importOriginal<typeof import('./retention')>()), KEEP_OLDER_COPIES: false }));
+
 const engines: NodeExecutor[] = [];
 afterEach(() => {
   vi.useRealTimers();

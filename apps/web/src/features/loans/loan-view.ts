@@ -13,6 +13,16 @@ export function rateText(bps: number): string {
   return `${(bps / 100).toLocaleString('id-ID', { maximumFractionDigits: 2 })}%`;
 }
 
+/** A flat loan's effective rate, always a year: "about 40,05% a year effective". */
+export function effectiveRateText(effectiveBps: number): string {
+  return `about ${rateText(effectiveBps)} a year effective`;
+}
+
+/** The hint under a flat loan's rate, naming the period on both sides: "A flat 2% a month is about 40,05% a year effective." */
+export function flatEffectiveHint(typedRate: string, per: 'month' | 'year', effectiveBps: number): string {
+  return `A flat ${typedRate}% a ${per} is ${effectiveRateText(effectiveBps)}.`;
+}
+
 /** A loan's rate as it reads on the page: "9,25%" a year, or "2% a month" for a paylater, which quotes a month. */
 export function rateTextPer(bps: number, per: 'month' | 'year'): string {
   if (per === 'year') return rateText(bps);

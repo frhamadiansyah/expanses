@@ -62,6 +62,22 @@ export async function salvageBytes(directory = '.expanses'): Promise<Uint8Array 
   return best;
 }
 
+/**
+ * Whether the VFS's files hold anything at all: a slot longer than the pool's own header. True on a device whose
+ * database is there but unreadable (so `salvageBytes` found nothing), false on one that never had one.
+ */
+export async function poolHoldsData(directory = '.expanses'): Promise<boolean> {
+  if (!navigator.storage?.getDirectory) return false;
+  const root = await navigator.storage.getDirectory();
+  const dir = await root.getDirectoryHandle(directory).catch(() => null);
+  if (!dir) return false;
+  for await (const handle of filesUnder(dir)) {
+    const file = await handle.getFile();
+    if (file.size > DATA_OFFSET) return true;
+  }
+  return false;
+}
+
 type SalvageRequest = { op: 'wipe' } | { op: 'import'; bytes: Uint8Array; latestVersion: number };
 
 /**

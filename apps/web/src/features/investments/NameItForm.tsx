@@ -1,7 +1,7 @@
-import { CURRENCIES } from '@expanses/core';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, PickerRow, TextRow } from '../../ui/native';
+import { CurrencySheet } from '../currency/CurrencySheet';
 import type { FormConfirm } from '../networth/AddAssetForm';
 import { type NameDraft, namedSecurity, type Picked } from './add-holding';
 
@@ -9,6 +9,7 @@ import { type NameDraft, namedSecurity, type Picked } from './add-holding';
 export function NameItForm({ base, onDone, onConfirm }: { base: string; onDone: (picked: Picked) => void; onConfirm: (confirm: FormConfirm | null) => void }) {
   const [draft, setDraft] = useState<NameDraft>({ ticker: '', name: '', market: '', currency: base, lotSize: '' });
   const [error, setError] = useState<unknown>(null);
+  const [pickingCurrency, setPickingCurrency] = useState(false);
   const change = (patch: Partial<NameDraft>) => setDraft((d) => ({ ...d, ...patch }));
   const form = useRef<HTMLFormElement>(null);
   // Its ✓ goes on to the purchase, as soon as it has a name.
@@ -31,16 +32,11 @@ export function NameItForm({ base, onDone, onConfirm }: { base: string; onDone: 
         <TextRow label="Ticker" value={draft.ticker} onChange={(e) => change({ ticker: e.target.value })} placeholder="Optional" autoCapitalize="characters" />
         <TextRow label="Name" value={draft.name} onChange={(e) => change({ name: e.target.value })} placeholder="Required" required />
         <TextRow label="Market" value={draft.market} onChange={(e) => change({ market: e.target.value })} placeholder="Optional" autoCapitalize="characters" />
-        <SelectRow label="Currency" value={draft.currency} onChange={(e) => change({ currency: e.target.value })}>
-          {CURRENCIES.map((c) => (
-            <option key={c.code} value={c.code}>
-              {c.code}
-            </option>
-          ))}
-        </SelectRow>
+        <PickerRow label="Currency" value={draft.currency} onOpen={() => setPickingCurrency(true)} />
         <TextRow label="Shares in a lot" value={draft.lotSize} onChange={(e) => change({ lotSize: e.target.value })} inputMode="numeric" placeholder="None" />
       </InsetGroup>
       <ErrorBox error={error} />
+      {pickingCurrency && <CurrencySheet value={draft.currency} baseCurrency={base} onPick={(currency) => change({ currency })} onClose={() => setPickingCurrency(false)} />}
     </form>
   );
 }

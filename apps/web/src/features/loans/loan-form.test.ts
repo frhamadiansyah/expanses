@@ -1,5 +1,6 @@
 import type { ScheduleRow } from '@expanses/core';
 import type { LoanTermsRow } from '@expanses/db';
+import { typedFromRateBps } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import {
   emptyLoanTermsDraft,
@@ -7,6 +8,7 @@ import {
   type LoanTermsDraft,
   loanTermsDraftFromTerms,
   loanTermsDraftToInput,
+  rateTextAfterKindChange,
   type PaymentDraft,
   paymentDraftFrom,
   paymentDraftToInput,
@@ -282,5 +284,24 @@ describe('grouped amounts in the loan forms', () => {
 
     expect(usd.originalMinor).toBe(1_250_075);
     expect(kwd.originalMinor).toBe(1_234_000);
+  });
+});
+
+describe('changing the kind of loan', () => {
+  it('keeps the stored yearly rate: 2 a year stays 200 bps after switching to an online loan', () => {
+    const rate = rateTextAfterKindChange('2', '', 'online_loan');
+    expect(rate).toBe('0,1667');
+    expect(loanTermsDraftToInput(draft({ rate, itemId: 'online_loan' }), 'IDR').rateBps).toBe(200);
+  });
+
+  it('keeps the same bps going back, and leaves same-period switches and bad text alone', () => {
+    expect(loanTermsDraftToInput(draft({ rate: rateTextAfterKindChange('0,1667', 'online_loan', ''), itemId: '' }), 'IDR').rateBps).toBe(200);
+    expect(rateTextAfterKindChange('9,25', 'home_mortgage', 'vehicle_leasing')).toBe('9,25');
+    expect(rateTextAfterKindChange('abc', '', 'online_loan')).toBe('abc');
+  });
+
+  it('saves a monthly figure shown for 2403 bps back as 2403', () => {
+    const shown = typedFromRateBps(2403, 'month');
+    expect(loanTermsDraftToInput(draft({ rate: shown, itemId: 'online_loan' }), 'IDR').rateBps).toBe(2403);
   });
 });

@@ -20,7 +20,7 @@ import { CashRow, CashSheet, ResultRow, TypedRow, useCashSide } from '../networt
 import { UTANG_CHOICES } from '../ownables/catalogue-view';
 import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
 import { type PaymentDraft, extraPaymentMinor, paymentDraftFrom, paymentDraftToInput } from './loan-form';
-import { loanPayments, monthYearLabel, percentBps, rateText, rateTextPer, repaidPercent, soonerText } from './loan-view';
+import { loanPayments, monthYearLabel, effectiveRateText, percentBps, rateTextPer, repaidPercent, soonerText } from './loan-view';
 import { TermsForm } from './TermsForm';
 import { useLoan, useLoanItems, useNextPayment, useSchedule } from './queries';
 
@@ -642,6 +642,8 @@ export function LoanDetailPage() {
   const rateBps = current?.rateBps ?? 0;
   const effective = terms?.method === 'flat' && terms.tenorMonths > 1 ? flatToEffectiveBps(rateBps, terms.tenorMonths) : null;
   const repaidMinor = terms ? terms.originalMinor - balanceMinor : 0;
+  // The rate's period follows the kind of loan; until the kinds are read it is not known, so no rate is typed or shown.
+  const kindKnown = kinds.isSuccess;
   const itemId = kinds.data?.[accountId] ?? '';
   const ratePer = loanRatePer(itemId);
   const kindLabel = (() => {
@@ -661,7 +663,7 @@ export function LoanDetailPage() {
           label: 'More',
           glyph: <MoreHorizontal size={20} aria-hidden />,
           menu: [
-            { key: 'terms', label: 'Edit terms', glyph: <Pencil size={18} aria-hidden />, run: () => setOpened('terms') },
+            { key: 'terms', label: 'Edit terms', glyph: <Pencil size={18} aria-hidden />, run: () => setOpened('terms'), disabled: !kindKnown },
             { key: 'code', label: 'Tax report code', glyph: <FileText size={18} aria-hidden />, run: () => setOpened('code') },
           ],
         },
@@ -673,16 +675,16 @@ export function LoanDetailPage() {
     : [
         { key: 'pay', label: 'Pay', glyph: <Banknote size={20} aria-hidden />, run: () => setOpened('pay') },
         { key: 'extra', label: 'Pay extra', glyph: <CirclePlus size={20} aria-hidden />, run: () => setOpened('extra') },
-        { key: 'rate', label: 'Rate change', glyph: <Percent size={20} aria-hidden />, run: () => setOpened('rate') },
+        { key: 'rate', label: 'Rate change', glyph: <Percent size={20} aria-hidden />, run: () => setOpened('rate'), disabled: !kindKnown },
         { key: 'pay-off', label: 'Pay off', glyph: <CircleCheck size={20} aria-hidden />, run: () => setOpened('pay-off') },
       ];
 
   return (
     <div className={SCREEN}>
       <PushedTitle title={name} back="Liabilities" backTo="/net-worth/loans" actions={menu} />
-      <ErrorBox error={loan.error ?? schedule.error} />
+      <ErrorBox error={loan.error ?? schedule.error ?? kinds.error} />
 
-      {!terms && !loan.isPending && (adding ? (
+      {!terms && !loan.isPending && kindKnown && (adding ? (
         <TermsForm accountId={accountId} itemId={itemId} onDone={() => setAdding(false)} />
       ) : (
         <>
@@ -702,8 +704,8 @@ export function LoanDetailPage() {
                 {formatMinor(balanceMinor, currency)}
               </p>
               <p className="mt-[2px] text-[13px] leading-[18px] text-[var(--ph-ink-3)]" data-testid="loan-line">
-                {[terms.lenderName, `${rateTextPer(rateBps, ratePer)} ${current?.kind === 'floating' ? 'floating' : 'fixed'}`, kindLabel].filter(Boolean).join(' · ')}
-                {effective !== null && ` · about ${rateText(effective)} effective`}
+                {[terms.lenderName, kindKnown ? `${rateTextPer(rateBps, ratePer)} ${current?.kind === 'floating' ? 'floating' : 'fixed'}` : null, kindLabel].filter(Boolean).join(' · ')}
+                {kindKnown && effective !== null && ` · ${effectiveRateText(effective)}`}
               </p>
             </div>
             <RepaidBar
@@ -739,11 +741,11 @@ export function LoanDetailPage() {
 
       {terms && opened === 'pay' && <PaySheet accountId={accountId} loanName={name} currency={currency} balanceMinor={balanceMinor} onClose={close} />}
       {terms && opened === 'extra' && <PayExtraSheet accountId={accountId} currency={currency} balanceMinor={balanceMinor} terms={terms} onClose={close} />}
-      {terms && opened === 'rate' && <RateChangeSheet accountId={accountId} currency={currency} per={ratePer} onClose={close} />}
+      {terms && kindKnown && opened === 'rate' && <RateChangeSheet accountId={accountId} currency={currency} per={ratePer} onClose={close} />}
       {terms && opened === 'pay-off' && <PayOffSheet accountId={accountId} currency={currency} balanceMinor={balanceMinor} onClose={close} />}
       {opened === 'schedule' && <ScheduleSheet rows={rows} currency={currency} onClose={close} />}
       {terms && opened === 'code' && <LoanCodeSheet terms={terms} onClose={close} />}
-      {terms && opened === 'terms' && (
+      {terms && kindKnown && opened === 'terms' && (
         <Sheet
           grouped
           tall

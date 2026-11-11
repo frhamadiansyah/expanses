@@ -1,7 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { copyName, listCopies } from './names';
 import type { ICloudBackupPlugin } from './plugin';
 import { backUpIfDue, backUpNow, ICloudUnavailableError, openCopy } from './service';
+
+// These tests hold the retention rules themselves; keeping the older copies (src/db/retention.ts) has its own test.
+vi.mock('../../../db/retention', async (importOriginal) => ({ ...(await importOriginal<typeof import('../../../db/retention')>()), KEEP_OLDER_COPIES: false }));
 
 const DEVICE = '1A2B3C4D-0000-4000-8000-000000000001';
 
