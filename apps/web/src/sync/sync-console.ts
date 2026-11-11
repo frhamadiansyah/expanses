@@ -5,12 +5,13 @@ import type { SyncLogEntry } from './sync-log';
 import type { SyncService } from './sync-service';
 
 /*
- * `window.__expansesSync`: the sharing tables and the sync log from Safari's Web Inspector, on a phone on a cable
- * (capacitor.config.ts turns inspection on for TestFlight builds). Reads only — nothing here writes, syncs or makes
- * keys — and ids, roles, states and counts only: no names, amounts, descriptions or keys.
+ * `window.__expansesSync`: the sharing tables and the sync log from Safari's Web Inspector, on a phone on a cable.
+ * Reads only — nothing here writes, syncs or makes keys. The tables are read as ids, roles, states and counts; the log
+ * and the Details text carry error messages in their own words, which can name a workspace, an event or a person.
  *
- * Installed in every build, since the TestFlight build is the one that needs it; without an inspectable web view
- * nobody can reach it. Remove together with `webContentsDebuggingEnabled` before an App Store release.
+ * Only in a diagnostic build: bootstrap.ts installs it when `import.meta.env.VITE_INSPECTABLE === '1'`, which
+ * `CICIS_INSPECTABLE=1 npm run cap:sync` sets together with the inspectable web view (capacitor.config.ts). Any
+ * other build leaves this chunk out entirely.
  */
 
 type Diagnostics = Awaited<ReturnType<typeof sharingDiagnostics>>;

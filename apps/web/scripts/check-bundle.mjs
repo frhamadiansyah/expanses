@@ -35,6 +35,9 @@ const ART = 'data-layer="brand"';
 for (const file of entry) if (read(file).includes(ART)) problems.push(`entry ${file} carries the membership card drawings: they must stay a lazy chunk`);
 for (const chunk of chunks) if (!entry.includes(chunk.file) && chunk.text.includes(ART)) lines.push(`Membership cards ${chunk.file}: ${kb(chunk.gzipped)} gzipped (lazy)`);
 for (const line of lines) console.log(line);
+// A diagnostic build (CICIS_INSPECTABLE=1, capacitor.config.ts) carries the console helper; say which this is.
+const diagnostic = chunks.some((chunk) => chunk.text.includes('__expansesSync'));
+console.log(diagnostic ? 'DIAGNOSTIC build: window.__expansesSync is in this bundle (CICIS_INSPECTABLE=1). Not for the App Store.' : 'Diagnostics: not in this build.');
 for (const warning of warnings) console.warn(`warning: ${warning}`);
 if (problems.length > 0) {
   console.error(problems.join('\n'));
