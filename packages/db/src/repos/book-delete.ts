@@ -13,6 +13,10 @@ import {
   eraseBookTx,
   keepInPersonalTx,
   keptByRecordsTx,
+  anotherSharesSql,
+  erasableTablesTx,
+  ownPurchasesOfTx,
+  writeArrivingTx,
   ownPurchasesTx,
   ownRecordsMessage,
   readOnlyCopyTx,
@@ -67,6 +71,12 @@ export interface BookDeletePlan {
    * `deleteBook` keeps in Personal unless told not to. 0 for any other workspace.
    */
   ownPurchases: number;
+  /**
+   * A joined copy's own purchases that another shared book here, active, set aside because this copy held them (A6 fix
+   * round 1): Place them now brings them back through that share, so the delete erases them rather than keeping them in
+   * Personal ("N purchases will come back through the new share"). Not counted in `ownPurchases`. 0 for anything else.
+   */
+  arrivingInShare: number;
   /**
    * Transactions the erase would take that a record it cannot take still names (a trade, a sale, a transfer between
    * partners): any refuses the delete (`RECORDS`). 0 when the workspace voids.
@@ -144,7 +154,9 @@ async function planTx(tx: Db, ws: WorkspaceContext, book: BookRow, options: Plan
   const [bonus] = await tx.select({ month: bookIncomeOverrides.month }).from(bookIncomeOverrides).where(eq(bookIncomeOverrides.bookId, bookId)).limit(1);
   const [{ n }] = (await tx.values<[number]>(sql`SELECT count(*) FROM (${filedSql(bookId, splits)})`)).map(([n]) => ({ n: Number(n) })) as [{ n: number }];
   const erases = await wasEverSharedTx(tx, bookId, book.kind);
-  const ownPurchases = erases && book.kind === 'shared' ? (await ownPurchasesTx(tx, ws, bookId)).length : 0;
+  const own = erases && book.kind === 'shared' ? await ownPurchasesOfTx(tx, ws, bookId) : { keep: [], arriving: [] };
+  const ownPurchases = own.keep.length;
+  const arrivingInShare = own.arriving.length;
   const records = erases ? await keptByRecordsTx(tx, ws, bookId) : { own: [], other: [] };
   const kept = records.own.length + records.other.length;
   // A read-only joined copy cannot have them undone or moved first (fix round 2, N1): its own trades and sales are kept
@@ -163,6 +175,7 @@ async function planTx(tx: Db, ws: WorkspaceContext, book: BookRow, options: Plan
     refusalCode,
     erases,
     ownPurchases,
+    arrivingInShare,
     kept,
     ownRecords,
   });
@@ -176,8 +189,11 @@ async function planTx(tx: Db, ws: WorkspaceContext, book: BookRow, options: Plan
   // A purchase with a part here and a part elsewhere (or any posted transaction whose lines touch two workspaces) would
   // be half deleted: refused before anything is written.
   if (n > 0) {
+    // A6 fix rounds 3 and 4: a share's purchase on a category this copy held is that share's, not a split, and the erase
+    // spares it; only one filed in that share with no part here. A real split across the two still refuses.
+    const anotherShares = erases ? sql`AND NOT ${anotherSharesSql(bookId, await erasableTablesTx(tx))}` : sql``;
     const straddling = await tx.values<[string]>(sql`
-      SELECT 1 FROM transactions t WHERE t.id IN (${filedSql(bookId, splits)}) AND (
+      SELECT 1 FROM transactions t WHERE t.id IN (${filedSql(bookId, splits)}) ${anotherShares} AND (
         ${splits ? sql`EXISTS (SELECT 1 FROM book_transaction_splits s WHERE s.transaction_id = t.id AND s.book_id <> ${bookId}) OR` : sql``}
         EXISTS (SELECT 1 FROM book_transactions b WHERE b.transaction_id = t.id AND b.book_id <> ${bookId})
         OR EXISTS (SELECT 1 FROM entries e JOIN book_categories c ON c.category_account_id IN (e.account_id, e.spend_category_id)
@@ -271,6 +287,8 @@ export async function deleteBook(
           records: plan.ownRecords > 0 ? (await keptByRecordsTx(tx, ws, bookId)).own : [],
         })
       ).length;
+      // The own purchases a share here brings back: where each was paid from goes on record for that share's Place them now.
+      await writeArrivingTx(tx, (await ownPurchasesOfTx(tx, ws, bookId)).arrivingIn);
       const erased = await eraseBookTx(tx, ws, bookId);
       await audit({ erased: true, transactions: erased.transactions, categories: erased.categories, budgets: erased.budgets, keptInPersonal: kept });
       return { ...erased, erased: true, keptInPersonal: kept };

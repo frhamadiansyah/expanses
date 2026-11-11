@@ -98,8 +98,7 @@ describe('rows another copy on the phone holds (D-A3, D-A4)', () => {
     expect(await balanceOf(fandri, fandri.bank)).toBe(bankBefore);
   });
 
-  // After the old copy is deleted (erase, Task A5), Place them now (Task A6) brings every row: in A6's test file.
-  it.todo('after the old copy is deleted, Place them now brings every row and leaves no skip');
+  // After the old copy is deleted (erase, Task A5), Place them now (Task A6) brings every row: place-held.test.ts.
 
   it('a dead leftover category (archived, out of every workspace) is adopted into the joined book', async () => {
     const home = new Household();

@@ -33,6 +33,7 @@ import { deviceIdOf } from './relay-signing';
 import { MissingEpochKeyError, verifyEntry, type ChangeLogEntry, type Sealer } from './seal';
 import { entityOf, NEVER_SYNCED_COLUMNS, parseOpId, type RowEntity } from './shared-entities';
 import { adoptRowTx, freeTransactionIdTx, HeldElsewhere, rowPlaceTx } from './held';
+import { ownPlaceForLabelTx } from './own-account';
 import type { ChangeSet, Op, SequencedEntry, SyncTransport } from './types';
 import { keepClocksTx, type SeenLog } from './seed';
 import { postTransferSideTx } from './net-worth/transfers';
@@ -545,6 +546,54 @@ async function localCategory(tx: Db, ctx: BookContext, categoryId: string): Prom
   return uncategorisedTx(tx, ctx);
 }
 
+/**
+ * Where this member's own purchases with no head here may land on own accounts (sharing resilience §6.5, D-B6; A6 fix
+ * round 3). Only a whole-log pull (Place them now, a rejoin reset) sets `land`; the ordinary sync never does, so a
+ * partner's op that says "paid by" this member never reaches a real account there (task 7 review round 1).
+ * - `recorded`: what `deleteBook` wrote down, by lineage, for this phone's own purchases it erased because this share
+ *   brings them back (`sharing.arriving.<book>`): the account and card each was paid from. Local truth, used first.
+ * - else the label (`ownPlaceForLabelTx`), only for an op this member's own device wrote.
+ * `needsAccount` collects, by lineage, own purchases that went on this member's placeholder all the same.
+ */
+export interface OwnLanding {
+  land: boolean;
+  recorded: ReadonlyMap<string, readonly ArrivingSide[]>;
+  needsAccount: Set<string>;
+}
+
+/** One money side of an own purchase as this phone had it before its copy was erased: the account, its currency, the card. */
+export interface ArrivingSide {
+  accountId: string;
+  currency: string;
+  cardId: string | null;
+}
+
+/** The settings key of the own purchases a delete wrote down for the share that brings them back (no migration). */
+export const ARRIVING_KEY = (bookId: string) => `sharing.arriving.${bookId}`;
+
+/** What `deleteBook` wrote down for this share, by lineage (`ARRIVING_KEY`); empty when nothing, or unreadable. */
+export async function arrivingSidesTx(tx: Db, bookId: string): Promise<Map<string, ArrivingSide[]>> {
+  const [row] = await tx.values<[string]>(sql`SELECT value FROM settings WHERE key = ${ARRIVING_KEY(bookId)}`);
+  if (!row) return new Map();
+  try {
+    return new Map(Object.entries(JSON.parse(row[0]) as Record<string, ArrivingSide[]>));
+  } catch {
+    return new Map();
+  }
+}
+
+/** The recorded side for a currency, while its account is still an open own money account here in that currency. */
+async function recordedSideTx(tx: Db, ctx: BookContext, sides: readonly ArrivingSide[] | undefined, currency: string): Promise<ArrivingSide | null> {
+  const side = sides?.find((s) => s.currency === currency);
+  if (!side) return null;
+  const [ok] = await tx.values(sql`
+    SELECT 1 FROM accounts a WHERE a.id = ${side.accountId} AND a.workspace_id = ${ctx.ws.workspaceId} AND a.archived_at IS NULL
+      AND a.kind IN ('asset', 'liability') AND a.currency = ${currency} AND a.id NOT IN (SELECT account_id FROM book_member_accounts)`);
+  if (!ok) return null;
+  const card = side.cardId ? await tx.values(sql`SELECT 1 FROM cards WHERE id = ${side.cardId} AND account_id = ${side.accountId}`) : [];
+  return { ...side, cardId: card.length > 0 ? side.cardId : null };
+}
+
 /** units of the base currency per one major unit of `currency`, from a line's carried pair (spec §4.3, corrected). */
 function rateFromPair(currency: string, base: string, amountMinor: number, amountBaseMinor: number): number | null {
   if (amountMinor === 0) return null;
@@ -683,9 +732,11 @@ async function postingLines(
   money: PurchaseMoney,
   trust: PaidFromTrust,
   kept: PrivateParts | null = null,
-): Promise<{ lines: PostingLine[]; ratesToBase: Record<string, number>; cardId: string | null | undefined; refused: boolean }> {
+  landing: { lineageId: string; own?: OwnLanding } | null = null,
+): Promise<{ lines: PostingLine[]; ratesToBase: Record<string, number>; cardId: string | null | undefined; refused: boolean; needsAccount: boolean }> {
   const lines: PostingLine[] = [];
   let refused = false;
+  let needsAccount = false;
   const perCurrency = new Map<string, { amount: number; base: number }>();
   const ratesToBase: Record<string, number> = {};
   const carried: BasedLine[] = [];
@@ -738,10 +789,34 @@ async function postingLines(
     const mine = own.filter((entry) => entry.currency === currency);
     if (mine.length === 0) {
       const item = money.paidFrom && accountOwner === ctx.memberId ? await paidFromAccountHere(tx, ctx, money.paidFrom, currency, trust) : null;
+      // D-B6 (sharing resilience §6.5): in a whole-log pull only, this member's own purchase with no head here (its rows
+      // came back through the share) goes on the account this phone recorded for it when it erased its copy, else — for
+      // an op this member's own device wrote — the one own account its label names. The money side of an own purchase
+      // never travels, so the choice is this phone's alone.
+      const ownLanding = landing?.own;
+      const ownNoHead = !item && !head && !money.paidFrom && money.paidBy === ctx.memberId;
+      const recorded = ownLanding?.land && ownNoHead ? await recordedSideTx(tx, ctx, ownLanding.recorded.get(landing!.lineageId), currency) : null;
+      const named = recorded
+        ? recorded
+        : ownLanding?.land && ownNoHead && trust.authorMember === ctx.memberId
+          ? await ownPlaceForLabelTx(tx, ctx, money.paidLabel, currency)
+          : null;
       if (item) {
         lines.push({ accountId: item.accountId, amountMinor: target, currency });
         cardId = item.cardId;
+      } else if (named) {
+        lines.push({ accountId: named.accountId, amountMinor: target, currency });
+        if (cardId === undefined || cardId === null) cardId = named.cardId;
       } else {
+        // An own purchase on this member's own placeholder in a whole-log pull: listed under Needs an account (D-B6).
+        // Only this member's own: one this phone recorded when it erased its copy, or one this member's device wrote,
+        // never a partner's entry that says it was paid by this member (A6 fix round 4).
+        if (
+          ownLanding?.land &&
+          ownNoHead &&
+          (ownLanding.recorded.has(landing!.lineageId) || trust.authorMember === ctx.memberId)
+        )
+          needsAccount = true;
         // Not landed on the owner's item here: the payer's placeholder (task 7 review round 1), as for any other purchase.
         if (money.paidFrom && accountOwner === ctx.memberId) refused = true;
         const holder = accountOwner === ctx.memberId ? money.paidBy : accountOwner;
@@ -769,7 +844,7 @@ async function postingLines(
     // With the figures they hold here, which need no rate of the day (and which the recalculation then owns).
     if (rest.length > 0 && rest.reduce((sum, entry) => sum + entry.amountMinor, 0) === 0) lines.push(...rest.map((entry) => ({ ...entry, amountBaseMinor: headBase.get(entry)! })));
   }
-  return { lines, ratesToBase, cardId, refused };
+  return { lines, ratesToBase, cardId, refused, needsAccount };
 }
 
 /**
@@ -787,8 +862,9 @@ async function ledgerInput(
   carriesDayOrder = false,
   carriesExact = false,
   kept: PrivateParts | null = null,
-): Promise<{ input: PostTransactionInput; refused: boolean }> {
-  const { lines, ratesToBase, cardId, refused } = await postingLines(tx, ctx, head, state.money, trust, kept);
+  landing: { lineageId: string; own?: OwnLanding } | null = null,
+): Promise<{ input: PostTransactionInput; refused: boolean; needsAccount: boolean }> {
+  const { lines, ratesToBase, cardId, refused, needsAccount } = await postingLines(tx, ctx, head, state.money, trust, kept, landing);
   const input: PostTransactionInput = { occurredOn: state.occurredOn, description: state.description, lines, ratesToBase, syncAuthor: author };
   // The card the money side is now on (§5.3): the owner's card, or none once it sits on a placeholder.
   if (cardId !== undefined) input.cardId = cardId;
@@ -833,7 +909,7 @@ async function ledgerInput(
   // to it keeps the figure only when it still rounds to it. An op from a build without it leaves it to the ledger, which
   // keeps it while the amount stays. Never money: the lines above are posted whatever it says.
   if ('exactHundredths' in winners || carriesExact) input.exactHundredths = await exactForLinesTx(tx, state.exactHundredths, lines);
-  return { input, refused };
+  return { input, refused, needsAccount };
 }
 
 async function recordPurchaseClocks(tx: Db, ctx: BookContext, lineageId: string, won: ReadonlyMap<string, { hlc: string }>): Promise<void> {
@@ -859,8 +935,33 @@ async function inPlaceOnly(tx: Db, winners: Record<string, unknown>): Promise<bo
 /** A purchase op for a lineage this device has not seen, without the money to post it: kept until its page ends, with the seq it came at. */
 export type HeldOps = Map<string, { op: Extract<Op, { op: 'upsert' }>; changeSet: ChangeSet; seq: number; author: string }[]>;
 
-/** §7.2 `applyPurchase`. Returns false when the op had to be held. */
-async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'upsert' }>, changeSet: ChangeSet, authorDevice: string): Promise<boolean> {
+/**
+ * A purchase the share sent is filed in the share's book (A6 fix round 3), whatever book its categories are tagged into
+ * here. The ledger files by the categories' books, and a category another copy on this phone holds (D-A3) is tagged into
+ * that copy: the purchase would be filed there, and erased with it. Filed here, it stays with the share; erasing the
+ * other copy spares it and keeps the category as a leftover, which the share's own category op adopts (D-A4).
+ */
+async function fileInOwnBookTx(tx: Tx, ctx: BookContext, transactionId: string): Promise<void> {
+  const filed = await tx.values<[string]>(sql`SELECT book_id FROM book_transactions WHERE transaction_id = ${transactionId}`);
+  if (filed.length === 1 && filed[0]![0] === ctx.bookId) return;
+  if ((await tx.values(sql`SELECT 1 FROM books WHERE id = ${ctx.bookId}`)).length === 0) return; // an event's or group's log
+  await tx.run(sql`DELETE FROM book_transactions WHERE transaction_id = ${transactionId}`);
+  await tx.run(sql`INSERT INTO book_transactions (transaction_id, workspace_id, book_id) VALUES (${transactionId}, ${ctx.ws.workspaceId}, ${ctx.bookId})`);
+}
+
+/**
+ * §7.2 `applyPurchase`. Returns false when the op had to be held. `own` (a whole-log pull only) lands this member's own
+ * purchases with no head on own accounts (D-B6); one that went on this member's placeholder is noted in its
+ * `needsAccount` by its lineage.
+ */
+async function applyPurchase(
+  tx: Tx,
+  ctx: BookContext,
+  op: Extract<Op, { op: 'upsert' }>,
+  changeSet: ChangeSet,
+  authorDevice: string,
+  own?: OwnLanding,
+): Promise<boolean> {
   const lineage = await lineageOf(tx, op.id, ctx.bookId);
   if (lineage && lineage.head === null) return true; // void wins, for ever
   const won = await purchaseWinnersOf(tx, ctx, op, changeSet.hlc);
@@ -934,7 +1035,20 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
   const parts = lineage ? await privatePartsTx(tx, ctx, lineage.head!) : null;
   const ownStill = state.money.paidBy === ctx.memberId && (state.money.paidFrom?.owner ?? state.money.paidBy) === ctx.memberId;
   const kept = parts && ownStill ? parts : null;
-  const { input, refused } = await ledgerInput(tx, ctx, lineage?.head ?? null, state, winners, changeSet.member, trust, 'dayOrder' in op.fields, 'exactHundredths' in op.fields, kept);
+  const { input, refused, needsAccount: onPlaceholder } = await ledgerInput(
+    tx,
+    ctx,
+    lineage?.head ?? null,
+    state,
+    winners,
+    changeSet.member,
+    trust,
+    'dayOrder' in op.fields,
+    'exactHundredths' in op.fields,
+    kept,
+    { lineageId: op.id, ...(own ? { own } : {}) },
+  );
+  if (onPlaceholder) own?.needsAccount.add(op.id);
   // Another member now says they paid the part here: it becomes theirs, as for any purchase (its money side on their
   // placeholder), and the other parts stay this device's own, charged as they were, as a purchase of their own that
   // takes the import identity with it.
@@ -947,6 +1061,7 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
     // D-A2: under the lineage id while it is free here, else a local id (`remapId`). The lineage keeps its id; the row
     // already under it (a voided leftover, a pre-share copy's own) is left as it is.
     const id = await postTransactionTx(tx, ctx.ws, { ...input, id: await freeTransactionIdTx(tx, ctx.bookId, op.id) });
+    if (!kept) await fileInOwnBookTx(tx, ctx, id);
     await tx.run(
       sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item)
           VALUES (${op.id}, ${ctx.bookId}, ${id}, ${state.money.paidBy}, ${state.money.paidLabel}, ${from?.owner ?? null}, ${from?.itemId ?? null})`,
@@ -954,6 +1069,7 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
   } else {
     const was = lineage.head!;
     const id = await replaceTransactionTx(tx, ctx.ws, was, input);
+    if (!kept) await fileInOwnBookTx(tx, ctx, id);
     if (parted) await postRemainderTx(tx, ctx, was, parted, changeSet.member);
     await tx.run(
       sql`UPDATE sync_lineage SET head_transaction_id = ${id}, paid_by = ${state.money.paidBy}, paid_label = ${state.money.paidLabel},
@@ -1015,6 +1131,8 @@ export interface ApplyRun {
   decisions?: (Op | AuthorityError)[];
   /** A shared event's log pulled again from its first entry: records are followed once at its end (`replayingEventLog`). */
   deferEventFollow?: boolean;
+  /** A whole-log pull's landing of own purchases (D-B6), and its Needs an account list (`OwnLanding`). */
+  own?: OwnLanding;
 }
 
 let savepoints = 0;
@@ -1026,6 +1144,7 @@ let savepoints = 0;
  */
 async function guarded(tx: Db, ctx: BookContext, run: ApplyRun, op: Op, fn: () => Promise<void>): Promise<void> {
   const name = sql.raw(`apply_op_${(savepoints += 1)}`);
+  const noted = run.own?.needsAccount.has(op.id) ?? false;
   await tx.run(sql`SAVEPOINT ${name}`);
   try {
     await fn();
@@ -1033,6 +1152,7 @@ async function guarded(tx: Db, ctx: BookContext, run: ApplyRun, op: Op, fn: () =
   } catch (error) {
     await tx.run(sql`ROLLBACK TO ${name}`);
     await tx.run(sql`RELEASE ${name}`);
+    if (!noted) run.own?.needsAccount.delete(op.id); // what the op did is undone, its landing with it
     if (error instanceof HeldElsewhere) {
       // Sharing resilience D-A3: the one skip that depends on rows only this phone has — another copy here holds the
       // row. Kept apart from the refusals every receiver makes alike (`deterministicRefusal`), never sent, and cleared
@@ -1194,7 +1314,7 @@ export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: Chan
     if (entity.kind === 'purchase') {
       if (op.op !== 'upsert') continue; // a purchase is never deleted, only voided
       await guarded(tx, ctx, run, op, async () => {
-        if (!(await applyPurchase(tx, ctx, op, changeSet, author))) held.set(op.id, [...(held.get(op.id) ?? []), { op, changeSet, seq: run.seq, author }]);
+        if (!(await applyPurchase(tx, ctx, op, changeSet, author, run.own))) held.set(op.id, [...(held.get(op.id) ?? []), { op, changeSet, seq: run.seq, author }]);
       });
       continue;
     }
@@ -1239,7 +1359,7 @@ export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: Chan
   for (const [lineageId, ops] of [...held]) {
     if ((await tx.values(sql`SELECT 1 FROM sync_lineage WHERE lineage_id = ${lineageId} AND book_id = ${ctx.bookId}`)).length === 0) continue;
     held.delete(lineageId);
-    for (const { op, changeSet: from, author: by } of ops) await guarded(tx, ctx, run, op, async () => void (await applyPurchase(tx, ctx, op, from, by)));
+    for (const { op, changeSet: from, author: by } of ops) await guarded(tx, ctx, run, op, async () => void (await applyPurchase(tx, ctx, op, from, by, run.own)));
   }
 }
 
@@ -1269,6 +1389,11 @@ export interface PullResult {
   removals: { epoch: number; target: string; seq: number; leave?: true }[];
   /** Devices this call pinned for the first time (§5.4), by id. */
   introduced: string[];
+  /**
+   * Own purchases this call put on this member's placeholder because no own account here matches their label (D-B6):
+   * the "Needs an account" count. Absent when a result was not made by a pull.
+   */
+  needsAccount?: number;
 }
 
 /** The device id an hlc carries, or null for one that is not an hlc at all. */
@@ -1335,6 +1460,7 @@ export async function pullAndApply(
   bookId: string,
   now: () => number = Date.now,
   seen?: SeenLog,
+  options: { landOwn?: boolean } = {},
 ): Promise<PullResult> {
   const [shared] = await database.db.values<[string, string]>(sql`SELECT relay_book_id, state FROM shared_books WHERE book_id = ${bookId}`);
   const removals: PullResult['removals'] = [];
@@ -1351,6 +1477,9 @@ export async function pullAndApply(
   let applied = 0;
   const held: HeldOps = new Map();
   const skipped: SkippedOp[] = [];
+  const needsAccount = new Set<string>();
+  // A whole-log pull (Place them now, a rejoin reset) lands own purchases on own accounts (D-B6); the ordinary loop never.
+  const recorded = options.landOwn ? await arrivingSidesTx(database.db, bookId) : new Map<string, ArrivingSide[]>();
   for (;;) {
     const { entries } = await transport.pull(relayBookId, since);
     if (entries.length === 0) break;
@@ -1418,7 +1547,8 @@ export async function pullAndApply(
       let applyingDecisions: (Op | AuthorityError)[] | undefined;
       await database.transaction((tx) =>
         withCapturePaused(tx, async () => {
-          const run: ApplyRun = { seq: entry.seq, skipped: [], author: entry.deviceId, ...(replaying ? { deferEventFollow: true } : {}) };
+          const landingRun: OwnLanding = { land: options.landOwn === true, recorded, needsAccount: new Set() };
+          const run: ApplyRun = { seq: entry.seq, skipped: [], author: entry.deviceId, own: landingRun, ...(replaying ? { deferEventFollow: true } : {}) };
           const refuse = async (entity: string, id: string, error: string) => {
             const skip: SkippedOp = { seq: entry.seq, entity, id, error };
             await tx.run(sql`INSERT INTO sync_skipped (book_id, seq, entity, id, error, at) VALUES (${bookId}, ${entry.seq}, ${entity}, ${id}, ${error}, ${new Date().toISOString()})`);
@@ -1517,6 +1647,7 @@ export async function pullAndApply(
             }
           }
           skipped.push(...run.skipped);
+          for (const lineageId of landingRun.needsAccount) needsAccount.add(lineageId);
           await setCursorTx(tx, bookId, entry.seq);
         }, () => {
           // What apply took in from another device, without the ops the authority view refused (§6.4 harness).
@@ -1563,7 +1694,8 @@ export async function pullAndApply(
       }
     }
     held.clear();
-    return stopped ? { applied, skipped, stopped, removals, introduced } : { applied, skipped, removals, introduced };
+    const out = { applied, skipped, removals, introduced, needsAccount: needsAccount.size };
+    return stopped ? { ...out, stopped } : out;
   }
 }
 
