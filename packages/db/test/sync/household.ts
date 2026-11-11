@@ -50,7 +50,7 @@ export interface Device {
   engine: SyncEngine;
   /**
    * This device's share records, beside its keys and outside its database (sharing resilience §6.1): a restored
-   * phone is a new device, so it starts with none. Handed to the engine from Task A2.
+   * phone is a new device, so it starts with none. The engine keeps them (`SyncEngineOptions.shareRecords`).
    */
   records: MemoryShareRecordStore;
   /** This device's own bank account, in the workspace currency. */
@@ -68,7 +68,13 @@ export class Household {
   bookId = '';
   relayBookId = '';
 
-  async device(name: string, memberId: string = `member-${name}`, baseCurrency = 'IDR', appVersion = '0.3.0'): Promise<Device> {
+  async device(
+    name: string,
+    memberId: string = `member-${name}`,
+    baseCurrency = 'IDR',
+    appVersion = '0.3.0',
+    engine: { now?: () => number; recordEveryMs?: number } = {},
+  ): Promise<Device> {
     const { database, ws } = await freshDatabase(baseCurrency);
     const keys = await generateDevice();
     const { deviceId, public: pub } = keys;
@@ -76,6 +82,8 @@ export class Household {
     const usd = await createAccount(database, ws, { name: `${name} Dollars`, kind: 'asset', subtype: 'bank', currency: 'USD' });
     const cash = await createAccount(database, ws, { name: `${name} Wallet`, kind: 'asset', subtype: 'cash', currency: baseCurrency });
     const transport = this.relay.as(requestSignerOf(keys));
+    const records = new MemoryShareRecordStore();
+    const recordEvery = engine.recordEveryMs === undefined ? {} : { recordEveryMs: engine.recordEveryMs };
     const device: Device = {
       name,
       database,
@@ -84,8 +92,8 @@ export class Household {
       public: pub,
       keys,
       transport,
-      engine: new SyncEngine(database, transport, keys, undefined, { appVersion }),
-      records: new MemoryShareRecordStore(),
+      engine: new SyncEngine(database, transport, keys, engine.now, { appVersion, shareRecords: records, ...recordEvery }),
+      records,
       bank: bank.id,
       cash: cash.id,
       usd: usd.id,
@@ -119,7 +127,9 @@ export class Household {
     await database.importBytes(backup);
     const keys = await generateDevice();
     const transport = this.relay.as(requestSignerOf(keys));
-    const device: Device = { ...lost, database, keys, deviceId: keys.deviceId, public: keys.public, transport, engine: new SyncEngine(database, transport, keys), records: new MemoryShareRecordStore() };
+    const records = new MemoryShareRecordStore();
+    const engine = new SyncEngine(database, transport, keys, undefined, { shareRecords: records });
+    const device: Device = { ...lost, database, keys, deviceId: keys.deviceId, public: keys.public, transport, engine, records };
     this.devices.splice(this.devices.indexOf(lost), 1, device);
     return device;
   }

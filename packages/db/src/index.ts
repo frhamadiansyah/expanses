@@ -150,6 +150,7 @@ export {
   FrozenBookError,
   LeaveIncompleteError,
   NotOwnerError,
+  RECORD_EVERY_MS,
   SEEN_WRITE_MS,
   STALE_AFTER_MS,
   SyncEngine,
@@ -159,6 +160,7 @@ export {
   type JoinInput,
   type PreviewedInvite,
   type ShareInput,
+  type ShareRecordFinding,
   type SyncEngineOptions,
   type SyncOnceResult,
 } from './sync/engine';

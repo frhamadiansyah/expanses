@@ -49,7 +49,14 @@ export type SharingErrorCode =
   | 'NOT_SETTLED'
   | 'LAST_MEMBER'
   // A new phone for a person who still has one in (final review C2): their old phone is removed first.
-  | 'STILL_HAS_PHONE';
+  | 'STILL_HAS_PHONE'
+  // Sharing resilience (§4, §6): a share record's keys do not open with this device's key; the relay says the share
+  // ended (410) or this device was removed (403); no share record for the book; an id another copy here holds.
+  | 'KEYS_UNREADABLE'
+  | 'SHARE_ENDED'
+  | 'DEVICE_REMOVED'
+  | 'NO_RECORD'
+  | 'HELD_ELSEWHERE';
 
 /** The settings key under which a device remembers its own member in a book it stopped sharing or kept as its own (§8.6, final review C1). */
 export const REMEMBERED_MEMBER_KEY = (bookId: string) => `sharing.member.${bookId}`;
