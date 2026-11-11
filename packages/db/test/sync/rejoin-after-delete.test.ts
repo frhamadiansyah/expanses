@@ -258,7 +258,10 @@ describe('the couple’s path, two phones (Task A9)', () => {
     const plan = await planBookDelete(fandri.database, fandri.ws, r1, { asIfLeft: true });
     expect(plan).toMatchObject({ refusal: null, erases: true, ownPurchases: FANDRI_SHARE1.length, arrivingInShare: 0 });
     await fandri.engine.leave(r1);
-    expect((await deleteBook(fandri.database, fandri.ws, r1)).keptInPersonal).toBe(FANDRI_SHARE1.length);
+    const deleted = await deleteBook(fandri.database, fandri.ws, r1);
+    expect(deleted.keptInPersonal).toBe(FANDRI_SHARE1.length);
+    // The sheet's count is what the erase takes: her new purchase on a held category is share 3's, spared, not counted.
+    expect(plan.transactions).toBe(deleted.transactions + deleted.keptInPersonal);
     expect(await balanceOf(fandri, fandri.bank)).toBe(-sum(FANDRI_SHARE1));
 
     // Step 9: Place them now.

@@ -152,8 +152,12 @@ async function planTx(tx: Db, ws: WorkspaceContext, book: BookRow, options: Plan
   const cap = ids.length ? await tx.select({ id: budgets.id }).from(budgets).where(and(eq(budgets.workspaceId, ws.workspaceId), inArray(budgets.categoryAccountId, ids))) : [];
   const [settingsRow] = await tx.select({ id: bookBudgetSettings.bookId }).from(bookBudgetSettings).where(eq(bookBudgetSettings.bookId, bookId));
   const [bonus] = await tx.select({ month: bookIncomeOverrides.month }).from(bookIncomeOverrides).where(eq(bookIncomeOverrides.bookId, bookId)).limit(1);
-  const [{ n }] = (await tx.values<[number]>(sql`SELECT count(*) FROM (${filedSql(bookId, splits)})`)).map(([n]) => ({ n: Number(n) })) as [{ n: number }];
   const erases = await wasEverSharedTx(tx, bookId, book.kind);
+  // The count is what the delete takes: an erase spares a share's purchase on a category this copy held (A9 concern 2).
+  const anotherShares = erases ? sql`AND NOT ${anotherSharesSql(bookId, await erasableTablesTx(tx))}` : sql``;
+  const [{ n }] = (
+    await tx.values<[number]>(sql`SELECT count(*) FROM transactions t WHERE t.id IN (${filedSql(bookId, splits)}) ${anotherShares}`)
+  ).map(([n]) => ({ n: Number(n) })) as [{ n: number }];
   const own = erases && book.kind === 'shared' ? await ownPurchasesOfTx(tx, ws, bookId) : { keep: [], arriving: [] };
   const ownPurchases = own.keep.length;
   const arrivingInShare = own.arriving.length;
@@ -191,7 +195,6 @@ async function planTx(tx: Db, ws: WorkspaceContext, book: BookRow, options: Plan
   if (n > 0) {
     // A6 fix rounds 3 and 4: a share's purchase on a category this copy held is that share's, not a split, and the erase
     // spares it; only one filed in that share with no part here. A real split across the two still refuses.
-    const anotherShares = erases ? sql`AND NOT ${anotherSharesSql(bookId, await erasableTablesTx(tx))}` : sql``;
     const straddling = await tx.values<[string]>(sql`
       SELECT 1 FROM transactions t WHERE t.id IN (${filedSql(bookId, splits)}) ${anotherShares} AND (
         ${splits ? sql`EXISTS (SELECT 1 FROM book_transaction_splits s WHERE s.transaction_id = t.id AND s.book_id <> ${bookId}) OR` : sql``}
