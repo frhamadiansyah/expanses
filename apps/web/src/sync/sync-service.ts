@@ -175,6 +175,21 @@ export class SyncService {
     return this.engineMade;
   }
 
+  /** The engine if one was made; never makes keys or an engine. For the diagnostics, which only read. */
+  async madeEngine(): Promise<SyncEngine | null> {
+    if (!this.engineMade) return null;
+    return this.engineMade.catch(() => null);
+  }
+
+  /** Whether this device holds sharing keys at all, without making any. */
+  async hasKeys(): Promise<boolean> {
+    try {
+      return await this.keyStore().hasDevice();
+    } catch {
+      return false;
+    }
+  }
+
   /** This device's id, once the engine exists; null before. */
   async deviceId(): Promise<string | null> {
     if (!this.engineMade) return null;

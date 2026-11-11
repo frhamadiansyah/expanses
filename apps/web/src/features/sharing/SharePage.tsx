@@ -1,6 +1,6 @@
 import { type BookRow, LeaveIncompleteError, type SharingDetail } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { CalendarDays, Landmark, RefreshCw, User } from 'lucide-react';
+import { CalendarDays, FileText, Landmark, RefreshCw, User } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -19,7 +19,7 @@ import { netWorthRowOf, netWorthValue } from './net-worth-state';
 import { useBookStatus, useSharingDetail, useSyncStatus } from './queries';
 import { keepOpenInvite, useActionRunner, useOpenInvite, useShareBook } from './share-hooks';
 import { rememberedName, rememberName, thisDeviceName } from './SharingSection';
-import { currencyRefusal, FORGET_ROW, forgetConfirm, FROZEN_NOTE, leaveConfirm, preparing, READ_ONLY_NOTE, sayError, statusLineOf, stopConfirm } from './sharing-copy';
+import { currencyRefusal, FORGET_ROW, forgetConfirm, FROZEN_NOTE, lastFailedLine, lastSyncedLine, leaveConfirm, preparing, READ_ONLY_NOTE, sayError, shareStatusLine, stopConfirm } from './sharing-copy';
 
 /** What the person being invited will and will not see, and the one thing about devices worth knowing up front. */
 const EXPLAINER = [
@@ -46,6 +46,10 @@ function ShareBody({ book }: { book: BookRow }) {
   return (
     <>
       {detail.data ? <Shared book={book} detail={detail.data} /> : <ShareForm book={book} refetch={async () => void (await detail.refetch())} />}
+      {/* Shared or not: a book whose sharing went missing here still has its history in the log, kept by its local id. */}
+      <InsetGroup wide>
+        <InsetRow testId="sync-details-row" icon={<FileText size={15} aria-hidden />} title="Details" to="/account/workspaces/$bookId/share/details" params={{ bookId: book.id }} />
+      </InsetGroup>
       <ShareEvents />
     </>
   );
@@ -202,8 +206,11 @@ function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
   const someoneJoined = detail.members.some((member) => !member.me && member.devices.length > 0);
   const showInvite = invite !== null && active && !frozen && !someoneJoined && new Date(invite.expiresAt).getTime() > now;
 
-  const line = status ? statusLineOf(status, { failing: live.failing, now }) : 'Checking…';
-  const note = status?.state === 'frozen' ? FROZEN_NOTE : status?.state === 'unshared' ? READ_ONLY_NOTE : undefined;
+  const line = shareStatusLine({ status, pending: engineStatus.isPending, error: engineStatus.error, failing: live.failing, now });
+  const storedSync = status && 'syncedAt' in status && status.syncedAt ? Date.parse(status.syncedAt) : status?.state === 'stale' ? Date.parse(status.since) : null;
+  const lastSynced = live.lastSyncedAt ?? (storedSync !== null && Number.isFinite(storedSync) ? storedSync : null);
+  const note = status?.state === 'frozen' ? FROZEN_NOTE : status?.state === 'unshared' ? READ_ONLY_NOTE : active ? lastSyncedLine(lastSynced, now) : undefined;
+  const failedLine = live.failing && live.lastError ? lastFailedLine(live.lastError) : undefined;
   const netWorth = netWorthRowOf(group.data, detail.members);
 
   async function leave() {
@@ -225,13 +232,13 @@ function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
   return (
     <div data-testid="sharing-section">
       <ErrorBox error={error} />
-      <InsetGroup wide>
+      <InsetGroup wide footer={failedLine ? <span data-testid="sharing-last-failure">{failedLine}</span> : undefined}>
         <InsetRow
           testId="sharing-status"
           icon={<RefreshCw size={15} aria-hidden />}
           title={line}
           subtitle={note}
-          value={active ? 'Sync now' : undefined}
+          value={active ? (live.running ? 'Syncing…' : 'Sync now') : undefined}
           chevron={false}
           onClick={active ? () => void sync.syncNow(book.id) : undefined}
         />

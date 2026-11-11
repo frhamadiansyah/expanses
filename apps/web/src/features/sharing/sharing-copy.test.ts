@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BookReadOnlyError, FrozenBookError, LastOwnerError, LeaveIncompleteError, NotOwnerError, SharingError, SyncTransportError } from '@expanses/db';
-import { currencyRefusal, endedLine, FORGET_ROW, forgetConfirm, replaceConfirm, FROZEN_NOTE, leaveConfirm, postedAgainstPlaceholder, READ_ONLY_NOTE, sayError, statusLineOf, stopConfirm, deviceName, ownerName, payerLine, preparing, sharedWith, sinceWhen, syncedAgo } from './sharing-copy';
+import { currencyRefusal, endedLine, lastFailedLine, lastSyncedLine, shareStatusLine, FORGET_ROW, forgetConfirm, replaceConfirm, FROZEN_NOTE, leaveConfirm, postedAgainstPlaceholder, READ_ONLY_NOTE, sayError, statusLineOf, stopConfirm, deviceName, ownerName, payerLine, preparing, sharedWith, sinceWhen, syncedAgo } from './sharing-copy';
 
 const fandri = { memberId: 'f', name: 'Fandri', role: 'owner' as const };
 const dewi = { memberId: 'd', name: 'Dewi', role: 'member' as const };
@@ -125,6 +125,51 @@ describe('the status line from the engine’s status (§11, task 9b)', () => {
   it('says a run that is failing right now, before the five minutes that make a book stale', () => {
     expect(line({ state: 'up_to_date', syncedAt: at(14, 58) }, true)).toBe('Not synced since 14:58');
     expect(line({ state: 'waiting', changes: 2, syncedAt: null }, true)).toBe('Not synced yet');
+  });
+
+  it('is never empty, for every state, failing or not, whatever the names and times hold', () => {
+    const states: Parameters<typeof statusLineOf>[0][] = [
+      { state: 'up_to_date', syncedAt: null },
+      { state: 'up_to_date', syncedAt: '2026-11-11 08:00:00' },
+      { state: 'waiting', changes: 0, syncedAt: 'not a time' },
+      { state: 'stale', since: 'not a time', changes: 2 },
+      { state: 'stale', since: at(9), changes: 0 },
+      { state: 'needs_invite', askName: '' },
+      { state: 'needs_invite', askName: '  ' },
+      { state: 'unshared', byMemberId: 'x', byName: '', byYou: false, reason: 'stopped' },
+      { state: 'unshared', byMemberId: 'x', byName: null, byYou: true, reason: 'left' },
+      { state: 'unshared', byMemberId: null, byName: null, byYou: false, reason: 'removed' },
+      { state: 'frozen', changes: 1, syncedAt: null },
+      { state: 'something new' } as unknown as Parameters<typeof statusLineOf>[0],
+    ];
+    for (const status of states) {
+      for (const failing of [false, true]) {
+        const said = line(status, failing);
+        expect(said.trim().length, JSON.stringify({ status, failing })).toBeGreaterThan(0);
+        expect(said).not.toMatch(/Invalid Date|NaN|undefined|null|\byou\b/i);
+      }
+    }
+    expect(line({ state: 'needs_invite', askName: ' ' })).toBe('Ask an owner for a new invite to keep sharing');
+    expect(line({ state: 'stale', since: 'not a time', changes: 0 })).toBe('Not synced since an unknown time');
+    expect(line({ state: 'something new' } as unknown as Parameters<typeof statusLineOf>[0])).toBe('Sharing state: something new');
+  });
+
+  it('says something before and around the engine’s answer, never nothing', () => {
+    const around = (input: Partial<Parameters<typeof shareStatusLine>[0]>) => shareStatusLine({ status: null, pending: false, error: null, failing: false, now: NOW, ...input });
+    expect(around({ pending: true })).toBe('Checking…');
+    expect(around({ error: new Error('x') })).toBe('Sync status could not be read');
+    expect(around({})).toBe('Sync status not known on this device yet');
+    expect(around({ status: { state: 'up_to_date', syncedAt: null } })).toBe('Up to date');
+  });
+
+  it('says under the row when this device last synced, and what the last failure was', () => {
+    expect(lastSyncedLine(null, NOW)).toBe('Not synced on this device yet');
+    expect(lastSyncedLine(NOW - 20_000, NOW)).toBe('Last synced just now');
+    expect(lastSyncedLine(NOW - 5 * 60_000, NOW)).toBe('Last synced 5 min ago');
+    expect(lastFailedLine(new SyncTransportError(503, 'unavailable'))).toBe('Last sync failed: unavailable');
+    expect(lastFailedLine(new SyncTransportError(0, 'relay unreachable'))).toBe("Last sync failed: Couldn't reach the sharing service. Check the connection and try again.");
+    expect(lastFailedLine(new Error(''))).toBe('Last sync failed: no reason given');
+    expect(lastFailedLine(new Error('e'.repeat(300))).length).toBeLessThanOrEqual(160);
   });
 
   it('explains frozen and read-only in one line each', () => {
