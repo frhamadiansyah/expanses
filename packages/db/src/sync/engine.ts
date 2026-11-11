@@ -1,7 +1,7 @@
 import { uuidv7 } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
-import type { Database, Tx } from '../database';
+import { replacementsOf, type Database, type Tx } from '../database';
 import { pullAndApply, reconcileAllMembersTx, type PullResult } from './apply';
 import { clearAuthorityTx, eventBookWorkspaceOf, groupLogWorkspaceOf, mayLinkAsMemberTx, viewActiveDevices, viewDevice, viewMember, viewOtherActiveOwners, viewOwnerDevices, viewRoleOfDevice } from './authority';
 import { ownersGone } from '../repos/sharing';
@@ -270,6 +270,8 @@ export class SyncEngine {
   private recordsChecked = false;
   /** Books the check found `lost` here (review N2): Share waits for `discardShareRecord`. */
   private readonly lostHere = new Set<string>();
+  /** `replacementsOf(database)` as this engine last saw it: a change means a restore swapped the rows (review R1). */
+  private seenReplacements: number;
 
   constructor(
     private readonly database: Database,
@@ -283,6 +285,7 @@ export class SyncEngine {
     this.records = options.shareRecords;
     this.recordEveryMs = options.recordEveryMs ?? RECORD_EVERY_MS;
     this.onRecordProblem = options.onShareRecordProblem;
+    this.seenReplacements = replacementsOf(database);
     // The one device-id seam (§5.1): every hlc and entry this database emits carries the KeyStore's id.
     configureCapture(database, { deviceId: device.deviceId });
   }
@@ -300,6 +303,7 @@ export class SyncEngine {
    * so nothing is left behind on the relay. The caller drains (`syncOnce`) before showing an invite (step 4).
    */
   async shareBook(bookId: string, input: ShareInput): Promise<{ relayBookId: string; memberId: string; changeSets: number }> {
+    this.followDatabase();
     await this.database.transaction((tx) => assertShareableTx(tx, bookId));
     await this.refuseOverLostShare(bookId);
     const { bookId: relayBookId } = await this.transport.createBook(this.device.public);
@@ -393,6 +397,7 @@ export class SyncEngine {
     // Review N1: detection comes first. A pull moves the cursor past own entries it does not apply, so a copy restored
     // from after the share would read as caught up; the check, run once here if the app has not run it, keeps its
     // replay point first. It never throws, and findings stay for the app's own call.
+    this.followDatabase();
     if (this.records && !this.recordsChecked) await this.checkShareRecords();
     const result = await this.syncBook(bookId, seen);
     // Withdrawal rate (R9): what apply just put on this phone's own foreign accounts was queued, since capture was
@@ -1363,6 +1368,7 @@ export class SyncEngine {
    * engine (review N1): call it after the check.
    */
   async backfillShareRecords(): Promise<number> {
+    this.followDatabase();
     if (!this.records || !this.recordsChecked) return 0;
     let have: Set<string>;
     try {
@@ -1388,6 +1394,7 @@ export class SyncEngine {
    * warned about and skipped; this never throws.
    */
   async checkShareRecords(): Promise<ShareRecordFinding[]> {
+    this.followDatabase();
     if (!this.records) return [];
     let records: ShareRecord[];
     try {
@@ -1458,7 +1465,29 @@ export class SyncEngine {
 
   /** Writes the book's share record now, cursor included (§6.1: on app hide). Never onto a record of another relay book. */
   async flushShareRecord(bookId: string): Promise<void> {
+    this.followDatabase();
     await this.writeRecord(bookId);
+  }
+
+  /**
+   * The database's rows were replaced under this engine — a restore of a backup or an iCloud copy (spec §6.7; review
+   * R1): what it knew of them is dropped. The records are not written again (but by `shareBook`, `joinBook`) until
+   * `checkShareRecords` has read them against the new rows, and the next `syncOnce` runs that check first; the books
+   * found `lost`, the written and waiting record state and the opened epoch keys go. Called by the engine itself
+   * whenever `importBytes` replaced its database; the app calls it for any other way the rows are swapped.
+   */
+  databaseReplaced(): void {
+    this.seenReplacements = replacementsOf(this.database);
+    this.recordsChecked = false;
+    this.lostHere.clear();
+    this.recordWritten.clear();
+    this.recordDirty.clear();
+    this.sealer.forget();
+  }
+
+  /** `databaseReplaced`, when `importBytes` replaced the rows since this engine last looked. */
+  private followDatabase(): void {
+    if (replacementsOf(this.database) !== this.seenReplacements) this.databaseReplaced();
   }
 
   /**
@@ -1532,6 +1561,7 @@ export class SyncEngine {
   }
 
   private async putRecord(record: ShareRecord, replace: boolean): Promise<boolean> {
+    this.followDatabase(); // a sync under way when the rows were replaced writes nothing after it
     if (!replace && !this.recordsChecked) return false;
     try {
       if (!replace) {
@@ -1557,6 +1587,7 @@ export class SyncEngine {
    * once `recordEveryMs` has passed since this engine last wrote the record. The first sync after start writes.
    */
   private async recordAfterSync(bookId: string, pushed: number): Promise<void> {
+    this.followDatabase();
     if (!this.records || !this.recordsChecked) return;
     const last = this.recordWritten.get(bookId);
     if (!last || this.recordDirty.has(bookId)) {

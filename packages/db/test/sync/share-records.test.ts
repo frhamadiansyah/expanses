@@ -515,4 +515,37 @@ describe('share records (spec §6.1)', () => {
     expect(again.relayBookId).not.toBe(r1);
     expect((await dewi.records.get(bookId))!.relayBookId).toBe(again.relayBookId);
   });
+
+  /* ---- fix round 3: a database replaced under a live engine is checked again (re-review 2, R1) ---- */
+
+  it('an in-app restore under a live engine: a flush and a sync before the reload keep the copy behind', async () => {
+    const { dewi, bookId, backup, copied, head } = await behindSetup();
+    // BackupPage, the iCloud runner: the copy goes into the very database the running engine holds.
+    await dewi.database.importBytes(backup);
+    await dewi.engine.flushShareRecord(bookId);
+    expect((await dewi.records.get(bookId))!.appliedSeq).toBe(head);
+    await dewi.engine.syncOnce(bookId); // a scheduler tick before the reload
+    expect((await dewi.records.get(bookId))!.appliedSeq).toBeGreaterThanOrEqual(head);
+    const reloaded = new SyncEngine(dewi.database, dewi.transport, dewi.keys, undefined, { shareRecords: dewi.records });
+    expect(await reloaded.checkShareRecords()).toEqual([{ kind: 'behind', bookId, bookName: 'Personal', fromSeq: copied, toSeq: head }]);
+  });
+
+  it('databaseReplaced holds every record write until the records are checked again', async () => {
+    const home = new Household();
+    const dewi = await home.device('Dewi');
+    const bookId = await home.share(dewi);
+    await dewi.engine.syncOnce(bookId);
+    await dewi.engine.flushShareRecord(bookId);
+    const before = (await dewi.records.get(bookId))!;
+    await spend(dewi, bookId, 'Stationery');
+    await dewi.database.db.run(sql`UPDATE sync_cursor SET applied_seq = applied_seq + 5 WHERE book_id = ${bookId}`); // the cursor moves, nothing is pulled
+
+    dewi.engine.databaseReplaced();
+    await dewi.engine.flushShareRecord(bookId);
+    expect(await dewi.engine.backfillShareRecords()).toBe(0);
+    expect(await dewi.records.get(bookId)).toEqual(before);
+    expect(await dewi.engine.checkShareRecords()).toEqual([{ kind: 'ok', bookId }]);
+    await dewi.engine.flushShareRecord(bookId);
+    expect((await dewi.records.get(bookId))!.appliedSeq).toBe(await cursorOf(dewi, bookId));
+  });
 });

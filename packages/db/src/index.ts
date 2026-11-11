@@ -1,5 +1,5 @@
 export type { SqlExecutor, SqlMethod } from './executor';
-export { createDatabase, type Database, type Db } from './database';
+export { createDatabase, replacementsOf, type Database, type Db } from './database';
 export {
   databaseVersion,
   futureVersions,
