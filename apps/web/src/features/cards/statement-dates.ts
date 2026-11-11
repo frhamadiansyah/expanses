@@ -1,4 +1,4 @@
-import { type Cycle, daysInMonth, statementCycleFor } from '@expanses/core';
+import { addMonths, type Cycle, daysInMonth, statementCycleFor } from '@expanses/core';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -33,4 +33,19 @@ export function dueIn(today: string, dueOn: string): { text: string; tone: 'calm
   if (days === 0) return { text: 'today', tone: 'soon' };
   if (days === 1) return { text: 'tomorrow', tone: 'soon' };
   return { text: `in ${days} days`, tone: days <= 3 ? 'soon' : 'calm' };
+}
+
+/**
+ * The statement whose due day falls in `month` (spec §6.4), or null when none does: the cycle closing this month, last
+ * month or the month before, whichever is paid by a day in `month`. The latest wins.
+ */
+export function cycleDueIn(month: string, statementDay: number, dueDay: number): Cycle | null {
+  for (const back of [0, 1, 2]) {
+    const closes = addMonths(month, -back);
+    const [y, m] = closes.split('-').map(Number) as [number, number];
+    const end = `${closes}-${pad(Math.min(statementDay, daysInMonth(y, m)))}`;
+    const cycle = statementCycleFor(end, statementDay);
+    if (dueDateAfter(cycle.end, dueDay).slice(0, 7) === month) return cycle;
+  }
+  return null;
 }

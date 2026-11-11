@@ -27,6 +27,8 @@ export interface PlanItem {
   /** Null for a bill. */
   debtKey: string | null;
   kind: PlanItemKind;
+  /** The debt's (or the bill's) own name: "Kredit". */
+  name: string;
   /** "Kredit · 4/6", "BCA Visa", "Electricity", "Dewi". */
   title: string;
   /** "Statement · 18 Nov", "Bill · 20 Nov", "Lend & borrow · 3 Dec", "Oct instalment". */
@@ -99,6 +101,22 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 const monthsBetween = (from: string, to: string): number =>
   (Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 12 + (Number(to.slice(5, 7)) - Number(from.slice(5, 7)));
 
+/** An instalment's number, counted from the loan's first. */
+export const instalmentNumber = (terms: Pick<LoanTermsRow, 'firstPaymentOn'>, dueOn: string) => monthsBetween(terms.firstPaymentOn.slice(0, 7), dueOn.slice(0, 7)) + 1;
+
+/** "Kredit · 4/6". */
+export const instalmentTitle = (name: string, number: number, tenor: number) => `${name} · ${number}/${tenor}`;
+
+/** "Oct instalment" for one of an earlier month than `today`'s, else "Instalment · 1 Nov". */
+export const instalmentDetail = (dueOn: string, today: string) =>
+  monthOf(dueOn) < monthOf(today) ? `${MONTHS[Number(dueOn.slice(5, 7)) - 1]} instalment` : `Instalment · ${dayMonth(dueOn)}`;
+
+/** Spec §6.2: an unpaid instalment's figure — the schedule row in its month, else the first row's, else the period's named payment. */
+export function expectedInstalment(fact: Pick<LoanPlanFact, 'schedule'>, terms: Pick<LoanTermsRow, 'periods'>, dueOn: string, today: string): number | null {
+  const figure = fact.schedule.find((r) => monthOf(r.onDate) === monthOf(dueOn))?.paymentMinor ?? fact.schedule[0]?.paymentMinor ?? periodOn(terms.periods, today)?.paymentMinor ?? null;
+  return figure || null;
+}
+
 /** A figure in the base currency at the held rate, or null with no rate (nothing is still nothing). */
 function toBase(minor: number, currency: string, readings: PlanReadings): number | null {
   if (currency === readings.baseCurrency) return minor;
@@ -115,11 +133,12 @@ function shares(leftMinor: number, borrowed: number): { borrowedMinor: number; r
   return { borrowedMinor, repaidMinor: borrowedMinor - leftMinor };
 }
 
-function item(debt: Pick<PlanDebt, 'key' | 'currency'>, kind: PlanItemKind, id: string, parts: Pick<PlanItem, 'title' | 'detail' | 'dueOn' | 'status' | 'daysLate' | 'minor' | 'pay'>, readings: PlanReadings): PlanItem {
+function item(debt: Pick<PlanDebt, 'key' | 'currency' | 'name'>, kind: PlanItemKind, id: string, parts: Pick<PlanItem, 'title' | 'detail' | 'dueOn' | 'status' | 'daysLate' | 'minor' | 'pay'>, readings: PlanReadings): PlanItem {
   return {
     key: `${kind}:${id}:${parts.dueOn}`,
     debtKey: debt.key,
     kind,
+    name: debt.name,
     ...parts,
     currency: debt.currency,
     baseMinor: parts.minor === null ? null : toBase(parts.minor, debt.currency, readings),
@@ -182,15 +201,13 @@ function loanDebt(row: DebtRow, readings: PlanReadings, today: string): PlanDebt
 
   let next: PlanItem | null = null;
   if (terms && fact) {
-    const numberOn = (dueOn: string) => fact.instalments.find((i) => i.dueOn === dueOn)?.number ?? monthsBetween(terms.firstPaymentOn.slice(0, 7), dueOn.slice(0, 7)) + 1;
-    const title = (n: number) => `${row.name} · ${n}/${terms.tenorMonths}`;
-    const detailOf = (dueOn: string) => (monthOf(dueOn) < monthOf(today) ? `${MONTHS[Number(dueOn.slice(5, 7)) - 1]} instalment` : `Instalment · ${dayMonth(dueOn)}`);
+    const numberOn = (dueOn: string) => fact.instalments.find((i) => i.dueOn === dueOn)?.number ?? instalmentNumber(terms, dueOn);
+    const title = (n: number) => instalmentTitle(row.name, n, terms.tenorMonths);
+    const detailOf = (dueOn: string) => instalmentDetail(dueOn, today);
     const oldest = late[0];
     if (oldest) {
-      // Spec §6.2: the schedule row in its month, else the first row's payment, else the period's named payment.
-      const expected =
-        schedule.find((r) => monthOf(r.onDate) === monthOf(oldest.dueOn))?.paymentMinor ?? schedule[0]?.paymentMinor ?? periodOn(terms.periods, today)?.paymentMinor ?? null;
-      next = item(base, 'loan', accountId, { title: title(oldest.number), detail: detailOf(oldest.dueOn), dueOn: oldest.dueOn, status: 'late', daysLate: oldest.daysLate, minor: expected || null, pay: loanPay(accountId) }, readings);
+      const expected = expectedInstalment(fact, terms, oldest.dueOn, today);
+      next = item(base, 'loan', accountId, { title: title(oldest.number), detail: detailOf(oldest.dueOn), dueOn: oldest.dueOn, status: 'late', daysLate: oldest.daysLate, minor: expected, pay: loanPay(accountId) }, readings);
     } else if (schedule[0]) {
       const first = schedule[0];
       next = item(base, 'loan', accountId, { title: title(numberOn(first.onDate)), detail: detailOf(first.onDate), dueOn: first.onDate, status: 'upcoming', daysLate: 0, minor: first.paymentMinor, pay: loanPay(accountId) }, readings);
