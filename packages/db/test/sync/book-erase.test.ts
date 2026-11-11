@@ -13,6 +13,7 @@ import {
   personalBook,
   planBookDelete,
   postTransaction,
+  replaceTransaction,
   saveEarmark,
   saveExpenseTemplate,
   saveGoal,
@@ -386,6 +387,131 @@ describe('purchases paid from this member’s own accounts (owner decision)', ()
     const made = rows.find(([d]) => d === 'Bakery')![2];
     expect(made).not.toBe(w.personalGroceries);
     expect(await fandri.database.db.values(sql`SELECT a.name, b.book_id FROM accounts a JOIN book_categories b ON b.category_account_id = a.id WHERE a.id = ${made}`)).toEqual([['Groceries', w.personal.id]]);
+  });
+});
+
+describe('fix round 1: nothing outside the copy changes but by the erased rows', () => {
+  it('a transfer between partners on the copy’s placeholder is never voided or erased (C1)', async () => {
+    const w = await world();
+    const { fandri, bookId } = w;
+    const [[placeholder]] = (await fandri.database.db.values<[string]>(
+      sql`SELECT account_id FROM book_member_accounts WHERE book_id = ${bookId} AND member_id = ${w.dewi.memberId}`,
+    )) as [[string]];
+    // As a joint net-worth transfer posts it: from his own bank to Dewi's placeholder, filed in no workspace.
+    const sent = await postTransaction(fandri.database, fandri.ws, {
+      occurredOn: ON,
+      description: 'Transfer to Dewi',
+      lines: [
+        { accountId: fandri.bank, amountMinor: -100_000, currency: 'IDR' },
+        { accountId: placeholder, amountMinor: 100_000, currency: 'IDR' },
+      ],
+    });
+    await fandri.database.db.run(sql`INSERT INTO member_transfer_postings (book_id, transfer_id, transaction_id) VALUES ('group-1', 'tr-1', ${sent})`);
+    await fandri.engine.leave(bookId);
+    const bank = await balanceOf(fandri, fandri.bank);
+    expect(await planBookDelete(fandri.database, fandri.ws, bookId)).toMatchObject({ refusal: null, ownPurchases: 2 });
+    await deleteBook(fandri.database, fandri.ws, bookId);
+    expect(await balanceOf(fandri, fandri.bank)).toBe(bank);
+    expect(await fandri.database.db.values(sql`SELECT status FROM transactions WHERE id = ${sent}`)).toEqual([['posted']]);
+    // Its placeholder stays, still hidden as one: the group log's transfer names it.
+    expect(await fandri.database.db.values(sql`SELECT archived_at FROM accounts WHERE id = ${placeholder}`)).toEqual([[null]]);
+    expect(await fandri.database.db.values(sql`SELECT member_id FROM book_member_accounts WHERE account_id = ${placeholder}`)).toEqual([[w.dewi.memberId]]);
+  });
+
+  it('a live row that only shares its id with a lineage of the copy survives (I1, a remap holder)', async () => {
+    const w = await world();
+    const { fandri, bookId } = w;
+    const move = await postTransaction(fandri.database, fandri.ws, {
+      occurredOn: ON,
+      description: 'Own move',
+      lines: [
+        { accountId: fandri.bank, amountMinor: -40_000, currency: 'IDR' },
+        { accountId: fandri.cash, amountMinor: 40_000, currency: 'IDR' },
+      ],
+    });
+    // A remapped purchase keeps the log's id as its lineage id, while its row here is under a local one (D-A2).
+    await fandri.database.db.run(
+      sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label) VALUES (${move}, ${bookId}, NULL, ${w.dewi.memberId}, 'Bank')`,
+    );
+    await fandri.engine.leave(bookId);
+    const [bank, cash] = [await balanceOf(fandri, fandri.bank), await balanceOf(fandri, fandri.cash)];
+    expect(cash).toBe(40_000);
+    await deleteBook(fandri.database, fandri.ws, bookId);
+    expect(await balanceOf(fandri, fandri.cash)).toBe(cash);
+    expect(await balanceOf(fandri, fandri.bank)).toBe(bank);
+    expect(await fandri.database.db.values(sql`SELECT status FROM transactions WHERE id = ${move}`)).toEqual([['posted']]);
+  });
+
+  it('a copy purchase edited into a transfer stays as an ordinary transfer: balances unchanged (I2)', async () => {
+    const w = await world();
+    const { fandri, bookId, home } = w;
+    const lunch = await spend(fandri, bookId, 'Lunch', 9_000);
+    const moved = await replaceTransaction(fandri.database, fandri.ws, lunch, {
+      occurredOn: ON,
+      description: 'To wallet',
+      lines: [
+        { accountId: fandri.bank, amountMinor: -9_000, currency: 'IDR' },
+        { accountId: fandri.cash, amountMinor: 9_000, currency: 'IDR' },
+      ],
+    });
+    await home.settle();
+    await fandri.engine.leave(bookId);
+    const [bank, cash] = [await balanceOf(fandri, fandri.bank), await balanceOf(fandri, fandri.cash)];
+    await deleteBook(fandri.database, fandri.ws, bookId);
+    expect([await balanceOf(fandri, fandri.bank), await balanceOf(fandri, fandri.cash)]).toEqual([bank, cash]);
+    // The purchase it replaced is erased; the transfer is filed nowhere and replaces nothing now.
+    expect(await fandri.database.db.values(sql`SELECT status, replaces_transaction_id FROM transactions WHERE id = ${moved}`)).toEqual([['posted', null]]);
+    expect(await fandri.database.db.values(sql`SELECT 1 FROM transactions WHERE id = ${lunch}`)).toEqual([]);
+  });
+
+  it('an own row the copy holds only as a lineage head, filed nowhere, is counted and kept in Personal (I2)', async () => {
+    const w = await world();
+    const { fandri, bookId } = w;
+    const transfer = await postTransaction(fandri.database, fandri.ws, {
+      occurredOn: ON,
+      description: 'Top up wallet',
+      lines: [
+        { accountId: fandri.bank, amountMinor: -6_000, currency: 'IDR' },
+        { accountId: fandri.cash, amountMinor: 6_000, currency: 'IDR' },
+      ],
+    });
+    await fandri.engine.leave(bookId);
+    // The copy's lineage holds it as its head, though no filing row puts it in the copy.
+    await fandri.database.db.run(
+      sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label) VALUES ('lineage-top-up', ${bookId}, ${transfer}, ${fandri.memberId}, 'Fandri Bank')`,
+    );
+    const [bank, cash] = [await balanceOf(fandri, fandri.bank), await balanceOf(fandri, fandri.cash)];
+    expect((await planBookDelete(fandri.database, fandri.ws, bookId)).ownPurchases).toBe(3);
+    await deleteBook(fandri.database, fandri.ws, bookId);
+    expect([await balanceOf(fandri, fandri.bank), await balanceOf(fandri, fandri.cash)]).toEqual([bank, cash]);
+    const [[filed]] = (await fandri.database.db.values<[string]>(sql`
+      SELECT b.book_id FROM transactions t JOIN book_transactions b ON b.transaction_id = t.id WHERE t.description = 'Top up wallet' AND t.status = 'posted'`)) as [[string]];
+    expect(filed).toBe(w.personal.id);
+  });
+
+  it('refuses, with nothing changed, a copy whose transactions another record keeps (I3)', async () => {
+    const w = await left();
+    const { fandri, bookId } = w;
+    // A record this erase cannot take names one of the copy's purchases (a partner transfer's posting, here).
+    await fandri.database.db.run(sql`INSERT INTO member_transfer_postings (book_id, transfer_id, transaction_id) VALUES ('group-1', 'tr-2', ${w.own[0]})`);
+    const bank = await balanceOf(fandri, fandri.bank);
+    const plan = await planBookDelete(fandri.database, fandri.ws, bookId);
+    expect(plan).toMatchObject({ refusalCode: 'RECORDS', kept: 1 });
+    expect(plan.refusal).toContain('1 transaction');
+    await expect(deleteBook(fandri.database, fandri.ws, bookId)).rejects.toMatchObject({ code: 'RECORDS' });
+    expect(await balanceOf(fandri, fandri.bank)).toBe(bank);
+    expect(await fandri.database.db.values(sql`SELECT status FROM transactions WHERE id = ${w.own[0]}`)).toEqual([['posted']]);
+    expect(await count(fandri, 'shared_books', bookId)).toBe(1);
+  });
+
+  it('a line whose spending category is another workspace’s counts as filed there: refused as a split (M1)', async () => {
+    const w = await left();
+    const { fandri, bookId } = w;
+    await fandri.database.db.run(
+      sql`UPDATE entries SET spend_category_id = ${w.personalGroceries} WHERE transaction_id = ${w.own[0]} AND account_id = ${fandri.bank}`,
+    );
+    await expect(deleteBook(fandri.database, fandri.ws, bookId)).rejects.toMatchObject({ code: 'SPLIT' });
+    expect(await fandri.database.db.values(sql`SELECT status FROM transactions WHERE id = ${w.own[0]}`)).toEqual([['posted']]);
   });
 });
 

@@ -9,7 +9,7 @@ import { budgets } from '../schema-budget';
 import { viewActiveDevices, viewOwnerDevices } from '../sync/authority';
 import { BookError, personalBookIdTx, type BookRow } from './books';
 import { archiveAccountTx } from './accounts';
-import { deleteBookPlanTx, eraseBookTx, keepOwnInPersonalTx, ownPurchasesTx, wasEverSharedTx } from './book-erase';
+import { deleteBookPlanTx, eraseBookTx, keepOwnInPersonalTx, keptByRecordsOfTx, ownPurchasesTx, recordsMessage, wasEverSharedTx } from './book-erase';
 import { bookSplitsExist } from './book-splits';
 import { categoryUsesTx } from './category-delete';
 import { LedgerError, voidTransactionTx } from './ledger';
@@ -50,7 +50,7 @@ export interface BookDeletePlan {
   /** Why it cannot be deleted, in words the screen shows as they are; null when it can. */
   refusal: string | null;
   /** The refusal's code (the `BookError` code `deleteBook` throws it with); null when it can be deleted. */
-  refusalCode: 'PERSONAL_BOOK' | 'SHARED' | 'LAST_BOOK' | 'SPLIT' | 'IN_USE' | null;
+  refusalCode: 'PERSONAL_BOOK' | 'SHARED' | 'LAST_BOOK' | 'SPLIT' | 'RECORDS' | 'IN_USE' | null;
   /** It is or was shared: deleting erases every row only it holds, rather than voiding them (spec §5). */
   erases: boolean;
   /**
@@ -58,6 +58,11 @@ export interface BookDeletePlan {
    * `deleteBook` keeps in Personal unless told not to. 0 for any other workspace.
    */
   ownPurchases: number;
+  /**
+   * Transactions the erase would take that a record it cannot take still names (a trade, a sale, a transfer between
+   * partners): any refuses the delete (`RECORDS`). 0 when the workspace voids.
+   */
+  kept: number;
 }
 
 export interface DeleteBookOptions {
@@ -115,6 +120,7 @@ async function planTx(tx: Db, ws: WorkspaceContext, book: BookRow): Promise<Book
   const [{ n }] = (await tx.values<[number]>(sql`SELECT count(*) FROM (${filedSql(bookId, splits)})`)).map(([n]) => ({ n: Number(n) })) as [{ n: number }];
   const erases = await wasEverSharedTx(tx, bookId, book.kind);
   const ownPurchases = erases && book.kind === 'shared' ? (await ownPurchasesTx(tx, ws, bookId)).length : 0;
+  const kept = erases ? await keptByRecordsOfTx(tx, ws, bookId) : 0;
 
   const plan = (refusalCode: BookDeletePlan['refusalCode'], refusal: string | null, uses = 0): BookDeletePlan => ({
     transactions: n,
@@ -125,6 +131,7 @@ async function planTx(tx: Db, ws: WorkspaceContext, book: BookRow): Promise<Book
     refusalCode,
     erases,
     ownPurchases,
+    kept,
   });
 
   if (book.kind === 'personal') return plan('PERSONAL_BOOK', PERSONAL_MESSAGE);
@@ -140,11 +147,13 @@ async function planTx(tx: Db, ws: WorkspaceContext, book: BookRow): Promise<Book
       SELECT 1 FROM transactions t WHERE t.id IN (${filedSql(bookId, splits)}) AND (
         ${splits ? sql`EXISTS (SELECT 1 FROM book_transaction_splits s WHERE s.transaction_id = t.id AND s.book_id <> ${bookId}) OR` : sql``}
         EXISTS (SELECT 1 FROM book_transactions b WHERE b.transaction_id = t.id AND b.book_id <> ${bookId})
-        OR EXISTS (SELECT 1 FROM entries e JOIN book_categories c ON c.category_account_id = e.account_id
+        OR EXISTS (SELECT 1 FROM entries e JOIN book_categories c ON c.category_account_id IN (e.account_id, e.spend_category_id)
                    WHERE e.transaction_id = t.id AND c.book_id <> ${bookId}))
       LIMIT 1`);
     if (straddling.length > 0) return plan('SPLIT', SPLIT_MESSAGE);
   }
+  // Erasing would leave a trade, a sale or a partner transfer naming a transaction that is gone (fix round 1, I3).
+  if (kept > 0) return plan('RECORDS', recordsMessage(kept));
 
   // Live things that name one of its categories would be left pointing at an archived one. A joined copy's bills are
   // the share's, and are erased with it (§5.3); this phone's own drafts and event plans still refuse.

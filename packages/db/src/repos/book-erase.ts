@@ -17,12 +17,15 @@ import { deleteGoalRowsTx } from './goals';
  * rows and archived categories left here would stand in the way of the same workspace being shared to this phone again.
  *
  * "Only it": decided by book scoping, never by names. A transaction is the book's when it is filed in it (its row, a
- * split's part, an entry on one of its categories) or is one of its purchases (`sync_lineage`), with every version of
- * it (the `replaces_transaction_id` chain, both ways) — unless it is filed in another book too: that one stays. A
- * category is the book's when `book_categories` puts it there; a placeholder when `book_member_accounts` does; a goal
- * when this book's `goal_shares` shared it in. An account still named by anything left (another book's event, a row
- * kept) loses only its tag and is archived; every other account (bank, card, wallet, joint) is never touched, and its
- * balance changes only by the erased transactions, exactly as voiding them changes it.
+ * split's part, a line on one of its categories) or is the row one of its purchase lineages holds here (head, last
+ * head), with every void version of it (the `replaces_transaction_id` chain, both ways) — unless it is filed in
+ * another book too: that one stays. A row that only shares its id with a lineage (a remapped purchase's holder) or only
+ * touches a placeholder (a transfer between partners) is not the book's. A transaction a record the erase cannot take
+ * still names (a trade, a sale, a partner transfer) refuses the delete. A category is the book's when `book_categories`
+ * puts it there; a placeholder when `book_member_accounts` does; a goal when this book's `goal_shares` shared it in.
+ * A category still named by anything left (another book's event) loses only its tag and is archived; a placeholder
+ * still named (a partner transfer) is left as it is. Every other account (bank, card, wallet, joint) is never
+ * touched, and its balance changes only by the erased transactions, exactly as voiding them changes it.
  *
  * Children go before parents throughout: foreign keys are on.
  */
@@ -69,10 +72,110 @@ function filedSql(bookId: string, tables: Set<string>, status: SQL = sql`t.statu
     OR t.id IN (SELECT e.transaction_id FROM entries e WHERE e.account_id IN (${own}) OR e.spend_category_id IN (${own})))`;
 }
 
+/** Rows of a transaction that `ws`'s other book names it by: another book's row, split part, or category on a line. */
+function elsewhereSql(bookId: string, tables: Set<string>): SQL {
+  return sql`(EXISTS (SELECT 1 FROM book_transactions b WHERE b.transaction_id = t.id AND b.book_id <> ${bookId})
+    ${tables.has('book_transaction_splits') ? sql`OR EXISTS (SELECT 1 FROM book_transaction_splits s WHERE s.transaction_id = t.id AND s.book_id <> ${bookId})` : sql``}
+    OR EXISTS (SELECT 1 FROM entries e JOIN book_categories c ON c.category_account_id IN (e.account_id, e.spend_category_id)
+               WHERE e.transaction_id = t.id AND c.book_id <> ${bookId}))`;
+}
+
 /**
- * The purchases in a joined copy paid from this member's own accounts (owner decision, plan Task A5): posted, filed in
- * the book, with a money side and every money line on an account of this phone's own — not a placeholder (another
- * member's money), not a joint account, not paid from a partner's shared item — and recorded by this member. Oldest first.
+ * The book's transactions (spec §5.2 item 1), as a read: every one filed in it, whatever its status, and the rows its
+ * purchase lineages hold here (their heads and last heads), with every void version of each along
+ * `replaces_transaction_id`, both ways. Never one filed in another book too. Never a row that only shares its id with a
+ * lineage (a remapped purchase's holder, D-A2), nor one that only touches a placeholder (a transfer between partners,
+ * which belongs to the net-worth group log): neither is the book's. A posted row joins only as a seed, so a live row
+ * reached through a chain is never taken.
+ */
+function eraseSetSql(ws: WorkspaceContext, bookId: string, tables: Set<string>): SQL {
+  const elsewhere = elsewhereSql(bookId, tables);
+  const seeds: SQL[] = [sql`t.id IN (${filedSql(bookId, tables, sql`1 = 1`)})`];
+  if (tables.has('sync_lineage')) {
+    seeds.push(sql`t.id IN (SELECT head_transaction_id FROM sync_lineage WHERE book_id = ${bookId} AND head_transaction_id IS NOT NULL)`);
+    if (tables.has('sync_lineage_last')) {
+      seeds.push(sql`t.id IN (SELECT l.transaction_id FROM sync_lineage_last l JOIN sync_lineage s ON s.lineage_id = l.lineage_id WHERE s.book_id = ${bookId})`);
+    }
+  }
+  const step = sql`t.workspace_id = ${ws.workspaceId} AND t.status <> 'posted' AND NOT ${elsewhere}`;
+  return sql`WITH RECURSIVE erase(id) AS (
+      SELECT t.id FROM transactions t WHERE t.workspace_id = ${ws.workspaceId} AND (${sql.join(seeds, sql` OR `)}) AND NOT ${elsewhere}
+      UNION SELECT t.id FROM transactions t JOIN erase x ON t.replaces_transaction_id = x.id WHERE ${step}
+      UNION SELECT t.id FROM erase x JOIN transactions r ON r.id = x.id JOIN transactions t ON t.id = r.replaces_transaction_id WHERE ${step}
+    ) SELECT id FROM erase`;
+}
+
+/** Rows that belong to a transaction and go with it (column naming the transaction). */
+const GOES_WITH_TRANSACTION: readonly [table: string, column: string][] = [
+  ['transaction_flags', 'transaction_id'],
+  ['bill_payments', 'transaction_id'],
+  ['transaction_line_excluded', 'transaction_id'],
+  ['transaction_photos', 'transaction_id'],
+  ['book_transactions', 'transaction_id'],
+  ['book_transaction_splits', 'transaction_id'],
+  ['card_postings', 'transaction_id'],
+  ['card_installments', 'transaction_id'],
+  ['card_settlements', 'purchase_transaction_id'],
+  ['card_settlements', 'payment_transaction_id'],
+  ['transaction_point_actuals', 'transaction_id'],
+  ['point_entries', 'transaction_id'],
+  ['statement_links', 'transaction_id'],
+  ['card_fee_refunds', 'transaction_id'],
+  ['event_item_purchases', 'transaction_id'],
+  ['goal_draws', 'transaction_id'],
+  ['sync_lineage_last', 'transaction_id'],
+  ['fx_gain_loss', 'transaction_id'],
+];
+
+/** References to a transaction that are cleared rather than taken with it: the row that named it stays. */
+const CLEARED_WITH_TRANSACTION: readonly [table: string, column: string, also?: string][] = [
+  ['transactions', 'replaces_transaction_id'],
+  ['draft_transactions', 'transaction_id'],
+  ['event_items', 'transaction_id', 'share_minor'],
+  ['deposit_events', 'interest_transaction_id'],
+  ['deposit_events', 'principal_transaction_id'],
+  ['event_postings', 'transaction_id'],
+  ['shared_transfers', 'transaction_id'],
+];
+
+/**
+ * The book's transactions that a record this erase does not take still names — a trade, a sale of an asset, a
+ * transfer between partners' posting, or any table added later that names a transaction (found by foreign key and
+ * column name). Erasing would leave that record pointing at nothing, and voiding it and keeping it would keep an id
+ * that stands in a later share's way: the delete refuses instead (`RECORDS`), with nothing changed.
+ */
+async function keptByRecordsTx(tx: Db, ws: WorkspaceContext, bookId: string, tables: Set<string>): Promise<string[]> {
+  const handled = new Set([
+    ...[...GOES_WITH_TRANSACTION, ...CLEARED_WITH_TRANSACTION].map(([t, c]) => `${t}.${c}`),
+    'entries.transaction_id',
+    'sync_lineage.head_transaction_id',
+  ]);
+  const kept = new Set<string>();
+  for (const [table, column] of await referencesTo(tx, tables, 'transactions')) {
+    if (handled.has(`${table}.${column}`)) continue;
+    const rows = await tx.values<[string]>(
+      sql`SELECT DISTINCT ${sql.raw(column)} FROM ${sql.raw(table)} WHERE ${sql.raw(column)} IN (${eraseSetSql(ws, bookId, tables)})`,
+    );
+    for (const [id] of rows) kept.add(id);
+  }
+  return [...kept].sort();
+}
+
+/** `keptByRecordsTx` for the plan: how many, and the words the screen shows. */
+export async function keptByRecordsOfTx(tx: Db, ws: WorkspaceContext, bookId: string): Promise<number> {
+  return (await keptByRecordsTx(tx, ws, bookId, await tablesOf(tx))).length;
+}
+
+export function recordsMessage(count: number): string {
+  return `${count} ${count === 1 ? 'transaction' : 'transactions'} in this workspace ${count === 1 ? 'belongs' : 'belong'} to a trade, a sale or a transfer between partners. Undo or move ${count === 1 ? 'it' : 'them'} first, then delete this workspace.`;
+}
+
+/**
+ * The rows of a joined copy paid from this member's own accounts (owner decision, plan Task A5, fix round 1 I2): every
+ * posted transaction the erase would take (filed in the copy, or held by one of its lineages — a purchase edited into a
+ * transfer, say), with a money side and every money line on an account of this phone's own — not a placeholder
+ * (another member's money), not a joint account, not paid from a partner's shared item — recorded by this member, and
+ * kept by no other record. Oldest first.
  */
 export async function ownPurchasesTx(tx: Db, ws: WorkspaceContext, bookId: string): Promise<string[]> {
   const tables = await tablesOf(tx);
@@ -91,11 +194,12 @@ export async function ownPurchasesTx(tx: Db, ws: WorkspaceContext, bookId: strin
     : sql``;
   const derived = tables.has('event_postings') ? sql`AND t.id NOT IN (SELECT transaction_id FROM event_postings WHERE transaction_id IS NOT NULL)` : sql``;
   const rows = await tx.values<[string]>(sql`
-    SELECT t.id FROM transactions t WHERE t.workspace_id = ${ws.workspaceId} AND t.id IN (${filedSql(bookId, tables)})
+    SELECT t.id FROM transactions t WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted' AND t.id IN (${eraseSetSql(ws, bookId, tables)})
       AND EXISTS (SELECT 1 FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = t.id AND a.kind IN ('asset', 'liability'))
       ${notReceived} ${byMe} ${derived}
     ORDER BY t.occurred_on, t.created_at, t.id`);
-  return rows.map(([id]) => id);
+  const kept = new Set(await keptByRecordsTx(tx, ws, bookId, tables));
+  return rows.map(([id]) => id).filter((id) => !kept.has(id));
 }
 
 /**
@@ -187,39 +291,6 @@ const SYNC_TABLES = [
   'shared_books',
 ];
 
-/** Rows that belong to a transaction and go with it (column naming the transaction). */
-const GOES_WITH_TRANSACTION: readonly [table: string, column: string][] = [
-  ['transaction_flags', 'transaction_id'],
-  ['bill_payments', 'transaction_id'],
-  ['transaction_line_excluded', 'transaction_id'],
-  ['transaction_photos', 'transaction_id'],
-  ['book_transactions', 'transaction_id'],
-  ['book_transaction_splits', 'transaction_id'],
-  ['card_postings', 'transaction_id'],
-  ['card_installments', 'transaction_id'],
-  ['card_settlements', 'purchase_transaction_id'],
-  ['card_settlements', 'payment_transaction_id'],
-  ['transaction_point_actuals', 'transaction_id'],
-  ['point_entries', 'transaction_id'],
-  ['statement_links', 'transaction_id'],
-  ['card_fee_refunds', 'transaction_id'],
-  ['event_item_purchases', 'transaction_id'],
-  ['goal_draws', 'transaction_id'],
-  ['sync_lineage_last', 'transaction_id'],
-  ['fx_gain_loss', 'transaction_id'],
-];
-
-/** References to a transaction that are cleared rather than taken with it: the row that named it stays. */
-const CLEARED_WITH_TRANSACTION: readonly [table: string, column: string, also?: string][] = [
-  ['transactions', 'replaces_transaction_id'],
-  ['draft_transactions', 'transaction_id'],
-  ['event_items', 'transaction_id', 'share_minor'],
-  ['deposit_events', 'interest_transaction_id'],
-  ['deposit_events', 'principal_transaction_id'],
-  ['event_postings', 'transaction_id'],
-  ['shared_transfers', 'transaction_id'],
-];
-
 /** Rows of an entry that go with it. */
 const GOES_WITH_ENTRY: readonly [table: string, column: string][] = [
   ['fx_lot_uses', 'out_entry_id'],
@@ -248,9 +319,10 @@ const ERASE = sql.raw('temp.book_erase_ids');
 
 /**
  * Erases the book and everything only it holds (spec §5.2), in the caller's transaction with capture off: nothing of
- * it is a change to send. Refusals are the caller's (`deleteBook` plans first). Posted transactions are voided first,
- * so whatever a void undoes elsewhere (a settlement, a deposit event) is undone as today, then every row is erased.
- * A void that refuses (a sale, a fund switch) throws `CANNOT_VOID` and the caller's transaction rolls back.
+ * it is a change to send. Refusals are the caller's (`deleteBook` plans first); one a record still names
+ * (`keptByRecordsTx`) throws `RECORDS` here too, before anything is voided. Posted transactions are voided first, so
+ * whatever a void undoes elsewhere (a settlement, a deposit event) is undone as today, then every row is erased. A void
+ * that refuses (a fund switch) throws `CANNOT_VOID` and the caller's transaction rolls back.
  */
 export async function eraseBookTx(tx: Db, ws: WorkspaceContext, bookId: string): Promise<{ transactions: number; categories: number; budgets: number }> {
   return withCaptureSuspended(tx, async () => {
@@ -258,62 +330,7 @@ export async function eraseBookTx(tx: Db, ws: WorkspaceContext, bookId: string):
     const has = (table: string) => tables.has(table);
     const me = await memberHereTx(tx, bookId, tables);
 
-    /* ---- 1. Which transactions: filed or of a lineage of the book, with every version, none filed elsewhere. */
-    await tx.run(sql`CREATE TEMP TABLE IF NOT EXISTS book_erase_ids (id TEXT PRIMARY KEY)`);
-    await tx.run(sql`DELETE FROM ${ERASE}`);
-    const elsewhere = sql`(EXISTS (SELECT 1 FROM book_transactions b WHERE b.transaction_id = t.id AND b.book_id <> ${bookId})
-      ${has('book_transaction_splits') ? sql`OR EXISTS (SELECT 1 FROM book_transaction_splits s WHERE s.transaction_id = t.id AND s.book_id <> ${bookId})` : sql``}
-      OR EXISTS (SELECT 1 FROM entries e JOIN book_categories c ON c.category_account_id = e.account_id WHERE e.transaction_id = t.id AND c.book_id <> ${bookId}))`;
-    const seeds: SQL[] = [sql`t.id IN (${filedSql(bookId, tables, sql`1 = 1`)})`];
-    if (has('book_member_accounts')) {
-      seeds.push(sql`t.id IN (SELECT e.transaction_id FROM entries e WHERE e.account_id IN (SELECT account_id FROM book_member_accounts WHERE book_id = ${bookId}))`);
-    }
-    if (has('sync_lineage')) {
-      seeds.push(sql`t.id IN (SELECT head_transaction_id FROM sync_lineage WHERE book_id = ${bookId})`);
-      seeds.push(sql`t.id IN (SELECT lineage_id FROM sync_lineage WHERE book_id = ${bookId})`);
-      if (has('sync_lineage_last')) {
-        seeds.push(sql`t.id IN (SELECT l.transaction_id FROM sync_lineage_last l JOIN sync_lineage s ON s.lineage_id = l.lineage_id WHERE s.book_id = ${bookId})`);
-      }
-    }
-    await tx.run(sql`INSERT OR IGNORE INTO ${ERASE} (id) SELECT t.id FROM transactions t
-      WHERE t.workspace_id = ${ws.workspaceId} AND (${sql.join(seeds, sql` OR `)}) AND NOT ${elsewhere}`);
-    // The other versions of each: only void ones join this way, so a live row elsewhere reached through a chain (a
-    // purchase edited into a transfer, say) is never taken; its link to an erased version is cleared below.
-    for (;;) {
-      const [[before]] = (await tx.values<[number]>(sql`SELECT count(*) FROM ${ERASE}`)) as [[number]];
-      await tx.run(sql`INSERT OR IGNORE INTO ${ERASE} (id) SELECT t.id FROM transactions t
-        WHERE t.workspace_id = ${ws.workspaceId} AND t.status <> 'posted' AND t.id NOT IN (SELECT id FROM ${ERASE})
-          AND (t.replaces_transaction_id IN (SELECT id FROM ${ERASE})
-            OR t.id IN (SELECT r.replaces_transaction_id FROM transactions r WHERE r.id IN (SELECT id FROM ${ERASE})))
-          AND NOT ${elsewhere}`);
-      const [[after]] = (await tx.values<[number]>(sql`SELECT count(*) FROM ${ERASE}`)) as [[number]];
-      if (Number(after) === Number(before)) break;
-    }
-    // A transaction something else keeps a record of, which this erase does not know how to take (a trade, a sale),
-    // stays: voided below, as today.
-    const handled = new Set([...GOES_WITH_TRANSACTION, ...CLEARED_WITH_TRANSACTION].map(([t, c]) => `${t}.${c}`).concat(['entries.transaction_id', 'sync_lineage.head_transaction_id']));
-    const keptBy: [string, string][] = (await referencesTo(tx, tables, 'transactions')).filter(([t, c]) => !handled.has(`${t}.${c}`));
-    const kept = new Set<string>();
-    for (const [table, column] of keptBy) {
-      const rows = await tx.values<[string]>(sql`SELECT DISTINCT ${sql.raw(column)} FROM ${sql.raw(table)} WHERE ${sql.raw(column)} IN (SELECT id FROM ${ERASE})`);
-      for (const [id] of rows) kept.add(id);
-    }
-
-    /* ---- 2. The money: every posted one voided (newest first; a void can void others with it), as deleteBook does. */
-    const posted = await tx.values<[string]>(sql`SELECT t.id FROM transactions t JOIN ${ERASE} x ON x.id = t.id WHERE t.status = 'posted' ORDER BY t.occurred_on DESC, t.created_at DESC`);
-    for (const [id] of posted) {
-      const [status] = await tx.values<[string]>(sql`SELECT status FROM transactions WHERE id = ${id}`);
-      if (status?.[0] !== 'posted') continue;
-      try {
-        await voidTransactionTx(tx, ws, id);
-      } catch (failure) {
-        if (failure instanceof LedgerError) throw new BookError('CANNOT_VOID', `${failure.message} Nothing was deleted.`);
-        throw failure;
-      }
-    }
-    for (const id of kept) await tx.run(sql`DELETE FROM ${ERASE} WHERE id = ${id}`);
-
-    /* ---- 3. Goals that came only through the share (§5.2 item 5), while the share's bookkeeping still says whose. */
+    /* ---- 1. Goals that came only through the share (§5.2 item 5), while the share's bookkeeping still says whose. */
     if (has('goal_shares')) {
       const links = await tx.values<[string, string]>(sql`SELECT goal_id, shared_by FROM goal_shares WHERE book_id = ${bookId}`);
       for (const [goalId, sharedBy] of links) {
@@ -324,6 +341,26 @@ export async function eraseBookTx(tx: Db, ws: WorkspaceContext, bookId: string):
       // Every other link ends here as the share's end ends it (C15): this member's own goal stays theirs, a goal with
       // money of theirs in it becomes their private copy, and each link with its lines and clocks goes.
       await endSharedGoalsTx(tx, ws, bookId, me ?? undefined);
+    }
+
+    /* ---- 2. Which transactions (`eraseSetSql`). One a record still names refuses the whole delete, before any void. */
+    const kept = await keptByRecordsTx(tx, ws, bookId, tables);
+    if (kept.length > 0) throw new BookError('RECORDS', recordsMessage(kept.length));
+    await tx.run(sql`CREATE TEMP TABLE IF NOT EXISTS book_erase_ids (id TEXT PRIMARY KEY)`);
+    await tx.run(sql`DELETE FROM ${ERASE}`);
+    await tx.run(sql`INSERT OR IGNORE INTO ${ERASE} (id) ${eraseSetSql(ws, bookId, tables)}`);
+
+    /* ---- 3. The money: every posted one voided (newest first; a void can void others with it), as deleteBook does. */
+    const posted = await tx.values<[string]>(sql`SELECT t.id FROM transactions t JOIN ${ERASE} x ON x.id = t.id WHERE t.status = 'posted' ORDER BY t.occurred_on DESC, t.created_at DESC`);
+    for (const [id] of posted) {
+      const [status] = await tx.values<[string]>(sql`SELECT status FROM transactions WHERE id = ${id}`);
+      if (status?.[0] !== 'posted') continue;
+      try {
+        await voidTransactionTx(tx, ws, id);
+      } catch (failure) {
+        if (failure instanceof LedgerError) throw new BookError('CANNOT_VOID', `${failure.message} Nothing was deleted.`);
+        throw failure;
+      }
     }
 
     /* ---- 4. The transactions' rows, then the transactions. */
@@ -341,7 +378,7 @@ export async function eraseBookTx(tx: Db, ws: WorkspaceContext, bookId: string):
     }
     await tx.run(sql`DELETE FROM audit_log WHERE entity = 'transaction' AND entity_id IN (SELECT id FROM ${ERASE})`);
     await eraseVoidTransactionsTx(tx, ws, sql`SELECT id FROM ${ERASE}`);
-    // A row kept (filed elsewhere, or kept by a record) loses its filing here; its own rows stay.
+    // A void row filed in another book too stays there; it loses its filing here.
     await tx.run(sql`DELETE FROM book_transactions WHERE book_id = ${bookId}`);
     if (has('book_transaction_splits')) await tx.run(sql`DELETE FROM book_transaction_splits WHERE book_id = ${bookId}`);
 
@@ -383,7 +420,7 @@ export async function eraseBookTx(tx: Db, ws: WorkspaceContext, bookId: string):
       const sets = (await tx.values<[string]>(sql`SELECT set_id FROM book_category_sets WHERE book_id = ${bookId}`)).map(([id]) => id);
       await tx.run(sql`DELETE FROM book_category_sets WHERE book_id = ${bookId}`);
       for (const setId of sets) {
-        const named = (await tx.values(sql`SELECT 1 FROM events WHERE set_id = ${setId} LIMIT 1`)).length > 0;
+        const named = has('events') && (await tx.values(sql`SELECT 1 FROM events WHERE set_id = ${setId} LIMIT 1`)).length > 0;
         if (named) {
           await tx.run(sql`UPDATE category_sets SET archived_at = ${new Date().toISOString()} WHERE id = ${setId} AND archived_at IS NULL`);
           continue;
@@ -396,8 +433,11 @@ export async function eraseBookTx(tx: Db, ws: WorkspaceContext, bookId: string):
       ? (await tx.values<[string]>(sql`SELECT account_id FROM book_member_accounts WHERE book_id = ${bookId}`)).map(([id]) => id)
       : [];
     await tx.run(sql`DELETE FROM book_categories WHERE book_id = ${bookId}`);
-    if (has('book_member_accounts')) await tx.run(sql`DELETE FROM book_member_accounts WHERE book_id = ${bookId}`);
-    await eraseAccountsTx(tx, tables, [...categoryIds, ...placeholders]);
+    await eraseAccountsTx(tx, tables, categoryIds, 'archive');
+    // A placeholder a transfer between partners still names (the net-worth group log's, which this erase leaves as it
+    // is) stays as it was, still hidden by its mapping row; every other one goes with its mapping row.
+    const gone = await eraseAccountsTx(tx, tables, placeholders, 'keep', new Set(['book_member_accounts.account_id']));
+    if (gone.length) await tx.run(sql`DELETE FROM book_member_accounts WHERE account_id IN ${gone}`);
 
     /* ---- 7. The workspace itself. If it was the open one, the app falls back to Personal. */
     const key = `active_book:${ws.workspaceId}`;
@@ -409,32 +449,39 @@ export async function eraseBookTx(tx: Db, ws: WorkspaceContext, bookId: string):
     }
     await tx.run(sql`DELETE FROM books WHERE id = ${bookId} AND workspace_id = ${ws.workspaceId}`);
     await tx.run(sql`DELETE FROM ${ERASE}`);
-    return { transactions: posted.filter(([id]) => !kept.has(id)).length, categories: Number(openCategories), budgets };
+    return { transactions: posted.length, categories: Number(openCategories), budgets };
   });
 }
 
 /**
- * The book's categories and placeholders, each erased when nothing left names it, children before parents; one still
- * named (another book's event earning by it, a row kept) is archived instead and keeps its id.
+ * The book's categories or placeholders, each erased when nothing left names it, children before parents. One still
+ * named (another book's event earning by a category, a partner transfer on a placeholder) is archived (`'archive'`)
+ * or left exactly as it is (`'keep'`), and keeps its id. `ignore` names columns not to count (a placeholder's own
+ * mapping row). Returns the ids erased.
  */
-async function eraseAccountsTx(tx: Db, tables: Set<string>, ids: readonly string[]): Promise<void> {
-  if (ids.length === 0) return;
+async function eraseAccountsTx(tx: Db, tables: Set<string>, ids: readonly string[], named: 'archive' | 'keep', ignore: ReadonlySet<string> = new Set()): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const erased: string[] = [];
   await tx.run(sql`CREATE TEMP TABLE IF NOT EXISTS book_erase_accounts (id TEXT PRIMARY KEY)`);
   await tx.run(sql`DELETE FROM temp.book_erase_accounts`);
   for (const id of ids) await tx.run(sql`INSERT OR IGNORE INTO temp.book_erase_accounts (id) VALUES (${id})`);
-  const refs = await referencesTo(tx, tables, 'accounts');
+  const refs = (await referencesTo(tx, tables, 'accounts')).filter(([table, column]) => !ignore.has(`${table}.${column}`));
   for (;;) {
-    const named = new Set<string>();
+    const inUse = new Set<string>();
     for (const [table, column] of refs) {
       const rows = await tx.values<[string]>(sql`SELECT DISTINCT ${sql.raw(column)} FROM ${sql.raw(table)} WHERE ${sql.raw(column)} IN (SELECT id FROM temp.book_erase_accounts)`);
-      for (const [id] of rows) named.add(id);
+      for (const [id] of rows) inUse.add(id);
     }
     const left = (await tx.values<[string]>(sql`SELECT id FROM temp.book_erase_accounts`)).map(([id]) => id);
-    const free = left.filter((id) => !named.has(id));
+    const free = left.filter((id) => !inUse.has(id));
     if (free.length === 0) break;
     await tx.run(sql`DELETE FROM accounts WHERE id IN ${free}`);
     await tx.run(sql`DELETE FROM temp.book_erase_accounts WHERE id IN ${free}`);
+    erased.push(...free);
   }
-  await tx.run(sql`UPDATE accounts SET archived_at = ${new Date().toISOString()} WHERE archived_at IS NULL AND id IN (SELECT id FROM temp.book_erase_accounts)`);
+  if (named === 'archive') {
+    await tx.run(sql`UPDATE accounts SET archived_at = ${new Date().toISOString()} WHERE archived_at IS NULL AND id IN (SELECT id FROM temp.book_erase_accounts)`);
+  }
   await tx.run(sql`DELETE FROM temp.book_erase_accounts`);
+  return erased;
 }
