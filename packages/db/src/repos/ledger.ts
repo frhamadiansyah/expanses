@@ -754,6 +754,19 @@ export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string
   }
 }
 
+/**
+ * Erases void transactions for good, with their lines: the one door that deletes ledger rows (sharing resilience §5,
+ * `eraseBookTx`). `ids` selects the candidates; only rows already void go, so no balance or figure changes here — the
+ * void before it marked whatever needed working out again. The caller has taken every other row that names them.
+ * Returns how many went.
+ */
+export async function eraseVoidTransactionsTx(tx: Db, ws: WorkspaceContext, ids: SQL): Promise<number> {
+  const gone = sql`SELECT id FROM transactions WHERE workspace_id = ${ws.workspaceId} AND status <> 'posted' AND id IN (${ids})`;
+  await tx.run(sql`DELETE FROM entries WHERE transaction_id IN (${gone})`);
+  const rows = await tx.values<[string]>(sql`DELETE FROM transactions WHERE id IN (${gone}) RETURNING id`);
+  return rows.length;
+}
+
 /** Who is coming through a void or a replace. Only a shared event's derivation says `eventDerivation`. */
 export interface LedgerDoor {
   /** An edit: a shared workspace's redacted transfer row follows the replacement instead of going void and back. */
