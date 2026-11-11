@@ -65,7 +65,7 @@ import {
 } from './net-worth/transfers';
 import { MissingEpochKeyError, Sealer } from './seal';
 import type { ShareRecord, ShareRecordStore } from './share-records';
-import { assertShareableTx, catchUpTx, emitNewerTx, keepClocksTx, recordLineagesTx, REMEMBERED_MEMBER_KEY, SeenLog, SharingError, seedBookTx } from './seed';
+import { assertShareableTx, catchUpTx, emitNewerTx, keepClocksTx, REMEMBERED_MEMBER_KEY, SeenLog, SharingError, seedBookTx } from './seed';
 import type { ChangeSet, InviteRecord, InviteTerms, SyncTransport } from './types';
 import { removedFromBook, SyncTransportError } from './types';
 
@@ -748,12 +748,12 @@ export class SyncEngine {
           ON CONFLICT (book_id) DO UPDATE SET relay_book_id = excluded.relay_book_id, epoch = excluded.epoch, state = 'active', synced_at = NULL, unshared_by = NULL, unshared_reason = NULL`);
         await tx.run(sql`INSERT INTO sync_cursor (book_id, applied_seq) VALUES (${bookId}, 0) ON CONFLICT (book_id) DO UPDATE SET applied_seq = 0`);
         await clearAuthorityTx(tx, bookId); // rebuilt from the log, entry by entry, as the pull applies it again
-        // D-A6: a purchase here with no lineage (a copy from before the share) gets one first, so the pull finds it and
-        // edits this row instead of posting the purchase again under another id; the log's values win on it.
-        await recordLineagesTx(tx, { bookId, memberId, epoch }, { rejoin: true });
         // What changed here while nothing was captured gets its clock before the pull, so the log's older values do
         // not overwrite it; a copy kept as its own gets back the clocks it kept (recovery review, N2).
-        await catchUpTx(tx, { bookId, memberId, epoch }, this.now());
+        // D-A6: once every lineage points at its posted head, a purchase here with no lineage (a copy from before the
+        // share) gets one, so the pull finds it and edits this row instead of posting the purchase again under another
+        // id; the log's values win on it.
+        await catchUpTx(tx, { bookId, memberId, epoch }, this.now(), { recordLineages: true });
       } else {
         await tx.run(sql`
           INSERT INTO books (id, workspace_id, name, kind, base_currency, count_events_in_budget, sort_order, archived_at, created_at)

@@ -1,9 +1,9 @@
 import { expenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { postTransaction, replaceTransaction } from '../../src/index';
+import { createAccount, postTransaction, replaceTransaction, voidTransaction } from '../../src/index';
 import { remapId } from '../../src/sync/held';
-import { recordLineagesTx } from '../../src/sync/seed';
+import { recordLineagesTx, rowsInScopeTx } from '../../src/sync/seed';
 import { categoryOf, headOf, Household, postedRowsOf, projectBook, skipsOf, type Device } from './household';
 
 /*
@@ -193,4 +193,172 @@ describe('a same-book rejoin of a copy with no lineages (D-A6)', () => {
       expect(await projectBook(fandri.database, bookId)).toEqual(await projectBook(dewi.database, bookId));
     });
   }
+});
+
+/** Every posted purchase in the book as description and amount, sorted: what both phones must read alike. */
+async function purchasesIn(d: Device, bookId: string): Promise<[string, number][]> {
+  const rows = await d.database.db.values<[string, number]>(sql`
+    SELECT t.description, e.amount_minor FROM transactions t JOIN book_transactions bt ON bt.transaction_id = t.id
+    JOIN entries e ON e.transaction_id = t.id JOIN accounts a ON a.id = e.account_id AND a.kind = 'expense'
+    WHERE bt.book_id = ${bookId} AND t.status = 'posted' ORDER BY t.description, e.amount_minor`);
+  return rows.map(([description, amount]) => [description, Number(amount)]);
+}
+
+/** Every posted row of the book here is the head of exactly one of its lineages, and every live lineage heads one. */
+async function expectOneLineagePerRow(d: Device, bookId: string): Promise<void> {
+  const posted = (
+    await d.database.db.values<[string]>(
+      sql`SELECT t.id FROM transactions t JOIN book_transactions bt ON bt.transaction_id = t.id WHERE bt.book_id = ${bookId} AND t.status = 'posted' ORDER BY t.id`,
+    )
+  ).map(([id]) => id);
+  const heads = (
+    await d.database.db.values<[string]>(
+      sql`SELECT head_transaction_id FROM sync_lineage WHERE book_id = ${bookId} AND head_transaction_id IS NOT NULL ORDER BY head_transaction_id`,
+    )
+  ).map(([id]) => id);
+  expect(heads).toEqual(posted);
+}
+
+/** Fandri leaves and keeps the copy as his own; `meanwhile` runs on it; Dewi shares the workspace again and he joins. */
+async function keptThenRejoined(home: Household, dewi: Device, fandri: Device, bookId: string, meanwhile: () => Promise<void>) {
+  await fandri.engine.leave(bookId);
+  await fandri.engine.forgetSharing(bookId);
+  await meanwhile();
+  await dewi.engine.stopSharing(bookId);
+  const again = await dewi.engine.shareBook(bookId, { memberName: 'Dewi', deviceName: "Dewi's phone" });
+  home.relayBookId = again.relayBookId;
+  await dewi.engine.syncOnce(bookId);
+  const { code } = await dewi.engine.createInvite(bookId, { inviterName: 'Dewi', sameMember: true, memberId: fandri.memberId });
+  // A share made again is another relay book, so the device that left joins it as itself.
+  const joined = await fandri.engine.joinBook(code, { ws: fandri.ws, memberName: 'Fandri', deviceName: "Fandri's phone" });
+  expect(joined.result.stopped).toBeUndefined();
+  await home.settle();
+  await home.settle();
+  expect(await skipsOf(fandri.database)).toEqual([]);
+  expect(await skipsOf(dewi.database)).toEqual([]);
+}
+
+describe('a rejoin of a copy kept as its own (D-A6, fix round 1)', () => {
+  it('a remapped purchase edited while kept as own keeps one lineage, so it is never a second purchase', async () => {
+    const home = new Household();
+    const dewi = await home.device('Dewi');
+    const fandri = await home.device('Fandri');
+    const bookId = await home.share(dewi);
+    const groceries = await categoryOf(dewi.database, bookId, 'Groceries');
+    const id = await postTransaction(dewi.database, dewi.ws, {
+      occurredOn: '2026-09-10',
+      description: 'Dewi market',
+      lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: dewi.bank, amountMinor: 41_300, currency: 'IDR' }),
+    });
+    // Fandri's phone holds a voided leftover under the same id: the purchase arrives remapped (D-A2), so its lineage id
+    // is not its chain root here.
+    const food = await createAccount(fandri.database, fandri.ws, { name: 'Food', kind: 'expense', subtype: 'category', currency: null });
+    await postTransaction(fandri.database, fandri.ws, {
+      id,
+      occurredOn: '2026-01-01',
+      description: 'leftover',
+      lines: expenseLines({ categoryAccountId: food.id, paymentAccountId: fandri.bank, amountMinor: 1_000, currency: 'IDR' }),
+    });
+    await voidTransaction(fandri.database, fandri.ws, id);
+    await home.join(fandri, dewi);
+    await home.settle();
+    expect(await headOf(fandri.database, id)).toBe(remapId(bookId, id));
+    const fandriBank = await balanceOf(fandri, fandri.bank);
+
+    await keptThenRejoined(home, dewi, fandri, bookId, async () => {
+      // Renamed in his own copy, nothing captured: the lineage still names the row before the edit.
+      const [[placeholder]] = (await fandri.database.db.values<[string]>(
+        sql`SELECT account_id FROM book_member_accounts WHERE book_id = ${bookId} AND member_id = ${dewi.memberId}`,
+      )) as [[string]];
+      await replaceTransaction(fandri.database, fandri.ws, (await headOf(fandri.database, id))!, {
+        occurredOn: '2026-09-10',
+        description: 'Dewi market, renamed',
+        lines: expenseLines({ categoryAccountId: await categoryOf(fandri.database, bookId, 'Groceries'), paymentAccountId: placeholder, amountMinor: 41_300, currency: 'IDR' }),
+      });
+    });
+
+    const lineages = await fandri.database.db.values<[string]>(sql`SELECT lineage_id FROM sync_lineage WHERE book_id = ${bookId}`);
+    expect(lineages).toEqual([[id]]);
+    await expectOneLineagePerRow(fandri, bookId);
+    expect(await purchasesIn(fandri, bookId)).toEqual(await purchasesIn(dewi, bookId));
+    expect(await purchasesIn(dewi, bookId)).toHaveLength(1);
+    expect(await balanceOf(dewi, dewi.bank)).toBe(-41_300);
+    expect(await balanceOf(fandri, fandri.bank)).toBe(fandriBank);
+    expect(await projectBook(fandri.database, bookId)).toEqual(await projectBook(dewi.database, bookId));
+
+    // Dewi edits it afterwards: one purchase on both phones, at her figure.
+    await replaceTransaction(dewi.database, dewi.ws, (await headOf(dewi.database, id))!, {
+      occurredOn: '2026-09-10',
+      description: 'Dewi market',
+      lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: dewi.bank, amountMinor: 45_000, currency: 'IDR' }),
+    });
+    await home.settle();
+    await expectOneLineagePerRow(fandri, bookId);
+    expect(await purchasesIn(fandri, bookId)).toEqual([['Dewi market', 45_000]]);
+    expect(await purchasesIn(dewi, bookId)).toEqual([['Dewi market', 45_000]]);
+    expect(await balanceOf(dewi, dewi.bank)).toBe(-45_000);
+    expect(await balanceOf(fandri, fandri.bank)).toBe(fandriBank);
+    expect(await projectBook(fandri.database, bookId)).toEqual(await projectBook(dewi.database, bookId));
+  });
+
+  it('an edit and a new purchase made while kept as own each reach the partner once, the bank exact', async () => {
+    const home = new Household();
+    const dewi = await home.device('Dewi');
+    const fandri = await home.device('Fandri');
+    const bookId = await home.share(dewi);
+    await home.join(fandri, dewi);
+    const market = await spend(fandri, bookId, 'Fandri market', 30_000);
+    await spend(dewi, bookId, 'Dewi market', 50_000);
+    await home.settle();
+
+    let bankBefore = 0;
+    await keptThenRejoined(home, dewi, fandri, bookId, async () => {
+      await replaceTransaction(fandri.database, fandri.ws, (await headOf(fandri.database, market))!, {
+        occurredOn: '2026-09-10',
+        description: 'Fandri market',
+        lines: expenseLines({ categoryAccountId: await categoryOf(fandri.database, bookId, 'Groceries'), paymentAccountId: fandri.bank, amountMinor: 31_000, currency: 'IDR' }),
+      });
+      await spend(fandri, bookId, 'Fandri bakery', 9_000);
+      bankBefore = await balanceOf(fandri, fandri.bank);
+    });
+    expect(bankBefore).toBe(-(31_000 + 9_000));
+
+    const expected: [string, number][] = [
+      ['Dewi market', 50_000],
+      ['Fandri bakery', 9_000],
+      ['Fandri market', 31_000],
+    ];
+    expect(await purchasesIn(fandri, bookId)).toEqual(expected);
+    expect(await purchasesIn(dewi, bookId)).toEqual(expected);
+    expect(await balanceOf(fandri, fandri.bank)).toBe(bankBefore);
+    expect(await balanceOf(dewi, dewi.bank)).toBe(-50_000);
+    await expectOneLineagePerRow(fandri, bookId);
+    await expectOneLineagePerRow(dewi, bookId);
+    expect(await projectBook(fandri.database, bookId)).toEqual(await projectBook(dewi.database, bookId));
+  });
+});
+
+describe('a void lineage rooted at a row back in the book (fix round 1, M4)', () => {
+  it('records nothing and sends nothing for it, as capture says nothing more under a void lineage', async () => {
+    const home = new Household();
+    const dewi = await home.device('Dewi');
+    const fandri = await home.device('Fandri');
+    const bookId = await home.share(dewi);
+    await home.join(fandri, dewi);
+    const market = await spend(fandri, bookId, 'Fandri market', 27_500);
+    await home.settle();
+    // Moved out of the book and back under the same id: the lineage went void while it was out, the row is posted here.
+    await fandri.database.db.run(sql`UPDATE sync_lineage SET head_transaction_id = NULL WHERE lineage_id = ${market}`);
+    const probe = new Error('rolled back');
+    await expect(
+      fandri.database.transaction(async (tx) => {
+        const book = { bookId, memberId: fandri.memberId, epoch: 0 };
+        expect(await recordLineagesTx(tx, book, { rejoin: true })).toBe(0);
+        const ops = await rowsInScopeTx(tx, book, () => true, { device: false });
+        expect(ops.filter((op) => op.entity === 'purchase')).toEqual([]);
+        throw probe;
+      }),
+    ).rejects.toBe(probe);
+    expect(await lineagesOf(fandri, bookId)).toEqual([[market, null, fandri.memberId]]);
+  });
 });

@@ -263,11 +263,16 @@ export async function rowsInScopeTx(tx: Tx, book: SharedBook, keep: (entity: str
     ...(await rows('goal_member_move')),
   );
 
+  // Lineages are recorded before `keep` is asked, and for every purchase: whether a purchase is kept is asked of its
+  // lineage id, which a purchase with no lineage only has once recorded. Every caller keeps everything today; a caller
+  // that keeps some rows would still record a lineage for every purchase of the book.
   if (record) await recordLineagesTx(tx, book);
   // Every non-void purchase, oldest first. A void one never existed for the other member. A purchase split across
   // workspaces (0084) with a part here goes as that part (`projectPurchase`).
   for (const [head] of await postedHeadsTx(tx, book.bookId)) {
-    const { lineageId, known } = await purchaseLineageTx(tx, head);
+    const found = await purchaseLineageTx(tx, head);
+    if (!found) continue;
+    const { lineageId, known } = found;
     if (!keep('purchase', lineageId)) continue;
     if (!known) continue; // only without `record`: a snapshot writes nothing, and a purchase with no lineage is not sent
     const purchase = (await projectPurchase(tx, head, book.memberId, { paidBy: known[0], paidLabel: known[1], paidFrom: paidFromOf(known[2], known[3]) }))!;
@@ -289,12 +294,17 @@ async function postedHeadsTx(tx: Db, bookId: string): Promise<[string][]> {
  * lineage back in the book (moved out and back, a split's part taken off and put back) is a new purchase, under a
  * lineage of its own rooted at it — as capture makes one (`resolveLineage`).
  */
-async function purchaseLineageTx(tx: Db, head: string): Promise<{ lineageId: string; known: [string, string, string | null, string | null] | undefined }> {
+async function purchaseLineageTx(tx: Db, head: string): Promise<{ lineageId: string; known: [string, string, string | null, string | null] | undefined } | null> {
   const lineageId = await lineageOfTransaction(tx, head);
   const [known] = await tx.values<[string, string, string | null, string | null, string | null]>(
     sql`SELECT paid_by, paid_label, paid_from_owner, paid_from_item, head_transaction_id FROM sync_lineage WHERE lineage_id = ${lineageId}`,
   );
-  if (known && known[4] === null) return { lineageId: head, known: undefined };
+  if (known && known[4] === null) {
+    // The void lineage is rooted at this very row: it cannot root a new one under the same id, so it says nothing more
+    // (as capture, `resolveLineage`).
+    if (lineageId === head) return null;
+    return { lineageId: head, known: undefined };
+  }
   return { lineageId, known: known ? [known[0], known[1], known[2], known[3]] : undefined };
 }
 
@@ -311,8 +321,9 @@ async function purchaseLineageTx(tx: Db, head: string): Promise<{ lineageId: str
 export async function recordLineagesTx(tx: Tx, book: SharedBook, options: { rejoin?: boolean } = {}): Promise<number> {
   let recorded = 0;
   for (const [head] of await postedHeadsTx(tx, book.bookId)) {
-    const { lineageId, known } = await purchaseLineageTx(tx, head);
-    if (known) continue;
+    const found = await purchaseLineageTx(tx, head);
+    if (!found || found.known) continue;
+    const { lineageId } = found;
     const purchase = (await projectPurchase(tx, head, book.memberId, null))!;
     await tx.run(
       sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item)
@@ -413,8 +424,11 @@ async function postedHeadTx(tx: Db, bookId: string, head: string): Promise<strin
  *   caller to send (the seed does; a rejoin's `emitNewerTx` finds the tombstone).
  *
  * Then the kept clocks go. A book with none (never shared, or unshared and read-only since) only gets the purchase check.
+ *
+ * `recordLineages` (a rejoin, D-A6): between the purchase check and the kept clocks, every posted purchase with no
+ * lineage gets one (`recordLineagesTx` with `rejoin`).
  */
-export async function catchUpTx(tx: Tx, book: SharedBook, now?: number): Promise<{ deletes: Op[] }> {
+export async function catchUpTx(tx: Tx, book: SharedBook, now?: number, options: { recordLineages?: boolean } = {}): Promise<{ deletes: Op[] }> {
   const { bookId } = book;
   let hlc: string | undefined;
   const fresh = async () => (hlc ??= await localTick(tx, await localDeviceId(tx), now ?? Date.now()));
@@ -436,6 +450,10 @@ export async function catchUpTx(tx: Tx, book: SharedBook, now?: number): Promise
         paid_from_owner = ${reads.money.paidFrom?.owner ?? null}, paid_from_item = ${reads.money.paidFrom?.itemId ?? null}
       WHERE lineage_id = ${lineageId}`);
   }
+  // A rejoin (D-A6): only now, with every lineage pointing at its posted head, is a purchase with no lineage told apart
+  // from an edited one whose lineage still named the row before the edit (a remapped id, a lineage rooted mid-chain,
+  // where the chain root is not the lineage id). Before its kept clocks, so a lineage made here drops its own.
+  if (options.recordLineages) await recordLineagesTx(tx, book, { rejoin: true });
 
   const keptRows = await tx.values<[string, string, string, string, string]>(sql`SELECT entity, id, field, hlc, value_json FROM sync_kept_clocks WHERE book_id = ${bookId}`);
   if (keptRows.length === 0) return { deletes: [] };
