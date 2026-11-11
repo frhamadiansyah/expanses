@@ -59,7 +59,8 @@ describe('reading the loan calculator’s boxes', () => {
 
   it('waits quietly for empty boxes, and names a box that does not read', () => {
     const empty = loanWorking('home', emptyLoanKindDraft('home'), 'IDR', TODAY);
-    expect(empty).toEqual({ problems: {}, input: null, facts: null });
+    expect(empty).toEqual({ problems: {}, input: null, facts: null, loanMinor: null });
+    expect(loanWorking('home', homeDraft({ years: '' }), 'IDR', TODAY)).toMatchObject({ input: null, loanMinor: 720_000_000 });
     const bad = loanWorking('home', homeDraft({ down: '120', years: '2,5' }), 'IDR', TODAY);
     expect(bad.input).toBeNull();
     expect(bad.problems).toMatchObject({ down: 'Less than the price', years: expect.any(String) });

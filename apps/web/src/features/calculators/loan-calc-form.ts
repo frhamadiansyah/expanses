@@ -146,6 +146,8 @@ export interface LoanWorking {
   problems: Record<string, string>;
   input: LoanCalcInput | null;
   facts: LoanFacts | null;
+  /** The loan as far as it reads, for the Loan row while the rest is still being typed. */
+  loanMinor: number | null;
 }
 
 /** Whether a kind's length is asked in years (a home) or in months. */
@@ -260,7 +262,7 @@ export function loanWorking(kind: LoanKind, draft: LoanKindDraft, currency: stri
   }
   const incomeMinor = optional('income', readMoney(draft.income, currency)) ?? 0;
 
-  const none: LoanWorking = { problems, input: null, facts: null };
+  const none: LoanWorking = { problems, input: null, facts: null, loanMinor: loanMinor && loanMinor > 0 && !problems.down && !problems.price ? loanMinor : null };
   if (missing || Object.keys(problems).length > 0 || loanMinor === null || months === null || stages.length === 0) return none;
   if (stages.reduce((total, stage) => total + stage.months, 0) !== months) return none;
 
@@ -272,5 +274,6 @@ export function loanWorking(kind: LoanKind, draft: LoanKindDraft, currency: stri
     problems,
     input: { principalMinor: loanMinor, method, stages, firstPaymentOn: first.firstPaymentOn, paymentDay: first.paymentDay },
     facts: { priceMinor, downMinor, loanMinor, feeMinor, costsMinor, incomeMinor },
+    loanMinor,
   };
 }
