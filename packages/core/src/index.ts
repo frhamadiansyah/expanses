@@ -21,7 +21,7 @@ export {
   searchTokens,
 } from './entry/quick-entry';
 export { categoryDefaultMcc, isMcc, isMccSpec, type MccSource, type MccSources, mccInRange, type MerchantMcc, resolveMcc } from './mcc/resolve';
-export { CURRENCIES, currencyInfo, isSupportedCurrency, UnknownCurrencyError, type CurrencyInfo } from './money/currencies';
+export { CURRENCIES, currencyInfo, isSupportedCurrency, searchCurrencies, UnknownCurrencyError, type CurrencyInfo } from './money/currencies';
 export { type DatedRate, pickRate } from './money/rates';
 export {
   assertMinor,
