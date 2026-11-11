@@ -20,6 +20,8 @@ import {
   upgradeCalculatorGoals,
   type WorkspaceContext,
 } from '@expanses/db';
+import { SyncLog } from '../sync/sync-log';
+import { deviceSyncLogStore } from '../sync/sync-log-device';
 import { SyncService } from '../sync/sync-service';
 import { type OpenResult, type OpenStage, openSafely, type RecoveryReason, type Safety, say } from './open';
 import { opfsSnapshots } from './snapshots';
@@ -114,7 +116,8 @@ export async function openAppDb(
    * of it. Local only — the keys and the database, never the relay — and a failure never stops the app opening; a
    * write into a shared book would then refuse (`localDeviceId`) rather than stamp a stand-in id.
    */
-  const sync = new SyncService({ database, ...(options.keyStore ? { keyStore: options.keyStore } : {}) });
+  // Sharing failures are kept on the device (expanses-safety/sync-log.json), outside the database: never synced.
+  const sync = new SyncService({ database, log: new SyncLog(deviceSyncLogStore()), ...(options.keyStore ? { keyStore: options.keyStore } : {}) });
   await sync.prepare().catch((error: unknown) => console.warn('Sharing could not get ready', error));
   let [workspace] = await listWorkspaces(database);
   if (!workspace) {

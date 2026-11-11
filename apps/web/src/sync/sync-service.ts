@@ -20,6 +20,7 @@ import {
 import { createKeyStore } from './key-store';
 import { createRelayTransport } from './relay';
 import { SyncScheduler } from './sync-scheduler';
+import { SyncLog, type SyncLogOp } from './sync-log';
 // This app's own version (joint-net-worth spec §9), written on this device's book_devices row so a peer can tell
 // whether it meets NET_WORTH_MIN_APP_VERSION before proposing joint mode.
 import pkg from '../../package.json';
@@ -49,6 +50,8 @@ export interface BookSyncStatus {
    * workspace itself synced, the group log is tried again on the next run.
    */
   groupFailing: boolean;
+  /** What the last failed run threw, until a run succeeds: the Share page's "Last sync failed: …". */
+  lastError: unknown;
 }
 
 export interface SyncServiceOptions {
@@ -59,6 +62,8 @@ export interface SyncServiceOptions {
   /** Called after a run applied something another device wrote, or this device's state changed. */
   onApplied?: () => void;
   onError?: (error: unknown) => void;
+  /** Where failures are recorded (src/sync/sync-log.ts); a log in memory when none is given. */
+  log?: SyncLog;
   now?: () => number;
   intervalMs?: number;
 }
@@ -78,7 +83,24 @@ function devSampleLoaded(): boolean {
   }
 }
 
-const IDLE: BookSyncStatus = { lastSyncedAt: null, failing: false, running: false, groupFailing: false };
+const IDLE: BookSyncStatus = { lastSyncedAt: null, failing: false, running: false, groupFailing: false, lastError: null };
+
+/** The engine's status in a few words, for the log: `waiting 3`, `stale 2`, `unshared stopped`, `none`. */
+export function statusInShort(status: EngineBookStatus | null): string {
+  if (!status) return 'none';
+  switch (status.state) {
+    case 'waiting':
+      return `waiting ${status.changes}`;
+    case 'stale':
+      return `stale ${status.changes} since ${status.since}`;
+    case 'frozen':
+      return `frozen ${status.changes}`;
+    case 'unshared':
+      return `unshared ${status.reason}`;
+    default:
+      return status.state;
+  }
+}
 
 /** The ms of an hlc: its first 12 hex digits (spec §6.1). */
 const hlcMs = (hlc: string) => Number.parseInt(hlc.slice(0, 12), 16);
@@ -112,6 +134,8 @@ export class SyncService {
   private readonly onError: (error: unknown) => void;
   private readonly now: () => number;
   private readonly intervalMs: number | undefined;
+  /** This device's record of sharing failures: local only, never synced. */
+  readonly log: SyncLog;
 
   private engineMade: Promise<SyncEngine> | undefined;
   private prepared: Promise<void> | undefined;
@@ -137,6 +161,7 @@ export class SyncService {
     this.onError = options.onError ?? ((error) => console.warn('Sync failed', error));
     this.now = options.now ?? Date.now;
     this.intervalMs = options.intervalMs;
+    this.log = options.log ?? new SyncLog(undefined, () => new Date(this.now()));
   }
 
   /** The engine, made once: this device's keys (made on first need), then the engine over the relay. */
@@ -163,11 +188,20 @@ export class SyncService {
   prepare(): Promise<void> {
     this.prepared ??= (async () => {
       if (devSampleLoaded()) return;
-      const books = await listSharedBooks(this.database);
-      if (books.length === 0) return;
-      const engine = await this.engine();
-      const switched = await engine.checkRestore();
-      if (switched.length > 0) this.onApplied();
+      try {
+        const books = await listSharedBooks(this.database);
+        if (books.length === 0) return;
+        const engine = await this.engine();
+        const switched = await engine.checkRestore();
+        // A restored copy (§8.7) is not a failure, but it is the moment a share goes quiet here: worth a line.
+        for (const bookId of switched) {
+          await this.note('restore', bookId, { message: 'At open: this device has no device row or no epoch key that opens, so the book waits for a new invite (needs_invite) and its outbox was cleared' });
+        }
+        if (switched.length > 0) this.onApplied();
+      } catch (error) {
+        await this.note('prepare', null, { error });
+        throw error;
+      }
     })();
     this.prepared.catch(() => (this.prepared = undefined));
     return this.prepared;
@@ -255,21 +289,27 @@ export class SyncService {
     input: { memberName: string; deviceName: string },
     onProgress?: (done: number, total: number) => void,
   ): Promise<CreatedInvite> {
-    const engine = await this.engine();
+    const engine = await this.logged('share', bookId, () => this.engine());
     let shared = false;
+    let stage: SyncLogOp = 'seed';
     try {
       const invite = await this.exclusive(bookId, async () => {
         await engine.shareBook(bookId, input);
         shared = true;
-        await this.drainWithProgress(engine, bookId, onProgress);
-        return engine.createInvite(bookId, { inviterName: input.memberName });
+        stage = 'drain';
+        const sent = await this.drainWithProgress(engine, bookId, onProgress);
+        stage = 'invite';
+        const made = await engine.createInvite(bookId, { inviterName: input.memberName });
+        await this.note('share', bookId, { message: `Shared: seeded, ${sent.ops} ops in ${sent.pushed} entries sent, ${sent.left} ops left in the outbox, invite made` });
+        return made;
       });
       await this.touched(bookId);
       return invite;
     } catch (error) {
+      await this.note(stage, bookId, { error });
       // Once the seed is written the book is shared, whatever happens to its upload: it waits in the outbox, the
       // status line says it is not synced, and the scheduler sends it when the relay answers (task 7 fix round 1).
-      if (shared) this.setStatus(bookId, { running: false, failing: true });
+      if (shared) this.setStatus(bookId, { running: false, failing: true, lastError: error });
       throw error;
     } finally {
       if (shared) {
@@ -286,25 +326,29 @@ export class SyncService {
 
   /** A fresh invite for the other person to a book already shared — the code shown again after a reload. */
   async invite(bookId: string, inviterName: string): Promise<CreatedInvite> {
-    const engine = await this.engine();
-    return this.exclusive(bookId, () => engine.createInvite(bookId, { inviterName }));
+    return this.logged('invite', bookId, async () => {
+      const engine = await this.engine();
+      return this.exclusive(bookId, () => engine.createInvite(bookId, { inviterName }));
+    });
   }
 
   /** Link a device (§8.3): an invite for another device of this device's own member. */
   async linkDevice(bookId: string, inviterName: string): Promise<CreatedInvite> {
-    const engine = await this.engine();
-    return this.exclusive(bookId, () => engine.linkDevice(bookId, { inviterName }));
+    return this.logged('invite', bookId, async () => {
+      const engine = await this.engine();
+      return this.exclusive(bookId, () => engine.linkDevice(bookId, { inviterName }));
+    });
   }
 
   /** What a code invites to, before anything is claimed (§8.2 steps 1–2). */
   async preview(code: string): Promise<PreviewedInvite> {
-    return (await this.engine()).previewInvite(code);
+    return this.logged('preview', null, async () => (await this.engine()).previewInvite(code));
   }
 
   /** Join (§8.2): the claim, the keys, the book, the introduction, and a first sync from the start of the log. */
   async join(code: string, input: { ws: WorkspaceContext; memberName: string; deviceName: string }): Promise<{ bookId: string }> {
-    const engine = await this.engine();
-    const { bookId, result } = await engine.joinBook(code, input);
+    const { bookId, result } = await this.logged('join', null, async () => (await this.engine()).joinBook(code, input));
+    await this.note('join', bookId, { message: `Joined: ${result.applied} entries applied, ${result.skipped.length} ops refused${result.stopped ? `, pull stopped at seq ${result.stopped.seq}: ${result.stopped.reason}` : ''}` });
     await this.touched(bookId, result);
     await this.refresh();
     this.onApplied();
@@ -313,16 +357,20 @@ export class SyncService {
 
   /** Remove a device (§8.4); for another device this device then applies its removal and rotates. */
   async removeDevice(bookId: string, deviceId: string): Promise<void> {
-    const engine = await this.engine();
-    await this.exclusive(bookId, () => engine.removeDevice(bookId, deviceId));
+    await this.logged('remove', bookId, async () => {
+      const engine = await this.engine();
+      await this.exclusive(bookId, () => engine.removeDevice(bookId, deviceId));
+    });
     await this.touched(bookId);
     this.onApplied();
   }
 
   /** Link another member's device (§8.3, §8.7): an owner's invite that joins as that member. */
   async linkDeviceFor(bookId: string, inviterName: string, memberId: string): Promise<CreatedInvite> {
-    const engine = await this.engine();
-    return this.exclusive(bookId, () => engine.createInvite(bookId, { inviterName, sameMember: true, memberId }));
+    return this.logged('invite', bookId, async () => {
+      const engine = await this.engine();
+      return this.exclusive(bookId, () => engine.createInvite(bookId, { inviterName, sameMember: true, memberId }));
+    });
   }
 
   /** The status line's state (§11), from the engine; null for a book not shared here, or before any engine exists. */
@@ -344,12 +392,12 @@ export class SyncService {
 
   /** Leave (§8.4): the book stays here, read-only; it is no longer polled. */
   async leave(bookId: string): Promise<void> {
-    await this.act(bookId, (engine) => engine.leave(bookId));
+    await this.act(bookId, (engine) => engine.leave(bookId), 'leave');
   }
 
   /** Stop sharing (§8.6), by an owner: the book is an ordinary one here again; the others go read-only on their next run. */
   async stopSharing(bookId: string): Promise<void> {
-    await this.act(bookId, (engine) => engine.stopSharing(bookId));
+    await this.act(bookId, (engine) => engine.stopSharing(bookId), 'stop');
   }
 
   /** Keep the book as this device's own (final review, C1): the way out of a share that is dead here. Local only. */
@@ -361,8 +409,7 @@ export class SyncService {
 
   /** Share an event as its own relay book (shared events §3); polled from here on like any shared book. */
   async shareEvent(ws: WorkspaceContext, input: { eventId: string; currency: string; personName: string; deviceName: string; names: string[] }): Promise<{ bookId: string }> {
-    const engine = await this.engine();
-    const { bookId } = await engine.shareEvent(ws, input);
+    const { bookId } = await this.logged('share', null, async () => (await this.engine()).shareEvent(ws, input));
     await this.touched(bookId);
     await this.refresh();
     this.onApplied();
@@ -371,14 +418,15 @@ export class SyncService {
 
   /** An invite to an event; for a person's new phone when `forPersonId` is given (§7). */
   async eventInvite(bookId: string, inviterName: string, forPersonId?: string): Promise<CreatedInvite> {
-    const engine = await this.engine();
-    return this.exclusive(bookId, () => engine.createEventInvite(bookId, { inviterName, ...(forPersonId ? { forPersonId } : {}) }));
+    return this.logged('invite', bookId, async () => {
+      const engine = await this.engine();
+      return this.exclusive(bookId, () => engine.createEventInvite(bookId, { inviterName, ...(forPersonId ? { forPersonId } : {}) }));
+    });
   }
 
   /** Join an event: the claim, the book, the name, and a first pull of the whole log. */
   async joinEvent(code: string, input: { ws: WorkspaceContext; personId: string | null; name: string; deviceName: string }): Promise<{ eventId: string }> {
-    const engine = await this.engine();
-    const { bookId, eventId, result } = await engine.joinEvent(code, input);
+    const { bookId, eventId, result } = await this.logged('join', null, async () => (await this.engine()).joinEvent(code, input));
     await this.touched(bookId, result);
     await this.refresh();
     this.onApplied();
@@ -431,18 +479,18 @@ export class SyncService {
   /* ------------------------------------------------------------- internals */
 
   /** An act that may change the book's state: whatever it did, the schedule follows `shared_books` and screens re-read. */
-  private async act(bookId: string, work: (engine: SyncEngine) => Promise<void>): Promise<void> {
-    const engine = await this.engine();
+  private async act(bookId: string, work: (engine: SyncEngine) => Promise<void>, op: SyncLogOp = 'act'): Promise<void> {
+    const engine = await this.logged(op, bookId, () => this.engine());
     try {
-      await this.exclusive(bookId, () => work(engine));
+      await this.logged(op, bookId, () => this.exclusive(bookId, () => work(engine)));
     } finally {
-      await this.refresh().catch((error: unknown) => this.onError(error));
+      await this.refresh().catch((error: unknown) => this.failed('refresh', bookId, error));
       this.emit();
       this.onApplied();
     }
   }
 
-  private async drainWithProgress(engine: SyncEngine, bookId: string, onProgress?: (done: number, total: number) => void): Promise<void> {
+  private async drainWithProgress(engine: SyncEngine, bookId: string, onProgress?: (done: number, total: number) => void): Promise<{ ops: number; pushed: number; left: number }> {
     const total = await outboxOps(this.database, bookId);
     onProgress?.(0, total);
     let stop = false;
@@ -454,29 +502,41 @@ export class SyncService {
         onProgress?.(Math.max(0, total - left), total);
       }
     })();
+    let pushed = 0;
     try {
-      await engine.syncOnce(bookId);
+      pushed = (await engine.syncOnce(bookId)).pushed;
     } finally {
       stop = true;
       await watch;
     }
     onProgress?.(total, total);
+    return { ops: total, pushed, left: await outboxOps(this.database, bookId) };
   }
 
   private async runOnce(bookId: string): Promise<SyncOnceResult> {
-    const engine = await this.engine();
     this.setStatus(bookId, { running: true });
     try {
+      const engine = await this.engine();
       const result = await this.exclusive(bookId, () => engine.syncOnce(bookId));
       await this.touched(bookId, result);
       // The group log's own failure (task 4 review round 1): the workspace synced, so the run is not failing; the
       // status says the group log is behind, and the error is reported like any other.
       this.setStatus(bookId, { groupFailing: result.groupError !== undefined });
-      if (result.groupError) this.onError(result.groupError);
+      if (result.groupError) {
+        await this.note('group', bookId, { error: result.groupError });
+        this.onError(result.groupError);
+      }
+      // Not failures, but where a book goes quiet without one: refused ops, and a pull that stopped short.
+      if (result.skipped.length > 0) {
+        const kinds = [...new Set(result.skipped.map((op) => op.entity))].join(', ');
+        await this.note('apply', bookId, { message: `${result.skipped.length} ops refused on apply (${kinds}); kept in sync_skipped` });
+      }
+      if (result.stopped) await this.note('pull', bookId, { message: `Pull stopped at seq ${result.stopped.seq}: ${result.stopped.reason}` });
       return result;
     } catch (error) {
-      this.setStatus(bookId, { running: false, failing: true });
-      await this.flushHeard(bookId);
+      this.setStatus(bookId, { running: false, failing: true, lastError: error });
+      await this.note('sync', bookId, { error });
+      await this.flushHeard(bookId).catch(() => undefined);
       // A refusal can mean the book's state changed (a 410, task 9a): let the schedule follow `shared_books`.
       await this.refresh().catch(() => undefined);
       throw error;
@@ -486,7 +546,7 @@ export class SyncService {
   /** After a run that reached the relay: when it happened, who was heard from, and whether the screens must re-read. */
   private async touched(bookId: string, result?: SyncOnceResult): Promise<void> {
     const at = this.now();
-    this.setStatus(bookId, { running: false, failing: false, lastSyncedAt: at });
+    this.setStatus(bookId, { running: false, failing: false, lastSyncedAt: at, lastError: null });
     try {
       const id = await this.deviceId();
       if (id && at - (this.ownSeenWritten.get(bookId) ?? -Infinity) > SEEN_WRITE_MS) {
@@ -495,10 +555,10 @@ export class SyncService {
       }
       await this.flushHeard(bookId);
     } catch (error) {
-      this.onError(error);
+      await this.failed('seen', bookId, error);
     }
     // A run that stopped short may have moved the book out of `active` (needs_invite): it is no longer polled.
-    if (result?.stopped || result?.ended) await this.refresh().catch((error: unknown) => this.onError(error));
+    if (result?.stopped || result?.ended) await this.refresh().catch((error: unknown) => this.failed('refresh', bookId, error));
     this.emit();
     // A workspace's run also syncs its net-worth group log (joint-net-worth §4): what that applied is read again too.
     const group = result?.group;
@@ -522,6 +582,44 @@ export class SyncService {
     if (!seen) return;
     this.heard.delete(relayBookId);
     await recordDevicesSeen(this.database, bookId, seen);
+  }
+
+  /**
+   * One line in the log (src/sync/sync-log.ts), with the relay's id for the book and the engine's status right
+   * after. Never throws, and never waits on the relay: both reads are local.
+   */
+  private async note(op: SyncLogOp, bookId: string | null, what: { error?: unknown; message?: string }): Promise<void> {
+    let relayBookId: string | null = null;
+    let state: string | null = null;
+    if (bookId) {
+      try {
+        relayBookId = (await listSharedBooks(this.database)).find((book) => book.bookId === bookId)?.relayBookId ?? null;
+      } catch {
+        // Left out.
+      }
+      try {
+        state = this.engineMade ? statusInShort(await (await this.engineMade).bookSyncStatus(bookId)) : 'no engine';
+      } catch (error) {
+        state = `unknown (${error instanceof Error ? error.name : typeof error})`;
+      }
+    }
+    await this.log.record({ op, bookId, relayBookId, state, ...(what.error !== undefined ? { error: what.error } : { message: what.message ?? '' }) });
+  }
+
+  /** A failure nobody waits on: logged, and told to `onError`. */
+  private async failed(op: SyncLogOp, bookId: string | null, error: unknown): Promise<void> {
+    await this.note(op, bookId, { error });
+    this.onError(error);
+  }
+
+  /** Runs `work`; a failure is logged and thrown on as it came. */
+  private async logged<T>(op: SyncLogOp, bookId: string | null, work: () => Promise<T>): Promise<T> {
+    try {
+      return await work();
+    } catch (error) {
+      await this.note(op, bookId, { error });
+      throw error;
+    }
   }
 
   private exclusive<T>(bookId: string, work: () => Promise<T>): Promise<T> {
