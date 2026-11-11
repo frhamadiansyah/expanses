@@ -130,4 +130,36 @@ describe('a purchase whose transaction id is already here (D-A2)', () => {
     expect(await statusOf(fandri, id)).toBe('void');
     expect(await fandri.database.db.values(sql`SELECT description FROM transactions WHERE id = ${id}`)).toEqual([['leftover']]);
   });
+
+  it('a live holder in an unshared book is never read as the shared purchase when it is edited', async () => {
+    // A pre-share copy's own row under the lineage id, still posted in Fandri's private workspace: editing it must
+    // neither void nor change the shared purchase.
+    const home = new Household();
+    const dewi = await home.device('Dewi');
+    const fandri = await home.device('Fandri');
+    const bookId = await home.share(dewi);
+    const groceries = await categoryOf(dewi.database, bookId, 'Groceries');
+    const id = await postTransaction(dewi.database, dewi.ws, {
+      occurredOn: '2026-09-10',
+      description: 'market',
+      lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: dewi.bank, amountMinor: 41_300, currency: 'IDR' }),
+    });
+    const fandriFood = await createAccount(fandri.database, fandri.ws, { name: 'Food', kind: 'expense', subtype: 'category', currency: null });
+    const lines = (amountMinor: number) => expenseLines({ categoryAccountId: fandriFood.id, paymentAccountId: fandri.bank, amountMinor, currency: 'IDR' });
+    await postTransaction(fandri.database, fandri.ws, { id, occurredOn: '2026-01-01', description: 'own', lines: lines(1_000) });
+    await home.join(fandri, dewi);
+    await home.settle();
+    expect(await headOf(fandri.database, id)).toBe(remapId(bookId, id));
+
+    const edited = await replaceTransaction(fandri.database, fandri.ws, id, { occurredOn: '2026-01-01', description: 'own, edited', lines: lines(2_000) });
+    await home.settle();
+    await voidTransaction(fandri.database, fandri.ws, edited);
+    await home.settle();
+    expect(await headOf(fandri.database, id)).toBe(remapId(bookId, id));
+    expect(await headOf(dewi.database, id)).toBe(id);
+    expect(await projectBook(fandri.database, bookId)).toEqual(await projectBook(dewi.database, bookId));
+    expect(await statusOf(dewi, id)).toBe('posted');
+    expect(await skipsOf(fandri.database)).toEqual([]);
+    expect(await skipsOf(dewi.database)).toEqual([]);
+  });
 });

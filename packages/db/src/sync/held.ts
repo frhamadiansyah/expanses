@@ -37,6 +37,15 @@ export function remapId(bookId: string, lineageId: string, attempt = 1): string 
   return uuidv5Sync(REMAP_NAMESPACE, `remap:${bookId}:${lineageId}${attempt > 1 ? `:${attempt}` : ''}`);
 }
 
+/**
+ * The lineage a holder row belongs to here (D-A2): the row a remapped purchase's id is taken by — a voided leftover, a
+ * pre-share copy's own row — and its replacements are no part of that purchase. They are a lineage of their own, named
+ * here from the id they share (`lineageOfTransaction`), so an edit of the holder never reads as an edit of the purchase.
+ */
+export function holderLineageId(lineageId: string): string {
+  return uuidv5Sync(REMAP_NAMESPACE, `holder:${lineageId}`);
+}
+
 /** The id a new lineage's first transaction is posted under here: the lineage id while it is free, else the first free `remapId`. */
 export async function freeTransactionIdTx(tx: Db, bookId: string, lineageId: string): Promise<string> {
   const taken = async (id: string) => (await tx.values(sql`SELECT 1 FROM transactions WHERE id = ${id}`)).length > 0;
