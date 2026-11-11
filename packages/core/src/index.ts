@@ -668,3 +668,23 @@ export {
   waiverWindow,
 } from './points/spend-bonus';
 export { chargeAfterWaiver, coveredCharge, FEE_SOON_DAYS, feeDaysAway, feeWaived, nextFeeDate, type UpcomingFee, upcomingFees } from './points/fee-date';
+export {
+  extraEffect,
+  type ExtraEffect,
+  type MethodSuggestion,
+  PAYOFF_CAP_MONTHS,
+  type PayoffDebt,
+  type PayoffDebtResult,
+  payoffDebtFromSchedule,
+  type PayoffInterest,
+  type PayoffMethod,
+  type PayoffOptions,
+  payoffOrder,
+  type PayoffPlan,
+  RATE_SPREAD_BPS,
+  type ScheduledLoanInput,
+  simulatePayoff,
+  SMALL_DEBT_COUNT,
+  SMALL_DEBT_SHARE_BPS,
+  suggestMethod,
+} from './debts/payoff';
