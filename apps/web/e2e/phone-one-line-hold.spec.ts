@@ -5,8 +5,9 @@ import { todayIn } from './today';
 
 /*
  * Holding ＋ on Cashflow does what Settings › Default chose; One line is the default. The page stays; the field docks
- * at the foot (a browser has no on-screen keyboard), the tab bar stands aside, and the line is drawn as a dashed row
- * at the top of the day it lands on. Return saves it into the list. Held anywhere else, ＋ is a tap: the full form.
+ * at the foot (a browser has no on-screen keyboard), the tab bar stands aside, and in the Card look the line is drawn
+ * as the row it will be saved as, in a card over the keyboard (the Plain look is the bare field). Return saves it into
+ * the list. Held anywhere else, ＋ is a tap: the full form.
  * Invented names and figures.
  */
 test.beforeEach(({ page }) => {
@@ -43,7 +44,6 @@ test('on Cashflow, holding ＋ opens One line over the list; Return saves the ro
   await addTransaction(page, { description: 'warung sate', paidWith: 'Bank Nusa', category: 'Restaurants', amount: '10000' });
   await page.goto('/transactions');
   await expect(tabBar(page)).toBeVisible();
-  const today = await todayIn(page);
 
   await test.step('the hold opens the field, focused, with the tab bar gone and Cashflow still on screen', async () => {
     await hold(page, 'line');
@@ -56,33 +56,20 @@ test('on Cashflow, holding ＋ opens One line over the list; Return saves the ro
     await page.screenshot({ path: test.info().outputPath('hold-1-open.png') });
   });
 
-  await test.step('typing draws the dashed row at the top of Today', async () => {
+  await test.step('typing draws the line as a row in the card above the field, the page behind dimmed', async () => {
     await field(page).fill('warung sate 45rb nusa');
     await expect(ghost(page)).toBeVisible();
+    await expect(page.getByTestId('line-dim')).toBeVisible();
     await expect(preview(page)).toContainText('Restaurants');
     await expect(preview(page)).toContainText('Warung Sate');
     await expect(preview(page)).toContainText('45.000');
-    // In Today's own group, before the rows already there.
-    const slot = page.getByTestId('line-slot');
-    const group = page.locator('section', { has: slot });
-    await expect(group).toContainText(String(Number(today.slice(8, 10))));
-    const ghostBox = await ghost(page).boundingBox();
-    const firstRow = await group.getByTestId('transaction-row').first().boundingBox();
-    expect(ghostBox!.y).toBeLessThan(firstRow!.y);
+    // No dashed row in the list, and no strip of suggested names.
+    await expect(page.getByTestId('line-slot')).toHaveCount(0);
+    await expect(page.getByRole('listbox', { name: 'Suggested notes' })).toHaveCount(0);
+    const cardBox = (await page.getByTestId('line-composer').boundingBox())!;
+    const fieldBox = (await field(page).boundingBox())!;
+    expect(fieldBox.y).toBeGreaterThan(cardBox.y);
     await page.screenshot({ path: test.info().outputPath('hold-2-typing.png') });
-  });
-
-  await test.step('notes written before are offered just above the field, and a pick takes the note', async () => {
-    await field(page).fill('waru');
-    const strip = page.getByRole('listbox', { name: 'Suggested notes' });
-    await expect(strip).toBeVisible();
-    const stripBox = (await strip.boundingBox())!;
-    const composerBox = (await page.getByTestId('line-composer').boundingBox())!;
-    expect(Math.abs(stripBox.y + stripBox.height - composerBox.y)).toBeLessThan(2);
-    await page.screenshot({ path: test.info().outputPath('hold-2b-suggested.png') });
-    await strip.getByRole('option').first().click();
-    await expect(field(page)).toHaveValue(/^warung sate /i);
-    await expect(field(page)).toBeFocused();
   });
 
   await test.step('a missing part is amber; a part opens its picker, and the field stays open behind it', async () => {
@@ -131,7 +118,8 @@ test('on Cashflow, holding ＋ opens One line over the list; Return saves the ro
   });
 
   await test.step('a tap outside puts it away and the tab bar comes back', async () => {
-    await page.getByRole('heading', { name: 'Cashflow' }).click();
+    // The dim over the page is the tap outside.
+    await page.getByTestId('line-dim').click({ position: { x: 200, y: 120 } });
     await expect(field(page)).toHaveCount(0);
     await expect(tabBar(page)).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('hold-5-closed.png') });
@@ -143,7 +131,7 @@ test('on Cashflow, holding ＋ opens One line over the list; Return saves the ro
   });
 });
 
-test('a line for another day is drawn at the top of that day, in a group of its own if it has none', async ({ page }) => {
+test('a line for another day is read as that day and lands in its own group', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Bank Nusa', balance: '5000000' });
   await page.goto('/transactions');
   const yesterday = await todayIn(page, 1);
@@ -151,11 +139,128 @@ test('a line for another day is drawn at the top of that day, in a group of its 
   test.skip(yesterday.slice(0, 7) !== (await todayIn(page)).slice(0, 7), 'yesterday is last month');
   await hold(page, 'line');
   await field(page).fill('kemarin roti 15rb nusa');
-  const group = page.locator('section', { has: page.getByTestId('line-slot') });
-  await expect(group).toContainText(String(Number(yesterday.slice(8, 10))));
   await expect(preview(page).getByRole('button', { name: 'Day', exact: true })).toHaveText('Yesterday');
   await field(page).press('Enter');
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Roti' })).toHaveCount(1);
+});
+
+async function chooseLook(page: Page, look: 'Card' | 'Plain') {
+  await page.goto('/settings/default');
+  await expect(page.getByText('One line look')).toBeVisible();
+  await page.getByRole('button', { name: look, exact: true }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page).toHaveURL(/\/account$/);
+}
+
+const send = (page: Page) => page.getByRole('button', { name: 'Save line', exact: true });
+const arrowColour = (page: Page) => send(page).evaluate((el) => getComputedStyle(el).backgroundColor);
+
+test('Card look: a blocked blue key saves nothing and shakes the missing part; the arrow is grey until the line can save', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Bank Nusa', balance: '5000000' });
+  await page.goto('/transactions');
+  await hold(page, 'line');
+  await expect(send(page)).toBeDisabled();
+
+  await test.step('nothing pays: the arrow is grey and inert, and the blue key saves nothing', async () => {
+    await field(page).fill('kopi kenangan 38rb');
+    await expect(preview(page).getByRole('button', { name: 'Paid with', exact: true })).toHaveAttribute('data-missing', 'true');
+    await expect(send(page)).toBeDisabled();
+    await expect(send(page)).toHaveAttribute('data-blocked', 'true');
+    const grey = await arrowColour(page);
+    await field(page).press('Enter');
+    await expect(page.getByTestId('line-composer')).toHaveClass(/line-shake/);
+    await expect(preview(page).getByRole('button', { name: 'Paid with', exact: true })).toBeVisible();
+    await expect(field(page)).toBeFocused();
+    await expect(field(page)).toHaveValue('kopi kenangan 38rb');
+    await expect(page.getByTestId('transaction-row').filter({ hasText: 'Kopi Kenangan' })).toHaveCount(0);
+    await page.screenshot({ path: test.info().outputPath('card-blocked.png') });
+    // Naming what pays turns the arrow black and live.
+    await field(page).fill('kopi kenangan 38rb nusa');
+    await expect(send(page)).toBeEnabled();
+    expect(await arrowColour(page)).not.toBe(grey);
+  });
+
+  await test.step('the arrow saves; the card empties and stays', async () => {
+    await send(page).click();
+    await expect(field(page)).toHaveValue('');
+    await expect(field(page)).toBeFocused();
+    await expect(page.getByTestId('transaction-row').filter({ hasText: 'Kopi Kenangan' })).toHaveCount(1);
+    await expect(ghost(page)).toHaveCount(0);
+    await expect(send(page)).toBeDisabled();
+  });
+});
+
+test('Card look: a part fixed from the preview row opens its picker above the card, and the line then saves', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Bank Nusa', balance: '5000000' });
+  await page.goto('/transactions');
+  await hold(page, 'line');
+  await field(page).fill('kopi kenangan 38rb');
+  await expect(send(page)).toBeDisabled();
+
+  await test.step('Paid with: the sheet is fully clickable, the row shows the pick, the arrow is live', async () => {
+    await preview(page).getByRole('button', { name: 'Paid with', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: /Bank Nusa/ }).first().click();
+    await expect(preview(page).getByRole('button', { name: 'Paid with', exact: true })).toContainText('Bank Nusa');
+    await expect(field(page)).toBeFocused();
+    await expect(field(page)).toHaveValue('kopi kenangan 38rb');
+    await expect(send(page)).toBeEnabled();
+  });
+
+  await test.step('Category: same', async () => {
+    await preview(page).getByRole('button', { name: 'Category', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Books', exact: true }).click();
+    await expect(preview(page).getByRole('button', { name: 'Category', exact: true })).toHaveText('Books');
+    await expect(field(page)).toBeFocused();
+  });
+
+  await test.step('the blue key saves it', async () => {
+    await field(page).press('Enter');
+    await expect(field(page)).toHaveValue('');
+    const row = page.getByTestId('transaction-row').filter({ hasText: 'Kopi Kenangan' });
+    await expect(row).toHaveCount(1);
+    await expect(row).toContainText('Books');
+  });
+});
+
+test('Plain look: a bare bar; a blocked blue key shows the amber hint, shakes it and saves nothing', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Bank Nusa', balance: '5000000' });
+  await chooseLook(page, 'Plain');
+  await page.goto('/transactions');
+  await hold(page, 'line');
+
+  await test.step('no preview, no dim; typing a line nothing pays shows nothing until a save is asked for', async () => {
+    await field(page).fill('kopi kenangan 38rb');
+    await expect(page.getByTestId('line-composer')).toHaveAttribute('data-look', 'plain');
+    await expect(ghost(page)).toHaveCount(0);
+    await expect(page.getByTestId('line-dim')).toHaveCount(0);
+    await expect(page.getByTestId('line-lacking')).toHaveCount(0);
+    await expect(send(page)).toBeDisabled();
+    await expect(send(page)).toHaveAttribute('data-blocked', 'true');
+  });
+
+  await test.step('the blue key: nothing saved, focus kept, the amber hint names what is missing and shakes', async () => {
+    await field(page).press('Enter');
+    await expect(page.getByTestId('line-lacking')).toHaveText('Paid with?');
+    await expect(page.getByTestId('line-lacking')).toHaveClass(/line-shake-self/);
+    await expect(field(page)).toBeFocused();
+    await expect(page.getByTestId('transaction-row').filter({ hasText: 'Kopi Kenangan' })).toHaveCount(0);
+    await page.screenshot({ path: test.info().outputPath('plain-blocked.png') });
+  });
+
+  await test.step('changing the line clears the hint, and the line then saves', async () => {
+    await field(page).fill('kopi kenangan 38rb nusa');
+    await expect(page.getByTestId('line-lacking')).toHaveCount(0);
+    await expect(send(page)).toBeEnabled();
+    await send(page).click();
+    await expect(field(page)).toHaveValue('');
+    await expect(page.getByTestId('transaction-row').filter({ hasText: 'Kopi Kenangan' })).toHaveCount(1);
+  });
+
+  await test.step('an amount missing is named too', async () => {
+    await field(page).fill('parkir nusa');
+    await field(page).press('Enter');
+    await expect(page.getByTestId('line-lacking')).toHaveText('Amount?');
+  });
 });
 
 test('held on Net worth, ＋ opens the full form', async ({ page }) => {
@@ -196,5 +301,7 @@ test('Settings › Default chooses what the hold does: the menu, or a plain tap 
     const off = page.getByRole('button', { name: 'Off', exact: true });
     await expect(off.getByTestId('hold-ticked')).toHaveCount(1);
     await expect(page.getByText('Only on the Cashflow page. Everywhere else, holding ＋ opens the full form, the same as a tap.')).toBeVisible();
+    // One line look is Card until Plain is chosen.
+    await expect(page.getByRole('button', { name: 'Card', exact: true }).getByTestId('look-ticked')).toHaveCount(1);
   });
 });

@@ -482,23 +482,9 @@ export function TransactionsPage() {
     return { ...day, rows: day.rows.map((row) => (at.has(row.id) ? moving[next++]! : row)) };
   });
   const movableIds = new Map(days.map((day) => [day.date, day.rows.filter(movable).map((row) => row.id)]));
-  /*
-   * One line, opened by a held ＋ (`CashflowLine`): while the line reads as something, its dashed row is drawn at the
-   * top of the day it will land on, in a place (`lineSlot`) this list keeps there. A day with nothing yet gets a group
-   * of its own where it falls; a list not by day (by category, by amount, the table) keeps the place above it.
-   */
+  // One line, opened by a held ＋ (`CashflowLine`): the field and its card float over the page; a saved row is lit here.
   const lineOn = phone && !sideways && !readOnly;
-  const [lineSlot, setLineSlot] = useState<HTMLElement | null>(null);
-  const { day: lineDay, flashId } = useLineState();
-  const lineByDay = view === 'list' && grouping === 'date' && sort.key === 'date';
-  const lineDays: { date: string; rows: ListRow[] }[] = (() => {
-    if (!lineOn || !lineDay || !lineByDay || days.some((day) => day.date === lineDay)) return days;
-    const later = (date: string) => (sort.dir === 'desc' ? date === '' || date > lineDay : date !== '' && date < lineDay);
-    const at = days.findIndex((day) => !later(day.date));
-    const fresh = { date: lineDay, rows: [] as ListRow[] };
-    return at < 0 ? [...days, fresh] : [...days.slice(0, at), fresh, ...days.slice(at)];
-  })();
-  const lineSlotHere = (date: string) => lineOn && lineByDay && lineDay === date ? <div ref={setLineSlot} data-testid="line-slot" className="pt-1" /> : null;
+  const { flashId } = useLineState();
   function reorder(date: string, movedId: string, order: string[]) {
     setDropped((was) => ({ ...was, [date]: order }));
     void run(movedId, () => moveTransactionInDay(database, ws, movedId, order)).finally(() => setDropped((was) => landed(was, date, order)));
@@ -1488,17 +1474,12 @@ export function TransactionsPage() {
           needsCategory={{ count: needCategoryCount, active: filters.needsCategory === true, onShow: showNeedsCategory, onClear: hideNeedsCategory }}
         />
       )}
-      {lineOn && lineDay && !lineByDay && (
-        <Card>
-          <div ref={setLineSlot} data-testid="line-slot" />
-        </Card>
-      )}
       {view === 'table' ? (
         // Sideways, the one table is the full-screen one: two typing rows would be two editors of the same month.
         !sideways && table
       ) : (
         <>
-          {list.isSuccess && shown.length === 0 && !(lineOn && lineDay) &&
+          {list.isSuccess && shown.length === 0 &&
             (rows.length === 0 ? (
               <Empty>No transactions in this period.</Empty>
             ) : (
@@ -1630,10 +1611,9 @@ export function TransactionsPage() {
             ) : (
               // One scope around every day: its one touch listener keeps a lifted row's drag from scrolling the page.
               <ReorderScope enabled={phone && reorderable} className="space-y-4">
-              {lineDays.map((day) => (
+              {days.map((day) => (
                 <Card key={day.date || 'undated'}>
                   <DayHeader date={day.date} net={dayTotal(day.rows)} currency={listCurrency} />
-                  {lineSlotHere(day.date)}
                   <DayReorder
                     className="divide-y divide-slate-100"
                     enabled={(movableIds.get(day.date)?.length ?? 0) > 1}
@@ -1650,9 +1630,9 @@ export function TransactionsPage() {
         </>
       )}
 
-      {/* One line's field on the keyboard, opened by a held ＋; its dashed row goes in the list's `lineSlot`. Keyed by the
+      {/* One line's field on the keyboard, opened by a held ＋. Keyed by the
           workspace and book, so a line typed in one workspace never carries its accounts or category into another. */}
-      {lineOn && <CashflowLine key={`${ws.workspaceId}:${ws.bookId ?? ''}`} slot={lineSlot} />}
+      {lineOn && <CashflowLine key={`${ws.workspaceId}:${ws.bookId ?? ''}`} />}
 
       {/* The category sheet and its Undo toast, once for the screen rather than once per row. */}
       {recategorise.overlay}

@@ -5,17 +5,14 @@ import { useSyncExternalStore } from 'react';
  *
  * Cashflow registers how to open its field (`registerLineOpener`); the tab bar calls `openCashflowLine` from the
  * finger's release, so the field is focused inside that same gesture and the phone brings its keyboard up. While the
- * field is open the tab bar stands aside (`open`), and the list draws the line's preview at the top of `day`.
- * `flashId` is the row just saved, lit for a moment once the list has it.
+ * field is open the tab bar stands aside (`open`). `flashId` is the row just saved, lit for a moment once the list has it.
  */
 export interface LineState {
   open: boolean;
-  /** The day the line will be saved on, while it reads as something; null with nothing typed. */
-  day: string | null;
   flashId: string | null;
 }
 
-const CLOSED: LineState = { open: false, day: null, flashId: null };
+const CLOSED: LineState = { open: false, flashId: null };
 let state: LineState = CLOSED;
 const listeners = new Set<() => void>();
 let opener: (() => void) | null = null;
@@ -26,7 +23,7 @@ export function lineState(): LineState {
 
 export function setLineState(patch: Partial<LineState>): void {
   const next = { ...state, ...patch };
-  if (next.open === state.open && next.day === state.day && next.flashId === state.flashId) return;
+  if (next.open === state.open && next.flashId === state.flashId) return;
   state = next;
   for (const listener of listeners) listener();
 }

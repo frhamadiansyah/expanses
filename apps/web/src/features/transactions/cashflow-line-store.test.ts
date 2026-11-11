@@ -18,10 +18,10 @@ describe('the thread from the held ＋ to Cashflow’s One line field', () => {
   it('closes the field when Cashflow goes, so the tab bar comes back', () => {
     const release = registerLineOpener(() => setLineState({ open: true }));
     openCashflowLine();
-    setLineState({ day: '2026-11-11', flashId: 'tx-1' });
-    expect(lineState()).toEqual({ open: true, day: '2026-11-11', flashId: 'tx-1' });
+    setLineState({ flashId: 'tx-1' });
+    expect(lineState()).toEqual({ open: true, flashId: 'tx-1' });
     release();
-    expect(lineState()).toEqual({ open: false, day: null, flashId: null });
+    expect(lineState()).toEqual({ open: false, flashId: null });
   });
 
   it('a stale release does not take away a newer Cashflow’s opener', () => {
