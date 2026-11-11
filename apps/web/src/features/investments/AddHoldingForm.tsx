@@ -45,6 +45,7 @@ export function AddHoldingForm({ picked, brokers, heldAt, onConfirm, onTicker }:
   const [manualRate, setManualRate] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const [pickingCurrency, setPickingCurrency] = useState(false);
   const form = useRef<HTMLFormElement>(null);
   const change = (patch: Partial<HoldingDraft>) => setDraft((d) => ({ ...d, ...patch }));
 
@@ -99,7 +100,6 @@ export function AddHoldingForm({ picked, brokers, heldAt, onConfirm, onTicker }:
     }
   }
 
-  const [pickingCurrency, setPickingCurrency] = useState(false);
   const label = security.ticker ?? security.name;
   return (
     // Still a real `<form>`: Enter in any box saves, as the ✓ does.
