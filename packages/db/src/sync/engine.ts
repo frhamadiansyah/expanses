@@ -4,6 +4,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Tx } from '../database';
 import { pullAndApply, reconcileAllMembersTx, type PullResult } from './apply';
 import { clearAuthorityTx, eventBookWorkspaceOf, groupLogWorkspaceOf, mayLinkAsMemberTx, viewActiveDevices, viewDevice, viewMember, viewOtherActiveOwners, viewOwnerDevices, viewRoleOfDevice } from './authority';
+import { ownersGone } from '../repos/sharing';
 import { recalcPendingForeign } from '../repos/fx-pending';
 import { retryUnpostedEventRecords } from '../repos/shared-event-postings';
 import { captureConfigOf, configureCapture, LastOwnerError, rowUpsertsTx, withCapture, withCapturePaused, writeChangeSetsTx } from './capture';
@@ -919,7 +920,8 @@ export class SyncEngine {
     if (!shared) throw new SharingError('NOT_FOUND', 'This workspace is not shared from this device');
     // Active is allowed only when frozen, by the same test the status line uses (recovery review, minor): a view with
     // no device in yet — a share made here and not synced back — is live, not dead.
-    if (shared.state === 'active' && !(await this.isFrozen(bookId))) {
+    // Or when every owner has been silent for two weeks while this phone synced in the last hour (sharing resilience D-A11).
+    if (shared.state === 'active' && !(await this.isFrozen(bookId)) && !(await ownersGone(this.database, bookId, this.deviceId, this.now())).gone) {
       throw new SharingError('STILL_SHARED', 'This workspace is still shared and has an owner: leave it, or ask an owner to stop sharing');
     }
     this.sealer.forget();

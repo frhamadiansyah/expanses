@@ -131,6 +131,86 @@ export async function recordDevicesSeen(database: Database, bookId: string, seen
   );
 }
 
+/** A note on the Share page after this many days without a change from the other side (sharing resilience D-A10). */
+export const SILENT_NOTE_DAYS = 7;
+/** Keeping a copy as own is allowed once every owner has been silent this many days (D-A11). */
+export const OWNERS_GONE_DAYS = 14;
+const DAY_MS = 86_400_000;
+const HOUR_MS = 3_600_000;
+
+export interface MemberSilence {
+  memberId: string;
+  name: string;
+  role: 'owner' | 'member';
+  /** The newest change heard from any of the member's devices, ISO; null when none was heard. */
+  lastChangeAt: string | null;
+  /** Whole days from `lastChangeAt` to now; null when none was heard. */
+  silentDays: number | null;
+}
+
+interface ViewDeviceSeen {
+  memberId: string;
+  name: string;
+  role: 'owner' | 'member';
+  seenMs: number | null;
+}
+
+/** Each device still in the view with its member, the member's role and when a change from it was last heard. */
+async function viewDevicesSeen(database: Database, bookId: string): Promise<(ViewDeviceSeen & { deviceId: string })[]> {
+  if (!(await sharingTablesExist(database.db))) return [];
+  const seen = await devicesSeen(database, bookId);
+  const rows = await database.db.values<[string, string, string, string | null]>(sql`
+    SELECT d.device_id, d.member_id, a.role, m.name FROM sync_authority_devices d
+    JOIN sync_authority a ON a.book_id = d.book_id AND a.member_id = d.member_id
+    LEFT JOIN book_members m ON m.book_id = d.book_id AND m.member_id = d.member_id
+    WHERE d.book_id = ${bookId} AND d.removed_seq IS NULL AND a.deleted = 0 ORDER BY d.device_id`);
+  return rows.map(([deviceId, memberId, role, name]) => ({
+    deviceId,
+    memberId,
+    name: name ?? '',
+    role: role === 'owner' ? 'owner' : 'member',
+    seenMs: typeof seen[deviceId] === 'number' ? seen[deviceId]! : null,
+  }));
+}
+
+/**
+ * How long since each other member last changed anything (D-A10): the newest entry time heard from any of their
+ * devices still in the view, which is a change, not a sync. Members of this device itself are left out.
+ */
+export async function memberSilence(database: Database, bookId: string, deviceId: string, now: number): Promise<MemberSilence[]> {
+  const devices = await viewDevicesSeen(database, bookId);
+  const mine = devices.find((device) => device.deviceId === deviceId)?.memberId;
+  const out = new Map<string, MemberSilence & { newest: number | null }>();
+  for (const device of devices) {
+    if (device.memberId === mine) continue;
+    const row = out.get(device.memberId) ?? { memberId: device.memberId, name: device.name, role: device.role, lastChangeAt: null, silentDays: null, newest: null };
+    if (device.seenMs !== null && (row.newest === null || device.seenMs > row.newest)) row.newest = device.seenMs;
+    out.set(device.memberId, row);
+  }
+  return [...out.values()].map(({ newest, ...row }) => ({
+    ...row,
+    lastChangeAt: newest === null ? null : new Date(newest).toISOString(),
+    silentDays: newest === null ? null : Math.max(0, Math.floor((now - newest) / DAY_MS)),
+  }));
+}
+
+/**
+ * D-A11: every owner device in the view has been silent for `OWNERS_GONE_DAYS` and this phone synced within the last
+ * hour, so the silence is the owners', not this phone's. An owner's own phone is never told so; an owner device never
+ * heard from keeps it false. `since` is the newest change heard from the owners.
+ */
+export async function ownersGone(database: Database, bookId: string, deviceId: string, now: number): Promise<{ gone: boolean; since: string | null }> {
+  const owners = (await viewDevicesSeen(database, bookId)).filter((device) => device.role === 'owner');
+  let newest: number | null = null;
+  for (const owner of owners) if (owner.seenMs !== null && (newest === null || owner.seenMs > newest)) newest = owner.seenMs;
+  const since = newest === null ? null : new Date(newest).toISOString();
+  if (owners.length === 0 || owners.some((owner) => owner.deviceId === deviceId)) return { gone: false, since };
+  if (owners.some((owner) => owner.seenMs === null || now - owner.seenMs < OWNERS_GONE_DAYS * DAY_MS)) return { gone: false, since };
+  const [row] = await database.db.values<[string | null]>(sql`SELECT synced_at FROM shared_books WHERE book_id = ${bookId}`);
+  const syncedAt = row?.[0] ? Date.parse(row[0]) : NaN;
+  return { gone: Number.isFinite(syncedAt) && now - syncedAt <= HOUR_MS && now >= syncedAt, since };
+}
+
 /** Everything the workspace's sharing section shows (§11): its state, its members and their devices, what waits. */
 export async function sharingDetail(database: Database, bookId: string, deviceId: string | null): Promise<SharingDetail | null> {
   if (!(await sharingTablesExist(database.db))) return null;
