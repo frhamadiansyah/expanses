@@ -30,6 +30,9 @@ export function SyncDetailsPage() {
   }, [sync, queryClient, bookId]);
   const details = useQuery({
     queryKey: ['sync-details', bookId],
+    // Read afresh on every visit: what it shows is the moment it was read, never a cached earlier one.
+    gcTime: 0,
+    refetchOnMount: 'always',
     queryFn: async () => syncDetailsText(await collectSyncDetails({ database, sync, bookId, build: await buildName().catch(() => null) })),
   });
 
