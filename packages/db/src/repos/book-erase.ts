@@ -2,6 +2,7 @@ import { type SQL, sql } from 'drizzle-orm';
 import { inBook, type WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
 import { capturePostedTx, withCaptureSuspended } from '../sync/capture';
+import { HELD_PREFIX } from '../sync/held';
 import { endSharedGoalsTx, hasOwnPartTx } from '../sync/goals/follow';
 import { createAccountTx } from './accounts';
 import { inputOfTx } from './activity';
@@ -205,6 +206,34 @@ export function ownRecordsMessage(count: number): string {
  * kept by no other record. Oldest first.
  */
 export async function ownPurchasesTx(tx: Db, ws: WorkspaceContext, bookId: string): Promise<string[]> {
+  return (await ownPurchasesOfTx(tx, ws, bookId)).keep;
+}
+
+/**
+ * The copy's own purchases (`ownPurchasesTx`'s rule), split by where they go on a delete with Keep them in Personal on
+ * (A6 fix round 1, owner ruling): `arriving` are those another shared book here, active, set aside because this copy
+ * held them (a `HELD_ELSEWHERE: <this copy>` skip of the purchase's lineage). Place them now brings each into that
+ * share, so keeping it in Personal too would count it twice: it is erased with the copy instead. `keep` is the rest,
+ * kept in Personal as before.
+ */
+export async function ownPurchasesOfTx(tx: Db, ws: WorkspaceContext, bookId: string): Promise<{ keep: string[]; arriving: string[] }> {
+  const own = await allOwnPurchasesTx(tx, ws, bookId);
+  const tables = await tablesOf(tx);
+  if (own.length === 0 || !tables.has('sync_skipped') || !tables.has('sync_lineage') || !tables.has('shared_books')) return { keep: own, arriving: [] };
+  const arriving = new Set(
+    (
+      await tx.values<[string]>(sql`
+        SELECT l.head_transaction_id FROM sync_lineage l
+        WHERE l.book_id = ${bookId} AND l.head_transaction_id IN ${own}
+          AND EXISTS (SELECT 1 FROM sync_skipped s JOIN shared_books b ON b.book_id = s.book_id
+            WHERE s.entity = 'purchase' AND s.id = l.lineage_id AND s.error = ${`${HELD_PREFIX}: ${bookId}`}
+              AND b.state = 'active' AND b.book_id <> ${bookId})`)
+    ).map(([id]) => id),
+  );
+  return { keep: own.filter((id) => !arriving.has(id)), arriving: own.filter((id) => arriving.has(id)) };
+}
+
+async function allOwnPurchasesTx(tx: Db, ws: WorkspaceContext, bookId: string): Promise<string[]> {
   const tables = await tablesOf(tx);
   const me = await memberHereTx(tx, bookId, tables);
   const received = [

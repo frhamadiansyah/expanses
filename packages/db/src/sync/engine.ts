@@ -175,6 +175,14 @@ export interface SyncOnceResult extends PullResult {
   groupError?: SyncTransportError | Error;
 }
 
+/** What a caller of `resetAndPull` adds to the reset (see there). */
+interface ResetSteps {
+  replayOwn?: { fromSeq: number };
+  resetTx?: (tx: Tx) => Promise<void>;
+  afterResetTx?: (tx: Tx) => Promise<void>;
+  beforePull?: () => Promise<void>;
+}
+
 export interface CreatedInvite {
   inviteId: string;
   /** 52 characters in groups of four (§8.1 step 6). */
@@ -271,6 +279,12 @@ export class SyncEngine {
   private recordsChecked = false;
   /** Books the check found `lost` here (review N2): Share waits for `discardShareRecord`. */
   private readonly lostHere = new Set<string>();
+  /**
+   * Books whose whole log is being pulled again (Place them now, a same-book rejoin): the run, by book. A `syncOnce` or
+   * `drain` of the book from outside waits for it to finish first (A6 fix round 1), so the scheduler's ordinary sync
+   * never pulls past a cursor that was just set back to 0, nor applies beside it.
+   */
+  private readonly resetting = new Map<string, Promise<unknown>>();
   /** `replacementsOf(database)` as this engine last saw it: a change means a restore swapped the rows (review R1). */
   private seenReplacements: number;
 
@@ -342,7 +356,8 @@ export class SyncEngine {
    * A `409 stale epoch` (final review, I1) — the book rotated while this device was away — pulls the rotation in and
    * seals again under it; the outbox is plaintext, so nothing is lost by sealing twice.
    */
-  drain(bookId: string): Promise<number> {
+  async drain(bookId: string): Promise<number> {
+    await this.resetting.get(bookId);
     return this.drainInto(bookId, undefined, []);
   }
 
@@ -395,6 +410,12 @@ export class SyncEngine {
    * and cursor stay put.
    */
   async syncOnce(bookId: string, seen?: SeenLog): Promise<SyncOnceResult> {
+    await this.resetting.get(bookId); // a pull of the whole log under way finishes first (A6 fix round 1)
+    return this.syncOnceNow(bookId, seen);
+  }
+
+  /** `syncOnce`, without waiting: for the run that holds the book (`resetAndPull`). */
+  private async syncOnceNow(bookId: string, seen?: SeenLog): Promise<SyncOnceResult> {
     // Review N1: detection comes first. A pull moves the cursor past own entries it does not apply, so a copy restored
     // from after the share would read as caught up; the check, run once here if the app has not run it, keeps its
     // replay point first. It never throws, and findings stay for the app's own call.
@@ -760,27 +781,25 @@ export class SyncEngine {
 
     let result: SyncOnceResult;
     if (rejoin) {
-      result = await this.resetAndPull(
-        { bookId, memberId, epoch },
-        {
-          resetTx: async (tx) => {
-            await tx.run(sql`DELETE FROM book_epoch_keys WHERE book_id = ${bookId}`);
-            await tx.run(sql`DELETE FROM sync_outbox WHERE book_id = ${bookId}`); // what waited for the old relay book goes out again as unknown rows below
-            // Every other device is pinned again by its introduction in the log this rejoin pulls (§5.4): a device row
-            // from before — a device the new share never admitted, or one admitted afresh at another time — would keep its
-            // fixed fields (C1 of the authority rules) and leave this copy different from its peers'.
-            await tx.run(sql`DELETE FROM book_devices WHERE book_id = ${bookId} AND device_id <> ${this.deviceId}`);
-            await tx.run(sql`DELETE FROM sync_field_clocks WHERE book_id = ${bookId} AND entity = 'device'`);
-            await tx.run(sql`DELETE FROM sync_tombstones WHERE book_id = ${bookId} AND entity = 'device'`);
-            // A copy kept as its own has no row left (N3): it gets one, as its remembered member.
-            await tx.run(sql`
-              INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${bookId}, ${claim.bookId}, ${epoch}, ${memberId}, 'active', ${now})
-              ON CONFLICT (book_id) DO UPDATE SET relay_book_id = excluded.relay_book_id, epoch = excluded.epoch, state = 'active', synced_at = NULL, unshared_by = NULL, unshared_reason = NULL`);
-          },
-          afterResetTx: storeKeys,
-          beforePull: introduce,
+      const reset: ResetSteps = {
+        resetTx: async (tx) => {
+          await tx.run(sql`DELETE FROM book_epoch_keys WHERE book_id = ${bookId}`);
+          await tx.run(sql`DELETE FROM sync_outbox WHERE book_id = ${bookId}`); // what waited for the old relay book goes out again as unknown rows below
+          // Every other device is pinned again by its introduction in the log this rejoin pulls (§5.4): a device row
+          // from before — a device the new share never admitted, or one admitted afresh at another time — would keep its
+          // fixed fields (C1 of the authority rules) and leave this copy different from its peers'.
+          await tx.run(sql`DELETE FROM book_devices WHERE book_id = ${bookId} AND device_id <> ${this.deviceId}`);
+          await tx.run(sql`DELETE FROM sync_field_clocks WHERE book_id = ${bookId} AND entity = 'device'`);
+          await tx.run(sql`DELETE FROM sync_tombstones WHERE book_id = ${bookId} AND entity = 'device'`);
+          // A copy kept as its own has no row left (N3): it gets one, as its remembered member.
+          await tx.run(sql`
+            INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${bookId}, ${claim.bookId}, ${epoch}, ${memberId}, 'active', ${now})
+            ON CONFLICT (book_id) DO UPDATE SET relay_book_id = excluded.relay_book_id, epoch = excluded.epoch, state = 'active', synced_at = NULL, unshared_by = NULL, unshared_reason = NULL`);
         },
-      );
+        afterResetTx: storeKeys,
+        beforePull: introduce,
+      };
+      result = await this.alone(bookId, () => this.resetAndPull({ bookId, memberId, epoch }, reset));
     } else {
       await this.database.transaction(async (tx) => {
         await tx.run(sql`
@@ -812,12 +831,7 @@ export class SyncEngine {
    */
   private async resetAndPull(
     book: { bookId: string; memberId: string; epoch: number },
-    steps: {
-      replayOwn?: { fromSeq: number };
-      resetTx?: (tx: Tx) => Promise<void>;
-      afterResetTx?: (tx: Tx) => Promise<void>;
-      beforePull?: () => Promise<void>;
-    },
+    steps: ResetSteps,
   ): Promise<SyncOnceResult> {
     const { bookId } = book;
     await this.database.transaction(async (tx) => {
@@ -835,7 +849,7 @@ export class SyncEngine {
     });
     await steps.beforePull?.();
     const seen = new SeenLog();
-    let result = await this.syncOnce(bookId, seen);
+    let result = await this.syncOnceNow(bookId, seen);
     if (!result.stopped) {
       // S4 (task 9a): an edit the backup made and drained before it was taken comes back under the old device's id,
       // no longer "own", so the pull refused it without putting the row back. Every member row goes to the view's.
@@ -843,9 +857,26 @@ export class SyncEngine {
       // §8.7, N2: what this device holds that the log does not say — rows it never names, fields and voids newer here
       // than there, rows deleted here — goes out, each field at its own clock.
       const emitted = await this.database.transaction((tx) => emitNewerTx(tx, captureConfigOf(this.database), book, seen));
-      if (emitted > 0) result = { ...result, pushed: result.pushed + (await this.drain(bookId)) };
+      if (emitted > 0) result = { ...result, pushed: result.pushed + (await this.drainInto(bookId, undefined, [])) };
     }
     return result;
+  }
+
+  /**
+   * Runs `run` as the only whole-log pull of the book: after any one already under way, and with `syncOnce` and `drain`
+   * of the book waiting for it (`resetting`). Set before the first await, so a sync asked for right after waits too.
+   */
+  private alone<T>(bookId: string, run: () => Promise<T>): Promise<T> {
+    const next = (this.resetting.get(bookId) ?? Promise.resolve()).then(run);
+    const settled = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.resetting.set(bookId, settled);
+    void settled.then(() => {
+      if (this.resetting.get(bookId) === settled) this.resetting.delete(bookId);
+    });
+    return next;
   }
 
   /**
@@ -857,7 +888,11 @@ export class SyncEngine {
    * changes nothing (equal clocks never win), so a second run places nothing. `placed` counts the held rows that came
    * in; `stillHeld` those set aside again (a holder that turned up meanwhile).
    */
-  async placeHeldRows(bookId: string): Promise<{ placed: number; stillHeld: number; result: SyncOnceResult }> {
+  placeHeldRows(bookId: string): Promise<{ placed: number; stillHeld: number; result: SyncOnceResult }> {
+    return this.alone(bookId, () => this.placeHeldRowsNow(bookId));
+  }
+
+  private async placeHeldRowsNow(bookId: string): Promise<{ placed: number; stillHeld: number; result: SyncOnceResult }> {
     const shared = await this.requireActive(bookId);
     const held = await heldElsewhereOf(this.database, bookId);
     const live = held.find((row) => row.holderExists);

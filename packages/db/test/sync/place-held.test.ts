@@ -1,7 +1,7 @@
 import { expenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { deleteBook, heldElsewhereOf, postTransaction } from '../../src/index';
+import { deleteBook, heldElsewhereOf, personalBook, planBookDelete, postTransaction } from '../../src/index';
 import { categoryOf, copyBookUnderNewIdForTest, Household, projectBook, skipsOf, type Device } from './household';
 
 /*
@@ -17,10 +17,23 @@ async function balanceOf(d: Device, accountId: string): Promise<number> {
   return Number(row![0]);
 }
 
-/** What the book's purchases add up to on this phone, posted only, by description: the money to the unit. */
+/** How many posted transactions on the phone carry each description, in every workspace: a purchase counted twice shows. */
+async function postedByDescription(d: Device): Promise<Record<string, number>> {
+  const rows = await d.database.db.values<[string, number]>(
+    sql`SELECT description, count(*) FROM transactions WHERE status = 'posted' AND description IS NOT NULL GROUP BY description ORDER BY description`,
+  );
+  return Object.fromEntries(rows.map(([description, n]) => [description, Number(n)]));
+}
+
+/**
+ * What the share's purchases add up to on this phone (the heads of the book's lineages, posted and filed in it), by
+ * description: the money to the unit. By lineage, because on Dewi's phone A and B hold the very same categories (the
+ * copy moved them), so a purchase that reaches A there is filed under B's categories without being B's.
+ */
 async function spentIn(d: Device, bookId: string): Promise<Record<string, number>> {
   const rows = await d.database.db.values<[string, number]>(sql`
     SELECT t.description, sum(e.amount_minor) FROM transactions t
+    JOIN sync_lineage l ON l.head_transaction_id = t.id AND l.book_id = ${bookId}
     JOIN book_transactions bt ON bt.transaction_id = t.id AND bt.book_id = ${bookId}
     JOIN entries e ON e.transaction_id = t.id
     JOIN accounts a ON a.id = e.account_id AND a.kind = 'expense'
@@ -98,10 +111,14 @@ async function joinBeside() {
   return { home, dewi, fandri, oldBook, newBook, held };
 }
 
-/** Fandri leaves A and deletes it here, his own purchases going with it (the log of B brings them back). */
-async function leaveAndDelete(fandri: Device, oldBook: string): Promise<void> {
+/**
+ * Fandri leaves A and deletes it here. With Keep them in Personal on (the default), his own purchases that B set aside
+ * as held by A are not kept (A6 fix round 1): B's log brings them back, so they are erased with A; any other own purchase
+ * of A moves to Personal. With it off, every one of them goes with A.
+ */
+async function leaveAndDelete(fandri: Device, oldBook: string, keepOwnInPersonal?: boolean): Promise<void> {
   await fandri.engine.leave(oldBook);
-  await deleteBook(fandri.database, fandri.ws, oldBook, { keepOwnInPersonal: false });
+  await deleteBook(fandri.database, fandri.ws, oldBook, keepOwnInPersonal === undefined ? {} : { keepOwnInPersonal });
   expect(await fandri.database.db.values(sql`SELECT id FROM books WHERE id = ${oldBook}`)).toEqual([]);
 }
 
@@ -124,8 +141,11 @@ describe('Place them now (§4.3)', () => {
     await expect(fandri.engine.placeHeldRows(newBook)).rejects.toMatchObject({ code: 'HELD_ELSEWHERE' });
     expect((await heldElsewhereOf(fandri.database, newBook)).length).toBe(held.length); // the refusal touched nothing
 
-    await leaveAndDelete(fandri, oldBook);
-    expect(await balanceOf(fandri, fandri.bank)).toBe(0); // his purchase left with the copy
+    // Keep them in Personal on: his one own purchase comes back through B, so it is not kept as well.
+    await fandri.engine.leave(oldBook);
+    expect(await planBookDelete(fandri.database, fandri.ws, oldBook)).toMatchObject({ refusal: null, erases: true, ownPurchases: 0, arrivingInShare: 1 });
+    await deleteBook(fandri.database, fandri.ws, oldBook);
+    expect(await balanceOf(fandri, fandri.bank)).toBe(0); // his purchase left with the copy, to come back through B
 
     const placed = await fandri.engine.placeHeldRows(newBook);
     expect(placed.stillHeld).toBe(0);
@@ -134,6 +154,7 @@ describe('Place them now (§4.3)', () => {
     await settleBook([dewi, fandri], newBook);
     await expectPlaced(dewi, fandri, newBook);
     await expectMoney(dewi, fandri, newBook, oldBook);
+    expect(await postedByDescription(fandri)).toEqual({ 'Dewi market': 1, 'Fandri market': 1 });
 
     // The share carries on as normal after it: each records once more, and both phones agree.
     await spend(dewi, newBook, 'Dewi bakery', 8_200);
@@ -148,7 +169,7 @@ describe('Place them now (§4.3)', () => {
 
   it('a second Place them now places nothing and changes nothing', async () => {
     const { dewi, fandri, oldBook, newBook, held } = await joinBeside();
-    await leaveAndDelete(fandri, oldBook);
+    await leaveAndDelete(fandri, oldBook, false); // Keep them in Personal off: every row of A goes
     expect((await fandri.engine.placeHeldRows(newBook)).placed).toBe(held.length);
     await settleBook([dewi, fandri], newBook);
     const before = await projectBook(fandri.database, newBook);
@@ -185,6 +206,51 @@ describe('Place them now (§4.3)', () => {
     await expectPlaced(dewi, fandri, newBook);
     // The leftover lineages went; every lineage here is B's.
     expect(await fandri.database.db.values(sql`SELECT DISTINCT book_id FROM sync_lineage`)).toEqual([[newBook]]);
+    await expectMoney(dewi, fandri, newBook, oldBook);
+  });
+
+  it('a purchase only the old copy held still moves to Personal; each own purchase is counted once', async () => {
+    const { dewi, fandri, oldBook, newBook } = await joinBeside();
+    // Recorded in A after B was made from it: B never has it, so nothing brings it back but Personal.
+    const pharmacy = await spend(fandri, oldBook, 'Fandri pharmacy', 12_300);
+    await settleBook([dewi, fandri], oldBook);
+    expect(await balanceOf(fandri, fandri.bank)).toBe(-39_800);
+    await fandri.engine.leave(oldBook);
+    expect(await planBookDelete(fandri.database, fandri.ws, oldBook)).toMatchObject({ refusal: null, ownPurchases: 1, arrivingInShare: 1 });
+    const deleted = await deleteBook(fandri.database, fandri.ws, oldBook);
+    expect(deleted.keptInPersonal).toBe(1);
+    expect(await balanceOf(fandri, fandri.bank)).toBe(-12_300);
+    expect(await fandri.database.db.values(sql`SELECT id FROM transactions WHERE id = ${pharmacy}`)).toEqual([]); // kept under a new id
+
+    expect(await fandri.engine.placeHeldRows(newBook)).toMatchObject({ stillHeld: 0 });
+    await settleBook([dewi, fandri], newBook);
+    await expectPlaced(dewi, fandri, newBook);
+    // Every own purchase once across Personal and B; the bank to the unit: the pharmacy in Personal, the market in B.
+    expect(await postedByDescription(fandri)).toEqual({ 'Dewi market': 1, 'Fandri market': 1, 'Fandri pharmacy': 1 });
+    const personal = await personalBook(fandri.database, fandri.ws);
+    expect(await fandri.database.db.values(sql`
+      SELECT t.description FROM transactions t JOIN book_transactions bt ON bt.transaction_id = t.id
+      WHERE bt.book_id = ${personal.id} AND t.status = 'posted'`)).toEqual([['Fandri pharmacy']]);
+    expect(await balanceOf(fandri, fandri.bank)).toBe(-12_300);
+    expect(await placeholderBalance(fandri, newBook, fandri.memberId)).toBe(-27_500);
+    expect(await balanceOf(dewi, dewi.bank)).toBe(-41_300);
+  });
+
+  it('an ordinary sync asked for while the log is pulled again waits for it', async () => {
+    const { dewi, fandri, oldBook, newBook, held } = await joinBeside();
+    await leaveAndDelete(fandri, oldBook);
+    let placedFirst = false;
+    const placing = fandri.engine.placeHeldRows(newBook).then((r) => {
+      placedFirst = true;
+      return r;
+    });
+    const sync = fandri.engine.syncOnce(newBook).then(() => placedFirst);
+    const drained = fandri.engine.drain(newBook).then(() => placedFirst);
+    expect((await placing).placed).toBe(held.length);
+    expect(await sync).toBe(true);
+    expect(await drained).toBe(true);
+    await settleBook([dewi, fandri], newBook);
+    await expectPlaced(dewi, fandri, newBook);
     await expectMoney(dewi, fandri, newBook, oldBook);
   });
 
