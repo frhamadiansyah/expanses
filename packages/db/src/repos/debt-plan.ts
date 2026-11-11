@@ -1,5 +1,5 @@
 import { instalmentDates, type InstalmentState, instalmentStanding, monthOf, monthRange, type ScheduleRow } from '@expanses/core';
-import { and, asc, eq, gte, inArray, lte } from 'drizzle-orm';
+import { and, eq, gte, inArray, lte } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
@@ -25,6 +25,15 @@ export interface DebtMovement {
  * Every posted movement on these debt accounts, one row per transaction and account, with the expense lines riding on
  * the same transaction. A liability's entry is positive when it falls, the sign `loanPayments` reads.
  */
+/** How many ids one statement binds; the other repos' lists keep to the same few hundred. */
+export const DEBT_ID_CHUNK = 500;
+
+function chunks<T>(list: readonly T[]): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < list.length; i += DEBT_ID_CHUNK) out.push(list.slice(i, i + DEBT_ID_CHUNK));
+  return out;
+}
+
 export async function debtMovements(
   database: Database,
   ws: WorkspaceContext,
@@ -32,15 +41,20 @@ export async function debtMovements(
   range?: { from?: string; to?: string },
 ): Promise<DebtMovement[]> {
   if (accountIds.length === 0) return [];
-  const where = [eq(entries.workspaceId, ws.workspaceId), eq(transactions.status, 'posted'), inArray(entries.accountId, [...accountIds])];
-  if (range?.from) where.push(gte(transactions.occurredOn, range.from));
-  if (range?.to) where.push(lte(transactions.occurredOn, range.to));
-  const rows = await database.db
-    .select({ transactionId: entries.transactionId, accountId: entries.accountId, amountMinor: entries.amountMinor, occurredOn: transactions.occurredOn, source: transactions.source })
-    .from(entries)
-    .innerJoin(transactions, eq(entries.transactionId, transactions.id))
-    .where(and(...where))
-    .orderBy(asc(transactions.occurredOn), asc(entries.transactionId));
+  const rows: { transactionId: string; accountId: string; amountMinor: number; occurredOn: string; source: string }[] = [];
+  // Bound parameters are capped per statement (32.766 on the device's SQLite): every id list goes in chunks.
+  for (const ids of chunks([...new Set(accountIds)])) {
+    const where = [eq(entries.workspaceId, ws.workspaceId), eq(transactions.status, 'posted'), inArray(entries.accountId, ids)];
+    if (range?.from) where.push(gte(transactions.occurredOn, range.from));
+    if (range?.to) where.push(lte(transactions.occurredOn, range.to));
+    rows.push(
+      ...(await database.db
+        .select({ transactionId: entries.transactionId, accountId: entries.accountId, amountMinor: entries.amountMinor, occurredOn: transactions.occurredOn, source: transactions.source })
+        .from(entries)
+        .innerJoin(transactions, eq(entries.transactionId, transactions.id))
+        .where(and(...where))),
+    );
+  }
 
   const grouped = new Map<string, DebtMovement>();
   for (const row of rows) {
@@ -54,11 +68,16 @@ export async function debtMovements(
 
   const transactionIds = [...new Set(movements.map((m) => m.transactionId))];
   const interestIds = new Set((await categoryIdsByKeyAllTx(database.db, ws))['miscellaneous.interest'] ?? []);
-  const lines = await database.db
-    .select({ transactionId: entries.transactionId, accountId: entries.accountId, amountMinor: entries.amountMinor })
-    .from(entries)
-    .innerJoin(accounts, eq(entries.accountId, accounts.id))
-    .where(and(eq(entries.workspaceId, ws.workspaceId), eq(accounts.kind, 'expense'), inArray(entries.transactionId, transactionIds)));
+  const lines: { transactionId: string; accountId: string; amountMinor: number }[] = [];
+  for (const ids of chunks(transactionIds)) {
+    lines.push(
+      ...(await database.db
+        .select({ transactionId: entries.transactionId, accountId: entries.accountId, amountMinor: entries.amountMinor })
+        .from(entries)
+        .innerJoin(accounts, eq(entries.accountId, accounts.id))
+        .where(and(eq(entries.workspaceId, ws.workspaceId), eq(accounts.kind, 'expense'), inArray(entries.transactionId, ids)))),
+    );
+  }
   const charges = new Map<string, { charges: number; interest: number }>();
   for (const line of lines) {
     if (line.amountMinor <= 0) continue;
@@ -111,7 +130,11 @@ export async function loanPlanFacts(database: Database, ws: WorkspaceContext, to
       .map((m) => ({ id: m.transactionId, occurredOn: m.occurredOn, totalMinor: m.amountMinor + m.chargesMinor, fromMessage: m.fromMessage }));
     const instalments = instalmentStanding(instalmentDates(loan, trackFrom, monthEnd), payments, today);
     const thisMonth = instalments.find((i) => monthOf(i.dueOn) === monthOf(today));
-    const scheduleFrom = thisMonth?.status === 'paid' ? nextMonthFirst(today) : today;
+    // This month's instalment fell before the loan was tracked (an existing loan added after its payment day): it was
+    // paid before the app knew the loan, so it is never late and is not asked for again — exactly as a paid month.
+    const dueThisMonth = instalmentDates(loan, monthRange(monthOf(today)).from, monthEnd)[0];
+    const untracked = dueThisMonth !== undefined && dueThisMonth.dueOn < trackFrom;
+    const scheduleFrom = thisMonth?.status === 'paid' || untracked ? nextMonthFirst(today) : today;
     facts.push({
       accountId: loan.accountId,
       owedMinor: Math.max(0, await loanOwedOn(database, ws, loan.accountId)),

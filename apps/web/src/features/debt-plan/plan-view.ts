@@ -41,7 +41,8 @@ export function whenWords(item: Pick<PlanItem, 'status' | 'daysLate' | 'dueOn'>,
   if (item.status === 'late') return `${plural(Math.max(1, item.daysLate), 'day')} late`;
   if (item.status === 'paid') return `paid ${dayMonth(item.dueOn)}`;
   const days = daysFrom(today, item.dueOn);
-  if (days < 0) return `${plural(-days, 'day')} late`;
+  // Late is the standing's word alone: an item not counted late is never called late, whatever its day.
+  if (days < 0) return `due ${dayMonth(item.dueOn)}`;
   if (days === 0) return 'due today';
   if (days === 1) return 'due tomorrow';
   return `due ${dayMonth(item.dueOn)}`;
@@ -75,7 +76,9 @@ export function planSummary(debts: readonly PlanDebt[], baseline: PayoffPlan | n
 
   let debtFree: PlanSummary['debtFree'] = { month: null, why: null };
   if (owing.length > 0) {
-    const why = unknownWords(baseline, debts, missing);
+    // A debt already paid off with no rate leaves the totals out, not the month: nothing of it is still to pay.
+    const owingMissing = [...new Set(owing.flatMap((d) => (d.missing ? [d.missing] : [])))].sort();
+    const why = unknownWords(baseline, debts, owingMissing);
     debtFree = why !== null || !baseline?.debtFreeMonth ? { month: null, why } : { month: longMonth(baseline.debtFreeMonth), why: null };
   }
 

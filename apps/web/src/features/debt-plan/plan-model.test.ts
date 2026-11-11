@@ -1,5 +1,6 @@
+import { loanSchedule } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { readings, TODAY } from './plan-fixtures';
+import { account, loanRow, readings, TODAY } from './plan-fixtures';
 import { planModel } from './queries';
 import { longMonth } from './plan-view';
 
@@ -34,5 +35,29 @@ describe('planModel', () => {
     expect(model).toMatchObject({ extraMinor: 812_500, extraMissing: null });
     const none = planModel({ ...known(), ratesToBase: {} }, { method: 'avalanche', order: [], extraMinor: 5_000, extraCurrency: 'USD' }, TODAY);
     expect(none).toMatchObject({ extraMinor: 0, extraMissing: 'USD' });
+  });
+});
+
+describe('an existing loan added after this month’s payment day', () => {
+  it('asks for December, is not late, and asks nothing in November', () => {
+    // As loanPlanFacts reads it on 11 Nov: opened 10 Nov, the 5 Nov instalment untracked, the schedule from 1 Dec.
+    const terms = { originalMinor: 40_000_000, firstPaymentOn: '2025-06-05', tenorMonths: 120, method: 'annuity' as const, paymentDay: 5 };
+    const periods = [{ fromOn: '2025-06-05', rateBps: 750, kind: 'fixed' as const, paymentMinor: 0 }];
+    const fact = { accountId: 'KPR', owedMinor: 28_400_000, trackFrom: '2026-11-10', instalments: [], scheduleFrom: '2026-12-01', schedule: loanSchedule(28_400_000, terms, periods, '2026-12-01') };
+    const r = readings({
+      accounts: [account({ id: 'KPR', name: 'KPR', subtype: 'loan' })],
+      balances: { KPR: -28_400_000 },
+      loans: [loanRow({ accountId: 'KPR', ...terms, periods: [{ id: 'k', accountId: 'KPR', ...periods[0]! }] })],
+      items: {},
+      loanFacts: [fact],
+      cards: {},
+      people: { youOwe: [], owedToYou: [], settled: [] },
+    });
+    const model = planModel(r, null, '2026-11-11');
+    expect(model.summary.counts.late).toBe(0);
+    expect(model.summary.payNext).toMatchObject({ item: { title: 'KPR · 19/120', dueOn: '2026-12-05', status: 'upcoming' }, when: 'due 5 Dec' });
+    const kpr = model.debts.find((d) => d.key === 'KPR')!;
+    expect(kpr.payoff).toMatchObject({ firstMonth: 1 });
+    expect(kpr.payoff!.minimumsMinor[0]).toBe(0);
   });
 });

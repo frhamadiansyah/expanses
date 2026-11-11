@@ -18,6 +18,9 @@ describe('whenWords', () => {
     expect(at('2026-11-12')).toBe('due tomorrow');
     expect(at('2026-11-18')).toBe('due 18 Nov');
   });
+  it('never says late for an item the standing does not count late', () => {
+    expect(at('2026-11-05')).toBe('due 5 Nov');
+  });
 });
 
 describe('longMonth', () => {
@@ -44,6 +47,16 @@ describe('planSummary', () => {
     const s = planSummary(noRate, baselineOf(noRate), TODAY);
     expect(s).toMatchObject({ leftMinor: null, missing: ['USD'], debtFree: { month: null, why: 'No USD rate yet' } });
   });
+  it('a paid-off debt with no rate leaves the totals out but not the month', () => {
+    const r = readings({ ratesToBase: {}, accounts: readings().accounts.map((a) => (a.id === 'L2' ? { ...a, currency: 'IDR' } : a.id === 'L3' ? { ...a, currency: 'USD' } : a)) });
+    const list = planDebts(r, TODAY).filter((d) => d.key !== 'L2');
+    const baseline = baselineOf(list);
+    const s = planSummary(list, baseline, TODAY);
+    expect(s.missing).toEqual(['USD']);
+    expect(s.borrowedMinor).toBeNull();
+    expect(s.debtFree).toEqual({ month: longMonth(baseline.debtFreeMonth!), why: null });
+  });
+
   it('with every debt known, the month is the baseline’s, written out', () => {
     const known = debts.filter((d) => d.key !== 'L2');
     const baseline = baselineOf(known);

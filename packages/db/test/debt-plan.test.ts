@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { payoffDebtFromSchedule } from '@expanses/core';
 import {
   type AccountRow,
+  categoryIdsByKey,
   createAccount,
   createWorkspace,
   type Database,
+  DEBT_ID_CHUNK,
   DebtPlanError,
   debtMovements,
   getDebtPlanSettings,
@@ -11,6 +14,7 @@ import {
   nextPaymentDue,
   payOffLoan,
   postTransaction,
+  postTransactions,
   recordLoanPayment,
   saveDebtPlanSettings,
   saveLoanTerms,
@@ -74,6 +78,31 @@ describe('debtMovements', () => {
   });
 });
 
+describe('debtMovements over more transactions than one statement binds', () => {
+  it('reads every one, with the lines riding on each, across the chunks', async () => {
+    const owedTo = await createAccount(database, ws, { name: 'Family', kind: 'liability', subtype: 'payable', currency: 'IDR', openingBalanceMinor: 10_000_000, openedOn: '2026-01-01' });
+    const interest = (await categoryIdsByKey(database, ws))['miscellaneous.interest']!;
+    const count = DEBT_ID_CHUNK + 23;
+    await postTransactions(
+      database,
+      ws,
+      Array.from({ length: count }, (_, i) => ({
+        occurredOn: `2026-02-${String((i % 28) + 1).padStart(2, '0')}`,
+        description: `Repayment ${i}`,
+        lines: [
+          { accountId: owedTo.id, amountMinor: 1_000, currency: 'IDR' },
+          { accountId: interest, amountMinor: 10, currency: 'IDR' },
+          { accountId: bca.id, amountMinor: -1_010, currency: 'IDR' },
+        ],
+      })),
+    );
+    const rows = (await debtMovements(database, ws, [owedTo.id])).filter((m) => m.amountMinor > 0);
+    expect(rows).toHaveLength(count);
+    expect(rows.every((m) => m.chargesMinor === 10 && m.interestMinor === 10)).toBe(true);
+    expect(rows.map((m) => m.occurredOn)).toEqual([...rows.map((m) => m.occurredOn)].sort());
+  });
+});
+
 describe('loanPlanFacts', () => {
   it('tracks the instalments from the first payment and calls the missed one late', async () => {
     const facts = await loanPlanFacts(database, ws, '2026-11-04');
@@ -100,6 +129,21 @@ describe('loanPlanFacts', () => {
     expect(fact!.instalments[2]).toMatchObject({ number: 3, status: 'paid', daysLate: 3 });
     expect(fact!.scheduleFrom).toBe('2026-12-01');
     expect(fact!.schedule[0]!.onDate).toBe('2026-12-01');
+  });
+
+  it('an existing loan added after this month’s payment day is asked for next month, never late', async () => {
+    // Added on 11 Nov at what was owed on 10 Nov; its payment day, the 5th, had already gone by.
+    const kpr = await createAccount(database, ws, { name: 'KPR', kind: 'liability', subtype: 'loan', currency: 'IDR', openingBalanceMinor: 28_400_000, openedOn: '2026-11-10' });
+    await saveLoanTerms(database, ws, { accountId: kpr.id, lenderName: 'BCA', originalMinor: 40_000_000, firstPaymentOn: '2025-06-05', tenorMonths: 120, method: 'annuity', paymentDay: 5, rateBps: 750 });
+    const fact = (await loanPlanFacts(database, ws, '2026-11-11')).find((f) => f.accountId === kpr.id)!;
+    expect(fact.trackFrom).toBe('2026-11-10');
+    expect(fact.instalments).toEqual([]);
+    expect(fact.scheduleFrom).toBe('2026-12-01');
+    expect(fact.schedule[0]!.onDate).toBe('2026-12-05');
+    // Month 0 (November) asks nothing: the loan's own months begin in December.
+    const engine = payoffDebtFromSchedule({ key: kpr.id, name: 'KPR', balanceMinor: fact.owedMinor, rows: fact.schedule, method: 'annuity', periods: [{ fromOn: '2025-06-05', rateBps: 750, kind: 'fixed', paymentMinor: 0 }], startMonth: '2026-11', late: false, daysLate: 0 });
+    expect(engine.firstMonth).toBe(1);
+    expect(engine.minimumsMinor[0]).toBe(0);
   });
 
   it('a loan with no terms and a paid-off loan are not there', async () => {
