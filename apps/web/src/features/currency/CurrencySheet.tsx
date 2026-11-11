@@ -9,7 +9,7 @@ import { currencyMatches, currencySections, readFavoriteCurrencies, toggleFavori
 /** A group header, outside and above its group, as the kit draws one. */
 const KICKER = 'px-1 pb-[6px] text-[15px] font-semibold text-[var(--ph-ink-3)]';
 const GROUP =
-  'overflow-hidden rounded-[18px] border-[0.5px] border-[var(--ph-hair)] bg-[var(--ph-surface)] [&>*+*>.ph-row-body]:border-t-[0.5px] [&>*+*>.ph-row-body]:border-[var(--ph-hair)]';
+  'overflow-hidden rounded-[18px] border-[0.5px] border-[var(--ph-hair)] bg-[var(--ph-surface)]';
 
 /**
  * The one currency list every currency field opens: a search by code, name, symbol or country; the person's
@@ -56,7 +56,7 @@ export function CurrencySheet({
   const row = (info: CurrencyInfo, section: string) => {
     const starred = favorites.includes(info.code);
     return (
-      <div key={`${section}-${info.code}`} className="flex w-full items-stretch pl-[12px] active:bg-[var(--ph-fill)]">
+      <div key={`${section}-${info.code}`} className="relative flex w-full items-stretch pl-[12px] before:absolute before:top-0 before:right-0 before:left-[62px] before:h-[0.5px] before:bg-[var(--ph-hair)] first:before:hidden active:bg-[var(--ph-fill)]">
         <button
           type="button"
           onClick={() => choose(info.code)}
