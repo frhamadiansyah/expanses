@@ -143,7 +143,24 @@ export function useCopyRoles(bookId: string) {
         if ((await heldElsewhereOf(database, other.bookId)).some((row) => row.holderBookId === bookId)) holdsFor.push(other.bookId);
       }
       const ref = (id: string): CopyRef => ({ bookId: id, label: labelOf(id) });
-      return { label: labelOf(bookId), holdsFor: holdsFor.map(ref), heldBy: heldBy.map(ref), labels: Object.fromEntries(books.map((b) => [b.id, labelOf(b.id)])) as Record<string, string> };
+      // A holder still shared that is no old copy of this workspace — not of the same name, no owner in common — is a
+      // share of its own (A6 round): the held line asks to leave it, never to delete it.
+      const ownersOf = (id: string) => new Set((shared.find((each) => each.bookId === id)?.members ?? []).filter((m) => m.role === 'owner').map((m) => m.name));
+      const nameOf = (id: string) => books.find((each) => each.id === id)?.name ?? null;
+      const stillShared: Record<string, boolean> = {};
+      for (const holder of heldBy) {
+        const row = shared.find((each) => each.bookId === holder);
+        const sameName = nameOf(holder) !== null && nameOf(holder) === nameOf(bookId);
+        const commonOwner = [...ownersOf(holder)].some((name) => ownersOf(bookId).has(name));
+        stillShared[holder] = row?.state === 'active' && !sameName && !commonOwner;
+      }
+      return {
+        label: labelOf(bookId),
+        holdsFor: holdsFor.map(ref),
+        heldBy: heldBy.map(ref),
+        labels: Object.fromEntries(books.map((b) => [b.id, labelOf(b.id)])) as Record<string, string>,
+        stillShared,
+      };
     },
   });
 }

@@ -259,12 +259,20 @@ describe('sharing resilience: what the Share page says (spec §4.4, §7, §8.1)'
       'Part of this share is held by A and B on this phone. Delete those copies to bring it in.',
     );
     expect(heldLine([{ holderName: null, holderExists: false }])).toBe('Part of this share is waiting. Place it now.');
+    // A holder that is a live share of its own, not an old copy: deleting it is not the step (A6 round).
+    expect(heldLine([{ holderName: 'Trips · shared 2 Oct', holderExists: true, holderStillShared: true }])).toBe(
+      'Part of this share is used by Trips · shared 2 Oct, which is still shared. Leave that share first.',
+    );
+    expect(heldLine([{ holderName: 'Trips · shared 2 Oct', holderExists: true, holderStillShared: true }])).not.toMatch(/Delete/);
     expect(PLACE_LABEL).toBe('Place them now');
     expect(placedLine({ placed: 3, stillHeld: 0 })).toBe('3 rows placed.');
     expect(placedLine({ placed: 1, stillHeld: 0 })).toBe('1 row placed.');
     expect(placedLine({ placed: 0, stillHeld: 0 })).toBe('Nothing was waiting.');
     expect(placedLine({ placed: 0, stillHeld: 2 })).toBe('Nothing placed; 2 rows still wait.');
     expect(placedLine({ placed: 3, stillHeld: 1 })).toBe('3 rows placed; 1 row still waits.');
+    expect(placedLine({ placed: 3, stillHeld: 0, needsAccount: 2 })).toBe('3 rows placed. 2 purchases need an account.');
+    expect(placedLine({ placed: 3, stillHeld: 0, needsAccount: 1 })).toBe('3 rows placed. 1 purchase needs an account.');
+    expect(placedLine({ placed: 3, stillHeld: 0, needsAccount: 0 })).toBe('3 rows placed.');
   });
 
   it('says a lost share keeps the records here and promises no reconnection in this update', () => {

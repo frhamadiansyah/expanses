@@ -33,8 +33,6 @@ export function nameMatches(typed: string, name: string): boolean {
   return typed.trim().toLowerCase() === name.trim().toLowerCase() && name.trim() !== '';
 }
 
-/** A6's fix adds the purchases a new share already carries to the plan; read as 0 until it is on this branch. */
-const arrivingOf = (plan: BookDeletePlan) => (plan as BookDeletePlan & { arrivingInShare?: number }).arrivingInShare ?? 0;
 
 /**
  * What a once-shared workspace's delete keeps (sharing resilience §5, owner decision Q1): the switch that keeps own
@@ -42,7 +40,7 @@ const arrivingOf = (plan: BookDeletePlan) => (plan as BookDeletePlan & { arrivin
  * is never sent anywhere. Nothing when there is nothing of this phone's own in it.
  */
 function KeepGroup({ plan, keep, onKeep, holdsFor }: { plan: BookDeletePlan; keep: boolean; onKeep: (on: boolean) => void; holdsFor: readonly CopyRef[] }) {
-  const arriving = arrivingOf(plan);
+  const arriving = plan.arrivingInShare;
   if (plan.ownPurchases === 0 && plan.ownRecords === 0 && arriving === 0) return null;
   const lines = [
     plan.ownPurchases > 0 ? ownPurchasesLine(plan.ownPurchases, keep) : null,

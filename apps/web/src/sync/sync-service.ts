@@ -527,13 +527,15 @@ export class SyncService {
    * Place them now (§4.3): rows another copy here held come in once that copy is gone. It runs in the book's turn, so
    * no ordinary sync of the book runs while it reads the log again from the start.
    */
-  async placeHeldRows(bookId: string): Promise<{ placed: number; stillHeld: number }> {
+  async placeHeldRows(bookId: string): Promise<{ placed: number; stillHeld: number; needsAccount: number }> {
     const engine = await this.logged('place', bookId, () => this.engine());
     const done = await this.logged('place', bookId, () => this.exclusive(bookId, () => engine.placeHeldRows(bookId)));
-    await this.note('place', bookId, { message: `Place them now: placed ${done.placed}, still held ${done.stillHeld}, ${done.result.applied} entries applied` });
+    // Own purchases that found no own account and sit on this member's placeholder (A6: by the arriving-account record).
+    const needsAccount = done.result.needsAccount ?? 0;
+    await this.note('place', bookId, { message: `Place them now: placed ${done.placed}, still held ${done.stillHeld}, ${done.result.applied} entries applied, ${needsAccount} need an account` });
     await this.touched(bookId, done.result);
     this.onApplied();
-    return { placed: done.placed, stillHeld: done.stillHeld };
+    return { placed: done.placed, stillHeld: done.stillHeld, needsAccount };
   }
 
   /**

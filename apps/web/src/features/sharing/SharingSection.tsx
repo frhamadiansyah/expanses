@@ -42,8 +42,8 @@ export function ShareRow({ book }: { book: BookRow }) {
   const active = detail.data?.state === 'active';
   const health = useShareHealth(book.id).data;
   const held = active ? (health?.held ?? []) : [];
-  const labels = useCopyRoles(book.id).data?.labels ?? {};
-  const heldText = heldLine(held.map((row) => ({ holderName: labels[row.holderBookId] ?? row.holderName, holderExists: row.holderExists })));
+  const roles = useCopyRoles(book.id).data;
+  const heldText = heldLine(held.map((row) => ({ holderName: roles?.labels[row.holderBookId] ?? row.holderName, holderExists: row.holderExists, holderStillShared: roles?.stillShared[row.holderBookId] ?? false })));
   const placeable = held.length > 0 && held.every((row) => !row.holderExists);
   const [placing, setPlacing] = useState(false);
   const [placed, setPlaced] = useState<string | null>(null);

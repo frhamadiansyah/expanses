@@ -271,11 +271,17 @@ export function lastChangeLine(s: Pick<MemberSilence, 'lastChangeAt'> & Partial<
  * Rows of the share set aside because another copy here holds them (D-A3, §4.4): named while that copy exists, then
  * "waiting" with Place them now. Null with none.
  */
-export function heldLine(held: readonly { holderName: string | null; holderExists: boolean }[]): string | null {
+export function heldLine(held: readonly { holderName: string | null; holderExists: boolean; holderStillShared?: boolean }[]): string | null {
   if (held.length === 0) return null;
   const live = held.filter((row) => row.holderExists);
   if (live.length === 0) return 'Part of this share is waiting. Place it now.';
-  const names = [...new Set(live.map((row) => row.holderName?.trim() || 'another copy'))];
+  const name = (row: { holderName: string | null }) => row.holderName?.trim() || 'another copy';
+  // A holder that is a live share of its own, not an old copy of this one (A6 round): deleting it is not the step.
+  const shared = [...new Set(live.filter((row) => row.holderStillShared).map(name))];
+  if (shared.length > 0) {
+    return `Part of this share is used by ${nameList(shared)}, which ${shared.length === 1 ? 'is' : 'are'} still shared. Leave that share first.`;
+  }
+  const names = [...new Set(live.map(name))];
   return `Part of this share is held by ${nameList(names)} on this phone. ${names.length === 1 ? 'Delete that copy' : 'Delete those copies'} to bring it in.`;
 }
 
@@ -285,11 +291,25 @@ export const PLACE_TITLE = 'Place them now?';
 export const PLACE_CONFIRM = 'The share is read again from its start, and the rows that were waiting come in. Rows already here stay as they are.';
 
 /** After Place them now: how many came in, from the result. */
-export function placedLine(done: { placed: number; stillHeld: number }): string {
+export function placedLine(done: { placed: number; stillHeld: number; needsAccount?: number }): string {
   const rows = (n: number) => `${n} ${n === 1 ? 'row' : 'rows'}`;
   const waiting = `${rows(done.stillHeld)} still ${done.stillHeld === 1 ? 'waits' : 'wait'}`;
-  if (done.placed === 0) return done.stillHeld === 0 ? 'Nothing was waiting.' : `Nothing placed; ${waiting}.`;
-  return done.stillHeld === 0 ? `${rows(done.placed)} placed.` : `${rows(done.placed)} placed; ${waiting}.`;
+  const base =
+    done.placed === 0
+      ? done.stillHeld === 0
+        ? 'Nothing was waiting.'
+        : `Nothing placed; ${waiting}.`
+      : done.stillHeld === 0
+        ? `${rows(done.placed)} placed.`
+        : `${rows(done.placed)} placed; ${waiting}.`;
+  // Own purchases that came in on no own account (A6: the recorded account was gone): said, short.
+  const n = done.needsAccount ?? 0;
+  return n > 0 ? `${base} ${needsAccountLine(n)}` : base;
+}
+
+/** Own purchases that came back onto no own account (A6 `needsAccount`): "2 purchases need an account." */
+export function needsAccountLine(n: number): string {
+  return `${n} ${n === 1 ? 'purchase needs' : 'purchases need'} an account.`;
 }
 
 /**

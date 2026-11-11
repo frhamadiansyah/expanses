@@ -1,4 +1,4 @@
-import { expenseLines } from '@expanses/core';
+import { expenseLines, uuidv7 } from '@expanses/core';
 import {
   createAccount,
   createBook,
@@ -7,12 +7,14 @@ import {
   type Database,
   type DeviceKeys,
   devicesSeen,
+  heldElsewhereOf,
   listSharedBooks,
   MemoryKeyStore,
   MemoryShareRecordStore,
   MemoryTransport,
   migrate,
   personalBook,
+  planBookDelete,
   postTransaction,
   requestSignerOf,
   sharingDetail,
@@ -535,6 +537,77 @@ describe('SyncService', () => {
       dewi.service.stop();
     });
 
+    it('join first, then Leave and delete with keep on, then Place them now: every balance exact to the unit, nothing twice (A8 review I-4)', async () => {
+      const relay = new MemoryTransport();
+      const fandri = await phone(relay, 'Fandri');
+      const dewi = await phone(relay, 'Dewi');
+      await fandri.service.start();
+      await dewi.service.start();
+      const { bookId: oldBook, invite } = await sharedHome(fandri);
+      await dewi.service.join(invite.code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'iPhone' });
+      const spend = async (p: Phone, bookId: string, description: string, amountMinor: number) =>
+        postTransaction(p.database, { ...p.ws, bookId }, {
+          occurredOn: '2026-09-12',
+          description,
+          lines: expenseLines({ categoryAccountId: await groceries(p.database, bookId), paymentAccountId: p.bank, amountMinor, currency: 'IDR' }),
+        });
+      await spend(fandri, oldBook, 'Owner market', 41_300);
+      await spend(dewi, oldBook, 'Member market', 27_500);
+      for (let i = 0; i < 2; i += 1) {
+        await fandri.service.syncNow(oldBook);
+        await dewi.service.syncNow(oldBook);
+      }
+      const balance = async (p: Phone) =>
+        Number((await p.database.db.values<[number]>(sql`SELECT COALESCE(SUM(e.amount_minor), 0) FROM entries e JOIN transactions t ON t.id = e.transaction_id WHERE e.account_id = ${p.bank} AND t.status = 'posted'`))[0]![0]);
+      const posted = async (p: Phone) =>
+        Object.fromEntries((await p.database.db.values<[string, number]>(sql`SELECT description, count(*) FROM transactions WHERE status = 'posted' AND description LIKE '%market' GROUP BY description ORDER BY description`)).map(([d, n]) => [d, Number(n)]));
+      expect(await balance(fandri)).toBe(-41_300);
+      expect(await balance(dewi)).toBe(-27_500);
+
+      // The owner's phone holds the same rows again under a new book (the couple's second share) and shares it as the
+      // same member; the old copy on the member's phone is still live.
+      const newBook = uuidv7();
+      const columns = (await fandri.database.db.values<[string]>(sql`SELECT name FROM pragma_table_info('books')`)).map(([name]) => name);
+      const select = columns.map((c) => (c === 'id' ? sql`${newBook}` : c === 'kind' ? sql`'family'` : sql.raw(c)));
+      await fandri.database.db.run(sql`INSERT INTO books (${sql.raw(columns.join(', '))}) SELECT ${sql.join(select, sql`, `)} FROM books WHERE id = ${oldBook}`);
+      await fandri.database.db.run(sql`UPDATE book_categories SET book_id = ${newBook} WHERE book_id = ${oldBook}`);
+      await fandri.database.db.run(sql`UPDATE book_transactions SET book_id = ${newBook} WHERE book_id = ${oldBook}`);
+      await fandri.database.db.run(sql`UPDATE sync_lineage SET book_id = ${newBook} WHERE book_id = ${oldBook}`);
+      const memberOf = async (p: Phone) => (await listSharedBooks(p.database)).find((b) => b.bookId === oldBook)!.memberId;
+      const owner = await fandri.service.engine();
+      await owner.shareBook(newBook, { memberId: await memberOf(fandri), memberName: 'Fandri', deviceName: 'Mac' });
+      await fandri.service.syncNow(newBook);
+      const { code } = await owner.createInvite(newBook, { inviterName: 'Fandri' });
+
+      // 1. Join first: the old copy holds part of the new share.
+      const member = await dewi.service.engine();
+      await member.joinBook(code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'iPhone', memberId: await memberOf(dewi) });
+      await dewi.service.refresh();
+      expect((await heldElsewhereOf(dewi.database, newBook)).length).toBeGreaterThan(0);
+      expect(await balance(dewi)).toBe(-27_500);
+
+      // 2. Then Leave and delete the old copy, Keep them in Personal on: the own purchase the new share carries is not kept.
+      const plan = await planBookDelete(dewi.database, dewi.ws, oldBook, { asIfLeft: true });
+      expect(plan).toMatchObject({ refusal: null, arrivingInShare: 1 });
+      await dewi.service.leaveAndDelete(dewi.ws, oldBook);
+      expect(await balance(dewi)).toBe(0);
+
+      // 3. Then Place them now: it comes back once, on the member's own bank, to the unit.
+      const placed = await dewi.service.placeHeldRows(newBook);
+      expect(placed).toMatchObject({ stillHeld: 0, needsAccount: 0 });
+      expect(placed.placed).toBeGreaterThan(0);
+      for (let i = 0; i < 2; i += 1) {
+        await fandri.service.syncNow(newBook);
+        await dewi.service.syncNow(newBook);
+      }
+      expect(await balance(dewi)).toBe(-27_500);
+      expect(await balance(fandri)).toBe(-41_300);
+      expect(await posted(dewi)).toEqual({ 'Member market': 1, 'Owner market': 1 });
+      expect(await heldElsewhereOf(dewi.database, newBook)).toEqual([]);
+      fandri.service.stop();
+      dewi.service.stop();
+    });
+
     it('Leave and delete with the relay out of reach changes nothing; Delete here only then erases the copy alone', async () => {
       const relay = new MemoryTransport();
       const fandri = await phone(relay, 'Fandri');
@@ -569,7 +642,7 @@ describe('SyncService', () => {
       const fandri = await phone(relay, 'Fandri');
       await fandri.service.start();
       const { bookId } = await sharedHome(fandri);
-      await expect(fandri.service.placeHeldRows(bookId)).resolves.toEqual({ placed: 0, stillHeld: 0 });
+      await expect(fandri.service.placeHeldRows(bookId)).resolves.toEqual({ placed: 0, stillHeld: 0, needsAccount: 0 });
       expect((await fandri.service.log.forBook(bookId)).find((entry) => entry.op === 'place')).toMatchObject({ level: 'info', message: expect.stringMatching(/placed 0/) });
       fandri.service.stop();
     });
