@@ -1,4 +1,5 @@
 import type { ImportMarker, Safety, SnapshotStore } from './open';
+import { RestoreCancelledError } from './restore-sharing';
 import { PRUNING_PAUSED } from './retention';
 import { hasCreateWritable, writeInSafetyWorker } from './safety-write';
 import { dailyDue, keepOne, keepTwo, MIN_COPY_BYTES, parseSnapshotName, roomFor, type SnapshotInfo, type SnapshotReason, snapshotName } from './snapshot-policy';
@@ -488,15 +489,29 @@ export async function restoreSnapshot(deps: {
   live: () => Promise<Uint8Array | null>;
   /** Hands the chosen bytes to the engine. `restoreBytes` in the app. */
   restore: (bytes: Uint8Array) => Promise<void>;
+  /**
+   * Asked before anything is kept or replaced, with the live bytes (null when unreadable) and the copy's: false
+   * calls the restore off with `RestoreCancelledError`. `sharingGate` (restore-sharing.ts) in the app: it warns
+   * when the copy lacks a workspace shared here.
+   */
+  checkSharing?: (sides: { live: Uint8Array | null; chosen: Uint8Array }) => Promise<boolean>;
 }): Promise<void> {
   const chosen = await deps.snapshots.read(deps.file);
   // Checked before anything is kept or replaced: bytes that are not a whole database would only be refused
   // by the engine afterwards, with a before-restore copy already written that pruned a good one away.
   const wrong = headerProblem(chosen);
   if (wrong) throw new Error(`That copy cannot be put back: ${wrong}.`);
+  let live: Uint8Array | null = null;
+  let liveError: unknown = null;
+  try {
+    live = await deps.live();
+  } catch (error) {
+    liveError = error;
+  }
+  if (deps.checkSharing && !(await deps.checkSharing({ live, chosen }))) throw new RestoreCancelledError();
   let beforeCopy: string | null = null;
   try {
-    const live = await deps.live();
+    if (liveError) throw liveError;
     if (live?.length) beforeCopy = (await deps.snapshots.write(live, 'before-restore', 0)).file;
   } catch (error) {
     // Warned, not shown: the page reloads the instant the restore below lands, so there is no screen left

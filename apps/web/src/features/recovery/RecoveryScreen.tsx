@@ -6,6 +6,7 @@ import { refusedCopy } from '../../db/newer-database';
 import { type ImportMarker, NO_SNAPSHOTS, type RecoveryReason, type SnapshotInfo, type SnapshotStore } from '../../db/open';
 import { restoreBytes, salvageBytes } from '../../db/salvage';
 import { restoreSnapshot } from '../../db/snapshots';
+import { RestoreCancelledError, sharingGate } from '../../db/restore-sharing';
 import { saveBytes, savedWhere } from '../../lib/download';
 import { holdPhotosOrRefuse } from '../../photos/hold-before-restore';
 import { Button, ErrorBox } from '../../ui';
@@ -95,6 +96,8 @@ export function RecoveryScreen({
         live: async () => bytes ?? (await salvageBytes().catch(() => null)),
         source: 'recovery screen',
         restore: restoreBytes,
+        // A copy from before a workspace was shared disconnects it: named first, or said that it cannot be checked.
+        checkSharing: sharingGate(),
       });
       reopen();
     });
@@ -106,6 +109,8 @@ export function RecoveryScreen({
     try {
       await action();
     } catch (e) {
+      // Called off at the sharing warning: nothing was replaced, and there is nothing to say.
+      if (e instanceof RestoreCancelledError) return;
       // A copy written by a newer build is refused by the engine rather than put back; that refusal
       // arrives as a marker, and is the one failure here with words of its own.
       setError(refusedCopy(e, LATEST_VERSION) ?? e);
