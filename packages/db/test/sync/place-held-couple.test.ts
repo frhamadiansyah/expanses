@@ -35,6 +35,14 @@ async function filedIn(d: Device, bookId: string): Promise<string[]> {
   return rows.map(([description]) => description);
 }
 
+/** The book's hidden account for `memberId` in IDR on this phone; 0 when none. */
+async function placeholderBalance(d: Device, bookId: string, memberId: string): Promise<number> {
+  const [row] = await d.database.db.values<[string]>(
+    sql`SELECT account_id FROM book_member_accounts WHERE book_id = ${bookId} AND member_id = ${memberId} AND currency = 'IDR'`,
+  );
+  return row ? balanceOf(d, row[0]) : 0;
+}
+
 async function spend(d: Device, bookId: string, description: string, amountMinor: number): Promise<string> {
   return postTransaction(d.database, d.ws, {
     occurredOn: '2026-09-12',
@@ -100,16 +108,19 @@ describe('the couple’s cleanup', () => {
     await invite(dewi, fandri, b, true);
     await settleBook([dewi, fandri], b);
     expect((await heldElsewhereOf(fandri.database, b)).filter((h) => h.entity === 'purchase')).toHaveLength(2);
-    // A purchase of hers on a category R1 holds here is set aside with it, never filed into R1 (it would go with R1).
+    // A purchase of hers on a category R1 holds here comes in at once, filed in R3 (its own share), never in R1.
     await spend(dewi, b, 'Dewi new', 4_400);
     await settleBook([dewi, fandri], b);
     const held = await heldElsewhereOf(fandri.database, b);
-    expect(held.filter((h) => h.entity === 'purchase')).toHaveLength(3);
-    expect(await postedByDescription(fandri)).toEqual({ 'Dewi pre': 1, 'Fandri early': 1, 'Fandri late': 1 }); // R1's, untouched
+    expect(held.filter((h) => h.entity === 'purchase')).toHaveLength(2);
+    expect(await filedIn(fandri, b)).toEqual(['Dewi new']);
+    expect(await postedByDescription(fandri)).toEqual({ 'Dewi new': 1, 'Dewi pre': 1, 'Fandri early': 1, 'Fandri late': 1 });
 
     await fandri.engine.leave(r1);
     expect(await planBookDelete(fandri.database, fandri.ws, r1)).toMatchObject({ refusal: null, ownPurchases: 1, arrivingInShare: 1 });
     expect((await deleteBook(fandri.database, fandri.ws, r1)).keptInPersonal).toBe(1);
+    // Erasing R1 spares her purchase (it is R3's) and keeps the category it is on as a leftover, which Place adopts.
+    expect(await filedIn(fandri, b)).toEqual(['Dewi new']);
     const placed = await fandri.engine.placeHeldRows(b);
     expect(placed).toMatchObject({ placed: held.length, stillHeld: 0 });
     expect(placed.result.needsAccount).toBe(0);
@@ -145,13 +156,15 @@ describe('the couple’s cleanup', () => {
     expect(await skipsOf(fandri.database)).toEqual([]);
     expect(await projectBook(fandri.database, b)).toEqual(await projectBook(dewi.database, b));
 
-    // The double (Drop A, A8's sheet warns of it): the kept copy in Personal and R3's, both on his bank by its label.
-    // No purchase is lost; the early one is there twice, and his bank shows it twice.
+    // The double (Drop A, A8's sheet warns of it): the kept copy in Personal, on his bank, and R3's, which an ordinary
+    // join puts on his own placeholder (no own account is chosen outside Place). No purchase is lost and his bank is
+    // right; the early one is counted twice in spending.
     expect(await postedByDescription(fandri)).toEqual({ 'Dewi pre': 1, 'Fandri early': 2, 'Fandri late': 1 });
     const personal = await personalBook(fandri.database, fandri.ws);
     expect(await filedIn(fandri, personal.id)).toEqual(['Fandri early', 'Fandri late']);
     expect(await filedIn(fandri, b)).toEqual(['Dewi pre', 'Fandri early']);
-    expect(await balanceOf(fandri, fandri.bank)).toBe(-(27_500 + 12_300 + 27_500));
+    expect(await balanceOf(fandri, fandri.bank)).toBe(-39_800);
+    expect(await placeholderBalance(fandri, b, fandri.memberId)).toBe(-27_500);
     expect(await balanceOf(dewi, dewi.bank)).toBe(-41_300);
   });
 });

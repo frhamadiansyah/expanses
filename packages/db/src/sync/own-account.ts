@@ -5,8 +5,8 @@ import type { BookContext } from './apply';
 /*
  * Own purchases onto the right accounts (sharing resilience §6.5, D-B6). A purchase never carries a local account id,
  * only `paidLabel`: the account's name as its payer saw it, `"Name ···· 1234"` for a card, `"A + B"` for two. When this
- * member paid and this phone has no head of the purchase (its rows came back through the share: Place them now, a
- * Reconnect), apply looks for the one own account the label names. The choice is local only: the money side of an own
+ * member's own device wrote the purchase and this phone has no head of it (its rows came back through the share), a
+ * whole-log pull (Place them now, a rejoin reset; never the ordinary sync) looks for the one own account the label names. The choice is local only: the money side of an own
  * purchase never travels, so peers are unaffected.
  */
 
@@ -15,12 +15,15 @@ const CARD_LABEL = /^(.+) ···· (\d{4})$/;
 
 /**
  * The one own account here the label names, in the line's currency, with the card it names when it names one: an
- * account of this workspace, open (not archived), a money account (asset or liability), not a placeholder. A card
+ * account of this workspace, open (not archived), a money account (asset or liability), not a placeholder and not a
+ * joint account (A5's own-purchase rule). A card
  * label matches by the account's name and the card's last four. None or more than one: null.
  */
 export async function ownPlaceForLabelTx(tx: Db, ctx: BookContext, label: string, currency: string): Promise<{ accountId: string; cardId: string | null } | null> {
+  const joint = (await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'nw_joint_accounts'`)).length > 0;
   const open = sql`a.workspace_id = ${ctx.ws.workspaceId} AND a.archived_at IS NULL AND a.kind IN ('asset', 'liability') AND a.currency = ${currency}
-    AND a.id NOT IN (SELECT account_id FROM book_member_accounts)`;
+    AND a.id NOT IN (SELECT account_id FROM book_member_accounts)
+    ${joint ? sql`AND a.id NOT IN (SELECT account_id FROM nw_joint_accounts)` : sql``}`;
   const card = CARD_LABEL.exec(label);
   const rows = card
     ? await tx.values<[string, string | null]>(sql`

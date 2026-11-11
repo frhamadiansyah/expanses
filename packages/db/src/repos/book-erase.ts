@@ -73,10 +73,19 @@ function filedSql(bookId: string, tables: Set<string>, status: SQL = sql`t.statu
     OR t.id IN (SELECT e.transaction_id FROM entries e WHERE e.account_id IN (${own}) OR e.spend_category_id IN (${own})))`;
 }
 
-/** Rows of a transaction that `ws`'s other book names it by: another book's row, split part, or category on a line. */
+/**
+ * Rows of a transaction that `ws`'s other book names it by: another book's row, split part, or category on a line, or
+ * (A6 fix round 3) the head of a purchase lineage of another book that still exists here — a share's purchase on a
+ * category this copy held, which belongs to that share whatever its category's tag says.
+ */
 function elsewhereSql(bookId: string, tables: Set<string>): SQL {
+  const otherLineage = tables.has('sync_lineage')
+    ? sql`OR EXISTS (SELECT 1 FROM sync_lineage l WHERE l.head_transaction_id = t.id AND l.book_id <> ${bookId}
+          AND (l.book_id IN (SELECT id FROM books)${tables.has('shared_books') ? sql` OR l.book_id IN (SELECT book_id FROM shared_books)` : sql``}))`
+    : sql``;
   return sql`(EXISTS (SELECT 1 FROM book_transactions b WHERE b.transaction_id = t.id AND b.book_id <> ${bookId})
     ${tables.has('book_transaction_splits') ? sql`OR EXISTS (SELECT 1 FROM book_transaction_splits s WHERE s.transaction_id = t.id AND s.book_id <> ${bookId})` : sql``}
+    ${otherLineage}
     OR EXISTS (SELECT 1 FROM entries e JOIN book_categories c ON c.category_account_id IN (e.account_id, e.spend_category_id)
                WHERE e.transaction_id = t.id AND c.book_id <> ${bookId}))`;
 }
@@ -216,21 +225,61 @@ export async function ownPurchasesTx(tx: Db, ws: WorkspaceContext, bookId: strin
  * share, so keeping it in Personal too would count it twice: it is erased with the copy instead. `keep` is the rest,
  * kept in Personal as before.
  */
-export async function ownPurchasesOfTx(tx: Db, ws: WorkspaceContext, bookId: string): Promise<{ keep: string[]; arriving: string[] }> {
+export async function ownPurchasesOfTx(
+  tx: Db,
+  ws: WorkspaceContext,
+  bookId: string,
+): Promise<{ keep: string[]; arriving: string[]; arrivingIn: { transactionId: string; lineageId: string; shareBookId: string }[] }> {
   const own = await allOwnPurchasesTx(tx, ws, bookId);
   const tables = await tablesOf(tx);
-  if (own.length === 0 || !tables.has('sync_skipped') || !tables.has('sync_lineage') || !tables.has('shared_books')) return { keep: own, arriving: [] };
-  const arriving = new Set(
-    (
-      await tx.values<[string]>(sql`
-        SELECT l.head_transaction_id FROM sync_lineage l
-        WHERE l.book_id = ${bookId} AND l.head_transaction_id IN ${own}
-          AND EXISTS (SELECT 1 FROM sync_skipped s JOIN shared_books b ON b.book_id = s.book_id
-            WHERE s.entity = 'purchase' AND s.id = l.lineage_id AND s.error = ${`${HELD_PREFIX}: ${bookId}`}
-              AND b.state = 'active' AND b.book_id <> ${bookId})`)
-    ).map(([id]) => id),
-  );
-  return { keep: own.filter((id) => !arriving.has(id)), arriving: own.filter((id) => arriving.has(id)) };
+  if (own.length === 0 || !tables.has('sync_skipped') || !tables.has('sync_lineage') || !tables.has('shared_books')) return { keep: own, arriving: [], arrivingIn: [] };
+  const rows = await tx.values<[string, string, string]>(sql`
+    SELECT DISTINCT l.head_transaction_id, l.lineage_id, s.book_id FROM sync_lineage l
+    JOIN sync_skipped s ON s.entity = 'purchase' AND s.id = l.lineage_id AND s.error = ${`${HELD_PREFIX}: ${bookId}`}
+    JOIN shared_books b ON b.book_id = s.book_id AND b.state = 'active' AND b.book_id <> ${bookId}
+    WHERE l.book_id = ${bookId} AND l.head_transaction_id IN ${own}
+    ORDER BY l.head_transaction_id, s.book_id`);
+  const arrivingIn: { transactionId: string; lineageId: string; shareBookId: string }[] = [];
+  for (const [transactionId, lineageId, shareBookId] of rows) {
+    if (!arrivingIn.some((a) => a.transactionId === transactionId)) arrivingIn.push({ transactionId, lineageId, shareBookId });
+  }
+  const arriving = new Set(arrivingIn.map((a) => a.transactionId));
+  return { keep: own.filter((id) => !arriving.has(id)), arriving: own.filter((id) => arriving.has(id)), arrivingIn };
+}
+
+/**
+ * Before the erase takes them (A6 fix round 3): where each own purchase the share brings back was paid from here — its
+ * own money accounts by currency, and its card — written down for that share under `sharing.arriving.<share>`, so the
+ * share's Place them now lands each on exactly that account (D-B6). Local only, never sent; no migration.
+ */
+export async function writeArrivingTx(tx: Db, arrivingIn: readonly { transactionId: string; lineageId: string; shareBookId: string }[]): Promise<void> {
+  const byShare = new Map<string, Record<string, { accountId: string; currency: string; cardId: string | null }[]>>();
+  const joint = (await tablesOf(tx)).has('nw_joint_accounts');
+  for (const { transactionId, lineageId, shareBookId } of arrivingIn) {
+    const [card] = await tx.values<[string | null]>(sql`SELECT card_id FROM transactions WHERE id = ${transactionId}`);
+    const sides = await tx.values<[string, string]>(sql`
+      SELECT DISTINCT e.account_id, e.currency FROM entries e JOIN accounts a ON a.id = e.account_id
+      WHERE e.transaction_id = ${transactionId} AND a.kind IN ('asset', 'liability')
+        AND a.id NOT IN (SELECT account_id FROM book_member_accounts)
+        ${joint ? sql`AND a.id NOT IN (SELECT account_id FROM nw_joint_accounts)` : sql``}
+      ORDER BY e.currency, e.account_id`);
+    const cardId = card?.[0] ?? null;
+    const cardAccount = cardId ? (await tx.values<[string]>(sql`SELECT account_id FROM cards WHERE id = ${cardId}`))[0]?.[0] : undefined;
+    const map = byShare.get(shareBookId) ?? {};
+    map[lineageId] = sides.map(([accountId, currency]) => ({ accountId, currency, cardId: cardAccount === accountId ? cardId : null }));
+    byShare.set(shareBookId, map);
+  }
+  for (const [shareBookId, map] of byShare) {
+    const key = `sharing.arriving.${shareBookId}`;
+    const [row] = await tx.values<[string]>(sql`SELECT value FROM settings WHERE key = ${key}`);
+    let before: Record<string, unknown> = {};
+    try {
+      before = row ? (JSON.parse(row[0]) as Record<string, unknown>) : {};
+    } catch {
+      before = {};
+    }
+    await tx.run(sql`INSERT INTO settings (key, value) VALUES (${key}, ${JSON.stringify({ ...before, ...map })}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
+  }
 }
 
 async function allOwnPurchasesTx(tx: Db, ws: WorkspaceContext, bookId: string): Promise<string[]> {

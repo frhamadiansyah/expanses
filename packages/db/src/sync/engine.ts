@@ -2,7 +2,7 @@ import { uuidv7 } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import { replacementsOf, type Database, type Tx } from '../database';
-import { pullAndApply, reconcileAllMembersTx, type PullResult } from './apply';
+import { ARRIVING_KEY, pullAndApply, reconcileAllMembersTx, type PullResult } from './apply';
 import { clearAuthorityTx, eventBookWorkspaceOf, groupLogWorkspaceOf, mayLinkAsMemberTx, viewActiveDevices, viewDevice, viewMember, viewOtherActiveOwners, viewOwnerDevices, viewRoleOfDevice } from './authority';
 import { ownersGone } from '../repos/sharing';
 import { recalcPendingForeign } from '../repos/fx-pending';
@@ -292,6 +292,11 @@ export class SyncEngine {
    * Ordinary calls never wait for each other (a group log's sync removes a device and syncs itself again inside).
    */
   private readonly inFlight = new Map<string, Set<Promise<unknown>>>();
+  /**
+   * Books in a whole-log pull right now (`resetAndPull`): only their pulls land this member's own purchases with no head
+   * on own accounts (D-B6, A6 fix round 3). No ordinary call of the book runs meanwhile (`alone`), so none lands that way.
+   */
+  private readonly landing = new Set<string>();
   /** `replacementsOf(database)` as this engine last saw it: a change means a restore swapped the rows (review R1). */
   private seenReplacements: number;
 
@@ -583,7 +588,7 @@ export class SyncEngine {
   }
 
   private pull(bookId: string, seen?: SeenLog): Promise<PullResult> {
-    return pullAndApply(this.database, this.transport, this.sealer, bookId, this.now, seen);
+    return pullAndApply(this.database, this.transport, this.sealer, bookId, this.now, seen, this.landing.has(bookId) ? { landOwn: true } : {});
   }
 
   /* ------------------------------------------------------------- invites */
@@ -872,7 +877,13 @@ export class SyncEngine {
     });
     await steps.beforePull?.();
     const seen = new SeenLog();
-    let result = await this.syncOnceNow(bookId, seen);
+    this.landing.add(bookId);
+    let result: SyncOnceResult;
+    try {
+      result = await this.syncOnceNow(bookId, seen);
+    } finally {
+      this.landing.delete(bookId);
+    }
     if (!result.stopped) {
       // S4 (task 9a): an edit the backup made and drained before it was taken comes back under the old device's id,
       // no longer "own", so the pull refused it without putting the row back. Every member row goes to the view's.
@@ -961,6 +972,8 @@ export class SyncEngine {
     });
     const after = new Set((await heldElsewhereOf(this.database, bookId)).map((row) => `${row.entity}:${row.id}`));
     const placed = held.filter((row) => !after.has(`${row.entity}:${row.id}`)).length;
+    // What the delete wrote down for this share has done its work once nothing is held any more.
+    if (after.size === 0) await this.database.db.run(sql`DELETE FROM settings WHERE key = ${ARRIVING_KEY(bookId)}`);
     await this.writeRecord(bookId);
     return { placed, stillHeld: after.size, result };
   }

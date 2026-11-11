@@ -14,6 +14,7 @@ import {
   keepInPersonalTx,
   keptByRecordsTx,
   ownPurchasesOfTx,
+  writeArrivingTx,
   ownPurchasesTx,
   ownRecordsMessage,
   readOnlyCopyTx,
@@ -174,8 +175,14 @@ async function planTx(tx: Db, ws: WorkspaceContext, book: BookRow): Promise<Book
   // A purchase with a part here and a part elsewhere (or any posted transaction whose lines touch two workspaces) would
   // be half deleted: refused before anything is written.
   if (n > 0) {
+    // A6 fix round 3: a share's purchase on a category this copy held is that share's, not a split; the erase spares it.
+    const anotherShares =
+      erases && (await tableExists(tx, 'sync_lineage'))
+        ? sql`AND NOT EXISTS (SELECT 1 FROM sync_lineage l WHERE l.head_transaction_id = t.id AND l.book_id <> ${bookId}
+            AND (l.book_id IN (SELECT id FROM books) OR l.book_id IN (SELECT book_id FROM shared_books)))`
+        : sql``;
     const straddling = await tx.values<[string]>(sql`
-      SELECT 1 FROM transactions t WHERE t.id IN (${filedSql(bookId, splits)}) AND (
+      SELECT 1 FROM transactions t WHERE t.id IN (${filedSql(bookId, splits)}) ${anotherShares} AND (
         ${splits ? sql`EXISTS (SELECT 1 FROM book_transaction_splits s WHERE s.transaction_id = t.id AND s.book_id <> ${bookId}) OR` : sql``}
         EXISTS (SELECT 1 FROM book_transactions b WHERE b.transaction_id = t.id AND b.book_id <> ${bookId})
         OR EXISTS (SELECT 1 FROM entries e JOIN book_categories c ON c.category_account_id IN (e.account_id, e.spend_category_id)
@@ -267,6 +274,8 @@ export async function deleteBook(
           records: plan.ownRecords > 0 ? (await keptByRecordsTx(tx, ws, bookId)).own : [],
         })
       ).length;
+      // The own purchases a share here brings back: where each was paid from goes on record for that share's Place them now.
+      await writeArrivingTx(tx, (await ownPurchasesOfTx(tx, ws, bookId)).arrivingIn);
       const erased = await eraseBookTx(tx, ws, bookId);
       await audit({ erased: true, transactions: erased.transactions, categories: erased.categories, budgets: erased.budgets, keptInPersonal: kept });
       return { ...erased, erased: true, keptInPersonal: kept };
