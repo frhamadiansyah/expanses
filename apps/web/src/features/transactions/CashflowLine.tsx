@@ -13,6 +13,8 @@ import { useOneLine } from './use-one-line';
 const FLASH_MS = 1600;
 /** A tap this soon after the field opened is the hold's own release landing on the page, not a tap outside. */
 const OPEN_GRACE_MS = 450;
+/** A Return this soon after a save is a double press, not the keyboard being put away. */
+const SAVE_ECHO_MS = 700;
 /** How far a finger drags down on the field before it reads as putting the keyboard away. */
 const SWIPE_DOWN_PX = 24;
 
@@ -45,6 +47,7 @@ export function CashflowLine() {
   const composer = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState(0);
   const openedAt = useRef(0);
+  const savedAt = useRef(0);
   const swipeFrom = useRef<number | null>(null);
   // Read in the blur handler, which a picker opening fires: a sheet taking the focus is not the field being put away.
   const picking = useRef(line.picking);
@@ -94,8 +97,9 @@ export function CashflowLine() {
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function done() {
-    // Done on an empty field is the keyboard put away.
+    // Done on an empty field is the keyboard put away; a second press landing just after a save is that save's echo.
     if (!typed) {
+      if (Date.now() - savedAt.current < SAVE_ECHO_MS) return;
       close();
       return;
     }
@@ -110,6 +114,7 @@ export function CashflowLine() {
     }
     const saved = await line.save();
     if (!saved) return;
+    savedAt.current = Date.now();
     setLineState({ flashId: saved.id });
     setTimeout(() => {
       if (lineState().flashId === saved.id) setLineState({ flashId: null });

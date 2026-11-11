@@ -118,7 +118,8 @@ test('on Cashflow, holding ＋ opens One line over the list; Return saves the ro
   });
 
   await test.step('a tap outside puts it away and the tab bar comes back', async () => {
-    await page.getByRole('heading', { name: 'Cashflow' }).click();
+    // The dim over the page is the tap outside.
+    await page.getByTestId('line-dim').click({ position: { x: 200, y: 120 } });
     await expect(field(page)).toHaveCount(0);
     await expect(tabBar(page)).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('hold-5-closed.png') });
