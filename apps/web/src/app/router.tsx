@@ -112,6 +112,8 @@ import { SyncDetailsPage } from '../features/sharing/SyncDetailsPage';
 import { AccountMenuPage } from '../features/account/AccountMenuPage';
 import { JoinPage } from '../features/sharing/JoinPage';
 import { SharedItemPage } from '../features/networth/SharedItemPage';
+import { DebtPlanPage } from '../features/debt-plan/DebtPlanPage';
+import { PayFirstPage } from '../features/debt-plan/PayFirstPage';
 import { Layout } from './Layout';
 
 /** The card page's old tabs, still read from a link made before they became pages of their own. */
@@ -491,6 +493,15 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/debts/new', component: AddDebtPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/new', component: AddCardPage }),
   // Debts — everything owed — keeps the address the Loans page had, so a loan's own page stays where it was.
+  // The Debt-free plan: a page of its own over every debt, and its Pay first page (spec §4.0, §4.1).
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/net-worth/plan',
+    component: DebtPlanPage,
+    validateSearch: (search: Record<string, unknown>): { tab?: 'plan' | 'schedule' | 'report' } =>
+      search.tab === 'plan' || search.tab === 'schedule' || search.tab === 'report' ? { tab: search.tab } : {},
+  }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/plan/pay-first', component: PayFirstPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans', component: DebtsPage }),
   createRoute({
     getParentRoute: () => rootRoute,

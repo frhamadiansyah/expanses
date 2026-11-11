@@ -1,24 +1,7 @@
 import { formatMinor, type SpendBonusItem, timeLeftText } from '@expanses/core';
 import { Link } from '@tanstack/react-router';
+import { ProgressRing } from '../../ui/native';
 import { formatPoints } from './useCardPoints';
-
-/** A ring that fills as far as `fraction`: the bonus's progress, with the percent (or a tick, once reached) inside. */
-export function ProgressRing({ fraction, reached, size = 40 }: { fraction: number; reached: boolean; size?: number }) {
-  const pct = Math.round(Math.min(1, Math.max(0, fraction)) * 100);
-  return (
-    <span
-      role="img"
-      aria-label={reached ? 'Reached' : `${pct}% of the way`}
-      data-testid="bonus-ring"
-      className="relative block shrink-0 rounded-full"
-      style={{ width: size, height: size, background: `conic-gradient(var(--ph-up) 0 ${pct}%, var(--ph-track) ${pct}% 100%)` }}
-    >
-      <span className="absolute inset-[4px] flex items-center justify-center rounded-full bg-[var(--ph-surface)] text-[11px] font-semibold text-[var(--ph-ink)]">
-        {reached ? '✓' : `${pct}%`}
-      </span>
-    </span>
-  );
-}
 
 /** What a bonus pays, as the app words it: points of the programme's unit, or the fee a waiver saves. */
 export function rewardText(item: SpendBonusItem, unit: string, currency: string): string {
