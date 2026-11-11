@@ -5,6 +5,9 @@ import { lastGoodCopy } from '../features/recovery/recovery-copy';
 import { dailyDue, type SnapshotInfo, snapshotName } from './snapshot-policy';
 import { IMPORT_MARKER, MANIFEST, memorySnapshots, restoreSnapshot, SnapshotSpaceError, writeWhole } from './snapshots';
 
+// These tests hold the retention rules themselves; the pause on them (src/db/retention.ts) has its own test.
+vi.mock('./retention', () => ({ PRUNING_PAUSED: false }));
+
 const engines: NodeExecutor[] = [];
 afterEach(() => {
   vi.useRealTimers();

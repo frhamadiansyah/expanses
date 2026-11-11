@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { backupDue, type CloudCopy, copiesToRemove, copyName, KEEP_DAYS, KEEP_MAX, lastOwnCopy, listCopies, parseName, shortDevice } from './names';
+
+// These tests hold the retention rules themselves; the pause on them (src/db/retention.ts) has its own test.
+vi.mock('../../../db/retention', () => ({ PRUNING_PAUSED: false }));
 
 const DEVICE = '1A2B3C4D-0000-4000-8000-000000000001';
 const OTHER = '9F8E7D6C-0000-4000-8000-000000000002';

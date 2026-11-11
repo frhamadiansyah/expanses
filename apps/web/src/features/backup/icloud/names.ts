@@ -1,3 +1,5 @@
+import { PRUNING_PAUSED } from '../../../db/retention';
+
 /**
  * The copies in iCloud, as names. Everything the Restore list shows about a copy — when, which device, how big,
  * whether photos are in it — is written into its file name, so listing the folder never downloads anything.
@@ -73,7 +75,9 @@ export function localDay(at: Date): string {
  * Days are counted by the days that have a copy rather than by the calendar, so a phone left in a drawer for a month
  * comes back to find its last week of copies still there, not an empty folder.
  */
-export function copiesToRemove(copies: readonly CloudCopy[], device: string): string[] {
+export function copiesToRemove(copies: readonly CloudCopy[], device: string, paused = PRUNING_PAUSED): string[] {
+  // Paused (src/db/retention.ts): an old copy may hold what a lost database had; none is removed for now.
+  if (paused) return [];
   const mine = copies.filter((copy) => copy.device === shortDevice(device)).sort((a, b) => b.takenAt.localeCompare(a.takenAt));
   const days: string[] = [];
   const remove: string[] = [];

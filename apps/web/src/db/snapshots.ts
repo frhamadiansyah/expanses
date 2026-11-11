@@ -1,4 +1,5 @@
 import type { ImportMarker, Safety, SnapshotStore } from './open';
+import { PRUNING_PAUSED } from './retention';
 import { hasCreateWritable, writeInSafetyWorker } from './safety-write';
 import { dailyDue, keepOne, keepTwo, MIN_COPY_BYTES, parseSnapshotName, roomFor, type SnapshotInfo, type SnapshotReason, snapshotName } from './snapshot-policy';
 
@@ -170,7 +171,13 @@ async function writeManifest(slot: Slot, manifest: Manifest): Promise<void> {
 }
 
 /** Every rule of the store, over whatever `slot` can actually hold files. */
-function storeOver(slot: Slot): SnapshotStore {
+/** `pruning`: whether a written copy removes older ones; off while `PRUNING_PAUSED` (src/db/retention.ts). */
+export interface StoreOptions {
+  pruning?: boolean;
+}
+
+function storeOver(slot: Slot, options: StoreOptions = {}): SnapshotStore {
+  const pruning = options.pruning ?? !PRUNING_PAUSED;
   /**
    * What is really on the device: the manifest filtered down to the files that are still there, plus
    * every copy on disk the manifest does not mention.
@@ -253,11 +260,12 @@ function storeOver(slot: Slot): SnapshotStore {
       // Written first, pruned second, so there is never a moment with zero copies on the device.
       const { valid, invalid } = await survey();
       const others = valid.filter((snapshot) => snapshot.file !== file);
-      const doomed = room === 'prune-first' ? keepOne(others, info) : keepTwo(others, info);
+      // While pruning is paused nothing already on the device goes, not even a copy that never verified.
+      const doomed = !pruning ? [] : room === 'prune-first' ? keepOne(others, info) : keepTwo(others, info);
       await rewrite([info, ...others.filter((snapshot) => !doomed.some((gone) => gone.file === snapshot.file))]);
       for (const snapshot of doomed) await slot.remove(snapshot.file).catch(() => undefined);
       // And what was never whole goes too, now that a copy that is has been read back.
-      for (const broken of invalid) if (broken !== file) await slot.remove(broken).catch(() => undefined);
+      if (pruning) for (const broken of invalid) if (broken !== file) await slot.remove(broken).catch(() => undefined);
       return info;
     },
 
@@ -391,7 +399,7 @@ async function safetyDirectory(): Promise<FileSystemDirectoryHandle> {
  * Deliberately not in the worker. The copies have to be listable and restorable on the device where the
  * worker is exactly what will not start, which is the only day any of this matters.
  */
-export function opfsSnapshots(): SnapshotStore {
+export function opfsSnapshots(options: StoreOptions = {}): SnapshotStore {
   const fileHandle = async (file: string, create = false) => {
     const dir = await safetyDirectory();
     return dir.getFileHandle(file, { create });
@@ -421,7 +429,7 @@ export function opfsSnapshots(): SnapshotStore {
       return names;
     },
     estimate: async () => (await navigator.storage?.estimate?.().catch(() => ({}))) ?? {},
-  });
+  }, options);
 }
 
 /**
@@ -433,6 +441,7 @@ export function memorySnapshots(
   files = new Map<string, Uint8Array>(),
   /** What `navigator.storage.estimate()` would say, so a test can put the store on a device that is nearly full. */
   estimate: () => Promise<{ quota?: number; usage?: number }> = async () => ({}),
+  options: StoreOptions = {},
 ): SnapshotStore {
   return storeOver({
     read: async (file) => files.get(file) ?? null,
@@ -449,7 +458,7 @@ export function memorySnapshots(
     names: async () => [...files.keys()],
     // No quota to speak of by default, and `roomFor` answers 'yes' to an estimate it cannot read.
     estimate,
-  });
+  }, options);
 }
 
 /**
