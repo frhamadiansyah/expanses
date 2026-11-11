@@ -1,5 +1,5 @@
-import { type LoanCalcInput, type LoanCalcStage, type LoanMethod } from '@expanses/core';
-import { firstPaymentFor } from '../ownables/debt-form';
+import { type LoanCalcInput, type LoanCalcStage, type LoanMethod, MAX_LOAN_MONTHS, MAX_LOAN_RATE_BPS, rateBpsFromTyped } from '@expanses/core';
+import { firstPaymentFor, MAX_MONTHS_TEXT, maxRateText } from '../ownables/debt-form';
 import { type Field, readMoney, readPercent, readWhole } from './fields';
 
 /**
@@ -166,8 +166,14 @@ function readRate(typed: string, per: 'month' | 'year'): Field<number> {
   const read = readPercent(typed);
   if (!read.ok) return { ok: false, problem: 'Type a percentage' };
   if (read.value < 0) return { ok: false, problem: 'Not below nothing' };
-  return { ok: true, value: per === 'month' ? read.value * 12 : read.value };
+  // Add debt's own reading, so a rate a month keeps its third decimal ("1,555" is 1866 a year, not 1872).
+  const bps = rateBpsFromTyped(typed, per);
+  if (bps > MAX_LOAN_RATE_BPS) return { ok: false, problem: maxRateText(per) };
+  return { ok: true, value: bps };
 }
+
+/** The longest loan, in years, for the box that asks years. */
+const MAX_YEARS_TEXT = `At most ${MAX_LOAN_MONTHS / 12} years`;
 
 /** A share of `of` typed as a percentage, or an amount, in minor units. */
 function readShare(typed: string, as: 'percent' | 'amount', ofMinor: number, currency: string): Field<number> {
@@ -218,12 +224,14 @@ export function loanWorking(kind: LoanKind, draft: LoanKindDraft, currency: stri
   // How long: whole years for a home, months for the rest.
   let months: number | null;
   if (lengthInYears(kind)) {
-    const years = read('years', readWhole(draft.years), draft.years);
+    const years = read('years', readWhole(draft.years, 'years'), draft.years);
     if (years === 0) problems.years = 'At least one year';
+    if (years !== null && years * 12 > MAX_LOAN_MONTHS) problems.years = MAX_YEARS_TEXT;
     months = years === null ? null : years * 12;
   } else {
-    months = read('months', readWhole(draft.months), draft.months);
+    months = read('months', readWhole(draft.months, 'months'), draft.months);
     if (months === 0) problems.months = 'At least one month';
+    if (months !== null && months > MAX_LOAN_MONTHS) problems.months = MAX_MONTHS_TEXT;
   }
 
   // The rate: stages for a home, one rate for the rest.
@@ -236,7 +244,7 @@ export function loanWorking(kind: LoanKind, draft: LoanKindDraft, currency: stri
       const last = index === draft.stages.length - 1;
       let stageMonths: number | null = null;
       if (!last) {
-        const years = read(`${key}.years`, readWhole(stage.years), stage.years);
+        const years = read(`${key}.years`, readWhole(stage.years, 'years'), stage.years);
         if (years === 0) problems[`${key}.years`] = 'At least one year';
         stageMonths = years === null ? null : years * 12;
         if (stageMonths !== null) used += stageMonths;

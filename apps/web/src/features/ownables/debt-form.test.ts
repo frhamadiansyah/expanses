@@ -223,7 +223,14 @@ describe('a debt filled in by the loan calculator', () => {
     const plan = planNewDebt({ ...draftFromCalculator(prefill, '2026-11-11'), lender: 'Lender' }, 'IDR', '2026-11-11');
     const { terms, periods } = calculatorLoan(home);
     expect(plan.account).toMatchObject({ name: 'Home loan', openingBalanceMinor: 720_000_000, openedOn: '2026-11-11' });
-    expect(plan.terms).toEqual({ lenderName: 'Lender', ...terms, rateBps: 550, rateKind: 'fixed', coretaxCode: '101' });
+    expect(plan.terms).toEqual({
+      lenderName: 'Lender',
+      ...terms,
+      rateBps: 550,
+      rateKind: 'fixed',
+      coretaxCode: '101',
+      laterPeriods: [{ fromOn: periods[1]!.fromOn, rateBps: 1100, kind: 'floating' }],
+    });
     expect(plan.laterPeriods).toEqual([{ fromOn: periods[1]!.fromOn, rateBps: 1100, kind: 'floating' }]);
   });
 
@@ -232,6 +239,25 @@ describe('a debt filled in by the loan calculator', () => {
     expect(plan.terms).toMatchObject({ tenorMonths: 120 });
     expect(plan.laterPeriods).toHaveLength(1);
     expect(() => planNewDebt({ ...draftFromCalculator(prefill, '2026-11-11'), lender: 'Lender', term: '36' }, 'IDR', '2026-11-11')).toThrow(/stages run longer/);
+  });
+
+  it('refuses to save a calculator loan with the months left cleared, rather than dropping its schedule', () => {
+    expect(() => planNewDebt({ ...draftFromCalculator(prefill, '2026-11-11'), lender: 'Lender', term: '' }, 'IDR', '2026-11-11')).toThrow(/months left/i);
+  });
+
+  it('refuses more than fifty years or a rate over 100% a year', () => {
+    expect(() => planNewDebt({ ...draftFromCalculator(prefill, '2026-11-11'), lender: 'Lender', term: '601' }, 'IDR', '2026-11-11')).toThrow(/at most 600 months/i);
+    expect(() => planNewDebt(draft('personal_loan', { owed: '10000000', lender: 'Bank', term: '601' }), 'IDR', '2026-11-11')).toThrow(/at most 600 months/i);
+    expect(() => planNewDebt(draft('personal_loan', { owed: '10000000', lender: 'Bank', term: '12', rate: '100,5' }), 'IDR', '2026-11-11')).toThrow(/at most 100% a year/i);
+    expect(() => planNewDebt(draft('online_loan', { owed: '10000000', lender: 'App', term: '6', rate: '9' }), 'IDR', '2026-11-11')).toThrow(/at most 8,33% a month/i);
+    expect(planNewDebt(draft('online_loan', { owed: '10000000', lender: 'App', term: '6', rate: '8,33' }), 'IDR', '2026-11-11').terms?.rateBps).toBe(9996);
+    expect(readCalculatorPrefill({ ...prefill, months: 601 })).toBeNull();
+    expect(readCalculatorPrefill({ ...prefill, stages: [{ months: 240, rateBps: 10_001, kind: 'fixed' }] })).toBeNull();
+  });
+
+  it('hands the later stages to the terms, to be written with them', () => {
+    const plan = planNewDebt({ ...draftFromCalculator(prefill, '2026-11-11'), lender: 'Lender' }, 'IDR', '2026-11-11');
+    expect(plan.terms?.laterPeriods).toEqual(plan.laterPeriods);
   });
 
   it('keeps a flat loan flat', () => {

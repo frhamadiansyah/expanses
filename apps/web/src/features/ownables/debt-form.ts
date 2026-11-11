@@ -1,5 +1,5 @@
 import type { CatalogEntry } from '@expanses/catalog';
-import { addMonths, calculatorLoan, debtItem, type LoanCalcStage, type LoanMethod, monthOf, parseMajor, paymentDate, rateBpsFromTyped } from '@expanses/core';
+import { addMonths, calculatorLoan, debtItem, type LoanCalcStage, type LoanMethod, MAX_LOAN_MONTHS, MAX_LOAN_RATE_BPS, monthOf, parseMajor, paymentDate, rateBpsFromTyped } from '@expanses/core';
 import { memberLevelsOf } from '../cards/catalog-picker';
 import { longMonth } from '../debt-plan/plan-view';
 import { rateTextPer } from '../loans/loan-view';
@@ -73,6 +73,8 @@ export interface DebtTermsPlan {
   rateBps: number;
   rateKind: 'fixed' | 'floating';
   coretaxCode: string;
+  /** The calculator's later stages, written with the terms in one transaction (absent for a loan typed by hand). */
+  laterPeriods?: DebtRatePeriodPlan[];
 }
 
 /** A rate change written after the terms: a later stage from the loan calculator. */
@@ -108,6 +110,15 @@ export interface NewDebtPlan {
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
+
+/** The longest loan, in months, and the dearest rate, said in the period it is typed in: 100% a year, about 8,33% a month. */
+export const MAX_MONTHS_TEXT = `At most ${MAX_LOAN_MONTHS} months`;
+export function maxRateText(per: 'month' | 'year'): string {
+  if (per === 'year') return `At most ${MAX_LOAN_RATE_BPS / 100}% a year`;
+  return `At most ${(Math.floor(MAX_LOAN_RATE_BPS / 12) / 100).toLocaleString('id-ID', { maximumFractionDigits: 2 })}% a month`;
+}
+/** What Add debt says when the calculator filled it in and the months left were cleared. */
+export const CALCULATOR_NEEDS_MONTHS = 'Months left are needed for the schedule from the calculator';
 
 /**
  * The first payment of a loan added today: today's day of the month, clamped to the 28th so every month has it, next
@@ -170,9 +181,14 @@ export function planNewDebt(draft: DebtItemDraft, currency: string, today: strin
   };
 
   // Months left are what makes a schedule possible. Without them the account still opens, at what is owed.
-  if (draft.term.trim() === '') return { ...empty, account };
+  // A loan from the calculator is its schedule: with the months cleared there would be nothing of it left to save.
+  if (draft.term.trim() === '') {
+    if (draft.fromCalculator) throw new Error(CALCULATOR_NEEDS_MONTHS);
+    return { ...empty, account };
+  }
   const tenorMonths = Number(draft.term.trim());
   if (!Number.isInteger(tenorMonths) || tenorMonths < 1) throw new Error('A loan runs for at least one month');
+  if (tenorMonths > MAX_LOAN_MONTHS) throw new Error(`${MAX_MONTHS_TEXT} left`);
 
   const calc = draft.fromCalculator;
   if (calc) return { ...empty, account, ...calculatorPlan(calc, tenorMonths, originalMinor, lenderName, item.code) };
@@ -181,6 +197,7 @@ export function planNewDebt(draft: DebtItemDraft, currency: string, today: strin
   // Stored as yearly basis points whichever way it was typed; a paylater's monthly figure is that times twelve.
   // Empty is no interest, which is the 'zero' method exactly as before the rate was asked.
   const rateBps = behaviour.asksRate ? rateBpsFromTyped(draft.rate, behaviour.ratePer ?? 'year') : 0;
+  if (rateBps > MAX_LOAN_RATE_BPS) throw new Error(`The rate is ${maxRateText(behaviour.ratePer ?? 'year').toLowerCase()}`);
   return {
     ...empty,
     account,
@@ -222,9 +239,10 @@ function calculatorPlan(calc: CalculatorTerms, tenorMonths: number, originalMino
     paymentDay,
   });
   const [opening, ...later] = periods;
+  const laterPeriods = later.map((period) => ({ fromOn: period.fromOn, rateBps: period.rateBps, kind: period.kind }));
   return {
-    terms: { lenderName, ...terms, rateBps: opening!.rateBps, rateKind: opening!.kind, coretaxCode },
-    laterPeriods: later.map((period) => ({ fromOn: period.fromOn, rateBps: period.rateBps, kind: period.kind })),
+    terms: { lenderName, ...terms, rateBps: opening!.rateBps, rateKind: opening!.kind, coretaxCode, laterPeriods },
+    laterPeriods,
   };
 }
 
@@ -242,7 +260,14 @@ export interface CalculatorPrefill extends CalculatorTerms {
 const isStage = (value: unknown): value is LoanCalcStage => {
   if (typeof value !== 'object' || value === null) return false;
   const stage = value as Record<string, unknown>;
-  return Number.isInteger(stage.months) && (stage.months as number) > 0 && Number.isInteger(stage.rateBps) && (stage.rateBps as number) >= 0 && (stage.kind === 'fixed' || stage.kind === 'floating');
+  return (
+    Number.isInteger(stage.months) &&
+    (stage.months as number) > 0 &&
+    Number.isInteger(stage.rateBps) &&
+    (stage.rateBps as number) >= 0 &&
+    (stage.rateBps as number) <= MAX_LOAN_RATE_BPS &&
+    (stage.kind === 'fixed' || stage.kind === 'floating')
+  );
 };
 const METHODS: readonly LoanMethod[] = ['annuity', 'flat', 'zero'];
 
@@ -251,7 +276,7 @@ export function readCalculatorPrefill(value: unknown): CalculatorPrefill | null 
   if (typeof value !== 'object' || value === null) return null;
   const v = value as Record<string, unknown>;
   if (typeof v.item !== 'string' || typeof v.name !== 'string' || typeof v.owed !== 'string') return null;
-  if (!Number.isInteger(v.months) || (v.months as number) < 1) return null;
+  if (!Number.isInteger(v.months) || (v.months as number) < 1 || (v.months as number) > MAX_LOAN_MONTHS) return null;
   if (typeof v.firstPaymentOn !== 'string' || !DATE.test(v.firstPaymentOn)) return null;
   if (!METHODS.includes(v.method as LoanMethod)) return null;
   if (!Array.isArray(v.stages) || v.stages.length === 0 || !v.stages.every(isStage)) return null;

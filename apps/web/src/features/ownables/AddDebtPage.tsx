@@ -1,6 +1,6 @@
 import { CATALOG, type CatalogEntry } from '@expanses/catalog';
 import { debtItem, groupTypedAmount, isoDate, loanRatePer } from '@expanses/core';
-import { addRatePeriod, applyCatalogEntry, createAccount, createCardAccount, openDebtBalance, saveCardTerms, saveLoanTerms, setLoanItem } from '@expanses/db';
+import { applyCatalogEntry, createAccount, createCardAccount, openDebtBalance, saveCardTerms, saveLoanTerms, setLoanItem } from '@expanses/db';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Search } from 'lucide-react';
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
@@ -18,6 +18,7 @@ import { CardSearch } from './CardSearch';
 import { fieldsFor, handOverRows } from './catalogue-view';
 import { kindOfItem } from '../calculators/loan-calc-view';
 import {
+  CALCULATOR_NEEDS_MONTHS,
   type CalculatorPrefill,
   calculatorStageSpans,
   cardAccountName,
@@ -153,9 +154,8 @@ function DebtItemForm({ item, prefill }: { item: string; prefill: CalculatorPref
         openedOn: plan.account.openedOn,
         openingRateToBase,
       });
+      // The terms carry the calculator's later stages, written in the same transaction: the schedule it showed, to the unit.
       if (plan.terms) await saveLoanTerms(database, ws, { accountId: account.id, ...plan.terms });
-      // The calculator's later stages, each a rate change from its first payment: the schedule it showed, to the unit.
-      for (const period of plan.laterPeriods) await addRatePeriod(database, ws, { accountId: account.id, ...period });
       // Which kind of loan it is, in the words of the item that was just chosen: what the Debts page folds by.
       await setLoanItem(database, ws, account.id, item);
       await household.save([account.id]);
@@ -207,7 +207,16 @@ function DebtItemForm({ item, prefill }: { item: string; prefill: CalculatorPref
             placeholder={monthly ? '% a month' : '% a year'}
           />
         )}
-        {asks.includes('term') && <TextRow label="Months left" value={draft.term} onChange={(e) => set({ term: e.target.value })} inputMode="numeric" placeholder="Months" />}
+        {asks.includes('term') && (
+          <TextRow
+            label="Months left"
+            value={draft.term}
+            onChange={(e) => set({ term: e.target.value })}
+            inputMode="numeric"
+            placeholder="Months"
+            hint={calc && draft.term.trim() === '' ? <span className="text-[var(--ph-alarm)]">{CALCULATOR_NEEDS_MONTHS}</span> : undefined}
+          />
+        )}
         {calc && (
           <TextRow
             label="First payment"

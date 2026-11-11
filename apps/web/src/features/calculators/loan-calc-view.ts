@@ -157,12 +157,14 @@ export function yearlyCostWarning(facts: LoanFacts, rows: readonly ScheduleRow[]
   const received = facts.loanMinor - facts.feeMinor;
   const bps = effectiveYearlyCostBps(received, rows.map((row) => row.paymentMinor));
   if (bps === null || bps === 0) return null;
-  const percent = bps >= 1_000 ? String(Math.round(bps / 100)) : (bps / 100).toLocaleString('id-ID', { maximumFractionDigits: 1 });
+  // Grouped as every figure here is; past 1.000% a year the exact figure means nothing and is not written out.
+  const percent = bps >= 1_000 ? Math.round(bps / 100).toLocaleString('id-ID') : (bps / 100).toLocaleString('id-ID', { maximumFractionDigits: 1 });
   const tail =
     facts.feeMinor > 0
       ? ` Only ${formatMinor(received, currency)} arrives after the fee, and the payments are on the full ${formatMinor(facts.loanMinor, currency)}.`
       : '';
-  return { lead: 'Adds up to about ', figure: `${percent}% a year`, tail: `.${tail}` };
+  const figure = bps > 100_000 ? 'over 1.000% a year' : `${percent}% a year`;
+  return { lead: 'Adds up to about ', figure, tail: `.${tail}` };
 }
 
 /** One part of the price against everything paid: the bar's segment and its line. */
@@ -197,7 +199,7 @@ export type IncomeBand = 'comfortable' | 'stretched' | 'heavy';
 
 /**
  * The payment as a share of the monthly income: the first stage's, and the highest one's when a stage raises it.
- * Under 30% stays comfortable, 30% to 40% is stretched, over 40% is heavy — judged on the highest.
+ * Under 30% stays comfortable, 30% to 40% is stretched, over 40% is heavy — judged on the highest, rounded as shown.
  */
 export function incomeShare(lines: readonly StageLine[], incomeMinor: number): { tag: string; widthPercent: number; band: IncomeBand; note: string } | null {
   if (!(incomeMinor > 0) || lines.length === 0) return null;
@@ -205,8 +207,8 @@ export function incomeShare(lines: readonly StageLine[], incomeMinor: number): {
   const highest = Math.max(...lines.map((line) => line.paymentMinor));
   const firstPercent = percentOf(first, incomeMinor);
   const highestPercent = percentOf(highest, incomeMinor);
-  const highestBps = (highest * 10_000) / incomeMinor;
-  const band: IncomeBand = highestBps < 3_000 ? 'comfortable' : highestBps <= 4_000 ? 'stretched' : 'heavy';
+  // Judged on the percent the tag shows, so a tag of 30% is never called under 30%.
+  const band: IncomeBand = highestPercent < 30 ? 'comfortable' : highestPercent <= 40 ? 'stretched' : 'heavy';
   const note = band === 'comfortable' ? 'Under 30% stays comfortable.' : band === 'stretched' ? 'Between 30% and 40% is stretched.' : 'Over 40% leaves little room.';
   return {
     tag: highest > first ? `${firstPercent}% → ${highestPercent}%` : `${firstPercent}%`,
@@ -223,9 +225,10 @@ export function halfRepaidText(month: number | null): { month: string; year: str
 }
 
 /** Save as debt: the debt, its name and owed figure as Add debt's boxes show them, the months, and the loan's shape. */
-export function debtPrefill(kind: LoanKind, input: LoanCalcInput, currency: string, item: string = KIND_ITEM[kind]): CalculatorPrefill {
+export function debtPrefill(kind: LoanKind, input: LoanCalcInput, currency: string, item?: string): CalculatorPrefill {
   return {
-    item,
+    // The debt Add debt sent here, while the kind still matches it; switching kinds files it as the new kind's debt.
+    item: item && kindOfItem(item) === kind ? item : KIND_ITEM[kind],
     name: KIND_TITLE[kind],
     owed: groupedMajorString(input.principalMinor, currency),
     months: input.stages.reduce((total, stage) => total + stage.months, 0),

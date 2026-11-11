@@ -80,6 +80,30 @@ describe('reading the loan calculator’s boxes', () => {
     expect(loanWorking('other', { ...emptyLoanKindDraft('other'), amount: '50.000.000', months: '24', rate: '0' }, 'IDR', TODAY).input?.method).toBe('zero');
   });
 
+  it('refuses a length over fifty years and a rate over 100% a year, in plain words', () => {
+    expect(loanWorking('home', homeDraft({ years: '51' }), 'IDR', TODAY)).toMatchObject({ input: null, problems: { years: 'At most 50 years' } });
+    expect(loanWorking('home', homeDraft({ years: '50' }), 'IDR', TODAY).input).not.toBeNull();
+    const other = (patch: Partial<LoanKindDraft>) => loanWorking('other', { ...emptyLoanKindDraft('other'), amount: '50.000.000', months: '24', rate: '9', ...patch }, 'IDR', TODAY);
+    expect(other({ months: '601' })).toMatchObject({ input: null, problems: { months: 'At most 600 months' } });
+    expect(other({ months: '99999999', rate: '0' })).toMatchObject({ input: null, problems: { months: 'At most 600 months' } });
+    expect(other({ rate: '100,01' })).toMatchObject({ input: null, problems: { rate: 'At most 100% a year' } });
+    expect(other({ rate: '100' }).input).not.toBeNull();
+    expect(loanWorking('home', homeDraft({ stages: [{ kind: 'fixed', years: '3', rate: '5,5' }, { kind: 'floating', years: '', rate: '1000' }] }), 'IDR', TODAY).problems).toMatchObject({ 'stage2.rate': 'At most 100% a year' });
+    const online = (rate: string) => loanWorking('online', { ...emptyLoanKindDraft('online'), amount: '6.000.000', months: '6', rate }, 'IDR', TODAY);
+    expect(online('8,34')).toMatchObject({ input: null, problems: { rate: 'At most 8,33% a month' } });
+    expect(online('8,33').input).not.toBeNull();
+  });
+
+  it('says a length that is not whole in its own unit, with no sample figure', () => {
+    expect(loanWorking('other', { ...emptyLoanKindDraft('other'), amount: '50.000.000', months: '1,5', rate: '9' }, 'IDR', TODAY).problems.months).toBe('Whole months only');
+    expect(loanWorking('home', homeDraft({ years: '2,5' }), 'IDR', TODAY).problems.years).toBe('Whole years only');
+  });
+
+  it('keeps a rate a month as typed to the third decimal, as Add debt does', () => {
+    const online = loanWorking('online', { ...emptyLoanKindDraft('online'), amount: '6.000.000', months: '6', rate: '1,555' }, 'IDR', TODAY);
+    expect(online.input?.stages[0]?.rateBps).toBe(1866);
+  });
+
   it('reads what was kept back, and anything it cannot read as the empty box', () => {
     const kept = { ...emptyLoanCalcDraft(), kind: 'vehicle' as const };
     kept.drafts.home = homeDraft();
@@ -138,6 +162,12 @@ describe('the loan calculator’s result', () => {
     expect(incomeShare(result.lines, 15_000_000)).toMatchObject({ band: 'heavy', note: 'Over 40% leaves little room.' });
     expect(incomeShare(result.lines.slice(0, 1), 30_000_000)?.tag).toBe('17%');
     expect(incomeShare(result.lines, 0)).toBeNull();
+    // The tag and the band agree at the edges: a share shown as 30% is not called under 30%, one shown as 40% not over 40%.
+    const line = (paymentMinor: number) => [{ ...result.lines[0]!, paymentMinor }];
+    expect(incomeShare(line(2_960), 10_000)).toMatchObject({ tag: '30%', band: 'stretched' });
+    expect(incomeShare(line(2_940), 10_000)).toMatchObject({ tag: '29%', band: 'comfortable' });
+    expect(incomeShare(line(4_040), 10_000)).toMatchObject({ tag: '40%', band: 'stretched' });
+    expect(incomeShare(line(4_060), 10_000)).toMatchObject({ tag: '41%', band: 'heavy' });
   });
 
   it('says what a flat rate a year really costs', () => {
@@ -161,6 +191,13 @@ describe('the loan calculator’s result', () => {
       'Adds up to about 97% a year. Only Rp 5.820.000 arrives after the fee, and the payments are on the full Rp 6.000.000.',
     );
     expect(feeLine({ ...online.facts!, feeMinor: 0 }, res.interestMinor, 'IDR')).toBeNull();
+    // A figure in the thousands is grouped, and an absurd one is capped rather than written in exponents.
+    const steep = { ...online.facts!, loanMinor: 10_000_000, feeMinor: 1_000_000 };
+    expect(yearlyCostWarning(steep, [{ onDate: '2026-12-11', paymentMinor: 10_000_000, principalMinor: 10_000_000, interestMinor: 0, balanceMinor: 0 }], 'IDR')?.figure).toBe('254% a year');
+    const huge = yearlyCostWarning({ ...steep, feeMinor: 9_999_999 }, [{ onDate: '2026-12-11', paymentMinor: 10_000_000, principalMinor: 10_000_000, interestMinor: 0, balanceMinor: 0 }], 'IDR')!;
+    expect(huge.figure).toBe('over 1.000% a year');
+    const thousands = yearlyCostWarning({ ...steep, feeMinor: 4_000_000 }, Array.from({ length: 6 }, () => ({ onDate: '2026-12-11', paymentMinor: 1_666_667, principalMinor: 1_666_667, interestMinor: 0, balanceMinor: 0 })), 'IDR')!;
+    expect(thousands.figure).not.toMatch(/e\+/);
   });
 
   it('hands Add debt the debt, its figures and the loan’s shape', () => {
@@ -174,6 +211,10 @@ describe('the loan calculator’s result', () => {
       stages: working.input!.stages,
     });
     expect(debtPrefill('home', working.input!, 'IDR', 'apartment_mortgage').item).toBe('apartment_mortgage');
+    // A debt brought from Add debt is kept only while the kind still matches it: switching kinds files it as the new kind.
+    expect(debtPrefill('home', working.input!, 'IDR', 'online_loan').item).toBe('home_mortgage');
+    expect(debtPrefill('vehicle', working.input!, 'IDR', 'apartment_mortgage').item).toBe('vehicle_leasing');
+    expect(debtPrefill('other', working.input!, 'IDR', 'multi_purpose_loan').item).toBe('multi_purpose_loan');
     expect(kindOfItem('apartment_mortgage')).toBe('home');
     expect(kindOfItem('online_loan')).toBe('online');
     expect(kindOfItem('multi_purpose_loan')).toBe('other');

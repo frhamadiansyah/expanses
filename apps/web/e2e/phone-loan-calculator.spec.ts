@@ -73,6 +73,14 @@ test('by thumb: a home loan worked out, its table, and Save as debt add a loan w
   await expect(page.getByTestId('calculator-stage').nth(1)).toContainText('11% a year, floating');
   await expect(page.getByText('From the calculator. Each figure can still be changed before saving.')).toBeVisible();
   await page.getByLabel('Lender').fill('Bank');
+  // Cleared, the months left are asked for on their row, and Add debt refuses rather than drop the schedule.
+  await page.getByLabel('Months left').fill('');
+  const needsMonths = 'Months left are needed for the schedule from the calculator';
+  await expect(page.getByText(needsMonths).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Add debt' }).tap();
+  await expect(page).toHaveURL(/\/debts\/new/);
+  await expect(page.getByText(needsMonths)).toHaveCount(2);
+  await page.getByLabel('Months left').fill('240');
   await page.getByRole('button', { name: 'Add debt' }).tap();
 
   // The loan's own schedule is the calculator's table: its first and last months, to the unit.
@@ -93,7 +101,12 @@ test('by thumb: an online loan says what it adds up to a year, and a vehicle wha
   await page.goto('/calculators/loan');
   await page.getByRole('radio', { name: 'Online' }).tap();
   await page.getByLabel('Amount', { exact: true }).pressSequentially('6000000');
+  // Past fifty years, and past 100% a year, the box says so and nothing is worked out.
+  await page.getByLabel('Months', { exact: true }).fill('601');
+  await expect(page.getByText('At most 600 months')).toBeVisible();
   await page.getByLabel('Months', { exact: true }).fill('6');
+  await page.getByLabel('Interest', { exact: true }).fill('9');
+  await expect(page.getByText('At most 8,33% a month')).toBeVisible();
   await page.getByLabel('Interest', { exact: true }).fill('2,95');
   await page.getByLabel('Fee at the start', { exact: true }).fill('3');
   await page.getByRole('button', { name: 'See result' }).tap();
