@@ -207,7 +207,7 @@ export function CashflowLine() {
             ref={composer}
             data-testid="line-composer"
             data-look="card"
-            className={`fixed z-50 overflow-hidden rounded-[18px] bg-[var(--ph-surface)] md:hidden${shaking ? ' line-shake' : ''}`}
+            className={`fixed z-50 overflow-hidden rounded-[18px] bg-[var(--ph-surface)] md:hidden${shaking ? ' line-shake' : ''}${line.picking !== null ? ' invisible' : ''}`}
             style={{
               ...sides,
               left: 8,
@@ -245,7 +245,7 @@ export function CashflowLine() {
           ref={composer}
           data-testid="line-composer"
           data-look="plain"
-          className="fixed inset-x-0 z-50 border-t-[0.5px] border-[var(--ph-hair)] px-2 pt-1.5 pb-2 md:hidden"
+          className={`fixed inset-x-0 z-50 border-t-[0.5px] border-[var(--ph-hair)] px-2 pt-1.5 pb-2 md:hidden${line.picking !== null ? ' invisible' : ''}`}
           style={{
             ...sides,
             bottom: inset,

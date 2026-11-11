@@ -190,6 +190,38 @@ test('Card look: a blocked blue key saves nothing and shakes the missing part; t
   });
 });
 
+test('Card look: a part fixed from the preview row opens its picker above the card, and the line then saves', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Bank Nusa', balance: '5000000' });
+  await page.goto('/transactions');
+  await hold(page, 'line');
+  await field(page).fill('kopi kenangan 38rb');
+  await expect(send(page)).toBeDisabled();
+
+  await test.step('Paid with: the sheet is fully clickable, the row shows the pick, the arrow is live', async () => {
+    await preview(page).getByRole('button', { name: 'Paid with', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: /Bank Nusa/ }).first().click();
+    await expect(preview(page).getByRole('button', { name: 'Paid with', exact: true })).toContainText('Bank Nusa');
+    await expect(field(page)).toBeFocused();
+    await expect(field(page)).toHaveValue('kopi kenangan 38rb');
+    await expect(send(page)).toBeEnabled();
+  });
+
+  await test.step('Category: same', async () => {
+    await preview(page).getByRole('button', { name: 'Category', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Books', exact: true }).click();
+    await expect(preview(page).getByRole('button', { name: 'Category', exact: true })).toHaveText('Books');
+    await expect(field(page)).toBeFocused();
+  });
+
+  await test.step('the blue key saves it', async () => {
+    await field(page).press('Enter');
+    await expect(field(page)).toHaveValue('');
+    const row = page.getByTestId('transaction-row').filter({ hasText: 'Kopi Kenangan' });
+    await expect(row).toHaveCount(1);
+    await expect(row).toContainText('Books');
+  });
+});
+
 test('Plain look: a bare bar; a blocked blue key shows the amber hint, shakes it and saves nothing', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Bank Nusa', balance: '5000000' });
   await chooseLook(page, 'Plain');
