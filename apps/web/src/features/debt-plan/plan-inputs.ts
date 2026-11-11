@@ -71,6 +71,8 @@ export interface PlanDebt {
   hasTerms: boolean;
   /** The tenor, for "4/6". */
   instalmentOf: number | null;
+  /** Instalments still to come on its own schedule (the late one included); null when it has none. */
+  instalmentsLeft: number | null;
   /** Its own schedule's last month. */
   endsMonth: string | null;
   next: PlanItem | null;
@@ -192,6 +194,7 @@ function loanDebt(row: DebtRow, readings: PlanReadings, today: string): PlanDebt
     ratePer: loanRatePer(readings.items[accountId]),
     hasTerms: terms !== undefined,
     instalmentOf: terms?.tenorMonths ?? null,
+    instalmentsLeft: terms && fact ? schedule.length : null,
     endsMonth: schedule.at(-1)?.onDate.slice(0, 7) ?? null,
     late: late.length > 0,
     daysLate,
@@ -256,6 +259,7 @@ function cardDebt(row: DebtRow, readings: PlanReadings, today: string): PlanDebt
     ratePer: 'year' as const,
     hasTerms: facts?.hasTerms ?? false,
     instalmentOf: null,
+    instalmentsLeft: null,
     endsMonth: null,
     late,
     daysLate,
@@ -337,6 +341,7 @@ function personDebt(row: DebtRow, readings: PlanReadings, today: string): PlanDe
     ratePer: 'year' as const,
     hasTerms: true,
     instalmentOf: null,
+    instalmentsLeft: null,
     endsMonth: null,
     late,
     daysLate,
@@ -384,6 +389,7 @@ function payableDebt(row: DebtRow, readings: PlanReadings): PlanDebt {
     ratePer: 'year',
     hasTerms: false,
     instalmentOf: null,
+    instalmentsLeft: null,
     endsMonth: null,
     next: null,
     late: false,
@@ -414,6 +420,7 @@ function paidOffDebt(parts: Pick<PlanDebt, 'key' | 'kind' | 'accountId' | 'perso
     ratePer: 'year',
     hasTerms: parts.kind === 'loan',
     instalmentOf: null,
+    instalmentsLeft: null,
     endsMonth: null,
     next: null,
     late: false,
