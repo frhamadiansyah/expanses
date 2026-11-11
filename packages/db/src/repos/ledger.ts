@@ -818,6 +818,8 @@ export async function rekeyTransactionTx(tx: Db, ws: WorkspaceContext, id: strin
   for (const [table, column] of refs) {
     await tx.run(sql`UPDATE ${sql.raw(table)} SET ${sql.raw(column)} = ${next} WHERE ${sql.raw(column)} = ${id}`);
   }
+  // History and Activity name a transaction by `audit_log.entity_id`, which no foreign key holds: they follow too.
+  await tx.run(sql`UPDATE audit_log SET entity_id = ${next} WHERE entity = 'transaction' AND entity_id = ${id}`);
   await tx.run(sql`DELETE FROM transactions WHERE id = ${id}`);
   if (ref !== null) await tx.run(sql`UPDATE transactions SET external_ref = ${ref} WHERE id = ${next}`);
   return next;

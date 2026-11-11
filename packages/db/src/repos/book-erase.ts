@@ -8,7 +8,6 @@ import { inputOfTx } from './activity';
 import { BookError, personalBookIdTx, type BookKind } from './books';
 import { healthTablesExist } from './health-tables';
 import { eraseVoidTransactionsTx, LedgerError, refileInPlaceTx, rekeyTransactionTx, replaceTransactionTx, voidTransactionTx } from './ledger';
-import { fileSharedTransferTx } from './shared-transfers';
 import { categoryInBookTx } from './move-group';
 import { deleteGoalRowsTx } from './goals';
 
@@ -271,8 +270,9 @@ async function personalCategoryOfTx(tx: Db, ws: WorkspaceContext, bookId: string
  *   shared purchase whose id is in the relay's log, so the old id goes with the copy, as every purchase's does.
  *
  * Every figure — balances, holdings, units, rates, days — stays to the unit. Categories Personal has no copy of are
- * made there first, with capture on, and when Personal is itself shared and active, what lands in it is captured
- * afterwards as any write to it would be, so the partner of Personal sees it. Returns the new ids, purchases first.
+ * made there first, with capture on. When Personal is itself shared and active, what lands in it that never travelled
+ * in the copy's share is captured afterwards as any write to it would be; what came through the copy stays local
+ * (its partners hold it already). Returns the new ids, purchases first.
  */
 export async function keepInPersonalTx(tx: Tx, ws: WorkspaceContext, bookId: string, keep: { purchases: readonly string[]; records: readonly string[] }): Promise<string[]> {
   const all = [...keep.purchases, ...keep.records];
@@ -286,6 +286,18 @@ export async function keepInPersonalTx(tx: Tx, ws: WorkspaceContext, bookId: str
     SELECT account_id FROM entries WHERE transaction_id IN ${all}
     UNION SELECT spend_category_id FROM entries WHERE transaction_id IN ${all} AND spend_category_id IS NOT NULL`);
   for (const [categoryId] of named) await there(categoryId);
+
+  // Which of them came through the copy's share (a lineage of the copy holds them): its partners hold them already.
+  const throughShare = new Set(
+    tables.has('sync_lineage')
+      ? (
+          await tx.values<[string]>(sql`
+            SELECT head_transaction_id FROM sync_lineage WHERE book_id = ${bookId} AND head_transaction_id IN ${all}
+            UNION SELECT lineage_id FROM sync_lineage WHERE book_id = ${bookId} AND lineage_id IN ${all}
+            ${tables.has('sync_lineage_last') ? sql`UNION SELECT l.transaction_id FROM sync_lineage_last l JOIN sync_lineage s ON s.lineage_id = l.lineage_id WHERE s.book_id = ${bookId} AND l.transaction_id IN ${all}` : sql``}`)
+        ).map(([id]) => id)
+      : [],
+  );
 
   // Phase 1, capture off: the copy is read-only (§8.6), and nothing written to it is sent.
   const landed = await withCaptureSuspended(tx, async () => {
@@ -314,19 +326,20 @@ export async function keepInPersonalTx(tx: Tx, ws: WorkspaceContext, bookId: str
     return out;
   });
 
-  // Phase 2, capture on: Personal shared and active here takes them as any write to it (its partner sees them).
+  // Phase 2, capture on: Personal shared and active here takes, as any write to it, only what never travelled in the
+  // copy's share (fix round 4, R3-I1, ruled option 2). A row that came through the copy is held by its partners in
+  // their copies already, and the copy can never send them a void (it is read-only): sent to Personal's partner too, it
+  // would be counted twice where the same partner is in both. Never doubling wins over a partner of Personal who is not
+  // in the copy seeing it. Only purchases are sent here: every row kept is filed in Personal (a moved purchase, a
+  // re-filed trade or sale). A bare own transfer is never filed in a shared copy (`fileTransferTx` writes only its
+  // redacted row there), so it is never in the erase set and never lands here.
   const [shared] = tables.has('shared_books') ? await tx.values<[string]>(sql`SELECT state FROM shared_books WHERE book_id = ${personal}`) : [];
   if (shared?.[0] === 'active') {
-    for (const id of landed) {
+    const sources = [...keep.purchases, ...keep.records];
+    for (const [i, id] of landed.entries()) {
+      if (throughShare.has(sources[i]!)) continue;
       if ((await tx.values(sql`SELECT 1 FROM book_transactions WHERE transaction_id = ${id} AND book_id = ${personal}`)).length > 0) {
         await capturePostedTx(tx, id, personal, null);
-        continue;
-      }
-      // A bare transfer travels as its redacted row: the one written while capture was off is written again, captured.
-      const [shadow] = tables.has('shared_transfers') ? await tx.values(sql`SELECT 1 FROM shared_transfers WHERE book_id = ${personal} AND transaction_id = ${id}`) : [];
-      if (shadow) {
-        await tx.run(sql`DELETE FROM shared_transfers WHERE book_id = ${personal} AND transaction_id = ${id}`);
-        await fileSharedTransferTx(tx, ws, id, personal);
       }
     }
   }
