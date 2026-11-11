@@ -1,6 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import { openAccount, openCard, openLoan } from './accounts';
 import { addTransaction } from './add-transaction';
+import { pickBillCategory, pickBillPaidFrom } from './bill-form';
 
 /**
  * The Debt-free plan's journeys, on invented figures:
@@ -63,4 +64,61 @@ export async function planRows(page: Page): Promise<string[]> {
   const rows = page.getByTestId('pay-first-row');
   await expect(rows.first()).toBeVisible();
   return rows.evaluateAll((els) => els.map((el) => el.getAttribute('data-name') ?? ''));
+}
+
+/** A monthly bill through the bill form: its amount, the day it comes out and the day it must be paid by. */
+export async function addBill(page: Page, o: { name: string; amount: string; outDay: string; payBy?: string }) {
+  await page.goto('/bills/new');
+  await page.getByLabel('Name', { exact: true }).fill(o.name);
+  await page.getByLabel('Amount', { exact: true }).fill(o.amount);
+  await pickBillCategory(page);
+  await pickBillPaidFrom(page, 'BCA Tahapan');
+  await page.getByLabel('Bill date').selectOption(o.outDay);
+  if (o.payBy) await page.getByLabel('Due by').selectOption(o.payBy);
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page).toHaveURL(/\/bills$/);
+}
+
+/**
+ * A month to schedule, on 11 Nov 2026: the paylater of `seedLatePaylater` (1/6 due 1 Nov, unpaid: 10 days late), BCA
+ * Visa billed on the 31st and due on the 14th with Rp 6.214.300 bought on 20 Oct (due 14 Nov), and Electricity,
+ * Rp 780.000 out on the 10th and due by the 12th.
+ */
+export async function seedMonth(page: Page, o: { paylater?: boolean } = {}) {
+  await page.clock.setSystemTime(at('2026-10-01'));
+  await bank(page);
+  if (o.paylater !== false) await openPaylater(page, { name: 'Kredit', owed: '6000000', perMonth: '2', months: '6' });
+  await openCard(page, { name: 'BCA Visa', statementDay: '31', dueDay: '14' });
+  await page.clock.setSystemTime(at('2026-10-21'));
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Hotel Mulia', paidWith: 'BCA Visa', category: 'Groceries', amount: '6214300', date: '2026-10-20', keyByKey: true });
+  await page.clock.setSystemTime(at('2026-11-11'));
+  await addBill(page, { name: 'Electricity', amount: '780000', outDay: '10', payBy: '12' });
+}
+
+/**
+ * `seedMonth`, plus a 0% personal loan `Bank kecil` (Rp 500.000, one month) opened on 5 Oct and paid off on 6 Oct, and
+ * Kredit's 1/6 paid from the plan's Pay next on 11 Nov (Rp 951.155 principal, Rp 120.000 interest).
+ */
+export async function seedReport(page: Page) {
+  await page.clock.setSystemTime(at('2026-10-01'));
+  await bank(page);
+  await openPaylater(page, { name: 'Kredit', owed: '6000000', perMonth: '2', months: '6' });
+  await page.clock.setSystemTime(at('2026-10-05'));
+  await openLoan(page, { kind: 'Personal loan', name: 'Bank kecil', owed: '500000', lender: 'Bank', months: '1' });
+  await page.clock.setSystemTime(at('2026-10-06'));
+  await page.getByText('Bank kecil', { exact: true }).first().click();
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay off', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Pay off' }).getByRole('button', { name: 'Record pay off' }).click();
+  await expect(page.getByRole('dialog', { name: 'Pay off' })).toHaveCount(0);
+  await openCard(page, { name: 'BCA Visa', statementDay: '31', dueDay: '14' });
+  await page.clock.setSystemTime(at('2026-10-21'));
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Hotel Mulia', paidWith: 'BCA Visa', category: 'Groceries', amount: '6214300', date: '2026-10-20', keyByKey: true });
+  await page.clock.setSystemTime(at('2026-11-11'));
+  await addBill(page, { name: 'Electricity', amount: '780000', outDay: '10', payBy: '12' });
+  await page.goto('/net-worth/plan');
+  await page.getByTestId('plan-pay-next').getByRole('link').click();
+  await page.getByRole('dialog', { name: 'Pay' }).getByRole('button', { name: 'Save payment' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/plan$/);
 }

@@ -27,6 +27,8 @@ export interface PlanItem {
   /** Null for a bill. */
   debtKey: string | null;
   kind: PlanItemKind;
+  /** The debt's (or the bill's) own name: "Kredit". */
+  name: string;
   /** "Kredit · 4/6", "BCA Visa", "Electricity", "Dewi". */
   title: string;
   /** "Statement · 18 Nov", "Bill · 20 Nov", "Lend & borrow · 3 Dec", "Oct instalment". */
@@ -42,6 +44,15 @@ export interface PlanItem {
   paidOn: string | null;
   fromMessage: boolean;
   pay: PayTarget | null;
+  /**
+   * What the item counts toward a month's Due and Paid, in the base currency, when that is not simply its figure: a
+   * card statement counts its own new charges as due and what has gone toward them as paid, so a balance carried from
+   * month to month is never due (or paid) twice. Absent: the figure itself, paid when the item is.
+   */
+  dueBaseMinor?: number | null;
+  paidBaseMinor?: number | null;
+  /** False for a row the totals leave out: a bill paid from a credit card, which that card's statement already counts. */
+  inTotals?: boolean;
 }
 
 export type PlanDebtKind = 'loan' | 'card' | 'person' | 'payable';
@@ -69,6 +80,11 @@ export interface PlanDebt {
   hasTerms: boolean;
   /** The tenor, for "4/6". */
   instalmentOf: number | null;
+  /**
+   * Instalments paid so far: the tenor less those still on its own schedule (this month's on) and less the late ones
+   * of earlier months, which the schedule does not hold. Null when it has no schedule.
+   */
+  instalmentsPaid: number | null;
   /** Its own schedule's last month. */
   endsMonth: string | null;
   next: PlanItem | null;
@@ -99,6 +115,22 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 const monthsBetween = (from: string, to: string): number =>
   (Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 12 + (Number(to.slice(5, 7)) - Number(from.slice(5, 7)));
 
+/** An instalment's number, counted from the loan's first. */
+export const instalmentNumber = (terms: Pick<LoanTermsRow, 'firstPaymentOn'>, dueOn: string) => monthsBetween(terms.firstPaymentOn.slice(0, 7), dueOn.slice(0, 7)) + 1;
+
+/** "Kredit · 4/6". */
+export const instalmentTitle = (name: string, number: number, tenor: number) => `${name} · ${number}/${tenor}`;
+
+/** "Oct instalment" for one of an earlier month than `today`'s, else "Instalment · 1 Nov". */
+export const instalmentDetail = (dueOn: string, today: string) =>
+  monthOf(dueOn) < monthOf(today) ? `${MONTHS[Number(dueOn.slice(5, 7)) - 1]} instalment` : `Instalment · ${dayMonth(dueOn)}`;
+
+/** Spec §6.2: an unpaid instalment's figure — the schedule row in its month, else the first row's, else the period's named payment. */
+export function expectedInstalment(fact: Pick<LoanPlanFact, 'schedule'>, terms: Pick<LoanTermsRow, 'periods'>, dueOn: string, today: string): number | null {
+  const figure = fact.schedule.find((r) => monthOf(r.onDate) === monthOf(dueOn))?.paymentMinor ?? fact.schedule[0]?.paymentMinor ?? periodOn(terms.periods, today)?.paymentMinor ?? null;
+  return figure || null;
+}
+
 /** A figure in the base currency at the held rate, or null with no rate (nothing is still nothing). */
 function toBase(minor: number, currency: string, readings: PlanReadings): number | null {
   if (currency === readings.baseCurrency) return minor;
@@ -115,11 +147,12 @@ function shares(leftMinor: number, borrowed: number): { borrowedMinor: number; r
   return { borrowedMinor, repaidMinor: borrowedMinor - leftMinor };
 }
 
-function item(debt: Pick<PlanDebt, 'key' | 'currency'>, kind: PlanItemKind, id: string, parts: Pick<PlanItem, 'title' | 'detail' | 'dueOn' | 'status' | 'daysLate' | 'minor' | 'pay'>, readings: PlanReadings): PlanItem {
+function item(debt: Pick<PlanDebt, 'key' | 'currency' | 'name'>, kind: PlanItemKind, id: string, parts: Pick<PlanItem, 'title' | 'detail' | 'dueOn' | 'status' | 'daysLate' | 'minor' | 'pay'>, readings: PlanReadings): PlanItem {
   return {
     key: `${kind}:${id}:${parts.dueOn}`,
     debtKey: debt.key,
     kind,
+    name: debt.name,
     ...parts,
     currency: debt.currency,
     baseMinor: parts.minor === null ? null : toBase(parts.minor, debt.currency, readings),
@@ -173,6 +206,10 @@ function loanDebt(row: DebtRow, readings: PlanReadings, today: string): PlanDebt
     ratePer: loanRatePer(readings.items[accountId]),
     hasTerms: terms !== undefined,
     instalmentOf: terms?.tenorMonths ?? null,
+    instalmentsPaid:
+      terms && fact
+        ? Math.max(0, terms.tenorMonths - schedule.length - late.filter((i) => monthOf(i.dueOn) < monthOf(schedule[0]?.onDate ?? fact.scheduleFrom)).length)
+        : null,
     endsMonth: schedule.at(-1)?.onDate.slice(0, 7) ?? null,
     late: late.length > 0,
     daysLate,
@@ -182,15 +219,13 @@ function loanDebt(row: DebtRow, readings: PlanReadings, today: string): PlanDebt
 
   let next: PlanItem | null = null;
   if (terms && fact) {
-    const numberOn = (dueOn: string) => fact.instalments.find((i) => i.dueOn === dueOn)?.number ?? monthsBetween(terms.firstPaymentOn.slice(0, 7), dueOn.slice(0, 7)) + 1;
-    const title = (n: number) => `${row.name} · ${n}/${terms.tenorMonths}`;
-    const detailOf = (dueOn: string) => (monthOf(dueOn) < monthOf(today) ? `${MONTHS[Number(dueOn.slice(5, 7)) - 1]} instalment` : `Instalment · ${dayMonth(dueOn)}`);
+    const numberOn = (dueOn: string) => fact.instalments.find((i) => i.dueOn === dueOn)?.number ?? instalmentNumber(terms, dueOn);
+    const title = (n: number) => instalmentTitle(row.name, n, terms.tenorMonths);
+    const detailOf = (dueOn: string) => instalmentDetail(dueOn, today);
     const oldest = late[0];
     if (oldest) {
-      // Spec §6.2: the schedule row in its month, else the first row's payment, else the period's named payment.
-      const expected =
-        schedule.find((r) => monthOf(r.onDate) === monthOf(oldest.dueOn))?.paymentMinor ?? schedule[0]?.paymentMinor ?? periodOn(terms.periods, today)?.paymentMinor ?? null;
-      next = item(base, 'loan', accountId, { title: title(oldest.number), detail: detailOf(oldest.dueOn), dueOn: oldest.dueOn, status: 'late', daysLate: oldest.daysLate, minor: expected || null, pay: loanPay(accountId) }, readings);
+      const expected = expectedInstalment(fact, terms, oldest.dueOn, today);
+      next = item(base, 'loan', accountId, { title: title(oldest.number), detail: detailOf(oldest.dueOn), dueOn: oldest.dueOn, status: 'late', daysLate: oldest.daysLate, minor: expected, pay: loanPay(accountId) }, readings);
     } else if (schedule[0]) {
       const first = schedule[0];
       next = item(base, 'loan', accountId, { title: title(numberOn(first.onDate)), detail: detailOf(first.onDate), dueOn: first.onDate, status: 'upcoming', daysLate: 0, minor: first.paymentMinor, pay: loanPay(accountId) }, readings);
@@ -239,6 +274,7 @@ function cardDebt(row: DebtRow, readings: PlanReadings, today: string): PlanDebt
     ratePer: 'year' as const,
     hasTerms: facts?.hasTerms ?? false,
     instalmentOf: null,
+    instalmentsPaid: null,
     endsMonth: null,
     late,
     daysLate,
@@ -320,6 +356,7 @@ function personDebt(row: DebtRow, readings: PlanReadings, today: string): PlanDe
     ratePer: 'year' as const,
     hasTerms: true,
     instalmentOf: null,
+    instalmentsPaid: null,
     endsMonth: null,
     late,
     daysLate,
@@ -367,6 +404,7 @@ function payableDebt(row: DebtRow, readings: PlanReadings): PlanDebt {
     ratePer: 'year',
     hasTerms: false,
     instalmentOf: null,
+    instalmentsPaid: null,
     endsMonth: null,
     next: null,
     late: false,
@@ -377,7 +415,7 @@ function payableDebt(row: DebtRow, readings: PlanReadings): PlanDebt {
   };
 }
 
-function paidOffDebt(parts: Pick<PlanDebt, 'key' | 'kind' | 'accountId' | 'personName' | 'name' | 'currency' | 'paidOffMonth'> & { borrowed: number }, readings: PlanReadings): PlanDebt {
+function paidOffDebt(parts: Pick<PlanDebt, 'key' | 'kind' | 'accountId' | 'personName' | 'name' | 'currency' | 'paidOffMonth'> & { borrowed: number; tenor?: number | null }, readings: PlanReadings): PlanDebt {
   const borrowedBase = toBase(parts.borrowed, parts.currency, readings);
   return {
     key: parts.key,
@@ -396,7 +434,9 @@ function paidOffDebt(parts: Pick<PlanDebt, 'key' | 'kind' | 'accountId' | 'perso
     rateBps: null,
     ratePer: 'year',
     hasTerms: parts.kind === 'loan',
-    instalmentOf: null,
+    // A paid-off loan's tenor still numbers its months behind ("Bank · 2/6") in the Schedule and the Report.
+    instalmentOf: parts.tenor ?? null,
+    instalmentsPaid: null,
     endsMonth: null,
     next: null,
     late: false,
@@ -438,7 +478,7 @@ export function planDebts(readings: PlanReadings, today: string): PlanDebt[] {
     const terms = readings.loans.find((loan) => loan.accountId === cleared.accountId);
     const currency = byId.get(cleared.accountId)?.currency ?? readings.baseCurrency;
     return paidOffDebt(
-      { key: cleared.accountId, kind: 'loan', accountId: cleared.accountId, personName: null, name: cleared.name, currency, paidOffMonth: cleared.clearedOn?.slice(0, 7) ?? null, borrowed: terms?.originalMinor ?? increasesOn(cleared.accountId, readings.movements) },
+      { key: cleared.accountId, kind: 'loan', accountId: cleared.accountId, personName: null, name: cleared.name, currency, paidOffMonth: cleared.clearedOn?.slice(0, 7) ?? null, borrowed: terms?.originalMinor ?? increasesOn(cleared.accountId, readings.movements), tenor: terms?.tenorMonths ?? null },
       readings,
     );
   });

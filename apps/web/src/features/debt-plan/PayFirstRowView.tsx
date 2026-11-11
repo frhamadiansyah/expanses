@@ -1,16 +1,14 @@
 import { formatMinor } from '@expanses/core';
 import { Link, type LinkProps } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
-import { loanPay } from './pay-target';
+import { debtLink, loanPay } from './pay-target';
 import type { PlanDebt } from './plan-inputs';
 import type { PayFirstRow } from './plan-view';
 import { PayLink } from './PayLink';
 
-/** Where a debt opens: the Liabilities page's own rule — a loan its page, a card the card, a person Lend & borrow. */
+/** Where a debt opens (`debtLink`), in the shape a `Link` takes. */
 export function debtDestination(debt: PlanDebt): { to: LinkProps['to']; params?: LinkProps['params']; search?: LinkProps['search'] } {
-  if (debt.kind === 'loan') return { to: '/net-worth/loans/$accountId', params: { accountId: debt.accountId! } };
-  if (debt.kind === 'card') return { to: '/cards/$cardId', params: { cardId: debt.accountId! } };
-  return { to: '/net-worth/lend-borrow', search: debt.personName ? { person: debt.personName } : {} };
+  return debtLink(debt) as { to: LinkProps['to']; params?: LinkProps['params']; search?: LinkProps['search'] };
 }
 
 /** The round badge: "!" in red for a late debt, otherwise its place in line. */

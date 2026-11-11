@@ -4,6 +4,7 @@ import {
   billOnNextStatement,
   cardSpendLines,
   cardStatement,
+  cardStatements,
   cardStatementLines,
   createAccount,
   createCardAccount,
@@ -59,6 +60,23 @@ describe('a card statement', () => {
 
     const september = await cardStatement(h.database, h.ws, h.card.id, SEPTEMBER, '2026-09-01');
     expect(september).toMatchObject({ openingMinor: 450_000, chargesMinor: 80_000, creditsMinor: 200_000, closingMinor: 330_000, closed: false, leftToPayMinor: null });
+  });
+});
+
+describe('several statements of one card at once', () => {
+  it('reads the card once and gives each cycle exactly what cardStatement gives it', async () => {
+    const h = await household();
+    await h.buy('2026-07-10', 'June stuff', 100_000);
+    await h.buy('2026-08-01', 'Superindo', 450_000);
+    await h.pay('2026-08-05', 100_000);
+    await h.buy('2026-08-25', 'Ranch Market', 80_000);
+    await h.pay('2026-08-28', 200_000);
+    const many = await cardStatements(h.database, h.ws, h.card.id, [AUGUST, SEPTEMBER], '2026-09-01');
+    expect(many).toEqual([
+      await cardStatement(h.database, h.ws, h.card.id, AUGUST, '2026-09-01'),
+      await cardStatement(h.database, h.ws, h.card.id, SEPTEMBER, '2026-09-01'),
+    ]);
+    expect(await cardStatements(h.database, h.ws, h.card.id, [], '2026-09-01')).toEqual([]);
   });
 });
 

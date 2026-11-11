@@ -240,12 +240,25 @@ export async function paidOffMarkOf(database: Database, ws: WorkspaceContext, tr
  * and — once the statement date has passed — what has been paid since and what is left.
  */
 export async function cardStatement(database: Database, ws: WorkspaceContext, cardAccountId: string, cycle: Cycle, today: string): Promise<CardStatement> {
+  return (await cardStatements(database, ws, cardAccountId, [cycle], today))[0]!;
+}
+
+/**
+ * Several statements of one card, its lines read once: what `cardStatement` gives each cycle, without reading the
+ * card's whole history again per cycle (the Debt-free plan's months ask for a statement a month).
+ */
+export async function cardStatements(database: Database, ws: WorkspaceContext, cardAccountId: string, cycles: readonly Cycle[], today: string): Promise<CardStatement[]> {
   const [card] = await database.db
     .select({ currency: accounts.currency })
     .from(accounts)
     .where(and(eq(accounts.id, cardAccountId), eq(accounts.workspaceId, ws.workspaceId)));
   if (!card) throw new StatementError('NOT_FOUND', 'That card is not in this workspace');
+  if (cycles.length === 0) return [];
   const all = await billedLines(database, ws, cardAccountId);
+  return cycles.map((cycle) => statementOf(all, cycle, today, card.currency ?? ws.baseCurrency));
+}
+
+function statementOf(all: StatementLine[], cycle: Cycle, today: string, currency: string): CardStatement {
   // Everything here is in billed terms: an instalment plan counts a month at a time, not its whole price at once.
   const sum = (lines: StatementLine[]) => lines.reduce((total, line) => total + line.countedMinor, 0);
 
@@ -258,7 +271,7 @@ export async function cardStatement(database: Database, ws: WorkspaceContext, ca
   const paidSinceMinor = closed ? -sum(all.filter((line) => line.countedMinor < 0 && line.statementOn > cycle.end && line.statementOn <= today)) : 0;
   return {
     cycle,
-    currency: card.currency ?? ws.baseCurrency,
+    currency,
     openingMinor,
     chargesMinor,
     creditsMinor,

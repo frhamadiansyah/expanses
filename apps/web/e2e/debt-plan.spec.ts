@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { at, bank, owedTo, seedLatePaylater } from './debt-plan';
+import { at, bank, owedTo, seedLatePaylater, seedMonth } from './debt-plan';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -41,4 +41,32 @@ test('wide: the plan beside its numbered list, the extra moves the month, and Pa
   await expect(page.getByRole('dialog', { name: 'Pay' }).getByRole('button', { name: 'Save payment' })).toBeVisible();
   await page.getByRole('dialog', { name: 'Pay' }).getByRole('button', { name: 'Close' }).click();
   await expect(page).toHaveURL(/\/net-worth\/plan$/);
+});
+
+test('wide: the Schedule tab shows the month beside the plan, without leaving it', async ({ page }) => {
+  await seedMonth(page);
+  await page.goto('/net-worth/plan');
+  await page.getByRole('radiogroup', { name: 'View' }).getByRole('radio', { name: 'Schedule' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/plan\?tab=schedule$/);
+  await expect(page.getByTestId('schedule-month')).toHaveText('Nov 2026');
+  await expect(page.getByTestId('schedule-late').getByTestId('schedule-row')).toContainText('Kredit · 1/6');
+  await expect(page.getByTestId('schedule-coming-up').getByTestId('schedule-row')).toHaveCount(2);
+  await page.reload();
+  await expect(page.getByTestId('schedule-panel')).toBeVisible();
+});
+
+test('wide: Plan, Schedule and Report switch without leaving the plan, and ?tab=report opens the Report', async ({ page }) => {
+  await seedMonth(page);
+  await page.goto('/net-worth/plan');
+  const view = page.getByRole('radiogroup', { name: 'View' });
+  await view.getByRole('radio', { name: 'Report' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/plan\?tab=report$/);
+  await expect(page.getByTestId('report-borrowed')).toBeVisible();
+  await view.getByRole('radio', { name: 'Schedule' }).click();
+  await expect(page.getByTestId('schedule-panel')).toBeVisible();
+  await view.getByRole('radio', { name: 'Plan' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/plan$/);
+  await expect(page.getByTestId('plan-table')).toBeVisible();
+  await page.goto('/net-worth/plan?tab=report');
+  await expect(page.getByTestId('report-borrowed')).toBeVisible();
 });

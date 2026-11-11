@@ -11,6 +11,7 @@ import {
   debtMovements,
   getDebtPlanSettings,
   loanPlanFacts,
+  paidOffLoanFacts,
   nextPaymentDue,
   payOffLoan,
   postTransaction,
@@ -152,6 +153,22 @@ describe('loanPlanFacts', () => {
     await saveLoanTerms(database, ws, { accountId: small.id, lenderName: 'Bank', originalMinor: 1_000_000, firstPaymentOn: '2026-09-01', tenorMonths: 2, method: 'zero', paymentDay: 1, rateBps: 0 });
     await payOffLoan(database, ws, { accountId: small.id, occurredOn: '2026-09-01', moneyAccountId: bca.id });
     expect((await loanPlanFacts(database, ws, '2026-11-04')).map((f) => f.accountId)).toEqual([kredit.id]);
+    // A paid-off loan's months are still read, for the months behind (Schedule, Report): everything up to the pay-off settled.
+    const [gone] = await paidOffLoanFacts(database, ws, '2026-11-04');
+    expect(gone).toMatchObject({ accountId: small.id, owedMinor: 0, schedule: [], scheduleFrom: '2026-09-01' });
+    expect(gone!.instalments.map((i) => [i.number, i.dueOn, i.status])).toEqual([[1, '2026-09-01', 'paid']]);
+  });
+
+  it('a loan paid off with an instalment still unmatched reads every instalment up to the pay-off as paid, never late', async () => {
+    const two = await createAccount(database, ws, { name: 'Bank', kind: 'liability', subtype: 'loan', currency: 'IDR', openingBalanceMinor: 3_000_000, openedOn: '2026-08-01' });
+    await saveLoanTerms(database, ws, { accountId: two.id, lenderName: 'Bank', originalMinor: 3_000_000, firstPaymentOn: '2026-08-10', tenorMonths: 3, method: 'zero', paymentDay: 10, rateBps: 0 });
+    // August missed; one lump on 20 Sep clears it all.
+    await payOffLoan(database, ws, { accountId: two.id, occurredOn: '2026-09-20', moneyAccountId: bca.id });
+    const fact = (await paidOffLoanFacts(database, ws, '2026-11-04')).find((f) => f.accountId === two.id)!;
+    expect(fact.instalments.map((i) => [i.number, i.status, i.paidOn])).toEqual([
+      [1, 'paid', '2026-09-20'],
+      [2, 'paid', '2026-09-20'],
+    ]);
   });
 });
 
