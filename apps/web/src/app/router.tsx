@@ -114,6 +114,7 @@ import { JoinPage } from '../features/sharing/JoinPage';
 import { SharedItemPage } from '../features/networth/SharedItemPage';
 import { DebtPlanPage } from '../features/debt-plan/DebtPlanPage';
 import { PayFirstPage } from '../features/debt-plan/PayFirstPage';
+import { SchedulePage } from '../features/debt-plan/SchedulePage';
 import { Layout } from './Layout';
 
 /** The card page's old tabs, still read from a link made before they became pages of their own. */
@@ -502,6 +503,13 @@ const routeTree = rootRoute.addChildren([
       search.tab === 'plan' || search.tab === 'schedule' || search.tab === 'report' ? { tab: search.tab } : {},
   }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/plan/pay-first', component: PayFirstPage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/net-worth/plan/schedule',
+    component: SchedulePage,
+    validateSearch: (search: Record<string, unknown>): { month?: string } =>
+      typeof search.month === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(search.month) ? { month: search.month } : {},
+  }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans', component: DebtsPage }),
   createRoute({
     getParentRoute: () => rootRoute,
