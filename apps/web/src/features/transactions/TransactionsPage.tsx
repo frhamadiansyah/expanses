@@ -1650,8 +1650,9 @@ export function TransactionsPage() {
         </>
       )}
 
-      {/* One line's field on the keyboard, opened by a held ＋; its dashed row goes in the list's `lineSlot`. */}
-      {lineOn && <CashflowLine slot={lineSlot} />}
+      {/* One line's field on the keyboard, opened by a held ＋; its dashed row goes in the list's `lineSlot`. Keyed by the
+          workspace and book, so a line typed in one workspace never carries its accounts or category into another. */}
+      {lineOn && <CashflowLine key={`${ws.workspaceId}:${ws.bookId ?? ''}`} slot={lineSlot} />}
 
       {/* The category sheet and its Undo toast, once for the screen rather than once per row. */}
       {recategorise.overlay}
