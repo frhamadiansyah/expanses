@@ -1,0 +1,232 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Debt plan placement</title><style>
+:root{--bg:#f2f2f7;--surface:#fff;--ink:#1c1c1e;--ink2:#3a3a3c;--ink3:#8e8e93;--hair:#e5e5ea;--fill:#eeeef2;--tint:#0a66d8;--green:#1a8f3c;--red:#d70015;--amber:#c77700;--amberbg:#fff4d6;--redbg:#ffe8ea}
+*{box-sizing:border-box}
+body{margin:0;padding:28px 16px 48px;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:var(--ink)}
+h1{text-align:center;margin:0 0 6px;font-size:26px}
+.lead{text-align:center;color:#6e6e73;max-width:860px;margin:0 auto 26px;font-size:14.5px;line-height:1.45}
+.grid{display:grid;grid-template-columns:repeat(3,372px);gap:34px 30px;justify-content:center}
+.cap{font-weight:700;font-size:15px;margin-bottom:4px}
+.cap span{display:block;font-weight:400;color:#6e6e73;font-size:13px;margin-top:2px;line-height:1.4;min-height:54px}
+.ph{width:372px;height:790px;border-radius:46px;background:var(--bg);box-shadow:0 0 0 10px #1c1c1e,0 18px 40px rgba(0,0,0,.25);overflow:hidden;position:relative;font-size:15px;margin-top:10px}
+.sb{height:46px;display:flex;justify-content:space-between;align-items:center;padding:0 28px;font-weight:600;font-size:15px}
+.scr{padding:0 16px;height:690px;overflow:hidden}
+.nav{display:flex;align-items:center;justify-content:space-between;color:var(--tint);font-size:16px;height:36px}
+.lt{font-size:30px;font-weight:700;margin:2px 0 12px}
+.g{background:var(--surface);border-radius:12px;overflow:hidden;margin-bottom:14px}
+.k{font-size:12px;font-weight:600;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em;padding:0 4px 6px}
+.row{display:flex;align-items:center;gap:10px;padding:0 0 0 14px;min-height:52px}
+.row .b{flex:1;display:flex;align-items:center;gap:8px;min-height:52px;padding-right:14px;border-top:.5px solid var(--hair)}
+.row:first-child .b{border-top:none}
+.t{font-size:15.5px}.s{font-size:12.5px;color:var(--ink3)}
+.r{margin-left:auto;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ic{width:30px;height:30px;border-radius:15px;background:var(--fill);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--ink2);flex-shrink:0}
+.pay{background:var(--tint);color:#fff;border-radius:14px;padding:4px 11px;font-size:13px;font-weight:600;margin-left:8px}
+.tag{font-size:11.5px;font-weight:600;padding:1px 6px;border-radius:5px}
+.late{background:var(--redbg);color:var(--red)}.soon{background:var(--amberbg);color:var(--amber)}.done{background:#e3f6e8;color:var(--green)}
+.hero{background:var(--surface);border-radius:14px;padding:16px;margin-bottom:14px}
+.ring{width:84px;height:84px;flex-shrink:0}
+.big{font-size:26px;font-weight:700;letter-spacing:-.3px;font-variant-numeric:tabular-nums}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);margin-top:14px;border-top:.5px solid var(--hair);padding-top:10px;text-align:center}
+.stats b{display:block;font-size:18px}.stats small{color:var(--ink3);font-size:12px}
+.btn{display:flex;justify-content:center;align-items:center;gap:6px;background:var(--tint);color:#fff;border-radius:12px;height:46px;font-weight:600;font-size:16px;margin-top:14px}
+.seg{display:flex;background:#e3e3e8;border-radius:9px;padding:2px;margin-bottom:10px}
+.seg span{flex:1;text-align:center;padding:6px 0;border-radius:7px;font-size:13.5px;color:var(--ink2)}
+.seg span.on{background:#fff;font-weight:600;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.note{font-size:13px;color:var(--ink2);line-height:1.4;padding:0 4px 10px}
+.sug{background:#e8f1fd;color:#0a4fa8;border-radius:10px;padding:9px 12px;font-size:13px;margin-bottom:14px;line-height:1.35}
+.num{width:22px;height:22px;border-radius:11px;background:var(--ink);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.chips{display:flex;gap:7px;margin-bottom:12px;flex-wrap:nowrap}
+.chips span{padding:6px 12px;border-radius:16px;background:#fff;font-size:13.5px;white-space:nowrap}
+.chips span.on{background:var(--ink);color:#fff;font-weight:600}
+.bar{height:5px;border-radius:3px;background:var(--fill);overflow:hidden;margin-top:5px}.bar i{display:block;height:100%;background:var(--green);border-radius:3px}
+.tri{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.tri div{background:#fff;border-radius:12px;padding:10px 12px}.tri small{color:var(--ink3);font-size:12px;display:block}.tri b{font-size:16px;font-variant-numeric:tabular-nums}
+.tabbar{position:absolute;bottom:0;left:0;right:0;height:62px;background:rgba(249,249,251,.95);border-top:.5px solid var(--hair);display:flex;justify-content:space-around;align-items:flex-start;padding-top:8px;font-size:10.5px;color:var(--ink3)}
+.tabbar .on{color:var(--tint)}
+.sw{width:46px;height:28px;border-radius:14px;background:#34c759;position:relative;flex-shrink:0}.sw::after{content:"";position:absolute;right:2px;top:2px;width:24px;height:24px;border-radius:12px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.sw.off{background:#e3e3e8}.sw.off::after{left:2px;right:auto}
+.lock{background:linear-gradient(160deg,#3b4a6b,#1e2638);height:790px;color:#fff;padding:60px 14px 0;text-align:center}
+.lock .time{font-size:76px;font-weight:300;letter-spacing:-2px;line-height:1}
+.notif{background:rgba(255,255,255,.82);color:#1c1c1e;border-radius:18px;padding:11px 13px;text-align:left;margin-top:12px;font-size:14px;line-height:1.3;backdrop-filter:blur(10px)}
+.notif .h{display:flex;justify-content:space-between;font-size:12.5px;color:#6e6e73;margin-bottom:2px}
+.mb{display:flex;align-items:flex-end;gap:12px;height:120px;padding:10px 14px 4px}
+.mb div{flex:1;display:flex;gap:3px;align-items:flex-end;height:100%}
+.mb i{flex:1;border-radius:3px 3px 0 0;display:block}
+.ml{display:flex;gap:12px;padding:0 14px 10px;font-size:11.5px;color:var(--ink3)}.ml span{flex:1;text-align:center}
+.legend{display:flex;gap:12px;font-size:12px;color:var(--ink3);padding:0 14px 12px}.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.b>div:first-child{min-width:0;flex:1}
+.b>div:first-child .t,.b>div:first-child .s{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.b .pay+*{display:none}
+.row .b{min-width:0}.tri div{min-width:0;padding:10px 9px}
+.tri b{font-size:13px;white-space:nowrap;display:block}
+.b .r{font-size:14.5px}
+.notes{max-width:1180px;margin:34px auto 0;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.nb{background:#f5f5f7;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.45}.nb b{display:block;margin-bottom:3px}
+
+.new{outline:2px dashed var(--tint);outline-offset:2px}
+.newrow{outline:2px dashed var(--tint);outline-offset:-3px;border-radius:8px;background:#f2f7ff}
+.win td{white-space:nowrap}.tag{white-space:nowrap}.win{display:flex;height:520px;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 18px 40px rgba(0,0,0,.2),0 0 0 .5px rgba(0,0,0,.25);margin-top:10px;font-size:13px}
+.msb{width:210px;flex-shrink:0;background:#e9e8ee;padding:12px 8px;border-right:.5px solid #d2d2d7}
+.mi{white-space:nowrap;display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:6px;font-size:13px}
+.mi.on{background:rgba(0,0,0,.08);font-weight:600}
+.mh{font-size:11px;color:#86868b;font-weight:600;padding:10px 8px 4px}
+.boxes{display:flex;gap:3px;height:34px;margin-top:12px}.boxes i{border-radius:6px;color:#fff;font-size:11px;font-style:normal;display:flex;align-items:center;justify-content:center;overflow:hidden;font-weight:600}</style></head><body><h1>Where the Debt-free plan sits</h1>
+<p class="lead">The plan is a page of its own (0). Liabilities stays exactly as today, the twin of Assets. Below it, the ways in; new parts have a dashed blue outline. Pick any mix. Sample figures only.</p>
+<div class="grid">
+
+<!-- 0 PLAN PAGE -->
+<div><div class="cap">0 · The Debt-free plan page<span>A page of its own. Every way in lands here. No drawers: those stay on Liabilities.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● ▮</span></div><div class="scr">
+<div class="nav"><span>‹ Back</span><span></span></div>
+<div class="lt">Debt-free plan</div>
+<div class="hero">
+ <div style="display:flex;gap:14px;align-items:center">
+  <svg class="ring" viewBox="0 0 42 42"><circle cx="21" cy="21" r="17" fill="none" stroke="#eeeef2" stroke-width="5"/><circle cx="21" cy="21" r="17" fill="none" stroke="#1a8f3c" stroke-width="5" stroke-linecap="round" stroke-dasharray="33 107" transform="rotate(-90 21 21)"/><text x="21" y="24" text-anchor="middle" font-size="9" font-weight="700" fill="#1c1c1e">31%</text></svg>
+  <div><div class="s">Left to pay</div><div class="big">Rp 43.120.000</div><div class="s">repaid Rp 19.380.000 of 62,5 jt</div></div>
+ </div>
+ <div style="display:flex;justify-content:space-between;margin-top:12px;font-size:14px"><span class="s" style="font-size:14px">Debt-free</span><b>August 2028</b></div>
+ <div class="stats"><div><b>6</b><small>active</small></div><div><b style="color:var(--red)">1</b><small>late</small></div><div><b style="color:var(--green)">3</b><small>paid off</small></div></div>
+ <div class="btn">Pay next · Kredivo Rp 1.250.000</div>
+</div>
+<div class="g">
+ <div class="row"><span class="ic">◷</span><div class="b"><span class="t">Pay first</span><span class="r s">Avalanche ›</span></div></div>
+ <div class="row"><span class="ic">▦</span><div class="b"><span class="t">Schedule</span><span class="r s">5 due this month ›</span></div></div>
+ <div class="row"><span class="ic">≡</span><div class="b"><span class="t">All debts</span><span class="r s">9 ›</span></div></div>
+ <div class="row"><span class="ic">▤</span><div class="b"><span class="t">Report</span><span class="r s">›</span></div></div>
+ <div class="row"><span class="ic">🔔</span><div class="b"><span class="t">Reminders</span><span class="r s">On ›</span></div></div>
+</div>
+</div></div></div>
+<!-- 1 NET WORTH -->
+<div><div class="cap">1 · Net worth: a row, or a corner icon<span>1a: a "Debt-free plan" row under the Assets and Liabilities cards, which stay as today. 1b: a ◎ icon in the corner, beside Trade and Financial health.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● ▮</span></div><div class="scr">
+<div class="nav"><span>Personal ⌄</span><span>⇅ &nbsp;◔ &nbsp;<span class="new" style="border-radius:6px;padding:0 3px">◎</span></span></div>
+<div class="lt">Net worth</div>
+<div class="hero"><div class="s">Net worth</div><div class="big">Rp 1.214.380.000</div><div class="s" style="color:var(--green)">▲ Rp 18.200.000 this year</div>
+<svg width="100%" height="70" viewBox="0 0 300 70" preserveAspectRatio="none" style="margin-top:8px"><path d="M0,55 L40,52 L80,50 L120,44 L160,42 L200,34 L240,30 L300,20" fill="none" stroke="#1a8f3c" stroke-width="2"/></svg></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+ <div class="hero" style="margin:0;padding:12px"><div class="s">Assets</div><div style="font-weight:700;font-size:17px">Rp 1,26 M</div><div class="s">›</div></div>
+ <div class="hero" style="margin:0;padding:12px"><div class="s">Liabilities</div><div style="font-weight:700;font-size:17px">Rp 43,1 jt</div><div class="s">›</div></div>
+</div>
+<div class="g new"><div class="row"><span class="ic" style="background:#e3f6e8;color:var(--green)">◎</span><div class="b"><div><div class="t">Debt-free plan</div><div class="s">Aug 2028 · <span style="color:var(--red)">1 late</span></div></div><span class="r s">31% ›</span></div></div></div>
+<div class="k">Assets</div>
+<div class="g">
+ <div class="row"><span class="ic">⌂</span><div class="b"><span class="t">Property</span><span class="r">Rp 950.000.000</span></div></div>
+ <div class="row"><span class="ic">↗</span><div class="b"><span class="t">Investments</span><span class="r">Rp 214.300.000</span></div></div>
+ <div class="row"><span class="ic">▭</span><div class="b"><span class="t">Cash and savings</span><span class="r">Rp 93.200.000</span></div></div>
+</div>
+</div><div class="tabbar"><span>Transactions</span><span class="on">Net worth</span><span style="font-size:22px;color:var(--tint)">⊕</span><span>Wallet</span><span>Account</span></div></div></div>
+
+<!-- 2 LIABILITIES CORNER -->
+<div><div class="cap">2 · Liabilities corner icon<span>The page stays exactly as today. Only a ◎ icon in its corner, the way the Assets corner opens Income.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● ▮</span></div><div class="scr">
+<div class="nav"><span>‹ Net worth</span><span><span class="new" style="border-radius:6px;padding:0 3px">◎</span> &nbsp;＋</span></div><div class="lt">Liabilities</div>
+<div class="hero" style="text-align:center"><div class="big">Rp 43.120.000</div>
+<div class="boxes"><i style="flex:66;background:#5e9cf0">Mortgage</i><i style="flex:14;background:#bf5af2">Cards</i><i style="flex:13;background:#ff9f0a">Online</i><i style="flex:7;background:#8e8e93"></i></div></div>
+<div class="g">
+ <div class="row"><span class="ic">⌂</span><div class="b"><span class="t">Home mortgage</span><span class="r">Rp 28.400.000 ⌄</span></div></div>
+ <div class="row"><span class="ic">▭</span><div class="b"><span class="t">Credit cards</span><span class="r">Rp 6.214.300 ⌄</span></div></div>
+ <div class="row"><span class="ic">◫</span><div class="b"><span class="t">Online loans</span><span class="r">Rp 5.705.700 ⌄</span></div></div>
+ <div class="row"><span class="ic">M</span><div class="b"><span class="t">Vehicle leasing</span><span class="r">Rp 1.950.000 ⌄</span></div></div>
+ <div class="row"><span class="ic">⇄</span><div class="b"><span class="t">Lend &amp; borrow</span><span class="r">Rp 850.000 ⌄</span></div></div>
+ <div class="row"><span class="ic">✓</span><div class="b"><span class="t">Paid off</span><span class="r s">3 ⌄</span></div></div>
+</div></div></div></div>
+<!-- 2 ACCOUNT -->
+<div><div class="cap">3 · Account tab → Money<span>A "Debt-free plan" row beside Lend &amp; borrow, one tap from the tab bar, with the late count.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● ▮</span></div><div class="scr">
+<div class="lt" style="margin-top:36px">Account</div>
+<div class="g"><div class="row"><span class="ic" style="width:42px;height:42px;border-radius:21px">F</span><div class="b" style="min-height:62px"><div><div class="t">Personal</div><div class="s">IDR · 2 workspaces</div></div><span class="r s">›</span></div></div></div>
+<div class="k">Money</div>
+<div class="g">
+ <div class="row"><span class="ic">◔</span><div class="b"><span class="t">Budget</span><span class="r s">›</span></div></div>
+ <div class="row"><span class="ic">🔔</span><div class="b"><span class="t">Recurring</span><span class="r s">›</span></div></div>
+ <div class="row"><span class="ic">✦</span><div class="b"><span class="t">Events</span><span class="r s">›</span></div></div>
+ <div class="row"><span class="ic">⚑</span><div class="b"><span class="t">Goals</span><span class="r s">›</span></div></div>
+ <div class="row newrow"><span class="ic">◫</span><div class="b"><span class="t">Debt-free plan</span><span class="r"><span class="tag late">1 late</span> <span class="s">›</span></span></div></div>
+ <div class="row"><span class="ic">⇄</span><div class="b"><span class="t">Lend &amp; borrow</span><span class="r s">›</span></div></div>
+ <div class="row"><span class="ic">✂</span><div class="b"><span class="t">Split a receipt</span><span class="r s">›</span></div></div>
+ <div class="row"><span class="ic">#</span><div class="b"><span class="t">Categories</span><span class="r s">›</span></div></div>
+</div>
+<div class="k">Cards</div>
+<div class="g">
+ <div class="row"><span class="ic">▭</span><div class="b"><span class="t">Which card?</span><span class="r s">›</span></div></div>
+</div>
+</div><div class="tabbar"><span>Transactions</span><span>Net worth</span><span style="font-size:22px;color:var(--tint)">⊕</span><span>Wallet</span><span class="on">Account</span></div></div></div>
+
+<!-- 3 CASHFLOW -->
+<div><div class="cap">4 · Cashflow, when something is due<span>A row in the box above the list, beside To review and Recurring bills, only while an instalment is late or due within 3 days. Tap goes straight to paying it.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● ▮</span></div><div class="scr">
+<div class="nav"><span>Personal ⌄</span><span>⌕ &nbsp;⋯</span></div>
+<div class="lt" style="display:flex;justify-content:space-between;align-items:baseline">Cashflow<span style="font-size:15px;font-weight:600;color:var(--tint)">‹ Nov ›</span></div>
+<div class="tri"><div><small>Spent</small><b>Rp 8.420.500</b></div><div><small>Income</small><b style="color:var(--green)">Rp 32.500.000</b></div><div><small>Left</small><b>Rp 24.079.500</b></div></div>
+<div class="g">
+ <div class="row newrow"><span class="ic" style="background:var(--redbg);color:var(--red)">!</span><div class="b"><div><div class="t">Kredivo instalment</div><div class="s"><span class="tag late">3 days late</span> +1 due tomorrow</div></div><span class="r">Rp 1.250.000</span><span class="s">›</span></div></div>
+ <div class="row"><span class="ic">!</span><div class="b"><div><div class="t">To review</div><div class="s">3 not recorded</div></div><span class="r">~Rp 412.000</span><span class="s">›</span></div></div>
+ <div class="row"><span class="ic">🔔</span><div class="b"><div><div class="t">Recurring bills</div><div class="s">2 due this week</div></div><span class="r">Rp 990.000</span><span class="s">›</span></div></div>
+</div>
+<div class="k">Today</div>
+<div class="g">
+ <div class="row"><span class="ic">☕</span><div class="b"><div><div class="t">Kopi Kenangan</div><div class="s">Eating out · GoPay</div></div><span class="r">Rp 38.000</span></div></div>
+ <div class="row"><span class="ic">🛒</span><div class="b"><div><div class="t">Superindo</div><div class="s">Groceries · BCA Visa</div></div><span class="r">Rp 286.500</span></div></div>
+ <div class="row"><span class="ic">🚗</span><div class="b"><div><div class="t">GrabCar</div><div class="s">Transport · OVO</div></div><span class="r">Rp 58.000</span></div></div>
+</div>
+</div><div class="tabbar"><span class="on">Transactions</span><span>Net worth</span><span style="font-size:22px;color:var(--tint)">⊕</span><span>Wallet</span><span>Account</span></div></div></div>
+
+<!-- 4 NOTIFICATION -->
+<div><div class="cap">5 · Reminder → pay<span>Tapping the reminder unlocks the app and opens that instalment's payment, already filled in.</span></div>
+<div class="ph" style="background:#fff"><div class="lock" style="height:330px;padding-top:40px">
+ <div style="font-size:16px;opacity:.9">Wednesday 11 November</div><div class="time" style="font-size:60px">8:00</div>
+ <div class="notif new" style="margin-top:20px"><div class="h"><span><b style="color:#1c1c1e">Expanses</b></span><span>now</span></div><b>Kredivo instalment due today</b><br>Tap to pay or mark paid.</div>
+</div>
+<div style="text-align:center;font-size:22px;color:var(--tint);margin:4px 0">↓ tap</div>
+<div class="scr" style="background:var(--bg);height:420px;border-radius:18px 18px 0 0;padding-top:14px">
+ <div class="nav"><span>Cancel</span><b style="color:var(--ink)">Pay instalment</b><span style="font-weight:600">Save</span></div>
+ <div class="g" style="margin-top:10px">
+  <div class="row"><div class="b"><span class="t">Loan</span><span class="r s" style="font-size:15px">Kredivo · 4 of 6</span></div></div>
+  <div class="row"><div class="b"><span class="t">Amount</span><span class="r t">Rp 1.250.000</span></div></div>
+  <div class="row"><div class="b"><span class="t">Paid from</span><span class="r s" style="font-size:15px">BCA Tahapan</span></div></div>
+  <div class="row"><div class="b"><span class="t">Date</span><span class="r s" style="font-size:15px">Today</span></div></div>
+ </div>
+ <div class="s" style="padding:0 6px">Already paid and recorded from a bank message? Mark paid instead.</div>
+ <div class="btn" style="background:#fff;color:var(--tint)">Mark paid</div>
+</div></div></div>
+
+<!-- 5 MAC -->
+<div style="grid-column:1 / -1"><div class="cap">6 · Mac and wide screens: sidebar<span>"Debt-free plan" gets its own place in the sidebar under Net worth, with the late count. Its page shows the plan beside the numbered list.</span></div>
+<div class="win"><div class="msb">
+ <div style="display:flex;gap:7px;padding:2px 4px 14px"><i style="width:12px;height:12px;border-radius:6px;background:#ff5f57;display:block"></i><i style="width:12px;height:12px;border-radius:6px;background:#febc2e;display:block"></i><i style="width:12px;height:12px;border-radius:6px;background:#28c840;display:block"></i></div>
+ <div class="mi">◎ Overview</div><div class="mi">≋ Cashflow</div><div class="mi">▭ Wallet</div><div class="mi">◔ Budget</div><div class="mi">⚑ Goals</div><div class="mi">↗ Net worth</div>
+ <div class="mi on newrow" style="padding-left:24px">◎ Debt-free plan <span class="tag late" style="margin-left:auto">1 late</span></div>
+ <div class="mi" style="padding-left:24px">⇄ Lend &amp; borrow</div>
+ <div class="mh">Tools</div><div class="mi">☑ Review</div><div class="mi">∑ Calculators</div><div class="mi">▤ Tax report</div>
+</div>
+<div style="flex:1;display:flex;flex-direction:column">
+ <div style="height:48px;border-bottom:.5px solid var(--hair);display:flex;align-items:center;padding:0 16px;gap:12px;font-size:14px"><b style="font-size:15px">Debt-free plan</b><span class="seg" style="margin:0;width:250px"><span class="on">Plan</span><span>Schedule</span><span>Report</span></span></div>
+ <div style="display:grid;grid-template-columns:300px 1fr;flex:1">
+  <div style="padding:16px;border-right:.5px solid var(--hair)">
+   <div style="display:flex;gap:12px;align-items:center"><svg class="ring" style="width:64px;height:64px" viewBox="0 0 42 42"><circle cx="21" cy="21" r="17" fill="none" stroke="#eeeef2" stroke-width="5"/><circle cx="21" cy="21" r="17" fill="none" stroke="#1a8f3c" stroke-width="5" stroke-linecap="round" stroke-dasharray="33 107" transform="rotate(-90 21 21)"/><text x="21" y="24" text-anchor="middle" font-size="9" font-weight="700">31%</text></svg>
+   <div><div class="s">Left to pay</div><div style="font-size:20px;font-weight:700">Rp 43.120.000</div></div></div>
+   <div style="display:flex;justify-content:space-between;margin-top:12px;font-size:13.5px"><span class="s" style="font-size:13.5px">Debt-free</span><b>August 2028</b></div>
+   <div class="btn" style="height:38px;font-size:14px">Pay next · Kredivo</div>
+   <div class="seg" style="margin-top:14px"><span>Snowball</span><span class="on">Avalanche</span><span>By hand</span></div>
+   <div class="s">Extra a month <b style="color:var(--tint)">Rp 500.000</b> → debt-free Mar 2028</div>
+  </div>
+  <div style="padding:8px 0">
+   <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <tr style="color:var(--ink3);font-size:12px"><td style="padding:6px 14px">#</td><td>Debt</td><td>Rate</td><td>Progress</td><td style="text-align:right;padding-right:14px">Left</td><td></td></tr>
+    <tr style="border-top:.5px solid var(--hair)"><td style="padding:8px 14px;color:var(--red)">!</td><td>Kredivo <span class="tag late">3 days late</span></td><td>2,95%/mo</td><td><div class="bar" style="width:110px"><i style="width:40%;background:var(--red)"></i></div></td><td style="text-align:right;padding-right:14px">Rp 3.600.000</td><td><span class="pay">Pay</span></td></tr>
+    <tr style="border-top:.5px solid var(--hair)"><td style="padding:8px 14px">1</td><td>Akulaku</td><td>2,5%/mo</td><td><div class="bar" style="width:110px"><i style="width:33%"></i></div></td><td style="text-align:right;padding-right:14px">Rp 2.105.700</td><td><span class="pay">Pay</span></td></tr>
+    <tr style="border-top:.5px solid var(--hair)"><td style="padding:8px 14px">2</td><td>BCA Visa</td><td>1,75%/mo</td><td><div class="bar" style="width:110px"><i style="width:0%"></i></div></td><td style="text-align:right;padding-right:14px">Rp 6.214.300</td><td><span class="pay">Pay</span></td></tr>
+    <tr style="border-top:.5px solid var(--hair)"><td style="padding:8px 14px">3</td><td>Motorbike lease</td><td>12%/yr</td><td><div class="bar" style="width:110px"><i style="width:75%"></i></div></td><td style="text-align:right;padding-right:14px">Rp 1.950.000</td><td><span class="pay">Pay</span></td></tr>
+    <tr style="border-top:.5px solid var(--hair)"><td style="padding:8px 14px">4</td><td>Home mortgage</td><td>7,5%/yr</td><td><div class="bar" style="width:110px"><i style="width:52%"></i></div></td><td style="text-align:right;padding-right:14px">Rp 28.400.000</td><td><span class="pay">Pay</span></td></tr>
+   </table>
+  </div>
+ </div>
+</div></div></div>
+
+</div>
+<div class="notes">
+ <div class="nb"><b>Why not its own tab</b>The bar is full: Transactions, Net worth, ＋, Wallet, Account. The Cashflow row and the reminders already bring debts forward when something is due, which is what a tab would be for.</div>
+ <div class="nb"><b>Quiet when nothing is due</b>The Cashflow row hides when nothing is late or due within 3 days. Someone with no debts never sees any of it.</div>
+ <div class="nb"><b>Liabilities untouched</b>Assets and Liabilities stay twins. The plan never sits inside Liabilities; at most a corner icon (2), the same way Income sits behind the Assets corner.</div>
+</div>
+</body></html>

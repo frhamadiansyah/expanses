@@ -291,6 +291,11 @@ async function owedOnTx(tx: Db, ws: WorkspaceContext, accountId: string, onDate?
   return -rows.filter((row) => (onDate ? row.occurredOn <= onDate : true)).reduce((total, row) => total + row.amountMinor, 0);
 }
 
+/** What is still owed on a loan, the same reading every payment checks against. */
+export async function loanOwedOn(database: Database, ws: WorkspaceContext, accountId: string, onDate?: string): Promise<number> {
+  return owedOnTx(database.db, ws, accountId, onDate);
+}
+
 async function accountNameTx(tx: Db, ws: WorkspaceContext, accountId: string): Promise<string> {
   const [row] = await tx
     .select({ name: accounts.name })

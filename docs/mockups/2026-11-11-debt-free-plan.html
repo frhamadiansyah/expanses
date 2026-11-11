@@ -1,0 +1,219 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Debt-free plan mockup</title>
+<style>
+:root{--bg:#f2f2f7;--surface:#fff;--ink:#1c1c1e;--ink2:#3a3a3c;--ink3:#8e8e93;--hair:#e5e5ea;--fill:#eeeef2;--tint:#0a66d8;--green:#1a8f3c;--red:#d70015;--amber:#c77700;--amberbg:#fff4d6;--redbg:#ffe8ea}
+*{box-sizing:border-box}
+body{margin:0;padding:28px 16px 48px;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:var(--ink)}
+h1{text-align:center;margin:0 0 6px;font-size:26px}
+.lead{text-align:center;color:#6e6e73;max-width:860px;margin:0 auto 26px;font-size:14.5px;line-height:1.45}
+.grid{display:grid;grid-template-columns:repeat(3,372px);gap:34px 30px;justify-content:center}
+.cap{font-weight:700;font-size:15px;margin-bottom:4px}
+.cap span{display:block;font-weight:400;color:#6e6e73;font-size:13px;margin-top:2px;line-height:1.4;min-height:54px}
+.ph{width:372px;height:790px;border-radius:46px;background:var(--bg);box-shadow:0 0 0 10px #1c1c1e,0 18px 40px rgba(0,0,0,.25);overflow:hidden;position:relative;font-size:15px;margin-top:10px}
+.sb{height:46px;display:flex;justify-content:space-between;align-items:center;padding:0 28px;font-weight:600;font-size:15px}
+.scr{padding:0 16px;height:690px;overflow:hidden}
+.nav{display:flex;align-items:center;justify-content:space-between;color:var(--tint);font-size:16px;height:36px}
+.lt{font-size:30px;font-weight:700;margin:2px 0 12px}
+.g{background:var(--surface);border-radius:12px;overflow:hidden;margin-bottom:14px}
+.k{font-size:12px;font-weight:600;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em;padding:0 4px 6px}
+.row{display:flex;align-items:center;gap:10px;padding:0 0 0 14px;min-height:52px}
+.row .b{flex:1;display:flex;align-items:center;gap:8px;min-height:52px;padding-right:14px;border-top:.5px solid var(--hair)}
+.row:first-child .b{border-top:none}
+.t{font-size:15.5px}.s{font-size:12.5px;color:var(--ink3)}
+.r{margin-left:auto;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ic{width:30px;height:30px;border-radius:15px;background:var(--fill);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--ink2);flex-shrink:0}
+.pay{background:var(--tint);color:#fff;border-radius:14px;padding:4px 11px;font-size:13px;font-weight:600;margin-left:8px}
+.tag{font-size:11.5px;font-weight:600;padding:1px 6px;border-radius:5px}
+.late{background:var(--redbg);color:var(--red)}.soon{background:var(--amberbg);color:var(--amber)}.done{background:#e3f6e8;color:var(--green)}
+.hero{background:var(--surface);border-radius:14px;padding:16px;margin-bottom:14px}
+.ring{width:84px;height:84px;flex-shrink:0}
+.big{font-size:26px;font-weight:700;letter-spacing:-.3px;font-variant-numeric:tabular-nums}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);margin-top:14px;border-top:.5px solid var(--hair);padding-top:10px;text-align:center}
+.stats b{display:block;font-size:18px}.stats small{color:var(--ink3);font-size:12px}
+.btn{display:flex;justify-content:center;align-items:center;gap:6px;background:var(--tint);color:#fff;border-radius:12px;height:46px;font-weight:600;font-size:16px;margin-top:14px}
+.seg{display:flex;background:#e3e3e8;border-radius:9px;padding:2px;margin-bottom:10px}
+.seg span{flex:1;text-align:center;padding:6px 0;border-radius:7px;font-size:13.5px;color:var(--ink2)}
+.seg span.on{background:#fff;font-weight:600;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.note{font-size:13px;color:var(--ink2);line-height:1.4;padding:0 4px 10px}
+.sug{background:#e8f1fd;color:#0a4fa8;border-radius:10px;padding:9px 12px;font-size:13px;margin-bottom:14px;line-height:1.35}
+.num{width:22px;height:22px;border-radius:11px;background:var(--ink);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.chips{display:flex;gap:7px;margin-bottom:12px;flex-wrap:nowrap}
+.chips span{padding:6px 12px;border-radius:16px;background:#fff;font-size:13.5px;white-space:nowrap}
+.chips span.on{background:var(--ink);color:#fff;font-weight:600}
+.bar{height:5px;border-radius:3px;background:var(--fill);overflow:hidden;margin-top:5px}.bar i{display:block;height:100%;background:var(--green);border-radius:3px}
+.tri{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.tri div{background:#fff;border-radius:12px;padding:10px 12px}.tri small{color:var(--ink3);font-size:12px;display:block}.tri b{font-size:16px;font-variant-numeric:tabular-nums}
+.tabbar{position:absolute;bottom:0;left:0;right:0;height:62px;background:rgba(249,249,251,.95);border-top:.5px solid var(--hair);display:flex;justify-content:space-around;align-items:flex-start;padding-top:8px;font-size:10.5px;color:var(--ink3)}
+.tabbar .on{color:var(--tint)}
+.sw{width:46px;height:28px;border-radius:14px;background:#34c759;position:relative;flex-shrink:0}.sw::after{content:"";position:absolute;right:2px;top:2px;width:24px;height:24px;border-radius:12px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.sw.off{background:#e3e3e8}.sw.off::after{left:2px;right:auto}
+.lock{background:linear-gradient(160deg,#3b4a6b,#1e2638);height:790px;color:#fff;padding:60px 14px 0;text-align:center}
+.lock .time{font-size:76px;font-weight:300;letter-spacing:-2px;line-height:1}
+.notif{background:rgba(255,255,255,.82);color:#1c1c1e;border-radius:18px;padding:11px 13px;text-align:left;margin-top:12px;font-size:14px;line-height:1.3;backdrop-filter:blur(10px)}
+.notif .h{display:flex;justify-content:space-between;font-size:12.5px;color:#6e6e73;margin-bottom:2px}
+.mb{display:flex;align-items:flex-end;gap:12px;height:120px;padding:10px 14px 4px}
+.mb div{flex:1;display:flex;gap:3px;align-items:flex-end;height:100%}
+.mb i{flex:1;border-radius:3px 3px 0 0;display:block}
+.ml{display:flex;gap:12px;padding:0 14px 10px;font-size:11.5px;color:var(--ink3)}.ml span{flex:1;text-align:center}
+.legend{display:flex;gap:12px;font-size:12px;color:var(--ink3);padding:0 14px 12px}.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.b>div:first-child{min-width:0;flex:1}
+.b>div:first-child .t,.b>div:first-child .s{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.b .pay+*{display:none}
+.row .b{min-width:0}.tri div{min-width:0;padding:10px 9px}
+.tri b{font-size:13px;white-space:nowrap;display:block}
+.b .r{font-size:14.5px}
+.notes{max-width:1180px;margin:34px auto 0;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.nb{background:#f5f5f7;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.45}.nb b{display:block;margin-bottom:3px}
+</style></head><body>
+<h1>Debt-free plan</h1>
+<p class="lead">Six pieces for people paying off several loans, cards and paylaters at once. It all lives under Debts: the header on top, then Pay first, Schedule and Report under it. Every figure comes from the loans' own schedules and the payments already recorded (including ones from bank messages). Sample figures only.</p>
+
+<div class="grid">
+
+<!-- 1 HEADER -->
+<div><div class="cap">1 · Debts page header<span>Progress of all debts together, the month the last one ends, and one button for the next payment.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● ▮</span></div><div class="scr">
+<div class="nav"><span>‹ Net worth</span><span>＋</span></div>
+<div class="lt">Debts</div>
+<div class="hero">
+ <div style="display:flex;gap:14px;align-items:center">
+  <svg class="ring" viewBox="0 0 42 42"><circle cx="21" cy="21" r="17" fill="none" stroke="#eeeef2" stroke-width="5"/><circle cx="21" cy="21" r="17" fill="none" stroke="#1a8f3c" stroke-width="5" stroke-linecap="round" stroke-dasharray="33 107" transform="rotate(-90 21 21)"/><text x="21" y="24" text-anchor="middle" font-size="9" font-weight="700" fill="#1c1c1e">31%</text></svg>
+  <div><div class="s">Left to pay</div><div class="big">Rp 43.120.000</div><div class="s">repaid Rp 19.380.000 of 62,5 jt</div></div>
+ </div>
+ <div style="display:flex;justify-content:space-between;margin-top:12px;font-size:14px"><span class="s" style="font-size:14px">Debt-free</span><b>August 2028</b></div>
+ <div class="stats"><div><b>6</b><small>active</small></div><div><b style="color:var(--red)">1</b><small>late</small></div><div><b style="color:var(--green)">3</b><small>paid off</small></div></div>
+ <div class="btn">Pay next · Kredivo Rp 1.250.000</div>
+ <div class="s" style="text-align:center;margin-top:6px">3 days late</div>
+</div>
+<div class="g">
+ <div class="row"><span class="ic">◷</span><div class="b"><span class="t">Pay first</span><span class="r s">Avalanche ›</span></div></div>
+ <div class="row"><span class="ic">▦</span><div class="b"><span class="t">Schedule</span><span class="r s">5 due this month ›</span></div></div>
+ <div class="row"><span class="ic">▤</span><div class="b"><span class="t">Report</span><span class="r s">›</span></div></div>
+</div>
+<div class="k">By kind</div>
+<div class="g">
+ <div class="row"><span class="ic">⌂</span><div class="b"><span class="t">Home mortgage</span><span class="r">Rp 28.400.000</span></div></div>
+ <div class="row"><span class="ic">▭</span><div class="b"><span class="t">Credit cards</span><span class="r">Rp 6.214.300</span></div></div>
+ <div class="row"><span class="ic">◫</span><div class="b"><span class="t">Online loans</span><span class="r">Rp 5.705.700</span></div></div>
+</div>
+</div><div class="tabbar"><span>Cashflow</span><span>Wallet</span><span class="on">Net worth</span><span>Budget</span><span>More</span></div></div></div>
+
+<!-- 2 PAY FIRST -->
+<div><div class="cap">2 · Pay first<span>Late ones always on top. Then the chosen order. An extra amount a month shows the new debt-free month and the interest it saves.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● ▮</span></div><div class="scr">
+<div class="nav"><span>‹ Debts</span><span></span></div>
+<div class="lt">Pay first</div>
+<div class="seg"><span>Snowball</span><span class="on">Avalanche</span><span>By hand</span></div>
+<div class="note"><b>Avalanche:</b> highest interest first. Costs the least in total. <b>Snowball:</b> smallest first, so debts close sooner and the list gets shorter.</div>
+<div class="sug">Suggested: <b>Avalanche</b>. Rates are known for every debt and differ a lot (2,95% a month vs 7,5% a year).</div>
+<div class="g">
+ <div class="row"><div class="b" style="padding-top:8px;padding-bottom:8px"><div style="flex:1"><div class="t">Extra a month</div><div class="s">Goes to the first in line, then rolls to the next</div></div><span class="r t" style="color:var(--tint)">Rp 500.000</span></div></div>
+ <div class="row"><div class="b"><span class="s" style="font-size:13.5px">Debt-free</span><span class="r"><b>March 2028</b> <span class="s">not Aug 2028</span></span></div></div>
+ <div class="row"><div class="b"><span class="s" style="font-size:13.5px">Interest saved</span><span class="r" style="color:var(--green);font-weight:600">Rp 4.820.000</span></div></div>
+</div>
+<div class="g">
+ <div class="row"><span class="num" style="background:var(--red)">!</span><div class="b"><div><div class="t">Kredivo</div><div class="s"><span class="tag late">3 days late</span> 2,95% a month</div></div><span class="r">Rp 1.250.000</span><span class="pay">Pay</span></div></div>
+ <div class="row"><span class="num">1</span><div class="b"><div><div class="t">Akulaku</div><div class="s">2,5% a month · left Rp 2.105.700</div></div><span class="r">Rp 650.000</span><span class="pay">Pay</span></div></div>
+ <div class="row"><span class="num">2</span><div class="b"><div><div class="t">BCA Visa</div><div class="s">1,75% a month · statement</div></div><span class="r">Rp 6.214.300</span><span class="pay">Pay</span></div></div>
+ <div class="row"><span class="num">3</span><div class="b"><div><div class="t">Motorbike lease</div><div class="s">12% a year · 9 months left</div></div><span class="r">Rp 1.120.000</span><span class="pay">Pay</span></div></div>
+ <div class="row"><span class="num">4</span><div class="b"><div><div class="t">Home mortgage</div><div class="s">7,5% a year · 58 months left</div></div><span class="r">Rp 2.480.000</span><span class="pay">Pay</span></div></div>
+</div>
+</div></div></div>
+
+<!-- 3 SCHEDULE -->
+<div><div class="cap">3 · Schedule<span>Every instalment of every debt in one month, with card statements and recurring bills beside them. Pay right from the row.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● ▮</span></div><div class="scr">
+<div class="nav"><span>‹ Debts</span><span>Loans · Cards · Bills</span></div>
+<div class="lt" style="display:flex;justify-content:space-between;align-items:baseline">Schedule<span style="font-size:15px;font-weight:600;color:var(--tint)">‹ Nov 2026 ›</span></div>
+<div class="tri"><div><small>Due</small><b>Rp 12.930.000</b></div><div><small>Paid</small><b style="color:var(--green)">Rp 4.180.000</b></div><div><small>Late</small><b style="color:var(--red)">Rp 1.250.000</b></div></div>
+<div class="k">Late</div>
+<div class="g">
+ <div class="row"><span class="ic">K</span><div class="b"><div><div class="t">Kredivo · 4/6</div><div class="s"><span class="tag late">3 days late</span></div></div><span class="r">Rp 1.250.000</span><span class="pay">Pay</span></div></div>
+</div>
+<div class="k">Coming up</div>
+<div class="g">
+ <div class="row"><span class="ic">A</span><div class="b"><div><div class="t">Akulaku · 2/3</div><div class="s"><span class="tag soon">Tomorrow</span> 12 Nov</div></div><span class="r">Rp 650.000</span><span class="pay">Pay</span></div></div>
+ <div class="row"><span class="ic">▭</span><div class="b"><div><div class="t">BCA Visa</div><div class="s">Statement · 18 Nov</div></div><span class="r">Rp 6.214.300</span><span class="pay">Pay</span></div></div>
+ <div class="row"><span class="ic">⚡</span><div class="b"><div><div class="t">Electricity</div><div class="s">Bill · 20 Nov</div></div><span class="r">Rp 780.000</span><span class="pay">Pay</span></div></div>
+ <div class="row"><span class="ic">M</span><div class="b"><div><div class="t">Motorbike · 27/36</div><div class="s">25 Nov</div></div><span class="r">Rp 1.120.000</span><span class="pay">Pay</span></div></div>
+</div>
+<div class="k">Paid</div>
+<div class="g">
+ <div class="row"><span class="ic">⌂</span><div class="b"><div><div class="t">Mortgage · 63/120</div><div class="s"><span class="tag done">Paid 1 Nov</span> from bank message</div></div><span class="r">Rp 2.480.000</span></div></div>
+</div>
+</div></div></div>
+
+<!-- 4 LIST -->
+<div><div class="cap">4 · All debts list<span>Filter by Active, Late or Paid off, sort, and see each debt's progress at a glance.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● ▮</span></div><div class="scr">
+<div class="nav"><span>‹ Debts</span><span>Sort: Most left ⌄</span></div>
+<div class="lt">All debts</div>
+<div class="chips"><span class="on">All 9</span><span>Active 6</span><span>Late 1</span><span>Paid off 3</span></div>
+<div class="g">
+ <div class="row"><span class="ic">⌂</span><div class="b" style="padding-top:9px;padding-bottom:9px"><div style="flex:1"><div style="display:flex"><span class="t">Home mortgage</span><span class="r">Rp 28.400.000</span></div><div class="bar"><i style="width:52%"></i></div><div class="s" style="margin-top:3px">52% repaid · ends Aug 2028</div></div></div></div>
+ <div class="row"><span class="ic">▭</span><div class="b" style="padding-top:9px;padding-bottom:9px"><div style="flex:1"><div style="display:flex"><span class="t">BCA Visa</span><span class="r">Rp 6.214.300</span></div><div class="bar"><i style="width:0%"></i></div><div class="s" style="margin-top:3px">Statement due 18 Nov</div></div></div></div>
+ <div class="row"><span class="ic">K</span><div class="b" style="padding-top:9px;padding-bottom:9px"><div style="flex:1"><div style="display:flex"><span class="t">Kredivo</span><span class="r">Rp 3.600.000</span></div><div class="bar"><i style="width:40%;background:var(--red)"></i></div><div class="s" style="margin-top:3px"><span class="tag late">Late</span> 40% repaid · 3 of 6 paid</div></div></div></div>
+ <div class="row"><span class="ic">A</span><div class="b" style="padding-top:9px;padding-bottom:9px"><div style="flex:1"><div style="display:flex"><span class="t">Akulaku</span><span class="r">Rp 2.105.700</span></div><div class="bar"><i style="width:33%"></i></div><div class="s" style="margin-top:3px">33% repaid · ends Jan 2027</div></div></div></div>
+ <div class="row"><span class="ic">M</span><div class="b" style="padding-top:9px;padding-bottom:9px"><div style="flex:1"><div style="display:flex"><span class="t">Motorbike lease</span><span class="r">Rp 1.950.000</span></div><div class="bar"><i style="width:75%"></i></div><div class="s" style="margin-top:3px">75% repaid · ends Aug 2027</div></div></div></div>
+ <div class="row"><span class="ic">R</span><div class="b" style="padding-top:9px;padding-bottom:9px"><div style="flex:1"><div style="display:flex"><span class="t">Rina (family)</span><span class="r">Rp 850.000</span></div><div class="bar"><i style="width:15%"></i></div><div class="s" style="margin-top:3px">Lend &amp; borrow · no fixed months</div></div></div></div>
+</div>
+<div class="k">Paid off</div>
+<div class="g">
+ <div class="row"><span class="ic">S</span><div class="b"><div><div class="t">SPayLater</div><div class="s"><span class="tag done">Paid off</span> Sep 2026</div></div><span class="r s">Rp 0</span></div></div>
+</div>
+</div></div></div>
+
+<!-- 5 REMINDERS -->
+<div><div class="cap">5 · Reminders<span>Notifications made on the phone itself. No server, no email. Amounts hidden on the lock screen unless switched on.</span></div>
+<div class="ph"><div class="lock">
+ <div style="font-size:18px;opacity:.9">Wednesday 11 November</div>
+ <div class="time">8:00</div>
+ <div class="notif" style="margin-top:34px"><div class="h"><span><b style="color:#1c1c1e">Expanses</b></span><span>now</span></div><b>Akulaku instalment due tomorrow</b><br>Tap to pay or mark paid.</div>
+ <div class="notif"><div class="h"><span><b style="color:#1c1c1e">Expanses</b></span><span>3 d ago</span></div><b>Kredivo instalment due today</b><br>2 of 6 still open on this loan.</div>
+ <div style="background:#f2f2f7;color:#1c1c1e;border-radius:18px;margin-top:22px;padding:12px 0 2px;text-align:left">
+  <div class="k" style="padding-left:16px">Settings · Reminders</div>
+  <div class="g" style="margin:0 10px 10px">
+   <div class="row"><div class="b"><span class="t">Remind before due dates</span><span class="r"><span class="sw" style="display:inline-block"></span></span></div></div>
+   <div class="row"><div class="b"><span class="t">When</span><span class="r s" style="font-size:15px">1 day before, on the day</span></div></div>
+   <div class="row"><div class="b"><span class="t">Time</span><span class="r s" style="font-size:15px">08:00</span></div></div>
+   <div class="row"><div class="b"><span class="t">Loans · Cards · Bills</span><span class="r s" style="font-size:15px">All ›</span></div></div>
+   <div class="row"><div class="b"><span class="t">Show amount on lock screen</span><span class="r"><span class="sw off" style="display:inline-block"></span></span></div></div>
+  </div>
+ </div>
+</div></div></div>
+
+<!-- 6 REPORT -->
+<div><div class="cap">6 · Report<span>Paid against due per month, and how the total left has come down. Pick the period.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● ▮</span></div><div class="scr">
+<div class="nav"><span>‹ Debts</span><span></span></div>
+<div class="lt">Report</div>
+<div class="chips"><span>This month</span><span class="on">3 months</span><span>This year</span><span>All</span></div>
+<div class="g">
+ <div class="row"><div class="b"><span class="t">Borrowed</span><span class="r">Rp 62.500.000</span></div></div>
+ <div class="row"><div class="b"><span class="t">Repaid</span><span class="r" style="color:var(--green)">Rp 19.380.000</span></div></div>
+ <div class="row"><div class="b"><span class="t">Left</span><span class="r"><b>Rp 43.120.000</b></span></div></div>
+ <div class="row"><div class="b"><span class="t">Interest paid</span><span class="r">Rp 3.044.000</span></div></div>
+</div>
+<div class="k">Paid against due</div>
+<div class="g">
+ <div class="mb">
+  <div><i style="height:92%;background:#c7c7cc"></i><i style="height:92%;background:var(--green)"></i></div>
+  <div><i style="height:96%;background:#c7c7cc"></i><i style="height:84%;background:var(--green)"></i></div>
+  <div><i style="height:100%;background:#c7c7cc"></i><i style="height:33%;background:var(--green)"></i></div>
+ </div>
+ <div class="ml"><span>Sep</span><span>Oct</span><span>Nov</span></div>
+ <div class="legend"><span><i style="background:#c7c7cc"></i>Due</span><span><i style="background:var(--green)"></i>Paid</span></div>
+ <div class="row"><div class="b"><span class="t">September</span><span class="r"><span class="tag done">All paid</span> Rp 11.900.000</span></div></div>
+ <div class="row"><div class="b"><span class="t">October</span><span class="r"><span class="tag late">1 late</span> Rp 10.880.000</span></div></div>
+ <div class="row"><div class="b"><span class="t">November</span><span class="r"><span class="s">so far</span> Rp 4.180.000</span></div></div>
+</div>
+</div></div></div>
+
+</div>
+
+<div class="notes">
+ <div class="nb"><b>Our edge over the debt-only apps</b>Payments from bank messages and emails tick instalments off by themselves. Cards come with real statements. Household debts can be shared. Data stays on the phone; no Google account.</div>
+ <div class="nb"><b>Where the numbers come from</b>Each loan's own schedule (terms, rate, months left), card statements, recurring bills, and Lend &amp; borrow. A debt with no months set has no end month, so the plan says "debt-free date unknown" until one is added.</div>
+ <div class="nb"><b>Left out on purpose</b>Risk levels (late + interest already say it), daily challenges, and any Google Drive or email set-up.</div>
+</div>
+</body></html>

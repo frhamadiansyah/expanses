@@ -1,6 +1,6 @@
 import { type BillWindow, dayMonth, isoDate, monthName, ordinal, periodicRepeat, yearlyRepeat } from '@expanses/core';
 import { RecurringError, resumeBill, skipBill, undoBillPayments, unlinkPurchaseFromBill, unskipBill } from '@expanses/db';
-import { useNavigate, useParams } from '@tanstack/react-router';
+import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Check, Pause, Pencil, Play, SkipForward } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -16,6 +16,7 @@ import { PauseSheet } from './PauseSheet';
 import { PaySheet } from './PaySheet';
 import { SinkingFundGroup } from './SinkingFundGroup';
 import { useBillDetail, useBillMonthsBefore, useSinkingFunds } from './queries';
+import { useOpenFromSearch } from '../../lib/open-once';
 
 /** How many months the history shows before See all. */
 const HISTORY_SHOWN = 3;
@@ -59,6 +60,9 @@ export function BillPage({ billId }: { billId: string }) {
   const earlier = useBillMonthsBefore(billId, 1).data;
 
   const [paying, setPaying] = useState(false);
+  // The Debt-free plan's Pay lands here with `?pay=1`: the pay sheet opens once, and closing it goes back.
+  const { pay } = useSearch({ strict: false }) as { pay?: true };
+  const fromLink = useOpenFromSearch(pay === true, () => setPaying(true), (detail.data?.bill.payableMonths.length ?? 0) > 0);
   const [pausing, setPausing] = useState(false);
   const [allHistory, setAllHistory] = useState(false);
   // The skipped month whose sheet is open, with the title its row carries.
@@ -292,12 +296,19 @@ export function BillPage({ billId }: { billId: string }) {
         <PaySheet
           bill={bill}
           today={today}
-          onClose={() => setPaying(false)}
+          onClose={() => {
+            setPaying(false);
+            fromLink.done();
+          }}
           onPaid={(ids, amountMinor, paidOn, month) => {
             setPaying(false);
             setJustPaid({ ids, amountMinor, paidOn, month });
+            fromLink.done();
           }}
-          onSkipped={() => setPaying(false)}
+          onSkipped={() => {
+            setPaying(false);
+            fromLink.done();
+          }}
           onLink={(month) => {
             setPaying(false);
             void navigate({ to: '/bills/$billId/link', params: { billId }, search: { ...from, month } });

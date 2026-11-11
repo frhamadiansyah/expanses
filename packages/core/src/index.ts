@@ -380,7 +380,8 @@ export {
 export { type DebtStatus, DUE_SOON_DAYS, type DueState, dueLabel, dueStateFor, statusFor } from './debts/status';
 export { equalShares, yourShare } from './debts/shares';
 export { type RatePer, rateBpsFromTyped, typedFromRateBps } from './loans/rate-input';
-export { annuityPaymentMinor, type LoanMethod, type LoanTerms, loanSchedule, periodOn, type RatePeriod, type ScheduleRow } from './loans/schedule';
+export { annuityPaymentMinor, type LoanMethod, type LoanTerms, loanSchedule, paymentDate, periodOn, type RatePeriod, type ScheduleRow } from './loans/schedule';
+export { type InstalmentDue, instalmentDates, type InstalmentPayment, type InstalmentState, instalmentStanding, type InstalmentStatus } from './loans/standing';
 export {
   type ExtraPayment,
   type ExtraPaymentEffect,
@@ -667,3 +668,23 @@ export {
   waiverWindow,
 } from './points/spend-bonus';
 export { chargeAfterWaiver, coveredCharge, FEE_SOON_DAYS, feeDaysAway, feeWaived, nextFeeDate, type UpcomingFee, upcomingFees } from './points/fee-date';
+export {
+  extraEffect,
+  type ExtraEffect,
+  type MethodSuggestion,
+  PAYOFF_CAP_MONTHS,
+  type PayoffDebt,
+  type PayoffDebtResult,
+  payoffDebtFromSchedule,
+  type PayoffInterest,
+  type PayoffMethod,
+  type PayoffOptions,
+  payoffOrder,
+  type PayoffPlan,
+  RATE_SPREAD_BPS,
+  type ScheduledLoanInput,
+  simulatePayoff,
+  SMALL_DEBT_COUNT,
+  SMALL_DEBT_SHARE_BPS,
+  suggestMethod,
+} from './debts/payoff';

@@ -35,7 +35,7 @@ const MONTHS_IN_YEAR = 12;
 const monthlyRate = (rateBps: number): number => rateBps / BPS / MONTHS_IN_YEAR;
 
 /** The nth payment date after the first one, keeping to the payment day. */
-function paymentDate(firstPaymentOn: string, paymentDay: number, index: number): string {
+export function paymentDate(firstPaymentOn: string, paymentDay: number, index: number): string {
   const [year, month] = firstPaymentOn.split('-').map(Number);
   const total = (month! - 1) + index;
   const onYear = year! + Math.floor(total / MONTHS_IN_YEAR);
