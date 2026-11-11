@@ -35,8 +35,19 @@ describe('planning a debt from the picker', () => {
     expect(plan.terms).toBeNull();
   });
 
-  it('files a paylater as a bank debt and never asks it for a rate', () => {
-    expect(planNewDebt(draft('online_loan', { owed: '2400000', lender: 'SPayLater', term: '6' }), 'IDR', '2026-09-18').terms).toMatchObject({ coretaxCode: '101', method: 'zero' });
+  it('files a paylater as a bank debt, with no interest when the rate is left empty', () => {
+    expect(planNewDebt(draft('online_loan', { owed: '2400000', lender: 'SPayLater', term: '6' }), 'IDR', '2026-09-18').terms).toMatchObject({ coretaxCode: '101', method: 'zero', rateBps: 0 });
+  });
+
+  it('reads a paylater rate as a month, stored as yearly basis points', () => {
+    const terms = (rate: string) => planNewDebt(draft('online_loan', { owed: '2400000', lender: 'SPayLater', term: '6', rate }), 'IDR', '2026-09-18').terms;
+    expect(terms('2')).toMatchObject({ method: 'annuity', rateBps: 2400 });
+    expect(terms('2,95')).toMatchObject({ method: 'annuity', rateBps: 3540 });
+    expect(terms('0')).toMatchObject({ method: 'zero', rateBps: 0 });
+  });
+
+  it('still reads every other loan rate as a year', () => {
+    expect(planNewDebt(draft('personal_loan', { owed: '2400000', lender: 'Bank', term: '6', rate: '9,25' }), 'IDR', '2026-09-18').terms).toMatchObject({ method: 'annuity', rateBps: 925 });
   });
 
   it('files family under 103 and anything else under 109, as a debt to a person', () => {

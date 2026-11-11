@@ -227,6 +227,16 @@ describe('loanTermsDraftFromTerms', () => {
     });
   });
 
+  it('opens an online loan with its rate a month and saves it back to the same yearly basis points', () => {
+    const online = terms({ periods: [{ id: 'p1', accountId: 'kpr', fromOn: '2026-01-05', rateBps: 3540, kind: 'fixed', paymentMinor: 0 }] });
+    const opened = loanTermsDraftFromTerms(online, 'IDR', '2026-09-12', 'online_loan');
+
+    expect(opened.rate).toBe('2,95');
+    expect(loanTermsDraftToInput(opened, 'IDR').rateBps).toBe(3540);
+    // The same terms opened as a plain loan read as a year.
+    expect(loanTermsDraftFromTerms(online, 'IDR', '2026-09-12').rate).toBe('35,4');
+  });
+
   it('opens a dollar loan grouped and saves it back to the same figure', () => {
     const opened = loanTermsDraftFromTerms({ ...terms(), originalMinor: 1_250_075 }, 'USD', '2026-09-12');
 

@@ -13,6 +13,12 @@ export function rateText(bps: number): string {
   return `${(bps / 100).toLocaleString('id-ID', { maximumFractionDigits: 2 })}%`;
 }
 
+/** A loan's rate as it reads on the page: "9,25%" a year, or "2% a month" for a paylater, which quotes a month. */
+export function rateTextPer(bps: number, per: 'month' | 'year'): string {
+  if (per === 'year') return rateText(bps);
+  return `${(bps / 12 / 100).toLocaleString('id-ID', { maximumFractionDigits: 3 })}% a month`;
+}
+
 /** "Sep 2041", from `2041-09` or `2041-09-25`. Anything else comes back as it was. */
 export function monthYearLabel(iso: string): string {
   const [year, month] = iso.split('-').map(Number);

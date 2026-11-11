@@ -1,5 +1,5 @@
 import type { CatalogEntry } from '@expanses/catalog';
-import { addMonths, debtItem, type LoanMethod, monthOf, parseMajor } from '@expanses/core';
+import { addMonths, debtItem, type LoanMethod, monthOf, parseMajor, rateBpsFromTyped } from '@expanses/core';
 import { memberLevelsOf } from '../cards/catalog-picker';
 
 /**
@@ -19,7 +19,7 @@ export interface DebtItemDraft {
   /** What is still owed today, not what was borrowed: the balance is brought in, not the history. */
   owed: string;
   lender: string;
-  /** A yearly rate as a percentage, typed "9" or "9,25". */
+  /** A rate as a percentage, typed "9" or "9,25": a year for a loan, a month for a paylater (`ratePer` in the catalogue). */
   rate: string;
   /** Months left to run. Empty means it is not known, and no schedule is worked out. */
   term: string;
@@ -85,15 +85,6 @@ export interface NewDebtPlan {
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
-/** A percentage as basis points: "9,25" is 925. The same rule `loan-form.ts` uses. */
-function rateToBps(typed: string): number {
-  const cleaned = typed.trim().replace(',', '.');
-  if (cleaned === '') return 0;
-  const value = Number(cleaned);
-  if (!Number.isFinite(value) || value < 0) throw new Error('The rate must be a number');
-  return Math.round(value * 100);
-}
-
 /** What is still owed, as minor units, refusing anything that is not a positive amount. */
 function owedMinor(typed: string, currency: string): number {
   if (typed.trim() === '') throw new Error('Enter how much is still owed');
@@ -151,8 +142,9 @@ export function planNewDebt(draft: DebtItemDraft, currency: string, today: strin
   if (!Number.isInteger(tenorMonths) || tenorMonths < 1) throw new Error('A loan runs for at least one month');
 
   const paymentDay = Math.min(Number(today.slice(8, 10)), 28);
-  // A paylater is never asked for a rate, so its typed one — if the field ever showed — is not read.
-  const rateBps = behaviour.asksRate ? rateToBps(draft.rate) : 0;
+  // Stored as yearly basis points whichever way it was typed; a paylater's monthly figure is that times twelve.
+  // Empty is no interest, which is the 'zero' method exactly as before the rate was asked.
+  const rateBps = behaviour.asksRate ? rateBpsFromTyped(draft.rate, behaviour.ratePer ?? 'year') : 0;
   return {
     ...empty,
     account,

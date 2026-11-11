@@ -253,6 +253,7 @@ export {
   elseItem,
   HARTA_ENGLISH,
   LOAN_ITEMS,
+  loanRatePer,
   type MoneyAccountSubtype,
   type OwnableBehaviour,
   type OwnableFamily,
@@ -378,6 +379,7 @@ export {
 } from './debts/postings';
 export { type DebtStatus, DUE_SOON_DAYS, type DueState, dueLabel, dueStateFor, statusFor } from './debts/status';
 export { equalShares, yourShare } from './debts/shares';
+export { type RatePer, rateBpsFromTyped, typedFromRateBps } from './loans/rate-input';
 export { annuityPaymentMinor, type LoanMethod, type LoanTerms, loanSchedule, periodOn, type RatePeriod, type ScheduleRow } from './loans/schedule';
 export {
   type ExtraPayment,

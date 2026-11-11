@@ -1,5 +1,6 @@
-import { balanceSheet, convertMinor, currencyInfo, displayAmount, formatMinor, periodOn, type SheetLiability, sumToBase } from '@expanses/core';
+import { balanceSheet, convertMinor, currencyInfo, displayAmount, formatMinor, loanRatePer, periodOn, type SheetLiability, sumToBase } from '@expanses/core';
 import type { AccountRow, LoanTermsRow, PersonDebtRow } from '@expanses/db';
+import { rateTextPer } from '../loans/loan-view';
 import { totalOf } from './asset-rows';
 import { debtKind } from './sheet-drawers';
 
@@ -165,10 +166,10 @@ function converted(minor: number, currency: string, baseCurrency: string, rates:
   return { baseMinor: convertMinor(minor, currency, baseCurrency, rate), missing: null, rate };
 }
 
-function loanDetail(terms: LoanTermsRow | undefined, today: string): string {
+function loanDetail(terms: LoanTermsRow | undefined, today: string, itemId?: string): string {
   if (!terms) return 'no terms yet';
   const rate = periodOn(terms.periods, today)?.rateBps ?? 0;
-  return [terms.lenderName, percent(rate), `${terms.tenorMonths} months`, terms.isHomeLoan ? 'mortgage' : null].filter(Boolean).join(' · ');
+  return [terms.lenderName, loanRatePer(itemId) === 'month' ? rateTextPer(rate, 'month') : percent(rate), `${terms.tenorMonths} months`, terms.isHomeLoan ? 'mortgage' : null].filter(Boolean).join(' · ');
 }
 
 /**
@@ -216,7 +217,7 @@ export function groupDebts(input: DebtInputs, today: string = new Date().toISOSt
       if (!terms && minor === 0) continue;
       const asset = terms?.assetAccountId ? byId.get(terms.assetAccountId) : undefined;
       const icon: DebtIcon = terms?.isHomeLoan ? 'home' : asset?.subtype === 'vehicle' ? 'car' : 'loan';
-      rows.push({ key: account.id, kind: 'loan', accountId: account.id, personName: null, name: account.name, detail: loanDetail(terms, today), icon, last4: null, minor, currency, ...converted(minor, currency, baseCurrency, ratesToBase) });
+      rows.push({ key: account.id, kind: 'loan', accountId: account.id, personName: null, name: account.name, detail: loanDetail(terms, today, items[account.id]), icon, last4: null, minor, currency, ...converted(minor, currency, baseCurrency, ratesToBase) });
     } else if (account.subtype === 'credit_card') {
       const minor = owed(account.id);
       const facts = cards[account.id];
