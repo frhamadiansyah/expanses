@@ -93,20 +93,55 @@ describe('the gate before a restore', () => {
     const snapshots = memorySnapshots(files);
     const kept = await snapshots.write(older, 'daily', 108);
     const restore = vi.fn(async () => undefined);
+    const marked = vi.spyOn(snapshots, 'markImport');
     await expect(restoreSnapshot({ snapshots, file: kept.file, live: async () => live, restore, checkSharing: cancel })).rejects.toBeInstanceOf(RestoreCancelledError);
     expect(asked).toEqual(['Home is shared here but not in this copy. Restoring it disconnects Home from the people it is shared with.\n\nRestore anyway?']);
     expect(restore).not.toHaveBeenCalled();
     // No before-restore copy either: nothing was started.
     expect((await snapshots.list()).map((copy) => copy.reason)).toEqual(['daily']);
+    // And no note of a restore in progress, which the next launch would act on.
+    expect(marked).not.toHaveBeenCalled();
+    expect(await snapshots.importMarker!()).toBeNull();
 
     // Restore anyway: it goes ahead as before.
     await restoreSnapshot({ snapshots, file: kept.file, live: async () => live, restore, checkSharing: sharingGate(() => true) });
     expect(restore).toHaveBeenCalledOnce();
   });
 
-  it('says sharing cannot be checked when the data here cannot be read', async () => {
+  it('says sharing cannot be checked when the data here is there but cannot be read', async () => {
     const asked: string[] = [];
-    expect(await sharingGate((message) => (asked.push(message), true))({ live: null, chosen: await file([]) })).toBe(true);
-    expect(asked[0]).toMatch(/^Sharing cannot be checked/);
+    const gate = sharingGate((message) => (asked.push(message), true));
+    const chosen = await file([]);
+    expect(await gate({ live: null, chosen, liveFailed: true })).toBe(true);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect(await gate({ live: new TextEncoder().encode('not a database, only the shape of one'), chosen })).toBe(true);
+    vi.restoreAllMocks();
+    expect(asked).toHaveLength(2);
+    for (const message of asked) expect(message).toMatch(/^Sharing cannot be checked: the data on this device cannot be read/);
+  });
+
+  it('asks nothing when there is no database here at all', async () => {
+    const ask = vi.fn(() => false);
+    expect(await sharingGate(ask)({ live: null, chosen: await file([], { books: ['Home'] }) })).toBe(true);
+    expect(await sharingGate(ask)({ live: new Uint8Array(0), chosen: await file([]), liveFailed: false })).toBe(true);
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it('is told by the restore whether the live bytes could not be read, and a cancel then still leaves nothing behind', async () => {
+    const snapshots = memorySnapshots();
+    const kept = await snapshots.write(await file([]), 'daily', 108);
+    const sides: { live: Uint8Array | null; liveFailed: boolean }[] = [];
+    const checkSharing = async (seen: { live: Uint8Array | null; chosen: Uint8Array; liveFailed: boolean }) => (sides.push({ live: seen.live, liveFailed: seen.liveFailed }), false);
+    const restore = vi.fn(async () => undefined);
+    const failing = async () => Promise.reject(new Error('NotReadableError'));
+    await expect(restoreSnapshot({ snapshots, file: kept.file, live: failing, restore, checkSharing })).rejects.toBeInstanceOf(RestoreCancelledError);
+    await expect(restoreSnapshot({ snapshots, file: kept.file, live: async () => null, restore, checkSharing })).rejects.toBeInstanceOf(RestoreCancelledError);
+    expect(sides).toEqual([
+      { live: null, liveFailed: true },
+      { live: null, liveFailed: false },
+    ]);
+    expect(restore).not.toHaveBeenCalled();
+    expect(await snapshots.importMarker!()).toBeNull();
+    expect(await snapshots.list()).toHaveLength(1);
   });
 });

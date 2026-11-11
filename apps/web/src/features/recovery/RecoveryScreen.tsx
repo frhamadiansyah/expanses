@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { type FailureEntry, formatFailureLog } from '../../db/failure-log';
 import { refusedCopy } from '../../db/newer-database';
 import { type ImportMarker, NO_SNAPSHOTS, type RecoveryReason, type SnapshotInfo, type SnapshotStore } from '../../db/open';
-import { restoreBytes, salvageBytes } from '../../db/salvage';
+import { poolHoldsData, restoreBytes, salvageBytes } from '../../db/salvage';
 import { restoreSnapshot } from '../../db/snapshots';
 import { RestoreCancelledError, sharingGate } from '../../db/restore-sharing';
 import { saveBytes, savedWhere } from '../../lib/download';
@@ -93,7 +93,14 @@ export function RecoveryScreen({
       await restoreSnapshot({
         snapshots,
         file: chosen.file,
-        live: async () => bytes ?? (await salvageBytes().catch(() => null)),
+        // None found, with something in the VFS's files, is a database here that cannot be read: thrown, so the
+        // sharing check says it cannot check rather than taking it for a new phone. Never a gate either way.
+        live: async () => {
+          const found = bytes ?? (await salvageBytes());
+          if (found) return found;
+          if (await poolHoldsData()) throw new Error('The data on this device cannot be read.');
+          return null;
+        },
         source: 'recovery screen',
         restore: restoreBytes,
         // A copy from before a workspace was shared disconnects it: named first, or said that it cannot be checked.

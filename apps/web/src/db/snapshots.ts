@@ -550,11 +550,11 @@ export async function restoreSnapshot(deps: {
   /** Hands the chosen bytes to the engine. `restoreBytes` in the app. */
   restore: (bytes: Uint8Array) => Promise<void>;
   /**
-   * Asked before anything is kept or replaced, with the live bytes (null when unreadable) and the copy's: false
-   * calls the restore off with `RestoreCancelledError`. `sharingGate` (restore-sharing.ts) in the app: it warns
-   * when the copy lacks a workspace shared here.
+   * Asked before anything is kept or replaced, with the live bytes and the copy's: false calls the restore off with
+   * `RestoreCancelledError`. `live` is null when `live()` found none; `liveFailed` when it threw. `sharingGate`
+   * (restore-sharing.ts) in the app: it warns when the copy lacks a workspace shared here.
    */
-  checkSharing?: (sides: { live: Uint8Array | null; chosen: Uint8Array }) => Promise<boolean>;
+  checkSharing?: (sides: { live: Uint8Array | null; chosen: Uint8Array; liveFailed: boolean }) => Promise<boolean>;
 }): Promise<void> {
   const chosen = await deps.snapshots.read(deps.file);
   // Checked before anything is kept or replaced: bytes that are not a whole database would only be refused
@@ -568,7 +568,7 @@ export async function restoreSnapshot(deps: {
   } catch (error) {
     liveError = error;
   }
-  if (deps.checkSharing && !(await deps.checkSharing({ live, chosen }))) throw new RestoreCancelledError();
+  if (deps.checkSharing && !(await deps.checkSharing({ live, chosen, liveFailed: liveError !== null }))) throw new RestoreCancelledError();
   let beforeCopy: string | null = null;
   try {
     if (liveError) throw liveError;

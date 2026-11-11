@@ -5,8 +5,8 @@
  * ordinary one again here, while the people it is shared with go on as if this device were still in it — the
  * restore incident of November 2026, which this exists to stop happening silently. So the live database's shared
  * workspaces are compared with the copy's, and any the copy lacks (or holds in another state) are named before
- * anything is replaced. A live database that cannot be read (the recovery screen's case) cannot be compared; that is
- * said too.
+ * anything is replaced. A live database that is there but cannot be read (the recovery screen's case) cannot be
+ * compared; that is said too. No database here at all (a new phone) has nothing to lose, and passes without a word.
  *
  * Both sides are read from bytes, in a throwaway in-memory database on the main thread, so the check works the same
  * on the recovery screen, where the app's own engine is the thing that will not start.
@@ -102,14 +102,18 @@ export async function sharedWorkspacesInBytes(bytes: Uint8Array): Promise<Shared
 /**
  * The gate a restore goes through (see `restoreSnapshot`'s `checkSharing`): reads both sides, and when they differ
  * or cannot be compared, asks. Resolves true to go on. `ask` is `window.confirm` in the app: Cancel leaves everything.
+ *
+ * `live` null with `liveFailed` unset is no database here at all: nothing to lose, nothing asked. `liveFailed` (the
+ * live bytes could not be read off the device) and bytes that do not read as a database are "cannot be checked".
  */
 export function sharingGate(
   ask: (message: string) => boolean = (message) => window.confirm(message),
   read: (bytes: Uint8Array) => Promise<SharedWorkspace[] | null> = sharedWorkspacesInBytes,
-): (sides: { live: Uint8Array | null; chosen: Uint8Array }) => Promise<boolean> {
-  return async ({ live, chosen }) => {
+): (sides: { live: Uint8Array | null; chosen: Uint8Array; liveFailed?: boolean }) => Promise<boolean> {
+  return async ({ live, chosen, liveFailed }) => {
+    if (!liveFailed && !live?.length) return true;
     const here = live?.length ? await read(live) : null;
-    // Nothing shared here (or nothing here at all, a new phone): there is nothing for the copy to lose.
+    // Nothing shared here: there is nothing for the copy to lose.
     if (here && here.every((book) => book.state === 'unshared')) return true;
     const message = restoreSharingMessage(restoreSharingCheck(here, await read(chosen)));
     return message === null || ask(message);
