@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAccount, type Database, goalHistory, saveEarmark, saveGoal, type WorkspaceContext } from '../src/index';
 import { setupDb } from './helpers';
 
@@ -8,6 +8,16 @@ import { setupDb } from './helpers';
 
 const TODAY = '2026-11-10';
 const BOOK = 'book-home';
+
+// A set-aside is dated by the clock (`recordContributionTx`), and History reads up to TODAY: the clock is TODAY's, or the
+// private goal's line falls past it on any later real day.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(`${TODAY}T09:00:00Z`));
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 let database: Database;
 let ws: WorkspaceContext;
