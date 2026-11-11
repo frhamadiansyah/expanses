@@ -10,7 +10,7 @@ import {
   type PayoffPlan,
   suggestMethod,
 } from '@expanses/core';
-import { type BillMonthRow, billsInMonth, cardStatement, debtMovements, type DebtPlanSettings, getDebtPlanSettings, listCardTerms, loanPlanFacts, saveDebtPlanSettings } from '@expanses/db';
+import { type BillMonthRow, billsInMonth, cardStatement, debtMovements, type DebtPlanSettings, getDebtPlanSettings, listCardTerms, type LoanPlanFact, loanPlanFacts, paidOffLoanFacts, saveDebtPlanSettings } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { useApp } from '../../app/context';
@@ -30,6 +30,20 @@ export function useLoanPlanFacts(today?: string) {
   const { database, ws } = useApp();
   const onDate = today ?? isoDate();
   return useQuery({ queryKey: ['loan-plan-facts', ws.workspaceId, onDate], queryFn: () => loanPlanFacts(database, ws, onDate) });
+}
+
+/** The loans paid off, with their instalments up to the pay-off: the Schedule's and the Report's months behind. */
+export function usePaidOffLoanFacts(today?: string) {
+  const { database, ws } = useApp();
+  const onDate = today ?? isoDate();
+  return useQuery({ queryKey: ['paid-off-loan-facts', ws.workspaceId, onDate], queryFn: () => paidOffLoanFacts(database, ws, onDate) });
+}
+
+/** Open loans' facts and paid-off ones together, for the months; null until both are read. */
+function useMonthLoanFacts(today: string): { data: LoanPlanFact[] | null; error: unknown } {
+  const open = useLoanPlanFacts(today);
+  const gone = usePaidOffLoanFacts(today);
+  return { data: open.data && gone.data ? [...open.data, ...gone.data] : null, error: open.error ?? gone.error ?? null };
 }
 
 /** Every posted movement on these debt accounts. */
@@ -199,7 +213,7 @@ export function usePlanMonth(month: string | null, show: MonthInput['show'] = AL
   const { ws } = useApp();
   const today = isoDate();
   const { model, error } = useDebtPlan();
-  const facts = useLoanPlanFacts(today);
+  const facts = useMonthLoanFacts(today);
   const cards = useCardMonths([month]);
   const before = useBillsInMonth(month === null ? null : addMonths(month, -1));
   const bills = useBillsInMonth(month);
@@ -212,15 +226,15 @@ export function usePlanMonth(month: string | null, show: MonthInput['show'] = AL
     return payer?.subtype === 'credit_card' ? payer.name : null;
   };
   const held = useHeldRates(rows.map(currencyOf));
-  const queries = [facts, cards, before, bills, accounts, held];
-  const failed = error ?? queries.find((q) => q.error)?.error ?? null;
-  if (month === null || !model || !queries.every((q) => q.isSuccess)) return { items: null, error: failed };
+  const queries = [cards, before, bills, accounts, held];
+  const failed = error ?? facts.error ?? queries.find((q) => q.error)?.error ?? null;
+  if (month === null || !model || !facts.data || !queries.every((q) => q.isSuccess)) return { items: null, error: failed };
   return {
     items: monthItems({
       month,
       today,
       debts: model.debts,
-      loanFacts: facts.data!,
+      loanFacts: facts.data,
       cards: cards.data![month] ?? [],
       bills: rows.map((row) => ({ row, currency: currencyOf(row), onCard: cardNameOf(row.bill.moneyAccountId) })),
       show,
@@ -236,10 +250,10 @@ export function usePlanMonths(months: readonly string[]): { byMonth: Record<stri
   const { ws } = useApp();
   const today = isoDate();
   const { model, error } = useDebtPlan();
-  const facts = useLoanPlanFacts(today);
+  const facts = useMonthLoanFacts(today);
   const cards = useCardMonths(months);
   const failed = error ?? facts.error ?? cards.error ?? null;
-  if (!model || !facts.isSuccess || (months.length > 0 && !cards.isSuccess)) return { byMonth: null, error: failed };
+  if (!model || !facts.data || (months.length > 0 && !cards.isSuccess)) return { byMonth: null, error: failed };
   const byMonth: Record<string, PlanItem[]> = {};
   for (const month of months) {
     byMonth[month] = monthItems({

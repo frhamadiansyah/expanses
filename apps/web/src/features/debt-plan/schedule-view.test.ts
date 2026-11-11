@@ -192,6 +192,30 @@ describe('a card statement part paid, or carried from month to month', () => {
   });
 });
 
+describe('a loan paid off', () => {
+  it('keeps its months behind, paid, and never shows late or ahead', () => {
+    // Bank (in the fixtures): paid off on 15 Sep 2026; instalments 1/6 (1 Aug) and 2/6 (1 Sep) paid.
+    const bankTerms = { firstPaymentOn: '2026-08-01', paymentDay: 1, tenorMonths: 6 };
+    const bank: LoanPlanFact = {
+      accountId: 'L3',
+      owedMinor: 0,
+      trackFrom: '2026-08-01',
+      instalments: instalmentStanding(instalmentDates(bankTerms, '2026-08-01', '2026-09-15'), [
+        { id: 'b1', occurredOn: '2026-08-01', totalMinor: 400_000, fromMessage: false },
+        { id: 'b2', occurredOn: '2026-09-15', totalMinor: 1_600_000, fromMessage: false },
+      ], '2026-11-04'),
+      scheduleFrom: '2026-09-15',
+      schedule: [],
+    };
+    const base = input('2026-11-04', { month: '2026-09', cards: [], bills: [] });
+    const all = planDebts(readings(), '2026-11-04');
+    const september = monthItems({ ...base, debts: all, loanFacts: [...base.loanFacts, bank] });
+    expect(september.find((i) => i.debtKey === 'L3')).toMatchObject({ title: 'Bank · 2/6', status: 'paid', paidOn: '2026-09-15', minor: 1_600_000 });
+    const november = monthItems({ ...base, month: '2026-11', debts: all, loanFacts: [...base.loanFacts, bank] });
+    expect(november.some((i) => i.debtKey === 'L3')).toBe(false);
+  });
+});
+
 describe('a bill paid from a credit card', () => {
   it('keeps its row, says which card, and stays out of the totals the statement already counts', () => {
     const items = monthItems({ ...input('2026-11-04'), bills: [{ row: electricity(), currency: 'IDR', onCard: 'BCA Visa' }] });

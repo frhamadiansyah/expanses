@@ -415,7 +415,7 @@ function payableDebt(row: DebtRow, readings: PlanReadings): PlanDebt {
   };
 }
 
-function paidOffDebt(parts: Pick<PlanDebt, 'key' | 'kind' | 'accountId' | 'personName' | 'name' | 'currency' | 'paidOffMonth'> & { borrowed: number }, readings: PlanReadings): PlanDebt {
+function paidOffDebt(parts: Pick<PlanDebt, 'key' | 'kind' | 'accountId' | 'personName' | 'name' | 'currency' | 'paidOffMonth'> & { borrowed: number; tenor?: number | null }, readings: PlanReadings): PlanDebt {
   const borrowedBase = toBase(parts.borrowed, parts.currency, readings);
   return {
     key: parts.key,
@@ -434,7 +434,8 @@ function paidOffDebt(parts: Pick<PlanDebt, 'key' | 'kind' | 'accountId' | 'perso
     rateBps: null,
     ratePer: 'year',
     hasTerms: parts.kind === 'loan',
-    instalmentOf: null,
+    // A paid-off loan's tenor still numbers its months behind ("Bank · 2/6") in the Schedule and the Report.
+    instalmentOf: parts.tenor ?? null,
     instalmentsPaid: null,
     endsMonth: null,
     next: null,
@@ -477,7 +478,7 @@ export function planDebts(readings: PlanReadings, today: string): PlanDebt[] {
     const terms = readings.loans.find((loan) => loan.accountId === cleared.accountId);
     const currency = byId.get(cleared.accountId)?.currency ?? readings.baseCurrency;
     return paidOffDebt(
-      { key: cleared.accountId, kind: 'loan', accountId: cleared.accountId, personName: null, name: cleared.name, currency, paidOffMonth: cleared.clearedOn?.slice(0, 7) ?? null, borrowed: terms?.originalMinor ?? increasesOn(cleared.accountId, readings.movements) },
+      { key: cleared.accountId, kind: 'loan', accountId: cleared.accountId, personName: null, name: cleared.name, currency, paidOffMonth: cleared.clearedOn?.slice(0, 7) ?? null, borrowed: terms?.originalMinor ?? increasesOn(cleared.accountId, readings.movements), tenor: terms?.tenorMonths ?? null },
       readings,
     );
   });

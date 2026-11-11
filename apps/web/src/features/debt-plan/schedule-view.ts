@@ -68,7 +68,9 @@ function loanItems(input: MonthInput): PlanItem[] {
   const current = monthOf(input.today);
   const items: PlanItem[] = [];
   for (const debt of input.debts) {
-    if (debt.kind !== 'loan' || debt.paidOff || !debt.accountId || !debt.hasTerms || debt.instalmentOf === null) continue;
+    // A paid-off loan keeps its months behind (its fact holds only instalments up to the pay-off, all paid).
+    if (debt.kind !== 'loan' || !debt.accountId || !debt.hasTerms || debt.instalmentOf === null) continue;
+    if (debt.paidOff && input.month > current) continue;
     const fact = input.loanFacts.find((f) => f.accountId === debt.accountId);
     if (!fact) continue;
     const tenor = debt.instalmentOf;

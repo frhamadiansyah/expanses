@@ -1,4 +1,4 @@
-import { instalmentDates, type InstalmentState, instalmentStanding, monthOf, monthRange, type ScheduleRow } from '@expanses/core';
+import { daysFrom, instalmentDates, type InstalmentState, instalmentStanding, monthOf, monthRange, type ScheduleRow } from '@expanses/core';
 import { and, eq, gte, inArray, lte } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
@@ -145,6 +145,30 @@ export async function loanPlanFacts(database: Database, ws: WorkspaceContext, to
     });
   }
   return facts;
+}
+
+/**
+ * The loans paid off, for the months behind (the Schedule's past months, the Report's bars): each tracked instalment up
+ * to the pay-off day. Paying a loan off settles every instalment due by then, so none of them is ever late here — an
+ * instalment no single payment matched reads as paid on the pay-off day. No schedule: nothing is owed.
+ */
+export async function paidOffLoanFacts(database: Database, ws: WorkspaceContext, today: string): Promise<LoanPlanFact[]> {
+  const gone = (await listLoans(database, ws)).filter((loan) => loan.status === 'paid_off');
+  if (gone.length === 0) return [];
+  const movements = await debtMovements(database, ws, gone.map((loan) => loan.accountId));
+  return gone.map((loan) => {
+    const own = movements.filter((m) => m.accountId === loan.accountId);
+    const firstDay = own[0]?.occurredOn;
+    const trackFrom = firstDay && firstDay > loan.firstPaymentOn ? firstDay : loan.firstPaymentOn;
+    const paidOffOn = loan.statusOn ?? own.at(-1)?.occurredOn ?? today;
+    const payments = own
+      .filter((m) => m.amountMinor > 0)
+      .map((m) => ({ id: m.transactionId, occurredOn: m.occurredOn, totalMinor: m.amountMinor + m.chargesMinor, fromMessage: m.fromMessage }));
+    const instalments = instalmentStanding(instalmentDates(loan, trackFrom, paidOffOn), payments, today).map((i) =>
+      i.status === 'paid' ? i : { ...i, status: 'paid' as const, paidOn: paidOffOn, daysLate: Math.max(0, daysFrom(i.dueOn, paidOffOn)) },
+    );
+    return { accountId: loan.accountId, owedMinor: 0, trackFrom, instalments, scheduleFrom: paidOffOn, schedule: [] };
+  });
 }
 
 export type DebtPlanMethod = 'snowball' | 'avalanche' | 'byHand';
