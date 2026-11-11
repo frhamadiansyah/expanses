@@ -1,7 +1,7 @@
 import { isoDate, monthOf } from '@expanses/core';
 import type { DebtPlanSettings } from '@expanses/db';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { CalendarDays, ListOrdered, Wallet } from 'lucide-react';
+import { CalendarDays, ChartColumn, ListChecks, ListOrdered, Wallet } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
@@ -14,6 +14,9 @@ import { PlanTable } from './PlanTable';
 import { type DebtPlanModel, useDebtPlan, useDebtPlanSettings, usePlanMonth, useSaveDebtPlanSettings } from './queries';
 import { SchedulePanel } from './SchedulePanel';
 import { dueThisMonthCount } from './schedule-view';
+import { chipCounts } from './all-debts-view';
+import { ReportPanel } from './ReportPanel';
+import type { ReportPeriod } from './report-view';
 
 type PlanTab = 'plan' | 'schedule' | 'report';
 
@@ -21,6 +24,7 @@ type PlanTab = 'plan' | 'schedule' | 'report';
 const TABS: { key: PlanTab; label: string }[] = [
   { key: 'plan', label: 'Plan' },
   { key: 'schedule', label: 'Schedule' },
+  { key: 'report', label: 'Report' },
 ];
 
 /** "3 due this month", or nothing until the month is read. */
@@ -42,6 +46,7 @@ export function DebtPlanPage() {
   const search = useSearch({ from: '/net-worth/plan' });
   const tab: PlanTab = TABS.some((t) => t.key === search.tab) ? search.tab! : 'plan';
   const [month, setMonth] = useState(() => monthOf(isoDate()));
+  const [period, setPeriod] = useState<ReportPeriod>('3m');
 
   return (
     <div className={SCREEN}>
@@ -66,6 +71,7 @@ export function DebtPlanPage() {
           />
           {tab === 'plan' && <WidePlan model={model} baseCurrency={ws.baseCurrency} />}
           {tab === 'schedule' && <SchedulePanel month={month} onMonth={setMonth} show={{ loans: true, cards: true, bills: true }} today={isoDate()} />}
+          {tab === 'report' && <ReportPanel period={period} onPeriod={setPeriod} />}
         </>
       )}
       {model && model.debts.length > 0 && phone && (
@@ -74,6 +80,8 @@ export function DebtPlanPage() {
           <InsetGroup>
             <InsetRow icon={<ListOrdered size={16} aria-hidden />} title="Pay first" value={methodLabel(model.method)} to="/net-worth/plan/pay-first" testId="plan-row-pay-first" />
             <InsetRow icon={<CalendarDays size={16} aria-hidden />} title="Schedule" value={<ScheduleValue />} to="/net-worth/plan/schedule" testId="plan-row-schedule" />
+            <InsetRow icon={<ListChecks size={16} aria-hidden />} title="All debts" value={String(chipCounts(model.debts).all)} to="/net-worth/plan/debts" testId="plan-row-all-debts" />
+            <InsetRow icon={<ChartColumn size={16} aria-hidden />} title="Report" to="/net-worth/plan/report" testId="plan-row-report" />
           </InsetGroup>
         </>
       )}

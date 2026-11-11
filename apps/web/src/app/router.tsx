@@ -113,7 +113,10 @@ import { AccountMenuPage } from '../features/account/AccountMenuPage';
 import { JoinPage } from '../features/sharing/JoinPage';
 import { SharedItemPage } from '../features/networth/SharedItemPage';
 import { DebtPlanPage } from '../features/debt-plan/DebtPlanPage';
+import { AllDebtsPage } from '../features/debt-plan/AllDebtsPage';
 import { PayFirstPage } from '../features/debt-plan/PayFirstPage';
+import { ReportPage } from '../features/debt-plan/ReportPage';
+import type { ReportPeriod } from '../features/debt-plan/report-view';
 import { SchedulePage } from '../features/debt-plan/SchedulePage';
 import { Layout } from './Layout';
 
@@ -503,6 +506,14 @@ const routeTree = rootRoute.addChildren([
       search.tab === 'plan' || search.tab === 'schedule' || search.tab === 'report' ? { tab: search.tab } : {},
   }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/plan/pay-first', component: PayFirstPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/plan/debts', component: AllDebtsPage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/net-worth/plan/report',
+    component: ReportPage,
+    validateSearch: (search: Record<string, unknown>): { period?: ReportPeriod } =>
+      search.period === 'month' || search.period === '3m' || search.period === 'year' || search.period === 'all' ? { period: search.period } : {},
+  }),
   createRoute({
     getParentRoute: () => rootRoute,
     path: '/net-worth/plan/schedule',

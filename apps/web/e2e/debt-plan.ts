@@ -95,3 +95,30 @@ export async function seedMonth(page: Page, o: { paylater?: boolean } = {}) {
   await page.clock.setSystemTime(at('2026-11-11'));
   await addBill(page, { name: 'Electricity', amount: '780000', outDay: '10', payBy: '12' });
 }
+
+/**
+ * `seedMonth`, plus a 0% personal loan `Bank kecil` (Rp 500.000, one month) opened on 5 Oct and paid off on 6 Oct, and
+ * Kredit's 1/6 paid from the plan's Pay next on 11 Nov (Rp 951.155 principal, Rp 120.000 interest).
+ */
+export async function seedReport(page: Page) {
+  await page.clock.setSystemTime(at('2026-10-01'));
+  await bank(page);
+  await openPaylater(page, { name: 'Kredit', owed: '6000000', perMonth: '2', months: '6' });
+  await page.clock.setSystemTime(at('2026-10-05'));
+  await openLoan(page, { kind: 'Personal loan', name: 'Bank kecil', owed: '500000', lender: 'Bank', months: '1' });
+  await page.clock.setSystemTime(at('2026-10-06'));
+  await page.getByText('Bank kecil', { exact: true }).first().click();
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay off', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Pay off' }).getByRole('button', { name: 'Record pay off' }).click();
+  await expect(page.getByRole('dialog', { name: 'Pay off' })).toHaveCount(0);
+  await openCard(page, { name: 'BCA Visa', statementDay: '31', dueDay: '14' });
+  await page.clock.setSystemTime(at('2026-10-21'));
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Hotel Mulia', paidWith: 'BCA Visa', category: 'Groceries', amount: '6214300', date: '2026-10-20', keyByKey: true });
+  await page.clock.setSystemTime(at('2026-11-11'));
+  await addBill(page, { name: 'Electricity', amount: '780000', outDay: '10', payBy: '12' });
+  await page.goto('/net-worth/plan');
+  await page.getByTestId('plan-pay-next').getByRole('link').click();
+  await page.getByRole('dialog', { name: 'Pay' }).getByRole('button', { name: 'Save payment' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/plan$/);
+}

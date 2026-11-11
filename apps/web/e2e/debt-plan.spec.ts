@@ -54,3 +54,19 @@ test('wide: the Schedule tab shows the month beside the plan, without leaving it
   await page.reload();
   await expect(page.getByTestId('schedule-panel')).toBeVisible();
 });
+
+test('wide: Plan, Schedule and Report switch without leaving the plan, and ?tab=report opens the Report', async ({ page }) => {
+  await seedMonth(page);
+  await page.goto('/net-worth/plan');
+  const view = page.getByRole('radiogroup', { name: 'View' });
+  await view.getByRole('radio', { name: 'Report' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/plan\?tab=report$/);
+  await expect(page.getByTestId('report-borrowed')).toBeVisible();
+  await view.getByRole('radio', { name: 'Schedule' }).click();
+  await expect(page.getByTestId('schedule-panel')).toBeVisible();
+  await view.getByRole('radio', { name: 'Plan' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/plan$/);
+  await expect(page.getByTestId('plan-table')).toBeVisible();
+  await page.goto('/net-worth/plan?tab=report');
+  await expect(page.getByTestId('report-borrowed')).toBeVisible();
+});
