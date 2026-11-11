@@ -3,6 +3,7 @@ import type { SpendLine } from '@expanses/core';
 import { type AccountRow, cardStatement, type CardRow, postTransaction, spendByPlastic } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight, Banknote, Gift, ReceiptText } from 'lucide-react';
+import { useSearch } from '@tanstack/react-router';
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -23,6 +24,7 @@ import { spendingDoor } from '../goals/set-aside-question';
 import { creditLine } from '../networth/debt-rows';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { type CardPoints, formatPoints, shortDate } from './useCardPoints';
+import { useOpenFromSearch } from '../../lib/open-once';
 
 /**
  * Wallet's "Latest Transactions" under an open pass: the card's most recent purchases, each opening its receipt, and
@@ -204,6 +206,9 @@ export function CardHero({
   const card = cp.card;
   const currency = card.currency ?? ws.baseCurrency;
   const [paying, setPaying] = useState(false);
+  // The Debt-free plan's Pay lands here with `?pay=1`: the pay sheet opens once, and closing it goes back.
+  const { pay } = useSearch({ strict: false }) as { pay?: true };
+  const fromLink = useOpenFromSearch(pay === true, () => setPaying(true), !debit);
   const cards = [...plastic].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
   const [shownIndex, setShownIndex] = useState(0);
   const [showHeld, setShowHeld] = useState(false);
@@ -499,7 +504,18 @@ export function CardHero({
           <div className="mt-[6px]">{below}</div>
         </>
       )}
-      {paying && <PaySheet card={card} accounts={accounts} amountMinor={leftToPayMinor || owedMinor} today={today} onDone={() => setPaying(false)} />}
+      {paying && (
+        <PaySheet
+          card={card}
+          accounts={accounts}
+          amountMinor={leftToPayMinor || owedMinor}
+          today={today}
+          onDone={() => {
+            setPaying(false);
+            fromLink.done();
+          }}
+        />
+      )}
     </>
   );
 }

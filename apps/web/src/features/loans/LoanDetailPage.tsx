@@ -1,6 +1,6 @@
 import { debtItem, loanRatePer, extraPaymentEffect, flatToEffectiveBps, formatMinor, groupTypedAmount, isoDate, minorToMajorString, parseGroupedMajor, payoffQuote, periodOn, rateBpsFromTyped } from '@expanses/core';
 import { addRatePeriod, type LoanTermsRow, payOffLoan, recordExtraPayment, recordLoanPayment, setLoanCode } from '@expanses/db';
-import { useParams } from '@tanstack/react-router';
+import { useParams, useSearch } from '@tanstack/react-router';
 import { Banknote, CircleCheck, CirclePlus, FileText, MoreHorizontal, Pencil, Percent } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -23,6 +23,7 @@ import { type PaymentDraft, extraPaymentMinor, paymentDraftFrom, paymentDraftToI
 import { loanPayments, monthYearLabel, effectiveRateText, percentBps, rateTextPer, repaidPercent, soonerText } from './loan-view';
 import { TermsForm } from './TermsForm';
 import { useLoan, useLoanItems, useNextPayment, useSchedule } from './queries';
+import { useOpenFromSearch } from '../../lib/open-once';
 
 /**
  * What this loan files as in Bagian B, changed here rather than only where it was opened.
@@ -628,7 +629,13 @@ export function LoanDetailPage() {
   const [opened, setOpened] = useState<Opened>(null);
   /** The terms of a loan that has none yet are written on the page itself: there is nothing else to show. */
   const [adding, setAdding] = useState(false);
-  const close = () => setOpened(null);
+  // The Debt-free plan's Pay lands here with `?pay=due` or `?pay=extra`: that sheet opens once, and closing it goes back.
+  const { pay } = useSearch({ strict: false }) as { pay?: 'due' | 'extra' };
+  const fromLink = useOpenFromSearch(pay !== undefined, () => setOpened(pay === 'extra' ? 'extra' : 'pay'), Boolean(loan.data));
+  const close = () => {
+    setOpened(null);
+    fromLink.done();
+  };
 
   const account = accounts.find((row) => row.id === accountId);
   const name = account?.name ?? 'Loan';

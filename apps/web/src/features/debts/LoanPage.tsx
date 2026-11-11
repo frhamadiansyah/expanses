@@ -1,6 +1,6 @@
 import { formatMinor, isoDate } from '@expanses/core';
 import { deleteLoan, forgiveRemainder, listDebtProfiles, loanEntry, type LoanEntry, saveDebtProfile } from '@expanses/db';
-import { useNavigate, useParams } from '@tanstack/react-router';
+import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { ArrowDown, ArrowUp, Gift, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -13,6 +13,7 @@ import { useDebtHistory, useDebtProfiles, usePeopleDebts } from './queries';
 import { LentEntrySheet } from './LentEntrySheet';
 import { RepaymentForm } from './RepaymentForm';
 import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
+import { useOpenFromSearch } from '../../lib/open-once';
 
 /**
  * Each history line's circle: money in is green, money out red, a forgiveness grey — and the + that records the next
@@ -42,6 +43,8 @@ export function LoanPage() {
   const profiles = useDebtProfiles();
   const history = useDebtHistory(accountId);
   const [repaying, setRepaying] = useState(false);
+  // The Debt-free plan's Pay lands here with `?repay=1`: the repayment form opens once, and closing it goes back.
+  const { repay } = useSearch({ from: '/net-worth/lend-borrow/loan/$accountId' });
   // A history line opened to be changed, read back with the figures it was recorded with.
   const [editing, setEditing] = useState<LoanEntry | null>(null);
   const navigate = useNavigate();
@@ -51,6 +54,7 @@ export function LoanPage() {
   const person = all.find((row) => row.loans.some((loan) => loan.accountId === accountId));
   const loan = person?.loans.find((row) => row.accountId === accountId);
   const profile = (profiles.data ?? []).find((row) => row.accountId === accountId);
+  const fromLink = useOpenFromSearch(repay === true, () => setRepaying(true), Boolean(person && loan));
 
   if (people.isSuccess && (!person || !loan)) {
     return (
@@ -167,7 +171,10 @@ export function LoanPage() {
           currency={loan.currency}
           personName={person.personName}
           balanceMinor={loan.balanceMinor}
-          onDone={() => setRepaying(false)}
+          onDone={() => {
+            setRepaying(false);
+            fromLink.done();
+          }}
         />
       )}
       {editing?.kind === 'repayment' && (

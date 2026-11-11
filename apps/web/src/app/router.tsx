@@ -30,7 +30,7 @@ import { SourcePage } from '../features/capture/SourcePage';
 import { WayPage } from '../features/capture/WayPage';
 import { ImportPage } from '../features/import/ImportPage';
 import { ReviewPage } from '../features/review/ReviewPage';
-import { fromSearch, trackOrigin } from './from-search';
+import { type FromSearch, fromSearch, trackOrigin } from './from-search';
 import { CardDetailPage } from '../features/cards/CardDetailPage';
 import { CardPointsCheckPage, CardPointsPage, CardPurchasesPage } from '../features/cards/CardPointsPage';
 import { EarnRulesPage, SpendBonusesPage } from '../features/cards/CardRulesPages';
@@ -117,7 +117,17 @@ import { Layout } from './Layout';
 /** The card page's old tabs, still read from a link made before they became pages of their own. */
 export interface CardSearch {
   tab?: 'statement' | 'points' | 'rules' | 'card';
+  /** Opens the card's pay sheet on arrival (the Debt-free plan's Pay); closing it goes back. */
+  pay?: true;
 }
+
+/** A bill's page: where it was opened from, and `pay` to open its pay sheet on arrival. */
+export function billSearch(search: Record<string, unknown>): FromSearch & { pay?: true } {
+  return { ...fromSearch(search), ...(isOn(search.pay) ? { pay: true as const } : {}) };
+}
+
+/** A flag in a link: `?pay=1`, `?pay=true`, or `true` once the router has parsed it. */
+const isOn = (value: unknown) => value === true || value === 1 || value === '1' || value === 'true';
 
 /** Where each old tab's content lives now: the statement, this statement's points, and the card's settings. */
 const TAB_PAGES = {
@@ -257,7 +267,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/bills', component: RecurringPage, validateSearch: fromSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/yearly', component: YearlyBillsPage, validateSearch: fromSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/new', component: () => <BillFormPage /> }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId', component: BillRoute, validateSearch: fromSearch }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId', component: BillRoute, validateSearch: billSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId/edit', component: EditBillRoute }),
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId/fund-history', component: FundHistoryRoute }),
   // Linking a purchase already recorded to a bill's month, from the bill (`link` takes the month it is for).
@@ -329,6 +339,7 @@ const routeTree = rootRoute.addChildren([
       component: CardDetailPage,
       validateSearch: (search: Record<string, unknown>): CardSearch => ({
         tab: typeof search.tab === 'string' && ['statement', 'points', 'rules', 'card'].includes(search.tab) ? (search.tab as CardSearch['tab']) : undefined,
+        ...(isOn(search.pay) ? { pay: true as const } : {}),
       }),
       // The card's four tabs became pages of their own (owner, 23 Oct): a link to a tab lands on its page.
       beforeLoad: ({ search, params }) => {
@@ -460,7 +471,12 @@ const routeTree = rootRoute.addChildren([
   }),
   // One loan on its own page — repaid, forgiven or changed there — and one person, with each of their loans a row.
   // `loan/…` is a fixed first segment, so it is matched before a side and a name.
-  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/lend-borrow/loan/$accountId', component: LoanPage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/net-worth/lend-borrow/loan/$accountId',
+    component: LoanPage,
+    validateSearch: (search: Record<string, unknown>): { repay?: true } => (isOn(search.repay) ? { repay: true } : {}),
+  }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/lend-borrow/$side/$person', component: PersonPage }),
   createRoute({
     getParentRoute: () => rootRoute,
@@ -476,7 +492,12 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/new', component: AddCardPage }),
   // Debts — everything owed — keeps the address the Loans page had, so a loan's own page stays where it was.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans', component: DebtsPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans/$accountId', component: LoanDetailPage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/net-worth/loans/$accountId',
+    component: LoanDetailPage,
+    validateSearch: (search: Record<string, unknown>): { pay?: 'due' | 'extra' } => (search.pay === 'due' || search.pay === 'extra' ? { pay: search.pay } : {}),
+  }),
   createRoute({ getParentRoute: () => rootRoute, path: '/tax-report', component: CoretaxPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/recommend', component: RecommendPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/import', component: ImportPage }),
