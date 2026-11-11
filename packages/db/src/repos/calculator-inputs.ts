@@ -82,3 +82,36 @@ export async function getLifeCoverDraft(database: Database, ws: WorkspaceContext
     liquidAssets: text('liquidAssets'),
   };
 }
+
+const LOAN_CALCULATOR = 'loan';
+
+/**
+ * The loan calculator's boxes as typed, one row per workspace in `calculator_inputs` (0053), replaced whole. The
+ * shape is the screen's to read: this keeps whatever JSON object it is given and hands it back, or null.
+ */
+export async function saveLoanCalculatorDraft(database: Database, ws: WorkspaceContext, draft: Record<string, unknown>): Promise<void> {
+  if (!(await healthTablesExist(database.db))) {
+    throw new CalculatorInputsError('NO_TABLES', 'This database is too old to keep these figures; reopen the app to update it');
+  }
+  const row = { workspaceId: ws.workspaceId, kind: LOAN_CALCULATOR, inputsJson: JSON.stringify({ version: 1, draft }), updatedAt: new Date().toISOString() };
+  await database.db
+    .insert(calculatorInputs)
+    .values(row)
+    .onConflictDoUpdate({ target: [calculatorInputs.workspaceId, calculatorInputs.kind], set: { inputsJson: row.inputsJson, updatedAt: row.updatedAt } });
+}
+
+/** What the loan calculator kept last, or null when nothing was, the row cannot be read, or the database predates 0053. */
+export async function getLoanCalculatorDraft(database: Database, ws: WorkspaceContext): Promise<Record<string, unknown> | null> {
+  if (!(await healthTablesExist(database.db))) return null;
+  const [row] = await database.db
+    .select()
+    .from(calculatorInputs)
+    .where(and(eq(calculatorInputs.workspaceId, ws.workspaceId), eq(calculatorInputs.kind, LOAN_CALCULATOR)));
+  if (!row) return null;
+  try {
+    const parsed = JSON.parse(row.inputsJson) as { draft?: unknown };
+    return parsed && typeof parsed.draft === 'object' && parsed.draft !== null && !Array.isArray(parsed.draft) ? (parsed.draft as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
