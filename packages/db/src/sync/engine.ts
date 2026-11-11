@@ -1132,6 +1132,8 @@ export class SyncEngine {
     await this.transport.append(shared.relayBookId, entry);
     await this.transport.removeDevice(shared.relayBookId, this.deviceId);
     await this.endShared(bookId, shared.memberId, 'left');
+    // Where a deleted copy's own purchases were paid from, kept for this share's Place them now: left, it has no use.
+    await this.database.db.run(sql`DELETE FROM settings WHERE key = ${ARRIVING_KEY(bookId)}`);
   }
 
   /**

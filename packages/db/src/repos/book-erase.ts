@@ -73,16 +73,33 @@ function filedSql(bookId: string, tables: Set<string>, status: SQL = sql`t.statu
     OR t.id IN (SELECT e.transaction_id FROM entries e WHERE e.account_id IN (${own}) OR e.spend_category_id IN (${own})))`;
 }
 
+/** The tables this database has, as the erase reads them (a database from before a migration lacks some). */
+export function erasableTablesTx(tx: Db): Promise<Set<string>> {
+  return tablesOf(tx);
+}
+
+/**
+ * A share's purchase on a category this copy holds (A6 fix rounds 3 and 4): the head of a purchase lineage of another
+ * book that still exists here, filed in that book (as apply files every purchase a share sends), with no split part in
+ * this one. It is that share's, whatever its category's tag says. A real split across this book and another is not.
+ */
+export function anotherSharesSql(bookId: string, tables: Set<string>): SQL {
+  if (!tables.has('sync_lineage')) return sql`0`;
+  const notSplitHere = tables.has('book_transaction_splits')
+    ? sql`AND NOT EXISTS (SELECT 1 FROM book_transaction_splits sp WHERE sp.transaction_id = t.id AND sp.book_id = ${bookId})`
+    : sql``;
+  return sql`EXISTS (SELECT 1 FROM sync_lineage l WHERE l.head_transaction_id = t.id AND l.book_id <> ${bookId}
+      AND (l.book_id IN (SELECT id FROM books)${tables.has('shared_books') ? sql` OR l.book_id IN (SELECT book_id FROM shared_books)` : sql``})
+      AND EXISTS (SELECT 1 FROM book_transactions f WHERE f.transaction_id = t.id AND f.book_id = l.book_id)
+      ${notSplitHere})`;
+}
+
 /**
  * Rows of a transaction that `ws`'s other book names it by: another book's row, split part, or category on a line, or
- * (A6 fix round 3) the head of a purchase lineage of another book that still exists here — a share's purchase on a
- * category this copy held, which belongs to that share whatever its category's tag says.
+ * a share's purchase on a category this copy holds (`anotherSharesSql`).
  */
 function elsewhereSql(bookId: string, tables: Set<string>): SQL {
-  const otherLineage = tables.has('sync_lineage')
-    ? sql`OR EXISTS (SELECT 1 FROM sync_lineage l WHERE l.head_transaction_id = t.id AND l.book_id <> ${bookId}
-          AND (l.book_id IN (SELECT id FROM books)${tables.has('shared_books') ? sql` OR l.book_id IN (SELECT book_id FROM shared_books)` : sql``}))`
-    : sql``;
+  const otherLineage = sql`OR ${anotherSharesSql(bookId, tables)}`;
   return sql`(EXISTS (SELECT 1 FROM book_transactions b WHERE b.transaction_id = t.id AND b.book_id <> ${bookId})
     ${tables.has('book_transaction_splits') ? sql`OR EXISTS (SELECT 1 FROM book_transaction_splits s WHERE s.transaction_id = t.id AND s.book_id <> ${bookId})` : sql``}
     ${otherLineage}
@@ -568,7 +585,7 @@ export async function eraseBookTx(tx: Db, ws: WorkspaceContext, bookId: string):
       await tx.run(sql`DELETE FROM sync_lineage WHERE book_id = ${bookId}`);
     }
     for (const table of SYNC_TABLES) if (has(table)) await tx.run(sql`DELETE FROM ${sql.raw(table)} WHERE book_id = ${bookId}`);
-    await tx.run(sql`DELETE FROM settings WHERE key IN (${`sharing.member.${bookId}`}, ${`sharing.seen.${bookId}`})`);
+    await tx.run(sql`DELETE FROM settings WHERE key IN (${`sharing.member.${bookId}`}, ${`sharing.seen.${bookId}`}, ${`sharing.arriving.${bookId}`})`);
 
     /* ---- 6. The plan, the bills on its categories, then the categories and the placeholders. */
     const budgets = await deleteBookPlanTx(tx, ws, bookId);

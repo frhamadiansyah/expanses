@@ -808,8 +808,15 @@ async function postingLines(
         lines.push({ accountId: named.accountId, amountMinor: target, currency });
         if (cardId === undefined || cardId === null) cardId = named.cardId;
       } else {
-        // An own purchase on this member's own placeholder: listed under Needs an account (D-B6).
-        if (!money.paidFrom && money.paidBy === ctx.memberId) needsAccount = true;
+        // An own purchase on this member's own placeholder in a whole-log pull: listed under Needs an account (D-B6).
+        // Only this member's own: one this phone recorded when it erased its copy, or one this member's device wrote,
+        // never a partner's entry that says it was paid by this member (A6 fix round 4).
+        if (
+          ownLanding?.land &&
+          ownNoHead &&
+          (ownLanding.recorded.has(landing!.lineageId) || trust.authorMember === ctx.memberId)
+        )
+          needsAccount = true;
         // Not landed on the owner's item here: the payer's placeholder (task 7 review round 1), as for any other purchase.
         if (money.paidFrom && accountOwner === ctx.memberId) refused = true;
         const holder = accountOwner === ctx.memberId ? money.paidBy : accountOwner;

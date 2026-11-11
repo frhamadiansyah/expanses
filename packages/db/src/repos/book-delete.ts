@@ -13,6 +13,8 @@ import {
   eraseBookTx,
   keepInPersonalTx,
   keptByRecordsTx,
+  anotherSharesSql,
+  erasableTablesTx,
   ownPurchasesOfTx,
   writeArrivingTx,
   ownPurchasesTx,
@@ -175,12 +177,9 @@ async function planTx(tx: Db, ws: WorkspaceContext, book: BookRow): Promise<Book
   // A purchase with a part here and a part elsewhere (or any posted transaction whose lines touch two workspaces) would
   // be half deleted: refused before anything is written.
   if (n > 0) {
-    // A6 fix round 3: a share's purchase on a category this copy held is that share's, not a split; the erase spares it.
-    const anotherShares =
-      erases && (await tableExists(tx, 'sync_lineage'))
-        ? sql`AND NOT EXISTS (SELECT 1 FROM sync_lineage l WHERE l.head_transaction_id = t.id AND l.book_id <> ${bookId}
-            AND (l.book_id IN (SELECT id FROM books) OR l.book_id IN (SELECT book_id FROM shared_books)))`
-        : sql``;
+    // A6 fix rounds 3 and 4: a share's purchase on a category this copy held is that share's, not a split, and the erase
+    // spares it; only one filed in that share with no part here. A real split across the two still refuses.
+    const anotherShares = erases ? sql`AND NOT ${anotherSharesSql(bookId, await erasableTablesTx(tx))}` : sql``;
     const straddling = await tx.values<[string]>(sql`
       SELECT 1 FROM transactions t WHERE t.id IN (${filedSql(bookId, splits)}) ${anotherShares} AND (
         ${splits ? sql`EXISTS (SELECT 1 FROM book_transaction_splits s WHERE s.transaction_id = t.id AND s.book_id <> ${bookId}) OR` : sql``}

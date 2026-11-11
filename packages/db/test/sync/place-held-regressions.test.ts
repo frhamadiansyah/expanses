@@ -1,7 +1,7 @@
-import { expenseLines } from '@expanses/core';
+import { expenseLines, splitExpenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { addSetCategory, createAccount, createBook, createCategorySet, heldElsewhereOf, moveCategorySet, postTransaction } from '../../src/index';
+import { addSetCategory, createAccount, createBook, createCategorySet, deleteBook, heldElsewhereOf, inBook, moveCategorySet, personalBook, planBookDelete, postTransaction } from '../../src/index';
 import { categoryOf, Household, type Device } from './household';
 
 /* A6 re-review 1, as regression tests (invented figures): a share's purchase is never lost behind a live copy, and a
@@ -114,10 +114,78 @@ describe('a partner’s entry “paid by” this member', () => {
       lines: expenseLines({ categoryAccountId: await categoryOf(dewi.database, shared, 'Groceries'), paymentAccountId: await placeholderOf(dewi, shared, fandri.memberId), amountMinor: 20_000, currency: 'IDR' }),
     });
     await dewi.engine.syncOnce(shared);
-    expect(await fandri.engine.placeHeldRows(shared)).toMatchObject({ placed: 0, stillHeld: 0 });
+    const placed = await fandri.engine.placeHeldRows(shared);
+    expect(placed).toMatchObject({ placed: 0, stillHeld: 0 });
+    expect(placed.result.needsAccount).toBe(0); // her entry is not his to give an account (A6 fix round 4)
     await home.settle();
     expect(await balanceOf(fandri, named.id)).toBe(0);
     expect(await balanceOf(fandri, await placeholderOf(fandri, shared, fandri.memberId))).toBe(-70_000);
     expect(await balanceOf(fandri, fandri.bank)).toBe(-1_000);
+  });
+});
+
+describe('a real split across a once-shared workspace and another', () => {
+  it('a never-shared workspace with a split purchase is refused SPLIT', async () => {
+    const home = new Household();
+    const dewi = await home.device('Dewi');
+    const personal = (await personalBook(dewi.database, dewi.ws)).id;
+    const shop = await createBook(dewi.database, dewi.ws, { name: 'Shop', kind: 'business', baseCurrency: 'IDR', copyCategoriesFrom: personal });
+    await postTransaction(dewi.database, inBook(dewi.ws, shop), {
+      acrossBooks: true,
+      occurredOn: '2026-09-12',
+      description: 'Two workspaces',
+      lines: splitExpenseLines({
+        paymentAccountId: dewi.bank,
+        currency: 'IDR',
+        splits: [
+          { categoryAccountId: await categoryOf(dewi.database, shop, 'Groceries'), amountMinor: 10_400 },
+          { categoryAccountId: await categoryOf(dewi.database, personal, 'Groceries'), amountMinor: 5_300 },
+        ],
+      }),
+    });
+    expect(await planBookDelete(dewi.database, dewi.ws, shop)).toMatchObject({ refusalCode: 'SPLIT', erases: false });
+  });
+
+  it('a once-shared Business with a purchase split with the shared Family is refused SPLIT, and nothing is left behind', async () => {
+    const home = new Household();
+    const fandri = await home.device('Fandri');
+    const dewi = await home.device('Dewi');
+    const personal = (await personalBook(fandri.database, fandri.ws)).id;
+    const family = await createBook(fandri.database, fandri.ws, { name: 'Family', kind: 'family', baseCurrency: 'IDR', copyCategoriesFrom: personal });
+    const business = await createBook(fandri.database, fandri.ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR', copyCategoriesFrom: personal });
+    const office = (await createAccount(fandri.database, inBook(fandri.ws, business), { name: 'Office supplies', kind: 'expense', subtype: 'category', currency: null })).id;
+    // Business was shared once and stopped (its delete erases); Family is shared with Dewi.
+    await fandri.engine.shareBook(business, { memberId: fandri.memberId, memberName: fandri.name, deviceName: `${fandri.name}'s phone` });
+    await fandri.engine.syncOnce(business);
+    await fandri.engine.stopSharing(business);
+    const { relayBookId } = await fandri.engine.shareBook(family, { memberId: fandri.memberId, memberName: fandri.name, deviceName: `${fandri.name}'s phone` });
+    home.bookId = family;
+    home.relayBookId = relayBookId;
+    await home.join(dewi, fandri);
+    await home.settle();
+    const split = await postTransaction(fandri.database, inBook(fandri.ws, family), {
+      acrossBooks: true,
+      occurredOn: '2026-09-12',
+      description: 'Toko split',
+      lines: splitExpenseLines({
+        paymentAccountId: fandri.bank,
+        currency: 'IDR',
+        splits: [
+          { categoryAccountId: await categoryOf(fandri.database, family, 'Groceries'), amountMinor: 83_200 },
+          { categoryAccountId: office, amountMinor: 41_900 },
+        ],
+      }),
+    });
+    await home.settle();
+    // Its lineage is Family's, and it has a part in Business: a real split, not a share's purchase.
+    expect(await fandri.database.db.values(sql`SELECT book_id FROM sync_lineage WHERE head_transaction_id = ${split}`)).toEqual([[family]]);
+    expect(await planBookDelete(fandri.database, fandri.ws, business)).toMatchObject({ refusalCode: 'SPLIT', erases: true });
+    await expect(deleteBook(fandri.database, fandri.ws, business)).rejects.toMatchObject({ code: 'SPLIT' });
+    // Refused before anything is written: the purchase, both parts and the bank as they were.
+    expect(await fandri.database.db.values(sql`SELECT status FROM transactions WHERE id = ${split}`)).toEqual([['posted']]);
+    expect(
+      (await fandri.database.db.values<[string]>(sql`SELECT book_id FROM book_transaction_splits WHERE transaction_id = ${split} ORDER BY book_id`)).map(([b]) => b).sort(),
+    ).toEqual([business, family].sort());
+    expect(await balanceOf(fandri, fandri.bank)).toBe(-(83_200 + 41_900));
   });
 });

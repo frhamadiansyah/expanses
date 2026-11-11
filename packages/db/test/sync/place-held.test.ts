@@ -1,7 +1,7 @@
 import { expenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { deleteBook, heldElsewhereOf, personalBook, planBookDelete, postTransaction } from '../../src/index';
+import { archiveAccount, deleteBook, heldElsewhereOf, personalBook, planBookDelete, postTransaction } from '../../src/index';
 import { categoryOf, copyBookUnderNewIdForTest, Household, projectBook, skipsOf, type Device } from './household';
 
 /*
@@ -321,6 +321,34 @@ describe('Place them now (§4.3)', () => {
     expect(Number(onGroceries)).toBe(41_300 + 27_500 + 1_100);
     expect(await placeholderBalance(fandri, newBook, dewi.memberId)).toBe(-(41_300 + 1_100));
     expect(await balanceOf(fandri, fandri.bank)).toBe(-27_500);
+  });
+
+  it('an own purchase whose recorded account is gone lands on his placeholder and is counted as needing an account', async () => {
+    const { dewi, fandri, oldBook, newBook } = await joinBeside();
+    await fandri.engine.leave(oldBook);
+    await deleteBook(fandri.database, fandri.ws, oldBook); // Keep them in Personal on: his purchase is recorded, then erased
+    expect(await fandri.database.db.values(sql`SELECT 1 FROM settings WHERE key = ${`sharing.arriving.${newBook}`}`)).toHaveLength(1);
+    await archiveAccount(fandri.database, fandri.ws, fandri.bank); // the account it was paid from, closed since
+    const placed = await fandri.engine.placeHeldRows(newBook);
+    expect(placed).toMatchObject({ stillHeld: 0 });
+    expect(placed.result.needsAccount).toBe(1);
+    await settleBook([dewi, fandri], newBook);
+    expect(await placeholderBalance(fandri, newBook, fandri.memberId)).toBe(-27_500);
+    expect(await balanceOf(fandri, fandri.bank)).toBe(0);
+    expect(await projectBook(fandri.database, newBook)).toEqual(await projectBook(dewi.database, newBook));
+    // Done with once nothing is held.
+    expect(await fandri.database.db.values(sql`SELECT 1 FROM settings WHERE key = ${`sharing.arriving.${newBook}`}`)).toEqual([]);
+  });
+
+  it('the record of where arriving purchases were paid from goes when its share is left, or its copy erased', async () => {
+    const { fandri, oldBook, newBook } = await joinBeside();
+    const key = (book: string) => `sharing.arriving.${book}`;
+    await fandri.database.db.run(sql`INSERT INTO settings (key, value) VALUES (${key(newBook)}, '{}'), (${key(oldBook)}, '{}')`);
+    await fandri.engine.leave(newBook);
+    expect(await fandri.database.db.values(sql`SELECT 1 FROM settings WHERE key = ${key(newBook)}`)).toEqual([]);
+    await fandri.engine.leave(oldBook);
+    await deleteBook(fandri.database, fandri.ws, oldBook, { keepOwnInPersonal: false });
+    expect(await fandri.database.db.values(sql`SELECT 1 FROM settings WHERE key = ${key(oldBook)}`)).toEqual([]);
   });
 
   it('a net-worth group log is not a share Place them now pulls again', async () => {
