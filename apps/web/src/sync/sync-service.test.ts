@@ -283,12 +283,31 @@ describe('SyncService', () => {
     expect(heard).toHaveBeenCalled();
     expect(flaky.syncing()).toContain(bookId);
     expect(flaky.status(bookId).failing).toBe(true);
+    expect((flaky.status(bookId).lastError as Error).message).toMatch(/unreachable/);
+    // The log says it was the upload of the history, for which book on the relay, and what the engine said after.
+    const [relayBook] = await listSharedBooks(fandri.database);
+    const [drain] = await flaky.log.forBook(bookId);
+    expect(drain).toMatchObject({ level: 'error', op: 'drain', bookId, relayBookId: relayBook!.relayBookId.slice(0, 8), message: 'relay unreachable: offline' });
+    expect(drain!.state).toMatch(/^waiting \d+$/);
 
     // The relay comes back: the next run sends it all, and Invite someone works.
     down = false;
     await flaky.syncNow(bookId);
+    expect(flaky.status(bookId).lastError).toBeNull();
     expect((await sharingDetail(fandri.database, bookId, await flaky.deviceId()))!.waiting).toBe(0);
     await expect(flaky.invite(bookId, 'Fandri')).resolves.toMatchObject({ code: expect.any(String) });
+    // A background run that fails is logged too, as `sync`.
+    down = true;
+    await fandri.database.db.run(sql`UPDATE shared_books SET synced_at = NULL WHERE book_id = ${bookId}`);
+    await postTransaction(fandri.database, fandri.ws, {
+      occurredOn: '2026-09-10',
+      description: 'Zebra snack',
+      lines: expenseLines({ categoryAccountId: await groceries(fandri.database, bookId), paymentAccountId: fandri.bank, amountMinor: 7_345, currency: 'IDR' }),
+    });
+    await flaky.syncNow(bookId);
+    const latest = (await flaky.log.forBook(bookId))[0]!;
+    expect(latest.op).toBe('sync');
+    expect(JSON.stringify(await flaky.log.entries())).not.toMatch(/Zebra|7345/);
     flaky.stop();
   });
 

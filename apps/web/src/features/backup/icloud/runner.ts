@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { NO_SNAPSHOTS, type Safety } from '../../../db/open';
 import { restoreSnapshot } from '../../../db/snapshots';
+import { sharingGate } from '../../../db/restore-sharing';
 import { holdPhotosOrRefuse } from '../../../photos/hold-before-restore';
 import { photos } from '../../../photos/store';
 import { isSqliteFile } from '../backupState';
@@ -134,6 +135,7 @@ export async function restoreContents(contents: CopyContents, app: { database: D
     source: 'iCloud copy',
     live: () => app.database.exportBytes(),
     restore: (bytes) => app.database.importBytes(bytes),
+    checkSharing: sharingGate(),
   });
   for (const photo of contents.photos) {
     try {

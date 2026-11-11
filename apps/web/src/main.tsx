@@ -12,6 +12,7 @@ import { paceStages } from './features/recovery/opening-copy';
 import { RecoveryScreen } from './features/recovery/RecoveryScreen';
 import { isNative, registerServiceWorker } from './lib/pwa';
 import { lockPortrait } from './native/orientation';
+import { noteSkippedCopy } from './sync/sync-log-device';
 import './styles.css';
 
 // Upright from the first frame in the iOS app: Info.plist lists landscape only so Cashflow can unlock it (native/orientation.ts).
@@ -65,7 +66,7 @@ if (import.meta.hot) {
 
 // One store for the whole page: the recovery screen reads it on every path, whether it was reached by a
 // failure or asked for on purpose.
-const snapshots = opfsSnapshots();
+const snapshots = opfsSnapshots({ onSkipped: noteSkippedCopy });
 
 const root = createRoot(document.getElementById('root')!);
 
