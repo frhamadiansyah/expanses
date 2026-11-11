@@ -9,13 +9,22 @@ export const POPULAR_CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'SGD', 'CNY', 'AU
 const known = (code: string) => !!code && CURRENCIES.some((c) => c.code === code);
 
 /**
- * The starred codes. Never stored yet: the workspace's own currency, so the block is never empty the first time.
+ * The starred codes. Never stored yet: the workspace's own currency, so the block is never empty the first time; that seed is then stored.
  * A blocked or corrupt store reads as that same seed; codes no longer in `CURRENCIES` are dropped.
  */
 export function readFavoriteCurrencies(baseCurrency: string): string[] {
   try {
     const raw = localStorage.getItem(FAVORITE_CURRENCY_KEY);
-    if (raw === null) return known(baseCurrency) ? [baseCurrency] : [];
+    if (raw === null) {
+      // Written on this first read, so the seed stays what it was and stops following whichever workspace is open.
+      const seed = known(baseCurrency) ? [baseCurrency] : [];
+      try {
+        localStorage.setItem(FAVORITE_CURRENCY_KEY, JSON.stringify(seed));
+      } catch {
+        // Not remembered, still shown.
+      }
+      return seed;
+    }
     const list: unknown = JSON.parse(raw);
     return Array.isArray(list) ? list.filter((code): code is string => typeof code === 'string' && known(code)) : [];
   } catch {

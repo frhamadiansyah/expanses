@@ -14,6 +14,11 @@ describe('favorite currencies', () => {
   it('start as the workspace currency when nothing was ever stored', () => {
     expect(readFavoriteCurrencies('IDR')).toEqual(['IDR']);
   });
+  it('keeps the first seed, so another workspace\'s currency does not replace it', () => {
+    expect(readFavoriteCurrencies('IDR')).toEqual(['IDR']);
+    expect(localStorage.getItem(FAVORITE_CURRENCY_KEY)).toBe('["IDR"]');
+    expect(readFavoriteCurrencies('USD')).toEqual(['IDR']);
+  });
   it('toggle on and off and persist', () => {
     let list = readFavoriteCurrencies('IDR');
     list = toggleFavoriteCurrency('EUR', list);
