@@ -750,7 +750,10 @@ export class SyncEngine {
         await clearAuthorityTx(tx, bookId); // rebuilt from the log, entry by entry, as the pull applies it again
         // What changed here while nothing was captured gets its clock before the pull, so the log's older values do
         // not overwrite it; a copy kept as its own gets back the clocks it kept (recovery review, N2).
-        await catchUpTx(tx, { bookId, memberId, epoch }, this.now());
+        // D-A6: once every lineage points at its posted head, a purchase here with no lineage (a copy from before the
+        // share) gets one, so the pull finds it and edits this row instead of posting the purchase again under another
+        // id; the log's values win on it.
+        await catchUpTx(tx, { bookId, memberId, epoch }, this.now(), { recordLineages: true });
       } else {
         await tx.run(sql`
           INSERT INTO books (id, workspace_id, name, kind, base_currency, count_events_in_budget, sort_order, archived_at, created_at)
