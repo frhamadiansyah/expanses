@@ -149,3 +149,26 @@ input[list]::-webkit-list-button {
     animation: none;
   }
 }
+
+/*
+ * One line's blocked save (`CashflowLine`): the amber part that is missing shakes sideways for a moment. With reduced
+ * motion it does not move.
+ */
+@keyframes line-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(3px); }
+}
+.line-shake [data-missing='true'],
+.line-shake-self {
+  display: inline-block;
+  animation: line-shake 300ms ease-in-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .line-shake [data-missing='true'],
+  .line-shake-self {
+    animation: none;
+  }
+}

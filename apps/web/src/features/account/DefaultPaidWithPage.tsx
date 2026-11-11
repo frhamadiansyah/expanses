@@ -9,6 +9,7 @@ import { isCardOption, paymentLabel } from '../transactions/PaymentSheet';
 import { paymentKey } from '../transactions/quick-row';
 import { resolveDefaultPaidWith, usePayableOptions, useStoredDefaultPaidWith, writeDefaultPaidWith } from './default-paid-with';
 import { HOLD_CHOICES, type HoldChoice, useHoldChoice, writeHoldChoice } from './hold-plus';
+import { ONE_LINE_LOOKS, type OneLineLook, useOneLineLook, writeOneLineLook } from './one-line-look';
 
 /**
  * Account → Settings → Default: the Paid with a plain, blank New transaction opens with, and what holding ＋ does on
@@ -28,6 +29,8 @@ export function DefaultPaidWithPage() {
   const holdStored = useHoldChoice();
   // The hold's tick as it stands on the page; null until it is read.
   const [holdTicked, setHoldTicked] = useState<HoldChoice | null>(null);
+  const lookStored = useOneLineLook();
+  const [lookTicked, setLookTicked] = useState<OneLineLook | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -42,7 +45,10 @@ export function DefaultPaidWithPage() {
   const holdCurrent = holdStored.data ?? null;
   const holdShown = holdTicked ?? holdCurrent;
   const holdChanged = holdShown !== null && holdShown !== holdCurrent;
-  const changed = paidChanged || holdChanged;
+  const lookCurrent = lookStored.data ?? null;
+  const lookShown = lookTicked ?? lookCurrent;
+  const lookChanged = lookShown !== null && lookShown !== lookCurrent;
+  const changed = paidChanged || holdChanged || lookChanged;
   const accountOf = (id: string) => accounts.find((account) => account.id === id);
   const money = options.filter((option) => !isCardOption(option, accountOf(option.accountId)));
   const cards = options.filter((option) => isCardOption(option, accountOf(option.accountId)));
@@ -59,6 +65,10 @@ export function DefaultPaidWithPage() {
       if (holdChanged && holdShown) {
         await writeHoldChoice(database, holdShown);
         await queryClient.invalidateQueries({ queryKey: ['hold-plus'] });
+      }
+      if (lookChanged && lookShown) {
+        await writeOneLineLook(database, lookShown);
+        await queryClient.invalidateQueries({ queryKey: ['one-line-look'] });
       }
       await navigate({ to: '/account' });
     } catch (failure) {
@@ -82,7 +92,7 @@ export function DefaultPaidWithPage() {
         backTo="/account"
         actions={[{ key: 'save', label: 'Save', glyph: <Check size={20} aria-hidden />, disabled: !changed || busy, run: () => void save() }]}
       />
-      <ErrorBox error={error ?? stored.error ?? holdStored.error} />
+      <ErrorBox error={error ?? stored.error ?? holdStored.error ?? lookStored.error} />
       <InsetGroup footer="Where Paid with starts on a new transaction. Choosing another for one purchase does not change it.">
         <InsetRow title="None" label="None" chevron={false} value={tick(shown === '')} onClick={() => setTicked('')} />
       </InsetGroup>
@@ -97,6 +107,18 @@ export function DefaultPaidWithPage() {
             chevron={false}
             value={holdShown === choice.value ? <span data-testid="hold-ticked"><Check size={18} aria-label="Chosen" className="text-[var(--ph-ink)]" /></span> : undefined}
             onClick={() => setHoldTicked(choice.value)}
+          />
+        ))}
+      </InsetGroup>
+      <InsetGroup header="One line look" footer="Card shows the row as it will be saved above the field. Plain is the field alone on the keyboard.">
+        {ONE_LINE_LOOKS.map((look) => (
+          <InsetRow
+            key={look.value}
+            title={look.label}
+            label={look.label}
+            chevron={false}
+            value={lookShown === look.value ? <span data-testid="look-ticked"><Check size={18} aria-label="Chosen" className="text-[var(--ph-ink)]" /></span> : undefined}
+            onClick={() => setLookTicked(look.value)}
           />
         ))}
       </InsetGroup>
