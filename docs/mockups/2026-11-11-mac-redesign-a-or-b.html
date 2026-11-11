@@ -1,0 +1,623 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Mac look: A, B or C</title><style>
+  .pg{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:#1d1d1f}
+  .pg h2{text-align:center;margin:4px 0 4px}
+  .pg .lead{text-align:center;color:#6e6e73;font-size:14px;max-width:820px;margin:0 auto 18px;line-height:1.45}
+  .cap{font-weight:700;font-size:15px;margin:26px auto 8px;max-width:1240px}
+  .cap span{font-weight:400;color:#6e6e73}
+  .win{width:1240px;margin:0 auto;border-radius:12px;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.22),0 0 0 .5px rgba(0,0,0,.25);background:#fff;display:grid;grid-template-columns:210px 1fr;height:760px;font-size:13px}
+  /* sidebar */
+  .sb{background:#e9e8ee;border-right:.5px solid #d2d2d7;padding:12px 10px;display:flex;flex-direction:column}
+  .lights{display:flex;gap:8px;padding:2px 6px 16px}
+  .lights i{width:12px;height:12px;border-radius:6px;display:block}
+  .ws{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;background:rgba(0,0,0,.04);margin-bottom:14px}
+  .ws b{display:block;font-size:13px}.ws small{color:#6e6e73;font-size:11px}
+  .av{width:24px;height:24px;border-radius:6px;background:#1d1d1f;color:#fff;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center}
+  .sh{font-size:11px;color:#86868b;font-weight:600;padding:10px 8px 4px}
+  .ni{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;color:#1d1d1f}
+  .ni.on{background:rgba(0,0,0,.09);font-weight:600}
+  .ni .ic{width:16px;text-align:center;color:#0a66d8}
+  .ni .bd{margin-left:auto;background:#d1d1d6;border-radius:9px;padding:0 6px;font-size:11px;color:#1d1d1f}
+  .sbf{margin-top:auto;font-size:11.5px;color:#6e6e73;padding:8px;border-top:.5px solid #d2d2d7;display:flex;gap:6px;align-items:center}
+  .dotg{width:7px;height:7px;border-radius:4px;background:#34c759}
+  /* main */
+  .mn{display:flex;flex-direction:column;min-width:0}
+  .tb{height:52px;border-bottom:.5px solid #e0e0e5;display:flex;align-items:center;gap:10px;padding:0 14px;background:#fbfbfd}
+  .tb h1{font-size:15px;margin:0 6px 0 0}
+  .seg{display:inline-flex;background:#e8e8ed;border-radius:7px;padding:2px}
+  .seg span{padding:3px 10px;border-radius:5px;font-size:12px;color:#3a3a3c}
+  .seg span.on{background:#fff;box-shadow:0 .5px 2px rgba(0,0,0,.18);color:#1d1d1f;font-weight:600}
+  .per{display:inline-flex;align-items:center;gap:8px;font-weight:600}
+  .per i{font-style:normal;color:#86868b;font-weight:400;padding:0 4px}
+  .srch{margin-left:auto;width:230px;height:26px;border-radius:7px;background:#ececf0;color:#8e8e93;display:flex;align-items:center;padding:0 9px;font-size:12px}
+  .btn{height:26px;padding:0 11px;border-radius:7px;background:#0a66d8;color:#fff;display:inline-flex;align-items:center;font-size:12px;font-weight:600}
+  .btn.g{background:#ececf0;color:#1d1d1f;font-weight:500}
+  .body{flex:1;display:grid;min-height:0}
+  /* stats */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#ececf0;border-bottom:.5px solid #e0e0e5}
+  .st{background:#fff;padding:12px 16px}
+  .st small{color:#86868b;font-size:11px;display:block}
+  .st b{font-size:19px;font-variant-numeric:tabular-nums;letter-spacing:-.2px}
+  .st em{font-style:normal;font-size:11px;color:#6e6e73}
+  .bar{height:5px;background:#ececf0;border-radius:3px;margin-top:6px;overflow:hidden}.bar i{display:block;height:100%;border-radius:3px}
+  /* table */
+  table.t{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+  .t th{position:sticky;top:0;background:#fbfbfd;text-align:left;font-weight:500;color:#6e6e73;font-size:11.5px;padding:6px 10px;border-bottom:.5px solid #e0e0e5}
+  .t td{padding:6px 10px;border-bottom:.5px solid #f0f0f3;white-space:nowrap}
+  .t .r{text-align:right}
+  .t tr.day td{background:#f6f6f8;color:#6e6e73;font-size:11.5px;font-weight:600;padding:4px 10px}
+  .t tr.sel td{background:#0a66d8;color:#fff}.t tr.sel td .mu{color:#d6e6fb}.t tr.sel .chip{background:rgba(255,255,255,.2);color:#fff}
+  .t tr.new td{background:#fffdf3}
+  .caret{display:inline-block;width:1px;height:14px;background:#0a66d8;vertical-align:middle;animation:bl 1s steps(1) infinite}
+  @keyframes bl{50%{opacity:0}}
+  .ph{color:#b0b0b5}
+  .mu{color:#86868b}
+  .chip{display:inline-flex;align-items:center;gap:5px;padding:1px 7px;border-radius:5px;font-size:12px;background:#f2f2f5}
+  .cd{width:8px;height:8px;border-radius:2px;display:inline-block}
+  .neg{color:#1d1d1f}.pos{color:#1a8f3c}
+  .warn{background:#fff4d6;color:#8a5a00}
+  .kbd{display:inline-block;border:.5px solid #c7c7cc;border-bottom-width:1.5px;border-radius:4px;padding:0 4px;font-size:10.5px;color:#6e6e73;background:#fff;margin:0 1px}
+  /* inspector */
+  .insp{border-left:.5px solid #e0e0e5;background:#fbfbfd;padding:16px;overflow:hidden}
+  .insp h3{margin:0;font-size:16px}
+  .insp .amt{font-size:24px;font-weight:700;margin:6px 0 2px;letter-spacing:-.3px}
+  .fl{display:grid;grid-template-columns:86px 1fr;gap:7px 10px;margin-top:14px;font-size:12.5px}
+  .fl dt{color:#86868b}.fl dd{margin:0}
+  .box{background:#fff;border:.5px solid #e0e0e5;border-radius:9px;padding:10px 12px;margin-top:14px}
+  .box small{color:#86868b;font-size:11px}
+  .scroll{overflow:hidden;min-height:0}
+  /* dashboard */
+  .dash{padding:16px;display:grid;grid-template-columns:1.55fr 1fr;grid-auto-rows:min-content;gap:14px;background:#f5f5f7;overflow:hidden}
+  .card{background:#fff;border-radius:11px;border:.5px solid #e3e3e8;padding:14px 16px}
+  .card h4{margin:0 0 8px;font-size:12px;color:#6e6e73;font-weight:600;display:flex;justify-content:space-between}
+  .big{font-size:28px;font-weight:700;letter-spacing:-.4px}
+  .lst{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+  .lst td{padding:6px 0;border-bottom:.5px solid #f0f0f3}
+  .lst tr.g td{font-weight:600;color:#6e6e73;font-size:11.5px;padding-top:10px;border-bottom:none}
+  .lst .r{text-align:right}
+  .who{display:inline-flex;width:16px;height:16px;border-radius:8px;color:#fff;font-size:9px;font-weight:700;align-items:center;justify-content:center;margin-right:4px;vertical-align:-3px}
+  .notes{max-width:1240px;margin:22px auto 0;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .note{background:#f5f5f7;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.45}
+  .note b{display:block;margin-bottom:3px}
+
+  body{margin:0;padding:24px 16px 40px;background:#fff}
+  .win table{font-size:inherit}
+  .grp{max-width:1240px;margin:40px auto 0;padding-top:18px;border-top:1px solid #e0e0e5}
+  .grp h3{margin:0;font-size:20px}.grp p{margin:4px 0 0;color:#6e6e73;font-size:14px}
+  /* A: flat white with lines everywhere */
+  .vA .dash{background:#fff;padding:0;gap:0}
+  .vA .card{border:none;border-radius:0;border-right:.5px solid #e0e0e5;border-bottom:.5px solid #e0e0e5;padding:16px 20px}
+  .vA .card:nth-child(2n){border-right:none}
+  /* B: white cards on grey everywhere */
+  .vB .mn{background:#f5f5f7}
+  .vB .stats{background:transparent;gap:14px;padding:16px 16px 0;border:none}
+  .vB .st{border-radius:11px;border:.5px solid #e3e3e8}
+  .vB .body{padding:14px 16px 16px;gap:14px}
+  .vB .scroll{background:#fff;border-radius:11px;border:.5px solid #e3e3e8}
+  .vB .t th{background:#fff}
+  .vB .t tr:last-child td{border-bottom:none}
+  .vB .insp{border:.5px solid #e3e3e8;border-radius:11px;background:#fff}
+  .vB .insp .box{background:#f9f9fb}
+</style></head><body><div class="pg">
+<h2>Mac app: one look for every page</h2>
+<p class="lead">Before, Cashflow was flat white with lines and Overview was white cards on grey, so the two pages did not match. Pick one look for the whole app. Same sidebar, title bar and data in both. Sample figures only.</p>
+<div class="grp"><h3>A · Flat white with lines</h3><p>Like Cashflow before. Sections are split by thin lines; no background shows between them. Dense and calm, like Mail, Finder and Numbers.</p></div>
+<div class="cap">A1 · Cashflow <span>— table, stats strip and detail panel split by lines</span></div>
+<div class="win vA">
+  <div class="sb">
+    <div class="lights"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+    <div class="ws"><div class="av">P</div><div><b>Personal</b><small>IDR · on this Mac</small></div><span style="margin-left:auto;color:#86868b">⌃</span></div>
+    <div class="ni"><span class="ic">◎</span>Overview</div>
+    <div class="ni on"><span class="ic">≋</span>Cashflow</div>
+    <div class="ni"><span class="ic">▭</span>Wallet</div>
+    <div class="ni"><span class="ic">◔</span>Budget</div>
+    <div class="ni"><span class="ic">✦</span>Events</div>
+    <div class="ni"><span class="ic">⚑</span>Goals</div>
+    <div class="ni"><span class="ic">↗</span>Net worth</div>
+    <div class="sh">Tools</div>
+    <div class="ni"><span class="ic">☑</span>Review<span class="bd">4</span></div>
+    <div class="ni"><span class="ic">∑</span>Calculators</div>
+    <div class="ni"><span class="ic">▤</span>Tax report</div>
+    <div class="ni"><span class="ic">⇩</span>Import</div>
+    <div class="ni"><span class="ic">⚙</span>Categories</div>
+    <div class="sbf"><span class="dotg"></span>Backed up 2 hours ago</div>
+  </div>
+  <div class="mn">
+    <div class="tb">
+      <h1>Cashflow</h1>
+      <span class="per"><i>‹</i>October 2026<i>›</i></span>
+      <span class="seg"><span>List</span><span class="on">Table</span><span>Summary</span></span>
+      <span class="srch">⌕&nbsp; Search  <span style="margin-left:auto"><span class="kbd">⌘F</span></span></span>
+      <span class="btn g">Scan receipt</span>
+      <span class="btn">＋ Add</span>
+    </div>
+    <div class="stats">
+      <div class="st"><small>Spent</small><b>Rp 19.309.517</b><div class="bar"><i style="width:78%;background:#ff9f0a"></i></div><em>78% of budget · 111 transactions</em></div>
+      <div class="st"><small>Income</small><b class="pos">Rp 32.500.000</b><em>&nbsp;</em><br><em>Salary, 1 other</em></div>
+      <div class="st"><small>Left this month</small><b>Rp 13.190.483</b><br><em>Saved 41% of income</em></div>
+      <div class="st"><small>Needs attention</small><b style="font-size:15px"><span class="chip warn">4 not recorded</span> <span class="chip warn">2 no category</span></b><br><em>From bank messages</em></div>
+    </div>
+    <div class="body" style="grid-template-columns:1fr 300px">
+      <div class="scroll">
+        <table class="t">
+          <tr><th style="width:62px">Date</th><th>Description</th><th>Category</th><th>Paid with</th><th class="r">Amount</th></tr>
+          <tr class="new"><td>31 Oct</td><td>Kopi Kene<span class="caret"></span></td><td class="ph">Category</td><td class="ph">Paid with</td><td class="r ph">Amount</td></tr>
+          <tr class="day"><td colspan="5">Friday, 31 October <span style="float:right">Rp 512.000</span></td></tr>
+          <tr><td class="mu">31 Oct</td><td>Superindo Kebayoran</td><td><span class="chip"><i class="cd" style="background:#34c759"></i>Groceries</span></td><td>BCA Visa <span class="mu">···· 4821</span></td><td class="r">Rp 386.500</td></tr>
+          <tr class="sel"><td class="mu">31 Oct</td><td>Sushi Tei Plaza Senayan</td><td><span class="chip"><i class="cd" style="background:#ff9f0a"></i>Eating out</span></td><td>Mandiri Signature <span class="mu">···· 3307</span></td><td class="r">Rp 125.500</td></tr>
+          <tr class="day"><td colspan="5">Thursday, 30 October <span style="float:right">Rp 1.284.900</span></td></tr>
+          <tr><td class="mu">30 Oct</td><td>GrabCar</td><td><span class="chip"><i class="cd" style="background:#0a84ff"></i>Transport</span></td><td>OVO <span class="mu">···· 0812</span></td><td class="r">Rp 58.000</td></tr>
+          <tr><td class="mu">30 Oct</td><td>Telkomsel Halo</td><td><span class="chip"><i class="cd" style="background:#bf5af2"></i>Bills</span></td><td>BCA Tahapan</td><td class="r">Rp 210.000</td></tr>
+          <tr><td class="mu">30 Oct</td><td>Uniqlo Grand Indonesia</td><td><span class="chip"><i class="cd" style="background:#ff375f"></i>Shopping</span></td><td>BCA Visa <span class="mu">···· 4821</span></td><td class="r">Rp 899.000</td></tr>
+          <tr><td class="mu">30 Oct</td><td>Kopi Kenangan</td><td><span class="chip warn">No category</span></td><td>GoPay</td><td class="r">Rp 117.900</td></tr>
+          <tr class="day"><td colspan="5">Wednesday, 29 October <span style="float:right">Rp 2.033.000</span></td></tr>
+          <tr><td class="mu">29 Oct</td><td>Pertamina SPBU Fatmawati</td><td><span class="chip"><i class="cd" style="background:#0a84ff"></i>Transport</span></td><td>BCA Visa <span class="mu">···· 4821</span></td><td class="r">Rp 400.000</td></tr>
+          <tr><td class="mu">29 Oct</td><td>Ranch Market Pondok Indah</td><td><span class="chip"><i class="cd" style="background:#34c759"></i>Groceries</span></td><td>Mandiri Signature <span class="mu">···· 3307</span></td><td class="r">Rp 1.153.000</td></tr>
+          <tr><td class="mu">29 Oct</td><td>Daiso Myeongdong <span class="mu">KRW 95.000</span></td><td><span class="chip"><i class="cd" style="background:#ff375f"></i>Shopping</span></td><td>BCA Visa <span class="mu">···· 4821</span></td><td class="r">Rp 1.104.000</td></tr>
+          <tr><td class="mu">29 Oct</td><td>Salary PT Nusantara</td><td><span class="chip"><i class="cd" style="background:#1a8f3c"></i>Salary</span></td><td>BCA Tahapan</td><td class="r pos">+Rp 32.500.000</td></tr>
+          <tr class="day"><td colspan="5">Tuesday, 28 October <span style="float:right">Rp 734.000</span></td></tr>
+          <tr><td class="mu">28 Oct</td><td>MRT Jakarta</td><td><span class="chip"><i class="cd" style="background:#0a84ff"></i>Transport</span></td><td>Flazz</td><td class="r">Rp 14.000</td></tr>
+        </table>
+        <div style="padding:8px 12px;color:#86868b;font-size:11.5px"><span class="kbd">Tab</span> next cell · <span class="kbd">↩</span> save row, start the next · <span class="kbd">⌘V</span> paste rows from a spreadsheet · <span class="kbd">⌫</span> delete selected</div>
+      </div>
+      <div class="insp">
+        <small class="mu">Friday, 31 October · 19:42</small>
+        <h3 style="margin-top:4px">Sushi Tei Plaza Senayan</h3>
+        <div class="amt">Rp 125.500</div>
+        <span class="chip"><i class="cd" style="background:#ff9f0a"></i>Eating out</span>
+        <dl class="fl">
+          <dt>Paid with</dt><dd>Mandiri Signature ···· 3307</dd>
+          <dt>Workspace</dt><dd>Personal</dd>
+          <dt>Points</dt><dd>+125 Fiestapoin</dd>
+          <dt>Note</dt><dd class="ph">Add a note</dd>
+          <dt>From</dt><dd>Bank message, read automatically</dd>
+        </dl>
+        <div class="box">
+          <small>Eating out in October</small>
+          <div style="display:flex;justify-content:space-between;margin-top:4px"><b>Rp 2.410.000</b><span class="mu">of Rp 3.000.000</span></div>
+          <div class="bar"><i style="width:80%;background:#ff9f0a"></i></div>
+        </div>
+        <div class="box">
+          <small>Sushi Tei, last 6 months</small>
+          <svg width="100%" height="54" viewBox="0 0 266 54" style="display:block;margin-top:6px">
+            <g fill="#ffcf8a"><rect x="4" y="30" width="34" height="24" rx="3"/><rect x="48" y="18" width="34" height="36" rx="3"/><rect x="92" y="36" width="34" height="18" rx="3"/><rect x="136" y="24" width="34" height="30" rx="3"/><rect x="180" y="40" width="34" height="14" rx="3"/></g>
+            <rect x="224" y="26" width="34" height="28" rx="3" fill="#ff9f0a"/>
+          </svg>
+          <div class="mu" style="font-size:11px">3 visits this month</div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px"><span class="btn g">Split</span><span class="btn g">Move to workspace</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="cap">A2 · Overview <span>— the same blocks as before, as panels split by lines instead of floating cards</span></div>
+<div class="win vA">
+  <div class="sb">
+    <div class="lights"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+    <div class="ws"><div class="av" style="background:#0a66d8">H</div><div><b>Household</b><small>Shared · Bima, Rina</small></div><span style="margin-left:auto;color:#86868b">⌃</span></div>
+    <div class="ni on"><span class="ic">◎</span>Overview</div>
+    <div class="ni"><span class="ic">≋</span>Cashflow</div>
+    <div class="ni"><span class="ic">▭</span>Wallet</div>
+    <div class="ni"><span class="ic">◔</span>Budget</div>
+    <div class="ni"><span class="ic">✦</span>Events</div>
+    <div class="ni"><span class="ic">⚑</span>Goals</div>
+    <div class="ni"><span class="ic">↗</span>Net worth</div>
+    <div class="sh">Tools</div>
+    <div class="ni"><span class="ic">☑</span>Review<span class="bd">4</span></div>
+    <div class="ni"><span class="ic">∑</span>Calculators</div>
+    <div class="ni"><span class="ic">▤</span>Tax report</div>
+    <div class="ni"><span class="ic">⇩</span>Import</div>
+    <div class="ni"><span class="ic">⚙</span>Categories</div>
+    <div class="sbf"><span class="dotg"></span>Synced with Rina · just now</div>
+  </div>
+  <div class="mn">
+    <div class="tb">
+      <h1>Overview</h1>
+      <span class="per"><i>‹</i>October 2026<i>›</i></span>
+      <span class="srch">⌕&nbsp; Search</span>
+      <span class="btn">＋ Add</span>
+    </div>
+    <div class="dash">
+      <div class="card">
+        <h4><span>Net worth · together</span><span class="seg"><span>6M</span><span class="on">1Y</span><span>5Y</span><span>All</span></span></h4>
+        <div class="big">Rp 1.869.074.968</div>
+        <div class="pos" style="font-size:12.5px">▲ Rp 71.413.157 · 3,97% this year</div>
+        <svg width="100%" height="150" viewBox="0 0 600 150" preserveAspectRatio="none" style="margin-top:8px">
+          <defs><linearGradient id="gg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#34c759" stop-opacity=".28"/><stop offset="1" stop-color="#34c759" stop-opacity="0"/></linearGradient></defs>
+          <g stroke="#f0f0f3"><line x1="0" y1="30" x2="600" y2="30"/><line x1="0" y1="75" x2="600" y2="75"/><line x1="0" y1="120" x2="600" y2="120"/></g>
+          <path d="M0,112 L50,108 L100,110 L150,98 L200,96 L250,88 L300,90 L350,74 L400,70 L450,62 L500,50 L550,46 L600,38 L600,150 L0,150Z" fill="url(#gg)"/>
+          <path d="M0,112 L50,108 L100,110 L150,98 L200,96 L250,88 L300,90 L350,74 L400,70 L450,62 L500,50 L550,46 L600,38" fill="none" stroke="#1a8f3c" stroke-width="2.2"/>
+        </svg>
+        <div style="display:flex;justify-content:space-between;color:#86868b;font-size:11px"><span>Nov 2025</span><span>Feb</span><span>May</span><span>Aug</span><span>Nov 2026</span></div>
+      </div>
+      <div class="card">
+        <h4><span>October spending</span><span class="mu" style="font-weight:400">78% of budget</span></h4>
+        <div style="display:flex;gap:16px;align-items:center">
+          <svg width="130" height="130" viewBox="0 0 42 42"><circle cx="21" cy="21" r="15.9" fill="none" stroke="#ececf0" stroke-width="5"/>
+            <circle cx="21" cy="21" r="15.9" fill="none" stroke="#34c759" stroke-width="5" stroke-dasharray="35 65" stroke-dashoffset="25"/>
+            <circle cx="21" cy="21" r="15.9" fill="none" stroke="#ff9f0a" stroke-width="5" stroke-dasharray="18 82" stroke-dashoffset="-10"/>
+            <circle cx="21" cy="21" r="15.9" fill="none" stroke="#0a84ff" stroke-width="5" stroke-dasharray="14 86" stroke-dashoffset="-28"/>
+            <circle cx="21" cy="21" r="15.9" fill="none" stroke="#ff375f" stroke-width="5" stroke-dasharray="10 90" stroke-dashoffset="-42"/>
+            <circle cx="21" cy="21" r="15.9" fill="none" stroke="#bf5af2" stroke-width="5" stroke-dasharray="23 77" stroke-dashoffset="-52"/></svg>
+          <table class="lst" style="font-size:12.5px">
+            <tr><td><i class="cd" style="background:#34c759"></i> Household</td><td class="r">Rp 6.758.000</td></tr>
+            <tr><td><i class="cd" style="background:#ff9f0a"></i> Eating out</td><td class="r">Rp 3.476.000</td></tr>
+            <tr><td><i class="cd" style="background:#0a84ff"></i> Transport</td><td class="r">Rp 2.703.000</td></tr>
+            <tr><td><i class="cd" style="background:#ff375f"></i> Shopping</td><td class="r">Rp 1.931.000</td></tr>
+            <tr><td><i class="cd" style="background:#bf5af2"></i> Other</td><td class="r">Rp 4.441.517</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <h4><span>What we own and owe</span><span class="mu" style="font-weight:400"><span class="who" style="background:#1a8f3c">B</span>Bima <span class="who" style="background:#0a66d8">R</span>Rina</span></h4>
+        <table class="lst" style="font-size:12.5px">
+          <tr class="g"><td>Cash and savings</td><td class="r">Rp 214.300.000</td></tr>
+          <tr><td><span class="who" style="background:#1a8f3c">B</span>BCA Tahapan</td><td class="r">Rp 86.400.000</td></tr>
+          <tr><td><span class="who" style="background:#0a66d8">R</span>Jenius</td><td class="r">Rp 41.900.000</td></tr>
+          <tr class="g"><td>Investments</td><td class="r">Rp 512.774.968</td></tr>
+          <tr><td><span class="who" style="background:#1a8f3c">B</span>Reksa dana pasar uang · Bibit</td><td class="r">Rp 120.000.000</td></tr>
+          <tr><td><span class="who" style="background:#0a66d8">R</span>BBCA · 4.000 shares</td><td class="r">Rp 36.800.000</td></tr>
+          <tr class="g"><td>Property</td><td class="r">Rp 1.350.000.000</td></tr>
+          <tr class="g"><td>Debts</td><td class="r">−Rp 208.000.000</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <h4><span>Goals</span><span class="mu" style="font-weight:400">2 shared</span></h4>
+        <div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between"><b>Hajj 2030</b><span class="pos">On track</span></div>
+          <div class="bar" style="height:7px;display:flex"><i style="width:15.5%;background:#1a8f3c;border-radius:0"></i><i style="width:7.8%;background:#0a66d8;border-radius:0"></i></div>
+          <div class="mu" style="font-size:11.5px;margin-top:3px">Rp 42.000.000 of Rp 180.000.000 · Rp 2.650.000 a month</div></div>
+        <div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between"><b>Education fund</b><span style="color:#c77700">Behind</span></div>
+          <div class="bar" style="height:7px;display:flex"><i style="width:22%;background:#1a8f3c;border-radius:0"></i><i style="width:9%;background:#0a66d8;border-radius:0"></i></div>
+          <div class="mu" style="font-size:11.5px;margin-top:3px">Rp 93.000.000 of Rp 300.000.000 · Rp 4.100.000 a month</div></div>
+        <div><div style="display:flex;justify-content:space-between"><b>Emergency fund</b><span class="pos">Done</span></div>
+          <div class="bar" style="height:7px"><i style="width:100%;background:#1a8f3c"></i></div></div>
+        <h4 style="margin-top:16px"><span>Bills due soon</span></h4>
+        <table class="lst" style="font-size:12.5px">
+          <tr><td>PLN electricity</td><td class="mu">3 Nov</td><td class="r">Rp 780.000</td></tr>
+          <tr><td>BCA Visa statement</td><td class="mu">12 Nov</td><td class="r">Rp 8.214.300</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="grp"><h3>B · White cards on grey</h3><p>Like Overview before. Every block is a rounded card on a light grey page, the table included. Softer and more like a dashboard, like Apple's Health and Home apps.</p></div>
+<div class="cap">B1 · Cashflow <span>— each total is its own card; the table and the detail panel are cards too</span></div>
+<div class="win vB">
+  <div class="sb">
+    <div class="lights"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+    <div class="ws"><div class="av">P</div><div><b>Personal</b><small>IDR · on this Mac</small></div><span style="margin-left:auto;color:#86868b">⌃</span></div>
+    <div class="ni"><span class="ic">◎</span>Overview</div>
+    <div class="ni on"><span class="ic">≋</span>Cashflow</div>
+    <div class="ni"><span class="ic">▭</span>Wallet</div>
+    <div class="ni"><span class="ic">◔</span>Budget</div>
+    <div class="ni"><span class="ic">✦</span>Events</div>
+    <div class="ni"><span class="ic">⚑</span>Goals</div>
+    <div class="ni"><span class="ic">↗</span>Net worth</div>
+    <div class="sh">Tools</div>
+    <div class="ni"><span class="ic">☑</span>Review<span class="bd">4</span></div>
+    <div class="ni"><span class="ic">∑</span>Calculators</div>
+    <div class="ni"><span class="ic">▤</span>Tax report</div>
+    <div class="ni"><span class="ic">⇩</span>Import</div>
+    <div class="ni"><span class="ic">⚙</span>Categories</div>
+    <div class="sbf"><span class="dotg"></span>Backed up 2 hours ago</div>
+  </div>
+  <div class="mn">
+    <div class="tb">
+      <h1>Cashflow</h1>
+      <span class="per"><i>‹</i>October 2026<i>›</i></span>
+      <span class="seg"><span>List</span><span class="on">Table</span><span>Summary</span></span>
+      <span class="srch">⌕&nbsp; Search  <span style="margin-left:auto"><span class="kbd">⌘F</span></span></span>
+      <span class="btn g">Scan receipt</span>
+      <span class="btn">＋ Add</span>
+    </div>
+    <div class="stats">
+      <div class="st"><small>Spent</small><b>Rp 19.309.517</b><div class="bar"><i style="width:78%;background:#ff9f0a"></i></div><em>78% of budget · 111 transactions</em></div>
+      <div class="st"><small>Income</small><b class="pos">Rp 32.500.000</b><em>&nbsp;</em><br><em>Salary, 1 other</em></div>
+      <div class="st"><small>Left this month</small><b>Rp 13.190.483</b><br><em>Saved 41% of income</em></div>
+      <div class="st"><small>Needs attention</small><b style="font-size:15px"><span class="chip warn">4 not recorded</span> <span class="chip warn">2 no category</span></b><br><em>From bank messages</em></div>
+    </div>
+    <div class="body" style="grid-template-columns:1fr 300px">
+      <div class="scroll">
+        <table class="t">
+          <tr><th style="width:62px">Date</th><th>Description</th><th>Category</th><th>Paid with</th><th class="r">Amount</th></tr>
+          <tr class="new"><td>31 Oct</td><td>Kopi Kene<span class="caret"></span></td><td class="ph">Category</td><td class="ph">Paid with</td><td class="r ph">Amount</td></tr>
+          <tr class="day"><td colspan="5">Friday, 31 October <span style="float:right">Rp 512.000</span></td></tr>
+          <tr><td class="mu">31 Oct</td><td>Superindo Kebayoran</td><td><span class="chip"><i class="cd" style="background:#34c759"></i>Groceries</span></td><td>BCA Visa <span class="mu">···· 4821</span></td><td class="r">Rp 386.500</td></tr>
+          <tr class="sel"><td class="mu">31 Oct</td><td>Sushi Tei Plaza Senayan</td><td><span class="chip"><i class="cd" style="background:#ff9f0a"></i>Eating out</span></td><td>Mandiri Signature <span class="mu">···· 3307</span></td><td class="r">Rp 125.500</td></tr>
+          <tr class="day"><td colspan="5">Thursday, 30 October <span style="float:right">Rp 1.284.900</span></td></tr>
+          <tr><td class="mu">30 Oct</td><td>GrabCar</td><td><span class="chip"><i class="cd" style="background:#0a84ff"></i>Transport</span></td><td>OVO <span class="mu">···· 0812</span></td><td class="r">Rp 58.000</td></tr>
+          <tr><td class="mu">30 Oct</td><td>Telkomsel Halo</td><td><span class="chip"><i class="cd" style="background:#bf5af2"></i>Bills</span></td><td>BCA Tahapan</td><td class="r">Rp 210.000</td></tr>
+          <tr><td class="mu">30 Oct</td><td>Uniqlo Grand Indonesia</td><td><span class="chip"><i class="cd" style="background:#ff375f"></i>Shopping</span></td><td>BCA Visa <span class="mu">···· 4821</span></td><td class="r">Rp 899.000</td></tr>
+          <tr><td class="mu">30 Oct</td><td>Kopi Kenangan</td><td><span class="chip warn">No category</span></td><td>GoPay</td><td class="r">Rp 117.900</td></tr>
+          <tr class="day"><td colspan="5">Wednesday, 29 October <span style="float:right">Rp 2.033.000</span></td></tr>
+          <tr><td class="mu">29 Oct</td><td>Pertamina SPBU Fatmawati</td><td><span class="chip"><i class="cd" style="background:#0a84ff"></i>Transport</span></td><td>BCA Visa <span class="mu">···· 4821</span></td><td class="r">Rp 400.000</td></tr>
+          <tr><td class="mu">29 Oct</td><td>Ranch Market Pondok Indah</td><td><span class="chip"><i class="cd" style="background:#34c759"></i>Groceries</span></td><td>Mandiri Signature <span class="mu">···· 3307</span></td><td class="r">Rp 1.153.000</td></tr>
+          <tr><td class="mu">29 Oct</td><td>Daiso Myeongdong <span class="mu">KRW 95.000</span></td><td><span class="chip"><i class="cd" style="background:#ff375f"></i>Shopping</span></td><td>BCA Visa <span class="mu">···· 4821</span></td><td class="r">Rp 1.104.000</td></tr>
+          <tr><td class="mu">29 Oct</td><td>Salary PT Nusantara</td><td><span class="chip"><i class="cd" style="background:#1a8f3c"></i>Salary</span></td><td>BCA Tahapan</td><td class="r pos">+Rp 32.500.000</td></tr>
+          <tr class="day"><td colspan="5">Tuesday, 28 October <span style="float:right">Rp 734.000</span></td></tr>
+          <tr><td class="mu">28 Oct</td><td>MRT Jakarta</td><td><span class="chip"><i class="cd" style="background:#0a84ff"></i>Transport</span></td><td>Flazz</td><td class="r">Rp 14.000</td></tr>
+        </table>
+        <div style="padding:8px 12px;color:#86868b;font-size:11.5px"><span class="kbd">Tab</span> next cell · <span class="kbd">↩</span> save row, start the next · <span class="kbd">⌘V</span> paste rows from a spreadsheet · <span class="kbd">⌫</span> delete selected</div>
+      </div>
+      <div class="insp">
+        <small class="mu">Friday, 31 October · 19:42</small>
+        <h3 style="margin-top:4px">Sushi Tei Plaza Senayan</h3>
+        <div class="amt">Rp 125.500</div>
+        <span class="chip"><i class="cd" style="background:#ff9f0a"></i>Eating out</span>
+        <dl class="fl">
+          <dt>Paid with</dt><dd>Mandiri Signature ···· 3307</dd>
+          <dt>Workspace</dt><dd>Personal</dd>
+          <dt>Points</dt><dd>+125 Fiestapoin</dd>
+          <dt>Note</dt><dd class="ph">Add a note</dd>
+          <dt>From</dt><dd>Bank message, read automatically</dd>
+        </dl>
+        <div class="box">
+          <small>Eating out in October</small>
+          <div style="display:flex;justify-content:space-between;margin-top:4px"><b>Rp 2.410.000</b><span class="mu">of Rp 3.000.000</span></div>
+          <div class="bar"><i style="width:80%;background:#ff9f0a"></i></div>
+        </div>
+        <div class="box">
+          <small>Sushi Tei, last 6 months</small>
+          <svg width="100%" height="54" viewBox="0 0 266 54" style="display:block;margin-top:6px">
+            <g fill="#ffcf8a"><rect x="4" y="30" width="34" height="24" rx="3"/><rect x="48" y="18" width="34" height="36" rx="3"/><rect x="92" y="36" width="34" height="18" rx="3"/><rect x="136" y="24" width="34" height="30" rx="3"/><rect x="180" y="40" width="34" height="14" rx="3"/></g>
+            <rect x="224" y="26" width="34" height="28" rx="3" fill="#ff9f0a"/>
+          </svg>
+          <div class="mu" style="font-size:11px">3 visits this month</div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px"><span class="btn g">Split</span><span class="btn g">Move to workspace</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="cap">B2 · Overview <span>— unchanged from before</span></div>
+<div class="win vB">
+  <div class="sb">
+    <div class="lights"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+    <div class="ws"><div class="av" style="background:#0a66d8">H</div><div><b>Household</b><small>Shared · Bima, Rina</small></div><span style="margin-left:auto;color:#86868b">⌃</span></div>
+    <div class="ni on"><span class="ic">◎</span>Overview</div>
+    <div class="ni"><span class="ic">≋</span>Cashflow</div>
+    <div class="ni"><span class="ic">▭</span>Wallet</div>
+    <div class="ni"><span class="ic">◔</span>Budget</div>
+    <div class="ni"><span class="ic">✦</span>Events</div>
+    <div class="ni"><span class="ic">⚑</span>Goals</div>
+    <div class="ni"><span class="ic">↗</span>Net worth</div>
+    <div class="sh">Tools</div>
+    <div class="ni"><span class="ic">☑</span>Review<span class="bd">4</span></div>
+    <div class="ni"><span class="ic">∑</span>Calculators</div>
+    <div class="ni"><span class="ic">▤</span>Tax report</div>
+    <div class="ni"><span class="ic">⇩</span>Import</div>
+    <div class="ni"><span class="ic">⚙</span>Categories</div>
+    <div class="sbf"><span class="dotg"></span>Synced with Rina · just now</div>
+  </div>
+  <div class="mn">
+    <div class="tb">
+      <h1>Overview</h1>
+      <span class="per"><i>‹</i>October 2026<i>›</i></span>
+      <span class="srch">⌕&nbsp; Search</span>
+      <span class="btn">＋ Add</span>
+    </div>
+    <div class="dash">
+      <div class="card">
+        <h4><span>Net worth · together</span><span class="seg"><span>6M</span><span class="on">1Y</span><span>5Y</span><span>All</span></span></h4>
+        <div class="big">Rp 1.869.074.968</div>
+        <div class="pos" style="font-size:12.5px">▲ Rp 71.413.157 · 3,97% this year</div>
+        <svg width="100%" height="150" viewBox="0 0 600 150" preserveAspectRatio="none" style="margin-top:8px">
+          <defs><linearGradient id="gg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#34c759" stop-opacity=".28"/><stop offset="1" stop-color="#34c759" stop-opacity="0"/></linearGradient></defs>
+          <g stroke="#f0f0f3"><line x1="0" y1="30" x2="600" y2="30"/><line x1="0" y1="75" x2="600" y2="75"/><line x1="0" y1="120" x2="600" y2="120"/></g>
+          <path d="M0,112 L50,108 L100,110 L150,98 L200,96 L250,88 L300,90 L350,74 L400,70 L450,62 L500,50 L550,46 L600,38 L600,150 L0,150Z" fill="url(#gg)"/>
+          <path d="M0,112 L50,108 L100,110 L150,98 L200,96 L250,88 L300,90 L350,74 L400,70 L450,62 L500,50 L550,46 L600,38" fill="none" stroke="#1a8f3c" stroke-width="2.2"/>
+        </svg>
+        <div style="display:flex;justify-content:space-between;color:#86868b;font-size:11px"><span>Nov 2025</span><span>Feb</span><span>May</span><span>Aug</span><span>Nov 2026</span></div>
+      </div>
+      <div class="card">
+        <h4><span>October spending</span><span class="mu" style="font-weight:400">78% of budget</span></h4>
+        <div style="display:flex;gap:16px;align-items:center">
+          <svg width="130" height="130" viewBox="0 0 42 42"><circle cx="21" cy="21" r="15.9" fill="none" stroke="#ececf0" stroke-width="5"/>
+            <circle cx="21" cy="21" r="15.9" fill="none" stroke="#34c759" stroke-width="5" stroke-dasharray="35 65" stroke-dashoffset="25"/>
+            <circle cx="21" cy="21" r="15.9" fill="none" stroke="#ff9f0a" stroke-width="5" stroke-dasharray="18 82" stroke-dashoffset="-10"/>
+            <circle cx="21" cy="21" r="15.9" fill="none" stroke="#0a84ff" stroke-width="5" stroke-dasharray="14 86" stroke-dashoffset="-28"/>
+            <circle cx="21" cy="21" r="15.9" fill="none" stroke="#ff375f" stroke-width="5" stroke-dasharray="10 90" stroke-dashoffset="-42"/>
+            <circle cx="21" cy="21" r="15.9" fill="none" stroke="#bf5af2" stroke-width="5" stroke-dasharray="23 77" stroke-dashoffset="-52"/></svg>
+          <table class="lst" style="font-size:12.5px">
+            <tr><td><i class="cd" style="background:#34c759"></i> Household</td><td class="r">Rp 6.758.000</td></tr>
+            <tr><td><i class="cd" style="background:#ff9f0a"></i> Eating out</td><td class="r">Rp 3.476.000</td></tr>
+            <tr><td><i class="cd" style="background:#0a84ff"></i> Transport</td><td class="r">Rp 2.703.000</td></tr>
+            <tr><td><i class="cd" style="background:#ff375f"></i> Shopping</td><td class="r">Rp 1.931.000</td></tr>
+            <tr><td><i class="cd" style="background:#bf5af2"></i> Other</td><td class="r">Rp 4.441.517</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <h4><span>What we own and owe</span><span class="mu" style="font-weight:400"><span class="who" style="background:#1a8f3c">B</span>Bima <span class="who" style="background:#0a66d8">R</span>Rina</span></h4>
+        <table class="lst" style="font-size:12.5px">
+          <tr class="g"><td>Cash and savings</td><td class="r">Rp 214.300.000</td></tr>
+          <tr><td><span class="who" style="background:#1a8f3c">B</span>BCA Tahapan</td><td class="r">Rp 86.400.000</td></tr>
+          <tr><td><span class="who" style="background:#0a66d8">R</span>Jenius</td><td class="r">Rp 41.900.000</td></tr>
+          <tr class="g"><td>Investments</td><td class="r">Rp 512.774.968</td></tr>
+          <tr><td><span class="who" style="background:#1a8f3c">B</span>Reksa dana pasar uang · Bibit</td><td class="r">Rp 120.000.000</td></tr>
+          <tr><td><span class="who" style="background:#0a66d8">R</span>BBCA · 4.000 shares</td><td class="r">Rp 36.800.000</td></tr>
+          <tr class="g"><td>Property</td><td class="r">Rp 1.350.000.000</td></tr>
+          <tr class="g"><td>Debts</td><td class="r">−Rp 208.000.000</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <h4><span>Goals</span><span class="mu" style="font-weight:400">2 shared</span></h4>
+        <div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between"><b>Hajj 2030</b><span class="pos">On track</span></div>
+          <div class="bar" style="height:7px;display:flex"><i style="width:15.5%;background:#1a8f3c;border-radius:0"></i><i style="width:7.8%;background:#0a66d8;border-radius:0"></i></div>
+          <div class="mu" style="font-size:11.5px;margin-top:3px">Rp 42.000.000 of Rp 180.000.000 · Rp 2.650.000 a month</div></div>
+        <div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between"><b>Education fund</b><span style="color:#c77700">Behind</span></div>
+          <div class="bar" style="height:7px;display:flex"><i style="width:22%;background:#1a8f3c;border-radius:0"></i><i style="width:9%;background:#0a66d8;border-radius:0"></i></div>
+          <div class="mu" style="font-size:11.5px;margin-top:3px">Rp 93.000.000 of Rp 300.000.000 · Rp 4.100.000 a month</div></div>
+        <div><div style="display:flex;justify-content:space-between"><b>Emergency fund</b><span class="pos">Done</span></div>
+          <div class="bar" style="height:7px"><i style="width:100%;background:#1a8f3c"></i></div></div>
+        <h4 style="margin-top:16px"><span>Bills due soon</span></h4>
+        <table class="lst" style="font-size:12.5px">
+          <tr><td>PLN electricity</td><td class="mu">3 Nov</td><td class="r">Rp 780.000</td></tr>
+          <tr><td>BCA Visa statement</td><td class="mu">12 Nov</td><td class="r">Rp 8.214.300</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.vC{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:#1d1d1f;width:1240px;margin:0 auto;border-radius:12px;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.22),0 0 0 .5px rgba(0,0,0,.25);background:#fafafa;display:grid;grid-template-columns:220px 1fr;height:760px;font-size:12.5px}
+.vC .side{background:#fff;border-right:1px solid #ececef;padding:12px 10px;display:flex;flex-direction:column;gap:2px}
+.vC .lights{display:flex;gap:8px;padding:2px 6px 12px}.vC .lights i{width:12px;height:12px;border-radius:6px;display:block}
+.vC .wsw{display:flex;align-items:center;gap:8px;border:1px solid #ececef;border-radius:8px;padding:6px 8px;margin-bottom:10px}
+.vC .wsw .lg{width:22px;height:22px;border-radius:6px;background:#1d1d1f;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.vC .wsw b{flex:1;font-size:13px}.vC .wsw span{color:#8e8e93}
+.vC .it{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:7px;color:#3a3a3c}
+.vC .it i{font-style:normal;width:16px;text-align:center;color:#8e8e93}
+.vC .it.on{background:#f2f2f4;color:#1d1d1f;font-weight:600}
+.vC .it .kb{margin-left:auto;font-size:10.5px;color:#aeaeb2;border:1px solid #e5e5ea;border-radius:4px;padding:0 4px}
+.vC .gap{height:12px}
+.vC .foot{margin-top:auto;border-top:1px solid #ececef;padding:10px 8px 2px;font-size:11.5px;color:#6e6e73;line-height:1.5}
+.vC .foot b{color:#1a8f3c;font-weight:600}
+.vC .main{padding:14px 18px;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.vC .top{display:flex;align-items:center;gap:10px}
+.vC .top h1{font-size:15px;margin:0;font-weight:600;display:flex;align-items:center;gap:8px}
+.vC .pill{border:1px solid #e5e5ea;background:#fff;border-radius:7px;padding:5px 10px;font-size:12px;color:#3a3a3c}
+.vC .blk{background:#1d1d1f;color:#fff;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600}
+.vC .sp{flex:1}
+.vC .tabs{display:flex;gap:4px;align-items:center}
+.vC .tabs span{padding:5px 12px;border-radius:7px;color:#6e6e73;font-size:12px}
+.vC .tabs span.on{background:#fff;border:1px solid #e5e5ea;color:#1d1d1f;font-weight:600}
+.vC .tabs .sync{margin-left:auto;color:#8e8e93;font-size:11.5px}
+.vC .row1{display:grid;grid-template-columns:1fr 300px;gap:12px}
+.vC .row1 .card svg{height:230px}.vC .row2 .card{min-height:285px}.vC .row2{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.vC .card{background:#fff;border:1px solid #ececef;border-radius:11px;padding:14px 16px}
+.vC .lab{color:#8e8e93;font-size:11.5px;display:flex;align-items:center;gap:8px}
+.vC .lab .lg2{margin-left:auto;display:flex;gap:12px;font-size:11px}
+.vC .lab .lg2 i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.vC .bigN{font-size:26px;font-weight:600;letter-spacing:-.4px;display:flex;align-items:center;gap:10px;margin:4px 0 6px;font-variant-numeric:tabular-nums}
+.vC .chip{font-size:11px;font-weight:600;color:#1a8f3c;background:#e9f6ec;border-radius:6px;padding:2px 7px;letter-spacing:0}
+.vC .ttl{font-weight:600;font-size:13px;display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.vC .ttl small{color:#8e8e93;font-weight:400;font-size:11.5px}
+.vC .gauge{display:flex;justify-content:center;margin:2px 0 4px}
+.vC .kv{display:flex;justify-content:space-between;background:#f7f7f9;border-radius:7px;padding:7px 10px;margin-top:6px;font-size:12px}
+.vC .kv span{color:#6e6e73}.vC .kv b{font-variant-numeric:tabular-nums}
+.vC .acc{margin-bottom:10px}.vC .acc div{display:flex;justify-content:space-between;font-size:12px}
+.vC .acc div b{font-variant-numeric:tabular-nums;font-weight:600}
+.vC .bar{height:4px;border-radius:2px;background:#f0f0f2;margin-top:5px}.vC .bar i{display:block;height:100%;border-radius:2px;background:#1d1d1f}
+.vC .ins{background:#f7f7f9;border-radius:8px;padding:9px 11px;margin-bottom:8px}
+.vC .ins b{display:block;font-size:12px;font-weight:600}.vC .ins span{color:#8e8e93;font-size:11.5px}
+.vC .insb{display:flex;align-items:center;gap:10px;margin-top:6px}.vC .insb .blk{flex:1;text-align:center}.vC .insb span{color:#8e8e93}
+.vC .nx{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid #f2f2f4}.vC .nx:first-of-type{border-top:none}
+.vC .dt{width:30px;text-align:center;border:1px solid #ececef;border-radius:6px;font-size:12px;font-weight:700;line-height:1.1;padding:3px 0}.vC .dt small{display:block;font-size:9px;color:#8e8e93;font-weight:500}
+.vC .nx .n{flex:1}.vC .nx .a{font-variant-numeric:tabular-nums;font-weight:600}.vC .nx .a.in{color:#1a8f3c}
+.vC table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.vC td,.vC th{padding:8px 10px;border-top:1px solid #f2f2f4;text-align:left;font-size:12.5px}
+.vC th{color:#8e8e93;font-weight:500;font-size:11.5px;border-top:none}
+.vC td.r,.vC th.r{text-align:right}
+.vC tr.typing td{background:#f7faff;box-shadow:inset 0 0 0 1.5px #0a66d8}
+.vC .stat3{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.vC .stat3 .card b{display:block;font-size:20px;font-weight:600;margin-top:4px;font-variant-numeric:tabular-nums}
+.vC .stat3 .card span{font-size:11px;color:#8e8e93}
+</style>
+<div class="grp"><h3>C · Dashboard cards on near-white</h3><p>Inspired by the screenshot, in the iPhone app's own colours: black (#1c1c1e) buttons, green (#248a3d) bars, orange (#b25000) for the highest month. A white sidebar, a page in very light grey, white cards with a fine border, a big headline number with a chip, a black primary button, and a period range at the top. More "product dashboard" than native Mac. Sample figures only.</p></div>
+<div class="cap">C1 · Overview <span>— money on hand with past and expected months, how long the money lasts, accounts, things worth a look, and the next 14 days</span></div>
+<div class="vC">
+<div class="side">
+<div class="lights"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+<div class="wsw"><div class="lg">H</div><b>Household</b><span>⌄</span></div>
+<div class="it"><i>⌕</i>Search<span class="kb">⌘K</span></div>
+<div class="it"><i>▤</i>Reports</div>
+<div class="it"><i>⌁</i>Plans</div>
+<div class="gap"></div>
+<div class="it on"><i>▦</i>Overview</div>
+<div class="it"><i>⇄</i>Cashflow</div>
+<div class="it"><i>◔</i>Budget</div>
+<div class="it"><i>↗</i>Net worth</div>
+<div class="it"><i>▭</i>Wallet</div>
+<div class="it"><i>✦</i>Goals</div>
+<div class="it"><i>⚙</i>Settings</div>
+<div class="gap"></div>
+<div class="it"><i>▸</i>Debt-free plan</div>
+<div class="it"><i>▸</i>Events</div>
+<div class="foot">Backed up to iCloud · 09:12<br><b>●</b> Shared · in step</div>
+</div>
+<div class="main">
+<div class="top"><h1>▦ Overview</h1><span class="sp"></span><span class="pill">📅 Jun 2026 – May 2027</span><span class="pill">⇪ Export</span><span class="blk">＋ Add</span></div>
+<div class="tabs"><span class="on">Overview</span><span>Spending</span><span>Income</span><span>Accounts</span><span class="sync">On this Mac · synced 2 min ago</span></div>
+<div class="row1">
+<div class="card"><div class="lab">Money on hand<span class="lg2"><span><i style="background:#248a3d"></i>Spent</span><span><i style="background:#b25000"></i>Highest</span><span><i style="border:1px solid #d6d6db;background:repeating-linear-gradient(45deg,#fff 0 2px,#9fd0ac 2px 4px);border-color:#9fd0ac"></i>Expected</span><span><i style="background:#1c1c1e;height:2px;vertical-align:3px"></i>Balance</span></span></div>
+<div class="bigN">Rp 248.600.000 <span class="chip">+3,2% vs last month</span></div>
+<svg viewBox="0 0 560 150" width="100%" height="150"><defs><pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="#fff"/><line x1="0" y1="0" x2="0" y2="5" stroke="#9fd0ac" stroke-width="2"/></pattern></defs><line x1="26" x2="560" y1="20" y2="20" stroke="#f0f0f2"/><line x1="26" x2="560" y1="55" y2="55" stroke="#f0f0f2"/><line x1="26" x2="560" y1="90" y2="90" stroke="#f0f0f2"/><line x1="26" x2="560" y1="125" y2="125" stroke="#f0f0f2"/><rect x="30.0" y="37.0" width="26" height="93.0" rx="3" fill="#248a3d"/><text x="43.0" y="145" font-size="9" fill="#8e8e93" text-anchor="middle">Jun</text><rect x="73.3" y="25.0" width="26" height="105.0" rx="3" fill="#248a3d"/><text x="86.3" y="145" font-size="9" fill="#8e8e93" text-anchor="middle">Jul</text><rect x="116.7" y="47.5" width="26" height="82.5" rx="3" fill="#248a3d"/><text x="129.7" y="145" font-size="9" fill="#8e8e93" text-anchor="middle">Aug</text><rect x="160.0" y="31.0" width="26" height="99.0" rx="3" fill="#248a3d"/><text x="173.0" y="145" font-size="9" fill="#8e8e93" text-anchor="middle">Sep</text><rect x="203.3" y="19.0" width="26" height="111.0" rx="3" fill="#b25000"/><text x="216.3" y="145" font-size="9" fill="#8e8e93" text-anchor="middle">Oct</text><rect x="246.7" y="43.0" width="26" height="87.0" rx="3" fill="#248a3d"/><text x="259.7" y="145" font-size="9" fill="#8e8e93" text-anchor="middle">Nov</text><rect x="290.0" y="10.0" width="26" height="120.0" rx="3" fill="url(#hatch)" stroke="#9fd0ac"/><text x="303.0" y="145" font-size="9" fill="#8e8e93" text-anchor="middle">Dec</text><rect x="333.3" y="34.0" width="26" height="96.0" rx="3" fill="url(#hatch)" stroke="#9fd0ac"/><text x="346.3" y="145" font-size="9" fill="#8e8e93" text-anchor="middle">Jan</text><rect x="376.7" y="28.0" width="26" height="102.0" rx="3" fill="url(#hatch)" stroke="#9fd0ac"/><text x="389.7" y="145" font-size="9" fill="#8e8e93" text-anchor="middle">Feb</text><rect x="420.0" y="40.0" width="26" height="90.0" rx="3" fill="url(#hatch)" stroke="#9fd0ac"/><text x="433.0" y="145" font-size="9" fill="#8e8e93" text-anchor="middle">Mar</text><rect x="463.3" y="22.0" width="26" height="108.0" rx="3" fill="url(#hatch)" stroke="#9fd0ac"/><text x="476.3" y="145" font-size="9" fill="#8e8e93" text-anchor="middle">Apr</text><rect x="506.7" y="31.0" width="26" height="99.0" rx="3" fill="url(#hatch)" stroke="#9fd0ac"/><text x="519.7" y="145" font-size="9" fill="#8e8e93" text-anchor="middle">May</text><polyline points="43.0,34.0 86.3,30.8 129.7,37.2 173.0,29.2 216.3,24.4 259.7,27.6 303.0,21.2 346.3,18.0 389.7,19.6 433.0,13.2 476.3,10.0 519.7,5.2" fill="none" stroke="#1c1c1e" stroke-width="1.6" stroke-dasharray="3 3"/><line x1="283.3" y1="8" x2="283.3" y2="130" stroke="#1c1c1e" stroke-dasharray="2 2"/><rect x="265.3" y="0" width="36" height="13" rx="3" fill="#1c1c1e"/><text x="283.3" y="9.5" font-size="8" fill="#fff" text-anchor="middle">Today</text><text x="0" y="24" font-size="9" fill="#8e8e93">300jt</text><text x="0" y="94" font-size="9" fill="#8e8e93">150jt</text><text x="0" y="129" font-size="9" fill="#8e8e93">0</text></svg>
+</div>
+<div class="card"><div class="ttl">How long it lasts <small>⋯</small></div>
+<div class="gauge"><svg width="190" height="110" viewBox="0 0 190 110"><path d="M20 100 A75 75 0 0 1 170 100" fill="none" stroke="#f0f0f2" stroke-width="14" stroke-linecap="round"/><path d="M20 100 A75 75 0 0 1 140 40" fill="none" stroke="#1c1c1e" stroke-width="14" stroke-linecap="round"/><text x="95" y="88" text-anchor="middle" font-size="24" font-weight="600" fill="#1c1c1e">7 mo</text><text x="95" y="104" text-anchor="middle" font-size="9.5" fill="#8e8e93">Money lasts until Jun 2027</text></svg></div>
+<div class="kv"><span>Spent a month</span><b>Rp 34,2 jt</b></div>
+<div class="kv"><span>Target</span><b>6 mo</b></div>
+</div>
+</div>
+<div class="row2">
+<div class="card"><div class="ttl">Accounts <small>5 accounts</small></div>
+<div class="acc"><div><span>BCA · IDR</span><b>Rp 142,5 jt</b></div><div class="bar"><i style="width:78%"></i></div></div>
+<div class="acc"><div><span>Mandiri · IDR</span><b>Rp 61,2 jt</b></div><div class="bar"><i style="width:34%"></i></div></div>
+<div class="acc"><div><span>Jenius · USD</span><b>$ 1.840</b></div><div class="bar"><i style="width:16%"></i></div></div>
+<div class="acc"><div><span>GoPay</span><b>Rp 1,9 jt</b></div><div class="bar"><i style="width:4%"></i></div></div>
+</div>
+<div class="card"><div class="ttl">Worth a look <small>worked out on this Mac</small></div>
+<div class="ins"><b>December spending runs high</b><span>Last two Decembers were 30% above the usual month.</span></div>
+<div class="ins"><b>3 purchases still to review</b><span>Captured from notifications, not filed yet.</span></div>
+<div class="insb"><span class="blk">Review all</span><span>Hide</span></div>
+</div>
+<div class="card"><div class="ttl">Next 14 days <small>See all</small></div>
+<div class="nx"><div class="dt">15<small>Nov</small></div><div class="n">BCA card statement</div><div class="a">−Rp 8,4 jt</div></div>
+<div class="nx"><div class="dt">18<small>Nov</small></div><div class="n">Internet</div><div class="a">−Rp 450 rb</div></div>
+<div class="nx"><div class="dt">20<small>Nov</small></div><div class="n">Home loan</div><div class="a">−Rp 4,95 jt</div></div>
+<div class="nx"><div class="dt">25<small>Nov</small></div><div class="n">Salary</div><div class="a in">+Rp 38 jt</div></div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="cap">C2 · Cashflow <span>— same cards: four totals on top, then the typing table as one card</span></div>
+<div class="vC">
+<div class="side">
+<div class="lights"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+<div class="wsw"><div class="lg">H</div><b>Household</b><span>⌄</span></div>
+<div class="it"><i>⌕</i>Search<span class="kb">⌘K</span></div>
+<div class="it"><i>▤</i>Reports</div>
+<div class="it"><i>⌁</i>Plans</div>
+<div class="gap"></div>
+<div class="it"><i>▦</i>Overview</div>
+<div class="it on"><i>⇄</i>Cashflow</div>
+<div class="it"><i>◔</i>Budget</div>
+<div class="it"><i>↗</i>Net worth</div>
+<div class="it"><i>▭</i>Wallet</div>
+<div class="it"><i>✦</i>Goals</div>
+<div class="it"><i>⚙</i>Settings</div>
+<div class="foot">Backed up to iCloud · 09:12<br><b>●</b> Shared · in step</div>
+</div>
+<div class="main">
+<div class="top"><h1>⇄ Cashflow</h1><span class="sp"></span><span class="pill">📅 November 2026</span><span class="pill">⌕ Search</span><span class="pill">📷 Scan receipt</span><span class="blk">＋ Add</span></div>
+<div class="tabs"><span>List</span><span class="on">Table</span><span>Summary</span><span class="sync">Tab moves along · Return saves the row · ⌘V pastes a list</span></div>
+<div class="stat3">
+<div class="card"><span>Spent</span><b>Rp 21.480.300</b></div>
+<div class="card"><span>Received</span><b>Rp 38.000.000</b></div>
+<div class="card"><span>Left this month</span><b>Rp 16.519.700</b></div>
+<div class="card"><span>To review</span><b>3</b></div>
+</div>
+<div class="card" style="padding:4px 6px;flex:1">
+<table>
+<tr><th>Date</th><th>Note</th><th>Category</th><th>Paid with</th><th class="r">Amount</th></tr>
+<tr class="typing"><td>11 Nov</td><td>kopi kenangan</td><td>Food &amp; drink</td><td>GoPay</td><td class="r">38.000</td></tr>
+<tr><td>11 Nov</td><td>Superindo</td><td>Groceries</td><td>Cash</td><td class="r">112.300</td></tr>
+<tr><td>11 Nov</td><td>Grab</td><td>Transport</td><td>BCA ••12</td><td class="r">24.500</td></tr>
+<tr><td>10 Nov</td><td>Bakmi GM</td><td>Food &amp; drink</td><td>BCA ••12</td><td class="r">86.000</td></tr>
+<tr><td>10 Nov</td><td>Pertamina</td><td>Transport</td><td>Mandiri ••40</td><td class="r">150.000</td></tr>
+<tr><td>9 Nov</td><td>Tokopedia</td><td>Household</td><td>BCA card</td><td class="r">349.000</td></tr>
+<tr><td>9 Nov</td><td>Salary</td><td>Income</td><td>BCA</td><td class="r" style="color:#248a3d">+38.000.000</td></tr>
+<tr><td>8 Nov</td><td>Indomaret</td><td>Groceries</td><td>GoPay</td><td class="r">57.800</td></tr>
+<tr><td>8 Nov</td><td>Netflix</td><td>Subscriptions</td><td>BCA card</td><td class="r">186.000</td></tr>
+<tr><td>7 Nov</td><td>Kimia Farma</td><td>Health</td><td>Cash</td><td class="r">94.500</td></tr>
+</table>
+</div>
+</div>
+</div>
+
+</div></body></html>

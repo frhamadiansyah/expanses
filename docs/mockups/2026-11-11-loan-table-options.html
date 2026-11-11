@@ -1,0 +1,137 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Loan table options</title><style>
+:root{--bg:#f2f2f7;--surface:#fff;--ink:#1c1c1e;--ink2:#3a3a3c;--ink3:#8e8e93;--hair:#e5e5ea;--fill:#eeeef2;--tint:#0a66d8;--green:#1a8f3c;--red:#d70015;--amber:#c77700;--amberbg:#fff4d6;--redbg:#ffe8ea}
+*{box-sizing:border-box}
+body{margin:0;padding:28px 16px 48px;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:var(--ink)}
+h1{text-align:center;margin:0 0 6px;font-size:26px}
+.lead{text-align:center;color:#6e6e73;max-width:860px;margin:0 auto 26px;font-size:14.5px;line-height:1.45}
+.grid{display:grid;grid-template-columns:repeat(3,372px);gap:34px 30px;justify-content:center}
+.cap{font-weight:700;font-size:15px;margin-bottom:4px}
+.cap span{display:block;font-weight:400;color:#6e6e73;font-size:13px;margin-top:2px;line-height:1.4;min-height:54px}
+.ph{width:372px;height:790px;border-radius:46px;background:var(--bg);box-shadow:0 0 0 10px #1c1c1e,0 18px 40px rgba(0,0,0,.25);overflow:hidden;position:relative;font-size:15px;margin-top:10px}
+.sb{height:46px;display:flex;justify-content:space-between;align-items:center;padding:0 28px;font-weight:600;font-size:15px}
+.scr{padding:0 16px;height:690px;overflow:hidden}
+.nav{display:flex;align-items:center;justify-content:space-between;color:var(--tint);font-size:16px;height:36px}
+.lt{font-size:30px;font-weight:700;margin:2px 0 12px}
+.g{background:var(--surface);border-radius:12px;overflow:hidden;margin-bottom:14px}
+.k{font-size:12px;font-weight:600;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em;padding:0 4px 6px}
+.row{display:flex;align-items:center;gap:10px;padding:0 0 0 14px;min-height:52px}
+.row .b{flex:1;display:flex;align-items:center;gap:8px;min-height:52px;padding-right:14px;border-top:.5px solid var(--hair)}
+.row:first-child .b{border-top:none}
+.t{font-size:15.5px}.s{font-size:12.5px;color:var(--ink3)}
+.r{margin-left:auto;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ic{width:30px;height:30px;border-radius:15px;background:var(--fill);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--ink2);flex-shrink:0}
+.pay{background:var(--tint);color:#fff;border-radius:14px;padding:4px 11px;font-size:13px;font-weight:600;margin-left:8px}
+.tag{font-size:11.5px;font-weight:600;padding:1px 6px;border-radius:5px}
+.late{background:var(--redbg);color:var(--red)}.soon{background:var(--amberbg);color:var(--amber)}.done{background:#e3f6e8;color:var(--green)}
+.hero{background:var(--surface);border-radius:14px;padding:16px;margin-bottom:14px}
+.ring{width:84px;height:84px;flex-shrink:0}
+.big{font-size:26px;font-weight:700;letter-spacing:-.3px;font-variant-numeric:tabular-nums}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);margin-top:14px;border-top:.5px solid var(--hair);padding-top:10px;text-align:center}
+.stats b{display:block;font-size:18px}.stats small{color:var(--ink3);font-size:12px}
+.btn{display:flex;justify-content:center;align-items:center;gap:6px;background:var(--tint);color:#fff;border-radius:12px;height:46px;font-weight:600;font-size:16px;margin-top:14px}
+.seg{display:flex;background:#e3e3e8;border-radius:9px;padding:2px;margin-bottom:10px}
+.seg span{flex:1;text-align:center;padding:6px 0;border-radius:7px;font-size:13.5px;color:var(--ink2)}
+.seg span.on{background:#fff;font-weight:600;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.note{font-size:13px;color:var(--ink2);line-height:1.4;padding:0 4px 10px}
+.sug{background:#e8f1fd;color:#0a4fa8;border-radius:10px;padding:9px 12px;font-size:13px;margin-bottom:14px;line-height:1.35}
+.num{width:22px;height:22px;border-radius:11px;background:var(--ink);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.chips{display:flex;gap:7px;margin-bottom:12px;flex-wrap:nowrap}
+.chips span{padding:6px 12px;border-radius:16px;background:#fff;font-size:13.5px;white-space:nowrap}
+.chips span.on{background:var(--ink);color:#fff;font-weight:600}
+.bar{height:5px;border-radius:3px;background:var(--fill);overflow:hidden;margin-top:5px}.bar i{display:block;height:100%;background:var(--green);border-radius:3px}
+.tri{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.tri div{background:#fff;border-radius:12px;padding:10px 12px}.tri small{color:var(--ink3);font-size:12px;display:block}.tri b{font-size:16px;font-variant-numeric:tabular-nums}
+.tabbar{position:absolute;bottom:0;left:0;right:0;height:62px;background:rgba(249,249,251,.95);border-top:.5px solid var(--hair);display:flex;justify-content:space-around;align-items:flex-start;padding-top:8px;font-size:10.5px;color:var(--ink3)}
+.tabbar .on{color:var(--tint)}
+.sw{width:46px;height:28px;border-radius:14px;background:#34c759;position:relative;flex-shrink:0}.sw::after{content:"";position:absolute;right:2px;top:2px;width:24px;height:24px;border-radius:12px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.sw.off{background:#e3e3e8}.sw.off::after{left:2px;right:auto}
+.lock{background:linear-gradient(160deg,#3b4a6b,#1e2638);height:790px;color:#fff;padding:60px 14px 0;text-align:center}
+.lock .time{font-size:76px;font-weight:300;letter-spacing:-2px;line-height:1}
+.notif{background:rgba(255,255,255,.82);color:#1c1c1e;border-radius:18px;padding:11px 13px;text-align:left;margin-top:12px;font-size:14px;line-height:1.3;backdrop-filter:blur(10px)}
+.notif .h{display:flex;justify-content:space-between;font-size:12.5px;color:#6e6e73;margin-bottom:2px}
+.mb{display:flex;align-items:flex-end;gap:12px;height:120px;padding:10px 14px 4px}
+.mb div{flex:1;display:flex;gap:3px;align-items:flex-end;height:100%}
+.mb i{flex:1;border-radius:3px 3px 0 0;display:block}
+.ml{display:flex;gap:12px;padding:0 14px 10px;font-size:11.5px;color:var(--ink3)}.ml span{flex:1;text-align:center}
+.legend{display:flex;gap:12px;font-size:12px;color:var(--ink3);padding:0 14px 12px}.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.b>div:first-child{min-width:0;flex:1}
+.b>div:first-child .t,.b>div:first-child .s{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.b .pay+*{display:none}
+.row .b{min-width:0}.tri div{min-width:0;padding:10px 9px}
+.tri b{font-size:13px;white-space:nowrap;display:block}
+.b .r{font-size:14.5px}
+.notes{max-width:1180px;margin:34px auto 0;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.nb{background:#f5f5f7;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.45}.nb b{display:block;margin-bottom:3px}
+table.t5,table.t6{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+table.t5{font-size:11.5px}table.t5 td{padding:7px 4px;text-align:right;border-top:.5px solid var(--hair);white-space:nowrap}
+table.t5 td:first-child{text-align:left;color:var(--ink3);padding-left:10px}
+table.t5 td:last-child{padding-right:10px;font-weight:600}
+tr.h td{color:var(--ink3);font-weight:600!important;border-top:none!important;font-size:10.5px}
+tr.gap td{text-align:center!important;color:var(--ink3)}
+tr.stage td{text-align:left!important;background:var(--amberbg);color:#8a5a00;font-weight:600;padding-left:10px!important}
+.mrow{padding:10px 14px;border-top:.5px solid var(--hair)}.mrow:first-child{border-top:none}
+.l1{display:flex;justify-content:space-between;font-size:15px;font-variant-numeric:tabular-nums}
+.l2{display:flex;white-space:nowrap;gap:8px;justify-content:space-between;font-size:12px;color:var(--ink3);margin-top:3px;font-variant-numeric:tabular-nums}
+.split{display:flex;height:4px;border-radius:2px;overflow:hidden;margin-top:6px}
+.land{width:372px;height:220px;border-radius:30px;background:var(--bg);box-shadow:0 0 0 10px #1c1c1e,0 18px 40px rgba(0,0,0,.25);overflow:hidden;margin-top:10px;transform:none}
+.lscr{padding:12px 14px}
+table.t6{font-size:7.6px;table-layout:auto}table.t6 td{padding:4px 2px;text-align:right;border-top:.5px solid var(--hair);white-space:nowrap}
+table.t6 td:first-child{text-align:left}
+.seg span{font-size:12.5px}</style></head><body><h1>Loan table: less cramped</h1>
+<p class="lead">Three ways to fit the schedule on a phone. Same loan as before (Rp 720 jt, 20 years, 5,5% fixed 3 years then 11%). Sample figures only.</p>
+<div class="grid">
+
+<div><div class="cap">A · Five columns, one balance<span>Opening or Closing is picked with a switch (Closing by default). Bigger text, figures in full.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● ▮</span></div><div class="scr">
+<div class="nav"><span>‹ Result</span><span>Share ⇪</span></div><div class="lt">Schedule</div>
+<div class="seg"><span class="on">Monthly</span><span>Yearly</span></div>
+<div style="display:flex;justify-content:flex-end;margin:-2px 0 8px"><span class="seg" style="margin:0;width:180px"><span>Opening</span><span class="on">Closing</span></span></div>
+<div class="g"><table class="t5">
+<tr class="h"><td>#</td><td>Payment</td><td>Principal</td><td>Interest</td><td>Closing</td></tr>
+<tr><td>1</td><td>4.952.789</td><td>1.652.789</td><td>3.300.000</td><td>718.347.211</td></tr>
+<tr><td>2</td><td>4.952.789</td><td>1.660.364</td><td>3.292.425</td><td>716.686.847</td></tr>
+<tr><td>3</td><td>4.952.789</td><td>1.667.974</td><td>3.284.815</td><td>715.018.874</td></tr>
+<tr class="gap"><td colspan="5">⋯ months 4–35</td></tr>
+<tr><td>36</td><td>4.952.789</td><td>1.939.663</td><td>3.013.126</td><td>655.469.626</td></tr>
+<tr class="stage"><td colspan="5">Floating 11% a year from month 37</td></tr>
+<tr><td>37</td><td>7.114.340</td><td>1.105.869</td><td>6.008.472</td><td>654.363.757</td></tr>
+<tr><td>38</td><td>7.114.340</td><td>1.116.006</td><td>5.998.334</td><td>653.247.751</td></tr>
+<tr class="gap"><td colspan="5">⋯ months 39–239</td></tr>
+<tr><td>240</td><td>7.114.340</td><td>7.049.718</td><td>64.622</td><td>0</td></tr>
+</table></div>
+<div class="s" style="text-align:center">Show all 240 months</div>
+</div></div></div>
+
+<div><div class="cap">B · One row per month, two lines<span>The payment and what is left on top; how it splits underneath. Easiest to read on a phone, no tiny columns.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● ▮</span></div><div class="scr">
+<div class="nav"><span>‹ Result</span><span>Share ⇪</span></div><div class="lt">Schedule</div>
+<div class="seg"><span class="on">Monthly</span><span>Yearly</span></div>
+<div class="g">
+ <div class="mrow"><div class="l1"><span><b>Month 1</b> <span class="s">Dec 2026</span></span><b>Rp 4.952.789</b></div><div class="l2"><span>Principal 1.652.789 · Interest 3.300.000</span><span>Left 718,3 jt</span></div><div class="split"><i style="flex:33;background:#34c759"></i><i style="flex:67;background:#ff9f0a"></i></div></div>
+ <div class="mrow"><div class="l1"><span><b>Month 2</b> <span class="s">Jan 2027</span></span><b>Rp 4.952.789</b></div><div class="l2"><span>Principal 1.660.364 · Interest 3.292.425</span><span>Left 716,7 jt</span></div><div class="split"><i style="flex:34;background:#34c759"></i><i style="flex:66;background:#ff9f0a"></i></div></div>
+ <div class="mrow"><div class="l1"><span><b>Month 36</b> <span class="s">Nov 2029</span></span><b>Rp 4.952.789</b></div><div class="l2"><span>Principal 1.939.663 · Interest 3.013.126</span><span>Left 655,5 jt</span></div><div class="split"><i style="flex:39;background:#34c759"></i><i style="flex:61;background:#ff9f0a"></i></div></div>
+</div>
+<div class="k" style="color:#8a5a00">Floating 11% a year from month 37</div>
+<div class="g">
+ <div class="mrow"><div class="l1"><span><b>Month 37</b> <span class="s">Dec 2029</span></span><b>Rp 7.114.340</b></div><div class="l2"><span>Principal 1.105.869 · Interest 6.008.472</span><span>Left 654,4 jt</span></div><div class="split"><i style="flex:16;background:#34c759"></i><i style="flex:84;background:#ff9f0a"></i></div></div>
+ <div class="mrow"><div class="l1"><span><b>Month 240</b> <span class="s">Nov 2046</span></span><b>Rp 7.114.340</b></div><div class="l2"><span>Principal 7.049.718 · Interest 64.622</span><span>Left 0</span></div><div class="split"><i style="flex:99;background:#34c759"></i><i style="flex:1;background:#ff9f0a"></i></div></div>
+</div>
+<div class="legend" style="padding:0 4px"><span><i style="background:#34c759"></i>Principal</span><span><i style="background:#ff9f0a"></i>Interest</span></div>
+</div></div></div>
+
+<div><div class="cap">C · Turn the phone sideways<span>Upright shows B. Sideways shows the full six-column table, like the Cashflow table.</span></div>
+<div class="land"><div class="lscr">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="font-size:15px">Schedule · Home loan</b><span class="seg" style="margin:0;width:170px"><span class="on">Monthly</span><span>Yearly</span></span></div>
+<table class="t6">
+<tr class="h"><td>Month #</td><td>Opening balance</td><td>Monthly payment</td><td>Principal</td><td>Interest</td><td>Closing balance</td></tr>
+<tr><td>1</td><td>720.000.000</td><td>4.952.789</td><td>1.652.789</td><td>3.300.000</td><td>718.347.211</td></tr>
+<tr><td>2</td><td>718.347.211</td><td>4.952.789</td><td>1.660.364</td><td>3.292.425</td><td>716.686.847</td></tr>
+<tr><td>3</td><td>716.686.847</td><td>4.952.789</td><td>1.667.974</td><td>3.284.815</td><td>715.018.874</td></tr>
+<tr class="stage"><td colspan="6">Floating 11% a year from month 37</td></tr>
+<tr><td>37</td><td>655.469.626</td><td>7.114.340</td><td>1.105.869</td><td>6.008.472</td><td>654.363.757</td></tr>
+<tr><td>38</td><td>654.363.757</td><td>7.114.340</td><td>1.116.006</td><td>5.998.334</td><td>653.247.751</td></tr>
+</table></div></div>
+</div>
+
+</div>
+</body></html>

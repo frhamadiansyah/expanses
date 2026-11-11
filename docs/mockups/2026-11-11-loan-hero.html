@@ -1,0 +1,105 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Loan hero</title><style>
+:root{--bg:#f2f2f7;--surface:#fff;--ink:#1c1c1e;--ink2:#3a3a3c;--ink3:#8e8e93;--hair:#e5e5ea;--fill:#eeeef2;--tint:#0a66d8;--green:#1a8f3c;--red:#d70015;--amber:#c77700;--amberbg:#fff4d6;--redbg:#ffe8ea}
+*{box-sizing:border-box}
+body{margin:0;padding:28px 16px 48px;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:var(--ink)}
+h1{text-align:center;margin:0 0 6px;font-size:26px}
+.lead{text-align:center;color:#6e6e73;max-width:860px;margin:0 auto 26px;font-size:14.5px;line-height:1.45}
+.grid{display:grid;grid-template-columns:repeat(3,372px);gap:34px 30px;justify-content:center}
+.cap{font-weight:700;font-size:15px;margin-bottom:4px}
+.cap span{display:block;font-weight:400;color:#6e6e73;font-size:13px;margin-top:2px;line-height:1.4;min-height:54px}
+.ph{width:372px;height:790px;border-radius:46px;background:var(--bg);box-shadow:0 0 0 10px #1c1c1e,0 18px 40px rgba(0,0,0,.25);overflow:hidden;position:relative;font-size:15px;margin-top:10px}
+.sb{height:46px;display:flex;justify-content:space-between;align-items:center;padding:0 28px;font-weight:600;font-size:15px}
+.scr{padding:0 16px;height:690px;overflow:hidden}
+.nav{display:flex;align-items:center;justify-content:space-between;color:var(--tint);font-size:16px;height:36px}
+.lt{font-size:30px;font-weight:700;margin:2px 0 12px}
+.g{background:var(--surface);border-radius:12px;overflow:hidden;margin-bottom:14px}
+.k{font-size:12px;font-weight:600;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em;padding:0 4px 6px}
+.row{display:flex;align-items:center;gap:10px;padding:0 0 0 14px;min-height:52px}
+.row .b{flex:1;display:flex;align-items:center;gap:8px;min-height:52px;padding-right:14px;border-top:.5px solid var(--hair)}
+.row:first-child .b{border-top:none}
+.t{font-size:15.5px}.s{font-size:12.5px;color:var(--ink3)}
+.r{margin-left:auto;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ic{width:30px;height:30px;border-radius:15px;background:var(--fill);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--ink2);flex-shrink:0}
+.pay{background:var(--tint);color:#fff;border-radius:14px;padding:4px 11px;font-size:13px;font-weight:600;margin-left:8px}
+.tag{font-size:11.5px;font-weight:600;padding:1px 6px;border-radius:5px}
+.late{background:var(--redbg);color:var(--red)}.soon{background:var(--amberbg);color:var(--amber)}.done{background:#e3f6e8;color:var(--green)}
+.hero{background:var(--surface);border-radius:14px;padding:16px;margin-bottom:14px}
+.ring{width:84px;height:84px;flex-shrink:0}
+.big{font-size:26px;font-weight:700;letter-spacing:-.3px;font-variant-numeric:tabular-nums}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);margin-top:14px;border-top:.5px solid var(--hair);padding-top:10px;text-align:center}
+.stats b{display:block;font-size:18px}.stats small{color:var(--ink3);font-size:12px}
+.btn{display:flex;justify-content:center;align-items:center;gap:6px;background:var(--tint);color:#fff;border-radius:12px;height:46px;font-weight:600;font-size:16px;margin-top:14px}
+.seg{display:flex;background:#e3e3e8;border-radius:9px;padding:2px;margin-bottom:10px}
+.seg span{flex:1;text-align:center;padding:6px 0;border-radius:7px;font-size:13.5px;color:var(--ink2)}
+.seg span.on{background:#fff;font-weight:600;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.note{font-size:13px;color:var(--ink2);line-height:1.4;padding:0 4px 10px}
+.sug{background:#e8f1fd;color:#0a4fa8;border-radius:10px;padding:9px 12px;font-size:13px;margin-bottom:14px;line-height:1.35}
+.num{width:22px;height:22px;border-radius:11px;background:var(--ink);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.chips{display:flex;gap:7px;margin-bottom:12px;flex-wrap:nowrap}
+.chips span{padding:6px 12px;border-radius:16px;background:#fff;font-size:13.5px;white-space:nowrap}
+.chips span.on{background:var(--ink);color:#fff;font-weight:600}
+.bar{height:5px;border-radius:3px;background:var(--fill);overflow:hidden;margin-top:5px}.bar i{display:block;height:100%;background:var(--green);border-radius:3px}
+.tri{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.tri div{background:#fff;border-radius:12px;padding:10px 12px}.tri small{color:var(--ink3);font-size:12px;display:block}.tri b{font-size:16px;font-variant-numeric:tabular-nums}
+.tabbar{position:absolute;bottom:0;left:0;right:0;height:62px;background:rgba(249,249,251,.95);border-top:.5px solid var(--hair);display:flex;justify-content:space-around;align-items:flex-start;padding-top:8px;font-size:10.5px;color:var(--ink3)}
+.tabbar .on{color:var(--tint)}
+.sw{width:46px;height:28px;border-radius:14px;background:#34c759;position:relative;flex-shrink:0}.sw::after{content:"";position:absolute;right:2px;top:2px;width:24px;height:24px;border-radius:12px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.sw.off{background:#e3e3e8}.sw.off::after{left:2px;right:auto}
+.lock{background:linear-gradient(160deg,#3b4a6b,#1e2638);height:790px;color:#fff;padding:60px 14px 0;text-align:center}
+.lock .time{font-size:76px;font-weight:300;letter-spacing:-2px;line-height:1}
+.notif{background:rgba(255,255,255,.82);color:#1c1c1e;border-radius:18px;padding:11px 13px;text-align:left;margin-top:12px;font-size:14px;line-height:1.3;backdrop-filter:blur(10px)}
+.notif .h{display:flex;justify-content:space-between;font-size:12.5px;color:#6e6e73;margin-bottom:2px}
+.mb{display:flex;align-items:flex-end;gap:12px;height:120px;padding:10px 14px 4px}
+.mb div{flex:1;display:flex;gap:3px;align-items:flex-end;height:100%}
+.mb i{flex:1;border-radius:3px 3px 0 0;display:block}
+.ml{display:flex;gap:12px;padding:0 14px 10px;font-size:11.5px;color:var(--ink3)}.ml span{flex:1;text-align:center}
+.legend{display:flex;gap:12px;font-size:12px;color:var(--ink3);padding:0 14px 12px}.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.b>div:first-child{min-width:0;flex:1}
+.b>div:first-child .t,.b>div:first-child .s{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.b .pay+*{display:none}
+.row .b{min-width:0}.tri div{min-width:0;padding:10px 9px}
+.tri b{font-size:13px;white-space:nowrap;display:block}
+.b .r{font-size:14.5px}
+.notes{max-width:1180px;margin:34px auto 0;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.nb{background:#f5f5f7;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.45}.nb b{display:block;margin-bottom:3px}
+table.t5{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:10.8px;table-layout:fixed}table.t5 td:first-child{width:36px}
+table.t5 td{padding:7px 2px;overflow:hidden;text-align:right;border-top:.5px solid var(--hair);white-space:nowrap}
+table.t5 td:first-child{text-align:left;color:var(--ink3);padding-left:10px}
+table.t5 td:last-child{padding-right:10px;font-weight:600}
+tr.h td{color:var(--ink3);font-weight:600!important;border-top:none!important;font-size:10.5px}
+tr.gap td{text-align:center!important;color:var(--tint)}
+tr.tot td{font-size:9.4px;font-weight:700;color:var(--ink)!important;background:#f7f7fa;border-top:1px solid var(--hair)}
+.sh{display:flex;justify-content:space-between;align-items:baseline;padding:4px 4px 6px;font-size:15px}
+.tabs{display:flex;gap:8px;margin-bottom:10px}.tabs span{flex:1;background:#fff;border-radius:12px;padding:8px 12px;font-weight:600;font-size:15px;border:1.5px solid transparent}
+.tabs span.on{border-color:var(--tint);color:var(--tint)}.tabs small{display:block;font-weight:400;color:var(--ink3);font-size:12px}
+.seg span{font-size:12.5px}.key{display:flex;gap:12px;font-size:12px;color:var(--ink2);padding:0 4px 8px}.key i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+tr.fx td:first-child{box-shadow:inset 4px 0 0 #0a66d8}tr.fl td:first-child{box-shadow:inset 4px 0 0 #ff9f0a}
+tr.fx.gap td,tr.fl.gap td{box-shadow:none}
+table.two td:first-child small{display:block;font-size:9px;color:var(--ink3)}
+tr.chg td{border-top:1.5px solid #8e8e93!important}
+.stick{display:flex;justify-content:space-between;font-size:12.5px;padding:0 4px 8px;color:var(--ink2)}table.t5 td:first-child{width:40px}tr.total td{font-weight:700;color:var(--ink)!important;border-top:1px solid #c7c7cc!important;font-size:10.4px}table.t5{font-size:10.3px!important}table.t5 td:nth-child(1){width:30px}table.t5 td:nth-child(2){width:24%}table.t5 td:nth-child(3),table.t5 td:nth-child(4){width:21%}table.t5 td:nth-child(5){width:26%}tr.total td{font-size:9.2px!important;letter-spacing:-.3px}.tots{display:grid;grid-template-columns:1fr 1fr 1.25fr;border-top:.5px solid var(--hair);padding:10px 14px;gap:6px}.tots small{display:block;font-size:11px;color:var(--ink3)}.tots b{font-size:13.5px;font-variant-numeric:tabular-nums}.tots div:last-child{text-align:right}.split2{display:flex;height:12px;border-radius:6px;overflow:hidden;margin:12px 0 10px;gap:2px}.split2 i{display:block}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}.two small{font-size:12px;color:var(--ink3)}.two b{display:block;font-size:17px;font-variant-numeric:tabular-nums;margin-top:2px}.two div:last-child{text-align:right}
+.dot{display:inline-block;width:8px;height:8px;border-radius:4px;margin-right:5px}
+.trio{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px}.tile{background:var(--bg);border-radius:14px;padding:12px 10px}.tile small{display:block;font-size:12px;color:var(--ink3)}.tile b{display:block;font-size:16.5px;white-space:nowrap;margin:4px 0 2px;letter-spacing:-.3px}.tile span{font-size:10.5px;color:var(--ink3);font-variant-numeric:tabular-nums}
+.tile.dark{background:#1c1c1e;color:#fff}.tile.dark small,.tile.dark span{color:#aeaeb2}.rin{border-top:.5px solid var(--hair);margin-top:14px}.rr{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:.5px solid var(--hair)}.rr:last-child{border-bottom:none;padding-bottom:0}</style></head><body><h1>Schedule hero</h1><p class="lead">Principal, interest and total paid as the main figures; the two rates sit in the same card, under them. Sample figures only.</p><div class="grid" style="grid-template-columns:repeat(2,372px)"><div><div class="cap">A · Total paid, split into principal and interest<span>The total paid is the big number. One bar shows how much of it is the loan and how much is interest, with both figures in full under it.</span></div><div class="ph"><div class="sb"><span>9:41</span><span>●●● ▮</span></div><div class="scr"><div class="nav"><span>‹ Result</span><span>Share ⇪</span></div><div class="lt">Schedule</div><div class="hero" style="padding:18px 16px">
+ <div class="s">Total paid over 20 years</div>
+ <div class="big" style="font-size:31px">Rp 1.629.625.843</div>
+ <div class="split2"><i style="flex:720;background:#0a66d8"></i><i style="flex:910;background:#ff9f0a"></i></div>
+ <div class="two">
+  <div><span class="dot" style="background:#0a66d8"></span><small>Principal · 44%</small><b>Rp 720.000.000</b></div>
+  <div><span class="dot" style="background:#ff9f0a"></span><small>Interest · 56%</small><b>Rp 909.625.843</b></div>
+ </div>
+ <div class="s" style="margin-top:10px">Interest is 126% of the loan.</div>
+<div class="rin">
+ <div class="rr"><div><div class="t">Months 1–36</div><div class="s">5,5% a year · fixed</div></div><span class="r">Rp 4.952.789</span></div>
+ <div class="rr"><div><div class="t">Months 37–240</div><div class="s">11% a year · floating</div></div><span class="r">Rp 7.114.340</span></div>
+</div>
+</div><div class="seg"><span class="on">Monthly</span><span>Yearly</span></div><div class="g"><table class="t5"><tr class="h"><td>#</td><td>Payment</td><td>Principal</td><td>Interest</td><td>Left</td></tr><tr><td>1</td><td>4.952.789</td><td>1.652.789</td><td>3.300.000</td><td>718.347.211</td></tr><tr><td>2</td><td>4.952.789</td><td>1.660.364</td><td>3.292.425</td><td>716.686.847</td></tr><tr><td>3</td><td>4.952.789</td><td>1.667.974</td><td>3.284.815</td><td>715.018.874</td></tr><tr><td>4</td><td>4.952.789</td><td>1.675.619</td><td>3.277.170</td><td>713.343.255</td></tr><tr><td>5</td><td>4.952.789</td><td>1.683.299</td><td>3.269.490</td><td>711.659.956</td></tr><tr><td>6</td><td>4.952.789</td><td>1.691.014</td><td>3.261.775</td><td>709.968.942</td></tr><tr><td>7</td><td>4.952.789</td><td>1.698.764</td><td>3.254.024</td><td>708.270.178</td></tr><tr><td>8</td><td>4.952.789</td><td>1.706.550</td><td>3.246.238</td><td>706.563.628</td></tr></table></div></div></div></div><div><div class="cap">B · Three tiles<span>Principal, Interest and Total paid as three equal tiles, short figures large and the full figure small under each. Total paid is the dark tile.</span></div><div class="ph"><div class="sb"><span>9:41</span><span>●●● ▮</span></div><div class="scr"><div class="nav"><span>‹ Result</span><span>Share ⇪</span></div><div class="lt">Schedule</div><div class="hero" style="padding:12px"><div class="trio">
+ <div class="tile"><small>Principal</small><b>Rp 720 jt</b><span>720.000.000</span></div>
+ <div class="tile"><small>Interest</small><b style="color:#c25e00">Rp 909,6 jt</b><span>909.625.843</span></div>
+ <div class="tile dark"><small>Total paid</small><b>Rp 1,63 M</b><span>1.629.625.843</span></div>
+</div>
+<div class="s" style="padding:2px 2px 0">Interest is 126% of the loan · 56% of everything paid</div><div class="rin">
+ <div class="rr"><div><div class="t">Months 1–36</div><div class="s">5,5% a year · fixed</div></div><span class="r">Rp 4.952.789</span></div>
+ <div class="rr"><div><div class="t">Months 37–240</div><div class="s">11% a year · floating</div></div><span class="r">Rp 7.114.340</span></div>
+</div></div><div class="seg"><span class="on">Monthly</span><span>Yearly</span></div><div class="g"><table class="t5"><tr class="h"><td>#</td><td>Payment</td><td>Principal</td><td>Interest</td><td>Left</td></tr><tr><td>1</td><td>4.952.789</td><td>1.652.789</td><td>3.300.000</td><td>718.347.211</td></tr><tr><td>2</td><td>4.952.789</td><td>1.660.364</td><td>3.292.425</td><td>716.686.847</td></tr><tr><td>3</td><td>4.952.789</td><td>1.667.974</td><td>3.284.815</td><td>715.018.874</td></tr><tr><td>4</td><td>4.952.789</td><td>1.675.619</td><td>3.277.170</td><td>713.343.255</td></tr><tr><td>5</td><td>4.952.789</td><td>1.683.299</td><td>3.269.490</td><td>711.659.956</td></tr><tr><td>6</td><td>4.952.789</td><td>1.691.014</td><td>3.261.775</td><td>709.968.942</td></tr><tr><td>7</td><td>4.952.789</td><td>1.698.764</td><td>3.254.024</td><td>708.270.178</td></tr><tr><td>8</td><td>4.952.789</td><td>1.706.550</td><td>3.246.238</td><td>706.563.628</td></tr></table></div></div></div></div></div></body></html>

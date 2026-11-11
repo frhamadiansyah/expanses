@@ -1,0 +1,235 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Loan calculator</title><style>
+:root{--bg:#f2f2f7;--surface:#fff;--ink:#1c1c1e;--ink2:#3a3a3c;--ink3:#8e8e93;--hair:#e5e5ea;--fill:#eeeef2;--tint:#0a66d8;--green:#1a8f3c;--red:#d70015;--amber:#c77700;--amberbg:#fff4d6;--redbg:#ffe8ea}
+*{box-sizing:border-box}
+body{margin:0;padding:28px 16px 48px;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:var(--ink)}
+h1{text-align:center;margin:0 0 6px;font-size:26px}
+.lead{text-align:center;color:#6e6e73;max-width:860px;margin:0 auto 26px;font-size:14.5px;line-height:1.45}
+.grid{display:grid;grid-template-columns:repeat(3,372px);gap:34px 30px;justify-content:center}
+.cap{font-weight:700;font-size:15px;margin-bottom:4px}
+.cap span{display:block;font-weight:400;color:#6e6e73;font-size:13px;margin-top:2px;line-height:1.4;min-height:54px}
+.ph{width:372px;height:790px;border-radius:46px;background:var(--bg);box-shadow:0 0 0 10px #1c1c1e,0 18px 40px rgba(0,0,0,.25);overflow:hidden;position:relative;font-size:15px;margin-top:10px}
+.sb{height:46px;display:flex;justify-content:space-between;align-items:center;padding:0 28px;font-weight:600;font-size:15px}
+.scr{padding:0 16px;height:690px;overflow:hidden}
+.nav{display:flex;align-items:center;justify-content:space-between;color:var(--tint);font-size:16px;height:36px}
+.lt{font-size:30px;font-weight:700;margin:2px 0 12px}
+.g{background:var(--surface);border-radius:12px;overflow:hidden;margin-bottom:14px}
+.k{font-size:12px;font-weight:600;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em;padding:0 4px 6px}
+.row{display:flex;align-items:center;gap:10px;padding:0 0 0 14px;min-height:52px}
+.row .b{flex:1;display:flex;align-items:center;gap:8px;min-height:52px;padding-right:14px;border-top:.5px solid var(--hair)}
+.row:first-child .b{border-top:none}
+.t{font-size:15.5px}.s{font-size:12.5px;color:var(--ink3)}
+.r{margin-left:auto;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ic{width:30px;height:30px;border-radius:15px;background:var(--fill);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--ink2);flex-shrink:0}
+.pay{background:var(--tint);color:#fff;border-radius:14px;padding:4px 11px;font-size:13px;font-weight:600;margin-left:8px}
+.tag{font-size:11.5px;font-weight:600;padding:1px 6px;border-radius:5px}
+.late{background:var(--redbg);color:var(--red)}.soon{background:var(--amberbg);color:var(--amber)}.done{background:#e3f6e8;color:var(--green)}
+.hero{background:var(--surface);border-radius:14px;padding:16px;margin-bottom:14px}
+.ring{width:84px;height:84px;flex-shrink:0}
+.big{font-size:26px;font-weight:700;letter-spacing:-.3px;font-variant-numeric:tabular-nums}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);margin-top:14px;border-top:.5px solid var(--hair);padding-top:10px;text-align:center}
+.stats b{display:block;font-size:18px}.stats small{color:var(--ink3);font-size:12px}
+.btn{display:flex;justify-content:center;align-items:center;gap:6px;background:var(--tint);color:#fff;border-radius:12px;height:46px;font-weight:600;font-size:16px;margin-top:14px}
+.seg{display:flex;background:#e3e3e8;border-radius:9px;padding:2px;margin-bottom:10px}
+.seg span{flex:1;text-align:center;padding:6px 0;border-radius:7px;font-size:13.5px;color:var(--ink2)}
+.seg span.on{background:#fff;font-weight:600;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.note{font-size:13px;color:var(--ink2);line-height:1.4;padding:0 4px 10px}
+.sug{background:#e8f1fd;color:#0a4fa8;border-radius:10px;padding:9px 12px;font-size:13px;margin-bottom:14px;line-height:1.35}
+.num{width:22px;height:22px;border-radius:11px;background:var(--ink);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.chips{display:flex;gap:7px;margin-bottom:12px;flex-wrap:nowrap}
+.chips span{padding:6px 12px;border-radius:16px;background:#fff;font-size:13.5px;white-space:nowrap}
+.chips span.on{background:var(--ink);color:#fff;font-weight:600}
+.bar{height:5px;border-radius:3px;background:var(--fill);overflow:hidden;margin-top:5px}.bar i{display:block;height:100%;background:var(--green);border-radius:3px}
+.tri{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.tri div{background:#fff;border-radius:12px;padding:10px 12px}.tri small{color:var(--ink3);font-size:12px;display:block}.tri b{font-size:16px;font-variant-numeric:tabular-nums}
+.tabbar{position:absolute;bottom:0;left:0;right:0;height:62px;background:rgba(249,249,251,.95);border-top:.5px solid var(--hair);display:flex;justify-content:space-around;align-items:flex-start;padding-top:8px;font-size:10.5px;color:var(--ink3)}
+.tabbar .on{color:var(--tint)}
+.sw{width:46px;height:28px;border-radius:14px;background:#34c759;position:relative;flex-shrink:0}.sw::after{content:"";position:absolute;right:2px;top:2px;width:24px;height:24px;border-radius:12px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.sw.off{background:#e3e3e8}.sw.off::after{left:2px;right:auto}
+.lock{background:linear-gradient(160deg,#3b4a6b,#1e2638);height:790px;color:#fff;padding:60px 14px 0;text-align:center}
+.lock .time{font-size:76px;font-weight:300;letter-spacing:-2px;line-height:1}
+.notif{background:rgba(255,255,255,.82);color:#1c1c1e;border-radius:18px;padding:11px 13px;text-align:left;margin-top:12px;font-size:14px;line-height:1.3;backdrop-filter:blur(10px)}
+.notif .h{display:flex;justify-content:space-between;font-size:12.5px;color:#6e6e73;margin-bottom:2px}
+.mb{display:flex;align-items:flex-end;gap:12px;height:120px;padding:10px 14px 4px}
+.mb div{flex:1;display:flex;gap:3px;align-items:flex-end;height:100%}
+.mb i{flex:1;border-radius:3px 3px 0 0;display:block}
+.ml{display:flex;gap:12px;padding:0 14px 10px;font-size:11.5px;color:var(--ink3)}.ml span{flex:1;text-align:center}
+.legend{display:flex;gap:12px;font-size:12px;color:var(--ink3);padding:0 14px 12px}.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.b>div:first-child{min-width:0;flex:1}
+.b>div:first-child .t,.b>div:first-child .s{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.b .pay+*{display:none}
+.row .b{min-width:0}.tri div{min-width:0;padding:10px 9px}
+.tri b{font-size:13px;white-space:nowrap;display:block}
+.b .r{font-size:14.5px}
+.notes{max-width:1180px;margin:34px auto 0;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.nb{background:#f5f5f7;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.45}.nb b{display:block;margin-bottom:3px}
+table.t5{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:10.8px;table-layout:fixed}table.t5 td:first-child{width:36px}
+table.t5 td{padding:7px 2px;overflow:hidden;text-align:right;border-top:.5px solid var(--hair);white-space:nowrap}
+table.t5 td:first-child{text-align:left;color:var(--ink3);padding-left:10px}
+table.t5 td:last-child{padding-right:10px;font-weight:600}
+tr.h td{color:var(--ink3);font-weight:600!important;border-top:none!important;font-size:10.5px}
+tr.gap td{text-align:center!important;color:var(--tint)}
+tr.tot td{font-size:9.4px;font-weight:700;color:var(--ink)!important;background:#f7f7fa;border-top:1px solid var(--hair)}
+.sh{display:flex;justify-content:space-between;align-items:baseline;padding:4px 4px 6px;font-size:15px}
+.tabs{display:flex;gap:8px;margin-bottom:10px}.tabs span{flex:1;background:#fff;border-radius:12px;padding:8px 12px;font-weight:600;font-size:15px;border:1.5px solid transparent}
+.tabs span.on{border-color:var(--tint);color:var(--tint)}.tabs small{display:block;font-weight:400;color:var(--ink3);font-size:12px}
+.seg span{font-size:12.5px}.key{display:flex;gap:12px;font-size:12px;color:var(--ink2);padding:0 4px 8px}.key i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+tr.fx td:first-child{box-shadow:inset 4px 0 0 #0a66d8}tr.fl td:first-child{box-shadow:inset 4px 0 0 #ff9f0a}
+tr.fx.gap td,tr.fl.gap td{box-shadow:none}
+table.two td:first-child small{display:block;font-size:9px;color:var(--ink3)}
+tr.chg td{border-top:1.5px solid #8e8e93!important}
+.stick{display:flex;justify-content:space-between;font-size:12.5px;padding:0 4px 8px;color:var(--ink2)}table.t5 td:first-child{width:40px}tr.total td{font-weight:700;color:var(--ink)!important;border-top:1px solid #c7c7cc!important;font-size:10.4px}table.t5{font-size:10.3px!important}table.t5 td:nth-child(1){width:30px}table.t5 td:nth-child(2){width:24%}table.t5 td:nth-child(3),table.t5 td:nth-child(4){width:21%}table.t5 td:nth-child(5){width:26%}tr.total td{font-size:9.2px!important;letter-spacing:-.3px}.tots{display:grid;grid-template-columns:1fr 1fr 1.25fr;border-top:.5px solid var(--hair);padding:10px 14px;gap:6px}.tots small{display:block;font-size:11px;color:var(--ink3)}.tots b{font-size:13.5px;font-variant-numeric:tabular-nums}.tots div:last-child{text-align:right}.split2{display:flex;height:12px;border-radius:6px;overflow:hidden;margin:12px 0 10px;gap:2px}.split2 i{display:block}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}.two small{font-size:12px;color:var(--ink3)}.two b{display:block;font-size:17px;font-variant-numeric:tabular-nums;margin-top:2px}.two div:last-child{text-align:right}
+.dot{display:inline-block;width:8px;height:8px;border-radius:4px;margin-right:5px}
+.trio{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px}.tile{background:var(--bg);border-radius:14px;padding:12px 10px}.tile small{display:block;font-size:12px;color:var(--ink3)}.tile b{display:block;font-size:16.5px;white-space:nowrap;margin:4px 0 2px;letter-spacing:-.3px}.tile span{font-size:10.5px;color:var(--ink3);font-variant-numeric:tabular-nums}
+.tile.dark{background:#1c1c1e;color:#fff}.tile.dark small,.tile.dark span{color:#aeaeb2}.rin{border-top:.5px solid var(--hair);margin-top:14px}.rr{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:.5px solid var(--hair)}.rr:last-child{border-bottom:none;padding-bottom:0}.ph.tall{height:auto;padding-bottom:20px}.where{max-width:330px;font-size:13.5px;line-height:1.5;background:#f5f5f7;border-radius:12px;padding:14px 16px}.where ul{padding-left:18px;margin:6px 0 0}.ph{height:790px}</style></head><body><h1>Loan calculator</h1>
+<p class="lead">One calculator in Calculators, with a kind picker: Home, Vehicle, Online loan or paylater, Other. Each kind asks the way that loan is really quoted. Each result has its own page with Save as debt, and a separate page with only the table. Sample figures only.</p>
+<div class="grid">
+
+<!-- 1 HOME INPUTS -->
+<div><div class="cap">1 · Home: inputs<span>Price and down payment give the loan. Rate stages: fixed for some years, then floating; more stages can be added.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● ▮</span></div><div class="scr">
+<div class="nav"><span>‹ Calculators</span><span></span></div><div class="lt">Loan</div>
+<div class="seg"><span class="on">Home</span><span>Vehicle</span><span>Online</span><span>Other</span></div>
+<div class="g">
+ <div class="row"><div class="b"><span class="t">House price</span><span class="r">Rp 900.000.000</span></div></div>
+ <div class="row"><div class="b"><span class="t">Down payment</span><span class="r">20% <span class="s">· Rp 180.000.000</span></span></div></div>
+ <div class="row"><div class="b"><span class="t">Loan</span><span class="r"><b>Rp 720.000.000</b></span></div></div>
+ <div class="row"><div class="b"><span class="t">Years</span><span class="r">20</span></div></div>
+</div>
+<div class="k">Rate stages</div>
+<div class="g">
+ <div class="row"><span class="num">1</span><div class="b"><div><div class="t">Fixed</div><div class="s">first 3 years</div></div><span class="r">5,5% a year</span></div></div>
+ <div class="row"><span class="num" style="background:#c77700">2</span><div class="b"><div><div class="t">Floating</div><div class="s">remaining 17 years</div></div><span class="r">11% a year</span></div></div>
+ <div class="row"><div class="b"><span class="t" style="color:var(--tint)">＋ Add stage</span></div></div>
+</div>
+<div class="k">Optional</div>
+<div class="g">
+ <div class="row"><div class="b"><span class="t">Monthly income</span><span class="r">Rp 30.000.000</span></div></div>
+ <div class="row"><div class="b"><span class="t">Upfront costs</span><span class="r s">Fees, insurance ›</span></div></div>
+</div>
+</div></div></div>
+
+<!-- 2 HOME RESULT -->
+<div><div class="cap">2 · Home: result<span>One card with the totals and both rates (total paid as the main figure, split into principal and interest), then what it means, then Save as debt. "Table" opens the schedule.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● ▮</span></div><div class="scr" style="height:auto">
+<div class="nav"><span>‹ Inputs</span><span>Table</span></div><div class="lt">Home loan</div>
+<div class="hero" style="padding:18px 16px">
+ <div class="s">Total paid over 20 years</div>
+ <div class="big" style="font-size:31px">Rp 1.629.625.843</div>
+ <div class="split2"><i style="flex:720;background:#0a66d8"></i><i style="flex:910;background:#ff9f0a"></i></div>
+ <div class="two">
+  <div><span class="dot" style="background:#0a66d8"></span><small>Principal (loan) · 44%</small><b>Rp 720.000.000</b></div>
+  <div><span class="dot" style="background:#ff9f0a"></span><small>Interest · 56%</small><b>Rp 909.625.843</b></div>
+ </div>
+ <div class="s" style="margin-top:10px">Interest is 126% of the loan.</div>
+ <div class="rin">
+  <div class="rr"><div><div class="t">Months 1–36 <span class="s">· years 1–3</span></div><div class="s">5,5% a year · fixed</div></div><span class="r">Rp 4.952.789</span></div>
+  <div class="rr"><div><div class="t">Months 37–240 <span class="s">· years 4–20</span></div><div class="s">11% a year · floating</div></div><span class="r">Rp 7.114.340</span></div>
+ </div>
+ <div class="sug" style="background:var(--amberbg);color:#8a5a00;margin:12px 0 0">Up Rp 2.161.551 a month (+43,6%) when the fixed rate ends. A floating rate can move again later.</div>
+</div>
+
+<div class="hero" style="padding:14px 16px">
+ <div class="s" style="margin-bottom:6px">House price vs everything paid</div>
+ <div style="display:flex;height:12px;border-radius:6px;overflow:hidden;gap:2px"><i style="flex:18;background:#8e8e93"></i><i style="flex:72;background:#0a66d8"></i><i style="flex:91;background:#ff9f0a"></i></div>
+ <div class="s" style="margin-top:6px">Down payment Rp 180 jt · Loan Rp 720 jt · Interest Rp 909,6 jt — total Rp 1,81 M for a Rp 900 jt house</div>
+ <div style="border-top:.5px solid var(--hair);margin-top:12px;padding-top:12px">
+  <div style="display:flex;justify-content:space-between"><span class="t">Share of income</span><span class="tag done">17% → 24%</span></div>
+  <div class="bar"><i style="width:24%"></i></div>
+  <div class="s" style="margin-top:6px">Under 30% stays comfortable.</div>
+ </div>
+ <div style="border-top:.5px solid var(--hair);margin-top:12px;padding-top:12px;display:flex;justify-content:space-between">
+  <span class="t">Half of the loan repaid</span><span class="r">month 172 <span class="s">(year 15)</span></span>
+ </div>
+</div>
+
+<div class="btn" style="margin:0 0 14px">Save as debt</div>
+</div></div></div>
+<!-- 3 TABLE -->
+<div><div class="cap">3 · The table, only the table<span>Monthly or yearly, every month listed, the header row pinned while scrolling. No totals here: they are on the result page.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● ▮</span></div><div class="scr">
+<div class="nav"><span>‹ Result</span><span>Share ⇪</span></div><div class="lt">Schedule</div>
+<div class="seg"><span class="on">Monthly</span><span>Yearly</span></div>
+<div class="g"><table class="t5"><tr class="h"><td>#</td><td>Payment</td><td>Principal</td><td>Interest</td><td>Left</td></tr><tr><td>1</td><td>4.952.789</td><td>1.652.789</td><td>3.300.000</td><td>718.347.211</td></tr><tr><td>2</td><td>4.952.789</td><td>1.660.364</td><td>3.292.425</td><td>716.686.847</td></tr><tr><td>3</td><td>4.952.789</td><td>1.667.974</td><td>3.284.815</td><td>715.018.874</td></tr><tr><td>4</td><td>4.952.789</td><td>1.675.619</td><td>3.277.170</td><td>713.343.255</td></tr><tr><td>5</td><td>4.952.789</td><td>1.683.299</td><td>3.269.490</td><td>711.659.956</td></tr><tr><td>6</td><td>4.952.789</td><td>1.691.014</td><td>3.261.775</td><td>709.968.942</td></tr><tr><td>7</td><td>4.952.789</td><td>1.698.764</td><td>3.254.024</td><td>708.270.178</td></tr><tr><td>8</td><td>4.952.789</td><td>1.706.550</td><td>3.246.238</td><td>706.563.628</td></tr><tr><td>9</td><td>4.952.789</td><td>1.714.372</td><td>3.238.417</td><td>704.849.256</td></tr><tr><td>10</td><td>4.952.789</td><td>1.722.230</td><td>3.230.559</td><td>703.127.026</td></tr><tr><td>11</td><td>4.952.789</td><td>1.730.123</td><td>3.222.666</td><td>701.396.903</td></tr><tr><td>12</td><td>4.952.789</td><td>1.738.053</td><td>3.214.736</td><td>699.658.850</td></tr><tr><td>13</td><td>4.952.789</td><td>1.746.019</td><td>3.206.770</td><td>697.912.831</td></tr><tr><td>14</td><td>4.952.789</td><td>1.754.021</td><td>3.198.767</td><td>696.158.810</td></tr><tr><td>15</td><td>4.952.789</td><td>1.762.061</td><td>3.190.728</td><td>694.396.749</td></tr><tr><td>16</td><td>4.952.789</td><td>1.770.137</td><td>3.182.652</td><td>692.626.612</td></tr><tr><td>17</td><td>4.952.789</td><td>1.778.250</td><td>3.174.539</td><td>690.848.362</td></tr><tr><td>18</td><td>4.952.789</td><td>1.786.400</td><td>3.166.388</td><td>689.061.962</td></tr><tr><td>19</td><td>4.952.789</td><td>1.794.588</td><td>3.158.201</td><td>687.267.374</td></tr><tr><td>20</td><td>4.952.789</td><td>1.802.813</td><td>3.149.975</td><td>685.464.561</td></tr><tr><td>21</td><td>4.952.789</td><td>1.811.076</td><td>3.141.713</td><td>683.653.485</td></tr><tr><td>22</td><td>4.952.789</td><td>1.819.377</td><td>3.133.412</td><td>681.834.108</td></tr></table></div>
+</div></div></div>
+<!-- 4 VEHICLE -->
+<div><div class="cap">4 · Vehicle<span>Same result card as Home. Car and motorbike loans are usually quoted as a flat rate. The calculator shows what that rate really costs a year.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● ▮</span></div><div class="scr">
+<div class="nav"><span>‹ Calculators</span><span></span></div><div class="lt">Loan</div>
+<div class="seg"><span>Home</span><span class="on">Vehicle</span><span>Online</span><span>Other</span></div>
+<div class="g">
+ <div class="row"><div class="b"><span class="t">Vehicle price</span><span class="r">Rp 350.000.000</span></div></div>
+ <div class="row"><div class="b"><span class="t">Down payment</span><span class="r">25% <span class="s">· Rp 87.500.000</span></span></div></div>
+ <div class="row"><div class="b"><span class="t">Months</span><span class="r">48</span></div></div>
+ <div class="row"><div class="b"><span class="t">Rate</span><span class="r">4,5% a year <span class="tag soon">flat</span></span></div></div>
+ <div class="row"><div class="b"><span class="t">Admin and insurance</span><span class="r s">Optional ›</span></div></div>
+</div>
+<div class="hero" style="padding:16px">
+ <div class="s">Total paid over 48 months</div>
+ <div class="big" style="font-size:28px">Rp 309.750.000</div>
+ <div class="split2"><i style="flex:262.5;background:#0a66d8"></i><i style="flex:47.25;background:#ff9f0a"></i></div>
+ <div class="two">
+  <div><span class="dot" style="background:#0a66d8"></span><small>Principal (loan) · 85%</small><b>Rp 262.500.000</b></div>
+  <div><span class="dot" style="background:#ff9f0a"></span><small>Interest · 15%</small><b>Rp 47.250.000</b></div>
+ </div>
+ <div class="rin"><div class="rr"><div><div class="t">Months 1–48</div><div class="s">4,5% a year · flat</div></div><span class="r">Rp 6.453.125</span></div></div>
+ <div class="sug" style="margin:12px 0 0">Flat 4,5% a year works out to about <b>8,36% a year</b> on what is still owed, because flat interest stays on the full loan the whole time.</div>
+</div>
+<div class="btn">Save as debt</div>
+</div></div></div>
+
+<!-- 5 ONLINE -->
+<div><div class="cap">5 · Online loan or paylater<span>Same result card; the fee taken at the start is shown under the bar. A rate a month and a fee taken at the start. Shows the real cost and the yearly rate it adds up to.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● ▮</span></div><div class="scr">
+<div class="nav"><span>‹ Calculators</span><span></span></div><div class="lt">Loan</div>
+<div class="seg"><span>Home</span><span>Vehicle</span><span class="on">Online</span><span>Other</span></div>
+<div class="g">
+ <div class="row"><div class="b"><span class="t">Amount</span><span class="r">Rp 6.000.000</span></div></div>
+ <div class="row"><div class="b"><span class="t">Months</span><span class="r">6</span></div></div>
+ <div class="row"><div class="b"><span class="t">Interest</span><span class="r">2,95% a month</span></div></div>
+ <div class="row"><div class="b"><span class="t">Fee at the start</span><span class="r">3% <span class="s">· Rp 180.000</span></span></div></div>
+</div>
+<div class="hero" style="padding:16px">
+ <div class="s">Total paid over 6 months</div>
+ <div class="big" style="font-size:28px">Rp 7.062.000</div>
+ <div class="split2"><i style="flex:6000;background:#0a66d8"></i><i style="flex:1062;background:#ff9f0a"></i></div>
+ <div class="two">
+  <div><span class="dot" style="background:#0a66d8"></span><small>Principal · 85%</small><b>Rp 6.000.000</b></div>
+  <div><span class="dot" style="background:#ff9f0a"></span><small>Interest · 15%</small><b>Rp 1.062.000</b></div>
+ </div>
+ <div class="s" style="margin-top:8px"><span class="dot" style="background:#8e8e93"></span>Fee at the start Rp 180.000 · cost of borrowing Rp 1.242.000 (20,7%)</div>
+ <div class="rin"><div class="rr"><div><div class="t">Months 1–6</div><div class="s">2,95% a month</div></div><span class="r">Rp 1.177.000</span></div></div>
+ <div class="sug" style="background:var(--redbg);color:var(--red);margin:12px 0 0">Adds up to about <b>97% a year</b>. Only Rp 5.820.000 arrives after the fee, and the payments are on the full Rp 6.000.000.</div>
+</div>
+<div class="btn">Save as debt</div>
+</div></div></div>
+
+<!-- 6 SAVE AS DEBT -->
+<div><div class="cap">6 · Save as debt<span>Opens Add debt filled in from the calculator, rate stages included. After saving, the loan's page tracks the same schedule.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● ▮</span></div><div class="scr">
+<div class="nav"><span>Cancel</span><b style="color:var(--ink)">Home mortgage</b><span style="font-weight:600">Save</span></div>
+<div class="g" style="margin-top:14px">
+ <div class="row"><div class="b"><span class="t">Name</span><span class="r s" style="font-size:15px">Home loan</span></div></div>
+ <div class="row"><div class="b"><span class="t">Owed now</span><span class="r">Rp 720.000.000</span></div></div>
+ <div class="row"><div class="b"><span class="t">Lender</span><span class="r s" style="font-size:15px">Bank name</span></div></div>
+ <div class="row"><div class="b"><span class="t">Months left</span><span class="r">240</span></div></div>
+ <div class="row"><div class="b"><span class="t">First payment</span><span class="r">December 2026</span></div></div>
+</div>
+<div class="k">Rate</div>
+<div class="g">
+ <div class="row"><div class="b"><div><div class="t">5,5% a year, fixed</div><div class="s">until November 2029</div></div></div></div>
+ <div class="row"><div class="b"><div><div class="t">11% a year, floating</div><div class="s">from December 2029 · changes recorded as they come</div></div></div></div>
+</div>
+<div class="note">From the calculator. Each figure can still be changed before saving.</div>
+<div class="g">
+ <div class="row"><div class="b"><span class="t">Also save the down payment as a goal</span><span class="r"><span class="sw off" style="display:inline-block"></span></span></div></div>
+</div>
+</div></div></div>
+
+</div>
+<div class="notes">
+ <div class="nb"><b>Other (personal loans)</b>Amount, months, rate a year with a Flat or On what is owed switch, and any fee. Same result and table.</div>
+ <div class="nb"><b>Learned from the four calculators</b>Fixed then floating stages (with a jump warning), down payment as % or amount, total paid against the price, share of income, when half is repaid, a monthly/yearly table. Left out: tax-specific fees by region.</div>
+ <div class="nb"><b>Where it sits</b>Calculators → Loan. Also from Add debt: "Work it out first" opens the calculator for the chosen kind, and its Save comes back to the form.</div>
+</div>
+</body></html>

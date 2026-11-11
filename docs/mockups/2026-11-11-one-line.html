@@ -1,0 +1,359 @@
+<!doctype html><html><head><meta charset="utf-8"><title>One line</title><style>
+:root{--bg:#f2f2f7;--surface:#fff;--ink:#1c1c1e;--ink2:#3a3a3c;--ink3:#8e8e93;--hair:#e5e5ea;--fill:#eeeef2;--tint:#0a66d8;--amber:#b86e00;--amberbg:#fff4d6;--green:#1a8f3c}
+*{box-sizing:border-box}
+body{margin:0;padding:28px 16px 48px;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:var(--ink)}
+h1{text-align:center;margin:0 0 6px;font-size:26px}
+h2.band{max-width:1180px;margin:30px auto 4px;font-size:20px}
+p.bandlead{max-width:1180px;margin:0 auto 14px;color:#6e6e73;font-size:14px;line-height:1.45}
+.lead{text-align:center;color:#6e6e73;max-width:860px;margin:0 auto 10px;font-size:14.5px;line-height:1.45}
+.grid{display:grid;grid-template-columns:repeat(3,372px);gap:30px;justify-content:center}
+.cap{font-weight:700;font-size:15px}
+.cap span{display:block;font-weight:400;color:#6e6e73;font-size:13px;margin-top:2px;line-height:1.4;min-height:54px}
+.ph{width:372px;height:790px;border-radius:46px;background:var(--bg);box-shadow:0 0 0 10px #1c1c1e,0 18px 40px rgba(0,0,0,.25);overflow:hidden;position:relative;font-size:15px;margin-top:10px}
+.sb{height:46px;display:flex;justify-content:space-between;align-items:center;padding:0 28px;font-weight:600;font-size:15px}
+.scr{padding:0 16px}
+.nav{display:flex;align-items:center;justify-content:space-between;color:var(--tint);font-size:16px;height:36px}
+.lt{font-size:30px;font-weight:700;margin:2px 0 12px}
+.g{background:var(--surface);border-radius:12px;overflow:hidden;margin-bottom:14px}
+.k{font-size:13px;color:var(--ink3);padding:0 4px 6px}
+.row{display:flex;align-items:center;gap:10px;padding:0 14px;min-height:56px;border-top:.5px solid var(--hair)}
+.row:first-child{border-top:none}
+.ic{width:32px;height:32px;border-radius:16px;background:var(--fill);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.mid{flex:1;min-width:0}.t{font-size:15.5px}.s{font-size:12.5px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.amt{font-variant-numeric:tabular-nums;font-size:15.5px;white-space:nowrap}
+.am{color:var(--amber)}
+.field{background:#fff;border-radius:12px;height:50px;display:flex;align-items:center;padding:0 14px;font-size:17px;margin-bottom:12px}
+.field.on{box-shadow:0 0 0 2px var(--tint)}
+.caret{display:inline-block;width:2px;height:21px;background:var(--tint);margin-left:1px;vertical-align:-4px}
+.ph-text{color:var(--ink3)}
+.kb{position:absolute;left:0;right:0;bottom:0;height:268px;background:#d1d4db;padding:8px 4px 0}
+.kr{display:flex;gap:6px;justify-content:center;margin-bottom:11px}
+.kr i{display:block;width:31px;height:42px;background:#fff;border-radius:5px;box-shadow:0 1px 0 #898a8d}
+.kr i.w{width:46px;background:#abb0ba}.kr i.sp{width:182px}.kr i.go{width:88px;background:var(--tint)}
+.strip{position:absolute;left:0;right:0;bottom:268px;height:44px;background:#d1d4db;border-bottom:.5px solid #b9bcc4;display:flex;align-items:center;justify-content:space-around;font-size:14px;color:var(--ink2)}
+.strip span+span{border-left:.5px solid #a8abb3;padding-left:18px}
+.savebar{position:absolute;left:0;right:0;bottom:312px;height:44px;background:rgba(249,249,251,.96);border-top:.5px solid var(--hair);display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-size:13px;color:var(--ink3)}
+.savebar b{color:var(--tint);font-size:15px}
+.tabbar{position:absolute;bottom:22px;left:22px;right:22px;height:58px;background:rgba(255,255,255,.88);border-radius:29px;box-shadow:0 4px 18px rgba(0,0,0,.12);display:flex;justify-content:space-around;align-items:center;font-size:20px;color:var(--ink3)}
+.plus{width:46px;height:46px;border-radius:23px;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:26px;position:relative}
+.finger{position:absolute;width:64px;height:64px;border-radius:32px;background:rgba(10,102,216,.18);border:2px solid rgba(10,102,216,.55);left:-9px;top:-9px}
+.hold{position:absolute;bottom:92px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:13px;padding:7px 12px;border-radius:9px;white-space:nowrap}
+.hold::after{content:"";position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-bottom:0;border-top-color:var(--ink)}
+.dim{position:absolute;inset:0;background:rgba(0,0,0,.32)}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--bg);border-radius:14px 14px 0 0;padding:8px 16px 40px}
+.grab{width:36px;height:5px;border-radius:3px;background:#c7c7cc;margin:0 auto 10px}
+.sh{display:flex;justify-content:center;font-weight:600;font-size:17px;margin-bottom:14px}
+.mrow{display:flex;align-items:center;padding:0 14px;height:48px;border-top:.5px solid var(--hair);font-size:16px}
+.mrow:first-child{border-top:none}.mrow.hl{background:#e8f1fd;font-weight:600}
+.hint{font-size:13px;color:var(--ink3);line-height:1.35;padding:0 4px 12px}
+.out{outline:1.5px solid var(--tint);outline-offset:-1.5px}
+.prob{max-width:1180px;margin:18px auto 0;display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.pb{background:#fff4f4;border-radius:10px;padding:11px 13px;font-size:13px;line-height:1.45}.pb b{display:block;margin-bottom:2px;color:#b3261e}
+.gd{background:#eef7f0}.gd b{color:var(--green)}
+.words{background:#fff;border-radius:12px;padding:4px 0;margin-bottom:12px}
+.wr{display:flex;padding:7px 14px;font-size:13.5px;border-top:.5px solid var(--hair)}.wr:first-child{border-top:none}
+.wr span:first-child{width:88px;color:var(--ink3);flex-shrink:0}.wr code{font-family:inherit;color:var(--ink)}
+.savebtn{position:absolute;left:12px;right:12px;bottom:280px;height:46px;border-radius:12px;background:var(--tint);color:#fff;font-weight:600;font-size:16px;display:flex;align-items:center;justify-content:center;gap:8px}
+.savebtn.off{background:#c7d6ea}
+.seg{display:flex;background:#e3e3e8;border-radius:9px;padding:2px;margin-bottom:12px}
+.seg span{flex:1;text-align:center;padding:6px 0;border-radius:7px;font-size:13.5px;color:var(--ink2)}
+.seg span.on{background:#fff;font-weight:600;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.frow{display:flex;justify-content:space-between;align-items:center;padding:0 14px;height:46px;border-top:.5px solid var(--hair);font-size:15.5px}.frow:first-child{border-top:none}
+.frow span:last-child{color:var(--ink3)}.frow .filled{color:var(--ink)}
+.toast{background:#e9f6ec;color:#136b2e;border-radius:10px;padding:8px 12px;font-size:13px;margin-bottom:12px}
+.tag{font-style:normal;display:inline-block;font-size:11px;font-weight:700;color:#fff;background:var(--green);border-radius:5px;padding:2px 6px;margin-left:6px;vertical-align:2px}
+.kr i{display:flex;align-items:center;justify-content:center;font-style:normal;font-size:14px;color:var(--ink)}
+.kr i.go{color:#fff;font-weight:600;font-size:15px}.kr i.go.dim2{background:#9fb9dc}
+.comp{position:absolute;left:0;right:0;bottom:268px;background:#d1d4db;padding:6px 8px 8px;border-top:.5px solid #b9bcc4}
+.comp .sugg{display:flex;justify-content:space-around;font-size:14px;color:var(--ink2);padding:2px 0 8px}
+.comp .sugg span+span{border-left:.5px solid #a8abb3;padding-left:18px}
+.comp .in{background:#fff;border-radius:10px;height:44px;display:flex;align-items:center;padding:0 12px;font-size:17px;box-shadow:0 0 0 2px var(--tint)}
+.dock{position:absolute;left:0;right:0;bottom:0;background:rgba(249,249,251,.96);border-top:.5px solid var(--hair);padding:10px 12px 34px}
+.in2{background:#fff;border-radius:10px;height:44px;display:flex;align-items:center;gap:8px;padding:0 12px;font-size:16px;border:.5px solid #d1d1d6}
+.kbd{color:var(--ink3);font-size:18px}
+.tag2{display:inline-block;font-style:normal;font-size:11px;font-weight:700;color:#fff;background:var(--tint);border-radius:5px;padding:2px 6px;margin-left:6px;vertical-align:2px;min-height:0!important;margin-top:0!important;line-height:1.2!important}
+.row.ghost{outline:1.5px dashed var(--tint);outline-offset:-3px;border-radius:10px;background:#f7faff}
+.row.justsaved{background:#e6f6ea}
+</style></head><body>
+<h1>One line</h1>
+<p class="lead">Top: how it works in the app today. Bottom: an easier version. One line means typing a purchase as one sentence, for example <b>kopi kenangan 38rb gopay</b>, and pressing Return.</p>
+
+<h2 class="band">Today</h2>
+<p class="bandlead">To open it: on any page, <b>press and hold the ＋</b> in the tab bar for about half a second (a plain tap opens the normal Add form). A menu appears. Tap <b>One line</b>.</p>
+<div class="grid">
+<div><div class="cap">1 · Hold ＋<span>A plain tap opens the Add form. Only a press-and-hold opens the menu. There is nothing on screen that says so.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● 100%</span></div><div class="scr">
+<div class="nav"><span>Workspace</span><span>⋯</span></div><div class="lt">Cashflow</div>
+<div class="k">Today</div>
+<div class="g">
+<div class="row"><div class="ic">☕</div><div class="mid"><div class="t">Food &amp; drink</div><div class="s">Kopi Kenangan · GoPay</div></div><div class="amt">Rp 38.000</div></div>
+<div class="row"><div class="ic">🚕</div><div class="mid"><div class="t">Transport</div><div class="s">Grab · BCA ••12</div></div><div class="amt">Rp 24.500</div></div>
+<div class="row"><div class="ic">🛒</div><div class="mid"><div class="t">Groceries</div><div class="s">Superindo · Cash</div></div><div class="amt">Rp 112.300</div></div>
+</div>
+<div class="k">Yesterday</div>
+<div class="g">
+<div class="row"><div class="ic">🍜</div><div class="mid"><div class="t">Food &amp; drink</div><div class="s">Bakmi GM · BCA ••12</div></div><div class="amt">Rp 86.000</div></div>
+<div class="row"><div class="ic">⛽</div><div class="mid"><div class="t">Transport</div><div class="s">Pertamina · Mandiri ••40</div></div><div class="amt">Rp 150.000</div></div>
+</div></div>
+<div class="hold">Hold for half a second</div>
+<div class="tabbar"><span>⇄</span><span>↗</span><div class="plus">＋<div class="finger"></div></div><span>▭</span><span>◉</span></div>
+</div></div>
+
+<div><div class="cap">2 · The Add menu<span>Four ways in. One line is the first.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● 100%</span></div><div class="scr">
+<div class="nav"><span>Workspace</span><span>⋯</span></div><div class="lt">Cashflow</div>
+<div class="g"><div class="row"><div class="ic">☕</div><div class="mid"><div class="t">Food &amp; drink</div><div class="s">Kopi Kenangan · GoPay</div></div><div class="amt">Rp 38.000</div></div></div></div>
+<div class="dim"></div>
+<div class="sheet"><div class="grab"></div><div class="sh">Add</div>
+<div class="g"><div class="mrow hl">One line</div><div class="mrow">Paste a list</div><div class="mrow">Scan a receipt</div><div class="mrow">Add transaction</div></div></div>
+</div></div>
+
+<div><div class="cap">3 · The One line page<span>Saved rows first, then the hint, then the preview, and the field at the bottom. Save sits above the keyboard.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● 100%</span></div><div class="scr">
+<div class="nav"><span>‹ Cashflow</span><span>✓</span></div><div class="lt">One line</div>
+<div class="hint">Shop, amount and how it was paid. Add “yesterday” or a date for another day.</div>
+<div class="k">Will be saved as</div>
+<div class="g out"><div class="row"><div class="ic">☕</div><div class="mid"><div class="t am">Food &amp; drink</div><div class="s">kopi kenangan · <span class="am">Paid with?</span> · Today</div></div><div class="amt">Rp 38.000</div></div></div>
+<div class="field on">kopi kenangan 38rb<span class="caret"></span></div>
+</div>
+<div class="savebar"><span>Tap the row to change a part</span><b>Save ↵</b></div>
+<div class="strip"><span>Kopi Kenangan</span><span>Kopi Janji Jiwa</span></div>
+<div class="kb"><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i class="w"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="w"></i></div><div class="kr"><i class="w"></i><i class="sp"></i><i class="go"></i></div></div>
+</div></div>
+</div>
+
+<div class="prob">
+<div class="pb"><b>Hard to find</b>Press-and-hold is invisible. Unless someone shows you, you would never know One line exists.</div>
+<div class="pb"><b>Upside down</b>The field you type in is at the bottom, below the preview. Every row you save pushes it further down.</div>
+<div class="pb"><b>Words unknown</b>The hint doesn't list the words the app understands: 38rb, 1,5jt, kemarin, the last 4 card digits, KRW.</div>
+<div class="pb"><b>Small Save</b>Save is a small text link at the right edge, and "Tap the row to change a part" is easy to miss.</div>
+</div>
+
+<h2 class="band">New plan: ＋ stays the full form; hold ＋ on Cashflow does what Settings says</h2>
+<p class="bandlead"><b>Tap ＋</b> anywhere opens the usual full form, with nothing added. <b>Hold ＋</b> works only on the Cashflow page and goes straight to the action chosen in Settings › Default, with no menu. With One line chosen, Cashflow stays on screen, the keyboard comes up with the field on top of it, and each line you save drops straight into the Cashflow list.</p>
+<div class="grid">
+<div><div class="cap">1 · Tap ＋: the usual full form<span>Unchanged, on every page. No one-line field.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● 100%</span></div><div class="scr">
+<div class="nav"><span>Cancel</span><span style="font-weight:600;color:var(--ink)">Add</span><span style="font-weight:600;opacity:.35">Save</span></div>
+<div class="seg" style="margin-top:8px"><span class="on">Spent</span><span>Received</span><span>Transfer</span></div>
+<div class="g">
+<div class="frow"><span>Amount</span><span>Rp 0</span></div>
+<div class="frow"><span>Note</span><span>Optional</span></div>
+<div class="frow"><span>Category</span><span>Choose</span></div>
+<div class="frow"><span>Paid with</span><span class="filled">GoPay</span></div>
+<div class="frow"><span>Date</span><span class="filled">Today</span></div>
+</div>
+<div class="g">
+<div class="frow"><span>Split</span><span>Off</span></div>
+<div class="frow"><span>Event</span><span>None</span></div>
+<div class="frow"><span>Photo</span><span>Add</span></div>
+</div>
+</div></div></div>
+
+<div><div class="cap">2 · Settings › Default: what holding ＋ does<span>One choice, used on the Cashflow page. Off makes holding the same as tapping. "Show the menu" keeps today's menu.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● 100%</span></div><div class="scr">
+<div class="nav"><span>‹ Account</span><span></span></div><div class="lt">Default</div>
+<div class="k">Paid with</div>
+<div class="g"><div class="frow"><span>Usually paid with</span><span class="filled">GoPay ›</span></div></div>
+<div class="k">Hold ＋ on Cashflow</div>
+<div class="g">
+<div class="frow"><span>One line</span><span style="color:var(--tint);font-weight:700">✓</span></div>
+<div class="frow"><span>Scan a receipt</span><span></span></div>
+<div class="frow"><span>Paste a list</span><span></span></div>
+<div class="frow"><span>Show the menu</span><span></span></div>
+<div class="frow"><span>Off</span><span></span></div>
+</div>
+<div class="hint">Only on the Cashflow page. Everywhere else, holding ＋ opens the full form, the same as a tap.</div>
+</div></div></div>
+
+<div><div class="cap">3 · Hold ＋ on Cashflow<span>Hold for half a second. The tab bar slides away, the keyboard comes up and the field sits on top of it. Cashflow stays behind it.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● 100%</span></div><div class="scr">
+<div class="nav"><span>Workspace</span><span>⋯</span></div><div class="lt">Cashflow</div>
+<div class="k">Today</div>
+<div class="g">
+<div class="row"><div class="ic">🛒</div><div class="mid"><div class="t">Groceries</div><div class="s">Superindo · Cash</div></div><div class="amt">Rp 112.300</div></div>
+<div class="row"><div class="ic">🚕</div><div class="mid"><div class="t">Transport</div><div class="s">Grab · BCA ••12</div></div><div class="amt">Rp 24.500</div></div>
+</div>
+</div>
+<div class="comp"><div class="in"><span class="ph-text">Shop, amount, how it was paid</span><span class="caret"></span></div></div>
+<div class="kb"><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i class="w"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="w"></i></div><div class="kr"><i class="w">123</i><i class="sp">space</i><i class="go dim2">Done</i></div></div>
+</div></div>
+</div>
+<div class="grid" style="margin-top:30px">
+<div><div class="cap">4 · Typing: the row appears in the list<span>The line shows up as a dashed row at the top of Today, exactly where it will land. Guessed or missing parts are amber, and tapping one changes it.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● 100%</span></div><div class="scr">
+<div class="nav"><span>Workspace</span><span>⋯</span></div><div class="lt">Cashflow</div>
+<div class="k">Today</div>
+<div class="g">
+<div class="row ghost"><div class="ic">☕</div><div class="mid"><div class="t">Food &amp; drink</div><div class="s">kopi kenangan · <span class="am">GoPay?</span></div></div><div class="amt">Rp 38.000</div></div>
+<div class="row"><div class="ic">🛒</div><div class="mid"><div class="t">Groceries</div><div class="s">Superindo · Cash</div></div><div class="amt">Rp 112.300</div></div>
+<div class="row"><div class="ic">🚕</div><div class="mid"><div class="t">Transport</div><div class="s">Grab · BCA ••12</div></div><div class="amt">Rp 24.500</div></div>
+</div>
+</div>
+<div class="comp"><div class="sugg"><span>Kopi Kenangan</span><span>Kopi Janji Jiwa</span></div><div class="in">kopi kenangan 38rb<span class="caret"></span></div></div>
+<div class="kb"><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i class="w"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="w"></i></div><div class="kr"><i class="w">123</i><i class="sp">space</i><i class="go">Done</i></div></div>
+</div></div>
+
+<div><div class="cap">5 · Blue key: saved in place<span>The dashed row becomes a real row and flashes green. The field empties and the keyboard stays up for the next one; day and Paid with carry over.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● 100%</span></div><div class="scr">
+<div class="nav"><span>Workspace</span><span>⋯</span></div><div class="lt">Cashflow</div>
+<div class="k">Today</div>
+<div class="g">
+<div class="row justsaved"><div class="ic">☕</div><div class="mid"><div class="t">Food &amp; drink</div><div class="s">Kopi Kenangan · GoPay</div></div><div class="amt">Rp 38.000</div></div>
+<div class="row"><div class="ic">🛒</div><div class="mid"><div class="t">Groceries</div><div class="s">Superindo · Cash</div></div><div class="amt">Rp 112.300</div></div>
+<div class="row"><div class="ic">🚕</div><div class="mid"><div class="t">Transport</div><div class="s">Grab · BCA ••12</div></div><div class="amt">Rp 24.500</div></div>
+</div>
+</div>
+<div class="comp"><div class="in"><span class="ph-text">Next one</span><span class="caret"></span></div></div>
+<div class="kb"><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i class="w"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="w"></i></div><div class="kr"><i class="w">123</i><i class="sp">space</i><i class="go dim2">Done</i></div></div>
+</div></div>
+
+<div><div class="cap">6 · Swipe down: back to Cashflow<span>The keyboard and field go away and the tab bar comes back. What was typed is already in the list; tap a row to edit it, as usual.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● 100%</span></div><div class="scr">
+<div class="nav"><span>Workspace</span><span>⋯</span></div><div class="lt">Cashflow</div>
+<div class="k">Today</div>
+<div class="g">
+<div class="row"><div class="ic">🚕</div><div class="mid"><div class="t">Transport</div><div class="s">Grab · GoPay</div></div><div class="amt">Rp 24.500</div></div>
+<div class="row"><div class="ic">☕</div><div class="mid"><div class="t">Food &amp; drink</div><div class="s">Kopi Kenangan · GoPay</div></div><div class="amt">Rp 38.000</div></div>
+<div class="row"><div class="ic">🛒</div><div class="mid"><div class="t">Groceries</div><div class="s">Superindo · Cash</div></div><div class="amt">Rp 112.300</div></div>
+<div class="row"><div class="ic">🚕</div><div class="mid"><div class="t">Transport</div><div class="s">Grab · BCA ••12</div></div><div class="amt">Rp 24.500</div></div>
+</div>
+<div class="k">Yesterday</div>
+<div class="g">
+<div class="row"><div class="ic">🍜</div><div class="mid"><div class="t">Food &amp; drink</div><div class="s">Bakmi GM · BCA ••12</div></div><div class="amt">Rp 86.000</div></div>
+</div>
+</div>
+<div class="tabbar"><span>⇄</span><span>↗</span><div class="plus">＋</div><span>▭</span><span>◉</span></div>
+</div></div>
+</div>
+<div class="prob">
+<div class="pb gd"><b>＋ unchanged</b>A tap opens the usual full form everywhere. Nothing new to learn.</div>
+<div class="pb gd"><b>Hold = your shortcut</b>On Cashflow, holding ＋ goes straight to the one action picked in Settings › Default. No menu in between.</div>
+<div class="pb gd"><b>Lands where you look</b>With One line, there is no separate page: the row appears in the Cashflow list as you type and stays there after the blue key.</div>
+<div class="pb gd"><b>Other choices</b>Scan a receipt opens the camera, Paste a list opens the paste page, "Show the menu" keeps today's menu, and Off does nothing extra.</div>
+</div>
+<p class="bandlead" style="margin-top:14px"><b>Blue key label:</b> iPhone only allows Return, Done, Go, Next, Search or Send, so it can't say "Save". The mockup uses <b>Done</b>.</p>
+<p class="bandlead"><b>Earlier ideas below</b> (4a, 4b, and a separate One line page) are kept for comparison and are no longer the plan.</p>
+
+<h2 class="band" style="opacity:.6">Earlier idea · Screen 4, two versions: the Add page keeps the full form</h2>
+<p class="bandlead">Both keep every row of today's Add form and its Save. The only difference is whether the keyboard is already up when ＋ opens the page.</p>
+<div class="grid">
+<div><div class="cap">4a · Keyboard up at once<span>Tap ＋ and you can type straight away. The keyboard covers the lower rows (Split, Event, Photo); to use the form, swipe down or tap a row to hide it.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● 100%</span></div><div class="scr">
+<div class="nav"><span>Cancel</span><span style="font-weight:600;color:var(--ink)">Add</span><span style="font-weight:600;opacity:.35">Save</span></div>
+<div class="seg" style="margin-top:8px"><span class="on">Spent</span><span>Received</span><span>Transfer</span></div>
+<div class="g">
+<div class="frow"><span>Amount</span><span>Rp 0</span></div>
+<div class="frow"><span>Note</span><span>Optional</span></div>
+<div class="frow"><span>Category</span><span>Choose</span></div>
+<div class="frow"><span>Paid with</span><span class="filled">GoPay</span></div>
+<div class="frow"><span>Date</span><span class="filled">Today</span></div>
+</div>
+</div>
+<div class="comp"><div class="in"><span class="ph-text">Shop, amount, how it was paid</span><span class="caret"></span></div></div>
+<div class="kb"><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i class="w"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="w"></i></div><div class="kr"><i class="w">123</i><i class="sp">space</i><i class="go dim2">Done</i></div></div>
+</div></div>
+
+<div><div class="cap">4b · Opens like today <em class="tag2">my pick</em><span>The full form is visible and the keyboard is down. The one-line field waits at the bottom of the page. Using the form is exactly as before.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● 100%</span></div><div class="scr">
+<div class="nav"><span>Cancel</span><span style="font-weight:600;color:var(--ink)">Add</span><span style="font-weight:600;opacity:.35">Save</span></div>
+<div class="seg" style="margin-top:8px"><span class="on">Spent</span><span>Received</span><span>Transfer</span></div>
+<div class="g">
+<div class="frow"><span>Amount</span><span>Rp 0</span></div>
+<div class="frow"><span>Note</span><span>Optional</span></div>
+<div class="frow"><span>Category</span><span>Choose</span></div>
+<div class="frow"><span>Paid with</span><span class="filled">GoPay</span></div>
+<div class="frow"><span>Date</span><span class="filled">Today</span></div>
+</div>
+<div class="g">
+<div class="frow"><span>Split</span><span>Off</span></div>
+<div class="frow"><span>Event</span><span>None</span></div>
+<div class="frow"><span>Photo</span><span>Add</span></div>
+</div>
+</div>
+<div class="dock"><div class="in2"><span class="kbd">⌨︎</span><span class="ph-text">Type it in one line</span></div></div>
+</div></div>
+
+<div><div class="cap">4b · After tapping the field<span>One tap and the field rises onto the keyboard. Typing fills the rows above, and the blue key saves. Swipe down and it goes back to the bottom.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● 100%</span></div><div class="scr">
+<div class="nav"><span>Cancel</span><span style="font-weight:600;color:var(--ink)">Add</span><span style="font-weight:600">Save</span></div>
+<div class="seg" style="margin-top:8px"><span class="on">Spent</span><span>Received</span><span>Transfer</span></div>
+<div class="g">
+<div class="frow"><span>Amount</span><span class="filled">Rp 38.000</span></div>
+<div class="frow"><span>Note</span><span class="filled">kopi kenangan</span></div>
+<div class="frow"><span>Category</span><span class="filled">Food &amp; drink</span></div>
+<div class="frow"><span>Paid with</span><span class="filled">GoPay</span></div>
+<div class="frow"><span>Date</span><span class="filled">Today</span></div>
+</div>
+</div>
+<div class="comp"><div class="sugg"><span>Kopi Kenangan</span><span>Kopi Janji Jiwa</span></div><div class="in">kopi kenangan 38rb gopay<span class="caret"></span></div></div>
+<div class="kb"><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i class="w"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="w"></i></div><div class="kr"><i class="w">123</i><i class="sp">space</i><i class="go">Done</i></div></div>
+</div></div>
+</div>
+<div class="prob">
+<div class="pb gd"><b>Both keep the form</b>Every row and the Save at the top stay. One line only fills them in.</div>
+<div class="pb gd"><b>4a: fastest typing</b>No extra tap. But the form's lower rows are hidden until the keyboard is put away.</div>
+<div class="pb gd"><b>4b: nothing changes for the form</b>The page looks like today plus one bar at the bottom. One extra tap to start typing.</div>
+<div class="pb gd"><b>Spent only</b>On Received and Transfer the field is hidden, because One line reads purchases only.</div>
+</div>
+
+<h2 class="band" style="opacity:.6">Earlier idea · Easier</h2>
+<p class="bandlead">The field you type in sits <b>right on top of the keyboard</b>, where the "Kopi Kenangan · Kopi Janji Jiwa" names are today, the way a chat app does it. The suggested names move to a row just above the field. There is <b>no Save button</b>: the keyboard's blue key saves. The page above shows the preview and what has been saved.</p>
+<div class="grid">
+<div><div class="cap">4 · Tap ＋: the field sits on the keyboard<span>The Add page opens with the keyboard up and the field on top of it. Typing fills Amount, Note, Category, Paid with and Date above as you go. The blue key saves.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● 100%</span></div><div class="scr">
+<div class="nav"><span>Cancel</span><span style="font-weight:600;color:var(--ink)">Add</span><span style="font-weight:600">Save</span></div>
+<div class="seg" style="margin-top:8px"><span class="on">Spent</span><span>Received</span><span>Transfer</span></div>
+<div class="g">
+<div class="frow"><span>Amount</span><span class="filled">Rp 38.000</span></div>
+<div class="frow"><span>Note</span><span class="filled">kopi kenangan</span></div>
+<div class="frow"><span>Category</span><span class="filled">Food &amp; drink</span></div>
+<div class="frow"><span>Paid with</span><span class="filled">GoPay</span></div>
+<div class="frow"><span>Date</span><span class="filled">Today</span></div>
+</div>
+</div>
+<div class="comp"><div class="sugg"><span>Kopi Kenangan</span><span>Kopi Janji Jiwa</span></div><div class="in">kopi kenangan 38rb gopay<span class="caret"></span></div></div>
+<div class="kb"><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i class="w"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="w"></i></div><div class="kr"><i class="w">123</i><i class="sp">space</i><i class="go">Done</i></div></div>
+</div></div>
+
+<div><div class="cap">5 · One line page, empty <em class="tag">if kept separate</em><span>Field on the keyboard, with "Shop, amount, how it was paid" inside. Above it, the words it understands and one example. The blue key is pale until there is something to save.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● 100%</span></div><div class="scr">
+<div class="nav"><span>‹ Cashflow</span><span>Done</span></div><div class="lt">One line</div>
+<div class="k">Words it understands</div>
+<div class="words">
+<div class="wr"><span>Amount</span><code>38rb · 38k · 38.000 · 1,5jt</code></div>
+<div class="wr"><span>Paid with</span><code>gopay · bca · cash · 4 card digits</code></div>
+<div class="wr"><span>Day</span><code>kemarin · yesterday · 12/11</code></div>
+<div class="wr"><span>Currency</span><code>KRW 95000 · usd 12</code></div>
+</div>
+<div class="k">Example</div>
+<div class="g"><div class="row" style="min-height:44px;font-size:14.5px;color:var(--ink2)">kemarin bakmi gm 86rb bca</div></div>
+</div>
+<div class="comp"><div class="in"><span class="ph-text">Shop, amount, how it was paid</span><span class="caret"></span></div></div>
+<div class="kb"><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i class="w"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="w"></i></div><div class="kr"><i class="w">123</i><i class="sp">space</i><i class="go dim2">Done</i></div></div>
+</div></div>
+
+<div><div class="cap">6 · Typing the next one<span>The preview is at the top and the saved rows are under it. The field stays on the keyboard; tapping the blue key saves, empties the field and keeps the keyboard up. The day and Paid with carry over.</span></div>
+<div class="ph"><div class="sb"><span>9:41</span><span>●●● 100%</span></div><div class="scr">
+<div class="nav"><span>‹ Cashflow</span><span>Done</span></div><div class="lt">One line</div>
+<div class="k">Will be saved as</div>
+<div class="g out"><div class="row"><div class="ic">🚕</div><div class="mid"><div class="t">Transport</div><div class="s">grab · <span class="am">GoPay?</span> · Today</div></div><div class="amt">Rp 24.500</div></div></div>
+<div class="k">2 saved · Rp 150.300</div>
+<div class="g">
+<div class="row"><div class="ic">🛒</div><div class="mid"><div class="t">Groceries</div><div class="s">superindo · Cash · Today</div></div><div class="amt">Rp 112.300</div></div>
+<div class="row"><div class="ic">☕</div><div class="mid"><div class="t">Food &amp; drink</div><div class="s">kopi kenangan · GoPay · Today</div></div><div class="amt">Rp 38.000</div></div>
+</div>
+</div>
+<div class="comp"><div class="sugg"><span>Grab</span><span>Grab Food</span></div><div class="in">grab 24,5rb<span class="caret"></span></div></div>
+<div class="kb"><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="kr"><i class="w"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="w"></i></div><div class="kr"><i class="w">123</i><i class="sp">space</i><i class="go">Done</i></div></div>
+</div></div>
+</div>
+
+<div class="prob">
+<div class="pb gd"><b>Found by everyone</b>Screen 4: the field is in the Add page that ＋ already opens. No hold, no menu.</div>
+<div class="pb gd"><b>Thumb and eyes together</b>The field sits right on the keyboard, so what you type is next to your thumbs, and the names to pick are one row above.</div>
+<div class="pb gd"><b>Blue key saves</b>No separate Save button. The keyboard's blue key saves the line and keeps the keyboard up for the next one.</div>
+<div class="pb gd"><b>Words listed</b>While the field is empty, the page lists the words it understands, plus one example.</div>
+</div>
+<p class="bandlead" style="margin-top:14px"><b>About the blue key's label:</b> on iPhone, an app can only label this key Return, Done, Go, Next, Search or Send. It can't say "Save". The mockup uses <b>Done</b>, which is what One line shows today; <b>Send</b> is the other option.</p>
+</body></html>
