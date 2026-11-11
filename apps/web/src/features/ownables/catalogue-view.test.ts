@@ -75,9 +75,9 @@ describe('what a form asks for', () => {
     expect(fieldsFor('asset', 'trade_receivable')).toEqual(['person', 'owed']);
   });
 
-  it('asks a mortgage for terms, a paylater for no rate, and a person for a name', () => {
+  it('asks a mortgage for terms, a paylater for an optional rate, and a person for a name', () => {
     expect(fieldsFor('debt', 'home_mortgage')).toEqual(['owed', 'lender', 'rate', 'term']);
-    expect(fieldsFor('debt', 'online_loan')).toEqual(['owed', 'lender', 'term']);
+    expect(fieldsFor('debt', 'online_loan')).toEqual(['owed', 'lender', 'rate', 'term']);
     expect(fieldsFor('debt', 'credit_card')).toEqual(['card']);
     expect(fieldsFor('debt', 'affiliate_debt')).toEqual(['owed', 'person']);
   });

@@ -1,12 +1,18 @@
 import type { TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { loanPayments, monthYearLabel, percentBps, rateText, repaidPercent, soonerText } from './loan-view';
+import { loanPayments, monthYearLabel, percentBps, rateText, rateTextPer, repaidPercent, soonerText } from './loan-view';
 
 describe('the words on a loan page', () => {
   it('writes a rate with a decimal comma and no trailing zeros', () => {
     expect(rateText(750)).toBe('7,5%');
     expect(rateText(900)).toBe('9%');
     expect(rateText(1125)).toBe('11,25%');
+  });
+
+  it('writes a paylater rate as a month, and any other as a year', () => {
+    expect(rateTextPer(2400, 'month')).toBe('2% a month');
+    expect(rateTextPer(3540, 'month')).toBe('2,95% a month');
+    expect(rateTextPer(900, 'year')).toBe('9%');
   });
 
   it('names a month and its year', () => {

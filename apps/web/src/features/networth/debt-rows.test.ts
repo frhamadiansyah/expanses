@@ -100,6 +100,19 @@ describe('groupDebts', () => {
     ]);
   });
 
+  it('shows a paylater rate a month and every other loan rate a year', () => {
+    const debts = groupDebts(
+      sample({
+        items: { car: 'online_loan' },
+        loans: [loan({ accountId: 'kpr' }), loan({ accountId: 'car', lenderName: 'SPayLater', tenorMonths: 6, periods: [{ fromOn: '2024-01-05', rateBps: 2400, kind: 'fixed', paymentMinor: 0 } as LoanTermsRow['periods'][number]] })],
+      }),
+    );
+    const details = Object.fromEntries(debts.groups[0]!.rows.map((row) => [row.name, row.detail]));
+    expect(details['Car loan']).toBe('SPayLater · 2% a month · 6 months');
+    expect(details['KPR BCA']).toContain('4,75%');
+    expect(details['KPR BCA']).not.toContain('a month');
+  });
+
   it('keeps a debt in another currency in its own currency and converts it for the totals', () => {
     const debts = groupDebts(
       sample({

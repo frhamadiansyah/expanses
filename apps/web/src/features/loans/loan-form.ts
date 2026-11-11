@@ -1,4 +1,4 @@
-import { groupedMajorString, isoDate, type LoanMethod, parseGroupedMajor, periodOn, type ScheduleRow } from '@expanses/core';
+import { groupedMajorString, isoDate, type LoanMethod, loanRatePer, parseGroupedMajor, periodOn, rateBpsFromTyped, type ScheduleRow, typedFromRateBps } from '@expanses/core';
 import type { LoanPaymentInput, LoanTermsRow, SaveLoanTermsInput } from '@expanses/db';
 
 export interface LoanTermsDraft {
@@ -10,7 +10,7 @@ export interface LoanTermsDraft {
   tenorMonths: string;
   method: LoanMethod;
   paymentDay: string;
-  /** A yearly rate as a percentage, typed "9" or "9,25". */
+  /** A rate as a percentage, typed "9" or "9,25": a year, or a month when `itemId` is an online loan or paylater. */
   rate: string;
   /** What the bank actually asks for each month, when it names a figure. */
   payment: string;
@@ -52,7 +52,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
  */
 export function loanTermsDraftFromTerms(terms: LoanTermsRow, currency: string, today: string, itemId = ''): LoanTermsDraft {
   const current = periodOn(terms.periods, today) ?? terms.periods[terms.periods.length - 1];
-  const rate = current ? Number((current.rateBps / 100).toFixed(2)).toString().replace('.', ',') : '';
+  const rate = current ? typedFromRateBps(current.rateBps, loanRatePer(itemId)) || '0' : '';
   return {
     accountId: terms.accountId,
     lenderName: terms.lenderName,
@@ -69,15 +69,6 @@ export function loanTermsDraftFromTerms(terms: LoanTermsRow, currency: string, t
     lenderNpwp: terms.lenderNpwp ?? '',
     itemId,
   };
-}
-
-/** A percentage as basis points: "9,25" is 925. */
-function rateToBps(typed: string): number {
-  const cleaned = typed.trim().replace(',', '.');
-  if (cleaned === '') return 0;
-  const value = Number(cleaned);
-  if (!Number.isFinite(value) || value < 0) throw new Error('The rate must be a number');
-  return Math.round(value * 100);
 }
 
 /** Turns the terms as typed into what the database needs, with messages meant for the screen. */
@@ -120,7 +111,7 @@ export function loanTermsDraftToInput(draft: LoanTermsDraft, currency: string): 
     method: draft.method,
     paymentDay,
     assetAccountId: draft.assetAccountId || null,
-    rateBps: rateToBps(draft.rate),
+    rateBps: rateBpsFromTyped(draft.rate, loanRatePer(draft.itemId)),
     paymentMinor,
     rateKind: draft.rateKind,
   };

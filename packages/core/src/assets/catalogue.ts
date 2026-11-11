@@ -34,7 +34,16 @@ export type OwnableBehaviour =
       orTyped?: true;
     }
   | { opens: 'person'; direction: 'lent' | 'borrowed'; valuedBy: 'ledger' }
-  | { opens: 'loan'; valuedBy: 'loan'; asksRate: boolean }
+  | {
+      opens: 'loan';
+      valuedBy: 'loan';
+      asksRate: boolean;
+      /**
+       * The period the rate is typed and shown in; 'year' when absent. A paylater quotes its interest a month, but
+       * what is stored stays yearly basis points (monthly × 12), which is what the loan engine reads.
+       */
+      ratePer?: 'month' | 'year';
+    }
   | { opens: 'card'; valuedBy: 'card' };
 
 export interface OwnableItem {
@@ -430,15 +439,15 @@ export function elseItem(id: OwnableFamily, code: string): OwnableItem {
 
 /** §2.6 — no section: Bagian B is one table. Order follows the mockup. */
 export const DEBT_ITEMS: readonly OwnableItem[] = [
-  { id: 'home_mortgage', label: 'Home mortgage', sub: 'owed, lender, rate, months left', code: '101', section: null, behaviour: { opens: 'loan', valuedBy: 'loan', asksRate: true } },
-  { id: 'apartment_mortgage', label: 'Apartment mortgage', sub: 'owed, lender, rate, months left', code: '101', section: null, behaviour: { opens: 'loan', valuedBy: 'loan', asksRate: true } },
-  { id: 'vehicle_leasing', label: 'Vehicle leasing', sub: 'owed, lender, rate, months left', code: '101', section: null, behaviour: { opens: 'loan', valuedBy: 'loan', asksRate: true } },
-  { id: 'credit_card', label: 'Credit card', sub: "the card's own form", code: '102', section: null, behaviour: { opens: 'card', valuedBy: 'card' } },
-  { id: 'multi_purpose_loan', label: 'Multi-purpose loan', sub: 'owed, lender, rate, months left', code: '101', section: null, behaviour: { opens: 'loan', valuedBy: 'loan', asksRate: true } },
-  { id: 'personal_loan', label: 'Personal loan', sub: 'owed, lender, rate, months left', code: '101', section: null, behaviour: { opens: 'loan', valuedBy: 'loan', asksRate: true } },
-  { id: 'online_loan', label: 'Online loan or paylater', sub: 'owed, lender, months left', code: '101', section: null, behaviour: { opens: 'loan', valuedBy: 'loan', asksRate: false } },
-  { id: 'affiliate_debt', label: 'Affiliate debt — family or a related company', sub: 'owed, who', code: '103', section: null, behaviour: { opens: 'person', direction: 'borrowed', valuedBy: 'ledger' } },
-  { id: 'other_debt', label: 'Other debts', sub: 'owed, who', code: '109', section: null, behaviour: { opens: 'person', direction: 'borrowed', valuedBy: 'ledger' } },
+  { id: 'home_mortgage', label: 'Home mortgage', sub: 'Bank loan for a house', code: '101', section: null, behaviour: { opens: 'loan', valuedBy: 'loan', asksRate: true } },
+  { id: 'apartment_mortgage', label: 'Apartment mortgage', sub: 'Bank loan for an apartment', code: '101', section: null, behaviour: { opens: 'loan', valuedBy: 'loan', asksRate: true } },
+  { id: 'vehicle_leasing', label: 'Vehicle leasing', sub: 'Car or motorbike paid in instalments', code: '101', section: null, behaviour: { opens: 'loan', valuedBy: 'loan', asksRate: true } },
+  { id: 'credit_card', label: 'Credit card', sub: 'What is owed on a card', code: '102', section: null, behaviour: { opens: 'card', valuedBy: 'card' } },
+  { id: 'multi_purpose_loan', label: 'Multi-purpose loan', sub: 'Loan against a house, car or salary', code: '101', section: null, behaviour: { opens: 'loan', valuedBy: 'loan', asksRate: true } },
+  { id: 'personal_loan', label: 'Personal loan', sub: 'Unsecured loan from a bank', code: '101', section: null, behaviour: { opens: 'loan', valuedBy: 'loan', asksRate: true } },
+  { id: 'online_loan', label: 'Online loan or paylater', sub: 'App loans and buy now, pay later', code: '101', section: null, behaviour: { opens: 'loan', valuedBy: 'loan', asksRate: true, ratePer: 'month' } },
+  { id: 'affiliate_debt', label: 'Affiliate debt', sub: 'Family or a related company', code: '103', section: null, behaviour: { opens: 'person', direction: 'borrowed', valuedBy: 'ledger' } },
+  { id: 'other_debt', label: 'Other debts', sub: 'Any other money owed', code: '109', section: null, behaviour: { opens: 'person', direction: 'borrowed', valuedBy: 'ledger' } },
 ];
 
 const DEBT_BY_ID = new Map(DEBT_ITEMS.map((item) => [item.id, item]));
@@ -450,6 +459,12 @@ const DEBT_BY_ID = new Map(DEBT_ITEMS.map((item) => [item.id, item]));
  * kind is asked for — the picker that opens a debt, and the terms form that can tell an older one what it is.
  */
 export const LOAN_ITEMS: readonly OwnableItem[] = DEBT_ITEMS.filter((item) => item.behaviour.opens === 'loan');
+
+/** The period a loan's rate is typed and shown in: a month for an online loan or paylater, a year for all else. */
+export function loanRatePer(itemId: string | null | undefined): 'month' | 'year' {
+  const item = itemId ? DEBT_BY_ID.get(itemId) : undefined;
+  return item?.behaviour.opens === 'loan' && item.behaviour.ratePer === 'month' ? 'month' : 'year';
+}
 
 export function debtItem(id: string): OwnableItem {
   const item = DEBT_BY_ID.get(id);

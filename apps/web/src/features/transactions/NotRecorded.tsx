@@ -32,7 +32,7 @@ export function NotRecorded({ drafts }: { drafts: readonly DraftRow[] }) {
         <CircleAlert size={18} strokeWidth={2.2} aria-hidden />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium">Review transactions</span>
+        <span className="block truncate text-sm font-medium whitespace-nowrap">To review</span>
         <span className="block truncate text-xs text-slate-500">{drafts.length} not recorded</span>
       </span>
       {read && total && total.minor > 0 && (

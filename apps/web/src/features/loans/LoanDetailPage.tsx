@@ -1,4 +1,4 @@
-import { debtItem, extraPaymentEffect, flatToEffectiveBps, formatMinor, groupTypedAmount, isoDate, minorToMajorString, parseGroupedMajor, payoffQuote, periodOn } from '@expanses/core';
+import { debtItem, loanRatePer, extraPaymentEffect, flatToEffectiveBps, formatMinor, groupTypedAmount, isoDate, minorToMajorString, parseGroupedMajor, payoffQuote, periodOn, rateBpsFromTyped } from '@expanses/core';
 import { addRatePeriod, type LoanTermsRow, payOffLoan, recordExtraPayment, recordLoanPayment, setLoanCode } from '@expanses/db';
 import { useParams } from '@tanstack/react-router';
 import { Banknote, CircleCheck, CirclePlus, FileText, MoreHorizontal, Pencil, Percent } from 'lucide-react';
@@ -20,7 +20,7 @@ import { CashRow, CashSheet, ResultRow, TypedRow, useCashSide } from '../networt
 import { UTANG_CHOICES } from '../ownables/catalogue-view';
 import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
 import { type PaymentDraft, extraPaymentMinor, paymentDraftFrom, paymentDraftToInput } from './loan-form';
-import { loanPayments, monthYearLabel, percentBps, rateText, repaidPercent, soonerText } from './loan-view';
+import { loanPayments, monthYearLabel, percentBps, rateText, rateTextPer, repaidPercent, soonerText } from './loan-view';
 import { TermsForm } from './TermsForm';
 import { useLoan, useLoanItems, useNextPayment, useSchedule } from './queries';
 
@@ -237,7 +237,7 @@ function PaySheet({
 }
 
 /** Rate change: a new rate period. Nothing is posted: no money moved. */
-function RateChangeSheet({ accountId, currency, onClose }: { accountId: string; currency: string; onClose: () => void }) {
+function RateChangeSheet({ accountId, currency, per, onClose }: { accountId: string; currency: string; per: 'month' | 'year'; onClose: () => void }) {
   const { database, ws } = useApp();
   const [fromOn, setFromOn] = useState(isoDate());
   const [rate, setRate] = useState('');
@@ -247,7 +247,7 @@ function RateChangeSheet({ accountId, currency, onClose }: { accountId: string; 
 
   const save = () =>
     saving.run(async () => {
-      const rateBps = Math.round((Number(rate.replace(',', '.')) || 0) * 100);
+      const rateBps = rateBpsFromTyped(rate, per);
       if (!(rateBps > 0)) throw new Error('Enter the new rate');
       await addRatePeriod(database, ws, {
         accountId,
@@ -268,7 +268,7 @@ function RateChangeSheet({ accountId, currency, onClose }: { accountId: string; 
           value={fromOn}
           onChange={(e) => setFromOn(e.target.value)}
         />
-        <TextRow label="New rate a year (%)" value={rate} inputMode="decimal" onChange={(e) => setRate(e.target.value)} placeholder="Percent" />
+        <TextRow label={per === 'month' ? 'New rate a month (%)' : 'New rate a year (%)'} value={rate} inputMode="decimal" onChange={(e) => setRate(e.target.value)} placeholder="Percent" />
         <SelectRow label="Rate kind" value={kind} onChange={(e) => setKind(e.target.value as 'fixed' | 'floating')}>
           <option value="fixed">Fixed</option>
           <option value="floating">Floating</option>
@@ -643,6 +643,7 @@ export function LoanDetailPage() {
   const effective = terms?.method === 'flat' && terms.tenorMonths > 1 ? flatToEffectiveBps(rateBps, terms.tenorMonths) : null;
   const repaidMinor = terms ? terms.originalMinor - balanceMinor : 0;
   const itemId = kinds.data?.[accountId] ?? '';
+  const ratePer = loanRatePer(itemId);
   const kindLabel = (() => {
     try {
       return itemId ? debtItem(itemId).label : null;
@@ -701,7 +702,7 @@ export function LoanDetailPage() {
                 {formatMinor(balanceMinor, currency)}
               </p>
               <p className="mt-[2px] text-[13px] leading-[18px] text-[var(--ph-ink-3)]" data-testid="loan-line">
-                {[terms.lenderName, `${rateText(rateBps)} ${current?.kind === 'floating' ? 'floating' : 'fixed'}`, kindLabel].filter(Boolean).join(' · ')}
+                {[terms.lenderName, `${rateTextPer(rateBps, ratePer)} ${current?.kind === 'floating' ? 'floating' : 'fixed'}`, kindLabel].filter(Boolean).join(' · ')}
                 {effective !== null && ` · about ${rateText(effective)} effective`}
               </p>
             </div>
@@ -738,7 +739,7 @@ export function LoanDetailPage() {
 
       {terms && opened === 'pay' && <PaySheet accountId={accountId} loanName={name} currency={currency} balanceMinor={balanceMinor} onClose={close} />}
       {terms && opened === 'extra' && <PayExtraSheet accountId={accountId} currency={currency} balanceMinor={balanceMinor} terms={terms} onClose={close} />}
-      {terms && opened === 'rate' && <RateChangeSheet accountId={accountId} currency={currency} onClose={close} />}
+      {terms && opened === 'rate' && <RateChangeSheet accountId={accountId} currency={currency} per={ratePer} onClose={close} />}
       {terms && opened === 'pay-off' && <PayOffSheet accountId={accountId} currency={currency} balanceMinor={balanceMinor} onClose={close} />}
       {opened === 'schedule' && <ScheduleSheet rows={rows} currency={currency} onClose={close} />}
       {terms && opened === 'code' && <LoanCodeSheet terms={terms} onClose={close} />}

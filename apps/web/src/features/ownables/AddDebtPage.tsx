@@ -1,5 +1,5 @@
 import { CATALOG, type CatalogEntry } from '@expanses/catalog';
-import { CURRENCIES, debtItem, groupTypedAmount, isoDate } from '@expanses/core';
+import { CURRENCIES, debtItem, groupTypedAmount, isoDate, loanRatePer } from '@expanses/core';
 import { applyCatalogEntry, createAccount, createCardAccount, openDebtBalance, saveCardTerms, saveLoanTerms, setLoanItem } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { Search } from 'lucide-react';
@@ -89,6 +89,7 @@ function DebtItemForm({ item }: { item: string }) {
   const asks = fieldsFor('debt', item);
   const owedToAPerson = asks.includes('person');
   const opensLoan = chosen.behaviour.opens === 'loan';
+  const monthly = loanRatePer(item) === 'month';
   const foreign = currency !== ws.baseCurrency;
 
   async function submit(event: FormEvent) {
@@ -152,11 +153,12 @@ function DebtItemForm({ item }: { item: string }) {
       <InsetGroup
         header={chosen.label}
         footer={
-          <>
-            {chosen.sub}. The picker chose what kind of debt this is. The name is what it's called here.
-            {asks.includes('term') && ' Leave the months left empty if not known: the debt still opens at what is owed, and its terms can be added on Debts.'}
-            {owedToAPerson && ' Money owed to a person is kept under Lend & borrow, and what is left there is what the tax report uses.'}
-          </>
+          asks.includes('term') || owedToAPerson ? (
+            <>
+              {asks.includes('term') && 'Leave the months left empty if not known: the debt still opens at what is owed, and its terms can be added on Debts.'}
+              {owedToAPerson && 'Money owed to a person is kept under Lend & borrow, and what is left there is what the tax report uses.'}
+            </>
+          ) : undefined
         }
       >
         {/* A person's debt is filed under their name, so there is nothing else to call it. */}
@@ -180,7 +182,15 @@ function DebtItemForm({ item }: { item: string }) {
         )}
         {asks.includes('lender') && <TextRow label="Lender" value={draft.lender} onChange={(e) => set({ lender: e.target.value })} placeholder="Bank or lender" required />}
         {asks.includes('person') && <TextRow label="Who" value={draft.person} onChange={(e) => set({ person: e.target.value })} placeholder="Name" required />}
-        {asks.includes('rate') && <TextRow label="Interest rate" value={draft.rate} onChange={(e) => set({ rate: e.target.value })} inputMode="decimal" placeholder="% a year" />}
+        {asks.includes('rate') && (
+          <TextRow
+            label={monthly ? 'Interest a month' : 'Interest rate'}
+            value={draft.rate}
+            onChange={(e) => set({ rate: e.target.value })}
+            inputMode="decimal"
+            placeholder={monthly ? '% a month' : '% a year'}
+          />
+        )}
         {asks.includes('term') && <TextRow label="Months left" value={draft.term} onChange={(e) => set({ term: e.target.value })} inputMode="numeric" placeholder="Months" />}
         {household.row}
         <TextRow label="Owed as of" type="date" value={draft.openedOn} max={today} onChange={(e) => set({ openedOn: e.target.value })} />
