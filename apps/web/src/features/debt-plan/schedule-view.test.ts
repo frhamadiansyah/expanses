@@ -25,8 +25,20 @@ function kprFact(today: string): LoanPlanFact {
   };
 }
 
-const statement = (closingMinor: number, leftToPayMinor: number | null, closed = true) =>
-  ({ cycle: { start: '2026-10-01', end: '2026-10-31' }, currency: 'IDR', openingMinor: 0, chargesMinor: closingMinor, creditsMinor: 0, closingMinor, lines: [], closed, paidSinceMinor: 0, leftToPayMinor }) as CardStatement;
+const statement = (closingMinor: number, leftToPayMinor: number | null, closed = true, o: Partial<CardStatement> = {}) =>
+  ({
+    cycle: { start: '2026-10-01', end: '2026-10-31' },
+    currency: 'IDR',
+    openingMinor: 0,
+    chargesMinor: closingMinor,
+    creditsMinor: 0,
+    closingMinor,
+    lines: [],
+    closed,
+    paidSinceMinor: leftToPayMinor === null ? 0 : closingMinor - leftToPayMinor,
+    leftToPayMinor,
+    ...o,
+  }) as CardStatement;
 
 const visa = (closingMinor = 6_214_300, left: number | null = 6_214_300): CardMonth => ({ cardId: 'C1', name: 'BCA Visa', currency: 'IDR', dueOn: '2026-11-18', statement: statement(closingMinor, left) });
 
@@ -144,6 +156,49 @@ describe('monthItems and monthSections', () => {
 
   it('counts what is still due this month', () => {
     expect(dueThisMonthCount(monthItems(input('2026-11-04')), '2026-11')).toBe(3);
+  });
+});
+
+describe('a card statement part paid, or carried from month to month', () => {
+  it('a late statement asks for what is left — the figure Pay next asks — and counts what was paid', () => {
+    // Closed at 10.000.000, due 5 Nov, 6.000.000 paid since; today 11 Nov.
+    const part = { ...visa(10_000_000, 4_000_000), dueOn: '2026-11-05' };
+    const items = monthItems(input('2026-11-11', { cards: [part], bills: [] }));
+    const card = items.find((i) => i.kind === 'card')!;
+    expect(card).toMatchObject({ status: 'late', minor: 4_000_000, daysLate: 6 });
+    const t = monthTotals(items.filter((i) => i.kind === 'card'), '2026-11');
+    expect(t).toMatchObject({ dueMinor: 10_000_000, paidMinor: 6_000_000, lateMinor: 4_000_000 });
+    expect(dueRow(items.filter((i) => i.kind === 'card'), '2026-11-11')!.item.minor).toBe(4_000_000);
+  });
+
+  it('a balance carried through three statements and cleared by one payment is paid once across the months', () => {
+    // Aug closes at 10m, Sep at 15m (10m carried + 5m new), Oct at 18m (15m carried + 3m new); 18m paid on 5 Nov.
+    const card = (month: string, dueOn: string, opening: number, charges: number) => ({
+      cardId: 'C1',
+      name: 'BCA Visa',
+      currency: 'IDR',
+      dueOn,
+      statement: statement(opening + charges, 0, true, { openingMinor: opening, chargesMinor: charges, paidSinceMinor: 18_000_000, cycle: { start: `${month}-01`, end: `${month}-28` } }),
+    });
+    const months = [
+      { month: '2026-09', card: card('2026-08', '2026-09-14', 0, 10_000_000) },
+      { month: '2026-10', card: card('2026-09', '2026-10-14', 10_000_000, 5_000_000) },
+      { month: '2026-11', card: card('2026-10', '2026-11-14', 15_000_000, 3_000_000) },
+    ];
+    const totals = months.map(({ month, card: c }) => monthTotals(monthItems(input('2026-11-20', { month, cards: [c], bills: [], show: { loans: false, cards: true, bills: true } })), month));
+    expect(totals.reduce((s, t) => s + t.paidMinor, 0)).toBe(18_000_000);
+    expect(totals.reduce((s, t) => s + t.dueMinor, 0)).toBe(18_000_000);
+    expect(totals.map((t) => t.lateMinor)).toEqual([0, 0, 0]);
+  });
+});
+
+describe('a bill paid from a credit card', () => {
+  it('keeps its row, says which card, and stays out of the totals the statement already counts', () => {
+    const items = monthItems({ ...input('2026-11-04'), bills: [{ row: electricity(), currency: 'IDR', onCard: 'BCA Visa' }] });
+    const bill = items.find((i) => i.kind === 'bill')!;
+    expect(bill).toMatchObject({ detail: 'Bill · 20 Nov · on BCA Visa', inTotals: false });
+    expect(monthTotals(items, '2026-11').dueMinor).toBe(kreditNov('2026-11-04') + 6_214_300 + 2_480_000);
+    expect(dueRow(items, '2026-11-18')?.item.kind).not.toBe('bill');
   });
 });
 

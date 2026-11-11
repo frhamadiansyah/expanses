@@ -56,6 +56,11 @@ describe('monthBars and monthTag', () => {
     ]);
     expect(bars.map((b) => b.soFar)).toEqual([false, false, false, true]);
   });
+  it('a figure counted toward due or paid is used when an item carries one', () => {
+    const card = { ...item('2026-10-14', 'paid', 18_000_000), kind: 'card' as const, dueBaseMinor: 3_000_000, paidBaseMinor: 3_000_000 };
+    const [bar] = monthBars({ '2026-10': [card] }, ['2026-10'], '2026-11-11');
+    expect(bar).toMatchObject({ dueMinor: 3_000_000, paidMinor: 3_000_000, allPaid: true });
+  });
   it('each month’s tag', () => {
     expect(bars.map(monthTag)).toEqual(['Nothing due', 'All paid', '1 late', '']);
     expect(bars[0]).toMatchObject({ nothingDue: true, allPaid: false });

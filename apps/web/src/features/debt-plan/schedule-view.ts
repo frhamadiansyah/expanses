@@ -28,7 +28,7 @@ export interface MonthInput {
    * The open book's bills owed in this month and the one before (a bill out late in a month is paid by a day in the
    * next), each with the currency it is written in. Only those whose pay-by day is in the month are its items.
    */
-  bills: readonly { row: BillMonthRow; currency: string }[];
+  bills: readonly { row: BillMonthRow; currency: string; /** The credit card that pays it, by name. */ onCard?: string | null }[];
   show: { loans: boolean; cards: boolean; bills: boolean };
   baseCurrency: string;
   ratesToBase: Readonly<Record<string, number>>;
@@ -42,16 +42,25 @@ function toBase(minor: number | null, currency: string, base: string, rates: Rea
   return convertMinor(minor, currency, base, rate);
 }
 
-type Parts = Omit<PlanItem, 'baseMinor' | 'key' | 'paidOn' | 'fromMessage'> & Partial<Pick<PlanItem, 'paidOn' | 'fromMessage'>>;
+type Parts = Omit<PlanItem, 'baseMinor' | 'key' | 'paidOn' | 'fromMessage' | 'dueBaseMinor' | 'paidBaseMinor'> &
+  Partial<Pick<PlanItem, 'paidOn' | 'fromMessage'>> & {
+    /** In the item's own currency: what it counts toward Due and Paid, when that is not its figure. */
+    dueOwn?: number;
+    paidOwn?: number;
+  };
 
 function build(parts: Parts, id: string, input: MonthInput): PlanItem {
+  const { dueOwn, paidOwn, ...rest } = parts;
+  const base = (minor: number | null) => toBase(minor, parts.currency, input.baseCurrency, input.ratesToBase);
   return {
     paidOn: null,
     fromMessage: false,
-    ...parts,
+    ...rest,
     key: `${parts.kind}:${id}:${parts.dueOn}`,
-    baseMinor: toBase(parts.minor, parts.currency, input.baseCurrency, input.ratesToBase),
+    baseMinor: base(parts.minor),
     approximate: parts.approximate || parts.currency !== input.baseCurrency,
+    ...(dueOwn !== undefined ? { dueBaseMinor: base(dueOwn) } : {}),
+    ...(paidOwn !== undefined ? { paidBaseMinor: base(paidOwn) } : {}),
   };
 }
 
@@ -123,11 +132,18 @@ function instalmentNumberFrom(debt: PlanDebt, fact: LoanPlanFact, onDate: string
 function cardItems(input: MonthInput): PlanItem[] {
   return input.cards.flatMap((card) => {
     const { statement } = card;
-    // A statement that billed nothing asks for nothing.
-    if (statement.closingMinor <= 0) return [];
+    // A statement that billed nothing and carries nothing asks for nothing.
+    if (statement.closingMinor <= 0 && statement.chargesMinor <= 0) return [];
     const left = statement.leftToPayMinor;
     const paid = statement.closed && left !== null && left <= 0;
     const late = !paid && statement.closed && card.dueOn < input.today && (left ?? 0) > 0;
+    /*
+     * A statement's own share of the months' money: its new charges are what fell due with it, and what has been paid
+     * toward them is every payment since it opened less what first went to the balance it carried in. Read this way a
+     * balance carried through several statements and cleared by one payment is due once and paid once (spec §6.9).
+     */
+    const ownCharges = Math.max(0, statement.chargesMinor);
+    const paidTowardOwn = Math.min(ownCharges, Math.max(0, statement.creditsMinor + statement.paidSinceMinor - statement.openingMinor));
     const debt = input.debts.find((d) => d.kind === 'card' && d.accountId === card.cardId);
     return [
       build(
@@ -140,7 +156,10 @@ function cardItems(input: MonthInput): PlanItem[] {
           dueOn: card.dueOn,
           status: paid ? 'paid' : late ? 'late' : 'upcoming',
           daysLate: late ? daysFrom(card.dueOn, input.today) : 0,
-          minor: statement.closingMinor,
+          // Unpaid and closed: what is left of it, the figure Pay next and the card's own page ask for.
+          minor: statement.closed && !paid && left !== null ? left : statement.closingMinor,
+          dueOwn: ownCharges,
+          paidOwn: paidTowardOwn,
           currency: card.currency,
           // Not yet closed: what it has come to so far.
           approximate: !statement.closed,
@@ -155,7 +174,7 @@ function cardItems(input: MonthInput): PlanItem[] {
 
 function billItems(input: MonthInput): PlanItem[] {
   const current = monthOf(input.today);
-  return input.bills.flatMap(({ row, currency }) => {
+  return input.bills.flatMap(({ row, currency, onCard }) => {
     if (row.state === 'skipped' || row.state === 'paused') return [];
     // A bill is due in the month of its pay-by day (spec §6.4); the current month also carries an earlier one still overdue.
     const payMonth = monthOf(row.window.payBy);
@@ -171,7 +190,9 @@ function billItems(input: MonthInput): PlanItem[] {
           debtKey: null,
           name: row.bill.name,
           title: row.bill.name,
-          detail: `Bill · ${dayMonth(dueOn)}`,
+          // Paid on a credit card, the bill lands on that card's statement: listed, but the statement counts it.
+          detail: onCard ? `Bill · ${dayMonth(dueOn)} · on ${onCard}` : `Bill · ${dayMonth(dueOn)}`,
+          inTotals: !onCard,
           dueOn,
           status: paid ? 'paid' : late ? 'late' : 'upcoming',
           daysLate: late ? Math.max(1, daysFrom(dueOn, input.today)) : 0,
@@ -221,19 +242,31 @@ export function monthSections(items: readonly PlanItem[], month: string, today: 
   };
 }
 
+/** What an item counts toward Due: its own share when it carries one (a card statement), else its figure. */
+export const dueFigure = (item: PlanItem): number | null => (item.dueBaseMinor !== undefined ? item.dueBaseMinor : item.baseMinor);
+
+/** What an item counts toward Paid: what has gone toward its share, else its figure once it is paid. */
+export const paidFigure = (item: PlanItem): number | null =>
+  item.paidBaseMinor !== undefined ? item.paidBaseMinor : item.status === 'paid' ? item.baseMinor : 0;
+
 /** Spec §6.9: Due is every item due in the month (paid ones at what was paid), Paid the paid ones, Late every late one listed. */
 export function monthTotals(items: readonly PlanItem[], month: string): { dueMinor: number; paidMinor: number; lateMinor: number; missing: string[] } {
   const missing = new Set<string>();
-  const sum = (list: readonly PlanItem[]) =>
+  const counted = items.filter((i) => i.inTotals !== false);
+  const sum = (list: readonly PlanItem[], pick: (item: PlanItem) => number | null | undefined) =>
     list.reduce((total, item) => {
-      if (item.minor !== null && item.baseMinor === null) missing.add(item.currency);
-      return total + (item.baseMinor ?? 0);
+      const figure = pick(item);
+      if (item.minor !== null && figure === null) missing.add(item.currency);
+      return total + (figure ?? 0);
     }, 0);
-  const due = items.filter((i) => monthOf(i.dueOn) === month);
+  const due = counted.filter((i) => monthOf(i.dueOn) === month);
   return {
-    dueMinor: sum(due),
-    paidMinor: sum(due.filter((i) => i.status === 'paid')),
-    lateMinor: sum(items.filter((i) => i.status === 'late')),
+    dueMinor: sum(due, dueFigure),
+    paidMinor: sum(due, paidFigure),
+    lateMinor: sum(
+      counted.filter((i) => i.status === 'late'),
+      (i) => i.baseMinor,
+    ),
     missing: [...missing].sort(),
   };
 }
@@ -268,7 +301,7 @@ const lower = (words: string) => words.charAt(0).toLowerCase() + words.slice(1);
 /** The Cashflow row (spec §4.6): instalments, statements and bills late or due within BILL_DUE_SOON_DAYS; null when none. */
 export function dueRow(items: readonly PlanItem[], today: string): DueRowModel | null {
   const urgent = items
-    .filter((i) => i.kind !== 'person' && i.status !== 'paid' && i.pay !== null)
+    .filter((i) => i.kind !== 'person' && i.status !== 'paid' && i.pay !== null && i.inTotals !== false)
     .filter((i) => i.status === 'late' || daysFrom(today, i.dueOn) <= BILL_DUE_SOON_DAYS)
     .sort((a, b) => {
       const lateA = a.status === 'late' ? 1 : 0;

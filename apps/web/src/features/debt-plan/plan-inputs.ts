@@ -44,6 +44,15 @@ export interface PlanItem {
   paidOn: string | null;
   fromMessage: boolean;
   pay: PayTarget | null;
+  /**
+   * What the item counts toward a month's Due and Paid, in the base currency, when that is not simply its figure: a
+   * card statement counts its own new charges as due and what has gone toward them as paid, so a balance carried from
+   * month to month is never due (or paid) twice. Absent: the figure itself, paid when the item is.
+   */
+  dueBaseMinor?: number | null;
+  paidBaseMinor?: number | null;
+  /** False for a row the totals leave out: a bill paid from a credit card, which that card's statement already counts. */
+  inTotals?: boolean;
 }
 
 export type PlanDebtKind = 'loan' | 'card' | 'person' | 'payable';

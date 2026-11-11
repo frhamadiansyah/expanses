@@ -206,6 +206,11 @@ export function usePlanMonth(month: string | null, show: MonthInput['show'] = AL
   const accounts = useAccounts();
   const rows = [...(before.data ?? []), ...(bills.data ?? [])];
   const currencyOf = (row: BillMonthRow) => billCurrencyOf(row.bill, accounts.data ?? [], ws.baseCurrency);
+  /** A bill paid from a credit card, by the card's name: its statement already counts it. */
+  const cardNameOf = (accountId: string) => {
+    const payer = (accounts.data ?? []).find((a) => a.id === accountId);
+    return payer?.subtype === 'credit_card' ? payer.name : null;
+  };
   const held = useHeldRates(rows.map(currencyOf));
   const queries = [facts, cards, before, bills, accounts, held];
   const failed = error ?? queries.find((q) => q.error)?.error ?? null;
@@ -217,7 +222,7 @@ export function usePlanMonth(month: string | null, show: MonthInput['show'] = AL
       debts: model.debts,
       loanFacts: facts.data!,
       cards: cards.data![month] ?? [],
-      bills: rows.map((row) => ({ row, currency: currencyOf(row) })),
+      bills: rows.map((row) => ({ row, currency: currencyOf(row), onCard: cardNameOf(row.bill.moneyAccountId) })),
       show,
       baseCurrency: ws.baseCurrency,
       ratesToBase: { ...(held.data?.rates ?? {}), ...model.ratesToBase },

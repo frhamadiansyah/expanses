@@ -1,6 +1,7 @@
 import { addMonths, convertMinor, monthOf } from '@expanses/core';
 import type { DebtMovement } from '@expanses/db';
 import type { PlanDebt, PlanItem } from './plan-inputs';
+import { dueFigure, paidFigure } from './schedule-view';
 
 /** The Report (spec §4.4, §6.10): a period's figures from the debts' own movements, and paid against due by month. Pure. */
 
@@ -88,14 +89,14 @@ export interface MonthBar {
 export function monthBars(byMonth: Readonly<Record<string, readonly PlanItem[]>>, months: readonly string[], today: string): MonthBar[] {
   const current = monthOf(today);
   return months.map((month) => {
-    const due = (byMonth[month] ?? []).filter((i) => monthOf(i.dueOn) === month);
-    const sum = (list: readonly PlanItem[]) => list.reduce((total, i) => total + (i.baseMinor ?? 0), 0);
+    const due = (byMonth[month] ?? []).filter((i) => monthOf(i.dueOn) === month && i.inTotals !== false);
+    const sum = (list: readonly PlanItem[], pick: (i: PlanItem) => number | null) => list.reduce((total, i) => total + (pick(i) ?? 0), 0);
     const paid = due.filter((i) => i.status === 'paid');
     const late = due.filter((i) => i.status === 'late').length;
     return {
       month,
-      dueMinor: sum(due),
-      paidMinor: sum(paid),
+      dueMinor: sum(due, dueFigure),
+      paidMinor: sum(due, paidFigure),
       late,
       allPaid: due.length > 0 && paid.length === due.length,
       soFar: month === current,
