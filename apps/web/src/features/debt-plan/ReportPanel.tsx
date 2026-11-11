@@ -98,9 +98,14 @@ export function ReportPanel({ period, onPeriod }: { period: ReportPeriod; onPeri
   const accounts = useAccounts();
   const liabilities = (accounts.data ?? []).filter((a) => a.kind === 'liability' && a.archivedAt === null);
   // Card spending is borrowing here, so cards' movements are read too — on this page only.
-  const movements = useDebtMovements(liabilities.map((a) => a.id));
+  // A fixed period reads its own months only; All reads everything, to know where it starts.
+  const fixed = period === 'all' ? null : periodMonths(period, today, null);
+  const movements = useDebtMovements(
+    liabilities.map((a) => a.id),
+    fixed ? { from: `${fixed[0]}-01` } : undefined,
+  );
   const earliest = movements.data?.[0]?.occurredOn ?? null;
-  const months = periodMonths(period, today, earliest);
+  const months = fixed ?? periodMonths('all', today, earliest);
   const barMonths = period === 'all' ? months.slice(-12) : months;
   const { byMonth, error: monthError } = usePlanMonths(barMonths);
   const currencyOf = Object.fromEntries(liabilities.map((a) => [a.id, a.currency ?? ws.baseCurrency]));
@@ -123,6 +128,9 @@ export function ReportPanel({ period, onPeriod }: { period: ReportPeriod; onPeri
           <InsetRow title="Left" valueTone="ink" value={figure(figures.leftMinor, 'report-left', 'font-bold text-[var(--ph-ink)]')} />
           <InsetRow title="Interest paid" valueTone="ink" value={figure(figures.interestMinor, 'report-interest')} />
         </InsetGroup>
+      )}
+      {figures && figures.missing.length > 0 && (
+        <p className="-mt-[10px] mb-[14px] px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-warn)]">{`No ${figures.missing.join(', ')} rate yet, so those are left out`}</p>
       )}
       {bars && bars.length > 0 && (
         <Panel header="Paid against due" testId="report-bars">

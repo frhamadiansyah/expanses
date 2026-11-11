@@ -31,8 +31,9 @@ export function periodMonths(period: ReportPeriod, today: string, earliest: stri
 }
 
 /**
- * Borrowed (every increase), Repaid (every decrease), Interest paid (interest lines on payments) over the months, and
- * Left today. `currencyOf` names each account's currency; a currency with no rate leaves the figures out, named.
+ * Borrowed (every increase), Repaid (every decrease), Interest paid (interest lines on payments, once a transaction)
+ * over the months, and Left today. `currencyOf` names each account's currency; a currency with no rate is left out of
+ * the figures and named in `missing`, and the rest still add up. Left is null while an owing debt has no rate.
  */
 export function reportFigures(
   movements: readonly DebtMovement[],
@@ -44,6 +45,7 @@ export function reportFigures(
 ): { borrowedMinor: number | null; repaidMinor: number | null; interestMinor: number | null; leftMinor: number | null; missing: string[] } {
   const inPeriod = new Set(months);
   const missing = new Set<string>();
+  const interestSeen = new Set<string>();
   let borrowed = 0;
   let repaid = 0;
   let interest = 0;
@@ -51,6 +53,7 @@ export function reportFigures(
     if (!inPeriod.has(monthOf(m.occurredOn))) continue;
     const currency = currencyOf[m.accountId] ?? debts.find((d) => d.accountId === m.accountId)?.currency ?? baseCurrency;
     const rate = currency === baseCurrency ? 1 : ratesToBase[currency];
+    // A currency with no rate is named and left out; what is known still adds up.
     if (rate === undefined || !(rate > 0)) {
       missing.add(currency);
       continue;
@@ -59,16 +62,19 @@ export function reportFigures(
     if (m.amountMinor < 0) borrowed += base(-m.amountMinor);
     else {
       repaid += base(m.amountMinor);
-      interest += base(m.interestMinor);
+      // A payment that lowers two debts carries its interest once.
+      if (!interestSeen.has(m.transactionId)) {
+        interestSeen.add(m.transactionId);
+        interest += base(m.interestMinor);
+      }
     }
   }
   const owing = debts.filter((d) => !d.paidOff && d.leftMinor > 0);
   for (const d of owing) if (d.leftBase === null) missing.add(d.currency);
-  const known = missing.size === 0;
   return {
-    borrowedMinor: known ? borrowed : null,
-    repaidMinor: known ? repaid : null,
-    interestMinor: known ? interest : null,
+    borrowedMinor: borrowed,
+    repaidMinor: repaid,
+    interestMinor: interest,
     leftMinor: owing.some((d) => d.leftBase === null) ? null : owing.reduce((sum, d) => sum + (d.leftBase ?? 0), 0),
     missing: [...missing].sort(),
   };

@@ -28,9 +28,9 @@ describe('reportFigures', () => {
     expect(all).toMatchObject({ borrowedMinor: 12_214_300, repaidMinor: 951_155 });
     expect(all.leftMinor).toBe(all.borrowedMinor! - all.repaidMinor!);
   });
-  it('a dollar movement with no rate is named, never added as rupiah', () => {
+  it('a dollar movement with no rate is named, never added as rupiah; what is known still shows', () => {
     const usd = reportFigures([...movements, move('U1', '2026-11-02', -100_000)], debts, ['2026-11'], 'IDR', {}, { ...currencies, U1: 'USD' });
-    expect(usd).toMatchObject({ borrowedMinor: null, repaidMinor: null, interestMinor: null, missing: ['USD'] });
+    expect(usd).toMatchObject({ borrowedMinor: 0, repaidMinor: 951_155, interestMinor: 120_000, missing: ['USD'] });
     const rated = reportFigures([...movements, move('U1', '2026-11-02', -100_000)], debts, ['2026-11'], 'IDR', { USD: 16_250 }, { ...currencies, U1: 'USD' });
     expect(rated.borrowedMinor).toBe(16_250_000);
   });
@@ -38,6 +38,21 @@ describe('reportFigures', () => {
 
 const item = (dueOn: string, status: PlanItem['status'], baseMinor: number): PlanItem =>
   ({ key: `x:${dueOn}:${status}`, debtKey: 'L1', kind: 'loan', name: 'Kredit', title: 'Kredit', detail: '', dueOn, status, daysLate: status === 'late' ? 3 : 0, minor: baseMinor, currency: 'IDR', baseMinor, approximate: false, paidOn: status === 'paid' ? dueOn : null, fromMessage: false, pay: null }) as PlanItem;
+
+describe('reportFigures, more', () => {
+  it('a debt with no rate and no movement in the period leaves the period’s figures alone', () => {
+    const dollar = { ...debt('U1', 0, 'USD'), leftBase: null, leftMinor: 100_000 } as PlanDebt;
+    const f = reportFigures(movements, [...debts, dollar], ['2026-11'], 'IDR', {}, { ...currencies, U1: 'USD' });
+    expect(f).toMatchObject({ borrowedMinor: 0, repaidMinor: 951_155, interestMinor: 120_000, leftMinor: null, missing: ['USD'] });
+  });
+  it('interest on one payment that lowers two debts is counted once', () => {
+    const both = [
+      { ...move('L1', '2026-11-11', 500_000, 120_000), transactionId: 't' },
+      { ...move('C1', '2026-11-11', 451_155, 120_000), transactionId: 't' },
+    ];
+    expect(reportFigures(both, debts, ['2026-11'], 'IDR', {}, currencies)).toMatchObject({ repaidMinor: 951_155, interestMinor: 120_000 });
+  });
+});
 
 describe('monthBars and monthTag', () => {
   const byMonth = {
