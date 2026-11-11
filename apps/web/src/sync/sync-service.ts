@@ -565,7 +565,7 @@ export class SyncService {
     try {
       const id = await this.deviceId();
       if (id && at - (this.ownSeenWritten.get(bookId) ?? -Infinity) > SEEN_WRITE_MS) {
-        await recordDevicesSeen(this.database, bookId, { [id]: at });
+        await recordDevicesSeen(this.database, bookId, { [id]: at }, this.now());
         this.ownSeenWritten.set(bookId, at);
       }
       await this.flushHeard(bookId);
@@ -596,7 +596,7 @@ export class SyncService {
     const seen = this.heard.get(relayBookId);
     if (!seen) return;
     this.heard.delete(relayBookId);
-    await recordDevicesSeen(this.database, bookId, seen);
+    await recordDevicesSeen(this.database, bookId, seen, this.now());
   }
 
   /**
