@@ -37,9 +37,10 @@ export function MonthStepper({ month, onMonth }: { month: string; onMonth: (mont
 
 function Tile({ testId, label, minor, currency, tone }: { testId: string; label: string; minor: number; currency: string; tone: string }) {
   return (
-    <div data-testid={testId} className="min-w-0 rounded-[12px] bg-[var(--ph-surface)] px-[12px] py-[10px]">
+    <div data-testid={testId} className="min-w-0 rounded-[12px] bg-[var(--ph-surface)] px-[10px] py-[10px]">
       <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{label}</p>
-      <p className={`tabular truncate text-[15px] leading-[20px] font-bold ${tone}`}>{formatMinor(minor, currency)}</p>
+      {/* A third of a phone is narrow: the figure steps down a size and wraps rather than being cut. */}
+      <p className={`tabular text-[13px] leading-[18px] font-bold break-words md:text-[15px] md:leading-[20px] ${tone}`}>{formatMinor(minor, currency)}</p>
     </div>
   );
 }

@@ -118,10 +118,10 @@ export function ReportPanel({ period, onPeriod }: { period: ReportPeriod; onPeri
       <ErrorBox error={error ?? movements.error ?? monthError} />
       {figures && (
         <InsetGroup>
-          <InsetRow title="Borrowed" value={figure(figures.borrowedMinor, 'report-borrowed')} />
-          <InsetRow title="Repaid" value={figure(figures.repaidMinor, 'report-repaid', 'text-[var(--ph-up)]')} />
-          <InsetRow title="Left" value={figure(figures.leftMinor, 'report-left', 'font-bold text-[var(--ph-ink)]')} />
-          <InsetRow title="Interest paid" value={figure(figures.interestMinor, 'report-interest')} />
+          <InsetRow title="Borrowed" valueTone="ink" value={figure(figures.borrowedMinor, 'report-borrowed')} />
+          <InsetRow title="Repaid" valueTone="ink" value={figure(figures.repaidMinor, 'report-repaid', 'text-[var(--ph-up)]')} />
+          <InsetRow title="Left" valueTone="ink" value={figure(figures.leftMinor, 'report-left', 'font-bold text-[var(--ph-ink)]')} />
+          <InsetRow title="Interest paid" valueTone="ink" value={figure(figures.interestMinor, 'report-interest')} />
         </InsetGroup>
       )}
       {bars && bars.length > 0 && (
