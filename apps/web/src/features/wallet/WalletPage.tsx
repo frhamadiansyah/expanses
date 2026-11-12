@@ -1,20 +1,24 @@
-import { formatMinor, sumToBase } from '@expanses/core';
+import { formatMinor } from '@expanses/core';
 import { listTransactionsIn } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Outlet, useNavigate, useParams, useRouter } from '@tanstack/react-router';
-import { ArrowUpDown, Award, GalleryHorizontal, LayoutGrid, Layers, Plus, Settings, Sparkles, Store, X } from 'lucide-react';
+import { ArrowUpDown, Award, Check, GalleryHorizontal, LayoutGrid, Layers, Plus, Settings, Sparkles, Store, X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { cx, Empty, Money } from '../../ui';
 import { CardStack, CornerButton, type CornerAction, heroFigure, InsetGroup, InsetRow, LargeTitle, Panel } from '../../ui/native';
 import { BalanceSpark } from '../accounts/BalanceSpark';
 import { balanceSeries, crossing, daysBefore } from '../accounts/balance-series';
-import { SPENDABLE_KINDS, freeToSpend, moneySummary, pocketsOf } from '../accounts/pockets';
+import { pocketsOf } from '../accounts/pockets';
+import { useHeldRates } from '../accounts/queries';
 import { sharedSections } from '../accounts/shared-accounts';
+import { billCurrencyOf } from '../bills/bill-view';
+import { useBillsInMonth } from '../debt-plan/queries';
 import { useSetAsideViews } from '../goals/queries';
-import { owedMinor } from '../networth/debt-rows';
 import { useOwnerRings, useSharedNetWorth } from '../networth/queries';
+import { BillsToPaySheet } from './BillsToPaySheet';
 import { useWalletCards } from './useWalletCards';
+import { filteredCards, toggleFilter, walletBox, type WalletFilter } from './wallet-balance';
 import { WALLET_VIEW_LABELS, WALLET_VIEWS, changeWalletView, useWalletView } from './wallet-view';
 import { WalletCarousel, WalletGrid } from './WalletViews';
 
@@ -37,18 +41,69 @@ const SPARK_DAYS = 30;
 /**
  * One share of the Balance box: a dot in the line's own colour, what it is called, and its figure on the right. The
  * legend and the picture are one thing, so the dot's colour is the line's colour and never a colour of its own.
+ *
+ * Each share is a button. Spending money and Owed on cards filter the grid under the box to the cards they are made
+ * of (`pressed`), on their own tint with a ✓, the other rows greyed meanwhile (`dimmed`); Bills still to pay opens its
+ * sheet, so it carries a chevron instead.
  */
-function SpendRow({ colour, label, value, currency, separator = false }: { colour: string; label: string; value: number; currency: string; separator?: boolean }) {
+function SpendRow({
+  colour,
+  label,
+  value,
+  currency,
+  onClick,
+  pressed,
+  tint,
+  dimmed = false,
+  chevron = false,
+  testId,
+}: {
+  colour: string;
+  label: string;
+  value: number;
+  currency: string;
+  onClick: () => void;
+  /** A filter row's state; absent on a row that opens something instead. */
+  pressed?: boolean;
+  /** The ground a pressed row is laid on. */
+  tint?: string;
+  dimmed?: boolean;
+  chevron?: boolean;
+  testId?: string;
+}) {
+  const ink = dimmed ? 'text-[var(--ph-ink-3)]' : 'text-[var(--ph-ink)]';
   return (
-    <div className={cx('flex items-center justify-between gap-[10px]', separator && 'mt-3 border-t-[0.5px] border-[var(--ph-hair)] pt-3')}>
+    <button
+      type="button"
+      aria-pressed={pressed}
+      aria-haspopup={chevron ? 'dialog' : undefined}
+      onClick={onClick}
+      data-testid={testId}
+      className="ph-focus -mx-[6px] flex w-[calc(100%+12px)] items-center justify-between gap-[10px] rounded-[8px] px-[6px] py-[7px] text-left"
+      style={{ background: pressed ? tint : undefined }}
+    >
       <span className="flex min-w-0 items-center gap-[7px]">
-        <span aria-hidden className="h-[9px] w-[9px] shrink-0 rounded-full" style={{ background: colour }} />
-        <span className="truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{label}</span>
+        <span aria-hidden className="h-[9px] w-[9px] shrink-0 rounded-full" style={{ background: colour, opacity: dimmed ? 0.5 : 1 }} />
+        <span className={cx('truncate text-[15px] leading-[20px]', pressed ? 'font-semibold' : 'font-medium', ink)}>{label}</span>
       </span>
-      <span className="shrink-0 tabular text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{formatMinor(value, currency)}</span>
-    </div>
+      <span className="flex shrink-0 items-center gap-[4px]">
+        <span className={cx('tabular text-[15px] leading-[20px]', pressed ? 'font-semibold' : 'font-medium', ink)}>{formatMinor(value, currency)}</span>
+        {pressed && <Check aria-hidden size={15} className="text-[var(--ph-ink-3)]" />}
+        {chevron && (
+          <span aria-hidden className="text-[17px] leading-none text-[var(--ph-chevron)]">
+            {'›'}
+          </span>
+        )}
+      </span>
+    </button>
   );
 }
+
+/** A hairline between two of the box's rows. */
+const Hair = () => <div aria-hidden className="border-t-[0.5px] border-[var(--ph-hair)]" />;
+
+/** What the grid's header names a filter by. */
+const FILTER_LABELS: Record<WalletFilter, string> = { spending: 'Spending money', cards: 'Owed on cards' };
 
 /**
  * `/wallet` — everything money is spent from or owed on, as one Wallet stack. It is what the Accounts page and the
@@ -81,7 +136,7 @@ export function WalletPage() {
   const openId = cardId ?? accountId;
   // Wallet's cards, drawn and in order (`useWalletCards`), and the money they were read from.
   const { accounts, balances, everything, all, book, money, credit, rates, held, today, cards: wallet, ready } = useWalletCards();
-  const owed = useSetAsideViews();
+  const setAsides = useSetAsideViews();
   const shared = useSharedNetWorth().data;
   const rings = useOwnerRings()?.rings;
   const sharedGroups = shared ? sharedSections(shared.group.mode, shared.group.members, shared.names, shared.items, rings) : [];
@@ -93,24 +148,53 @@ export function WalletPage() {
 
   /*
    * The Balance box: money kept for spending, less what goals have claimed of it, less what the credit cards owe —
-   * every card's whole balance, billed or not, because that money is already spent. Loans and money owed to people
-   * are not here any more: they are read against a year's schedule on Net worth's Liabilities, not as this month's
-   * claim on the money in a pocket. A rate short and there is no figure; the missing currency is named instead.
+   * every card's whole balance, billed or not, because that money is already spent — less the bills still to pay this
+   * month (`walletBox`). Loans and money owed to people are not here any more: they are read against a year's schedule
+   * on Net worth's Liabilities, not as this month's claim on the money in a pocket. A rate short and there is no
+   * figure; the missing currency is named instead.
    */
-  const spendable = moneySummary(book, all, ws.baseCurrency, held, SPENDABLE_KINDS);
-  const counted = new Set(book.filter((a) => a.kind === 'asset' && SPENDABLE_KINDS.has(a.subtype)).map((a) => a.id));
-  const promiseAmounts = Object.values(owed.data ?? {})
-    .filter((row) => counted.has(row.accountId))
-    .map((row) => ({ minor: row.setAsideMinor, currency: row.currency }));
-  const promised = sumToBase({ amounts: promiseAmounts, baseCurrency: ws.baseCurrency, ratesToBase: held });
-  const askedAmounts = credit.flatMap((card) => {
-    const owes = owedMinor(all, card.id);
-    return owes > 0 ? [{ minor: owes, currency: card.currency ?? ws.baseCurrency }] : [];
+  const month = today.slice(0, 7);
+  // This month's bills, as the Recurring page reads them; read only while the box is on screen.
+  const monthBills = useBillsInMonth(boxed ? month : null);
+  const billRows = (monthBills.data ?? []).map((row) => ({
+    id: row.bill.id,
+    name: row.bill.name,
+    categoryAccountId: row.bill.categoryAccountId,
+    month: row.month,
+    state: row.state,
+    payBy: row.window.payBy,
+    amountMinor: row.bill.amountMinor,
+    estimateMinor: row.estimateMinor,
+    currency: billCurrencyOf(row.bill, everything, ws.baseCurrency),
+  }));
+  // A bill may be in a currency no card holds: its rate is read beside the cards' own.
+  const billRates = useHeldRates(billRows.map((row) => row.currency));
+  const box = walletBox({
+    book,
+    balances: all,
+    credit,
+    baseCurrency: ws.baseCurrency,
+    rates: { ...held, ...(billRates.data?.rates ?? {}) },
+    setAsides: Object.values(setAsides.data ?? {}),
+    bills: billRows,
+    month,
   });
-  const asked = sumToBase({ amounts: askedAmounts, baseCurrency: ws.baseCurrency, ratesToBase: held });
-  const unclaimed = freeToSpend(spendable, promised, { totalMinor: 0, missing: [] });
-  const free = freeToSpend(spendable, promised, asked);
-  const estimated = spendable.converted || [...promiseAmounts, ...askedAmounts].some((amount) => amount.currency !== ws.baseCurrency);
+  // The box is drawn once everything it adds up is read; the grid waits for it, so the faces never jump down under it.
+  const boxRead = accounts.isSuccess && balances.isSuccess && rates.isSuccess && !billRates.isPending && !monthBills.isPending;
+  const boxReady = boxRead && box.accounts > 0;
+  const figures = box.balanceMinor !== null && box.spendingMinor !== null;
+
+  // Which of the box's rows the grid is filtered to: this visit's only, and only while the grid and its box are drawn.
+  const [filter, setFilter] = useState<WalletFilter | null>(null);
+  const [billsOpen, setBillsOpen] = useState(false);
+  const filtering = boxed && boxReady && figures ? filter : null;
+  useEffect(() => {
+    if (!boxed) setFilter(null);
+  }, [boxed]);
+  const openBills = () => {
+    setFilter(null);
+    setBillsOpen(true);
+  };
   /** The money the box counts — a parent's pockets rather than the parent — so its line is drawn from the same money. */
   const countedIds = money.flatMap((account) => {
     const pockets = pocketsOf(account.id, book);
@@ -130,7 +214,7 @@ export function WalletPage() {
       });
     },
   });
-  const series = flows.data && free.freeMinor !== null ? balanceSeries({ todayMinor: free.freeMinor, today, days: SPARK_DAYS, flows: flows.data }) : null;
+  const series = flows.data && box.balanceMinor !== null ? balanceSeries({ todayMinor: box.balanceMinor, today, days: SPARK_DAYS, flows: flows.data }) : null;
   const crossed = series ? crossing(series) : null;
 
   const raised = openId !== undefined ? wallet.find((card) => card.key === openId) : undefined;
@@ -232,30 +316,69 @@ export function WalletPage() {
        * Balance, and the two numbers it is made of, as one block: the figure, the month behind it, and the rows that
        * are its legend. The goals are already subtracted in the first row. The grid's alone.
        */}
-      {!raised && boxed && accounts.isSuccess && balances.isSuccess && rates.isSuccess && spendable.accounts > 0 &&
-        (free.freeMinor !== null && unclaimed.freeMinor !== null ? (
+      {!raised && boxed && boxReady &&
+        (box.balanceMinor !== null && box.spendingMinor !== null ? (
           <Panel className="space-y-3" testId="wallet-balance">
             <div>
               <p className="text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">Balance</p>
               {/* One line, whatever the amount is: a figure that wraps reads as two figures where there is one. */}
               <p className="tabular truncate text-[26px] leading-[32px] font-bold tracking-[-0.02em]">
-                {estimated && <span className="text-[var(--ph-ink-3)]">≈ </span>}
-                {heroFigure(free.freeMinor, ws.baseCurrency).text}
+                {box.estimated && <span className="text-[var(--ph-ink-3)]">≈ </span>}
+                {heroFigure(box.balanceMinor, ws.baseCurrency).text}
               </p>
             </div>
             {series && <BalanceSpark series={series} currency={ws.baseCurrency} crossing={crossed} className="pt-1" />}
-            <div className="border-t-[0.5px] border-[var(--ph-hair)] pt-3">
-              <SpendRow colour="var(--ph-up)" label="Spending money" value={unclaimed.freeMinor} currency={ws.baseCurrency} />
-              <SpendRow separator colour="var(--ph-alarm)" label="Owed on cards" value={-(free.dueMinor ?? 0)} currency={ws.baseCurrency} />
+            <div className="border-t-[0.5px] border-[var(--ph-hair)] pt-[5px]">
+              <SpendRow
+                colour="var(--ph-up)"
+                label="Spending money"
+                value={box.spendingMinor}
+                currency={ws.baseCurrency}
+                pressed={filtering === 'spending'}
+                tint="var(--ph-up-panel)"
+                dimmed={filtering !== null && filtering !== 'spending'}
+                onClick={() => setFilter((current) => toggleFilter(current, 'spending'))}
+                testId="wallet-spending-row"
+              />
+              <Hair />
+              <SpendRow
+                colour="var(--ph-alarm)"
+                label="Owed on cards"
+                value={-(box.cardsMinor ?? 0)}
+                currency={ws.baseCurrency}
+                pressed={filtering === 'cards'}
+                tint="var(--ph-alarm-panel)"
+                dimmed={filtering !== null && filtering !== 'cards'}
+                onClick={() => setFilter((current) => toggleFilter(current, 'cards'))}
+                testId="wallet-cards-row"
+              />
+              {box.bills.length > 0 && (
+                <>
+                  <Hair />
+                  <SpendRow
+                    colour="var(--ph-warn)"
+                    label="Bills still to pay"
+                    value={-(box.billsMinor ?? 0)}
+                    currency={ws.baseCurrency}
+                    dimmed={filtering !== null}
+                    chevron
+                    onClick={openBills}
+                    testId="wallet-bills-row"
+                  />
+                </>
+              )}
             </div>
           </Panel>
         ) : (
           <Panel header="Balance" testId="wallet-balance">
             <p className="text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
-              No {free.missing.join(', ')} rate yet, so what is left to spend cannot be worked out. Each card below is exact.
+              No {box.missing.join(', ')} rate yet, so what is left to spend cannot be worked out. Each card below is exact.
             </p>
           </Panel>
         ))}
+      {billsOpen && !raised && boxed && (
+        <BillsToPaySheet bills={box.bills} month={month} totalMinor={box.billsMinor ?? 0} currency={ws.baseCurrency} accounts={everything} onClose={() => setBillsOpen(false)} />
+      )}
       {!raised && ready && wallet.length === 0 && (
         <Empty>
           Nothing to spend from yet. Add money or a credit card with ＋. Savings, deposits and loans are on{' '}
@@ -282,7 +405,22 @@ export function WalletPage() {
           <Outlet />
         </CardStack>
       )}
-      {ready && wallet.length > 0 && !raised && view === 'grid' && <WalletGrid cards={wallet} />}
+      {ready && boxRead && wallet.length > 0 && !raised && view === 'grid' && (
+        <>
+          {/* Under a filter, what the grid holds now and the way back to every card. */}
+          {filtering && (
+            <div className="flex items-baseline justify-between gap-3 px-[4px] pb-[6px]" data-testid="wallet-filter">
+              <h2 className="text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">
+                {FILTER_LABELS[filtering]} · {filteredCards(wallet, filtering, money, credit).length}
+              </h2>
+              <button type="button" onClick={() => setFilter(null)} className="ph-focus ph-tap text-[15px] leading-[20px] text-[var(--ph-tint)]">
+                Show all
+              </button>
+            </div>
+          )}
+          <WalletGrid cards={filteredCards(wallet, filtering, money, credit)} />
+        </>
+      )}
       {ready && wallet.length > 0 && !raised && view === 'carousel' && <WalletCarousel cards={wallet} accounts={everything} />}
       {/* A bank account's debit card rewards are set up from the account's Settings (`DebitRewardsGroup`), not from here. */}
       {/*
