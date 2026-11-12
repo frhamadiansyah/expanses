@@ -3,7 +3,7 @@ import { type AccountRow, billOnNextStatement, cardStatement, cardStatementLines
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { CalendarArrowUp, Check, CircleCheck, CircleX, CreditCard, Ellipsis, Receipt, Undo2, X } from 'lucide-react';
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { usePhone } from '../../app/use-phone';
 import { useApp } from '../../app/context';
@@ -18,6 +18,7 @@ import { useWorkspaceBadges } from '../workspaces/queries';
 import { StatementBand } from './StatementBand';
 import { cycleBack } from './statement-dates';
 import { groupStatementLines } from './statement-groups';
+import { isCharge, type LineCover, paidCountText, showsPaid, statementCover } from './statement-cover';
 import { CardSheet } from './CardSheet';
 import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
@@ -31,6 +32,43 @@ export interface StatementPoints {
   approximate: boolean;
   mcc: string | null;
   cardFee: boolean;
+}
+
+/** The soft green ✓ of a purchase a payment covered (mockup `.tick.cov`), at a row's size or the legend's. */
+function CoveredTick({ small = false }: { small?: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={cx('flex items-center justify-center rounded-full border-[1.5px] border-[var(--ph-covered-edge)] bg-[var(--ph-covered-fill)] text-[var(--ph-covered-ink)]', small ? 'h-[14px] w-[14px]' : 'h-[18px] w-[18px]')}
+    >
+      <Check size={small ? 9 : 11} strokeWidth={3.5} aria-hidden />
+    </span>
+  );
+}
+
+/** The solid ink ✓ of a purchase paid one by one, drawn for the legend as the row's checked box draws it. */
+function OwnTick() {
+  return (
+    <span aria-hidden className="flex h-[14px] w-[14px] items-center justify-center rounded-full border-[1.5px] border-[var(--ph-ink)] bg-[var(--ph-ink)] text-[var(--ph-surface)]">
+      <Check size={9} strokeWidth={3.5} aria-hidden />
+    </span>
+  );
+}
+
+/** Under a statement with a covered purchase: what its two kinds of ✓ mean. */
+function CoverLegend() {
+  return (
+    <span data-testid="statement-legend" className="flex flex-wrap items-center gap-x-[14px] gap-y-[4px] text-[12px]">
+      <span className="flex items-center gap-[5px]">
+        <OwnTick />
+        paid one by one
+      </span>
+      <span className="flex items-center gap-[5px]">
+        <CoveredTick small />
+        covered by a payment
+      </span>
+    </span>
+  );
 }
 
 const day = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
@@ -96,6 +134,8 @@ export function StatementPanel({
   const [assigning, setAssigning] = useState<readonly StatementLine[] | null>(null);
   // The line whose ⋯ was tapped on a phone: the sheet listing what can be done to it.
   const [acting, setActing] = useState<StatementLine | null>(null);
+  // The covered purchase whose soft ✓ was tapped: the sheet naming the payment that covered it.
+  const [explaining, setExplaining] = useState<StatementLine | null>(null);
 
   const cycle = cycleBack(today, statementDay, back);
   const statement = useQuery({
@@ -121,14 +161,27 @@ export function StatementPanel({
     const info = line.instalment || line.convertedTo ? undefined : points?.[line.transactionId];
     return info?.cardFee ? 'Card fee' : info?.mcc ? `MCC ${info.mcc}` : null;
   };
-  // A plan's instalments and the purchase it replaced are paid through the plan, not ticked off here.
-  const payable = (line: StatementLine) => line.owedMinor > 0 && line.spending && !line.paidBy && !line.paidOff && !line.instalment && !line.convertedTo;
+  // What the statement's payments cover, oldest first: worked out from the band's figures, never stored.
+  const cover = useMemo<ReadonlyMap<string, LineCover>>(() => (statement.data ? statementCover(statement.data) : new Map()), [statement.data]);
+  const coveredWhole = (line: StatementLine) => cover.get(line.key)?.whole === true;
+  // A purchase a payment partly covered is paid for what is left of it, never the whole again.
+  const leftOf = (line: StatementLine) => cover.get(line.key)?.leftMinor ?? line.owedMinor;
+  // The payment that completed a purchase's cover; money back says so, and credit from before names none.
+  const coveredNote = (line: StatementLine) => {
+    const by = cover.get(line.key)?.by ?? null;
+    return by === null ? 'covered by an earlier credit' : `covered by ${by.spending ? 'refund' : 'payment'} ${day(by.occurredOn)}`;
+  };
+  // A charge that shows as paid either way has its amount greyed.
+  const done = (line: StatementLine) => isCharge(line) && showsPaid(line, cover);
+  // A plan's instalments and the purchase it replaced are paid through the plan, not ticked off here; a purchase a
+  // payment already covers is paid, so it cannot be ticked to be paid twice.
+  const payable = (line: StatementLine) => line.owedMinor > 0 && line.spending && !line.paidBy && !line.paidOff && !line.instalment && !line.convertedTo && !coveredWhole(line);
   /*
    * What can be marked settled before the app: a purchase there is still something to pay for, or money back (a
    * refund) whose credit was used up before the app — left standing, it would sit on the card as a credit for ever.
    * The receipt asks the ledger the same question (`paidOffMarkOf`), so the two never offer it differently.
    */
-  const settleable = (line: StatementLine) => carriesPaidOffMark(line) && !line.paidOff;
+  const settleable = (line: StatementLine) => carriesPaidOffMark(line) && !line.paidOff && !coveredWhole(line);
   const settledWord = (line: StatementLine) => (line.owedMinor < 0 ? 'settled' : 'paid off');
   // Billed a statement late: the bank's posting date put it on a later statement than its purchase date.
   const lateOf = (line: StatementLine) => line.postedOn !== null && line.occurredOn < cycle.start;
@@ -141,7 +194,7 @@ export function StatementPanel({
   // One statement, split by card when the account carries more than one, the way the bank prints it.
   const groups = groupStatementLines(lines, plastic);
   const grouped = groups.length > 0 && groups[0]!.title !== null;
-  const chosenMinor = chosen.reduce((sum, line) => sum + line.owedMinor, 0);
+  const chosenMinor = chosen.reduce((sum, line) => sum + leftOf(line), 0);
   const payFrom = fromId || payers[0]?.id || '';
   const setAside = useSetAside(spendingDoor(payFrom, chosenMinor));
 
@@ -210,10 +263,10 @@ export function StatementPanel({
     setQuery('');
     onOpened?.();
   }
-  /** A line's amount, signed the way a statement prints it: money back is green and has a minus. */
-  const amount = (line: StatementLine) => (
+  /** A line's amount, signed the way a statement prints it: money back is green and has a minus; a paid charge is grey. */
+  const amount = (line: StatementLine, done = false) => (
     <>
-      <span className={cx('tabular block whitespace-nowrap', line.owedMinor < 0 && 'text-[var(--ph-up)]', line.convertedTo && 'line-through')}>
+      <span className={cx('tabular block whitespace-nowrap', line.owedMinor < 0 && 'text-[var(--ph-up)]', done && 'text-[var(--ph-ink-3)]', line.convertedTo && 'line-through')}>
         {line.owedMinor < 0 ? `−${money(-line.owedMinor)}` : money(line.owedMinor)}
       </span>
       {line.originalCurrency && line.originalAmountMinor !== null && (
@@ -226,7 +279,18 @@ export function StatementPanel({
 
   /** A purchase already paid stays ticked and cannot be unticked; deleting its payment frees it again. */
   const tick = (line: StatementLine) =>
-    line.paidOff ? (
+    coveredWhole(line) ? (
+      // Covered by a payment: a soft green ✓ that is not a switch. A tap says which payment covered it.
+      <button
+        type="button"
+        aria-label={`${line.description}, ${coveredNote(line)}`}
+        data-testid="statement-covered"
+        onClick={() => setExplaining(line)}
+        className="ph-focus flex h-[44px] w-[32px] shrink-0 items-center justify-center"
+      >
+        <CoveredTick />
+      </button>
+    ) : line.paidOff ? (
       // Paid off before the app: nothing to pay, so the Add form's ✓ in the box's place. A tap offers to take it back.
       <button
         type="button"
@@ -258,8 +322,9 @@ export function StatementPanel({
         aria-hidden
         className={cx(
           'flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] border-[var(--ph-ink-3)] text-transparent peer-disabled:opacity-60',
-          // Paid by a recorded payment is green, as a paid-off line is; a line picked to pay is an ink ring with a ✓, not filled.
-          line.paidBy ? 'peer-checked:border-[var(--ph-up)] peer-checked:bg-[var(--ph-up)] peer-checked:text-white' : 'peer-checked:border-[var(--ph-ink)] peer-checked:text-[var(--ph-ink)]',
+          // Paid one by one is a solid ink ✓, set apart from the soft green one a covering payment gives; a line picked
+          // to pay is an ink ring with a ✓, not filled.
+          line.paidBy ? 'peer-checked:border-[var(--ph-ink)] peer-checked:bg-[var(--ph-ink)] peer-checked:text-[var(--ph-surface)]' : 'peer-checked:border-[var(--ph-ink)] peer-checked:text-[var(--ph-ink)]',
         )}
       >
         <Check size={11} strokeWidth={3.5} aria-hidden />
@@ -274,8 +339,12 @@ export function StatementPanel({
     if (line.splitCategories) out.push(line.splitCategories.join(' · '));
     if (line.instalment) out.push(`instalment ${line.instalment.number} of ${line.instalment.of}`);
     if (line.convertedTo) out.push(`converted to ${line.convertedTo.months} months, billed monthly`);
-    // Which purchases you have settled yourself, kept apart from what the bank has billed.
+    // Which purchases have been settled one by one, kept apart from what the bank has billed.
     if (line.paidBy) out.push(`${s?.closed ? 'paid' : 'paid ahead'} ${day(line.paidBy.paidOn)}`);
+    // Covered by a payment oldest first: whole says by which, part says how much is left to pay.
+    const covered = cover.get(line.key);
+    if (covered?.whole) out.push(coveredNote(line));
+    else if (covered && covered.coveredMinor > 0) out.push(`${money(covered.coveredMinor)} covered, ${money(covered.leftMinor)} left`);
     // A payment made for chosen purchases says so, so a batch can be told from a bill payment.
     if (line.settles > 0) out.push(`for ${line.settles} purchase${line.settles === 1 ? '' : 's'}`);
     if (!grouped && last4(line.cardId)) out.push(<span className="tabular font-semibold">···· {last4(line.cardId)}</span>);
@@ -361,7 +430,7 @@ export function StatementPanel({
             )}
           </span>
         </span>
-        <span className="shrink-0 text-right text-[15px] leading-[20px] text-[var(--ph-ink)]">{amount(line)}</span>
+        <span className="shrink-0 text-right text-[15px] leading-[20px] text-[var(--ph-ink)]">{amount(line, done(line))}</span>
         {/* The row's actions, found without a swipe: the ⋯ at its end lists what the swipe and the ✓ offer, and the receipt. */}
         <GlyphButton label={`Actions for ${line.description}`} glyph={<Ellipsis size={17} aria-hidden />} disabled={busy} onClick={() => setActing(line)} />
       </Line>
@@ -417,7 +486,7 @@ export function StatementPanel({
                   {pointsOf(line)}
                 </td>
               )}
-              <td className="px-[8px] text-right align-middle text-[15px] leading-[20px] text-[var(--ph-ink)]">{amount(line)}</td>
+              <td className="px-[8px] text-right align-middle text-[15px] leading-[20px] text-[var(--ph-ink)]">{amount(line, done(line))}</td>
               <td className="pr-[4px] align-middle">
                 <span className="flex justify-end">
                   {/* A mouse has no swipe: the phone's left-swipe Paid off sits with the fixes. */}
@@ -496,9 +565,15 @@ export function StatementPanel({
       {searching ? null : lines.length === 0 ? (
         <p className="pb-[18px] text-center text-[15px] text-[var(--ph-ink-3)]">Nothing on this statement.</p>
       ) : (
-        groups.map((group) => {
+        groups.map((group, index) => {
+          // How many of the section's charges show paid, either ✓. A card alone on its account heads its one list Purchases.
+          const charges = group.lines.filter(isCharge);
+          const count = paidCountText(charges.filter((line) => showsPaid(line, cover)).length, charges.length);
           // One statement, split by card when the account carries more than one, the way the bank prints it.
-          const header = group.title ? `${group.title}${group.digits ? ` ${group.digits}` : ''}` : undefined;
+          const header = group.title ? `${group.title}${group.digits ? ` ${group.digits}` : ''}` : count ? 'Purchases' : undefined;
+          const trailing = group.title ? [subtotal(group.totalMinor), count].filter(Boolean).join(' · ') : (count ?? undefined);
+          // Under the list, once a covered ✓ shows: what the two kinds mean.
+          const legend = index === groups.length - 1 && lines.some(coveredWhole) ? <CoverLegend /> : undefined;
           // Purchases whose card was never said are put right all at once, from the top of their own section.
           const assign =
             group.kind === 'unassigned' && plastic.length > 1 ? (
@@ -507,12 +582,12 @@ export function StatementPanel({
           return (
             <section key={group.key} data-testid="statement-group" aria-label={header}>
               {phone ? (
-                <InsetGroup header={header} trailing={group.title ? subtotal(group.totalMinor) : undefined}>
+                <InsetGroup header={header} trailing={trailing} footer={legend}>
                   {assign}
                   {group.lines.map(statementRow)}
                 </InsetGroup>
               ) : (
-                <Panel header={header} trailing={group.title ? subtotal(group.totalMinor) : undefined} pad={false}>
+                <Panel header={header} trailing={trailing} footer={legend} pad={false}>
                   {assign && <div className="border-b-[0.5px] border-[var(--ph-hair)]">{assign}</div>}
                   {table(group.lines)}
                 </Panel>
@@ -615,6 +690,33 @@ export function StatementPanel({
         </Sheet>
       )}
 
+      {explaining && (
+        // A covered ✓ explains itself and links to the payment; it is not a switch.
+        <Sheet grouped title={explaining.description} onClose={() => setExplaining(null)}>
+          {(() => {
+            const by = cover.get(explaining.key)?.by ?? null;
+            const kind = by?.spending ? 'refund' : 'payment';
+            return (
+              <InsetGroup wide footer={by ? `Paid with the card’s ${kind} of ${money(-by.owedMinor)}. Deleting that ${kind} makes it owed again.` : 'Paid with credit left on the card from an earlier statement.'}>
+                <InsetRow plain title="Amount" value={money(explaining.owedMinor)} />
+                {by && (
+                  <InsetRow
+                    plain
+                    title="Covered by"
+                    value={`${kind === 'refund' ? 'Refund' : 'Payment'} ${day(by.occurredOn)}`}
+                    valueTone="tint"
+                    onClick={() => {
+                      setExplaining(null);
+                      void navigate({ to: '/transactions/$transactionId', params: { transactionId: by.transactionId } });
+                    }}
+                  />
+                )}
+              </InsetGroup>
+            );
+          })()}
+        </Sheet>
+      )}
+
       {unmarking && (
         <Sheet grouped title={unmarking.owedMinor < 0 ? 'Already settled' : 'Already paid off'} onClose={() => setUnmarking(null)}>
           <p className="px-[14px] pb-[10px] text-center text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
@@ -669,6 +771,8 @@ export function StatementPanel({
                   fromAccountId: payFrom,
                   occurredOn: paidOn,
                   purchaseTransactionIds: chosen.map((line) => line.transactionId),
+                  // A purchase a payment partly covered pays only what is left of it.
+                  amountsMinor: Object.fromEntries(chosen.filter((line) => leftOf(line) !== line.owedMinor).map((line) => [line.transactionId, leftOf(line)])),
                   setAside: setAside.choice,
                 });
                 setSelected(new Set());
@@ -678,7 +782,7 @@ export function StatementPanel({
           >
             <InsetGroup wide>
               {chosen.map((line) => (
-                <InsetRow key={line.transactionId} plain title={line.description} value={money(line.owedMinor)} />
+                <InsetRow key={line.transactionId} plain title={line.description} value={money(leftOf(line))} />
               ))}
             </InsetGroup>
             <ColumnGroup

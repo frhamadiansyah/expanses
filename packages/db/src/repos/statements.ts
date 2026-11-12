@@ -12,7 +12,7 @@ import type { SetAsideChoice } from './set-aside-tx';
 
 export class StatementError extends Error {
   constructor(
-    readonly code: 'NOT_FOUND' | 'POSTED_BEFORE_PURCHASE' | 'INVALID_DATE' | 'NO_STATEMENT_DAY' | 'NOTHING_TO_PAY' | 'NOT_A_CHARGE' | 'ALREADY_PAID' | 'CURRENCY',
+    readonly code: 'NOT_FOUND' | 'POSTED_BEFORE_PURCHASE' | 'INVALID_DATE' | 'NO_STATEMENT_DAY' | 'NOTHING_TO_PAY' | 'NOT_A_CHARGE' | 'ALREADY_PAID' | 'CURRENCY' | 'INVALID_AMOUNT',
     message: string,
   ) {
     super(message);
@@ -83,6 +83,11 @@ export interface CardStatement {
   paidSinceMinor: number;
   /** What is still owed from this statement, once it is closed. */
   leftToPayMinor: number | null;
+  /**
+   * The credits `paidSinceMinor` adds up (payments and money back after the statement date, up to today), oldest
+   * first, without the balancing settlements no statement draws. Empty for an open statement.
+   */
+  laterCredits: StatementLine[];
 }
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -268,7 +273,8 @@ function statementOf(all: StatementLine[], cycle: Cycle, today: string, currency
   const creditsMinor = -sum(lines.filter((line) => line.countedMinor < 0));
   const closingMinor = openingMinor + chargesMinor - creditsMinor;
   const closed = cycle.end < today;
-  const paidSinceMinor = closed ? -sum(all.filter((line) => line.countedMinor < 0 && line.statementOn > cycle.end && line.statementOn <= today)) : 0;
+  const since = closed ? all.filter((line) => line.countedMinor < 0 && line.statementOn > cycle.end && line.statementOn <= today) : [];
+  const paidSinceMinor = -sum(since);
   return {
     cycle,
     currency,
@@ -281,6 +287,7 @@ function statementOf(all: StatementLine[], cycle: Cycle, today: string, currency
     closed,
     paidSinceMinor,
     leftToPayMinor: closed ? Math.max(0, closingMinor - paidSinceMinor) : null,
+    laterCredits: since.filter((line) => !line.balancing),
   };
 }
 
@@ -329,7 +336,8 @@ export async function postingDates(database: Database, ws: WorkspaceContext, tra
 
 /**
  * Pays chosen card purchases now, before their statement: one transfer from a bank account to the card for
- * their total, remembered as paying exactly those purchases.
+ * their total, remembered as paying exactly those purchases. A purchase a payment already partly covers (the
+ * statement's oldest-first cover) is paid for what is left of it, given in `amountsMinor`; never more than it charged.
  */
 export async function payCardPurchases(
   database: Database,
@@ -339,6 +347,8 @@ export async function payCardPurchases(
     fromAccountId: string;
     occurredOn: string;
     purchaseTransactionIds: readonly string[];
+    /** What to pay of a purchase, by its id, when that is less than it charged. A purchase not named is paid whole. */
+    amountsMinor?: Readonly<Record<string, number>>;
     description?: string;
     /** Which goal the money came out of, when it took more than was free (spec §4.4). */
     setAside?: SetAsideChoice | null;
@@ -362,7 +372,11 @@ export async function payCardPurchases(
       const line = lines.get(id);
       if (!line || line.owedMinor <= 0) throw new StatementError('NOT_A_CHARGE', 'Only purchases on this card can be paid this way');
       if (line.paidBy) throw new StatementError('ALREADY_PAID', `“${line.description}” was already paid on ${line.paidBy.paidOn}`);
-      totalMinor += line.owedMinor;
+      const amountMinor = input.amountsMinor?.[id] ?? line.owedMinor;
+      if (!Number.isInteger(amountMinor) || amountMinor <= 0 || amountMinor > line.owedMinor) {
+        throw new StatementError('INVALID_AMOUNT', `Pay between nothing and the whole of “${line.description}”`);
+      }
+      totalMinor += amountMinor;
     }
 
     const paymentId = await postTransactionTx(tx, ws, {

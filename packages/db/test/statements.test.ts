@@ -9,6 +9,7 @@ import {
   createAccount,
   createCardAccount,
   listAccounts,
+  nativeBalances,
   payCardPurchases,
   postTransaction,
   replaceTransaction,
@@ -181,6 +182,56 @@ describe('paying purchases before the statement', () => {
     const usd = await createAccount(h.database, h.ws, { name: 'Wise USD', kind: 'asset', subtype: 'bank', currency: 'USD' });
     const superindo = await h.buy('2026-08-22', 'Superindo', 450_000);
     await expect(payCardPurchases(h.database, h.ws, { cardAccountId: h.card.id, fromAccountId: usd.id, occurredOn: '2026-08-25', purchaseTransactionIds: [superindo] })).rejects.toMatchObject({ code: 'CURRENCY' });
+  });
+
+  it('pays only what is left of a purchase a payment partly covered, and the card ends at exactly nothing', async () => {
+    const h = await household();
+    await h.buy('2026-07-25', 'Market', 312_000);
+    await h.buy('2026-07-28', 'Ride', 95_000);
+    const shop = await h.buy('2026-08-02', 'Shop', 549_000);
+    const dinner = await h.buy('2026-08-06', 'Dinner', 170_000);
+    // A lump payment after the statement: Market and Ride whole, Rp 3.000 of Shop.
+    await h.pay('2026-08-28', 410_000);
+
+    const payment = await payCardPurchases(h.database, h.ws, {
+      cardAccountId: h.card.id,
+      fromAccountId: h.bank.id,
+      occurredOn: '2026-08-30',
+      purchaseTransactionIds: [shop, dinner],
+      amountsMinor: { [shop]: 546_000 },
+    });
+
+    const august = await cardStatement(h.database, h.ws, h.card.id, AUGUST, '2026-09-01');
+    expect(august.laterCredits.find((line) => line.transactionId === payment)!.owedMinor).toBe(-716_000);
+    expect(august.lines.find((line) => line.transactionId === shop)!.paidBy?.transactionId).toBe(payment);
+    expect(august.leftToPayMinor).toBe(0);
+    expect((await nativeBalances(h.database, h.ws))[h.card.id] ?? 0).toBe(0);
+  });
+
+  it('refuses to pay more of a purchase than it charged, or nothing of it', async () => {
+    const h = await household();
+    const shop = await h.buy('2026-08-02', 'Shop', 549_000);
+    const pay = (amountMinor: number) =>
+      payCardPurchases(h.database, h.ws, { cardAccountId: h.card.id, fromAccountId: h.bank.id, occurredOn: '2026-08-30', purchaseTransactionIds: [shop], amountsMinor: { [shop]: amountMinor } });
+    for (const amountMinor of [549_001, 0, -1, 1.5]) await expect(pay(amountMinor)).rejects.toMatchObject({ code: 'INVALID_AMOUNT' });
+    expect((await nativeBalances(h.database, h.ws))[h.card.id]).toBe(-549_000);
+  });
+});
+
+describe('credits after a closed statement', () => {
+  it('lists the payments and money back since its statement date, up to today, and none on an open statement', async () => {
+    const h = await household();
+    await h.buy('2026-08-02', 'Shop', 549_000);
+    const early = await h.pay('2026-08-05', 100_000);
+    const since = await h.pay('2026-08-28', 200_000);
+    await h.pay('2026-09-03', 50_000);
+
+    const august = await cardStatement(h.database, h.ws, h.card.id, AUGUST, '2026-09-01');
+    expect(august.laterCredits.map((line) => line.transactionId)).toEqual([since]);
+    expect(august.laterCredits.reduce((sum, line) => sum - line.countedMinor, 0)).toBe(august.paidSinceMinor);
+    expect(august.lines.some((line) => line.transactionId === early)).toBe(true);
+    const september = await cardStatement(h.database, h.ws, h.card.id, SEPTEMBER, '2026-09-01');
+    expect(september.laterCredits).toEqual([]);
   });
 });
 
