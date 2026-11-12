@@ -124,6 +124,23 @@ async function undoneByTx(tx: Db, book: EventBookRow, refund: Pick<Movable, 'des
   return sized.length === 1 ? sized[0]! : null;
 }
 
+/**
+ * Whether a refund is matched to its expense in the event by name (sync gaps fix round 1, #4): a live expense of the
+ * same item, in the refund's own currency. True for a purchase that is no refund (nothing to match). A move done for the
+ * owner rather than by hand (the repair) asks this first: a refund matched only by size may share back the wrong split.
+ */
+export async function refundMatchedByName(database: Database, ws: WorkspaceContext, eventId: string, transactionId: string): Promise<boolean> {
+  return database.transaction(async (tx) => {
+    const purchase = await movableTx(tx, ws, transactionId);
+    if (typeof purchase === 'string' || purchase.amountMinor >= 0) return true;
+    const book = await openSharedEventTx(tx, ws, eventId, true);
+    const item = itemOf(purchase.description);
+    if (item === '') return false;
+    const { expenses } = await eventRecordsTx(tx, book.bookId);
+    return expenses.some((e) => !e.voided && e.amountMinor > 0 && e.currency === purchase.currency && itemOf(e.note ?? '') === item);
+  });
+}
+
 /** The event category by this name, made (captured) when the event has none yet. */
 async function eventCategoryNamedTx(tx: Db, book: EventBookRow, name: string, icon: string | null): Promise<string> {
   const [found] = await tx.values<[string]>(

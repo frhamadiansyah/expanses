@@ -4,7 +4,7 @@ import { ownerScope, type WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
 import { resolveRates, type RateFetcher } from '../repos/fx';
 import { eventBookOfEventTx } from '../repos/shared-event-records';
-import { moveIntoSharedEvent } from '../repos/shared-event-moves';
+import { moveIntoSharedEvent, refundMatchedByName } from '../repos/shared-event-moves';
 import { partnerPurchaseRefusalTx, sharedRowTx, untagSharedRowsTx } from '../repos/shared-workspace-rows';
 import { captureConfigOf, projectPurchase, type SharedBook, writeChangeSetsTx } from './capture';
 import { BILL_LINK_LEVEL, bookAtLevelTx } from './level';
@@ -183,6 +183,9 @@ async function tryMove(database: Database, ws: WorkspaceContext, eventId: string
         fetcher: options.fetcher,
       }).catch(() => undefined);
     }
+    // A refund moves only when its expense in the event is found by name: matched by size alone, the split it shares
+    // back could be another expense's (fix round 1, #4).
+    if (book && !(await refundMatchedByName(database, ownerScope(ws), eventId, transactionId))) return `It could not be matched to an expense in ${book.name}`;
     const { moved, kept } = await moveIntoSharedEvent(database, ownerScope(ws), eventId, [transactionId]);
     if (moved.length > 0) return null;
     return kept[0]?.why ?? 'It could not be moved';

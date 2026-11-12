@@ -203,6 +203,30 @@ describe('R2: Family purchases tagged to an event without being moved', () => {
     expect(await repairNotices(wife.database)).toEqual([]);
   });
 
+  it('a refund matched only by its size, not by name, is not moved: untagged and listed (fix round 1, #4)', async () => {
+    const s = await familyAndTrip();
+    const { wife, husband } = s;
+    const lira = await createAccount(wife.database, wife.ws, { name: 'Wife Lira', kind: 'asset', subtype: 'bank', currency: 'TRY' });
+    const eventId = s.trip.eventOf(wife);
+    await recordSharedExpense(wife.database, ownerScope(wife.ws), eventId, {
+      occurredOn: '2026-10-07', amountMinor: 100_000, currency: 'TRY', rateToEvent: '1', payerPersonId: s.wifePerson,
+      paidFrom: { accountId: lira.id, chargedMinor: null }, split: { mode: 'equal', people: [s.wifePerson, s.husbandPerson] }, categoryId: null, note: 'Boat',
+    });
+    const groceries = await categoryOf(wife.database, s.family, 'Groceries');
+    const refund = await postTransaction(wife.database, wife.ws, {
+      occurredOn: '2026-10-09', description: 'Refund · Kebab', ratesToBase: { TRY: 560 }, lines: refundLines({ categoryAccountId: groceries, paymentAccountId: lira.id, amountMinor: 20_000, currency: 'TRY' }),
+    });
+    await s.settle();
+    await oldTag(wife, refund, eventId);
+    expect((await runSharedBookRepairs(wife.database, s.family, { today: TODAY })).eventTags).toEqual({ moved: 0, untagged: 1 });
+    const [notice] = await repairNotices(wife.database);
+    expect(notice!.rows).toMatchObject([{ description: 'Refund · Kebab', outcome: 'untagged', why: 'It could not be matched to an expense in Coast week' }]);
+    await s.settle();
+    expect(await familyOctober(s, wife)).toEqual(await familyOctober(s, husband));
+    const view = (await sharedEventView(husband.database, ownerScope(husband.ws), s.trip.eventOf(husband)))!;
+    expect(view.expenses.map((e) => e.note)).toEqual(['Boat']);
+  });
+
   it('a rate fetched for the day lets it move; with none to be had, a private event’s, or the partner’s, it is untagged and listed', async () => {
     const s = await familyAndTrip();
     const { wife, husband } = s;
