@@ -44,12 +44,12 @@ h2 { font-size:16px; margin:28px 0 12px; }
 </head>
 <body>
 <h1>Annual fee: one way to say it came back</h1>
-<p class="lede">One button, <b>Fee waived</b>, in both places: the “This year’s fee” row in Settings and the fee challenge on the card. Both open the same sheet. It fits a fee the app recorded and a fee charged before the app was used. “Waived” and “Fee refunded” as two separate things go away. Names and amounts are made up.</p>
+<p class="lede">One sheet, <b>Fee waived</b>. Option A opens it from two places: the “This year’s fee” row in Settings and the fee challenge on the card. Option B opens it from Settings only. It fits a fee the app recorded and a fee charged before the app was used. “Waived” and “Fee refunded” as two separate things go away. Names and amounts are made up.</p>
 
-<h2>Where it starts (both open the same sheet)</h2>
+<h2>Option A · Two places, one sheet</h2>
 <div class="pair">
   <div class="col">
-    <p class="cap"><span class="n">1</span>Settings</p>
+    <p class="cap"><span class="n">A1</span>Settings</p>
     <div class="phone">
       <div class="bar"><span class="round">‹</span><span class="ttl">Settings</span><span class="round">✓</span></div>
       <div class="gh">Annual fee</div>
@@ -65,7 +65,7 @@ h2 { font-size:16px; margin:28px 0 12px; }
   </div>
 
   <div class="col">
-    <p class="cap"><span class="n">2</span>Card page, fee challenge reached</p>
+    <p class="cap"><span class="n">A2</span>Card page, fee challenge reached</p>
     <div class="phone">
       <div class="bar"><span class="round">‹</span><span class="ttl">Nusa Platinum</span><span class="round">⋯</span></div>
       <div class="hero"><div style="font-size:13px;opacity:.85">Nusa Bank</div><div style="font-size:22px;font-weight:700">Rp 0</div><div style="font-size:12px;opacity:.85">Credit card ·· 4821</div></div>
@@ -81,7 +81,52 @@ h2 { font-size:16px; margin:28px 0 12px; }
   </div>
 </div>
 
-<h2>The one sheet</h2>
+<h2>Option B · Settings only (the card page keeps no button)</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">B1</span>Settings: the only place</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Settings</span><span class="round">✓</span></div>
+      <div class="gh">Annual fee</div>
+      <div class="ig">
+        <div class="row"><div class="grow">Fee</div><span class="amt val">Rp 1.200.000</span></div>
+        <div class="row"><div class="grow">Charged on</div><span class="val">5 Oct</span></div>
+        <div class="row mark"><div class="grow">This year’s fee</div><span class="val">Charged 5 Oct 2026</span><span class="chev">›</span></div>
+        <div class="row"><div class="grow">Fee waiver</div><span class="val">Spend Rp 30.000.000</span><span class="chev">›</span></div>
+      </div>
+      <p class="note">Same row as A1, opens the same sheet. Every card with an annual fee has it, whether or not there is a challenge.</p>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">B2</span>Card page, challenge reached</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Nusa Platinum</span><span class="round">⋯</span></div>
+      <div class="hero"><div style="font-size:13px;opacity:.85">Nusa Bank</div><div style="font-size:22px;font-weight:700">Rp 0</div><div style="font-size:12px;opacity:.85">Credit card ·· 4821</div></div>
+      <div class="chal mark">
+        <div style="font-weight:600">Fee waiver challenge</div>
+        <div class="s">Spent Rp 30.000.000 of Rp 30.000.000 · reached</div>
+        <div class="s" style="margin-top:4px">Once the bank waives it: Settings › This year’s fee</div>
+      </div>
+      <p class="note">No button here. The line points to Settings.</p>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">B3</span>Card page, after</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Nusa Platinum</span><span class="round">⋯</span></div>
+      <div class="hero"><div style="font-size:13px;opacity:.85">Nusa Bank</div><div style="font-size:22px;font-weight:700">Rp 1.200.000 credit</div><div style="font-size:12px;opacity:.85">Credit card ·· 4821</div></div>
+      <div class="chal">
+        <div style="font-weight:600">Fee waiver challenge</div>
+        <div class="s ok">✓ Fee waived · Rp 1.200.000 back on 14 Nov</div>
+      </div>
+      <p class="note">Status only, nothing to tap.</p>
+    </div>
+  </div>
+</div>
+
+<h2>The one sheet (same for A and B)</h2>
 <div class="pair">
   <div class="col">
     <p class="cap"><span class="n">3</span>Fee not in the app (the October case)</p>
