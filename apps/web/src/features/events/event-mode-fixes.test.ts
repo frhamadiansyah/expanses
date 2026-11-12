@@ -79,11 +79,16 @@ describe('M4: the currency is pinned only when it says something', () => {
 });
 
 describe('low: the event stays on Expense only', () => {
-  it('Income, Transfer and Trade drop it', () => {
+  it('a new transaction drops it on Income, Transfer and Trade', () => {
     expect(eventForMode('e1', 'expense')).toBe('e1');
     expect(eventForMode('e1', 'income')).toBe('');
     expect(eventForMode('e1', 'transfer')).toBe('');
     expect(eventForMode('e1', 'trade')).toBe('');
+  });
+
+  it('an edit turning a purchase into money back keeps it on Income only', () => {
+    expect(eventForMode('e1', 'income', true)).toBe('e1');
+    expect(eventForMode('e1', 'transfer', true)).toBe('');
   });
 });
 

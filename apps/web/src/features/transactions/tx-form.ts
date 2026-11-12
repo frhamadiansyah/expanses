@@ -333,11 +333,13 @@ export interface CardSeed {
 }
 
 /**
- * The event a draft keeps on another tab (event mode fix round 1): an event is spending, so it stays on Expense only —
- * Income, Transfer and Trade drop it, and the chip with it.
+ * The event a draft keeps on another tab (event mode fix round 1): an event is spending, so a new transaction keeps it
+ * on Expense only — Income, Transfer and Trade drop it, and the chip with it. An edit turning a purchase into money back
+ * keeps it on Income: the refund belongs to the event the purchase was in (add-transaction.spec, "keeps the rest").
  */
-export function eventForMode(eventId: string, mode: FormMode): string {
-  return mode === 'expense' ? eventId : '';
+export function eventForMode(eventId: string, mode: FormMode, editing = false): string {
+  if (mode === 'expense') return eventId;
+  return editing && mode === 'income' ? eventId : '';
 }
 
 /**

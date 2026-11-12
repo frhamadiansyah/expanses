@@ -940,7 +940,7 @@ function CardBody({
       const flag = currencyChoosable({ ...draft, mode: value }) ? {} : { currency: '', chargedAmount: '' };
       // A new transaction starts its guessing again on another tab; one that already exists never guesses.
       if (!prefilled) categorySource.current = null;
-      return set({ mode: value, categoryId: '', splits: [], ...flag, eventId: eventForMode(draft.eventId, value) });
+      return set({ mode: value, categoryId: '', splits: [], ...flag, eventId: eventForMode(draft.eventId, value, draft.editing) });
     }
     startTrade();
   };
