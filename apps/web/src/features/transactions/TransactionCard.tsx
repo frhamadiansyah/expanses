@@ -45,6 +45,8 @@ import { PushedTitle, SegmentedControl } from '../../ui/native';
 import { useCards, useCardsWithArchived } from '../cards/card-queries';
 import { payableOptions, resolveDefaultPaidWith, useStoredDefaultPaidWith } from '../account/default-paid-with';
 import { useEvents } from '../events/queries';
+import { showToast } from '../../ui/Toast';
+import { moveAfterSave } from './shared-move';
 import { CategoryOptions } from '../cards/options';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { fitsEventSet } from '../categories/offered';
@@ -632,13 +634,20 @@ function CardBody({
       }
       const withoutEventTag = <T extends { eventId?: string | null }>(input: T): T =>
         movesIn || (bookShared && target === null) ? { ...input, eventId: null } : input;
+      // A refused move is told after the form closes (fix round 1, #3): the purchase is saved by then, and a form left
+      // open as an add would record it a second time on the next Save.
+      let notMoved: string | null = null;
       const moveInto = movesIn
         ? async (transactionId: string) => {
-            // The day's rates the move converts by: the purchase's currencies and the event's, each to the base.
-            const wanted = [target.currency, typedCurrency(filed, accounts), byId.get(filed.moneyId)?.currency].filter((c): c is string => !!c);
-            await resolveRates([...new Set(wanted)], filed.occurredOn).catch(() => undefined);
-            const { kept } = await moveIntoSharedEvent(database, ownerScope(ws), draft.eventId, [transactionId]);
-            if (kept.length > 0) throw new Error(kept[0]!.why);
+            notMoved = await moveAfterSave(
+              async () => {
+                // The day's rates the move converts by: the purchase's currencies and the event's, each to the base.
+                const wanted = [target.currency, typedCurrency(filed, accounts), byId.get(filed.moneyId)?.currency].filter((c): c is string => !!c);
+                await resolveRates([...new Set(wanted)], filed.occurredOn).catch(() => undefined);
+                return moveIntoSharedEvent(database, ownerScope(ws), draft.eventId, [transactionId]);
+              },
+              { bookName: openBook?.name ?? 'this workspace', eventName: target.name },
+            );
           }
         : null;
       if (post.kind === 'trade') {
@@ -692,6 +701,7 @@ function CardBody({
         written.current = posted;
         try {
           await followUp.posted(posted);
+          if (notMoved) showToast(notMoved);
         } catch (e) {
           setRecorded(true);
           throw e;
@@ -701,6 +711,7 @@ function CardBody({
         return;
       }
       await invalidate();
+      if (notMoved) showToast(notMoved);
       onDone();
     } catch (e) {
       setError(sayPaidWithError(e, sharedShown?.value));
