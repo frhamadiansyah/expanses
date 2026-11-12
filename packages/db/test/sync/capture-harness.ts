@@ -1,3 +1,4 @@
+import { decodeHlc } from '../../src/sync/hlc';
 import { sql, type SQL } from 'drizzle-orm';
 import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
 import type { Database, Db } from '../../src/database';
@@ -241,12 +242,24 @@ function fieldClock(sealed: SealedOp, field: string): string {
   return at !== undefined && at < sealed.hlc ? at : sealed.hlc;
 }
 
-/** Among `after` (in hlc order), the op carrying `field` at the latest clock; the later op on a tie. */
-function latestCarrier(after: readonly SealedOp[], field: string): SealedOp | undefined {
+/**
+ * Among `after` (in hlc order), the op carrying `field` at the latest clock. On a tie a later op takes over only when its
+ * sending device and the clock's device are the same member of the book (fix round 5, as apply rules a billLink tie).
+ */
+async function latestCarrier(database: Database, bookId: string, after: readonly SealedOp[], field: string): Promise<SealedOp | undefined> {
+  const memberOf = async (deviceId: string) =>
+    (await database.db.values<[string]>(sql`SELECT member_id FROM book_devices WHERE book_id = ${bookId} AND device_id = ${deviceId}`))[0]?.[0] ?? null;
   let best: SealedOp | undefined;
   for (const sealed of after) {
     if (sealed.op.op !== 'upsert' || !purchaseNames(sealed.op).includes(field)) continue;
-    if (!best || fieldClock(sealed, field) >= fieldClock(best, field)) best = sealed;
+    const at = fieldClock(sealed, field);
+    if (!best || at > fieldClock(best, field)) {
+      best = sealed;
+      continue;
+    }
+    if (at !== fieldClock(best, field)) continue;
+    const clockMember = await memberOf(decodeHlc(at).deviceId);
+    if (clockMember !== null && clockMember === (await memberOf(decodeHlc(sealed.hlc).deviceId))) best = sealed;
   }
   return best;
 }
@@ -449,7 +462,7 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
       for (const field of Object.keys(projected)) {
         // The op whose word on the field is latest, by the clock it carries the field at: a field resent at its own older
         // clock (fix round 3) loses to a newer change, as on every receiver.
-        const carrier = latestCarrier(after, field);
+        const carrier = await latestCarrier(database, bookId, after, field);
         if (!carrier) continue;
         const said = (carrier.op as { fields: Record<string, unknown> }).fields[field];
         // A figure typed with cents is kept only while the purchase's one category line rounds from it (0068): a new
