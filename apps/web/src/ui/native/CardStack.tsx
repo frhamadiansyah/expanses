@@ -69,6 +69,8 @@ export interface WalletCard {
   params?: LinkProps['params'];
   /** The card's accessible name, when the composed one is not what the screen means. */
   label?: string;
+  /** Whose card it is when it is not this phone's own ("Rina’s"): after the type in the face's type line. */
+  whose?: string | null;
 }
 
 /** The pose a card rests in: none in its slot or raised; in the pile, narrower and centred under its top edge. */
@@ -524,6 +526,7 @@ export function Face({ card, band, scale, figure = false }: { card: WalletCard; 
         last4={card.last4}
         holderName={card.holderName}
         spent={card.spent}
+        whose={card.whose}
         cornerScale={scale}
         network={card.network}
         look={card.look}

@@ -8,6 +8,7 @@ import { ErrorBox } from '../../ui';
 import { arriveFrom, CARD_W, PageDots, DESKTOP_CARD_W, flyInto, InsetGroup, InsetRow, leaveFrom, Panel, reducedMotion, type WalletCard, WalletFace, cardHeightFor } from '../../ui/native';
 import { pocketsOf } from '../accounts/pockets';
 import { RECENT_LIMIT, useRecentTransactions } from '../accounts/queries';
+import { isJointKey } from './wallet-joint';
 import { buildRows } from '../transactions/list-model';
 import { TransactionRow } from '../transactions/TransactionRow';
 
@@ -220,7 +221,8 @@ export function WalletCarousel({ cards, accounts }: { cards: readonly WalletCard
           <InsetGroup className="mt-[10px]">
             <InsetRow testId="wallet-facts" title={shown.name} subtitle={[shown.figureLabel, shown.subtitle].filter(Boolean).join(' · ')} value={shown.figure} valueTone="ink" />
           </InsetGroup>
-          <Recent key={shown.key} card={shown} accounts={accounts} />
+          {/* A partner's joint card has no rows in this ledger to list: its own page lists the shared workspace's. */}
+          {!isJointKey(shown.key) && <Recent key={shown.key} card={shown} accounts={accounts} />}
         </>
       )}
     </section>

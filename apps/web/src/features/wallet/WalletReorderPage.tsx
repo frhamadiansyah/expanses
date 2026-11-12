@@ -10,6 +10,7 @@ import { ErrorBox } from '../../ui';
 import { CARD_W, cardHeightFor, InsetGroup, InsetRow, PushedTitle, ROW_PAD_X, ROW_PAD_Y, SCREEN, type WalletCard, WalletFace } from '../../ui/native';
 import { DayReorder, movedBy, reorderAttrs, ReorderScope } from '../transactions/DayReorder';
 import { useWalletCards } from './useWalletCards';
+import { isJointKey, writeJointOrder } from './wallet-joint';
 
 /** The width of a card's thumbnail in its row: the face Wallet draws, scaled down whole. */
 const THUMB = 46;
@@ -68,7 +69,9 @@ export function WalletReorderPage() {
     setBusy(true);
     setError(null);
     try {
-      await setWalletOrder(database, ws, order);
+      // The own cards' places go on the accounts, synced; the partner's joint cards' stay on this device (`walletKeys`).
+      await setWalletOrder(database, ws, order.filter((key) => !isJointKey(key)));
+      writeJointOrder(order);
       await invalidateAll();
       goBack();
     } catch (caught) {
@@ -79,6 +82,8 @@ export function WalletReorderPage() {
 
   /** The line under a card's name: what it is, and its last four digits when they are known. */
   const subtitleOf = (card: WalletCard) => {
+    // A partner's joint card: whose it is and what it is, as its facts line says.
+    if (isJointKey(card.key)) return card.subtitle ?? '';
     const account = everything.find((a) => a.id === card.key);
     return [account ? SUBTYPE_LABELS[account.subtype] : null, card.last4 ? `···· ${card.last4}` : null].filter(Boolean).join(' · ');
   };

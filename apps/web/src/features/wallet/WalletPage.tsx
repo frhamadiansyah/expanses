@@ -18,7 +18,8 @@ import { useSetAsideViews } from '../goals/queries';
 import { useOwnerRings, useSharedNetWorth } from '../networth/queries';
 import { BillsToPaySheet } from './BillsToPaySheet';
 import { useWalletCards } from './useWalletCards';
-import { filteredCards, toggleFilter, walletBox, type WalletFilter } from './wallet-balance';
+import { filteredCards, toggleFilter, walletBox, type WalletFilter, walletFilterSets } from './wallet-balance';
+import { jointKey } from './wallet-joint';
 import { WALLET_VIEW_LABELS, WALLET_VIEWS, changeWalletView, useWalletView } from './wallet-view';
 import { WalletCarousel, WalletGrid } from './WalletViews';
 
@@ -132,14 +133,19 @@ export function WalletPage() {
   const { database, ws } = useApp();
   const navigate = useNavigate();
   const router = useRouter();
-  const { cardId, accountId } = useParams({ strict: false }) as { cardId?: string; accountId?: string };
-  const openId = cardId ?? accountId;
+  const { cardId, accountId, itemId } = useParams({ strict: false }) as { cardId?: string; accountId?: string; itemId?: string };
+  // A partner's joint card is opened by its item id, and known in the stack by its own key.
+  const openId = cardId ?? accountId ?? (itemId !== undefined ? jointKey(itemId) : undefined);
   // Wallet's cards, drawn and in order (`useWalletCards`), and the money they were read from.
-  const { accounts, balances, everything, all, book, money, credit, rates, held, today, cards: wallet, ready } = useWalletCards();
+  const { accounts, balances, everything, all, book, money, credit, joint, rates, held, today, cards: wallet, ready } = useWalletCards();
   const setAsides = useSetAsideViews();
   const shared = useSharedNetWorth().data;
   const rings = useOwnerRings()?.rings;
-  const sharedGroups = shared ? sharedSections(shared.group.mode, shared.group.members, shared.names, shared.items, rings) : [];
+  // A joint item is a card above, so it is not listed a second time under "Rina's, shared".
+  const carded = new Set(joint.map((card) => card.itemId));
+  const sharedGroups = shared ? sharedSections(shared.group.mode, shared.group.members, shared.names, shared.items.filter((item) => !carded.has(item.itemId)), rings) : [];
+  // What the filter rows keep: the money cards and the credit cards, the partner's joint ones with the own.
+  const [moneySet, creditSet] = walletFilterSets(money, credit, joint);
 
   // How the cards are laid out on this device: the pile, a grid, or one at a time (`wallet-view`).
   const view = useWalletView();
@@ -178,6 +184,7 @@ export function WalletPage() {
     setAsides: Object.values(setAsides.data ?? {}),
     bills: billRows,
     month,
+    joint,
   });
   // The box is drawn once everything it adds up is read; the grid waits for it, so the faces never jump down under it.
   const boxRead = accounts.isSuccess && balances.isSuccess && rates.isSuccess && !billRates.isPending && !monthBills.isPending;
@@ -256,7 +263,7 @@ export function WalletPage() {
    */
   if (openId !== undefined) {
     if (!accounts.isSuccess) return accounts.isError ? <Outlet /> : null;
-    if (![...money, ...credit].some((account) => account.id === openId)) return <Outlet />;
+    if (![...money, ...credit].some((account) => account.id === openId) && !joint.some((card) => card.key === openId)) return <Outlet />;
     if (!raised) return ready ? <Outlet /> : null;
   }
 
@@ -304,9 +311,14 @@ export function WalletPage() {
             <h1 tabIndex={-1} className="sr-only">
               {raised.name}
             </h1>
-            <CornerButton label="Settings" to={settings.to} params={settings.params}>
-              <Settings size={20} aria-hidden />
-            </CornerButton>
+            {itemId === undefined ? (
+              <CornerButton label="Settings" to={settings.to} params={settings.params}>
+                <Settings size={20} aria-hidden />
+              </CornerButton>
+            ) : (
+              // The partner's item has no settings here: they stay on the owner's phone, and its page says so.
+              <span aria-hidden className="h-[34px] w-[34px]" />
+            )}
           </header>
         ) : (
           <LargeTitle title="Wallet" actions={actions} max={4} />
@@ -411,14 +423,14 @@ export function WalletPage() {
           {filtering && (
             <div className="flex items-baseline justify-between gap-3 px-[4px] pb-[6px]" data-testid="wallet-filter">
               <h2 className="text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">
-                {FILTER_LABELS[filtering]} · {filteredCards(wallet, filtering, money, credit).length}
+                {FILTER_LABELS[filtering]} · {filteredCards(wallet, filtering, moneySet, creditSet).length}
               </h2>
               <button type="button" onClick={() => setFilter(null)} className="ph-focus ph-tap text-[15px] leading-[20px] text-[var(--ph-tint)]">
                 Show all
               </button>
             </div>
           )}
-          <WalletGrid cards={filteredCards(wallet, filtering, money, credit)} />
+          <WalletGrid cards={filteredCards(wallet, filtering, moneySet, creditSet)} />
         </>
       )}
       {ready && wallet.length > 0 && !raised && view === 'carousel' && <WalletCarousel cards={wallet} accounts={everything} />}

@@ -11,8 +11,9 @@ import { useAccountNumberLast4, useCardIdentities, useCards, useCardTiers, useWa
 import { faceFor, prepaidFaceOf, tieredKey } from '../cards/debit-art/faces';
 import { type CardPoints, formatPoints, loadCardPoints, pointsValue, shortDate } from '../cards/useCardPoints';
 import { owedMinor } from '../networth/debt-rows';
-import { useAssetProfiles } from '../networth/queries';
-import { bankOf, faceKindsOf, moneyChip, walletCredit, walletMoney, walletOrder } from './wallet-model';
+import { useAssetProfiles, useSharedNetWorth } from '../networth/queries';
+import { jointChip, readJointOrder, walletJoint, walletKeys } from './wallet-joint';
+import { bankOf, faceKindsOf, moneyChip, walletCredit, walletMoney } from './wallet-model';
 
 /** What a credit card's points are counted in, for the line beside the stack. */
 const unitOf = (cp: CardPoints) => cp.programme?.unit ?? cp.program?.unit ?? 'points';
@@ -36,13 +37,19 @@ export function useWalletCards() {
   const identities = useCardIdentities().data ?? {};
   const plastic = useCards().data ?? [];
   const today = isoDate();
+  /*
+   * The partner's joint account and joint card (owner, 12 Nov): the other members' shared items whose holder turned
+   * Joint on and which can pay, in either way the household files. Read from the summaries their phones sent.
+   */
+  const shared = useSharedNetWorth();
+  const joint = shared.data ? walletJoint(shared.data.items, shared.data.group.me, shared.data.names) : [];
 
   /* What the stack holds. The money is read from the accounts kept for spending; the credit cards whatever they say. */
   const book = spendingBook(everything);
   const money = walletMoney(everything);
   const credit = walletCredit(everything);
   // Every currency the cards and the box convert: the money's, a pocket's, a card's.
-  const rates = useHeldRates([...book.filter((a) => a.kind === 'asset' && a.archivedAt === null).map((a) => a.currency!), ...credit.map((a) => a.currency ?? ws.baseCurrency)]);
+  const rates = useHeldRates([...book.filter((a) => a.kind === 'asset' && a.archivedAt === null).map((a) => a.currency!), ...credit.map((a) => a.currency ?? ws.baseCurrency), ...joint.map((card) => card.currency)]);
   const held = rates.data?.rates ?? {};
 
   /* Each credit card's points, for the line beside the stack and its catalogue art. */
@@ -130,12 +137,40 @@ export function useWalletCards() {
     };
   });
   /*
-   * One list, in Wallet's order: the money then the credit cards, or — once they have been put in order by hand — the
-   * order chosen, a credit card in front of a bank account if that is where it was put (`walletOrder`).
+   * The partner's joint cards, drawn like an own card of their kind from what the summary carries — its name, its kind,
+   * its currency and the last four digits its name ends with — and "· Rina’s" after the type. Money nothing is drawn
+   * for keeps the plain face with its chip of words; a card has no catalogue look here, so it is the plain card face.
    */
-  const byKey = new Map([...moneyCards, ...creditCards].map((card) => [card.key, card]));
-  const cards = walletOrder(everything).flatMap((account) => byKey.get(account.id) ?? []);
-  const ready = accounts.isSuccess && balances.isSuccess && data.isSuccess;
+  const jointCards: WalletCard[] = joint.map((card) => {
+    const face = faceFor([card.name], card.side === 'money' ? faceKindsOf(card.subtype) : ['paylater']);
+    const whose = `${card.ownerName}’s`;
+    return {
+      key: card.key,
+      issuer: null,
+      name: card.name,
+      // A plain money face prints no digits: what it is is its chip of words ("Debit ···· 7781").
+      last4: card.side === 'credit' || face !== null ? card.last4 : null,
+      whose,
+      ...(card.side === 'money' ? { kind: jointChip(card.subtype, card.last4) } : {}),
+      face: face ? { key: face.key, kind: face.kind, mark: face.mark } : undefined,
+      figure: formatMinor(card.minor, card.currency),
+      figureLabel: card.side === 'money' ? 'Balance' : 'Owed',
+      ...(card.side === 'credit' ? { figureTone: 'alarm' as const } : {}),
+      subtitle: [whose, SUBTYPE_LABELS[card.subtype as keyof typeof SUBTYPE_LABELS] ?? card.subtype, card.currency].join(' · '),
+      to: '/wallet/joint/$itemId' as const,
+      params: { itemId: card.itemId },
+      // Whose it is is said with its name, so a reader hears "Joint savings, Rina’s" as the face prints it.
+      label: `${card.name}, ${whose}`,
+    };
+  });
+  /*
+   * One list, in Wallet's order: the money then the credit cards, or — once they have been put in order by hand — the
+   * order chosen, a credit card in front of a bank account if that is where it was put (`walletOrder`). The partner's
+   * cards go by the same rules, and stand where Reorder cards put them (`walletKeys`).
+   */
+  const byKey = new Map([...moneyCards, ...creditCards, ...jointCards].map((card) => [card.key, card]));
+  const cards = walletKeys(everything, joint, readJointOrder()).flatMap((key) => byKey.get(key) ?? []);
+  const ready = accounts.isSuccess && balances.isSuccess && data.isSuccess && !shared.isPending;
 
-  return { accounts, balances, everything, all, parents, book, money, credit, rates, held, today, cards, ready };
+  return { accounts, balances, everything, all, parents, book, money, credit, joint, rates, held, today, cards, ready };
 }

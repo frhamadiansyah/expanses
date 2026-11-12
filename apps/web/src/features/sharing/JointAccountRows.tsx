@@ -27,7 +27,22 @@ export function rowByLine(row: Pick<JointRow, 'recordedBy' | 'editedBy' | 'delet
   return row.editedBy ? `${by} · edited by ${who(row.editedBy)}` : by;
 }
 
-export function JointRowsGroup({ rows, me, names, workspaceBookId }: { rows: readonly JointRow[]; me: string; names: Record<string, string>; workspaceBookId: string }) {
+export function JointRowsGroup({
+  rows,
+  me,
+  names,
+  workspaceBookId,
+  noun = 'account',
+  footer,
+}: {
+  rows: readonly JointRow[];
+  me: string;
+  names: Record<string, string>;
+  workspaceBookId: string;
+  /** A joint card's rows are the card's: "Joint card · 2 rows". */
+  noun?: 'account' | 'card';
+  footer?: string;
+}) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const [error, setError] = useState<unknown>(null);
@@ -45,8 +60,9 @@ export function JointRowsGroup({ rows, me, names, workspaceBookId }: { rows: rea
     <>
       <ErrorBox error={error} />
       <InsetGroup
-        header={`Joint account · ${live.length} ${live.length === 1 ? 'row' : 'rows'}`}
-        info="Rows recorded in the shared workspace against this account, the same on both phones. Either person can open and change any of them."
+        header={`Joint ${noun} · ${live.length} ${live.length === 1 ? 'row' : 'rows'}`}
+        info={`Rows recorded in the shared workspace against this ${noun}, the same on both phones. Either person can open and change any of them.`}
+        footer={footer}
       >
         {rows.length === 0 ? <InsetRow title="None yet" chevron={false} /> : null}
         {rows.map((row) =>
