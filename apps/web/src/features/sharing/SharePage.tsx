@@ -1,4 +1,4 @@
-import { type BookRow, LeaveIncompleteError, SharingError, type SharingDetail, type SharedEventView } from '@expanses/db';
+import { type BookRow, LeaveIncompleteError, SharingError, type SharingDetail, type SharedEventView, planEventCopyDelete } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { CalendarDays, FileText, Inbox, Landmark, RefreshCw, TriangleAlert, User } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
@@ -12,7 +12,7 @@ import { useEvents } from '../events/queries';
 import { ShareEventSheet } from '../events/ShareEventSheet';
 import { useSharedEventSummaries, useSharedEventView } from '../events/shared-queries';
 import { pageLocks } from '../events/shared-view';
-import { DELETE_COPY_LABEL, deleteCopyConfirm, deleteEventCopyFlow } from '../events/delete-copy';
+import { DELETE_COPY_LABEL, deleteEventCopyFlow } from '../events/delete-copy';
 import { useSafetyCopy } from '../workspaces/safety-copy';
 import { InviteCard } from './InviteCard';
 import { type ShareEventRow, shareEventRows } from './share-events';
@@ -125,7 +125,7 @@ function DiscardSheet({ book, onClose }: { book: BookRow; onClose: () => void })
  * page's (D9). A copy this phone's person is no longer in offers Delete this copy (this phone alone, a safety copy first).
  */
 function ShareEvents() {
-  const { sync, ws } = useApp();
+  const { database, sync, ws } = useApp();
   const invalidate = useInvalidateAll();
   const safetyCopy = useSafetyCopy('before-delete');
   const events = useEvents();
@@ -149,11 +149,15 @@ function ShareEvents() {
   }
 
   async function deleteCopy(view: SharedEventView) {
-    if (!window.confirm(deleteCopyConfirm(view))) return;
     setError(null);
     try {
-      await deleteEventCopyFlow({ safetyCopy, remove: () => sync.deleteEventCopy(ws, view.bookId) });
-      await invalidate();
+      const done = await deleteEventCopyFlow(view, {
+        plan: () => planEventCopyDelete(database, ws, view.bookId),
+        confirm: (text) => window.confirm(text),
+        safetyCopy,
+        remove: () => sync.deleteEventCopy(ws, view.bookId),
+      });
+      if (done === 'deleted') await invalidate();
     } catch (failure) {
       setError(sayError(failure));
     }
@@ -191,7 +195,8 @@ function ShareEventLine({
 }: GroupChild & { row: ShareEventRow; onShare: () => void; onLeave: (bookId: string) => void; onDeleteCopy: (view: SharedEventView) => void }) {
   const view = useSharedEventView(row.shared ? row.eventId : null).data;
   const leavable = view && !pageLocks(view).readOnly ? view : null;
-  const readOnly = view && pageLocks(view).readOnly ? view : null;
+  // A copy waiting for an invite is still its person's (review minor 2): only one left, removed or stopped is deleted.
+  const readOnly = view && pageLocks(view).readOnly && view.state !== 'needs_invite' ? view : null;
   return (
     <InsetRow
       position={position}

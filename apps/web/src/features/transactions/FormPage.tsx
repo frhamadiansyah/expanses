@@ -192,6 +192,11 @@ export function EditTransactionRoute() {
   useEffect(() => {
     const record = fromEvent.data;
     if (!record) return;
+    // A deleted copy's transaction has no event to be changed on: back to its receipt, which says so.
+    if (record.deletedHere) {
+      void navigate({ to: '/transactions/$transactionId', params: { transactionId }, replace: true });
+      return;
+    }
     void navigate(
       record.kind === 'expense'
         ? { to: '/transactions/new', search: { event: record.eventId, expense: record.recordId }, replace: true }

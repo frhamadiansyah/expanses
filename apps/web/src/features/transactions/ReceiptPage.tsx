@@ -1,5 +1,6 @@
 import { formatMinor, isoDate } from '@expanses/core';
 import { eventPostingOf, jointRowNote, tagTransactions, listPhotos, listTransactions, ownerScope, paidOffMarkOf, setSettledBeforeApp, type TransactionPhotoRow } from '@expanses/db';
+import { deletedCopyLine } from '../events/delete-copy';
 import { deleteTransaction } from './member-transfer';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, Link, useNavigate, useRouter } from '@tanstack/react-router';
@@ -256,9 +257,12 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
         <BackButton fallback="/transactions" />
         {changeable && (
           <span className="flex items-center gap-2">
-            <button type="button" onClick={edit} aria-label="Edit this transaction" className={ROUND}>
-              <Pencil size={16} aria-hidden />
-            </button>
+            {/* A deleted copy's transaction has no event left to change it on, and the ledger refuses it alone. */}
+            {!fromEvent?.deletedHere && (
+              <button type="button" onClick={edit} aria-label="Edit this transaction" className={ROUND}>
+                <Pencil size={16} aria-hidden />
+              </button>
+            )}
             {duplicable(tx) && !fromEvent && (
               <button
                 type="button"
@@ -295,10 +299,16 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
         {tx.status === 'void' && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">Deleted</span>}
         {fromEvent && (
           <p className="text-[13px] leading-[17px] text-[var(--ph-ink-3)]" data-testid="from-event">
-            {fromEvent.changedByName ? `Changed by ${fromEvent.changedByName} · ` : ''}
-            <Link to="/events/$eventId" params={{ eventId: fromEvent.eventId }} className="font-medium text-[var(--ph-tint)]">
-              Open the event
-            </Link>
+            {fromEvent.deletedHere ? (
+              deletedCopyLine(fromEvent.eventName)
+            ) : (
+              <>
+                {fromEvent.changedByName ? `Changed by ${fromEvent.changedByName} · ` : ''}
+                <Link to="/events/$eventId" params={{ eventId: fromEvent.eventId }} className="font-medium text-[var(--ph-tint)]">
+                  Open the event
+                </Link>
+              </>
+            )}
           </p>
         )}
         {tx.excluded && (
