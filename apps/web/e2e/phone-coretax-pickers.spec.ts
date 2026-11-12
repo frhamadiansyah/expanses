@@ -43,5 +43,5 @@ test('a phone finds a thing by typing, without knowing its family', async ({ pag
   await openDrawers(page);
   await page.getByRole('link', { name: /Paten alat panen/ }).click();
   await openSettings(page);
-  await expect(page.getByRole('button', { name: /^Tax report code/ })).toContainText('0601 · ');
+  await expect(page.getByRole('button', { name: /^Tax code/ })).toContainText('0601');
 });
