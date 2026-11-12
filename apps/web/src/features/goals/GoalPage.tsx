@@ -379,7 +379,7 @@ export function GoalPage({ goalId }: { goalId: string }) {
           onUndo={() => {
             const t = toast;
             setToast(null);
-            void t.undo().then(invalidate, setError);
+            void t.undo().catch(setError).finally(() => void invalidate());
           }}
           onDone={() => setToast(null)}
         />

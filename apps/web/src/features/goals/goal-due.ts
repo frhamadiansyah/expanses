@@ -32,6 +32,35 @@ export function dueDefaults(
   return { day: 1, accountId, toAccountId: toDefault(accounts, accountId) };
 }
 
+/**
+ * Transfer's From: an account where the goal has nothing set aside, when there is one — a month is new money for the
+ * goal, and money already promised to it moved elsewhere adds nothing. Else the account already chosen.
+ */
+export function transferFromDefault(accounts: readonly { id: string }[], held: readonly string[], current: string | null): string | null {
+  if (current && !held.includes(current)) return current;
+  return accounts.find((account) => !held.includes(account.id))?.id ?? current ?? accounts[0]?.id ?? null;
+}
+
+/** Undo, or a lowered amount, that could not take all of it back: what it did take, and why the rest stayed. */
+export const shortTakeBackText = (takenText: string) => `Only ${takenText} could be taken back: the rest was moved or used since.`;
+
+/**
+ * A Transfer month past From's free money: what of it was already set aside for the goal there, and so moves the goal's
+ * promise rather than adding to it. Null when the free money covers it, or the goal has nothing there.
+ */
+export function alreadySetAside(o: { amountMinor: number | null; freeMinor: number; ownPromiseMinor: number }): number | null {
+  if (o.amountMinor === null || o.amountMinor <= 0) return null;
+  const past = o.amountMinor - Math.max(0, o.freeMinor);
+  const moved = Math.min(Math.max(0, past), o.ownPromiseMinor);
+  return moved > 0 ? moved : null;
+}
+
+/** "Rp 500.000 of this was already set aside for Umrah." */
+export const alreadySetAsideText = (amountText: string, goalName: string) => `${amountText} of this was already set aside for ${goalName}.`;
+
+/** Offline, with no rate stored for a goal's own currency: what a Transfer month says. */
+export const noRateText = (currency: string) => `No rate for ${currency} yet: connect to the internet once, or record the transfer from Add.`;
+
 /** Transfer's To: a savings account other than From, else any other account. */
 export function toDefault(accounts: readonly { id: string; subtype: string }[], fromId: string | null): string | null {
   const others = accounts.filter((account) => account.id !== fromId);

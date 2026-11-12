@@ -1,7 +1,7 @@
 import { formatMinor } from '@expanses/core';
 import type { GoalDue, GoalDueMonth, GoalDueSettings } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { DUE_DAYS, dueDayLabel, dueDefaults, dueSheetFooter, dueTitle, dueToast, goalsThisMonth, monthHistory, monthlyFooter, monthlySubtitle, toDefault } from './goal-due';
+import { alreadySetAside, alreadySetAsideText, DUE_DAYS, dueDayLabel, dueDefaults, noRateText, shortTakeBackText, transferFromDefault, dueSheetFooter, dueTitle, dueToast, goalsThisMonth, monthHistory, monthlyFooter, monthlySubtitle, toDefault } from './goal-due';
 
 // Invented names and figures.
 const rp = (minor: number) => formatMinor(minor, 'IDR');
@@ -170,5 +170,31 @@ describe('Month history', () => {
       ['September', 'Transferred 26 Sep · Sejahtera Tabungan', rp(2_000_000)],
       ['December 2025', 'Open', rp(1_700_000)],
     ]);
+  });
+});
+
+describe('fix round 1 words and defaults', () => {
+  const accounts = [{ id: 'giro' }, { id: 'tabungan' }, { id: 'cash' }];
+
+  it('Transfer’s From is an account the goal has nothing set aside in, when there is one', () => {
+    expect(transferFromDefault(accounts, ['giro'], 'giro')).toBe('tabungan');
+    expect(transferFromDefault(accounts, ['giro'], 'cash')).toBe('cash');
+    expect(transferFromDefault(accounts, ['giro', 'tabungan', 'cash'], 'giro')).toBe('giro');
+  });
+
+  it('says what a short take-back did, and what to do without a rate', () => {
+    expect(shortTakeBackText(rp(200_000))).toBe(`Only ${rp(200_000)} could be taken back: the rest was moved or used since.`);
+    expect(noRateText('USD')).toBe('No rate for USD yet: connect to the internet once, or record the transfer from Add.');
+  });
+});
+
+describe('a Transfer month past From’s free money', () => {
+  it('names what of it was already set aside for the goal there', () => {
+    expect(alreadySetAside({ amountMinor: 1_000_000, freeMinor: 29_000_000, ownPromiseMinor: 1_000_000 })).toBeNull();
+    expect(alreadySetAside({ amountMinor: 1_000_000, freeMinor: 500_000, ownPromiseMinor: 1_000_000 })).toBe(500_000);
+    expect(alreadySetAside({ amountMinor: 1_000_000, freeMinor: -200_000, ownPromiseMinor: 700_000 })).toBe(700_000);
+    expect(alreadySetAside({ amountMinor: 1_000_000, freeMinor: 0, ownPromiseMinor: 0 })).toBeNull();
+    expect(alreadySetAside({ amountMinor: null, freeMinor: 0, ownPromiseMinor: 5 })).toBeNull();
+    expect(alreadySetAsideText(rp(500_000), 'Umrah')).toBe(`${rp(500_000)} of this was already set aside for Umrah.`);
   });
 });

@@ -24,8 +24,9 @@ import { type GroupChild, GROUP_GAP, GROUP_RADIUS, InsetGroup, InsetRow, PanelHe
 import { SwipeRow } from '../../ui/SwipeRow';
 import type { ToastIcon } from '../../ui/UndoToast';
 import { GOAL_KIND_MARKS } from './goal-cards';
-import { DUE_DAYS, dueDefaults, dueSheetFooter, dueTitle, dueToast, goalsThisMonth, monthHistory, monthlyFooter, toDefault } from './goal-due';
-import { setAsideOf } from './goal-actions';
+import { alreadySetAside, alreadySetAsideText, DUE_DAYS, dueDefaults, dueSheetFooter, dueTitle, dueToast, goalsThisMonth, monthHistory, monthlyFooter, noRateText, shortTakeBackText, toDefault, transferFromDefault } from './goal-due';
+import { setAsideHint } from './goal-cards';
+import { setAsideOf, setAsideOn } from './goal-actions';
 import { useEarmarks, useGoalDues, useGoalPlans, useSetAsideViews } from './queries';
 
 /** What a tap on a month leaves behind: the light Undo bar's words, its icon, and how to take it back. */
@@ -33,6 +34,15 @@ export interface DueToast {
   text: string;
   icon: ToastIcon;
   undo: () => Promise<void>;
+}
+
+/**
+ * Undoes a month for an Undo bar or a sheet. When some of it was used or moved since, the month stays done with the
+ * rest, and this throws what it did take back, so the screen says so in its error box.
+ */
+export async function undoMonth(database: Parameters<typeof undoGoalMonth>[0], ws: Parameters<typeof undoGoalMonth>[1], goal: DueGoal, month: string): Promise<void> {
+  const result = await undoGoalMonth(database, ws, goal.goalId, month);
+  if (!result.undone) throw new Error(shortTakeBackText(formatMinor(result.takenMinor, goal.currency)));
 }
 
 /** A typed figure, or null while it is not one yet. */
@@ -81,7 +91,9 @@ export function useDueForm(goalId: string, currency: string, saved: GoalDueSetti
   // An account gone since (archived, or the list still loading at first) falls back to the first that can be used.
   const accountId = accounts.some((account) => account.id === form.accountId) ? form.accountId : (accounts[0]?.id ?? null);
   const toAccountId = accounts.some((account) => account.id === form.toAccountId && account.id !== accountId) ? form.toAccountId : toDefault(accounts, accountId);
-  return { form: { ...form, accountId, toAccountId }, setForm, accounts };
+  // Where the goal already has money set aside: Transfer's From steers clear of them (a month is new money).
+  const held = setAsideOf(earmarks, goalId).map((row) => row.accountId);
+  return { form: { ...form, accountId, toAccountId }, setForm, accounts, held };
 }
 
 /** A row holding the Set aside | Transfer control, with the hairline a row above it draws. */
@@ -99,11 +111,21 @@ function SegmentRow({ position, value, onChange }: GroupChild & { value: GoalDue
  * exactly the plan figure it always was.
  */
 export function DueGroup({ due, goalName }: { due: ReturnType<typeof useDueForm>; goalName: string }) {
-  const { form, setForm, accounts } = due;
+  const { form, setForm, accounts, held } = due;
   const nameOf = (id: string | null) => accounts.find((account) => account.id === id)?.name ?? null;
   const set = (patch: Partial<DueForm>) => setForm((was) => ({ ...was, accountId: form.accountId, toAccountId: form.toAccountId, ...patch }));
+  const toMode = (mode: GoalDueMode) => {
+    if (mode !== 'transfer') return set({ mode });
+    const from = transferFromDefault(accounts, held, form.accountId);
+    set({ mode, accountId: from, toAccountId: form.toAccountId === from ? toDefault(accounts, from) : form.toAccountId });
+  };
   if (accounts.length === 0) {
-    return <InsetGroup footer="No account in this goal’s currency to set money aside in.">{[]}</InsetGroup>;
+    // Nothing left in the goal's currency: the switch stays, so a due turned on before can still be turned off.
+    return (
+      <InsetGroup footer="No account in this goal’s currency to set money aside in.">
+        {[<SwitchRow key="on" label="Due each month" checked={form.on} disabled={!form.on} onChange={(on) => set({ on })} testId="due-each-month" />]}
+      </InsetGroup>
+    );
   }
   return (
     <InsetGroup footer={form.on ? monthlyFooter({ day: form.day, mode: form.mode, goalName, inName: nameOf(form.accountId), toName: nameOf(form.toAccountId) }) : undefined}>
@@ -118,7 +140,7 @@ export function DueGroup({ due, goalName }: { due: ReturnType<typeof useDueForm>
                   </option>
                 ))}
               </SelectRow>,
-              <SegmentRow key="mode" value={form.mode} onChange={(mode) => set({ mode, toAccountId: form.toAccountId })} />,
+              <SegmentRow key="mode" value={form.mode} onChange={toMode} />,
               <SelectRow key="from" label={form.mode === 'transfer' ? 'From' : 'In'} value={form.accountId ?? ''} onChange={(e) => set({ accountId: e.target.value })}>
                 {accounts.map((account) => (
                   <option key={account.id} value={account.id}>
@@ -163,6 +185,7 @@ export function GoalMonthSheet({ goal, month, onClose, onDone }: { goal: DueGoal
   const resolveRates = useResolveRates();
   const accounts = useDueAccounts(goal.currency);
   const views = useSetAsideViews().data ?? {};
+  const earmarks = useEarmarks().data ?? [];
   const today = isoDate();
   const balances = useBalances(today).data ?? {};
   const [amount, setAmount] = useState(() => (month.amountMinor > 0 ? groupedMajorString(month.amountMinor, goal.currency) : ''));
@@ -177,7 +200,13 @@ export function GoalMonthSheet({ goal, month, onClose, onDone }: { goal: DueGoal
   const typed = parsedAmount(amount, goal.currency);
   const ready = typed !== null && typed > 0 && !!from && (month.mode === 'set_aside' || !!to);
   const freeMinor = from ? (views[from.id]?.freeMinor ?? balances[from.id] ?? 0) : 0;
-  const undo = () => undoGoalMonth(database, ws, goal.goalId, month.month);
+  // More than is free there: said under the amount, as the goal's own Set aside says it. Nothing is refused. A Transfer
+  // past the free money moves what the goal already had set aside there first, and says how much.
+  const ownThere = from ? setAsideOn(earmarks, goal.goalId, from.id) : 0;
+  const moved = month.mode === 'transfer' ? alreadySetAside({ amountMinor: typed, freeMinor, ownPromiseMinor: ownThere }) : null;
+  const short = from ? setAsideHint(freeMinor + (moved ?? 0), typed, from.name, goal.currency) : null;
+  const over = moved !== null ? { warn: true, text: alreadySetAsideText(formatMinor(moved, goal.currency), goal.name) } : short;
+  const undo = () => undoMonth(database, ws, goal, month.month);
 
   async function run(write: () => Promise<unknown>, toast: DueToast) {
     if (busy) return;
@@ -206,7 +235,22 @@ export function GoalMonthSheet({ goal, month, onClose, onDone }: { goal: DueGoal
     }
     void run(
       async () => {
-        const ratesToBase = await ratesForSave({ database, ws, currency: goal.currency, occurredOn: today, amountMinor: typed!, typed: '', resolveRates, onMissing: () => undefined });
+        let missing = false;
+        const ratesToBase = await ratesForSave({
+          database,
+          ws,
+          currency: goal.currency,
+          occurredOn: today,
+          amountMinor: typed!,
+          typed: '',
+          resolveRates,
+          onMissing: () => {
+            missing = true;
+          },
+        }).catch((e: unknown) => {
+          // This sheet has no rate row to type one into: say what can be done instead.
+          throw missing ? new Error(noRateText(goal.currency)) : e;
+        });
         await transferGoalMonth(database, ws, { goalId: goal.goalId, month: month.month, amountMinor: typed!, fromAccountId: from.id, toAccountId: to!.id, occurredOn: today, ratesToBase });
       },
       { text: dueToast('transfer', goal.name, month.month), icon: 'recorded', undo },
@@ -237,6 +281,7 @@ export function GoalMonthSheet({ goal, month, onClose, onDone }: { goal: DueGoal
           onChange={(e) => setAmount(groupTypedAmount(e.target.value, goal.currency))}
           placeholder="Amount"
           id="due-amount"
+          hint={over?.warn ? <span className="text-[var(--ph-warn)]" data-testid="due-over">{over.text}</span> : undefined}
         />
         <SelectRow label={month.mode === 'transfer' ? 'From' : 'In'} value={from?.id ?? ''} onChange={(e) => setFromId(e.target.value)}>
           {accounts.map((account) => (
@@ -282,14 +327,16 @@ export function DoneMonthSheet({ goal, month, onClose }: { goal: DueGoal; month:
   const setAside = month.state === 'done' && month.mode === 'set_aside';
   const changed = setAside && typed !== null && typed > 0 && typed !== month.amountMinor;
 
-  async function run(write: () => Promise<unknown>) {
+  /** Runs a write; one that comes back with words (a short take-back) stays open to say them. */
+  async function run(write: () => Promise<string | null>) {
     if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      await write();
+      const said = await write();
       await invalidate();
-      onClose();
+      if (said) setError(new Error(said));
+      else onClose();
     } catch (e) {
       setError(e);
     } finally {
@@ -297,13 +344,23 @@ export function DoneMonthSheet({ goal, month, onClose }: { goal: DueGoal; month:
     }
   }
 
+  const undo = async () => {
+    const result = await undoGoalMonth(database, ws, goal.goalId, month.month);
+    return result.undone ? null : shortTakeBackText(formatMinor(result.takenMinor, goal.currency));
+  };
+  const change = async () => {
+    const result = await changeGoalMonthAmount(database, ws, goal.goalId, month.month, typed!);
+    // Lowered further than what is left there: the month keeps what it actually has.
+    return result === typed ? null : shortTakeBackText(formatMinor(month.amountMinor - result, goal.currency));
+  };
+
   const name = monthName(month.month, 'long');
   return (
     <Sheet
       grouped
       title={dueTitle(goal.name, month.month)}
       onClose={onClose}
-      confirm={setAside ? { label: 'Save', disabled: busy || !changed, run: () => void run(() => changeGoalMonthAmount(database, ws, goal.goalId, month.month, typed!)) } : undefined}
+      confirm={setAside ? { label: 'Save', disabled: busy || !changed, run: () => void run(change) } : undefined}
     >
       <InsetGroup footer={month.state === 'done' && month.mode === 'transfer' ? 'Undo voids the transfer.' : undefined}>
         {month.state === 'skipped' ? (
@@ -319,7 +376,7 @@ export function DoneMonthSheet({ goal, month, onClose }: { goal: DueGoal; month:
       </InsetGroup>
       <ErrorBox error={error} />
       <InsetGroup>
-        <InsetRow action title={month.state === 'skipped' ? 'Undo skip' : `Undo ${name}`} disabled={busy} onClick={() => void run(() => undoGoalMonth(database, ws, goal.goalId, month.month))} testId="due-undo" />
+        <InsetRow action title={month.state === 'skipped' ? 'Undo skip' : `Undo ${name}`} disabled={busy} onClick={() => void run(undo)} testId="due-undo" />
       </InsetGroup>
     </Sheet>
   );
@@ -389,7 +446,7 @@ export function GoalsThisMonth({ onToast }: { onToast: (toast: DueToast) => void
     try {
       await skipGoalMonth(database, ws, goal.goalId, month.month, today);
       await invalidate();
-      onToast({ text: dueToast('skipped', goal.name, month.month), icon: 'skipped', undo: () => undoGoalMonth(database, ws, goal.goalId, month.month) });
+      onToast({ text: dueToast('skipped', goal.name, month.month), icon: 'skipped', undo: () => undoMonth(database, ws, goal, month.month) });
     } catch (e) {
       setError(e);
     }

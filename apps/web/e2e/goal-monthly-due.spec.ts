@@ -49,6 +49,11 @@ test('Due each month: Recurring shows the goal, Set aside grows the account’s 
   const sheet = page.getByRole('dialog', { name: `Umrah 2027 · ${thisMonth()}` });
   await expect(sheet.getByLabel('Amount', { exact: true })).toHaveValue('1.500.000');
   await expect(sheet.getByText('Free to spend there')).toBeVisible();
+  // More than is free there is said under the amount, and nothing is refused.
+  await sheet.getByLabel('Amount', { exact: true }).fill('25000000');
+  await expect(sheet.getByTestId('due-over')).toContainText('short');
+  await sheet.getByLabel('Amount', { exact: true }).fill('1500000');
+  await expect(sheet.getByTestId('due-over')).toHaveCount(0);
   await expect(sheet.getByText(`Skip ${thisMonth()}`)).toBeVisible();
   await sheet.getByRole('button', { name: 'Set aside', exact: true }).click();
   await expect(sheet).toHaveCount(0);

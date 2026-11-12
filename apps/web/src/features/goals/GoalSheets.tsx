@@ -1,5 +1,5 @@
 import { expenseLines, formatMinor, formatUnits, isoDate, minorToMajorString, parseMajor } from '@expanses/core';
-import { type AccountRow, type GoalDueSettings, type GoalPlanRow, moveSetAside, postTransaction, removeEarmark, retagTrade, saveEarmark, saveGoalDue, setStandingMonthly } from '@expanses/db';
+import { type AccountRow, type GoalDueSettings, type GoalPlanRow, moveSetAside, postTransaction, removeEarmark, retagTrade, saveEarmark, saveGoalMonthly } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -187,12 +187,11 @@ function MonthlySheetBody({ plan, saved, onClose }: { plan: GoalPlanRow; saved: 
   const save = () =>
     saving.run(async () => {
       const { form } = due;
-      if (form.on && !(typed !== null && typed > 0)) throw new Error('Enter an amount each month for it to come due');
-      await setStandingMonthly(database, ws, plan.goalId, typed ?? 0);
-      // Off and never on: nothing is written, exactly as before.
-      if (form.on || saved?.active) {
-        await saveGoalDue(database, ws, { goalId: plan.goalId, on: form.on, day: form.day, mode: form.mode, accountId: form.accountId, toAccountId: form.toAccountId }, isoDate());
-      }
+      // No account left to use (none in the goal's currency): it can only be turned off.
+      const on = form.on && !!form.accountId;
+      // Off and never on: nothing but the amount is written, exactly as before. Both land together or not at all.
+      const dueInput = on || saved?.active ? { goalId: plan.goalId, on, day: form.day, mode: form.mode, accountId: form.accountId, toAccountId: form.toAccountId } : null;
+      await saveGoalMonthly(database, ws, { goalId: plan.goalId, amountMinor: typed ?? 0, due: dueInput }, isoDate());
     });
 
   return (

@@ -208,10 +208,11 @@ export function RecurringPage() {
     setToast(null);
     try {
       await t.undo();
-      await invalidate();
     } catch (e) {
       setError(e);
     }
+    // Even an undo that could do only part of it changed something.
+    await invalidate();
   }
 
   const summary = summaryOf(readRows, today);
