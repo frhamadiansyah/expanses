@@ -5,7 +5,7 @@ import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { cardTerms } from '../schema-points';
 import { categoryIdsByKeyTx } from './categories';
-import { listFeeWaivers, restoreWaiver } from './card-fee-waiver';
+import { challengeFeeYear, listFeeWaivers, restoreWaiver } from './card-fee-waiver';
 import { feeColumnsExist, feeFieldsByCard, writeFeeFields } from './fee-columns';
 import { postTransactionTx, voidTransactionTx } from './ledger';
 import { PointsError } from './points';
@@ -94,20 +94,23 @@ async function chargesNear(tx: Db, ws: WorkspaceContext, cardId: string, covered
   }
   const charges = [...byTransaction.values()];
 
-  // Credits on the card that reverse a fee: in a fee category or named like the fee, not a refund Fee waived posted.
-  const ours = new Set((await hasRefundTable(tx)) ? (await tx.values<[string]>(sql`SELECT transaction_id FROM card_fee_refunds WHERE account_id = ${cardId}`)).map(([id]) => id) : []);
+  /*
+   * Credits on the card that reverse a fee: in a fee category or named like the fee (an income line only by its
+   * name), whatever they are called — a reversal typed in by hand as "Annual fee refund" counts. Only the refunds
+   * Fee waived posted itself are left out, edited ones included.
+   */
+  const ours = await ourRefundIds(tx, cardId);
   const credits = (
-    await tx.values<[string, string, string, number, string | null]>(sql`
-      SELECT t.id, t.occurred_on, t.description, -ce.amount_minor, ca.system_key
+    await tx.values<[string, string, string, number, string | null, string]>(sql`
+      SELECT t.id, t.occurred_on, t.description, -ce.amount_minor, ca.system_key, ca.kind
       FROM entries e
       JOIN transactions t ON t.id = e.transaction_id AND t.status = 'posted'
       JOIN entries ce ON ce.transaction_id = t.id AND ce.account_id != e.account_id AND ce.amount_minor < 0
-      JOIN accounts ca ON ca.id = ce.account_id AND ca.kind = 'expense'
+      JOIN accounts ca ON ca.id = ce.account_id AND ca.kind IN ('expense', 'income')
       WHERE e.account_id = ${cardId} AND e.workspace_id = ${ws.workspaceId} AND e.amount_minor > 0
         AND t.occurred_on BETWEEN ${shift(covered, -DAYS_BEFORE)} AND ${shift(covered, REVERSAL_DAYS_AFTER)}
-        AND t.description NOT IN (${WAIVED_DESCRIPTION}, ${REFUND_DESCRIPTION})
       ORDER BY t.occurred_on ASC, t.id ASC`)
-  ).filter(([id, , description, , key]) => !ours.has(id) && (isFeeKey(key) || isWorded(description)));
+  ).filter(([id, , description, , key, kind]) => !ours.has(id) && (isWorded(description) || (kind === 'expense' && isFeeKey(key))));
   const used = new Set<string>();
   const take = (amountMinor: number, from: string) => {
     const credit = credits.find(([id, on, , amount]) => !used.has(id) && on >= from && near(Number(amount), amountMinor));
@@ -168,6 +171,18 @@ export async function setAnnualFeeOn(database: Database, ws: WorkspaceContext, i
   });
 }
 
+/** The refunds Fee waived posted on the card (and the old Fee refunded), with every edit of them: never a reversal. */
+async function ourRefundIds(tx: Db, cardId: string): Promise<Set<string>> {
+  if (!(await hasRefundTable(tx))) return new Set();
+  const rows = await tx.values<[string]>(sql`
+    WITH RECURSIVE chain(id) AS (
+      SELECT transaction_id FROM card_fee_refunds WHERE account_id = ${cardId}
+      UNION SELECT t.id FROM transactions t JOIN chain ON t.replaces_transaction_id = chain.id
+    )
+    SELECT id FROM chain`);
+  return new Set(rows.map(([id]) => id));
+}
+
 /** The charge a waiver is about: the covered one, or, on a card with no fee date, today (its year is the fee's). */
 const coveredOf = (annualFeeOn: string | null, today: string) => (annualFeeOn ? coveredCharge(annualFeeOn, today) : today);
 
@@ -189,6 +204,8 @@ export interface FeeWaivedStatus {
   waived: boolean;
   /** Null with nothing back: the fee was cancelled before it was charged, or waived before refunds were kept. */
   back: FeeBack | null;
+  /** The fee year the card's challenge is for, or null without one: Fee waived is offered on it only for this year. */
+  challengeYear: number | null;
 }
 
 type RefundRow = { root: string | null; id: string; amountMinor: number; on: string; description: string; into: string };
@@ -201,7 +218,8 @@ async function hasRefundTable(tx: Db): Promise<boolean> {
  * The refunds posted for the year's fee. `linked`: those kept against the year (Fee waived, and the old Fee refunded),
  * each by the transaction that stands for it now — an edit's replacement, found through what it replaced when the
  * edit came before edits carried the link. `older`: an older Waived's refund, which kept no link: a posted "Annual fee
- * waived" or "Annual fee refund" on the card since the fee, that no kept refund stands for.
+ * waived" on the card since the fee, that no kept refund stands for. Never an "Annual fee refund": one typed in by
+ * hand has that name too, and the old Fee refunded always kept its link.
  */
 async function refundsFor(tx: Db, ws: WorkspaceContext, cardId: string, year: number, covered: string): Promise<{ linked: RefundRow[]; older: RefundRow[] }> {
   if (!(await hasRefundTable(tx))) return { linked: [], older: [] };
@@ -222,7 +240,7 @@ async function refundsFor(tx: Db, ws: WorkspaceContext, cardId: string, year: nu
   const older = (
     await tx.values<[string, number, string, string, string]>(sql`
       SELECT t.id, ${amount}, t.occurred_on, t.description, ${into} FROM transactions t
-      WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted' AND t.description IN (${WAIVED_DESCRIPTION}, ${REFUND_DESCRIPTION})
+      WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted' AND t.description = ${WAIVED_DESCRIPTION}
         AND t.occurred_on >= ${shift(covered, -DAYS_BEFORE)}
         AND EXISTS (SELECT 1 FROM entries e WHERE e.transaction_id = t.id AND e.account_id = ${cardId})
       ORDER BY t.occurred_on`)
@@ -244,7 +262,7 @@ export async function feeWaivedStatus(db: Db, ws: WorkspaceContext, input: { car
   const marked = terms.annualFeeWaivedYear === year;
   const row = linked.at(-1) ?? (marked ? older.at(-1) : undefined);
   const back = row ? { transactionId: row.id, amountMinor: row.amountMinor, on: row.on, intoAccountId: row.into, cancelsCharge: row.description === WAIVED_DESCRIPTION } : null;
-  return { year, covered, waived: marked || linked.length > 0, back };
+  return { year, covered, waived: marked || linked.length > 0, back, challengeYear: await challengeFeeYear(db, ws, input.cardId) };
 }
 
 export type FeeWaivedInput =
@@ -297,6 +315,8 @@ export async function saveFeeWaived(database: Database, ws: WorkspaceContext, in
         });
       } else {
         if (!(input.amountMinor > 0)) throw new PointsError('Enter the amount that came back');
+        const { reversedOn } = await chargesNear(tx, ws, input.cardId, covered, terms.annualFeeMinor);
+        if (reversedOn) throw new PointsError(`A reversal of this fee is already recorded on ${reversedOn}.`);
         const keys = await categoryIdsByKeyTx(tx, ws);
         const category = keys['miscellaneous.membership_fee'] ?? keys['miscellaneous.fees_charges'];
         if (!category) throw new PointsError('The Membership fee category is missing');

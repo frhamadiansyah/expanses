@@ -30,13 +30,8 @@ describe('the annual fee row on a card page', () => {
 });
 
 describe('which fee year a challenge is about', () => {
-  // The covered charge is 5 Oct 2026.
-  it('covers a challenge ending in the year before the charge, or up to 45 days after it', () => {
-    expect(challengeCoversFee('2026-09-30', '2026-10-05')).toBe(true);
-    expect(challengeCoversFee('2025-10-05', '2026-10-05')).toBe(true);
-    expect(challengeCoversFee('2026-11-19', '2026-10-05')).toBe(true);
-  });
-  it('does not cover last year’s challenge, kept on the card a year on', () => expect(challengeCoversFee('2025-09-30', '2026-10-05')).toBe(false));
-  it('does not cover next year’s challenge, which shows its own progress', () => expect(challengeCoversFee('2027-09-01', '2026-10-05')).toBe(false));
-  it('covers nothing without a last day', () => expect(challengeCoversFee(null, '2026-10-05')).toBe(false));
+  it('covers the year the challenge was kept for', () => expect(challengeCoversFee(2026, 2026)).toBe(true));
+  it('does not cover last year’s challenge, kept on the card a year on', () => expect(challengeCoversFee(2025, 2026)).toBe(false));
+  it('does not cover next year’s challenge, which shows its own progress', () => expect(challengeCoversFee(2027, 2026)).toBe(false));
+  it('covers nothing without a challenge', () => expect(challengeCoversFee(null, 2026)).toBe(false));
 });

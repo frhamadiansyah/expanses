@@ -127,13 +127,10 @@ export function FeeWaivedSheet({ fee, today, onClose, onSaved, chargedAsNormal =
 
   if (!dated) {
     // No fee date, no year to mark: the date is set here first, and the sheet then asks as for any card.
-    const setDate = () =>
-      void run(
-        () => (feeOn ? setAnnualFeeOn(database, ws, { cardId: fee.cardId, annualFeeOn: feeOn }) : saveFeeWaived(database, ws, { cardId: fee.cardId, today, back: false })),
-        () => {},
-      );
+    // Saved here, the date alone is written: nothing is waived yet, so no toast; the sheet then asks again.
+    const setDate = () => void run(() => setAnnualFeeOn(database, ws, { cardId: fee.cardId, annualFeeOn: feeOn }), () => {});
     return (
-      <Sheet grouped title={title} onClose={onClose} confirm={{ label: 'Save', disabled: busy, run: setDate }}>
+      <Sheet grouped title={title} onClose={onClose} confirm={{ label: 'Save', disabled: busy || feeOn === '', run: setDate }}>
         <InsetGroup footer={<span data-testid="fee-waived-footer">Set the day the fee is charged first.</span>}>
           <TextRow label="Charged on" type="date" value={feeOn} onChange={(e) => setFeeOn(e.target.value)} />
         </InsetGroup>

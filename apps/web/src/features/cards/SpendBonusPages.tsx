@@ -36,10 +36,9 @@ function windowText(item: SpendBonusItem, currency: string): string {
 function FeeWaivedButton({ page, item }: { page: CardPage; item: SpendBonusItem | undefined }) {
   const { card, cp, currency, today } = page;
   const status = useFeeWaivedStatus(card.id, today);
-  const { waiver } = useSpendBonuses(cp, page.all, today);
   const [open, setOpen] = useState(false);
-  // Only a challenge about the fee year a waiver covers now offers it or says it was waived; any other reads as before.
-  const covers = Boolean(status.data && waiver?.kind === 'challenge' && challengeCoversFee(waiver.spendBy, status.data.covered));
+  // Only a challenge kept for the fee year a waiver covers now offers it or says it was waived; any other reads as before.
+  const covers = Boolean(status.data && challengeCoversFee(status.data.challengeYear, status.data.year));
   if (!item || item.kind !== 'challenge' || (!covers && !open)) return null;
   const waived = status.data?.waived ? waivedLine(status.data, currency) : null;
   return (
@@ -257,7 +256,7 @@ function WaiverForm({ page }: { page: CardPage }) {
           spendBy: shownKind === 'challenge' ? shownBy || null : null,
           categoryIds: shownCategories,
         };
-        await saveFeeWaiver(database, ws, card.id, waiver);
+        await saveFeeWaiver(database, ws, card.id, waiver, today);
       }
       await invalidate();
       goBack();

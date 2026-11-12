@@ -37,19 +37,11 @@ export function feeLine(
   return { amount, when, soon: feeDaysAway(chargedOn, today) <= FEE_SOON_DAYS, waived: false };
 }
 
-const yearsOn = (iso: string, years: number) => `${String(Number(iso.slice(0, 4)) + years).padStart(4, '0')}${iso.slice(4)}`;
-const daysOn = (iso: string, days: number) => {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-};
-
 /**
- * Whether a fee challenge is about the fee year a waiver covers now: its last day falls between the charge before the
- * covered one and 45 days after the covered one. Only such a challenge offers Fee waived or says the fee was waived;
- * last year's reads as ended, and next year's shows its own progress.
+ * Whether a fee challenge is about the fee year a waiver covers now: the year kept on the challenge when it was saved
+ * (the charge it was given for, even when given after the fee posted) is the covered charge's. Only such a challenge
+ * offers Fee waived or says the fee was waived; last year's reads as ended, and next year's shows its own progress.
  */
-export function challengeCoversFee(spendBy: string | null, covered: string): boolean {
-  if (!spendBy) return false;
-  return spendBy >= yearsOn(covered, -1) && spendBy <= daysOn(covered, 45);
+export function challengeCoversFee(challengeYear: number | null, coveredYear: number): boolean {
+  return challengeYear !== null && challengeYear === coveredYear;
 }

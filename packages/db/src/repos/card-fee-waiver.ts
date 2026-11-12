@@ -53,7 +53,16 @@ function check(waiver: FeeWaiver) {
   }
 }
 
-async function writeWaiver(db: Db, ws: WorkspaceContext, accountId: string, waiver: FeeWaiver) {
+/** Whether card_fee_waivers has fee_year (0113). Once seen it is remembered: a column is never taken away. */
+const yearSeen = new WeakSet<object>();
+async function feeYearColumn(db: Db): Promise<boolean> {
+  if (yearSeen.has(db)) return true;
+  if ((await db.values(sql`SELECT 1 FROM pragma_table_info('card_fee_waivers') WHERE name = 'fee_year'`)).length === 0) return false;
+  yearSeen.add(db);
+  return true;
+}
+
+async function writeWaiver(db: Db, ws: WorkspaceContext, accountId: string, waiver: FeeWaiver, feeYear: number | null = null) {
   check(waiver);
   const challenge = waiver.kind === 'challenge';
   await db.run(
@@ -62,12 +71,35 @@ async function writeWaiver(db: Db, ws: WorkspaceContext, accountId: string, waiv
         ON CONFLICT (account_id) DO UPDATE SET kind = excluded.kind, amount_minor = excluded.amount_minor, counted_from = excluded.counted_from,
           spend_by = excluded.spend_by, category_ids = excluded.category_ids`,
   );
+  if (await feeYearColumn(db)) await db.run(sql`UPDATE card_fee_waivers SET fee_year = ${challenge ? feeYear : null} WHERE account_id = ${accountId} AND workspace_id = ${ws.workspaceId}`);
 }
 
-/** Sets a card's waiver, replacing the one it had. */
-export async function saveFeeWaiver(database: Database, ws: WorkspaceContext, accountId: string, waiver: FeeWaiver): Promise<void> {
+/**
+ * Sets a card's waiver, replacing the one it had. A challenge keeps the year of the fee it is for: the charge a waiver
+ * covers on `today`, the day it is saved — a challenge the bank gives once the fee has posted is that fee's.
+ */
+export async function saveFeeWaiver(database: Database, ws: WorkspaceContext, accountId: string, waiver: FeeWaiver, today?: string): Promise<void> {
   if (!(await tablesExist(database.db))) throw new PointsError('This database needs updating before a fee waiver can be saved');
-  await database.transaction(async (tx) => writeWaiver(tx, ws, accountId, waiver));
+  await database.transaction(async (tx) => {
+    const feeOn = (await feeFieldsByCard(tx, ws)).get(accountId)?.annualFeeOn ?? null;
+    await writeWaiver(tx, ws, accountId, waiver, feeOn && today ? Number(coveredCharge(feeOn, today).slice(0, 4)) : null);
+  });
+}
+
+/**
+ * The year of the fee a card's challenge is for: the one kept when it was saved; for a challenge saved before that
+ * was kept, the charge its last day covers (or, on a card with no fee date, its last day's year). Null without one.
+ */
+export async function challengeFeeYear(db: Db, ws: WorkspaceContext, accountId: string): Promise<number | null> {
+  if (!(await tablesExist(db))) return null;
+  const year = (await feeYearColumn(db)) ? sql`fee_year` : sql`NULL`;
+  const [row] = await db.values<[string, string | null, number | null]>(
+    sql`SELECT kind, spend_by, ${year} FROM card_fee_waivers WHERE account_id = ${accountId} AND workspace_id = ${ws.workspaceId}`,
+  );
+  if (!row || row[0] !== 'challenge' || !row[1]) return null;
+  if (row[2] !== null) return Number(row[2]);
+  const feeOn = (await feeFieldsByCard(db, ws)).get(accountId)?.annualFeeOn ?? null;
+  return Number((feeOn ? coveredCharge(feeOn, row[1]) : row[1]).slice(0, 4));
 }
 
 export async function clearFeeWaiver(database: Database, ws: WorkspaceContext, accountId: string): Promise<void> {
