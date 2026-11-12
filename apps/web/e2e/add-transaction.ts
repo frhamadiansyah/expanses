@@ -17,7 +17,24 @@ export const saveButton = (form: Locator): Locator =>
  */
 export async function chooseTo(form: Locator, account: string) {
   await form.getByRole('button', { name: /^To/ }).click();
-  await form.page().getByRole('dialog', { name: 'To', exact: true }).getByRole('button', { name: account.replace(/ \([A-Z]{3}\)$/, ''), exact: true }).click();
+  const dialog = form.page().getByRole('dialog', { name: 'To', exact: true });
+  const name = account.replace(/ \([A-Z]{3}\)$/, '');
+  await expect(dialog.getByTestId('payment-sections')).toBeVisible();
+  await openPocketOf(dialog, name);
+  await dialog.getByRole('button', { name, exact: true }).click();
+}
+
+/**
+ * A pocket — "Bank One Valas Plus · USD" — sits folded under its account when the account holds several currencies
+ * (account tree, 12 Nov): when its row is not drawn, its account's row ("Bank One Valas Plus") is opened first, as a
+ * person would. A row already drawn, or a name that is no pocket's, is left alone.
+ */
+export async function openPocketOf(dialog: Locator, name: string) {
+  if (await dialog.getByRole('button', { name, exact: true }).isVisible()) return;
+  const at = name.lastIndexOf(' · ');
+  if (at < 0) return;
+  const parent = dialog.getByRole('button', { name: name.slice(0, at), exact: true, expanded: false });
+  if ((await parent.count()) > 0) await parent.click();
 }
 
 /** A transfer's or a trade's Goal: its own box under the form, a row, then the goal in its sheet. */
@@ -36,6 +53,7 @@ export async function choosePayment(page: Page, name: string, sheet: string | Re
   const option = dialog.getByRole('button', { name, exact: true });
   const cardsTab = dialog.getByRole('radio', { name: 'Credit cards' });
   await expect(dialog.getByTestId('payment-sections')).toBeVisible();
+  await openPocketOf(dialog, name);
   if (!(await option.isVisible()) && (await cardsTab.count()) > 0) await cardsTab.click();
   await option.click();
 }

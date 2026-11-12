@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Join event without code</title>
+<style>
+:root { --bg:#f2f2f7; --surface:#fff; --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e0e0e4; --fill:#efeff2; --tint:#007aff; --up:#248a3d; --warn:#b25000; }
+* { box-sizing:border-box; }
+body { margin:0; background:#e6e6ea; color:var(--ink); font:14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; padding:24px 16px 48px; }
+h1 { font-size:20px; margin:0 0 4px; } .lede { color:#555; margin:0 0 20px; max-width:980px; }
+h2 { font-size:16px; margin:28px 0 12px; }
+.pair { display:flex; flex-wrap:wrap; gap:22px; align-items:flex-start; }
+.col { width:320px; max-width:100%; }
+.cap { font-weight:600; margin:0 0 8px; } .cap .n { display:inline-block; background:#1c1c1e; color:#fff; border-radius:5px; padding:0 6px; font-size:12px; margin-right:6px; }
+.who { font-size:11.5px; font-weight:600; color:#555; background:#dde3ea; border-radius:5px; padding:1px 6px; margin-left:6px; }
+.phone { background:var(--bg); border-radius:28px; padding:12px 14px 18px; border:1px solid #d4d4d8; min-height:580px; position:relative; overflow:hidden; }
+.bar { display:flex; align-items:center; justify-content:space-between; margin:2px 0 10px; }
+.round { width:34px; height:34px; border-radius:50%; background:#e5e5ea; display:inline-flex; align-items:center; justify-content:center; font-size:15px; }
+.ttl { font-size:17px; font-weight:600; }
+.lt { font-size:28px; font-weight:700; margin:2px 4px 8px; display:flex; justify-content:space-between; align-items:center; }
+.gh { font-size:12.5px; color:var(--ink3); margin:16px 6px 5px; text-transform:uppercase; letter-spacing:.03em; display:flex; justify-content:space-between; }
+.gf { font-size:12.5px; color:var(--ink3); margin:6px 6px 0; }
+.ig { background:var(--surface); border-radius:11px; overflow:hidden; }
+.row { display:flex; align-items:center; gap:10px; padding:10px 13px; min-height:48px; position:relative; font-size:15px; }
+.ig .row + .row::before { content:""; position:absolute; top:0; left:13px; right:0; border-top:.5px solid var(--hair); }
+.ig.icons .row + .row::before { left:50px; }
+.ic { width:28px; height:28px; border-radius:50%; background:var(--fill); display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; }
+.grow { flex:1; min-width:0; }
+.s { font-size:12px; color:var(--ink3); }
+.val { color:var(--ink3); white-space:nowrap; } .amt { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.chev { color:#c7c7cc; margin-left:4px; }
+.invite { background:var(--surface); border-radius:14px; padding:14px; box-shadow:0 1px 2px rgba(0,0,0,.06); }
+.invite .t { font-size:16px; font-weight:600; margin:2px 0 2px; }
+.btns { display:flex; gap:8px; margin-top:12px; }
+.b1 { flex:1; background:var(--tint); color:#fff; text-align:center; border-radius:11px; padding:10px; font-weight:600; }
+.b2 { flex:1; background:var(--fill); color:var(--ink); text-align:center; border-radius:11px; padding:10px; font-weight:600; }
+.ck { width:22px; height:22px; border-radius:50%; border:1.5px solid #c7c7cc; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:12px; }
+.ck.on { background:var(--tint); border-color:var(--tint); color:#fff; }
+.scrim { position:absolute; inset:0; background:rgba(0,0,0,.25); }
+.sheet { position:absolute; left:0; right:0; bottom:0; background:var(--bg); border-radius:18px 18px 0 0; padding:10px 14px 22px; box-shadow:0 -6px 20px rgba(0,0,0,.12); }
+.grab { width:36px; height:5px; border-radius:3px; background:#c7c7cc; margin:0 auto 10px; }
+.big { background:var(--tint); color:#fff; text-align:center; border-radius:13px; padding:13px; font-weight:600; font-size:16px; margin-top:14px; }
+.link { color:var(--tint); text-align:center; padding:10px; font-size:15px; }
+.mark { outline:2px dashed #2563eb; outline-offset:2px; border-radius:12px; }
+.note { font-size:12.5px; color:#444; margin:10px 2px 0; }
+.toast { position:absolute; left:14px; right:14px; bottom:18px; background:#fff; border-radius:14px; box-shadow:0 4px 18px rgba(0,0,0,.14); padding:10px 12px; display:flex; align-items:center; gap:10px; font-size:14px; }
+.pill { font-size:12px; border-radius:10px; padding:2px 8px; white-space:nowrap; }
+.pill.ok { color:var(--up); background:#ecfdf5; } .pill.wait { color:var(--warn); background:#fef3c7; }
+</style>
+</head>
+<body>
+<h1>Join a shared event without a code</h1>
+<p class="lede">Rina and Andi already share Family, an encrypted channel between their phones. An event Rina shares with the household reaches Andi’s phone through it as an invite card — one tap to join, no code. A code stays only for people outside the household. Names and amounts are made up.</p>
+
+<h2>Rina’s phone</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">1</span>Share the event<span class="who">Rina</span></p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Turkey trip</span><span class="round">⋯</span></div>
+      <div class="scrim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="bar"><span class="round">✕</span><span class="ttl">Share Turkey trip</span><span style="width:34px"></span></div>
+        <div class="gh"><span>Family</span></div>
+        <div class="ig mark">
+          <div class="row"><span class="ck on">✓</span><div class="grow">Andi</div><span class="s">gets it on his phone</span></div>
+        </div>
+        <div class="gf">No code to type: the invite goes to Andi’s phone through Family.</div>
+        <div class="big">Share with Andi</div>
+        <div class="link">Invite someone else with a code</div>
+      </div>
+    </div>
+    <p class="note">The same happens when the event is ticked on “What’s shared with Andi”. The code is only for people outside the household.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">2</span>Waiting, then joined<span class="who">Rina</span></p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Turkey trip</span><span class="round">⋯</span></div>
+      <div class="gh"><span>People</span></div>
+      <div class="ig">
+        <div class="row"><div class="grow">Rina</div><span class="s">me</span></div>
+        <div class="row"><div class="grow">Andi</div><span class="pill wait">Invite sent</span></div>
+        <div class="row"><div class="grow">Sari</div><span class="s">no app</span></div>
+      </div>
+      <div class="gf">Andi sees the invite on his Events page. Cancel invite is under ⋯.</div>
+      <div class="gh" style="margin-top:26px"><span>… after Andi taps Join</span></div>
+      <div class="ig">
+        <div class="row"><div class="grow">Rina</div><span class="s">me</span></div>
+        <div class="row"><div class="grow">Andi</div><span class="pill ok">Joined</span></div>
+        <div class="row"><div class="grow">Sari</div><span class="s">no app</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>Andi’s phone</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">3</span>Events page<span class="who">Andi</span></p>
+    <div class="phone">
+      <div class="lt">Events <span class="round">＋</span></div>
+      <div class="invite mark">
+        <div class="s">Rina shared an event</div>
+        <div class="t">Turkey trip</div>
+        <div class="s">12–20 Oct · TRY · 3 people</div>
+        <div class="btns"><span class="b2">Not now</span><span class="b1">Join</span></div>
+      </div>
+      <div class="gh"><span>This year</span></div>
+      <div class="ig icons">
+        <div class="row"><span class="ic">🎉</span><div class="grow"><div>Office dinner</div><div class="s">Sep</div></div><span class="chev">›</span></div>
+        <div class="row"><span class="ic">🏖️</span><div class="grow"><div>Bali weekend</div><div class="s">Jul</div></div><span class="chev">›</span></div>
+      </div>
+      <p class="note">The card sits on top of Events until it is answered. “Not now” folds it into one line, “1 invite”, that stays above the list.</p>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">4</span>Tap Join<span class="who">Andi</span></p>
+    <div class="phone">
+      <div class="lt">Events</div>
+      <div class="scrim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="bar"><span class="round">✕</span><span class="ttl">Join Turkey trip</span><span style="width:34px"></span></div>
+        <div class="gh"><span>Which one is Andi?</span></div>
+        <div class="ig">
+          <div class="row"><span class="ck on">✓</span><div class="grow">Andi</div><span class="s">named by Rina</span></div>
+          <div class="row"><span class="ck"></span><div class="grow">Sari</div></div>
+        </div>
+        <div class="gf">Rina already added Andi to the trip, so he is picked. What he paid on the trip stays his; who owes whom comes with the event.</div>
+        <div class="big">Join</div>
+      </div>
+    </div>
+    <p class="note">If Rina never named him in the event, the sheet has no question: Join adds him as “Andi”.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">5</span>Joined<span class="who">Andi</span></p>
+    <div class="phone">
+      <div class="lt">Events <span class="round">＋</span></div>
+      <div class="gh"><span>This year</span></div>
+      <div class="ig icons">
+        <div class="row"><span class="ic">✈️</span><div class="grow"><div>Turkey trip</div><div class="s">Oct · shared with Rina</div></div><span class="chev">›</span></div>
+        <div class="row"><span class="ic">🎉</span><div class="grow"><div>Office dinner</div><div class="s">Sep</div></div><span class="chev">›</span></div>
+        <div class="row"><span class="ic">🏖️</span><div class="grow"><div>Bali weekend</div><div class="s">Jul</div></div><span class="chev">›</span></div>
+      </div>
+      <div class="toast"><span>✓</span><span class="grow">Joined Turkey trip</span></div>
+    </div>
+    <p class="note">The event is in his list like any shared event. Nothing was typed.</p>
+  </div>
+</div>
+</body>
+</html>

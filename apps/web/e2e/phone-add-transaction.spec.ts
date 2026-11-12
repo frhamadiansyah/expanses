@@ -687,7 +687,7 @@ test('Paid with has tabs for accounts and cards, and its search looks across bot
   expect(Math.round((await pill.boundingBox())!.width)).toBe(Math.round((await list.boundingBox())!.width));
   await expect(sheet.getByRole('button', { name: 'Close', exact: true })).toHaveCount(0);
   await sheet.getByRole('searchbox', { name: 'Search Paid with' }).fill('bca');
-  await expect(sheet.getByRole('heading', { name: 'Accounts' })).toBeVisible();
+  await expect(sheet.getByRole('heading', { name: 'Bank accounts' })).toBeVisible();
   await expect(sheet.getByRole('heading', { name: 'Credit cards' })).toBeVisible();
   await sheet.getByRole('button', { name: 'Close search' }).click();
   await expect(sheet.getByRole('searchbox', { name: 'Search Paid with' })).toHaveCount(0);

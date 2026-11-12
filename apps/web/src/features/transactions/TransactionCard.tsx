@@ -519,6 +519,20 @@ function CardBody({
     ? partnerTransferSections(paidWith.data ?? [], partnerWhere, draft.toId ? byId.get(draft.toId)?.currency : null, workspaceName)
     : [];
   const partnerOf = (item: PaidWithItem, side: 'to' | 'from') => ({ side, owner: item.owner, itemId: item.itemId, currency: item.currency });
+  /*
+   * Opened from a partner's joint card in Wallet (`seed.partnerItemId`): its item is Paid with — a transfer's From —
+   * as soon as Paid with lists it, once. An item this workspace does not offer leaves the row as it was.
+   */
+  const seededPartner = useRef(initial || duplicateOf || finish ? null : (seed?.partnerItemId ?? null));
+  useEffect(() => {
+    const wanted = seededPartner.current;
+    if (!wanted || !paidWith.data) return;
+    seededPartner.current = null;
+    const found = paidWith.data.find((each) => each.itemId === wanted);
+    if (!found) return;
+    if (latest.current.mode === 'transfer') set({ moneyId: '', cardId: '', partner: partnerOf(found, 'from') });
+    else void payWithShared(found);
+  }, [paidWith.data]);
   // The transfer a corrected row is one side of, when it is one: its from, to and currency never change.
   const savedTransferQuery = useQuery({
     queryKey: ['member-transfer', initial?.id ?? ''],
@@ -1530,6 +1544,8 @@ function CardBody({
           options={paymentOptions(landing, [])}
           accounts={accounts}
           chosenAccountId={draft.partner?.side === 'to' ? '' : draft.toId}
+          // Within an account, the pocket in the From's currency first: a same-currency move is one tap away.
+          leadCurrency={draft.partner?.side === 'from' ? null : account?.currency}
           // One's own account clears a partner's item on this side; a partner on the From side stays.
           onPick={(option) => {
             set({ toId: option.accountId, partner: draft.partner?.side === 'from' ? draft.partner : null });

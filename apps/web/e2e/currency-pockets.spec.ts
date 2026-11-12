@@ -4,7 +4,7 @@ import { expectWalletFigure, openAccount, openSettings, walletCard, showBalance 
 import { openNewAsset } from './add-asset';
 import { openDrawers } from './drawers';
 import { ageRates, forgetRates, mockRates, openWithPockets, pickPocket } from './pockets';
-import { chooseTo } from './add-transaction';
+import { choosePayment, chooseTo } from './add-transaction';
 import { currencyRow, pickInSheet, setCurrency } from './currency-field';
 import { pickView } from './wallet';
 
@@ -318,14 +318,23 @@ test('the parent is offered nowhere money is chosen; its pockets are, and a pock
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await form.getByRole('button', { name: 'Paid with' }).click();
   const payer = page.getByRole('dialog', { name: 'Paid with' });
-  await expect(payer.getByRole('button', { name: 'Bank One Valas Plus · IDR', exact: true })).toBeVisible();
-  await expect(payer.getByRole('button', { name: 'Bank One Valas Plus', exact: true })).toHaveCount(0);
+  // The account is one row that opens its pockets under it (account tree, 12 Nov) — never a choice of its own.
+  const parent = payer.getByRole('button', { name: 'Bank One Valas Plus', exact: true });
+  await expect(parent).toHaveAttribute('aria-expanded', 'false');
+  await expect(payer.getByRole('button', { name: 'Bank One Valas Plus · IDR', exact: true })).toHaveCount(0);
+  await parent.click();
+  await expect(parent).toHaveAttribute('aria-expanded', 'true');
   await payer.getByRole('button', { name: 'Bank One Valas Plus · IDR', exact: true }).click();
   await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
   await form.getByRole('button', { name: /^To/ }).click();
   const toList = page.getByRole('dialog', { name: 'To', exact: true });
   await expect(toList).toBeVisible();
-  await expect(toList.getByRole('button', { name: 'Bank One Valas Plus', exact: true })).toHaveCount(0);
+  // In To the account is again a row that only opens its pockets; the From pocket is not among them.
+  const toParent = toList.getByRole('button', { name: 'Bank One Valas Plus', exact: true });
+  await expect(toParent).toHaveAttribute('aria-expanded', 'false');
+  await toParent.click();
+  await expect(toList.getByRole('button', { name: 'Bank One Valas Plus · USD', exact: true })).toBeVisible();
+  await expect(toList.getByRole('button', { name: 'Bank One Valas Plus · IDR', exact: true })).toHaveCount(0);
   await toList.getByRole('button', { name: 'Close' }).click();
 });
 
@@ -367,7 +376,7 @@ test('the Transfer tab between two pockets posts what the Move screen posts', as
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
   await form.getByRole('button', { name: 'From' }).click();
-  await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'Bank One Valas Plus · USD', exact: true }).click();
+  await choosePayment(page, 'Bank One Valas Plus · USD', 'From');
   await form.getByLabel('Amount', { exact: true }).pressSequentially('500');
   await chooseTo(form, 'Bank One Valas Plus · SGD (SGD)');
   await form.getByLabel('Received amount (SGD)').pressSequentially('638');

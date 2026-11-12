@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Goal monthly set aside</title>
+<style>
+:root { --bg:#f2f2f7; --surface:#fff; --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e0e0e4; --fill:#efeff2; --tint:#007aff; --up:#248a3d; --warn:#b25000; }
+* { box-sizing:border-box; }
+body { margin:0; background:#e6e6ea; color:var(--ink); font:14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; padding:24px 16px 48px; }
+h1 { font-size:20px; margin:0 0 4px; } .lede { color:#555; margin:0 0 20px; max-width:980px; }
+h2 { font-size:16px; margin:30px 0 12px; }
+.pair { display:flex; flex-wrap:wrap; gap:22px; align-items:flex-start; }
+.col { width:320px; max-width:100%; }
+.cap { font-weight:600; margin:0 0 8px; } .cap .n { display:inline-block; background:#1c1c1e; color:#fff; border-radius:5px; padding:0 6px; font-size:12px; margin-right:6px; }
+.phone { background:var(--bg); border-radius:28px; padding:12px 14px 18px; border:1px solid #d4d4d8; min-height:600px; position:relative; overflow:hidden; }
+.bar { display:flex; align-items:center; justify-content:space-between; margin:2px 0 10px; }
+.round { width:34px; height:34px; border-radius:50%; background:#e5e5ea; display:inline-flex; align-items:center; justify-content:center; font-size:15px; }
+.ttl { font-size:17px; font-weight:600; }
+.gh { font-size:12.5px; color:var(--ink3); margin:16px 6px 5px; text-transform:uppercase; letter-spacing:.03em; display:flex; justify-content:space-between; }
+.gf { font-size:12.5px; color:var(--ink3); margin:6px 6px 0; }
+.ig { background:var(--surface); border-radius:11px; overflow:hidden; }
+.row { display:flex; align-items:center; gap:10px; padding:10px 13px; min-height:46px; position:relative; font-size:15px; }
+.ig .row + .row::before { content:""; position:absolute; top:0; left:13px; right:0; border-top:.5px solid var(--hair); }
+.grow { flex:1; min-width:0; } .s { font-size:12px; color:var(--ink3); }
+.val { color:var(--ink3); white-space:nowrap; } .amt { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.chev { color:#c7c7cc; margin-left:4px; }
+.sw { width:46px; height:28px; border-radius:14px; background:#34c759; position:relative; flex-shrink:0; } .sw::after { content:""; position:absolute; top:2px; right:2px; width:24px; height:24px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+.sw.off { background:#e9e9eb; } .sw.off::after { right:auto; left:2px; }
+.scrim { position:absolute; inset:0; background:rgba(0,0,0,.25); }
+.sheet { position:absolute; left:0; right:0; bottom:0; background:var(--bg); border-radius:18px 18px 0 0; padding:10px 14px 22px; box-shadow:0 -6px 20px rgba(0,0,0,.12); }
+.grab { width:36px; height:5px; border-radius:3px; background:#c7c7cc; margin:0 auto 10px; }
+.mark { outline:2px dashed #2563eb; outline-offset:2px; border-radius:10px; }
+.note { font-size:12.5px; color:#444; margin:10px 2px 0; }
+.hero { background:var(--surface); border-radius:12px; padding:12px 14px; }
+.big { font-size:24px; font-weight:700; font-variant-numeric:tabular-nums; }
+.prog { height:8px; border-radius:4px; background:#e5e7eb; margin:8px 0 6px; overflow:hidden; display:flex; } .prog i { display:block; height:100%; }
+.pill { font-size:12px; color:var(--up); background:#ecfdf5; border-radius:10px; padding:2px 8px; }
+.warn { color:var(--warn); }
+</style>
+</head>
+<body>
+<h1>Goal: set the Monthly amount aside by itself</h1>
+<p class="lede">Today a goal’s Monthly amount is only a plan figure: it adds to “Set up a month” but nothing happens to any account. Proposed: one switch in the Monthly sheet sets that amount aside each month, in an account picked once, on a chosen day. Money stays in the account; it moves from Free to spend to Set aside, exactly as a hand-made set-aside does today. Names and amounts are made up.</p>
+
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">1</span>Monthly sheet</p>
+    <div class="phone">
+      <div class="bar"><span></span><span class="ttl">Hajj</span><span></span></div>
+      <div class="scrim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="bar"><span class="round">✕</span><span class="ttl">Monthly for Hajj</span><span class="round">✓</span></div>
+        <div class="ig">
+          <div class="row"><span class="grow">Each month</span><span class="amt">Rp 2.000.000</span></div>
+        </div>
+        <div class="ig mark" style="margin-top:16px">
+          <div class="row"><span class="grow">Set it aside by itself</span><span class="sw"></span></div>
+          <div class="row"><span class="grow">In</span><span class="val">BCA Tahapan</span><span class="chev">›</span></div>
+          <div class="row"><span class="grow">On the</span><span class="val">25th</span><span class="chev">›</span></div>
+        </div>
+        <div class="gf">On the 25th of each month Rp 2.000.000 of BCA Tahapan is set aside for Hajj. Nothing leaves the account.</div>
+        <div class="ig" style="margin-top:16px">
+          <div class="row"><span class="grow">Needed a month</span><span class="val">Rp 1.850.000</span></div>
+          <div class="row"><span class="grow">After this</span><span class="val">Rp 2.000.000 · On track</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="note">Switch off: as today, a plan figure only. “On the” offers each day 1–28 and “Last day”; it starts on payday when the expected income has one.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">2</span>Goal page</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Hajj</span><span class="round">⋯</span></div>
+      <div class="hero">
+        <div class="s">Saved</div>
+        <div class="big">Rp 14.000.000</div>
+        <div class="prog"><i style="flex:14;background:#0891b2"></i><i style="flex:46;background:#e5e7eb"></i></div>
+        <div class="s">of Rp 60.000.000 · Mar 2028</div>
+      </div>
+      <div class="ig mark" style="margin-top:14px">
+        <div class="row"><div class="grow"><div>Monthly</div><div class="s">Set aside by itself on the 25th · BCA Tahapan</div></div><span class="amt">Rp 2.000.000</span><span class="chev">›</span></div>
+        <div class="row"><div class="grow"><div>Next</div><div class="s">25 Nov</div></div><span class="val" style="color:var(--tint)">Skip November</span></div>
+      </div>
+      <div class="gh"><span>Money set aside</span><span>Rp 14.000.000</span></div>
+      <div class="ig">
+        <div class="row"><span class="grow">BCA Tahapan</span><span class="amt">Rp 14.000.000</span><span class="chev">›</span></div>
+      </div>
+      <div class="gh"><span>History</span></div>
+      <div class="ig">
+        <div class="row"><div class="grow"><div>Set aside by itself</div><div class="s">25 Oct · BCA Tahapan</div></div><span class="amt">+Rp 2.000.000</span></div>
+        <div class="row"><div class="grow"><div>Set aside by itself</div><div class="s">25 Sep · BCA Tahapan</div></div><span class="amt">+Rp 2.000.000</span></div>
+        <div class="row"><div class="grow"><div>Set aside</div><div class="s">3 Sep · by hand</div></div><span class="amt">+Rp 10.000.000</span></div>
+      </div>
+    </div>
+    <p class="note">Each month’s amount joins Money set aside and is a History line. “Skip November” leaves one month out. A month already passed while the app was closed is set aside on the next open, dated its own day.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">3</span>The account</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">BCA Tahapan</span><span class="round">⋯</span></div>
+      <div class="hero"><div class="s">Balance</div><div class="big">Rp 20.500.000</div></div>
+      <div class="ig" style="margin-top:12px">
+        <div class="row"><span class="grow">Set aside</span><span class="amt">Rp 14.000.000</span></div>
+        <div class="row"><span class="grow">Free to spend</span><span class="amt">Rp 6.500.000</span></div>
+      </div>
+      <div class="gh"><span>Promised to</span></div>
+      <div class="ig">
+        <div class="row"><div class="grow"><div>Hajj</div><div class="s">+Rp 2.000.000 on the 25th</div></div><span class="amt">Rp 14.000.000</span><span class="chev">›</span></div>
+      </div>
+      <p class="note">The balance never changes: on the 25th, Rp 2.000.000 moves from Free to spend to Set aside. Wallet’s Balance follows (Spending money is after set-asides).</p>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">4</span>Not enough in the account</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">BCA Tahapan</span><span class="round">⋯</span></div>
+      <div class="hero"><div class="s">Balance</div><div class="big">Rp 13.000.000</div></div>
+      <div class="ig" style="margin-top:12px">
+        <div class="row"><span class="grow">Set aside</span><span class="amt">Rp 14.000.000</span></div>
+        <div class="row"><span class="grow">Free to spend</span><span class="amt warn">−Rp 1.000.000</span></div>
+      </div>
+      <div class="gf warn">More is promised than this account holds. Rp 14.000.000 is set aside but only Rp 13.000.000 is here. Move money back, or lower what is set aside.</div>
+      <p class="note">The month is still set aside, and the account’s existing warning shows — so a short month is seen, not silently skipped. The goal’s Monthly row also says “Short by Rp 1.000.000 in BCA Tahapan”.</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>

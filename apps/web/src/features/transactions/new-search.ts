@@ -18,6 +18,11 @@ export interface NewTransactionSearch {
   expense?: string;
   ws?: string;
   /**
+   * A partner's joint account or joint card, by its item id, opened from its card in Wallet: Paid with is that item —
+   * or, in a transfer, From is — once the group's workspace lists it (`paidWithItems`).
+   */
+  partner?: string;
+  /**
    * What was already typed on the workspace card when a shared event was picked on its Event row (shared events §6):
    * the amount, its currency, the note and the date, carried into the shared card. Read only with a bare `event`.
    */
@@ -45,5 +50,7 @@ export const newTransactionSearch = (search: Record<string, unknown>): NewTransa
   ...(text(search.event) && text(search.item) ? { item: text(search.item) } : {}),
   ...(text(search.event) && text(search.expense) ? { expense: text(search.expense) } : {}),
   ...(text(search.ws) ? { ws: text(search.ws) } : {}),
+  // A partner's item pays a purchase of the workspace's own, never an event's: an event drops it.
+  ...(text(search.partner) && !text(search.event) ? { partner: text(search.partner) } : {}),
   ...(text(search.event) && !text(search.item) && !text(search.expense) ? carried(search) : {}),
 });

@@ -142,7 +142,7 @@ export function GoalsPage() {
             />
             <FigureRow
               label="Saved a month"
-              info="Take-home pay minus spending minus loan principal, averaged over the last twelve months."
+              info="Take-home pay minus spending minus loan principal, averaged over the last twelve full months. This month counts once it is over."
               value={<Money minor={summary.data.capacityMonthlyMinor} currency={currency} />}
               dim
               testId="goals-saved-monthly"

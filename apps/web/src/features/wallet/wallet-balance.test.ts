@@ -1,7 +1,7 @@
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { spendingBook } from '../accounts/pockets';
-import { type BillMonthInput, billsToPay, filteredCards, moneyCardMinor, toggleFilter, walletBox, type WalletBoxInput } from './wallet-balance';
+import { type BillMonthInput, billsToPay, filteredCards, type JointBoxInput, moneyCardMinor, toggleFilter, walletBox, type WalletBoxInput, walletFilterSets } from './wallet-balance';
 import { walletCredit, walletMoney } from './wallet-model';
 
 const account = (id: string, subtype: string, extra: Partial<AccountRow> = {}) =>
@@ -186,5 +186,53 @@ describe('a row tapped filters the grid', () => {
 
   it('no filter keeps every card, in the grid’s order', () => {
     expect(filteredCards(cards, null, money, credit)).toEqual(cards);
+  });
+});
+
+/*
+ * The partner's joint account and joint card (mockup 2026-11-12-wallet-joint-items, A1): Andi's Payroll 4,3 jt and
+ * Rina's joint savings 8 jt are Spending money; Andi's card 1,25 jt and Rina's joint card 850 rb are Owed on cards.
+ */
+describe('the partner’s joint items in the Balance', () => {
+  const accounts = [account('payroll', 'bank'), card('card-1234')];
+  const book = spendingBook(accounts);
+  const money = walletMoney(accounts);
+  const credit = walletCredit(accounts);
+  const balances = { payroll: 4_300_000, 'card-1234': -1_250_000 };
+  const joint: JointBoxInput[] = [
+    { key: 'joint:savings', side: 'money', minor: 8_000_000, currency: 'IDR' },
+    { key: 'joint:card', side: 'credit', minor: 850_000, currency: 'IDR' },
+  ];
+  const base: WalletBoxInput = { book, balances, credit, baseCurrency: 'IDR', rates: {}, setAsides: [], bills: [bill('Bills', { amountMinor: 1_150_000 })], month: '2026-11' };
+
+  it('adds joint money to Spending money and what a joint card owes to Owed on cards', () => {
+    expect(walletBox({ ...base, joint })).toMatchObject({ spendingMinor: 12_300_000, cardsMinor: 2_100_000, billsMinor: 1_150_000, balanceMinor: 9_050_000, estimated: false, accounts: 2 });
+  });
+
+  it('counts nothing for a joint card in credit, as an own card owing nothing', () => {
+    expect(walletBox({ ...base, joint: [{ key: 'joint:card', side: 'credit', minor: -200_000, currency: 'IDR' }] })).toMatchObject({ cardsMinor: 1_250_000 });
+  });
+
+  it('converts a joint item in another currency, and names its missing rate rather than adding it raw', () => {
+    const usd: JointBoxInput[] = [{ key: 'joint:usd', side: 'money', minor: 10_000, currency: 'USD' }];
+    expect(walletBox({ ...base, joint: usd, rates: { USD: 16_000 } })).toMatchObject({ spendingMinor: 5_900_000, estimated: true });
+    expect(walletBox({ ...base, joint: usd })).toMatchObject({ spendingMinor: null, balanceMinor: null, missing: ['USD'] });
+    const sgdCard: JointBoxInput[] = [{ key: 'joint:sgd', side: 'credit', minor: 10_000, currency: 'SGD' }];
+    expect(walletBox({ ...base, joint: sgdCard })).toMatchObject({ cardsMinor: null, balanceMinor: null, missing: ['SGD'] });
+  });
+
+  it('draws the box over joint money alone', () => {
+    expect(walletBox({ ...base, book: [], balances: {}, credit: [], joint: [joint[0]!] }).accounts).toBe(1);
+  });
+
+  it('each row tapped keeps the partner’s cards too, and the cards shown still add up to its figure', () => {
+    const cards = [{ key: 'payroll' }, { key: 'joint:savings' }, { key: 'card-1234' }, { key: 'joint:card' }];
+    const box = walletBox({ ...base, joint });
+    const spending = filteredCards(cards, 'spending', ...walletFilterSets(money, credit, joint));
+    expect(spending.map((c) => c.key)).toEqual(['payroll', 'joint:savings']);
+    expect(moneyCardMinor(accounts[0]!, book, balances, 'IDR', {})! + joint[0]!.minor).toBe(box.spendingMinor);
+    const owed = filteredCards(cards, 'cards', ...walletFilterSets(money, credit, joint));
+    expect(owed.map((c) => c.key)).toEqual(['card-1234', 'joint:card']);
+    expect(-balances['card-1234'] + joint[1]!.minor).toBe(box.cardsMinor);
   });
 });

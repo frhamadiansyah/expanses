@@ -774,6 +774,7 @@ export function CardFace({
   kind,
   face,
   spent,
+  whose,
   cornerScale = 1,
   className,
 }: {
@@ -808,6 +809,12 @@ export function CardFace({
    * the corner blank.
    */
   spent?: string | null;
+  /**
+   * Whose card this is when it is not this phone's own — "Rina’s", for the partner's joint account or joint card in
+   * Wallet: printed after the type in the type line ("SAVING ACCOUNT · RINA’S"), in the card's own print, and nothing
+   * else on the face changes.
+   */
+  whose?: string | null;
   /** The scale the face is drawn at, so the corner button (32 px, 8 px in) is cleared in the face's own units. */
   cornerScale?: number;
   className?: string;
@@ -851,13 +858,15 @@ export function CardFace({
   const emboss = dark ? '0 1px 0 rgb(255 255 255 / 0.45), 0 -1px 0 rgb(0 0 0 / 0.2)' : '0 1px 0 rgb(0 0 0 / 0.55), 0 -1px 0 rgb(255 255 255 / 0.18)';
   const inset = md ? (portrait ? 12 : 16) : 9;
   const hidden = behind || band !== undefined;
+  // The type line's ending for a card that is someone else's: the same print, after the type.
+  const owned = (type: string | null) => (whose ? (type ? `${type} · ${whose}` : whose) : type);
 
   return (
     <div
       role={hidden ? undefined : 'img'}
       aria-hidden={hidden || undefined}
       // A drawn debit face with no holder recorded prints the account's name on the holder's line: said once, not twice.
-      aria-label={hidden ? undefined : drawn ? `${name}, ${kind}` : `${name}${last4 ? ` ending ${last4}` : ''}${holderName && holderName !== name ? `, ${holderName}` : ''}`}
+      aria-label={hidden ? undefined : `${drawn ? `${name}, ${kind}` : `${name}${last4 ? ` ending ${last4}` : ''}${holderName && holderName !== name ? `, ${holderName}` : ''}`}${whose ? `, ${whose}` : ''}`}
       data-testid="card-face"
       data-face={faced ? face.key : undefined}
       className={cx(
@@ -921,7 +930,7 @@ export function CardFace({
           <div className="absolute" style={{ bottom: inset - 2, left: inset }}>
             {/* Plain words, as a drawn wallet face prints E-WALLET: no pill, so every face names what it is the same way. */}
             <span data-testid="card-kind" className={cx('tabular block truncate font-semibold tracking-[0.12em] whitespace-nowrap uppercase opacity-85', md ? 'text-[11px]' : 'text-[7px]')} style={{ textShadow: emboss }}>
-              {kind}
+              {owned(kind ?? null)}
             </span>
           </div>
         </>
@@ -967,12 +976,12 @@ export function CardFace({
               {/* A face with a figure (the grid's) names its type under the digits, as an account's product name sits under its figure; its holder stays on the card's own page. */}
               {figure !== undefined && !faced && (
                 <div data-testid="face-type" className={cx('truncate font-semibold tracking-[0.12em] uppercase opacity-85', md ? 'text-[11px]' : 'text-[7px]')} style={{ textShadow: emboss }}>
-                  {cardName}
+                  {owned(cardName)}
                 </div>
               )}
-              {holder && !(figure !== undefined && !faced) && (
-                <div className="truncate tracking-[0.12em] uppercase opacity-85" style={{ textShadow: emboss }}>
-                  {holder}
+              {(holder || whose) && !(figure !== undefined && !faced) && (
+                <div data-testid="face-holder" className="truncate tracking-[0.12em] uppercase opacity-85" style={{ textShadow: emboss }}>
+                  {owned(holder)}
                 </div>
               )}
             </div>
