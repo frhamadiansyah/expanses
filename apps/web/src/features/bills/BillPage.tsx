@@ -5,7 +5,8 @@ import { Check, Pause, Pencil, Play, SkipForward } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
-import { useFrom } from '../../app/from-search';
+import { useBack } from '../../app/BackHeader';
+import { useFrom, useFromTransaction } from '../../app/from-search';
 import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox, Money } from '../../ui';
 import { ActionButtons, GROUP_RADIUS, type GroupChild, InsetGroup, InsetRow, LargeTitle, Panel, PushedTitle, ReadOnlyRow, type RoundAction, SCREEN } from '../../ui/native';
@@ -49,6 +50,10 @@ export function BillPage({ billId }: { billId: string }) {
   const { database, ws } = useApp();
   // Recurring opened from Cashflow: back to Recurring keeps its way back to Cashflow.
   const from = useFrom();
+  // Opened from a transaction (its receipt, or the receipt's bill list): ‹ goes back there, a step through history.
+  const fromTransaction = useFromTransaction();
+  const stepBack = useBack('/bills');
+  const backWay = fromTransaction ? { back: 'Transaction', onBack: stepBack } : { back: 'Recurring', backTo: '/bills' as const, backSearch: from };
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
@@ -76,7 +81,7 @@ export function BillPage({ billId }: { billId: string }) {
   if (detail.error instanceof RecurringError && detail.error.code === 'NOT_FOUND') {
     return (
       <div className={SCREEN}>
-        <LargeTitle title="Bill stopped" back="Recurring" backTo="/bills" backSearch={from} />
+        <LargeTitle title="Bill stopped" {...backWay} />
         <InsetGroup footer="This bill has been stopped.">
           <InsetRow title={<span className="text-[var(--ph-tint)]">Back to Recurring</span>} label="Back to Recurring" to="/bills" search={from} />
         </InsetGroup>
@@ -141,12 +146,7 @@ export function BillPage({ billId }: { billId: string }) {
 
   return (
     <div className={SCREEN}>
-      <PushedTitle
-        title={bill.name}
-        back="Recurring"
-        backTo="/bills"
-        backSearch={from}
-      />
+      <PushedTitle title={bill.name} {...backWay} />
 
       <ErrorBox error={error} />
 

@@ -18,6 +18,38 @@ export function fromSearch(search: Record<string, unknown>): FromSearch {
   return search.from === 'cashflow' ? { from: 'cashflow' } : {};
 }
 
+/**
+ * A bill's page knows one origin more: a transaction's receipt (or the receipt's bill list) that opened it. Its ‹ then
+ * goes back to that receipt, and the bill is the receipt's own step — never remembered as where a Save or a Delete on
+ * the receipt lands (`trackOrigin`). It is never passed on: the pages a bill opens keep `useFrom`, Cashflow alone.
+ */
+export interface BillFromSearch {
+  from?: 'cashflow' | 'transaction';
+}
+
+/** The search a receipt opens its bill with. */
+export const FROM_TRANSACTION = { from: 'transaction' } as const;
+
+/** A bill route's origin: a transaction, or what `fromSearch` keeps. */
+export function billFromSearch(search: Record<string, unknown>): BillFromSearch {
+  return search.from === 'transaction' ? { ...FROM_TRANSACTION } : fromSearch(search);
+}
+
+/** Whether this page was opened from a transaction's receipt (`FROM_TRANSACTION`). */
+export function useFromTransaction(): boolean {
+  const search = useSearch({ strict: false }) as BillFromSearch;
+  return search.from === 'transaction';
+}
+
+/** A page opened as a transaction's own step: its receipt's bill, opened with `FROM_TRANSACTION`. */
+function openedFromTransaction(href: string): boolean {
+  const query = href.indexOf('?');
+  if (query < 0) return false;
+  const from = new URLSearchParams(href.slice(query + 1).split('#')[0]).get('from');
+  // The router may write a string search value bare or JSON-quoted.
+  return from === 'transaction' || from === '"transaction"';
+}
+
 /** The origin this page was opened with, to pass on to the next one. */
 export function useFrom(): FromSearch {
   const search = useSearch({ strict: false }) as FromSearch;
@@ -48,14 +80,14 @@ export function isTransactionDetail(pathname: string): boolean {
   return /^\/transactions\/(?!flow$)[^/]+(\/(edit|duplicate|bill(\/[^/]+)?))?\/?$/.test(pathname);
 }
 
-/** Called once with the router: remembers each location that is not a transaction's own screen. */
+/** Called once with the router: remembers each location that is not a transaction's own screen, nor a step it opened. */
 export function trackOrigin(router: {
   subscribe: (event: 'onResolved', fn: () => void) => unknown;
   state: { location: { pathname: string; href: string } };
 }): void {
   const note = () => {
     const { pathname, href } = router.state.location;
-    if (!isTransactionDetail(pathname)) origin = href;
+    if (!isTransactionDetail(pathname) && !openedFromTransaction(href)) origin = href;
   };
   note();
   router.subscribe('onResolved', note);

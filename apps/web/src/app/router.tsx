@@ -31,7 +31,7 @@ import { SourcePage } from '../features/capture/SourcePage';
 import { WayPage } from '../features/capture/WayPage';
 import { ImportPage } from '../features/import/ImportPage';
 import { ReviewPage } from '../features/review/ReviewPage';
-import { type FromSearch, fromSearch, trackOrigin } from './from-search';
+import { billFromSearch, type BillFromSearch, fromSearch, trackOrigin } from './from-search';
 import { CardDetailPage } from '../features/cards/CardDetailPage';
 import { CardPointsCheckPage, CardPointsPage, CardPurchasesPage } from '../features/cards/CardPointsPage';
 import { EarnRulesPage, SpendBonusesPage } from '../features/cards/CardRulesPages';
@@ -128,9 +128,9 @@ export interface CardSearch {
   pay?: true;
 }
 
-/** A bill's page: where it was opened from, and `pay` to open its pay sheet on arrival. */
-export function billSearch(search: Record<string, unknown>): FromSearch & { pay?: true } {
-  return { ...fromSearch(search), ...(isOn(search.pay) ? { pay: true as const } : {}) };
+/** A bill's page: where it was opened from (Cashflow, or a transaction), and `pay` to open its pay sheet on arrival. */
+export function billSearch(search: Record<string, unknown>): BillFromSearch & { pay?: true } {
+  return { ...billFromSearch(search), ...(isOn(search.pay) ? { pay: true as const } : {}) };
 }
 
 /** A flag in a link: `?pay=1`, `?pay=true`, or `true` once the router has parsed it. */
