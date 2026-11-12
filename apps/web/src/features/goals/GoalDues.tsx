@@ -42,7 +42,7 @@ export interface DueToast {
  */
 export async function undoMonth(database: Parameters<typeof undoGoalMonth>[0], ws: Parameters<typeof undoGoalMonth>[1], goal: DueGoal, month: string): Promise<void> {
   const result = await undoGoalMonth(database, ws, goal.goalId, month);
-  if (!result.undone) throw new Error(shortTakeBackText(formatMinor(result.takenMinor, goal.currency)));
+  if (!result.undone) throw new Error(shortTakeBackText(result.takenMinor, goal.currency));
 }
 
 /** A typed figure, or null while it is not one yet. */
@@ -82,6 +82,7 @@ export interface DueForm {
 /** The form's opening state: what is saved, or — never set — the defaults, switched off. */
 export function useDueForm(goalId: string, currency: string, saved: GoalDueSettings | null) {
   const accounts = useDueAccounts(currency);
+  const loaded = useAccounts().isSuccess;
   const earmarks = useEarmarks().data ?? [];
   const [form, setForm] = useState<DueForm>(() => {
     if (saved) return { on: saved.active, day: saved.day, mode: saved.mode, accountId: saved.accountId, toAccountId: saved.toAccountId };
@@ -93,7 +94,7 @@ export function useDueForm(goalId: string, currency: string, saved: GoalDueSetti
   const toAccountId = accounts.some((account) => account.id === form.toAccountId && account.id !== accountId) ? form.toAccountId : toDefault(accounts, accountId);
   // Where the goal already has money set aside: Transfer's From steers clear of them (a month is new money).
   const held = setAsideOf(earmarks, goalId).map((row) => row.accountId);
-  return { form: { ...form, accountId, toAccountId }, setForm, accounts, held };
+  return { form: { ...form, accountId, toAccountId }, setForm, accounts, held, loaded };
 }
 
 /** A row holding the Set aside | Transfer control, with the hairline a row above it draws. */
@@ -119,7 +120,7 @@ export function DueGroup({ due, goalName }: { due: ReturnType<typeof useDueForm>
     const from = transferFromDefault(accounts, held, form.accountId);
     set({ mode, accountId: from, toAccountId: form.toAccountId === from ? toDefault(accounts, from) : form.toAccountId });
   };
-  if (accounts.length === 0) {
+  if (accounts.length === 0 && due.loaded) {
     // Nothing left in the goal's currency: the switch stays, so a due turned on before can still be turned off.
     return (
       <InsetGroup footer="No account in this goal’s currency to set money aside in.">
@@ -346,12 +347,12 @@ export function DoneMonthSheet({ goal, month, onClose }: { goal: DueGoal; month:
 
   const undo = async () => {
     const result = await undoGoalMonth(database, ws, goal.goalId, month.month);
-    return result.undone ? null : shortTakeBackText(formatMinor(result.takenMinor, goal.currency));
+    return result.undone ? null : shortTakeBackText(result.takenMinor, goal.currency);
   };
   const change = async () => {
     const result = await changeGoalMonthAmount(database, ws, goal.goalId, month.month, typed!);
     // Lowered further than what is left there: the month keeps what it actually has.
-    return result === typed ? null : shortTakeBackText(formatMinor(month.amountMinor - result, goal.currency));
+    return result === typed ? null : shortTakeBackText(month.amountMinor - result, goal.currency);
   };
 
   const name = monthName(month.month, 'long');

@@ -42,7 +42,10 @@ export function transferFromDefault(accounts: readonly { id: string }[], held: r
 }
 
 /** Undo, or a lowered amount, that could not take all of it back: what it did take, and why the rest stayed. */
-export const shortTakeBackText = (takenText: string) => `Only ${takenText} could be taken back: the rest was moved or used since.`;
+export function shortTakeBackText(takenMinor: number, currency: string): string {
+  if (takenMinor <= 0) return 'Nothing could be taken back: it was moved or used since.';
+  return `Only ${formatMinor(takenMinor, currency)} could be taken back: the rest was moved or used since.`;
+}
 
 /**
  * A Transfer month past From's free money: what of it was already set aside for the goal there, and so moves the goal's

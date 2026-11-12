@@ -165,8 +165,10 @@ export function UseSheet({ plan, earmarks, onClose }: { plan: GoalPlanRow; earma
  */
 export function MonthlySheet({ plan, onClose }: { plan: GoalPlanRow; onClose: () => void }) {
   const saved = useGoalDue(plan.goalId);
-  // The switch opens as it was saved, so the sheet waits for it rather than opening off and flicking on.
-  if (!saved.isSuccess) return null;
+  const accounts = useAccounts();
+  // The switch opens as it was saved, and its accounts as they are: the sheet waits for both, so an account list still
+  // loading is never read as "no account left" (which would switch a due off).
+  if (!saved.isSuccess || !accounts.isSuccess) return null;
   return <MonthlySheetBody plan={plan} saved={saved.data} onClose={onClose} />;
 }
 
@@ -187,8 +189,8 @@ function MonthlySheetBody({ plan, saved, onClose }: { plan: GoalPlanRow; saved: 
   const save = () =>
     saving.run(async () => {
       const { form } = due;
-      // No account left to use (none in the goal's currency): it can only be turned off.
-      const on = form.on && !!form.accountId;
+      // No account left to use (none in the goal's currency, the list loaded): it can only be turned off.
+      const on = form.on && (!!form.accountId || !due.loaded);
       // Off and never on: nothing but the amount is written, exactly as before. Both land together or not at all.
       const dueInput = on || saved?.active ? { goalId: plan.goalId, on, day: form.day, mode: form.mode, accountId: form.accountId, toAccountId: form.toAccountId } : null;
       await saveGoalMonthly(database, ws, { goalId: plan.goalId, amountMinor: typed ?? 0, due: dueInput }, isoDate());

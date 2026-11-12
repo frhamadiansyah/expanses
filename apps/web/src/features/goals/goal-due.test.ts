@@ -183,7 +183,8 @@ describe('fix round 1 words and defaults', () => {
   });
 
   it('says what a short take-back did, and what to do without a rate', () => {
-    expect(shortTakeBackText(rp(200_000))).toBe(`Only ${rp(200_000)} could be taken back: the rest was moved or used since.`);
+    expect(shortTakeBackText(200_000, 'IDR')).toBe(`Only ${rp(200_000)} could be taken back: the rest was moved or used since.`);
+    expect(shortTakeBackText(0, 'IDR')).toBe('Nothing could be taken back: it was moved or used since.');
     expect(noRateText('USD')).toBe('No rate for USD yet: connect to the internet once, or record the transfer from Add.');
   });
 });
