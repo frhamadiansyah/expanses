@@ -173,7 +173,12 @@ export interface PurchaseFields {
    * before this reads a purchase excluded whole as it always did and leaves a line excluded beside a counted one counted.
    */
   excludedLines?: string[];
-  bill: { templateId: string; billMonth: string | null } | null;
+  /**
+   * The bill month the purchase settles. A Pay payment (the purchase made from the bill: `template_id` set) carries no
+   * `linked`; a purchase linked to a month after the fact (sync gaps F1: a `bill_payments` row alone) carries
+   * `linked: true`, and lands on the partner's phone as a link too — never as a payment, never moved into that month.
+   */
+  bill: { templateId: string; billMonth: string | null; linked?: true } | null;
   money: PurchaseMoney;
   /**
    * Its place within its day when moved there by hand, or null (0067). Optional: an op from a device without it carries
@@ -1316,7 +1321,7 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
     excluded: Number(flags?.[1] ?? 0) === 1 || partExcluded || allOut ? 1 : 0,
     ...(outLines.length > 0 ? { excludedLines: outLines } : {}),
     // A part never names a bill: the bill it pays may be the private workspace's, and its id is not the partner's to see.
-    bill: templateId && !part ? { templateId: payment?.[0] ?? templateId, billMonth: payment?.[1] ?? null } : null,
+    bill: part ? null : templateId ? { templateId: payment?.[0] ?? templateId, billMonth: payment?.[1] ?? null } : payment ? { templateId: payment[0], billMonth: payment[1], linked: true } : null,
     money: {
       lines,
       originalCurrency: part ? null : originalCurrency,
@@ -1453,6 +1458,16 @@ export async function captureCardChangingTx(tx: Db, transactionId: string): Prom
   const lineageId = await lineageOfTransaction(tx, transactionId);
   const inShared = (bookId && books.some((b) => b.bookId === bookId)) || (await lineageRowOf(tx, lineageId)) !== null;
   if (inShared) await session.touchLineage(lineageId, transactionId);
+}
+
+/**
+ * The bill-link door (`linkPurchaseToBill`, `relinkPurchaseToBill`, `unlinkPurchaseFromBill`; sync gaps F1), called
+ * before a purchase's `bill_payments` row changes in place: a shared purchase's `bill` names it, so its lineage is
+ * touched and goes out again with the new link (or none) at flush. Not money: no summary is marked dirty. A book no
+ * longer shared is read-only (§8.6), as an edit is.
+ */
+export async function captureBillLinkingTx(tx: Db, transactionId: string): Promise<void> {
+  await captureCardChangingTx(tx, transactionId);
 }
 
 /**
