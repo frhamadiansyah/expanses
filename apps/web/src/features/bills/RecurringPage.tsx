@@ -26,7 +26,7 @@ import { type DueFee, useAnnualFees, useUpcomingFees } from '../cards/fee-due';
 import { FeeAlert } from '../cards/FeeAlert';
 import { FeeRow } from './FeeRow';
 import { Unconverted } from '../workspaces/Unconverted';
-import { UndoToast } from '../../ui/UndoToast';
+import { type ToastIcon, UndoToast } from '../../ui/UndoToast';
 
 const PAGE_KEY = 'recurring-page';
 
@@ -153,7 +153,7 @@ export function RecurringPage() {
   const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [payingSeveral, setPayingSeveral] = useState(false);
-  const [toast, setToast] = useState<{ text: string; undo: () => Promise<void> } | null>(null);
+  const [toast, setToast] = useState<{ text: string; icon: ToastIcon; undo: () => Promise<void> } | null>(null);
   const [error, setError] = useState<unknown>(null);
   const clearToast = useCallback(() => setToast(null), []);
   // Stable, so the sheet does not re-run its open effect (and take focus back) whenever the list refreshes.
@@ -190,7 +190,7 @@ export function RecurringPage() {
     try {
       await skipBill(database, ws, bill.id, month);
       await invalidate();
-      setToast({ text: skippedText(bill.name, month, today), undo: () => unskipBill(database, ws, bill.id, month) });
+      setToast({ icon: 'skipped', text: skippedText(bill.name, month, today), undo: () => unskipBill(database, ws, bill.id, month) });
     } catch (e) {
       setError(e);
     }
@@ -198,7 +198,7 @@ export function RecurringPage() {
 
   const paid = (bill: MonthlyBill) => (ids: string[]) => {
     setPaying(null);
-    setToast({ text: `Paid ${bill.name}`, undo: () => undoBillPayments(database, ws, ids) });
+    setToast({ icon: 'paid', text: `Paid ${bill.name}`, undo: () => undoBillPayments(database, ws, ids) });
   };
 
   async function undo() {
@@ -363,7 +363,7 @@ export function RecurringPage() {
       {/* The fee question opens from either page: Due soon on Monthly, Annual fees on Repeating. */}
       {askingFee && <FeeAlert fee={askingFee} today={today} onClose={() => setAskingFee(null)} />}
 
-      {toast && <UndoToast text={toast.text} onUndo={() => void undo()} onDone={clearToast} />}
+      {toast && <UndoToast icon={toast.icon} text={toast.text} onUndo={() => void undo()} onDone={clearToast} />}
 
       {payingSeveral && (
         <PaySeveralSheet
@@ -376,7 +376,7 @@ export function RecurringPage() {
             setSelecting(false);
             setPicked(new Set());
             // Named from what the sheet recorded: its ticks can differ from what was picked on the list.
-            setToast({ text: paidText(names), undo: () => undoBillPayments(database, ws, ids) });
+            setToast({ icon: 'paid', text: paidText(names), undo: () => undoBillPayments(database, ws, ids) });
           }}
         />
       )}
@@ -390,7 +390,7 @@ export function RecurringPage() {
           onSkipped={(month) => {
             const b = paying;
             setPaying(null);
-            setToast({ text: skippedText(b.name, month, today), undo: () => unskipBill(database, ws, b.id, month) });
+            setToast({ icon: 'skipped', text: skippedText(b.name, month, today), undo: () => unskipBill(database, ws, b.id, month) });
           }}
           onSeeBill={() => navigate({ to: '/bills/$billId', params: { billId: paying.id }, search: from })}
           onLink={(month) => navigate({ to: '/bills/$billId/link', params: { billId: paying.id }, search: { ...from, month } })}

@@ -10,6 +10,7 @@ import { useApp } from '../../app/context';
 import { canPayWith } from '../../lib/account-types';
 import { moneyHolders, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
+import { ToastCard } from '../../ui/UndoToast';
 import { InsetGroup, InsetRow, Panel, SelectRow, TextRow } from '../../ui/native';
 import { ActionRow, ColumnGroup, EARLIER, GlyphButton, Line, StepperRow, SubmitRow, SUBTITLE, TITLE } from './rows';
 import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
@@ -672,14 +673,7 @@ export function StatementPanel({
         </form>
       )}
       <ErrorBox error={error ?? statement.error} />
-      {noteShown && note && (
-        <div
-          role="status"
-          className="fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-40 mx-auto max-w-md rounded-2xl bg-slate-900 px-4 py-3 text-sm text-white shadow-lg md:bottom-6"
-        >
-          {note}
-        </div>
-      )}
+      {noteShown && note && <ToastCard text={note} />}
     </div>
   );
 }

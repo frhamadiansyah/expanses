@@ -1,4 +1,4 @@
-import { type BillWindow, dayMonth, isoDate, monthName, ordinal, periodicRepeat, yearlyRepeat } from '@expanses/core';
+import { type BillWindow, dayMonth, formatMinor, isoDate, monthName, ordinal, periodicRepeat, yearlyRepeat } from '@expanses/core';
 import { RecurringError, resumeBill, skipBill, undoBillPayments, unlinkPurchaseFromBill, unskipBill } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Check, Pause, Pencil, Play, SkipForward } from 'lucide-react';
@@ -9,7 +9,8 @@ import { useBack } from '../../app/BackHeader';
 import { useFrom, useFromTransaction } from '../../app/from-search';
 import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox, Money } from '../../ui';
-import { ActionButtons, GROUP_RADIUS, type GroupChild, InsetGroup, InsetRow, LargeTitle, Panel, PushedTitle, ReadOnlyRow, type RoundAction, SCREEN } from '../../ui/native';
+import { UndoToast } from '../../ui/UndoToast';
+import { ActionButtons, type GroupChild, InsetGroup, InsetRow, LargeTitle, Panel, PushedTitle, ReadOnlyRow, type RoundAction, SCREEN } from '../../ui/native';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { billCurrencyOf, heroLineOf, pillOf } from './bill-view';
 import { usePaidFromLabels } from './PaidFromSheet';
@@ -181,21 +182,14 @@ export function BillPage({ billId }: { billId: string }) {
       </Panel>
 
       {justPaid && paidMonth && (
-        /* A confirmation with its own Undo beside it — a banner, not a row, so the two never share one tap target. */
-        <div
-          data-testid="just-paid"
-          role="status"
-          className="mb-[18px] flex items-center justify-between gap-3 bg-[var(--ph-up-panel)] pl-[13px] text-[15px] leading-[20px] text-[var(--ph-up-ink)] md:max-w-2xl"
-          style={{ borderRadius: GROUP_RADIUS }}
-        >
-          <span className="tabular py-[11px]">
-            ✓ Paid <Money minor={justPaid.amountMinor} currency={currency} /> on {dayMonth(justPaid.paidOn)}
-            {justPaid.month !== bill.billMonth && ` · ${monthName(justPaid.month, 'long')} bill`}
-          </span>
-          <button type="button" onClick={() => void undo()} className="ph-focus-inset min-h-11 shrink-0 px-[13px] font-semibold">
-            Undo
-          </button>
-        </div>
+        <UndoToast
+          testId="just-paid"
+          icon="paid"
+          text={`Paid ${formatMinor(justPaid.amountMinor, currency)}`}
+          detail={`${justPaid.month !== bill.billMonth ? `${monthName(justPaid.month, 'long')} bill · ` : ''}${dayMonth(justPaid.paidOn)}`}
+          onUndo={() => void undo()}
+          onDone={() => setJustPaid(null)}
+        />
       )}
 
       <ActionButtons actions={actions} />
