@@ -149,7 +149,13 @@ export function carriedAt(at: string | undefined, hlc: string): string | undefin
  * hlc when the op names it as changed, else at the clock `clocks` gives it (a seed or a rejoin sending what it kept at
  * its own clock, recovery review N2). A field with neither does not compete.
  */
-async function purchaseWinnersOf(tx: Db, ctx: BookContext, op: Extract<Op, { op: 'upsert' }>, hlc: string): Promise<Map<string, { value: unknown; hlc: string }>> {
+async function purchaseWinnersOf(
+  tx: Db,
+  ctx: BookContext,
+  op: Extract<Op, { op: 'upsert' }>,
+  hlc: string,
+  authorDevice?: string,
+): Promise<Map<string, { value: unknown; hlc: string }>> {
   const winners = new Map<string, { value: unknown; hlc: string }>();
   const named = op.changed ?? Object.keys(op.fields);
   for (const [field, value] of Object.entries(op.fields)) {
@@ -157,8 +163,28 @@ async function purchaseWinnersOf(tx: Db, ctx: BookContext, op: Extract<Op, { op:
     if (at === undefined) continue;
     const clock = await clockOf(tx, ctx, op.entity, op.id, field);
     if (clock === null || at > clock) winners.set(field, { value, hlc: at });
+    // A bill link resent at the clock it went at (the repair) ties with it here. The clock's author — the member, on any
+    // of their devices, a restored phone's new one included (fix round 5) — wins the tie: their own word, resent, is
+    // written over what this phone holds under that clock, so a phone whose build took the clock without writing the
+    // link (117) writes it now. A tie from anyone else, or a device not known here, changes nothing: what is here may be
+    // this phone's own old link, and it is no one else's to overturn. The same value again changes nothing.
+    else if (field === 'billLink' && at === clock && authorDevice !== undefined && (await sameMemberTx(tx, ctx.bookId, decodeHlc(clock).deviceId, authorDevice))) {
+      winners.set(field, { value, hlc: at });
+    }
   }
   return winners;
+}
+
+/** The member a device of this book is (or was: a removed device is still known), or null for one not known here. */
+export async function memberOfDeviceTx(tx: Db, bookId: string, deviceId: string): Promise<string | null> {
+  const [row] = await tx.values<[string]>(sql`SELECT member_id FROM book_devices WHERE book_id = ${bookId} AND device_id = ${deviceId}`).catch(() => []);
+  return row?.[0] ?? null;
+}
+
+/** Whether two devices are both known here as the same member of the book. */
+async function sameMemberTx(tx: Db, bookId: string, one: string, other: string): Promise<boolean> {
+  const a = await memberOfDeviceTx(tx, bookId, one);
+  return a !== null && a === (await memberOfDeviceTx(tx, bookId, other));
 }
 
 /**
@@ -927,9 +953,38 @@ async function inPlaceOnly(tx: Db, winners: Record<string, unknown>): Promise<bo
   for (const field of fields) {
     if (field === 'dayOrder' && (await dayOrderExists(tx))) continue;
     if (field === 'exactHundredths' && (await exactExists(tx))) continue;
+    // A bill link (fix round 2) is a `bill_payments` row beside the purchase, never its money.
+    if (field === 'billLink' && (await billPaymentsExist(tx))) continue;
     return false;
   }
   return true;
+}
+
+async function billPaymentsExist(tx: Db): Promise<boolean> {
+  return (await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'bill_payments'`)).length > 0;
+}
+
+/**
+ * A purchase's bill link as it arrived (sync gaps F1, fix round 2: its own `billLink` field), written beside the row:
+ * a link is a `bill_payments` row alone, the purchase keeping its own date, figure and no bill of its own. No link (an
+ * unlink on the other phone) takes away the one here, and any the ledger carried across a repost, so it never comes
+ * back. A Pay payment (`template_id` set) is the `bill` field's, and is never touched here. A bill this phone does not
+ * hold (yet) links nothing; an op that carries no `billLink` (an older build) leaves the link here as it is.
+ */
+async function applyBillLinkTx(tx: Db, ctx: BookContext, transactionId: string, link: unknown): Promise<void> {
+  if (!(await billPaymentsExist(tx))) return;
+  const [row] = await tx.values<[string | null]>(sql`SELECT template_id FROM transactions WHERE id = ${transactionId}`);
+  if (!row || row[0] !== null) return;
+  await tx.run(sql`DELETE FROM bill_payments WHERE transaction_id = ${transactionId}`);
+  const given = link && typeof link === 'object' ? (link as Record<string, unknown>) : null;
+  const templateId = typeof given?.templateId === 'string' ? given.templateId : null;
+  const billMonth = typeof given?.billMonth === 'string' && /^\d{4}-\d{2}$/.test(given.billMonth) ? given.billMonth : null;
+  if (!templateId || !billMonth) return;
+  const known = await tx.values(sql`SELECT 1 FROM expense_templates WHERE id = ${templateId} AND workspace_id = ${ctx.ws.workspaceId}`);
+  if (known.length === 0) return;
+  await tx.run(sql`
+    INSERT INTO bill_payments (transaction_id, workspace_id, template_id, bill_month)
+    VALUES (${transactionId}, ${ctx.ws.workspaceId}, ${templateId}, ${billMonth}) ON CONFLICT DO NOTHING`);
 }
 
 /** A purchase op for a lineage this device has not seen, without the money to post it: kept until its page ends, with the seq it came at. */
@@ -964,7 +1019,7 @@ async function applyPurchase(
 ): Promise<boolean> {
   const lineage = await lineageOf(tx, op.id, ctx.bookId);
   if (lineage && lineage.head === null) return true; // void wins, for ever
-  const won = await purchaseWinnersOf(tx, ctx, op, changeSet.hlc);
+  const won = await purchaseWinnersOf(tx, ctx, op, changeSet.hlc, authorDevice);
   if (won.size === 0) return true;
   const winners = Object.fromEntries([...won].map(([field, { value }]) => [field, value]));
   if (!lineage) {
@@ -1019,6 +1074,7 @@ async function applyPurchase(
       const value = await exactForTransactionTx(tx, winners.exactHundredths, lineage.head!);
       await tx.run(sql`UPDATE transactions SET exact_hundredths = ${value} WHERE id = ${lineage.head!}`);
     }
+    if ('billLink' in winners) await applyBillLinkTx(tx, ctx, lineage.head!, winners.billLink);
     await recordPurchaseClocks(tx, ctx, op.id, won);
     return true;
   }
@@ -1062,6 +1118,7 @@ async function applyPurchase(
     // already under it (a voided leftover, a pre-share copy's own) is left as it is.
     const id = await postTransactionTx(tx, ctx.ws, { ...input, id: await freeTransactionIdTx(tx, ctx.bookId, op.id) });
     if (!kept) await fileInOwnBookTx(tx, ctx, id);
+    if ('billLink' in winners) await applyBillLinkTx(tx, ctx, id, winners.billLink);
     await tx.run(
       sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item)
           VALUES (${op.id}, ${ctx.bookId}, ${id}, ${state.money.paidBy}, ${state.money.paidLabel}, ${from?.owner ?? null}, ${from?.itemId ?? null})`,
@@ -1070,6 +1127,7 @@ async function applyPurchase(
     const was = lineage.head!;
     const id = await replaceTransactionTx(tx, ctx.ws, was, input);
     if (!kept) await fileInOwnBookTx(tx, ctx, id);
+    if ('billLink' in winners) await applyBillLinkTx(tx, ctx, id, winners.billLink);
     if (parted) await postRemainderTx(tx, ctx, was, parted, changeSet.member);
     await tx.run(
       sql`UPDATE sync_lineage SET head_transaction_id = ${id}, paid_by = ${state.money.paidBy}, paid_label = ${state.money.paidLabel},

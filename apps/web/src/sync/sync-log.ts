@@ -47,13 +47,15 @@ export type SyncLogOp =
   /** Place them now (§4.3). */
   | 'place'
   /** A once-shared workspace erased by Delete (§5). */
-  | 'erase';
+  | 'erase'
+  /** A one-time repair of a shared book (sync gaps R1, R2). */
+  | 'repair';
 
 /**
  * The ops that happen once, when someone does something, kept in a list of their own that background runs (`sync`,
  * `group`, `apply`, `pull`, `refresh`, `seen`) cannot push out. `copy` is a safety copy skipped for want of room; `records`, `place` and `erase` are sharing resilience's.
  */
-export const KEPT_OPS: ReadonlySet<SyncLogOp> = new Set<SyncLogOp>(['share', 'seed', 'drain', 'invite', 'preview', 'join', 'restore', 'remove', 'leave', 'stop', 'act', 'prepare', 'copy', 'records', 'place', 'erase']);
+export const KEPT_OPS: ReadonlySet<SyncLogOp> = new Set<SyncLogOp>(['share', 'seed', 'drain', 'invite', 'preview', 'join', 'restore', 'remove', 'leave', 'stop', 'act', 'prepare', 'copy', 'records', 'place', 'erase', 'repair']);
 
 export interface SyncLogEntry {
   /** ISO time. */

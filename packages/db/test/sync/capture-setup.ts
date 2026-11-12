@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { afterEach, vi } from 'vitest';
+import { afterEach, expect, vi } from 'vitest';
 import type { Database } from '../../src/database';
 import type * as Workspaces from '../../src/repos/workspaces';
 import { configureCapture } from '../../src/sync/capture';
@@ -15,8 +15,30 @@ const watched = new Map<Database, string>();
 /** Per database, the last change-set the privacy check judged: each is judged once, after the test that sealed it. */
 const judgedSeq = new Map<Database, number>();
 
+/*
+ * Tests whose premise is a first Personal book that is *not* shared, which the stand-in share would contradict (G8): a
+ * refusal checked before the one about sharing, a database stopped before a migration no shared book can be on, a
+ * legacy unfiled transfer read the way only an unshared workspace reads it. Their books are left unshared, and
+ * unwatched; everything else in their files is watched as usual. Each by its file and its test's full name.
+ */
+const UNSHARED_PREMISE: readonly [file: string, test: string][] = [
+  ['test/bill-currency.test.ts', 'a database stopped before 0098 still saves, lists and pays a bill; the currency is simply not there'],
+  ['test/books-kind.test.ts', 'changing a workspace’s kind refuses shared, an unknown workspace, and the only Personal'],
+  ['test/category-set-copy.test.ts', 'copying a category set into another workspace refuses the same book, an archived book and a book that is not here, copying nothing'],
+  ['test/category-set-move.test.ts', 'moving a category set to another workspace refuses the same workspace, an archived one, a missing one and a missing set'],
+  ['test/move-top-up-group.test.ts', 'moving a top-up with its fee reunites a group already split across workspaces, from either half'],
+];
+
+function unsharedPremise(): boolean {
+  const { testPath, currentTestName } = expect.getState();
+  if (!testPath || !currentTestName) return false;
+  const name = currentTestName.replace(/ > /g, ' ');
+  return UNSHARED_PREMISE.some(([file, test]) => testPath.endsWith(file) && name === test);
+}
+
 async function shareFirstBook(database: Database, workspaceId: string): Promise<void> {
   if (watched.has(database)) return;
+  if (unsharedPremise()) return;
   const tables = await database.db.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'shared_books'`);
   if (tables.length === 0) return; // a database stopped before 0056 has nothing to share
   const [book] = await database.db.values<[string]>(sql`SELECT id FROM books WHERE workspace_id = ${workspaceId} AND kind = 'personal'`);

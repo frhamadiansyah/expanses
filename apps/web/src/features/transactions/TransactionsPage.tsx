@@ -20,6 +20,9 @@ import {
   setTransactionsCard,
   sharedEventOf,
   tagTransactions,
+  eventTagRefusals,
+  isBookShared,
+  tagDroppedText,
   topUpsCategory,
   type TransactionView,
   uncategorisedTransactionIds,
@@ -58,6 +61,7 @@ import { useLineState } from './cashflow-line-store';
 import { DayReorder, landed, movedBy, ReorderControls, reorderAttrs, ReorderScope } from './DayReorder';
 import { EventSheet } from './EventSheet';
 import { keptText, moveHint } from './shared-move';
+import { showToast } from '../../ui/Toast';
 import { homesOf, movedText, rowsToMove } from './event-tagging';
 import { ReceiptLink } from './ReceiptLink';
 import { SelectBar } from './SelectBar';
@@ -560,9 +564,11 @@ export function TransactionsPage() {
      * a move is not a tag a toast can take back. A row the move keeps (a split bill, a transfer) stays
      * ticked, with the reason, so what is left on screen is exactly what did not go.
      */
-    const shared = eventId ? sharedSummaries[eventId] : undefined;
-    if (eventId && shared) {
-      if (!window.confirm(moveHint(eventName(eventId) ?? 'the event', shared.sharedWith))) return;
+    // Read from the database, never from the summaries while they load: a shared event taken for a private one here
+    // would tag the rows instead of moving them, and a tag stays on this phone alone (sync gaps F2).
+    const sharedBook = eventId ? await sharedEventOf(database, ownerScope(ws), eventId) : null;
+    if (eventId && sharedBook) {
+      if (!window.confirm(moveHint(eventName(eventId) ?? 'the event', sharedSummaries[eventId]?.sharedWith ?? null))) return;
       setTagging({ busy: true, error: null });
       try {
         // The day's rates every move needs: each purchase's currencies and the event's, through the base.
@@ -586,7 +592,7 @@ export function TransactionsPage() {
       }
       return;
     }
-    const moving = rowsToMove(
+    let moving = rowsToMove(
       chosen.map((row) => ({ id: row.id, eventId: row.tx!.eventId ?? null })),
       eventId,
     );
@@ -595,11 +601,23 @@ export function TransactionsPage() {
       return;
     }
     setTagging({ busy: true, error: null });
+    // A shared workspace's purchase never takes a tag, and only its payer's phone takes an old one off (sync gaps D1,
+    // D3): those stay ticked with the reason, as a move's kept rows do, and the rest are tagged.
+    let refused: { transactionId: string; why: string }[] = [];
     try {
-      await tagTransactions(database, ws, moving.map((row) => row.id), eventId);
+      refused = await eventTagRefusals(database, moving.map((row) => row.id), eventId);
+      const skip = new Set(refused.map((row) => row.transactionId));
+      moving = moving.filter((row) => !skip.has(row.id));
+      if (moving.length > 0) await tagTransactions(database, ws, moving.map((row) => row.id), eventId);
       await invalidate();
     } catch (e) {
       setTagging({ busy: false, error: e });
+      return;
+    }
+    if (refused.length > 0) {
+      setPickingEvent(false);
+      setSelected(new Set(refused.map((row) => row.transactionId)));
+      setTagging({ busy: false, error: new Error(keptText(refused)) });
       return;
     }
     stopSelecting();
@@ -622,6 +640,9 @@ export function TransactionsPage() {
     setTagging({ busy: true, error: null });
     const where = allBooks.find((book) => book.id === toBook)?.name ?? 'that workspace';
     const kept: { id: string; why: string }[] = [];
+    // Into a shared workspace a private event's tag is dropped with the move (sync gaps fix round 1, #5), and said.
+    const intoShared = await isBookShared(database, toBook);
+    let tagDropped = false;
     for (const row of chosen) {
       const tx = row.tx!;
       const what = tx.description || 'A transaction';
@@ -656,11 +677,13 @@ export function TransactionsPage() {
           onMissing: () => undefined, where: 'Edit',
         });
         await replaceTransaction(database, ws, tx.id, { ...post.input, ratesToBase, moveToBook: true, toBookId: toBook });
+        if (intoShared && tx.eventId && !sharedSummaries[tx.eventId]) tagDropped = true;
       } catch (e) {
         kept.push({ id: tx.id, why: `${what}: ${e instanceof Error ? e.message : String(e)}` });
       }
     }
     await invalidate();
+    if (tagDropped) showToast(tagDroppedText(where));
     if (kept.length === 0) {
       stopSelecting();
       return;
@@ -1703,7 +1726,7 @@ export function TransactionsPage() {
           onClose={() => setPickingCard(false)}
         />
       )}
-      {pickingEvent && <EventSheet title="Add to event" withNone={false} value="" onPick={(eventId) => void tagChosen(eventId)} onClose={() => setPickingEvent(false)} />}
+      {pickingEvent && <EventSheet title="Add to event" withNone={false} sharedOnly={shared} value="" onPick={(eventId) => void tagChosen(eventId)} onClose={() => setPickingEvent(false)} />}
       {tagToast && (
         <UndoToast
           icon="event"

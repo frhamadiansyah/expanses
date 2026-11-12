@@ -23,6 +23,7 @@ import { markForeignDirtyTx } from './fx-pending';
 import { eventOnlyExists, eventPostingOfTx, notEventOnly } from './event-only';
 import { type AccountSubtype, accountBanksTx, ensureSystemAccountTx, SPENDABLE_SUBTYPES, systemAccountId } from './accounts';
 import { carryEventItemTx } from './event-items';
+import { partnerPurchaseRefusalTx, sharedBookNameTx, sharedTagRefusal } from './shared-workspace-rows';
 import {
   applySetAsideTx,
   carryable,
@@ -66,6 +67,8 @@ export function ledgerSourceOf(source: TransactionSource): LedgerSource {
 
 export type LedgerErrorCode =
   | 'INVALID_DATE'
+  | 'SHARED_EVENT_TAG'
+  | 'PAID_BY_PARTNER'
   | 'NOT_FOUND'
   | 'ALREADY_VOID'
   | 'INVALID_ORIGINAL'
@@ -122,8 +125,13 @@ export interface PostTransactionInput {
   channel?: 'online' | 'offline' | null;
   /** Leaves the chart, the budgets and the category totals; balances, statements, points and net worth keep it. */
   excludedFromReport?: boolean;
-  /** The event this belongs to. The column exists already; only the form is new. */
+  /**
+   * The event this belongs to. The column exists already; only the form is new. Never on a shared workspace's spending
+   * (sync gaps D1): asked for there it is refused (SHARED_EVENT_TAG); carried by an edit (`eventIdCarried`) it is dropped.
+   */
   eventId?: string | null;
+  /** Ledger-internal: `eventId` is the original's, carried by an edit that did not mention it. */
+  eventIdCarried?: boolean;
   /**
    * A credit card purchase from before the card started in the app, already paid off: it is posted, and beside it a
    * settlement against Opening Balances on the same day, so what the card owes today does not change and no bank
@@ -394,6 +402,14 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, given: Pos
   if (bookIds.length > 1) await refuseSplitTx(tx, bookIds, found, input.replacesTransactionId ?? null);
   await refuseNotCountedTx(tx, found, input.lines, bookIds);
   const bookId = bookIds.length === 1 ? bookIds[0] : undefined;
+  // Sync gaps D1: a shared workspace's spending carries no event tag, which would stay on this phone alone and take it
+  // out of this phone's totals only. Asked for, it is refused; carried from an older build's tag, it is dropped.
+  let eventId = input.eventId ?? null;
+  if (eventId !== null) {
+    const shared = await sharedBookNameTx(tx, bookIds);
+    if (shared !== null && input.eventIdCarried) eventId = null;
+    else if (shared !== null) throw new LedgerError('SHARED_EVENT_TAG', sharedTagRefusal(shared));
+  }
   // Which lines are left out of their workspace's reports (0090, 0096): each line says it for itself, named by its
   // category, and "the whole purchase" is every line. A workspace whose every line is out is written the way 0090
   // wrote it — a split's part flag, a single workspace's purchase flag — so an older build reads it as it always did;
@@ -428,7 +444,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, given: Pos
     description: input.description.trim(),
     source: ledgerSourceOf(input.source ?? 'manual'),
     externalRef: input.externalRef ?? null,
-    eventId: input.eventId ?? null,
+    eventId,
     status: 'posted',
     replacesTransactionId: input.replacesTransactionId ?? null,
     originalCurrency,
@@ -1000,6 +1016,12 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   if (!door.eventDerivation) await refuseEventPostingTx(tx, id);
   // A due-month transfer's cap was worked from From's money before the transaction: refused if that money moved since.
   if (door.dueCap) await checkDueCapTx(tx, ws, door.dueCap);
+  // Sync gaps D3: Move to workspace takes a shared workspace's purchase out of it on every phone — on the payer's, by
+  // voiding their own transaction. Another member's purchase is theirs to move, from their phone.
+  if (moveToBook) {
+    const why = await partnerPurchaseRefusalTx(tx, id);
+    if (why) throw new LedgerError('PAID_BY_PARTNER', why);
+  }
   const [original] = await tx
     .select({
       source: transactions.source,
@@ -1110,7 +1132,9 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
     ...(input.excludedFromReport === undefined ? { excludedFromReport: extras?.excluded ?? false } : {}),
     ...(carriedParts !== undefined ? { excludedParts: carriedParts } : {}),
     // A correction is still the same spending, so it stays with the event it was tagged to — unless it says otherwise.
-    ...(input.eventId === undefined ? { eventId: original?.eventId ?? null } : {}),
+    ...(input.eventId === undefined ? { eventId: original?.eventId ?? null, eventIdCarried: true } : {}),
+    // Moved into a shared workspace, its tag is dropped with the move rather than refusing it (fix round 1, #5).
+    ...(moveToBook ? { eventIdCarried: true } : {}),
     // A correction keeps its place in its day; moved to another day it goes to the top of that one.
     ...(input.dayOrder === undefined ? { dayOrder: original && original.occurredOn === input.occurredOn ? (placed?.[0] ?? null) : null } : {}),
     // The figure typed with cents stays while the edit moves the same money (a new note, date or category); a new
@@ -1145,6 +1169,10 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   // The date the bank posted it, and the payment made for it (or the purchases a payment was for), are
   // facts about the same money: they follow the correction.
   await tx.update(cardPostings).set({ transactionId: replacement }).where(and(eq(cardPostings.transactionId, id), eq(cardPostings.workspaceId, ws.workspaceId)));
+  // A waived annual fee's refund stays the year's refund once edited, so Undo still finds it and the year still reads waived.
+  if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'card_fee_refunds'`)).length > 0) {
+    await tx.run(sql`UPDATE card_fee_refunds SET transaction_id = ${replacement} WHERE transaction_id = ${id} AND workspace_id = ${ws.workspaceId}`);
+  }
   await tx.update(cardSettlements).set({ purchaseTransactionId: replacement }).where(and(eq(cardSettlements.purchaseTransactionId, id), eq(cardSettlements.workspaceId, ws.workspaceId)));
   await tx.update(cardSettlements).set({ paymentTransactionId: replacement }).where(and(eq(cardSettlements.paymentTransactionId, id), eq(cardSettlements.workspaceId, ws.workspaceId)));
   // Points already checked against the bank follow the edited purchase, flagged so the user can check the edit.

@@ -25,11 +25,14 @@ export function BackSlot({
   unit,
   currency,
   points,
+  challengeNote = null,
 }: {
   cardId: string;
   items: SpendBonusItem[];
   unit: string;
   currency: string;
+  /** In place of a fee challenge's standing once its fee is waived: "✓ Fee waived · Rp 1.200.000 back on 14 Nov". */
+  challengeNote?: string | null;
   /** Null when the card earns nothing; the pair of lines is then not drawn. */
   points: { total: number; posted: number; estimated: number } | null;
 }) {
@@ -45,7 +48,11 @@ export function BackSlot({
             <span className="tabular shrink-0">{rewardText(top, unit, currency)}</span>
           </span>
           <span className="flex items-baseline justify-between gap-2 text-[12px] leading-[16px] text-[var(--ph-ink-3)]">
-            <span className="tabular truncate">{standingText(top, currency)}</span>
+            {top.kind === 'challenge' && challengeNote ? (
+              <span className="truncate font-medium text-[var(--ph-up)]">{challengeNote}</span>
+            ) : (
+              <span className="tabular truncate">{standingText(top, currency)}</span>
+            )}
             {items.length > 1 && <span className="shrink-0">+ {items.length - 1} more ›</span>}
           </span>
         </span>

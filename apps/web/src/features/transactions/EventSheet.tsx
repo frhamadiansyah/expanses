@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
 import { Sheet } from '../../app/Sheet';
 import { useEvents } from '../events/queries';
+import { useSharedEventSummaries } from '../events/shared-queries';
 
 /**
  * Which event this spending belongs to — §4's Event row, as its own screen.
@@ -22,6 +23,7 @@ export function EventSheet({
   onClose,
   title = 'Event',
   withNone = true,
+  sharedOnly = false,
 }: {
   value: string;
   onPick: (eventId: string) => void;
@@ -29,9 +31,15 @@ export function EventSheet({
   title?: string;
   /** The "No event" row, for a form whose Event can be cleared. */
   withNone?: boolean;
+  /**
+   * A shared workspace's spending: only shared events are offered (sync gaps D1). A tag to a private event would stay on
+   * this phone alone and take the purchase out of this phone's totals only; into a shared event it moves instead.
+   */
+  sharedOnly?: boolean;
 }) {
   const query = useEvents();
-  const events = query.data ?? [];
+  const shared = useSharedEventSummaries().data ?? {};
+  const events = (query.data ?? []).filter((event) => !sharedOnly || shared[event.id] !== undefined);
   // Newest first: the trip you are on is the one you are recording against, and it is the last one opened.
   const newestFirst = [...events].sort((a, b) => (a.startsOn < b.startsOn ? 1 : a.startsOn > b.startsOn ? -1 : 0));
   const choose = (eventId: string) => {
@@ -40,6 +48,7 @@ export function EventSheet({
   };
   return (
     <Sheet grouped title={title} onClose={onClose}>
+      {sharedOnly && <p className="px-1 pb-2 text-[13px] text-[var(--ph-ink-3)]">A shared workspace’s spending goes only into a shared event, the same on every phone.</p>}
       {!withNone && query.isSuccess && events.length === 0 && (
         <p className="px-1 text-[15px] text-[var(--ph-ink-3)]">
           No events yet.{' '}

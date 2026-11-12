@@ -1,7 +1,7 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { inBook, type WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
-import { capturePostedTx, withCaptureSuspended } from '../sync/capture';
+import { capturePostedTx, projectPurchase, withCaptureSuspended } from '../sync/capture';
 import { HELD_PREFIX } from '../sync/held';
 import { endSharedGoalsTx, hasOwnPartTx } from '../sync/goals/follow';
 import { createAccountTx } from './accounts';
@@ -369,7 +369,14 @@ async function personalCategoryOfTx(tx: Db, ws: WorkspaceContext, bookId: string
  * in the copy's share is captured afterwards as any write to it would be; what came through the copy stays local
  * (its partners hold it already). Returns the new ids, purchases first.
  */
-export async function keepInPersonalTx(tx: Tx, ws: WorkspaceContext, bookId: string, keep: { purchases: readonly string[]; records: readonly string[] }): Promise<string[]> {
+export async function keepInPersonalTx(
+  tx: Tx,
+  ws: WorkspaceContext,
+  bookId: string,
+  keep: { purchases: readonly string[]; records: readonly string[] },
+  /** Filled with the kept rows that came through the copy's share, for `adoptKeptLineagesTx` once the copy is erased. */
+  adopt: { lineageId: string; head: string }[] = [],
+): Promise<string[]> {
   const all = [...keep.purchases, ...keep.records];
   if (all.length === 0) return [];
   const personal = await personalBookIdTx(tx, ws.workspaceId);
@@ -432,13 +439,43 @@ export async function keepInPersonalTx(tx: Tx, ws: WorkspaceContext, bookId: str
   if (shared?.[0] === 'active') {
     const sources = [...keep.purchases, ...keep.records];
     for (const [i, id] of landed.entries()) {
-      if (throughShare.has(sources[i]!)) continue;
+      if (throughShare.has(sources[i]!)) {
+        // Sync gaps G5: sent nothing (its partners hold it already), but known here as the purchase they hold, under
+        // the copy's lineage id — so a later edit goes as a correction of it, which a partner in both books keeps as held
+        // in the copy (D-A3) instead of taking it in a second time, and never as a new purchase.
+        const [lineage] = await tx.values<[string]>(sql`
+          SELECT lineage_id FROM sync_lineage WHERE book_id = ${bookId} AND (head_transaction_id = ${sources[i]!} OR lineage_id = ${sources[i]!})
+          ${tables.has('sync_lineage_last') ? sql`UNION SELECT l.lineage_id FROM sync_lineage_last l JOIN sync_lineage s ON s.lineage_id = l.lineage_id WHERE s.book_id = ${bookId} AND l.transaction_id = ${sources[i]!}` : sql``}
+          LIMIT 1`);
+        if (lineage && (await tx.values(sql`SELECT 1 FROM book_transactions WHERE transaction_id = ${id} AND book_id = ${personal}`)).length > 0) adopt.push({ lineageId: lineage[0], head: id });
+        continue;
+      }
       if ((await tx.values(sql`SELECT 1 FROM book_transactions WHERE transaction_id = ${id} AND book_id = ${personal}`)).length > 0) {
         await capturePostedTx(tx, id, personal, null);
       }
     }
   }
   return landed;
+}
+
+/**
+ * After the copy is erased (its lineages with it): each kept row that came through its share heads the copy's lineage
+ * again, in the shared Personal it landed in (sync gaps G5; `keepInPersonalTx`). Nothing is sent: its partners hold it.
+ */
+export async function adoptKeptLineagesTx(tx: Db, ws: WorkspaceContext, adopt: readonly { lineageId: string; head: string }[]): Promise<void> {
+  if (adopt.length === 0) return;
+  const personal = await personalBookIdTx(tx, ws.workspaceId);
+  if (!personal) return;
+  const [member] = await tx.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${personal} AND state = 'active'`);
+  if (!member) return;
+  for (const { lineageId, head } of adopt) {
+    const fields = await projectPurchase(tx, head, member[0], null);
+    if (!fields) continue;
+    await tx.run(sql`
+      INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item)
+      VALUES (${lineageId}, ${personal}, ${head}, ${fields.money.paidBy}, ${fields.money.paidLabel}, ${fields.money.paidFrom?.owner ?? null}, ${fields.money.paidFrom?.itemId ?? null})
+      ON CONFLICT (lineage_id) DO NOTHING`);
+  }
 }
 
 /** The copy's sync rows that name a transaction: they go with the copy, and never follow a kept row's new id. */

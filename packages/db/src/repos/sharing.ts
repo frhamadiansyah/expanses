@@ -290,7 +290,8 @@ export interface SharingDiagnostics {
   /** `sync_cursor.applied_seq`, or null with no cursor row. */
   cursor: number | null;
   members: { memberId: string; role: string }[];
-  devices: { deviceId: string; memberId: string; removed: boolean }[];
+  /** Each with the app version it last said on its own row (null when it never said one). */
+  devices: { deviceId: string; memberId: string; removed: boolean; appVersion: string | null }[];
   /** The epochs whose sealed key this database holds (whether this device can open them is the engine's to say). */
   epochKeys: number[];
   /** Ops refused on apply, kept in `sync_skipped`: how many, and of which entities. */
@@ -325,8 +326,8 @@ export async function sharingDiagnostics(database: Database, bookId: string): Pr
   const [[outbox]] = (await database.db.values<[number]>(sql`SELECT count(*) FROM sync_outbox WHERE book_id = ${bookId}`)) as [[number]];
   const [cursor] = await database.db.values<[number]>(sql`SELECT applied_seq FROM sync_cursor WHERE book_id = ${bookId}`);
   const members = await database.db.values<[string, string]>(sql`SELECT member_id, role FROM book_members WHERE book_id = ${bookId} ORDER BY joined_at, member_id`);
-  const devices = await database.db.values<[string, string, string | null]>(
-    sql`SELECT device_id, member_id, removed_at FROM book_devices WHERE book_id = ${bookId} ORDER BY added_at, device_id`,
+  const devices = await database.db.values<[string, string, string | null, string | null]>(
+    sql`SELECT device_id, member_id, removed_at, app_version FROM book_devices WHERE book_id = ${bookId} ORDER BY added_at, device_id`,
   );
   const epochs = await database.db.values<[number]>(sql`SELECT epoch FROM book_epoch_keys WHERE book_id = ${bookId} ORDER BY epoch`);
   const skipped = await database.db.values<[string, number]>(sql`SELECT entity, count(*) FROM sync_skipped WHERE book_id = ${bookId} GROUP BY entity ORDER BY entity`);
@@ -346,7 +347,7 @@ export async function sharingDiagnostics(database: Database, bookId: string): Pr
     outbox: Number(outbox),
     cursor: cursor ? Number(cursor[0]) : null,
     members: members.map(([memberId, role]) => ({ memberId, role })),
-    devices: devices.map(([deviceId, memberId, removedAt]) => ({ deviceId, memberId, removed: removedAt !== null })),
+    devices: devices.map(([deviceId, memberId, removedAt, appVersion]) => ({ deviceId, memberId, removed: removedAt !== null, appVersion })),
     epochKeys: epochs.map(([epoch]) => Number(epoch)),
     skipped: { count: skipped.reduce((sum, [, n]) => sum + Number(n), 0), entities: skipped.map(([entity]) => entity) },
   };

@@ -26,6 +26,7 @@ import { spendsFrom } from '../accounts/pockets';
 import { type AcquiredParts, acquiredOn, partsOf } from './acquired';
 import { AcquiredRow, MoneyRow } from './AssetRows';
 import { ValueSheet } from './AssetSheets';
+import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
 import { SellSheet } from './SellSheet';
 import { useAcquiredDates, useAssetProfile, useAssetProfiles, useAssetValues, useTrades } from './queries';
 import { NEW_BROKER, NewBrokerSheet } from './NewBrokerSheet';
@@ -352,6 +353,9 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
           hide={bankParent ? ['acct', 'inst'] : undefined}
         />
       )}
+
+      {/* Joint net worth (§8.1): what the household sees of it, and for a money account the Joint switch under it. Nothing while this person is in no group. */}
+      {account && <ShareWithHouseholdRow accountId={accountId} jointSwitch={money} />}
 
       {valuing && value && <ValueSheet accountId={accountId} currency={value.currency} onClose={() => setValuing(false)} />}
       {selling && value && (

@@ -26,7 +26,7 @@ describe('the console helper', () => {
     const [row] = await help.sharedBooks();
     expect(row).toMatchObject({ bookId, state: 'active', epoch: 1 });
     expect(await help.bookMembers()).toEqual([{ bookId, memberId: row!.memberId, role: 'owner' }]);
-    expect(await help.bookDevices(bookId)).toEqual([{ bookId, deviceId: await sync.deviceId(), memberId: row!.memberId, removed: false }]);
+    expect(await help.bookDevices(bookId)).toEqual([{ bookId, deviceId: await sync.deviceId(), memberId: row!.memberId, removed: false, appVersion: expect.any(String) }]);
     expect(await help.outboxCount(bookId)).toBe(0);
     expect(await help.cursor(bookId)).toBeGreaterThan(0);
     expect((await help.log())[0]).toMatchObject({ op: 'share', bookId });

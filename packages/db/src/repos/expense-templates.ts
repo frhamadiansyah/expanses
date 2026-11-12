@@ -35,7 +35,7 @@ import { fundRoom, fundShortMessage } from './sinking-actions';
 import { dropSinkingFund, getSinkingFund, moveSinkingFund, type SinkingFundRow, setSinkingCustom, writeSinkingFund, writeSinkingOpening, writeSinkingPlan } from './sinking-funds';
 import { sinkingFactsOf } from './sinking-views';
 import { BILL_MONTH, billPausesExist, billTablesExist } from './bill-months';
-import { withCapture } from '../sync/capture';
+import { captureBillLinkingTx, withCapture } from '../sync/capture';
 import { bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, hasBooks } from './books';
 import { postTransactionTx, voidTransactionTx } from './ledger';
@@ -1048,9 +1048,8 @@ export async function linkPurchaseToBill(database: Database, ws: WorkspaceContex
     const [already] = await tx.select({ month: billPayments.billMonth }).from(billPayments).where(eq(billPayments.transactionId, transactionId));
     if (already) throw new RecurringError('ALREADY_LINKED', 'That purchase is already linked to a bill');
     if (await isSettled(tx, ws, templateId, billMonth)) throw new RecurringError('ALREADY_SETTLED', 'That month is already settled');
-    await withCapture(tx, { entity: 'purchase', id: transactionId }, () =>
-      tx.insert(billPayments).values({ transactionId, workspaceId: ws.workspaceId, templateId, billMonth }),
-    );
+    await captureBillLinkingTx(tx, transactionId);
+    await tx.insert(billPayments).values({ transactionId, workspaceId: ws.workspaceId, templateId, billMonth });
   });
 }
 
@@ -1070,19 +1069,18 @@ export async function relinkPurchaseToBill(database: Database, ws: WorkspaceCont
   const refusal = await billLinkRefusal(database, ws, { templateId, billMonth, today: input.today });
   if (refusal) throw new RecurringError(refusal.code, refusal.message);
   await database.transaction(async (tx) => {
-    await withCapture(tx, { entity: 'purchase', id: transactionId }, async () => {
-      // Read again inside the transaction: what is moved is the link as it stands now.
-      const [row] = await tx
-        .select({ paidBy: transactions.templateId, status: transactions.status })
-        .from(billPayments)
-        .innerJoin(transactions, eq(transactions.id, billPayments.transactionId))
-        .where(and(eq(billPayments.transactionId, transactionId), eq(billPayments.workspaceId, ws.workspaceId)));
-      if (!row || row.status !== 'posted') throw new RecurringError('NOT_A_PURCHASE', 'That purchase is not here');
-      if (row.paidBy !== null) throw new RecurringError('NOT_LINKED', 'That payment was recorded from the bill. Undo it there.');
-      await tx.delete(billPayments).where(and(eq(billPayments.transactionId, transactionId), eq(billPayments.workspaceId, ws.workspaceId)));
-      if (await isSettled(tx, ws, templateId, billMonth)) throw new RecurringError('ALREADY_SETTLED', 'That month is already settled');
-      await tx.insert(billPayments).values({ transactionId, workspaceId: ws.workspaceId, templateId, billMonth });
-    });
+    await captureBillLinkingTx(tx, transactionId);
+    // Read again inside the transaction: what is moved is the link as it stands now.
+    const [row] = await tx
+      .select({ paidBy: transactions.templateId, status: transactions.status })
+      .from(billPayments)
+      .innerJoin(transactions, eq(transactions.id, billPayments.transactionId))
+      .where(and(eq(billPayments.transactionId, transactionId), eq(billPayments.workspaceId, ws.workspaceId)));
+    if (!row || row.status !== 'posted') throw new RecurringError('NOT_A_PURCHASE', 'That purchase is not here');
+    if (row.paidBy !== null) throw new RecurringError('NOT_LINKED', 'That payment was recorded from the bill. Undo it there.');
+    await tx.delete(billPayments).where(and(eq(billPayments.transactionId, transactionId), eq(billPayments.workspaceId, ws.workspaceId)));
+    if (await isSettled(tx, ws, templateId, billMonth)) throw new RecurringError('ALREADY_SETTLED', 'That month is already settled');
+    await tx.insert(billPayments).values({ transactionId, workspaceId: ws.workspaceId, templateId, billMonth });
   });
 }
 
@@ -1096,9 +1094,8 @@ export function unlinkPurchaseFromBill(database: Database, ws: WorkspaceContext,
       .where(and(eq(billPayments.transactionId, input.transactionId), eq(billPayments.workspaceId, ws.workspaceId)));
     if (!row) return;
     if (row.paidBy !== null) throw new RecurringError('NOT_LINKED', 'That payment was recorded from the bill. Undo it there.');
-    await withCapture(tx, { entity: 'purchase', id: input.transactionId }, () =>
-      tx.delete(billPayments).where(and(eq(billPayments.transactionId, input.transactionId), eq(billPayments.workspaceId, ws.workspaceId))),
-    );
+    await captureBillLinkingTx(tx, input.transactionId);
+    await tx.delete(billPayments).where(and(eq(billPayments.transactionId, input.transactionId), eq(billPayments.workspaceId, ws.workspaceId)));
   });
 }
 

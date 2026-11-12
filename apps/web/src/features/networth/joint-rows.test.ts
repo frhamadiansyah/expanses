@@ -1,7 +1,8 @@
 import { balanceSheet, type ItemSummary, resolveRings } from '@expanses/core';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { figureOf, groupItems, jointRows, jointSeries, jointStatus, ownerRing, type ReceivedItem } from './joint-rows';
+import { figureOf, groupItems, jointRows, jointSeries, jointStatus, ownerRing, type ReceivedItem, sheetOwnerOf } from './joint-rows';
+import { foldPockets } from './overview-rows';
 import { rowKindOf, sheetDrawers } from './sheet-drawers';
 
 const RINA = 'm-rina';
@@ -237,5 +238,62 @@ describe('groupItems (final review item 8)', () => {
     const items = [item({ itemId: 'a', owner: ANDI }), item({ itemId: 's', owner: 'm-sari' }), item({ itemId: 'a2', owner: ANDI })];
     expect(groupItems(items, [RINA, ANDI]).map((i) => i.itemId)).toEqual(['a', 'a2']);
     expect(groupItems(items, [RINA])).toEqual([]);
+  });
+});
+
+describe('sheetOwnerOf: every row of the household sheet has an owner to ring', () => {
+  // Cash with a TRY pocket, a bank account with USD and SGD pockets, and gold in grams, as the sheet is fed: leaves only.
+  const sheetOwn = {
+    assets: [
+      { accountId: 'cash-idr', name: 'Cash · IDR', planGroup: 'liquid' as const, valueMinor: 800_000, code: null, subtype: 'cash' },
+      { accountId: 'cash-try', name: 'Cash · TRY', planGroup: 'liquid' as const, valueMinor: 400_000, code: null, subtype: 'cash' },
+      { accountId: 'valas-usd', name: 'Valas · USD', planGroup: 'liquid' as const, valueMinor: 16_000_000, code: null, subtype: 'savings' },
+      { accountId: 'valas-sgd', name: 'Valas · SGD', planGroup: 'liquid' as const, valueMinor: 12_000_000, code: null, subtype: 'savings' },
+      { accountId: 'gold', name: 'Antam bars', planGroup: 'invest' as const, valueMinor: 18_600_000, code: null, subtype: 'investment' },
+    ],
+    liabilities: [],
+    missing: [] as string[],
+  };
+  const accounts = [
+    { id: 'cash', name: 'Cash', kind: 'asset', parentId: null, currency: 'IDR' },
+    { id: 'cash-idr', name: 'Cash · IDR', kind: 'asset', parentId: 'cash', currency: 'IDR' },
+    { id: 'cash-try', name: 'Cash · TRY', kind: 'asset', parentId: 'cash', currency: 'TRY' },
+    { id: 'valas', name: 'Valas', kind: 'asset', parentId: null, currency: 'IDR' },
+    { id: 'valas-usd', name: 'Valas · USD', kind: 'asset', parentId: 'valas', currency: 'USD' },
+    { id: 'valas-sgd', name: 'Valas · SGD', kind: 'asset', parentId: 'valas', currency: 'SGD' },
+    { id: 'gold', name: 'Antam bars', kind: 'asset', parentId: null, currency: 'IDR' },
+  ] as const;
+  const joint = jointRows(sheetOwn, [item({ itemId: 'i-andi', name: 'Andi Mandiri', balanceMinor: 1_000_000 })], RINA, {}, 'IDR');
+  const owners = new Map(joint.rows.map((row) => [row.accountId, row]));
+  const shown = foldPockets(balanceSheet(joint.assets, joint.liabilities).assetGroups, accounts as never, 'IDR').flatMap((group) => group.rows);
+
+  it('reproduces the miss: the folded parents are on the sheet but are no joint row', () => {
+    expect(shown.map((row) => row.accountId).sort()).toEqual(['cash', 'gold', 'i-andi', 'valas']);
+    expect(owners.get('cash')).toBeUndefined();
+    expect(owners.get('valas')).toBeUndefined();
+    expect(owners.get('gold')).toBeDefined();
+  });
+
+  it('gives a parent its pockets’ owner, and every row on the sheet an owner', () => {
+    for (const row of shown) expect(sheetOwnerOf(row.accountId, owners, accounts, RINA)).toMatchObject({ owner: row.accountId === 'i-andi' ? ANDI : RINA });
+    expect(sheetOwnerOf('cash', owners, accounts, RINA)).toMatchObject({ owner: RINA, received: false });
+    expect(sheetOwnerOf('valas', owners, accounts, RINA)).toMatchObject({ owner: RINA, received: false });
+  });
+
+  it('leaves the partner’s received rows as they were, found by id', () => {
+    const found = sheetOwnerOf('i-andi', owners, accounts, RINA);
+    expect(found).toMatchObject({ owner: ANDI, received: true });
+    expect(found.row).toBe(owners.get('i-andi'));
+  });
+
+  it('takes a row no joint row speaks for as this phone’s own', () => {
+    expect(sheetOwnerOf('not-on-the-sheet', owners, accounts, RINA)).toEqual({ owner: RINA, received: false, row: null });
+  });
+
+  it('rings a parent in its pockets’ owner’s colour, whoever this phone is', () => {
+    const rings = resolveRings([RINA, ANDI], {});
+    const { owner } = sheetOwnerOf('cash', owners, accounts, RINA);
+    expect(ownerRing(rings, owner)).toBe(ownerRing(rings, RINA));
+    expect(ownerRing(rings, owner)).not.toBeNull();
   });
 });

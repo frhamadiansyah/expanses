@@ -190,6 +190,8 @@ export { MemoryShareRecordStore, parseShareRecord, storableShareRecord, type Sha
 export { deviceIdOf } from './sync/relay-signing';
 export { MEMBER_NAME_MAX, SharingError, type SharingErrorCode } from './sync/seed';
 export { type PullResult } from './sync/apply';
+export { eventTagRefusalTx, tagDroppedText } from './repos/shared-workspace-rows';
+export { BILL_LINKS_EVERYWHERE, dismissRepairNotice, repairNotices, runSharedBookRepairs, type RepairNotice, type RepairNoticeRow, type RepairReport } from './sync/repairs';
 export * from './repos/sharing';
 // Shared goals (§8.6): the app-version gate and the workspaces a goal can be shared into.
 export { SHARED_GOALS_MIN_APP_VERSION } from './sync/goals/version';

@@ -8,6 +8,7 @@ import { fillDay, openNewAsset } from './add-asset';
 import { addForm, addTransaction, addTransfer, fillAmount, openAmount, saveButton } from './add-transaction';
 import { cardPage, saveCardTerms } from './card-section';
 import { openDrawers } from './drawers';
+import { openWithPockets } from './pockets';
 import { pickView } from './wallet';
 import { openMemberPage, openNetWorthPage, openSharePage, openWorkspacePage, openWorkspaceSharePage, putOffShareList, renameWorkspace, shareWorkspace } from './workspace-page';
 
@@ -769,6 +770,8 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   // Fandri stops sharing his bank account; it leaves Dewi's phone.
   await page.goto('/wallet');
   await walletCard(page, 'Fandri Bank').click();
+  // Share with Household sits in the account's Settings.
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await page.getByLabel('Share with Household').selectOption({ label: "Don't share" });
   await expect(page.getByLabel('Share with Household')).toHaveValue('hidden');
   await eventually(dewi, async () => {
@@ -868,15 +871,18 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   await reviewAndShare(dewi, info, 'j1-review');
   await reviewAndShare(page, info, 'j1-review');
 
-  // Fandri's account page: the Joint account switch sits under Share with Household, off.
+  // Fandri's account Settings: the Joint account switch sits under Share with Household, off.
   await page.goto('/wallet');
   await walletCard(page, 'Fandri Bank').click();
+  await expect(page.getByTestId('joint-row')).toHaveCount(0);
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
   const joint = page.getByRole('checkbox', { name: 'Joint account' });
   await expect(joint).not.toBeChecked();
-  await expect(page.getByTestId('joint-row')).toHaveCount(0);
+  await joint.scrollIntoViewIfNeeded();
   await joint.click({ force: true });
   await expect(joint).toBeChecked();
   await shot(page, info, 'j2-switch-on');
+  await page.goBack();
 
   // Dewi's Paid with lists it with the Joint tag, and she pays from it.
   const paidWithJoint = dewi.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Fandri Bank, Fandri’s, shared', exact: true });
@@ -992,7 +998,11 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   // Switched off, the partner is back to the balance and the total: no rows.
   await page.goto('/wallet');
   await walletCard(page, 'Fandri Bank').click();
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Joint account' }).scrollIntoViewIfNeeded();
   await page.getByRole('checkbox', { name: 'Joint account' }).click({ force: true });
+  await expect(page.getByRole('checkbox', { name: 'Joint account' })).not.toBeChecked();
+  await page.goBack();
   await expect(rowsOn(page)).toHaveCount(0);
   await eventually(dewi, async () => {
     await dewi.goto('/net-worth');
@@ -1045,6 +1055,8 @@ test('the partner’s joint account and joint card are cards in Wallet, counted 
   // Rina turns Joint account on for the savings and Joint card on for the card.
   await page.goto('/wallet');
   await walletCard(page, 'Joint savings').click();
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Joint account' }).scrollIntoViewIfNeeded();
   await page.getByRole('checkbox', { name: 'Joint account' }).click({ force: true });
   await expect(page.getByRole('checkbox', { name: 'Joint account' })).toBeChecked();
   await page.goto('/wallet');
@@ -1464,4 +1476,62 @@ test('Events plus offers New event or Join with a code, and Join opens the join 
   const join = page.getByTestId('join-workspace');
   await expect(join).toBeVisible();
   await expect(join.getByPlaceholder('XXXX-XXXX-…')).toBeVisible();
+});
+
+test('in a joint household every row of Net worth is ringed in its owner’s colour: cash and a bank account with pockets, and gold, too', async ({ page, browser }, info) => {
+  test.setTimeout(600_000);
+  page.on('dialog', (dialog) => void dialog.accept());
+  const dewi = await secondDevice(browser, info);
+  await openAccount(page, { subtype: 'bank', name: 'Fandri Bank', balance: '10000000' });
+  await openAccount(dewi, { subtype: 'bank', name: 'Dewi Bank', balance: '5000000' });
+  await page.goto('/transactions');
+  await shareAndJoin(page, dewi);
+  const section = await netWorthSection(page);
+  await eventually(page, () => expect(section.getByTestId('share-net-worth')).toBeVisible({ timeout: 1_000 }));
+  await section.getByTestId('net-worth-setup').getByTestId('filing-joint').click();
+  await section.getByTestId('net-worth-setup').getByRole('button', { name: 'Invite', exact: true }).click();
+  const theirs = await netWorthSection(dewi);
+  await eventually(dewi, () => expect(theirs.getByTestId('net-worth-asked')).toContainText('Fandri asks to share net worth', { timeout: 1_000 }));
+  await theirs.getByRole('button', { name: 'Confirm', exact: true }).click();
+  await eventually(dewi, () => expect(theirs.getByTestId('net-worth-status')).toContainText('Shared with Fandri', { timeout: 1_000 }));
+  await reviewAndShare(dewi, info, 'r1-review-joint');
+  await reviewAndShare(page, info, 'r1-review-joint');
+
+  // Fandri then opens a Cash with a TRY pocket, a bank account with USD and SGD pockets, and a gold bar in grams.
+  await openWithPockets(page, { name: 'Fandri Cash', kind: 'Cash banknotes', pockets: [{ currency: 'IDR', balance: '800000' }, { currency: 'TRY', balance: '1000', rate: '400' }] });
+  await openWithPockets(page, {
+    name: 'Fandri Valas',
+    pockets: [
+      { currency: 'USD', balance: '100', rate: '16000' },
+      { currency: 'SGD', balance: '100', rate: '12000' },
+    ],
+  });
+  await openNewAsset(page, 'Gold bullion');
+  await page.getByLabel('Name', { exact: true }).fill('Fandri gold');
+  await fillDay(page, 'Bought', '2024-02-03');
+  await page.getByLabel('How much').fill('10');
+  await page.getByLabel('Total cost', { exact: true }).fill('13100000');
+  await page.getByRole('button', { name: 'Add asset' }).last().click();
+  await expect(page).toHaveURL(/\/net-worth\/assets$/);
+
+  const BLUE = 'var(--owner-blue)';
+  const PURPLE = 'var(--owner-purple)';
+  const ringOf = (row: Locator) => row.locator('[data-ring]');
+  const sheetRow = (p: Page, name: string) => p.locator('[data-testid^="sheet-row-"]').filter({ hasText: name });
+  await eventually(page, async () => {
+    await page.goto('/net-worth');
+    await openDrawers(page);
+    for (const name of ['Fandri Bank', 'Fandri Cash', 'Fandri Valas', 'Fandri gold']) await expect(ringOf(sheetRow(page, name)).first()).toHaveAttribute('data-ring', BLUE, { timeout: 1_000 });
+    await expect(ringOf(sheetRow(page, 'Dewi Bank'))).toHaveAttribute('data-ring', PURPLE, { timeout: 1_000 });
+  });
+  await shot(page, info, 'r2-every-row-ringed');
+  // The Assets page lists the same rows, each ringed too.
+  await eventually(page, async () => {
+    await page.goto('/net-worth/assets');
+    await openDrawers(page);
+    for (const name of ['Fandri Bank', 'Fandri Cash', 'Fandri Valas', 'Fandri gold']) {
+      const rows = page.locator('a, button').filter({ hasText: name }).filter({ has: page.locator('[data-ring]') });
+      await expect(rows.first().locator('[data-ring]').first()).toHaveAttribute('data-ring', BLUE, { timeout: 1_000 });
+    }
+  });
 });

@@ -1,4 +1,4 @@
-import { type BookSyncStatus, type Database, heldElsewhereOf, type HeldRow, type SharingDiagnostics, sharingDiagnostics } from '@expanses/db';
+import { BILL_LINKS_EVERYWHERE, type BookSyncStatus, type Database, heldElsewhereOf, meetsVersion, type HeldRow, type SharingDiagnostics, sharingDiagnostics } from '@expanses/db';
 import pkg from '../../../package.json';
 import { describeError, formatSyncLogEntry, shortId, type SyncLogEntry } from '../../sync/sync-log';
 import { type SyncService, statusInShort } from '../../sync/sync-service';
@@ -120,6 +120,10 @@ export function syncDetailsText(d: SyncDetails): string {
     s && s.state === 'unshared' ? `Ended ${s.unsharedReason ?? 'unknown'} by ${shortId(s.unsharedBy) ?? 'unknown'}` : null,
     `Outbox ${d.diag.outbox} · cursor ${d.diag.cursor ?? 'none'} · refused ops ${d.diag.skipped.count}${d.diag.skipped.count ? ` (${d.diag.skipped.entities.join(', ')})` : ''}`,
     `Members ${d.diag.members.length} (owners ${owners}) · devices ${d.diag.devices.length} (removed ${removed}) · epoch keys ${d.diag.epochKeys.length ? d.diag.epochKeys.join(', ') : 'none'}`,
+    // A device still in the book on a version that does not write the bill links it receives (sync gaps fix round 4).
+    ...d.diag.devices
+      .filter((device) => !device.removed && !meetsVersion(device.appVersion, BILL_LINKS_EVERYWHERE))
+      .map((device) => `Device ${shortId(device.deviceId)} is on an older version (${device.appVersion ?? 'unknown'})`),
     `This device ${shortId(d.deviceId) ?? 'none'} · keys ${yesNo(d.hasKeys)} · device row ${d.deviceRow} · epoch key ${d.epochKey}`,
     `This session: polled ${yesNo(d.live.polled)} · running ${yesNo(d.live.running)} · failing ${yesNo(d.live.failing)} · last run ${d.live.lastSyncedAt ? new Date(d.live.lastSyncedAt).toISOString() : 'none'}`,
     d.live.lastError ? `Last error ${d.live.lastError}` : null,

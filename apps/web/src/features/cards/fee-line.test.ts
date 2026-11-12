@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { feeLine } from './fee-line';
+import { challengeCoversFee, feeLine } from './fee-line';
 
 describe('the annual fee row on a card page', () => {
   it('is absent with neither an amount nor a date', () => expect(feeLine(null, null, null, 'IDR', '2026-10-26')).toBeNull());
@@ -22,9 +22,16 @@ describe('the annual fee row on a card page', () => {
     const line = feeLine(500_000, '2020-11-20', 2026, 'IDR', '2026-10-26')!;
     expect(line).toMatchObject({ waived: true, soon: false, when: 'Waived this year · next charge 20 Nov 2027' });
   });
-  it('reads refunded with next year’s charge, and is not soon', () => {
+  it('reads a year refunded through the old Fee refunded as waived: one word for both', () => {
     const line = feeLine(500_000, '2020-11-20', null, 'IDR', '2026-10-26', 2026)!;
-    expect(line).toMatchObject({ refunded: true, waived: false, soon: false, when: 'Refunded this year · next charge 20 Nov 2027' });
+    expect(line).toMatchObject({ waived: true, soon: false, when: 'Waived this year · next charge 20 Nov 2027' });
   });
-  it('ignores a refund of another year', () => expect(feeLine(500_000, '2020-11-20', null, 'IDR', '2026-10-26', 2025)!.refunded).toBe(false));
+  it('ignores a refund of another year', () => expect(feeLine(500_000, '2020-11-20', null, 'IDR', '2026-10-26', 2025)!.waived).toBe(false));
+});
+
+describe('which fee year a challenge is about', () => {
+  it('covers the year the challenge was kept for', () => expect(challengeCoversFee(2026, 2026)).toBe(true));
+  it('does not cover last year’s challenge, kept on the card a year on', () => expect(challengeCoversFee(2025, 2026)).toBe(false));
+  it('does not cover next year’s challenge, which shows its own progress', () => expect(challengeCoversFee(2027, 2026)).toBe(false));
+  it('covers nothing without a challenge', () => expect(challengeCoversFee(null, 2026)).toBe(false));
 });
