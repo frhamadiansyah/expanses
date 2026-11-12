@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Joint items in Wallet</title>
+<style>
+:root { --bg:#f2f2f7; --surface:#fff; --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e0e0e4; --fill:#efeff2; --up:#248a3d; --alarm:#c6301f; --warn:#b25000; --tint:#007aff; --rina:#0f9aa8; --andi:#007aff; }
+* { box-sizing:border-box; }
+body { margin:0; background:#e6e6ea; color:var(--ink); font:14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; padding:24px 16px 48px; }
+h1 { font-size:20px; margin:0 0 4px; } .lede { color:#555; margin:0 0 20px; max-width:980px; }
+h2 { font-size:16px; margin:30px 0 12px; }
+.pair { display:flex; flex-wrap:wrap; gap:22px; align-items:flex-start; }
+.col { width:320px; max-width:100%; }
+.cap { font-weight:600; margin:0 0 8px; } .cap .n { display:inline-block; background:#1c1c1e; color:#fff; border-radius:5px; padding:0 6px; font-size:12px; margin-right:6px; }
+.cap .rec { font-size:11.5px; font-weight:600; color:#047857; background:#dcfce7; border-radius:5px; padding:1px 6px; margin-left:6px; }
+.phone { background:var(--bg); border-radius:28px; padding:14px 14px 20px; border:1px solid #d4d4d8; min-height:620px; position:relative; overflow:hidden; }
+.lt { font-size:30px; font-weight:700; margin:4px 2px 12px; display:flex; justify-content:space-between; align-items:center; }
+.round { width:34px; height:34px; border-radius:50%; background:#e5e5ea; display:inline-flex; align-items:center; justify-content:center; font-size:15px; margin-left:6px; }
+.bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; } .ttl { font-size:18px; font-weight:600; }
+.box { background:var(--surface); border-radius:12px; padding:12px 14px; }
+.lab { font-size:12px; font-weight:600; letter-spacing:.08em; color:var(--ink3); text-transform:uppercase; }
+.fig { font-size:26px; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+.sr { display:flex; align-items:center; gap:8px; padding:7px 0; font-size:15px; }
+.sr + .sr { border-top:.5px solid var(--hair); }
+.dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.sr .grow { flex:1; } .amt { font-variant-numeric:tabular-nums; }
+.chev { color:#c7c7cc; margin-left:2px; }
+.grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
+.card { border-radius:12px; padding:9px 10px; height:92px; color:#fff; display:flex; flex-direction:column; justify-content:space-between; font-size:12.5px; position:relative; }
+.card b { font-size:15px; font-variant-numeric:tabular-nums; }
+.card .who { position:absolute; top:8px; right:8px; font-size:10.5px; font-weight:600; background:rgba(255,255,255,.92); color:var(--ink); border-radius:9px; padding:1px 7px 1px 5px; display:flex; align-items:center; gap:4px; }
+.card .who i { width:9px; height:9px; border-radius:50%; display:inline-block; border:2px solid var(--rina); }
+.card.joint { box-shadow:0 0 0 2.5px var(--rina); }
+.stack { position:relative; height:250px; margin-top:12px; }
+.stack .card { position:absolute; left:0; right:0; height:190px; padding:12px 14px; font-size:13.5px; }
+.mark { outline:2px dashed #2563eb; outline-offset:3px; border-radius:12px; }
+.note { font-size:12.5px; color:#444; margin:10px 2px 0; }
+.gh { font-size:13px; color:var(--ink3); margin:14px 4px 6px; text-transform:uppercase; letter-spacing:.02em; display:flex; justify-content:space-between; }
+.gf { font-size:12.5px; color:var(--ink3); margin:6px 4px 0; }
+.ig { background:var(--surface); border-radius:11px; overflow:hidden; }
+.row { display:flex; align-items:center; gap:10px; padding:9px 13px; min-height:48px; position:relative; font-size:15.5px; }
+.ig .row + .row::before { content:""; position:absolute; top:0; left:13px; right:0; border-top:.5px solid var(--hair); }
+.ig.icons .row + .row::before { left:50px; }
+.ic { width:28px; height:28px; border-radius:50%; background:var(--fill); display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; }
+.s { font-size:12px; color:var(--ink3); }
+.acts { display:flex; justify-content:center; gap:26px; margin:14px 0 4px; }
+.act { display:flex; flex-direction:column; align-items:center; gap:5px; font-size:12px; color:var(--ink2); }
+.act span { width:46px; height:46px; border-radius:50%; background:var(--surface); display:flex; align-items:center; justify-content:center; font-size:18px; }
+.act.off { opacity:.35; }
+.hero { border-radius:14px; padding:14px; color:#fff; height:150px; display:flex; flex-direction:column; justify-content:space-between; position:relative; box-shadow:0 0 0 2.5px var(--rina); }
+.hero b { font-size:24px; font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body>
+<h1>Joint account and joint card in the partner’s Wallet</h1>
+<p class="lede">Andi’s phone. Rina shares her savings account and one credit card with the household and turns on <b>Joint account</b> / <b>Joint card</b>. Today Andi only sees them on Net worth and in Family’s Paid with. Proposed: they also sit in Andi’s Wallet as cards, ringed in Rina’s colour with “Rina’s” on the face, and count in Andi’s Balance. Shared items that are not joint stay off Wallet (Net worth only). Names and amounts are made up.</p>
+
+<h2>A · Joint items are cards in Wallet and count in Balance <span style="font-weight:400;color:#047857">(recommended)</span></h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">A1</span>Grid<span class="rec">Recommended</span></p>
+    <div class="phone">
+      <div class="lt">Wallet <span><span class="round">⊞</span><span class="round">＋</span></span></div>
+      <div class="box">
+        <div class="lab">Balance</div>
+        <div class="fig">Rp 9.050.000</div>
+        <div style="border-top:.5px solid var(--hair);margin-top:8px">
+          <div class="sr"><span class="dot" style="background:var(--up)"></span><span class="grow">Spending money</span><span class="amt">Rp 12.300.000</span></div>
+          <div class="sr"><span class="dot" style="background:var(--alarm)"></span><span class="grow">Owed on cards</span><span class="amt">−Rp 2.100.000</span></div>
+          <div class="sr"><span class="dot" style="background:var(--warn)"></span><span class="grow">Bills still to pay</span><span class="amt">−Rp 1.150.000</span><span class="chev">›</span></div>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="card" style="background:#1e3a8a">Payroll account<b>Rp 4.300.000</b></div>
+        <div class="card joint mark" style="background:#155e75"><span class="who"><i></i>Rina’s</span>Joint savings<b>Rp 8.000.000</b></div>
+        <div class="card" style="background:#111827">Card ending 1234<b>Rp 1.250.000</b></div>
+        <div class="card joint mark" style="background:#7c2d12"><span class="who"><i></i>Rina’s</span>Card ending 5678<b>Rp 850.000</b></div>
+      </div>
+      <p class="note">Spending money = Andi’s Payroll 4,3 jt + Rina’s joint savings 8 jt. Owed on cards = Andi’s 1,25 jt + Rina’s joint card 850 rb. Tapping a row filters to these too.</p>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">A2</span>Stack</p>
+    <div class="phone">
+      <div class="lt">Wallet <span><span class="round">☰</span><span class="round">＋</span></span></div>
+      <div class="stack">
+        <div class="card" style="top:0;background:#1e3a8a">Payroll account<b>Rp 4.300.000</b></div>
+        <div class="card joint" style="top:32px;background:#155e75"><span class="who"><i></i>Rina’s</span>Joint savings<b>Rp 8.000.000</b></div>
+        <div class="card" style="top:64px;background:#111827">Card ending 1234<b>Rp 1.250.000</b></div>
+      </div>
+      <div class="stack" style="margin-top:-150px">
+        <div class="card joint" style="top:96px;background:#7c2d12"><span class="who"><i></i>Rina’s</span>Card ending 5678<b>Rp 850.000</b></div>
+      </div>
+      <p class="note">Same order rules as own cards: money at the back, credit cards in front. The ring and “Rina’s” say whose it is. ⋯ → Reorder cards can place them anywhere.</p>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">A3</span>Tap Rina’s joint savings</p>
+    <div class="phone">
+      <div class="bar"><span class="round" style="margin:0">✕</span><span></span><span style="width:34px"></span></div>
+      <div class="hero" style="background:#155e75"><span>Joint savings · Rina’s</span><b>Rp 8.000.000</b><span style="font-size:12px;opacity:.85">Balance from Rina’s phone · 2 min ago</span></div>
+      <div class="acts">
+        <div class="act"><span>＋</span>Add</div>
+        <div class="act"><span>⇄</span>Transfer</div>
+        <div class="act off"><span>⚙</span>Settings</div>
+      </div>
+      <div class="gh"><span>Joint account · 3 rows</span></div>
+      <div class="ig">
+        <div class="row"><div style="flex:1"><div>Groceries</div><div class="s">11 Nov · recorded by Andi</div></div><div class="amt">−Rp 420.000</div></div>
+        <div class="row"><div style="flex:1"><div>School fees</div><div class="s">8 Nov · recorded by Rina</div></div><div class="amt">−Rp 1.500.000</div></div>
+        <div class="row"><div style="flex:1"><div>Top up</div><div class="s">1 Nov · recorded by Rina</div></div><div class="amt">+Rp 5.000.000</div></div>
+      </div>
+      <div class="gf">Add and Transfer record in Family. The account’s settings stay on Rina’s phone.</div>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">A4</span>Tap Rina’s joint card</p>
+    <div class="phone">
+      <div class="bar"><span class="round" style="margin:0">✕</span><span></span><span style="width:34px"></span></div>
+      <div class="hero" style="background:#7c2d12"><span>Card ending 5678 · Rina’s</span><b>Rp 850.000</b><span style="font-size:12px;opacity:.85">Owed · from Rina’s phone · 2 min ago</span></div>
+      <div class="acts">
+        <div class="act"><span>＋</span>Add</div>
+        <div class="act off"><span>✓</span>Pay</div>
+        <div class="act off"><span>⚙</span>Settings</div>
+      </div>
+      <div class="gh"><span>Joint card · 2 rows</span></div>
+      <div class="ig">
+        <div class="row"><div style="flex:1"><div>Fuel</div><div class="s">10 Nov · recorded by Andi</div></div><div class="amt">Rp 350.000</div></div>
+        <div class="row"><div style="flex:1"><div>Pharmacy</div><div class="s">6 Nov · recorded by Rina</div></div><div class="amt">Rp 500.000</div></div>
+      </div>
+      <div class="gf">Purchases recorded in Family show on both phones. The statement, Pay and points stay on Rina’s phone.</div>
+    </div>
+  </div>
+</div>
+
+<h2>B · Listed under the cards, not counted</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">B1</span>Grid</p>
+    <div class="phone">
+      <div class="lt">Wallet <span><span class="round">⊞</span><span class="round">＋</span></span></div>
+      <div class="box">
+        <div class="lab">Balance</div>
+        <div class="fig">Rp 1.900.000</div>
+        <div style="border-top:.5px solid var(--hair);margin-top:8px">
+          <div class="sr"><span class="dot" style="background:var(--up)"></span><span class="grow">Spending money</span><span class="amt">Rp 4.300.000</span></div>
+          <div class="sr"><span class="dot" style="background:var(--alarm)"></span><span class="grow">Owed on cards</span><span class="amt">−Rp 1.250.000</span></div>
+          <div class="sr"><span class="dot" style="background:var(--warn)"></span><span class="grow">Bills still to pay</span><span class="amt">−Rp 1.150.000</span><span class="chev">›</span></div>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="card" style="background:#1e3a8a">Payroll account<b>Rp 4.300.000</b></div>
+        <div class="card" style="background:#111827">Card ending 1234<b>Rp 1.250.000</b></div>
+      </div>
+      <div class="gh"><span>Rina’s, joint</span></div>
+      <div class="ig icons">
+        <div class="row"><div class="ic" style="box-shadow:inset 0 0 0 2px var(--rina)">🏦</div><div style="flex:1">Joint savings</div><div class="amt">Rp 8.000.000</div><span class="chev">›</span></div>
+        <div class="row"><div class="ic" style="box-shadow:inset 0 0 0 2px var(--rina);background:#ffe4e6">💳</div><div style="flex:1">Card ending 5678</div><div class="amt">Rp 850.000</div><span class="chev">›</span></div>
+      </div>
+      <div class="gf">Not counted in this Balance.</div>
+      <p class="note">Simpler, but Andi’s Balance ignores money both of them spend from — the joint savings and the joint card’s debt.</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>
