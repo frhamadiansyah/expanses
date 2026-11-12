@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Owner ring colours</title>
+<style>
+:root { --bg:#f2f2f7; --surface:#fff; --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e0e0e4; --fill:#efeff2; --alarm:#c6301f; --alarm-panel:#fef2f2; --alarm-ink:#991b1b; --up:#248a3d; }
+* { box-sizing:border-box; }
+body { margin:0; background:#e6e6ea; color:var(--ink); font:14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; padding:24px 16px 48px; }
+h1 { font-size:20px; margin:0 0 4px; } .lede { color:#555; margin:0 0 20px; max-width:980px; }
+h2 { font-size:16px; margin:30px 0 12px; }
+.pair { display:flex; flex-wrap:wrap; gap:22px; align-items:flex-start; }
+.col { width:320px; max-width:100%; }
+.cap { font-weight:600; margin:0 0 8px; } .cap .n { display:inline-block; background:#1c1c1e; color:#fff; border-radius:5px; padding:0 6px; font-size:12px; margin-right:6px; }
+.phone { background:var(--bg); border-radius:28px; padding:14px 14px 20px; border:1px solid #d4d4d8; min-height:520px; position:relative; overflow:hidden; }
+.bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.round { width:36px; height:36px; border-radius:50%; background:#e5e5ea; display:flex; align-items:center; justify-content:center; font-size:16px; }
+.ttl { font-size:18px; font-weight:600; }
+.gh { font-size:13px; color:var(--ink3); margin:14px 4px 6px; text-transform:uppercase; letter-spacing:.02em; }
+.gf { font-size:12.5px; color:var(--ink3); margin:6px 4px 0; }
+.ig { background:var(--surface); border-radius:11px; overflow:hidden; }
+.row { display:flex; align-items:center; gap:10px; padding:9px 12px; min-height:48px; position:relative; }
+.ig .row + .row::before { content:""; position:absolute; top:0; left:50px; right:0; border-top:.5px solid var(--hair); }
+.ic { width:28px; height:28px; border-radius:50%; background:var(--fill); display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; color:var(--ink2); }
+.big .ic { width:40px; height:40px; font-size:18px; }
+.grow { flex:1; min-width:0; } .t { font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .s { font-size:12px; color:var(--ink3); }
+.amt { font-variant-numeric:tabular-nums; font-size:15px; }
+.chev { color:#c7c7cc; margin-left:4px; }
+.note { font-size:12.5px; color:#444; margin:10px 2px 0; }
+.mark { outline:2px dashed #2563eb; outline-offset:2px; border-radius:10px; }
+.sw { width:22px; height:22px; border-radius:50%; flex-shrink:0; }
+.stack { display:flex; height:12px; border-radius:6px; overflow:hidden; margin:8px 0 6px; }
+.key { display:flex; flex-wrap:wrap; gap:6px 12px; font-size:12px; color:var(--ink3); }
+.key span { display:flex; align-items:center; gap:5px; } .key i { width:9px; height:9px; border-radius:2px; display:inline-block; }
+.pill { font-size:12px; padding:2px 8px; border-radius:10px; }
+.del { color:var(--alarm); font-size:15.5px; text-align:center; padding:12px; }
+.scrim { position:absolute; inset:0; background:rgba(0,0,0,.25); }
+.sheet { position:absolute; left:0; right:0; bottom:0; background:var(--bg); border-radius:18px 18px 0 0; padding:10px 14px 22px; box-shadow:0 -6px 20px rgba(0,0,0,.12); }
+.grab { width:36px; height:5px; border-radius:3px; background:#c7c7cc; margin:0 auto 10px; }
+.grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:14px 8px; padding:14px 8px; }
+.opt { display:flex; flex-direction:column; align-items:center; gap:6px; font-size:12px; color:var(--ink2); }
+.opt .ring { width:44px; height:44px; border-radius:50%; background:var(--fill); display:flex; align-items:center; justify-content:center; font-size:17px; }
+.opt.on .ring { outline:2.5px solid var(--ink); outline-offset:3px; }
+.opt.taken { opacity:.45; }
+.compare { display:flex; gap:18px; flex-wrap:wrap; }
+.compare .c { display:flex; flex-direction:column; align-items:center; gap:6px; font-size:12px; color:var(--ink2); width:78px; text-align:center; }
+</style>
+</head>
+<body>
+<h1>Owner ring colours</h1>
+<p class="lede">The ring is the thin coloured circle drawn around an account’s round icon. It says whose the account is in a shared household. Today the colour comes from each person’s place in the group (on this household, purple and blue). Proposed: each person picks their own ring colour. Names and amounts are made up.</p>
+
+<h2>1 · Where red and pink already mean something in the app</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">1a</span>Net worth · Liabilities chart</p>
+    <div class="phone" style="min-height:auto">
+      <div class="ig" style="padding:12px 14px">
+        <div class="s">What is owed</div>
+        <div style="font-size:22px;font-weight:600">Rp 48,6 jt</div>
+        <div class="stack"><i style="flex:3;background:#f43f5e"></i><i style="flex:5;background:#9f1239"></i><i style="flex:1.5;background:#fda4af"></i></div>
+        <div class="key"><span><i style="background:#f43f5e"></i>Credit card</span><span><i style="background:#9f1239"></i>Loan</span><span><i style="background:#fda4af"></i>Payable</span></div>
+      </div>
+      <p class="note">All debts are drawn in rose and pink shades, so “pink” already reads as “owed” on Net worth.</p>
+    </div>
+  </div>
+  <div class="col">
+    <p class="cap"><span class="n">1b</span>Warnings in red</p>
+    <div class="phone" style="min-height:auto">
+      <div class="ig">
+        <div class="row"><div class="ic">⚡</div><div class="grow"><div class="t">Electricity</div><div class="s" style="color:var(--alarm)">Overdue · 3 days</div></div><div class="amt">Rp 450.000</div></div>
+        <div class="row"><div class="ic">💳</div><div class="grow"><div class="t">Card balance</div><div class="s" style="color:var(--alarm)">Due tomorrow</div></div><div class="amt" style="color:var(--alarm)">Rp 2.150.000</div></div>
+        <div class="row"><div class="ic">📉</div><div class="grow"><div class="t">Debt to income</div><div class="s">Health ratio</div></div><div class="amt" style="color:var(--alarm)">48%</div></div>
+      </div>
+      <div class="ig" style="margin-top:10px"><div class="row" style="background:var(--alarm-panel);color:var(--alarm-ink);font-size:13px">2 purchases on the statement are not in the app</div></div>
+      <div class="ig" style="margin-top:10px"><div class="del">Delete transaction</div></div>
+      <p class="note">Red is used for overdue bills, payments due, over-limit and bad health ratios, statement-check misses, debt-plan warnings and every Delete button.</p>
+    </div>
+  </div>
+  <div class="col">
+    <p class="cap"><span class="n">1c</span>Pink ring next to a debt</p>
+    <div class="phone" style="min-height:auto">
+      <div class="ig">
+        <div class="row"><div class="ic" style="box-shadow:inset 0 0 0 2px #d6336c">🏦</div><div class="grow"><div class="t">Savings account</div><div class="s">Pink ring · an asset</div></div><div class="amt">Rp 25.000.000</div></div>
+        <div class="row"><div class="ic" style="background:#ffe4e6;color:#be123c">💳</div><div class="grow"><div class="t">Credit card</div><div class="s">A debt (rose)</div></div><div class="amt">Rp 3.200.000</div></div>
+        <div class="row"><div class="ic" style="box-shadow:inset 0 0 0 2px #0f9aa8">🏦</div><div class="grow"><div class="t">Savings account</div><div class="s">Teal ring · an asset</div></div><div class="amt">Rp 25.000.000</div></div>
+      </div>
+      <p class="note">At a glance the pink-ringed savings sits close to the rose debt colour. Teal (or blue, purple…) cannot be mistaken for one. A magenta pink is offered last for anyone who still wants it.</p>
+    </div>
+  </div>
+</div>
+
+<h2>2 · The ring itself</h2>
+<div class="pair">
+  <div class="col" style="width:680px">
+    <div class="phone" style="min-height:auto">
+      <div class="compare">
+        <div class="c"><div class="ic big" style="width:40px;height:40px;font-size:18px">🏦</div>No ring<br>(not shared)</div>
+        <div class="c"><div class="ic" style="width:40px;height:40px;font-size:18px;box-shadow:inset 0 0 0 2.5px #007aff">🏦</div>Blue</div>
+        <div class="c"><div class="ic" style="width:40px;height:40px;font-size:18px;box-shadow:inset 0 0 0 2.5px #af52de">🏦</div>Purple</div>
+        <div class="c"><div class="ic" style="width:40px;height:40px;font-size:18px;box-shadow:inset 0 0 0 2.5px #0f9aa8">🏦</div>Teal</div>
+        <div class="c"><div class="ic" style="width:40px;height:40px;font-size:18px;box-shadow:inset 0 0 0 2.5px #5856d6">🏦</div>Indigo</div>
+        <div class="c"><div class="ic" style="width:40px;height:40px;font-size:18px;box-shadow:inset 0 0 0 2.5px #e8730c">🏦</div>Orange</div>
+        <div class="c"><div class="ic" style="width:40px;height:40px;font-size:18px;box-shadow:inset 0 0 0 2.5px #a2845e">🏦</div>Brown</div>
+        <div class="c"><div class="ic" style="width:40px;height:40px;font-size:18px;box-shadow:inset 0 0 0 2.5px #d6336c">🏦</div>Magenta</div>
+      </div>
+      <p class="note">Drawn inside the icon circle, so a ringed row is as tall as any other. Shown at 40 px; in lists the circle is 28 px with a 2 px ring.</p>
+    </div>
+  </div>
+</div>
+
+<h2>3 · Picking one’s own colour</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">3a</span>Member page (own)</p>
+    <div class="phone">
+      <div class="bar"><div class="round">‹</div><div class="ttl">Rina</div><div style="width:36px"></div></div>
+      <div class="ig">
+        <div class="row"><div class="grow"><div class="t">Name</div></div><div class="s" style="font-size:15px">Rina</div><span class="chev">›</span></div>
+        <div class="row mark"><div class="grow"><div class="t">Ring colour</div></div><div class="sw" style="box-shadow:inset 0 0 0 3px #0f9aa8;background:var(--fill)"></div><span class="s" style="font-size:15px;margin-left:6px">Teal</span><span class="chev">›</span></div>
+      </div>
+      <div class="gf">The ring round each of Rina’s accounts on Net worth, Assets and Liabilities, the same on every phone in the household.</div>
+      <div class="ig" style="margin-top:18px">
+        <div class="row"><div class="grow"><div class="t">Role</div></div><div class="s" style="font-size:15px">Owner</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <p class="cap"><span class="n">3b</span>Ring colour sheet</p>
+    <div class="phone">
+      <div class="bar"><div class="round">‹</div><div class="ttl">Rina</div><div style="width:36px"></div></div>
+      <div class="scrim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="bar" style="margin-bottom:4px"><div class="round">✕</div><div class="ttl" style="font-size:16px">Ring colour</div><div style="width:36px"></div></div>
+        <div class="ig">
+          <div class="grid">
+            <div class="opt taken"><div class="ring" style="box-shadow:inset 0 0 0 3px #007aff">🏦</div>Andi’s</div>
+            <div class="opt"><div class="ring" style="box-shadow:inset 0 0 0 3px #af52de">🏦</div>Purple</div>
+            <div class="opt on"><div class="ring" style="box-shadow:inset 0 0 0 3px #0f9aa8">🏦</div>Teal</div>
+            <div class="opt"><div class="ring" style="box-shadow:inset 0 0 0 3px #5856d6">🏦</div>Indigo</div>
+            <div class="opt"><div class="ring" style="box-shadow:inset 0 0 0 3px #e8730c">🏦</div>Orange</div>
+            <div class="opt"><div class="ring" style="box-shadow:inset 0 0 0 3px #a2845e">🏦</div>Brown</div>
+            <div class="opt"><div class="ring" style="box-shadow:inset 0 0 0 3px #d6336c">🏦</div>Magenta</div>
+          </div>
+        </div>
+        <div class="gf">Andi’s colour is taken, so two people never share one. Saved on tap.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>4 · Where the rings show (household shared)</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">4a</span>Net worth · Assets drawer</p>
+    <div class="phone">
+      <div class="bar"><div class="round">‹</div><div class="ttl">Net worth</div><div class="round">⋯</div></div>
+      <div class="ig" style="padding:12px 14px;margin-bottom:8px"><div class="s">Household</div><div style="font-size:24px;font-weight:600">Rp 412,5 jt</div></div>
+      <div class="gh">Cash &amp; bank</div>
+      <div class="ig">
+        <div class="row"><div class="ic" style="box-shadow:inset 0 0 0 2px #0f9aa8">🏦</div><div class="grow"><div class="t">Payroll account</div></div><div class="amt">Rp 18.400.000</div></div>
+        <div class="row"><div class="ic" style="box-shadow:inset 0 0 0 2px #007aff">🏦</div><div class="grow"><div class="t">Savings</div></div><div class="amt">Rp 31.000.000</div></div>
+        <div class="row"><div class="ic" style="box-shadow:inset 0 0 0 2px #0f9aa8">👛</div><div class="grow"><div class="t">E-wallet</div></div><div class="amt">Rp 640.000</div></div>
+      </div>
+      <div class="gh">Investments</div>
+      <div class="ig">
+        <div class="row"><div class="ic" style="box-shadow:inset 0 0 0 2px #007aff">📈</div><div class="grow"><div class="t">Stocks</div></div><div class="amt">Rp 96.200.000</div></div>
+        <div class="row"><div class="ic" style="box-shadow:inset 0 0 0 2px #0f9aa8">🪙</div><div class="grow"><div class="t">Gold</div></div><div class="amt">Rp 42.300.000</div></div>
+      </div>
+      <p class="note">Teal = Rina, blue = Andi. Own accounts get their ring straight away, without waiting for the partner’s items to load.</p>
+    </div>
+  </div>
+  <div class="col">
+    <p class="cap"><span class="n">4b</span>Assets page</p>
+    <div class="phone">
+      <div class="bar"><div class="round">‹</div><div class="ttl">Assets</div><div style="width:36px"></div></div>
+      <div class="gh">Cash &amp; bank</div>
+      <div class="ig">
+        <div class="row"><div class="ic" style="box-shadow:inset 0 0 0 2px #0f9aa8">🏦</div><div class="grow"><div class="t">Payroll account</div></div><div class="amt">Rp 18.400.000</div><span class="chev">›</span></div>
+        <div class="row"><div class="ic" style="box-shadow:inset 0 0 0 2px #007aff">🏦</div><div class="grow"><div class="t">Savings</div></div><div class="amt">Rp 31.000.000</div><span class="chev">›</span></div>
+      </div>
+      <div class="gh">Only on this phone</div>
+      <div class="ig">
+        <div class="row"><div class="ic" style="box-shadow:inset 0 0 0 2px #0f9aa8">🏦</div><div class="grow"><div class="t">Old account</div></div><div class="amt">Rp 1.200.000</div><span class="chev">›</span></div>
+      </div>
+      <div class="gf">Not shared, so not in the household total.</div>
+      <p class="note">Same rings as Net worth. The initial badges built for 118 are replaced by these rings.</p>
+    </div>
+  </div>
+  <div class="col">
+    <p class="cap"><span class="n">4c</span>Liabilities page</p>
+    <div class="phone">
+      <div class="bar"><div class="round">‹</div><div class="ttl">Liabilities</div><div style="width:36px"></div></div>
+      <div class="gh">Credit cards</div>
+      <div class="ig">
+        <div class="row"><div class="ic" style="background:#ffe4e6;color:#be123c;box-shadow:inset 0 0 0 2px #0f9aa8">💳</div><div class="grow"><div class="t">Card ending 1234</div></div><div class="amt">Rp 3.200.000</div><span class="chev">›</span></div>
+        <div class="row"><div class="ic" style="background:#ffe4e6;color:#be123c;box-shadow:inset 0 0 0 2px #007aff">💳</div><div class="grow"><div class="t">Card ending 5678</div></div><div class="amt">Rp 1.150.000</div><span class="chev">›</span></div>
+      </div>
+      <div class="gh">Loans</div>
+      <div class="ig">
+        <div class="row"><div class="ic" style="background:#ffe4e6;color:#be123c;box-shadow:inset 0 0 0 2px #007aff">🏠</div><div class="grow"><div class="t">Home loan</div></div><div class="amt">Rp 44.250.000</div><span class="chev">›</span></div>
+      </div>
+      <p class="note">A debt keeps its rose circle; the owner’s ring sits on its edge. A pink ring here would blur into the rose.</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>
