@@ -893,10 +893,8 @@ async function ledgerInput(
     }
   }
   if ('bill' in winners) {
-    // A link (sync gaps F1) posts as no payment: the link itself is written beside the posting (`applyBillLinkTx`).
-    const paid = state.bill && !state.bill.linked ? state.bill : null;
-    input.templateId = paid?.templateId ?? null;
-    input.billMonth = paid?.billMonth ?? null;
+    input.templateId = state.bill?.templateId ?? null;
+    input.billMonth = state.bill?.billMonth ?? null;
   }
   // A split here keeps its own original-currency figure: it is the whole charge's, which a part never carries (0084).
   if ('money' in winners && !kept) {
@@ -929,29 +927,38 @@ async function inPlaceOnly(tx: Db, winners: Record<string, unknown>): Promise<bo
   for (const field of fields) {
     if (field === 'dayOrder' && (await dayOrderExists(tx))) continue;
     if (field === 'exactHundredths' && (await exactExists(tx))) continue;
+    // A bill link (fix round 2) is a `bill_payments` row beside the purchase, never its money.
+    if (field === 'billLink' && (await billPaymentsExist(tx))) continue;
     return false;
   }
   return true;
 }
 
+async function billPaymentsExist(tx: Db): Promise<boolean> {
+  return (await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'bill_payments'`)).length > 0;
+}
+
 /**
- * A purchase's bill link as it arrived (sync gaps F1), written on the row apply just posted: a link is a `bill_payments`
- * row alone, the purchase keeping its own date, figure and no bill of its own; no bill (an unlink on the other phone)
- * takes away any link the ledger carried across the repost, so it never comes back. A Pay payment was posted by the
- * ledger itself (`templateId`), and is left as it is. A bill this phone does not hold (yet) links nothing.
+ * A purchase's bill link as it arrived (sync gaps F1, fix round 2: its own `billLink` field), written beside the row:
+ * a link is a `bill_payments` row alone, the purchase keeping its own date, figure and no bill of its own. No link (an
+ * unlink on the other phone) takes away the one here, and any the ledger carried across a repost, so it never comes
+ * back. A Pay payment (`template_id` set) is the `bill` field's, and is never touched here. A bill this phone does not
+ * hold (yet) links nothing; an op that carries no `billLink` (an older build) leaves the link here as it is.
  */
-async function applyBillLinkTx(tx: Db, ctx: BookContext, transactionId: string, bill: PurchaseFields['bill']): Promise<void> {
-  if (bill && !bill.linked) return;
-  if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'bill_payments'`)).length === 0) return;
-  await tx.run(sql`
-    DELETE FROM bill_payments WHERE transaction_id = ${transactionId}
-      AND (SELECT template_id FROM transactions WHERE id = ${transactionId}) IS NULL`);
-  if (!bill || !bill.billMonth) return;
-  const known = await tx.values(sql`SELECT 1 FROM expense_templates WHERE id = ${bill.templateId} AND workspace_id = ${ctx.ws.workspaceId}`);
+async function applyBillLinkTx(tx: Db, ctx: BookContext, transactionId: string, link: unknown): Promise<void> {
+  if (!(await billPaymentsExist(tx))) return;
+  const [row] = await tx.values<[string | null]>(sql`SELECT template_id FROM transactions WHERE id = ${transactionId}`);
+  if (!row || row[0] !== null) return;
+  await tx.run(sql`DELETE FROM bill_payments WHERE transaction_id = ${transactionId}`);
+  const given = link && typeof link === 'object' ? (link as Record<string, unknown>) : null;
+  const templateId = typeof given?.templateId === 'string' ? given.templateId : null;
+  const billMonth = typeof given?.billMonth === 'string' && /^\d{4}-\d{2}$/.test(given.billMonth) ? given.billMonth : null;
+  if (!templateId || !billMonth) return;
+  const known = await tx.values(sql`SELECT 1 FROM expense_templates WHERE id = ${templateId} AND workspace_id = ${ctx.ws.workspaceId}`);
   if (known.length === 0) return;
   await tx.run(sql`
     INSERT INTO bill_payments (transaction_id, workspace_id, template_id, bill_month)
-    VALUES (${transactionId}, ${ctx.ws.workspaceId}, ${bill.templateId}, ${bill.billMonth}) ON CONFLICT DO NOTHING`);
+    VALUES (${transactionId}, ${ctx.ws.workspaceId}, ${templateId}, ${billMonth}) ON CONFLICT DO NOTHING`);
 }
 
 /** A purchase op for a lineage this device has not seen, without the money to post it: kept until its page ends, with the seq it came at. */
@@ -1041,6 +1048,7 @@ async function applyPurchase(
       const value = await exactForTransactionTx(tx, winners.exactHundredths, lineage.head!);
       await tx.run(sql`UPDATE transactions SET exact_hundredths = ${value} WHERE id = ${lineage.head!}`);
     }
+    if ('billLink' in winners) await applyBillLinkTx(tx, ctx, lineage.head!, winners.billLink);
     await recordPurchaseClocks(tx, ctx, op.id, won);
     return true;
   }
@@ -1084,7 +1092,7 @@ async function applyPurchase(
     // already under it (a voided leftover, a pre-share copy's own) is left as it is.
     const id = await postTransactionTx(tx, ctx.ws, { ...input, id: await freeTransactionIdTx(tx, ctx.bookId, op.id) });
     if (!kept) await fileInOwnBookTx(tx, ctx, id);
-    if ('bill' in winners) await applyBillLinkTx(tx, ctx, id, state.bill);
+    if ('billLink' in winners) await applyBillLinkTx(tx, ctx, id, winners.billLink);
     await tx.run(
       sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item)
           VALUES (${op.id}, ${ctx.bookId}, ${id}, ${state.money.paidBy}, ${state.money.paidLabel}, ${from?.owner ?? null}, ${from?.itemId ?? null})`,
@@ -1093,7 +1101,7 @@ async function applyPurchase(
     const was = lineage.head!;
     const id = await replaceTransactionTx(tx, ctx.ws, was, input);
     if (!kept) await fileInOwnBookTx(tx, ctx, id);
-    if ('bill' in winners) await applyBillLinkTx(tx, ctx, id, state.bill);
+    if ('billLink' in winners) await applyBillLinkTx(tx, ctx, id, winners.billLink);
     if (parted) await postRemainderTx(tx, ctx, was, parted, changeSet.member);
     await tx.run(
       sql`UPDATE sync_lineage SET head_transaction_id = ${id}, paid_by = ${state.money.paidBy}, paid_label = ${state.money.paidLabel},

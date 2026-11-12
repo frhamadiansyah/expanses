@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { repairLine, repairRowText, repairTitle } from './repair-notice';
 
-const row = (outcome: 'moved' | 'untagged', why: string | null = null, description = 'Refund · Market') => ({
+const row = (outcome: 'moved' | 'untagged' | 'elsewhere', why: string | null = null, description = 'Refund · Market') => ({
   transactionId: description + outcome,
   description,
   occurredOn: '2026-10-09',
@@ -25,5 +25,11 @@ describe('the repair notice', () => {
     const notice = { bookId: 'b', bookName: 'Family', rows: [row('untagged', null)] };
     expect(repairTitle(notice)).toBe('1 purchase in Family was tagged to an event without being moved');
     expect(repairLine(notice)).toBe('1 shows in Family again. The same on both phones now.');
+  });
+
+  it('a purchase the same person’s other phone moved already is said so, never as showing in the workspace again', () => {
+    const notice = { bookId: 'b', bookName: 'Family', rows: [row('elsewhere', 'Already moved into Coast week from another phone', 'Kebab')] };
+    expect(repairRowText(notice.rows[0]!, 'Family')).toBe('Kebab: Already moved into Coast week from another phone.');
+    expect(repairLine(notice)).toBe('1 moved into its shared event. The same on both phones now.');
   });
 });

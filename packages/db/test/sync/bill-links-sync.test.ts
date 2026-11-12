@@ -14,10 +14,6 @@ import {
   unlinkPurchaseFromBill,
 } from '../../src/index';
 import { headOf, Household, projectBook, type Device } from './household';
-import { meetsVersion } from '../../src/sync/events/version';
-import { syncLevelOf, withSyncLevel } from '../../src/sync/level';
-import { meetsMinVersion } from '../../src/sync/net-worth/version';
-import { SyncEngine } from '../../src/sync/engine';
 import { runSharedBookRepairs } from '../../src/index';
 import { outboxOps } from './sync-helpers';
 
@@ -74,7 +70,10 @@ describe('a bill link in a shared workspace reaches the partner', () => {
 
     await linkPurchaseToBill(wife.database, wife.ws, { templateId: bill, billMonth: '2026-10', transactionId: purchase, today: TODAY });
     const ops = await outboxOps(wife.database);
-    expect(ops.at(-1)).toMatchObject({ entity: 'purchase', id: purchase, fields: { bill: { templateId: bill, billMonth: '2026-10', linked: true } } });
+    // Its own field (fix round 2): `bill` stays a Pay payment's, as every build reads it.
+    expect(ops.at(-1)).toMatchObject({ entity: 'purchase', id: purchase, op: 'upsert', fields: { billLink: { templateId: bill, billMonth: '2026-10' } } });
+    const last = ops.at(-1)!;
+    expect(last.op === 'upsert' && 'bill' in last.fields).toBe(false);
     await home.settle();
     expect(await stateOf(husband, bill, '2026-10')).toBe(await stateOf(wife, bill, '2026-10'));
     expect(await stateOf(husband, bill, '2026-10')).toBe('paid');
@@ -142,20 +141,11 @@ describe('a bill link in a shared workspace reaches the partner', () => {
   });
 });
 
-describe('a partner on a build before links travel (fix round 1, #1)', () => {
-  it('a device record shaped as build 117 reads as below the level, and every version check an older build makes still passes ours', () => {
-    expect(syncLevelOf('0.5.0')).toBe(0);
-    expect(syncLevelOf(null)).toBe(0);
-    expect(syncLevelOf(withSyncLevel('0.5.0'))).toBe(1);
-    expect(withSyncLevel('0.5.0')).toBe('0.5.0.1');
-    for (const want of ['0.3.0', '0.4.0', '0.5.0']) expect(meetsVersion('0.5.0.1', want)).toBe(true);
-    expect(meetsMinVersion('0.5.0.1')).toBe(true);
-  });
-
-  it('receives nothing link-shaped while it is below; once it updates, every link arrives as a link, never as a payment', async () => {
+describe('links and unlinks travel whatever devices the book holds (fix round 2, 1a)', () => {
+  it('a link, then a phone with an older version in the book, then an unlink: the partner unlinks too', async () => {
     const home = new Household();
     const wife = await home.device('Wife');
-    const husband = await home.device('Husband', 'member-Husband', 'IDR', '0.5.0', { syncLevel: 0 });
+    const husband = await home.device('Husband');
     const bookId = await home.share(wife);
     await home.join(husband, wife);
     await home.settle();
@@ -163,32 +153,23 @@ describe('a partner on a build before links travel (fix round 1, #1)', () => {
     const bill = await saveExpenseTemplate(wife.database, wife.ws, { name: 'Fibre', categoryAccountId: cat, moneyAccountId: wife.bank, amountMinor: 410_000, dayOfMonth: 10, startsMonth: '2026-09' });
     const october = await buy(wife, cat, '2026-10-12', 410_000, 'Fibre October');
     await home.settle();
-    const [version] = await wife.database.db.values<[string]>(sql`SELECT app_version FROM book_devices WHERE book_id = ${bookId} AND member_id = 'member-Husband'`);
-    expect(version).toEqual(['0.5.0']);
-
-    const sentBefore = (await outboxOps(wife.database)).length;
     await linkPurchaseToBill(wife.database, wife.ws, { templateId: bill, billMonth: '2026-10', transactionId: october, today: TODAY });
-    expect(JSON.stringify((await outboxOps(wife.database)).slice(sentBefore))).not.toMatch(/linked/);
-    // No repair either while he is below: the link stays on her phone.
-    expect((await runSharedBookRepairs(wife.database, bookId, { today: TODAY })).billLinks).toBeNull();
     await home.settle();
-    const copy = (await headOf(husband.database, october))!;
-    expect(await husband.database.db.values(sql`SELECT template_id FROM bill_payments WHERE transaction_id = ${copy}`)).toEqual([]);
-    expect(await husband.database.db.values(sql`SELECT template_id FROM transactions WHERE id = ${copy}`)).toEqual([[null]]);
-    expect(await linkOn(wife, october)).toMatchObject({ billMonth: '2026-10', linked: true });
+    expect(await linkOn(husband, october)).toMatchObject({ billMonth: '2026-10', linked: true });
 
-    // He updates: the same phone, this build. His next sync says his level; her repair then sends the link.
-    husband.engine = new SyncEngine(husband.database, husband.transport, husband.keys, undefined, { appVersion: '0.5.0', shareRecords: husband.records });
+    // A third phone joins, saying an older version: nothing waits on it.
+    const tablet = await home.device('Tablet', 'member-Tablet', 'IDR', '0.5.0');
+    await home.join(tablet, wife);
     await home.settle();
-    expect((await runSharedBookRepairs(wife.database, bookId, { today: TODAY })).billLinks).toBe(1);
-    await home.settle();
-    expect(await linkOn(husband, october)).toMatchObject({ templateId: bill, billMonth: '2026-10', linked: true });
-    const [head] = await husband.database.db.values<[string | null]>(sql`SELECT template_id FROM transactions WHERE id = ${(await headOf(husband.database, october))!}`);
-    expect(head).toEqual([null]);
-    expect(await projectBook(husband.database, bookId)).toEqual(await projectBook(wife.database, bookId));
-    // And from then on a link goes as it is made.
     await unlinkPurchaseFromBill(wife.database, wife.ws, { transactionId: october });
+    const unlink = (await outboxOps(wife.database)).at(-1)!;
+    expect(unlink).toMatchObject({ entity: 'purchase', id: october, op: 'upsert', fields: { billLink: null } });
+    await home.settle();
+    for (const d of [wife, husband, tablet]) expect([d.name, await linkOn(d, october)]).toEqual([d.name, null]);
+    // The repair runs regardless, and sends no link that is not there.
+    await runSharedBookRepairs(wife.database, bookId, { today: TODAY });
     await home.settle();
     expect(await linkOn(husband, october)).toBeNull();
+    expect(await projectBook(husband.database, bookId)).toEqual(await projectBook(wife.database, bookId));
   });
 });

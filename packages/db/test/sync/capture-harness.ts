@@ -376,7 +376,10 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
       const fieldOf = fieldsByTable.get(w.table)!.fieldOf;
       const columns = w.cols === '*' ? [...fieldOf.keys()] : w.cols.split(',').filter(Boolean);
       const fields = [...new Set(columns.map((c) => fieldOf.get(c)).filter((f): f is string => !!f && f !== 'void'))];
-      const missing = fields.filter((f) => !carries(ops.get(`purchase\u0000${lineageId}`), w.mark, f));
+      // A bill_payments row is a Pay payment's (`bill`) or a link's (`billLink`, fix round 2): either op accounts for it.
+      const carried = (f: string) =>
+        carries(ops.get(`purchase\u0000${lineageId}`), w.mark, f) || (f === 'bill' && w.table === 'bill_payments' && carries(ops.get(`purchase\u0000${lineageId}`), w.mark, 'billLink'));
+      const missing = fields.filter((f) => !carried(f));
       const message = `${w.table} ${w.key}: purchase ${lineageId} ${missing.join(', ')} changed with no op`;
       if (missing.length && !reported.has(message)) {
         reported.add(message);

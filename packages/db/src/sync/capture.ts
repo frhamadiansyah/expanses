@@ -14,7 +14,6 @@ import { localDate, sendSummariesTx } from './net-worth/summaries';
 import { sendGoalSummariesTx } from './goals/summaries';
 import { reserveAndSplit } from './split';
 import { holderLineageId } from './held';
-import { BILL_LINK_LEVEL, bookAtLevelTx } from './level';
 import type { ChangeSet, Op } from './types';
 
 /*
@@ -174,12 +173,14 @@ export interface PurchaseFields {
    * before this reads a purchase excluded whole as it always did and leaves a line excluded beside a counted one counted.
    */
   excludedLines?: string[];
+  bill: { templateId: string; billMonth: string | null } | null;
   /**
-   * The bill month the purchase settles. A Pay payment (the purchase made from the bill: `template_id` set) carries no
-   * `linked`; a purchase linked to a month after the fact (sync gaps F1: a `bill_payments` row alone) carries
-   * `linked: true`, and lands on the partner's phone as a link too — never as a payment, never moved into that month.
+   * The bill month a purchase was linked to after the fact (sync gaps F1: a `bill_payments` row alone, no `template_id`),
+   * or null for none. Its own field, never `bill` (fix round 2): `bill` is a Pay payment only, as every build reads it,
+   * and a build from before this one takes a field it does not know as nothing to post — it reposts the purchase as it
+   * was, carrying its own links. Optional: an op from such a build carries none, and the receiver keeps what it has.
    */
-  bill: { templateId: string; billMonth: string | null; linked?: true } | null;
+  billLink?: { templateId: string; billMonth: string } | null;
   money: PurchaseMoney;
   /**
    * Its place within its day when moved there by hand, or null (0067). Optional: an op from a device without it carries
@@ -1322,7 +1323,8 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
     excluded: Number(flags?.[1] ?? 0) === 1 || partExcluded || allOut ? 1 : 0,
     ...(outLines.length > 0 ? { excludedLines: outLines } : {}),
     // A part never names a bill: the bill it pays may be the private workspace's, and its id is not the partner's to see.
-    bill: part ? null : templateId ? { templateId: payment?.[0] ?? templateId, billMonth: payment?.[1] ?? null } : payment && (await linksTravelTx(tx, transactionId)) ? { templateId: payment[0], billMonth: payment[1], linked: true } : null,
+    bill: templateId && !part ? { templateId: payment?.[0] ?? templateId, billMonth: payment?.[1] ?? null } : null,
+    billLink: !templateId && !part && payment ? { templateId: payment[0], billMonth: payment[1] } : null,
     money: {
       lines,
       originalCurrency: part ? null : originalCurrency,
@@ -1336,16 +1338,6 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
     // Likewise only where 0068 is.
     ...(typed ? { exactHundredths: part || exact === null ? null : Number(exact) } : {}),
   };
-}
-
-/**
- * Whether a purchase's link to a bill's month travels (fix round 1, #1): only once every device in its book reads
- * `linked` (`BILL_LINK_LEVEL`). Before that the link stays on this phone — an older build would post it as a Pay payment
- * — and the one-time repair sends every link here once the last device has updated.
- */
-async function linksTravelTx(tx: Db, transactionId: string): Promise<boolean> {
-  const bookId = await bookOfTransaction(tx, transactionId);
-  return bookId === null || (await bookAtLevelTx(tx, bookId, BILL_LINK_LEVEL));
 }
 
 /**
@@ -1473,7 +1465,7 @@ export async function captureCardChangingTx(tx: Db, transactionId: string): Prom
 
 /**
  * The bill-link door (`linkPurchaseToBill`, `relinkPurchaseToBill`, `unlinkPurchaseFromBill`; sync gaps F1), called
- * before a purchase's `bill_payments` row changes in place: a shared purchase's `bill` names it, so its lineage is
+ * before a purchase's `bill_payments` row changes in place: a shared purchase's `billLink` names it, so its lineage is
  * touched and goes out again with the new link (or none) at flush. Not money: no summary is marked dirty. A book no
  * longer shared is read-only (§8.6), as an edit is.
  */

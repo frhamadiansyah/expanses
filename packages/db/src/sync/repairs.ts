@@ -7,7 +7,6 @@ import { eventBookOfEventTx } from '../repos/shared-event-records';
 import { moveIntoSharedEvent, refundMatchedByName } from '../repos/shared-event-moves';
 import { partnerPurchaseRefusalTx, sharedRowTx, untagSharedRowsTx } from '../repos/shared-workspace-rows';
 import { captureConfigOf, lineageOfTransaction, projectPurchase, type SharedBook, writeChangeSetsTx } from './capture';
-import { BILL_LINK_LEVEL, bookAtLevelTx } from './level';
 import type { Op } from './types';
 import { uuidv5 } from './uuidv5';
 
@@ -29,9 +28,10 @@ export function repairExpenseId(lineageId: string, eventId: string): Promise<str
  * that fails is reported and tried again on the next sync; it never stops a sync, and writes nothing it did not finish.
  *
  * R1 bill links: a purchase linked to a bill's month by an older build never sent the link (in a shared workspace the
- * link was refused; one made before sharing went as no bill). Once every device in the book reads links (`level.ts`),
- * each link here is sent, through the outbox with its clock — after a full pull it is this phone's merged value —
- * unless another payment settles the same month (it would read as paid twice). While a device is below, it waits.
+ * link was refused; one made before sharing went as no bill). Each link here is sent as the purchase's own `billLink`
+ * field, through the outbox with its clock — after a full pull it is this phone's merged value — unless another
+ * payment settles the same month (it would read as paid twice). A build from before `billLink` takes the field as
+ * nothing to post (fix round 2, proved against main): it reposts the purchase as it was.
  *
  * R2 event tags: a shared workspace's purchase tagged to an event but never moved there (owner decision D2, revised):
  * the payer's own phone moves it into the shared event when that event is active here, after fetching a missing rate;
@@ -59,8 +59,11 @@ export interface RepairNoticeRow {
   description: string;
   occurredOn: string;
   eventName: string;
-  /** Moved into the shared event, or untagged (it shows in the workspace again). */
-  outcome: 'moved' | 'untagged';
+  /**
+   * Moved into the shared event; untagged (it shows in the workspace again); or already moved there from another phone
+   * of the same person, left as it is here until that phone's void arrives.
+   */
+  outcome: 'moved' | 'untagged' | 'elsewhere';
   /** Why it could not be moved, for an untagged row of a shared event; null otherwise. */
   why: string | null;
 }
@@ -72,10 +75,8 @@ export interface RepairNotice {
 }
 
 export interface RepairReport {
-  /** R1: links sent; null when it had run already, or is waiting (`billLinksWaiting`). */
+  /** R1: links sent; null when it had run already. */
   billLinks: number | null;
-  /** R1 waits for every device in the book to read links (fix round 1, #1): it runs on a later sync. */
-  billLinksWaiting: boolean;
   /** R2: rows moved and untagged; null when it had run already. */
   eventTags: { moved: number; untagged: number } | null;
 }
@@ -92,7 +93,7 @@ async function activeBookTx(tx: Db, bookId: string): Promise<(SharedBook & { wor
 
 /**
  * R1: each purchase in the book linked to a bill's month (a `bill_payments` row, no `template_id`) goes out as
- * `{ bill: { templateId, billMonth, linked: true } }`. Returns how many.
+ * `{ billLink: { templateId, billMonth } }`. Returns how many.
  */
 async function repairBillLinksTx(tx: Tx, database: Database, book: SharedBook): Promise<number> {
   const rows = await tx.values<[string, string, string, string, string, string]>(sql`
@@ -112,8 +113,8 @@ async function repairBillLinksTx(tx: Tx, database: Database, book: SharedBook): 
       WHERE p.template_id = ${templateId} AND p.bill_month = ${billMonth} AND p.transaction_id <> ${head} AND t.status = 'posted' LIMIT 1`);
     if (other.length > 0) continue;
     const fields = await projectPurchase(tx, head, book.memberId, { paidBy, paidLabel });
-    if (!fields?.bill?.linked) continue; // a part of a split names no bill
-    ops.push({ entity: 'purchase', id: lineageId, op: 'upsert', fields: { bill: fields.bill } });
+    if (!fields?.billLink) continue; // a part of a split names no bill
+    ops.push({ entity: 'purchase', id: lineageId, op: 'upsert', fields: { billLink: fields.billLink } });
   }
   await writeChangeSetsTx(tx, captureConfigOf(database), book, ops);
   return ops.length;
@@ -158,12 +159,16 @@ async function repairEventTags(
     if (sharedEvent && sharedEvent.workspaceId === ws.workspaceId) {
       why = await database.transaction((tx) => partnerPurchaseRefusalTx(tx, transactionId));
       if (why === null) {
-        why = await tryMove(database, ws, eventId, transactionId, occurredOn, options);
-        if (why === null) {
-          await database.transaction((tx) => addNoticeRowTx(tx, book.bookId, { transactionId, description, occurredOn, eventName, outcome: 'moved', why: null }));
-          moved += 1;
+        const tried = await tryMove(database, ws, eventId, transactionId, occurredOn, options);
+        if (tried === null || tried.elsewhere) {
+          // Moved here, or already moved from the same person's other phone (fix round 2): left as it is, tag and all,
+          // until that phone's void arrives — never untagged, never said to show in the workspace again.
+          const outcome = tried === null ? 'moved' : 'elsewhere';
+          await database.transaction((tx) => addNoticeRowTx(tx, book.bookId, { transactionId, description, occurredOn, eventName, outcome, why: tried?.why ?? null }));
+          if (tried === null) moved += 1;
           continue;
         }
+        why = tried.why;
       }
     }
     await database.transaction(async (tx) => {
@@ -180,7 +185,14 @@ async function repairEventTags(
 }
 
 /** Moves one purchase into its shared event, fetching the day's rates first; null when it moved, else why not. */
-async function tryMove(database: Database, ws: WorkspaceContext, eventId: string, transactionId: string, occurredOn: string, options: { fetcher?: RateFetcher; today: string }): Promise<string | null> {
+async function tryMove(
+  database: Database,
+  ws: WorkspaceContext,
+  eventId: string,
+  transactionId: string,
+  occurredOn: string,
+  options: { fetcher?: RateFetcher; today: string },
+): Promise<{ why: string; elsewhere?: true } | null> {
   try {
     const book = await eventBookOfEventTx(database.db, eventId);
     if (options.fetcher && book) {
@@ -197,17 +209,17 @@ async function tryMove(database: Database, ws: WorkspaceContext, eventId: string
     }
     // A refund moves only when its expense in the event is found by name: matched by size alone, the split it shares
     // back could be another expense's (fix round 1, #4).
-    if (book && !(await refundMatchedByName(database, ownerScope(ws), eventId, transactionId))) return `It could not be matched to an expense in ${book.name}`;
+    if (book && !(await refundMatchedByName(database, ownerScope(ws), eventId, transactionId))) return { why: `It could not be matched to an expense in ${book.name}` };
     // Named by the purchase and the event's book (the same on every phone; a local event id is not).
     const eventKey = book?.bookId ?? eventId;
     const { moved, kept } = await moveIntoSharedEvent(database, ownerScope(ws), eventId, [transactionId], {}, {
       expenseIdFor: async (tx, id) => repairExpenseId(await lineageOfTransaction(tx, id), eventKey),
     });
     if (moved.length > 0) return null;
-    return kept[0]?.why ?? 'It could not be moved';
+    return { why: kept[0]?.why ?? 'It could not be moved', ...(kept[0]?.elsewhere ? { elsewhere: true as const } : {}) };
   } catch (error) {
     // The event is not open for writing here (no longer shared, Done): said in the event's own words.
-    return error instanceof Error ? error.message : 'It could not be moved';
+    return { why: error instanceof Error ? error.message : 'It could not be moved' };
   }
 }
 
@@ -217,21 +229,13 @@ async function tryMove(database: Database, ws: WorkspaceContext, eventId: string
  * others have had their turn, for the caller to log; nothing it wrote half-way stays (each step is one db transaction).
  */
 export async function runSharedBookRepairs(database: Database, bookId: string, options: { fetcher?: RateFetcher; today?: string } = {}): Promise<RepairReport> {
-  const report: RepairReport = { billLinks: null, billLinksWaiting: false, eventTags: null };
+  const report: RepairReport = { billLinks: null, eventTags: null };
   const today = options.today ?? isoDate();
   const failures: unknown[] = [];
   try {
     report.billLinks = await database.transaction(async (tx) => {
       const book = await activeBookTx(tx, bookId);
-      if (!book) return null;
-      if (!(await bookAtLevelTx(tx, bookId, BILL_LINK_LEVEL))) {
-        // A device below the level (an older build, or one that joined since): links stay here, and the repair runs
-        // again once it has updated — for the links made meanwhile too.
-        report.billLinksWaiting = true;
-        await tx.run(sql`DELETE FROM settings WHERE key = ${markerKey(BILL_LINKS, bookId)}`);
-        return null;
-      }
-      if (await doneTx(tx, BILL_LINKS, bookId)) return null;
+      if (!book || (await doneTx(tx, BILL_LINKS, bookId))) return null;
       if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'bill_payments'`)).length === 0) return null;
       const sent = await repairBillLinksTx(tx, database, book);
       await markDoneTx(tx, BILL_LINKS, bookId);

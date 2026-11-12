@@ -15,7 +15,8 @@ export function repairTitle(notice: RepairNotice): string {
 
 /** The one line under it: what was done, and that both phones now agree. */
 export function repairLine(notice: RepairNotice): string {
-  const moved = notice.rows.filter((row) => row.outcome === 'moved').length;
+  // Already moved from the same person's other phone reads as moved: it leaves the workspace once that phone's void arrives.
+  const moved = notice.rows.filter((row) => row.outcome !== 'untagged').length;
   const back = notice.rows.length - moved;
   const parts = [
     ...(moved > 0 ? [`${moved} moved into ${moved === 1 ? 'its' : 'their'} shared event`] : []),
@@ -28,6 +29,7 @@ export function repairLine(notice: RepairNotice): string {
 export function repairRowText(row: RepairNoticeRow, bookName: string): string {
   const what = row.description.trim() || 'A purchase';
   if (row.outcome === 'moved') return `${what} moved into ${row.eventName}`;
+  if (row.outcome === 'elsewhere') return `${what}: Already moved into ${row.eventName} from another phone.`;
   if (row.why) return `${what} could not be moved into ${row.eventName}: ${row.why}. It shows in ${bookName} again.`;
   return `${what} is no longer tagged to ${row.eventName}, and shows in ${bookName} again.`;
 }

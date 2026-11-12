@@ -76,7 +76,7 @@ describe('R1: bill links an older build never sent', () => {
     expect(sent.map((op) => op.id)).toContain(march);
     expect(sent.map((op) => op.id)).toContain(october);
     // May's purchase: the husband's newer link already reached her phone, so what she holds — and sends — is his.
-    expect(sent.find((op) => op.id === changed)).toMatchObject({ fields: { bill: { billMonth: '2026-05' } } });
+    expect(sent.find((op) => op.id === changed)).toMatchObject({ fields: { billLink: { billMonth: '2026-05' } } });
     await home.settle();
     expect(await linkOn(husband, march)).toMatchObject({ templateId: bill, billMonth: '2026-03', linked: true });
     expect(await linkOn(husband, october)).toMatchObject({ billMonth: '2026-10', linked: true });
@@ -87,7 +87,7 @@ describe('R1: bill links an older build never sent', () => {
 
     // Once only: run again, nothing more goes.
     const after = (await outboxOps(wife.database)).length;
-    expect(await runSharedBookRepairs(wife.database, bookId, { today: TODAY })).toEqual({ billLinks: null, billLinksWaiting: false, eventTags: null });
+    expect(await runSharedBookRepairs(wife.database, bookId, { today: TODAY })).toEqual({ billLinks: null, eventTags: null });
     expect((await outboxOps(wife.database)).length).toBe(after);
     // The husband's own run: he had no old link. A link made by this build before its first repair goes again (the
     // same value, so nothing changes on either phone); the wife's old April link is not his to send.
@@ -198,7 +198,7 @@ describe('R2: Family purchases tagged to an event without being moved', () => {
     ]);
     expect(await repairNotices(husband.database)).toEqual([]);
     // Once only.
-    expect(await runSharedBookRepairs(wife.database, s.family, { today: TODAY })).toEqual({ billLinks: null, billLinksWaiting: false, eventTags: null });
+    expect(await runSharedBookRepairs(wife.database, s.family, { today: TODAY })).toEqual({ billLinks: null, eventTags: null });
     await dismissRepairNotice(wife.database, s.family);
     expect(await repairNotices(wife.database)).toEqual([]);
   });
@@ -302,5 +302,40 @@ describe('R2: Family purchases tagged to an event without being moved', () => {
       expect(await headOf(d.database, kebab)).toBeNull();
     }
     expect(await familyOctober(s, wife)).toEqual(await familyOctober(s, husband));
+  });
+
+  it('the other phone of the same person, which has the event’s expense but not yet the void, leaves its row as it is and says so', async () => {
+    const s = await familyAndTrip();
+    const { wife, husband } = s;
+    const second = await s.trip.device('Wife');
+    const { code } = await wife.engine.createInvite(s.family, { inviterName: 'Wife', sameMember: true, memberId: wife.memberId });
+    await second.engine.joinBook(code, { ws: second.ws, memberName: 'Wife', deviceName: 'Wife’s second phone', memberId: wife.memberId });
+    const eventInvite = await wife.engine.createEventInvite(s.trip.bookId, { inviterName: 'Wife', forPersonId: s.wifePerson });
+    const { eventId: secondEvent } = await second.engine.joinEvent(eventInvite.code, { ws: second.ws, personId: s.wifePerson, name: 'Wife', deviceName: 'Wife’s second phone' });
+    const all = [wife, husband, second];
+    const settleAll = async () => {
+      for (let i = 0; i < 3; i += 1) {
+        await s.home.settle(all);
+        await s.trip.settle(all);
+      }
+    };
+    await settleAll();
+    const groceries = await categoryOf(wife.database, s.family, 'Groceries');
+    const kebab = await postTransaction(wife.database, wife.ws, { occurredOn: '2026-10-06', description: 'Kebab', lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: wife.bank, amountMinor: 120_000, currency: 'IDR' }) });
+    await settleAll();
+    await oldTag(wife, kebab, s.trip.eventOf(wife));
+    const onSecond = (await headOf(second.database, kebab))!;
+    await oldTag(second, onSecond, secondEvent);
+    await runSharedBookRepairs(wife.database, s.family, { today: TODAY });
+    // Only the trip syncs: the second phone hears of the expense, not yet of Family's void.
+    await s.trip.settle(all);
+    expect((await runSharedBookRepairs(second.database, s.family, { today: TODAY })).eventTags).toEqual({ moved: 0, untagged: 0 });
+    expect(await second.database.db.values(sql`SELECT event_id, status FROM transactions WHERE id = ${onSecond}`)).toEqual([[secondEvent, 'posted']]);
+    const [notice] = await repairNotices(second.database);
+    expect(notice!.rows).toMatchObject([{ description: 'Kebab', outcome: 'elsewhere', why: 'Already moved into Coast week from another phone' }]);
+    await settleAll();
+    expect(await headOf(second.database, kebab)).toBeNull();
+    const view = (await sharedEventView(second.database, ownerScope(second.ws), secondEvent))!;
+    expect(view.expenses.map((e) => e.note)).toEqual(['Kebab']);
   });
 });

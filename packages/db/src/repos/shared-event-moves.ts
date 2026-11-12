@@ -27,6 +27,8 @@ import { partnerPurchaseRefusalTx, untagSharedRowsTx } from './shared-workspace-
 export interface MoveRefusal {
   transactionId: string;
   why: string;
+  /** Another phone moved it already, under the same expense id (a repair move): its void is on its way here. */
+  elsewhere?: true;
 }
 
 const NOT_MOVABLE = 'Only a purchase from one account under one category moves into a shared event';
@@ -217,7 +219,7 @@ export async function moveIntoSharedEvent(
         const expenseId = options.expenseIdFor ? await options.expenseIdFor(tx, transactionId) : uuidv7();
         // Named alike on another phone, which has moved it already (its expense reached here before its void did).
         if ((await tx.values(sql`SELECT 1 FROM event_expenses WHERE book_id = ${book.bookId} AND id = ${expenseId}`)).length > 0) {
-          return { transactionId, why: `Already moved into ${book.name} from another phone` };
+          return { transactionId, why: `Already moved into ${book.name} from another phone`, elsewhere: true };
         }
         let split: SplitInput = { mode: 'equal', people: [book.me] };
         if (purchase.amountMinor < 0) {

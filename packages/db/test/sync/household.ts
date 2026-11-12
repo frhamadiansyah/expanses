@@ -73,7 +73,7 @@ export class Household {
     memberId: string = `member-${name}`,
     baseCurrency = 'IDR',
     appVersion = '0.3.0',
-    engine: { now?: () => number; recordEveryMs?: number; syncLevel?: number } = {},
+    engine: { now?: () => number; recordEveryMs?: number } = {},
   ): Promise<Device> {
     const { database, ws } = await freshDatabase(baseCurrency);
     const keys = await generateDevice();
@@ -83,10 +83,7 @@ export class Household {
     const cash = await createAccount(database, ws, { name: `${name} Wallet`, kind: 'asset', subtype: 'cash', currency: baseCurrency });
     const transport = this.relay.as(requestSignerOf(keys));
     const records = new MemoryShareRecordStore();
-    const recordEvery = {
-      ...(engine.recordEveryMs === undefined ? {} : { recordEveryMs: engine.recordEveryMs }),
-      ...(engine.syncLevel === undefined ? {} : { syncLevel: engine.syncLevel }),
-    };
+    const recordEvery = engine.recordEveryMs === undefined ? {} : { recordEveryMs: engine.recordEveryMs };
     const device: Device = {
       name,
       database,
