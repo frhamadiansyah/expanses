@@ -77,7 +77,7 @@ export function ShareEventSheet({ event, onClose }: { event: EventRow; onClose: 
       <ErrorBox error={error} />
       {done ? (
         <>
-          <InviteCard invite={done.invite} bookName={event.name} inviterName={name} header={`Invite to ${event.name}`} footer="Send it to the people joining." />
+          <InviteCard invite={done.invite} kind="event" bookName={event.name} inviterName={name} header={`Invite to ${event.name}`} footer="Send it to the people joining." />
           {done.kept.length > 0 ? (
             <InsetGroup header="Stayed where they were">
               {done.kept.map((k) => (

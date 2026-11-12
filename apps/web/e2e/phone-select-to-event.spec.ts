@@ -38,6 +38,7 @@ test('ticked rows go into an event together, and leave the Cashflow list', async
   // An event to put them in, made where events are made.
   await page.goto('/events');
   await page.getByRole('button', { name: 'New event' }).click();
+  await page.getByTestId('new-event').click();
   await page.getByLabel('Name', { exact: true }).fill('Lombok trip');
   await page.getByLabel('Starts on').fill(TODAY);
   await page.getByLabel('Ends on').fill(TODAY);
@@ -102,6 +103,7 @@ test('Undo takes a whole selection back out of the event', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
   await page.goto('/events');
   await page.getByRole('button', { name: 'New event' }).click();
+  await page.getByTestId('new-event').click();
   await page.getByLabel('Name', { exact: true }).fill('Lombok trip');
   await page.getByLabel('Starts on').fill(TODAY);
   await page.getByLabel('Ends on').fill(TODAY);

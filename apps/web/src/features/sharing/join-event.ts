@@ -11,7 +11,10 @@ export function joinChoices(event: EventInviteDetails): { key: string; label: st
   ];
 }
 
-/** The join screen's title: "Join Coast week" for an event's invite, else the workspace join it has always been. */
-export function joinTitle(preview: Pick<PreviewedInvite, 'event'> | null): string {
-  return preview?.event ? `Join ${preview.event.name}` : 'Join a workspace';
+export const JOIN_TITLE = 'Join with a code';
+
+/** The join screen's title: "Join Coast week" for an event's invite, else "Join with a code" until a workspace code is previewed. */
+export function joinTitle(preview: Pick<PreviewedInvite, 'event' | 'bookName'> | null): string {
+  if (preview?.event) return `Join ${preview.event.name}`;
+  return preview?.bookName ? `Join ${preview.bookName}` : JOIN_TITLE;
 }

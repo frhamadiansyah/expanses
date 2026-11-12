@@ -20,6 +20,7 @@ test('a trip planned in lira holds items in rupiah and euros and totals them in 
 
   await page.goto('/events');
   await page.getByRole('button', { name: 'New event' }).click();
+  await page.getByTestId('new-event').click();
   await page.getByLabel('Name', { exact: true }).fill('Turkey trip');
   await page.getByLabel('Starts on').fill(TODAY);
   await page.getByLabel('Ends on').fill(TODAY);

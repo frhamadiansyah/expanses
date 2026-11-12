@@ -5,6 +5,7 @@ import { chooseCategory, showPlanCard, TODAY } from './event-plan';
 test('by thumb: an item’s circle lines up with its category’s mark, and its name with the category’s name', async ({ page }) => {
   await page.goto('/events');
   await page.getByRole('button', { name: 'New event' }).click();
+  await page.getByTestId('new-event').click();
   await page.getByLabel('Name', { exact: true }).fill('Coast week');
   await page.getByLabel('Starts on').fill(TODAY);
   await page.getByLabel('Ends on').fill(TODAY);

@@ -60,6 +60,7 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
   await bigEnough(newEvent, 'New event');
   await expect(page.getByRole('button', { name: 'Add an event' })).toHaveCount(0);
   await newEvent.click();
+  await page.getByTestId('new-event').click();
   await page.getByLabel('Name', { exact: true }).fill('Newborn');
   await page.getByLabel('Starts on').fill(TODAY);
   await page.getByLabel('Ends on').fill(TODAY);

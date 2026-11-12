@@ -1239,3 +1239,16 @@ test('leave and delete, share again, join: the couple’s clean-up through the s
   await expect(rowOf(fandri, 'Fandri shared')).toHaveCount(1);
   await expect(fandri.getByTestId('period-total')).toHaveText('Rp 30.000');
 });
+
+/** Events ＋ offers New event or Join with a code; Join opens the join sheet with a code field. */
+test('Events plus offers New event or Join with a code, and Join opens the join sheet', async ({ page }) => {
+  await page.goto('/events');
+  await page.getByRole('button', { name: /^(New event|Add an event)$/ }).click();
+  const choices = page.getByTestId('add-event-sheet');
+  await expect(choices.getByTestId('new-event')).toBeVisible();
+  await choices.getByTestId('join-event-choice').click();
+  await expect(choices).toHaveCount(0);
+  const join = page.getByTestId('join-workspace');
+  await expect(join).toBeVisible();
+  await expect(join.getByPlaceholder('XXXX-XXXX-…')).toBeVisible();
+});

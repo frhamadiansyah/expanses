@@ -393,3 +393,9 @@ export function leftNotDeletedLine(book: string, reason: string, how: 'left' | '
   const first = how === 'left' ? 'Left the share.' : 'The share was forgotten on this phone.';
   return `${first} ${book} was not deleted: ${reason}`;
 }
+
+/** The text an invite is sent as: the link, then where the code is typed (an event's on Events, a workspace's on Add workspace). */
+export function inviteText(kind: 'workspace' | 'event', inviterName: string, bookName: string, link: string, code: string): string {
+  const where = kind === 'event' ? 'Join with a code on Events' : 'Add workspace › Join with a code';
+  return `${inviterName} sent an invite to ${bookName}. Open ${link} — or choose ${where} in the app and enter ${code}`;
+}

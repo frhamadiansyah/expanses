@@ -454,6 +454,7 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
 
   await page.goto('/events');
   await page.getByRole('button', { name: 'Add an event' }).click();
+  await page.getByTestId('new-event').click();
   await page.getByLabel('Name', { exact: true }).fill('Singapore holiday');
   await page.getByLabel('Starts on').fill(TODAY);
   await page.getByLabel('Ends on').fill(TODAY);
@@ -542,6 +543,7 @@ test('the screens that settle a receipt read the whole plan, not the open tab', 
 
   await page.goto('/events');
   await page.getByRole('button', { name: 'Add an event' }).click();
+  await page.getByTestId('new-event').click();
   await page.getByLabel('Name', { exact: true }).fill('Singapore holiday');
   await page.getByLabel('Starts on').fill(TODAY);
   await page.getByLabel('Ends on').fill(TODAY);

@@ -4,6 +4,7 @@ import { isNative } from '../../lib/pwa';
 import { shareText } from '../../native/share';
 import { ErrorBox } from '../../ui';
 import { type GroupChild, InsetGroup, InsetRow } from '../../ui/native';
+import { inviteText } from './sharing-copy';
 
 /** The code itself: 52 characters in groups of four (§8.1 step 6), large enough to read out across a table. */
 function CodeRow({ code }: GroupChild & { code: string }) {
@@ -30,16 +31,18 @@ export function InviteCard({
   inviterName,
   header,
   footer = '',
+  kind = 'workspace',
 }: {
   invite: CreatedInvite;
   bookName: string;
   inviterName: string;
   header: string;
   footer?: string;
+  kind?: 'workspace' | 'event';
 }) {
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
-  const text = `${inviterName} sent an invite to ${bookName}. Open ${invite.link} — or choose Join a workspace in the app and enter ${invite.code}`;
+  const text = inviteText(kind, inviterName, bookName, invite.link, invite.code);
 
   async function copy() {
     setError(null);

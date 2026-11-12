@@ -17,8 +17,9 @@ describe('joining an event (§6)', () => {
   });
 
   it('titles the join screen by the event an invite is for', () => {
-    expect(joinTitle(null)).toBe('Join a workspace');
-    expect(joinTitle({ event: undefined })).toBe('Join a workspace');
-    expect(joinTitle({ event: { name: 'Coast week', startsOn: '2026-10-05', endsOn: '2026-10-12', currency: 'TRY', minAppVersion: '0.4.0', people: [] } })).toBe('Join Coast week');
+    expect(joinTitle(null)).toBe('Join with a code');
+    expect(joinTitle({ event: undefined, bookName: '' })).toBe('Join with a code');
+    expect(joinTitle({ event: undefined, bookName: 'Home' })).toBe('Join Home');
+    expect(joinTitle({ bookName: 'Coast week', event: { name: 'Coast week', startsOn: '2026-10-05', endsOn: '2026-10-12', currency: 'TRY', minAppVersion: '0.4.0', people: [] } })).toBe('Join Coast week');
   });
 });

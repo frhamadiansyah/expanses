@@ -144,7 +144,7 @@ export function JoinWorkspace({
       </form>
 
       {preview?.event ? <JoinEvent code={code} preview={preview} onJoined={onJoinedEvent} /> : preview ? (
-        <form aria-label="Join a workspace" onSubmit={(event) => void join(event)}>
+        <form aria-label="Join with a code" onSubmit={(event) => void join(event)}>
           <InsetGroup
             wide
             header="Invited to"

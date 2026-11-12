@@ -8,6 +8,7 @@ async function addEvent(page: Page, name: string) {
   const today = await todayIn(page);
   await page.goto('/events');
   await page.getByRole('button', { name: 'New event' }).click();
+  await page.getByTestId('new-event').click();
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel('Starts on').fill(today);
   await page.getByLabel('Ends on').fill(today);
