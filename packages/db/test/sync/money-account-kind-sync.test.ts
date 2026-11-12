@@ -68,19 +68,19 @@ describe("a money account's kind on the partner's phone", () => {
     const item = async () => (await receivedItems(andi.database, groupBookId)).find((one) => one.owner === rina.memberId)!;
     const before = await item();
     expect(before).toMatchObject({ subtype: 'savings', balanceMinor: 6_300_000_00 });
-    expect((await paidWithItems(andi.database, bookId)).map((one) => one.itemId)).not.toContain(before.itemId);
+    // Both kinds can pay for the household (a saving account too, since fix/paid-with-savings).
+    expect((await paidWithItems(andi.database, bookId)).map((one) => one.itemId)).toContain(before.itemId);
 
     await setMoneyAccountKind(rina.database, rina.ws, account.id, 'bank');
     await home.settle();
     const after = await item();
     expect(after.itemId).toBe(before.itemId);
     expect(after).toMatchObject({ subtype: 'bank', balanceMinor: 6_300_000_00, name: before.name, currency: 'IDR' });
-    // A current account can pay for the household; a saving account is not offered.
     expect((await paidWithItems(andi.database, bookId)).map((one) => one.itemId)).toContain(before.itemId);
 
     await setMoneyAccountKind(rina.database, rina.ws, account.id, 'savings');
     await home.settle();
     expect((await item()).subtype).toBe('savings');
-    expect((await paidWithItems(andi.database, bookId)).map((one) => one.itemId)).not.toContain(before.itemId);
+    expect((await paidWithItems(andi.database, bookId)).map((one) => one.itemId)).toContain(before.itemId);
   });
 });
