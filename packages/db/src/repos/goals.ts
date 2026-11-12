@@ -412,6 +412,10 @@ export async function archiveGoal(database: Database, ws: WorkspaceContext, goal
       tx.update(goals).set({ status: 'archived' }).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId))),
     );
     markGoalDirtyTx(tx, goalId);
+    // An archived goal comes due no more (0111): its switch goes off, and what was done stays.
+    if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'goal_dues'`)).length > 0) {
+      await tx.run(sql`UPDATE goal_dues SET active = 0 WHERE goal_id = ${goalId} AND workspace_id = ${ws.workspaceId}`);
+    }
   });
 }
 
@@ -447,7 +451,7 @@ export async function deleteGoalRowsTx(tx: Db, ws: WorkspaceContext, goalId: str
   for (const table of ['trade_goal_parts', 'goal_member_funding', 'goal_member_moves', 'goal_share_log']) {
     if (tables.has(table)) await tx.run(sql`DELETE FROM ${sql.raw(table)} WHERE goal_id = ${goalId}`);
   }
-  for (const table of ['goal_draws', 'goal_contributions', 'goal_calculators', 'goal_stage_terms', 'goal_earmarks', 'goal_stages']) {
+  for (const table of ['goal_draws', 'goal_contributions', 'goal_calculators', 'goal_stage_terms', 'goal_earmarks', 'goal_dues', 'goal_due_months', 'goal_stages']) {
     if (tables.has(table)) await tx.run(sql`DELETE FROM ${sql.raw(table)} WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
   }
   await tx.run(sql`DELETE FROM goals WHERE id = ${goalId} AND workspace_id = ${w}`);
@@ -537,13 +541,16 @@ export async function removeEarmark(database: Database, ws: WorkspaceContext, go
  * the note stay as they are, so a goal worked out by a calculator stays worked out.
  */
 export async function setStandingMonthly(database: Database, ws: WorkspaceContext, goalId: string, amountMinor: number): Promise<void> {
+  await database.transaction((tx) => setStandingMonthlyTx(tx, ws, goalId, amountMinor));
+}
+
+/** `setStandingMonthly` inside the caller's transaction (a Monthly saved with its Due each month, as one). */
+export async function setStandingMonthlyTx(tx: Db, ws: WorkspaceContext, goalId: string, amountMinor: number): Promise<void> {
   if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) throw new GoalDbError('A monthly amount is a whole figure, nought or more');
-  const [goal] = await database.db.select({ id: goals.id }).from(goals).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId)));
+  const [goal] = await tx.select({ id: goals.id }).from(goals).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId)));
   if (!goal) throw new GoalDbError('Goal not found in this workspace');
-  await database.transaction(async (tx) => {
-    await tx.update(goals).set({ standingMonthlyMinor: amountMinor }).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId)));
-    markGoalDirtyTx(tx, goalId);
-  });
+  await tx.update(goals).set({ standingMonthlyMinor: amountMinor }).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId)));
+  markGoalDirtyTx(tx, goalId);
 }
 
 /**

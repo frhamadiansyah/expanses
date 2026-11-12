@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Event mode</title>
+<style>
+:root { --bg:#f2f2f7; --surface:#fff; --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e0e0e4; --fill:#efeff2; --tint:#007aff; --up:#248a3d; --warn:#b25000; --trip:#5e5ce6; }
+* { box-sizing:border-box; }
+body { margin:0; background:#e6e6ea; color:var(--ink); font:14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; padding:24px 16px 48px; }
+h1 { font-size:20px; margin:0 0 4px; } .lede { color:#555; margin:0 0 20px; max-width:980px; }
+h2 { font-size:16px; margin:28px 0 12px; }
+.pair { display:flex; flex-wrap:wrap; gap:22px; align-items:flex-start; }
+.col { width:320px; max-width:100%; }
+.cap { font-weight:600; margin:0 0 8px; } .cap .n { display:inline-block; background:#1c1c1e; color:#fff; border-radius:5px; padding:0 6px; font-size:12px; margin-right:6px; }
+.phone { background:var(--bg); border-radius:28px; padding:12px 14px 18px; border:1px solid #d4d4d8; min-height:600px; position:relative; overflow:hidden; }
+.bar { display:flex; align-items:center; justify-content:space-between; margin:2px 0 10px; }
+.round { width:34px; height:34px; border-radius:50%; background:#e5e5ea; display:inline-flex; align-items:center; justify-content:center; font-size:15px; }
+.ttl { font-size:17px; font-weight:600; }
+.lt { font-size:28px; font-weight:700; margin:2px 4px 8px; display:flex; justify-content:space-between; align-items:center; }
+.gh { font-size:12.5px; color:var(--ink3); margin:16px 6px 5px; text-transform:uppercase; letter-spacing:.03em; display:flex; justify-content:space-between; }
+.gf { font-size:12.5px; color:var(--ink3); margin:6px 6px 0; }
+.ig { background:var(--surface); border-radius:11px; overflow:hidden; }
+.row { display:flex; align-items:center; gap:10px; padding:10px 13px; min-height:46px; position:relative; font-size:15px; }
+.ig .row + .row::before { content:""; position:absolute; top:0; left:13px; right:0; border-top:.5px solid var(--hair); }
+.ig.icons .row + .row::before { left:50px; }
+.ic { width:28px; height:28px; border-radius:50%; background:var(--fill); display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; }
+.grow { flex:1; min-width:0; }
+.s { font-size:12px; color:var(--ink3); }
+.val { color:var(--ink3); white-space:nowrap; } .amt { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.chev { color:#c7c7cc; margin-left:4px; }
+.sw { width:46px; height:28px; border-radius:14px; background:#e3e3e8; position:relative; flex-shrink:0; } .sw::after { content:""; position:absolute; top:2px; left:2px; width:24px; height:24px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+.sw.on { background:#34c759; } .sw.on::after { left:auto; right:2px; }
+.pill { display:flex; align-items:center; gap:8px; background:var(--trip); color:#fff; border-radius:16px; padding:7px 12px; font-size:13.5px; font-weight:600; margin:0 2px 10px; }
+.pill .x { margin-left:auto; opacity:.85; font-weight:400; }
+.tag { display:inline-block; font-size:11.5px; color:var(--trip); background:#eeedfd; border-radius:8px; padding:1px 7px; margin-left:4px; }
+.amtbig { text-align:center; font-size:40px; font-weight:700; margin:18px 0 4px; font-variant-numeric:tabular-nums; }
+.cur { text-align:center; color:var(--ink3); margin-bottom:12px; }
+.chip { display:inline-flex; align-items:center; gap:6px; background:#eeedfd; color:var(--trip); border-radius:14px; padding:5px 11px; font-size:14px; font-weight:600; }
+.mark { outline:2px dashed #2563eb; outline-offset:2px; border-radius:12px; }
+.note { font-size:12.5px; color:#444; margin:10px 2px 0; }
+.toast { position:absolute; left:14px; right:14px; bottom:18px; background:#fff; border-radius:14px; box-shadow:0 4px 18px rgba(0,0,0,.14); padding:10px 12px; display:flex; align-items:center; gap:10px; font-size:14px; }
+.toast .u { background:var(--fill); border-radius:12px; padding:4px 11px; font-size:13px; font-weight:600; }
+.hb { width:34px; height:34px; border-radius:50%; background:#e5e5ea; display:inline-flex; align-items:center; justify-content:center; font-size:16px; position:relative; }
+.ws { font-weight:600; font-size:17px; }
+.dot { position:absolute; right:-4px; bottom:-4px; width:18px; height:18px; border-radius:50%; background:var(--trip); color:#fff; font-size:10px; display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 2px var(--bg); }
+.mini { width:26px; height:26px; border-radius:50%; background:var(--trip); color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:13px; }
+.hdr { display:flex; justify-content:space-between; align-items:center; margin:2px 4px 10px; }
+.hdr .t { font-size:28px; font-weight:700; }
+.hdr .r { display:flex; gap:8px; align-items:center; }
+.menu { position:absolute; right:14px; top:58px; width:230px; background:#fff; border-radius:14px; box-shadow:0 8px 30px rgba(0,0,0,.25); overflow:hidden; z-index:2; }
+.menu .row { font-size:15px; }
+</style>
+</head>
+<body>
+<h1>Event mode: new transactions go to the event by themselves</h1>
+<p class="lede">Turned on from an event. While it is on, every transaction added (by hand, One line, a captured SMS or email) is tagged with the event, and the Add form opens in the event’s currency. It turns itself off the day after the event ends. One event at a time. Names and amounts are made up.</p>
+
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">1</span>Turn it on, on the event</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Turkey trip</span><span class="round">⋯</span></div>
+      <div class="s" style="margin:0 6px 8px">12–20 Nov · TRY · Rina, Andi, Sari</div>
+      <div class="ig mark">
+        <div class="row"><div class="grow"><div>Event mode</div><div class="s">New transactions go to Turkey trip</div></div><span class="sw on"></span></div>
+        <div class="row"><div class="grow">Until</div><span class="val">20 Nov</span><span class="chev">›</span></div>
+        <div class="row"><div class="grow">Add in</div><span class="val">TRY</span><span class="chev">›</span></div>
+      </div>
+      <div class="gf">Ends by itself after 20 Nov. Turning it on for another event turns this one off.</div>
+      <div class="gh"><span>Spent</span><span>₺ 4.250</span></div>
+      <div class="ig icons">
+        <div class="row"><span class="ic">🍽️</span><div class="grow"><div>Dinner Karaköy</div><div class="s">Andi paid</div></div><span class="amt">₺ 1.800</span></div>
+        <div class="row"><span class="ic">🚕</span><div class="grow"><div>Taxi</div><div class="s">Rina paid</div></div><span class="amt">₺ 450</span></div>
+      </div>
+    </div>
+    <p class="note">Also from the Events list: hold an event, “Event mode”.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">2</span>Cashflow while it is on (first look)</p>
+    <div class="phone">
+      <div class="lt">Cashflow <span class="round">＋</span></div>
+      <div class="pill mark">✈️ Turkey trip · Event mode until 20 Nov <span class="x">✕</span></div>
+      <div class="gh"><span>Today</span></div>
+      <div class="ig icons">
+        <div class="row"><span class="ic">🍽️</span><div class="grow"><div>Dinner Karaköy <span class="tag">Turkey trip</span></div><div class="s">4821</div></div><span class="amt">₺ 1.800</span></div>
+        <div class="row"><span class="ic">🚕</span><div class="grow"><div>Taxi <span class="tag">Turkey trip</span></div><div class="s">Cash · TRY</div></div><span class="amt">₺ 450</span></div>
+      </div>
+      <p class="note">The bar sits on top of Cashflow and the Add form while it is on. Tap it to open the event; ✕ turns event mode off (with Undo).</p>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">3</span>Add a transaction</p>
+    <div class="phone">
+      <div class="bar"><span class="round">✕</span><span class="ttl">Expense</span><span class="round">✓</span></div>
+      <div style="text-align:center"><span class="chip mark">✈️ Turkey trip <span style="font-weight:400">✕</span></span></div>
+      <div class="amtbig">₺ 650</div>
+      <div class="cur">TRY · Rp 312.000</div>
+      <div class="ig">
+        <div class="row"><div class="grow">Category</div><span class="val">Food · Restaurant</span><span class="chev">›</span></div>
+        <div class="row"><div class="grow">Paid with</div><span class="val">4821</span><span class="chev">›</span></div>
+        <div class="row"><div class="grow">Split</div><span class="val">Rina, Andi, Sari</span><span class="chev">›</span></div>
+      </div>
+      <div class="gf">The event is filled in at the top, where it shows. ✕ leaves this one out of the trip.</div>
+    </div>
+    <p class="note">Today the event hides under More details. In event mode it is on top, already picked.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">4</span>A captured bank SMS</p>
+    <div class="phone">
+      <div class="lt">To review</div>
+      <div class="ig icons">
+        <div class="row"><span class="ic">💳</span><div class="grow"><div>MIGROS ISTANBUL <span class="tag">Turkey trip</span></div><div class="s">From SMS · 4821 · today 14:02</div></div><span class="amt">₺ 380</span></div>
+      </div>
+      <div class="gf">Captured while event mode is on: tagged too. Open it to take the event off.</div>
+      <div class="gh" style="margin-top:28px"><span>… the day after 20 Nov</span></div>
+      <div class="toast" style="position:static; margin-top:6px"><span>✈️</span><span class="grow">Event mode for Turkey trip ended</span><span class="u">Keep on</span></div>
+    </div>
+    <p class="note">It ends by itself. “Keep on” adds a day at a time, for a trip that runs late.</p>
+  </div>
+</div>
+<h2>Screen 2, a small round mark at the top right (beside the workspace letter)</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">2E</span>A dot on the workspace button</p>
+    <div class="phone" style="min-height:360px">
+      <div class="hdr"><span class="t">Cashflow</span><span class="r"><span class="hb">🔍</span><span class="hb mark"><span class="ws">F</span><span class="dot">✈️</span></span></span></div>
+
+      <div class="gh"><span>Today</span></div>
+      <div class="ig icons">
+        <div class="row"><span class="ic">🍽️</span><div class="grow"><div>Dinner Karaköy</div><div class="s">✈️ Turkey trip · 4821</div></div><span class="amt">₺ 1.800</span></div>
+        <div class="row"><span class="ic">🚕</span><div class="grow"><div>Taxi</div><div class="s">✈️ Turkey trip · Cash · TRY</div></div><span class="amt">₺ 450</span></div>
+      </div>
+    </div>
+    <p class="note">A small purple ✈️ dot on the corner of the workspace letter (F). Nothing else on the page.</p>
+  </div>
+  <div class="col">
+    <p class="cap"><span class="n">2F</span>Tap the workspace button</p>
+    <div class="phone" style="min-height:360px">
+      <div class="hdr"><span class="t">Cashflow</span><span class="r"><span class="hb">🔍</span><span class="hb mark"><span class="ws">F</span><span class="dot">✈️</span></span></span></div>
+      <div class="menu">
+        <div class="row" style="background:#eeedfd"><span class="mini" style="width:22px;height:22px;font-size:11px">✈️</span><div class="grow"><div style="font-weight:600">Turkey trip</div><div class="s">Event mode until 20 Nov</div></div><span style="color:var(--trip)">›</span></div>
+        <div class="row" style="border-top:.5px solid var(--hair)"><span style="width:22px;text-align:center">✓</span><div class="grow">Family</div></div>
+        <div class="row" style="border-top:.5px solid var(--hair)"><span style="width:22px"></span><div class="grow">Personal</div></div>
+      </div>
+      <div class="gh"><span>Today</span></div>
+      <div class="ig icons">
+        <div class="row"><span class="ic">🍽️</span><div class="grow"><div>Dinner Karaköy</div><div class="s">✈️ Turkey trip · 4821</div></div><span class="amt">₺ 1.800</span></div>
+        <div class="row"><span class="ic">🚕</span><div class="grow"><div>Taxi</div><div class="s">✈️ Turkey trip · Cash · TRY</div></div><span class="amt">₺ 450</span></div>
+      </div>
+    </div>
+    <p class="note">The workspace menu opens with the trip on top: tap it to open the event and turn event mode off there.</p>
+  </div>
+  <div class="col">
+    <p class="cap"><span class="n">2G</span>Its own small round, left of Search</p>
+    <div class="phone" style="min-height:360px">
+      <div class="hdr"><span class="t">Cashflow</span><span class="r"><span class="mini mark">✈️</span><span class="hb">🔍</span><span class="hb"><span class="ws">F</span></span></span></div>
+
+      <div class="gh"><span>Today</span></div>
+      <div class="ig icons">
+        <div class="row"><span class="ic">🍽️</span><div class="grow"><div>Dinner Karaköy</div><div class="s">✈️ Turkey trip · 4821</div></div><span class="amt">₺ 1.800</span></div>
+        <div class="row"><span class="ic">🚕</span><div class="grow"><div>Taxi</div><div class="s">✈️ Turkey trip · Cash · TRY</div></div><span class="amt">₺ 450</span></div>
+      </div>
+    </div>
+    <p class="note">A separate 26 px purple round. Tap it: the event, with the Event mode switch.</p>
+  </div>
+</div>
+<h2>Screen 2, other looks for Cashflow while it is on</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">2A</span>Small chip beside the title</p>
+    <div class="phone" style="min-height:330px">
+      <div class="lt">Cashflow <span style="display:flex;gap:8px;align-items:center"><span class="chip mark" style="font-size:13px;padding:4px 10px">✈️ Turkey trip</span><span class="round">＋</span></span></div>
+      <div class="gh"><span>Today</span></div>
+      <div class="ig icons">
+        <div class="row"><span class="ic">🍽️</span><div class="grow"><div>Dinner Karaköy</div><div class="s">✈️ Turkey trip · 4821</div></div><span class="amt">₺ 1.800</span></div>
+        <div class="row"><span class="ic">🚕</span><div class="grow"><div>Taxi</div><div class="s">✈️ Turkey trip · Cash · TRY</div></div><span class="amt">₺ 450</span></div>
+      </div>
+    </div>
+    <p class="note">A quiet chip next to ＋. Tap it: the event, with the Event mode switch.</p>
+  </div>
+  <div class="col">
+    <p class="cap"><span class="n">2B</span>Only the ＋ button changes</p>
+    <div class="phone" style="min-height:330px">
+      <div class="lt">Cashflow <span class="round mark" style="background:#eeedfd;color:var(--trip);width:auto;padding:0 10px;border-radius:17px;font-size:14px">✈️ ＋</span></div>
+      <div class="gh"><span>Today</span></div>
+      <div class="ig icons">
+        <div class="row"><span class="ic">🍽️</span><div class="grow"><div>Dinner Karaköy</div><div class="s">✈️ Turkey trip · 4821</div></div><span class="amt">₺ 1.800</span></div>
+        <div class="row"><span class="ic">🚕</span><div class="grow"><div>Taxi</div><div class="s">✈️ Turkey trip · Cash · TRY</div></div><span class="amt">₺ 450</span></div>
+      </div>
+    </div>
+    <p class="note">Nothing above the list. The plane on ＋ says new ones go to the trip.</p>
+  </div>
+  <div class="col">
+    <p class="cap"><span class="n">2C</span>One grey line under the title</p>
+    <div class="phone" style="min-height:330px">
+      <div class="lt">Cashflow <span class="round">＋</span></div>
+      <div class="s mark" style="margin:-4px 6px 4px;font-size:13px">✈️ Event mode · Turkey trip until 20 Nov ›</div>
+      <div class="gh"><span>Today</span></div>
+      <div class="ig icons">
+        <div class="row"><span class="ic">🍽️</span><div class="grow"><div>Dinner Karaköy</div><div class="s">✈️ Turkey trip · 4821</div></div><span class="amt">₺ 1.800</span></div>
+        <div class="row"><span class="ic">🚕</span><div class="grow"><div>Taxi</div><div class="s">✈️ Turkey trip · Cash · TRY</div></div><span class="amt">₺ 450</span></div>
+      </div>
+    </div>
+    <p class="note">Plain text, no colour block. Tap it to open the event.</p>
+  </div>
+  <div class="col">
+    <p class="cap"><span class="n">2D</span>Nothing on Cashflow</p>
+    <div class="phone" style="min-height:330px">
+      <div class="lt">Cashflow <span class="round">＋</span></div>
+      <div class="gh"><span>Today</span></div>
+      <div class="ig icons">
+        <div class="row"><span class="ic">🍽️</span><div class="grow"><div>Dinner Karaköy</div><div class="s">✈️ Turkey trip · 4821</div></div><span class="amt">₺ 1.800</span></div>
+        <div class="row"><span class="ic">🚕</span><div class="grow"><div>Taxi</div><div class="s">✈️ Turkey trip · Cash · TRY</div></div><span class="amt">₺ 450</span></div>
+      </div>
+    </div>
+    <p class="note">No sign on Cashflow at all. It shows only in the Add form (screen 3) and on each row.</p>
+  </div>
+</div>
+<p class="note" style="max-width:980px">In all four, rows name the event in their grey line (“✈️ Turkey trip · 4821”) instead of a purple tag.</p>
+</body>
+</html>

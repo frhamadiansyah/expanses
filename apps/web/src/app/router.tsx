@@ -63,6 +63,7 @@ import { AddAssetPage } from '../features/ownables/AddAssetPage';
 import { addAssetSearch } from '../features/ownables/add-asset-search';
 import { AddCardPage, AddDebtPage } from '../features/ownables/AddDebtPage';
 import { AssetDetailPage } from '../features/networth/AssetDetailPage';
+import { ShareListPage, ShareListSetupPage } from '../features/sharing/ShareListPage';
 import { AssetSettingsRoute } from '../features/networth/AssetSettingsPage';
 import { EditAssetRoute } from '../features/networth/EditAssetPage';
 import { AssetsPage } from '../features/networth/AssetsPage';
@@ -551,6 +552,8 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/details', component: SyncDetailsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/net-worth', component: NetWorthPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/net-worth/items', component: NetWorthItemsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/what', component: ShareListPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/what/start', component: ShareListSetupPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/members/$memberId', component: MemberPage }),
   // Settings was the page of workspaces; they live on the Account page now, so an old link lands there.
   createRoute({

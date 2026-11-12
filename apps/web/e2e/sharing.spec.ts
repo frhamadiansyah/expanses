@@ -9,7 +9,7 @@ import { addForm, addTransaction, addTransfer, fillAmount, openAmount, saveButto
 import { cardPage, saveCardTerms } from './card-section';
 import { openDrawers } from './drawers';
 import { pickView } from './wallet';
-import { openMemberPage, openNetWorthPage, openSharePage, openWorkspacePage, openWorkspaceSharePage, renameWorkspace, shareWorkspace } from './workspace-page';
+import { openMemberPage, openNetWorthPage, openSharePage, openWorkspacePage, openWorkspaceSharePage, putOffShareList, renameWorkspace, shareWorkspace } from './workspace-page';
 
 /*
  * Household sharing, end to end (spec §11, §13 `sharing.spec.ts`): two people, each in their own browser — two
@@ -176,6 +176,7 @@ test('two people share a workspace: join, record on both, correct each other, re
   await shot(dewi, info, '2-join-preview');
   await join.getByRole('button', { name: 'Join', exact: true }).click();
   await expect(join).toHaveCount(0, { timeout: 60_000 });
+  await putOffShareList(page);
 
   // She lands in Home, and the history is there, paid by Fandri from what Fandri paid with.
   await dewi.goto('/transactions');
@@ -314,6 +315,7 @@ async function shareAndJoin(page: Page, dewi: Page, names: { owner: string; join
   await join.getByLabel('Name').fill(names.joiner);
   await join.getByRole('button', { name: 'Join', exact: true }).click();
   await expect(join).toHaveCount(0, { timeout: 60_000 });
+  await putOffShareList(page);
 }
 
 /** Settings → Home, then the destructive row and its confirmation sheet's ✓. */
@@ -809,6 +811,7 @@ test('a transfer in a shared workspace shows on the partner’s list as "Transfe
   await join.getByLabel('Name').fill('Dewi');
   await join.getByRole('button', { name: 'Join', exact: true }).click();
   await expect(join).toHaveCount(0, { timeout: 60_000 });
+  await putOffShareList(page);
 
   // Fandri moves money between his own accounts in the shared workspace.
   await page.goto('/transactions');
@@ -1330,6 +1333,7 @@ test('leave and delete, share again, join: the couple’s clean-up through the s
   await join1.getByLabel('Name').fill('Fandri');
   await join1.getByRole('button', { name: 'Join', exact: true }).click();
   await expect(join1).toHaveCount(0, { timeout: 60_000 });
+  await putOffShareList(page);
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Dewi shared', paidWith: 'Dewi Bank', category: 'Groceries', amount: '15000' });
   await fandri.goto('/transactions');
@@ -1358,6 +1362,7 @@ test('leave and delete, share again, join: the couple’s clean-up through the s
   await join2.getByLabel('Name').fill('Fandri');
   await join2.getByRole('button', { name: 'Join', exact: true }).click();
   await expect(join2).toHaveCount(0, { timeout: 60_000 });
+  await putOffShareList(page);
   const secondCopy = (await copyIds(fandri, 'Home')).find((id) => id !== firstCopy)!;
   expect(secondCopy).toBeTruthy();
 

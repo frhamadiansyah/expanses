@@ -43,6 +43,11 @@ export interface TaggedTransferInput {
   photoIds?: string[];
   /** Which goal the money came out of, when it took more than was free (spec §4.4). */
   setAside?: SetAsideChoice | null;
+  /**
+   * The most of the goal's promise on the source that follows the money (`parkForGoalTx`). Absent, as much as the move
+   * carries. Only a goal's due month (`transferGoalMonth`) passes it: what went past the source's free money.
+   */
+  promiseFollowsAtMost?: number;
 }
 
 export interface TaggedTransferResult {
@@ -63,8 +68,14 @@ async function assertGoal(tx: Db, ws: WorkspaceContext, goalId: string): Promise
 export async function recordTaggedTransfer(database: Database, ws: WorkspaceContext, input: TaggedTransferInput): Promise<TaggedTransferResult> {
   if (!(input.amountMinor > 0)) throw new AssetError('Enter an amount greater than zero');
   if (input.fromAccountId === input.toAccountId) throw new AssetError('Choose two different accounts');
+  return database.transaction((tx) => recordTaggedTransferTx(tx, ws, input));
+}
 
-  return database.transaction(async (tx) => {
+/** `recordTaggedTransfer` inside the caller's transaction, so a goal's due month and its transfer land together. */
+export async function recordTaggedTransferTx(tx: Db, ws: WorkspaceContext, input: TaggedTransferInput): Promise<TaggedTransferResult> {
+  if (!(input.amountMinor > 0)) throw new AssetError('Enter an amount greater than zero');
+  if (input.fromAccountId === input.toAccountId) throw new AssetError('Choose two different accounts');
+  {
     await assertAccountInWorkspace(tx, ws, input.fromAccountId, 'Account');
     await assertAccountInWorkspace(tx, ws, input.toAccountId, 'Account');
     if (input.goalId) await assertGoal(tx, ws, input.goalId);
@@ -142,9 +153,9 @@ export async function recordTaggedTransfer(database: Database, ws: WorkspaceCont
       toAccountId: input.toAccountId,
       amountMinor: input.amountMinor,
       landedMinor,
-    });
+    }, { promiseFollowsAtMost: input.promiseFollowsAtMost });
     return { transactionId, setAsideMinor };
-  });
+  }
 }
 
 /**

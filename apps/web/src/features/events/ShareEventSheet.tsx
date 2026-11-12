@@ -1,16 +1,15 @@
-import { type CreatedInvite, type EventRow, type MoveRefusal, ownerScope } from '@expanses/db';
+import { type CreatedInvite, type EventRow, type MoveRefusal } from '@expanses/db';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
-import { useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, PickerRow, SubmitRow, TextRow } from '../../ui/native';
 import { CurrencySheet } from '../currency/CurrencySheet';
 import { InviteCard } from '../sharing/InviteCard';
-import { finishConversion, freshShare, markConversionDone, runShare } from './share-event';
-import { conversionSteps, fetchConversionRates } from './shared-queries';
+import { freshShare, shareEventFooter } from './share-event';
+import { useShareEventNow } from './share-event-now';
 import { sayError } from '../sharing/sharing-copy';
-import { thisDeviceName } from '../sharing/SharingSection';
 
 /**
  * Sharing an existing event (shared events §6): asked once, here. The event becomes a shared one in its currency; what
@@ -18,9 +17,9 @@ import { thisDeviceName } from '../sharing/SharingSection';
  * the event's categories and its plan the shared plan. The rates every move needs are fetched first.
  */
 export function ShareEventSheet({ event, onClose }: { event: EventRow; onClose: () => void }) {
-  const { database, ws, sync } = useApp();
+  const { ws } = useApp();
   const invalidate = useInvalidateAll();
-  const resolveRates = useResolveRates();
+  const shareNow = useShareEventNow();
   // Kept across taps and retries (`runShare`): the event is shared once and moved once however the sheet is used.
   const progress = useRef(freshShare());
   const tapped = useRef(false);
@@ -41,26 +40,7 @@ export function ShareEventSheet({ event, onClose }: { event: EventRow; onClose: 
     setBusy(true);
     setError(null);
     try {
-      await fetchConversionRates(database, ws, event.id, currency, resolveRates);
-      const result = await runShare(progress.current, {
-        share: async () =>
-          (
-            await sync.shareEvent(ownerScope(ws), {
-              eventId: event.id,
-              currency,
-              personName: name,
-              deviceName: thisDeviceName(),
-              names: names.split(',').map((n) => n.trim()).filter(Boolean),
-            })
-          ).bookId,
-        // Safe to run again (I9): a retry after a conversion cut short part-way never copies the plan twice.
-        convert: async () => {
-          const kept = await finishConversion(conversionSteps(database, ws, event.id));
-          markConversionDone(event.id);
-          return kept;
-        },
-        invite: (bookId) => sync.eventInvite(bookId, name),
-      });
+      const result = await shareNow({ eventId: event.id, currency, personName: name, names: names.split(',') }, progress.current);
       if (result) setDone(result);
       await invalidate();
     } catch (failure) {
@@ -88,7 +68,7 @@ export function ShareEventSheet({ event, onClose }: { event: EventRow; onClose: 
         </>
       ) : (
         <form aria-label="Share this event" onSubmit={(e) => void share(e)}>
-          <InsetGroup footer={`Everyone in ${event.name} sees every expense of it, who paid and how it is split. What is tagged to it moves out of its workspace: in each person's own books only their own share counts.`}>
+          <InsetGroup footer={shareEventFooter(event.name)}>
             <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="As the others will see it" required />
             <PickerRow label="Currency" value={currency} onOpen={() => setPickingCurrency(true)} />
             <TextRow label="Without the app" value={names} onChange={(e) => setNames(e.target.value)} placeholder="Names, with commas" />

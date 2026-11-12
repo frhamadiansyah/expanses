@@ -18,6 +18,8 @@ const GOAL_COLUMNS: readonly [table: string, column: string][] = [
   ['transactions', 'goal_id'],
   ['events', 'goal_id'],
   ['goal_share_log', 'goal_id'],
+  ['goal_dues', 'goal_id'],
+  ['goal_due_months', 'goal_id'],
 ];
 
 /** Every local table that names a stage by id. goal_member_moves names one too, but its lines of the old goal go. */

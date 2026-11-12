@@ -67,6 +67,8 @@ export * as goalSharingSchema from './schema-goal-sharing';
 export * from './repos/goals';
 export * from './repos/goal-funding';
 export * from './repos/goal-transfers';
+export * from './repos/goal-dues';
+export { BalancesChangedError } from './repos/goal-due-link';
 export * from './repos/set-aside-tx';
 export * from './repos/set-aside';
 export * from './repos/convert';
@@ -238,6 +240,8 @@ export {
 export { computeItemSummary, itemIdOf, ownSentAccountIds, receivedItems, sendSummariesTx } from './sync/net-worth/summaries';
 export { ringPicks, setOwnRing } from './sync/net-worth/rings';
 export { markAccountDirtyTx } from './sync/capture';
+// The one list of what is shared with a household: whom it was already offered for, at set-up.
+export { markShareListAsked, seedShareListAsked, shareListAskedFor } from './repos/share-list';
 // Joint net worth §5.3, §7.1 (task 7): Paid with the other's shared item.
 export { paidFromAccount, paidWithItems, PAYABLE_SUBTYPES, type PaidWithItem } from './sync/net-worth/paid-from';
 export type { PaidFrom } from './sync/capture';

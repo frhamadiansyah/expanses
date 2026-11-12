@@ -27,6 +27,7 @@ import { FeeWaivedFlow } from '../cards/FeeWaivedSheet';
 import { FeeRow } from './FeeRow';
 import { Unconverted } from '../workspaces/Unconverted';
 import { type ToastIcon, UndoToast } from '../../ui/UndoToast';
+import { GoalsThisMonth } from '../goals/GoalDues';
 
 const PAGE_KEY = 'recurring-page';
 
@@ -207,10 +208,11 @@ export function RecurringPage() {
     setToast(null);
     try {
       await t.undo();
-      await invalidate();
     } catch (e) {
       setError(e);
     }
+    // Even an undo that could do only part of it changed something.
+    await invalidate();
   }
 
   const summary = summaryOf(readRows, today);
@@ -329,6 +331,9 @@ export function RecurringPage() {
           </div>
         </section>
       )}
+
+      {/* Goals whose Monthly comes due like a bill: Set aside or Transfer this month, or Skip. Hidden when none is due. */}
+      <GoalsThisMonth onToast={setToast} />
 
       {/* Card instalment plans still running: read-only, after the last bill group, in no total (they go with the statement). */}
       <MonthlyInstalments lines={instalmentLines(plans.data ?? [], accounts, ws.baseCurrency, today)} />
