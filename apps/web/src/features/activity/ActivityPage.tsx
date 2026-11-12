@@ -36,7 +36,7 @@ export function iconFor(kind: ActivityKind): ReactNode {
   }
 }
 
-/** The quiet words at the right of a line, or the Undo capsule. Ink and grey: Delete is the only red in the app. */
+/** The quiet words at the right of a line, or the round Undo button (↶). Ink and grey: Delete is the only red in the app. */
 function Right({ line, busy, onUndo }: { line: ActivityLine; busy: boolean; onUndo: () => void }) {
   if (line.state === 'open' && line.undo) {
     return (
@@ -46,10 +46,11 @@ function Right({ line, busy, onUndo }: { line: ActivityLine; busy: boolean; onUn
         aria-label={`Undo ${line.title}`}
         disabled={busy}
         onClick={onUndo}
-        className="ph-focus ph-tap shrink-0 rounded-full bg-[var(--ph-fill)] px-[12px] py-[5px] text-[14px] leading-[18px] font-semibold text-[var(--ph-ink)] disabled:opacity-40"
-        style={{ '--ph-tap-y': `${tapReach(28)}px` } as CSSProperties}
+        title="Undo"
+        className="ph-focus ph-tap flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink)] disabled:opacity-40"
+        style={{ '--ph-tap-y': `${tapReach(30)}px` } as CSSProperties}
       >
-        Undo
+        <Undo2 size={16} strokeWidth={2.2} aria-hidden />
       </button>
     );
   }
