@@ -67,7 +67,7 @@ import {
 import { heldElsewhereOf } from './held';
 import { MissingEpochKeyError, Sealer } from './seal';
 import type { ShareRecord, ShareRecordStore } from './share-records';
-import { assertShareableTx, catchUpTx, emitNewerTx, keepClocksTx, REMEMBERED_MEMBER_KEY, SeenLog, SharingError, seedBookTx } from './seed';
+import { assertShareableTx, catchUpTx, emitNewerTx, keepClocksTx, MEMBER_NAME_MAX, REMEMBERED_MEMBER_KEY, SeenLog, SharingError, seedBookTx } from './seed';
 import type { ChangeSet, InviteRecord, InviteTerms, SyncTransport } from './types';
 import { removedFromBook, SyncTransportError } from './types';
 
@@ -1100,6 +1100,30 @@ export class SyncEngine {
       }),
     );
     await this.syncSoon(bookId); // its sync writes the record when the view changed this device's role
+  }
+
+  /**
+   * Rename self (sharing resilience §10.2, D-D2): this member's own `name`, the only field written, through capture — so
+   * the op never makes a member (`makesMember` false) and a rename racing an owner's removal stays dead (`NO_REVIVE`).
+   * Trimmed; empty is `NAME_REQUIRED`, over `MEMBER_NAME_MAX` characters `NAME_TOO_LONG`. Only self: nobody renames
+   * another member (capture and the log both refuse it). A frozen book is refused, as make owner is.
+   */
+  async renameSelf(bookId: string, name: string): Promise<void> {
+    const trimmed = name.trim();
+    if (trimmed === '') throw new SharingError('NAME_REQUIRED', 'A name is needed');
+    if ([...trimmed].length > MEMBER_NAME_MAX) throw new SharingError('NAME_TOO_LONG', `A name is at most ${MEMBER_NAME_MAX} characters`);
+    const shared = await this.requireActive(bookId);
+    if (await this.isFrozen(bookId)) throw new FrozenBookError();
+    const changed = await this.database.transaction(async (tx) => {
+      const [row] = await tx.values<[string]>(sql`SELECT name FROM book_members WHERE book_id = ${bookId} AND member_id = ${shared.memberId}`);
+      if (!row) throw new SharingError('NOT_FOUND', 'This member is not in this workspace');
+      if (row[0] === trimmed) return false;
+      await withCapture(tx, { entity: 'member', id: shared.memberId, bookId }, async () => {
+        await tx.run(sql`UPDATE book_members SET name = ${trimmed} WHERE book_id = ${bookId} AND member_id = ${shared.memberId}`);
+      });
+      return true;
+    });
+    if (changed) await this.syncSoon(bookId);
   }
 
   /**

@@ -5,7 +5,7 @@ import { bookSplitsExist, excludedLinesTx, splitExclusionExists } from '../repos
 import { dayOrderExists } from '../repos/day-order-column';
 import { exactExists } from '../repos/exact-column';
 import { buildOpId, entityOf, GOAL_FAMILY, parseOpId, SHARED_ENTITIES, type RowEntity } from './shared-entities';
-import { AuthorityError, eventBookWorkspaceOf, frozenFieldChanged, groupLogWorkspaceOf, isWriter, makesMember, viewIsLastOwner, viewRoleOfDevice, writeOnceBroken } from './authority';
+import { AuthorityError, eventBookWorkspaceOf, frozenFieldChanged, groupLogWorkspaceOf, isWriter, makesMember, renamesOnly, viewIsLastOwner, viewRoleOfDevice, writeOnceBroken } from './authority';
 import { EVENT_ENTITIES, eventWriteRefusal } from './events/authority';
 import { GOAL_SHARE_ENTITIES, goalWriteRefusal } from './goals/authority';
 import { goalLinkOfTx, goalOfRowTx, leftWithLinkTx } from './goals/scope';
@@ -47,6 +47,14 @@ export class LastOwnerError extends Error {
   constructor(message = "A shared workspace needs an owner: the last owner can't be removed or made a member") {
     super(message);
     this.name = 'LastOwnerError';
+  }
+}
+
+/** A write of another member's name in a shared book (sharing resilience §10.2, D-D2): only that member renames themselves. */
+export class MemberNameError extends Error {
+  constructor(message = "A member's name is changed only by that member") {
+    super(message);
+    this.name = 'MemberNameError';
   }
 }
 
@@ -775,6 +783,14 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
     if (Number(owners?.[0] ?? 0) === 0) throw new LastOwnerError();
   }
   const after = await snapshot(tx, books, targets);
+  // D-D2: a member's name is that member's own; only their devices change it (the log refuses anyone else's rename).
+  // A new member row carries its name, and is judged as a making, not here.
+  for (const [key, was] of before) {
+    if (was.entity.entity !== 'member') continue;
+    const now = after.get(key);
+    if (!now || now.values.name === was.values.name) continue;
+    if (books.find((book) => book.bookId === was.bookId)?.memberId !== was.id) throw new MemberNameError();
+  }
   await refuseWrongLog(tx, before, after);
   // Shared goals §8.3 (option b): a goal's rows that left the book with its link (off, deleted, or this member left)
   // send nothing and are judged by nobody. Each phone does its own follow-up; a delete would end them for ever.
@@ -1036,7 +1052,8 @@ export async function recordClocks(tx: Db, bookId: string, op: Op, hlc: string):
   const named = op.changed ?? Object.keys(op.fields);
   // A member row's existence is an owner's (§8.5, fix round 2): a non-owner's edit of one does not move its existence
   // clock here either, so an owner's delete that crossed it wins on this device as it does everywhere.
-  const existence = entity.kind === 'row' && isRevivable(entity) && (op.entity !== 'member' || makesMember(op) || (await selfIsOwner(tx, bookId)));
+  // A rename alone (D-D2) never does, an owner's included: a rename racing a removal stays dead.
+  const existence = entity.kind === 'row' && isRevivable(entity) && (op.entity !== 'member' || makesMember(op) || (!renamesOnly(op) && (await selfIsOwner(tx, bookId))));
   const fields = existence ? [...named, ROW_CLOCK] : named;
   for (const field of fields) {
     await tx.run(

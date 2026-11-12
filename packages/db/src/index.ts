@@ -167,7 +167,7 @@ export {
   type SyncEngineOptions,
   type SyncOnceResult,
 } from './sync/engine';
-export { BookReadOnlyError, LastOwnerError, SyncNotReadyError } from './sync/capture';
+export { BookReadOnlyError, LastOwnerError, MemberNameError, SyncNotReadyError } from './sync/capture';
 export {
   deviceKeysOf,
   exportDeviceJwks,
@@ -185,7 +185,7 @@ export { inviteLink, parseInviteCode, JOIN_LINK_PREFIX, InviteCodeError } from '
 // The share record kept beside the device keys, outside the database (sharing resilience §6.1).
 export { MemoryShareRecordStore, parseShareRecord, storableShareRecord, type ShareRecord, type ShareRecordStore } from './sync/share-records';
 export { deviceIdOf } from './sync/relay-signing';
-export { SharingError, type SharingErrorCode } from './sync/seed';
+export { MEMBER_NAME_MAX, SharingError, type SharingErrorCode } from './sync/seed';
 export { type PullResult } from './sync/apply';
 export * from './repos/sharing';
 // Shared goals (§8.6): the app-version gate and the workspaces a goal can be shared into.
