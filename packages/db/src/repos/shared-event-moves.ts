@@ -192,6 +192,11 @@ export async function moveIntoSharedEvent(
   transactionIds: readonly string[],
   /** A refund's purchase named outright (the event's expense id), by the refund's transaction id; else it is looked for. */
   undoes: Readonly<Record<string, string>> = {},
+  /**
+   * The expense id each move takes, when it must be the same on every phone that makes it (the repair, fix round 1 #7:
+   * the same person's two phones moving the same purchase name one expense). A fresh id otherwise.
+   */
+  options: { expenseIdFor?: (tx: Db, transactionId: string) => Promise<string> } = {},
 ): Promise<{ moved: { transactionId: string; expenseId: string }[]; kept: MoveRefusal[] }> {
   const moved: { transactionId: string; expenseId: string }[] = [];
   const kept: MoveRefusal[] = [];
@@ -209,7 +214,11 @@ export async function moveIntoSharedEvent(
         const categoryId = await eventCategoryNamedTx(tx, book, purchase.categoryName, purchase.categoryIcon);
         // R12: a card goes on earning by the category the purchase was filed under (kept the first time it is given).
         await ensureShareAccountTx(tx, book, categoryId, purchase.categoryId);
-        const expenseId = uuidv7();
+        const expenseId = options.expenseIdFor ? await options.expenseIdFor(tx, transactionId) : uuidv7();
+        // Named alike on another phone, which has moved it already (its expense reached here before its void did).
+        if ((await tx.values(sql`SELECT 1 FROM event_expenses WHERE book_id = ${book.bookId} AND id = ${expenseId}`)).length > 0) {
+          return { transactionId, why: `Already moved into ${book.name} from another phone` };
+        }
         let split: SplitInput = { mode: 'equal', people: [book.me] };
         if (purchase.amountMinor < 0) {
           const undone = await undoneByTx(tx, book, purchase, undoes[transactionId] ?? null);

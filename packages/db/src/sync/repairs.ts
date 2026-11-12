@@ -6,9 +6,21 @@ import { resolveRates, type RateFetcher } from '../repos/fx';
 import { eventBookOfEventTx } from '../repos/shared-event-records';
 import { moveIntoSharedEvent, refundMatchedByName } from '../repos/shared-event-moves';
 import { partnerPurchaseRefusalTx, sharedRowTx, untagSharedRowsTx } from '../repos/shared-workspace-rows';
-import { captureConfigOf, projectPurchase, type SharedBook, writeChangeSetsTx } from './capture';
+import { captureConfigOf, lineageOfTransaction, projectPurchase, type SharedBook, writeChangeSetsTx } from './capture';
 import { BILL_LINK_LEVEL, bookAtLevelTx } from './level';
 import type { Op } from './types';
+import { uuidv5 } from './uuidv5';
+
+/** Where a repair move's expense id is named from. Fixed for ever: an id worked out under it may already be on a phone. */
+const REPAIR_NAMESPACE = '5f0c9e3a-2b7d-4e61-9a48-c1d2e3f4a5b6';
+
+/**
+ * The expense a repair move makes (fix round 1, #7): named by the purchase (its lineage, the same on every phone) and
+ * the event, so the same person's two phones moving it make one expense, not two.
+ */
+export function repairExpenseId(lineageId: string, eventId: string): Promise<string> {
+  return uuidv5(REPAIR_NAMESPACE, `move:${lineageId}:${eventId}`);
+}
 
 /*
  * One-time repairs of a shared book (sync gaps phase 2), run on this phone once the book has pulled to the relay's
@@ -186,7 +198,11 @@ async function tryMove(database: Database, ws: WorkspaceContext, eventId: string
     // A refund moves only when its expense in the event is found by name: matched by size alone, the split it shares
     // back could be another expense's (fix round 1, #4).
     if (book && !(await refundMatchedByName(database, ownerScope(ws), eventId, transactionId))) return `It could not be matched to an expense in ${book.name}`;
-    const { moved, kept } = await moveIntoSharedEvent(database, ownerScope(ws), eventId, [transactionId]);
+    // Named by the purchase and the event's book (the same on every phone; a local event id is not).
+    const eventKey = book?.bookId ?? eventId;
+    const { moved, kept } = await moveIntoSharedEvent(database, ownerScope(ws), eventId, [transactionId], {}, {
+      expenseIdFor: async (tx, id) => repairExpenseId(await lineageOfTransaction(tx, id), eventKey),
+    });
     if (moved.length > 0) return null;
     return kept[0]?.why ?? 'It could not be moved';
   } catch (error) {

@@ -267,4 +267,40 @@ describe('R2: Family purchases tagged to an event without being moved', () => {
     // The husband's purchase is his as it was, on his phone.
     expect(await headOf(husband.database, his)).toBe(his);
   });
+
+  it('the same person’s two phones, both holding the tag, both repairing before either syncs: one expense in the event (fix round 1, #7)', async () => {
+    const s = await familyAndTrip();
+    const { wife, husband } = s;
+    // Her second phone: the same member in Family, the same person in the trip.
+    const second = await s.trip.device('Wife');
+    const { code } = await wife.engine.createInvite(s.family, { inviterName: 'Wife', sameMember: true, memberId: wife.memberId });
+    await second.engine.joinBook(code, { ws: second.ws, memberName: 'Wife', deviceName: 'Wife’s second phone', memberId: wife.memberId });
+    const eventInvite = await wife.engine.createEventInvite(s.trip.bookId, { inviterName: 'Wife', forPersonId: s.wifePerson });
+    const { eventId: secondEvent } = await second.engine.joinEvent(eventInvite.code, { ws: second.ws, personId: s.wifePerson, name: 'Wife', deviceName: 'Wife’s second phone' });
+    const eventOf = (d: Device) => (d === second ? secondEvent : s.trip.eventOf(d));
+    const all = [wife, husband, second];
+    const settleAll = async () => {
+      for (let i = 0; i < 3; i += 1) {
+        await s.home.settle(all);
+        await s.trip.settle(all);
+      }
+    };
+    await settleAll();
+    const groceries = await categoryOf(wife.database, s.family, 'Groceries');
+    const kebab = await postTransaction(wife.database, wife.ws, { occurredOn: '2026-10-06', description: 'Kebab', lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: wife.bank, amountMinor: 120_000, currency: 'IDR' }) });
+    await settleAll();
+    const eventId = s.trip.eventOf(wife);
+    await oldTag(wife, kebab, eventId);
+    await oldTag(second, (await headOf(second.database, kebab))!, secondEvent);
+    const one = await runSharedBookRepairs(wife.database, s.family, { today: TODAY });
+    const two = await runSharedBookRepairs(second.database, s.family, { today: TODAY });
+    expect([one.eventTags, two.eventTags]).toEqual([{ moved: 1, untagged: 0 }, { moved: 1, untagged: 0 }]);
+    await settleAll();
+    for (const d of all) {
+      const view = (await sharedEventView(d.database, ownerScope(d.ws), eventOf(d)))!;
+      expect([d.name, view.expenses.map((e) => [e.note, e.amountMinor])]).toEqual([d.name, [['Kebab', 120_000]]]);
+      expect(await headOf(d.database, kebab)).toBeNull();
+    }
+    expect(await familyOctober(s, wife)).toEqual(await familyOctober(s, husband));
+  });
 });
