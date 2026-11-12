@@ -138,9 +138,19 @@ export async function installCaptureTriggers(database: Database, bookId: string)
     `CREATE TEMP TABLE IF NOT EXISTS __apply_paused (x INTEGER);`,
     `CREATE TEMP TABLE IF NOT EXISTS __sealed (seq INTEGER PRIMARY KEY, book_id TEXT NOT NULL, entry_json TEXT, change_json TEXT);`,
     `CREATE TEMP TRIGGER IF NOT EXISTS __capture_sealed AFTER INSERT ON main.sync_outbox BEGIN INSERT INTO __sealed (book_id, entry_json) VALUES (NEW.book_id, NEW.entry_json); END;`,
+    // Every lineage id this database ever held: a purchase's id is the lineage's on the wire, even after a fixture (or
+    // a leave) takes the lineage rows away (G4).
+    `CREATE TEMP TABLE IF NOT EXISTS __lineages_seen (lineage_id TEXT PRIMARY KEY);`,
+    `CREATE TEMP TRIGGER IF NOT EXISTS __capture_lineage_seen AFTER INSERT ON main.sync_lineage BEGIN INSERT OR IGNORE INTO __lineages_seen (lineage_id) VALUES (NEW.lineage_id); END;`,
+    `CREATE TEMP TABLE IF NOT EXISTS __transfers_seen (transfer_id TEXT PRIMARY KEY);`,
   ];
   // A test that stops its database at an older version (a migration test) has no table yet for a later entity.
   const tables = new Set((await database.db.values<[string]>(sql`SELECT name FROM sqlite_master WHERE type = 'table'`)).map(([name]) => name));
+  if (tables.has('shared_transfers')) {
+    ddl.push(
+      `CREATE TEMP TRIGGER IF NOT EXISTS __capture_transfer_seen AFTER INSERT ON main.shared_transfers BEGIN INSERT OR IGNORE INTO __transfers_seen (transfer_id) VALUES (NEW.transfer_id); END;`,
+    );
+  }
   const columnsOf = new Map<string, Set<string>>();
   for (const entity of SHARED_ENTITIES) {
     if (entity.kind !== 'purchase') continue;
@@ -370,10 +380,14 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
     if (lineagesChecked.has(lineageId)) continue;
     lineagesChecked.add(lineageId);
     const [lineage] = await database.db.values<[string | null, string, string]>(sql`SELECT head_transaction_id, paid_by, paid_label FROM sync_lineage WHERE lineage_id = ${lineageId}`);
-    // Forward from its first row, up to a row that starts a lineage of its own.
+    // Forward from its first row, up to a row that starts a lineage of its own. A lineage whose first row is gone from
+    // this phone (a row kept in Personal when its copy was erased heads the copy's lineage there, sync gaps G5) is
+    // followed from its head.
+    const rootHere = (await database.db.values(sql`SELECT 1 FROM transactions WHERE id = ${lineageId}`)).length > 0;
+    const start = rootHere || !lineage?.[0] ? lineageId : lineage[0];
     const [head] = await database.db.values<[string]>(sql`
       WITH RECURSIVE forward(id) AS (
-        SELECT ${lineageId}
+        SELECT ${start}
         UNION ALL
         SELECT t.id FROM transactions t JOIN forward f ON t.replaces_transaction_id = f.id
         WHERE t.id NOT IN (SELECT lineage_id FROM sync_lineage)
@@ -447,7 +461,14 @@ export async function privateLeaks(database: Database, afterSeq = 0): Promise<st
   const filedIn = new Set(
     (await database.db.values<[string, string]>(sql`SELECT book_id, category_account_id FROM book_categories`)).map(([book, category]) => `${book}|${category}`),
   );
-  const transactionIds = (await database.db.values<[string]>(sql`SELECT id FROM transactions WHERE id NOT IN (SELECT lineage_id FROM sync_lineage)`)).map(([id]) => id);
+  // A transfer shown in a shared workspace travels under its own key (`shared_transfers.transfer_id`, the transfer's
+  // first row's id): that key is the redacted row's name on every phone, never a reading of the transaction (0094, G3).
+  // Kept as seen, so a book erased with its rows since still accounts for what its log carried.
+  const transactionIds = (
+    await database.db.values<[string]>(sql`
+      SELECT id FROM transactions WHERE id NOT IN (SELECT lineage_id FROM sync_lineage) AND id NOT IN (SELECT lineage_id FROM temp.__lineages_seen)
+        AND id NOT IN (SELECT transfer_id FROM temp.__transfers_seen)`)
+  ).map(([id]) => id);
   const leaks: string[] = [];
   for (const [bookId, entryJson] of rows) {
     for (const id of accountIds) if (entryJson.includes(id)) leaks.push(`outbox of ${bookId} carries account ${id}`);

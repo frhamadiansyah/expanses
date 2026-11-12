@@ -11,6 +11,7 @@ import { archiveAccountTx } from './accounts';
 import {
   deleteBookPlanTx,
   eraseBookTx,
+  adoptKeptLineagesTx,
   keepInPersonalTx,
   keptByRecordsTx,
   anotherSharesSql,
@@ -284,15 +285,23 @@ export async function deleteBook(
       const keepOn = options.keepOwnInPersonal ?? true;
       // A trade or a sale names its transaction by id: it can only be kept, in place, never erased with the copy.
       if (plan.ownRecords > 0 && !keepOn) throw new BookError('RECORDS', ownRecordsMessage(plan.ownRecords));
+      const adopt: { lineageId: string; head: string }[] = [];
       const kept = (
-        await keepInPersonalTx(tx, ws, bookId, {
-          purchases: keepOn && plan.ownPurchases > 0 ? await ownPurchasesTx(tx, ws, bookId) : [],
-          records: plan.ownRecords > 0 ? (await keptByRecordsTx(tx, ws, bookId)).own : [],
-        })
+        await keepInPersonalTx(
+          tx,
+          ws,
+          bookId,
+          {
+            purchases: keepOn && plan.ownPurchases > 0 ? await ownPurchasesTx(tx, ws, bookId) : [],
+            records: plan.ownRecords > 0 ? (await keptByRecordsTx(tx, ws, bookId)).own : [],
+          },
+          adopt,
+        )
       ).length;
       // The own purchases a share here brings back: where each was paid from goes on record for that share's Place them now.
       await writeArrivingTx(tx, (await ownPurchasesOfTx(tx, ws, bookId)).arrivingIn);
       const erased = await eraseBookTx(tx, ws, bookId);
+      await adoptKeptLineagesTx(tx, ws, adopt);
       await audit({ erased: true, transactions: erased.transactions, categories: erased.categories, budgets: erased.budgets, keptInPersonal: kept });
       return { ...erased, erased: true, keptInPersonal: kept };
     }
