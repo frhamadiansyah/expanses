@@ -263,7 +263,7 @@ export { SHARED_EVENTS_MIN_APP_VERSION, meetsVersion } from './sync/events/versi
 export type { EventInviteDetails } from './sync/invite';
 export type { ShareEventInput, JoinEventInput } from './sync/events/event-log';
 // Delete this copy: a shared event this phone's person is no longer in, taken off this phone alone.
-export { ACTIVE_COPY_MESSAGE, deleteEventCopy } from './sync/events/event-copy';
+export { ACTIVE_COPY_MESSAGE, deleteEventCopy, type EventCopyPlan, planEventCopyDelete, WAITING_COPY_MESSAGE } from './sync/events/event-copy';
 // Sharing resilience §4.2 (D-A3): the rows of a share another copy on this phone holds, set aside until it is gone.
 export { heldElsewhereOf, HELD_PREFIX, type HeldRow } from './sync/held';
 export * from './repos/bond-coupons';

@@ -3,6 +3,8 @@ import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   deleteEventCopy,
+  eventPostingOf,
+  planEventCopyDelete,
   inBook,
   listAccounts,
   listEvents,
@@ -246,5 +248,81 @@ describe('a Family purchase moved into the trip, then the trip left and its copy
     await trip.home.settle([rina, andi]);
     expect(await familyList(andi)).toEqual(['2026-10-08 Groceries']);
     expect(await familyList(rina)).toEqual(['2026-10-08 Groceries']);
+  });
+});
+
+/** The share ended here as a 410 or a removal ends it (`endShared`): read-only, the outbox cleared. */
+async function endHere(d: Device, bookId: string, state: 'unshared' | 'needs_invite' = 'unshared') {
+  await d.database.db.run(sql`UPDATE shared_books SET state = ${state}, unshared_reason = ${state === 'unshared' ? 'stopped' : null} WHERE book_id = ${bookId}`);
+  if (state === 'unshared') await d.database.db.run(sql`DELETE FROM sync_outbox WHERE book_id = ${bookId}`);
+}
+
+/** Rina and Andi in "Coast week", every phone caught up. */
+async function liveTrip() {
+  const trip = new Trip();
+  const rina = await trip.device('Rina');
+  const andi = await trip.device('Andi');
+  const bookId = await trip.share(rina);
+  await trip.join(andi, rina);
+  await trip.settle([rina, andi]);
+  return { trip, rina, andi, bookId, rinaP: await personOf(rina, bookId), andiP: await personOf(andi, bookId) };
+}
+
+describe('fix round 1: what refuses Delete this copy, and what it says first', () => {
+  it('refuses while this person’s balance in the copy is not zero, saying how much, with nothing changed (review I1)', async () => {
+    const { trip, rina, andi, bookId, rinaP, andiP } = await liveTrip();
+    // Rina's lunch for both: Andi owes her 10.000 lira. Then Rina stops sharing.
+    await recordSharedExpense(rina.database, rina.ws, trip.eventOf(rina), {
+      occurredOn: '2026-10-06', amountMinor: 20_000, currency: 'TRY', rateToEvent: '1', payerPersonId: rinaP,
+      paidFrom: { accountId: rina.bank, chargedMinor: 112_000 }, split: { mode: 'equal', people: [rinaP, andiP] }, categoryId: null, note: 'Lunch',
+    });
+    await trip.settle([rina, andi]);
+    await endHere(andi, bookId);
+    const before = await bookRows(andi, bookId);
+    const money = await ownMoney(andi);
+
+    const plan = await planEventCopyDelete(andi.database, andi.ws, bookId);
+    expect(plan).toMatchObject({ refusalCode: 'NOT_SETTLED', balanceMinor: -10_000, currency: 'TRY' });
+    expect(plan.refusal).toContain("Andi's balance in Coast week is −");
+    expect(plan.refusal).not.toMatch(/\byou(r)?\b/i);
+    await expect(deleteEventCopy(andi.database, andi.ws, bookId)).rejects.toMatchObject({ code: 'NOT_SETTLED', message: plan.refusal });
+    expect(await bookRows(andi, bookId)).toEqual(before);
+    expect(await ownMoney(andi)).toEqual(money);
+    expect((await listEvents(andi.database, andi.ws)).map((e) => e.id)).toContain(trip.eventOf(andi));
+  });
+
+  it('refuses a copy waiting for an invite: its person is still in the event (review minor 2)', async () => {
+    const { andi, bookId } = await liveTrip();
+    await endHere(andi, bookId, 'needs_invite');
+    const before = await bookRows(andi, bookId);
+    expect(await planEventCopyDelete(andi.database, andi.ws, bookId)).toMatchObject({ refusalCode: 'STILL_SHARED' });
+    await expect(deleteEventCopy(andi.database, andi.ws, bookId)).rejects.toMatchObject({ code: 'STILL_SHARED' });
+    expect(await bookRows(andi, bookId)).toEqual(before);
+  });
+
+  it('says when records made here never reached the others: one recorded offline before the share ended (review minor 3)', async () => {
+    const { trip, andi, bookId, andiP } = await liveTrip();
+    expect(await planEventCopyDelete(andi.database, andi.ws, bookId)).toMatchObject({ refusal: 'This event is still shared here. Leave it instead.', unsentHere: 0 });
+    // Andi's own snack, all his (his balance stays at zero), recorded while offline; then the share ends here.
+    await recordSharedExpense(andi.database, andi.ws, trip.eventOf(andi), {
+      occurredOn: '2026-10-07', amountMinor: 3_000, currency: 'TRY', rateToEvent: '1', payerPersonId: andiP,
+      paidFrom: { accountId: andi.bank, chargedMinor: 16_800 }, split: { mode: 'equal', people: [andiP] }, categoryId: null, note: 'Snack',
+    });
+    await endHere(andi, bookId);
+    expect(await planEventCopyDelete(andi.database, andi.ws, bookId)).toMatchObject({ refusal: null, refusalCode: null, balanceMinor: 0, unsentHere: 1 });
+  });
+
+  it('a copy whose records all reached the log has nothing unsent', async () => {
+    const { leftCopy } = { leftCopy: await leftTrip() };
+    expect(await planEventCopyDelete(leftCopy.andi.database, leftCopy.andi.ws, leftCopy.first)).toMatchObject({ refusal: null, unsentHere: 0, balanceMinor: 0 });
+  });
+
+  it('a kept transaction says its copy was deleted here, with the event’s name (review minor 1)', async () => {
+    const { andi, first } = await leftTrip();
+    const [[transactionId]] = (await andi.database.db.values<[string]>(sql`
+      SELECT p.transaction_id FROM event_postings p JOIN transactions t ON t.id = p.transaction_id WHERE p.book_id = ${first} AND t.status = 'posted' LIMIT 1`)) as [[string]];
+    expect(await eventPostingOf(andi.database, transactionId)).toMatchObject({ eventName: 'Coast week', deletedHere: false });
+    await deleteEventCopy(andi.database, andi.ws, first);
+    expect(await eventPostingOf(andi.database, transactionId)).toMatchObject({ eventName: 'Coast week', deletedHere: true });
   });
 });

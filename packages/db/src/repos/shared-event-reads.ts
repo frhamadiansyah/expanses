@@ -322,19 +322,23 @@ export async function eventBalanceRows(database: Database, ws: WorkspaceContext)
 /**
  * The shared event's record a transaction follows, for its receipt (§7 "Changed by"); null for any other transaction.
  * A derived transaction is changed on the event, never on its own, so the receipt sends Edit there and says who last
- * changed the record when it was not this phone's person.
+ * changed the record when it was not this phone's person. `deletedHere`: the event's copy was deleted on this phone
+ * (`deleteEventCopy`: no share row left), so there is no event to open or change it on; `eventName` names it still.
  */
 export async function eventPostingOf(
   database: Database,
   transactionId: string,
-): Promise<{ eventId: string; kind: 'expense' | 'settlement'; recordId: string; changedByName: string | null } | null> {
+): Promise<{ eventId: string; eventName: string | null; kind: 'expense' | 'settlement'; recordId: string; changedByName: string | null; deletedHere: boolean } | null> {
   const [row] = await database.db
-    .values<[string, string, string, string | null]>(sql`
-      SELECT b.event_id, p.kind, p.record_id, (SELECT name FROM event_people WHERE book_id = p.book_id AND id = p.changed_by)
+    .values<[string, string, string, string | null, string | null, number]>(sql`
+      SELECT b.event_id, p.kind, p.record_id, (SELECT name FROM event_people WHERE book_id = p.book_id AND id = p.changed_by),
+             (SELECT name FROM events WHERE id = b.event_id), NOT EXISTS (SELECT 1 FROM shared_books s WHERE s.book_id = p.book_id)
       FROM event_postings p JOIN event_books b ON b.book_id = p.book_id WHERE p.transaction_id = ${transactionId}`)
     // A copy stopped before migration 0069 has no shared events, and so no transaction that follows one.
     .catch(() => []);
-  return row ? { eventId: row[0], kind: row[1] as 'expense' | 'settlement', recordId: row[2], changedByName: row[3] } : null;
+  return row
+    ? { eventId: row[0], eventName: row[4], kind: row[1] as 'expense' | 'settlement', recordId: row[2], changedByName: row[3], deletedHere: Number(row[5]) === 1 }
+    : null;
 }
 
 /**
