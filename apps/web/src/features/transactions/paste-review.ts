@@ -19,6 +19,8 @@ export interface ReviewRow {
   occurredOn: string;
   /** The amount looked like a slip (tiny, rounded, ambiguous): drawn outlined until it is retyped. */
   flagged: boolean;
+  /** The line named no date in the list, so it took the page's date; cleared once the owner sets a date on the row. */
+  noListDate?: boolean;
 }
 
 /**
@@ -33,10 +35,41 @@ export function reviewRowsFrom(lines: readonly PurchaseLine[], pageDate: string,
     categoryId: guesses[line.lineNo] ?? '',
     occurredOn: line.occurredOn ?? pageDate,
     flagged: line.status === 'suspicious',
+    noListDate: line.occurredOn === null,
   }));
 }
 
 /** The rows with an amount, and those without ("Not read"), each in the order of the pasted text. */
+/**
+ * What the Date row of the paste screen says, from the lines as read: `all` when every line took its own date from the
+ * list (the page date is then never used), `some` when only part did, `none` when no line did or there are no lines.
+ */
+export type DateRowMode = 'none' | 'some' | 'all';
+export function dateRowMode(lines: readonly Pick<PurchaseLine, 'occurredOn'>[]): DateRowMode {
+  const dated = lines.filter((line) => line.occurredOn !== null).length;
+  if (dated === 0) return 'none';
+  return dated === lines.length ? 'all' : 'some';
+}
+
+export interface DayGroup {
+  date: string;
+  rows: ReviewRow[];
+  /** The sum of the rows' amounts; rows without an amount add nothing. */
+  totalMinor: number;
+}
+
+/** The rows with an amount grouped by their own day, oldest day first; rows keep the order of the pasted text within a day. */
+export function dayGroups(rows: readonly ReviewRow[]): DayGroup[] {
+  const byDay = new Map<string, DayGroup>();
+  for (const row of rows) {
+    const group = byDay.get(row.occurredOn) ?? { date: row.occurredOn, rows: [], totalMinor: 0 };
+    group.rows.push(row);
+    group.totalMinor += row.amountMinor ?? 0;
+    byDay.set(row.occurredOn, group);
+  }
+  return [...byDay.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
 export function sections(rows: readonly ReviewRow[]): { read: ReviewRow[]; unread: ReviewRow[] } {
   return { read: rows.filter((row) => row.amountMinor !== null), unread: rows.filter((row) => row.amountMinor === null) };
 }

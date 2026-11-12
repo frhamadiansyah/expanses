@@ -12,6 +12,8 @@ describe('parseLooseDate', () => {
     expect(parseLooseDate('12 sep', TODAY)).toBe('2026-09-12');
     expect(parseLooseDate('12 September 2025', TODAY)).toBe('2025-09-12');
     expect(parseLooseDate('Sep 12', TODAY)).toBe('2026-09-12');
+    expect(parseLooseDate('21 April', TODAY)).toBe('2026-04-21');
+    expect(parseLooseDate('April 21', TODAY)).toBe('2026-04-21');
   });
 
   it('puts the month first where people write it that way', () => {
@@ -185,5 +187,20 @@ describe('capturedCategory', () => {
       seen('Kedai Senja', 'cat-restaurants'),
     ];
     expect(capturedCategory('Kedai Senja', history)).toBe('cat-cafe');
+  });
+});
+
+describe('parseLooseDate: Indonesian months and joined shapes', () => {
+  it('reads them', () => {
+    expect(parseLooseDate('21okt', TODAY)).toBe('2026-10-21');
+    expect(parseLooseDate('21-okt', TODAY)).toBe('2026-10-21');
+    expect(parseLooseDate('21 Oktober 2025', TODAY)).toBe('2025-10-21');
+    expect(parseLooseDate('okt 21', TODAY)).toBe('2026-10-21');
+    expect(parseLooseDate('1 des', TODAY)).toBe('2026-12-01');
+    expect(parseLooseDate('3 mei', TODAY)).toBe('2026-05-03');
+  });
+  it('does not read a word that only starts like a month', () => {
+    expect(parseLooseDate('2 martabak', TODAY)).toBeNull();
+    expect(parseLooseDate('2 marketing', TODAY)).toBeNull();
   });
 });

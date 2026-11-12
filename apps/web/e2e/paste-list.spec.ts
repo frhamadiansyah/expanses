@@ -8,9 +8,8 @@ test('the list glyph is on the new expense and the page works at desktop width',
   await expect(page).toHaveURL(/\/transactions\/paste/);
   await page.getByLabel('Purchases').fill('kopi susu 12k\nbakso 20.000');
   await page.getByRole('button', { name: 'Review 2' }).click();
-  await expect(page.getByTestId('review-header')).toHaveText('2 lines');
   await expect(page.getByTestId('review-total')).toContainText('32.000');
-  await page.getByTestId('review-save').click();
+  await page.getByRole('button', { name: 'Save list' }).click();
   await expect(page).toHaveURL(/\/transactions$/);
   await expect(page.getByTestId('toast')).toHaveText('Added 2 purchases');
   await page.goto('/wallet');

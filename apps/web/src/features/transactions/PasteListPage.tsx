@@ -1,7 +1,7 @@
 import { formatMinor, groupedMajorString, groupTypedAmount, isoDate, parseGroupedMajor, parsePurchaseList, type PaymentOption } from '@expanses/core';
 import { guessCategoryFromHistory, postTransactions, uncategorisedCategory } from '@expanses/db';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
-import { ArrowRight, Check, CreditCard, Landmark } from 'lucide-react';
+import { ArrowRight, CalendarDays, Check, CreditCard, Landmark } from 'lucide-react';
 import { type FormEvent, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useBack } from '../../app/BackHeader';
@@ -9,24 +9,25 @@ import { Sheet } from '../../app/Sheet';
 import { canPayWith } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
-import { InsetGroup, PickerRow, PushedTitle, ReadOnlyRow, SCREEN, SubmitRow, TextRow, DestructiveRow } from '../../ui/native';
+import { InsetGroup, PickerRow, PushedTitle, ReadOnlyRow, SCREEN, TextRow, DestructiveRow } from '../../ui/native';
 import { showToast } from '../../ui/Toast';
 import { useOpeningDay } from '../accounts/queries';
 import { useCards } from '../cards/card-queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { DateRow } from './CardRows';
+import { DayHeader } from './DayHeader';
 import { CategoryPicker } from './CategoryPicker';
-import { FormRow, FormRows, RowGlyph } from './FormRow';
+import { FormRow, FormRows, ROW_BODY, RowGlyph, RowLead } from './FormRow';
 import {
   addedText,
   canSave,
+  dateRowMode,
+  dayGroups,
   purchaseInputs,
   readingKey,
-  reviewHeader,
   reviewLabel,
   type ReviewRow,
   reviewRowsFrom,
-  saveLabel,
   sections,
   totalMinor,
   withEdit,
@@ -88,7 +89,9 @@ export function PasteListPage() {
   const currency = payerAccount?.currency ?? ws.baseCurrency;
   const payerName = payer ? (payer.cardId ? `${payer.accountName} ···· ${payer.last4 ?? '????'}` : payer.accountName) : '';
 
-  const lineCount = useMemo(() => parsePurchaseList(text, { today: isoDate(), currency }).length, [text, currency]);
+  const parsed = useMemo(() => parsePurchaseList(text, { today: isoDate(), currency }), [text, currency]);
+  const lineCount = parsed.length;
+  const dateMode = dateRowMode(parsed);
 
   async function review() {
     if (lineCount === 0 || !payer || reading) return;
@@ -169,7 +172,7 @@ export function PasteListPage() {
     }
     // A retyped figure is the owner's word for it, so it is no longer outlined.
     const retyped = amountMinor !== before?.amountMinor;
-    setRows(withEdit(rows, editing, { note: draft.note.trim(), amountMinor, categoryId: draft.categoryId, occurredOn: draft.occurredOn, ...(retyped ? { flagged: false } : {}) }));
+    setRows(withEdit(rows, editing, { note: draft.note.trim(), amountMinor, categoryId: draft.categoryId, occurredOn: draft.occurredOn, ...(draft.occurredOn !== before?.occurredOn ? { noListDate: false } : {}), ...(retyped ? { flagged: false } : {}) }));
     closeSheet();
   }
 
@@ -206,8 +209,23 @@ export function PasteListPage() {
               value={payerName}
               onClick={() => setSheet('payer')}
             />
-            <DateRow on={date} onChange={setDate} />
+            {dateMode === 'all' ? (
+              <div className="flex items-center gap-[10px] pl-[10px]">
+                <RowLead>
+                  <RowGlyph>
+                    <CalendarDays size={15} />
+                  </RowGlyph>
+                </RowLead>
+                <span className={cx(ROW_BODY, 'justify-between')}>
+                  <span className="text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-5">Dates</span>
+                  <span className="text-[12.5px] leading-4 text-[var(--ph-ink-3)]">From the list</span>
+                </span>
+              </div>
+            ) : (
+              <DateRow on={date} onChange={setDate} label={dateMode === 'some' ? 'Lines without a date' : 'Date'} />
+            )}
           </FormRows>
+          {dateMode === 'all' && <p className="px-[13px] text-[13px] leading-4 text-[var(--ph-ink-3)]">Every line has a date in the list.</p>}
         </div>
         {sheet === 'payer' && (
           <PaymentSheet
@@ -243,7 +261,7 @@ export function PasteListPage() {
           <span className="ph-row-body flex min-h-[60px] min-w-0 flex-1 items-center gap-2 pr-[14px]">
             <span className="min-w-0 flex-1">
               <span className={cx('block truncate text-[17px] leading-[22px] md:text-[15px] md:leading-5', row.note ? 'text-[var(--ph-ink)]' : 'text-[var(--ph-ink-3)]')}>{row.note || 'No note'}</span>
-              <span className="block truncate text-[13px] leading-4 text-[var(--ph-ink-3)]">{missing ? 'No amount' : row.categoryId ? nameOf(row.categoryId) : 'Choose a category'}</span>
+              <span className="block truncate text-[13px] leading-4 text-[var(--ph-ink-3)]">{missing ? 'No amount' : row.categoryId ? nameOf(row.categoryId) : 'Choose a category'}{row.noListDate && <span className="text-[var(--ph-warn-ink)]"> · no date in the list</span>}</span>
             </span>
             {missing ? (
               <span aria-hidden className="shrink-0 text-[17px] text-[var(--ph-chevron)]">{'›'}</span>
@@ -281,8 +299,14 @@ export function PasteListPage() {
         ) : (
           <>
             <section>
-              <h2 className={HEADER} data-testid="review-header">{reviewHeader(rows)}</h2>
-              {read.length > 0 && <div className={cx(SURFACE, '[&>*+*>button>.ph-row-body]:border-t-[0.5px] [&>*+*>button>.ph-row-body]:border-[var(--ph-hair)]')}>{read.map(rowButton)}</div>}
+              {dayGroups(read).map((group) => (
+                <div key={group.date} data-testid="review-day" data-date={group.date} className={cx(SURFACE, 'mb-3 last:mb-0')}>
+                  <div className="px-[14px] pt-3 pb-1">
+                    <DayHeader date={group.date} net={-group.totalMinor} currency={currency} />
+                  </div>
+                  <div className="[&>*+*>button>.ph-row-body]:border-t-[0.5px] [&>*+*>button>.ph-row-body]:border-[var(--ph-hair)]">{group.rows.map(rowButton)}</div>
+                </div>
+              ))}
             </section>
             {unread.length > 0 && (
               <section>
@@ -296,9 +320,6 @@ export function PasteListPage() {
           <ReadOnlyRow label="Total" value={formatMinor(totalMinor(rows), currency)} testId="review-total" />
         </InsetGroup>
         <ErrorBox error={error} />
-        <InsetGroup>
-          <SubmitRow label={saveLabel(rows)} disabled={!canSave(rows) || busy} testId="review-save" />
-        </InsetGroup>
       </form>
 
       {editingRow && draft && !picking && (
