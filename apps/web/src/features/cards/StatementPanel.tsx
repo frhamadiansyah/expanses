@@ -2,7 +2,7 @@ import { formatMinor, matchesSearch, statementCycleFor } from '@expanses/core';
 import { type AccountRow, billOnNextStatement, cardStatement, cardStatementLines, type CardRow, carriesPaidOffMark, payCardPurchases, setPostedOn, setSettledBeforeApp, setTransactionsCard, type StatementLine } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { CalendarArrowUp, Check, CircleCheck, CircleX, CreditCard, Ellipsis, Receipt, Undo2 } from 'lucide-react';
+import { CalendarArrowUp, Check, CircleCheck, CircleX, CreditCard, Ellipsis, Receipt, Undo2, X } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { usePhone } from '../../app/use-phone';
@@ -21,6 +21,7 @@ import { groupStatementLines } from './statement-groups';
 import { CardSheet } from './CardSheet';
 import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
+import { SELECT_CIRCLE, SelectBarFrame } from '../transactions/SelectBar';
 import { formatPoints } from './useCardPoints';
 import { takeCheckedNote } from '../statement-check/batch';
 
@@ -87,6 +88,8 @@ export function StatementPanel({
   const [paidOn, setPaidOn] = useState(today);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  // The Pay sheet the select bar's Pay opens.
+  const [paying, setPaying] = useState(false);
   // The paid-off purchase whose ✓ was tapped: the sheet that offers to take it back.
   const [unmarking, setUnmarking] = useState<StatementLine | null>(null);
   // The purchases under Card not recorded, while the sheet that sets their card is up.
@@ -633,44 +636,71 @@ export function StatementPanel({
         </Sheet>
       )}
 
+      {/* Searching keeps the ticks but stands the bar down: the search field takes the top of the page. */}
       {!searching && chosen.length > 0 && (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            // Enter submits too: the question is a condition on it.
-            if (!setAside.ready) return;
-            void run(async () => {
-              await payCardPurchases(database, ws, {
-                cardAccountId: card.id,
-                fromAccountId: payFrom,
-                occurredOn: paidOn,
-                purchaseTransactionIds: chosen.map((line) => line.transactionId),
-                setAside: setAside.choice,
+        <SelectBarFrame label="Selected purchases" testId="statement-select-bar">
+          <button type="button" aria-label="Clear" disabled={busy} onClick={() => setSelected(new Set())} className={`${SELECT_CIRCLE} text-[var(--ph-ink-2)]`}>
+            <X size={19} aria-hidden />
+          </button>
+          <span aria-live="polite" className="min-w-0 flex-1 truncate text-center text-[17px] font-semibold text-[var(--ph-ink)]">
+            {chosen.length} selected
+          </span>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setPaying(true)}
+            className="ph-focus flex h-11 shrink-0 items-center justify-center rounded-full bg-[var(--ph-surface)] px-5 text-[17px] font-semibold text-[var(--ph-tint)] shadow-[0_1px_3px_rgb(0_0_0/0.08)] disabled:text-[var(--ph-ink-3)]"
+          >
+            Pay
+          </button>
+        </SelectBarFrame>
+      )}
+
+      {paying && chosen.length > 0 && (
+        <Sheet grouped title={`Pay ${chosen.length} purchase${chosen.length === 1 ? '' : 's'}`} onClose={() => setPaying(false)}>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              // Enter submits too: the question is a condition on it.
+              if (!setAside.ready) return;
+              void run(async () => {
+                await payCardPurchases(database, ws, {
+                  cardAccountId: card.id,
+                  fromAccountId: payFrom,
+                  occurredOn: paidOn,
+                  purchaseTransactionIds: chosen.map((line) => line.transactionId),
+                  setAside: setAside.choice,
+                });
+                setSelected(new Set());
+                setPaying(false);
               });
-              setSelected(new Set());
-            });
-          }}
-        >
-          <ColumnGroup
-            header={`Pay ${chosen.length} purchase${chosen.length === 1 ? '' : 's'} now`}
-            trailing={money(chosenMinor)}
-            footer={payers.length === 0 ? `Add a ${currency} bank account to pay the card from.` : undefined}
-            columns={[
-              [
-                <SelectRow label="Paid from" value={payFrom} onChange={(event) => setFromId(event.target.value)}>
-                  {payers.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name}
-                    </option>
-                  ))}
-                </SelectRow>,
-              ],
-              [<TextRow label="Paid on" type="date" value={paidOn} onChange={(event) => setPaidOn(event.target.value)} required />],
-            ]}
-            submit={<SubmitRow label={`Pay ${money(chosenMinor)}`} disabled={busy || payers.length === 0 || !setAside.ready} />}
-          />
-          {setAside.node}
-        </form>
+            }}
+          >
+            <InsetGroup wide>
+              {chosen.map((line) => (
+                <InsetRow key={line.transactionId} plain title={line.description} value={money(line.owedMinor)} />
+              ))}
+            </InsetGroup>
+            <ColumnGroup
+              footer={payers.length === 0 ? `Add a ${currency} bank account to pay the card from.` : undefined}
+              columns={[
+                [
+                  <SelectRow label="Paid from" value={payFrom} onChange={(event) => setFromId(event.target.value)}>
+                    {payers.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name}
+                      </option>
+                    ))}
+                  </SelectRow>,
+                ],
+                [<TextRow label="Paid on" type="date" value={paidOn} onChange={(event) => setPaidOn(event.target.value)} required />],
+              ]}
+              submit={<SubmitRow label={`Pay ${money(chosenMinor)}`} disabled={busy || payers.length === 0 || !setAside.ready} />}
+            />
+            {setAside.node}
+            <ErrorBox error={error} />
+          </form>
+        </Sheet>
       )}
       <ErrorBox error={error ?? statement.error} />
       {noteShown && note && <ToastCard text={note} />}

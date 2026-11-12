@@ -98,6 +98,7 @@ test('paying chosen purchases now from Jenius asks the same question', async ({ 
   await cardPage(page, 'Statement');
 
   await page.getByLabel('Pay Laptop').check();
+  await page.getByTestId('statement-select-bar').getByRole('button', { name: 'Pay', exact: true }).click();
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
   const pay = page.getByRole('button', { name: /^Pay Rp/ });
   await expect(pay).toBeDisabled();

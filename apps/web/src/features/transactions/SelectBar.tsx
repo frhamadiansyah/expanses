@@ -1,6 +1,30 @@
 import { Ellipsis, X } from 'lucide-react';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { ErrorBox } from '../../ui';
+
+/** The round 44 px button the select bar's ends are drawn with. */
+export const SELECT_CIRCLE = 'ph-focus flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ph-surface)] shadow-[0_1px_3px_rgb(0_0_0/0.08)]';
+
+/** The select bar's shell — fixed to the top on the pinned title bar's glass — for any list that selects (Cashflow, a card's statement). */
+export function SelectBarFrame({ label, testId, error, children }: { label: string; testId: string; error?: unknown; children: ReactNode }) {
+  return (
+    <div role="toolbar" aria-label={label} data-testid={testId} className="fixed inset-x-0 top-0 z-40 pt-[env(safe-area-inset-top)]">
+      {/*
+       * The same glass the pinned title bar stands on, fading into the rows below rather than ending on a hard edge, so
+       * select mode reads as the page's own header and not as a strip laid over it. A layer of its own behind the
+       * controls, reaching the fade's 20 px under the bar: the glass is masked, and a menu hanging below a masked bar
+       * would be masked out with it.
+       */}
+      <div aria-hidden className="ph-edge-glass pointer-events-none absolute inset-x-0 top-0 -bottom-5" />
+      <div className="relative mx-auto flex max-w-2xl items-center gap-3 px-4 py-2">{children}</div>
+      {error ? (
+        <div className="mx-auto max-w-2xl px-4 pb-2">
+          <ErrorBox error={error} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 /**
  * The list's select mode, in the title row and nothing else: ✕ on the left to finish, how many are selected in the
@@ -43,64 +67,50 @@ export function SelectBar({
     setMenu(false);
     run();
   };
-  const circle = 'ph-focus flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ph-surface)] shadow-[0_1px_3px_rgb(0_0_0/0.08)]';
+  const circle = SELECT_CIRCLE;
   const item = 'ph-focus-inset block w-full border-t-[0.5px] border-[var(--ph-hair)] px-4 py-[11px] text-left text-[var(--ph-ink)] first:border-t-0 disabled:text-[var(--ph-ink-3)]';
   return (
-    <div role="toolbar" aria-label="Selected transactions" data-testid="select-bar" className="fixed inset-x-0 top-0 z-40 pt-[env(safe-area-inset-top)]">
-      {/*
-       * The same glass the pinned title bar stands on, fading into the rows below rather than ending on a hard edge, so
-       * select mode reads as the page's own header and not as a strip laid over it. A layer of its own behind the
-       * controls, reaching the fade's 20 px under the bar: the glass is masked, and a menu hanging below a masked bar
-       * would be masked out with it.
-       */}
-      <div aria-hidden className="ph-edge-glass pointer-events-none absolute inset-x-0 top-0 -bottom-5" />
-      <div className="relative mx-auto flex max-w-2xl items-center gap-3 px-4 py-2">
-        <button type="button" aria-label="Done" onClick={onCancel} className={`${circle} text-[var(--ph-ink-2)]`}>
-          <X size={19} aria-hidden />
-        </button>
-        <span aria-live="polite" className="min-w-0 flex-1 truncate text-center text-[17px] font-semibold text-[var(--ph-ink)]">
-          {count === 0 ? 'None selected' : `${count} selected`}
-        </span>
-        <button
-          type="button"
-          aria-label="Actions"
-          aria-expanded={menu}
-          disabled={busy}
-          onClick={() => setMenu((open) => !open)}
-          className={`${circle} text-[var(--ph-tint)] disabled:text-[var(--ph-ink-3)]`}
-        >
-          <Ellipsis size={22} aria-hidden />
-        </button>
-        {menu && (
-          <div role="menu" aria-label="Actions" className="absolute top-full right-4 w-64 overflow-hidden rounded-[13px] bg-[var(--ph-surface)] text-[16px] shadow-[0_10px_34px_rgb(0_0_0/0.22)]">
-            <button type="button" role="menuitem" onClick={pick(onSelectAll)} className={item}>
-              {allSelected ? 'Deselect All' : 'Select All'}
+    <SelectBarFrame label="Selected transactions" testId="select-bar" error={error}>
+      <button type="button" aria-label="Done" onClick={onCancel} className={`${circle} text-[var(--ph-ink-2)]`}>
+        <X size={19} aria-hidden />
+      </button>
+      <span aria-live="polite" className="min-w-0 flex-1 truncate text-center text-[17px] font-semibold text-[var(--ph-ink)]">
+        {count === 0 ? 'None selected' : `${count} selected`}
+      </span>
+      <button
+        type="button"
+        aria-label="Actions"
+        aria-expanded={menu}
+        disabled={busy}
+        onClick={() => setMenu((open) => !open)}
+        className={`${circle} text-[var(--ph-tint)] disabled:text-[var(--ph-ink-3)]`}
+      >
+        <Ellipsis size={22} aria-hidden />
+      </button>
+      {menu && (
+        <div role="menu" aria-label="Actions" className="absolute top-full right-4 w-64 overflow-hidden rounded-[13px] bg-[var(--ph-surface)] text-[16px] shadow-[0_10px_34px_rgb(0_0_0/0.22)]">
+          <button type="button" role="menuitem" onClick={pick(onSelectAll)} className={item}>
+            {allSelected ? 'Deselect All' : 'Select All'}
+          </button>
+          <div aria-hidden className="h-[7px] bg-[var(--ph-ground)]" />
+          <button type="button" role="menuitem" disabled={none} onClick={pick(onAdd)} className={item}>
+            Add to event
+          </button>
+          {onMove && (
+            <button type="button" role="menuitem" disabled={none} onClick={pick(onMove)} className={item}>
+              Move to workspace
             </button>
-            <div aria-hidden className="h-[7px] bg-[var(--ph-ground)]" />
-            <button type="button" role="menuitem" disabled={none} onClick={pick(onAdd)} className={item}>
-              Add to event
+          )}
+          {onSetCard && (
+            <button type="button" role="menuitem" disabled={none} onClick={pick(onSetCard)} className={item}>
+              Set card
             </button>
-            {onMove && (
-              <button type="button" role="menuitem" disabled={none} onClick={pick(onMove)} className={item}>
-                Move to workspace
-              </button>
-            )}
-            {onSetCard && (
-              <button type="button" role="menuitem" disabled={none} onClick={pick(onSetCard)} className={item}>
-                Set card
-              </button>
-            )}
-            <button type="button" role="menuitem" disabled={none || !canRemove} onClick={pick(onRemove)} className={item}>
-              Remove from event
-            </button>
-          </div>
-        )}
-      </div>
-      {error ? (
-        <div className="mx-auto max-w-2xl px-4 pb-2">
-          <ErrorBox error={error} />
+          )}
+          <button type="button" role="menuitem" disabled={none || !canRemove} onClick={pick(onRemove)} className={item}>
+            Remove from event
+          </button>
         </div>
-      ) : null}
-    </div>
+      )}
+    </SelectBarFrame>
   );
 }
