@@ -58,11 +58,14 @@ function unitsOf(capture: RawCapture): Unit[] {
  * An HTML email reaches the reader the way Mail flattened it: `&nbsp;` as a no-break space, a break as a carriage
  * return or a line separator. Every word and phrase the reader looks for is written with plain spaces and a plain
  * `\n`, so "Kartu\u00a0Kredit" slipped past the phrase that says it is a card and read as money in. Each such
- * character becomes one plain one (a CRLF becomes one `\n`), before anything is read.
+ * character becomes one plain one (a CRLF becomes one `\n`), and a character that takes no room (a zero-width space,
+ * a soft hyphen) is dropped, before anything is read.
  */
 const ODD_SPACE = /[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]/g;
 const ODD_BREAK = /\r\n?|[\u2028\u2029\u0085\v\f]/g;
-const plainText = (text: string): string => text.replace(ODD_BREAK, '\n').replace(ODD_SPACE, ' ');
+/** Characters that take no room at all: zero-width spaces and joiners, a byte-order mark, a soft hyphen. Dropped. */
+const NO_WIDTH = /[\u200b-\u200d\u2060\ufeff\u00ad]/g;
+const plainText = (text: string): string => text.replace(NO_WIDTH, '').replace(ODD_BREAK, '\n').replace(ODD_SPACE, ' ');
 const plainOrNull = (text: string | null): string | null => (text === null ? null : plainText(text));
 
 function withPlainSpaces(capture: RawCapture): RawCapture {
