@@ -1,10 +1,13 @@
 import {
+  activeNetWorthGroup,
   type CreatedInvite,
   confirmReview,
   getJointAccount,
   goalShareOf,
   markShareListAsked,
   type MoveRefusal,
+  ownSentAccountIds,
+  reviewedFor,
   reviewItems,
   seedShareListAsked,
   type SharingDetail,
@@ -14,7 +17,7 @@ import {
   shareListAskedFor,
   stopSharingGoal,
 } from '@expanses/db';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -29,7 +32,7 @@ import { useSharedEventSummaries } from '../events/shared-queries';
 import { GOAL_SHARING_COPY } from '../goals/goal-sharing';
 import { useGoalPlans, useGoals, useGoalShareTargets } from '../goals/queries';
 import { InviteCard } from './InviteCard';
-import { useActiveNetWorthGroup, useNetWorthGroup, useReview } from './net-worth-queries';
+import { useNetWorthGroup } from './net-worth-queries';
 import { netWorthRowOf, netWorthValue, sayNetWorthError } from './net-worth-state';
 import { useSharingDetail } from './queries';
 import {
@@ -42,6 +45,7 @@ import {
   jointOn,
   keepConfirmed,
   reconcile,
+  reviewStillShown,
   type ShareDraft,
   type ShareList,
   type ShareListGroup,
@@ -77,6 +81,7 @@ export function useShareListAsked(bookId: string) {
   return useQuery({
     queryKey: ['share-list-asked', bookId],
     queryFn: async () => {
+      // Accepted risk (failure path only): reached first only when the App's seed failed, a member who joined in between counts as offered.
       await seedShareListAsked(database);
       return shareListAskedFor(database, bookId);
     },
@@ -102,36 +107,45 @@ export function useShareList(bookId: string): { list: ShareList | null; goalShar
       }),
     [sync, queryClient],
   );
-  const group = useActiveNetWorthGroup();
-  const review = useReview();
+  // Net worth as one snapshot (fix round 2): the group, its proposal, the review, the items, what is live in the log
+  // and what is joint are read together, so a Save never answers a review the list did not show. The previous read is
+  // kept while a new one runs, so the list never blanks.
+  const netWorth = useQuery({
+    queryKey: ['share-list', 'net-worth', ws.workspaceId, bookId],
+    placeholderData: keepPreviousData,
+    queryFn: async () => {
+      const g = await activeNetWorthGroup(database);
+      if (!g || g.workspaceBookId !== bookId) return null;
+      const items = await reviewItems(database, ws);
+      const joint = new Set<string>();
+      for (const item of items) if (await getJointAccount(database, item.accountId)) joint.add(item.accountId);
+      return {
+        mode: g.mode,
+        proposalId: g.proposalId,
+        reviewed: await reviewedFor(database, g.groupBookId, g.proposalId),
+        items,
+        joint,
+        live: new Set(await ownSentAccountIds(database, g.groupBookId)),
+      };
+    },
+  });
   const goals = useGoals();
   const targets = useGoalShareTargets();
   const events = useEvents();
   const summaries = useSharedEventSummaries();
-  const accountIds = (review.data?.items ?? []).map((item) => item.accountId);
-  const joint = useQuery({
-    queryKey: ['share-list', 'joint', accountIds],
-    enabled: review.isSuccess,
-    queryFn: async () => {
-      const on = new Set<string>();
-      for (const id of accountIds) if (await getJointAccount(database, id)) on.add(id);
-      return on;
-    },
-  });
   const goalIds = (goals.data ?? []).map((goal) => goal.id);
   const shares = useQuery({
     queryKey: ['share-list', 'goal-shares', goalIds],
     enabled: goals.isSuccess,
+    placeholderData: keepPreviousData,
     queryFn: async () => Object.fromEntries(await Promise.all(goalIds.map(async (id) => [id, await goalShareOf(database, id)] as const))),
   });
-  const ready = group.isSuccess && review.isSuccess && goals.isSuccess && targets.isSuccess && events.isSuccess && summaries.isSuccess && joint.isSuccess && shares.isSuccess;
+  const ready = netWorth.isSuccess && goals.isSuccess && targets.isSuccess && events.isSuccess && summaries.isSuccess && shares.isSuccess;
   const list = useMemo(() => {
     if (!ready) return null;
-    const g = group.data;
-    const r = review.data!;
     return shareListOf({
       bookId,
-      netWorth: g && g.workspaceBookId === bookId ? { mode: g.mode, reviewed: r.reviewed, items: r.items, joint: joint.data! } : null,
+      netWorth: netWorth.data ?? null,
       goals: goals.data!.filter((goal) => goal.status !== 'archived').map((goal) => ({ id: goal.id, name: goal.name, share: shares.data![goal.id] ?? null })),
       goalTargets: targets.data!,
       events: events.data!.map((event) => ({
@@ -142,7 +156,7 @@ export function useShareList(bookId: string): { list: ShareList | null; goalShar
         shared: summaries.data![event.id] !== undefined,
       })),
     });
-  }, [ready, group.data, review.data, joint.data, goals.data, shares.data, targets.data, events.data, summaries.data, bookId, ws.baseCurrency]);
+  }, [ready, netWorth.data, goals.data, shares.data, targets.data, events.data, summaries.data, bookId, ws.baseCurrency]);
   return { list, goalShares: shares.data ?? {} };
 }
 
@@ -252,7 +266,21 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
         {
           // Made whole against the items as they are now (fix round 1, 4): one added since the list was read is sent
           // as hidden, never left to the review's own default of shared.
-          review: async (settings) => confirmReview(database, ws, completeReviewSettings(settings, (await reviewItems(database, ws)).map((item) => item.accountId))),
+          review: async (settings) => {
+            // The review on screen, still: the same proposal and filing, still waiting (fix round 2). Refused otherwise;
+            // the reads after Save bring the list up to date.
+            const shown = list.netWorth!;
+            const g = await activeNetWorthGroup(database);
+            const current = g && g.workspaceBookId === bookId ? g : null;
+            const refusal = reviewStillShown(shown, {
+              proposalId: current?.proposalId ?? null,
+              mode: current?.mode ?? null,
+              reviewed: current ? await reviewedFor(database, current.groupBookId, current.proposalId) : false,
+            });
+            if (refusal) throw new Error(refusal);
+            const ids = (await reviewItems(database, ws)).map((item) => item.accountId);
+            await confirmReview(database, ws, completeReviewSettings(settings, ids), { missing: 'hidden' });
+          },
           setting: (accountId, setting) => setShareSetting(database, accountId, setting),
           joint: (accountId, on) => setJointAccount(database, accountId, on),
           shareGoal: (goalId) => shareGoal(database, ws, goalId, bookId),
@@ -358,7 +386,7 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
           ) : null}
           {reviewWaits ? (
             <div className="mb-[14px]">
-              <Notice kind="warning" testId="share-list-review" title={SHARE_LIST_COPY.reviewTitle} body={SHARE_LIST_COPY.reviewBody(reviewWaits.mode, othersAll)} />
+              <Notice kind="warning" testId="share-list-review" title={SHARE_LIST_COPY.reviewTitle} body={SHARE_LIST_COPY.reviewBody(reviewWaits.mode, othersAll, bookName)} />
             </div>
           ) : null}
           {list.groups.map((group) => (

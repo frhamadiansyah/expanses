@@ -1,6 +1,7 @@
 import type { GoalShareTarget, GoalShareView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import {
+  ALL_NET_WORTH,
   allOrNone,
   applyShareChanges,
   changesOf,
@@ -12,9 +13,11 @@ import {
   jointOn,
   keepConfirmed,
   monthOf,
+  NET_WORTH_CHANGED,
   NOT_SHARED_YET,
   reconcile,
   REVIEW_NAME,
+  reviewStillShown,
   SHARE_LIST_COPY,
   type ShareChange,
   type ShareList,
@@ -56,6 +59,7 @@ function input(over: Partial<ShareListInput> = {}): ShareListInput {
     bookId: BOOK,
     netWorth: {
       mode: 'separate',
+      proposalId: 'p-1',
       reviewed: true,
       items: [
         { accountId: 'a-bca', name: 'BCA Tahapan', subtype: 'savings', setting: 'total' },
@@ -66,6 +70,7 @@ function input(over: Partial<ShareListInput> = {}): ShareListInput {
         { accountId: 'a-kpr', name: 'Home loan', subtype: 'loan', setting: 'hidden' },
       ],
       joint: new Set(['a-bca']),
+      live: new Set(),
     },
     goals: [
       { id: 'g-hajj', name: 'Hajj', share: goalShare('g-hajj') },
@@ -84,6 +89,7 @@ function input(over: Partial<ShareListInput> = {}): ShareListInput {
   };
 }
 
+const draftKeys = (draft: { ticks: ReadonlyMap<string, boolean> }) => [...draft.ticks.keys()];
 const rows = (list: ShareList) => list.groups.flatMap((group) => group.items);
 const row = (list: ShareList, name: string) => rows(list).find((item) => item.name === name)!;
 
@@ -172,11 +178,28 @@ describe('a net worth review that waits is never answered behind the person’s 
     expect(changesOf(list, draft)).toEqual([{ kind: 'setting', key: 'setting:a-mandiri', name: 'Business Mandiri', accountId: 'a-mandiri', setting: 'total' }]);
   });
 
-  it('before the review, nothing reads as shared — not even what an earlier group left stored as shared', () => {
-    const list = listWith({ mode: 'separate', reviewed: false });
+  it('before the review of a new group, what an earlier group left stored as shared is not shared: it is not live in this log', () => {
+    const list = listWith({ mode: 'separate', reviewed: false, live: new Set() });
     const nw = rows(list).filter((item) => item.group === 'accounts' || item.group === 'assets');
     expect(nw.every((item) => !item.shared && item.caption === NOT_SHARED_YET && !isTicked(emptyDraft(list), item))).toBe(true);
     expect(sharedCount(list)).toBe(2); // Hajj, Bali trip
+  });
+
+  it('a Change with the same members, before the review: what the partner sees now opens ticked and counted, and one tick takes nothing back', () => {
+    // BCA and House are live in the log (the 'live' allowance keeps them refreshing until the review).
+    const list = listWith({ mode: 'separate', reviewed: false, live: new Set(['a-bca', 'a-house']) });
+    expect(row(list, 'BCA Tahapan')).toMatchObject({ shared: true, caption: null });
+    expect(row(list, 'House')).toMatchObject({ shared: true, caption: null });
+    expect(row(list, 'Card ending 4417')).toMatchObject({ shared: false, caption: NOT_SHARED_YET });
+    expect(sharedCount(list)).toBe(4); // BCA, House, Hajj, Bali trip
+    // Untouched: no review.
+    expect(changesOf(list, toggle(list, emptyDraft(list), row(list, 'New phone'))).map((change) => change.kind)).toEqual(['share-goal']);
+    // One more ticked: the review keeps the live ones shared, and only what was never shown ticked stays out.
+    const [review] = changesOf(list, toggle(list, emptyDraft(list), row(list, 'GoPay')));
+    expect((review as Extract<ShareChange, { kind: 'review' }>).settings).toMatchObject({ 'a-bca': 'total', 'a-house': 'total', 'a-gopay': 'total', 'a-card': 'hidden' });
+    // Unticking a live one is what takes it back.
+    const [takeBack] = changesOf(list, toggle(list, emptyDraft(list), row(list, 'House')));
+    expect((takeBack as Extract<ShareChange, { kind: 'review' }>).settings).toMatchObject({ 'a-bca': 'total', 'a-house': 'hidden' });
   });
 
   it('untouched, Save never calls the review: only the goal goes', async () => {
@@ -208,6 +231,7 @@ describe('a net worth review that waits is never answered behind the person’s 
   it('one tax ID before the review: all or none — one tick ticks every item, and the review shares them all', () => {
     const list = listWith({ mode: 'joint', reviewed: false });
     expect(allOrNone(list)).toBe(true);
+    expect(draftKeys(toggle(list, emptyDraft(list), row(list, 'House')))).toEqual([ALL_NET_WORTH]);
     const draft = toggle(list, emptyDraft(list), row(list, 'House'));
     expect(rows(list).filter((item) => item.group === 'accounts' || item.group === 'assets').every((item) => isTicked(draft, item))).toBe(true);
     const [review] = changesOf(list, draft);
@@ -216,6 +240,34 @@ describe('a net worth review that waits is never answered behind the person’s 
     // And untick takes them all back off.
     const back = toggle(list, draft, row(list, 'GoPay'));
     expect(changesOf(list, back)).toEqual([]);
+  });
+
+  it('all or none: a row that arrives mid-edit reads ticked too, and is counted, since the review will share it', () => {
+    const before = listWith({ mode: 'joint', reviewed: false });
+    const draft = toggle(before, emptyDraft(before), row(before, 'House'));
+    const after = listWith({ mode: 'joint', reviewed: false }, [...input().netWorth!.items, { accountId: 'a-new', name: 'New card', subtype: 'credit_card', setting: null }]);
+    expect(isTicked(reconcile(after, draft), row(after, 'New card'))).toBe(true);
+    expect(tickedCount(after, draft)).toBe(tickedCount(before, draft) + 1);
+    const [review] = changesOf(after, draft);
+    expect((review as Extract<ShareChange, { kind: 'review' }>).settings['a-new']).toBe('total');
+  });
+
+  it('the partner’s switch to one tax ID arrives between the list and Save: the review on screen is refused', () => {
+    const list = listWith({ mode: 'separate', reviewed: false, proposalId: 'p-1' });
+    const shown = list.netWorth!;
+    expect(reviewStillShown(shown, { proposalId: 'p-1', mode: 'separate', reviewed: false })).toBeNull();
+    // The switch is a new proposal, with another filing.
+    expect(reviewStillShown(shown, { proposalId: 'p-2', mode: 'joint', reviewed: false })).toBe(NET_WORTH_CHANGED);
+    // Answered on another screen meanwhile, or the group gone.
+    expect(reviewStillShown(shown, { proposalId: 'p-1', mode: 'separate', reviewed: true })).toBe(NET_WORTH_CHANGED);
+    expect(reviewStillShown(shown, { proposalId: null, mode: null, reviewed: false })).toBe(NET_WORTH_CHANGED);
+  });
+
+  it('a new proposal drops the net worth edits made under the old one', () => {
+    const before = listWith({ mode: 'separate', reviewed: false, proposalId: 'p-1' });
+    const draft = toggle(before, emptyDraft(before), row(before, 'GoPay'));
+    const after = listWith({ mode: 'separate', reviewed: false, proposalId: 'p-2' });
+    expect(changesOf(after, draft)).toEqual([]);
   });
 
   it('a review sent is made whole: an item that came after the list was read goes as hidden', () => {
@@ -280,6 +332,10 @@ describe('the draft', () => {
     const draft = toggle(list, emptyDraft(list), row(list, 'Office dinner'));
     expect(eventsToShare(list, draft).map((item) => item.name)).toEqual(['Office dinner']);
     expect(SHARE_LIST_COPY.eventsFooter(['Office dinner'])).toContain('What is tagged to it moves out of its workspace');
+    // Said once, however many are ticked.
+    const twice = SHARE_LIST_COPY.eventsFooter(['Office dinner', 'Bali trip']);
+    expect(twice.match(/moves out of its workspace/g)).toHaveLength(1);
+    expect(twice).toContain('Office dinner and Bali trip');
   });
 });
 
@@ -395,7 +451,13 @@ describe('copy', () => {
     expect(SHARE_LIST_COPY.shareButton(1)).toBe('Share 1 item');
     expect(SHARE_LIST_COPY.rowValue(7)).toBe('7 items');
     expect(SHARE_LIST_COPY.workspaceFooter('Family')).toBe('Budgets, bills, categories and Family’s transactions are shared with Family as a whole.');
-    expect(SHARE_LIST_COPY.reviewBody('joint', ['Andi'])).toContain('For the joint tax return, each item also goes to Andi');
+    expect(SHARE_LIST_COPY.reviewBody('joint', ['Andi'], 'Family')).toContain('For the joint tax return, each item also goes to Andi');
+  });
+
+  it('the separate review notice never calls what the partner sees private', () => {
+    const line = SHARE_LIST_COPY.reviewBody('separate', ['Andi'], 'Family');
+    expect(line).not.toMatch(/private/i);
+    expect(line).toContain('What is ticked is what Andi sees; unticking an item and saving takes it back.');
   });
 
   it('never says you or your', () => {
@@ -405,8 +467,8 @@ describe('copy', () => {
       SHARE_LIST_COPY.netWorthOff,
       SHARE_LIST_COPY.invitesFooter(['Andi'], 'Family'),
       SHARE_LIST_COPY.workspaceFooter('Family'),
-      SHARE_LIST_COPY.reviewBody('joint', ['Andi']),
-      SHARE_LIST_COPY.reviewBody('separate', ['Andi']),
+      SHARE_LIST_COPY.reviewBody('joint', ['Andi'], 'Family'),
+      SHARE_LIST_COPY.reviewBody('separate', ['Andi'], 'Family'),
       SHARE_LIST_COPY.noName('Bali trip'),
       SHARE_LIST_COPY.keptHeader('Bali trip'),
       EVENT_LOCKED,

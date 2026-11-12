@@ -56,6 +56,8 @@ export interface ShareListGroup {
 
 export interface NetWorthInput {
   mode: FilingMode;
+  /** The active proposal the list was read under: a Save answers the review of this one only. */
+  proposalId: string;
   /**
    * This person pressed Share on the review of the active group (`reviewedFor`). Until then nothing of this activation
    * is sent, so nothing reads as shared, and only `confirmReview` can share anything.
@@ -64,6 +66,11 @@ export interface NetWorthInput {
   items: readonly { accountId: string; name: string; subtype: string; setting: ShareSetting | null }[];
   /** The accounts made joint now. */
   joint: ReadonlySet<string>;
+  /**
+   * This person's items live in the group's log now (`ownSentAccountIds`): what the partner sees. Before the review a
+   * Change with the same members keeps refreshing them (`sendAllowance` 'live'), so they read as shared.
+   */
+  live: ReadonlySet<string>;
 }
 
 export interface ShareListInput {
@@ -106,10 +113,11 @@ export function shareListOf(input: ShareListInput): ShareList {
     const assets: ShareListItem[] = [];
     for (const item of nw.items) {
       if (LEFT_OUT_SUBTYPES.includes(item.subtype)) continue;
-      // Before the review nothing of this activation went out, whatever an earlier group left stored (`sendAllowance`).
-      const shared = nw.reviewed && item.setting === 'total';
-      // Not shared yet: everything before the review; after it, an item never asked about, or (one tax ID) still
-      // hidden after the switch (D8). A `Don't share` chosen while filing separately is an answer, not a wait.
+      // Before the review: what is live in this group's log, which the partner sees now (a Change with the same members
+      // keeps it refreshing); stored as shared but not live — a new group — is not. After it: the stored setting.
+      const shared = nw.reviewed ? item.setting === 'total' : nw.live.has(item.accountId);
+      // Not shared yet: before the review, anything not live; after it, an item never asked about, or (one tax ID)
+      // still hidden after the switch (D8). A `Don't share` chosen while filing separately is an answer, not a wait.
       const waiting = !nw.reviewed || item.setting === null || (nw.mode === 'joint' && item.setting === 'hidden');
       const isAccount = ACCOUNT_CARD_SUBTYPES.includes(item.subtype);
       const row: ShareListItem = {
@@ -161,6 +169,9 @@ export function shareListOf(input: ShareListInput): ShareList {
   return { groups, netWorth: nw };
 }
 
+/** The one tick every net worth row reads while a one-tax-ID review waits (all or none, `allOrNone`). */
+export const ALL_NET_WORTH = 'netWorth:all';
+
 /* ------------------------------------------------------------------------------------------------------------ draft */
 
 /**
@@ -176,7 +187,7 @@ export interface ShareDraft {
 }
 
 function basisOf(list: Pick<ShareList, 'netWorth'>): string | null {
-  return list.netWorth ? `${list.netWorth.mode}|${list.netWorth.reviewed ? 'reviewed' : 'waiting'}` : null;
+  return list.netWorth ? `${list.netWorth.proposalId}|${list.netWorth.mode}|${list.netWorth.reviewed ? 'reviewed' : 'waiting'}` : null;
 }
 
 const itemsOf = (list: ShareList) => list.groups.flatMap((group) => group.items);
@@ -190,7 +201,9 @@ export function emptyDraft(list: Pick<ShareList, 'netWorth'>): ShareDraft {
 export function reconcile(list: ShareList, draft: ShareDraft): ShareDraft {
   const items = new Map(itemsOf(list).map((item) => [item.key, item]));
   const basisMoved = draft.basis !== basisOf(list);
-  const ticks = new Map([...draft.ticks].filter(([key]) => items.has(key) && !(basisMoved && isNetWorth(items.get(key)!))));
+  const ticks = new Map(
+    [...draft.ticks].filter(([key]) => (key === ALL_NET_WORTH ? !basisMoved && allOrNone(list) : items.has(key) && !(basisMoved && isNetWorth(items.get(key)!)))),
+  );
   const accountKeys = new Map(itemsOf(list).filter((item) => item.canJoint).map((item) => [item.id, item]));
   const joints = new Map([...draft.joints].filter(([id]) => accountKeys.has(id) && !basisMoved));
   if (ticks.size === draft.ticks.size && joints.size === draft.joints.size && !basisMoved) return draft;
@@ -198,6 +211,8 @@ export function reconcile(list: ShareList, draft: ShareDraft): ShareDraft {
 }
 
 export function isTicked(draft: ShareDraft, item: ShareListItem): boolean {
+  // All or none: the one tick holds for every net worth row, one that arrived mid-edit too (fix round 2).
+  if (isNetWorth(item) && draft.ticks.get(ALL_NET_WORTH)) return true;
   return draft.ticks.get(item.key) ?? item.shared;
 }
 
@@ -211,13 +226,19 @@ function withTick(ticks: Map<string, boolean>, item: ShareListItem, on: boolean)
   else ticks.set(item.key, on);
 }
 
-/** Ticks or unticks one item; a locked tick stays. Before a one-tax-ID review, every net worth item goes together. */
-export function toggle(list: ShareList, draft: ShareDraft, item: ShareListItem): ShareDraft {
+/**
+ * Ticks or unticks one item; a locked tick stays. Before a one-tax-ID review every net worth row goes together, held as
+ * one tick (`ALL_NET_WORTH`): on, every row reads ticked; off, each is as it stands.
+ */
+export function toggle(list: ShareList, given: ShareDraft, item: ShareListItem): ShareDraft {
+  const draft = reconcile(list, given);
   const on = !isTicked(draft, item);
   if (!on && item.locked) return draft;
   const ticks = new Map(draft.ticks);
-  if (isNetWorth(item) && allOrNone(list)) for (const row of itemsOf(list).filter(isNetWorth)) withTick(ticks, row, on);
-  else withTick(ticks, item, on);
+  if (isNetWorth(item) && allOrNone(list)) {
+    if (on) ticks.set(ALL_NET_WORTH, true);
+    else ticks.delete(ALL_NET_WORTH);
+  } else withTick(ticks, item, on);
   return { ...draft, ticks };
 }
 
@@ -277,7 +298,7 @@ export function changesOf(list: ShareList, given: ShareDraft): ShareChange[] {
   const nwItems = itemsOf(list).filter(isNetWorth);
   const nw = list.netWorth;
   if (nw && nwItems.length > 0) {
-    const touched = nwItems.some((item) => isTicked(draft, item) !== item.shared || (item.canJoint && jointOn(draft, item) !== item.joint));
+    const touched = draft.ticks.get(ALL_NET_WORTH) === true || nwItems.some((item) => isTicked(draft, item) !== item.shared || (item.canJoint && jointOn(draft, item) !== item.joint));
     if (!nw.reviewed) {
       if (touched) {
         const settings: Record<string, ShareSetting> = {};
@@ -306,6 +327,23 @@ export function changesOf(list: ShareList, given: ShareDraft): ShareChange[] {
   }
   for (const item of eventsToShare(list, draft)) out.push({ kind: 'share-event', key: `share-event:${item.id}`, name: item.name, eventId: item.id });
   return out;
+}
+
+/** Net worth as it stands at Save, read again: the proposal, the filing and whether this person reviewed it. */
+export interface NetWorthNow {
+  proposalId: string | null;
+  mode: FilingMode | null;
+  reviewed: boolean;
+}
+
+export const NET_WORTH_CHANGED = 'Net worth sharing changed. Look again before saving.';
+
+/**
+ * Whether the review a Save would answer is still the one on screen (fix round 2): the same proposal, the same filing,
+ * still waiting for this person. Null when it is; the words to refuse with otherwise.
+ */
+export function reviewStillShown(shown: Pick<NetWorthInput, 'proposalId' | 'mode' | 'reviewed'>, now: NetWorthNow): string | null {
+  return now.proposalId === shown.proposalId && now.mode === shown.mode && now.reviewed === shown.reviewed ? null : NET_WORTH_CHANGED;
 }
 
 /**
@@ -405,10 +443,11 @@ export const SHARE_LIST_COPY = {
   },
   /** The review notice while net worth waits for this person's review (§6 Review). */
   reviewTitle: 'Review items',
-  reviewBody: (mode: FilingMode, others: readonly string[]) =>
-    mode === 'joint'
-      ? `${JOINT_LINE} ${jointTaxLine(others)} One tick shares every item, once saved.`
-      : 'Net worth was set up again, so nothing is shared until ticked and saved. What is left unticked stays private.',
+  reviewBody: (mode: FilingMode, others: readonly string[], bookName: string) => {
+    if (mode === 'joint') return `${JOINT_LINE} ${jointTaxLine(others)} One tick shares every item, once saved.`;
+    const { who, one } = whoSees(others, bookName);
+    return `Net worth was set up again and waits for this review. What is ticked is what ${who} ${one ? 'sees' : 'see'}; unticking an item and saving takes it back.`;
+  },
   tickAll: 'Tick all',
   joint: 'Joint',
   shareButton: (count: number) => `Share ${count} ${count === 1 ? 'item' : 'items'}`,
@@ -416,8 +455,11 @@ export const SHARE_LIST_COPY = {
   rowValue: (count: number) => (count === 0 ? 'None' : `${count} ${count === 1 ? 'item' : 'items'}`),
   workspaceFooter: (bookName: string) => `Budgets, bills, categories and ${bookName}’s transactions are shared with ${bookName} as a whole.`,
   netWorthOff: 'Accounts, cards, assets and debts are listed here once net worth is shared.',
-  /** Under Events, for each event ticked to be shared: the event Share sheet's own words. */
-  eventsFooter: (names: readonly string[]) => names.map(shareEventFooter).join(' '),
+  /** Under Events, once, while any event is ticked to be shared: the event Share sheet's own words. */
+  eventsFooter: (names: readonly string[]) =>
+    names.length === 1
+      ? shareEventFooter(names[0]!)
+      : `Everyone in each of ${namesOf(names)} sees every expense of it, who paid and how it is split. What is tagged to it moves out of its workspace: in each person's own books only their own share counts.`,
   failedHeader: 'Not shared',
   keptHeader: (eventName: string) => `Stayed where they were · ${eventName}`,
   invitesFooter: (others: readonly string[], bookName: string) => `Send each invite to ${whoSees(others, bookName).who}: an event is joined with its own code.`,
