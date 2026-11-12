@@ -1,7 +1,8 @@
 import type { MoveRefusal } from '@expanses/db';
 
 /** Under the Event row and on Select's confirmation (shared events §6): tagging into a shared event moves it. */
-export function moveHint(eventName: string, sharedWith: number): string {
+export function moveHint(eventName: string, sharedWith: number | null): string {
+  if (sharedWith === null) return `Moves to ${eventName}, a shared event.`;
   return `Moves to ${eventName}, shared with ${sharedWith} ${sharedWith === 1 ? 'person' : 'people'}.`;
 }
 

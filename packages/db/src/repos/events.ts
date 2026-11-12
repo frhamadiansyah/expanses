@@ -192,6 +192,12 @@ export async function suggestForEvent(database: Database, ws: WorkspaceContext, 
   const event = await eventOf(database, ws, eventId);
   const categoryIds = await eventCategories(database, ws, eventId);
   if (categoryIds.length === 0) return [];
+  // A shared workspace's spending is never tagged (sync gaps D1), so it is never offered.
+  const sharing = (await database.db.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'shared_books'`)).length > 0;
+  const notShared = sharing
+    ? sql`${transactions.id} NOT IN (SELECT bt.transaction_id FROM book_transactions bt JOIN shared_books s ON s.book_id = bt.book_id
+        WHERE EXISTS (SELECT 1 FROM book_members m WHERE m.book_id = s.book_id))`
+    : sql`1 = 1`;
 
   const rows = await database.db
     .select({
@@ -211,6 +217,7 @@ export async function suggestForEvent(database: Database, ws: WorkspaceContext, 
         gte(transactions.occurredOn, event.startsOn),
         lte(transactions.occurredOn, event.endsOn),
         inArray(entries.accountId, categoryIds),
+        notShared,
       ),
     )
     .orderBy(asc(transactions.occurredOn));

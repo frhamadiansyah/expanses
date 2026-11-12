@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   categoryTotalsIn,
+  convertEventToShared,
   createBook,
   inBook,
   listTransactions,
@@ -13,6 +14,8 @@ import {
   replaceTransaction,
   saveEvent,
   sharedEventView,
+  suggestForEvent,
+  saveEventItem,
   tagTransaction,
   tagTransactions,
 } from '../../src/index';
@@ -161,6 +164,16 @@ describe('F2: a Family purchase never carries an event tag (D1)', () => {
     expect(await familyOctober(s, s.wife)).toEqual({ total: 40_000, count: 1 });
   });
 
+  it('a private event never suggests a Family purchase', async () => {
+    const s = await familyAndTrip();
+    await groceries(s, s.wife, 'Bakery', 40_000);
+    await s.settle();
+    const groceriesId = await categoryOf(s.wife.database, s.family, 'Groceries');
+    const own = await saveEvent(s.wife.database, ownerScope(s.wife.ws), { name: 'Birthday', startsOn: '2026-10-01', endsOn: '2026-10-31' });
+    await saveEventItem(s.wife.database, ownerScope(s.wife.ws), own, { name: 'Cake', unitPriceMinor: 50_000, categoryAccountId: groceriesId });
+    expect(await suggestForEvent(s.wife.database, s.wife.ws, own)).toEqual([]);
+  });
+
   it('a move refused for want of a rate leaves the purchase untagged and in Family on both phones', async () => {
     const s = await familyAndTrip();
     // Paid in dollars: neither phone has a dollar rate stored to convert it to lira.
@@ -177,6 +190,30 @@ describe('F2: a Family purchase never carries an event tag (D1)', () => {
     expect(row).toEqual([null, 'posted']);
     await s.settle();
     expect(await headOf(s.husband.database, early)).not.toBeNull();
+  });
+
+  it('sharing an event that Family purchases are tagged to moves the payer’s own, and untags what cannot move', async () => {
+    const s = await familyAndTrip();
+    const hers = await groceries(s, s.wife, 'Bazaar snacks', 60_000);
+    const category = await categoryOf(s.wife.database, s.family, 'Groceries');
+    const dollars = await postTransaction(s.wife.database, s.wife.ws, {
+      occurredOn: '2026-10-06', description: 'Bazaar stall', ratesToBase: { USD: 16_000 },
+      lines: expenseLines({ categoryAccountId: category, paymentAccountId: s.wife.usd, amountMinor: 1_000, currency: 'USD' }),
+    });
+    const his = await groceries(s, s.husband, 'Bazaar parking', 10_000);
+    await s.settle();
+    const bazaar = await saveEvent(s.wife.database, ownerScope(s.wife.ws), { name: 'Bazaar', startsOn: '2026-10-01', endsOn: '2026-10-31' });
+    // Tags from an older build, before Family's spending was refused one.
+    for (const id of [hers, dollars, await copyOf(s.wife, his)]) await s.wife.database.db.run(sql`UPDATE transactions SET event_id = ${bazaar} WHERE id = ${id}`);
+    await s.wife.engine.shareEvent(ownerScope(s.wife.ws), { eventId: bazaar, currency: 'IDR', personName: 'Wife', deviceName: 'Wife’s phone', names: [] });
+    const { moved, kept } = await convertEventToShared(s.wife.database, ownerScope(s.wife.ws), bazaar);
+    expect(moved).toBe(1);
+    expect(kept.map((k) => k.transactionId).sort()).toEqual([dollars, await copyOf(s.wife, his)].sort());
+    const tagged = await s.wife.database.db.values(sql`SELECT id FROM transactions WHERE event_id IS NOT NULL AND status = 'posted'
+      AND id IN (SELECT transaction_id FROM book_transactions WHERE book_id = ${s.family})`);
+    expect(tagged).toEqual([]);
+    await s.settle();
+    expect(await familyOctober(s, s.wife)).toEqual(await familyOctober(s, s.husband));
   });
 
   it('an edit of a purchase still carrying a tag from an older build drops the tag, so both phones count it', async () => {

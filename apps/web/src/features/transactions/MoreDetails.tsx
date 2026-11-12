@@ -190,6 +190,7 @@ export function MoreDetails({
       {sheet === 'event' && (
         <EventSheet
           value={draft.eventId}
+          sharedOnly={sharedBook}
           onPick={(eventId) => (opensSharedEvent && !draft.editing && summaries[eventId] ? void navigate({ ...addSpendingTarget(eventId, carriedFromDraft(draft)), replace: true }) : set({ eventId }))}
           onClose={() => setSheet(null)}
         />

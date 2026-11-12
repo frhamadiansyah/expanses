@@ -106,3 +106,21 @@ export async function eventTagRefusalTx(tx: Db, transactionId: string, eventId: 
   if (!tagged || tagged[0] === null) return null; // nothing to take off
   return partnerPurchaseRefusalTx(tx, transactionId, row);
 }
+
+/**
+ * Takes the event tag off each of these transactions that is a shared workspace's purchase, and returns those ids: the
+ * one-time ways an older build's tag is put right (sharing an event, the repair). Local only — `event_id` never
+ * travels, so the tag was on this phone alone, and taking it off is what makes this phone count the purchase as the
+ * partner's phone always has. Any member's phone may do it, the partner's purchase included.
+ */
+export async function untagSharedRowsTx(tx: Db, transactionIds: readonly string[]): Promise<string[]> {
+  const out: string[] = [];
+  for (const id of new Set(transactionIds)) {
+    if (!(await sharedRowTx(tx, id))) continue;
+    const [row] = await tx.values<[string | null]>(sql`SELECT event_id FROM transactions WHERE id = ${id}`);
+    if (!row || row[0] === null) continue;
+    await tx.run(sql`UPDATE transactions SET event_id = NULL WHERE id = ${id}`);
+    out.push(id);
+  }
+  return out;
+}

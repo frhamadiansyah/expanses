@@ -11,7 +11,7 @@ import { addSharedItemPurchase, setSharedItemDone, saveSharedItem } from './shar
 import { ensureShareAccountTx, postEventRecordTx, rateToBaseTx } from './shared-event-postings';
 import { type EventBookRow, eventRecordsTx, expenseRecordTx, type StoredExpense } from './shared-event-records';
 import { openSharedEventTx, SharedEventDbError } from './shared-event-writes';
-import { partnerPurchaseRefusalTx } from './shared-workspace-rows';
+import { partnerPurchaseRefusalTx, untagSharedRowsTx } from './shared-workspace-rows';
 
 /*
  * Moving spending into a shared event (shared events §6, D2). A purchase tagged into a shared event leaves its workspace:
@@ -249,7 +249,8 @@ async function spentBaseTx(tx: Db, transactionId: string): Promise<number> {
 /**
  * Sharing an existing event (§6), once, right after it is shared: its category set becomes the event's categories (a
  * card still earning by the set's), its plan becomes shared items in the event currency at today's rate, and its tagged
- * spending moves in, each item still answered by what bought it. What cannot move stays tagged, as it was.
+ * spending moves in, each item still answered by what bought it. What cannot move stays tagged, as it was — but for a
+ * shared workspace's purchase, whose tag is taken off (sync gaps D1).
  */
 export async function convertEventToShared(database: Database, ws: WorkspaceContext, eventId: string): Promise<{ moved: number; kept: MoveRefusal[] }> {
   const local = await eventOf(database, ownerScope(ws), eventId);
@@ -280,6 +281,9 @@ export async function convertEventToShared(database: Database, ws: WorkspaceCont
   const spent = new Map<string, number>();
   for (const id of tagged) spent.set(id, await spentBaseTx(database.db, id));
   const { moved, kept } = await moveIntoSharedEvent(database, ws, eventId, tagged);
+  // A shared workspace's purchase that cannot move takes no tag either (sync gaps D1): it stays in its workspace,
+  // counted there the same on both phones. Elsewhere what cannot move stays tagged, as it was.
+  if (kept.length > 0) await database.transaction((tx) => untagSharedRowsTx(tx, kept.map((k) => k.transactionId)));
   const expenseOf = new Map(moved.map((m) => [m.transactionId, m.expenseId]));
 
   for (const item of items) {
