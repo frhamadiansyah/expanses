@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transfer account tree</title>
+<style>
+:root { --bg:#f2f2f7; --surface:#fff; --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e0e0e4; --fill:#efeff2; --tint:#007aff; --line:#c7c7cc; }
+* { box-sizing:border-box; }
+body { margin:0; background:#e6e6ea; color:var(--ink); font:14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; padding:24px 16px 48px; }
+h1 { font-size:20px; margin:0 0 4px; } .lede { color:#555; margin:0 0 20px; max-width:980px; }
+h2 { font-size:16px; margin:30px 0 12px; }
+.pair { display:flex; flex-wrap:wrap; gap:22px; align-items:flex-start; }
+.col { width:320px; max-width:100%; }
+.cap { font-weight:600; margin:0 0 8px; } .cap .n { display:inline-block; background:#1c1c1e; color:#fff; border-radius:5px; padding:0 6px; font-size:12px; margin-right:6px; }
+.cap .rec { font-size:11.5px; font-weight:600; color:#047857; background:#dcfce7; border-radius:5px; padding:1px 6px; margin-left:6px; }
+.phone { background:var(--bg); border-radius:28px; padding:12px 14px 18px; border:1px solid #d4d4d8; min-height:640px; position:relative; overflow:hidden; }
+.bar { display:flex; align-items:center; justify-content:space-between; margin:2px 0 10px; }
+.round { width:34px; height:34px; border-radius:50%; background:#e5e5ea; display:inline-flex; align-items:center; justify-content:center; font-size:15px; }
+.ttl { font-size:17px; font-weight:600; }
+.seg { display:flex; background:#e3e3e8; border-radius:9px; padding:2px; margin-bottom:6px; } .seg span { flex:1; text-align:center; font-size:13px; padding:5px; border-radius:7px; } .seg .on { background:#fff; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.12); }
+.gh { font-size:12.5px; color:var(--ink3); margin:14px 6px 5px; text-transform:uppercase; letter-spacing:.03em; display:flex; justify-content:space-between; }
+.ig { background:var(--surface); border-radius:11px; overflow:hidden; }
+.row { display:flex; align-items:center; gap:10px; padding:0 13px 0 10px; min-height:46px; position:relative; font-size:15px; }
+.ig .row + .row::before { content:""; position:absolute; top:0; left:46px; right:0; border-top:.5px solid var(--hair); }
+.g { width:26px; display:flex; justify-content:center; color:var(--ink2); font-size:15px; flex-shrink:0; }
+.grow { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.meta { font-size:12.5px; color:var(--ink3); white-space:nowrap; font-variant-numeric:tabular-nums; }
+.chev { color:#c7c7cc; font-size:13px; margin-left:4px; width:12px; text-align:center; }
+.cur { font-size:11px; font-weight:600; color:var(--ink2); background:var(--fill); border-radius:5px; padding:1px 5px; margin-left:3px; }
+.kid { padding-left:44px; min-height:42px; font-size:14.5px; }
+.ig .row.kid::before { left:72px !important; }
+.kid .tree { position:absolute; left:22px; top:0; bottom:0; width:16px; }
+.kid .tree::before { content:""; position:absolute; left:0; top:0; bottom:50%; border-left:1.5px solid var(--line); border-bottom:1.5px solid var(--line); width:12px; border-bottom-left-radius:6px; }
+.kid.mid .tree::after { content:""; position:absolute; left:0; top:50%; bottom:0; border-left:1.5px solid var(--line); }
+.picked { width:26px; height:26px; border-radius:50%; background:var(--ink); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; }
+.mark { outline:2px dashed #2563eb; outline-offset:2px; border-radius:10px; }
+.bad { outline:2px dashed #e11d48; outline-offset:2px; border-radius:10px; }
+.note { font-size:12.5px; color:#444; margin:10px 2px 0; }
+.dim { color:var(--ink3); }
+.flag { width:20px; text-align:center; font-size:14px; }
+</style>
+</head>
+<body>
+<h1>Transfer From / To: grouped, with pockets as a tree</h1>
+<p class="lede">Today every pocket is its own row in one long list, so one bank’s IDR and USD sit far apart and Cash in two currencies is split up. Proposed: group by kind of account, each account once, its other currencies folded under it like Net worth’s tree. Same sheet for Paid with, From and To. Names and amounts are made up.</p>
+
+<h2>Today</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">0</span>From · today</p>
+    <div class="phone">
+      <div class="bar"><span class="round">✕</span><span class="ttl">From</span><span class="round">⌕</span></div>
+      <div class="ig bad">
+        <div class="row"><span class="g">🏦</span><span class="grow">Cash</span><span class="meta">IDR</span></div>
+        <div class="row"><span class="g">🏦</span><span class="grow">BCA Tahapan</span><span class="meta">···· 2204 · USD</span></div>
+        <div class="row"><span class="g">🏦</span><span class="grow">Cash</span><span class="meta">TRY</span></div>
+        <div class="row"><span class="g">🏦</span><span class="grow">Mandiri Tabungan NOW</span><span class="meta">···· 9031 · GBP</span></div>
+        <div class="row"><span class="g">🏦</span><span class="grow">BCA Tahapan</span><span class="meta">···· 2204 · IDR</span></div>
+        <div class="row"><span class="g">🏦</span><span class="grow">GoPay</span><span class="meta">···· 8812 · IDR</span></div>
+        <div class="row"><span class="g">🏦</span><span class="grow">Mandiri Tabungan NOW</span><span class="meta">···· 9031 · IDR</span></div>
+        <div class="row"><span class="g">🏦</span><span class="grow">Cash</span><span class="meta">USD</span></div>
+        <div class="row"><span class="g">🏦</span><span class="grow">BCA Tahapan</span><span class="meta">···· 2204 · TRY</span></div>
+        <div class="row"><span class="g">🏦</span><span class="grow">Flazz</span><span class="meta">···· 4410 · IDR</span></div>
+      </div>
+      <p class="note">10 rows, one icon for all, the same account in three places.</p>
+    </div>
+  </div>
+</div>
+
+<h2>A · By kind, each account once, currencies folded under it <span style="font-weight:400;color:#047857">(recommended)</span></h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">A1</span>Opened<span class="rec">Recommended</span></p>
+    <div class="phone">
+      <div class="bar"><span class="round">✕</span><span class="ttl">From</span><span class="round">⌕</span></div>
+      <div class="gh"><span>Recent</span></div>
+      <div class="ig">
+        <div class="row"><span class="g"><span class="picked">🏦</span></span><span class="grow">BCA Tahapan</span><span class="meta">IDR</span></div>
+        <div class="row"><span class="g">💵</span><span class="grow">Cash</span><span class="meta">TRY</span></div>
+      </div>
+      <div class="gh"><span>Cash</span></div>
+      <div class="ig mark">
+        <div class="row"><span class="g">💵</span><span class="grow">Cash</span><span class="meta">IDR <span class="cur">+2</span></span><span class="chev">›</span></div>
+      </div>
+      <div class="gh"><span>Bank accounts</span></div>
+      <div class="ig mark">
+        <div class="row"><span class="g">🏦</span><span class="grow">BCA Tahapan <span class="dim" style="font-size:12.5px">···· 2204</span></span><span class="meta">IDR <span class="cur">+2</span></span><span class="chev">›</span></div>
+        <div class="row"><span class="g">🏦</span><span class="grow">Mandiri Tabungan NOW <span class="dim" style="font-size:12.5px">···· 9031</span></span><span class="meta">IDR <span class="cur">+1</span></span><span class="chev">›</span></div>
+      </div>
+      <div class="gh"><span>Digital wallets &amp; e-money</span></div>
+      <div class="ig">
+        <div class="row"><span class="g">📱</span><span class="grow">GoPay <span class="dim" style="font-size:12.5px">···· 8812</span></span><span class="meta">IDR</span></div>
+        <div class="row"><span class="g">💳</span><span class="grow">Flazz <span class="dim" style="font-size:12.5px">···· 4410</span></span><span class="meta">IDR</span></div>
+      </div>
+      <p class="note">6 rows instead of 10. An account with more than one currency shows its main one and “+2”; tapping it opens its tree (A2). One currency only: tapping picks it straight away.</p>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">A2</span>Tap BCA Tahapan</p>
+    <div class="phone">
+      <div class="bar"><span class="round">✕</span><span class="ttl">From</span><span class="round">⌕</span></div>
+      <div class="gh"><span>Cash</span></div>
+      <div class="ig">
+        <div class="row"><span class="g">💵</span><span class="grow">Cash</span><span class="meta">IDR <span class="cur">+2</span></span><span class="chev">›</span></div>
+      </div>
+      <div class="gh"><span>Bank accounts</span></div>
+      <div class="ig">
+        <div class="row"><span class="g">🏦</span><span class="grow">BCA Tahapan <span class="dim" style="font-size:12.5px">···· 2204</span></span><span class="meta"></span><span class="chev">⌄</span></div>
+        <div class="row kid mid mark"><span class="tree"></span><span class="flag">🇮🇩</span><span class="grow">IDR</span><span class="meta">Rp 12.400.000</span></div>
+        <div class="row kid mid"><span class="tree"></span><span class="flag">🇺🇸</span><span class="grow">USD</span><span class="meta">$ 1,250.00</span></div>
+        <div class="row kid"><span class="tree"></span><span class="flag">🇹🇷</span><span class="grow">TRY</span><span class="meta">₺ 3.400,00</span></div>
+        <div class="row"><span class="g">🏦</span><span class="grow">Mandiri Tabungan NOW <span class="dim" style="font-size:12.5px">···· 9031</span></span><span class="meta">IDR <span class="cur">+1</span></span><span class="chev">›</span></div>
+      </div>
+      <div class="gh"><span>Digital wallets &amp; e-money</span></div>
+      <div class="ig">
+        <div class="row"><span class="g">📱</span><span class="grow">GoPay <span class="dim" style="font-size:12.5px">···· 8812</span></span><span class="meta">IDR</span></div>
+        <div class="row"><span class="g">💳</span><span class="grow">Flazz <span class="dim" style="font-size:12.5px">···· 4410</span></span><span class="meta">IDR</span></div>
+      </div>
+      <p class="note">Its currencies hang from it on the tree line, each with its flag and what it holds; tap one to pick it. Only one account is open at a time.</p>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">A3</span>To · after From is BCA Tahapan USD</p>
+    <div class="phone">
+      <div class="bar"><span class="round">✕</span><span class="ttl">To</span><span class="round">⌕</span></div>
+      <div class="gh"><span>Cash</span></div>
+      <div class="ig">
+        <div class="row"><span class="g">💵</span><span class="grow">Cash</span><span class="meta">USD <span class="cur">+2</span></span><span class="chev">›</span></div>
+      </div>
+      <div class="gh"><span>Bank accounts</span></div>
+      <div class="ig">
+        <div class="row"><span class="g">🏦</span><span class="grow">BCA Tahapan <span class="dim" style="font-size:12.5px">···· 2204</span></span><span class="meta">IDR <span class="cur">+1</span></span><span class="chev">›</span></div>
+        <div class="row"><span class="g">🏦</span><span class="grow">Mandiri Tabungan NOW <span class="dim" style="font-size:12.5px">···· 9031</span></span><span class="meta">IDR <span class="cur">+1</span></span><span class="chev">›</span></div>
+      </div>
+      <div class="gh"><span>Digital wallets &amp; e-money</span></div>
+      <div class="ig">
+        <div class="row"><span class="g">📱</span><span class="grow">GoPay <span class="dim" style="font-size:12.5px">···· 8812</span></span><span class="meta">IDR</span></div>
+        <div class="row"><span class="g">💳</span><span class="grow">Flazz <span class="dim" style="font-size:12.5px">···· 4410</span></span><span class="meta">IDR</span></div>
+      </div>
+      <p class="note">The From pocket itself is left out. An account that holds the From’s currency shows that one first (Cash USD), so a same-currency move is one tap away.</p>
+    </div>
+  </div>
+</div>
+
+<h2>B · By currency</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">B1</span>From</p>
+    <div class="phone">
+      <div class="bar"><span class="round">✕</span><span class="ttl">From</span><span class="round">⌕</span></div>
+      <div class="gh"><span>🇮🇩 IDR</span></div>
+      <div class="ig">
+        <div class="row"><span class="g">💵</span><span class="grow">Cash</span><span class="meta">Rp 850.000</span></div>
+        <div class="row"><span class="g">🏦</span><span class="grow">BCA Tahapan</span><span class="meta">Rp 12.400.000</span></div>
+        <div class="row"><span class="g">🏦</span><span class="grow">Mandiri Tabungan NOW</span><span class="meta">Rp 3.100.000</span></div>
+        <div class="row"><span class="g">📱</span><span class="grow">GoPay</span><span class="meta">Rp 640.000</span></div>
+        <div class="row"><span class="g">💳</span><span class="grow">Flazz</span><span class="meta">Rp 120.000</span></div>
+      </div>
+      <div class="gh"><span>🇺🇸 USD</span></div>
+      <div class="ig">
+        <div class="row"><span class="g">💵</span><span class="grow">Cash</span><span class="meta">$ 200.00</span></div>
+        <div class="row"><span class="g">🏦</span><span class="grow">BCA Tahapan</span><span class="meta">$ 1,250.00</span></div>
+      </div>
+      <div class="gh"><span>🇹🇷 TRY</span></div>
+      <div class="ig">
+        <div class="row"><span class="g">💵</span><span class="grow">Cash</span><span class="meta">₺ 1.200,00</span></div>
+        <div class="row"><span class="g">🏦</span><span class="grow">BCA Tahapan</span><span class="meta">₺ 3.400,00</span></div>
+      </div>
+      <div class="gh"><span>🇬🇧 GBP</span></div>
+      <div class="ig">
+        <div class="row"><span class="g">🏦</span><span class="grow">Mandiri Tabungan NOW</span><span class="meta">£ 300.00</span></div>
+      </div>
+      <p class="note">Tidy and good for “same currency”, but still every pocket a row (10), and one bank is spread across four groups.</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>
