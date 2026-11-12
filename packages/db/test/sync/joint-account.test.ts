@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   confirmReview,
   createBook,
+  createAccount,
   createCardAccount,
   saveCardTerms,
   getJointAccount,
@@ -561,5 +562,40 @@ describe('the partner moves money out of and into the joint account', () => {
     await settle(s.home);
     expect(await balanceOf(s.rina, s.rina.bank)).toBe(rinaBefore);
     expect((await memberTransferUnposted(s.rina.database, s.groupBookId)).map((r) => r.reason)).toEqual(['not-joint']);
+  });
+});
+
+describe('a shared savings account in Paid with', () => {
+  it('is offered to the partner, a purchase paid from it drops its balance on the holder\u2019s phone, and a time deposit is not offered', async () => {
+    const s = await sharing();
+    const savings = await createAccount(s.rina.database, s.rina.ws, { name: 'Rina Reserve', kind: 'asset', subtype: 'savings', currency: 'IDR', openingBalanceMinor: 900_000_00 });
+    const deposit = await createAccount(s.rina.database, s.rina.ws, { name: 'Rina Fixed', kind: 'asset', subtype: 'time_deposit', currency: 'IDR', openingBalanceMinor: 500_000_00 });
+    await setShareSetting(s.rina.database, savings.id, 'total');
+    await setShareSetting(s.rina.database, deposit.id, 'total');
+    await setJointAccount(s.rina.database, savings.id, true);
+    await settle(s.home);
+    const savingsItem = await itemIdOf(s.groupBookId, savings.id);
+    const depositItem = await itemIdOf(s.groupBookId, deposit.id);
+    const offered = await paidWithItems(s.andi.database, s.bookId);
+    expect(offered.map((i) => i.itemId)).toContain(savingsItem);
+    expect(offered.map((i) => i.itemId)).not.toContain(depositItem);
+
+    const before = await balanceOf(s.rina, savings.id);
+    const item = offered.find((i) => i.itemId === savingsItem)!;
+    const account = await paidFromAccount(s.andi.database, s.bookId, item.owner, item.currency);
+    const byAndi = await postTransaction(s.andi.database, s.andi.ws, {
+      occurredOn: today,
+      description: 'Furniture',
+      lines: expenseLines({ categoryAccountId: s.groceries, paymentAccountId: account, amountMinor: 120_000_00, currency: 'IDR' }),
+      paidFrom: { owner: item.owner, itemId: item.itemId },
+    });
+    await settle(s.home);
+    await settle(s.home);
+    expect(await balanceOf(s.rina, savings.id)).toBe(before - 120_000_00);
+    const rinaHead = (await headOf(s.rina.database, byAndi))!;
+    expect(await s.rina.database.db.values(sql`SELECT count(*) FROM entries WHERE transaction_id = ${rinaHead} AND account_id = ${savings.id}`)).toEqual([[1]]);
+    const rows = await jointAccountRows(s.andi.database, s.bookId, savingsItem, s.rina.memberId);
+    expect(rows.map((r) => [r.description, r.amountMinor, r.recordedBy])).toEqual([['Furniture', -120_000_00, s.andi.memberId]]);
+    expect(await skipsOf(s.rina.database)).toEqual([]);
   });
 });
