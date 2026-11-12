@@ -52,6 +52,8 @@
   .lines div { display:flex; justify-content:space-between; padding:8px 0; font-size:14px; } .lines div + div { border-top:.5px solid #eef0f2; } .lines span:first-child { color:#64748b; }
   table { border-collapse:collapse; margin-top:8px; font-size:13px; background:#fff; border-radius:8px; overflow:hidden; }
   td, th { text-align:left; padding:6px 10px; border-bottom:1px solid #eee; vertical-align:top; } th { background:#fafafa; }
+  .lp { display:flex; align-items:center; justify-content:center; width:51px; height:31px; border-radius:16px; flex-shrink:0; }
+  .lp.on { background:#1c1c1e; color:#fff; } .lp.off { background:#e9e9eb; color:#8e8e93; }
 </style>
 </head>
 <body>
@@ -87,11 +89,11 @@
       <div class="day"><span>Today</span><span>−Rp 312.000</span></div>
       <div class="card">
         <div class="row"><span class="ic cat" style="background:#16a34a">🛒</span><div class="grow"><div class="t">Groceries +1</div><div class="s">Fresh Mart · 4417</div></div><div class="amt"><b class="red">Rp 212.000</b><span class="x">⊘ Rp 38.000</span></div></div>
-        <div class="row"><span class="ic cat" style="background:#ea580c">🍜</span><div class="grow"><div class="t">Eating out</div><div class="s">Team lunch · 4417</div></div><div class="amt mark"><b class="grey">Rp 100.000</b><span class="x">⊘ All</span></div></div>
+        <div class="row"><span class="ic cat" style="background:#ea580c">🍜</span><div class="grow"><div class="t">Eating out</div><div class="s">Team lunch · 4417</div></div><div class="amt mark"><b class="grey">⊘ Rp 100.000</b></div></div>
         <div class="row"><span class="ic cat" style="background:#2563eb">⚡</span><div class="grow"><div class="t">Electricity <span class="tag">Oct bill</span></div><div class="s">PLN · BCA</div></div><div class="amt"><b class="red">Rp 450.000</b></div></div>
       </div>
     </div>
-    <p class="note"><b>1.</b> Uncategorised gets the same grey circle as To review and Recurring bills.<br><b>2.</b> Excluded whole: no strike-through, no red, no "Excluded" tag, and the row is no longer faded. The amount turns grey and "⊘ All" sits under it, the same ⊘ mark a partly excluded split uses.</p>
+    <p class="note"><b>1.</b> Uncategorised gets the same grey circle as To review and Recurring bills.<br><b>2.</b> Excluded whole: no strike-through, no red, no "Excluded" tag, and the row is no longer faded. The amount turns grey, on one line, with ⊘ before it. Same rule as a partly excluded split: ⊘ always sits in front of the amount left out.</p>
   </div>
 </div>
 
@@ -100,7 +102,7 @@
   <tr><th>Label</th><th>When it shows</th></tr>
   <tr><td><span class="tag" style="margin:0">Oct bill</span></td><td>A bill paid in a different month from the bill's own month. The row stays on the day it was paid, and budgets count it in the bill's month.</td></tr>
   <tr><td>+1, +2</td><td>A split: the main category, plus how many other counted categories it has.</td></tr>
-  <tr><td><span class="tag" style="margin:0">Excluded</span></td><td>Excluded from the report as a whole. Removed in this proposal.</td></tr>
+  <tr><td><span class="tag" style="margin:0">Excluded</span></td><td>Excluded from the report as a whole. Removed in this proposal (⊘ before the amount instead).</td></tr>
 </table>
 <p class="note">The second line can also end with "· ⑂ split" or "· for [goal]", but those are after the note, not after the category.</p>
 
@@ -130,13 +132,13 @@
       <div class="lines"><div><span>Paid with</span><span>BCA</span></div></div>
       <div class="gap18"></div>
       <div class="ig mark">
-        <div class="ir"><span style="flex-shrink:0">Bill</span><span class="val cut">Electricity token for the apartment · Nov 2026</span><span class="pill">Unlink</span></div>
+        <div class="ir"><span style="flex-shrink:0">Bill</span><span class="val cut">Electricity token for the apartment · Nov 2026</span><span class="lp on" title="Linked: tap to unlink"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span></div>
         <div class="ir">Paid off<span class="sw off"></span></div>
       </div>
       <div class="gap18"><span class="ruler ok"><i>18</i></span></div>
       <div class="ig"><div class="ir center alarm">Delete</div></div>
     </div>
-    <p class="note"><b>4.</b> "Bill" never gets cut off; the bill's name shortens instead. Unlink is a small button at the end of the same row. Tapping the rest of the row opens the bill, as it does today.<br><b>3.</b> Bill and Paid off share one box, and every box is the same distance apart.</p>
+    <p class="note"><b>4.</b> "Bill" never gets cut off; the bill's name shortens instead. At the end of the row, an on/off pill with a link icon: dark with 🔗 while linked. Tapping it unlinks, and it turns grey with a broken-link icon. Tapping the rest of the row opens the bill, as it does today.<br><b>3.</b> Bill and Paid off share one box, and every box is the same distance apart.</p>
   </div>
   <div class="col">
     <p class="cap">Proposed · no bill linked</p>
@@ -145,13 +147,13 @@
       <div class="lines"><div><span>Paid with</span><span>Card 4417</span></div></div>
       <div class="gap18"></div>
       <div class="ig mark">
-        <div class="ir">Link to a bill<span class="chev" style="margin-left:auto">›</span></div>
+        <div class="ir"><span style="flex-shrink:0">Bill</span><span class="val cut" style="color:#8e8e93">Not linked</span><span class="lp off" title="Not linked: tap to link"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m18.84 12.25 1.72-1.71h-.02a5.004 5.004 0 0 0-.12-7.07 5.006 5.006 0 0 0-6.95 0l-1.72 1.71"/><path d="m5.17 11.75-1.71 1.71a5.004 5.004 0 0 0 .12 7.07 5.006 5.006 0 0 0 6.95 0l1.71-1.71"/><line x1="8" x2="8" y1="2" y2="5"/><line x1="2" x2="5" y1="8" y2="8"/><line x1="16" x2="16" y1="19" y2="22"/><line x1="19" x2="22" y1="16" y2="16"/></svg></span></div>
         <div class="ir">Paid off<span class="sw"></span></div>
       </div>
       <div class="gap18"><span class="ruler ok"><i>18</i></span></div>
       <div class="ig"><div class="ir center alarm">Delete</div></div>
     </div>
-    <p class="note">"Link to a bill" moves out of its own box into the Paid off box, as a normal row with a ›. Delete keeps its own box at the bottom.</p>
+    <p class="note">The same Bill row with the pill off: grey, broken-link icon, "Not linked". Tapping the pill opens the bill list to choose one, as "Link to a bill" does today. Delete keeps its own box at the bottom.</p>
   </div>
 </div>
 </body>
