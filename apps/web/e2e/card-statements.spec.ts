@@ -73,7 +73,20 @@ test('chosen purchases are paid before the statement, and show as paid', async (
 
   await page.getByLabel('Pay Superindo').check();
   await page.getByLabel('Pay Ranch Market').check();
-  await page.getByRole('button', { name: /^Pay Rp/ }).click();
+  // The select bar on top counts them; ✕ clears every tick and the bar goes.
+  const bar = page.getByTestId('statement-select-bar');
+  await expect(bar).toContainText('2 selected');
+  await bar.getByRole('button', { name: 'Clear' }).click();
+  await expect(bar).toHaveCount(0);
+  await expect(page.getByLabel('Pay Superindo')).not.toBeChecked();
+  await page.getByLabel('Pay Superindo').check();
+  await page.getByLabel('Pay Ranch Market').check();
+  await expect(bar).toContainText('2 selected');
+  await bar.getByRole('button', { name: 'Pay', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Pay 2 purchases' });
+  await expect(sheet).toContainText('Superindo');
+  await sheet.getByRole('button', { name: /^Pay Rp/ }).click();
+  await expect(bar).toHaveCount(0);
 
   // Paid purchases stay ticked, and can no longer be unticked.
   const lines = page.getByTestId('statement-line');
@@ -113,6 +126,7 @@ test('the totals band splits the previous bill from what is unbilled, and names 
 
   // Tick this cycle's purchase and pay it: the bank clears the older bill first, so that is where it lands.
   await page.getByLabel('Pay Superindo').check();
+  await page.getByTestId('statement-select-bar').getByRole('button', { name: 'Pay', exact: true }).click();
   await page.getByRole('button', { name: /^Pay Rp/ }).click();
   await expect(page.getByTestId('statement-line').filter({ hasText: 'Superindo' })).toContainText(/paid ahead \d+ \w+/);
   await expect(page.getByTestId('statement-line').filter({ hasText: 'payment' })).toContainText('for 1 purchase');
