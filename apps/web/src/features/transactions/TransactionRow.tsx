@@ -11,7 +11,7 @@ import { UndoToast } from '../../ui/UndoToast';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { CategoryPicker } from './CategoryPicker';
 import { isEditable } from './draft';
-import { type AmountExtraPart, amountExtraParts, amountLook, type ListRow, paidWithLook } from './list-model';
+import { type AmountExtraPart, amountExtraParts, amountLook, type ListRow, paidWithLook, wholeLeftOut } from './list-model';
 import { canRefile, emptyForm, refiledPost } from './tx-form';
 import { ratesForSave } from './tx-save';
 
@@ -108,7 +108,10 @@ export function TransactionRow({
 }) {
   const transfer = row.type !== 'expense' && row.type !== 'income';
   // Money back on a purchase reads as money in: a plus, in green. Money a person paid back has a plus too, muted.
-  const shownMinor = amountMinor ?? row.amountMinor;
+  // Wholly excluded from the report, a row reads as a split with all of it left out: nothing counted on top, in grey,
+  // and the whole sum under it with ⊘ (`amountExtraParts`), so the two kinds of left out look alike.
+  const allOut = wholeLeftOut(row);
+  const shownMinor = allOut ? 0 : (amountMinor ?? row.amountMinor);
   const { sign, plus, muted } = amountLook(row);
   const money = plus ? `+${formatMinor(Math.abs(shownMinor), currency ?? row.currency)}` : formatMinor(shownMinor, currency ?? row.currency);
 
@@ -211,8 +214,6 @@ export function TransactionRow({
       >
         <span className="block truncate text-sm font-medium">
           {label ?? ((row.categoryName && row.moreCounted ? `${row.categoryName} +${row.moreCounted}` : row.categoryName) || (row.type === 'correction' ? 'Balance correction' : transfer ? 'Transfer' : 'Uncategorised'))}
-          {/* §4.4: a purchase that is not this person's spending stays on the list, saying so. */}
-          {row.excluded && <span className="ml-2 rounded bg-slate-100 px-1.5 text-xs font-normal text-slate-500">Excluded</span>}
         </span>
         <span className="block truncate text-xs text-slate-500">
           {subtitle ?? (
@@ -236,12 +237,11 @@ export function TransactionRow({
             sign < 0 && 'text-red-700',
             sign > 0 && 'text-emerald-700',
             muted && 'text-slate-500',
-            row.excluded && 'line-through',
           )}
         >
           {amount ?? money}
         </span>
-        {amountExtra ?? (row.leftOut ? <AmountExtra parts={amountExtraParts(row.tx ?? { originalCurrency: null, originalAmountMinor: null }, undefined, row)} /> : null)}
+        {amountExtra ?? (row.leftOut || allOut ? <AmountExtra parts={amountExtraParts(row.tx ?? { originalCurrency: null, originalAmountMinor: null }, undefined, row)} /> : null)}
       </span>
       {trailing}
     </div>
@@ -251,7 +251,7 @@ export function TransactionRow({
   // selecting: a drag across a list being ticked is a scroll, never an Edit.
   if (phone && !select && (onEdit || onDelete || onDuplicate)) {
     return (
-      <li {...itemProps} className={cx('list-none', row.excluded && 'opacity-60', row.deleted && 'opacity-50 line-through')}>
+      <li {...itemProps} className={cx('list-none', row.deleted && 'opacity-50 line-through')}>
         <SwipeRow
           enabled
           testId={testId}
@@ -276,7 +276,6 @@ export function TransactionRow({
       onClick={faceTap}
       className={cx(
         'group',
-        row.excluded && 'opacity-60',
         row.deleted && 'opacity-50 line-through',
         faceTap && '-mx-2 cursor-pointer rounded-lg px-2 hover:bg-slate-50',
       )}

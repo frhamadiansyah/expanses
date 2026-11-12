@@ -80,7 +80,10 @@ export interface ListRow {
   feeCurrency?: string;
   holderName: string | null;
   deleted: boolean;
-  /** Marked "not my spending": still listed, faded and struck through, but out of every figure the list adds up. */
+  /**
+   * Marked "not my spending": still listed, but out of every figure the list adds up. It reads as a split with all of it
+   * left out (`wholeLeftOut`): nothing counted on top, in grey, and the whole sum under it with ⊘.
+   */
   excluded: boolean;
   /** What a draft still needs before it can be recorded. Always empty for a recorded row. */
   needs: string[];
@@ -477,6 +480,8 @@ export function groupByCategory(rows: readonly ListRow[]): CategoryGroup[] {
  * with a plus but muted, since it is not income and adds nothing to the day, and money lent out stays plain.
  */
 export function amountLook(row: ListRow): { sign: -1 | 0 | 1; plus: boolean; muted: boolean } {
+  // Wholly out of the report: what counts is nothing, in grey, with no colour for which way the money went.
+  if (wholeLeftOut(row)) return { sign: 0, plus: false, muted: true };
   if (row.refund) return { sign: 1, plus: true, muted: false };
   if (row.type === 'expense') return { sign: -1, plus: false, muted: false };
   if (row.type === 'income') return { sign: 1, plus: false, muted: false };
@@ -506,6 +511,20 @@ export interface AmountExtraPart {
 }
 
 /**
+ * A row wholly excluded from the report, read as a split whose every line is left out: what counts is nothing, and the
+ * whole sum is what is left out. A deleted row keeps its own look (faded and struck through, its amount as it was).
+ */
+export function wholeLeftOut(row: { excluded?: boolean; deleted?: boolean }): boolean {
+  return !!row.excluded && !row.deleted;
+}
+
+/** What a row leaves out of the report, read under its amount: a partly excluded split's lines, or the whole of an excluded row. */
+function leftOutOf(row: { leftOut?: ListRow['leftOut']; excluded?: boolean; deleted?: boolean; amountMinor?: number }): { amountMinor: number } | undefined {
+  if (row.leftOut) return row.leftOut;
+  return wholeLeftOut(row) && row.amountMinor !== undefined ? { amountMinor: row.amountMinor } : undefined;
+}
+
+/**
  * The one line under a row's amount: a transfer's fee first ("+Rp 10.000", muted, the figure above it being what
  * landed), then the foreign amount, then the points ("¥1.850 · +38 pts"), each alone when only it applies, and
  * nothing when none does. The foreign amount and the points used to stack as lines of their own, which made a
@@ -514,17 +533,26 @@ export interface AmountExtraPart {
 export function amountExtraParts(
   tx: Pick<TransactionView, 'originalCurrency' | 'originalAmountMinor'>,
   points: PurchasePoints | undefined,
-  fee?: Pick<ListRow, 'feeMinor' | 'currency'> & { feeCurrency?: string | undefined; leftOut?: ListRow['leftOut'] },
+  fee?: Pick<ListRow, 'feeMinor' | 'currency'> & {
+    feeCurrency?: string | undefined;
+    leftOut?: ListRow['leftOut'];
+    /** The row's own: a wholly excluded row reads its whole amount as left out (`wholeLeftOut`). */
+    excluded?: boolean;
+    deleted?: boolean;
+    amountMinor?: number;
+  },
 ): AmountExtraPart[] {
   const parts: AmountExtraPart[] = [];
-  // A split with lines left out of the report: their sum, in the muted figure a transfer's fee is, so the row stays as tall.
-  if (fee?.leftOut) {
-    const sum = formatMinor(fee.leftOut.amountMinor, fee.currency);
+  const off = fee ? leftOutOf(fee) : undefined;
+  // A split with lines left out of the report — or a row with all of it left out: their sum, in the muted figure a
+  // transfer's fee is, so the row stays as tall.
+  if (off) {
+    const sum = formatMinor(off.amountMinor, fee!.currency);
     parts.push({ text: `⊘ ${sum}`, label: `Excluded from report, ${sum}`, tone: 'foreign' });
   }
   if (fee?.feeMinor) parts.push({ text: `+${formatMinor(fee.feeMinor, fee.feeCurrency ?? fee.currency)}`, tone: 'foreign' });
   // The foreign figure is the whole charge: beside a counted part alone it would disagree with the row.
-  if (tx.originalCurrency && tx.originalAmountMinor !== null && !fee?.leftOut) parts.push({ text: formatMinor(tx.originalAmountMinor, tx.originalCurrency), tone: 'foreign' });
+  if (tx.originalCurrency && tx.originalAmountMinor !== null && !off) parts.push({ text: formatMinor(tx.originalAmountMinor, tx.originalCurrency), tone: 'foreign' });
   if (points) {
     const mark = points.points < 0 ? '−' : points.approximate ? '≈ ' : '+';
     parts.push({ text: `${mark}${formatPoints(Math.abs(points.points))} ${points.unit}`, tone: points.points < 0 ? 'lost' : 'earned' });

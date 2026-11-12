@@ -1428,7 +1428,7 @@ test('a split by category refuses a foreign amount in words, and the way out wor
  *
  * The extras spec above reads the chart's half. This one adds the two the plan names and nothing asserted: the
  * **budget's** spending, which is a second reader of `categoryRows` and could have been left behind, and the
- * **Excluded pill**, which is the only thing in the list that says why a purchase you can see is missing from
+ * **⊘ line** under the amount, which is the only thing in the list that says why a purchase you can see is missing from
  * your spending. Both purchases are on one card and under one category, so every figure below is the same two
  * numbers read by five different readers — and each reader has to pick the right one of them.
  */
@@ -1461,14 +1461,15 @@ test('an excluded purchase leaves the chart and the budget, keeps the statement 
   await spend('Ranch Market', '50000', false);
   await spend('Superindo', '85000', true);
 
-  // The list shows both, and says which of them is out — faded and struck through is not readable by a test,
-  // so the pill is what has to carry the sentence.
+  // The list shows both, and says which of them is out: nothing counted on top, and the whole sum under it with ⊘,
+  // read aloud as what it is.
   await page.goto('/transactions');
   const excluded = page.getByTestId('transaction-row').filter({ hasText: 'Superindo' });
   const counted = page.getByTestId('transaction-row').filter({ hasText: 'Ranch Market' });
-  await expect(excluded).toContainText('Excluded');
-  // Only the excluded one wears it: a pill on every row would pass the line above and mean nothing.
-  await expect(counted).not.toContainText('Excluded');
+  await expect(excluded.getByLabel(/^Excluded from report, Rp.85\.000$/)).toBeVisible();
+  await expect(excluded).toContainText(/Rp.0(?![\d.])/);
+  // Only the excluded one wears it: a mark on every row would pass the line above and mean nothing.
+  await expect(counted.getByLabel(/^Excluded from report/)).toHaveCount(0);
 
   // Out of the chart: 50.000, never 135.000. The month's total is the figure the ring is drawn from.
   await expect(page.getByTestId('period-total')).toHaveText('Rp 50.000');

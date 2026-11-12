@@ -655,6 +655,26 @@ describe('a split with a line left out of the report (0096)', () => {
     expect(amountExtraParts(three, undefined, row).map((p) => p.text)).toEqual(['⊘ Rp 205.000.000']);
   });
 
+  it('a wholly excluded row reads as one left out entirely: grey, and the whole sum under it with ⊘', () => {
+    // Invented: Rp 64.000 on the card, the whole purchase switched to Exclude from report.
+    const whole = tx('2026-09-21', 'Dinner for the office', [['groceries', 64_000], ['octo', -64_000]], { cardId: 'c1', excluded: true });
+    const [row] = buildRows([whole], [], school, cards);
+    expect(row).toMatchObject({ excluded: true, amountMinor: 64_000 });
+    expect(amountLook(row!)).toEqual({ sign: 0, plus: false, muted: true });
+    expect(amountExtraParts(whole, undefined, row)).toEqual([{ text: '⊘ Rp\u00a064.000', label: 'Excluded from report, Rp\u00a064.000', tone: 'foreign' }]);
+    // As a partial: the whole-charge foreign figure gives way to the ⊘ line; points still follow.
+    const abroad = { ...whole, originalCurrency: 'JPY', originalAmountMinor: 720 };
+    const [abroadRow] = buildRows([abroad], [], school, cards);
+    expect(amountExtraParts(abroad, { points: 12, unit: 'pts', approximate: false }, abroadRow).map((p) => p.text)).toEqual(['⊘ Rp\u00a064.000', '+12 pts']);
+    // Deleted keeps its own look: no ⊘ line, and the amount stays the amount.
+    const gone = { ...whole, status: 'void' as const };
+    const [goneRow] = buildRows([gone], [], school, cards);
+    expect(amountExtraParts(gone, undefined, goneRow)).toEqual([]);
+    expect(amountLook(goneRow!).muted).toBe(false);
+    // Still out of the day's figure.
+    expect(dayTotal([row!])).toBe(0);
+  });
+
   it('keeps today’s look when every line is left out, or none is', () => {
     const all = mark(fees, 'platform');
     const [allRow] = buildRows([all], [], school, cards);
