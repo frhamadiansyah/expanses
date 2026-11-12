@@ -120,6 +120,63 @@ table.t th { color:var(--ink3); font-weight:600; font-size:12px; }
   </div>
 </div>
 
+<h2>Tap a row to filter the cards below (grid view)</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">5</span>Tap “Spending money”</p>
+    <div class="phone">
+      <div class="lt">Wallet <span><span class="round">⊞</span><span class="round">＋</span></span></div>
+      <div class="box">
+        <div class="lab">Balance</div>
+        <div class="fig">Rp 3.500.000</div>
+        <div class="spark"></div>
+        <div style="border-top:.5px solid var(--hair);margin-top:6px">
+          <div class="sr mark" style="background:#eef6ee;border-radius:8px;padding-left:6px;padding-right:6px"><span class="dot" style="background:var(--up)"></span><span class="grow" style="font-weight:600">Spending money</span><span class="amt" style="font-weight:600">Rp 6.800.000</span><span style="color:var(--ink3);margin-left:4px">✓</span></div>
+          <div class="sr" style="color:var(--ink3)"><span class="dot" style="background:var(--alarm);opacity:.5"></span><span class="grow">Owed on cards</span><span class="amt">−Rp 2.150.000</span></div>
+          <div class="sr" style="color:var(--ink3)"><span class="dot" style="background:var(--warn);opacity:.5"></span><span class="grow">Bills still to pay</span><span class="amt">−Rp 1.150.000</span><span class="chev">›</span></div>
+        </div>
+      </div>
+      <div class="gh" style="margin-top:12px"><span>Spending money · 2</span><span style="color:var(--tint);text-transform:none;letter-spacing:0">Show all</span></div>
+      <div class="grid" style="margin-top:0">
+        <div class="card" style="background:#1e3a8a">Payroll account<b>Rp 5.900.000</b></div>
+        <div class="card" style="background:#0f766e">E-wallet<b>Rp 900.000</b></div>
+      </div>
+      <p class="note">Only the accounts that make up Spending money (bank, cash, e-wallet, e-money) stay in the grid; they add up to the row’s figure. Tap the row again, or Show all, to bring every card back.</p>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">6</span>Tap “Owed on cards”</p>
+    <div class="phone">
+      <div class="lt">Wallet <span><span class="round">⊞</span><span class="round">＋</span></span></div>
+      <div class="box">
+        <div class="lab">Balance</div>
+        <div class="fig">Rp 3.500.000</div>
+        <div class="spark"></div>
+        <div style="border-top:.5px solid var(--hair);margin-top:6px">
+          <div class="sr" style="color:var(--ink3)"><span class="dot" style="background:var(--up);opacity:.5"></span><span class="grow">Spending money</span><span class="amt">Rp 6.800.000</span></div>
+          <div class="sr mark" style="background:#fdeeee;border-radius:8px;padding-left:6px;padding-right:6px"><span class="dot" style="background:var(--alarm)"></span><span class="grow" style="font-weight:600">Owed on cards</span><span class="amt" style="font-weight:600">−Rp 2.150.000</span><span style="color:var(--ink3);margin-left:4px">✓</span></div>
+          <div class="sr" style="color:var(--ink3)"><span class="dot" style="background:var(--warn);opacity:.5"></span><span class="grow">Bills still to pay</span><span class="amt">−Rp 1.150.000</span><span class="chev">›</span></div>
+        </div>
+      </div>
+      <div class="gh" style="margin-top:12px"><span>Owed on cards · 2</span><span style="color:var(--tint);text-transform:none;letter-spacing:0">Show all</span></div>
+      <div class="grid" style="margin-top:0">
+        <div class="card" style="background:#111827">Card ending 1234<b>Rp 1.650.000</b></div>
+        <div class="card" style="background:#7c2d12">Card ending 5678<b>Rp 500.000</b></div>
+      </div>
+      <p class="note">Only the credit cards stay; what they owe adds up to the row’s figure. A card that owes nothing is still shown, at Rp 0.</p>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">7</span>Tap “Bills still to pay”</p>
+    <div class="phone" style="min-height:auto">
+      <p class="note" style="margin-top:0">Opens the sheet in <b>2</b> (bills are not cards, so there is nothing in the grid to filter). The filter on 5 or 6 is cleared first.</p>
+      <p class="note">The filter is not remembered: leaving Wallet and coming back shows every card again. The pile and carousel views have no Balance box, so they never filter.</p>
+    </div>
+  </div>
+</div>
+
 <h2>What happens when a bill is paid</h2>
 <div class="pair">
   <div class="col" style="width:680px">
