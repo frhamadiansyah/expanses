@@ -1,9 +1,10 @@
 import { convertMinor, SHEET_SECTION_LABELS, SHEET_SECTIONS, sheetSectionOf, sumToBase } from '@expanses/core';
 import type { AccountSubtype } from '@expanses/db';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
-import { type AssetDrawer, type AssetGroup, type AssetRow, totalOf } from './asset-rows';
-import { type DebtDrawer, type DebtGroup, type DebtKind, type DebtRow, DEBT_GROUP_LABELS, type DebtSheet } from './debt-rows';
-import { memberName, ownerRing, receivedDebtIcon, type ReceivedItem } from './joint-rows';
+import type { AssetProfileRow, AssetValueRow, PersonDebtRow } from '@expanses/db';
+import { type AssetDrawer, type AssetGroup, type AssetGrouping, type AssetRow, groupAssets, liveGroups, totalOf } from './asset-rows';
+import { type DebtDrawer, type DebtGroup, type DebtInputs, type DebtKind, type DebtRow, DEBT_GROUP_LABELS, type DebtSheet, groupDebts } from './debt-rows';
+import { type JointStatus, memberName, ownerRing, receivedDebtIcon, type ReceivedItem } from './joint-rows';
 import { debtKind, type RowKind, rowKindOf } from './sheet-drawers';
 
 /*
@@ -11,10 +12,14 @@ import { debtKind, type RowKind, rowKindOf } from './sheet-drawers';
  * squares and the list count both people — this phone's own accounts as they always were, and every item the other
  * shares, at its shared balance — one list per kind mixing the two, each row knowing whose it is.
  *
- * Both phones draw the same page: a figure is the same sum of the same per-amount conversions whichever phone adds it,
- * a received item is filed by the same facts its owner's phone files it by (its subtype and `sheet` facts), and the
- * rows are put in the group's member order and then by name, never by which phone they live on. Only shared items
- * and their shared balances are read here; nothing private of the other's ever reaches this phone.
+ * Given the same rates, both phones draw the same page: only what the group holds counts — this phone's own accounts
+ * that were sent (`ownSentAccountIds`) and the other's items — a figure is the same sum of the same per-amount
+ * conversions whichever phone adds it, a received item is filed by the facts its owner's phone files it by (its subtype
+ * and `sheet`), and rows are put in the group's member order then by name. A foreign row is converted with each
+ * phone's own rates of the day, so a rate that differs between the phones moves the figure by that much. An own account
+ * that was never sent is listed apart, "Only on this phone", and counted in nothing here. Only shared items and their
+ * shared balances are read; nothing private of the other's ever reaches this phone. An owner on an older build sends no
+ * `sheet`, so their gold or mortgage files by subtype until both phones update.
  */
 
 export interface Household {
@@ -27,6 +32,20 @@ export interface Household {
   received: readonly ReceivedItem[];
   /** Rates for the received items' currencies, as the household's Net worth converts them. */
   ratesToBase: Readonly<Record<string, number>>;
+}
+
+/**
+ * The household, once everything it needs is in: the joint status, its data, and which own accounts were sent. Anything
+ * short of that — no group, loading, failed (offline) — is null, and the page draws this phone's own view as it always
+ * did rather than waiting: Assets and Liabilities never hang on the household.
+ */
+export function householdFrom(
+  joint: { status: JointStatus; data: Household | null },
+  sentIds: readonly string[] | undefined,
+): { household: Household; sent: ReadonlySet<string> } | null {
+  if (joint.status !== 'joint' || !joint.data || !sentIds) return null;
+  const { me, members, names, received, ratesToBase } = joint.data;
+  return { household: { me, members, names, received, ratesToBase }, sent: new Set(sentIds) };
 }
 
 /** Whose a row is, as its initial draws it: the member's name and colour. */
@@ -169,4 +188,53 @@ export function householdDebtSheet(own: DebtSheet, household: Household, baseCur
     return [{ kind, label: mine?.label ?? DEBT_GROUP_LABELS[kind], ...plus(mine ?? nothing, sumOf(theirs)), rows, drawers: folded }];
   });
   return { ...own, groups, total: totalOf(groups) };
+}
+
+/**
+ * The household's Assets page from this phone's own values: the own accounts that were sent, merged with the other's
+ * items (`householdAssetGroups`), and — apart, counted in nothing — the own accounts that were not. An account with
+ * pockets is one row here and one row a pocket on the other phone (each pocket is an item); the totals are the same.
+ */
+export function householdAssetPage(
+  values: readonly AssetValueRow[],
+  profiles: readonly AssetProfileRow[],
+  grouping: AssetGrouping,
+  household: Household,
+  sent: ReadonlySet<string>,
+): { live: AssetGroup[]; total: { totalMinor: number | null; missing: string[] }; onlyHere: AssetRow[] } {
+  const shared = liveGroups(groupAssets(values.filter((value) => sent.has(value.accountId)), [...profiles], grouping));
+  const live = householdAssetGroups(shared, household, grouping.baseCurrency);
+  const kept = liveGroups(groupAssets(values.filter((value) => !sent.has(value.accountId)), [...profiles], grouping));
+  return { live, total: totalOf(live), onlyHere: kept.flatMap((group) => group.rows).map((row) => ({ ...row, owner: household.me })) };
+}
+
+/** A person's debts split by which of their accounts were sent, each part's total its own loans' balances. */
+function splitPeople(people: readonly PersonDebtRow[], keep: (accountId: string) => boolean): PersonDebtRow[] {
+  return people.flatMap((person) => {
+    const loans = person.loans.filter((loan) => keep(loan.accountId));
+    if (loans.length === 0) return [];
+    if (loans.length === person.loans.length) return [person];
+    return [{ ...person, loans, totalMinor: loans.reduce((sum, loan) => sum + loan.balanceMinor, 0) }];
+  });
+}
+
+/**
+ * The household's Liabilities page from this phone's own inputs: the own debts that were sent, merged with the other's
+ * (`householdDebtSheet`), and — apart, counted in nothing — the own debts that were not. Paid-off loans and the due
+ * split stay this phone's own reading of all its debts.
+ */
+export function householdDebtPage(input: DebtInputs, household: Household, sent: ReadonlySet<string>, today?: string): { sheet: DebtSheet; onlyHere: DebtRow[] } {
+  const only = (keep: boolean) => ({
+    ...input,
+    // Assets stay in: a loan's asset is looked up among them. Only the liabilities are split.
+    accounts: input.accounts.filter((account) => account.kind !== 'liability' || sent.has(account.id) === keep),
+    people: splitPeople(input.people, (accountId) => sent.has(accountId) === keep),
+  });
+  const all = groupDebts(input, today);
+  const shared = groupDebts(only(true), today);
+  const kept = groupDebts(only(false), today);
+  return {
+    sheet: { ...householdDebtSheet(shared, household, input.baseCurrency, input.items ?? {}), cleared: all.cleared, due: all.due },
+    onlyHere: kept.groups.flatMap((group) => group.rows).map((row) => ({ ...row, owner: household.me })),
+  };
 }

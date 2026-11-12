@@ -22,7 +22,7 @@ import { markReviewedTx } from '../../src/repos/net-worth-sharing';
 import { AuthorityError } from '../../src/sync/authority';
 import { withCapture } from '../../src/sync/capture';
 import { encodeHlc } from '../../src/sync/hlc';
-import { computeItemSummary, itemIdOf, receivedItems, sendSummariesTx } from '../../src/sync/net-worth/summaries';
+import { computeItemSummary, itemIdOf, ownSentAccountIds, receivedItems, sendSummariesTx } from '../../src/sync/net-worth/summaries';
 import type { ChangeSet } from '../../src/sync/types';
 import { categoryOf, headOf, Household, type Device } from './household';
 
@@ -264,6 +264,23 @@ describe('summaries: compute, send, receive (joint-net-worth §5.2, §9)', () =>
     expect(await rina.database.transaction((tx) => sendSummariesTx(tx, [rina.bank], today))).toBe(1);
     await home.settle();
     expect(await receivedItems(andi.database, groupBookId)).toMatchObject([{ name: 'Rina Bank', balanceMinor: 0 }]);
+  });
+
+  it('ownSentAccountIds: exactly the own accounts the partner receives — not a hidden one, not one waiting for the Share', async () => {
+    const { home, rina, andi, groupBookId } = await activeGroup('separate');
+    const card = await rinaCard(rina);
+    await setShare(rina, rina.bank, 'total');
+    await setShare(rina, card, 'hidden');
+    expect(await ownSentAccountIds(rina.database, groupBookId)).toEqual([]);
+    await shareAll(rina);
+    await home.settle();
+    expect(await ownSentAccountIds(rina.database, groupBookId)).toEqual([rina.bank]);
+    expect((await receivedItems(andi.database, groupBookId)).map((i) => i.itemId)).toEqual([await itemIdOf(groupBookId, rina.bank)]);
+    // Andi's phone holds Rina's item, never as one of his own.
+    expect(await ownSentAccountIds(andi.database, groupBookId)).toEqual([]);
+    await setShare(rina, rina.bank, 'hidden');
+    await rina.database.transaction((tx) => sendSummariesTx(tx, [rina.bank], today));
+    expect(await ownSentAccountIds(rina.database, groupBookId)).toEqual([]);
   });
 
   it('an unchanged recompute sends nothing', async () => {

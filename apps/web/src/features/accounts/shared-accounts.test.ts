@@ -1,6 +1,8 @@
 import type { ItemSummary } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { sharedSections } from './shared-accounts';
+import { assetKindTile, debtKindTile } from '../ownables/catalogue-view';
+import { rowKindOf } from '../networth/sheet-drawers';
+import { itemTile, sharedSections } from './shared-accounts';
 
 const item = (over: Partial<ItemSummary> & { itemId: string }): ItemSummary & { itemId: string } => ({
   owner: 'm-andi',
@@ -47,5 +49,16 @@ describe('sharedSections (joint-net-worth §8.2: separate → "Andi\'s, shared" 
 
   it('is empty in joint mode, where the items are the household’s Net worth instead', () => {
     expect(sharedSections('joint', members, names, [item({ itemId: 'a1' })])).toEqual([]);
+  });
+});
+
+describe('itemTile (the partner page wears the drawing its row wears)', () => {
+  it('reads the sent sheet facts: gold wears gold’s drawing, a home loan a house’s, a paylater its own', () => {
+    const goldKind = rowKindOf('other', { accountId: 'x', code: '0701' }, () => 'investment').key;
+    expect(itemTile({ kind: 'asset', subtype: 'investment', sheet: { code: '0701' } })).toBe(assetKindTile('other', goldKind));
+    expect(itemTile({ kind: 'liability', subtype: 'loan', sheet: { icon: 'home' } })).toBe(debtKindTile('home_mortgage'));
+    expect(itemTile({ kind: 'liability', subtype: 'loan', sheet: { item: 'online_loan', icon: 'loan' } })).toBe(debtKindTile('online_loan'));
+    // From an older build, with no sheet: by its subtype alone, as before.
+    expect(itemTile({ kind: 'liability', subtype: 'credit_card' })).toBe(debtKindTile('credit_card'));
   });
 });

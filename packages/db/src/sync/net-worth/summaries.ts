@@ -409,6 +409,21 @@ function transfersOf(summary: Partial<Pick<ItemSummary, 'transferMinor' | 'trans
   return { transferMinor, transfers: good ? list.map((x) => ({ transferId: x.transferId, minor: x.minor })) : [] };
 }
 
+/**
+ * This member's own accounts the group holds live right now — exactly what the other members receive (a hidden one, one
+ * waiting for the Share, one taken back are not among them). The household's Assets and Liabilities count only these
+ * of this phone's own, so both phones add up the same items.
+ */
+export async function ownSentAccountIds(database: Database, groupBookId: string): Promise<string[]> {
+  const rows = await database.db.values<[string]>(sql`
+    SELECT m.account_id FROM nw_item_map m
+    JOIN nw_items i ON i.book_id = m.group_book_id AND i.item_id = m.item_id
+    JOIN shared_books s ON s.book_id = m.group_book_id
+    WHERE m.group_book_id = ${groupBookId} AND i.removed = 0 AND i.owner = s.member_id
+    ORDER BY m.account_id`);
+  return rows.map(([id]) => id);
+}
+
 /** The items other members share with this device's group (§8.2, §8.3): live ones only, never this member's own. */
 export async function receivedItems(database: Database, groupBookId: string): Promise<(ItemSummary & { itemId: string })[]> {
   const [self] = await database.db.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${groupBookId}`);

@@ -5,6 +5,7 @@ import {
   householdPurchases,
   itemTransfers,
   listBooks,
+  ownSentAccountIds,
   receivedItems,
   sharingDetail,
   assetSaleOf,
@@ -255,6 +256,19 @@ export function useSharedNetWorth() {
     error: group.error ?? (active !== null ? read.error : null),
     data: active === null ? null : (read.data ?? null),
   };
+}
+
+/**
+ * This phone's own accounts the household holds live (`ownSentAccountIds`): what the other member receives, and so the
+ * only own accounts the household's Assets and Liabilities count. Keyed under `net-worth`, so a sync run re-reads it.
+ */
+export function useOwnSentIds(groupBookId: string | null) {
+  const { database, ws } = useApp();
+  return useQuery({
+    queryKey: ['net-worth', 'own-sent', ws.workspaceId, groupBookId],
+    enabled: groupBookId !== null,
+    queryFn: () => ownSentAccountIds(database, groupBookId!),
+  });
 }
 
 /** A member's name for a line of copy (pure, in joint-rows.ts so view-models share its fallback). */

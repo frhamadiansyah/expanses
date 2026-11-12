@@ -3,7 +3,8 @@ import type { AccountSubtype } from '@expanses/db';
 import type { LucideIcon } from 'lucide-react';
 import { assetKindTile, debtKindTile } from '../ownables/catalogue-view';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
-import { ownerRing, type ReceivedItem } from '../networth/joint-rows';
+import { ownerRing, receivedDebtIcon, type ReceivedItem } from '../networth/joint-rows';
+import { debtKind, rowKindOf } from '../networth/sheet-drawers';
 
 /*
  * Accounts' "Andi's, shared" (joint-net-worth §8.2): with separate tax IDs Net worth stays personal, and the other
@@ -45,8 +46,14 @@ export function sharedSections(mode: 'joint' | 'separate', members: readonly str
   return sections;
 }
 
-/** The drawing the item's kind wears on Net worth, so the same item looks the same on both pages (D12). */
-export function itemTile(item: Pick<ReceivedItem, 'kind' | 'subtype'>): LucideIcon {
-  if (item.kind === 'liability') return debtKindTile(item.subtype === 'credit_card' || item.subtype === 'payable' ? item.subtype : 'other_loans');
-  return assetKindTile(sheetSectionOf({ code: null, subtype: item.subtype }), item.subtype);
+/**
+ * The drawing the item's kind wears on Net worth, so the same item looks the same on both pages (D12): read off the
+ * same facts its row is filed by — its subtype and, when its owner's phone sent them, its `sheet` facts — so gold wears
+ * gold's drawing and a home loan a house's, on its row and on its page alike.
+ */
+export function itemTile(item: Pick<ReceivedItem, 'kind' | 'subtype' | 'sheet'>): LucideIcon {
+  if (item.kind === 'liability') return debtKindTile(debtKind(item.sheet?.item ?? null, receivedDebtIcon(item)).key);
+  const code = item.sheet?.code ?? null;
+  const section = sheetSectionOf({ code, subtype: item.subtype });
+  return assetKindTile(section, rowKindOf(section, { accountId: '', code }, () => item.subtype as AccountSubtype).key);
 }

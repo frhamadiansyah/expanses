@@ -10,8 +10,9 @@ import { useHeldRates } from '../accounts/queries';
 import { usePeopleDebts } from '../debts/queries';
 import { debtKindTile } from '../ownables/catalogue-view';
 import { bareFigure, type DebtDrawer, type DebtRow, type DebtSheet, groupDebts } from '../networth/debt-rows';
-import { useJointSheet, useSheet } from '../networth/queries';
-import { type Household, householdCaption, householdDebtSheet, memberMark } from '../networth/household-lists';
+import { useJointSheet, useOwnSentIds, useSharedNetWorth, useSheet } from '../networth/queries';
+import { householdCaption, householdDebtPage, householdFrom, memberMark } from '../networth/household-lists';
+import { debtKind } from '../networth/sheet-drawers';
 import { MemberBadge } from '../workspaces/WorkspaceBadge';
 import { ShareBoxes, ShowAll } from '../networth/ShareBoxes';
 import { debtSegments } from '../networth/share-segments';
@@ -135,31 +136,25 @@ export function DebtsPage() {
   const held = useHeldRates([...all.filter((a) => a.kind === 'liability').map((a) => a.currency ?? baseCurrency), ...owedTo.map((p) => p.currency)]);
   const [showCleared, setShowCleared] = useState(false);
   /*
-   * With one tax ID this is the household's page, as Assets is: the total, the squares and the list count both people's
-   * debts — this phone's own and what the other shares — one list per kind, each row with its owner's initial.
+   * With one tax ID this is the household's page, as Assets is: the total, the squares and the list count what the group
+   * holds — this phone's own debts that were sent and what the other shares — one list per kind, each row with its
+   * owner's initial. An own debt never sent is listed apart, "Only on this phone". Until all of it is in (or offline)
+   * the page is this phone's own: it never waits on the household.
    */
+  const sharedNw = useSharedNetWorth();
   const joint = useJointSheet();
-  const household: Household | null = joint.status === 'joint' && joint.data ? { me: joint.data.me, members: joint.data.members, names: joint.data.names, received: joint.data.received, ratesToBase: joint.data.ratesToBase } : null;
+  const sentIds = useOwnSentIds(sharedNw.data?.group.groupBookId ?? null);
+  const inHousehold = householdFrom(joint, sentIds.data);
+  const household = inHousehold?.household ?? null;
 
   const rates = { ...(household?.ratesToBase ?? {}), ...(held.data?.rates ?? {}) };
-  const ready = accounts.data && balances.data && loans.data && people.data && cards.data && held.data && items.data && joint.status !== 'pending';
-  const ownDebts = ready
-    ? groupDebts(
-        {
-          accounts: all,
-          balances: balances.data!,
-          loans: loans.data!,
-          cards: cards.data!,
-          people: owedTo,
-          sheet: sheet.data ?? null,
-          baseCurrency,
-          ratesToBase: rates,
-          items: items.data!,
-        },
-        today,
-      )
+  const ready = accounts.data && balances.data && loans.data && people.data && cards.data && held.data && items.data;
+  const inputs = ready
+    ? { accounts: all, balances: balances.data!, loans: loans.data!, cards: cards.data!, people: owedTo, sheet: sheet.data ?? null, baseCurrency, ratesToBase: rates, items: items.data! }
     : null;
-  const debts = ownDebts && household ? householdDebtSheet(ownDebts, household, baseCurrency, items.data ?? {}) : ownDebts;
+  const page = inputs && inHousehold ? householdDebtPage(inputs, inHousehold.household, inHousehold.sent, today) : null;
+  const debts = page ? page.sheet : inputs ? groupDebts(inputs, today) : null;
+  const onlyHere = page?.onlyHere ?? [];
 
   // The instalments the banks ask for each month: the Loans page's own figure, and the box's footer under it.
   const open = (loans.data ?? []).filter((loan) => loan.status === 'open');
@@ -208,7 +203,7 @@ export function DebtsPage() {
    */
   const drawers = (debts?.groups ?? []).flatMap((group) => group.drawers.map((drawer) => ({ key: `${group.kind}:${drawer.key}`, drawer })));
 
-  const nothing = debts !== null && debts.groups.length === 0;
+  const nothing = debts !== null && debts.groups.length === 0 && onlyHere.length === 0;
   const drawersState = useDrawers();
   // The kind of debt picked on the chart, if one is: the box narrows to its drawer, opened.
   const [picked, setPicked] = useState<string | null>(null);
@@ -324,6 +319,14 @@ export function DebtsPage() {
               {debts.cleared.length > 0 && (
                 <InsetRow title={`${showCleared ? 'Hide' : 'Show'} paid-off loans (${debts.cleared.length})`} onClick={() => setShowCleared((was) => !was)} action />
               )}
+            </InsetGroup>
+          )}
+          {/* The own debts the household never received: on this phone only, counted in nothing above. */}
+          {household && onlyHere.length > 0 && (
+            <InsetGroup header="Only on this phone" footer="Not shared, so not in the household total.">
+              {onlyHere.map((row) => (
+                <DebtItem key={row.key} row={row} kind={debtKind(items.data?.[row.accountId ?? ''] ?? null, row.icon).key} baseCurrency={baseCurrency} rates={rates} mark={memberMark(household, household.me)} />
+              ))}
             </InsetGroup>
           )}
           {showCleared && paidOff}

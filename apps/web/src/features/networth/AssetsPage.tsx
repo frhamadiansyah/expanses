@@ -14,8 +14,8 @@ import { useHoldingLinks, useSecurities } from '../investments/queries';
 import { ShareBoxes, ShowAll } from './ShareBoxes';
 import { assetSegments, heldShares, kindSegments } from './share-segments';
 import { type AssetDrawer, type AssetGroup, type AssetRow, groupAssets, liveGroups, rowSubtitle, soldRows, staleRows, totalOf } from './asset-rows';
-import { useAssetProfiles, useAssetValues, useDueDeposits, useGoneAssets, useJointSheet, useSharedNetWorth, useTrades } from './queries';
-import { type Household, householdAssetGroups, householdCaption, memberMark } from './household-lists';
+import { useAssetProfiles, useAssetValues, useDueDeposits, useGoneAssets, useJointSheet, useOwnSentIds, useSharedNetWorth, useTrades } from './queries';
+import { householdAssetPage, householdCaption, householdFrom, memberMark } from './household-lists';
 import { MemberBadge } from '../workspaces/WorkspaceBadge';
 import { sharedAssetGroups } from './shared-assets';
 import { type ByStockInputs, linesByStock, type StockLine } from './stock-rows';
@@ -242,25 +242,30 @@ export function AssetsPage() {
   const sharedNw = useSharedNetWorth();
   /*
    * With one tax ID this is the household's page (owner, 12 Nov, "one square per kind"): the total, the squares and the
-   * list count both people's — this phone's own accounts and what the other shares — one list per kind, each row with
-   * its owner's initial, the same on both phones. Held while the household's inputs load, never drawn as one person's.
+   * list count what the group holds — this phone's own accounts that were sent and what the other shares — one list per
+   * kind, each row with its owner's initial, the same on both phones given the same rates. Until all of that is in (or
+   * when it cannot be, offline) the page is this phone's own, as it always was: it never waits on the household.
    */
   const joint = useJointSheet();
-  const household: Household | null = joint.status === 'joint' && joint.data ? { me: joint.data.me, members: joint.data.members, names: joint.data.names, received: joint.data.received, ratesToBase: joint.data.ratesToBase } : null;
+  const sentIds = useOwnSentIds(sharedNw.data?.group.groupBookId ?? null);
+  const inHousehold = householdFrom(joint, sentIds.data);
+  const household = inHousehold?.household ?? null;
   const markOf = household ? (owner: string | undefined) => (owner ? memberMark(household, owner) : undefined) : undefined;
   // Separately (or with no group), what the others share is listed apart under their names, counted in nothing.
-  const sharedGroups = household || joint.status === 'pending' ? [] : sharedAssetGroups(sharedNw.data);
+  const sharedGroups = household ? [] : sharedAssetGroups(sharedNw.data);
   const due = useDueDeposits();
   const dueIds = new Set((due.data ?? []).map((proposal) => proposal.accountId));
   const baseCurrency = ws.baseCurrency;
-  const ready = values.data && profiles.data && accounts.data && held.data && links.data && securities.data && joint.status !== 'pending';
+  const ready = values.data && profiles.data && accounts.data && held.data && links.data && securities.data;
   // Back from a fund's own page puts the list where it was left.
   useScrollMemory('assets', Boolean(ready));
-  const groups = ready
-    ? groupAssets(values.data!, profiles.data!, { accounts: accounts.data!, baseCurrency, ratesToBase: held.data!.rates, due: dueIds })
-    : [];
-  const live = household ? householdAssetGroups(liveGroups(groups), household, baseCurrency) : liveGroups(groups);
-  const total = household ? totalOf(live) : totalOf(groups);
+  const grouping = ready ? { accounts: accounts.data!, baseCurrency, ratesToBase: held.data!.rates, due: dueIds } : null;
+  const groups = grouping ? groupAssets(values.data!, profiles.data!, grouping) : [];
+  // The household's: only what the group holds is counted; an own account never sent is listed apart, "Only on this phone".
+  const page = grouping && inHousehold ? householdAssetPage(values.data!, profiles.data!, grouping, inHousehold.household, inHousehold.sent) : null;
+  const live = page ? page.live : liveGroups(groups);
+  const total = page ? page.total : totalOf(groups);
+  const onlyHere = page?.onlyHere ?? [];
   // The section All trades closes: Investments, or — with none, gold alone say — the first that holds a traded holding.
   const tradesHome = (live.find((group) => group.group === 'invest') ?? live.find((group) => group.rows.some((row) => traded.has(row.accountId))))?.group ?? null;
   const sold = soldRows(groups);
@@ -361,7 +366,7 @@ export function AssetsPage() {
       )}
 
       {/* Nothing of its own and nothing shared: said once every read has settled (done or failed), never left blank. */}
-      {live.length === 0 && sharedGroups.length === 0 && !values.isPending && !profiles.isPending && !accounts.isPending && !sharedNw.isPending && (
+      {live.length === 0 && onlyHere.length === 0 && sharedGroups.length === 0 && !values.isPending && !profiles.isPending && !accounts.isPending && !sharedNw.isPending && (
         <Empty>No assets yet. Add a bank account, fund, gold or property to see it here.</Empty>
       )}
       {active !== null && <ShowAll onClick={() => pick(null)} />}
@@ -395,6 +400,15 @@ export function AssetsPage() {
             }
           />
         ))}
+
+      {/* The own accounts the household never received: on this phone only, wearing its own initial, counted in nothing above. */}
+      {onlyHere.length > 0 && markOf && (
+        <InsetGroup header="Only on this phone" footer="Not shared, so not in the household total.">
+          {onlyHere.map((row) => (
+            <Row key={row.accountId} row={row} baseCurrency={baseCurrency} money={money} mark={markOf(row.owner)} />
+          ))}
+        </InsetGroup>
+      )}
 
       {sharedGroups.map((shared) => (
         <InsetGroup key={shared.owner} header={shared.header}>
