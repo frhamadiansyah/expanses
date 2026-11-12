@@ -14,6 +14,15 @@ import { isEditable } from './draft';
 import { type AmountExtraPart, amountExtraParts, amountLook, type AmountView, type ListRow, paidWithLook, wholeLeftOut } from './list-model';
 import { canRefile, emptyForm, refiledPost } from './tx-form';
 import { ratesForSave } from './tx-save';
+import { rowEventLead } from '../events/event-mode';
+import { useEvents } from '../events/queries';
+
+/** An event's name by its id, from the one owner-wide read of events; null for none, or one no longer here. */
+export function useEventName(eventId: string | null): string | null {
+  const events = useEvents().data;
+  if (!eventId) return null;
+  return events?.find((event) => event.id === eventId)?.name ?? null;
+}
 
 /**
  * One transaction, in every list that shows transactions.
@@ -53,8 +62,11 @@ export function TransactionRow({
   still = false,
   amount,
   view = 'report',
+  hideEvent = false,
 }: {
   row: ListRow;
+  /** The event's own page: every row there is in it, so the grey line does not say so again. */
+  hideEvent?: boolean;
   accounts: readonly AccountRow[];
   /** What the amount is written in; the row's own currency unless a screen keeps one column in its own. */
   currency?: string;
@@ -113,6 +125,8 @@ export function TransactionRow({
   view?: AmountView;
 }) {
   const transfer = row.type !== 'expense' && row.type !== 'income';
+  // A row in an event names it first on its grey line ("✈️ Lake trip · …"), on every list, in event mode or not.
+  const eventName = useEventName(hideEvent ? null : (row.eventId ?? row.tx?.eventId ?? row.draft?.eventId ?? null));
   // Money back on a purchase reads as money in: a plus, in green. Money a person paid back has a plus too, muted.
   // Wholly excluded from the report, a row reads as a split with all of it left out: nothing counted on top, in grey,
   // and the whole sum under it with ⊘ (`amountExtraParts`), so the two kinds of left out look alike.
@@ -222,6 +236,7 @@ export function TransactionRow({
           {label ?? ((row.categoryName && row.moreCounted ? `${row.categoryName} +${row.moreCounted}` : row.categoryName) || (row.type === 'correction' ? 'Balance correction' : transfer ? 'Transfer' : 'Uncategorised'))}
         </span>
         <span className="block truncate text-xs text-slate-500">
+          {eventName && <span data-testid="row-event">{`${rowEventLead(eventName)} · `}</span>}
           {subtitle ?? (
             <>
               {row.description ? `${row.description}${row.accountLabel || row.last4 ? ' · ' : ''}` : ''}

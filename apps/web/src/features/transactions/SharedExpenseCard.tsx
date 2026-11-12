@@ -1,7 +1,7 @@
 import { CASH_ITEMS, isoDate, type MoneyAccountSubtype } from '@expanses/core';
 import { editSharedExpense, addSharedItemPurchase, ownerScope, recordSharedExpense, type SharedEventView, sharedEventView, voidSharedExpense } from '@expanses/db';
 import { Check, CreditCard, Percent, Plane, Tag, Split, Users } from 'lucide-react';
-import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { canPayWith } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll, useResolveRates, useStoredRates } from '../../lib/queries';
@@ -63,10 +63,13 @@ export function SharedExpenseCard({
   itemId,
   seed,
   title,
+  top,
   onBack,
   onDone,
 }: {
   view: SharedEventView;
+  /** Drawn above the card: event mode's chip, when the card was opened by it. */
+  top?: ReactNode;
   expenseId?: string;
   /** "Buy it now" on the shared plan: the new expense is the item, which takes the whole of it as its share (D7). */
   itemId?: string;
@@ -223,6 +226,7 @@ export function SharedExpenseCard({
         actions={[{ key: 'save', label: 'Save', glyph: <Check size={20} aria-hidden />, disabled: !ready, run: () => formRef.current?.requestSubmit() }]}
       />
       <form ref={formRef} onSubmit={(event) => void save(event)} aria-label={editing ? 'Edit shared spending' : 'Add shared spending'} data-testid="shared-expense-card" className="flex flex-col gap-[10px]">
+        {top}
         <div className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)]">
           <FormRows className="rounded-none">
             {/* Paid by, where the workspace card's Paid with sits: who paid, and — when it was this person — with what. */}

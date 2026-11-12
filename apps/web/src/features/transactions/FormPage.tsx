@@ -4,7 +4,7 @@ import { eventPostingOf, linkEventItem, listTransactions, ownerScope } from '@ex
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, useNavigate, useRouter } from '@tanstack/react-router';
 import { originHref } from '../../app/from-search';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { Card, RowHint } from '../../ui';
@@ -12,6 +12,8 @@ import { PushedTitle, SCREEN } from '../../ui/native';
 import { buyRefusal, buySeed, coverTarget, eventOpening, isNothingLeft } from '../events/buy-item';
 import { useEventPlan, useEvents } from '../events/queries';
 import { useSharedEventPlan, useSharedEventView } from '../events/shared-queries';
+import { EventChip, useEventModeState } from '../events/EventMode';
+import { opensInEventMode } from '../events/event-mode';
 import { isEditable } from './draft';
 import { useChangeable } from './queries';
 import { SharedExpenseCard } from './SharedExpenseCard';
@@ -33,7 +35,19 @@ export function NewTransactionRoute() {
   const readOnly = useOpenBookReadOnly();
   // An account's page opens the form already knowing the mode and the account; the tab bar's ＋ says neither. An
   // event's Add spending names the event, and a plan item's "Buy it now" the item and the tab the plan was read in.
-  const { mode, account, to, event, item, expense, ws: tab, amount, currency, note, date, partner } = newRoute.useSearch();
+  const search = newRoute.useSearch();
+  const { mode, account, to, item, expense, ws: tab, amount, note, date, partner } = search;
+  /*
+   * Event mode (screen 3): a new purchase opens with the event already set, the amount in its "Add in" currency. Read
+   * once the mode is settled, as the card reads its seed once. ✕ on the chip leaves this one transaction out.
+   */
+  const eventModeState = useEventModeState();
+  const [leftOut, setLeftOut] = useState(false);
+  const inMode = eventModeState.active && !leftOut && opensInEventMode(search) ? eventModeState.active : null;
+  // A shared event is recorded on its own card, exactly as picking it on the Event row opens it (shared events §6).
+  const modeShared = inMode?.shared ? inMode : null;
+  const event = search.event ?? modeShared?.event.id;
+  const currency = search.currency ?? modeShared?.mode.currency;
   const events = useEvents();
   /*
    * A shared event is recorded on its own card (shared events §6, R14): Paid by, Split, its categories, its rate. Read
@@ -45,7 +59,7 @@ export function NewTransactionRoute() {
   // Owner-wide, as the plan screens read it: the item is the plan's, whichever workspace's tab it was opened from.
   const plan = useEventPlan(item ? (event ?? null) : null);
   // The seed is read once, when the card opens, so the card waits for what it is checked against.
-  const waiting = (!!event && events.isPending) || (!!item && plan.isPending);
+  const waiting = (!!event && events.isPending) || (!!item && plan.isPending) || (opensInEventMode(search) && !eventModeState.ready);
   const opening = waiting
     ? null
     : eventOpening({ event, item }, events.data ?? [], (plan.data?.lines ?? []).flatMap((line) => line.items));
@@ -80,7 +94,7 @@ export function NewTransactionRoute() {
         }
       : undefined;
 
-  if (event && (shared.isPending || (item && shared.data && sharedPlan.isPending))) {
+  if ((event && (shared.isPending || (item && shared.data && sharedPlan.isPending))) || (opensInEventMode(search) && !eventModeState.ready)) {
     return (
       <div className={SCREEN}>
         <Card>Loading…</Card>
@@ -90,7 +104,8 @@ export function NewTransactionRoute() {
   if (event && shared.data) {
     const view = shared.data;
     // Save and Back land on the event, which is where a shared expense is read; Save takes this screen's place.
-    const toEvent = () => void navigate({ to: '/events/$eventId', params: { eventId: event }, replace: true });
+    // Opened by event mode rather than from the event, Save goes back wherever the form was opened from.
+    const toEvent = modeShared ? back : () => void navigate({ to: '/events/$eventId', params: { eventId: event }, replace: true });
     const bought = item ? (sharedPlan.data?.lines ?? []).flatMap((line) => line.items).find((row) => row.id === item) : undefined;
     // An expense deleted meanwhile — on this phone or another — is not opened as a new one: it says so, and Back leaves.
     if (expense && !view.expenses.some((e) => e.expenseId === expense && !e.voided)) {
@@ -107,7 +122,8 @@ export function NewTransactionRoute() {
           view={view}
           {...(expense ? { expenseId: expense } : {})}
           {...(bought ? { itemId: bought.id, title: `Pay ${bought.name}`, seed: { note: bought.name, amount: minorToMajorString(bought.estimateMinor, view.currency), categoryId: bought.categoryId } } : {})}
-          {...(!bought && !expense && (amount || note || date) ? { seed: { note: note ?? '', amount: amount ?? '', categoryId: null, ...(currency ? { currency } : {}), ...(date ? { occurredOn: date } : {}) } } : {})}
+          {...(!bought && !expense && (amount || note || date || currency) ? { seed: { note: note ?? '', amount: amount ?? '', categoryId: null, ...(currency ? { currency } : {}), ...(date ? { occurredOn: date } : {}) } } : {})}
+          {...(modeShared ? { top: <EventChip name={modeShared.event.name} sharedWith={modeShared.shared!.people.map((person) => person.name)} onRemove={() => setLeftOut(true)} /> } : {})}
           onBack={back}
           onDone={toEvent}
         />
@@ -136,14 +152,17 @@ export function NewTransactionRoute() {
           // Net worth's Trade corner: its own Buy / Sell tabs and the trade rows, not the Add form's three tabs.
           fixedMode={trading}
           // The tab bar's + leaves Trade for the plain Add form, so the card is built afresh rather than keeping the trade draft.
-          key={trading ? 'trade' : 'add'}
+          // Leaving a shared event's card by its chip's ✕ builds the plain card afresh too.
+          key={trading ? 'trade' : leftOut ? 'add-left-out' : 'add'}
           seed={{
             moneyId: account,
             toId: to,
             ...(partner ? { partnerItemId: partner } : {}),
             ...(opening ? { eventId: opening.eventId } : {}),
             ...(buying ? buySeed(buying, ws.baseCurrency) : {}),
+            ...(inMode && !opening ? { eventId: inMode.event.id, currency: inMode.mode.currency } : {}),
           }}
+          {...(inMode && !opening ? { eventChip: { eventId: inMode.event.id, name: inMode.event.name } } : {})}
           followUp={followUp}
           // Only the plain blank form: an account's page, an event or a trade brings its own.
           defaultPaidWith={!account && !to && !partner && !opening && !trading && !buying && (mode ?? 'expense') === 'expense'}

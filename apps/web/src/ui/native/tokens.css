@@ -88,6 +88,9 @@
   /* A neutral ground for a control's chip or a highlighted row, and the ink on it. */
   --ph-tint-panel: #efeff2;
   --ph-tint-ink: #1c1c1e;
+  /* Event mode (2026-11-12): the trip's purple — the workspace button's dot, the Add form's chip, the menu's top row. */
+  --ph-trip: #5e5ce6;
+  --ph-trip-panel: #eeedfd;
 
   /*
    * The floating tab bar's own fill: the surface, 80% opaque, so the page shows through the blur behind it. It is
@@ -185,6 +188,8 @@
     --ph-covered-ink: #7ee79b;
     --ph-tint-panel: #2c2c2e;
     --ph-tint-ink: #ffffff;
+    --ph-trip: #7d7aff;
+    --ph-trip-panel: #24234a;
 
     --ph-chrome: rgb(28 28 30 / 0.8);
     --ph-bar: rgb(18 18 20 / 0.5);

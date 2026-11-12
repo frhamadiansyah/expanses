@@ -328,6 +328,8 @@ export interface CardSeed {
   categoryId?: string;
   description?: string;
   amount?: string;
+  /** The amount's currency, when the opener names one: event mode's "Add in". */
+  currency?: string;
 }
 
 /**
@@ -345,6 +347,7 @@ export function seeded(seed: CardSeed | undefined, accounts: readonly AccountRow
     ...(category ? { categoryId: category } : {}),
     ...(seed?.description ? { description: seed.description } : {}),
     ...(seed?.amount ? { amount: seed.amount } : {}),
+    ...(seed?.currency ? { currency: seed.currency } : {}),
   };
 }
 

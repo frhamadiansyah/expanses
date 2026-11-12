@@ -9,6 +9,7 @@ import { chartColour, OTHER_COLOUR } from '../transactions/category-colours';
 import { ShareLine } from '../transactions/CategoryLines';
 import { type CornerAction, InsetGroup, InsetRow, Panel, rowPositions, SCREEN, PushedTitle } from '../../ui/native';
 import { addSpendingTarget } from './buy-item';
+import { EventModeGroup } from './EventMode';
 import { eventDates } from './EventsPage';
 import { EventNameBox } from './EventNameBox';
 import { FinishSharing } from './FinishSharing';
@@ -199,6 +200,8 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
           <InsetRow title={waiting} subtitle="Choose the account for each" onClick={() => setTakingOver(true)} testId="take-over-row" />
         </InsetGroup>
       ) : null}
+      {/* Event mode (screen 1): this phone's own, so each person in the event turns it on for themselves. */}
+      {locked ? null : <EventModeGroup event={{ id: view.eventId, name: view.name, startsOn: view.startsOn, endsOn: view.endsOn, currency: view.currency }} />}
       <HeroSwipe
         label={`${view.name} sections`}
         active={card}

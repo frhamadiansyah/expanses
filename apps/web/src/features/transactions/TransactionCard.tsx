@@ -46,6 +46,7 @@ import { useCards, useCardsWithArchived } from '../cards/card-queries';
 import { payableOptions, resolveDefaultPaidWith, useStoredDefaultPaidWith } from '../account/default-paid-with';
 import { useEvents } from '../events/queries';
 import { useSharedEventSummaries } from '../events/shared-queries';
+import { EventChip } from '../events/EventMode';
 import { CategoryOptions } from '../cards/options';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { fitsEventSet } from '../categories/offered';
@@ -212,6 +213,11 @@ export function TransactionCard(props: {
    * Left off by every opener that brings an account of its own, and by edits, duplicates and captures.
    */
   defaultPaidWith?: boolean;
+  /**
+   * Event mode (screen 3): the event the form opened with, drawn as a chip at its top while the Event row still names
+   * it. Its ✕ leaves this one transaction out; the Event row under Add more details is the same field.
+   */
+  eventChip?: { eventId: string; name: string };
 }) {
   // An edit can read a placeholder the purchase is already posted against: one another member paid for (§4.4).
   const accounts = useAccountsFor(props.initial ?? props.duplicateOf);
@@ -247,6 +253,7 @@ function CardBody({
   accounts: ownAccounts,
   photoIds,
   defaultPay,
+  eventChip,
 }: {
   initial?: TransactionView;
   duplicateOf?: TransactionView;
@@ -267,6 +274,7 @@ function CardBody({
   photoIds: string[];
   /** The Default Paid with, already checked against what can pay: the blank form opens on it. */
   defaultPay?: { moneyId: string; cardId: string };
+  eventChip?: { eventId: string; name: string };
 }) {
   const { database, ws } = useApp();
   const navigate = useNavigate();
@@ -405,7 +413,9 @@ function CardBody({
   const withTopUps = (d: FormDraft, id = bookTopUps): FormDraft => (d.mode === 'transfer' && id ? { ...d, topUpCategoryId: id } : d);
   // Add more details opens in place, under the card, rather than over it: the extras are part of the one form.
   // Opened from an event it starts open, because the Event row it fills in lives there and should be seen set.
-  const [detailsOpen, setDetailsOpen] = useState(() => !!held || (!!draft.eventId && !!seed?.eventId));
+  // Event mode's event shows as the chip at the top instead, so Add more details stays folded.
+  // A capture that arrived with its event picked (event mode) opens them too, so the Event row is seen set.
+  const [detailsOpen, setDetailsOpen] = useState(() => !!held || (!!draft.eventId && ((!!seed?.eventId && !eventChip) || !!finish?.prefill.eventId)));
   const formRef = useRef<HTMLFormElement>(null);
   const [needsRate, setNeedsRate] = useState<string | null>(null);
   /*
@@ -999,6 +1009,7 @@ function CardBody({
   }, [eventSet, membership.isSuccess, membership.data, draft.categoryId]);
   const body = (
     <form ref={formRef} id={headerSave?.formId} onSubmit={submit} aria-label={label} className="flex flex-col gap-[10px]">
+      {eventChip && draft.eventId === eventChip.eventId && !recorded && <EventChip name={eventChip.name} onRemove={() => set({ eventId: '' })} />}
       {finish?.header}
       {/*
         Once the payment is written and only the follow-up is left to answer, the form says so and its fields stop

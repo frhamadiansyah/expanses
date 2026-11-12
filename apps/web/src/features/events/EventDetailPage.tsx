@@ -27,6 +27,7 @@ import { Donut } from '../transactions/Donut';
 import { amountExtraParts, buildRows } from '../transactions/list-model';
 import { AmountExtra, TransactionRow, useRecategorise } from '../transactions/TransactionRow';
 import { EventNameBox } from './EventNameBox';
+import { EventModeGroup } from './EventMode';
 import { eventDates } from './EventsPage';
 import { PlanCard } from './PlanCard';
 import { BACK_WORDS, chartUnder, differenceWords, gaugeFor, PLAN_WORDS, plannedLabel, planTotals, spentLabel, TONE, whereItWentRows } from './plan-view';
@@ -381,6 +382,9 @@ function LocalEventPage() {
 
       {workspaceTabs}
 
+      {/* Event mode (screen 1): new transactions go to this event by themselves, until a day it names. */}
+      {event && <EventModeGroup event={event} />}
+
       {event && (
         <Panel testId="event-sheet">
           <EventNameBox name={event.name} />
@@ -572,6 +576,7 @@ function LocalEventPage() {
                         row={listRow}
                         accounts={accounts}
                         testId="event-history"
+                        hideEvent
                         amountMinor={expense?.amountBaseMinor ?? 0}
                         currency={ws.baseCurrency}
                         // The foreign figure under the amount, as every other list draws it.

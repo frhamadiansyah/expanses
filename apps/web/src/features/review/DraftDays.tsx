@@ -6,6 +6,8 @@ import { CategoryIcon, UnknownCategoryMark } from '../categories/CategoryIcon';
 import { DayHeader } from '../transactions/DayHeader';
 import { CaptureTypeMark } from './CaptureTypeMark';
 import { captureRowView, draftDays, effectiveCategory } from './capture-view';
+import { rowEventLead } from '../events/event-mode';
+import { useEventName } from '../transactions/TransactionRow';
 
 /**
  * The phone's queue, drawn the way Cashflow draws what is already recorded: a card per day headed by the day and
@@ -87,6 +89,8 @@ function DraftFace({ draft, accounts, source, categoryId }: { draft: DraftRow; a
   const from = nameOf(draft.accountId);
   const to = nameOf(draft.toAccountId);
   const warn = (text: string) => <span>{text}</span>;
+  // Captured in event mode (screen 4): the event it will be recorded in leads the grey line, as on every list.
+  const eventName = useEventName(draft.eventId ?? null);
 
   return (
     <span className="flex items-center gap-3 py-2">
@@ -100,6 +104,7 @@ function DraftFace({ draft, accounts, source, categoryId }: { draft: DraftRow; a
           {transfer ? 'Transfer' : category ? category.name : warn('Choose category')}
         </span>
         <span className="block truncate text-xs text-slate-500">
+          {eventName && <span data-testid="row-event">{`${rowEventLead(eventName)} · `}</span>}
           {view.type && <CaptureTypeMark type={view.type} />}
           {draft.description}
           {' · '}

@@ -2,7 +2,7 @@ import { isoDate } from '@expanses/core';
 import { type EventRow, saveEvent, type SharedEventSummary } from '@expanses/db';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { CalendarRange, Plus } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { usePhone } from '../../app/use-phone';
@@ -26,6 +26,10 @@ import {
 import { useCategorySets } from '../categories/set-queries';
 import { CurrencySheet } from '../transactions/CurrencySheet';
 import { EventCurrencyRow } from './EventCurrencyRow';
+import { EventModeGroup } from './EventMode';
+
+/** How long a press on an event is held before it opens the event's Event mode. */
+const HOLD_MS = 450;
 import { eventListLine } from './plan-view';
 import { useEventPlan, useEvents } from './queries';
 import { useSharedEventSummaries, useSharedEventView } from './shared-queries';
@@ -63,6 +67,18 @@ function EventListRow({ event, today, position, shared, ready }: GroupChild & { 
   // A shared event's figure is what the trip spent, in its own currency (shared events §6), as its page's header says.
   const spent = useSharedEventView(shared ? event.id : null).data;
   const of = line?.ofMinor ?? null;
+  /*
+   * Hold an event: its Event mode, in a sheet over the list (screen 1's group, as on the event's page). A hold's release
+   * is the hold's, never a tap that opens the event; a long press the system reads as its own is a hold too.
+   */
+  const [holding, setHolding] = useState(false);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const held = useRef(false);
+  const stopHold = () => {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = null;
+  };
+  useEffect(() => stopHold, []);
   return (
     <div className="relative">
       {position?.separator && (
@@ -73,9 +89,33 @@ function EventListRow({ event, today, position, shared, ready }: GroupChild & { 
       <Link
         to="/events/$eventId"
         params={{ eventId: event.id }}
-        className="ph-focus-inset block w-full"
-        style={{ minHeight: rowHeight(true), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}
+        className="ph-focus-inset block w-full select-none"
+        style={{ minHeight: rowHeight(true), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px`, WebkitTouchCallout: 'none' }}
         data-testid="event-row"
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          held.current = false;
+          stopHold();
+          holdTimer.current = setTimeout(() => {
+            holdTimer.current = null;
+            held.current = true;
+            setHolding(true);
+          }, HOLD_MS);
+        }}
+        onPointerUp={stopHold}
+        onPointerCancel={stopHold}
+        onPointerLeave={stopHold}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          stopHold();
+          held.current = true;
+          setHolding(true);
+        }}
+        onClick={(e) => {
+          if (!held.current) return;
+          e.preventDefault();
+          held.current = false;
+        }}
       >
         <span className="flex w-full items-center gap-[10px]">
           <span
@@ -121,6 +161,11 @@ function EventListRow({ event, today, position, shared, ready }: GroupChild & { 
           </span>
         )}
       </Link>
+      {holding && (
+        <Sheet grouped title={event.name} onClose={() => setHolding(false)}>
+          <EventModeGroup event={event} />
+        </Sheet>
+      )}
     </div>
   );
 }

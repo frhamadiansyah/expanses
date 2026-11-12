@@ -1,5 +1,7 @@
 import { formatMinor, groupedMajorString, groupTypedAmount, isoDate, parseGroupedMajor, parsePurchaseList, type PaymentOption } from '@expanses/core';
-import { guessCategoryFromHistory, postTransactions, uncategorisedCategory } from '@expanses/db';
+import { guessCategoryFromHistory, moveIntoSharedEvent, ownerScope, postTransactions, sharedEventOf, uncategorisedCategory } from '@expanses/db';
+import { EventChip, useEventMode } from '../events/EventMode';
+import { keptText } from './shared-move';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { ArrowRight, CalendarDays, Check, CreditCard, Landmark } from 'lucide-react';
 import { type FormEvent, useMemo, useState } from 'react';
@@ -77,6 +79,10 @@ export function PasteListPage() {
   const [amountError, setAmountError] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  // Event mode (screen 3): the whole list goes to the event, unless the chip's ✕ leaves this list out.
+  const eventMode = useEventMode();
+  const [eventOff, setEventOff] = useState(false);
+  const listEvent = eventMode && !eventOff ? eventMode : null;
 
   // Who can pay: the accounts a purchase may be paid from, each card on its own. The form's own first choice is the
   // account the Add screen was opened with, else the first listed.
@@ -129,11 +135,22 @@ export function PasteListPage() {
           rates[day] = found.rates;
         }
       }
-      const inputs = purchaseInputs(rows, { account: payerAccount, cardId: payer.cardId }, accounts, uncategorised, (day) => rates[day], payerOpeningDay);
+      const listed = purchaseInputs(rows, { account: payerAccount, cardId: payer.cardId }, accounts, uncategorised, (day) => rates[day], payerOpeningDay);
+      const inputs = listEvent ? listed.map((input) => ({ ...input, eventId: listEvent.event.id })) : listed;
       // One database transaction: the whole list lands or none of it does.
-      await postTransactions(database, ws, inputs);
+      const ids = await postTransactions(database, ws, inputs);
+      let note = addedText(inputs.length);
+      // A shared event: the purchases move into it now, as Select's Add to event moves them (shared events §6, D2).
+      if (listEvent?.shared) {
+        const target = await sharedEventOf(database, ownerScope(ws), listEvent.event.id);
+        if (target?.currency && target.currency !== currency) {
+          for (const day of new Set(rows.map((row) => row.occurredOn))) await resolveRates([target.currency, currency], day).catch(() => undefined);
+        }
+        const { kept } = await moveIntoSharedEvent(database, ownerScope(ws), listEvent.event.id, ids);
+        if (kept.length > 0) note = `${note}. ${keptText(kept)}`;
+      }
       await invalidate();
-      showToast(addedText(inputs.length));
+      showToast(note);
       await navigate({ to: '/transactions', replace: true });
     } catch (e) {
       setError(e);
@@ -188,6 +205,9 @@ export function PasteListPage() {
           actions={[{ key: 'review', label: reviewLabel(lineCount), glyph: <ArrowRight size={20} aria-hidden />, disabled: lineCount === 0 || !payer || reading, run: () => void review() }]}
         />
         <div className="space-y-3 md:max-w-2xl">
+          {listEvent && (
+            <EventChip name={listEvent.event.name} sharedWith={listEvent.shared?.people.map((person) => person.name)} onRemove={() => setEventOff(true)} />
+          )}
           <div className={SURFACE}>
             <textarea
               autoFocus

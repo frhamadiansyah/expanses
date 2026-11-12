@@ -36,6 +36,8 @@ export function formFromDraft(draft: DraftRow): Partial<FormDraft> {
     amount: draft.amountMinor === 0 ? '' : majorText(draft.amountMinor, draft.currency),
     // A transfer offers no flag: its figure is the From account's own currency.
     currency: transfer ? '' : draft.currency,
+    // Captured in event mode: the event is already picked, on the form's own Event row, to keep or take off.
+    ...(draft.eventId ? { eventId: draft.eventId } : {}),
   };
 }
 

@@ -3,6 +3,9 @@ import {
   addPhoto,
   type CaptureSource,
   confirmDraft,
+  moveIntoSharedEvent,
+  ownerScope,
+  sharedEventOf,
   type DraftRow,
   dismissDraft,
   editDraft,
@@ -42,6 +45,8 @@ import { corrections, draftPatch, foreignPair, quickCharge } from './draft-form'
 import { chargedFigure, type FormDraft } from '../transactions/tx-form';
 import { useCaptureSources, useDraftCategoryGuesses, useDrafts } from './queries';
 import { SkippedList } from './SkippedList';
+import { useSharedEventSummaries } from '../events/shared-queries';
+import { keptText } from '../transactions/shared-move';
 import type { SwipeAction, SwipeHint } from '../../ui/SwipeRow';
 
 /** What a draft's account was charged, in the account's own currency, for a figure read in another one. */
@@ -71,6 +76,7 @@ export function ReviewPage() {
   const guesses = useDraftCategoryGuesses(drafts.data ?? []).data;
   const accounts = useAccounts().data ?? [];
   const sources = useCaptureSources().data ?? [];
+  const sharedSummaries = useSharedEventSummaries().data ?? {};
   const scan = useScanReceipt();
   const navigate = useNavigate();
   // A section from the More sheet; a step down from Cashflow when Cashflow opened it.
@@ -170,6 +176,11 @@ export function ReviewPage() {
    */
   async function record(draft: DraftRow, opts: { undoable?: boolean } = {}) {
     setError(null);
+    // Captured in event mode for a shared event: recording moves it into the event, so it is done on the form, seen.
+    if (draft.eventId && sharedSummaries[draft.eventId]) {
+      setEditing(draft.id);
+      return;
+    }
     const keepPhoto = keepsPicture(draft);
     // A category the row showed from the merchant's history is written onto the draft before it is recorded.
     const guessed = effectiveCategory(draft, guesses);
@@ -265,6 +276,18 @@ export function ReviewPage() {
       },
     });
     await settlePicture(draft, transactionId, keptImage);
+    /*
+     * A shared event picked on the form — by hand, or already picked by event mode — moves the purchase into the event
+     * now, as tagging a saved purchase into one does (shared events §6, D2). The form said so under its Event row.
+     */
+    if (form.eventId && sharedSummaries[form.eventId]) {
+      const target = await sharedEventOf(database, ownerScope(ws), form.eventId);
+      const wanted = [target?.currency, patch.currency, accounts.find((a) => a.id === patch.accountId)?.currency].filter((c): c is string => !!c);
+      await resolveRates([...new Set(wanted)], patch.occurredOn).catch(() => undefined);
+      const { kept } = await moveIntoSharedEvent(database, ownerScope(ws), form.eventId, [transactionId]);
+      if (kept.length > 0) setError(new Error(keptText(kept)));
+      await invalidate();
+    }
     resolved({ ...draft, description: patch.description }, 'recorded', transactionId);
   }
 
@@ -289,7 +312,9 @@ export function ReviewPage() {
   function swipeRecord(draft: DraftRow) {
     // A category is a question too: the row no longer prints it, but recording without one is refused all the same.
     const uncategorised = draft.kind !== 'transfer' && !effectiveCategory(draft, guesses);
-    if (uncategorised || captureRowView(draft, sourceOf(draft)).needs.length > 0) void openToFinish(draft);
+    // Captured in event mode for a shared event: recording moves it into the event, so it is done on the form, seen.
+    const intoShared = !!draft.eventId && !!sharedSummaries[draft.eventId];
+    if (uncategorised || intoShared || captureRowView(draft, sourceOf(draft)).needs.length > 0) void openToFinish(draft);
     else void record(draft, { undoable: true });
   }
 
