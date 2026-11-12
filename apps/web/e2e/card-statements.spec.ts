@@ -222,7 +222,8 @@ test('a payment made with Pay covers the statement’s purchases oldest first, a
   await expect(sheet).toContainText('1.800.000');
   await sheet.getByRole('button', { name: /^Pay Rp\s1\.800\.000$/ }).click();
   await expect(sheet).toHaveCount(0);
-  await expect(page.getByLabel(/^Hotel Mulia, paid on/)).toBeChecked();
+  // Paid for what was left, it is covered by the two payments together, not settled on its own.
+  await expect(hotel.getByTestId('statement-covered')).toBeVisible();
   await expect(page.getByTestId('statement-group')).toContainText(/All paid/i);
   await expect(ride.getByTestId('statement-covered')).toBeVisible();
   await expect(page.getByTestId('statement-band')).toContainText(/Still to pay\s*Rp\s0\s*Total bill/);

@@ -1,4 +1,4 @@
-import { type Cycle, installmentSchedule, nextStatementStart, transferLines } from '@expanses/core';
+import { coverStatement, type Cycle, installmentSchedule, nextStatementStart, type PoolLine, statementCycleFor, transferLines } from '@expanses/core';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -6,13 +6,13 @@ import { accounts, transactions } from '../schema';
 import { cardPostings, cardSettlements } from '../schema-cards';
 import { cardTerms } from '../schema-points';
 import { splitBooksOfMany } from './book-splits';
-import { listInstallments } from './installments';
+import { listInstallmentsTx } from './installments';
 import { postTransactionTx } from './ledger';
 import type { SetAsideChoice } from './set-aside-tx';
 
 export class StatementError extends Error {
   constructor(
-    readonly code: 'NOT_FOUND' | 'POSTED_BEFORE_PURCHASE' | 'INVALID_DATE' | 'NO_STATEMENT_DAY' | 'NOTHING_TO_PAY' | 'NOT_A_CHARGE' | 'ALREADY_PAID' | 'CURRENCY' | 'INVALID_AMOUNT',
+    readonly code: 'NOT_FOUND' | 'POSTED_BEFORE_PURCHASE' | 'INVALID_DATE' | 'NO_STATEMENT_DAY' | 'NOTHING_TO_PAY' | 'NOT_A_CHARGE' | 'ALREADY_PAID' | 'CURRENCY' | 'INVALID_AMOUNT' | 'STALE_AMOUNT',
     message: string,
   ) {
     super(message);
@@ -88,6 +88,20 @@ export interface CardStatement {
    * first, without the balancing settlements no statement draws. Empty for an open statement.
    */
   laterCredits: StatementLine[];
+  /**
+   * What the card's payments cover of each charge on the statement that is not settled on its own, by line key, oldest
+   * first (`statementCoverOf`). Worked out, never stored: deleting a payment makes its purchases owed again.
+   */
+  cover: Record<string, StatementCover>;
+}
+
+/** How much of one charge the card's payments cover, and which credit (a line key, in `lines` or `laterCredits`) completed it. */
+export interface StatementCover {
+  coveredMinor: number;
+  leftMinor: number;
+  whole: boolean;
+  /** Null when nothing covers it yet, or the cover came from credit left on the card from before. */
+  creditKey: string | null;
 }
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -160,15 +174,15 @@ async function cardLines(db: Db, ws: WorkspaceContext, cardAccountId: string): P
  * and each instalment is a row on the statement it is billed on. Plans not tied to a purchase on this card are
  * left out, since there is no purchase here for them to replace.
  */
-async function billedLines(database: Database, ws: WorkspaceContext, cardAccountId: string): Promise<StatementLine[]> {
-  const lines = await cardLines(database.db, ws, cardAccountId);
-  const [terms] = await database.db
+async function billedLines(db: Db, ws: WorkspaceContext, cardAccountId: string): Promise<StatementLine[]> {
+  const lines = await cardLines(db, ws, cardAccountId);
+  const [terms] = await db
     .select({ statementDay: cardTerms.statementDay })
     .from(cardTerms)
     .where(and(eq(cardTerms.accountId, cardAccountId), eq(cardTerms.workspaceId, ws.workspaceId)));
   const byTransaction = new Map(lines.map((line) => [line.transactionId, line]));
   const instalments: StatementLine[] = [];
-  for (const plan of await listInstallments(database, ws, cardAccountId)) {
+  for (const plan of await listInstallmentsTx(db, ws, cardAccountId)) {
     const purchase = plan.transactionId ? byTransaction.get(plan.transactionId) : undefined;
     if (!purchase) continue;
     purchase.convertedTo = { planId: plan.id, months: plan.months };
@@ -203,7 +217,7 @@ async function billedLines(database: Database, ws: WorkspaceContext, cardAccount
 
 /** Every line the card has ever had, as statements bill them, for searching across statements. */
 export async function cardStatementLines(database: Database, ws: WorkspaceContext, cardAccountId: string): Promise<StatementLine[]> {
-  return (await billedLines(database, ws, cardAccountId)).filter((line) => !line.balancing);
+  return (await billedLines(database.db, ws, cardAccountId)).filter((line) => !line.balancing);
 }
 
 /**
@@ -259,11 +273,12 @@ export async function cardStatements(database: Database, ws: WorkspaceContext, c
     .where(and(eq(accounts.id, cardAccountId), eq(accounts.workspaceId, ws.workspaceId)));
   if (!card) throw new StatementError('NOT_FOUND', 'That card is not in this workspace');
   if (cycles.length === 0) return [];
-  const all = await billedLines(database, ws, cardAccountId);
-  return cycles.map((cycle) => statementOf(all, cycle, today, card.currency ?? ws.baseCurrency));
+  const all = await billedLines(database.db, ws, cardAccountId);
+  const pool = poolLinesOf(all);
+  return cycles.map((cycle) => statementOf(all, pool, cycle, today, card.currency ?? ws.baseCurrency));
 }
 
-function statementOf(all: StatementLine[], cycle: Cycle, today: string, currency: string): CardStatement {
+function statementOf(all: StatementLine[], pool: readonly PoolLine[], cycle: Cycle, today: string, currency: string): CardStatement {
   // Everything here is in billed terms: an instalment plan counts a month at a time, not its whole price at once.
   const sum = (lines: StatementLine[]) => lines.reduce((total, line) => total + line.countedMinor, 0);
 
@@ -288,7 +303,35 @@ function statementOf(all: StatementLine[], cycle: Cycle, today: string, currency
     paidSinceMinor,
     leftToPayMinor: closed ? Math.max(0, closingMinor - paidSinceMinor) : null,
     laterCredits: since.filter((line) => !line.balancing),
+    cover: statementCoverOf(pool, cycle, today),
   };
+}
+
+/**
+ * The card's lines as the cover pool counts them. Whatever is settled on its own gives and takes nothing: a purchase
+ * paid one by one, and of its payment as much as paid for the purchases it settled (a payment that settled purchases
+ * only ever pays for those); a purchase or refund marked paid off before the app, and its balancing settlement, which
+ * offsets only its own purchase whichever statement it falls on. What a payment paid beyond the purchases it settled is
+ * an ordinary credit, as is any payment that settled none.
+ */
+function poolLinesOf(all: readonly StatementLine[]): PoolLine[] {
+  const settledBy = new Map<string, number>();
+  for (const line of all) if (line.paidBy && !line.instalment) settledBy.set(line.paidBy.transactionId, (settledBy.get(line.paidBy.transactionId) ?? 0) + line.owedMinor);
+  return all.map((line) => {
+    let poolMinor = line.countedMinor;
+    if (line.balancing || line.paidOff || line.paidBy) poolMinor = 0;
+    else if (line.countedMinor < 0 && settledBy.has(line.transactionId)) poolMinor = Math.min(0, line.countedMinor + settledBy.get(line.transactionId)!);
+    return { key: line.key, statementOn: line.statementOn, poolMinor };
+  });
+}
+
+/** What the card's payments cover of one statement's charges, oldest first: one answer for the statement and `payCardPurchases`. */
+function statementCoverOf(pool: readonly PoolLine[], cycle: Cycle, today: string): Record<string, StatementCover> {
+  const out: Record<string, StatementCover> = {};
+  for (const [key, c] of coverStatement({ lines: pool, cycle, today })) {
+    out[key] = { coveredMinor: c.coveredMinor, leftMinor: c.leftMinor, whole: c.whole, creditKey: c.credit?.key ?? null };
+  }
+  return out;
 }
 
 /** Sets or clears the date the bank posted a card transaction. A purchase cannot be posted before it was made. */
@@ -349,6 +392,8 @@ export async function payCardPurchases(
     purchaseTransactionIds: readonly string[];
     /** What to pay of a purchase, by its id, when that is less than it charged. A purchase not named is paid whole. */
     amountsMinor?: Readonly<Record<string, number>>;
+    /** The day the statement was read on, which decides the credits its cover counts. The payment's own date if not given. */
+    today?: string;
     description?: string;
     /** Which goal the money came out of, when it took more than was free (spec §4.4). */
     setAside?: SetAsideChoice | null;
@@ -366,8 +411,25 @@ export async function payCardPurchases(
     if (!card?.currency || !from?.currency) throw new StatementError('NOT_FOUND', 'Choose the card and the account paying it');
     if (card.currency !== from.currency) throw new StatementError('CURRENCY', `Pay a ${card.currency} card from a ${card.currency} account, or record the payment as a transfer`);
 
-    const lines = new Map((await cardLines(tx, ws, input.cardAccountId)).map((line) => [line.transactionId, line]));
+    const all = await billedLines(tx, ws, input.cardAccountId);
+    const lines = new Map(all.filter((line) => !line.instalment).map((line) => [line.transactionId, line]));
+    const [terms] = await tx
+      .select({ statementDay: cardTerms.statementDay })
+      .from(cardTerms)
+      .where(and(eq(cardTerms.accountId, input.cardAccountId), eq(cardTerms.workspaceId, ws.workspaceId)));
+    const today = input.today ?? input.occurredOn;
+    // What the card's payments cover right now, statement by statement, the way the statement worked it out.
+    const pool = poolLinesOf(all);
+    const covers = new Map<string, Record<string, StatementCover>>();
+    const coverOf = (line: StatementLine) => {
+      if (terms?.statementDay == null) return undefined;
+      const cycle = statementCycleFor(line.statementOn, terms.statementDay);
+      if (!covers.has(cycle.start)) covers.set(cycle.start, statementCoverOf(pool, cycle, today));
+      return covers.get(cycle.start)![line.key];
+    };
     let totalMinor = 0;
+    // Only a purchase paid whole is settled by the payment; one paid for what was left stays covered by payments.
+    const settles: string[] = [];
     for (const id of ids) {
       const line = lines.get(id);
       if (!line || line.owedMinor <= 0) throw new StatementError('NOT_A_CHARGE', 'Only purchases on this card can be paid this way');
@@ -376,6 +438,10 @@ export async function payCardPurchases(
       if (!Number.isInteger(amountMinor) || amountMinor <= 0 || amountMinor > line.owedMinor) {
         throw new StatementError('INVALID_AMOUNT', `Pay between nothing and the whole of “${line.description}”`);
       }
+      const cover = coverOf(line);
+      if (cover?.whole) throw new StatementError('STALE_AMOUNT', 'Already covered by a payment. Open the statement again.');
+      if (cover && amountMinor > cover.leftMinor) throw new StatementError('STALE_AMOUNT', 'Already partly covered by a payment. Open the statement again.');
+      if (amountMinor === line.owedMinor) settles.push(id);
       totalMinor += amountMinor;
     }
 
@@ -386,7 +452,7 @@ export async function payCardPurchases(
       lines: transferLines({ fromAccountId: from.id, toAccountId: card.id, amountMinor: totalMinor, currency: card.currency }),
       setAside: input.setAside,
     });
-    for (const id of ids) {
+    for (const id of settles) {
       // A settlement left behind by a payment since deleted is replaced, not kept beside this one.
       await tx
         .insert(cardSettlements)

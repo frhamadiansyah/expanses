@@ -83,3 +83,52 @@ export function coverOldestFirst(input: { charges: readonly CoverCharge[]; poolM
   }
   return out;
 }
+
+/**
+ * One line of a card's whole history as the cover pool counts it, in the statement's order. `poolMinor` is what it adds
+ * to the pool's figures: a charge positive, a credit negative, and nothing for what is settled on its own — a purchase
+ * paid one by one and the part of its payment that paid it, a purchase or refund marked paid off before the app and its
+ * balancing settlement. The caller decides that; this only adds up.
+ */
+export interface PoolLine {
+  key: string;
+  statementOn: string;
+  poolMinor: number;
+}
+
+/**
+ * Which of one statement's charges the card's credits cover, oldest first. The figures are the totals band's, worked
+ * out over the pool lines alone: a bank clears the oldest balance first, so credits go to what was owed before the
+ * statement (on an open one, the previous bill), and only what is over reaches its charges. A closed statement counts
+ * the credits since its statement date, up to today; an open one, those in its cycle. A credit carried on the card from
+ * before covers a closed statement's charges too, naming no credit; an open statement leaves it be, as the band does.
+ */
+export function coverStatement(input: { lines: readonly PoolLine[]; cycle: { start: string; end: string }; today: string }): Map<string, ChargeCover> {
+  const { start, end } = input.cycle;
+  const sum = (lines: readonly PoolLine[]) => lines.reduce((total, line) => total + line.poolMinor, 0);
+  const closed = end < input.today;
+  const inCycle = input.lines.filter((line) => line.statementOn >= start && line.statementOn <= end);
+  const openingMinor = sum(input.lines.filter((line) => line.statementOn < start));
+  const charges = inCycle.filter((line) => line.poolMinor > 0);
+  const chargedMinor = sum(charges);
+  const cycleCredits = inCycle.filter((line) => line.poolMinor < 0);
+  const creditedMinor = -sum(cycleCredits);
+  const later = closed ? input.lines.filter((line) => line.poolMinor < 0 && line.statementOn > end && line.statementOn <= input.today) : [];
+
+  let owedMinor: number;
+  if (closed) {
+    const billMinor = Math.max(0, openingMinor + chargedMinor - creditedMinor);
+    owedMinor = billMinor - Math.min(-sum(later), billMinor);
+  } else {
+    const previousMinor = Math.max(0, openingMinor);
+    const spilledMinor = Math.min(creditedMinor - Math.min(creditedMinor, previousMinor), chargedMinor);
+    owedMinor = chargedMinor - spilledMinor;
+  }
+  // What is still owed sits on the newest charges; the rest is covered.
+  const poolMinor = chargedMinor - Math.min(owedMinor, chargedMinor);
+  return coverOldestFirst({
+    charges: charges.map((line) => ({ key: line.key, on: line.statementOn, amountMinor: line.poolMinor, settled: false })),
+    poolMinor,
+    credits: [...cycleCredits, ...later].map((line) => ({ key: line.key, on: line.statementOn, amountMinor: -line.poolMinor })),
+  });
+}

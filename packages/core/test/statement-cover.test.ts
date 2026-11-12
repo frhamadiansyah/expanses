@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type CoverCharge, type CoverCredit, coverOldestFirst } from '../src/statement/cover';
+import { type CoverCharge, type CoverCredit, coverOldestFirst, coverStatement, type PoolLine } from '../src/statement/cover';
 
 // Invented figures throughout.
 const charge = (key: string, on: string, amountMinor: number, settled = false): CoverCharge => ({ key, on, amountMinor, settled });
@@ -88,6 +88,63 @@ describe('covering a statement’s purchases with its lump payments, oldest firs
       const left = [...cover.values()].reduce((sum, c) => sum + c.leftMinor, 0);
       expect(covered).toBe(Math.min(Math.max(poolMinor, 0), 1_526_000));
       expect(covered + left).toBe(1_526_000);
+    }
+  });
+});
+
+const OCT = { start: '2026-09-21', end: '2026-10-20' };
+const at = (key: string, statementOn: string, poolMinor: number): PoolLine => ({ key, statementOn, poolMinor });
+const OCT_FOUR = [at('market', '2026-10-02', 412_000), at('ride', '2026-10-03', 185_000), at('shop', '2026-10-04', 649_000), at('dinner', '2026-10-06', 280_000)];
+
+describe('one statement’s cover, from the card’s pool lines', () => {
+  it('a closed statement counts the credits since its date, up to today, and not those after today', () => {
+    const lines = [...OCT_FOUR, at('lump', '2026-11-10', -600_000), at('later', '2026-11-20', -900_000)];
+    const cover = coverStatement({ lines, cycle: OCT, today: '2026-11-12' });
+    expect(cover.get('ride')).toMatchObject({ whole: true, credit: { key: 'lump' } });
+    expect(cover.get('shop')).toMatchObject({ coveredMinor: 3_000, leftMinor: 646_000 });
+  });
+
+  it('credits clear what was owed before the statement first', () => {
+    const lines = [at('old', '2026-09-02', 500_000), ...OCT_FOUR, at('lump', '2026-11-10', 0 - 1_097_000)];
+    const cover = coverStatement({ lines, cycle: OCT, today: '2026-11-12' });
+    expect(cover.get('ride')!.whole).toBe(true);
+    expect(cover.get('shop')!.coveredMinor).toBe(0);
+  });
+
+  it('an open statement lets a payment spill past the previous bill into its cycle, and no carried credit', () => {
+    const open = { start: '2026-10-21', end: '2026-11-20' };
+    const spill = coverStatement({ lines: [at('old', '2026-10-02', 500_000), at('a', '2026-10-25', 300_000), at('pay', '2026-11-01', -600_000)], cycle: open, today: '2026-11-12' });
+    expect(spill.get('a')).toMatchObject({ coveredMinor: 100_000, leftMinor: 200_000, credit: { key: 'pay' } });
+    const carried = coverStatement({ lines: [at('refund', '2026-10-02', -500_000), at('a', '2026-10-25', 300_000)], cycle: open, today: '2026-11-12' });
+    expect(carried.get('a')).toMatchObject({ coveredMinor: 0 });
+  });
+
+  it('a credit carried on the card from before covers a closed statement, naming no credit', () => {
+    const cover = coverStatement({ lines: [at('refund', '2026-09-02', -500_000), at('a', '2026-10-02', 300_000)], cycle: OCT, today: '2026-11-12' });
+    expect(cover.get('a')).toMatchObject({ whole: true, credit: null });
+  });
+
+  it('whenever the pool lines owe nothing by today, every charge of every statement is covered', () => {
+    for (let seed = 1; seed <= 300; seed += 1) {
+      let r = seed;
+      const rand = (n: number) => {
+        r = (r * 1_103_515_245 + 12_345) % 2_147_483_648;
+        return r % n;
+      };
+      const lines: PoolLine[] = [];
+      let owed = 0;
+      for (let i = 0; i < 1 + rand(10); i += 1) {
+        const amount = (1 + rand(50)) * 10_000;
+        lines.push(at(`c${i}`, `2026-${rand(2) === 0 ? '09' : '10'}-${String(1 + rand(28)).padStart(2, '0')}`, amount));
+        owed += amount;
+      }
+      const first = rand(owed + 1);
+      lines.push(at('pay-a', `2026-10-${String(1 + rand(28)).padStart(2, '0')}`, -first), at('pay-b', '2026-11-10', first - owed));
+      lines.sort((a, b) => a.statementOn.localeCompare(b.statementOn));
+      for (const cycle of [{ start: '2026-08-21', end: '2026-09-20' }, { start: '2026-09-21', end: '2026-10-20' }]) {
+        const cover = coverStatement({ lines: lines.filter((l) => l.poolMinor !== 0), cycle, today: '2026-11-12' });
+        expect([...cover.values()].every((c) => c.whole)).toBe(true);
+      }
     }
   });
 });

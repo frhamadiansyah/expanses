@@ -161,7 +161,7 @@ export function StatementPanel({
     const info = line.instalment || line.convertedTo ? undefined : points?.[line.transactionId];
     return info?.cardFee ? 'Card fee' : info?.mcc ? `MCC ${info.mcc}` : null;
   };
-  // What the statement's payments cover, oldest first: worked out from the band's figures, never stored.
+  // What the card's payments cover, oldest first: worked out by the ledger with the statement, never stored.
   const cover = useMemo<ReadonlyMap<string, LineCover>>(() => (statement.data ? statementCover(statement.data) : new Map()), [statement.data]);
   const coveredWhole = (line: StatementLine) => cover.get(line.key)?.whole === true;
   // A purchase a payment partly covered is paid for what is left of it, never the whole again.
@@ -773,6 +773,8 @@ export function StatementPanel({
                   purchaseTransactionIds: chosen.map((line) => line.transactionId),
                   // A purchase a payment partly covered pays only what is left of it.
                   amountsMinor: Object.fromEntries(chosen.filter((line) => leftOf(line) !== line.owedMinor).map((line) => [line.transactionId, leftOf(line)])),
+                  // The ledger checks those amounts against its own cover as of the day this statement was read.
+                  today,
                   setAside: setAside.choice,
                 });
                 setSelected(new Set());

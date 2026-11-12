@@ -17,6 +17,7 @@ import {
   deleteInstallment,
   saveCardTerms,
   setPostedOn,
+  setSettledBeforeApp,
   StatementError,
   voidTransaction,
 } from '../src/index';
@@ -199,11 +200,15 @@ describe('paying purchases before the statement', () => {
       occurredOn: '2026-08-30',
       purchaseTransactionIds: [shop, dinner],
       amountsMinor: { [shop]: 546_000 },
+      today: '2026-08-30',
     });
 
     const august = await cardStatement(h.database, h.ws, h.card.id, AUGUST, '2026-09-01');
     expect(august.laterCredits.find((line) => line.transactionId === payment)!.owedMinor).toBe(-716_000);
-    expect(august.lines.find((line) => line.transactionId === shop)!.paidBy?.transactionId).toBe(payment);
+    // Dinner, paid whole, is settled by it; Shop, paid for what was left, is covered by the lump and this payment.
+    expect(august.lines.find((line) => line.transactionId === dinner)!.paidBy?.transactionId).toBe(payment);
+    expect(august.lines.find((line) => line.transactionId === shop)!.paidBy).toBeNull();
+    expect(august.cover[shop]).toMatchObject({ whole: true, creditKey: payment });
     expect(august.leftToPayMinor).toBe(0);
     expect((await nativeBalances(h.database, h.ws))[h.card.id] ?? 0).toBe(0);
   });
@@ -215,6 +220,70 @@ describe('paying purchases before the statement', () => {
       payCardPurchases(h.database, h.ws, { cardAccountId: h.card.id, fromAccountId: h.bank.id, occurredOn: '2026-08-30', purchaseTransactionIds: [shop], amountsMinor: { [shop]: amountMinor } });
     for (const amountMinor of [549_001, 0, -1, 1.5]) await expect(pay(amountMinor)).rejects.toMatchObject({ code: 'INVALID_AMOUNT' });
     expect((await nativeBalances(h.database, h.ws))[h.card.id]).toBe(-549_000);
+  });
+});
+
+describe('what the card’s payments cover on a statement', () => {
+  const coverOf = async (h: Awaited<ReturnType<typeof household>>, cycle: typeof AUGUST, today: string) => (await cardStatement(h.database, h.ws, h.card.id, cycle, today)).cover;
+  const cardBalance = async (h: Awaited<ReturnType<typeof household>>) => (await nativeBalances(h.database, h.ws))[h.card.id] ?? 0;
+
+  it('a purchase paid one by one on a later statement covers nothing on this one, so paying what is offered clears the card', async () => {
+    const h = await household();
+    const p1 = await h.buy('2026-08-02', 'Bookshop', 300_000);
+    const q = await h.buy('2026-08-25', 'Bakery', 100_000);
+    await payCardPurchases(h.database, h.ws, { cardAccountId: h.card.id, fromAccountId: h.bank.id, occurredOn: '2026-08-30', purchaseTransactionIds: [q], today: '2026-08-30' });
+
+    const cover = await coverOf(h, AUGUST, '2026-09-01');
+    expect(cover[p1]).toMatchObject({ coveredMinor: 0, leftMinor: 300_000, whole: false });
+    await payCardPurchases(h.database, h.ws, { cardAccountId: h.card.id, fromAccountId: h.bank.id, occurredOn: '2026-09-01', purchaseTransactionIds: [p1], amountsMinor: { [p1]: cover[p1]!.leftMinor }, today: '2026-09-01' });
+    expect(await cardBalance(h)).toBe(0);
+  });
+
+  it('paying what is left of a part-covered purchase writes no settlement: deleting the lump makes the rest owed again', async () => {
+    const h = await household();
+    const a = await h.buy('2026-08-02', 'Bookshop', 100_000);
+    const lump = await h.pay('2026-08-25', 60_000);
+    expect((await coverOf(h, AUGUST, '2026-09-01'))[a]).toMatchObject({ coveredMinor: 60_000, leftMinor: 40_000 });
+
+    const rest = await payCardPurchases(h.database, h.ws, { cardAccountId: h.card.id, fromAccountId: h.bank.id, occurredOn: '2026-09-01', purchaseTransactionIds: [a], amountsMinor: { [a]: 40_000 }, today: '2026-09-01' });
+    const august = await cardStatement(h.database, h.ws, h.card.id, AUGUST, '2026-09-01');
+    expect(august.lines.find((line) => line.transactionId === a)!.paidBy).toBeNull();
+    expect(august.cover[a]).toMatchObject({ whole: true, creditKey: rest });
+    expect(await cardBalance(h)).toBe(0);
+
+    await voidTransaction(h.database, h.ws, lump);
+    expect((await coverOf(h, AUGUST, '2026-09-01'))[a]).toMatchObject({ coveredMinor: 40_000, leftMinor: 60_000, whole: false });
+    expect(await cardBalance(h)).toBe(-60_000);
+  });
+
+  it('a purchase paid off before the app gives no cover, even when its balancing settlement falls on another statement', async () => {
+    const h = await household();
+    const x = await h.buy('2026-08-02', 'Bookshop', 100_000);
+    const y = await h.buy('2026-08-18', 'Bakery', 50_000);
+    await setPostedOn(h.database, h.ws, y, '2026-08-22');
+    await setSettledBeforeApp(h.database, h.ws, y, true);
+
+    expect((await coverOf(h, AUGUST, '2026-09-01'))[x]).toMatchObject({ coveredMinor: 0, leftMinor: 100_000 });
+  });
+
+  it('refuses to pay more than is left right now, or a purchase a payment now covers whole', async () => {
+    const h = await household();
+    const a = await h.buy('2026-08-02', 'Bookshop', 100_000);
+    await h.pay('2026-08-25', 60_000);
+    const pay = (amountMinor?: number) =>
+      payCardPurchases(h.database, h.ws, {
+        cardAccountId: h.card.id,
+        fromAccountId: h.bank.id,
+        occurredOn: '2026-09-01',
+        purchaseTransactionIds: [a],
+        ...(amountMinor === undefined ? {} : { amountsMinor: { [a]: amountMinor } }),
+        today: '2026-09-01',
+      });
+    await expect(pay()).rejects.toMatchObject({ code: 'STALE_AMOUNT', message: 'Already partly covered by a payment. Open the statement again.' });
+    await expect(pay(50_000)).rejects.toMatchObject({ code: 'STALE_AMOUNT' });
+    await h.pay('2026-08-28', 40_000);
+    await expect(pay(1_000)).rejects.toMatchObject({ code: 'STALE_AMOUNT' });
+    expect(await cardBalance(h)).toBe(0);
   });
 });
 
