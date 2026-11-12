@@ -4,7 +4,7 @@ import { recordsOnForm } from '../review/draft-form';
 import { saveListOnce } from '../transactions/paste-review';
 import { postTag, recordedIntoText } from '../transactions/shared-move';
 import { eventForMode } from '../transactions/tx-form';
-import { addInCurrency, eventModeApplies, takesEventMode } from './event-mode';
+import { addInCurrency, draftShowsEvent, eventModeApplies, formEvent, takesEventMode } from './event-mode';
 
 /* Event mode fix round 1: one test per finding. Names and figures are invented. */
 
@@ -78,17 +78,40 @@ describe('M4: the currency is pinned only when it says something', () => {
   });
 });
 
-describe('low: the event stays on Expense only', () => {
-  it('a new transaction drops it on Income, Transfer and Trade', () => {
-    expect(eventForMode('e1', 'expense')).toBe('e1');
-    expect(eventForMode('e1', 'income')).toBe('');
+describe('the event on another tab (rounds 1 and 2)', () => {
+  it('Transfer and Trade always drop it', () => {
+    expect(eventForMode('e1', 'expense', true)).toBe('e1');
     expect(eventForMode('e1', 'transfer')).toBe('');
     expect(eventForMode('e1', 'trade')).toBe('');
   });
 
-  it('an edit turning a purchase into money back keeps it on Income only', () => {
-    expect(eventForMode('e1', 'income', true)).toBe('e1');
-    expect(eventForMode('e1', 'transfer', true)).toBe('');
+  it('Income drops only the event event mode filled in; one from Add spending, a hand pick or an edit stays', () => {
+    expect(eventForMode('e1', 'income', true)).toBe('');
+    expect(eventForMode('e1', 'income', false)).toBe('e1');
+  });
+});
+
+describe('round 2: One line and Paste a list wait for the mode to be read', () => {
+  const trip = { shared: undefined, name: 'Lake trip' };
+  it('nothing is tagged, and nothing saved, while it is read', () => {
+    expect(formEvent({ ready: false, active: null }, false, false)).toEqual({ waiting: true, active: null });
+    expect(formEvent({ ready: false, active: trip }, false, false)).toEqual({ waiting: true, active: null });
+  });
+
+  it('read: the event, unless ✕ left it out or it does not apply here', () => {
+    expect(formEvent({ ready: true, active: trip }, false, false)).toEqual({ waiting: false, active: trip });
+    expect(formEvent({ ready: true, active: trip }, true, false)).toEqual({ waiting: false, active: null });
+    expect(formEvent({ ready: true, active: trip }, false, true)).toEqual({ waiting: false, active: null });
+    expect(formEvent({ ready: true, active: null }, false, false)).toEqual({ waiting: false, active: null });
+  });
+});
+
+describe('round 2: a private event is not claimed in a shared workspace', () => {
+  it('a To review row names a private event only outside a shared workspace, and a shared event anywhere', () => {
+    expect(draftShowsEvent('e-private', {}, false)).toBe(true);
+    expect(draftShowsEvent('e-private', {}, true)).toBe(false);
+    expect(draftShowsEvent('e-shared', { 'e-shared': {} }, true)).toBe(true);
+    expect(draftShowsEvent(null, {}, false)).toBe(false);
   });
 });
 

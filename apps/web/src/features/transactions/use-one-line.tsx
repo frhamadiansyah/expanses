@@ -57,8 +57,8 @@ import { PaidWith, TransactionRow } from './TransactionRow';
 import { formToPost, rateDateFor, settledAmount, withCategoryLater } from './tx-form';
 import { ratesForSave } from './tx-save';
 import { moveAfterSave, postTag } from './shared-move';
-import { EventChip, useEventMode } from '../events/EventMode';
-import { addInCurrency, eventModeApplies } from '../events/event-mode';
+import { EventChip, useEventModeState } from '../events/EventMode';
+import { addInCurrency, formEvent } from '../events/event-mode';
 
 /** A row saved in this sitting: the id it was posted under, the row as it was shown, and what it counts in the base currency. */
 export interface SavedLine {
@@ -110,10 +110,11 @@ export function useOneLine() {
    * Event mode (screen 3): each line goes to the event, its figure read in "Add in" unless it names a currency of its
    * own. The chip's ✕ leaves the next line out; the line after it is in the event again.
    */
-  const eventMode = useEventMode();
+  const eventModeState = useEventModeState();
   const bookShared = useIsBookShared();
   const [eventOff, setEventOff] = useState(false);
-  const lineEvent = eventMode && !eventOff && eventModeApplies(eventMode, bookShared) ? eventMode : null;
+  // Waits for the mode and the shared events to be read before a line is tagged or saved (fix round 2).
+  const { waiting: modeWaiting, active: lineEvent } = formEvent(eventModeState, eventOff, bookShared);
   // Read off the line's own event, so ✕ drops the currency with it (fix round 1, M4).
   const typedIn = addInCurrency(lineEvent, ws.baseCurrency);
   const readIn = typedIn ?? ws.baseCurrency;
@@ -195,7 +196,7 @@ export function useOneLine() {
 
   /** Saves the line as it reads; the saved row, or null when nothing was written. */
   async function save(): Promise<SavedLine | null> {
-    if (!canSaveLine(preview) || writing.current) return null;
+    if (!canSaveLine(preview) || writing.current || modeWaiting) return null;
     writing.current = true;
     setBusy(true);
     setError(null);
@@ -452,7 +453,7 @@ export function useOneLine() {
     type,
     reading,
     preview,
-    canSave: canSaveLine(preview) && !busy,
+    canSave: canSaveLine(preview) && !busy && !modeWaiting,
     busy,
     error,
     saved,

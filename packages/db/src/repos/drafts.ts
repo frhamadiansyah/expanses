@@ -228,6 +228,12 @@ async function writeDraftEvent(tx: Db, id: string, eventId: string | null | unde
   await tx.run(sql`UPDATE draft_transactions SET event_id = ${eventId || null} WHERE id = ${id}`);
 }
 
+/** Whether an event is shared on this phone (it has an event book): such an event is moved into, never tagged. */
+async function sharedEventTagTx(tx: Db, eventId: string): Promise<boolean> {
+  const [books] = await tx.values<[number]>(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'event_books'`);
+  return !!books && (await tx.values(sql`SELECT 1 FROM event_books WHERE event_id = ${eventId} LIMIT 1`)).length > 0;
+}
+
 async function draftEventOf(tx: Db, id: string): Promise<string | null> {
   if (!(await draftEventExists(tx))) return null;
   // An event deleted since the capture arrived is no answer any more: the purchase is recorded in no event.
@@ -241,9 +247,7 @@ async function draftEventOf(tx: Db, id: string): Promise<string | null> {
    * Review form does where it is seen, after this confirm. A door that confirms without the form (a statement check)
    * records the purchase in no event rather than half into a shared one.
    */
-  const [books] = await tx.values<[number]>(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'event_books'`);
-  if (books && (await tx.values(sql`SELECT 1 FROM event_books WHERE event_id = ${eventId} LIMIT 1`)).length > 0) return null;
-  return eventId;
+  return (await sharedEventTagTx(tx, eventId)) ? null : eventId;
 }
 
 /** The figure with cents a draft keeps, or null; null on a database before 0068. */
@@ -505,8 +509,12 @@ export async function confirmDraftTx(
   // The event it arrived tagged with (event mode), unless the form said otherwise — a form's own Event row, even empty, wins.
   const arrivedFor = opts.extras?.eventId === undefined ? await draftEventOf(tx, id) : undefined;
   // A form's event that was deleted or archived meanwhile is no answer either: never recorded into it (fix round 1, M2).
+  // Nor is a shared event ever posted as a plain tag (fix round 2): going into one is a move into its records, which the
+  // caller makes after this confirm. Posted untagged, a move refused or never made leaves an ordinary purchase.
   const extras =
-    opts.extras?.eventId && (await tx.values(sql`SELECT 1 FROM events WHERE id = ${opts.extras.eventId} AND archived_at IS NULL`)).length === 0
+    opts.extras?.eventId &&
+    ((await tx.values(sql`SELECT 1 FROM events WHERE id = ${opts.extras.eventId} AND archived_at IS NULL`)).length === 0 ||
+      (await sharedEventTagTx(tx, opts.extras.eventId)))
       ? { ...opts.extras, eventId: null }
       : opts.extras;
   const now = new Date().toISOString();

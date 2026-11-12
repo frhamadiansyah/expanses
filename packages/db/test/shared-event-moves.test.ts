@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   addPhoto,
   addSetCategory,
+  confirmDraft,
+  createDraft,
   cardSpendLines,
   convertEventToShared,
   createAccount,
@@ -117,6 +119,21 @@ describe('moveIntoSharedEvent', () => {
     expect((await listTransactions(t.database, t.inPersonal)).map((v) => v.id)).toContain(purchase);
     expect(await t.database.db.values(sql`SELECT count(*) FROM event_expenses`)).toEqual([[0]]);
     expect(await t.database.db.values(sql`SELECT count(*) FROM event_categories`)).toEqual([[0]]);
+  });
+
+  it('a draft confirmed naming a shared event is posted untagged, the move left to the caller (event mode fix round 2)', async () => {
+    const t = await coastWeek();
+    await t.share();
+    const bank = await createAccount(t.database, t.inPersonal, { name: 'Shore bank', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const restaurants = (await listAccounts(t.database, t.inPersonal)).find((a) => a.name === 'Restaurants')!;
+    const draftId = await createDraft(t.database, t.ws, {
+      source: 'manual', occurredOn: '2026-10-06', description: 'Dock stall', amountMinor: 45_000, currency: 'IDR',
+      accountId: bank.id, categoryAccountId: restaurants.id, eventId: t.eventId,
+    });
+    const { transactionId } = await confirmDraft(t.database, t.ws, draftId, { extras: { eventId: t.eventId } });
+    const [row] = await listTransactions(t.database, t.ws, { id: transactionId });
+    expect(row).toMatchObject({ description: 'Dock stall', eventId: null });
+    expect(await t.database.db.values(sql`SELECT count(*) FROM event_expenses`)).toEqual([[0]]);
   });
 
   it('a purchase posted untagged and refused stays an ordinary one in its workspace, in no event (event mode fix round 1, H2)', async () => {

@@ -1,8 +1,8 @@
 import { formatMinor, groupedMajorString, groupTypedAmount, isoDate, parseGroupedMajor, parsePurchaseList, type PaymentOption } from '@expanses/core';
 import { guessCategoryFromHistory, moveIntoSharedEvent, ownerScope, postTransactions, sharedEventOf, uncategorisedCategory } from '@expanses/db';
-import { EventChip, useEventMode } from '../events/EventMode';
+import { EventChip, useEventModeState } from '../events/EventMode';
 import { moveAfterSave, postTag } from './shared-move';
-import { eventModeApplies } from '../events/event-mode';
+import { formEvent } from '../events/event-mode';
 import { useOpenBook } from '../workspaces/queries';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { ArrowRight, CalendarDays, Check, CreditCard, Landmark } from 'lucide-react';
@@ -83,10 +83,11 @@ export function PasteListPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   // Event mode (screen 3): the whole list goes to the event, unless the chip's ✕ leaves this list out.
-  const eventMode = useEventMode();
+  const eventModeState = useEventModeState();
   const [eventOff, setEventOff] = useState(false);
   const bookShared = useIsBookShared();
-  const listEvent = eventMode && !eventOff && eventModeApplies(eventMode, bookShared) ? eventMode : null;
+  // Waits for the mode and the shared events to be read before the list is tagged or saved (fix round 2).
+  const { waiting: modeWaiting, active: listEvent } = formEvent(eventModeState, eventOff, bookShared);
   const tag = postTag(listEvent?.event.id, !!listEvent?.shared);
   const openBook = useOpenBook();
   const savedOnce = useRef(false);
@@ -129,7 +130,7 @@ export function PasteListPage() {
 
   async function save() {
     // Once posted, the list is never posted again, whatever happens after (fix round 1, H1).
-    if (!rows || !canSave(rows) || !payer || !payerAccount || busy || savedOnce.current) return;
+    if (!rows || !canSave(rows) || !payer || !payerAccount || busy || savedOnce.current || modeWaiting) return;
     setBusy(true);
     setError(null);
     let inputs: ReturnType<typeof purchaseInputs>;
@@ -336,7 +337,7 @@ export function PasteListPage() {
         title="Review"
         back="Paste a list"
         onBack={() => setStep('paste')}
-        actions={[{ key: 'save', label: 'Save list', glyph: <Check size={20} aria-hidden />, disabled: !canSave(rows) || busy, run: () => void save() }]}
+        actions={[{ key: 'save', label: 'Save list', glyph: <Check size={20} aria-hidden />, disabled: !canSave(rows) || busy || modeWaiting, run: () => void save() }]}
       />
       <form
         className="space-y-3 md:max-w-2xl"

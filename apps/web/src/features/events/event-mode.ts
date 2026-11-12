@@ -52,6 +52,29 @@ export function eventModeApplies(active: { shared: unknown } | null, bookShared:
 }
 
 /**
+ * The event One line and Paste a list tag with (fix round 2): none while the mode is still being read — the
+ * shared events among them decide how it posts, so One line and Paste a list wait rather than tag a shared event as a
+ * private one — none once ✕ left it out, and none where it does not apply.
+ */
+export function formEvent<T extends { shared: unknown }>(
+  state: { ready: boolean; active: T | null },
+  leftOut: boolean,
+  bookShared: boolean,
+): { waiting: boolean; active: T | null } {
+  if (!state.ready) return { waiting: true, active: null };
+  return { waiting: false, active: !leftOut && eventModeApplies(state.active, bookShared) ? state.active : null };
+}
+
+/**
+ * Whether a captured draft's row names its event (fix round 2): a private event never reaches a shared workspace's
+ * spending (sync gaps D1, the capture records in none there), so its row does not claim it; a shared event, which the
+ * draft moves into on its form, is named.
+ */
+export function draftShowsEvent(eventId: string | null | undefined, sharedEvents: Readonly<Record<string, unknown>>, bookShared: boolean): boolean {
+  return !!eventId && (!bookShared || !!sharedEvents[eventId]);
+}
+
+/**
  * Whether a shared event still takes event mode: one that is Done, left, or no longer shared here takes nothing new
  * (fix round 1, M3). An event that is not shared (no view) always does.
  */

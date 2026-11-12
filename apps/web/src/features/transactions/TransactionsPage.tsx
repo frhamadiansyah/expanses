@@ -90,7 +90,7 @@ import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
 import { Unconverted } from '../workspaces/Unconverted';
 import { UndoToast } from '../../ui/UndoToast';
 import { WorkspaceMenu } from '../workspaces/WorkspaceMenu';
-import { EventModeDot, useEventMode } from '../events/EventMode';
+import { EventModeDot, useShownEventMode } from '../events/EventMode';
 import { addInCurrency, eventModeApplies } from '../events/event-mode';
 import { recordsOnForm } from '../review/draft-form';
 import { useBooks, useCategoryBooks, useOpenBook, useWorkspaceBadges } from '../workspaces/queries';
@@ -266,7 +266,7 @@ export function TransactionsPage() {
   // The workspace switcher, reached from the ⋯ menu — the one thing in there that changes the whole app.
   const [choosingWorkspace, setChoosingWorkspace] = useState(false);
   // Event mode on (2E): a small purple round on the workspace button's corner, and nothing else on the page.
-  const eventMode = useEventMode();
+  const eventMode = useShownEventMode();
   const openBook = useOpenBook();
   /** The row whose "this is another workspace's" line is showing, because somebody tried to edit it. */
   const [elsewhereId, setElsewhereId] = useState<string | null>(null);

@@ -17,7 +17,8 @@ import { useApp } from '../../app/context';
 import { ToastCard, UndoToast } from '../../ui/UndoToast';
 import { InsetGroup, InsetRow, SwitchRow, tapReach, TextRow } from '../../ui/native';
 import { CurrencySheet } from '../transactions/CurrencySheet';
-import { EVENT_MARK, endedText, menuLine, modeFooter, modeHint, sharedWithLine, takesEventMode } from './event-mode';
+import { EVENT_MARK, endedText, eventModeApplies, menuLine, modeFooter, modeHint, sharedWithLine, takesEventMode } from './event-mode';
+import { useIsBookShared } from '../../lib/queries';
 import { useOpenBookReadOnly } from '../sharing/queries';
 import { useEvents } from './queries';
 import { useSharedEventSummaries, useSharedEventView } from './shared-queries';
@@ -61,6 +62,16 @@ export function useEventModeState(): { ready: boolean; active: ActiveEventMode |
   const event = eventsRead.data?.find((row) => row.id === stored.eventId);
   if (!event) return { ready, active: null };
   return { ready, active: { mode: stored, event, shared: summariesRead.data?.[event.id] } };
+}
+
+/**
+ * Event mode as the open workspace shows it (fix round 2): a private event never fills in a shared workspace's spending,
+ * so there the ✈️ dot and the menu row stay away too.
+ */
+export function useShownEventMode(): ActiveEventMode | null {
+  const active = useEventMode();
+  const bookShared = useIsBookShared();
+  return eventModeApplies(active, bookShared) ? active : null;
 }
 
 /** The writes: on for an event (the one before goes off), off, and the two rows under the switch. */

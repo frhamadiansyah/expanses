@@ -5,7 +5,7 @@ import { useEscape } from '../../app/use-escape';
 import { cx, ErrorBox } from '../../ui';
 import { WorkspaceDot } from './WorkspaceBadge';
 import { useBooks } from './queries';
-import { EventModeMenuRow, useEventMode } from '../events/EventMode';
+import { EventModeMenuRow, useShownEventMode } from '../events/EventMode';
 
 /**
  * Cashflow's corner menu: one row per workspace, hung under the corner button. A tap switches and closes it; a tap
@@ -16,7 +16,7 @@ export function WorkspaceMenu({ onClose }: { onClose: () => void }) {
   const { ws, switchBook } = useApp();
   const books = useBooks();
   // Event mode on (2F): the event is the menu's top row, a tap to its page where the switch is.
-  const eventMode = useEventMode();
+  const eventMode = useShownEventMode();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   useEscape(onClose);
