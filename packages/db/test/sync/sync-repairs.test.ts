@@ -3,6 +3,8 @@ import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   billOfPurchase,
+  unlinkPurchaseFromBill,
+  billsInMonth,
   categoryTotalsIn,
   createAccount,
   dismissRepairNotice,
@@ -21,6 +23,7 @@ import {
 } from '../../src/index';
 import { categoryOf, headOf, Household, projectBook, type Device } from './household';
 import { outboxOps } from './sync-helpers';
+import { SyncEngine } from '../../src/sync/engine';
 import { Trip } from './trip';
 
 /*
@@ -87,7 +90,7 @@ describe('R1: bill links an older build never sent', () => {
 
     // Once only: run again, nothing more goes.
     const after = (await outboxOps(wife.database)).length;
-    expect(await runSharedBookRepairs(wife.database, bookId, { today: TODAY })).toEqual({ billLinks: null, eventTags: null });
+    expect(await runSharedBookRepairs(wife.database, bookId, { today: TODAY })).toMatchObject({ billLinks: null, eventTags: null });
     expect((await outboxOps(wife.database)).length).toBe(after);
     // The husband's own run: he had no old link. A link made by this build before its first repair goes again (the
     // same value, so nothing changes on either phone); the wife's old April link is not his to send.
@@ -97,6 +100,85 @@ describe('R1: bill links an older build never sent', () => {
     const purchases = async (d: Device) => (await projectBook(d.database, bookId)).purchase as Record<string, unknown>;
     const [w, h] = [await purchases(wife), await purchases(husband)];
     for (const id of [march, october, november]) expect(h[id]).toEqual(w[id]);
+  });
+});
+
+describe('R1 through the rollout to 0.5.1 (fix round 3)', () => {
+  async function couple(husbandVersion: string) {
+    const home = new Household();
+    const wife = await home.device('Wife', 'member-Wife', 'IDR', '0.5.1');
+    const husband = await home.device('Husband', 'member-Husband', 'IDR', husbandVersion);
+    const bookId = await home.share(wife);
+    await home.join(husband, wife);
+    await home.settle();
+    const cat = (await listAccounts(wife.database, wife.ws)).find((a) => a.systemKey === 'utilities.internet_provider')!.id;
+    const bill = await saveExpenseTemplate(wife.database, wife.ws, { name: 'Fibre', categoryAccountId: cat, moneyAccountId: wife.bank, amountMinor: 410_000, dayOfMonth: 10, startsMonth: '2026-03' });
+    await home.settle();
+    const buy = (occurredOn: string, description: string) =>
+      postTransaction(wife.database, wife.ws, { occurredOn, description, lines: [{ accountId: cat, amountMinor: 410_000, currency: 'IDR' }, { accountId: wife.bank, amountMinor: -410_000, currency: 'IDR' }] });
+    const march = await buy('2026-03-11', 'Fibre March');
+    const april = await buy('2026-04-11', 'Fibre April');
+    await home.settle();
+    // Links an older build made on her phone and never sent.
+    for (const [id, month] of [[march, '2026-03'], [april, '2026-04']] as const) {
+      await wife.database.db.run(sql`INSERT INTO bill_payments (transaction_id, workspace_id, template_id, bill_month) VALUES (${id}, ${wife.ws.workspaceId}, ${bill}, ${month})`);
+    }
+    const linkOn = async (d: Device, lineage: string) => billOfPurchase(d.database, d.ws, (await headOf(d.database, lineage))!);
+    return { home, wife, husband, bookId, bill, march, april, linkOn };
+  }
+
+  /** What build 117 is left with after it applies a link: the clock taken, the link never written (proved against main). */
+  const as117 = async (d: Device) => d.database.db.run(sql`DELETE FROM bill_payments WHERE transaction_id IN (SELECT id FROM transactions WHERE template_id IS NULL)`);
+
+  it('she updates, his 117 syncs, then he updates: her links land on his phone once he is on 0.5.1, paid once', async () => {
+    const { home, wife, husband, bookId, bill, march, april, linkOn } = await couple('0.5.0');
+    const first = await runSharedBookRepairs(wife.database, bookId, { today: TODAY });
+    expect(first).toMatchObject({ billLinks: 2, billLinksRerunPending: true });
+    await home.settle();
+    await as117(husband);
+    expect(await linkOn(husband, march)).toBeNull();
+    // Nothing more while he is on 117, however often she opens the app.
+    expect(await runSharedBookRepairs(wife.database, bookId, { today: TODAY })).toMatchObject({ billLinks: null, billLinksRerunPending: true });
+
+    // He updates: the same phone, the new build; his next sync says so.
+    husband.engine = new SyncEngine(husband.database, husband.transport, husband.keys, undefined, { appVersion: '0.5.1', shareRecords: husband.records });
+    await home.settle();
+    expect(await runSharedBookRepairs(husband.database, bookId, { today: TODAY })).toMatchObject({ billLinks: 0, billLinksRerunPending: false });
+    const again = await runSharedBookRepairs(wife.database, bookId, { today: TODAY });
+    expect(again).toMatchObject({ billLinks: 2, billLinksRerunPending: false });
+    await home.settle();
+    expect(await linkOn(husband, march)).toMatchObject({ templateId: bill, billMonth: '2026-03', linked: true });
+    expect(await linkOn(husband, april)).toMatchObject({ billMonth: '2026-04', linked: true });
+    for (const d of [wife, husband]) {
+      const state = (await billsInMonth(d.database, d.ws, '2026-03', TODAY)).find((b) => b.bill.id === bill)?.state;
+      expect([d.name, state]).toEqual([d.name, 'paid']);
+    }
+    // Once: no third run, on any later launch.
+    expect(await runSharedBookRepairs(wife.database, bookId, { today: TODAY })).toMatchObject({ billLinks: null, billLinksRerunPending: false });
+    expect(await projectBook(husband.database, bookId)).toEqual(await projectBook(wife.database, bookId));
+  });
+
+  it('his offline unlink is not overturned by her first run or its re-run; a removed stale device does not hold the re-run', async () => {
+    const { home, wife, husband, bookId, march, april, linkOn } = await couple('0.5.1');
+    // A stale phone of hers, never updated, still listed in the book.
+    const old = await home.device('Old phone', 'member-Old', 'IDR', '0.5.0');
+    await home.join(old, wife);
+    await home.settle();
+    expect(await runSharedBookRepairs(wife.database, bookId, { today: TODAY })).toMatchObject({ billLinks: 2, billLinksRerunPending: true });
+    await home.settle();
+    expect(await linkOn(husband, march)).toMatchObject({ billMonth: '2026-03' });
+    // He takes March's link off, offline.
+    await unlinkPurchaseFromBill(husband.database, husband.ws, { transactionId: (await headOf(husband.database, march))! });
+    // The stale phone is removed from the book: the re-run is due at once, and goes at the clocks the links went at.
+    await wife.engine.removeDevice(bookId, old.deviceId);
+    const rerun = await runSharedBookRepairs(wife.database, bookId, { today: TODAY });
+    expect(rerun).toMatchObject({ billLinks: 2, billLinksRerunPending: false });
+    await home.settle([wife, husband]);
+    await home.settle([wife, husband]);
+    for (const d of [wife, husband]) {
+      expect([d.name, await linkOn(d, march)]).toEqual([d.name, null]);
+      expect([d.name, (await linkOn(d, april))?.billMonth]).toEqual([d.name, '2026-04']);
+    }
   });
 });
 
@@ -198,7 +280,7 @@ describe('R2: Family purchases tagged to an event without being moved', () => {
     ]);
     expect(await repairNotices(husband.database)).toEqual([]);
     // Once only.
-    expect(await runSharedBookRepairs(wife.database, s.family, { today: TODAY })).toEqual({ billLinks: null, eventTags: null });
+    expect(await runSharedBookRepairs(wife.database, s.family, { today: TODAY })).toMatchObject({ billLinks: null, eventTags: null });
     await dismissRepairNotice(wife.database, s.family);
     expect(await repairNotices(wife.database)).toEqual([]);
   });

@@ -815,7 +815,8 @@ export class SyncService {
     try {
       const fetcher = this.rateFetcher ?? (this.defaultFetcher ??= frankfurterFetcher());
       const report = await this.exclusive(bookId, () => runSharedBookRepairs(this.database, bookId, { fetcher }));
-      this.repaired.add(bookId);
+      // Bill links go once more when the last device in the book has updated (fix round 3): asked again until then.
+      if (!report.billLinksRerunPending) this.repaired.add(bookId);
       const tags = report.eventTags;
       const changed = (report.billLinks ?? 0) > 0 || (tags !== null && tags.moved + tags.untagged > 0);
       if (report.billLinks !== null || tags !== null) {

@@ -157,8 +157,26 @@ async function purchaseWinnersOf(tx: Db, ctx: BookContext, op: Extract<Op, { op:
     if (at === undefined) continue;
     const clock = await clockOf(tx, ctx, op.entity, op.id, field);
     if (clock === null || at > clock) winners.set(field, { value, hlc: at });
+    // A bill link resent at the clock it went at (the repair, fix round 3) ties with it here. The tie goes to the greater
+    // value read alike everywhere — a link over none — so a phone whose build took the clock without writing the link
+    // (117) writes it now, the same value again changes nothing, and every phone ends on one answer.
+    else if (field === 'billLink' && at === clock && canonicalLink(value) > canonicalLink(await linkHereTx(tx, op.id))) winners.set(field, { value, hlc: at });
   }
   return winners;
+}
+
+/** A bill link as one string, the same for the same link on every phone: its month and bill, or `''` for none. */
+function canonicalLink(value: unknown): string {
+  const given = value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+  return given && typeof given.templateId === 'string' && typeof given.billMonth === 'string' ? `${given.billMonth}|${given.templateId}` : '';
+}
+
+/** The link the lineage's head carries here (a `bill_payments` row of a purchase with no bill of its own), or null. */
+async function linkHereTx(tx: Db, lineageId: string): Promise<{ templateId: string; billMonth: string } | null> {
+  const [row] = await tx.values<[string, string]>(sql`
+    SELECT p.template_id, p.bill_month FROM sync_lineage l JOIN transactions t ON t.id = l.head_transaction_id
+    JOIN bill_payments p ON p.transaction_id = t.id WHERE l.lineage_id = ${lineageId} AND t.template_id IS NULL`).catch(() => []);
+  return row ? { templateId: row[0], billMonth: row[1] } : null;
 }
 
 /**
