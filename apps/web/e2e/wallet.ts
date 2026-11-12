@@ -1,6 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import { openAccount, walletCard, showBalance } from './accounts';
 import { addForm } from './add-transaction';
+import { addBill } from './bill-pause';
 import { openAssets } from './drawers';
 
 /**
@@ -307,4 +308,79 @@ export async function walletReorder(page: Page) {
   await openReorder();
   await expect(rows.nth(1)).toContainText('Everyday');
   await expect(rows.nth(2)).toContainText('Pocket app');
+}
+
+/**
+ * The Balance box's rows (owner, 12 Nov): Spending money and Owed on cards filter the grid to the cards they are made
+ * of — ✓ on the one tapped, a header with its count and Show all — and Bills still to pay takes this month's unpaid
+ * bills off the Balance and opens them as a sheet, clearing a filter first. A row tapped again, or Show all, brings
+ * every card back.
+ */
+export async function balanceRows(page: Page) {
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '5000000' });
+  await openAccount(page, { subtype: 'ewallet', name: 'Pocket app', balance: '300000' });
+  await openAccount(page, { subtype: 'credit_card', name: 'Blue Card', balance: '500000', last4: '4242' });
+  await addBill(page, 'Phone', '150000', 'Mobile phone');
+  await addBill(page, 'Gym', '350000', 'Sports & fitness');
+
+  await page.goto('/wallet');
+  await pickView(page, 'Grid');
+  const box = page.getByTestId('wallet-balance');
+  const spending = box.getByRole('button', { name: /^Spending money/ });
+  const cards = box.getByRole('button', { name: /^Owed on cards/ });
+  const bills = box.getByRole('button', { name: /^Bills still to pay/ });
+  const faces = page.getByTestId('wallet-grid').getByTestId('wallet-card');
+  const header = page.getByTestId('wallet-filter');
+
+  // 5.300.000 to spend, 500.000 on the card and 500.000 of bills still to come out: 4.300.000.
+  await expect(box).toContainText('4.300.000');
+  await expect(spending).toContainText('5.300.000');
+  await expect(cards).toContainText('500.000');
+  await expect(bills).toContainText('500.000');
+  await expect(faces).toHaveCount(3);
+  await expect(header).toHaveCount(0);
+
+  // Spending money: only the money, under a header that counts it.
+  await spending.click();
+  await expect(spending).toHaveAttribute('aria-pressed', 'true');
+  await expect(cards).toHaveAttribute('aria-pressed', 'false');
+  await expect(header).toContainText('Spending money · 2');
+  await expect(faces).toHaveCount(2);
+  await expect(walletCard(page, 'Blue Card')).toHaveCount(0);
+
+  // Owed on cards: only the credit card; the same row again brings every card back.
+  await cards.click();
+  await expect(cards).toHaveAttribute('aria-pressed', 'true');
+  await expect(spending).toHaveAttribute('aria-pressed', 'false');
+  await expect(header).toContainText('Owed on cards · 1');
+  await expect(faces).toHaveCount(1);
+  await expect(walletCard(page, 'Blue Card')).toBeVisible();
+  await cards.click();
+  await expect(cards).toHaveAttribute('aria-pressed', 'false');
+  await expect(header).toHaveCount(0);
+  await expect(faces).toHaveCount(3);
+
+  // Show all clears a filter too.
+  await spending.click();
+  await expect(faces).toHaveCount(2);
+  await header.getByRole('button', { name: 'Show all' }).click();
+  await expect(faces).toHaveCount(3);
+  await expect(spending).toHaveAttribute('aria-pressed', 'false');
+
+  // Bills still to pay opens its sheet, and a filter on is cleared first.
+  await spending.click();
+  await expect(faces).toHaveCount(2);
+  await bills.click();
+  const sheet = page.getByRole('dialog', { name: 'Bills still to pay' });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByTestId('bill-to-pay')).toHaveCount(2);
+  await expect(sheet).toContainText('Phone');
+  await expect(sheet).toContainText('Gym');
+  await expect(sheet).toContainText('Bills not yet paid this month. A bill drops off once paid; paid with a credit card, it is counted in Owed on cards instead. Skipped and paused bills are left out.');
+  await expect(spending).toHaveAttribute('aria-pressed', 'false');
+  await expect(faces).toHaveCount(3);
+
+  // A row opens the bill's own page.
+  await sheet.getByTestId('bill-to-pay').filter({ hasText: 'Gym' }).click();
+  await expect(page).toHaveURL(/\/bills\/[^/]+$/);
 }
