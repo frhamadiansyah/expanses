@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Covered by payment</title>
+<style>
+  :root { --bg:#f2f2f7; --surface:#fff; --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e0e0e4; --fill:#efeff2; --blue:#007aff; --green:#047857; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#e6e6ea; color:var(--ink); font:14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; padding:24px 16px 48px; }
+  h1 { font-size:20px; margin:0 0 4px; } .lede { color:#555; margin:0 0 20px; max-width:980px; }
+  h2 { font-size:16px; margin:28px 0 12px; }
+  .pair { display:flex; flex-wrap:wrap; gap:22px; align-items:flex-start; }
+  .col { width:320px; max-width:100%; }
+  .cap { font-weight:600; margin:0 0 8px; } .cap .n { display:inline-block; background:#1c1c1e; color:#fff; border-radius:5px; padding:0 6px; font-size:12px; margin-right:6px; }
+  .phone { background:var(--bg); border-radius:28px; padding:14px 14px 20px; border:1px solid #d4d4d8; min-height:600px; position:relative; overflow:hidden; }
+  .bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .round { width:36px; height:36px; border-radius:50%; background:#e5e5ea; display:flex; align-items:center; justify-content:center; font-size:16px; }
+  .ttl { font-size:18px; font-weight:600; }
+  .hero { background:var(--surface); border-radius:12px; padding:12px 14px; margin-bottom:6px; }
+  .hero .big { font-size:24px; font-weight:600; font-variant-numeric:tabular-nums; } .hero .s { font-size:12.5px; color:var(--ink3); }
+  .prog { height:6px; border-radius:3px; background:#e5e7eb; margin-top:8px; overflow:hidden; } .prog i { display:block; height:100%; background:#16a34a; }
+  .gh { font-size:13px; color:var(--ink3); margin:14px 4px 6px; display:flex; justify-content:space-between; }
+  .ig { background:var(--surface); border-radius:11px; overflow:hidden; }
+  .row { display:flex; align-items:center; gap:10px; padding:9px 12px; min-height:52px; position:relative; }
+  .ig .row + .row::before { content:""; position:absolute; top:0; left:44px; right:0; border-top:.5px solid var(--hair); }
+  .tick { width:22px; height:22px; border-radius:50%; border:1.5px solid #c7c7cc; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:12px; }
+  .tick.on { background:#1c1c1e; border-color:#1c1c1e; color:#fff; }
+  .tick.cov { background:#dcfce7; border-color:#86efac; color:#15803d; }
+  .grow { flex:1; min-width:0; } .t { font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .s { font-size:12px; color:var(--ink3); }
+  .amt { font-variant-numeric:tabular-nums; font-size:15px; } .amt.done { color:var(--ink3); }
+  .mark { outline:2px dashed #2563eb; outline-offset:2px; border-radius:10px; }
+  .bad { outline:2px dashed #e11d48; outline-offset:2px; border-radius:10px; }
+  .note { font-size:12.5px; color:#444; margin:10px 2px 0; }
+  .scrim { position:absolute; inset:0; background:rgba(0,0,0,.25); }
+  .sheet { position:absolute; left:0; right:0; bottom:0; background:var(--bg); border-radius:18px 18px 0 0; padding:10px 14px 24px; box-shadow:0 -6px 20px rgba(0,0,0,.12); }
+  .grab { width:36px; height:5px; border-radius:3px; background:#c7c7cc; margin:0 auto 10px; }
+  .ir { display:flex; align-items:center; padding:11px 13px; min-height:44px; font-size:15.5px; position:relative; }
+  .ig .ir + .ir::before { content:""; position:absolute; top:0; left:13px; right:0; border-top:.5px solid var(--hair); }
+  .ir .lab { flex:1; } .ir .val { color:var(--ink3); }
+  .legend { display:flex; gap:14px; font-size:12px; color:var(--ink3); margin:8px 4px 0; align-items:center; } .legend span { display:flex; align-items:center; gap:5px; }
+  .legend .tick { width:16px; height:16px; font-size:9px; }
+</style>
+</head>
+<body>
+<h1>Card statement: purchases covered by a payment</h1>
+<p class="lede">A payment made with the card page’s <b>Pay</b> covers the statement’s purchases oldest first, and every covered purchase shows as paid — no ticking needed. Purchases paid one by one (tick → Pay) keep their dark ✓; covered ones get a soft green ✓. Nothing about money changes, only what the list shows. Amounts and names are made up.</p>
+
+<h2>Paid in full with Pay (balance 0)</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">0</span>Now</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Statement</span><span class="round">⋯</span></div>
+      <div class="hero"><div class="s">October statement · due 25 Nov</div><div class="big">Rp 0</div><div class="s">Paid Rp 1.526.000 on 10 Nov</div></div>
+      <div class="gh"><span>PURCHASES</span></div>
+      <div class="ig bad">
+        <div class="row"><span class="tick"></span><div class="grow"><div class="t">Supermarket</div><div class="s">2 Oct</div></div><span class="amt">Rp 412.000</span></div>
+        <div class="row"><span class="tick"></span><div class="grow"><div class="t">Ride to airport</div><div class="s">3 Oct</div></div><span class="amt">Rp 185.000</span></div>
+        <div class="row"><span class="tick"></span><div class="grow"><div class="t">Online shop</div><div class="s">4 Oct</div></div><span class="amt">Rp 649.000</span></div>
+        <div class="row"><span class="tick"></span><div class="grow"><div class="t">Restaurant</div><div class="s">6 Oct</div></div><span class="amt">Rp 280.000</span></div>
+      </div>
+    </div>
+    <p class="note">The card is paid off, but every purchase still offers its empty tick, as if owed.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">P</span>Proposed</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Statement</span><span class="round">⋯</span></div>
+      <div class="hero"><div class="s">October statement · due 25 Nov</div><div class="big">Rp 0</div><div class="s">Paid Rp 1.526.000 on 10 Nov</div><div class="prog"><i style="width:100%"></i></div></div>
+      <div class="gh"><span>PURCHASES</span><span>All paid</span></div>
+      <div class="ig mark">
+        <div class="row"><span class="tick cov">✓</span><div class="grow"><div class="t">Supermarket</div><div class="s">2 Oct · covered by payment 10 Nov</div></div><span class="amt done">Rp 412.000</span></div>
+        <div class="row"><span class="tick cov">✓</span><div class="grow"><div class="t">Ride to airport</div><div class="s">3 Oct · covered by payment 10 Nov</div></div><span class="amt done">Rp 185.000</span></div>
+        <div class="row"><span class="tick cov">✓</span><div class="grow"><div class="t">Online shop</div><div class="s">4 Oct · covered by payment 10 Nov</div></div><span class="amt done">Rp 649.000</span></div>
+        <div class="row"><span class="tick cov">✓</span><div class="grow"><div class="t">Restaurant</div><div class="s">6 Oct · covered by payment 10 Nov</div></div><span class="amt done">Rp 280.000</span></div>
+      </div>
+      <div class="legend"><span><span class="tick on">✓</span>paid one by one</span><span><span class="tick cov">✓</span>covered by a payment</span></div>
+    </div>
+    <p class="note">Every purchase shows a soft green ✓ and “covered by payment 10 Nov”; amounts turn grey. They cannot be ticked again (no double payment).</p>
+  </div>
+</div>
+
+<h2>Part paid, and a mix</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">P</span>Part paid: Rp 600.000 of Rp 1.526.000</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Statement</span><span class="round">⋯</span></div>
+      <div class="hero"><div class="s">October statement · due 25 Nov</div><div class="big">Rp 926.000</div><div class="s">Paid Rp 600.000 of Rp 1.526.000</div><div class="prog"><i style="width:39%"></i></div></div>
+      <div class="gh"><span>PURCHASES</span><span>2 of 4 paid</span></div>
+      <div class="ig mark">
+        <div class="row"><span class="tick cov">✓</span><div class="grow"><div class="t">Supermarket</div><div class="s">2 Oct · covered by payment 10 Nov</div></div><span class="amt done">Rp 412.000</span></div>
+        <div class="row"><span class="tick cov">✓</span><div class="grow"><div class="t">Ride to airport</div><div class="s">3 Oct · covered by payment 10 Nov</div></div><span class="amt done">Rp 185.000</span></div>
+        <div class="row"><span class="tick"></span><div class="grow"><div class="t">Online shop</div><div class="s">4 Oct · Rp 3.000 covered, Rp 646.000 left</div></div><span class="amt">Rp 649.000</span></div>
+        <div class="row"><span class="tick"></span><div class="grow"><div class="t">Restaurant</div><div class="s">6 Oct</div></div><span class="amt">Rp 280.000</span></div>
+      </div>
+    </div>
+    <p class="note">Oldest first: the payment covers Supermarket and Ride to airport whole, and Rp 3.000 of Online shop. A purchase only partly covered stays open (tickable for what is left) and says how much is covered.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">P</span>Mixed with purchases paid one by one</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Statement</span><span class="round">⋯</span></div>
+      <div class="hero"><div class="s">October statement · due 25 Nov</div><div class="big">Rp 280.000</div><div class="s">Paid Rp 1.246.000 of Rp 1.526.000</div><div class="prog"><i style="width:82%"></i></div></div>
+      <div class="gh"><span>PURCHASES</span><span>3 of 4 paid</span></div>
+      <div class="ig">
+        <div class="row"><span class="tick cov">✓</span><div class="grow"><div class="t">Supermarket</div><div class="s">2 Oct · covered by payment 10 Nov</div></div><span class="amt done">Rp 412.000</span></div>
+        <div class="row"><span class="tick on">✓</span><div class="grow"><div class="t">Ride to airport</div><div class="s">3 Oct · paid 5 Oct from BCA</div></div><span class="amt done">Rp 185.000</span></div>
+        <div class="row"><span class="tick cov">✓</span><div class="grow"><div class="t">Online shop</div><div class="s">4 Oct · covered by payment 10 Nov</div></div><span class="amt done">Rp 649.000</span></div>
+        <div class="row"><span class="tick"></span><div class="grow"><div class="t">Restaurant</div><div class="s">6 Oct</div></div><span class="amt">Rp 280.000</span></div>
+      </div>
+      <div class="legend"><span><span class="tick on">✓</span>paid one by one</span><span><span class="tick cov">✓</span>covered by a payment</span></div>
+    </div>
+    <p class="note">A purchase paid one by one keeps its dark ✓ and is skipped by the oldest-first count; the card-page payment covers the others in date order.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">P</span>Tapping a covered ✓</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Statement</span><span class="round">⋯</span></div>
+      <div class="hero"><div class="s">October statement · due 25 Nov</div><div class="big">Rp 0</div></div>
+      <div class="scrim"></div>
+      <div class="sheet mark">
+        <div class="grab"></div>
+        <div class="bar"><span class="round">✕</span><span class="ttl">Online shop</span><span style="width:36px"></span></div>
+        <div class="ig">
+          <div class="ir"><span class="lab">Amount</span><span class="val">Rp 649.000</span></div>
+          <div class="ir"><span class="lab">Covered by</span><span class="val" style="color:var(--blue)">Payment 10 Nov ›</span></div>
+        </div>
+        <p class="note" style="margin:8px 4px 0;color:var(--ink3)">Paid with the card’s payment of Rp 1.526.000. Deleting that payment makes it owed again.</p>
+      </div>
+    </div>
+    <p class="note">A covered purchase’s ✓ explains itself and links to the payment; it is not a switch.</p>
+  </div>
+</div>
+</body>
+</html>
