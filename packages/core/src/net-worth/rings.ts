@@ -36,10 +36,25 @@ export function parseRingPick(json: string | null | undefined): RingPick | null 
   }
 }
 
+/** An ISO time as `toISOString` writes it: the only `at` whose byte order is time order. */
+const ISO_AT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
+
+/**
+ * Which of two picks came first, the same on every phone: by `at` in plain byte order (never a locale's collation,
+ * which may differ between phones), an `at` that is not an ISO time after every one that is, then by member id.
+ */
+function pickOrder(atA: string, a: string, atB: string, b: string): number {
+  const badA = !ISO_AT.test(atA);
+  const badB = !ISO_AT.test(atB);
+  if (badA !== badB) return badA ? 1 : -1;
+  if (atA !== atB) return atA < atB ? -1 : 1;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 /**
  * Each member's ring colour, the same on every phone given the same members and picks:
- * 1. picks, earliest first (the lower member id first at the same moment): each takes its colour unless an earlier
- *    pick holds it;
+ * 1. picks, earliest first (`pickOrder`: byte order of `at`, a malformed `at` last, then the lower member id): each
+ *    takes its colour unless an earlier pick holds it;
  * 2. members with no pick, in group order: each takes the colour of their place in the group (as before) unless a pick
  *    holds it;
  * 3. everyone left — a pick that lost its race, a default a pick landed on — takes the first colour nobody holds.
@@ -53,12 +68,7 @@ export function resolveRings(members: readonly string[], picks: Readonly<Record<
     out[member] = colour;
     taken.add(colour);
   };
-  const pickers = members
-    .filter((member) => picks[member])
-    .sort((a, b) => {
-      const at = picks[a]!.at.localeCompare(picks[b]!.at);
-      return at !== 0 ? at : a < b ? -1 : a > b ? 1 : 0;
-    });
+  const pickers = members.filter((member) => picks[member]).sort((a, b) => pickOrder(picks[a]!.at, a, picks[b]!.at, b));
   for (const member of pickers) {
     const colour = picks[member]!.colour;
     if (taken.has(colour)) left.push(member);

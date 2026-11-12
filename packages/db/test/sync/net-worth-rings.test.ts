@@ -184,3 +184,52 @@ describe('an older build in the household', () => {
     expect(await ringsOn(andi, groupBookId, members)).toEqual(expected);
   });
 });
+
+describe('two devices of one member', () => {
+  /** What waits to go out in a group log, on every phone: zero once nothing is left to send. */
+  async function waiting(home: Household, groupBookId: string) {
+    let n = 0;
+    for (const d of home.devices) n += Number((await d.database.db.values<[number]>(sql`SELECT count(*) FROM sync_outbox WHERE book_id = ${groupBookId}`))[0]![0]);
+    return n;
+  }
+
+  it('Rina’s tablet on an older build updates: all three phones agree, and the syncs fall quiet', async () => {
+    older.clear();
+    const home = new Household();
+    const rina = await home.device('Rina');
+    const tablet = await home.device('Tablet', 'member-Rina');
+    const andi = await home.device('Andi');
+    await tablet.database.execScript('ALTER TABLE nw_pending DROP COLUMN ring_json; ALTER TABLE nw_pending DROP COLUMN ring_devices_json;');
+    older.add(tablet);
+    const bookId = await home.share(rina);
+    const { code } = await rina.engine.linkDevice(bookId, { inviterName: 'Rina' });
+    await tablet.engine.joinBook(code, { ws: tablet.ws, memberName: 'Rina', deviceName: 'Tablet' });
+    await home.join(andi, rina);
+    await settle(home);
+    const proposalId = await rina.engine.proposeNetWorth(bookId, { mode: 'joint', members: [andi.memberId] });
+    await settle(home);
+    await andi.engine.answerNetWorth(bookId, proposalId, 'confirm');
+    await settle(home);
+    await settle(home);
+    const active = (await activeNetWorthGroup(rina.database))!;
+    expect((await activeNetWorthGroup(tablet.database))?.groupBookId).toBe(active.groupBookId);
+
+    await setOwnRing(rina.database, 'teal', T0);
+    await setOwnRing(andi.database, 'orange', later(1));
+    await settle(home);
+    await settle(home);
+    // The older tablet passed both picks over.
+    expect(await ringPicks(tablet.database, active.groupBookId)).toEqual({});
+
+    await update(tablet);
+    const rounds: number[] = [];
+    for (let i = 0; i < 8; i += 1) {
+      await syncAll(home);
+      rounds.push(await waiting(home, active.groupBookId));
+    }
+    const want = { [rina.memberId]: 'teal', [andi.memberId]: 'orange' };
+    for (const d of home.devices) expect(await ringsOn(d, active.groupBookId, active.members)).toEqual(want);
+    // Nothing keeps going back and forth: the last syncs send nothing.
+    expect(rounds.slice(-3)).toEqual([0, 0, 0]);
+  });
+});

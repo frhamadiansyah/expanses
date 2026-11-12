@@ -40,6 +40,19 @@ describe('resolveRings', () => {
     expect(resolveRings([ANDI, RINA], { [ANDI]: { colour: 'orange', at }, [RINA]: { colour: 'orange', at } })).toEqual({ [ANDI]: 'orange', [RINA]: 'blue' });
   });
 
+  it('orders picks by the bytes of their time, not a locale’s collation, and puts a malformed time last', () => {
+    // Lower case sorts after upper case in byte order; a collation might put them together. Only byte order is the same everywhere.
+    const odd = { [RINA]: { colour: 'indigo', at: 'zzz-not-a-time' }, [ANDI]: { colour: 'indigo', at: '2026-11-12T09:00:00.000Z' } } as const;
+    expect(resolveRings([RINA, ANDI], odd)).toEqual({ [ANDI]: 'indigo', [RINA]: 'blue' });
+    expect(resolveRings([ANDI, RINA], odd)).toEqual({ [ANDI]: 'indigo', [RINA]: 'blue' });
+    // Two malformed times: still settled the same way on every phone, by member id.
+    const both = { [RINA]: { colour: 'indigo', at: 'b' }, [ANDI]: { colour: 'indigo', at: 'A' } } as const;
+    expect(resolveRings([RINA, ANDI], both)).toEqual({ [ANDI]: 'indigo', [RINA]: 'blue' });
+    // Two good times compare by their bytes: the earlier wins.
+    const close = { [RINA]: { colour: 'indigo', at: '2026-11-12T09:00:00.001Z' }, [ANDI]: { colour: 'indigo', at: '2026-11-12T09:00:00.010Z' } } as const;
+    expect(resolveRings([ANDI, RINA], close)).toEqual({ [RINA]: 'indigo', [ANDI]: 'blue' });
+  });
+
   it('a pick beats a default it lands on; the default moves to the first free colour', () => {
     // Rina never picked (blue by place); Andi picked blue: Andi's choice stands, Rina takes the first free one.
     expect(resolveRings([RINA, ANDI], { [ANDI]: { colour: 'blue', at: '2026-11-12T01:00:00.000Z' } })).toEqual({ [ANDI]: 'blue', [RINA]: 'purple' });

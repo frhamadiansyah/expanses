@@ -117,6 +117,8 @@ function Member({ bookId, bookName, detail, member }: { bookId: string; bookName
     setPicking(false);
     void run(async () => {
       await setOwnRing(database, colour);
+      // As a rename does: the workspace syncs now, and its group log with it, so the partner's phone hears it soon.
+      void sync.syncNow(bookId);
       await invalidate();
     });
   };
