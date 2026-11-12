@@ -258,6 +258,23 @@ describe('goalPlansFor', () => {
     expect(summary.capacityMonthlyMinor).toBe(10_000_000);
   });
 
+  it('reads what you can save from full months only: this month, half done, does not move it', async () => {
+    await salaryAndSpending();
+    const categories = await categoryIdsByKey(database, ws);
+    // September so far: a big purchase and no salary yet.
+    await postTransaction(database, ws, {
+      occurredOn: '2026-09-05',
+      description: 'Fridge',
+      lines: [
+        { accountId: categories['household.groceries']!, amountMinor: 9_000_000, currency: 'IDR' },
+        { accountId: bca.id, amountMinor: -9_000_000, currency: 'IDR' },
+      ],
+    });
+    expect((await goalPlansFor(database, ws, TODAY)).capacityMonthlyMinor).toBe(10_000_000);
+    // Once September is over it counts: Rp 90 jt in and Rp 69 jt out over 4 months with data.
+    expect((await goalPlansFor(database, ws, '2026-10-02')).capacityMonthlyMinor).toBe(Math.round((90_000_000 - 69_000_000) / 4));
+  });
+
   it('targets months of outgoings on an emergency goal', async () => {
     await salaryAndSpending();
     const emergencyId = await saveGoal(database, ws, {

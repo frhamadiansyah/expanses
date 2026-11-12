@@ -4,6 +4,7 @@ import {
   goalMoneyOf,
   type GoalUnits,
   addMonths,
+  monthRange,
   convertMinor,
   DEFAULT_EMERGENCY_BASE,
   emergencyOutgoingMinor,
@@ -493,7 +494,11 @@ async function plansWithFunding(database: Database, ws: WorkspaceContext, date: 
   // What is left over takes the same care: the interest is an expense, so subtracting the whole payment
   // beside spending would take it out twice and make every goal look further away than it is. The principal
   // is still subtracted — it builds equity, but the cash has left the account and cannot fund a goal.
-  const capacityMonthlyMinor = Math.max(0, perMonth(flows.incomeMinor - flows.spendingMinor - flows.debtPrincipalMinor, flows.months));
+  // Saved a month reads the last 12 FULL months: this month, half done, would swing it with every salary and every
+  // purchase (owner, 2026-11-12). It changes once, when the month changes.
+  const lastFull = addMonths(monthOf(date), -1);
+  const saved = await periodFlows(database, ownerScope(ws), { from: `${addMonths(lastFull, -11)}-01`, to: monthRange(lastFull).to });
+  const capacityMonthlyMinor = Math.max(0, perMonth(saved.incomeMinor - saved.spendingMinor - saved.debtPrincipalMinor, saved.months));
 
   const templates = (await listTradeTemplates(database, ws)).filter((template) => template.active && template.goalId);
   const values = await assetValuesAt(database, ws, date);
