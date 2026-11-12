@@ -22,6 +22,53 @@ export function useKeyboardInset(): number {
   return inset;
 }
 
+/** Less than this between the page's height and the part still showing is the browser's own bars, not a keyboard. */
+const KEYBOARD_MIN_PX = 120;
+
+/** Where a bar docked on the keyboard stands: `inset` for its `bottom`, and whether a keyboard is up at all. */
+export interface KeyboardDock {
+  inset: number;
+  shown: boolean;
+}
+
+/**
+ * The keyboard as a docked bar needs it, from the layout viewport's height (`document.documentElement.clientHeight`,
+ * what `position: fixed` is laid out in) and the visual viewport (the part still showing, its top measured from the
+ * layout viewport's). Not `window.innerHeight`: iOS 26's web view reports a height there that is neither, so
+ * `useKeyboardInset` can read 0 with the keyboard up, or fall short of it. And `shown` is told apart from the inset:
+ * with the page scrolled to its foot the keyboard's top is the layout viewport's foot, so the inset is 0 while the
+ * keyboard is up.
+ */
+export function keyboardDock(layoutHeight: number, view: { offsetTop: number; height: number }): KeyboardDock {
+  return {
+    inset: Math.max(0, Math.round(layoutHeight - view.height - view.offsetTop)),
+    shown: layoutHeight - view.height >= KEYBOARD_MIN_PX,
+  };
+}
+
+/** `keyboardDock`, kept current as the keyboard moves, the page scrolls under it, or the window changes size. */
+export function useKeyboardDock(): KeyboardDock {
+  const [dock, setDock] = useState<KeyboardDock>({ inset: 0, shown: false });
+  useEffect(() => {
+    const view = window.visualViewport;
+    if (!view) return;
+    const measure = () => {
+      const next = keyboardDock(document.documentElement.clientHeight, view);
+      setDock((now) => (now.inset === next.inset && now.shown === next.shown ? now : next));
+    };
+    measure();
+    view.addEventListener('resize', measure);
+    view.addEventListener('scroll', measure);
+    window.addEventListener('resize', measure);
+    return () => {
+      view.removeEventListener('resize', measure);
+      view.removeEventListener('scroll', measure);
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
+  return dock;
+}
+
 export type StripCell = { key: string; label: string; title: ReactNode; detail?: string; /** A small grey line above the title, which then reads bold: the figure under its name. */ caption?: string; onPick: () => void };
 
 /**

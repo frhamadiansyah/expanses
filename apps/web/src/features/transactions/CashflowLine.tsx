@@ -2,9 +2,10 @@ import { type FormEvent, useEffect, useLayoutEffect, useRef, useState } from 're
 import { flushSync } from 'react-dom';
 import { ArrowUp } from 'lucide-react';
 import { ErrorBox } from '../../ui';
-import { useKeyboardInset } from '../../ui/native/KeyboardStrip';
+import { useKeyboardDock } from '../../ui/native/KeyboardStrip';
 import { lineState, registerLineOpener, setLineState, useLineState } from './cashflow-line-store';
 import { useOneLineLook } from '../account/one-line-look';
+import { useHiddenFormAccessoryBar } from '../../native/form-accessory-bar';
 import { buzzWarning } from '../../native/haptics';
 import { canSaveLine } from './one-line';
 import { useOneLine } from './use-one-line';
@@ -17,6 +18,13 @@ const OPEN_GRACE_MS = 450;
 const SAVE_ECHO_MS = 700;
 /** How far a finger drags down on the field before it reads as putting the keyboard away. */
 const SWIPE_DOWN_PX = 24;
+/**
+ * How far the dim reaches below the fixed layer's foot. With the keyboard up, iOS can leave the layer's foot short of
+ * the keyboard's top (seen on iOS 26: a layout left over from the keyboard's move), and a dim cut exactly to the layer
+ * leaves a lit band under the card. Taller than any phone screen, and the keyboard covers whatever is past it. Its top
+ * stays at the layer's top, which is never below the screen's top.
+ */
+const DIM_OVERSCAN_PX = 1200;
 
 /**
  * One line on Cashflow: what a held ＋ opens there (Settings › Default's One line). The page stays as it is and the field
@@ -31,7 +39,10 @@ const SWIPE_DOWN_PX = 24;
 export function CashflowLine() {
   const line = useOneLine();
   const { open } = useLineState();
-  const inset = useKeyboardInset();
+  // The home indicator is cleared only with no keyboard up: the inset can read 0 with one up (see keyboardDock).
+  const { inset, shown: keyboard } = useKeyboardDock();
+  // iOS's ⌃ ⌄ ✓ bar would stand between the keyboard and the line; off while the line is open, back for every other form.
+  useHiddenFormAccessoryBar(open);
   const look = useOneLineLook().data ?? 'card';
   const card = look === 'card';
   const { field, preview, text } = line;
@@ -202,7 +213,12 @@ export function CashflowLine() {
       <div aria-hidden style={{ height: inset + height + (card ? 8 : 0) }} />
       {card ? (
         <>
-          <div aria-hidden data-testid="line-dim" className="fixed inset-0 z-[25] md:hidden" style={{ background: 'rgba(0,0,0,.14)' }} />
+          <div
+            aria-hidden
+            data-testid="line-dim"
+            className="fixed inset-x-0 z-[25] md:hidden"
+            style={{ top: 0, bottom: -DIM_OVERSCAN_PX, background: 'rgba(0,0,0,.14)' }}
+          />
           <div
             ref={composer}
             data-testid="line-composer"
@@ -216,7 +232,7 @@ export function CashflowLine() {
               paddingRight: 0,
               bottom: inset + 8,
               boxShadow: '0 8px 28px rgba(0,0,0,.16)',
-              marginBottom: inset === 0 ? 'env(safe-area-inset-bottom)' : undefined,
+              marginBottom: keyboard ? undefined : 'env(safe-area-inset-bottom)',
             }}
             {...swipe}
           >
@@ -251,7 +267,7 @@ export function CashflowLine() {
             bottom: inset,
             background: 'rgba(249,249,251,.97)',
             // With no keyboard up (a browser with a hardware keyboard) it keeps clear of the home indicator.
-            paddingBottom: inset === 0 ? 'calc(0.5rem + env(safe-area-inset-bottom))' : undefined,
+            paddingBottom: keyboard ? undefined : 'calc(0.5rem + env(safe-area-inset-bottom))',
           }}
           {...swipe}
         >
