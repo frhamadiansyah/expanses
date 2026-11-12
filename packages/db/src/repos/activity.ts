@@ -263,8 +263,16 @@ async function hasReplacement(db: Db, id: string): Promise<boolean> {
   return (await db.values(sql`SELECT 1 FROM transactions WHERE replaces_transaction_id = ${id} LIMIT 1`)).length > 0;
 }
 
-async function memberName(db: Db, memberId: string): Promise<string | null> {
+/**
+ * The member's name as the transaction's own books have it (a member renames themselves per workspace, D-D2), else as
+ * any book here has it.
+ */
+async function memberName(db: Db, memberId: string, bookIds: readonly string[]): Promise<string | null> {
   try {
+    for (const bookId of bookIds) {
+      const [row] = await db.values<[string]>(sql`SELECT name FROM book_members WHERE book_id = ${bookId} AND member_id = ${memberId}`);
+      if (row) return row[0];
+    }
     const [row] = await db.values<[string]>(sql`SELECT name FROM book_members WHERE member_id = ${memberId} LIMIT 1`);
     return row?.[0] ?? null;
   } catch {
@@ -288,7 +296,7 @@ async function myName(db: Db, bookIds: readonly string[]): Promise<string | null
 
 async function whoOf(db: Db, event: AuditEvent, books: readonly string[]): Promise<string | null> {
   const author = event.payload.syncAuthor;
-  if (event.src === 'sync' && typeof author === 'string' && author) return (await memberName(db, author)) ?? author;
+  if (event.src === 'sync' && typeof author === 'string' && author) return (await memberName(db, author, books)) ?? author;
   return myName(db, books);
 }
 

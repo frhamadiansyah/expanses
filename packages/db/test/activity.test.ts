@@ -326,6 +326,29 @@ describe('Activity: Undo', () => {
     expect((await w.live())[0]!.entries.map((e) => e.amountMinor).sort()).toEqual([-180_000, 180_000]);
   });
 
+  it("names the member as the transaction's own workspace has them, so By follows a rename (D-D2)", async () => {
+    const w = await world();
+    const id = await w.buy(w.bca.id, w.food, 180_000);
+    const home = await personalBook(w.database, w.ws);
+    // The same member in another book (a shared event's, say) still under the name they had there; listed first.
+    await w.database.execScript(`CREATE TABLE IF NOT EXISTS book_members (book_id TEXT NOT NULL, member_id TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL, joined_at TEXT NOT NULL, PRIMARY KEY (book_id, member_id));
+      INSERT INTO book_members VALUES ('0-other', 'm-ayu', 'Ayu', 'member', '2026-01-01');
+      INSERT INTO book_members VALUES ('${home.id}', 'm-ayu', 'Ayu Lestari', 'member', '2026-01-01');`);
+    await w.database.transaction((tx) =>
+      replaceTransactionTx(tx, w.ws, id, {
+        occurredOn: '2026-09-02',
+        description: 'Groceries',
+        lines: [
+          { accountId: w.dining, amountMinor: 200_000, currency: 'IDR' },
+          { accountId: w.bca.id, amountMinor: -200_000, currency: 'IDR' },
+        ],
+        syncAuthor: 'm-ayu',
+      }),
+    );
+    const [edit] = await lines(w, { kind: 'edit' });
+    expect(edit).toMatchObject({ who: 'Ayu Lestari' });
+  });
+
   it('looks a line up by its id', async () => {
     const w = await world();
     await w.buy(w.bca.id, w.food, 10_000, 'A');

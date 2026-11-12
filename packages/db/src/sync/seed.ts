@@ -59,7 +59,13 @@ export type SharingErrorCode =
   | 'HELD_ELSEWHERE'
   // This phone holds the record of an earlier share of the book (a lost share, §6.2): Share waits until it is brought
   // back or discarded (review N2).
-  | 'RECORD_ELSEWHERE';
+  | 'RECORD_ELSEWHERE'
+  // Rename self (sharing resilience §10.2, D-D2): an empty or whitespace name; one over `MEMBER_NAME_MAX` characters.
+  | 'NAME_REQUIRED'
+  | 'NAME_TOO_LONG';
+
+/** The longest member name a rename takes (D-D2), counted after trimming. */
+export const MEMBER_NAME_MAX = 40;
 
 /** The settings key under which a device remembers its own member in a book it stopped sharing or kept as its own (§8.6, final review C1). */
 export const REMEMBERED_MEMBER_KEY = (bookId: string) => `sharing.member.${bookId}`;

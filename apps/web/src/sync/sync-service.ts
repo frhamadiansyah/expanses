@@ -490,6 +490,11 @@ export class SyncService {
     await this.act(bookId, (engine) => engine.makeOwner(bookId, memberId));
   }
 
+  /** Rename self (sharing resilience §10.2, D-D2): this member's own name, synced soon; then the screens re-read. */
+  async renameSelf(bookId: string, name: string): Promise<void> {
+    await this.act(bookId, (engine) => engine.renameSelf(bookId, name));
+  }
+
   /** Leave (§8.4): the book stays here, read-only; it is no longer polled. */
   async leave(bookId: string): Promise<void> {
     await this.act(bookId, (engine) => engine.leave(bookId), 'leave');

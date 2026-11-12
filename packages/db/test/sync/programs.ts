@@ -23,7 +23,8 @@ import {
   unskipBill,
   voidTransaction,
 } from '../../src/index';
-import { withCapture } from '../../src/sync/capture';
+import { expect } from 'vitest';
+import { MemberNameError, withCapture } from '../../src/sync/capture';
 import type { Device, Household } from './household';
 
 /*
@@ -298,20 +299,33 @@ export async function runStep(home: Household, d: Device, step: Step): Promise<b
         else await setIncomeOverride(database, ws, { month: MONTHS[step.month]!, amountMinor: step.amount * 1_000_000 });
         return true;
       case 'extra': {
-        // A revivable row (keyed by member id) renamed, re-roled, deleted and made again on any device: the
-        // rename-then-delete against a concurrent partial edit that fix round 2 is about.
+        // A revivable row (keyed by member id) re-roled, deleted and made again by an owner's device, and edited on any
+        // device: a member's edit that crossed an owner's delete stays dead (NO_REVIVE), an owner's brings it back —
+        // the edit-then-delete against a concurrent partial edit that fix round 2 is about.
         const [row] = await database.db.values<[string]>(sql`SELECT role FROM book_members WHERE book_id = ${bookId} AND member_id = ${EXTRA}`);
         // Only an owner writes a role, and making the row again writes one (§8.5, task 5 fix round 1): a member's
-        // device only renames.
+        // device only edits.
         const [mine] = await database.db.values<[string]>(sql`SELECT m.role FROM book_members m JOIN shared_books s ON s.book_id = m.book_id AND s.member_id = m.member_id WHERE m.book_id = ${bookId}`);
         if (step.action !== 'rename' && mine?.[0] !== 'owner') return false;
+        if (step.action === 'rename') {
+          if (!row) return false;
+          // Only a member renames themselves (D-D2), and nobody's device is this member's: the name is refused here
+          // and emits nothing. The edit any device may make is of another field: its joining day.
+          await expect(
+            database.transaction((tx) =>
+              withCapture(tx, { entity: 'member', id: EXTRA, bookId }, () => tx.run(sql`UPDATE book_members SET name = ${`Extra ${step.name}`} WHERE book_id = ${bookId} AND member_id = ${EXTRA}`)),
+            ),
+          ).rejects.toBeInstanceOf(MemberNameError);
+          await database.transaction((tx) =>
+            withCapture(tx, { entity: 'member', id: EXTRA, bookId }, () => tx.run(sql`UPDATE book_members SET joined_at = ${`2026-08-1${step.name}`} WHERE book_id = ${bookId} AND member_id = ${EXTRA}`)),
+          );
+          return true;
+        }
         await database.transaction((tx) =>
           withCapture(tx, { entity: 'member', id: EXTRA, bookId }, async () => {
             if (step.action === 'toggle') {
               if (row) await tx.run(sql`DELETE FROM book_members WHERE book_id = ${bookId} AND member_id = ${EXTRA}`);
               else await tx.run(sql`INSERT INTO book_members (book_id, member_id, name, role, joined_at) VALUES (${bookId}, ${EXTRA}, ${`Extra ${step.name}`}, 'member', '2026-09-01')`);
-            } else if (row && step.action === 'rename') {
-              await tx.run(sql`UPDATE book_members SET name = ${`Extra ${step.name}`} WHERE book_id = ${bookId} AND member_id = ${EXTRA}`);
             } else if (row) {
               await tx.run(sql`UPDATE book_members SET role = ${row[0] === 'owner' ? 'member' : 'owner'} WHERE book_id = ${bookId} AND member_id = ${EXTRA}`);
             }

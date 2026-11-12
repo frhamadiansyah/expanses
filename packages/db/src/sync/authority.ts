@@ -27,8 +27,9 @@ import { uuidv5 } from './uuidv5';
  */
 
 /**
- * Member ops by a non-owner that must not bring a deleted member row back or move its existence clock: a rename that
- * crossed an owner's delete stays dead (merged into what the tombstone kept), on every device alike (N1).
+ * Member ops by a non-owner, and renames by anyone (D-D2), that must not bring a deleted member row back or move its
+ * existence clock: a rename that crossed an owner's delete stays dead (merged into what the tombstone kept), on every
+ * device alike (N1).
  */
 export const NO_REVIVE = new WeakSet<Op>();
 
@@ -37,6 +38,16 @@ export function makesMember(op: Op): boolean {
   if (op.op !== 'upsert') return false;
   const named = op.changed ?? Object.keys(op.fields);
   return ['name', 'role', 'joinedAt'].every((f) => named.includes(f));
+}
+
+/**
+ * Whether an upsert of a member row names its `name` and nothing else: a rename (sharing resilience §10.2, D-D2). A
+ * rename never makes a row, never brings a deleted one back and never moves its existence clock, whoever wrote it.
+ */
+export function renamesOnly(op: Op): boolean {
+  if (op.op !== 'upsert') return false;
+  const named = op.changed ?? Object.keys(op.fields);
+  return named.length === 1 && named[0] === 'name';
 }
 
 /** Why an op or entry is refused; the text goes into `sync_skipped.error`. */
@@ -585,14 +596,30 @@ async function decideMember(tx: Db, ctx: DecideContext, op: Op): Promise<Op> {
     return op;
   }
 
-  const named = op.changed ?? Object.keys(op.fields);
   const ownIntroduction = view === null && ctx.introducedMember === op.id;
   // Making a member row (new, or again after a delete) is an owner's; so is bringing a deleted one back by any edit.
   // A non-owner's edit that crossed a delete stays dead instead (NO_REVIVE), so nobody's row comes back by it.
   const creates = view === null || (view.deleted && hlc > view.rowHlc && makesMember(op));
   if (creates && !owner && !ownIntroduction) throw new AuthorityError('only an owner makes a member');
-  const remakes = view === null || (view.deleted && hlc > view.rowHlc && (owner || ownIntroduction));
+  // D-D2: a rename alone never brings a row back, an owner's own included — a rename racing a removal stays dead.
+  const rename = renamesOnly(op);
+  const remakes = view === null || (view.deleted && hlc > view.rowHlc && (owner || ownIntroduction) && !rename);
   let decided: Extract<Op, { op: 'upsert' }> = op;
+  // D-D2: a member's name is that member's own, written from one of their devices. An owner relabelling someone else
+  // is refused (names are how people know who wrote what): a fresh claim of another member's name — `name` among what
+  // the op names — is refused when it is all the op does (a recorded skip), else dropped from `changed` while the rest
+  // stands. Only the book's first entry and a row being made carry another member's name as a claim. A name merely
+  // carried at its own clock (`clocks.name`: a rejoin sending what the new log has not got, `emitNewerTx`) is no claim:
+  // it merges by last-writer-wins, capped at the change-set's clock as every carried field is, so the phones converge.
+  const claimed = op.changed ?? Object.keys(op.fields);
+  if (!ctx.creator && !creates && !ownIntroduction && claimed.includes('name')) {
+    const authorMember = (await viewDevice(tx, bookId, ctx.author))?.memberId ?? null;
+    if (authorMember !== op.id) {
+      if (rename) throw new AuthorityError('only a member writes their own name');
+      decided = { ...op, changed: claimed.filter((f) => f !== 'name') };
+    }
+  }
+  const named = decided.changed ?? Object.keys(decided.fields);
   if (named.includes('role') && 'role' in op.fields) {
     const introducedAs = op.fields.role === 'member' || ((ctx.groupLog === true || ctx.everyMemberOwns === true) && op.fields.role === 'owner');
     if (!owner && !(ownIntroduction && introducedAs)) throw new AuthorityError('only an owner writes a role');
@@ -600,12 +627,12 @@ async function decideMember(tx: Db, ctx: DecideContext, op: Op): Promise<Op> {
   } else if (!owner && 'role' in op.fields) {
     // A role a non-owner's op merely carries (a whole revivable row) cannot win: its clock goes, and it inserts only
     // as 'member'.
-    decided = without(op, []);
+    decided = without(decided, []);
     if (decided.clocks) delete decided.clocks.role;
     decided.fields.role = 'member';
   }
 
-  if (!owner && !ownIntroduction) {
+  if ((!owner && !ownIntroduction) || rename) {
     if (decided === op) decided = without(op, []);
     NO_REVIVE.add(decided);
   }

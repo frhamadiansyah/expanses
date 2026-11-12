@@ -1,13 +1,16 @@
 import type { CreatedInvite, SharedDevice, SharedMemberDetail, SharingDetail } from '@expanses/db';
 import { useParams } from '@tanstack/react-router';
-import { Laptop, Link2, Smartphone, User } from 'lucide-react';
+import { Laptop, Link2, Pencil, Smartphone, User } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
+import { Sheet } from '../../app/Sheet';
 import { ErrorBox } from '../../ui';
-import { DestructiveRow, InsetGroup, InsetRow, PushedTitle, SCREEN } from '../../ui/native';
+import { DestructiveRow, InsetGroup, InsetRow, PushedTitle, SCREEN, SubmitRow, TextRow } from '../../ui/native';
 import { InviteCard } from './InviteCard';
+import { memberNameDraft, NAME_TOO_LONG_LINE } from './member-name';
 import { useBookStatus, useSharingDetail, useSyncStatus } from './queries';
 import { useActionRunner, useShareBook } from './share-hooks';
+import { rememberName } from './SharingSection';
 import { syncedAgo } from './sharing-copy';
 
 type MadeInvite = { invite: CreatedInvite; kind: 'someone' | 'device'; forName?: string };
@@ -34,12 +37,49 @@ export function MemberPage() {
   );
 }
 
+/**
+ * Rename self (sharing resilience §10.2, D-D2): one field, prefilled with the current name; Save while it is not empty,
+ * changed and at most `MEMBER_NAME_MAX` characters, trimmed. The same shape as a workspace's Name sheet.
+ */
+function NameSheet({ current, bookName, busy, onSave, onClose }: { current: string; bookName: string; busy: boolean; onSave: (name: string) => void; onClose: () => void }) {
+  const [draft, setDraft] = useState(current);
+  const { name, canSave, tooLong } = memberNameDraft(draft, current);
+  const ok = !busy && canSave;
+  return (
+    <Sheet title="Name" onClose={onClose} grouped>
+      <form
+        aria-label="Change name"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (ok) onSave(name);
+        }}
+      >
+        <InsetGroup wide footer={tooLong ? NAME_TOO_LONG_LINE : `Shown to everyone in ${bookName}.`}>
+          <TextRow
+            label="Name"
+            data-testid="member-name-input"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            autoComplete="name"
+            enterKeyHint="done"
+            autoFocus
+          />
+        </InsetGroup>
+        <InsetGroup wide>
+          <SubmitRow testId="member-name-save" label="Save" disabled={!ok} />
+        </InsetGroup>
+      </form>
+    </Sheet>
+  );
+}
+
 function Member({ bookId, bookName, detail, member }: { bookId: string; bookName: string; detail: SharingDetail; member: SharedMemberDetail }) {
   const { sync } = useApp();
   const live = useSyncStatus(bookId);
   const engineStatus = useBookStatus(bookId);
   const [armed, setArmed] = useState<SharedDevice | null>(null);
   const [invite, setInvite] = useState<MadeInvite | null>(null);
+  const [renaming, setRenaming] = useState(false);
   const { busy, error, run } = useActionRunner();
   const me = detail.members.find((each) => each.me) ?? null;
   const now = Date.now();
@@ -48,6 +88,17 @@ function Member({ bookId, bookName, detail, member }: { bookId: string; bookName
   // What an owner may do to others, and only while an owner device is left (§8.5): a frozen book offers none of it.
   const steering = active && detail.owner && !frozen;
   const mine = member.me;
+  // Only this member renames themselves (D-D2), while the share is live here; a frozen book takes no rename either.
+  const renamable = mine && active && !frozen;
+
+  const rename = (name: string) => {
+    setRenaming(false);
+    void run(async () => {
+      await sync.renameSelf(bookId, name);
+      // The next share or join asks with it (SharingSection's remembered name).
+      rememberName(name);
+    });
+  };
 
   return (
     <>
@@ -70,6 +121,9 @@ function Member({ bookId, bookName, detail, member }: { bookId: string; bookName
       ) : null}
 
       <InsetGroup wide>
+        {renamable ? (
+          <InsetRow testId="member-name-row" icon={<Pencil size={15} aria-hidden />} title="Name" value={member.name} disabled={busy} onClick={() => setRenaming(true)} />
+        ) : null}
         <InsetRow icon={<User size={15} aria-hidden />} title="Role" value={member.role === 'owner' ? 'Owner' : 'Member'} chevron={false} />
         {member.devices.map((device) => {
           const removable = steering && !device.mine;
@@ -129,6 +183,8 @@ function Member({ bookId, bookName, detail, member }: { bookId: string; bookName
           ) : null}
         </InsetGroup>
       ) : null}
+
+      {renaming && renamable ? <NameSheet current={member.name} bookName={bookName} busy={busy} onSave={rename} onClose={() => setRenaming(false)} /> : null}
 
       {active && mine && !steering ? (
         <InsetGroup wide>

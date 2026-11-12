@@ -337,7 +337,9 @@ describe("this device's own member edits that the log refuses are put back (fix 
     await writeMember(budi, bookId, fandri.memberId, `UPDATE book_members SET role = 'member' WHERE member_id = '${fandri.memberId}'`);
     await budi.engine.syncOnce(bookId);
     await tick();
-    await writeMember(fandri, bookId, dewi.memberId, `UPDATE book_members SET name = 'Dewi R' WHERE member_id = '${dewi.memberId}'`);
+    // A name is its member's own (D-D2), so the lagging owner's edit of Dewi's row is of another field: it moves the
+    // existence clock on his phone (an owner, to him) while the log has him a member.
+    await writeMember(fandri, bookId, dewi.memberId, `UPDATE book_members SET joined_at = '2026-08-15' WHERE member_id = '${dewi.memberId}'`);
     await fandri.engine.syncOnce(bookId);
     await home.settle();
     await home.settle();
