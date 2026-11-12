@@ -55,5 +55,5 @@ export function itemTile(item: Pick<ReceivedItem, 'kind' | 'subtype' | 'sheet'>)
   if (item.kind === 'liability') return debtKindTile(debtKind(item.sheet?.item ?? null, receivedDebtIcon(item)).key);
   const code = item.sheet?.code ?? null;
   const section = sheetSectionOf({ code, subtype: item.subtype });
-  return assetKindTile(section, rowKindOf(section, { accountId: '', code }, () => item.subtype as AccountSubtype).key);
+  return assetKindTile(section, rowKindOf(section, { accountId: '', code }, () => (item.subtype in SUBTYPE_LABELS ? (item.subtype as AccountSubtype) : undefined)).key);
 }
