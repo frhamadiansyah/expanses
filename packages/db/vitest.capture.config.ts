@@ -12,5 +12,8 @@ export default defineConfig({
     include: ['test/**/*.test.ts'],
     exclude: ['test/sync/capture.test.ts', 'test/sync/capture-harness.test.ts', 'test/sync/net-worth-tax-slice.test.ts'],
     setupFiles: ['test/sync/capture-setup.ts'],
+    // The watch is judged after every test: over a long history (2,000 transactions) that takes longer than a hook's
+    // default 10 s on a loaded machine (G8).
+    hookTimeout: 120_000,
   },
 });

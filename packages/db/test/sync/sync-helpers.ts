@@ -9,7 +9,11 @@ import type { ChangeSet, Op } from '../../src/sync/types';
 export async function shareBookForTest(database: Database, bookId: string, memberId = 'member-me', epoch = 1): Promise<void> {
   // A test of capture alone has no engine: the stand-in device id is allowed here, and nowhere in the app (final review, I3).
   configureCapture(database, { standInDeviceId: true });
-  await database.db.insert(sharedBooks).values({ bookId, relayBookId: `relay-${bookId}`, epoch, memberId, state: 'active', sharedAt: new Date().toISOString() });
+  // The capture run (capture-setup.ts) may have shared this very book already, as its stand-in: this test's share is it.
+  await database.db
+    .insert(sharedBooks)
+    .values({ bookId, relayBookId: `relay-${bookId}`, epoch, memberId, state: 'active', sharedAt: new Date().toISOString() })
+    .onConflictDoUpdate({ target: sharedBooks.bookId, set: { relayBookId: `relay-${bookId}`, epoch, memberId, state: 'active' } });
 }
 
 export interface OutboxChangeSet extends ChangeSet {

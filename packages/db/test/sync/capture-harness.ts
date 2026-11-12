@@ -212,15 +212,22 @@ async function outboxOps(database: Database, watchedBookId: string): Promise<Map
  * change-set each apply takes in from another device among the ops a later local write is judged against.
  */
 export function watchPausedWrites(database: Database): void {
+  // A database whose rows were swapped under it (a restore into the same handle, `importBytes`) has a new connection
+  // with no temp tables: the watch is gone there (G8), and apply's writes are simply not marked.
+  const watching = async (tx: Db) => (await tx.values(sql`SELECT 1 FROM temp.sqlite_master WHERE name = '__apply_paused'`)).length > 0;
   configureCapture(database, {
     pausedWrites: {
       begin: async (tx: Db, changeSet?: ChangeSet) => {
+        if (!(await watching(tx))) return;
         await tx.run(sql`INSERT INTO temp.__apply_paused (x) VALUES (1)`);
         if (changeSet) await tx.run(sql`INSERT INTO temp.__sealed (book_id, entry_json, change_json) VALUES ('', NULL, ${JSON.stringify(changeSet)})`);
       },
-      end: async (tx: Db) => void (await tx.run(sql`DELETE FROM temp.__apply_paused`)),
-      applied: async (tx: Db, changeSet: ChangeSet) =>
-        void (await tx.run(sql`INSERT INTO temp.__sealed (book_id, entry_json, change_json) VALUES ('', NULL, ${JSON.stringify(changeSet)})`)),
+      end: async (tx: Db) => {
+        if (await watching(tx)) await tx.run(sql`DELETE FROM temp.__apply_paused`);
+      },
+      applied: async (tx: Db, changeSet: ChangeSet) => {
+        if (await watching(tx)) await tx.run(sql`INSERT INTO temp.__sealed (book_id, entry_json, change_json) VALUES ('', NULL, ${JSON.stringify(changeSet)})`);
+      },
     },
   });
 }
