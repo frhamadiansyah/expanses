@@ -1,6 +1,7 @@
 import {
   type CoretaxInputs,
   type CoretaxRowPart,
+  type ItemSheetFacts,
   type ItemSummary,
   type ItemTax,
   lastMonthEnds,
@@ -205,7 +206,46 @@ export async function computeItemSummary(
     monthEnds,
     tax: taxGroup ? await itemTaxOf(tx, ws, accountId, taxGroup, workspaceBookId, today, taxSource) : null,
     ...(jointRow ? { joint: true as const } : {}),
+    ...(await sheetFactsOf(tx, accountId, kind, account.subtype)),
   };
+}
+
+/**
+ * The item's finer kind (`ItemSheetFacts`), read from what files it on this phone's own Net worth: an asset's catalogue
+ * code (its asset profile's, or a receivable's debt profile's), a loan's catalogue item and what the loan is against.
+ * Empty — no `sheet` key at all — when the subtype says it all.
+ */
+async function sheetFactsOf(tx: Db, accountId: string, kind: 'asset' | 'liability', subtype: string): Promise<{ sheet?: ItemSheetFacts }> {
+  const facts: ItemSheetFacts = {};
+  if (kind === 'asset') {
+    const [code] = await tx.values<[string | null]>(
+      sql`SELECT COALESCE((SELECT coretax_code FROM asset_profiles WHERE account_id = ${accountId}), (SELECT coretax_code FROM debt_profiles WHERE account_id = ${accountId}))`,
+    );
+    if (code?.[0]) facts.code = code[0];
+  } else if (subtype === 'loan') {
+    const [item] = await tx.values<[string]>(sql`SELECT item_id FROM loan_items WHERE account_id = ${accountId}`);
+    if (item?.[0]) facts.item = item[0];
+    // As the balance sheet reads it (`debtIcon`): a loan against a property is a home loan, one against a vehicle a lease.
+    const [against] = await tx.values<[string | null]>(
+      sql`SELECT a.subtype FROM loan_terms t JOIN accounts a ON a.id = t.asset_account_id WHERE t.account_id = ${accountId}`,
+    );
+    facts.icon = against?.[0] === 'property' ? 'home' : against?.[0] === 'vehicle' ? 'car' : 'loan';
+  }
+  return Object.keys(facts).length > 0 ? { sheet: facts } : {};
+}
+
+const SHEET_ICONS = new Set(['home', 'car', 'loan']);
+const isShortText = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value.length <= 64;
+
+/** A peer's `sheet` facts, read defensively: only short strings and a known icon survive; anything else is dropped. */
+function sheetOf(sent: unknown): { sheet?: ItemSheetFacts } {
+  if (sent === null || typeof sent !== 'object' || Array.isArray(sent)) return {};
+  const raw = sent as Record<string, unknown>;
+  const facts: ItemSheetFacts = {};
+  if (isShortText(raw.code)) facts.code = raw.code;
+  if (isShortText(raw.item)) facts.item = raw.item;
+  if (typeof raw.icon === 'string' && SHEET_ICONS.has(raw.icon)) facts.icon = raw.icon as ItemSheetFacts['icon'];
+  return Object.keys(facts).length > 0 ? { sheet: facts } : {};
 }
 
 /**
@@ -369,6 +409,21 @@ function transfersOf(summary: Partial<Pick<ItemSummary, 'transferMinor' | 'trans
   return { transferMinor, transfers: good ? list.map((x) => ({ transferId: x.transferId, minor: x.minor })) : [] };
 }
 
+/**
+ * This member's own accounts the group holds live right now — exactly what the other members receive (a hidden one, one
+ * waiting for the Share, one taken back are not among them). The household's Assets and Liabilities count only these
+ * of this phone's own, so both phones add up the same items.
+ */
+export async function ownSentAccountIds(database: Database, groupBookId: string): Promise<string[]> {
+  const rows = await database.db.values<[string]>(sql`
+    SELECT m.account_id FROM nw_item_map m
+    JOIN nw_items i ON i.book_id = m.group_book_id AND i.item_id = m.item_id
+    JOIN shared_books s ON s.book_id = m.group_book_id
+    WHERE m.group_book_id = ${groupBookId} AND i.removed = 0 AND i.owner = s.member_id
+    ORDER BY m.account_id`);
+  return rows.map(([id]) => id);
+}
+
 /** The items other members share with this device's group (§8.2, §8.3): live ones only, never this member's own. */
 export async function receivedItems(database: Database, groupBookId: string): Promise<(ItemSummary & { itemId: string })[]> {
   const [self] = await database.db.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${groupBookId}`);
@@ -382,9 +437,9 @@ export async function receivedItems(database: Database, groupBookId: string): Pr
       const summary = JSON.parse(json) as ItemSummary | null;
       // The owner is the row's, which the writer rule vouches for; never what the summary's own text claims.
       if (summary && typeof summary === 'object') {
-        const { joint, ...rest } = summary;
+        const { joint, sheet, ...rest } = summary;
         // Only a literal `true` makes an item joint; anything else a peer sends reads as off.
-        out.push({ ...rest, ...transfersOf(summary), ...(joint === true ? { joint: true as const } : {}), owner, itemId });
+        out.push({ ...rest, ...transfersOf(summary), ...(joint === true ? { joint: true as const } : {}), ...sheetOf(sheet), owner, itemId });
       }
     } catch {
       // A summary that does not parse is shown as nothing, not as a wrong number.

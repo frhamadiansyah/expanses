@@ -10,7 +10,10 @@ import { useHeldRates } from '../accounts/queries';
 import { usePeopleDebts } from '../debts/queries';
 import { debtKindTile } from '../ownables/catalogue-view';
 import { bareFigure, type DebtDrawer, type DebtRow, type DebtSheet, groupDebts } from '../networth/debt-rows';
-import { useSheet } from '../networth/queries';
+import { useJointSheet, useOwnSentIds, useSharedNetWorth, useSheet } from '../networth/queries';
+import { householdCaption, householdDebtPage, householdFrom, memberMark } from '../networth/household-lists';
+import { debtKind } from '../networth/sheet-drawers';
+import { MemberBadge } from '../workspaces/WorkspaceBadge';
 import { ShareBoxes, ShowAll } from '../networth/ShareBoxes';
 import { debtSegments } from '../networth/share-segments';
 import { monthlyInstalments } from './instalments';
@@ -32,6 +35,8 @@ function KindIcon({ kind }: { kind: string }) {
 
 /** Where a debt opens: a loan its terms and schedule, a card the card, a person Lend & borrow for them. */
 function destination(row: DebtRow): { to: LinkProps['to']; params?: LinkProps['params']; search?: LinkProps['search'] } {
+  // The other's shared debt opens what they shared, read-only: never a page of this phone's.
+  if (row.received) return { to: '/net-worth/shared/$itemId', params: { itemId: row.accountId! } };
   if (row.kind === 'loan') return { to: '/net-worth/loans/$accountId', params: { accountId: row.accountId! } };
   if (row.kind === 'card') return { to: '/cards/$cardId', params: { cardId: row.accountId! } };
   return { to: '/net-worth/lend-borrow', search: row.personName ? { person: row.personName } : {} };
@@ -74,17 +79,28 @@ function subtitleOf(row: DebtRow): string {
 }
 
 /** A debt's own line: the drawing its kind wears, its name, what it is, and what is owed. */
-function DebtItem({ row, kind, baseCurrency, rates, nested = false, tree }: { row: DebtRow; kind: string; baseCurrency: string; rates: Record<string, number>; nested?: boolean; tree?: TreePlace }) {
+function DebtItem({ row, kind, baseCurrency, rates, nested = false, tree, mark }: { row: DebtRow; kind: string; baseCurrency: string; rates: Record<string, number>; nested?: boolean; tree?: TreePlace; mark?: { name: string; colour: string | null } }) {
   return (
     <InsetRow
       {...destination(row)}
       testId={`debt-row-${row.key}`}
-      // Inside its kind's open drawer: one step in, no circle, the name level with the kind's.
-      icon={nested ? undefined : <KindIcon kind={kind} />}
+      // Inside its kind's open drawer: one step in, no circle, the name level with the kind's — except on the
+      // household's page, where the circle carries the initial that says whose it is.
+      icon={nested && !mark ? undefined : <KindIcon kind={kind} />}
+      iconMark={mark ? <MemberBadge name={mark.name} colour={mark.colour} /> : undefined}
       depth={nested ? 1 : 0}
       // On the tree line from its kind's drawer, as Assets draws a kind's accounts.
       tree={tree}
-      title={row.name}
+      title={
+        mark ? (
+          <>
+            {row.name}
+            <span className="sr-only">, {mark.name}'s</span>
+          </>
+        ) : (
+          row.name
+        )
+      }
       subtitle={subtitleOf(row) || undefined}
       value={<RowFigure row={row} baseCurrency={baseCurrency} rates={rates} />}
       valueTone="ink"
@@ -119,25 +135,26 @@ export function DebtsPage() {
   const owedTo = people.data?.youOwe ?? [];
   const held = useHeldRates([...all.filter((a) => a.kind === 'liability').map((a) => a.currency ?? baseCurrency), ...owedTo.map((p) => p.currency)]);
   const [showCleared, setShowCleared] = useState(false);
+  /*
+   * With one tax ID this is the household's page, as Assets is: the total, the squares and the list count what the group
+   * holds — this phone's own debts that were sent and what the other shares — one list per kind, each row with its
+   * owner's initial. An own debt never sent is listed apart, "Only on this phone". Until all of it is in (or offline)
+   * the page is this phone's own: it never waits on the household.
+   */
+  const sharedNw = useSharedNetWorth();
+  const joint = useJointSheet();
+  const sentIds = useOwnSentIds(sharedNw.data?.group.groupBookId ?? null);
+  const inHousehold = householdFrom(joint, sentIds.data);
+  const household = inHousehold?.household ?? null;
 
-  const rates = held.data?.rates ?? {};
+  const rates = { ...(household?.ratesToBase ?? {}), ...(held.data?.rates ?? {}) };
   const ready = accounts.data && balances.data && loans.data && people.data && cards.data && held.data && items.data;
-  const debts = ready
-    ? groupDebts(
-        {
-          accounts: all,
-          balances: balances.data!,
-          loans: loans.data!,
-          cards: cards.data!,
-          people: owedTo,
-          sheet: sheet.data ?? null,
-          baseCurrency,
-          ratesToBase: rates,
-          items: items.data!,
-        },
-        today,
-      )
+  const inputs = ready
+    ? { accounts: all, balances: balances.data!, loans: loans.data!, cards: cards.data!, people: owedTo, sheet: sheet.data ?? null, baseCurrency, ratesToBase: rates, items: items.data! }
     : null;
+  const page = inputs && inHousehold ? householdDebtPage(inputs, inHousehold.household, inHousehold.sent, today) : null;
+  const debts = page ? page.sheet : inputs ? groupDebts(inputs, today) : null;
+  const onlyHere = page?.onlyHere ?? [];
 
   // The instalments the banks ask for each month: the Loans page's own figure, and the box's footer under it.
   const open = (loans.data ?? []).filter((loan) => loan.status === 'open');
@@ -154,8 +171,9 @@ export function DebtsPage() {
   const actions: CornerAction[] = [{ key: 'plan', label: 'Debt-free plan', glyph: <Target size={20} aria-hidden />, to: '/net-worth/plan' }, { key: 'add', label: 'Add a debt', glyph: <Plus size={22} aria-hidden />, to: '/debts/new' }];
 
   const due = debts?.due;
+  // A summary carries no schedule, so the split is this phone's own reading: not drawn under the household's total.
   const dueLine =
-    !due || !sheet.isSuccess ? null : due.withinYearMinor === null ? (
+    !due || !sheet.isSuccess || household ? null : due.withinYearMinor === null ? (
       `No ${due.missing.join(', ')} rate yet, so what falls due within a year cannot be added up.`
     ) : (
       <>
@@ -185,7 +203,7 @@ export function DebtsPage() {
    */
   const drawers = (debts?.groups ?? []).flatMap((group) => group.drawers.map((drawer) => ({ key: `${group.kind}:${drawer.key}`, drawer })));
 
-  const nothing = debts !== null && debts.groups.length === 0;
+  const nothing = debts !== null && debts.groups.length === 0 && onlyHere.length === 0;
   const drawersState = useDrawers();
   // The kind of debt picked on the chart, if one is: the box narrows to its drawer, opened.
   const [picked, setPicked] = useState<string | null>(null);
@@ -210,7 +228,7 @@ export function DebtsPage() {
   return (
     <div className={SCREEN}>
       <PushedTitle title="Liabilities" back="Net worth" backTo="/net-worth" actions={actions} />
-      <ErrorBox error={accounts.error ?? balances.error ?? loans.error ?? payments.error ?? people.error ?? cards.error ?? held.error ?? sheet.error} />
+      <ErrorBox error={accounts.error ?? balances.error ?? loans.error ?? payments.error ?? people.error ?? cards.error ?? held.error ?? sheet.error ?? joint.error} />
 
       {nothing && (
         <Empty>
@@ -252,6 +270,11 @@ export function DebtsPage() {
                 {/* Owed money is a figure like any other on this page: the box, the drawer and the row all draw it in
                     the page's own ink, and a red hero was the one place the same number wore a warning. */}
                 <Hero minor={debts.total.totalMinor} currency={baseCurrency} align="center" />
+                {household && (
+                  <p data-testid="debts-household" className="mt-[2px] text-center text-[13px] leading-[17px] text-[var(--ph-ink-3)]">
+                    {householdCaption(household)}
+                  </p>
+                )}
               </div>
               {segments.length > 0 && (
                 <ShareBoxes
@@ -288,7 +311,7 @@ export function DebtsPage() {
                   />,
                   ...(shown
                     ? drawer.rows.map((row, at) => (
-                        <DebtItem key={row.key} row={row} kind={drawer.key} baseCurrency={baseCurrency} rates={rates} nested tree={{ last: at === drawer.rows.length - 1 }} />
+                        <DebtItem key={row.key} row={row} kind={drawer.key} baseCurrency={baseCurrency} rates={rates} nested tree={{ last: at === drawer.rows.length - 1 }} mark={household && row.owner ? memberMark(household, row.owner) : undefined} />
                       ))
                     : []),
                 ];
@@ -296,6 +319,14 @@ export function DebtsPage() {
               {debts.cleared.length > 0 && (
                 <InsetRow title={`${showCleared ? 'Hide' : 'Show'} paid-off loans (${debts.cleared.length})`} onClick={() => setShowCleared((was) => !was)} action />
               )}
+            </InsetGroup>
+          )}
+          {/* The own debts the household never received: on this phone only, counted in nothing above. */}
+          {household && onlyHere.length > 0 && (
+            <InsetGroup header="Only on this phone" footer="Not shared, so not in the household total.">
+              {onlyHere.map((row) => (
+                <DebtItem key={row.key} row={row} kind={debtKind(items.data?.[row.accountId ?? ''] ?? null, row.icon).key} baseCurrency={baseCurrency} rates={rates} mark={memberMark(household, household.me)} />
+              ))}
             </InsetGroup>
           )}
           {showCleared && paidOff}

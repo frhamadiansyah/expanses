@@ -27,6 +27,8 @@ export interface HouseholdPurchase {
   paidFromOwner: string | null;
   /** The member who paid (`money.paidBy`): whose purchase it is, which decides whether the item's owner has it yet. */
   paidBy: string;
+  /** The category its largest part is filed under, for the circle its row wears; null when it has none here. */
+  categoryId: string | null;
 }
 
 /** Every posted Household purchase of `bookId` dated within `period`, oldest first. */
@@ -37,17 +39,19 @@ export async function householdPurchases(database: Database, bookId: string, per
   const inPart = (await bookSplitsExist(database.db))
     ? sql`AND (t.id NOT IN (SELECT transaction_id FROM book_transaction_splits) OR a.id IN (SELECT category_account_id FROM book_categories WHERE book_id = l.book_id))`
     : sql``;
-  const rows = await database.db.values<[string, string, string, string, string, number, string, string, string | null, string | null]>(sql`
+  const rows = await database.db.values<[string, string, string, string, string, number, string, string, string | null, string | null, string | null]>(sql`
     SELECT l.lineage_id, t.id, t.occurred_on, t.created_at, t.description,
            COALESCE((SELECT sum(e.amount_minor) FROM entries e JOIN accounts a ON a.id = e.account_id
                      WHERE e.transaction_id = t.id AND a.kind IN ('expense', 'income') ${inPart}), 0),
            COALESCE((SELECT e.currency FROM entries e JOIN accounts a ON a.id = e.account_id
                      WHERE e.transaction_id = t.id AND a.kind IN ('expense', 'income') ${inPart} LIMIT 1), ''),
-           l.paid_by, l.paid_from_item, l.paid_from_owner
+           l.paid_by, l.paid_from_item, l.paid_from_owner,
+           (SELECT a.id FROM entries e JOIN accounts a ON a.id = e.account_id
+             WHERE e.transaction_id = t.id AND a.kind IN ('expense', 'income') ${inPart} ORDER BY abs(e.amount_minor) DESC, a.id LIMIT 1)
     FROM sync_lineage l JOIN transactions t ON t.id = l.head_transaction_id
     WHERE l.book_id = ${bookId} AND t.status = 'posted' AND t.occurred_on >= ${period.start} AND t.occurred_on <= ${period.end}
     ORDER BY t.occurred_on, l.lineage_id`);
-  return rows.map(([lineageId, transactionId, occurredOn, createdAt, description, amountMinor, currency, paidBy, item, owner]) => ({
+  return rows.map(([lineageId, transactionId, occurredOn, createdAt, description, amountMinor, currency, paidBy, item, owner, categoryId]) => ({
     lineageId,
     transactionId,
     occurredOn,
@@ -59,6 +63,7 @@ export async function householdPurchases(database: Database, bookId: string, per
     paidFromItemId: item && owner ? item : null,
     paidFromOwner: item && owner ? owner : null,
     paidBy,
+    categoryId: categoryId ?? null,
   }));
 }
 

@@ -3,7 +3,8 @@ import type { AccountSubtype } from '@expanses/db';
 import type { LucideIcon } from 'lucide-react';
 import { assetKindTile, debtKindTile } from '../ownables/catalogue-view';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
-import { ownerRing, type ReceivedItem } from '../networth/joint-rows';
+import { ownerRing, receivedDebtIcon, type ReceivedItem } from '../networth/joint-rows';
+import { debtKind, rowKindOf } from '../networth/sheet-drawers';
 
 /*
  * Accounts' "Andi's, shared" (joint-net-worth §8.2): with separate tax IDs Net worth stays personal, and the other
@@ -13,7 +14,11 @@ import { ownerRing, type ReceivedItem } from '../networth/joint-rows';
 export interface SharedSection {
   owner: string;
   title: string;
-  items: { itemId: string; name: string; kindLabel: string; minor: number; currency: string; ring: string | null; tile: LucideIcon }[];
+    /** The owner's name, for the initial each row wears and what a screen reader hears. */
+  ownerName: string;
+  /** The owner's colour (`ownerRing`): the initial's ground, the same on both phones. */
+  colour: string | null;
+  items: { itemId: string; name: string; kindLabel: string; minor: number; currency: string; tile: LucideIcon }[];
 }
 
 export function sharedSections(mode: 'joint' | 'separate', members: readonly string[], names: Record<string, string>, items: readonly ReceivedItem[]): SharedSection[] {
@@ -26,22 +31,29 @@ export function sharedSections(mode: 'joint' | 'separate', members: readonly str
     sections.push({
       owner,
       title: `${names[owner] ?? 'Someone'}'s, shared`,
+      ownerName: names[owner] ?? 'Someone',
+      colour: ownerRing(members, owner),
       items: own.map((item) => ({
         itemId: item.itemId,
         name: item.name,
         kindLabel: SUBTYPE_LABELS[item.subtype as AccountSubtype] ?? item.subtype,
         minor: item.balanceMinor,
         currency: item.currency,
-        ring: ownerRing(members, owner),
-        tile: tileOf(item),
+        tile: itemTile(item),
       })),
     });
   }
   return sections;
 }
 
-/** The drawing the item's kind wears on Net worth, so the same item looks the same on both pages (D12). */
-function tileOf(item: ReceivedItem): LucideIcon {
-  if (item.kind === 'liability') return debtKindTile(item.subtype === 'credit_card' || item.subtype === 'payable' ? item.subtype : 'other_loans');
-  return assetKindTile(sheetSectionOf({ code: null, subtype: item.subtype }), item.subtype);
+/**
+ * The drawing the item's kind wears on Net worth, so the same item looks the same on both pages (D12): read off the
+ * same facts its row is filed by — its subtype and, when its owner's phone sent them, its `sheet` facts — so gold wears
+ * gold's drawing and a home loan a house's, on its row and on its page alike.
+ */
+export function itemTile(item: Pick<ReceivedItem, 'kind' | 'subtype' | 'sheet'>): LucideIcon {
+  if (item.kind === 'liability') return debtKindTile(debtKind(item.sheet?.item ?? null, receivedDebtIcon(item)).key);
+  const code = item.sheet?.code ?? null;
+  const section = sheetSectionOf({ code, subtype: item.subtype });
+  return assetKindTile(section, rowKindOf(section, { accountId: '', code }, () => (item.subtype in SUBTYPE_LABELS ? (item.subtype as AccountSubtype) : undefined)).key);
 }

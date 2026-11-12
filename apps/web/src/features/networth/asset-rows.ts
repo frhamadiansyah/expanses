@@ -37,6 +37,10 @@ export interface AssetRow {
   section: SheetSectionKey;
   /** Who owes the money on a receivable, which is administrated by the Lend & borrow ledger. Null for the rest. */
   person: string | null;
+  /** On the household's Assets page: the member whose it is (`household-lists`). Absent on a single person's page. */
+  owner?: string;
+  /** Another member's shared item (`accountId` is its itemId): it opens their item's page, read-only. */
+  received?: boolean;
 }
 
 export interface AssetGroup {

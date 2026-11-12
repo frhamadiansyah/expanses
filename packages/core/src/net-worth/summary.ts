@@ -1,4 +1,16 @@
 import type { ItemTax } from './joint-tax';
+
+/**
+ * What finer kind an item is, beyond its account subtype, so a partner's phone files it in the same section and drawer
+ * its owner's does: an asset's catalogue code (gold leaves Investments for "Intangible and other"), a loan's catalogue
+ * item and what it is against. Classification only — never a line, a person or an amount. Absent when the subtype says
+ * it all, so such an item's summary is what it always was.
+ */
+export interface ItemSheetFacts {
+  code?: string;
+  item?: string;
+  icon?: 'home' | 'car' | 'loan';
+}
 /** One owner's item, as sent to the group log (spec §5.2). */
 export interface ItemSummary {
   owner: string;
@@ -33,6 +45,8 @@ export interface ItemSummary {
    * account never made joint is byte-for-byte what it was.
    */
   joint?: true;
+  /** The finer kind (`ItemSheetFacts`); absent when the subtype says it all, or from a peer before this release. */
+  sheet?: ItemSheetFacts;
   /** Only when the group's mode is joint (§8.4): this item's slice of the owner's tax inputs for the latest finished year. */
   tax: ItemTax;
 }

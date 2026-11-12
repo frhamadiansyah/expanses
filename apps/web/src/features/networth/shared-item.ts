@@ -24,6 +24,8 @@ export interface PurchaseLine {
   paidFromOwner: string | null;
   /** The member who paid (the lineage's `paidBy`). */
   paidBy: string;
+  /** The category its largest part is filed under, for the circle its row wears. */
+  categoryId?: string | null;
 }
 
 /**
@@ -202,4 +204,19 @@ export function itemPage(
   if (!shared || !item) return { item: null, view: null, back };
   const owner = memberName(shared.names, item.owner);
   return { item, view: sharedItemView(item, purchases, owner, { transfers, me: shared.group.me }), back };
+}
+
+/** A day as the item's page writes it: "12 Nov", with the year only when it is not this year's. */
+export function shortDay(iso: string, today: string): string {
+  const day = new Date(`${iso}T00:00:00`);
+  return day.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', ...(iso.slice(0, 4) === today.slice(0, 4) ? {} : { year: 'numeric' }) });
+}
+
+/**
+ * The small line under the item's name on its page, as one's own account page names its bank and kind: whose it is,
+ * what kind of thing, and the day its figure is from — "Budi’s · Bank · updated 12 Nov". Owner and Updated were a
+ * Details box of their own; they are one line here.
+ */
+export function heroLine(ownerName: string, kindLabel: string, updated: string, today: string): string {
+  return `${ownerName}’s · ${kindLabel} · updated ${shortDay(updated, today)}`;
 }

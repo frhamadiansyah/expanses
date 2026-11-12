@@ -22,7 +22,7 @@ import { markReviewedTx } from '../../src/repos/net-worth-sharing';
 import { AuthorityError } from '../../src/sync/authority';
 import { withCapture } from '../../src/sync/capture';
 import { encodeHlc } from '../../src/sync/hlc';
-import { computeItemSummary, itemIdOf, receivedItems, sendSummariesTx } from '../../src/sync/net-worth/summaries';
+import { computeItemSummary, itemIdOf, ownSentAccountIds, receivedItems, sendSummariesTx } from '../../src/sync/net-worth/summaries';
 import type { ChangeSet } from '../../src/sync/types';
 import { categoryOf, headOf, Household, type Device } from './household';
 
@@ -266,6 +266,23 @@ describe('summaries: compute, send, receive (joint-net-worth §5.2, §9)', () =>
     expect(await receivedItems(andi.database, groupBookId)).toMatchObject([{ name: 'Rina Bank', balanceMinor: 0 }]);
   });
 
+  it('ownSentAccountIds: exactly the own accounts the partner receives — not a hidden one, not one waiting for the Share', async () => {
+    const { home, rina, andi, groupBookId } = await activeGroup('separate');
+    const card = await rinaCard(rina);
+    await setShare(rina, rina.bank, 'total');
+    await setShare(rina, card, 'hidden');
+    expect(await ownSentAccountIds(rina.database, groupBookId)).toEqual([]);
+    await shareAll(rina);
+    await home.settle();
+    expect(await ownSentAccountIds(rina.database, groupBookId)).toEqual([rina.bank]);
+    expect((await receivedItems(andi.database, groupBookId)).map((i) => i.itemId)).toEqual([await itemIdOf(groupBookId, rina.bank)]);
+    // Andi's phone holds Rina's item, never as one of his own.
+    expect(await ownSentAccountIds(andi.database, groupBookId)).toEqual([]);
+    await setShare(rina, rina.bank, 'hidden');
+    await rina.database.transaction((tx) => sendSummariesTx(tx, [rina.bank], today));
+    expect(await ownSentAccountIds(rina.database, groupBookId)).toEqual([]);
+  });
+
   it('an unchanged recompute sends nothing', async () => {
     const { home, rina, groupBookId } = await activeGroup();
     const card = await rinaCard(rina);
@@ -296,6 +313,11 @@ describe('summaries: compute, send, receive (joint-net-worth §5.2, §9)', () =>
     expect(got).toMatchObject({ kind: 'asset', balanceMinor: 1_380_000_000, householdMinor: 0 });
     expect(got.openingMinor + got.householdMinor + got.otherUseMinor + got.transferMinor).toBe(got.balanceMinor);
     expect(items.find((i) => i.subtype === 'credit_card')!.card).toMatchObject({ limitMinor: 700_000_000 });
+    // The house carries its catalogue code, so Andi files it in the section and drawer Rina's phone does; a card has no
+    // finer kind than its subtype, so its summary carries no `sheet` at all.
+    const [code] = await rina.database.db.values<[string]>(sql`SELECT coretax_code FROM asset_profiles WHERE account_id = ${house.id}`);
+    expect(got.sheet).toEqual({ code: code![0] });
+    expect('sheet' in items.find((i) => i.subtype === 'credit_card')!).toBe(false);
   });
 
   it('Sari, in the workspace and not in the group, never has any nw_items row', async () => {
