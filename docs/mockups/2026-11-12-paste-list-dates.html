@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paste list dates</title>
+<style>
+  :root { --bg:#f2f2f7; --surface:#fff; --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e0e0e4; --fill:#efeff2; --blue:#007aff; --amber:#b45309; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#e6e6ea; color:var(--ink); font:14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; padding:24px 16px 48px; }
+  h1 { font-size:20px; margin:0 0 4px; } .lede { color:#555; margin:0 0 20px; max-width:980px; }
+  h2 { font-size:16px; margin:28px 0 12px; }
+  .pair { display:flex; flex-wrap:wrap; gap:22px; align-items:flex-start; }
+  .col { width:330px; max-width:100%; }
+  .cap { font-weight:600; margin:0 0 8px; } .cap .n { display:inline-block; background:#1c1c1e; color:#fff; border-radius:5px; padding:0 6px; font-size:12px; margin-right:6px; }
+  .rec { color:#047857; font-weight:600; }
+  .phone { background:var(--bg); border-radius:28px; padding:14px 14px 20px; border:1px solid #d4d4d8; min-height:600px; }
+  .bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .round { width:36px; height:36px; border-radius:50%; background:#e5e5ea; display:flex; align-items:center; justify-content:center; font-size:18px; }
+  .ttl { font-size:18px; font-weight:600; }
+  .paste { background:var(--surface); border-radius:11px; padding:12px 14px; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:14px; line-height:1.7; white-space:pre; overflow:hidden; }
+  .gh { font-size:13px; color:var(--ink3); margin:14px 4px 6px; text-transform:uppercase; letter-spacing:.2px; }
+  .ig { background:var(--surface); border-radius:11px; overflow:hidden; margin-top:12px; }
+  .ir { display:flex; align-items:center; gap:10px; padding:11px 13px; min-height:46px; font-size:16px; position:relative; }
+  .ig .ir + .ir::before { content:""; position:absolute; top:0; left:13px; right:0; border-top:.5px solid var(--hair); }
+  .lab { flex:1; } .val { color:var(--ink3); white-space:nowrap; } .val.ink { color:var(--ink2); } .chev { color:#c7c7cc; }
+  .glyph { width:28px; height:28px; border-radius:7px; background:var(--fill); display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
+  .foot { font-size:12.5px; color:var(--ink3); margin:6px 4px 0; line-height:1.35; }
+  .mark { outline:2px dashed #2563eb; outline-offset:2px; border-radius:8px; }
+  .bad { outline:2px dashed #e11d48; outline-offset:2px; border-radius:8px; }
+  .note { font-size:12.5px; color:#444; margin:10px 2px 0; }
+  .row { display:flex; align-items:center; gap:10px; padding:9px 13px; min-height:56px; position:relative; }
+  .ig .row + .row::before { content:""; position:absolute; top:0; left:51px; right:0; border-top:.5px solid var(--hair); }
+  .ci { width:30px; height:30px; border-radius:50%; color:#fff; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
+  .grow { flex:1; min-width:0; } .t { font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .s { font-size:12.5px; color:var(--ink3); }
+  .amt { font-variant-numeric:tabular-nums; font-size:15px; }
+  .day { display:flex; justify-content:space-between; font-size:13px; color:var(--ink3); margin:14px 4px 6px; }
+  .day b { color:var(--ink); font-weight:600; font-size:14px; }
+  .read { background:var(--surface); border-radius:11px; margin-top:12px; overflow:hidden; }
+  .read .rr { display:flex; align-items:center; gap:10px; padding:10px 13px; font-size:15px; position:relative; }
+  .read .rr + .rr::before { content:""; position:absolute; top:0; left:13px; right:0; border-top:.5px solid var(--hair); }
+  .dot { width:8px; height:8px; border-radius:50%; background:#1c1c1e; flex-shrink:0; } .dot.o { background:transparent; border:1.5px solid var(--ink3); }
+  .warn { color:var(--amber); }
+</style>
+</head>
+<body>
+<h1>Paste a list: dates</h1>
+<p class="lede">Two fixes. (1) The reader learns Indonesian month words and dates written without a space: <b>21okt</b>, <b>21 okt</b>, <b>21-okt</b>, <b>3 agt</b>, <b>5 mei</b>, <b>1 des</b>, <b>oktober 21</b> are all read. (2) It is always clear which date each line gets: on the paste screen, and on Review, where rows sit under their day. Items and amounts here are made up.</p>
+
+<h2>Paste screen</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">0</span>Now</p>
+    <div class="phone">
+      <div class="bar"><span class="round">✕</span><span class="ttl">Paste a list</span><span class="round" style="font-size:13px">Review</span></div>
+      <div class="paste">21okt
+grab ke kantor 32rb
+makan siang 45rb
+22 okt
+parkir 5rb
+bensin 150rb
+kopi 28rb</div>
+      <div class="ig">
+        <div class="ir"><span class="glyph">💳</span><span class="lab">Paid with</span><span class="val ink">BCA</span><span class="chev">›</span></div>
+        <div class="ir bad"><span class="glyph">📅</span><span class="lab">Date</span><span class="val ink">Today, 12 Nov</span><span class="chev">›</span></div>
+      </div>
+    </div>
+    <p class="note">One Date for the whole page, even when the list has its own dates. It is not clear which one wins.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">A</span>The row says what it is for</p>
+    <div class="phone">
+      <div class="bar"><span class="round">✕</span><span class="ttl">Paste a list</span><span class="round" style="font-size:13px">Review</span></div>
+      <div class="paste">21okt
+grab ke kantor 32rb
+makan siang 45rb
+22 okt
+parkir 5rb
+bensin 150rb
+kopi 28rb</div>
+      <div class="ig">
+        <div class="ir"><span class="glyph">💳</span><span class="lab">Paid with</span><span class="val ink">BCA</span><span class="chev">›</span></div>
+        <div class="ir mark"><span class="glyph">📅</span><span class="lab">Dates</span><span class="val ink">From the list</span></div>
+      </div>
+      <p class="foot">Every line has a date in the list.</p>
+      <div style="height:18px"></div>
+      <div class="paste" style="opacity:.9">21okt
+grab ke kantor 32rb
+makan siang 45rb
+parkir 5rb</div>
+      <div class="ig">
+        <div class="ir"><span class="glyph">💳</span><span class="lab">Paid with</span><span class="val ink">BCA</span><span class="chev">›</span></div>
+        <div class="ir mark"><span class="glyph">📅</span><span class="lab">Lines without a date</span><span class="val ink">Today, 12 Nov</span><span class="chev">›</span></div>
+      </div>
+    </div>
+    <p class="note">Top: every line is dated, so there is nothing to choose; the row only says so. Bottom: some lines have no date, and the row is named for exactly those.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">B</span>“Read as” under the list <span class="rec">· recommended</span></p>
+    <div class="phone">
+      <div class="bar"><span class="round">✕</span><span class="ttl">Paste a list</span><span class="round" style="font-size:13px">Review</span></div>
+      <div class="paste">garam 12rb
+21okt
+grab ke kantor 32rb
+makan siang 45rb
+22 okt
+parkir 5rb
+bensin 150rb
+kopi 28rb</div>
+      <div class="ig">
+        <div class="ir"><span class="glyph">💳</span><span class="lab">Paid with</span><span class="val ink">BCA</span><span class="chev">›</span></div>
+      </div>
+      <div class="gh">Dates</div>
+      <div class="read mark">
+        <div class="rr"><span class="dot"></span><span class="lab">Tue 21 Oct</span><span class="val">2 lines</span></div>
+        <div class="rr"><span class="dot"></span><span class="lab">Wed 22 Oct</span><span class="val">3 lines</span></div>
+      </div>
+      <p class="foot">Taken from the list.</p>
+      <div style="height:6px"></div>
+      <div class="gh">When a line has no date</div>
+      <div class="read">
+        <div class="rr"><span class="dot o"></span><span class="lab">1 line with no date</span><span class="val ink">Today, 12 Nov</span><span class="chev">›</span></div>
+      </div>
+    </div>
+    <p class="note">The page shows how it read the dates, live, while typing: one line per day with how many lines fall on it. The page’s own date only appears for lines without one, and says so. When every line is dated, the second box is not shown.</p>
+  </div>
+</div>
+
+<h2>Review (same for A and B)</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">0</span>Now</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Review</span><span class="round">✓</span></div>
+      <div class="gh">5 lines</div>
+      <div class="ig bad" style="margin-top:0">
+        <div class="row"><span class="ci" style="background:#0ea5e9">🚕</span><div class="grow"><div class="t">21okt grab ke kantor</div><div class="s">Transport</div></div><span class="amt">Rp 32.000</span></div>
+        <div class="row"><span class="ci" style="background:#ea580c">🍜</span><div class="grow"><div class="t">makan siang</div><div class="s">Eating out</div></div><span class="amt">Rp 45.000</span></div>
+        <div class="row"><span class="ci" style="background:#64748b">🅿️</span><div class="grow"><div class="t">parkir</div><div class="s">Parking</div></div><span class="amt">Rp 5.000</span></div>
+        <div class="row"><span class="ci" style="background:#0f766e">⛽</span><div class="grow"><div class="t">bensin</div><div class="s">Fuel</div></div><span class="amt">Rp 150.000</span></div>
+        <div class="row"><span class="ci" style="background:#ea580c">☕</span><div class="grow"><div class="t">kopi</div><div class="s">Coffee</div></div><span class="amt">Rp 28.000</span></div>
+      </div>
+    </div>
+    <p class="note">No date anywhere, and “21okt” is left in the note.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">R</span>Rows under their day</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Review</span><span class="round">✓</span></div>
+      <div class="gh">5 lines</div>
+      <div class="day mark"><b>Tue 21 Oct</b><span>Rp 77.000</span></div>
+      <div class="ig" style="margin-top:0">
+        <div class="row"><span class="ci" style="background:#0ea5e9">🚕</span><div class="grow"><div class="t">grab ke kantor</div><div class="s">Transport</div></div><span class="amt">Rp 32.000</span></div>
+        <div class="row"><span class="ci" style="background:#ea580c">🍜</span><div class="grow"><div class="t">makan siang</div><div class="s">Eating out</div></div><span class="amt">Rp 45.000</span></div>
+      </div>
+      <div class="day mark"><b>Wed 22 Oct</b><span>Rp 183.000</span></div>
+      <div class="ig" style="margin-top:0">
+        <div class="row"><span class="ci" style="background:#64748b">🅿️</span><div class="grow"><div class="t">parkir</div><div class="s">Parking</div></div><span class="amt">Rp 5.000</span></div>
+        <div class="row"><span class="ci" style="background:#0f766e">⛽</span><div class="grow"><div class="t">bensin</div><div class="s">Fuel</div></div><span class="amt">Rp 150.000</span></div>
+        <div class="row"><span class="ci" style="background:#ea580c">☕</span><div class="grow"><div class="t">kopi</div><div class="s">Coffee</div></div><span class="amt">Rp 28.000</span></div>
+      </div>
+      <div class="ig"><div class="ir"><span class="lab">Total</span><span class="val ink">Rp 260.000</span></div></div>
+    </div>
+    <p class="note">Each day gets a header with its total, like Cashflow. The date is gone from the note. Tapping a row still opens it, where its Date can be changed; it then moves under its new day.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">R</span>…with a line that had no date</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Review</span><span class="round">✓</span></div>
+      <div class="gh">3 lines</div>
+      <div class="day"><b>Tue 21 Oct</b><span>Rp 77.000</span></div>
+      <div class="ig" style="margin-top:0">
+        <div class="row"><span class="ci" style="background:#0ea5e9">🚕</span><div class="grow"><div class="t">grab ke kantor</div><div class="s">Transport</div></div><span class="amt">Rp 32.000</span></div>
+        <div class="row"><span class="ci" style="background:#ea580c">🍜</span><div class="grow"><div class="t">makan siang</div><div class="s">Eating out</div></div><span class="amt">Rp 45.000</span></div>
+      </div>
+      <div class="day mark"><b>Today, 12 Nov</b><span>Rp 12.000</span></div>
+      <div class="ig" style="margin-top:0">
+        <div class="row"><span class="ci" style="background:#16a34a">🛒</span><div class="grow"><div class="t">garam</div><div class="s">Groceries · <span class="warn">no date in the list</span></div></div><span class="amt">Rp 12.000</span></div>
+      </div>
+    </div>
+    <p class="note">A line that took the page’s date says so in its small line, so it is easy to spot and fix.</p>
+  </div>
+</div>
+</body>
+</html>
