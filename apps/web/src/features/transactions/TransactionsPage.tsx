@@ -1638,7 +1638,7 @@ export function TransactionsPage() {
       {recategorise.overlay}
 
       {/* A swipe's delete, still to be written: Undo takes it back, the toast going by writes it. */}
-      {swipeDeletes.shown() && <UndoToast text={swipeDeletes.shown()!.text} onUndo={swipeDeletes.undo} onDone={swipeDeletes.expire} />}
+      {swipeDeletes.shown() && <UndoToast icon="deleted" text={swipeDeletes.shown()!.text} onUndo={swipeDeletes.undo} onDone={swipeDeletes.expire} />}
 
       {selecting && (
         <>
@@ -1683,6 +1683,7 @@ export function TransactionsPage() {
       {pickingEvent && <EventSheet title="Add to event" withNone={false} value="" onPick={(eventId) => void tagChosen(eventId)} onClose={() => setPickingEvent(false)} />}
       {tagToast && (
         <UndoToast
+          icon="event"
           text={tagToast.text}
           onUndo={() => {
             const back = tagToast.back;

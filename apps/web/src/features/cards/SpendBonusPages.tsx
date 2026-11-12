@@ -101,6 +101,7 @@ function FeeRefundedButton({ page, item }: { page: CardPage; item: SpendBonusIte
       {undo && (
         <UndoToast
           text="Fee refund recorded"
+          icon="refund"
           onDone={() => setUndo(null)}
           onUndo={() => {
             void undoFeeRefund(database, ws, undo).then(invalidate);

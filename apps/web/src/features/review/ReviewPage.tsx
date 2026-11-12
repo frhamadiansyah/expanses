@@ -28,7 +28,7 @@ import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '..
 import { photos } from '../../photos/store';
 import { cx, Empty, ErrorBox, Select } from '../../ui';
 import { type CornerAction, Figure, LargeTitle, PushedTitle, RecordTable, SCREEN } from '../../ui/native';
-import { UndoToast } from '../../ui/UndoToast';
+import { type ToastIcon, UndoToast } from '../../ui/UndoToast';
 import { CategoryOptions } from '../cards/options';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
 import { asksAboutSetAside, SetAsideSheet } from '../goals/SetAsideQuestion';
@@ -97,7 +97,7 @@ export function ReviewPage() {
   /** The full-screen picture, and the field it was opened at — null means "the picture as a whole". */
   const [viewing, setViewing] = useState<{ draft: DraftRow; focus: 'amount' | 'name' | 'date' | null } | null>(null);
   /** What the phone just did, and the way back — the bills list's own toast, for the same reason. */
-  const [toast, setToast] = useState<{ text: string; undo: () => Promise<void>; expire?: () => Promise<void> } | null>(null);
+  const [toast, setToast] = useState<{ text: string; icon: ToastIcon; undo: () => Promise<void>; expire?: () => Promise<void> } | null>(null);
   /*
    * What the toast does when it goes without Undo — a discarded capture's picture is dropped only then, so Undo brings
    * the draft back whole. Kept in a ref as well, so leaving the page (or a new toast) still does it.
@@ -140,6 +140,7 @@ export function ReviewPage() {
     void expiring.current?.();
     expiring.current = expire ?? null;
     setToast({
+      icon: what === 'recorded' ? 'recorded' : 'discarded',
       text: `${what === 'recorded' ? 'Recorded' : 'Discarded'} ${draft.description}${charged ? ` · ${formatMinor(charged.amountMinor, charged.currency)}` : ''}`,
       undo: () => undo(draft, transactionId),
       expire,
@@ -359,6 +360,7 @@ export function ReviewPage() {
 
       {toast && (
         <UndoToast
+          icon={toast.icon}
           text={toast.text}
           onUndo={() =>
             void run('undo', async () => {

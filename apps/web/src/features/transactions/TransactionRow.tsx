@@ -474,6 +474,7 @@ export function useRecategorise(): {
         {/* Outside the sheet, so it outlives it: the row has already moved by the time this is read. */}
         {toast && (
           <UndoToast
+            icon="category"
             text={toast.text}
             onUndo={() => {
               const back = toast.back;

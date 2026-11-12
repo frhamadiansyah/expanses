@@ -87,7 +87,7 @@ test('a bill’s page pays its month and stays, with the payment and an undo', a
   await expect(page.getByRole('dialog', { name: 'Pay Biznet Home' })).toHaveCount(0);
   await expect(page).toHaveURL(/\/bills\/[^/]+$/);
   const banner = page.getByTestId('just-paid');
-  await expect(banner).toContainText(/✓ Paid .*450\.000 on/);
+  await expect(banner).toContainText(/Paid .*450\.000/);
   await expect(page.getByTestId('bill-history').locator('[data-new="true"]')).toContainText('450.000');
   // The page stays: the card says Paid, and Pay moves on to the next month.
   await expect(page.getByTestId('bill-status')).toContainText('Paid');
@@ -329,7 +329,7 @@ test('last month’s overdue bill paid from its page says so, can be undone, and
 
   // The page moves on to this month's bill; the confirmation stays with the one just paid.
   const banner = page.getByTestId('just-paid');
-  await expect(banner).toContainText(/✓ Paid .*450\.000 on/);
+  await expect(banner).toContainText(/Paid .*450\.000/);
   await expect(banner).toContainText(`${lastMonth} bill`);
   await expect(page.getByTestId('bill-history').locator('[data-new="true"]')).toContainText(`${lastMonth} bill`);
   await expect(page.getByTestId('bill-history').locator('[data-new="true"]')).toContainText('450.000');

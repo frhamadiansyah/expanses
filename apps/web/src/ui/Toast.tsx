@@ -1,16 +1,17 @@
 import { useEffect, useSyncExternalStore } from 'react';
+import { ToastCard, type ToastIcon } from './UndoToast';
 
 /**
  * A short line saying what was just done, shown from anywhere and kept on screen across a navigation: the screen that
  * did the work is usually the one that closes. It goes by itself after four seconds. (`UndoToast` is the one with a
  * way back; this is for what has no undo.)
  */
-let current: { id: number; text: string } | null = null;
+let current: { id: number; text: string; icon?: ToastIcon } | null = null;
 let next = 1;
 const listeners = new Set<() => void>();
 
-export function showToast(text: string): void {
-  current = { id: next++, text };
+export function showToast(text: string, icon?: ToastIcon): void {
+  current = { id: next++, text, ...(icon ? { icon } : {}) };
   for (const listener of listeners) listener();
 }
 
@@ -35,14 +36,5 @@ export function ToastHost() {
     return () => window.clearTimeout(timer);
   }, [toast]);
   if (!toast) return null;
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      data-testid="toast"
-      className="fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-40 mx-auto flex max-w-md items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm text-white shadow-lg md:bottom-6"
-    >
-      {toast.text}
-    </div>
-  );
+  return <ToastCard {...(toast.icon ? { icon: toast.icon } : {})} text={toast.text} aria-live="polite" data-testid="toast" />;
 }
