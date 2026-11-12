@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openWalletAccount } from './accounts';
 import { addForm, choosePayment, fillAmount, openAmount, saveButton } from './add-transaction';
 import { mockRates } from './pockets';
+import { inject, notice } from './capture';
 import { corner, recordSharedSpend, sharedCard, spendingRow } from './shared-events';
 
 /*
@@ -176,4 +177,34 @@ test('event mode in a shared event: the Add form says who it is shared with, and
   await page.goto('/events');
   await page.getByTestId('event-row').filter({ hasText: 'Coast week' }).click();
   await expect(spendingRow(page, 'Boat ride')).toContainText('Rina paid');
+
+  // An account's Spend (its address: Expense, that account) opens the event's card with that account paying (fix round 1).
+  await openWalletAccount(page, 'Rina Bank');
+  const accountId = new URL(page.url()).pathname.split('/').pop()!;
+  await page.goto(`/transactions/new?mode=expense&account=${accountId}`);
+  await expect(card.getByTestId('event-chip')).toContainText('✈️ Coast week');
+  await expect(card.getByRole('button', { name: /^Paid with/ })).toContainText('Rina Bank');
+  await page.goBack();
+
+  // One line: saved untagged, then moved in; the saved row opens the event's own record (fix round 1, H2 and the saved row).
+  await page.goto('/transactions/line');
+  await expect(page.getByTestId('event-chip')).toContainText('Shared with Budi');
+  await page.getByLabel('One line', { exact: true }).fill('kiosk 25rb rina bank');
+  await page.getByLabel('One line', { exact: true }).press('Enter');
+  const savedRow = page.getByTestId('line-saved-row').filter({ hasText: 'Kiosk' });
+  await expect(savedRow).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await savedRow.click();
+  await expect(page).toHaveURL(/expense=/);
+  await expect(sharedCard(page)).toBeVisible();
+
+  // A capture arrives picked for the shared event: To review names it, a swipe would not record it silently, and its form
+  // carries the chip with who will see it (fix round 1).
+  await inject(page, [notice({ id: 'note-coast', capturedAt: await page.evaluate(() => new Date().toISOString()), body: 'Pembayaran Rp38.000 berhasil. Merchant: PANTAI KIOSK' })]);
+  await page.goto('/review');
+  const draft = page.getByTestId('draft-row').filter({ hasText: 'PANTAI KIOSK' });
+  await expect(draft.getByTestId('row-event')).toHaveText('✈️ Coast week · ');
+  await draft.click();
+  await expect(page.getByTestId('event-chip')).toContainText('✈️ Coast week');
+  await expect(page.getByTestId('event-chip-shared')).toHaveText('Shared with Budi');
 });

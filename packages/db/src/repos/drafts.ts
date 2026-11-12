@@ -321,7 +321,10 @@ export async function listDrafts(database: Database, ws: WorkspaceContext, statu
     .select({
       ...getTableColumns(draftTransactions),
       exactHundredths: typed ? sql<number | null>`exact_hundredths` : sql<null>`NULL`,
-      eventId: tagged ? sql<string | null>`event_id` : sql<null>`NULL`,
+      // Only an event still here: a draft whose event was deleted or archived since it arrived names none (fix round 1, M2).
+      eventId: tagged
+        ? sql<string | null>`(SELECT e.id FROM events e WHERE e.id = ${draftTransactions}.event_id AND e.archived_at IS NULL)`
+        : sql<null>`NULL`,
     })
     .from(draftTransactions)
     .where(and(eq(draftTransactions.workspaceId, ws.workspaceId), eq(draftTransactions.status, status), isNull(draftTransactions.mergedInto)))
@@ -501,6 +504,11 @@ export async function confirmDraftTx(
   const keptImage = opts.keepPhoto === true ? draft.imageFile : null;
   // The event it arrived tagged with (event mode), unless the form said otherwise — a form's own Event row, even empty, wins.
   const arrivedFor = opts.extras?.eventId === undefined ? await draftEventOf(tx, id) : undefined;
+  // A form's event that was deleted or archived meanwhile is no answer either: never recorded into it (fix round 1, M2).
+  const extras =
+    opts.extras?.eventId && (await tx.values(sql`SELECT 1 FROM events WHERE id = ${opts.extras.eventId} AND archived_at IS NULL`)).length === 0
+      ? { ...opts.extras, eventId: null }
+      : opts.extras;
   const now = new Date().toISOString();
   const transactionId = await postTransactionTx(tx, ws, {
     fileTransfer: draft.kind === 'transfer',
@@ -513,9 +521,10 @@ export async function confirmDraftTx(
     exactHundredths,
     ...(charged ? { originalCurrency: draft.currency, originalAmountMinor: Math.abs(draft.amountMinor) } : {}),
     ...(arrivedFor ? { eventId: arrivedFor } : {}),
-    ...opts.extras,
-    // A shared workspace's spending drops the tag rather than refuse the confirm (`confirmDraft` then moves it).
-    ...(opts.extras?.eventId ? { eventIdCarried: true } : {}),
+    ...extras,
+    // A shared workspace's spending drops the tag rather than refuse the confirm (`confirmDraft` then moves it). So does
+    // one event mode picked as it arrived: a capture filed in a shared workspace is recorded there, in no event (D1).
+    ...(extras?.eventId || (arrivedFor && extras?.eventId === undefined) ? { eventIdCarried: true } : {}),
     setAside: opts.setAside ?? null,
   });
   const purgeAfter = addDays(now.slice(0, 10), RAW_RETENTION_DAYS);

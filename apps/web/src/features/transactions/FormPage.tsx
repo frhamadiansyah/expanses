@@ -13,7 +13,8 @@ import { buyRefusal, buySeed, coverTarget, eventOpening, isNothingLeft } from '.
 import { useEventPlan, useEvents } from '../events/queries';
 import { useSharedEventPlan, useSharedEventView } from '../events/shared-queries';
 import { EventChip, useEventModeState } from '../events/EventMode';
-import { opensInEventMode } from '../events/event-mode';
+import { addInCurrency, eventModeApplies, opensInEventMode } from '../events/event-mode';
+import { useIsBookShared } from '../../lib/queries';
 import { isEditable } from './draft';
 import { useChangeable } from './queries';
 import { SharedExpenseCard } from './SharedExpenseCard';
@@ -43,11 +44,15 @@ export function NewTransactionRoute() {
    */
   const eventModeState = useEventModeState();
   const [leftOut, setLeftOut] = useState(false);
-  const inMode = eventModeState.active && !leftOut && opensInEventMode(search) ? eventModeState.active : null;
+  // A private event never fills in a shared workspace's spending (sync gaps D1); a shared one, which it moves into, does.
+  const bookShared = useIsBookShared();
+  const inMode = eventModeState.active && !leftOut && opensInEventMode(search) && eventModeApplies(eventModeState.active, bookShared) ? eventModeState.active : null;
+  // Pinned only when "Add in" is not the workspace's own currency, or the event has its own (fix round 1, M4).
+  const modeCurrency = addInCurrency(inMode, ws.baseCurrency);
   // A shared event is recorded on its own card, exactly as picking it on the Event row opens it (shared events §6).
   const modeShared = inMode?.shared ? inMode : null;
   const event = search.event ?? modeShared?.event.id;
-  const currency = search.currency ?? modeShared?.mode.currency;
+  const currency = search.currency ?? (modeShared ? (modeCurrency ?? undefined) : undefined);
   const events = useEvents();
   /*
    * A shared event is recorded on its own card (shared events §6, R14): Paid by, Split, its categories, its rate. Read
@@ -122,7 +127,19 @@ export function NewTransactionRoute() {
           view={view}
           {...(expense ? { expenseId: expense } : {})}
           {...(bought ? { itemId: bought.id, title: `Pay ${bought.name}`, seed: { note: bought.name, amount: minorToMajorString(bought.estimateMinor, view.currency), categoryId: bought.categoryId } } : {})}
-          {...(!bought && !expense && (amount || note || date || currency) ? { seed: { note: note ?? '', amount: amount ?? '', categoryId: null, ...(currency ? { currency } : {}), ...(date ? { occurredOn: date } : {}) } } : {})}
+          {...(!bought && !expense && (amount || note || date || currency || (modeShared && account))
+            ? {
+                seed: {
+                  note: note ?? '',
+                  amount: amount ?? '',
+                  categoryId: null,
+                  ...(currency ? { currency } : {}),
+                  ...(date ? { occurredOn: date } : {}),
+                  // An account's Spend, in event mode: that account pays (fix round 1).
+                  ...(modeShared && account ? { accountId: account } : {}),
+                },
+              }
+            : {})}
           {...(modeShared ? { top: <EventChip name={modeShared.event.name} sharedWith={modeShared.shared!.people.map((person) => person.name)} onRemove={() => setLeftOut(true)} /> } : {})}
           onBack={back}
           onDone={toEvent}
@@ -160,7 +177,7 @@ export function NewTransactionRoute() {
             ...(partner ? { partnerItemId: partner } : {}),
             ...(opening ? { eventId: opening.eventId } : {}),
             ...(buying ? buySeed(buying, ws.baseCurrency) : {}),
-            ...(inMode && !opening ? { eventId: inMode.event.id, currency: inMode.mode.currency } : {}),
+            ...(inMode && !opening ? { eventId: inMode.event.id, ...(modeCurrency ? { currency: modeCurrency } : {}) } : {}),
           }}
           {...(inMode && !opening ? { eventChip: { eventId: inMode.event.id, name: inMode.event.name } } : {})}
           followUp={followUp}

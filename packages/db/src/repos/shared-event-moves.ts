@@ -199,12 +199,13 @@ export async function moveIntoSharedEvent(
    * the same person's two phones moving the same purchase name one expense). A fresh id otherwise.
    */
   options: { expenseIdFor?: (tx: Db, transactionId: string) => Promise<string> } = {},
-): Promise<{ moved: { transactionId: string; expenseId: string }[]; kept: MoveRefusal[] }> {
-  const moved: { transactionId: string; expenseId: string }[] = [];
+): Promise<{ moved: { transactionId: string; expenseId: string; derivedId: string }[]; kept: MoveRefusal[] }> {
+  // `derivedId`: the expense's own transaction in this phone's books, which the purchase was replaced by.
+  const moved: { transactionId: string; expenseId: string; derivedId: string }[] = [];
   const kept: MoveRefusal[] = [];
   for (const transactionId of [...new Set(transactionIds)]) {
     try {
-      const outcome = await database.transaction(async (tx): Promise<string | MoveRefusal> => {
+      const outcome = await database.transaction(async (tx): Promise<{ expenseId: string; derivedId: string } | MoveRefusal> => {
         const book = await openSharedEventTx(tx, ws, eventId);
         const purchase = await movableTx(tx, ws, transactionId);
         if (typeof purchase === 'string') return { transactionId, why: purchase };
@@ -253,9 +254,9 @@ export async function moveIntoSharedEvent(
         if (!after || after[1] !== null || after[0] === null || after[0] === transactionId) {
           throw new KeptBack({ transactionId, why: after?.[1] === 'no-rate' ? `No rate for ${purchase.occurredOn} yet` : NOT_MOVABLE });
         }
-        return expenseId;
+        return { expenseId, derivedId: after[0] };
       });
-      if (typeof outcome === 'string') moved.push({ transactionId, expenseId: outcome });
+      if ('expenseId' in outcome) moved.push({ transactionId, ...outcome });
       else kept.push(outcome);
     } catch (error) {
       if (error instanceof KeptBack) kept.push(error.refusal);

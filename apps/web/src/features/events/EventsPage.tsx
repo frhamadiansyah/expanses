@@ -27,12 +27,14 @@ import { useCategorySets } from '../categories/set-queries';
 import { CurrencySheet } from '../transactions/CurrencySheet';
 import { EventCurrencyRow } from './EventCurrencyRow';
 import { EventModeGroup } from './EventMode';
-
-/** How long a press on an event is held before it opens the event's Event mode. */
-const HOLD_MS = 450;
+import { takesEventMode } from './event-mode';
 import { eventListLine } from './plan-view';
 import { useEventPlan, useEvents } from './queries';
 import { useSharedEventSummaries, useSharedEventView } from './shared-queries';
+import { useOpenBookReadOnly } from '../sharing/queries';
+
+/** How long a press on an event is held before it opens the event's Event mode. */
+const HOLD_MS = 450;
 
 /** "13 – 17 Aug 2026", or one date when the event is a single day. */
 export function eventDates(event: Pick<EventRow, 'startsOn' | 'endsOn'>): string {
@@ -72,6 +74,9 @@ function EventListRow({ event, today, position, shared, ready }: GroupChild & { 
    * is the hold's, never a tap that opens the event; a long press the system reads as its own is a hold too.
    */
   const [holding, setHolding] = useState(false);
+  // A shared event that is Done, left or read-only here takes nothing new, so holding it offers no switch (fix round 1, M3).
+  const readOnly = useOpenBookReadOnly();
+  const offersMode = !readOnly && (!shared || (!!spent && takesEventMode(spent)));
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const held = useRef(false);
   const stopHold = () => {
@@ -93,7 +98,7 @@ function EventListRow({ event, today, position, shared, ready }: GroupChild & { 
         style={{ minHeight: rowHeight(true), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px`, WebkitTouchCallout: 'none' }}
         data-testid="event-row"
         onPointerDown={(e) => {
-          if (e.button !== 0) return;
+          if (e.button !== 0 || !offersMode) return;
           held.current = false;
           stopHold();
           holdTimer.current = setTimeout(() => {
@@ -106,6 +111,7 @@ function EventListRow({ event, today, position, shared, ready }: GroupChild & { 
         onPointerCancel={stopHold}
         onPointerLeave={stopHold}
         onContextMenu={(e) => {
+          if (!offersMode) return;
           e.preventDefault();
           stopHold();
           held.current = true;

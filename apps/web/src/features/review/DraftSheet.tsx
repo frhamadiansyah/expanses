@@ -7,6 +7,8 @@ import type { FormDraft } from '../transactions/tx-form';
 import { CAPTURE_TYPES } from './capture-type';
 import { asksForSourceAccount, captureRowView, sourceSide } from './capture-view';
 import { canRecord, formFromDraft } from './draft-form';
+import { useEvents } from '../events/queries';
+import { useSharedEventSummaries } from '../events/shared-queries';
 
 /**
  * One draft, reviewed on the Add transaction screen itself.
@@ -52,6 +54,11 @@ export function DraftSheet({
   const ask = asksForSourceAccount(draft, source);
   // What the form's figure is read against: the paying account's currency decides whether a charge is asked too.
   const accounts = useAccounts().data ?? [];
+  // Captured in event mode for a shared event (fix round 1): the chip on top says which event, and who will see it.
+  const summaries = useSharedEventSummaries().data ?? {};
+  const events = useEvents().data ?? [];
+  const sharedEvent = draft.eventId ? summaries[draft.eventId] : undefined;
+  const eventName = draft.eventId ? events.find((event) => event.id === draft.eventId)?.name : undefined;
   // Opened from partway down the queue: the form starts at its top, as a screen of its own does.
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -64,6 +71,7 @@ export function DraftSheet({
       label={`Review ${draft.description}`}
       onBack={onClose}
       onDone={onClose}
+      {...(sharedEvent && eventName ? { eventChip: { eventId: draft.eventId!, name: eventName, sharedWith: sharedEvent.people.map((person) => person.name) } } : {})}
       finish={{
         prefill,
         saveLabel: 'Record',

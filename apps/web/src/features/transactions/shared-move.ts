@@ -26,3 +26,17 @@ export async function moveAfterSave(move: () => Promise<{ kept: readonly MoveRef
   }
   return why === null ? null : `Saved in ${where.bookName}. Not moved into ${where.eventName}: ${why}`;
 }
+
+/**
+ * How a new purchase is posted when it goes to an event (event mode fix round 1, H2): into a shared event it is saved
+ * with no tag and then moved, as Select → Add to event moves it — `moveIntoSharedEvent` applies the event. A move that
+ * is refused or fails then leaves an ordinary purchase in its workspace, seen, never one tagged to a shared event and
+ * not in it. A private event is tagged as it posts.
+ */
+export function postTag(eventId: string | null | undefined, sharedEvent: boolean): { eventId: string | null; moveInto: string | null } {
+  if (!eventId) return { eventId: null, moveInto: null };
+  return sharedEvent ? { eventId: null, moveInto: eventId } : { eventId, moveInto: null };
+}
+
+/** A purchase recorded and moved into a shared event: said with no Undo, since a move is not a tag a toast takes back. */
+export const recordedIntoText = (description: string, eventName: string) => `Recorded ${description} · moved into ${eventName}`;

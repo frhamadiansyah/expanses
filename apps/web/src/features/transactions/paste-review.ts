@@ -156,3 +156,41 @@ export function purchaseInputs(
 
 /** What identifies one reading of the list, so going back to the text and forward again keeps the fixes already made. */
 export const readingKey = (text: string, payer: string, date: string) => JSON.stringify([text, payer, date]);
+
+/**
+ * Saving a pasted list, once (event mode fix round 1, H1). The list lands in one database transaction; from the moment
+ * it has, it counts as saved whatever follows: a move into a shared event that is refused or throws, or the refresh
+ * and the way out, is said in the toast — never thrown back to a page that would let the same list be posted again.
+ * Only a failed post leaves the list to try again.
+ */
+export async function saveListOnce(steps: {
+  post: () => Promise<string[]>;
+  /** Into a shared event: moves what was posted, and says what did not move (null when all of it did). */
+  move: ((ids: string[]) => Promise<string | null>) | null;
+  /** The toast's words for what was saved. */
+  saidSaved: string;
+  /** The refresh, the toast and the way out. */
+  finish: (note: string) => Promise<void>;
+}): Promise<{ saved: false; error: unknown } | { saved: true; note: string }> {
+  let ids: string[];
+  try {
+    ids = await steps.post();
+  } catch (error) {
+    return { saved: false, error };
+  }
+  let note = steps.saidSaved;
+  if (steps.move) {
+    try {
+      const notMoved = await steps.move(ids);
+      if (notMoved) note = `${note}. ${notMoved}`;
+    } catch (error) {
+      note = `${note}. Not moved into the event: ${error instanceof Error ? error.message : 'it could not be moved'}`;
+    }
+  }
+  try {
+    await steps.finish(note);
+  } catch {
+    // Saved all the same: nothing here may offer the list a second time.
+  }
+  return { saved: true, note };
+}

@@ -91,6 +91,8 @@ import { Unconverted } from '../workspaces/Unconverted';
 import { UndoToast } from '../../ui/UndoToast';
 import { WorkspaceMenu } from '../workspaces/WorkspaceMenu';
 import { EventModeDot, useEventMode } from '../events/EventMode';
+import { addInCurrency, eventModeApplies } from '../events/event-mode';
+import { recordsOnForm } from '../review/draft-form';
 import { useBooks, useCategoryBooks, useOpenBook, useWorkspaceBadges } from '../workspaces/queries';
 import { ChoiceSheet } from './ChoiceSheet';
 import { CardSheet } from '../cards/CardSheet';
@@ -896,6 +898,15 @@ export function TransactionsPage() {
         close();
       });
     }
+    // Captured in event mode for a shared event: recorded on its form, where the move into the event is seen (fix round 1).
+    const queued = (drafts.data ?? []).find((d) => d.id === id);
+    if (queued && recordsOnForm(queued, sharedSummaries)) {
+      return run(id, async () => {
+        await editDraft(database, ws, id, fields);
+        close();
+        await navigate({ to: '/review', search: { draft: id } });
+      });
+    }
     return guarded(id, spendingDoor(fields.accountId ?? '', Math.max(0, fields.amountMinor)), null, async (choice) => {
       await editDraft(database, ws, id, fields);
       await confirmDraft(database, ws, id, { setAside: choice });
@@ -1379,8 +1390,11 @@ export function TransactionsPage() {
         <Sheet grouped title="Add a transaction" onClose={() => setAdding(false)}>
           <TransactionCard
             defaultPaidWith
-            {...(eventMode && !eventMode.shared
-              ? { seed: { eventId: eventMode.event.id, currency: eventMode.mode.currency }, eventChip: { eventId: eventMode.event.id, name: eventMode.event.name } }
+            {...(eventMode && !eventMode.shared && eventModeApplies(eventMode, shared)
+              ? {
+                  seed: { eventId: eventMode.event.id, ...(addInCurrency(eventMode, ws.baseCurrency) ? { currency: addInCurrency(eventMode, ws.baseCurrency)! } : {}) },
+                  eventChip: { eventId: eventMode.event.id, name: eventMode.event.name },
+                }
               : {})}
             onDone={() => setAdding(false)}
           />

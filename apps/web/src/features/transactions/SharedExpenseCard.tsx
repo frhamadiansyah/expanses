@@ -39,6 +39,8 @@ export interface SharedExpenseSeed {
   /** Carried from the workspace card (the Event row): its currency and date, when it had a figure or a day of its own. */
   currency?: string;
   occurredOn?: string;
+  /** The account this person pays from: an account's Spend opened the Add screen in event mode (fix round 1). */
+  accountId?: string;
 }
 
 /**
@@ -89,7 +91,15 @@ export function SharedExpenseCard({
     if (editing) return draftFromExpense(view, editing);
     const empty = emptySharedDraft(view, isoDate());
     return seed
-      ? { ...empty, note: seed.note, amount: seed.amount, categoryId: seed.categoryId ?? '', ...(seed.currency ? { currency: seed.currency } : {}), ...(seed.occurredOn ? { occurredOn: seed.occurredOn } : {}) }
+      ? {
+          ...empty,
+          note: seed.note,
+          amount: seed.amount,
+          categoryId: seed.categoryId ?? '',
+          ...(seed.currency ? { currency: seed.currency } : {}),
+          ...(seed.occurredOn ? { occurredOn: seed.occurredOn } : {}),
+          ...(seed.accountId ? { accountId: seed.accountId, cardId: '' } : {}),
+        }
       : empty;
   });
   const [sheet, setSheet] = useState<null | 'payer' | 'money' | 'category' | 'split'>(null);

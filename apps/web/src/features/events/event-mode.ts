@@ -1,4 +1,5 @@
 import type { NewTransactionSearch } from '../transactions/new-search';
+import { pageLocks } from './shared-view';
 
 /*
  * Event mode's words and its one rule about forms (owner, 12 Nov 2026; mockup docs/mockups/2026-11-12-event-mode.html).
@@ -30,4 +31,30 @@ export const rowEventLead = (eventName: string) => `${EVENT_MARK} ${eventName}`;
 export function opensInEventMode(search: Pick<NewTransactionSearch, 'mode' | 'event' | 'item' | 'expense' | 'partner' | 'to'>): boolean {
   if (search.event || search.item || search.expense || search.partner || search.to) return false;
   return search.mode === undefined || search.mode === 'expense';
+}
+
+/**
+ * The currency a form opens in for event mode, or null to leave it to what pays (fix round 1, M4): only when "Add in" is
+ * another currency than the workspace's, or the event has one of its own — a rupiah trip does not pin rupiah on a form
+ * paid from a dollar account.
+ */
+export function addInCurrency(active: { mode: { currency: string }; event: { currency: string | null } } | null, baseCurrency: string): string | null {
+  if (!active) return null;
+  return active.mode.currency !== baseCurrency || active.event.currency ? active.mode.currency : null;
+}
+
+/**
+ * Whether event mode fills in a new transaction here. A shared workspace's spending takes no private event (sync gaps
+ * D1: the tag would stay on this phone alone), so there only a shared event — which the purchase moves into — applies.
+ */
+export function eventModeApplies(active: { shared: unknown } | null, bookShared: boolean): boolean {
+  return !!active && (!!active.shared || !bookShared);
+}
+
+/**
+ * Whether a shared event still takes event mode: one that is Done, left, or no longer shared here takes nothing new
+ * (fix round 1, M3). An event that is not shared (no view) always does.
+ */
+export function takesEventMode(view: { state: string; finishedAt: string | null } | null | undefined): boolean {
+  return !view || !pageLocks(view).locked;
 }

@@ -1,15 +1,17 @@
 import { formatMinor, groupedMajorString, groupTypedAmount, isoDate, parseGroupedMajor, parsePurchaseList, type PaymentOption } from '@expanses/core';
 import { guessCategoryFromHistory, moveIntoSharedEvent, ownerScope, postTransactions, sharedEventOf, uncategorisedCategory } from '@expanses/db';
 import { EventChip, useEventMode } from '../events/EventMode';
-import { keptText } from './shared-move';
+import { moveAfterSave, postTag } from './shared-move';
+import { eventModeApplies } from '../events/event-mode';
+import { useOpenBook } from '../workspaces/queries';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { ArrowRight, CalendarDays, Check, CreditCard, Landmark } from 'lucide-react';
-import { type FormEvent, useMemo, useState } from 'react';
+import { type FormEvent, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useBack } from '../../app/BackHeader';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith } from '../../lib/account-types';
-import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInvalidateAll, useIsBookShared, useResolveRates } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { InsetGroup, PickerRow, PushedTitle, ReadOnlyRow, SCREEN, TextRow, DestructiveRow } from '../../ui/native';
 import { showToast } from '../../ui/Toast';
@@ -34,6 +36,7 @@ import {
   totalMinor,
   withEdit,
   withRemoved,
+  saveListOnce,
 } from './paste-review';
 import { PaymentSheet } from './PaymentSheet';
 import { paymentOptions } from './quick-row';
@@ -82,7 +85,11 @@ export function PasteListPage() {
   // Event mode (screen 3): the whole list goes to the event, unless the chip's ✕ leaves this list out.
   const eventMode = useEventMode();
   const [eventOff, setEventOff] = useState(false);
-  const listEvent = eventMode && !eventOff ? eventMode : null;
+  const bookShared = useIsBookShared();
+  const listEvent = eventMode && !eventOff && eventModeApplies(eventMode, bookShared) ? eventMode : null;
+  const tag = postTag(listEvent?.event.id, !!listEvent?.shared);
+  const openBook = useOpenBook();
+  const savedOnce = useRef(false);
 
   // Who can pay: the accounts a purchase may be paid from, each card on its own. The form's own first choice is the
   // account the Add screen was opened with, else the first listed.
@@ -121,9 +128,11 @@ export function PasteListPage() {
   }
 
   async function save() {
-    if (!rows || !canSave(rows) || !payer || !payerAccount || busy) return;
+    // Once posted, the list is never posted again, whatever happens after (fix round 1, H1).
+    if (!rows || !canSave(rows) || !payer || !payerAccount || busy || savedOnce.current) return;
     setBusy(true);
     setError(null);
+    let inputs: ReturnType<typeof purchaseInputs>;
     try {
       const uncategorised = rows.some((row) => !row.categoryId) ? await uncategorisedCategory(database, ws, 'expense') : '';
       // A payer in another currency: the day's rate for each day the list covers, asked before anything is written.
@@ -136,26 +145,48 @@ export function PasteListPage() {
         }
       }
       const listed = purchaseInputs(rows, { account: payerAccount, cardId: payer.cardId }, accounts, uncategorised, (day) => rates[day], payerOpeningDay);
-      const inputs = listEvent ? listed.map((input) => ({ ...input, eventId: listEvent.event.id })) : listed;
-      // One database transaction: the whole list lands or none of it does.
-      const ids = await postTransactions(database, ws, inputs);
-      let note = addedText(inputs.length);
-      // A shared event: the purchases move into it now, as Select's Add to event moves them (shared events §6, D2).
-      if (listEvent?.shared) {
-        const target = await sharedEventOf(database, ownerScope(ws), listEvent.event.id);
-        if (target?.currency && target.currency !== currency) {
-          for (const day of new Set(rows.map((row) => row.occurredOn))) await resolveRates([target.currency, currency], day).catch(() => undefined);
-        }
-        const { kept } = await moveIntoSharedEvent(database, ownerScope(ws), listEvent.event.id, ids);
-        if (kept.length > 0) note = `${note}. ${keptText(kept)}`;
-      }
-      await invalidate();
-      showToast(note);
-      await navigate({ to: '/transactions', replace: true });
+      // A private event is tagged as the list posts; a shared one is moved into after (`postTag`, fix round 1 H2).
+      inputs = tag.eventId ? listed.map((input) => ({ ...input, eventId: tag.eventId })) : listed;
     } catch (e) {
       setError(e);
       setBusy(false);
+      return;
     }
+    const occurred = [...new Set(rows.map((row) => row.occurredOn))];
+    const outcome = await saveListOnce({
+      // One database transaction: the whole list lands or none of it does.
+      post: () => postTransactions(database, ws, inputs),
+      // A shared event: the purchases move into it now, as Select's Add to event moves them (shared events §6, D2).
+      move:
+        tag.moveInto && listEvent
+          ? (ids) =>
+              moveAfterSave(
+                async () => {
+                  const target = await sharedEventOf(database, ownerScope(ws), tag.moveInto!);
+                  if (target?.currency && target.currency !== currency) {
+                    for (const day of occurred) await resolveRates([target.currency, currency], day).catch(() => undefined);
+                  }
+                  return moveIntoSharedEvent(database, ownerScope(ws), tag.moveInto!, ids);
+                },
+                { bookName: openBook?.name ?? 'this workspace', eventName: listEvent.event.name },
+              )
+          : null,
+      saidSaved: addedText(inputs.length),
+      finish: async (note) => {
+        await invalidate().catch(() => undefined);
+        showToast(note);
+        await navigate({ to: '/transactions', replace: true });
+      },
+    });
+    if (!outcome.saved) {
+      setError(outcome.error);
+      setBusy(false);
+      return;
+    }
+    // Saved: the list is gone from the page, and the page cannot post it again.
+    savedOnce.current = true;
+    setRows(null);
+    setText('');
   }
 
   function open(row: ReviewRow) {

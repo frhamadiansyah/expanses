@@ -89,7 +89,7 @@ import { draftIn } from './move-workspace';
 import { useBooks, useCategoryBooks } from '../workspaces/queries';
 import { heldForm, releaseForm } from './receipt-split-hold';
 import { applyReceipt, filledLine, type ReceiptFilled, readReceiptPhoto, recognizeEach } from './receipt-fill';
-import { autoCategoryOutOfSet, categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, isExpenseTopUp, memberTransferOf, topUpWallets, typedCurrency, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
+import { autoCategoryOutOfSet, categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, isExpenseTopUp, eventForMode, memberTransferOf, topUpWallets, typedCurrency, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
 /**
@@ -221,7 +221,7 @@ export function TransactionCard(props: {
    * Event mode (screen 3): the event the form opened with, drawn as a chip at its top while the Event row still names
    * it. Its ✕ leaves this one transaction out; the Event row under Add more details is the same field.
    */
-  eventChip?: { eventId: string; name: string };
+  eventChip?: { eventId: string; name: string; sharedWith?: readonly string[] };
 }) {
   // An edit can read a placeholder the purchase is already posted against: one another member paid for (§4.4).
   const accounts = useAccountsFor(props.initial ?? props.duplicateOf);
@@ -278,7 +278,7 @@ function CardBody({
   photoIds: string[];
   /** The Default Paid with, already checked against what can pay: the blank form opens on it. */
   defaultPay?: { moneyId: string; cardId: string };
-  eventChip?: { eventId: string; name: string };
+  eventChip?: { eventId: string; name: string; sharedWith?: readonly string[] };
 }) {
   const { database, ws } = useApp();
   const navigate = useNavigate();
@@ -940,7 +940,7 @@ function CardBody({
       const flag = currencyChoosable({ ...draft, mode: value }) ? {} : { currency: '', chargedAmount: '' };
       // A new transaction starts its guessing again on another tab; one that already exists never guesses.
       if (!prefilled) categorySource.current = null;
-      return set({ mode: value, categoryId: '', splits: [], ...flag });
+      return set({ mode: value, categoryId: '', splits: [], ...flag, eventId: eventForMode(draft.eventId, value) });
     }
     startTrade();
   };
@@ -982,7 +982,7 @@ function CardBody({
   /** The trade rows, opened with no holding chosen: Buy or Sell first, then the holding, both by hand. */
   function startTrade() {
     if (!choices.buys[0]) return;
-    set({ mode: 'trade', purchase: emptyPurchaseDraft('', draft.moneyId, isoDate()) });
+    set({ mode: 'trade', purchase: emptyPurchaseDraft('', draft.moneyId, isoDate()), eventId: eventForMode(draft.eventId, 'trade') });
   }
 
   /*
@@ -1046,7 +1046,7 @@ function CardBody({
   }, [eventSet, membership.isSuccess, membership.data, draft.categoryId]);
   const body = (
     <form ref={formRef} id={headerSave?.formId} onSubmit={submit} aria-label={label} className="flex flex-col gap-[10px]">
-      {eventChip && draft.eventId === eventChip.eventId && !recorded && <EventChip name={eventChip.name} onRemove={() => set({ eventId: '' })} />}
+      {eventChip && draft.eventId === eventChip.eventId && !recorded && <EventChip name={eventChip.name} sharedWith={eventChip.sharedWith} onRemove={() => set({ eventId: '' })} />}
       {finish?.header}
       {/*
         Once the payment is written and only the follow-up is left to answer, the form says so and its fields stop

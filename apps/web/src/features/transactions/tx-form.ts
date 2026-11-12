@@ -333,6 +333,14 @@ export interface CardSeed {
 }
 
 /**
+ * The event a draft keeps on another tab (event mode fix round 1): an event is spending, so it stays on Expense only —
+ * Income, Transfer and Trade drop it, and the chip with it.
+ */
+export function eventForMode(eventId: string, mode: FormMode): string {
+  return mode === 'expense' ? eventId : '';
+}
+
+/**
  * The opener's seed as form fields, keeping only ids this device holds: an address typed or kept from another
  * workspace names nothing, and fills nothing in. A category must also be a spending one — the only kind an opener seeds — so a stray id cannot open Expense on an
  * account that is not a category at all.

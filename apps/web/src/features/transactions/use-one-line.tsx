@@ -18,7 +18,8 @@ import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { usePhone } from '../../app/use-phone';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
-import { useAccounts, useInOpenBook, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { useAccounts, useInOpenBook, useInvalidateAll, useIsBookShared, useResolveRates } from '../../lib/queries';
+import { useOpenBook } from '../workspaces/queries';
 import { cx } from '../../ui';
 import { InsetGroup, TextRow } from '../../ui/native';
 import { payableOptions, resolveDefaultPaidWith, useStoredDefaultPaidWith } from '../account/default-paid-with';
@@ -55,8 +56,9 @@ import { paymentKey } from './quick-row';
 import { PaidWith, TransactionRow } from './TransactionRow';
 import { formToPost, rateDateFor, settledAmount, withCategoryLater } from './tx-form';
 import { ratesForSave } from './tx-save';
-import { keptText } from './shared-move';
+import { moveAfterSave, postTag } from './shared-move';
 import { EventChip, useEventMode } from '../events/EventMode';
+import { addInCurrency, eventModeApplies } from '../events/event-mode';
 
 /** A row saved in this sitting: the id it was posted under, the row as it was shown, and what it counts in the base currency. */
 export interface SavedLine {
@@ -93,6 +95,7 @@ export function useOneLine() {
   const queryClient = useQueryClient();
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
+  const openBook = useOpenBook();
   const accounts = useAccounts().data ?? [];
   const cards = (useCards().data ?? []) as CardRow[];
   const numbers = useAccountNumberLast4().data;
@@ -108,9 +111,11 @@ export function useOneLine() {
    * own. The chip's ✕ leaves the next line out; the line after it is in the event again.
    */
   const eventMode = useEventMode();
+  const bookShared = useIsBookShared();
   const [eventOff, setEventOff] = useState(false);
-  const lineEvent = eventMode && !eventOff ? eventMode : null;
-  const typedIn = eventMode?.mode.currency ?? null;
+  const lineEvent = eventMode && !eventOff && eventModeApplies(eventMode, bookShared) ? eventMode : null;
+  // Read off the line's own event, so ✕ drops the currency with it (fix round 1, M4).
+  const typedIn = addInCurrency(lineEvent, ws.baseCurrency);
   const readIn = typedIn ?? ws.baseCurrency;
   const [text, setText] = useState('');
   const [choices, setChoices] = useState<LineChoices>({});
@@ -212,8 +217,9 @@ export function useOneLine() {
         }
       }
       const lined = lineDraft(line, ws.bookId ?? '', charged?.text ?? '');
-      // Tagged as the Add form's Event row tags it: the posting carries the event.
-      const drafted = lineEvent ? { ...lined, eventId: lineEvent.event.id } : lined;
+      // A private event is tagged as it posts; a shared one is moved into after (`postTag`, fix round 1 H2).
+      const tag = postTag(lineEvent?.event.id, !!lineEvent?.shared);
+      const drafted = tag.eventId ? { ...lined, eventId: tag.eventId } : lined;
       const draft = line.categoryId ? drafted : withCategoryLater(drafted, await uncategorisedCategory(database, ws, 'expense'));
       const post = formToPost(draft, accounts);
       const rateDate = rateDateFor(draft);
@@ -230,14 +236,39 @@ export function useOneLine() {
         ratesToBase,
         ...(moneyAccount && isPastDefault(openedOn, day) ? { pastPurchase: true } : {}),
       });
-      // Posted: from here a failure (the refresh below) must not let the same line be saved again.
+      // Posted: from here a failure (the move, the refresh below) must not let the same line be saved again.
       const settled = charged?.minor ?? amountMinor;
       const kept: SavedLine = {
         id,
-        row: { ...previewRow(line, id, categoryName(line.categoryId)), eventId: lineEvent?.event.id ?? null },
+        row: { ...previewRow(line, id, categoryName(line.categoryId)), eventId: tag.eventId },
         baseMinor: baseOf(settled, payerCurrency, ws.baseCurrency, ratesToBase),
       };
       posted = kept;
+      /*
+       * A shared event: the purchase moves into it now, the way tagging a saved purchase into one does (shared events §6,
+       * D2) — the chip said who it is shared with. One that stays (no rate yet), or a move that fails, leaves it saved
+       * here, untagged, and says why; never thrown, so the line is never saved a second time. Moved, the saved row is
+       * the event's own transaction, which its receipt opens.
+       */
+      if (tag.moveInto && lineEvent) {
+        let derived: string | null = null;
+        const notMoved = await moveAfterSave(
+          async () => {
+            const target = await sharedEventOf(database, ownerScope(ws), tag.moveInto!);
+            const wanted = [target?.currency, line.currency, payerCurrency].filter((c): c is string => !!c);
+            await resolveRates([...new Set(wanted)], day).catch(() => undefined);
+            const result = await moveIntoSharedEvent(database, ownerScope(ws), tag.moveInto!, [id]);
+            derived = result.moved[0]?.derivedId ?? null;
+            return result;
+          },
+          { bookName: openBook?.name ?? 'this workspace', eventName: lineEvent.event.name },
+        );
+        if (derived) {
+          kept.id = derived;
+          kept.row = { ...kept.row, id: derived, eventId: tag.moveInto };
+        }
+        if (notMoved) setError(new Error(notMoved));
+      }
       setSaved((rows) => [...rows, kept]);
       setText('');
       setChoices({});
@@ -246,17 +277,6 @@ export function useOneLine() {
       setLastPaid(after.lastPaid);
       setEventOff(false);
       field.current?.focus();
-      /*
-       * A shared event: the purchase moves into it now, the way tagging a saved purchase into one does (shared events §6,
-       * D2) — the chip said who it is shared with. One that stays (no rate yet) is saved here, and says why.
-       */
-      if (lineEvent?.shared) {
-        const target = await sharedEventOf(database, ownerScope(ws), lineEvent.event.id);
-        const wanted = [target?.currency, line.currency, payerCurrency].filter((c): c is string => !!c);
-        await resolveRates([...new Set(wanted)], day).catch(() => undefined);
-        const { kept: stayed } = await moveIntoSharedEvent(database, ownerScope(ws), lineEvent.event.id, [id]);
-        if (stayed.length > 0) setError(new Error(keptText(stayed)));
-      }
       await invalidate();
     } catch (e) {
       setError(e);

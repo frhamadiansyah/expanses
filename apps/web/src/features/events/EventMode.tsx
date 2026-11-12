@@ -17,10 +17,10 @@ import { useApp } from '../../app/context';
 import { ToastCard, UndoToast } from '../../ui/UndoToast';
 import { InsetGroup, InsetRow, SwitchRow, tapReach, TextRow } from '../../ui/native';
 import { CurrencySheet } from '../transactions/CurrencySheet';
-import { EVENT_MARK, endedText, menuLine, modeFooter, modeHint, sharedWithLine } from './event-mode';
+import { EVENT_MARK, endedText, menuLine, modeFooter, modeHint, sharedWithLine, takesEventMode } from './event-mode';
+import { useOpenBookReadOnly } from '../sharing/queries';
 import { useEvents } from './queries';
 import { useSharedEventSummaries, useSharedEventView } from './shared-queries';
-import { pageLocks } from './shared-view';
 
 const KEY = ['event-mode'] as const;
 
@@ -160,6 +160,8 @@ export function EventModeGroup({ event }: { event: Pick<EventRow, 'id' | 'name' 
   const { ws } = useApp();
   const stored = useStoredEventMode().data ?? null;
   const { write, turnOn } = useEventModeWrites();
+  // Another owner's books, read only here: nothing is added there, so there is no event mode to turn on (fix round 1).
+  const readOnly = useOpenBookReadOnly();
   const [picking, setPicking] = useState(false);
   const [undo, setUndo] = useState<EventMode | null>(null);
   const today = isoDate();
@@ -171,6 +173,7 @@ export function EventModeGroup({ event }: { event: Pick<EventRow, 'id' | 'name' 
     if (flipped === on) setFlipped(null);
   }, [on, flipped]);
 
+  if (readOnly) return null;
   return (
     <div data-testid="event-mode-group">
       <InsetGroup footer={mode ? modeFooter(mode.until) : undefined}>
@@ -263,8 +266,8 @@ export function EventModeHost() {
       void write(null);
       return;
     }
-    // Left, or no longer in it: a copy kept to read takes nothing new.
-    if (shared.data && pageLocks(shared.data).readOnly) {
+    // Done, left, or no longer in it: an event that takes nothing new takes no event mode either (fix round 1, M3).
+    if (shared.data && !takesEventMode(shared.data)) {
       void write(null);
       return;
     }

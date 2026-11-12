@@ -5,6 +5,7 @@ import { setSourceAccount, sourceFor } from '../src/capture/sources';
 import {
   confirmDraft,
   createAccount,
+  createDraft,
   defaultUntil,
   deleteEvent,
   editDraft,
@@ -164,6 +165,26 @@ describe('a capture while event mode is on', () => {
     expect((await listDrafts(database, ws)).find((d) => d.id !== draft!.id)!.eventId).toBeNull();
     await editDraft(database, ws, draft!.id, { categoryAccountId: groceries.id });
     const { transactionId } = await confirmDraft(database, ws, draft!.id);
+    expect((await listTransactions(database, ws, { id: transactionId }))[0]!.eventId).toBeNull();
+  });
+});
+
+describe('event mode fix round 1', () => {
+  it('a draft whose event was archived reads no event, and a form naming that event records it in none (M2)', async () => {
+    current = await setupDb();
+    const { database, ws } = current;
+    const bank = await createAccount(database, ws, { name: 'Everyday bank', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const groceries = (await listAccounts(database, ws)).find((account) => account.systemKey === 'household.groceries')!;
+    const eventId = await saveEvent(database, ws, { name: 'Lake trip', startsOn: '2026-11-12', endsOn: '2026-11-20', setId: null });
+    const id = await createDraft(database, ws, {
+      source: 'manual', occurredOn: '2026-11-14', description: 'Corner market', amountMinor: 38_000, currency: 'IDR',
+      accountId: bank.id, categoryAccountId: groceries.id, eventId,
+    });
+    expect((await listDrafts(database, ws))[0]!.eventId).toBe(eventId);
+    await deleteEvent(database, ws, eventId);
+    expect((await listDrafts(database, ws))[0]!.eventId).toBeNull();
+    // The form still holding the event it opened with: the archived event is no answer.
+    const { transactionId } = await confirmDraft(database, ws, id, { extras: { eventId } });
     expect((await listTransactions(database, ws, { id: transactionId }))[0]!.eventId).toBeNull();
   });
 });

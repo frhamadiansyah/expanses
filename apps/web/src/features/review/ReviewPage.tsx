@@ -18,7 +18,7 @@ import {
   voidTransaction,
 } from '@expanses/db';
 import { useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Check, Camera, Images, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -42,12 +42,13 @@ import { CaptureViewer } from './CaptureViewer';
 import { DraftDays } from './DraftDays';
 import { DraftSheet } from './DraftSheet';
 import { keepsPicture } from './keep-picture';
-import { corrections, draftPatch, foreignPair, quickCharge } from './draft-form';
+import { corrections, draftPatch, foreignPair, quickCharge, recordsOnForm } from './draft-form';
 import { chargedFigure, type FormDraft } from '../transactions/tx-form';
 import { useCaptureSources, useDraftCategoryGuesses, useDrafts } from './queries';
 import { SkippedList } from './SkippedList';
 import { useSharedEventSummaries } from '../events/shared-queries';
-import { keptText } from '../transactions/shared-move';
+import { moveAfterSave, postTag, recordedIntoText } from '../transactions/shared-move';
+import { useOpenBook } from '../workspaces/queries';
 import type { SwipeAction, SwipeHint } from '../../ui/SwipeRow';
 
 /** What a draft's account was charged, in the account's own currency, for a figure read in another one. */
@@ -78,6 +79,7 @@ export function ReviewPage() {
   const accounts = useAccounts().data ?? [];
   const sources = useCaptureSources().data ?? [];
   const sharedSummaries = useSharedEventSummaries().data ?? {};
+  const openBook = useOpenBook();
   const scan = useScanReceipt();
   const navigate = useNavigate();
   // A section from the More sheet; a step down from Cashflow when Cashflow opened it.
@@ -100,7 +102,9 @@ export function ReviewPage() {
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState<string | null>(null);
   /** The draft the phone's sheet is open on, by id — the row that was tapped. */
-  const [editing, setEditing] = useState<string | null>(null);
+  // A draft the table sent here to be recorded on its form (a shared event's, fix round 1) opens at once.
+  const { draft: openedDraft } = useSearch({ from: '/review' });
+  const [editing, setEditing] = useState<string | null>(openedDraft ?? null);
   /** The full-screen picture, and the field it was opened at — null means "the picture as a whole". */
   const [viewing, setViewing] = useState<{ draft: DraftRow; focus: 'amount' | 'name' | 'date' | null } | null>(null);
   /** What the phone just did, and the way back — the bills list's own toast, for the same reason. */
@@ -178,7 +182,7 @@ export function ReviewPage() {
   async function record(draft: DraftRow, opts: { undoable?: boolean } = {}) {
     setError(null);
     // Captured in event mode for a shared event: recording moves it into the event, so it is done on the form, seen.
-    if (draft.eventId && sharedSummaries[draft.eventId]) {
+    if (recordsOnForm(draft, sharedSummaries)) {
       setEditing(draft.id);
       return;
     }
@@ -264,12 +268,15 @@ export function ReviewPage() {
       await learnFromCorrection(database, draft.id, field, value).catch(() => undefined);
     }
     await editDraft(database, ws, draft.id, patch);
+    // Into a shared event the draft is recorded with no tag, then moved (fix round 1, H2): a move refused or failed
+    // leaves an ordinary purchase in its workspace, seen, never one tagged to the event and not in it.
+    const tag = postTag(form.eventId, !!form.eventId && !!sharedSummaries[form.eventId]);
     const { transactionId, keptImage, notMoved } = await confirmDraft(database, ws, draft.id, {
       setAside: opts.setAside,
       keepPhoto: keepsPicture(draft),
       charged,
       extras: {
-        eventId: form.eventId || null,
+        eventId: tag.eventId,
         channel: form.channel || null,
         excludedFromReport: form.excluded,
         mcc: form.mcc.trim() || null,
@@ -281,13 +288,24 @@ export function ReviewPage() {
      * A shared event picked on the form — by hand, or already picked by event mode — moves the purchase into the event
      * now, as tagging a saved purchase into one does (shared events §6, D2). The form said so under its Event row.
      */
-    if (form.eventId && sharedSummaries[form.eventId]) {
-      const target = await sharedEventOf(database, ownerScope(ws), form.eventId);
-      const wanted = [target?.currency, patch.currency, accounts.find((a) => a.id === patch.accountId)?.currency].filter((c): c is string => !!c);
-      await resolveRates([...new Set(wanted)], patch.occurredOn).catch(() => undefined);
-      const { kept } = await moveIntoSharedEvent(database, ownerScope(ws), form.eventId, [transactionId]);
-      if (kept.length > 0) setError(new Error(keptText(kept)));
-      await invalidate();
+    if (tag.moveInto) {
+      const target = await sharedEventOf(database, ownerScope(ws), tag.moveInto).catch(() => null);
+      const notIn = await moveAfterSave(
+        async () => {
+          const wanted = [target?.currency, patch.currency, accounts.find((a) => a.id === patch.accountId)?.currency].filter((c): c is string => !!c);
+          await resolveRates([...new Set(wanted)], patch.occurredOn).catch(() => undefined);
+          return moveIntoSharedEvent(database, ownerScope(ws), tag.moveInto!, [transactionId]);
+        },
+        { bookName: openBook?.name ?? 'this workspace', eventName: target?.name ?? 'the event' },
+      );
+      await invalidate().catch(() => undefined);
+      if (notIn === null) {
+        // Moved: the event's record now, which an Undo here cannot take back — as Select → Add to event rules (M1).
+        setEditing(null);
+        showToast(recordedIntoText(patch.description, target?.name ?? 'the event'));
+        return;
+      }
+      setError(new Error(notIn));
     }
     resolved({ ...draft, description: patch.description }, 'recorded', transactionId);
     // A shared workspace's spending moved into its shared event, or saved there with why not (sync gaps fix round 1).
@@ -316,7 +334,7 @@ export function ReviewPage() {
     // A category is a question too: the row no longer prints it, but recording without one is refused all the same.
     const uncategorised = draft.kind !== 'transfer' && !effectiveCategory(draft, guesses);
     // Captured in event mode for a shared event: recording moves it into the event, so it is done on the form, seen.
-    const intoShared = !!draft.eventId && !!sharedSummaries[draft.eventId];
+    const intoShared = recordsOnForm(draft, sharedSummaries);
     if (uncategorised || intoShared || captureRowView(draft, sourceOf(draft)).needs.length > 0) void openToFinish(draft);
     else void record(draft, { undoable: true });
   }
