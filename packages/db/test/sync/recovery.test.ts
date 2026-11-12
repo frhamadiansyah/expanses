@@ -209,6 +209,8 @@ describe('a copy kept as its own rejoins the share made again (N3)', () => {
  * book as its own); then it shares again and invites Dewi, who stops sharing on the old relay book and rejoins.
  */
 async function recovery(opts: {
+  /** On the owner's phone after its backup was taken and before it is lost: what the restored phone never had. */
+  lost?: (fandri: Device, bookId: string) => Promise<void>;
   orphan?: (dewi: Device, bookId: string, ids: { fandri: string; dewi: string }) => Promise<void>;
   waiting?: (restored: Device, bookId: string, ids: { fandri: string; dewi: string }) => Promise<void>;
   own?: (restored: Device, bookId: string, ids: { fandri: string; dewi: string }) => Promise<void>;
@@ -221,7 +223,13 @@ async function recovery(opts: {
   await home.settle();
   const ids = { fandri: await spend(fandri, bookId, 'Fandri, before'), dewi: await spend(dewi, bookId, 'Dewi, before') };
   await home.settle();
-  const restored = await home.restore(fandri, await fandri.database.exportBytes());
+  const backup = await fandri.database.exportBytes();
+  if (opts.lost) {
+    await new Promise((resolve) => setTimeout(resolve, 3));
+    await opts.lost(fandri, bookId);
+    await home.settle();
+  }
+  const restored = await home.restore(fandri, backup);
   await restored.engine.checkRestore();
 
   await opts.orphan?.(dewi, bookId, ids);
@@ -253,6 +261,23 @@ const lineOf = async (d: Device, lineageId: string) => {
 const purchaseOf = async (d: Device, bookId: string, lineageId: string) => (await projectBook(d.database, bookId)).purchase![lineageId];
 
 describe('what changed while the share was down reaches both sides (N2)', () => {
+  const nameOf = async (d: Device, bookId: string, memberId: string) =>
+    (await d.database.db.values<[string]>(sql`SELECT name FROM book_members WHERE book_id = ${bookId} AND member_id = ${memberId}`))[0]?.[0];
+
+  it('the owner’s self-rename the restored phone never had: the member’s rejoin carries it, and both phones end with it (D-D2)', async () => {
+    const { restored, dewi, bookId } = await recovery({ lost: (fandri, bookId) => fandri.engine.renameSelf(bookId, 'Fandri Baru') });
+    const owner = await restored.database.db.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${bookId}`);
+    const fandriId = owner[0]![0];
+    expect(await nameOf(dewi, bookId, fandriId)).toBe(await nameOf(restored, bookId, fandriId));
+    expect(await nameOf(restored, bookId, fandriId)).toBe('Fandri Baru');
+  });
+
+  it('the member’s self-rename made on the orphaned relay book reaches the restored owner (D-D2)', async () => {
+    const { restored, dewi, bookId } = await recovery({ orphan: (dewi, bookId) => dewi.engine.renameSelf(bookId, 'Dewi Baru') });
+    expect(await nameOf(restored, bookId, dewi.memberId)).toBe('Dewi Baru');
+    expect(await nameOf(dewi, bookId, dewi.memberId)).toBe('Dewi Baru');
+  });
+
   it('a member’s edit of a field of an existing row, made on the orphaned relay book', async () => {
     const { restored, bookId } = await recovery({
       orphan: async (dewi, bookId) => renameAccount(dewi.database, inBook(dewi.ws, bookId), await categoryOf(dewi.database, bookId, 'Groceries'), 'Groceries, renamed by Dewi'),

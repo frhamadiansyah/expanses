@@ -606,17 +606,17 @@ async function decideMember(tx: Db, ctx: DecideContext, op: Op): Promise<Op> {
   const remakes = view === null || (view.deleted && hlc > view.rowHlc && (owner || ownIntroduction) && !rename);
   let decided: Extract<Op, { op: 'upsert' }> = op;
   // D-D2: a member's name is that member's own, written from one of their devices. An owner relabelling someone else
-  // is refused (names are how people know who wrote what); only the book's first entry and a row being made (a new
-  // member, or one an owner makes again whole) carry another member's name. An op with more than the name keeps the rest.
-  // A rename alone (`renamesOnly`) is refused outright, so a forged one is a recorded skip.
-  if (!ctx.creator && !creates && !ownIntroduction && 'name' in op.fields) {
+  // is refused (names are how people know who wrote what): a fresh claim of another member's name — `name` among what
+  // the op names — is refused when it is all the op does (a recorded skip), else dropped from `changed` while the rest
+  // stands. Only the book's first entry and a row being made carry another member's name as a claim. A name merely
+  // carried at its own clock (`clocks.name`: a rejoin sending what the new log has not got, `emitNewerTx`) is no claim:
+  // it merges by last-writer-wins, capped at the change-set's clock as every carried field is, so the phones converge.
+  const claimed = op.changed ?? Object.keys(op.fields);
+  if (!ctx.creator && !creates && !ownIntroduction && claimed.includes('name')) {
     const authorMember = (await viewDevice(tx, bookId, ctx.author))?.memberId ?? null;
     if (authorMember !== op.id) {
       if (rename) throw new AuthorityError('only a member writes their own name');
-      // The rest stands; the name stays only as a row's fallback value (a revive reads the tombstone's first), never
-      // a claim that wins: out of `changed` and its clocks.
-      decided = { ...op, changed: (op.changed ?? Object.keys(op.fields)).filter((f) => f !== 'name') };
-      if (op.clocks) decided.clocks = Object.fromEntries(Object.entries(op.clocks).filter(([f]) => f !== 'name'));
+      decided = { ...op, changed: claimed.filter((f) => f !== 'name') };
     }
   }
   const named = decided.changed ?? Object.keys(decided.fields);

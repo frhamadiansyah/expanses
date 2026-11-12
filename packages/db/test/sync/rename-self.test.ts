@@ -168,6 +168,56 @@ describe('only self (D-D2)', () => {
   });
 });
 
+describe('a name carried at its own clock is no claim (fix round 1)', () => {
+  it("an owner's whole-row op naming only role, carrying another member's name at a clock, merges by last writer on every device, no skip", async () => {
+    const { home, fandri, dewi, bookId } = await household();
+    // A third phone, an owner's, sends it, so Fandri's and Dewi's phones both apply it (a phone takes its own entries as
+    // already true).
+    const budi = await home.device('Budi');
+    await home.join(budi, fandri);
+    await home.settle();
+    await fandri.engine.makeOwner(bookId, budi.memberId);
+    await home.settle();
+    await home.settle();
+    // The shape a rejoin (emitNewerTx), or an older build's whole-row edit, sends: role named, name carried at its clock.
+    const at = encodeHlc(Date.now() + 500, 0, budi.deviceId);
+    const carry: ChangeSet = {
+      v: 1,
+      hlc: encodeHlc(Date.now() + 1000, 0, budi.deviceId),
+      member: budi.memberId,
+      ops: [{ entity: 'member', id: dewi.memberId, op: 'upsert', fields: { name: 'Dewi Lama', role: 'member', joinedAt: '2026-09-01' }, changed: ['role'], clocks: { name: at, joinedAt: at } }],
+    };
+    await budi.transport.append(home.relayBookId, await budi.engine.sealer.seal(bookId, 1, carry));
+    await home.settle();
+    for (const d of [fandri, dewi]) {
+      expect(await nameOf(d, bookId, dewi.memberId)).toBe('Dewi Lama');
+      expect(await skips(d, bookId)).toEqual([]);
+    }
+    // Dewi's own later rename wins over the carried one, on both.
+    await dewi.engine.renameSelf(bookId, 'Dewi Baru');
+    await home.settle();
+    for (const d of [fandri, dewi]) expect(await nameOf(d, bookId, dewi.memberId)).toBe('Dewi Baru');
+  });
+
+  it('a carried name with no claim at all (changed empty) merges the same way, and an older clock loses', async () => {
+    const { home, fandri, dewi, bookId } = await household();
+    await dewi.engine.renameSelf(bookId, 'Dewi Baru');
+    await home.settle();
+    const carry: ChangeSet = {
+      v: 1,
+      hlc: encodeHlc(Date.now() + 1000, 0, fandri.deviceId),
+      member: fandri.memberId,
+      ops: [{ entity: 'member', id: dewi.memberId, op: 'upsert', fields: { name: 'Dewi' }, changed: [], clocks: { name: encodeHlc(1, 0, fandri.deviceId) } }],
+    };
+    await fandri.transport.append(home.relayBookId, await fandri.engine.sealer.seal(bookId, 1, carry));
+    await home.settle();
+    for (const d of [fandri, dewi]) {
+      expect(await nameOf(d, bookId, dewi.memberId)).toBe('Dewi Baru');
+      expect(await skips(d, bookId)).toEqual([]);
+    }
+  });
+});
+
 describe('a rename racing a removal (NO_REVIVE)', () => {
   it("a member's rename that crossed the owner's delete of her row stays dead on both devices", async () => {
     const { home, fandri, dewi, bookId } = await household();
