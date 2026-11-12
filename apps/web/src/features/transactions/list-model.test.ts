@@ -78,7 +78,7 @@ describe('buildRows', () => {
     expect(find(lend.id)).toMatchObject({ type: 'debt', baseMinor: 0 });
     // The two-account line reads the way the money went — what lost it first — whatever order the entries were
     // written in: a transfer posts [into, out of] and a buy posts [holding, cash].
-    expect(find(pay.id)).toMatchObject({ type: 'transfer', accountLabel: 'BCA Tahapan → CIMB Octo' });
+    expect(find(pay.id)).toMatchObject({ type: 'transfer', accountLabel: 'BCA Tahapan → 1467' });
     expect(find(lend.id)).toMatchObject({ accountLabel: 'BCA Tahapan → Dina' });
     const flows = buildRows(
       [
@@ -361,18 +361,23 @@ describe('paidWithLook', () => {
     expect(paidWithLook(one(tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['nusa', -40_000]])))).toEqual({ name: '', last4: '4417' });
   });
 
-  it('leaves out the digits when the purchase named neither of an account’s two cards, or was paid from a bank with a debit card', () => {
-    expect(paidWithLook(one(tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['octo', -40_000]])))).toEqual({ name: 'CIMB Octo', last4: null });
+  it('shows the primary card’s digits when the purchase named neither of an account’s two cards; a bank with a debit card keeps its name', () => {
+    expect(paidWithLook(one(tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['octo', -40_000]])))).toEqual({ name: '', last4: '1467' });
+    // No primary on record: the first card in use.
+    const noPrimary = cards.map((card) => ({ ...card, isPrimary: false }));
+    expect(buildRows([tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['octo', -40_000]])], [], accounts, noPrimary)[0]!.last4).toBe('1467');
+    // A card named wins over the primary.
+    expect(paidWithLook(one(tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['octo', -40_000]], { cardId: 'c2' })))).toEqual({ name: '', last4: '8802' });
     // A bank account is not its debit card: money out of it by transfer or QRIS was never the card's.
     expect(paidWithLook(one(tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['debit', -40_000]])))).toEqual({ name: 'Nusa Payroll', last4: null });
   });
 
   it('keeps the account name when the last four digits are not known', () => {
-    expect(paidWithLook(one(tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['octo', -40_000]])))).toEqual({ name: 'CIMB Octo', last4: null });
+    expect(paidWithLook(one(tx('2026-09-12', 'Kedai Mawar', [['groceries', 40_000], ['kantong', -40_000]])))).toEqual({ name: 'Kantong', last4: null });
   });
 
-  it('leaves money moving between two accounts named in full, the card’s digits after the account it belongs to', () => {
-    expect(paidWithLook(one(tx('2026-09-12', 'Pay the card', [['octo', 40_000], ['bca', -40_000]], { cardId: 'c1' })))).toEqual({ name: 'BCA Tahapan → CIMB Octo 1467', last4: null });
+  it('reads money moving between two accounts as the digits alone where they are known', () => {
+    expect(paidWithLook(one(tx('2026-09-12', 'Pay the card', [['octo', 40_000], ['bca', -40_000]], { cardId: 'c1' })))).toEqual({ name: 'BCA Tahapan → 1467', last4: null });
   });
 });
 
@@ -381,25 +386,34 @@ describe('digits on each side of money moving between accounts', () => {
   const digits = { bca: '0917', kantong: '5521' };
   const rows = (...txs: TransactionView[]) => buildRows(txs, [], accounts, cards, digits);
 
-  it('puts each side’s digits after its name: a bank’s number, a wallet’s phone, a card account’s only card', () => {
+  it('puts each side’s digits alone, with no name: a bank’s number, a wallet’s phone, a card account’s only card', () => {
     const [topUp] = rows(tx('2026-09-12', 'Top up', [['kantong', 40_000], ['bca', -40_000]]));
-    expect(topUp).toMatchObject({ accountLabel: 'BCA Tahapan 0917 → Kantong 5521', last4: null, sidesLast4: ['0917', '5521'] });
+    expect(topUp).toMatchObject({ accountLabel: '0917 → 5521', last4: null, sidesLast4: ['0917', '5521'] });
     const [byCard] = rows(tx('2026-09-12', 'Top up', [['kantong', 40_000], ['nusa', -40_000]]));
-    expect(byCard).toMatchObject({ accountLabel: 'Nusa Voyager Travel 4417 → Kantong 5521', sidesLast4: ['4417', '5521'] });
+    expect(byCard).toMatchObject({ accountLabel: '4417 → 5521', sidesLast4: ['4417', '5521'] });
   });
 
   it('leaves a side without digits as its name alone, and a bank is never its debit card', () => {
     const [row] = rows(tx('2026-09-12', 'Move', [['debit', 40_000], ['bca', -40_000]]));
-    expect(row).toMatchObject({ accountLabel: 'BCA Tahapan 0917 → Nusa Payroll', sidesLast4: ['0917'] });
-    expect(paidWithLook(row!)).toEqual({ name: 'BCA Tahapan 0917 → Nusa Payroll', last4: null });
+    expect(row).toMatchObject({ accountLabel: '0917 → Nusa Payroll', sidesLast4: ['0917'] });
+    expect(paidWithLook(row!)).toEqual({ name: '0917 → Nusa Payroll', last4: null });
   });
 
   it('gives a named card’s digits to the account it is on, and no other card’s to the other side', () => {
     // CIMB Octo carries two cards: naming one says which; Nusa's only card is still a card, so it is not borrowed.
     const [row] = rows(tx('2026-09-12', 'Balance transfer', [['octo', 40_000], ['nusa', -40_000]], { cardId: 'c2' }));
-    expect(row!.accountLabel).toBe('Nusa Voyager Travel → CIMB Octo 8802');
+    expect(row!.accountLabel).toBe('Nusa Voyager Travel → 8802');
     const [bank] = rows(tx('2026-09-12', 'Pay the card', [['octo', 40_000], ['bca', -40_000]], { cardId: 'c2' }));
-    expect(bank!.accountLabel).toBe('BCA Tahapan 0917 → CIMB Octo 8802');
+    expect(bank!.accountLabel).toBe('0917 → 8802');
+  });
+
+  it('keeps a side’s name when it has no digits at all, and reads a transfer with neither side known by both names', () => {
+    const [one] = rows(tx('2026-09-12', 'Move', [['debit', 40_000], ['kantong', -40_000]]));
+    expect(one!.accountLabel).toBe('5521 → Nusa Payroll');
+    const [none] = buildRows([tx('2026-09-12', 'Move', [['debit', 40_000], ['bca', -40_000]])], [], accounts, cards);
+    expect(none!.accountLabel).toBe('BCA Tahapan → Nusa Payroll');
+    expect(none!.accountLabel).toContain(' → ');
+    expect(none!.accountLabel).not.toMatch(/\d{4}/);
   });
 
   it('keeps a row paid from one account as before: its digits alone, none in the label', () => {
@@ -460,9 +474,9 @@ describe('a wallet’s phone digits on its rows', () => {
     expect(row).toMatchObject({ last4: '5521' });
   });
 
-  it('keeps both names on money moving into the wallet, the wallet’s digits after its own', () => {
+  it('reads money moving into the wallet by the wallet’s digits, the other side by its name', () => {
     const [row] = buildRows([topUp], [], accounts, cards, digits);
-    expect(paidWithLook(row!)).toEqual({ name: 'BCA Tahapan → Kantong 5521', last4: null });
+    expect(paidWithLook(row!)).toEqual({ name: 'BCA Tahapan → 5521', last4: null });
   });
 
   it('finds the wallet’s rows by its digits, as a card’s are found', () => {

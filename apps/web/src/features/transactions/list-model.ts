@@ -239,20 +239,21 @@ export function buildRows(
   // Archived cards included (`listCards`'s `withArchived`): a row that named a card since put away still reads its digits.
   const cardById = new Map(cards.map((card) => [card.id, card]));
   /*
-   * The digits a row names when it names no card: a credit card account's only card in use — Paid with offers that card
-   * as the account itself, so a purchase on it records no card — and a wallet's phone number or a bank account's own
-   * number. An account with two cards and no card named was paid "from the account", and a bank is not its debit card,
-   * so neither gets a card's. A row paid from one account and nothing else shows those digits alone (`last4`); money
-   * moving between two names both, each followed by its own ("Mandiri Signature 4821 → GoPay 5521"), a side without
-   * any left as its name. A row that names a card is that card's alone, even one this list does not know: never
-   * another card's digits — on a two-sided row the named card's go after the account it belongs to, and the other
-   * side keeps only a number that is nobody's card.
+   * The digits a row names when it names no card: a credit card account's primary card (the account holder's own; the
+   * first card in use when none is marked) — several cards share the account, and a plain purchase on it records none —
+   * and a wallet's phone number or a bank account's own number. A bank is not its debit card, so it gets no card's.
+   * A row paid from one account and nothing else shows those digits alone (`last4`); money moving between two shows
+   * each side's digits alone ("4821 → 5521"), a side without any left as its name. A row that names a card is that
+   * card's alone, even one this list does not know: never another card's digits — on a two-sided row the named card's
+   * go to the account it belongs to, and the other side keeps only a number that is nobody's card.
    */
   const cardsOf = new Map<string, CardRow[]>();
   for (const card of cards) if (!card.archived) cardsOf.set(card.accountId, [...(cardsOf.get(card.accountId) ?? []), card]);
   const soleCard = (accountId: string) => {
     const own = cardsOf.get(accountId) ?? [];
-    return byId.get(accountId)?.subtype === 'credit_card' && own.length === 1 ? own[0]!.last4 : null;
+    if (byId.get(accountId)?.subtype !== 'credit_card') return null;
+    // Several cards and none named: the account holder's own (primary), else the first in use. Only reading: nothing is recorded.
+    return (own.find((card) => card.isPrimary) ?? own[0])?.last4 ?? null;
   };
   // A bank's currency pocket reads the bank account's own number, kept on the account it belongs to.
   const parentOf = (accountId: string) => byId.get(byId.get(accountId)?.parentId ?? '');
@@ -306,7 +307,11 @@ export function buildRows(
     // paid from one account keeps its digits out of the label (`last4`), where the row shows them alone.
     const between = accountIds.length > 1;
     const idByName = new Map(money.map((e) => [e.accountName, e.accountId]));
-    const sides = c.moneyAccountNames.map((name) => ({ name: label(idByName.get(name), name), last4: between ? sideDigits(idByName.get(name) ?? '', tx.cardId) : null }));
+    const sides = c.moneyAccountNames.map((name) => ({
+      name: label(idByName.get(name), name),
+      pocket: !!idByName.get(name) && !!pocketCode(idByName.get(name)!),
+      last4: between ? sideDigits(idByName.get(name) ?? '', tx.cardId) : null,
+    }));
     const sidesLast4 = sides.flatMap((side) => (side.last4 ? [side.last4] : []));
     const type: RowType = tx.entries.some((e) => isPerson(e.accountId)) ? 'debt' : c.type;
     // Signed, so money back on a purchase (a refund credits its category) takes away from spending rather than adding to it.
@@ -329,7 +334,8 @@ export function buildRows(
       categoryName: categoryId ? (byId.get(categoryId)?.name ?? null) : null,
       parentName: parentNameOf(categoryId, byId),
       accountIds,
-      accountLabel: sides.map((side) => (side.last4 ? `${side.name} ${side.last4}` : side.name)).join(' → '),
+      // A side with digits reads them alone (a bank pocket keeps its currency first: "USD 0917"); one without keeps its name.
+      accountLabel: sides.map((side) => (side.last4 ? (side.pocket ? `${side.name} ${side.last4}` : side.last4) : side.name)).join(' → '),
       // The accounts' whole names, for search: a pocket's row reads "TRY" but is still found by "Cash".
       accountNames: c.moneyAccountNames,
       cardId: tx.cardId,
