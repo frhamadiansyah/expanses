@@ -1,5 +1,5 @@
 import type { AssetKind, PlanGroup } from '@expanses/core';
-import { renameAccount, setAssetGroup, setAssetReporting, setLotSize } from '@expanses/db';
+import { renameAccount, setAssetGroup, setAssetReporting, setLotSize, setMoneyAccountKind } from '@expanses/db';
 import { type KeyboardEvent, type ReactElement, type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
@@ -8,7 +8,7 @@ import { InsetGroup, PickerRow, SelectRow, SwitchRow, TextRow } from '../../ui/n
 import { CodeSheet, WhatItIsSheet } from './CodeSheets';
 import { PLAN_GROUP_LABELS } from './labels';
 import { choiceForCode, codeChoices } from '../ownables/catalogue-view';
-import { planGroupChoices, TAX_TREATMENT_LABELS } from './settings-model';
+import { descriptionPick, planGroupChoices, TAX_TREATMENT_LABELS } from './settings-model';
 
 type Treatment = 'final' | 'not_object' | 'ordinary';
 
@@ -80,8 +80,6 @@ export function AssetSettings({
   const [lots, setLots] = useState(lotSize === null ? '' : String(lotSize));
   const [sheet, setSheet] = useState<'what' | 'code' | null>(null);
   const [errors, setErrors] = useState<Record<string, unknown>>({});
-  // Which of two items sharing a code was tapped — a saving account, not the current account also filed as 0102.
-  const [picked, setPicked] = useState<string | null>(null);
   const code = currentCode ?? '';
 
   async function save(row: string, write: () => Promise<void>) {
@@ -107,14 +105,20 @@ export function AssetSettings({
       await setLotSize(database, ws, accountId, size);
     });
   };
+  // A current and a saving account share 0102, so picking the other one changes the account's kind, not its code.
   const saveCode = (next: string, value?: string) => {
     setSheet(null);
-    setPicked(value ?? null);
-    if (next === code) return;
-    void save('code', () => setAssetReporting(database, ws, accountId, { coretaxCode: next === '' ? null : next }));
+    const pick = descriptionPick({ code, subtype }, next, value);
+    if (pick.coretaxCode === undefined && pick.kind === undefined) return;
+    // Picked from the list, a refusal is written under Description; typed, under Tax code.
+    void save(value === undefined ? 'code' : 'description', async () => {
+      if (pick.kind) await setMoneyAccountKind(database, ws, accountId, pick.kind);
+      if (pick.coretaxCode !== undefined) await setAssetReporting(database, ws, accountId, { coretaxCode: pick.coretaxCode });
+    });
   };
 
-  const chosen = choiceForCode(codeChoices('asset', code), code, picked ?? subtype);
+  // What the account is, as stored: the subtype tells the two items sharing a code apart.
+  const chosen = choiceForCode(codeChoices('asset', code), code, subtype);
   const groups = planGroupChoices(assetKind, subtype, current);
   const leave = (e: KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && e.currentTarget.blur();
 
@@ -140,7 +144,7 @@ export function AssetSettings({
         </SelectRow>
   );
   const descriptionRow = (
-    <PickerRow key="description" label="Description" value={chosen?.label ?? (code === '' ? 'Not chosen' : 'A code of its own')} onOpen={() => setSheet('what')} disabled={!reportable} />
+    <PickerRow key="description" label="Description" value={chosen?.label ?? (code === '' ? 'Not chosen' : 'A code of its own')} onOpen={() => setSheet('what')} disabled={!reportable} hint={errorHint(errors.description)} />
   );
   // The report's own rows, opening one Tax report box with the questions the report asks of this asset under them.
   const taxRows = [
@@ -216,7 +220,7 @@ export function AssetSettings({
         <InsetGroup header="Tax report">{[...taxRows, incomeTax]}</InsetGroup>
       )}
 
-      {sheet === 'what' && <WhatItIsSheet code={code} itemId={picked ?? subtype} onPick={saveCode} onTypeInstead={() => setSheet('code')} onClose={() => setSheet(null)} />}
+      {sheet === 'what' && <WhatItIsSheet code={code} itemId={subtype} onPick={saveCode} onTypeInstead={() => setSheet('code')} onClose={() => setSheet(null)} />}
       {sheet === 'code' && <CodeSheet code={code} onSave={saveCode} onClose={() => setSheet(null)} />}
     </>
   );

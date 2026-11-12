@@ -187,10 +187,11 @@ test('a code can be changed afterwards, in the words the form uses', async ({ pa
   await openDrawers(page);
   await page.getByRole('link', { name: /^RDN Mandiri Sekuritas/ }).click();
   await openSettings(page);
-  // Saved as it is tapped, in the words it was chosen with.
+  // Saved as it is tapped. A broker's cash filed under 0102 stays a broker's cash: only its code changes, and the
+  // code alone reads as the first of the two items sharing it.
   await page.getByRole('button', { name: /^Description/ }).click();
-  await page.getByRole('button', { name: 'Saving account', exact: true }).click();
-  await expect(page.getByRole('button', { name: /^Description/ })).toContainText('Saving account');
+  await page.getByRole('button', { name: 'Current account', exact: true }).click();
+  await expect(page.getByRole('button', { name: /^Description/ })).toContainText('Current account');
 
   // 0102 is a current *or* a saving account, and the code itself is what changed. A code is read on the report,
   // so that is where the change is checked — the same fact the Accounts list used to carry in a second line.
@@ -221,4 +222,31 @@ test('a thing sharing its code with another reads back as itself', async ({ page
   // Typing a code the list does not name is the way out, and choosing it puts the cursor in the box.
   await page.getByRole('button', { name: 'Type a code instead' }).click();
   await expect(page.getByRole('textbox', { name: 'Code', exact: true })).toBeFocused();
+});
+
+test('a saving account picked as a current account becomes one, and stays one when its settings open again', async ({ page }) => {
+  await page.goto('/accounts/new');
+  await page.getByRole('button', { name: 'Saving account' }).click();
+  await page.getByLabel('Name', { exact: true }).fill('Simpanan Harian');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(walletCard(page, 'Simpanan Harian')).toBeVisible();
+
+  await page.goto('/net-worth/assets');
+  await openDrawers(page);
+  await page.getByRole('link', { name: /^Simpanan Harian/ }).click();
+  await openSettings(page);
+  await expect(page.getByRole('button', { name: /^Description/ })).toContainText('Saving account');
+  // Both are 0102: what changes is the kind of account it is.
+  await page.getByRole('button', { name: /^Description/ }).click();
+  await page.getByRole('button', { name: 'Current account', exact: true }).click();
+  await expect(page.getByRole('button', { name: /^Description/ })).toContainText('Current account');
+
+  await page.reload();
+  await expect(page.getByRole('button', { name: /^Description/ })).toContainText('Current account');
+  await page.getByRole('button', { name: /^Description/ }).click();
+  await expect(page.getByRole('button', { name: 'Current account', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Saving account', exact: true }).click();
+  await expect(page.getByRole('button', { name: /^Description/ })).toContainText('Saving account');
+  await page.reload();
+  await expect(page.getByRole('button', { name: /^Description/ })).toContainText('Saving account');
 });
