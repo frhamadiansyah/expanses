@@ -109,6 +109,7 @@ import cardTermsDaysOptional from '../migrations/0108_card_terms_days_optional.s
 import sharedGoals from '../migrations/0109_shared_goals.sql?raw';
 import ringColours from '../migrations/0110_ring_colours.sql?raw';
 import goalDues from '../migrations/0111_goal_dues.sql?raw';
+import feeWaiverYear from '../migrations/0113_fee_waiver_year.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -228,6 +229,8 @@ export const MIGRATIONS: Migration[] = [
   { version: 109, name: 'shared_goals', sql: sharedGoals },
   { version: 110, name: 'ring_colours', sql: ringColours },
   { version: 111, name: 'goal_dues', sql: goalDues },
+  // 112 is taken by event mode on another branch.
+  { version: 113, name: 'fee_waiver_year', sql: feeWaiverYear },
 ];
 
 /** The highest version this build of the app knows how to produce. */

@@ -15,6 +15,8 @@ import { ActionButtons, PageDots, InsetGroup, InsetRow, type InsetRowProps, Sele
 import { backRadius } from '../accounts/balance-back';
 import { BackSlot } from './CardBack';
 import { useSpendBonuses } from './spend-bonuses';
+import { useFeeWaivedStatus, waivedLine } from './FeeWaivedSheet';
+import { challengeCoversFee } from './fee-line';
 import { categoryMark } from '../categories/CategoryIcon';
 import { CardFace } from './CardFace';
 import { cycleBack, dueDateAfter, dueIn } from './statement-dates';
@@ -276,6 +278,8 @@ export function CardHero({
   const unitLabel = unit === 'miles' ? 'Miles' : unit === 'cashback' ? 'Cashback' : 'Points';
   // The spend bonuses (cycle bonuses and the fee waiver), nearest to their goal first: the back shows the first.
   const bonuses = useSpendBonuses(cp, accounts, today);
+  // A fee challenge met and its fee waived says so on the back, with what came back.
+  const feeStatus = useFeeWaivedStatus(card.id, today);
   /** What one purchase earned, by this cycle's or the last one's rules; nothing when the card earns nothing. */
   const pointsOf = (transactionId: string): number | null =>
     cp.program ? (cp.current?.earn.pointsByTransaction[transactionId] ?? cp.previous?.earn.pointsByTransaction[transactionId] ?? null) : null;
@@ -435,6 +439,7 @@ export function CardHero({
           items={bonuses.items}
           unit={unit}
           currency={currency}
+          challengeNote={feeStatus.data?.waived && challengeCoversFee(feeStatus.data.challengeYear, feeStatus.data.year) ? waivedLine(feeStatus.data, currency) : null}
           points={cp.program ? { total: pointsBalance?.total ?? 0, posted: pointsBalance?.posted ?? 0, estimated: pointsBalance?.estimated ?? 0 } : null}
         />
       </div>

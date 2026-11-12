@@ -1,19 +1,19 @@
 import { type FeeWaiver, formatMinor, matchesSpend, parseMajor, minorToMajorString, type SpendBonusItem, type SpendLine, timeLeftText } from '@expanses/core';
-import { clearFeeWaiver, refundFeeChallenge, saveFeeWaiver, undoFeeRefund } from '@expanses/db';
+import { clearFeeWaiver, saveFeeWaiver } from '@expanses/db';
 import { getRouteApi, Link } from '@tanstack/react-router';
 import { Check, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
-import { Sheet } from '../../app/Sheet';
-import { moneyHolders, useInvalidateAll } from '../../lib/queries';
+import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { UndoToast } from '../../ui/UndoToast';
-import { InsetGroup, InsetRow, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, ReadOnlyRow, TextRow } from '../../ui/native';
 import { CardScreen, type CardPage, useCardPage } from './card-page';
 import { rewardText } from './CardBack';
 import { activeDuring } from './catalog-panel';
 import { Line, Meter, SUBTITLE, TextLine } from './rows';
 import { CountsRow } from './CountsRow';
+import { FeeWaivedFlow, useFeeWaivedStatus, waivedLine } from './FeeWaivedSheet';
+import { challengeCoversFee } from './fee-line';
 import { useSpendBonuses } from './spend-bonuses';
 import { expenseAncestors, formatPoints, shortDate } from './useCardPoints';
 
@@ -29,86 +29,37 @@ function windowText(item: SpendBonusItem, currency: string): string {
   return `Annual fee · ${item.endsOn ? shortDate(item.endsOn) : '-'}`;
 }
 
-/** The sheet a reached challenge opens with Fee refunded: what came back, when, and into which account. */
-export function FeeRefundedSheet({ page, amountMinor, onClose, onDone }: { page: CardPage; amountMinor: number; onClose: () => void; onDone: (transactionId: string) => void }) {
-  const { database, ws } = useApp();
-  const invalidate = useInvalidateAll();
-  const { card, currency, today, all } = page;
-  const into = moneyHolders(all).filter((a) => a.currency === currency);
-  const [amount, setAmount] = useState(minorToMajorString(amountMinor, currency));
-  const [receivedOn, setReceivedOn] = useState(today);
-  const [intoId, setIntoId] = useState(card.id);
-  const [error, setError] = useState<unknown>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function save() {
-    setError(null);
-    setBusy(true);
-    try {
-      const { transactionId } = await refundFeeChallenge(database, ws, { cardId: card.id, amountMinor: parseMajor(amount, currency), receivedOn, intoAccountId: intoId, today });
-      await invalidate();
-      onDone(transactionId);
-    } catch (e) {
-      setError(e);
-      setBusy(false);
-    }
-  }
-  return (
-    <Sheet grouped title="Fee refunded" onClose={onClose} confirm={{ label: 'Record refund', disabled: busy, run: () => void save() }}>
-      <InsetGroup header="Record the refund" footer="Amount and account are filled in from the challenge; change them if the bank refunded a different figure or into another account.">
-        <TextRow label={`Amount (${currency})`} value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" />
-        <TextRow label="Received on" type="date" value={receivedOn} onChange={(e) => setReceivedOn(e.target.value)} />
-        <SelectRow label="Into" value={intoId} onChange={(e) => setIntoId(e.target.value)}>
-          <option value={card.id}>{card.name}</option>
-          {into
-            .filter((a) => a.id !== card.id)
-            .map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-        </SelectRow>
-      </InsetGroup>
-      <ErrorBox error={error} />
-    </Sheet>
-  );
-}
-
-/** The Fee refunded button for a reached challenge, the sheet it opens, and the Undo that follows. */
-function FeeRefundedButton({ page, item }: { page: CardPage; item: SpendBonusItem | undefined }) {
-  const { database, ws } = useApp();
-  const invalidate = useInvalidateAll();
+/**
+ * Fee waived for a fee challenge (was Fee refunded): reached and not yet waived, the button opens the one Fee waived
+ * sheet Settings opens; once waived, the challenge says so, with what came back.
+ */
+function FeeWaivedButton({ page, item }: { page: CardPage; item: SpendBonusItem | undefined }) {
+  const { card, cp, currency, today } = page;
+  const status = useFeeWaivedStatus(card.id, today);
   const [open, setOpen] = useState(false);
-  const [undo, setUndo] = useState<string | null>(null);
+  // Only a challenge kept for the fee year a waiver covers now offers it or says it was waived; any other reads as before.
+  // A card with no fee date offers it on any reached challenge: the sheet asks for the date first.
+  const covers = Boolean(status.data && (!status.data.dated || challengeCoversFee(status.data.challengeYear, status.data.year)));
+  if (!item || item.kind !== 'challenge' || (!covers && !open)) return null;
+  const waived = status.data?.waived ? waivedLine(status.data, currency) : null;
   return (
     <>
-      {item && item.kind === 'challenge' && item.reached && (
+      {waived ? (
         <InsetGroup>
-          <InsetRow action title="Fee refunded" testId="fee-refunded" onClick={() => setOpen(true)} />
+          <TextLine>
+            <span data-testid="fee-waived-status" className="font-medium text-[var(--ph-up)]">
+              {waived}
+            </span>
+          </TextLine>
         </InsetGroup>
+      ) : (
+        item.reached && (
+          <InsetGroup>
+            <InsetRow action title="Fee waived" testId="fee-waived" onClick={() => setOpen(true)} />
+          </InsetGroup>
+        )
       )}
-      {open && item && (
-        <FeeRefundedSheet
-          page={page}
-          amountMinor={item.rewardMinor ?? 0}
-          onClose={() => setOpen(false)}
-          onDone={(id) => {
-            setOpen(false);
-            setUndo(id);
-          }}
-        />
-      )}
-      {undo && (
-        <UndoToast
-          text="Fee refund recorded"
-          icon="refund"
-          onDone={() => setUndo(null)}
-          onUndo={() => {
-            void undoFeeRefund(database, ws, undo).then(invalidate);
-            setUndo(null);
-          }}
-        />
-      )}
+      {open && <FeeWaivedFlow fee={{ cardId: card.id, currency, annualFeeMinor: cp.terms?.annualFeeMinor ?? item.rewardMinor, annualFeeOn: cp.terms?.annualFeeOn ?? null }} today={today} onClose={() => setOpen(false)} />}
     </>
   );
 }
@@ -142,7 +93,7 @@ function BonusList({ page }: { page: CardPage }) {
           </Line>
         ))}
       </InsetGroup>
-      <FeeRefundedButton page={page} item={challenge} />
+      <FeeWaivedButton page={page} item={challenge} />
       {/* With a bonus on the card's back, the points are not: this is where they are one tap away. */}
       {cp.program && (
         <InsetGroup>
@@ -197,8 +148,6 @@ function BonusDetail({ page, bonusId }: { page: CardPage; bonusId: string }) {
         <InsetGroup>
           <TextLine tone="ink-3">This spend bonus is no longer on the card.</TextLine>
         </InsetGroup>
-        {/* The refund's Undo outlives the challenge it cleared. */}
-        <FeeRefundedButton page={page} item={undefined} />
       </>
     );
   }
@@ -233,7 +182,7 @@ function BonusDetail({ page, bonusId }: { page: CardPage; bonusId: string }) {
           </div>
         </Line>
       </InsetGroup>
-      <FeeRefundedButton page={page} item={item} />
+      <FeeWaivedButton page={page} item={item} />
       <InsetGroup header="Terms">
         <ReadOnlyRow label="Reward" value={rewardText(item, unit, currency)} />
         {item.kind === 'bonus' && bonus && <ReadOnlyRow label="Counts" value={names(bonus.match.categoryIds ?? [])} />}

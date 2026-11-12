@@ -40,27 +40,24 @@ test('a card’s annual fee date is saved in Settings, shown as the next charge,
   await expect(fee).toContainText('Annual fee');
   await expect(fee).toContainText('Fee Card');
   await expect(fee).toContainText(words(next));
-  // A tap asks whether it was waived. Not now and Charged as normal only close the question.
+  // A tap opens Fee waived, the one sheet Settings and a challenge open too. ✕ and Charged as normal only close it.
   await fee.click();
-  const alert = page.getByRole('alertdialog');
-  await expect(alert).toContainText('Annual fee');
-  await expect(alert.getByRole('button', { name: 'Waived' })).toBeVisible();
-  await alert.getByRole('button', { name: 'Not now' }).click();
-  await expect(alert).toHaveCount(0);
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
+  const sheet = page.getByRole('dialog', { name: /^Fee waived · \d{4}$/ });
+  await expect(sheet.getByTestId('fee-charged-as-normal')).toBeVisible();
+  await sheet.getByRole('button', { name: 'Close' }).click();
+  await expect(sheet).toHaveCount(0);
   await fee.click();
-  await alert.getByRole('button', { name: 'Charged as normal' }).click();
-  await expect(alert).toHaveCount(0);
+  await sheet.getByTestId('fee-charged-as-normal').click();
+  await expect(sheet).toHaveCount(0);
   await expect(fee).toHaveCount(1);
 
-  // Waived (the fee was never recorded in the app, so only the mark is set): it leaves Recurring, and the card page
-  // reads next year's charge.
+  // Waived before it is charged (the fee is still ahead): Back on the card starts off, so only the year is marked; the
+  // fee leaves Recurring, and the card page reads next year's charge.
   await fee.click();
-  await alert.getByRole('button', { name: 'Waived' }).click();
-  // Waived opens the sheet: the covered year, the charge, and the day it was reversed (today unless changed).
-  const sheet = page.getByRole('dialog');
-  await expect(sheet).toContainText('Annual fee 20');
-  await expect(sheet.getByLabel('Reversed on')).toBeVisible();
-  await sheet.getByRole('button', { name: 'Waived' }).click();
+  await expect(sheet.getByLabel('Back on the card')).not.toBeChecked();
+  await expect(sheet.getByTestId('fee-waived-footer')).toHaveText('Off: the fee was never charged, so nothing is recorded. The year is marked waived.');
+  await sheet.getByRole('button', { name: 'Save' }).click();
   await expect(sheet).toHaveCount(0);
   await expect(page.getByTestId('annual-fee-row')).toHaveCount(0);
   await page.waitForTimeout(800);
@@ -69,7 +66,7 @@ test('a card’s annual fee date is saved in Settings, shown as the next charge,
   const next2 = new Date(next);
   next2.setFullYear(next.getFullYear() + 1);
   await cardPage(page, 'Settings');
-  await expect(page.getByTestId('card-annual-fee')).toContainText('Waived');
+  await expect(page.getByTestId('year-fee')).toHaveText('Waived');
 
   // Clearing the row clears the date; the fee leaves Recurring.
   await page.getByLabel('Charged on').fill('');

@@ -132,7 +132,7 @@ export function RepeatingList({ bills, needs }: { bills: readonly MonthlyBill[];
 
 /**
  * Each credit card's annual fee, drawn as the Monthly page's fee row is. Information only: nothing here is added to the
- * hero's need, because a fee is often waived. A tap asks whether it was.
+ * hero's need, because a fee is often waived. A tap opens Fee waived.
  */
 export function AnnualFees({ fees, onOpen }: { fees: readonly AnnualFee[]; onOpen: (fee: AnnualFee) => void }) {
   if (fees.length === 0) return null;

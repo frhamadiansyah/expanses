@@ -1169,6 +1169,10 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   // The date the bank posted it, and the payment made for it (or the purchases a payment was for), are
   // facts about the same money: they follow the correction.
   await tx.update(cardPostings).set({ transactionId: replacement }).where(and(eq(cardPostings.transactionId, id), eq(cardPostings.workspaceId, ws.workspaceId)));
+  // A waived annual fee's refund stays the year's refund once edited, so Undo still finds it and the year still reads waived.
+  if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'card_fee_refunds'`)).length > 0) {
+    await tx.run(sql`UPDATE card_fee_refunds SET transaction_id = ${replacement} WHERE transaction_id = ${id} AND workspace_id = ${ws.workspaceId}`);
+  }
   await tx.update(cardSettlements).set({ purchaseTransactionId: replacement }).where(and(eq(cardSettlements.purchaseTransactionId, id), eq(cardSettlements.workspaceId, ws.workspaceId)));
   await tx.update(cardSettlements).set({ paymentTransactionId: replacement }).where(and(eq(cardSettlements.paymentTransactionId, id), eq(cardSettlements.workspaceId, ws.workspaceId)));
   // Points already checked against the bank follow the edited purchase, flagged so the user can check the edit.

@@ -103,50 +103,69 @@ export async function waiverFlow(page: Page, name: string) {
   await expect(bonus).toContainText('3 days left');
 }
 
-/** Fee refunded, option A: reached, then the sheet records a receipt in the fee category and Undo takes it back. */
+/**
+ * Fee waived from the met challenge (was Fee refunded; option A, 2026-11-12): the fee charge recorded on the card is
+ * found and refunded in its category; Undo takes it back; the challenge then says it was waived, with what came back,
+ * and Settings' This year's fee reads Waived.
+ */
 export async function refundFlow(page: Page, name: string) {
   await buy(page, name, '1200000');
+  // The annual fee, as a statement names it, on the day it was charged (this year's, 15 days ago).
+  const charged = days(-15);
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'BIAYA KARTU TAHUNAN', paidWith: name, category: 'Fees & charges', amount: '800000', date: iso(charged) });
   await openWalletCard(page, name);
   await showCardBack(page);
   const bonus = page.getByTestId('back-bonus');
   await expect(bonus).toContainText('Fee waiver challenge');
   await expect(bonus).toContainText('Rp 1.500.000 reached');
   await expect(bonus.getByTestId('bonus-ring')).toHaveAccessibleName('Reached');
-  const owedBefore = (await page.getByTestId('tile-unpaid-balance').textContent())!;
-  expect(owedBefore).toContain('1.612.000');
+  await expect(page.getByTestId('tile-unpaid-balance')).toContainText('2.412.000');
 
   await bonus.click();
   await expect(page.getByRole('heading', { name: 'Spend bonuses · nearest first' })).toBeVisible();
-  await page.getByTestId('fee-refunded').click();
-  const sheet = page.getByRole('dialog', { name: 'Fee refunded' });
-  await expect(sheet.getByLabel('Amount (IDR)')).toHaveValue('800000');
-  await expect(sheet.getByLabel('Into')).toHaveValue(/.+/);
-  await expect(sheet.getByRole('button', { name: 'Clear only' })).toHaveCount(0);
-  await sheet.getByRole('button', { name: 'Record refund' }).click();
+  await expect(page.getByTestId('fee-refunded')).toHaveCount(0);
+  await page.getByTestId('fee-waived').click();
+  const sheet = page.getByRole('dialog', { name: /^Fee waived · \d{4}$/ });
+  await expect(sheet.getByLabel('Back on the card')).toBeChecked();
+  const charge = sheet.getByTestId('fee-charge');
+  await expect(charge).toContainText('BIAYA KARTU TAHUNAN');
+  await expect(charge).toContainText('800.000');
+  await expect(sheet.getByLabel('Amount')).toHaveCount(0);
+  await expect(sheet.getByTestId('fee-waived-footer')).toHaveText('The refund cancels that charge in Fees & charges. Tap Fee charge to pick another charge.');
+  // Fee charge lists the card's charges near the date; the fee is the one ticked.
+  await charge.click();
+  const picker = page.getByRole('dialog', { name: 'Fee charge' });
+  await expect(picker.getByRole('button', { name: /^Noodle House/ })).toHaveCount(2);
+  await expect(picker.getByRole('button', { name: /^Not in the app/ })).toBeVisible();
+  await picker.getByRole('button', { name: /^BIAYA KARTU TAHUNAN/ }).click();
+  await sheet.getByRole('button', { name: 'Save' }).click();
   await expect(sheet).toHaveCount(0);
-  // The challenge is cleared, and Undo is offered.
-  await expect(page.getByText('No spend bonuses')).toBeVisible();
-  await expect(page.getByRole('status').filter({ hasText: 'Fee refund recorded' })).toBeVisible();
+  const year = charged.getFullYear();
+  await expect(page.getByRole('status').filter({ hasText: `Fee waived for ${year}` })).toBeVisible();
+  await expect(page.getByTestId('fee-waived-status')).toBeVisible();
   await page.getByRole('button', { name: 'Undo' }).click();
-  await expect(page.getByTestId('bonus-row-challenge')).toBeVisible();
+  await expect(page.getByTestId('fee-waived')).toBeVisible();
+  await expect(page.getByTestId('fee-waived-status')).toHaveCount(0);
 
-  // Again, this time kept: the refund took Rp 800.000 off what the card owes, as a receipt in the fee category.
-  await page.getByTestId('fee-refunded').click();
-  await page.getByRole('dialog', { name: 'Fee refunded' }).getByRole('button', { name: 'Record refund' }).click();
-  await expect(page.getByText('No spend bonuses')).toBeVisible();
+  // Again, this time kept: the refund cancels the Rp 800.000 charge; the challenge stays, saying so.
+  await page.getByTestId('fee-waived').click();
+  await page.getByRole('dialog', { name: /^Fee waived · \d{4}$/ }).getByRole('button', { name: 'Save' }).click();
+  const today = new Date();
+  await expect(page.getByTestId('fee-waived-status')).toHaveText(`✓ Fee waived · Rp 800.000 back on ${today.getDate()} ${MONTHS[today.getMonth()]}`);
+  await page.waitForTimeout(800);
   await openWalletCard(page, name);
   await showCardBack(page);
-  await expect(page.getByTestId('tile-unpaid-balance')).toContainText('812.000');
-  await expect(page.getByTestId('back-bonus')).toHaveCount(0);
+  await expect(page.getByTestId('tile-unpaid-balance')).toContainText('1.612.000');
+  await expect(page.getByTestId('back-bonus')).toContainText('✓ Fee waived · Rp 800.000');
 
   await page.goto('/transactions');
-  await expect(page.getByText('Annual fee refund')).toBeVisible();
+  await expect(page.getByText('Annual fee waived')).toBeVisible();
 
-  // This year's fee reads Refunded; the Fee waiver row is empty again.
+  // This year's fee reads Waived, whichever place it was done from.
   await openWalletCard(page, name);
   await cardPage(page, 'Settings');
-  await expect(page.getByTestId('year-fee')).toContainText('Refunded');
-  await expect(page.getByTestId('fee-waiver-row')).toContainText('None');
+  await expect(page.getByTestId('year-fee')).toHaveText('Waived');
 }
 
 /** A credit card with a primary and a supplementary plastic: each one's face says what that card spent this statement. */
