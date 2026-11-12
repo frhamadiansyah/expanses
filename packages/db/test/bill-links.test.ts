@@ -12,6 +12,7 @@ import {
   postTransaction,
   RecurringError,
   recordBillPayments,
+  relinkPurchaseToBill,
   replaceTransaction,
   saveExpenseTemplate,
   skipBill,
@@ -149,6 +150,53 @@ it('refuses a month already paid by a payment, a skipped month, a month ahead, a
   const gone = await h.buy('2026-04-02', 395_000);
   await voidTransaction(h.database, h.ws, gone);
   expect(await h.code(linkPurchaseToBill(h.database, h.ws, { templateId: h.bill, billMonth: '2026-04', transactionId: gone, today: TODAY }))).toBe('NOT_A_PURCHASE');
+});
+
+it('moves a linked purchase to another month or another bill in one step, and the month it left is owed again', async () => {
+  const h = await setup();
+  // Invented: a second bill in another category, and one purchase linked to March of the first.
+  const water = await saveExpenseTemplate(h.database, h.ws, {
+    name: 'PDAM water', categoryAccountId: h.category('utilities.water_sanitation'), moneyAccountId: h.bca.id, amountMinor: 118_000, dayOfMonth: 5, startsMonth: '2026-10',
+  });
+  const march = await h.buy('2026-03-09', 392_000);
+  await linkPurchaseToBill(h.database, h.ws, { templateId: h.bill, billMonth: '2026-03', transactionId: march, today: TODAY });
+
+  // Another month of the same bill: March is owed again, April is paid by it.
+  await relinkPurchaseToBill(h.database, h.ws, { templateId: h.bill, billMonth: '2026-04', transactionId: march, today: TODAY });
+  expect(await billOfPurchase(h.database, h.ws, march)).toMatchObject({ templateId: h.bill, billMonth: '2026-04', linked: true });
+  const history = (await billDetail(h.database, h.ws, h.bill, TODAY)).history;
+  expect(history.find((m) => m.month === '2026-04')).toMatchObject({ state: 'paid', paymentId: march });
+  expect(history.find((m) => m.month === '2026-03')?.state).not.toBe('paid');
+
+  // Another bill altogether.
+  await relinkPurchaseToBill(h.database, h.ws, { templateId: water, billMonth: '2026-10', transactionId: march, today: TODAY });
+  expect(await billOfPurchase(h.database, h.ws, march)).toMatchObject({ templateId: water, billMonth: '2026-10', linked: true });
+  expect((await billDetail(h.database, h.ws, h.bill, TODAY)).history.find((m) => m.month === '2026-04')?.state).not.toBe('paid');
+
+  // The same bill and month again: nothing changes, nothing is refused.
+  await relinkPurchaseToBill(h.database, h.ws, { templateId: water, billMonth: '2026-10', transactionId: march, today: TODAY });
+  expect(await billOfPurchase(h.database, h.ws, march)).toMatchObject({ templateId: water, billMonth: '2026-10' });
+
+  // A purchase linked to nothing is simply linked.
+  const loose = await h.buy('2026-05-07', 390_000);
+  await relinkPurchaseToBill(h.database, h.ws, { templateId: h.bill, billMonth: '2026-05', transactionId: loose, today: TODAY });
+  expect(await billOfPurchase(h.database, h.ws, loose)).toMatchObject({ templateId: h.bill, billMonth: '2026-05', linked: true });
+});
+
+it('a refused move leaves the link where it was, and a payment Pay recorded is never moved', async () => {
+  const h = await setup();
+  const march = await h.buy('2026-03-09', 392_000);
+  await linkPurchaseToBill(h.database, h.ws, { templateId: h.bill, billMonth: '2026-03', transactionId: march, today: TODAY });
+  const [paid] = await recordBillPayments(h.database, h.ws, { paidOn: '2026-10-09', payments: [{ templateId: h.bill, billMonth: '2026-10', amountMinor: 395_000 }] });
+
+  // October is settled by Pay's payment: the move is refused and March keeps its purchase.
+  expect(await h.code(relinkPurchaseToBill(h.database, h.ws, { templateId: h.bill, billMonth: '2026-10', transactionId: march, today: TODAY }))).toBe('ALREADY_SETTLED');
+  expect(await h.code(relinkPurchaseToBill(h.database, h.ws, { templateId: h.bill, billMonth: '2027-03', transactionId: march, today: TODAY }))).toBe('MONTH_AHEAD');
+  expect(await billOfPurchase(h.database, h.ws, march)).toMatchObject({ templateId: h.bill, billMonth: '2026-03', linked: true });
+
+  // Pay's own payment is undone on the bill, never moved from here.
+  expect(await h.code(relinkPurchaseToBill(h.database, h.ws, { templateId: h.bill, billMonth: '2026-04', transactionId: paid!, today: TODAY }))).toBe('NOT_LINKED');
+  expect(await billOfPurchase(h.database, h.ws, paid!)).toMatchObject({ billMonth: '2026-10', linked: false });
 });
 
 it('allows two purchases in one month to be offered, links one, and offers the other for no other month', async () => {

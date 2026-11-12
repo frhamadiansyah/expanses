@@ -1054,6 +1054,38 @@ export async function linkPurchaseToBill(database: Database, ws: WorkspaceContex
   });
 }
 
+/**
+ * Moves a purchase's link to another month or another bill, in one step: the month it settled is owed again and the new
+ * one is paid by it, or neither changes (a refusal rolls both back). The same bill and month is no change at all, and a
+ * purchase linked to nothing is simply linked. A payment Pay recorded is refused (NOT_LINKED): it is undone on its bill.
+ */
+export async function relinkPurchaseToBill(database: Database, ws: WorkspaceContext, input: LinkPurchaseInput): Promise<void> {
+  const { templateId, billMonth, transactionId } = input;
+  if (!BILL_MONTH.test(billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
+  if (!(await billTablesExist(database.db))) throw new RecurringError('NO_LINKS', 'This database cannot link a purchase to a bill yet');
+  const current = await billOfPurchase(database, ws, transactionId);
+  if (!current) return linkPurchaseToBill(database, ws, input);
+  if (!current.linked) throw new RecurringError('NOT_LINKED', 'That payment was recorded from the bill. Undo it there.');
+  if (current.templateId === templateId && current.billMonth === billMonth) return;
+  const refusal = await billLinkRefusal(database, ws, { templateId, billMonth, today: input.today });
+  if (refusal) throw new RecurringError(refusal.code, refusal.message);
+  await database.transaction(async (tx) => {
+    await withCapture(tx, { entity: 'purchase', id: transactionId }, async () => {
+      // Read again inside the transaction: what is moved is the link as it stands now.
+      const [row] = await tx
+        .select({ paidBy: transactions.templateId, status: transactions.status })
+        .from(billPayments)
+        .innerJoin(transactions, eq(transactions.id, billPayments.transactionId))
+        .where(and(eq(billPayments.transactionId, transactionId), eq(billPayments.workspaceId, ws.workspaceId)));
+      if (!row || row.status !== 'posted') throw new RecurringError('NOT_A_PURCHASE', 'That purchase is not here');
+      if (row.paidBy !== null) throw new RecurringError('NOT_LINKED', 'That payment was recorded from the bill. Undo it there.');
+      await tx.delete(billPayments).where(and(eq(billPayments.transactionId, transactionId), eq(billPayments.workspaceId, ws.workspaceId)));
+      if (await isSettled(tx, ws, templateId, billMonth)) throw new RecurringError('ALREADY_SETTLED', 'That month is already settled');
+      await tx.insert(billPayments).values({ transactionId, workspaceId: ws.workspaceId, templateId, billMonth });
+    });
+  });
+}
+
 /** Takes a link back: only the bill's claim on the purchase goes, the purchase itself is untouched. A payment Pay recorded is refused (undo voids it). */
 export function unlinkPurchaseFromBill(database: Database, ws: WorkspaceContext, input: { transactionId: string }): Promise<void> {
   return database.transaction(async (tx) => {
