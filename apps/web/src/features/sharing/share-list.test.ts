@@ -10,6 +10,7 @@ import {
   EVENT_LOCKED,
   eventsToShare,
   isTicked,
+  JOINT_SKIPPED,
   jointOn,
   keepConfirmed,
   monthOf,
@@ -436,6 +437,27 @@ describe('applying', () => {
   });
 });
 
+describe('a review refused', () => {
+  it('takes the Joint changes that wait on it along, reported as not done; the rest still run', async () => {
+    const calls: string[] = [];
+    const outcome = await applyShareChanges(
+      [
+        { kind: 'review', key: 'review', name: REVIEW_NAME, settings: { 'a-gopay': 'total' } },
+        { kind: 'joint', key: 'joint:a-gopay', name: 'GoPay', accountId: 'a-gopay', on: true },
+        { kind: 'share-goal', key: 'share-goal:g-phone', name: 'New phone', goalId: 'g-phone' },
+      ],
+      runners([], { review: NET_WORTH_CHANGED }, calls),
+      (error) => (error as Error).message,
+    );
+    expect(calls).toEqual(['review', 'share-goal g-phone']);
+    expect(outcome.done).toBe(1);
+    expect(outcome.failed).toEqual([
+      { key: 'review', name: REVIEW_NAME, reason: NET_WORTH_CHANGED },
+      { key: 'joint:a-gopay', name: 'GoPay', reason: JOINT_SKIPPED },
+    ]);
+  });
+});
+
 describe('copy', () => {
   it('names the one other member, or the workspace when there are more', () => {
     expect(SHARE_LIST_COPY.setupTitle(['Andi'], 'Family')).toBe('Share with Andi');
@@ -471,6 +493,7 @@ describe('copy', () => {
       SHARE_LIST_COPY.reviewBody('separate', ['Andi'], 'Family'),
       SHARE_LIST_COPY.noName('Bali trip'),
       SHARE_LIST_COPY.keptHeader('Bali trip'),
+      JOINT_SKIPPED,
       EVENT_LOCKED,
       NOT_SHARED_YET,
     ];

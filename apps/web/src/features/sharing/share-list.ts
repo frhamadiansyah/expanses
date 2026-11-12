@@ -287,6 +287,9 @@ export type ShareChange =
 
 export const REVIEW_NAME = 'Accounts, cards, assets and debts';
 
+/** A Joint not tried because the review sharing its account did not go through. */
+export const JOINT_SKIPPED = 'Not made joint: the net worth review did not go through.';
+
 /**
  * What the draft changes, in the order it is applied: net worth settings (or the review) first, Joint after them — an
  * account is made joint only once it is shared — then goals, then events, whose share is the slowest and ends in an
@@ -382,7 +385,13 @@ export interface ShareOutcome<Shared> {
  */
 export async function applyShareChanges<Shared>(changes: readonly ShareChange[], runners: ShareRunners<Shared>, say: (error: unknown) => string): Promise<ShareOutcome<Shared>> {
   const outcome: ShareOutcome<Shared> = { done: 0, failed: [], events: [] };
+  let reviewFailed = false;
   for (const change of changes) {
+    // A Joint waits on the review that shares its account: with the review refused, it is not tried (round 3).
+    if (change.kind === 'joint' && reviewFailed) {
+      outcome.failed.push({ key: change.key, name: change.name, reason: JOINT_SKIPPED });
+      continue;
+    }
     try {
       switch (change.kind) {
         case 'review':
@@ -406,6 +415,7 @@ export async function applyShareChanges<Shared>(changes: readonly ShareChange[],
       }
       outcome.done += 1;
     } catch (error) {
+      if (change.kind === 'review') reviewFailed = true;
       outcome.failed.push({ key: change.key, name: change.name, reason: say(error) });
     }
   }

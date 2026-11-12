@@ -112,7 +112,8 @@ export function useShareList(bookId: string): { list: ShareList | null; goalShar
   // kept while a new one runs, so the list never blanks.
   const netWorth = useQuery({
     queryKey: ['share-list', 'net-worth', ws.workspaceId, bookId],
-    placeholderData: keepPreviousData,
+    // The previous read stands in only for the same workspace: another one's never shows here (round 3).
+    placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[3] === bookId ? previous : undefined),
     queryFn: async () => {
       const g = await activeNetWorthGroup(database);
       if (!g || g.workspaceBookId !== bookId) return null;
@@ -146,7 +147,10 @@ export function useShareList(bookId: string): { list: ShareList | null; goalShar
     return shareListOf({
       bookId,
       netWorth: netWorth.data ?? null,
-      goals: goals.data!.filter((goal) => goal.status !== 'archived').map((goal) => ({ id: goal.id, name: goal.name, share: shares.data![goal.id] ?? null })),
+      // A goal whose link is not read yet is left out until it is (round 3): never offered as unshared by guess.
+      goals: goals.data!
+        .filter((goal) => goal.status !== 'archived' && goal.id in shares.data!)
+        .map((goal) => ({ id: goal.id, name: goal.name, share: shares.data![goal.id] ?? null })),
       goalTargets: targets.data!,
       events: events.data!.map((event) => ({
         id: event.id,
@@ -186,7 +190,8 @@ function ShareListScreen({ bookId, setup }: { bookId: string; setup: boolean }) 
       </div>
     );
   }
-  return <ShareListBody bookId={bookId} bookName={book.name} detail={detail.data} setup={setup} />;
+  // Keyed by the workspace: another one's list starts afresh, its edits and its kept reads with it (round 3).
+  return <ShareListBody key={bookId} bookId={bookId} bookName={book.name} detail={detail.data} setup={setup} />;
 }
 
 /** The name this person shares an event under: theirs in the workspace; never an empty one. */
