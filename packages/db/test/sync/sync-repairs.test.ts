@@ -1,0 +1,220 @@
+import { expenseLines, refundLines } from '@expanses/core';
+import { sql } from 'drizzle-orm';
+import { describe, expect, it } from 'vitest';
+import {
+  billOfPurchase,
+  categoryTotalsIn,
+  createAccount,
+  dismissRepairNotice,
+  inBook,
+  linkPurchaseToBill,
+  listAccounts,
+  listTransactions,
+  ownerScope,
+  postTransaction,
+  recordSharedExpense,
+  repairNotices,
+  runSharedBookRepairs,
+  saveEvent,
+  saveExpenseTemplate,
+  sharedEventView,
+} from '../../src/index';
+import { categoryOf, headOf, Household, projectBook, type Device } from './household';
+import { outboxOps } from './sync-helpers';
+import { Trip } from './trip';
+
+/*
+ * The one-time repairs of a shared book (sync gaps phase 2, R1 and R2), on two phones. Invented figures throughout.
+ */
+
+const TODAY = '2026-11-12';
+
+describe('R1: bill links an older build never sent', () => {
+  async function couple() {
+    const home = new Household();
+    const wife = await home.device('Wife');
+    const husband = await home.device('Husband');
+    const bookId = await home.share(wife);
+    await home.join(husband, wife);
+    await home.settle();
+    const cat = (await listAccounts(wife.database, wife.ws)).find((a) => a.systemKey === 'utilities.internet_provider')!.id;
+    const bill = await saveExpenseTemplate(wife.database, wife.ws, { name: 'Fibre', categoryAccountId: cat, moneyAccountId: wife.bank, amountMinor: 410_000, dayOfMonth: 10, startsMonth: '2026-03' });
+    await home.settle();
+    const buy = (d: Device, category: string, occurredOn: string, description: string) =>
+      postTransaction(d.database, d.ws, { occurredOn, description, lines: [{ accountId: category, amountMinor: 410_000, currency: 'IDR' }, { accountId: d.bank, amountMinor: -410_000, currency: 'IDR' }] });
+    return { home, wife, husband, bookId, cat, bill, buy };
+  }
+
+  /** A link as an older build wrote it: the row alone, nothing sent. */
+  const oldLink = (d: Device, transactionId: string, templateId: string, billMonth: string) =>
+    d.database.db.run(sql`INSERT INTO bill_payments (transaction_id, workspace_id, template_id, bill_month) VALUES (${transactionId}, ${d.ws.workspaceId}, ${templateId}, ${billMonth})`);
+
+  it('sends each old link once; a link already sent, and one the partner changed since, are left as they are', async () => {
+    const { home, wife, husband, bookId, cat, bill, buy } = await couple();
+    const march = await buy(wife, cat, '2026-03-11', 'Fibre March');
+    const october = await buy(wife, cat, '2026-10-11', 'Fibre October');
+    const november = await buy(wife, cat, '2026-11-11', 'Fibre November');
+    const changed = await buy(wife, cat, '2026-05-11', 'Fibre May');
+    await home.settle();
+    await oldLink(wife, march, bill, '2026-03');
+    await oldLink(wife, october, bill, '2026-10');
+    await oldLink(wife, changed, bill, '2026-04');
+    // November is linked by this build, and reaches the husband as it is made.
+    await linkPurchaseToBill(wife.database, wife.ws, { templateId: bill, billMonth: '2026-11', transactionId: november, today: TODAY });
+    // The husband links his copy of May's purchase to May, after the wife's old link to April.
+    await home.settle();
+    await linkPurchaseToBill(husband.database, husband.ws, { templateId: bill, billMonth: '2026-05', transactionId: (await headOf(husband.database, changed))!, today: TODAY });
+    await home.settle();
+    const linkOn = async (d: Device, lineage: string) => billOfPurchase(d.database, d.ws, (await headOf(d.database, lineage))!);
+    expect(await linkOn(husband, march)).toBeNull();
+    expect(await linkOn(husband, november)).toMatchObject({ billMonth: '2026-11', linked: true });
+
+    const sentBefore = (await outboxOps(wife.database)).length;
+    const report = await runSharedBookRepairs(wife.database, bookId, { today: TODAY });
+    expect(report.billLinks).toBeGreaterThanOrEqual(2);
+    const sent = (await outboxOps(wife.database)).slice(sentBefore);
+    expect(sent.map((op) => op.id)).toContain(march);
+    expect(sent.map((op) => op.id)).toContain(october);
+    expect(sent.map((op) => op.id)).not.toContain(changed);
+    await home.settle();
+    expect(await linkOn(husband, march)).toMatchObject({ templateId: bill, billMonth: '2026-03', linked: true });
+    expect(await linkOn(husband, october)).toMatchObject({ billMonth: '2026-10', linked: true });
+    expect(await linkOn(husband, november)).toMatchObject({ billMonth: '2026-11', linked: true });
+    // The husband's later link stands on both phones (it replaced the wife's old one when it arrived).
+    expect(await linkOn(husband, changed)).toMatchObject({ billMonth: '2026-05' });
+    expect(await linkOn(wife, changed)).toMatchObject({ billMonth: '2026-05' });
+
+    // Once only: run again, nothing more goes.
+    const after = (await outboxOps(wife.database)).length;
+    expect(await runSharedBookRepairs(wife.database, bookId, { today: TODAY })).toEqual({ billLinks: null, eventTags: null });
+    expect((await outboxOps(wife.database)).length).toBe(after);
+    // The husband's own run: he had no old link. A link made by this build before its first repair goes again (the
+    // same value, so nothing changes on either phone); the wife's old April link is not his to send.
+    await runSharedBookRepairs(husband.database, bookId, { today: TODAY });
+    await home.settle();
+    expect(await linkOn(wife, changed)).toMatchObject({ billMonth: '2026-05' });
+    const purchases = async (d: Device) => (await projectBook(d.database, bookId)).purchase as Record<string, unknown>;
+    const [w, h] = [await purchases(wife), await purchases(husband)];
+    for (const id of [march, october, november]) expect(h[id]).toEqual(w[id]);
+  });
+});
+
+describe('R2: Family purchases tagged to an event without being moved', () => {
+  async function familyAndTrip() {
+    const trip = new Trip();
+    const wife = await trip.device('Wife');
+    const husband = await trip.device('Husband');
+    const home = trip.home;
+    const family = await home.share(wife);
+    await home.join(husband, wife);
+    await home.settle();
+    await trip.share(wife);
+    await trip.join(husband, wife);
+    await trip.settle([wife, husband]);
+    const settle = async () => {
+      await home.settle();
+      await trip.settle([wife, husband]);
+      await home.settle();
+    };
+    const person = async (d: Device) => (await d.database.db.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${trip.bookId}`))[0]![0];
+    return { trip, home, wife, husband, family, settle, wifePerson: await person(wife), husbandPerson: await person(husband) };
+  }
+
+  type Setup = Awaited<ReturnType<typeof familyAndTrip>>;
+
+  async function familyOctober(s: Setup, d: Device) {
+    const ws = inBook(d.ws, s.family);
+    const { rows } = await categoryTotalsIn(d.database, ws, 'expense', '2026-10-01', '2026-10-31', { excludeEvents: true });
+    const listed = (await listTransactions(d.database, ws, { from: '2026-10-01', to: '2026-10-31' })).filter((t) => !t.eventId);
+    return { total: rows.reduce((sum, r) => sum + r.amountBaseMinor, 0), count: listed.length };
+  }
+
+  /** A tag as an older build wrote it: on this phone alone, nothing sent. */
+  const oldTag = (d: Device, transactionId: string, eventId: string) => d.database.db.run(sql`UPDATE transactions SET event_id = ${eventId} WHERE id = ${transactionId}`);
+
+  it('the wife’s two lira refunds move into the trip with the purchase’s split; both phones’ Family agree after', async () => {
+    const s = await familyAndTrip();
+    const { wife, husband } = s;
+    const lira = await createAccount(wife.database, wife.ws, { name: 'Wife Lira', kind: 'asset', subtype: 'bank', currency: 'TRY' });
+    const eventId = s.trip.eventOf(wife);
+    await recordSharedExpense(wife.database, ownerScope(wife.ws), eventId, {
+      occurredOn: '2026-10-07', amountMinor: 100_000, currency: 'TRY', rateToEvent: '1', payerPersonId: s.wifePerson,
+      paidFrom: { accountId: lira.id, chargedMinor: null }, split: { mode: 'equal', people: [s.wifePerson, s.husbandPerson] }, categoryId: null, note: 'Yes Oto',
+    });
+    const groceries = await categoryOf(wife.database, s.family, 'Groceries');
+    const refund = (amountMinor: number, occurredOn: string) =>
+      postTransaction(wife.database, wife.ws, { occurredOn, description: 'Refund · Yes Oto', ratesToBase: { TRY: 560 }, lines: refundLines({ categoryAccountId: groceries, paymentAccountId: lira.id, amountMinor, currency: 'TRY' }) });
+    const first = await refund(20_000, '2026-10-09');
+    const second = await refund(10_000, '2026-10-10');
+    await postTransaction(wife.database, wife.ws, { occurredOn: '2026-10-08', description: 'Dinner', lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: wife.bank, amountMinor: 300_000, currency: 'IDR' }) });
+    await s.settle();
+    await oldTag(wife, first, eventId);
+    await oldTag(wife, second, eventId);
+    expect(await familyOctober(s, wife)).not.toEqual(await familyOctober(s, husband));
+
+    // The husband's phone runs first: it moves nothing of hers (it holds no tag), and the refunds stay in Family.
+    expect((await runSharedBookRepairs(husband.database, s.family, { today: TODAY })).eventTags).toEqual({ moved: 0, untagged: 0 });
+    const report = await runSharedBookRepairs(wife.database, s.family, { today: TODAY });
+    expect(report.eventTags).toEqual({ moved: 2, untagged: 0 });
+    await s.settle();
+
+    expect(await familyOctober(s, wife)).toEqual(await familyOctober(s, husband));
+    expect(await familyOctober(s, wife)).toEqual({ total: 300_000, count: 1 });
+    for (const d of [wife, husband]) {
+      const view = (await sharedEventView(d.database, ownerScope(d.ws), s.trip.eventOf(d)))!;
+      const refunds = view.expenses.filter((e) => e.amountMinor < 0).map((e) => [e.amountMinor, e.myShareMinor]).sort();
+      expect(refunds).toEqual([[-20_000, -10_000], [-10_000, -5_000]].sort());
+    }
+    const [notice] = await repairNotices(wife.database);
+    expect(notice!.rows.map((r) => [r.outcome, r.description, r.eventName])).toEqual([
+      ['moved', 'Refund · Yes Oto', 'Coast week'],
+      ['moved', 'Refund · Yes Oto', 'Coast week'],
+    ]);
+    expect(await repairNotices(husband.database)).toEqual([]);
+    // Once only.
+    expect(await runSharedBookRepairs(wife.database, s.family, { today: TODAY })).toEqual({ billLinks: null, eventTags: null });
+    await dismissRepairNotice(wife.database, s.family);
+    expect(await repairNotices(wife.database)).toEqual([]);
+  });
+
+  it('a rate fetched for the day lets it move; with none to be had, a private event’s, or the partner’s, it is untagged and listed', async () => {
+    const s = await familyAndTrip();
+    const { wife, husband } = s;
+    const eventId = s.trip.eventOf(wife);
+    const groceries = await categoryOf(wife.database, s.family, 'Groceries');
+    const yen = await createAccount(wife.database, wife.ws, { name: 'Wife Yen', kind: 'asset', subtype: 'cash', currency: 'JPY' });
+    const inYen = await postTransaction(wife.database, wife.ws, {
+      occurredOn: '2026-10-06', description: 'Snacks', ratesToBase: { JPY: 105 }, lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: yen.id, amountMinor: 1_000, currency: 'JPY' }),
+    });
+    const inDollars = await postTransaction(wife.database, wife.ws, {
+      occurredOn: '2026-10-06', description: 'Duty free', ratesToBase: { USD: 16_000 }, lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: wife.usd, amountMinor: 2_500, currency: 'USD' }),
+    });
+    const party = await postTransaction(wife.database, wife.ws, { occurredOn: '2026-10-11', description: 'Party snacks', lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: wife.bank, amountMinor: 80_000, currency: 'IDR' }) });
+    const hisGroceries = await categoryOf(husband.database, s.family, 'Groceries');
+    const his = await postTransaction(husband.database, husband.ws, { occurredOn: '2026-10-07', description: 'Fuel', lines: expenseLines({ categoryAccountId: hisGroceries, paymentAccountId: husband.bank, amountMinor: 90_000, currency: 'IDR' }) });
+    await s.settle();
+    const birthday = await saveEvent(wife.database, ownerScope(wife.ws), { name: 'Birthday', startsOn: '2026-10-01', endsOn: '2026-10-31' });
+    await oldTag(wife, inYen, eventId);
+    await oldTag(wife, inDollars, eventId);
+    await oldTag(wife, party, birthday);
+    await oldTag(wife, (await headOf(wife.database, his))!, eventId);
+
+    const fetcher = async (from: string) => {
+      if (from === 'JPY') return { rate: 105, sourceDate: '2026-10-06' };
+      throw new Error('offline');
+    };
+    const report = await runSharedBookRepairs(wife.database, s.family, { today: TODAY, fetcher });
+    expect(report.eventTags).toEqual({ moved: 1, untagged: 3 });
+    const [notice] = await repairNotices(wife.database);
+    const byName = Object.fromEntries(notice!.rows.map((r) => [r.description, r]));
+    expect(byName['Snacks']).toMatchObject({ outcome: 'moved' });
+    expect(byName['Duty free']).toMatchObject({ outcome: 'untagged', eventName: 'Coast week' });
+    expect(byName['Duty free']!.why).toMatch(/rate/);
+    expect(byName['Party snacks']).toMatchObject({ outcome: 'untagged', eventName: 'Birthday', why: null });
+    expect(byName['Fuel']).toMatchObject({ outcome: 'untagged', why: 'Paid by Husband: moved from Husband’s phone' });
+    await s.settle();
+    expect(await familyOctober(s, wife)).toEqual(await familyOctober(s, husband));
+    // The husband's purchase is his as it was, on his phone.
+    expect(await headOf(husband.database, his)).toBe(his);
+  });
+});
