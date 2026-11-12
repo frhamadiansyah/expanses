@@ -6,7 +6,7 @@ export const feeDateText = (iso: string) => `${dayMonth(iso)} ${iso.slice(0, 4)}
 export interface FeeLine {
   /** The fee as money, when an amount is set. */
   amount: string | null;
-  /** "Charged on 12 Mar 2027", or "Waived this year · next charge 12 Nov 2027"; null with no date. */
+  /** "Charged on 12 Mar 2026 · next 12 Mar 2027" (or just "Charged on <date>" when the next is soon), or "Waived this year · next charge 12 Nov 2027"; null with no date. */
   when: string | null;
   /** The next charge is within the due-soon window and not waived. */
   soon: boolean;
@@ -33,5 +33,9 @@ export function feeLine(
   if (feeWaived(chargedOn, waivedYear, today)) {
     return { amount, when: `Waived this year · next charge ${feeDateText(chargeAfterWaiver(chargedOn, today))}`, soon: false, waived: true, refunded: false };
   }
-  return { amount, when: `Charged on ${feeDateText(nextFeeDate(chargedOn, today))}`, soon: feeDaysAway(chargedOn, today) <= FEE_SOON_DAYS, waived: false, refunded: false };
+  // The charge that counts is the one that already happened unless the next is close: then that one is named.
+  const covered = coveredCharge(chargedOn, today);
+  const next = nextFeeDate(chargedOn, today);
+  const when = covered < today ? `Charged on ${feeDateText(covered)} · next ${feeDateText(next)}` : `Charged on ${feeDateText(next)}`;
+  return { amount, when, soon: feeDaysAway(chargedOn, today) <= FEE_SOON_DAYS, waived: false, refunded: false };
 }

@@ -31,10 +31,11 @@ const shift = (iso: string, days: number) => {
 /**
  * The bank agreed not to charge this year's annual fee. Marks that year's charge as waived and, when the fee was
  * recorded on the card (a charge in a fee category, or named like one, around the stored date), refunds it on the
- * card, today, in the category it was filed under. A fee never recorded in the app has nothing to cancel, so only
+ * card, in the category it was filed under, on the day the bank reversed it (`reversedOn`, today unless given; never
+ * before the charge it cancels, never ahead of today). A fee never recorded in the app has nothing to cancel, so only
  * the mark is set. Waiving the same charge twice does nothing the second time.
  */
-export async function waiveAnnualFee(database: Database, ws: WorkspaceContext, input: { cardId: string; today: string }): Promise<FeeWaiver> {
+export async function waiveAnnualFee(database: Database, ws: WorkspaceContext, input: { cardId: string; today: string; reversedOn?: string }): Promise<FeeWaiver> {
   return database.transaction(async (tx) => {
     const [card] = await tx.select({ subtype: accounts.subtype, currency: accounts.currency }).from(accounts).where(and(eq(accounts.id, input.cardId), eq(accounts.workspaceId, ws.workspaceId)));
     if (!card || card.subtype !== 'credit_card') throw new PointsError('Account is not a credit card in this workspace');
@@ -43,6 +44,11 @@ export async function waiveAnnualFee(database: Database, ws: WorkspaceContext, i
     if (feeWaived(terms.annualFeeOn, terms.annualFeeWaivedYear, input.today)) return { transactionId: null, refundedMinor: 0 };
 
     const covered = coveredCharge(terms.annualFeeOn, input.today);
+    const reversedOn = input.reversedOn ?? input.today;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(reversedOn)) throw new PointsError('The reversal date is not a whole date');
+    // A fee still ahead (waived in advance, within 30 days of it) has no charge to come after yet.
+    if (reversedOn < (covered < input.today ? covered : input.today)) throw new PointsError('The reversal cannot be before the fee was charged');
+    if (reversedOn > input.today) throw new PointsError('The reversal cannot be in the future');
     const rows = await tx.values<[string, string, number, string, string | null]>(sql`
       SELECT t.id, t.description, e.amount_minor, ce.account_id, ca.system_key
       FROM entries e
@@ -60,7 +66,7 @@ export async function waiveAnnualFee(database: Database, ws: WorkspaceContext, i
     if (fee) {
       refundedMinor = -fee[2];
       transactionId = await postTransactionTx(tx, ws, {
-        occurredOn: input.today,
+        occurredOn: reversedOn,
         description: WAIVED_DESCRIPTION,
         lines: refundLines({ categoryAccountId: fee[3], paymentAccountId: input.cardId, amountMinor: refundedMinor, currency: card.currency ?? ws.baseCurrency }),
       });

@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { categoryIdsByKey, createAccount, getCardTerms, nativeBalances, postTransaction, saveCardTerms, waiveAnnualFee } from '../src/index';
 import { setupDb } from './helpers';
@@ -69,6 +70,51 @@ describe('waiving the annual fee', () => {
     expect(result).toEqual({ transactionId: null, refundedMinor: 0 });
     expect((await nativeBalances(t.database, t.ws))[t.id] ?? 0).toBe(0);
     expect((await getCardTerms(t.database, t.ws, t.id))?.annualFeeWaivedYear).toBe(2026);
+  });
+
+  it('covers the last charge when the next is over 30 days away', async () => {
+    const t = await card();
+    await saveCardTerms(t.database, t.ws, { accountId: t.id, ...terms, annualFeeOn: '2024-03-12' });
+    await waiveAnnualFee(t.database, t.ws, { cardId: t.id, today: '2026-11-12' });
+    expect((await getCardTerms(t.database, t.ws, t.id))?.annualFeeWaivedYear).toBe(2026);
+  });
+
+  describe('the reversal date', () => {
+    const recorded = async () => {
+      const t = await withDate();
+      const category = (await categoryIdsByKey(t.database, t.ws))['miscellaneous.membership_fee']!;
+      await postTransaction(t.database, t.ws, {
+        occurredOn: '2026-11-12',
+        description: 'Annual fee',
+        lines: [
+          { accountId: category, amountMinor: 500_000, currency: 'IDR' },
+          { accountId: t.id, amountMinor: -500_000, currency: 'IDR' },
+        ],
+      });
+      return t;
+    };
+    const refundDate = async (t: Awaited<ReturnType<typeof recorded>>, id: string | null) => {
+      const rows = await t.database.db.values<[string]>(sql`SELECT occurred_on FROM transactions WHERE id = ${id}`);
+      return rows[0]![0];
+    };
+
+    it('posts the refund on the chosen day', async () => {
+      const t = await recorded();
+      const result = await waiveAnnualFee(t.database, t.ws, { cardId: t.id, today: '2026-12-20', reversedOn: '2026-12-03' });
+      expect(await refundDate(t, result.transactionId)).toBe('2026-12-03');
+      expect((await getCardTerms(t.database, t.ws, t.id))?.annualFeeWaivedYear).toBe(2026);
+    });
+    it('is today by default', async () => {
+      const t = await recorded();
+      const result = await waiveAnnualFee(t.database, t.ws, { cardId: t.id, today: '2026-12-20' });
+      expect(await refundDate(t, result.transactionId)).toBe('2026-12-20');
+    });
+    it('is refused before the charge or after today, and nothing is marked', async () => {
+      const t = await recorded();
+      await expect(waiveAnnualFee(t.database, t.ws, { cardId: t.id, today: '2026-12-20', reversedOn: '2026-11-11' })).rejects.toThrow(/before/);
+      await expect(waiveAnnualFee(t.database, t.ws, { cardId: t.id, today: '2026-12-20', reversedOn: '2026-12-21' })).rejects.toThrow(/future/);
+      expect((await getCardTerms(t.database, t.ws, t.id))?.annualFeeWaivedYear).toBeNull();
+    });
   });
 
   it('keeps the marker through a later save of the terms', async () => {

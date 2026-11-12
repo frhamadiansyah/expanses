@@ -56,7 +56,12 @@ test('a card’s annual fee date is saved in Settings, shown as the next charge,
   // reads next year's charge.
   await fee.click();
   await alert.getByRole('button', { name: 'Waived' }).click();
-  await expect(alert).toHaveCount(0);
+  // Waived opens the sheet: the covered year, the charge, and the day it was reversed (today unless changed).
+  const sheet = page.getByRole('dialog');
+  await expect(sheet).toContainText('Annual fee 20');
+  await expect(sheet.getByLabel('Reversed on')).toBeVisible();
+  await sheet.getByRole('button', { name: 'Waived' }).click();
+  await expect(sheet).toHaveCount(0);
   await expect(page.getByTestId('annual-fee-row')).toHaveCount(0);
   await page.waitForTimeout(800);
   await page.goto('/wallet');
