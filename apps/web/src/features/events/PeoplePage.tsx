@@ -110,7 +110,7 @@ export function PeoplePage() {
           </InsetGroup>
         </>
       )}
-      {invite && !readOnly ? <InviteCard invite={invite.invite} bookName={view.name} inviterName={view.myName} header={invite.header} footer="Send it to the person joining." /> : null}
+      {invite && !readOnly ? <InviteCard kind="event" invite={invite.invite} bookName={view.name} inviterName={view.myName} header={invite.header} footer="Send it to the person joining." /> : null}
       {chosen ? (
         <Sheet grouped title={chosen.name} onClose={close}>
           <ErrorBox error={sheetError} />

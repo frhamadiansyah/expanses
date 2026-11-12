@@ -14,6 +14,7 @@ test('an event reads like Cashflow: where it went, and a swipe to what it planne
 
   await page.goto('/events');
   await page.getByRole('button', { name: 'New event' }).click();
+  await page.getByTestId('new-event').click();
   await page.getByLabel('Name', { exact: true }).fill('Singapore');
   await page.getByLabel('Categories').selectOption({ label: 'Holiday' });
   await page.getByLabel('Starts on').fill(TODAY);
@@ -59,6 +60,7 @@ test('the plan under the gauge starts folded, and a tap on the gauge shows it an
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '90000000' });
   await page.goto('/events');
   await page.getByRole('button', { name: 'New event' }).click();
+  await page.getByTestId('new-event').click();
   await page.getByLabel('Name', { exact: true }).fill('Singapore');
   await page.getByLabel('Categories').selectOption({ label: 'Holiday' });
   await page.getByLabel('Starts on').fill(TODAY);

@@ -113,8 +113,8 @@ function Member({ bookId, bookName, detail, member }: { bookId: string; bookName
           footer={
             invite.kind === 'device'
               ? invite.forName
-                ? `On ${invite.forName}’s new device, choose Join a workspace and enter this code. It joins as ${invite.forName}.`
-                : 'On the other device, choose Join a workspace and enter this code. It joins as the same member.'
+                ? `On ${invite.forName}’s new device, choose Add workspace › Join with a code and enter this code. It joins as ${invite.forName}.`
+                : 'On the other device, choose Add workspace › Join with a code and enter this code. It joins as the same member.'
               : ''
           }
         />

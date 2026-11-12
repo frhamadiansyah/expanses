@@ -166,6 +166,7 @@ export async function spend(page: Page, description: string, amount: string) {
 export async function addEvent(page: Page, name: string, set?: string) {
   await page.goto('/events');
   await page.getByRole('button', { name: /^(Add an event|New event)$/ }).click();
+  await page.getByTestId('new-event').click();
   await page.getByLabel('Name', { exact: true }).fill(name);
   if (set) await page.getByLabel('Categories').selectOption({ label: set });
   await page.getByLabel('Starts on').fill(TODAY);

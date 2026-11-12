@@ -23,6 +23,7 @@ test('Link to costs reads as two plain boxes with the share grouped as typed', a
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Account', exact: true }).click();
   await page.getByRole('link', { name: /^Events/ }).click();
   await page.getByRole('button', { name: 'New event' }).click();
+  await page.getByTestId('new-event').click();
   await page.getByLabel('Name', { exact: true }).fill('Newborn');
   await page.getByLabel('Starts on').fill(TODAY);
   await page.getByLabel('Ends on').fill(TODAY);

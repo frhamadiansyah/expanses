@@ -41,6 +41,7 @@ export async function openTrip(page: Page, name = 'Coast week') {
 export async function newEvent(page: Page, name: string) {
   await page.goto('/events');
   await page.getByRole('button', { name: /^(New event|Add an event)$/ }).click();
+  await page.getByTestId('new-event').click();
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel('Starts on').fill(TODAY);
   await page.getByLabel('Ends on').fill(TODAY);

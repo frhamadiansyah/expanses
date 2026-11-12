@@ -19,6 +19,7 @@ async function addWallet(page: Page) {
 async function addEvent(page: Page, name: string, set: string) {
   await page.goto('/events');
   await page.getByRole('button', { name: 'Add an event' }).click();
+  await page.getByTestId('new-event').click();
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel('Categories').selectOption({ label: set });
   await page.getByLabel('Starts on').fill(TODAY);

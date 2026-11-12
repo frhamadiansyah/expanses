@@ -8,6 +8,7 @@ const row = (page: Page, what: string) => page.getByTestId('transaction-row').fi
 async function eventWith(page: Page, name: string) {
   await page.goto('/events');
   await page.getByRole('button', { name: 'New event' }).click();
+  await page.getByTestId('new-event').click();
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel('Starts on').fill(TODAY);
   await page.getByLabel('Ends on').fill(TODAY);
@@ -63,6 +64,7 @@ test('a trip running today has a row at the top of Cashflow that opens it; a far
   await eventWith(page, 'Lombok trip');
   await page.goto('/events');
   await page.getByRole('button', { name: 'New event' }).click();
+  await page.getByTestId('new-event').click();
   await page.getByLabel('Name', { exact: true }).fill('Next year');
   await page.getByLabel('Starts on').fill('2099-01-01');
   await page.getByLabel('Ends on').fill('2099-01-05');

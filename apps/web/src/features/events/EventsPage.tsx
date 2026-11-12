@@ -6,6 +6,8 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { usePhone } from '../../app/use-phone';
+import { AddWorkspaceSheet } from '../account/AddWorkspaceSheet';
+import { JoinSheet } from '../sharing/JoinSheet';
 import { useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox, Money } from '../../ui';
 import {
@@ -148,6 +150,8 @@ export function EventsPage() {
   const [setId, setSetId] = useState('');
   const [currency, setCurrency] = useState(ws.baseCurrency);
   const [picking, setPicking] = useState(false);
+  const [choosing, setChoosing] = useState(false);
+  const [joining, setJoining] = useState(false);
 
   const all = events.data ?? [];
   const current = all.filter((event) => eventStatus(event, today) !== 'Done');
@@ -178,9 +182,27 @@ export function EventsPage() {
         title="Events"
         // The same glyph at every width, under the name each width has always announced: a phone's "New event",
         // a desktop's "Add an event".
-        actions={[{ key: 'new', label: phone ? 'New event' : 'Add an event', glyph: <Plus size={22} aria-hidden />, run: () => setAdding(true) }]}
+        actions={[{ key: 'new', label: phone ? 'New event' : 'Add an event', glyph: <Plus size={22} aria-hidden />, run: () => setChoosing(true) }]}
       />
       <ErrorBox error={error ?? events.error} />
+
+      {choosing && (
+        <AddWorkspaceSheet
+          title="Events"
+          newLabel="New event"
+          testIds={{ sheet: 'add-event-sheet', news: 'new-event', join: 'join-event-choice' }}
+          onNew={() => {
+            setChoosing(false);
+            setAdding(true);
+          }}
+          onJoin={() => {
+            setChoosing(false);
+            setJoining(true);
+          }}
+          onClose={() => setChoosing(false)}
+        />
+      )}
+      {joining && <JoinSheet onClose={() => setJoining(false)} />}
 
       {/* A sheet over the list, as every other thing made from a list is: ✕ and ✓ in its header, the page behind it untouched. */}
       {adding && (

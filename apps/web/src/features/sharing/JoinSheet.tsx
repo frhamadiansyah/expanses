@@ -7,7 +7,7 @@ import { joinTitle } from './join-event';
 import { JoinWorkspace } from './JoinWorkspace';
 
 /**
- * Join a workspace, from the switcher's + (spec §11): the same screen the link opens, as a sheet over the switcher. An
+ * Join with a code, from the switcher's + (spec §11): the same screen the link opens, as a sheet over the switcher. An
  * event's invite joins the event: the sheet closes, then the event's page opens (I7) — the switcher's sheet lives in the
  * layout, above every page, and would otherwise stay up over it.
  */

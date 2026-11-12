@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { stringLiterals } from '../../lib/string-literals';
 import { DISCARD_LABEL, discardConfirm, heldLine, KEEP_OWN_LABEL, keepOwnTitle, lastChangeLine, LOST_LINE, otherCopyLine, copyLabel, thisCopyLine, holdsForLine, isNewerLine, leftNotDeletedLine, ownersGoneConfirm, PLACE_LABEL, placedLine, shareSilenceLine, silenceLine } from './sharing-copy';
-import { currencyRefusal, endedLine, lastFailedLine, lastSyncedLine, shareStatusLine, FORGET_ROW, forgetConfirm, replaceConfirm, FROZEN_NOTE, leaveConfirm, postedAgainstPlaceholder, READ_ONLY_NOTE, sayError, statusLineOf, stopConfirm, deviceName, ownerName, payerLine, preparing, sharedWith, sinceWhen, syncedAgo } from './sharing-copy';
+import { currencyRefusal, inviteText, endedLine, lastFailedLine, lastSyncedLine, shareStatusLine, FORGET_ROW, forgetConfirm, replaceConfirm, FROZEN_NOTE, leaveConfirm, postedAgainstPlaceholder, READ_ONLY_NOTE, sayError, statusLineOf, stopConfirm, deviceName, ownerName, payerLine, preparing, sharedWith, sinceWhen, syncedAgo } from './sharing-copy';
 
 const fandri = { memberId: 'f', name: 'Fandri', role: 'owner' as const };
 const dewi = { memberId: 'd', name: 'Dewi', role: 'member' as const };
@@ -343,5 +343,16 @@ describe('no string the sharing screens show speaks to the reader as "you"', () 
     const strings = stringLiterals(source);
     expect(strings.length).toBeGreaterThan(40);
     for (const text of strings) expect(text, text).not.toMatch(/\b(you|your|my)\b/i);
+  });
+});
+
+describe('the invite text', () => {
+  it('names Events for an event and Add workspace for a workspace, by the button’s real name', () => {
+    expect(inviteText('event', 'Budi', 'Coast week', 'cicis://join/X', 'AAAA')).toBe(
+      'Budi sent an invite to Coast week. Open cicis://join/X — or choose Join with a code on Events in the app and enter AAAA',
+    );
+    expect(inviteText('workspace', 'Budi', 'Home', 'cicis://join/X', 'AAAA')).toBe(
+      'Budi sent an invite to Home. Open cicis://join/X — or choose Add workspace › Join with a code in the app and enter AAAA',
+    );
   });
 });

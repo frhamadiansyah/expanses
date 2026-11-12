@@ -95,6 +95,7 @@ test('the ring card and the paid rows', async ({ page }) => {
 
   await page.goto('/events');
   await page.getByRole('button', { name: /^(Add an event|New event)$/ }).click();
+  await page.getByTestId('new-event').click();
   await page.getByLabel('Name', { exact: true }).fill('Turkey trip');
   await page.getByRole('button', { name: 'Currency: IDR' }).click();
   await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: /^TRY / }).first().click();
@@ -261,6 +262,7 @@ test('big lira figures with two decimals and their rupiah lines stay inside the 
   await addWallet(page);
   await page.goto('/events');
   await page.getByRole('button', { name: /^(Add an event|New event)$/ }).click();
+  await page.getByTestId('new-event').click();
   await page.getByLabel('Name', { exact: true }).fill('Istanbul');
   await page.getByRole('button', { name: 'Currency: IDR' }).click();
   await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: /^TRY / }).first().click();
