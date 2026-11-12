@@ -199,7 +199,11 @@ export async function textOnWhite(page: Page): Promise<string[]> {
     const ground = (start: Element | null): string => {
       for (let node = start; node; node = node.parentElement) {
         const colour = getComputedStyle(node).backgroundColor;
-        if (colour !== 'rgba(0, 0, 0, 0)' && colour !== 'transparent') return node.closest('button,a,[role=button]') === node ? 'control' : colour;
+        if (colour === 'rgba(0, 0, 0, 0)' || colour === 'transparent') continue;
+        // A round disc (a notice's ⓘ, a badge) is a mark filled on purpose, as a control is, not a surface left light.
+        const box = node.getBoundingClientRect();
+        const disc = box.width > 0 && Number.parseFloat(getComputedStyle(node).borderTopLeftRadius) >= box.width / 2;
+        return disc || node.closest('button,a,[role=button]') === node ? 'control' : colour;
       }
       return getComputedStyle(document.body).backgroundColor;
     };
