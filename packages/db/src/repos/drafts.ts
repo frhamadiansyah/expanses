@@ -231,7 +231,16 @@ async function draftEventOf(tx: Db, id: string): Promise<string | null> {
   const [row] = await tx.values<[string | null]>(
     sql`SELECT d.event_id FROM draft_transactions d JOIN events e ON e.id = d.event_id WHERE d.id = ${id} AND e.archived_at IS NULL`,
   );
-  return row?.[0] ?? null;
+  const eventId = row?.[0] ?? null;
+  if (!eventId) return null;
+  /*
+   * A shared event is never tagged here: going into one is a move into its records (shared events §6), which the
+   * Review form does where it is seen, after this confirm. A door that confirms without the form (a statement check)
+   * records the purchase in no event rather than half into a shared one.
+   */
+  const [books] = await tx.values<[number]>(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'event_books'`);
+  if (books && (await tx.values(sql`SELECT 1 FROM event_books WHERE event_id = ${eventId} LIMIT 1`)).length > 0) return null;
+  return eventId;
 }
 
 /** The figure with cents a draft keeps, or null; null on a database before 0068. */
