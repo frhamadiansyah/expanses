@@ -1530,6 +1530,8 @@ function CardBody({
           options={paymentOptions(landing, [])}
           accounts={accounts}
           chosenAccountId={draft.partner?.side === 'to' ? '' : draft.toId}
+          // Within an account, the pocket in the From's currency first: a same-currency move is one tap away.
+          leadCurrency={draft.partner?.side === 'from' ? null : account?.currency}
           // One's own account clears a partner's item on this side; a partner on the From side stays.
           onPick={(option) => {
             set({ toId: option.accountId, partner: draft.partner?.side === 'from' ? draft.partner : null });

@@ -117,6 +117,8 @@ export async function pocketForSpending(page: Page) {
   await again.click();
   await expect(again).toBeChecked();
   sheet = await paidWithSheet(page);
+  // Two currencies offered again: the account is one row, its pockets folded under it (account tree, 12 Nov).
+  await sheet.getByRole('button', { name: CASH.name, exact: true, expanded: false }).click();
   await expect(sheet.getByRole('button', { name: `${CASH.name} · TRY`, exact: true })).toBeVisible();
   await expect(await walletBalance(page)).toContainText('2.480.000');
   await expectWalletFigure(page, CASH.name, '2.480.000');
@@ -158,6 +160,7 @@ export async function everyPocketOff(page: Page) {
 
   // Both pockets are on again: in Paid with, on their own switches, and the card counts both.
   const sheet = await paidWithSheet(page);
+  await sheet.getByRole('button', { name: CASH.name, exact: true, expanded: false }).click();
   await expect(sheet.getByRole('button', { name: `${CASH.name} · IDR`, exact: true })).toBeVisible();
   await expect(sheet.getByRole('button', { name: `${CASH.name} · TRY`, exact: true })).toBeVisible();
   for (const currency of ['TRY', 'IDR']) await expect(await openPocketSettings(page, currency)).toBeChecked();
