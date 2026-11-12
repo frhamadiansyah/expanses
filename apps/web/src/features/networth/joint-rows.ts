@@ -209,6 +209,25 @@ export function ownerRing(rings: Readonly<Record<string, RingColour>>, owner: st
 }
 
 /**
+ * Whose a row on the household's sheet is (owner rings, 12 Nov). The sheet is not always drawn in the rows `jointRows`
+ * holds: an account with pockets is folded into its parent (`foldPockets`), whose id is no row there — only its pockets
+ * are. So a row is looked up by its own id, then by its pockets', and a row no joint row speaks for is this phone's own
+ * (the Assets page's `owner ?? me`), never left without a ring. The partner's received rows are always found by id.
+ */
+export function sheetOwnerOf(
+  accountId: string,
+  rows: ReadonlyMap<string, JointRows['rows'][number]>,
+  accounts: readonly { id: string; parentId: string | null }[],
+  me: string,
+): { owner: string; received: boolean; row: JointRows['rows'][number] | null } {
+  const row = rows.get(accountId);
+  if (row) return { owner: row.owner, received: row.received, row };
+  const pocket = accounts.filter((account) => account.parentId === accountId).map((account) => rows.get(account.id)).find((each) => each !== undefined);
+  if (pocket) return { owner: pocket.owner, received: pocket.received, row: null };
+  return { owner: me, received: false, row: null };
+}
+
+/**
  * The household's line (§8.2): each month of this phone's own series with every received item added — its month-end
  * for an earlier month, today's balance for the month of its summary — converted with the same rates as the series,
  * into the figure and into the stacks the bars draw (an asset by the section its kind reads as, a debt by its kind).
