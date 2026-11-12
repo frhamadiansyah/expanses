@@ -12,6 +12,8 @@ describe('parseLooseDate', () => {
     expect(parseLooseDate('12 sep', TODAY)).toBe('2026-09-12');
     expect(parseLooseDate('12 September 2025', TODAY)).toBe('2025-09-12');
     expect(parseLooseDate('Sep 12', TODAY)).toBe('2026-09-12');
+    expect(parseLooseDate('21 April', TODAY)).toBe('2026-04-21');
+    expect(parseLooseDate('April 21', TODAY)).toBe('2026-04-21');
   });
 
   it('puts the month first where people write it that way', () => {

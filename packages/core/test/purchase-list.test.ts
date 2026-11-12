@@ -295,6 +295,14 @@ describe('parsePurchaseList: Indonesian month words and joined shapes', () => {
     expect(dayOf('2 maret')).toBe('2026-03-02');
     expect(dayOf('2 nop')).toBe('2026-11-02');
   });
+  it('reads every month written in full, in both languages', () => {
+    expect(dayOf('21 April')).toBe('2026-04-21');
+    expect(dayOf('April 21')).toBe('2026-04-21');
+    expect(read('21 april kopi 20rb')[0]).toMatchObject({ occurredOn: '2026-04-21', note: 'kopi' });
+    for (const [word, month] of [['january', 1], ['januari', 1], ['february', 2], ['februari', 2], ['march', 3], ['maret', 3], ['april', 4], ['may', 5], ['mei', 5], ['june', 6], ['juni', 6], ['july', 7], ['juli', 7], ['august', 8], ['agustus', 8], ['september', 9], ['october', 10], ['oktober', 10], ['november', 11], ['nopember', 11], ['december', 12], ['desember', 12]] as const) {
+      expect(read(`3 ${word}\nx 1000`)[0]!.occurredOn?.slice(5, 7), word).toBe(String(month).padStart(2, '0'));
+    }
+  });
   it('gives a purchase line its own day from a joined date', () => {
     expect(read('21okt grab 32rb')[0]).toMatchObject({ occurredOn: '2026-10-21', note: 'grab', amountMinor: 32000 });
     expect(read('21 okt grab 32rb')[0]).toMatchObject({ occurredOn: '2026-10-21', note: 'grab' });

@@ -39,7 +39,7 @@ const MONTH_NAMES = new Set([
 /** Every whole word that names a month, English and Indonesian, in full or in its usual short form. */
 export const MONTH_WORDS: Record<string, number> = {
   ...MONTHS,
-  january: 1, januari: 1, february: 2, februari: 2, march: 3, maret: 3, june: 6, juni: 6, july: 7, juli: 7,
+  january: 1, januari: 1, february: 2, februari: 2, march: 3, maret: 3, april: 4, june: 6, juni: 6, july: 7, juli: 7,
   august: 8, agustus: 8, sept: 9, september: 9, october: 10, oktober: 10, november: 11, nopember: 11, december: 12, desember: 12,
 };
 
