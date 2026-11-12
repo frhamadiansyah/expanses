@@ -41,6 +41,13 @@ function cellsOf(line: string): string[] {
     .filter((cell) => cell !== '');
 }
 
+/** A value cell as printed after its label: a colon the bank sets between them ("Jumlah\t: IDR 245,500.00") dropped. */
+const valueOf = (cells: readonly string[]): string =>
+  cells
+    .join(' ')
+    .replace(/^[\s:]+/, '')
+    .trim();
+
 /** A cell folded to the form a label word is written in: lower case, single spaces, no colon after it. */
 function asLabel(cell: string): string {
   let text = cell.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -104,10 +111,19 @@ export function labelledTableOf(text: string, words: WordList): LabelledTable {
     const row = rows[i]!;
     const first = row.fields[0] ?? null;
     if (first === null) {
-      // A status written after its label on one line, "Status: Approved", is still the table's status.
+      /*
+       * A label and its value on one line with a colon between them, "Status: Approved" or "Nama Merchant : Toko
+       * Melati, Kebayo": the pair, value whole (a comma in a shop's name is part of it). The first colon splits it, so a
+       * time in the value ("14:07:22") stays with the value.
+       */
       const colon = row.cells.length === 1 ? row.cells[0]!.indexOf(':') : -1;
-      if (colon > 0 && fieldOf(row.cells[0]!.slice(0, colon)) === 'status') {
-        pairs.push({ field: 'status', label: asLabel(row.cells[0]!.slice(0, colon)), value: row.cells[0]!.slice(colon + 1).trim(), line: row.line });
+      const field = colon > 0 ? fieldOf(row.cells[0]!.slice(0, colon)) : null;
+      if (field !== null) {
+        const value = row.cells[0]!.slice(colon + 1).trim();
+        if (value !== '') {
+          pairs.push({ field, label: asLabel(row.cells[0]!.slice(0, colon)), value, line: row.line });
+          if (field !== 'status') end = row.line;
+        }
       }
       i += 1;
       continue;
@@ -122,8 +138,11 @@ export function labelledTableOf(text: string, words: WordList): LabelledTable {
           continue;
         }
       } else if (row.fields.slice(1).every((field) => field === null)) {
-        pairs.push({ field: first, label: asLabel(row.cells[0]!), value: row.cells.slice(1).join(' '), line: row.line });
-        end = row.line;
+        const value = valueOf(row.cells.slice(1));
+        if (value !== '') {
+          pairs.push({ field: first, label: asLabel(row.cells[0]!), value, line: row.line });
+          end = row.line;
+        }
       }
       i += 1;
       continue;
