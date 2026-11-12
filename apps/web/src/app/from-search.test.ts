@@ -51,6 +51,28 @@ describe('trackOrigin', () => {
     expect(originHref()).toBe('/cards/c1/statement?month=2026-10');
   });
 
+  it('skips the pages that bill opens onward too, until a page of its own is reached', () => {
+    const { router, go } = fakeRouter('/goals/g1');
+    trackOrigin(router);
+    go('/transactions/t1');
+    go('/transactions/t1/bill');
+    go('/bills/b1?from=transaction');
+    // Open this bill → Edit bill → back → back → the receipt's Delete.
+    go('/bills/b1/edit');
+    go('/bills/b1/earlier');
+    go('/bills/b1/link?month=2026-04');
+    go('/bills/b1?from=transaction');
+    go('/transactions/t1');
+    expect(originHref()).toBe('/goals/g1');
+    // Another bill's pages, or any other page, are remembered again — and the onward skip ends there.
+    go('/bills/b2/edit');
+    expect(originHref()).toBe('/bills/b2/edit');
+    go('/bills/b1?from=transaction');
+    go('/transactions');
+    go('/bills/b1/edit');
+    expect(originHref()).toBe('/bills/b1/edit');
+  });
+
   it('still remembers a bill opened on its own, or from Cashflow', () => {
     const { router, go } = fakeRouter('/transactions');
     trackOrigin(router);

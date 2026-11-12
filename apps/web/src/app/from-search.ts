@@ -85,9 +85,22 @@ export function trackOrigin(router: {
   subscribe: (event: 'onResolved', fn: () => void) => unknown;
   state: { location: { pathname: string; href: string } };
 }): void {
+  /*
+   * The bill a receipt opened (`?from=transaction`), while its own onward pages are being walked — Edit bill, Earlier
+   * months, Link a purchase. They are the receipt's step too, and come back through it; the first page that is neither
+   * ends the walk and is remembered as usual.
+   */
+  let stepBill: string | null = null;
   const note = () => {
     const { pathname, href } = router.state.location;
-    if (!isTransactionDetail(pathname) && !openedFromTransaction(href)) origin = href;
+    if (isTransactionDetail(pathname)) return;
+    if (openedFromTransaction(href)) {
+      stepBill = /^\/bills\/([^/]+)\/?$/.exec(pathname)?.[1] ?? null;
+      return;
+    }
+    if (stepBill !== null && pathname.startsWith(`/bills/${stepBill}/`)) return;
+    stepBill = null;
+    origin = href;
   };
   note();
   router.subscribe('onResolved', note);
