@@ -16,7 +16,6 @@ import { RANGES, rangeChange, SPAN_MONTHS, type Span, spanSlice } from './span';
 import { memberName, useAssetProfiles, useAssetValues, useJointSheet, useNetWorthSeries, useSheet } from './queries';
 import { buyChoices } from '../transactions/buy-in-form';
 import { figureOf, jointSeries, ownerRing } from './joint-rows';
-import { shortMoney } from './value-chart';
 import { isMoneyAccount, useAccounts } from '../../lib/queries';
 import { accountDestination, type AccountDestination } from '../accounts/destination';
 import { foldPockets, type ShownSheetRow } from './overview-rows';
@@ -580,26 +579,6 @@ export function OverviewPage() {
               <p className="py-6 text-center text-[15px] leading-[20px] text-[var(--ph-warn)]">No {sheetMissing.join(', ')} rate yet, so net worth cannot be added up.</p>
             ) : (
               <Hero minor={sheet.netWorthMinor} currency={ws.baseCurrency} change={rangeChange(shown)} caption={covered} />
-            )}
-            {/*
-             * Whose the household's figure is (§8.2): a dot in each member's ring colour, their name and their part,
-             * in the group's order. A part with a rate missing is a dash, never a figure built from zeroes.
-             */}
-            {joint && (
-              <p data-testid="owner-legend" className="pt-[6px] text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
-                {joint.members.map((member, index) => {
-                  const part = joint.byOwner[member];
-                  return (
-                    <span key={member} className="whitespace-nowrap">
-                      {index > 0 && <span aria-hidden> · </span>}
-                      <span aria-hidden style={{ color: ownerRing(joint.members, member) ?? undefined }}>
-                        ●
-                      </span>{' '}
-                      {memberName(joint.names, member)} <span className="tabular">{part === null || part === undefined ? '—' : shortMoney(part, ws.baseCurrency)}</span>
-                    </span>
-                  );
-                })}
-              </p>
             )}
           </div>
         </div>

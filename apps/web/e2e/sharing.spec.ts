@@ -537,13 +537,12 @@ async function reviewAndShare(page: Page, info: TestInfo, name: string, says?: s
   await expect(review).toHaveCount(0, { timeout: 30_000 });
 }
 
-/** Net worth's figure, and — when the household files jointly — whose part is whose. */
-async function netWorthReads(page: Page, figure: string, legend: string[] | null) {
+/** Net worth's figure. Each person's part is not shown under it (removed 2026-11-12); `_parts` keeps the callers' record. */
+async function netWorthReads(page: Page, figure: string, _parts: string[] | null) {
   await page.goto('/net-worth');
   await eventually(page, async () => {
     await expect(page.getByTestId('net-worth')).toContainText(figure, { timeout: 1_000 });
-    if (legend) for (const part of legend) await expect(page.getByTestId('owner-legend')).toContainText(part, { timeout: 1_000 });
-    else await expect(page.getByTestId('owner-legend')).toHaveCount(0, { timeout: 1_000 });
+    await expect(page.getByTestId('owner-legend')).toHaveCount(0, { timeout: 1_000 });
   });
 }
 
