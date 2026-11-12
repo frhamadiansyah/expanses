@@ -6,9 +6,10 @@ import { accounts, transactions } from '../schema';
 import { goalDueMonths, goalDues, goals } from '../schema-goals';
 import { MONEY_SUBTYPES } from './accounts';
 import { recordContributionTx } from './goal-contributions';
-import { GoalDbError } from './goals';
+import { GoalDbError, setStandingMonthlyTx } from './goals';
 import { recordTaggedTransferTx } from './goal-transfers';
-import { voidTransactionTx } from './ledger';
+import { nativeBalances, voidTransactionTx } from './ledger';
+import { setAsideView } from './set-aside';
 import { adjustSetAsideTx, isPocketParentTx, lowerSetAsideTx } from './set-aside-tx';
 
 /*
@@ -51,6 +52,8 @@ export interface GoalDueRecord {
   toAccountId: string | null;
   transactionId: string | null;
   live: boolean;
+  /** A transfer month whose transfer now stands in another workspace (moved there): done, but undone only there. */
+  elsewhere?: boolean;
 }
 
 export interface GoalDueMonth {
@@ -139,20 +142,20 @@ export function dueMonthsOf(goalId: string, settings: GoalDueSettings, records: 
     });
 }
 
-/** The transfer standing for `transactionId` now: itself while posted, else the posted edit that replaced it, else null. */
-async function liveTransactionTx(tx: Db, ws: WorkspaceContext, transactionId: string): Promise<string | null> {
+/**
+ * The transfer standing for `transactionId` now: itself while posted, else the posted edit that replaced it, else null.
+ * The edit is followed into any workspace: one moved elsewhere still stands (`elsewhere`), so its month stays done.
+ */
+async function liveTransactionTx(tx: Db, ws: WorkspaceContext, transactionId: string): Promise<{ id: string; elsewhere: boolean } | null> {
   let id: string | null = transactionId;
   for (let hop = 0; id !== null && hop < 50; hop += 1) {
     const [row] = await tx
-      .select({ status: transactions.status })
+      .select({ status: transactions.status, workspaceId: transactions.workspaceId })
       .from(transactions)
-      .where(and(eq(transactions.id, id), eq(transactions.workspaceId, ws.workspaceId)));
+      .where(hop === 0 ? and(eq(transactions.id, id), eq(transactions.workspaceId, ws.workspaceId)) : eq(transactions.id, id));
     if (!row) return null;
-    if (row.status === 'posted') return id;
-    const [next] = await tx
-      .select({ id: transactions.id })
-      .from(transactions)
-      .where(and(eq(transactions.replacesTransactionId, id), eq(transactions.workspaceId, ws.workspaceId)));
+    if (row.status === 'posted') return { id, elsewhere: row.workspaceId !== ws.workspaceId };
+    const [next] = await tx.select({ id: transactions.id }).from(transactions).where(eq(transactions.replacesTransactionId, id));
     id = next?.id ?? null;
   }
   return null;
@@ -196,8 +199,9 @@ async function recordsOfTx(tx: Db, ws: WorkspaceContext, goalId: string): Promis
       occurredOn: row.occurredOn,
       accountId: row.accountId,
       toAccountId: row.toAccountId,
-      transactionId: live ?? row.transactionId,
+      transactionId: live?.id ?? row.transactionId,
       live: row.mode !== 'transfer' || live !== null,
+      elsewhere: live?.elsewhere ?? false,
     });
   }
   return records;
@@ -267,9 +271,30 @@ async function assertAccountTx(tx: Db, ws: WorkspaceContext, accountId: string):
  * changed while on, the start stays. Turned off, nothing more comes due and what was done stays done.
  */
 export async function saveGoalDue(database: Database, ws: WorkspaceContext, input: SaveGoalDueInput, today: string): Promise<void> {
+  await database.transaction((tx) => saveGoalDueTx(tx, ws, input, today));
+}
+
+/**
+ * The Monthly sheet's save, as one: the goal's Monthly amount and its Due each month land together or not at all, so a
+ * refused due leaves the amount as it was too. On needs an amount above nought to come due.
+ */
+export async function saveGoalMonthly(
+  database: Database,
+  ws: WorkspaceContext,
+  input: { goalId: string; amountMinor: number; due: SaveGoalDueInput | null },
+  today: string,
+): Promise<void> {
+  if (input.due?.on && !(input.amountMinor > 0)) throw new GoalDueError('Enter an amount each month for it to come due');
+  await database.transaction(async (tx) => {
+    await setStandingMonthlyTx(tx, ws, input.goalId, input.amountMinor);
+    if (input.due) await saveGoalDueTx(tx, ws, input.due, today);
+  });
+}
+
+async function saveGoalDueTx(tx: Db, ws: WorkspaceContext, input: SaveGoalDueInput, today: string): Promise<void> {
   if (!DATE.test(today)) throw new GoalDueError('A date is YYYY-MM-DD');
   if (!Number.isInteger(input.day) || input.day < 1 || input.day > LAST_DAY) throw new GoalDueError('Choose a day of the month');
-  await database.transaction(async (tx) => {
+  {
     await assertGoalTx(tx, ws, input.goalId);
     const [existing] = await tx
       .select()
@@ -301,7 +326,7 @@ export async function saveGoalDue(database: Database, ws: WorkspaceContext, inpu
     };
     if (existing) await tx.update(goalDues).set(row).where(eq(goalDues.goalId, input.goalId));
     else await tx.insert(goalDues).values(row);
-  });
+  }
 }
 
 /** One goal's Due each month as stored, or null when it was never set. */
@@ -397,6 +422,11 @@ export interface TransferGoalMonthInput {
 export async function transferGoalMonth(database: Database, ws: WorkspaceContext, input: TransferGoalMonthInput): Promise<string> {
   assertAmount(input.amountMinor);
   if (!DATE.test(input.occurredOn)) throw new GoalDueError('A date is YYYY-MM-DD');
+  // A month is new money for the goal: it keeps what it already has set aside in From, and only what goes past From's
+  // free money (the balance less every promise on it) can be its own promise following the money.
+  const view = await setAsideView(database, ws, input.fromAccountId, { date: input.occurredOn });
+  const freeMinor = view ? view.freeMinor : ((await nativeBalances(database, ws, input.occurredOn))[input.fromAccountId] ?? 0);
+  const promiseFollowsAtMost = Math.max(0, input.amountMinor - Math.max(0, freeMinor));
   return database.transaction(async (tx) => {
     const goal = await assertGoalTx(tx, ws, input.goalId);
     const { state } = await monthTx(tx, ws, input.goalId, input.month, input.occurredOn);
@@ -410,6 +440,7 @@ export async function transferGoalMonth(database: Database, ws: WorkspaceContext
       toAmountMinor: input.toAmountMinor ?? null,
       goalId: input.goalId,
       ratesToBase: input.ratesToBase,
+      promiseFollowsAtMost,
     });
     await writeRecordTx(tx, ws, input.goalId, input.month, {
       state: 'done',
@@ -434,45 +465,72 @@ export async function skipGoalMonth(database: Database, ws: WorkspaceContext, go
   });
 }
 
+/** What an Undo did: whether the month is open again, and — when it is not — what could not be taken back. */
+export interface GoalMonthUndo {
+  /** True when the month is open again (or skipped no more). */
+  undone: boolean;
+  /** What came off the goal's set-aside. */
+  takenMinor: number;
+  /** What stayed on the month because it was moved or used since: the month stays done with this on it. */
+  leftMinor: number;
+}
+
 /**
- * Undoes a month, exactly: a set-aside comes off the goal's promise on its account (never below nought, if some of it
- * has been used since), a transfer is voided (its latest edit, if it was edited), a skip is cleared. The month is open
- * again.
+ * Undoes a month, exactly: a transfer is voided (its latest edit, if it was edited), a skip is cleared, and a set-aside
+ * comes off the goal's promise on its account. When some of it was moved or used since, only what is left there comes
+ * off, and the month stays done with the rest on it — it never reopens with money it could not take back.
  */
-export async function undoGoalMonth(database: Database, ws: WorkspaceContext, goalId: string, month: string): Promise<void> {
-  await database.transaction(async (tx) => {
+export async function undoGoalMonth(database: Database, ws: WorkspaceContext, goalId: string, month: string): Promise<GoalMonthUndo> {
+  return database.transaction(async (tx) => {
     const records = await recordsOfTx(tx, ws, goalId);
     const record = records.find((row) => row.month === month);
-    if (!record) return;
+    if (!record) return { undone: true, takenMinor: 0, leftMinor: 0 };
+    const where = and(eq(goalDueMonths.goalId, goalId), eq(goalDueMonths.month, month), eq(goalDueMonths.workspaceId, ws.workspaceId));
     if (record.state === 'done' && record.mode === 'set_aside' && record.accountId && (record.amountMinor ?? 0) > 0) {
-      const taken = await lowerSetAsideTx(tx, ws, goalId, record.accountId, record.amountMinor!);
+      const amount = record.amountMinor!;
+      const taken = await lowerSetAsideTx(tx, ws, goalId, record.accountId, amount);
       await recordContributionTx(tx, ws, goalId, record.accountId, -taken);
+      if (taken < amount) {
+        await tx.update(goalDueMonths).set({ amountMinor: amount - taken }).where(where);
+        return { undone: false, takenMinor: taken, leftMinor: amount - taken };
+      }
+      await tx.delete(goalDueMonths).where(where);
+      return { undone: true, takenMinor: taken, leftMinor: 0 };
     }
     if (record.state === 'done' && record.mode === 'transfer' && record.live && record.transactionId) {
+      if (record.elsewhere) throw new GoalDueError('That transfer was moved to another workspace: delete it there.');
       await voidTransactionTx(tx, ws, record.transactionId);
     }
-    await tx.delete(goalDueMonths).where(and(eq(goalDueMonths.goalId, goalId), eq(goalDueMonths.month, month), eq(goalDueMonths.workspaceId, ws.workspaceId)));
+    await tx.delete(goalDueMonths).where(where);
+    return { undone: true, takenMinor: record.state === 'done' ? (record.amountMinor ?? 0) : 0, leftMinor: 0 };
   });
 }
 
-/** Changes what a set-aside month set aside: the goal's promise on its account moves by the difference. */
-export async function changeGoalMonthAmount(database: Database, ws: WorkspaceContext, goalId: string, month: string, amountMinor: number): Promise<void> {
+/**
+ * Changes what a set-aside month set aside: the goal's promise on its account moves by the difference. Lowered past
+ * what is left there (some was moved or used since), the month keeps what it actually has. Returns that amount.
+ */
+export async function changeGoalMonthAmount(database: Database, ws: WorkspaceContext, goalId: string, month: string, amountMinor: number): Promise<number> {
   assertAmount(amountMinor);
-  await database.transaction(async (tx) => {
+  return database.transaction(async (tx) => {
     const record = (await recordsOfTx(tx, ws, goalId)).find((row) => row.month === month);
     if (!record || record.state !== 'done') throw new GoalDueError(`Nothing was set aside for ${monthName(month, 'long')}`);
     if (record.mode !== 'set_aside' || !record.accountId) throw new GoalDueError('A transfer is changed on the transfer itself');
-    const delta = amountMinor - (record.amountMinor ?? 0);
+    const old = record.amountMinor ?? 0;
+    const delta = amountMinor - old;
+    let result = amountMinor;
     if (delta > 0) {
       await adjustSetAsideTx(tx, ws, goalId, record.accountId, delta);
       await recordContributionTx(tx, ws, goalId, record.accountId, delta);
     } else if (delta < 0) {
       const taken = await lowerSetAsideTx(tx, ws, goalId, record.accountId, -delta);
       await recordContributionTx(tx, ws, goalId, record.accountId, -taken);
+      result = old - taken;
     }
     await tx
       .update(goalDueMonths)
-      .set({ amountMinor })
+      .set({ amountMinor: result })
       .where(and(eq(goalDueMonths.goalId, goalId), eq(goalDueMonths.month, month), eq(goalDueMonths.workspaceId, ws.workspaceId)));
+    return result;
   });
 }

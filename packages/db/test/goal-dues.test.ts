@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
 import {
   type AccountRow,
@@ -9,7 +9,12 @@ import {
   deleteGoal,
   dueDayOn,
   dueMonthsOf,
+  goalContributionEvents,
   goalDueOf,
+  createWorkspace,
+  recordTaggedTransfer,
+  saveGoalMonthly,
+  setAsideView,
   type GoalDueSettings,
   listEarmarks,
   listGoalDues,
@@ -219,8 +224,10 @@ describe('a set-aside month', () => {
   it('undone after some was used, takes back only what is left', async () => {
     await setAsideGoalMonth(database, ws, { goalId: umrahId, month: '2026-11', amountMinor: 1_700_000, accountId: tahapan.id, occurredOn: TODAY });
     await saveEarmark(database, ws, { goalId: umrahId, accountId: tahapan.id, amountMinor: 1_000_000 });
-    await undoGoalMonth(database, ws, umrahId, '2026-11');
+    await expect(undoGoalMonth(database, ws, umrahId, '2026-11')).resolves.toEqual({ undone: false, takenMinor: 1_000_000, leftMinor: 700_000 });
     expect(await setAsideOn(tahapan.id)).toBe(0);
+    // It never reopens with money it could not take back: done, with what is still on it.
+    expect((await monthsOf())[0]).toMatchObject({ state: 'done', amountMinor: 700_000 });
   });
 
   it('cannot be done twice', async () => {
@@ -354,5 +361,123 @@ describe('the goal ending', () => {
     await deleteGoal(database, ws, umrahId);
     expect(await database.db.values(sql`SELECT * FROM goal_dues`)).toEqual([]);
     expect(await database.db.values(sql`SELECT * FROM goal_due_months`)).toEqual([]);
+  });
+});
+
+describe('review probes (fix round 1)', () => {
+  let tabunganB: AccountRow;
+  let tabunganC: AccountRow;
+  beforeEach(async () => {
+    tabunganB = tabungan;
+    tabunganC = await createAccount(database, ws, { name: 'Bank Sejahtera Deposito', kind: 'asset', subtype: 'savings', currency: 'IDR' });
+    await setStandingMonthly(database, ws, umrahId, 1_000_000);
+  });
+
+  const goalTotal = async () => (await listEarmarks(database, ws)).filter((row) => row.goalId === umrahId).reduce((sum, row) => sum + row.amountMinor, 0);
+  const contributed = async () => (await goalContributionEvents(database, ws)).filter((event) => event.goalId === umrahId).reduce((sum, event) => sum + event.amountMinor, 0);
+  const freeIn = async (accountId: string, date: string) => (await setAsideView(database, ws, accountId, { date }))?.freeMinor;
+
+  it('Oct set aside in A, then Transfer A→B in Nov: the goal grows by both months', async () => {
+    await saveGoalDue(database, ws, { goalId: umrahId, on: true, day: 1, mode: 'set_aside', accountId: tahapan.id, toAccountId: null }, '2026-10-05');
+    await setAsideGoalMonth(database, ws, { goalId: umrahId, month: '2026-10', amountMinor: 1_000_000, accountId: tahapan.id, occurredOn: '2026-10-05' });
+    await saveGoalDue(database, ws, { goalId: umrahId, on: true, day: 1, mode: 'transfer', accountId: tahapan.id, toAccountId: tabunganB.id }, TODAY);
+    expect(await freeIn(tahapan.id, TODAY)).toBe(29_000_000);
+    await transferGoalMonth(database, ws, { goalId: umrahId, month: '2026-11', amountMinor: 1_000_000, fromAccountId: tahapan.id, toAccountId: tabunganB.id, occurredOn: TODAY });
+
+    expect(await goalTotal()).toBe(2_000_000);
+    expect(await setAsideOn(tahapan.id)).toBe(1_000_000);
+    expect(await setAsideOn(tabunganB.id)).toBe(1_000_000);
+    expect(await contributed()).toBe(2_000_000);
+    // A's Free to spend is down by the November transfer.
+    expect(await freeIn(tahapan.id, TODAY)).toBe(28_000_000);
+    expect((await monthsOf()).map((m) => [m.month, m.state, m.amountMinor])).toEqual([
+      ['2026-11', 'done', 1_000_000],
+      ['2026-10', 'done', 1_000_000],
+    ]);
+  });
+
+  it('a Transfer past From’s free money takes the rest from the goal’s own promise there', async () => {
+    const thin = await createAccount(database, ws, { name: 'Dompet Tipis', kind: 'asset', subtype: 'bank', currency: 'IDR', openingBalanceMinor: 1_500_000, openedOn: '2026-01-01' });
+    await saveGoalDue(database, ws, { goalId: umrahId, on: true, day: 1, mode: 'set_aside', accountId: thin.id, toAccountId: null }, '2026-10-05');
+    await setAsideGoalMonth(database, ws, { goalId: umrahId, month: '2026-10', amountMinor: 1_000_000, accountId: thin.id, occurredOn: '2026-10-05' });
+    await saveGoalDue(database, ws, { goalId: umrahId, on: true, day: 1, mode: 'transfer', accountId: thin.id, toAccountId: tabunganB.id }, TODAY);
+    // Free there: 500.000. A 1.000.000 transfer moves 500.000 of the goal's own promise with it.
+    await transferGoalMonth(database, ws, { goalId: umrahId, month: '2026-11', amountMinor: 1_000_000, fromAccountId: thin.id, toAccountId: tabunganB.id, occurredOn: TODAY });
+    expect(await setAsideOn(thin.id)).toBe(500_000);
+    expect(await setAsideOn(tabunganB.id)).toBe(1_000_000);
+    expect(await goalTotal()).toBe(1_500_000);
+    expect(await contributed()).toBe(1_500_000);
+    // Undone, the transfer goes and so does what it moved: back where October left it.
+    await undoGoalMonth(database, ws, umrahId, '2026-11');
+    expect(await setAsideOn(thin.id)).toBe(1_000_000);
+    expect(await goalTotal()).toBe(1_000_000);
+  });
+
+  it('set aside, then the promise moved elsewhere: Undo takes nothing and the month stays done', async () => {
+    await saveGoalDue(database, ws, { goalId: umrahId, on: true, day: 1, mode: 'set_aside', accountId: tahapan.id, toAccountId: null }, '2026-11-05');
+    await setAsideGoalMonth(database, ws, { goalId: umrahId, month: '2026-11', amountMinor: 1_000_000, accountId: tahapan.id, occurredOn: '2026-11-05' });
+    await recordTaggedTransfer(database, ws, { occurredOn: '2026-11-06', description: 'Pindah', amountMinor: 1_000_000, fromAccountId: tahapan.id, toAccountId: tabunganC.id, goalId: umrahId });
+    await expect(undoGoalMonth(database, ws, umrahId, '2026-11')).resolves.toEqual({ undone: false, takenMinor: 0, leftMinor: 1_000_000 });
+    expect((await monthsOf())[0]).toMatchObject({ state: 'done', amountMinor: 1_000_000 });
+    expect(await goalTotal()).toBe(1_000_000);
+    await expect(setAsideGoalMonth(database, ws, { goalId: umrahId, month: '2026-11', amountMinor: 1_000_000, accountId: tahapan.id, occurredOn: TODAY })).rejects.toThrow('already done');
+  });
+
+  it('Change amount lowered past what is left records what the month actually has', async () => {
+    await saveGoalDue(database, ws, { goalId: umrahId, on: true, day: 1, mode: 'set_aside', accountId: tahapan.id, toAccountId: null }, '2026-11-05');
+    await setAsideGoalMonth(database, ws, { goalId: umrahId, month: '2026-11', amountMinor: 1_000_000, accountId: tahapan.id, occurredOn: '2026-11-05' });
+    await recordTaggedTransfer(database, ws, { occurredOn: '2026-11-06', description: 'Pindah', amountMinor: 800_000, fromAccountId: tahapan.id, toAccountId: tabunganC.id, goalId: umrahId });
+    // Asked for 300.000: 700.000 off, but only 200.000 is still in A. 1.000.000 − 200.000 stays on the month.
+    await expect(changeGoalMonthAmount(database, ws, umrahId, '2026-11', 300_000)).resolves.toBe(800_000);
+    expect(await setAsideOn(tahapan.id)).toBe(0);
+    expect((await monthsOf())[0]).toMatchObject({ state: 'done', amountMinor: 800_000 });
+    await expect(undoGoalMonth(database, ws, umrahId, '2026-11')).resolves.toEqual({ undone: false, takenMinor: 0, leftMinor: 800_000 });
+  });
+
+  it('a transfer moved to another workspace keeps its month done, and is undone there', async () => {
+    await saveGoalDue(database, ws, { goalId: umrahId, on: true, day: 1, mode: 'transfer', accountId: tahapan.id, toAccountId: tabunganB.id }, TODAY);
+    const id = await transferGoalMonth(database, ws, { goalId: umrahId, month: '2026-11', amountMinor: 1_000_000, fromAccountId: tahapan.id, toAccountId: tabunganB.id, occurredOn: TODAY });
+    const other = await createWorkspace(database, { name: 'Usaha', type: 'personal', baseCurrency: 'IDR' });
+    await database.db.run(sql`UPDATE transactions SET status = 'void' WHERE id = ${id}`);
+    await database.db.run(
+      sql`INSERT INTO transactions (id, workspace_id, occurred_on, description, source, status, replaces_transaction_id, created_at) VALUES ('moved-copy', ${other.workspaceId}, ${TODAY}, 'Umrah · November', 'manual', 'posted', ${id}, ${TODAY})`,
+    );
+    expect((await monthsOf())[0]).toMatchObject({ state: 'done', transactionId: 'moved-copy' });
+    await expect(undoGoalMonth(database, ws, umrahId, '2026-11')).rejects.toThrow('moved to another workspace');
+  });
+
+  it('the Monthly and its due are saved as one: a refused due changes nothing', async () => {
+    await expect(
+      saveGoalMonthly(database, ws, { goalId: umrahId, amountMinor: 2_500_000, due: { goalId: umrahId, on: true, day: 5, mode: 'transfer', accountId: tahapan.id, toAccountId: tahapan.id } }, TODAY),
+    ).rejects.toThrow('Choose two different accounts');
+    await expect(saveGoalMonthly(database, ws, { goalId: umrahId, amountMinor: 0, due: { goalId: umrahId, on: true, day: 5, mode: 'set_aside', accountId: tahapan.id, toAccountId: null } }, TODAY)).rejects.toThrow(
+      'Enter an amount each month',
+    );
+    const [standing] = await database.db.values<[number]>(sql`SELECT standing_monthly_minor FROM goals WHERE id = ${umrahId}`);
+    expect(standing).toEqual([1_000_000]);
+    await expect(goalDueOf(database, ws, umrahId)).resolves.toBeNull();
+    await saveGoalMonthly(database, ws, { goalId: umrahId, amountMinor: 2_500_000, due: { goalId: umrahId, on: true, day: 5, mode: 'set_aside', accountId: tahapan.id, toAccountId: null } }, TODAY);
+    expect((await monthsOf())[0]).toMatchObject({ amountMinor: 2_500_000, dueOn: '2026-11-05' });
+  });
+});
+
+describe('the day a set-aside is dated', () => {
+  const zone = process.env.TZ;
+  afterEach(() => {
+    vi.useRealTimers();
+    if (zone === undefined) delete process.env.TZ;
+    else process.env.TZ = zone;
+  });
+
+  it('is the local day: 00:30 on the 1st in Jakarta counts in that month, not UTC’s last', async () => {
+    process.env.TZ = 'Asia/Jakarta';
+    await saveGoalDue(database, ws, { goalId: umrahId, on: true, day: 1, mode: 'set_aside', accountId: tahapan.id, toAccountId: null }, '2026-11-01');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    // 00:30 on 1 November in Jakarta is still 31 October in UTC.
+    vi.setSystemTime(new Date('2026-10-31T17:30:00Z'));
+    await setAsideGoalMonth(database, ws, { goalId: umrahId, month: '2026-11', amountMinor: 1_700_000, accountId: tahapan.id, occurredOn: '2026-11-01' });
+    vi.useRealTimers();
+    const rows = await database.db.values<[string]>(sql`SELECT occurred_on FROM goal_contributions WHERE goal_id = ${umrahId}`);
+    expect(rows).toEqual([['2026-11-01']]);
   });
 });

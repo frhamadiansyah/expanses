@@ -43,6 +43,11 @@ export interface TaggedTransferInput {
   photoIds?: string[];
   /** Which goal the money came out of, when it took more than was free (spec §4.4). */
   setAside?: SetAsideChoice | null;
+  /**
+   * The most of the goal's promise on the source that follows the money (`parkForGoalTx`). Absent, as much as the move
+   * carries. Only a goal's due month (`transferGoalMonth`) passes it: what went past the source's free money.
+   */
+  promiseFollowsAtMost?: number;
 }
 
 export interface TaggedTransferResult {
@@ -148,7 +153,7 @@ export async function recordTaggedTransferTx(tx: Db, ws: WorkspaceContext, input
       toAccountId: input.toAccountId,
       amountMinor: input.amountMinor,
       landedMinor,
-    });
+    }, { promiseFollowsAtMost: input.promiseFollowsAtMost });
     return { transactionId, setAsideMinor };
   }
 }

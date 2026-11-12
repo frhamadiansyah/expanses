@@ -541,13 +541,16 @@ export async function removeEarmark(database: Database, ws: WorkspaceContext, go
  * the note stay as they are, so a goal worked out by a calculator stays worked out.
  */
 export async function setStandingMonthly(database: Database, ws: WorkspaceContext, goalId: string, amountMinor: number): Promise<void> {
+  await database.transaction((tx) => setStandingMonthlyTx(tx, ws, goalId, amountMinor));
+}
+
+/** `setStandingMonthly` inside the caller's transaction (a Monthly saved with its Due each month, as one). */
+export async function setStandingMonthlyTx(tx: Db, ws: WorkspaceContext, goalId: string, amountMinor: number): Promise<void> {
   if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) throw new GoalDbError('A monthly amount is a whole figure, nought or more');
-  const [goal] = await database.db.select({ id: goals.id }).from(goals).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId)));
+  const [goal] = await tx.select({ id: goals.id }).from(goals).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId)));
   if (!goal) throw new GoalDbError('Goal not found in this workspace');
-  await database.transaction(async (tx) => {
-    await tx.update(goals).set({ standingMonthlyMinor: amountMinor }).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId)));
-    markGoalDirtyTx(tx, goalId);
-  });
+  await tx.update(goals).set({ standingMonthlyMinor: amountMinor }).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId)));
+  markGoalDirtyTx(tx, goalId);
 }
 
 /**
