@@ -65,7 +65,7 @@ describe('sharing reads', () => {
     const waiting = await sharingDiagnostics(fandri.database, bookId);
     expect(waiting.shared).toMatchObject({ epoch: 1, state: 'active', syncedAt: null });
     expect(waiting.outbox).toBeGreaterThan(0);
-    expect(waiting.devices).toEqual([{ deviceId: fandri.deviceId, memberId: waiting.shared!.memberId, removed: false }]);
+    expect(waiting.devices).toEqual([{ deviceId: fandri.deviceId, memberId: waiting.shared!.memberId, removed: false, appVersion: '0.3.0' }]);
     expect(waiting.epochKeys).toEqual([1]);
     await home.join(dewi, fandri);
     await home.settle();
