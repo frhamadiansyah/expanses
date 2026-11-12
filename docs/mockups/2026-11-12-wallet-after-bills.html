@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wallet after bills</title>
+<style>
+:root { --bg:#f2f2f7; --surface:#fff; --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e0e0e4; --fill:#efeff2; --up:#248a3d; --alarm:#c6301f; --warn:#b25000; --tint:#007aff; }
+* { box-sizing:border-box; }
+body { margin:0; background:#e6e6ea; color:var(--ink); font:14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; padding:24px 16px 48px; }
+h1 { font-size:20px; margin:0 0 4px; } .lede { color:#555; margin:0 0 20px; max-width:980px; }
+h2 { font-size:16px; margin:30px 0 12px; }
+.pair { display:flex; flex-wrap:wrap; gap:22px; align-items:flex-start; }
+.col { width:320px; max-width:100%; }
+.cap { font-weight:600; margin:0 0 8px; } .cap .n { display:inline-block; background:#1c1c1e; color:#fff; border-radius:5px; padding:0 6px; font-size:12px; margin-right:6px; }
+.phone { background:var(--bg); border-radius:28px; padding:14px 14px 20px; border:1px solid #d4d4d8; min-height:600px; position:relative; overflow:hidden; }
+.lt { font-size:30px; font-weight:700; margin:4px 2px 12px; display:flex; justify-content:space-between; align-items:center; }
+.round { width:34px; height:34px; border-radius:50%; background:#e5e5ea; display:inline-flex; align-items:center; justify-content:center; font-size:15px; margin-left:6px; }
+.box { background:var(--surface); border-radius:12px; padding:12px 14px; }
+.lab { font-size:12px; font-weight:600; letter-spacing:.08em; color:var(--ink3); text-transform:uppercase; }
+.fig { font-size:26px; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+.spark { height:34px; margin:6px 0 4px; background:linear-gradient(180deg, rgba(36,138,61,.15), transparent); border-bottom:2px solid var(--up); border-radius:4px; clip-path:polygon(0 70%,15% 55%,30% 62%,45% 40%,60% 48%,75% 30%,90% 36%,100% 20%,100% 100%,0 100%); }
+.sr { display:flex; align-items:center; gap:8px; padding:7px 0; font-size:15px; position:relative; }
+.sr + .sr { border-top:.5px solid var(--hair); }
+.dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.sr .grow { flex:1; } .amt { font-variant-numeric:tabular-nums; }
+.chev { color:#c7c7cc; margin-left:2px; }
+.grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
+.card { border-radius:12px; padding:10px; height:86px; color:#fff; display:flex; flex-direction:column; justify-content:space-between; font-size:12.5px; }
+.card b { font-size:15px; font-variant-numeric:tabular-nums; }
+.mark { outline:2px dashed #2563eb; outline-offset:3px; border-radius:8px; }
+.note { font-size:12.5px; color:#444; margin:10px 2px 0; }
+.gh { font-size:13px; color:var(--ink3); margin:14px 4px 6px; text-transform:uppercase; letter-spacing:.02em; display:flex; justify-content:space-between; }
+.gf { font-size:12.5px; color:var(--ink3); margin:6px 4px 0; }
+.ig { background:var(--surface); border-radius:11px; overflow:hidden; }
+.row { display:flex; align-items:center; gap:10px; padding:9px 13px; min-height:48px; position:relative; font-size:15.5px; }
+.ig .row + .row::before { content:""; position:absolute; top:0; left:50px; right:0; border-top:.5px solid var(--hair); }
+.ic { width:28px; height:28px; border-radius:50%; background:var(--fill); display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; }
+.s { font-size:12px; color:var(--ink3); }
+.scrim { position:absolute; inset:0; background:rgba(0,0,0,.25); }
+.sheet { position:absolute; left:0; right:0; bottom:0; background:var(--bg); border-radius:18px 18px 0 0; padding:10px 14px 22px; box-shadow:0 -6px 20px rgba(0,0,0,.12); }
+.grab { width:36px; height:5px; border-radius:3px; background:#c7c7cc; margin:0 auto 10px; }
+.bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; } .ttl { font-size:16px; font-weight:600; }
+table.t { border-collapse:collapse; font-size:13px; margin-top:6px; background:#fff; border-radius:10px; overflow:hidden; }
+table.t th, table.t td { padding:7px 10px; text-align:right; border-bottom:.5px solid var(--hair); font-variant-numeric:tabular-nums; }
+table.t th:first-child, table.t td:first-child { text-align:left; }
+table.t th { color:var(--ink3); font-weight:600; font-size:12px; }
+</style>
+</head>
+<body>
+<h1>Wallet: Balance after bills</h1>
+<p class="lede">Wallet’s Balance already takes off what the credit cards owe (whole balance, billed or not) and what goals have set aside. Proposed: it also takes off the bills still unpaid this month. Nothing to set up. Each bank and card keeps its real balance, exactly as the bank shows it — only the one Balance figure at the top changes. Names and amounts are made up.</p>
+
+<h2>Wallet (grid view, where the Balance box is)</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">0</span>Today</p>
+    <div class="phone">
+      <div class="lt">Wallet <span><span class="round">⊞</span><span class="round">＋</span></span></div>
+      <div class="box">
+        <div class="lab">Balance</div>
+        <div class="fig">Rp 4.650.000</div>
+        <div class="spark"></div>
+        <div style="border-top:.5px solid var(--hair);margin-top:6px">
+          <div class="sr"><span class="dot" style="background:var(--up)"></span><span class="grow">Spending money</span><span class="amt">Rp 6.800.000</span></div>
+          <div class="sr"><span class="dot" style="background:var(--alarm)"></span><span class="grow">Owed on cards</span><span class="amt">−Rp 2.150.000</span></div>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="card" style="background:#1e3a8a">Payroll account<b>Rp 5.900.000</b></div>
+        <div class="card" style="background:#0f766e">E-wallet<b>Rp 900.000</b></div>
+        <div class="card" style="background:#111827">Card ending 1234<b>Rp 1.650.000</b></div>
+        <div class="card" style="background:#7c2d12">Card ending 5678<b>Rp 500.000</b></div>
+      </div>
+      <p class="note">Rp 4.650.000 looks free, but Electricity, Internet and the phone plan are still to come out this month.</p>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">1</span>Proposed</p>
+    <div class="phone">
+      <div class="lt">Wallet <span><span class="round">⊞</span><span class="round">＋</span></span></div>
+      <div class="box">
+        <div class="lab">Balance</div>
+        <div class="fig">Rp 3.500.000</div>
+        <div class="spark"></div>
+        <div style="border-top:.5px solid var(--hair);margin-top:6px">
+          <div class="sr"><span class="dot" style="background:var(--up)"></span><span class="grow">Spending money</span><span class="amt">Rp 6.800.000</span></div>
+          <div class="sr"><span class="dot" style="background:var(--alarm)"></span><span class="grow">Owed on cards</span><span class="amt">−Rp 2.150.000</span></div>
+          <div class="sr mark"><span class="dot" style="background:var(--warn)"></span><span class="grow">Bills still to pay</span><span class="amt">−Rp 1.150.000</span><span class="chev">›</span></div>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="card" style="background:#1e3a8a">Payroll account<b>Rp 5.900.000</b></div>
+        <div class="card" style="background:#0f766e">E-wallet<b>Rp 900.000</b></div>
+        <div class="card" style="background:#111827">Card ending 1234<b>Rp 1.650.000</b></div>
+        <div class="card" style="background:#7c2d12">Card ending 5678<b>Rp 500.000</b></div>
+      </div>
+      <p class="note">One new row. The cards below are unchanged: each shows its real balance.</p>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">2</span>Tap “Bills still to pay”</p>
+    <div class="phone">
+      <div class="lt">Wallet</div>
+      <div class="scrim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="bar"><span class="round" style="margin:0">✕</span><span class="ttl">Bills still to pay</span><span style="width:34px"></span></div>
+        <div class="gh"><span>November</span><span>Rp 1.150.000</span></div>
+        <div class="ig">
+          <div class="row"><div class="ic">⚡</div><div style="flex:1"><div>Electricity</div><div class="s">25 Nov</div></div><div class="amt">Rp 450.000</div><span class="chev">›</span></div>
+          <div class="row"><div class="ic">🌐</div><div style="flex:1"><div>Internet</div><div class="s">28 Nov</div></div><div class="amt">Rp 200.000</div><span class="chev">›</span></div>
+          <div class="row"><div class="ic">📱</div><div style="flex:1"><div>Phone plan</div><div class="s">30 Nov · about</div></div><div class="amt">Rp 500.000</div><span class="chev">›</span></div>
+        </div>
+        <div class="gf">Bills not yet paid this month. A bill drops off once paid; paid with a credit card, it is counted in Owed on cards instead. Skipped and paused bills are left out.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>What happens when a bill is paid</h2>
+<div class="pair">
+  <div class="col" style="width:680px">
+    <table class="t">
+      <tr><th></th><th>Payroll account</th><th>Card 1234</th><th>Spending money</th><th>Owed on cards</th><th>Bills still to pay</th><th>Balance</th></tr>
+      <tr><td>1 Nov · start</td><td>Rp 5.900.000</td><td>Rp 1.650.000</td><td>6.800.000</td><td>−2.150.000</td><td>−1.150.000</td><td><b>3.500.000</b></td></tr>
+      <tr><td>20 Nov · Electricity paid with card 1234</td><td>Rp 5.900.000</td><td>Rp 2.100.000</td><td>6.800.000</td><td>−2.600.000</td><td>−700.000</td><td><b>3.500.000</b></td></tr>
+      <tr><td>22 Nov · Internet paid from Payroll</td><td>Rp 5.700.000</td><td>Rp 2.100.000</td><td>6.600.000</td><td>−2.600.000</td><td>−500.000</td><td><b>3.500.000</b></td></tr>
+      <tr><td>25 Nov · card 1234 paid from Payroll</td><td>Rp 3.600.000</td><td>Rp 0</td><td>4.500.000</td><td>−500.000</td><td>−500.000</td><td><b>3.500.000</b></td></tr>
+    </table>
+    <p class="note">Paying bills or cards never changes the Balance: that money was already taken off. Only real spending (a coffee, groceries) or income moves it. Each account and card always shows what the bank shows.</p>
+  </div>
+</div>
+
+<h2>Unchanged</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">3</span>Account page</p>
+    <div class="phone" style="min-height:auto">
+      <div class="lt" style="font-size:20px">Payroll account</div>
+      <div class="box"><div class="s">Balance</div><div class="fig">Rp 5.900.000</div></div>
+      <p class="note">An account shows its own balance as now. Bills are not split across accounts, so nothing has to be picked per bill.</p>
+    </div>
+  </div>
+  <div class="col">
+    <p class="cap"><span class="n">4</span>Card page</p>
+    <div class="phone" style="min-height:auto">
+      <div class="lt" style="font-size:20px">Card ending 1234</div>
+      <div class="box"><div class="s">Owed</div><div class="fig">Rp 1.650.000</div></div>
+      <p class="note">A card shows what it owes as now. A bill paid with it simply becomes part of that.</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>
