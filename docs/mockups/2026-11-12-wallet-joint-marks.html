@@ -5,156 +5,155 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Joint card marks</title>
 <style>
-:root { --bg:#f2f2f7; --surface:#fff; --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e0e0e4; --rina:#0f9aa8; }
+:root { --bg:#f2f2f7; --surface:#fff; --ink:#1c1c1e; --ink3:#8e8e93; --hair:#e0e0e4; --rina:#0f9aa8; }
 * { box-sizing:border-box; }
 body { margin:0; background:#e6e6ea; color:var(--ink); font:14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; padding:24px 16px 48px; }
-h1 { font-size:20px; margin:0 0 4px; } .lede { color:#555; margin:0 0 20px; max-width:980px; }
+h1 { font-size:20px; margin:0 0 4px; } .lede { color:#555; margin:0 0 20px; max-width:1000px; }
 h2 { font-size:16px; margin:30px 0 12px; }
 .pair { display:flex; flex-wrap:wrap; gap:22px; align-items:flex-start; }
-.col { width:320px; max-width:100%; }
+.col { width:330px; max-width:100%; }
 .cap { font-weight:600; margin:0 0 8px; } .cap .n { display:inline-block; background:#1c1c1e; color:#fff; border-radius:5px; padding:0 6px; font-size:12px; margin-right:6px; }
 .cap .rec { font-size:11.5px; font-weight:600; color:#047857; background:#dcfce7; border-radius:5px; padding:1px 6px; margin-left:6px; }
-.phone { background:var(--bg); border-radius:28px; padding:14px 14px 18px; border:1px solid #d4d4d8; position:relative; overflow:hidden; }
-.lt { font-size:26px; font-weight:700; margin:2px 2px 10px; }
-.grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-.card { border-radius:12px; height:104px; color:#fff; position:relative; overflow:hidden; display:flex; flex-direction:column; justify-content:space-between; }
-.face { padding:9px 10px 0; font-size:11px; letter-spacing:.06em; text-transform:uppercase; opacity:.9; display:flex; justify-content:space-between; align-items:flex-start; }
-.band { background:rgba(0,0,0,.28); padding:6px 10px 7px; font-size:12.5px; display:flex; flex-direction:column; }
-.band b { font-size:15px; font-variant-numeric:tabular-nums; }
-.c-own1 { background:linear-gradient(135deg,#1e40af,#1e3a8a); }
-.c-own2 { background:linear-gradient(135deg,#1f2937,#111827); }
-.c-j1 { background:linear-gradient(135deg,#0e7490,#155e75); }
-.c-j2 { background:linear-gradient(135deg,#9a3412,#7c2d12); }
-.chip { font-size:10.5px; font-weight:600; text-transform:none; letter-spacing:0; background:rgba(255,255,255,.92); color:var(--ink); border-radius:9px; padding:1px 7px; }
-.dotname { display:flex; align-items:center; gap:5px; font-size:11.5px; text-transform:none; letter-spacing:0; }
-.dotname i { width:9px; height:9px; border-radius:50%; background:var(--rina); box-shadow:0 0 0 1.5px #fff; display:inline-block; }
-.under { font-size:11.5px; color:var(--ink3); margin:4px 2px 0; display:flex; align-items:center; gap:5px; }
-.under i { width:8px; height:8px; border-radius:50%; background:var(--rina); display:inline-block; }
-.bandc { background:var(--rina); }
-.ribbon { position:absolute; top:0; right:0; width:0; height:0; border-top:26px solid var(--rina); border-left:26px solid transparent; }
-.gh { font-size:13px; color:var(--ink3); margin:14px 4px 6px; text-transform:uppercase; letter-spacing:.02em; }
+.phone { background:var(--bg); border-radius:28px; padding:14px 12px 16px; border:1px solid #d4d4d8; position:relative; overflow:hidden; }
+.lt { font-size:26px; font-weight:700; margin:2px 4px 10px; }
+.grid { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
 .note { font-size:12.5px; color:#444; margin:10px 2px 0; }
-.stack { position:relative; height:270px; }
-.stack .card { position:absolute; left:0; right:0; height:190px; }
-.stack .face { font-size:12px; padding:12px 14px 0; }
-.stack .band { padding:9px 14px 10px; font-size:13.5px; } .stack .band b { font-size:18px; }
-.bad { font-size:12px; color:#b91c1c; }
+.legend { font-size:12px; color:#555; margin:0 0 14px; }
+
+/* A card face: 85.6 × 54 mm. */
+.cc { position:relative; aspect-ratio:1.586; border-radius:9px; overflow:hidden; color:#fff; box-shadow:0 1px 2px rgba(0,0,0,.18), 0 3px 8px rgba(0,0,0,.10); }
+.cc::after { content:""; position:absolute; inset:0; background:linear-gradient(160deg, rgba(255,255,255,.16), transparent 45%); pointer-events:none; }
+.tl { position:absolute; top:7px; left:9px; font-size:10px; font-weight:800; letter-spacing:.02em; max-width:60%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tr { position:absolute; top:7px; right:9px; font-size:10px; font-weight:700; font-variant-numeric:tabular-nums; }
+.ml { position:absolute; top:37%; left:9px; display:flex; align-items:center; gap:5px; }
+.chip { width:20px; height:15px; border-radius:3px; background:linear-gradient(135deg,#f6dd9a,#b8892f 55%,#f6dd9a); border:.5px solid rgba(138,100,36,.6); position:relative; }
+.chip.silver { background:linear-gradient(135deg,#f1f3f5,#9aa1a9 55%,#f1f3f5); border-color:rgba(107,114,128,.6); }
+.chip::before { content:""; position:absolute; left:6px; right:6px; top:3px; bottom:3px; border:.6px solid rgba(0,0,0,.35); border-radius:1.5px; }
+.cl { font-size:9px; opacity:.85; transform:rotate(90deg); }
+.bl { position:absolute; bottom:6px; left:9px; max-width:62%; }
+.bl .dg { font-size:8.5px; letter-spacing:.16em; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.bl .ty { font-size:6.8px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; opacity:.85; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.br { position:absolute; bottom:6px; right:9px; }
+.visa { font-size:12px; font-weight:900; font-style:italic; letter-spacing:-.02em; line-height:1; }
+.mc { display:flex; } .mc i { width:13px; height:13px; border-radius:50%; display:block; } .mc i:first-child { background:#eb001b; } .mc i:last-child { background:#f79e1b; margin-left:-5px; mix-blend-mode:screen; }
+/* faces */
+.f-bca { background:linear-gradient(135deg,#1d4ed8,#1e3a8a); }
+.f-mandiri { background:linear-gradient(135deg,#0b2d5b,#15457f); }
+.f-cc1 { background:linear-gradient(135deg,#27272a,#09090b); }
+.f-cc2 { background:linear-gradient(135deg,#b45309,#7c2d12); }
+.f-bri { background:linear-gradient(135deg,#0e7490,#164e63); }
+.f-gold { background:linear-gradient(135deg,#d6b25e,#8a6a24); color:#1c1c1e; }
+
+/* marks */
+.pill { font-size:8.5px; font-weight:700; background:rgba(255,255,255,.94); color:#1c1c1e; border-radius:8px; padding:1px 6px 1px 4px; display:inline-flex; align-items:center; gap:3px; white-space:nowrap; }
+.pill i, .dn i, .cap2 i { width:7px; height:7px; border-radius:50%; background:var(--rina); display:inline-block; box-shadow:0 0 0 1px #fff; }
+.mr { position:absolute; top:37%; right:9px; height:15px; display:flex; align-items:center; }
+.dn { font-size:8.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px; text-shadow:0 1px 1px rgba(0,0,0,.35); }
+.emb { font-size:7.5px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; text-shadow:0 1px 0 rgba(0,0,0,.35); opacity:.92; }
+.cap2 { font-size:11px; color:var(--ink3); margin:3px 2px 0; display:flex; align-items:center; gap:4px; }
+.tag { font-weight:700; opacity:.95; }
+
+/* stack */
+.stack { position:relative; height:330px; }
+.stack .cc { position:absolute; left:0; right:0; border-radius:13px; }
+.stack .tl, .stack .tr { top:11px; font-size:13px; } .stack .tl { left:14px; } .stack .tr { right:14px; }
+.stack .ml { left:14px; } .stack .chip { width:30px; height:22px; } .stack .mr { right:14px; height:22px; }
+.stack .bl { left:14px; bottom:10px; } .stack .bl .dg { font-size:12.5px; } .stack .bl .ty { font-size:9.5px; }
+.stack .br { right:14px; bottom:10px; } .stack .visa { font-size:17px; } .stack .mc i { width:19px; height:19px; } .stack .mc i:last-child { margin-left:-7px; }
+.stack .pill { font-size:11px; padding:2px 8px 2px 5px; } .stack .pill i, .stack .dn i { width:9px; height:9px; }
+.stack .emb { font-size:10px; }
+.stack .dn { font-size:11px; }
+.vis { font-size:12px; margin:8px 2px 0; } .vis b.ok { color:#047857; } .vis b.no { color:#b91c1c; }
 </style>
 </head>
 <body>
-<h1>Joint account and card in the partner’s Wallet: how to tell them apart</h1>
-<p class="lede">Not built yet. Andi’s phone; Rina’s joint savings and joint card among Andi’s own. The earlier mockup drew a coloured outline round the whole card — dropped. Five other ways below, all keeping the bank’s card art untouched apart from the mark. Names and amounts are made up.</p>
+<h1>Partner’s joint cards in Wallet: where the mark can go</h1>
+<p class="lede">Drawn on the app’s real card layout. Taken: top-left the bank, top-right the amount, middle-left the chip and contactless, bottom-left the last 4 digits and the type, bottom-right Visa / Mastercard. Free: the middle-right beside the chip, and the line a real card uses for the holder’s name. No outline round the card in any option. Andi’s phone; the 2nd and 4th cards are Rina’s joint ones. Names and amounts are made up.</p>
+<p class="legend">The stack (pile) view shows only each card’s top strip (bank and amount) until it is opened, so a mark that is not in the top strip is hidden there — see the last section.</p>
 
-<h2>Earlier proposal (dropped)</h2>
+<h2>Options in the grid</h2>
 <div class="pair">
+
   <div class="col">
+    <p class="cap"><span class="n">1</span>Pill in the free middle-right</p>
     <div class="phone">
+      <div class="lt">Wallet</div>
       <div class="grid">
-        <div class="card c-j1" style="box-shadow:0 0 0 2.5px var(--rina)"><div class="face"><span>Bank</span><span class="chip">Rina’s</span></div><div class="band">Joint savings<b>Rp 8.000.000</b></div></div>
-        <div class="card c-own1"><div class="face"><span>Bank</span></div><div class="band">Payroll account<b>Rp 4.300.000</b></div></div>
+        <div class="cc f-bca"><div class="tl">BCA</div><div class="tr">Rp 4.300.000</div><div class="ml"><span class="chip silver"></span><span class="cl">)))</span></div><div class="bl"><div class="dg">•••• 2204</div><div class="ty">Current account</div></div></div>
+        <div class="cc f-bri"><div class="tl">BRI</div><div class="tr">Rp 8.000.000</div><div class="ml"><span class="chip silver"></span><span class="cl">)))</span></div><div class="mr"><span class="pill"><i></i>Rina’s</span></div><div class="bl"><div class="dg">•••• 7781</div><div class="ty">Saving account</div></div></div>
+        <div class="cc f-cc1"><div class="tl">Mandiri</div><div class="tr">Rp 1.250.000</div><div class="ml"><span class="chip"></span><span class="cl">)))</span></div><div class="bl"><div class="dg">•••• 1234</div><div class="ty">Signature</div></div><div class="br"><span class="visa">VISA</span></div></div>
+        <div class="cc f-cc2"><div class="tl">CIMB Niaga</div><div class="tr">Rp 850.000</div><div class="ml"><span class="chip"></span><span class="cl">)))</span></div><div class="mr"><span class="pill"><i></i>Rina’s</span></div><div class="bl"><div class="dg">•••• 5678</div><div class="ty">World</div></div><div class="br"><span class="mc"><i></i><i></i></span></div></div>
       </div>
-      <p class="note bad">Outline round the card art.</p>
+      <p class="note">White pill with a dot in Rina’s ring colour, level with the chip, in space no card uses. Readable on any art.</p>
     </div>
   </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">2</span>Holder’s name, embossed</p>
+    <div class="phone">
+      <div class="lt">Wallet</div>
+      <div class="grid">
+        <div class="cc f-bca"><div class="tl">BCA</div><div class="tr">Rp 4.300.000</div><div class="ml"><span class="chip silver"></span><span class="cl">)))</span></div><div class="bl"><div class="dg">•••• 2204</div><div class="ty">Current account</div></div></div>
+        <div class="cc f-bri"><div class="tl">BRI</div><div class="tr">Rp 8.000.000</div><div class="ml"><span class="chip silver"></span><span class="cl">)))</span></div><div class="mr"><span class="emb">Rina</span></div><div class="bl"><div class="dg">•••• 7781</div><div class="ty">Saving account</div></div></div>
+        <div class="cc f-cc1"><div class="tl">Mandiri</div><div class="tr">Rp 1.250.000</div><div class="ml"><span class="chip"></span><span class="cl">)))</span></div><div class="bl"><div class="dg">•••• 1234</div><div class="ty">Signature</div></div><div class="br"><span class="visa">VISA</span></div></div>
+        <div class="cc f-cc2"><div class="tl">CIMB Niaga</div><div class="tr">Rp 850.000</div><div class="ml"><span class="chip"></span><span class="cl">)))</span></div><div class="mr"><span class="emb">Rina</span></div><div class="bl"><div class="dg">•••• 5678</div><div class="ty">World</div></div><div class="br"><span class="mc"><i></i><i></i></span></div></div>
+      </div>
+      <p class="note">Her name in the card’s own print, as a real card carries its holder — the most natural, but subtle at a glance and only as visible as the art allows.</p>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">3</span>Name after the bank, top-left<span class="rec">Recommended</span></p>
+    <div class="phone">
+      <div class="lt">Wallet</div>
+      <div class="grid">
+        <div class="cc f-bca"><div class="tl">BCA</div><div class="tr">Rp 4.300.000</div><div class="ml"><span class="chip silver"></span><span class="cl">)))</span></div><div class="bl"><div class="dg">•••• 2204</div><div class="ty">Current account</div></div></div>
+        <div class="cc f-bri"><div class="tl">BRI <span class="pill" style="margin-left:3px;vertical-align:1px"><i></i>Rina’s</span></div><div class="tr">Rp 8.000.000</div><div class="ml"><span class="chip silver"></span><span class="cl">)))</span></div><div class="bl"><div class="dg">•••• 7781</div><div class="ty">Saving account</div></div></div>
+        <div class="cc f-cc1"><div class="tl">Mandiri</div><div class="tr">Rp 1.250.000</div><div class="ml"><span class="chip"></span><span class="cl">)))</span></div><div class="bl"><div class="dg">•••• 1234</div><div class="ty">Signature</div></div><div class="br"><span class="visa">VISA</span></div></div>
+        <div class="cc f-cc2"><div class="tl" style="max-width:66%">CIMB <span class="pill" style="margin-left:3px;vertical-align:1px"><i></i>Rina’s</span></div><div class="tr">Rp 850.000</div><div class="ml"><span class="chip"></span><span class="cl">)))</span></div><div class="bl"><div class="dg">•••• 5678</div><div class="ty">World</div></div><div class="br"><span class="mc"><i></i><i></i></span></div></div>
+      </div>
+      <p class="note">The pill rides in the top strip after the bank. The only spot that also shows in the pile. A long bank name is shortened first (“CIMB Niaga” → “CIMB”), the amount never.</p>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">4</span>In the type line, bottom-left</p>
+    <div class="phone">
+      <div class="lt">Wallet</div>
+      <div class="grid">
+        <div class="cc f-bca"><div class="tl">BCA</div><div class="tr">Rp 4.300.000</div><div class="ml"><span class="chip silver"></span><span class="cl">)))</span></div><div class="bl"><div class="dg">•••• 2204</div><div class="ty">Current account</div></div></div>
+        <div class="cc f-bri"><div class="tl">BRI</div><div class="tr">Rp 8.000.000</div><div class="ml"><span class="chip silver"></span><span class="cl">)))</span></div><div class="bl"><div class="dg">•••• 7781</div><div class="ty"><span class="tag">Rina’s</span> · Saving account</div></div></div>
+        <div class="cc f-cc1"><div class="tl">Mandiri</div><div class="tr">Rp 1.250.000</div><div class="ml"><span class="chip"></span><span class="cl">)))</span></div><div class="bl"><div class="dg">•••• 1234</div><div class="ty">Signature</div></div><div class="br"><span class="visa">VISA</span></div></div>
+        <div class="cc f-cc2"><div class="tl">CIMB Niaga</div><div class="tr">Rp 850.000</div><div class="ml"><span class="chip"></span><span class="cl">)))</span></div><div class="bl"><div class="dg">•••• 5678</div><div class="ty"><span class="tag">Rina’s</span> · World</div></div><div class="br"><span class="mc"><i></i><i></i></span></div></div>
+      </div>
+      <p class="note">Words only, in the line that already says what the card is. Quietest; easy to miss.</p>
+    </div>
+  </div>
+
 </div>
 
-<h2>Options</h2>
+<h2>The pile (stack view): what stays visible</h2>
 <div class="pair">
   <div class="col">
-    <p class="cap"><span class="n">1</span>Name chip on the face<span class="rec">Recommended</span></p>
-    <div class="phone">
-      <div class="lt">Wallet</div>
-      <div class="grid">
-        <div class="card c-own1"><div class="face"><span>Bank</span></div><div class="band">Payroll account<b>Rp 4.300.000</b></div></div>
-        <div class="card c-j1"><div class="face"><span>Bank</span><span class="chip">Rina’s</span></div><div class="band">Joint savings<b>Rp 8.000.000</b></div></div>
-        <div class="card c-own2"><div class="face"><span>Visa</span></div><div class="band">Card ending 1234<b>Rp 1.250.000</b></div></div>
-        <div class="card c-j2"><div class="face"><span>Mastercard</span><span class="chip">Rina’s</span></div><div class="band">Card ending 5678<b>Rp 850.000</b></div></div>
-      </div>
-      <p class="note">A small white “Rina’s” pill in the top corner. Readable on any card art; no colour to learn.</p>
-    </div>
-  </div>
-
-  <div class="col">
-    <p class="cap"><span class="n">2</span>Ring-colour dot + name</p>
-    <div class="phone">
-      <div class="lt">Wallet</div>
-      <div class="grid">
-        <div class="card c-own1"><div class="face"><span>Bank</span></div><div class="band">Payroll account<b>Rp 4.300.000</b></div></div>
-        <div class="card c-j1"><div class="face"><span>Bank</span><span class="dotname"><i></i>Rina’s</span></div><div class="band">Joint savings<b>Rp 8.000.000</b></div></div>
-        <div class="card c-own2"><div class="face"><span>Visa</span></div><div class="band">Card ending 1234<b>Rp 1.250.000</b></div></div>
-        <div class="card c-j2"><div class="face"><span>Mastercard</span><span class="dotname"><i></i>Rina’s</span></div><div class="band">Card ending 5678<b>Rp 850.000</b></div></div>
-      </div>
-      <p class="note">A dot in Rina’s ring colour and her name, in white, no pill. Ties to the rings on Net worth; lighter than 1, a little harder to read on pale art.</p>
-    </div>
-  </div>
-
-  <div class="col">
-    <p class="cap"><span class="n">3</span>Caption under the card</p>
-    <div class="phone">
-      <div class="lt">Wallet</div>
-      <div class="grid">
-        <div><div class="card c-own1"><div class="face"><span>Bank</span></div><div class="band">Payroll account<b>Rp 4.300.000</b></div></div></div>
-        <div><div class="card c-j1"><div class="face"><span>Bank</span></div><div class="band">Joint savings<b>Rp 8.000.000</b></div></div><div class="under"><i></i>Rina’s · joint</div></div>
-        <div><div class="card c-own2"><div class="face"><span>Visa</span></div><div class="band">Card ending 1234<b>Rp 1.250.000</b></div></div></div>
-        <div><div class="card c-j2"><div class="face"><span>Mastercard</span></div><div class="band">Card ending 5678<b>Rp 850.000</b></div></div><div class="under"><i></i>Rina’s · joint</div></div>
-      </div>
-      <p class="note">The card art is untouched; the mark sits below it. Works in the grid, but the pile (stack) has no room under each card, so the stack would still need 1 or 2.</p>
-    </div>
-  </div>
-
-  <div class="col">
-    <p class="cap"><span class="n">4</span>Band in her colour</p>
-    <div class="phone">
-      <div class="lt">Wallet</div>
-      <div class="grid">
-        <div class="card c-own1"><div class="face"><span>Bank</span></div><div class="band">Payroll account<b>Rp 4.300.000</b></div></div>
-        <div class="card c-j1"><div class="face"><span>Bank</span></div><div class="band bandc">Rina’s · Joint savings<b>Rp 8.000.000</b></div></div>
-        <div class="card c-own2"><div class="face"><span>Visa</span></div><div class="band">Card ending 1234<b>Rp 1.250.000</b></div></div>
-        <div class="card c-j2"><div class="face"><span>Mastercard</span></div><div class="band bandc">Rina’s · Card ending 5678<b>Rp 850.000</b></div></div>
-      </div>
-      <p class="note">The strip with the name and figure turns teal and starts with “Rina’s”. Clear at a glance, but a strong colour on every joint card.</p>
-    </div>
-  </div>
-
-  <div class="col">
-    <p class="cap"><span class="n">5</span>Own group under a heading</p>
-    <div class="phone">
-      <div class="lt">Wallet</div>
-      <div class="grid">
-        <div class="card c-own1"><div class="face"><span>Bank</span></div><div class="band">Payroll account<b>Rp 4.300.000</b></div></div>
-        <div class="card c-own2"><div class="face"><span>Visa</span></div><div class="band">Card ending 1234<b>Rp 1.250.000</b></div></div>
-      </div>
-      <div class="gh">Rina’s, joint</div>
-      <div class="grid">
-        <div class="card c-j1"><div class="face"><span>Bank</span></div><div class="band">Joint savings<b>Rp 8.000.000</b></div></div>
-        <div class="card c-j2"><div class="face"><span>Mastercard</span></div><div class="band">Card ending 5678<b>Rp 850.000</b></div></div>
-      </div>
-      <p class="note">Nothing on the cards; they sit in their own group after Andi’s. Grid only — the pile mixes everything, so the stack still needs 1 or 2. Reorder cards would keep them in their group.</p>
-    </div>
-  </div>
-</div>
-
-<h2>The pile (stack view) with 1 and 2</h2>
-<div class="pair">
-  <div class="col">
-    <p class="cap"><span class="n">1</span>Name chip</p>
+    <p class="cap"><span class="n">1</span>Middle-right pill</p>
     <div class="phone">
       <div class="stack">
-        <div class="card c-own1" style="top:0"><div class="face"><span>Bank</span></div><div class="band">Payroll account<b>Rp 4.300.000</b></div></div>
-        <div class="card c-j1" style="top:40px"><div class="face"><span>Bank</span><span class="chip">Rina’s</span></div><div class="band">Joint savings<b>Rp 8.000.000</b></div></div>
-        <div class="card c-j2" style="top:80px"><div class="face"><span>Mastercard</span><span class="chip">Rina’s</span></div><div class="band">Card ending 5678<b>Rp 850.000</b></div></div>
+        <div class="cc f-bca" style="top:0"><div class="tl">BCA</div><div class="tr">Rp 4.300.000</div></div>
+        <div class="cc f-bri" style="top:44px"><div class="tl">BRI</div><div class="tr">Rp 8.000.000</div><div class="ml"><span class="chip silver"></span><span class="cl">)))</span></div><div class="mr"><span class="pill"><i></i>Rina’s</span></div></div>
+        <div class="cc f-cc1" style="top:88px"><div class="tl">Mandiri</div><div class="tr">Rp 1.250.000</div><div class="ml"><span class="chip"></span><span class="cl">)))</span></div><div class="bl"><div class="dg">•••• 1234</div><div class="ty">Signature</div></div><div class="br"><span class="visa">VISA</span></div></div>
       </div>
-      <p class="note">Each card in the pile shows only its top strip; the chip sits there, so it is visible on every card.</p>
+      <p class="vis"><b class="no">Hidden</b> on Rina’s savings: the card in front covers its middle. Shows only on the front card or once opened.</p>
     </div>
   </div>
   <div class="col">
-    <p class="cap"><span class="n">2</span>Dot + name</p>
+    <p class="cap"><span class="n">3</span>After the bank, top-left</p>
     <div class="phone">
       <div class="stack">
-        <div class="card c-own1" style="top:0"><div class="face"><span>Bank</span></div><div class="band">Payroll account<b>Rp 4.300.000</b></div></div>
-        <div class="card c-j1" style="top:40px"><div class="face"><span>Bank</span><span class="dotname"><i></i>Rina’s</span></div><div class="band">Joint savings<b>Rp 8.000.000</b></div></div>
-        <div class="card c-j2" style="top:80px"><div class="face"><span>Mastercard</span><span class="dotname"><i></i>Rina’s</span></div><div class="band">Card ending 5678<b>Rp 850.000</b></div></div>
+        <div class="cc f-bca" style="top:0"><div class="tl">BCA</div><div class="tr">Rp 4.300.000</div></div>
+        <div class="cc f-bri" style="top:44px"><div class="tl">BRI <span class="pill" style="margin-left:4px;vertical-align:1px"><i></i>Rina’s</span></div><div class="tr">Rp 8.000.000</div></div>
+        <div class="cc f-cc2" style="top:88px"><div class="tl" style="max-width:66%">CIMB <span class="pill" style="margin-left:4px;vertical-align:1px"><i></i>Rina’s</span></div><div class="tr">Rp 850.000</div><div class="ml"><span class="chip"></span><span class="cl">)))</span></div><div class="bl"><div class="dg">•••• 5678</div><div class="ty">World</div></div><div class="br"><span class="mc"><i></i><i></i></span></div></div>
       </div>
+      <p class="vis"><b class="ok">Visible</b> on every card in the pile, because the top strip is the part that always shows.</p>
     </div>
   </div>
 </div>
