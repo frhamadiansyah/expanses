@@ -9,6 +9,8 @@ const now = new Date();
 const TODAY = local(now);
 /** The 15th of last month: with a statement on the last day, always on the previous statement. */
 const LAST_MONTH = local(new Date(now.getFullYear(), now.getMonth() - 1, 15));
+/** The 10th of last month: on the same statement, five days before. */
+const LAST_MONTH_EARLY = local(new Date(now.getFullYear(), now.getMonth() - 1, 10));
 
 async function setUp(page: Page) {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
@@ -178,6 +180,53 @@ test('Pay opens a sheet with the amount filled in; a smaller amount records a pa
   await sheet.getByRole('button', { name: 'Record payment' }).click();
   await expect(sheet).toHaveCount(0);
   await expect(tile.getByTestId('tile-unpaid-balance')).toContainText('1.500.000');
+});
+
+test('a payment made with Pay covers the statement’s purchases oldest first, and the rest is paid for what is left', async ({ page }) => {
+  await setUp(page);
+  await buy(page, 'Ride to airport', '300000', LAST_MONTH_EARLY);
+  await buy(page, 'Hotel Mulia', '2000000', LAST_MONTH);
+  await openCardPage(page);
+
+  // A part payment from the card page: it covers the older purchase whole and some of the newer one.
+  await showCardBack(page);
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();
+  const paySheet = page.getByRole('dialog', { name: /^Pay / });
+  await paySheet.getByLabel('Amount', { exact: true }).fill('500000');
+  await paySheet.getByRole('button', { name: 'Record payment' }).click();
+  await expect(paySheet).toHaveCount(0);
+
+  await cardPage(page, 'Statement');
+  await page.getByRole('button', { name: 'Earlier statement' }).click();
+  const ride = page.getByTestId('statement-line').filter({ hasText: 'Ride to airport' });
+  const hotel = page.getByTestId('statement-line').filter({ hasText: 'Hotel Mulia' });
+  await expect(ride.getByTestId('statement-covered')).toBeVisible();
+  await expect(ride).toContainText(/covered by payment \d+ \w+/);
+  await expect(page.getByLabel('Pay Ride to airport')).toHaveCount(0);
+  await expect(hotel).toContainText(/200\.000 covered, Rp\s1\.800\.000 left/);
+  await expect(page.getByTestId('statement-group')).toContainText(/1 of 2 paid/i);
+  await expect(page.getByTestId('statement-legend')).toContainText('covered by a payment');
+
+  // The covered ✓ says which payment covered it, and is not a switch.
+  await ride.getByTestId('statement-covered').click();
+  const why = page.getByRole('dialog', { name: 'Ride to airport' });
+  await expect(why).toContainText('Covered by');
+  await expect(why).toContainText(/Paid with the card’s payment of Rp\s500\.000\. Deleting that payment makes it owed again\./);
+  await why.getByRole('button', { name: 'Close' }).click();
+  await expect(why).toHaveCount(0);
+
+  // Ticked and paid, the part-covered purchase pays only what is left: the statement ends at exactly nothing.
+  await page.getByLabel('Pay Hotel Mulia').check();
+  await page.getByTestId('statement-select-bar').getByRole('button', { name: 'Pay', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Pay 1 purchase' });
+  await expect(sheet).toContainText('1.800.000');
+  await sheet.getByRole('button', { name: /^Pay Rp\s1\.800\.000$/ }).click();
+  await expect(sheet).toHaveCount(0);
+  // Paid for what was left, it is covered by the two payments together, not settled on its own.
+  await expect(hotel.getByTestId('statement-covered')).toBeVisible();
+  await expect(page.getByTestId('statement-group')).toContainText(/All paid/i);
+  await expect(ride.getByTestId('statement-covered')).toBeVisible();
+  await expect(page.getByTestId('statement-band')).toContainText(/Still to pay\s*Rp\s0\s*Total bill/);
 });
 
 test('a card page survives a reload, and a link to an old tab lands on its page', async ({ page }) => {

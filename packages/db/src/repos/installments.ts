@@ -128,10 +128,15 @@ export async function updateInstallment(database: Database, ws: WorkspaceContext
 }
 
 export async function listInstallments(database: Database, ws: WorkspaceContext, cardAccountId?: string): Promise<CardInstallmentRow[]> {
+  return listInstallmentsTx(database.db, ws, cardAccountId);
+}
+
+/** `listInstallments` inside an open transaction. */
+export async function listInstallmentsTx(db: Db, ws: WorkspaceContext, cardAccountId?: string): Promise<CardInstallmentRow[]> {
   const where = cardAccountId
     ? and(eq(cardInstallments.workspaceId, ws.workspaceId), eq(cardInstallments.cardAccountId, cardAccountId))
     : eq(cardInstallments.workspaceId, ws.workspaceId);
-  const rows = await database.db.select().from(cardInstallments).where(where).orderBy(asc(cardInstallments.createdAt));
+  const rows = await db.select().from(cardInstallments).where(where).orderBy(asc(cardInstallments.createdAt));
   return rows.map(toRow);
 }
 
