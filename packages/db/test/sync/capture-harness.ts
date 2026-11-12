@@ -233,7 +233,31 @@ export function watchPausedWrites(database: Database): void {
 }
 
 /** The fields an upsert speaks for: those it names as changed, else every field it carries (§7.2). */
+/** The field's clock in an op: the change-set's for a field it names as changed, else the one `clocks` gives (capped). */
+function fieldClock(sealed: SealedOp, field: string): string {
+  const op = sealed.op;
+  if (op.op !== 'upsert' || (op.changed ?? Object.keys(op.fields)).includes(field)) return sealed.hlc;
+  const at = op.clocks?.[field];
+  return at !== undefined && at < sealed.hlc ? at : sealed.hlc;
+}
+
+/** Among `after` (in hlc order), the op carrying `field` at the latest clock; the later op on a tie. */
+function latestCarrier(after: readonly SealedOp[], field: string): SealedOp | undefined {
+  let best: SealedOp | undefined;
+  for (const sealed of after) {
+    if (sealed.op.op !== 'upsert' || !purchaseNames(sealed.op).includes(field)) continue;
+    if (!best || fieldClock(sealed, field) >= fieldClock(best, field)) best = sealed;
+  }
+  return best;
+}
+
 const names = (op: Op): string[] => (op.op === 'upsert' ? (op.changed ?? Object.keys(op.fields)) : []);
+
+/**
+ * A purchase's fields an op speaks for: as `names`, and those it sends at their own clock too (a bill link resent at the
+ * clock it went at, fix round 3) — judged by that clock (`latestCarrier`), so a newer change still wins over it.
+ */
+const purchaseNames = (op: Op): string[] => (op.op === 'upsert' ? [...new Set([...names(op), ...Object.keys(op.clocks ?? {})])] : []);
 
 /** Whether an op sealed after `mark` carries `field` (an upsert naming it) — or, with no field, is any upsert. */
 function carries(ops: readonly SealedOp[] | undefined, mark: number, field: string | null): boolean {
@@ -378,7 +402,7 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
       const fields = [...new Set(columns.map((c) => fieldOf.get(c)).filter((f): f is string => !!f && f !== 'void'))];
       // A bill_payments row is a Pay payment's (`bill`) or a link's (`billLink`, fix round 2): either op accounts for it.
       const carried = (f: string) =>
-        carries(ops.get(`purchase\u0000${lineageId}`), w.mark, f) || (f === 'bill' && w.table === 'bill_payments' && carries(ops.get(`purchase\u0000${lineageId}`), w.mark, 'billLink'));
+        carries(ops.get(`purchase\u0000${lineageId}`), w.mark, f) || (f === 'bill' && w.table === 'bill_payments' && (ops.get(`purchase\u0000${lineageId}`) ?? []).some(({ rowid, op }) => rowid > w.mark && purchaseNames(op).includes('billLink')));
       const missing = fields.filter((f) => !carried(f));
       const message = `${w.table} ${w.key}: purchase ${lineageId} ${missing.join(', ')} changed with no op`;
       if (missing.length && !reported.has(message)) {
@@ -423,7 +447,9 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
       const projected = (await projectPurchase(database.db, expected, member[0], { paidBy: lineage[1], paidLabel: lineage[2] })) as unknown as Record<string, unknown>;
       const after = (ops.get(`purchase\u0000${lineageId}`) ?? []).filter(({ rowid }) => rowid > since);
       for (const field of Object.keys(projected)) {
-        const carrier = [...after].reverse().find(({ op }) => op.op === 'upsert' && names(op).includes(field));
+        // The op whose word on the field is latest, by the clock it carries the field at: a field resent at its own older
+        // clock (fix round 3) loses to a newer change, as on every receiver.
+        const carrier = latestCarrier(after, field);
         if (!carrier) continue;
         const said = (carrier.op as { fields: Record<string, unknown> }).fields[field];
         // A figure typed with cents is kept only while the purchase's one category line rounds from it (0068): a new
