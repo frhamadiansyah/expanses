@@ -770,6 +770,8 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   // Fandri stops sharing his bank account; it leaves Dewi's phone.
   await page.goto('/wallet');
   await walletCard(page, 'Fandri Bank').click();
+  // Share with Household sits in the account's Settings.
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await page.getByLabel('Share with Household').selectOption({ label: "Don't share" });
   await expect(page.getByLabel('Share with Household')).toHaveValue('hidden');
   await eventually(dewi, async () => {
@@ -869,15 +871,18 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   await reviewAndShare(dewi, info, 'j1-review');
   await reviewAndShare(page, info, 'j1-review');
 
-  // Fandri's account page: the Joint account switch sits under Share with Household, off.
+  // Fandri's account Settings: the Joint account switch sits under Share with Household, off.
   await page.goto('/wallet');
   await walletCard(page, 'Fandri Bank').click();
+  await expect(page.getByTestId('joint-row')).toHaveCount(0);
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
   const joint = page.getByRole('checkbox', { name: 'Joint account' });
   await expect(joint).not.toBeChecked();
-  await expect(page.getByTestId('joint-row')).toHaveCount(0);
+  await joint.scrollIntoViewIfNeeded();
   await joint.click({ force: true });
   await expect(joint).toBeChecked();
   await shot(page, info, 'j2-switch-on');
+  await page.goBack();
 
   // Dewi's Paid with lists it with the Joint tag, and she pays from it.
   const paidWithJoint = dewi.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Fandri Bank, Fandri’s, shared', exact: true });
@@ -993,7 +998,11 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   // Switched off, the partner is back to the balance and the total: no rows.
   await page.goto('/wallet');
   await walletCard(page, 'Fandri Bank').click();
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Joint account' }).scrollIntoViewIfNeeded();
   await page.getByRole('checkbox', { name: 'Joint account' }).click({ force: true });
+  await expect(page.getByRole('checkbox', { name: 'Joint account' })).not.toBeChecked();
+  await page.goBack();
   await expect(rowsOn(page)).toHaveCount(0);
   await eventually(dewi, async () => {
     await dewi.goto('/net-worth');
@@ -1046,6 +1055,8 @@ test('the partner’s joint account and joint card are cards in Wallet, counted 
   // Rina turns Joint account on for the savings and Joint card on for the card.
   await page.goto('/wallet');
   await walletCard(page, 'Joint savings').click();
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Joint account' }).scrollIntoViewIfNeeded();
   await page.getByRole('checkbox', { name: 'Joint account' }).click({ force: true });
   await expect(page.getByRole('checkbox', { name: 'Joint account' })).toBeChecked();
   await page.goto('/wallet');
