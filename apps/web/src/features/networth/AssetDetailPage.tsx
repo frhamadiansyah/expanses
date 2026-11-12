@@ -48,7 +48,6 @@ import { NEW_BROKER, NewBrokerSheet } from './NewBrokerSheet';
 import { useStockAndBroker } from './StockAndBroker';
 import { draftFromTrade, type TradeDraft } from './trade-form';
 import { useGoldPriceChoice, useWorldGoldPrice } from './world-gold';
-import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
 import { listedChoiceOf, SOURCE_LABELS } from '../prices/price-sources';
 import { useSecurityPriceChoices } from '../prices/queries';
 import { useYahooClose } from '../prices/yahoo';
@@ -637,8 +636,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
         ]}
       />
 
-      {/* Joint net worth (§8.1): what the household sees of it, under the facts. Nothing while this person is in no group. */}
-      <ShareWithHouseholdRow accountId={accountId} />
 
       {forGoals.length > 0 && (
         <InsetGroup header="For goals" footer="Each buy's or sell's goal is changed from its ⋮ in the list above.">
