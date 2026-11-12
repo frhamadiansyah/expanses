@@ -373,6 +373,47 @@ test('the last owner cannot leave; made an owner, the other can invite; then the
   await eventually(dewi, () => expect(dewi.getByTestId('sharing-device')).toHaveCount(0, { timeout: 1_000 }));
 });
 
+test('a member renames herself from her own page; the owner sees the new name, and cannot rename her (D-D2)', async ({ page, browser }, info) => {
+  const dewi = await secondDevice(browser, info);
+  await page.goto('/transactions');
+  await shareAndJoin(page, dewi);
+
+  // Dewi's own page carries a Name row; its sheet is prefilled, Save is off for blank or unchanged.
+  await openWorkspaceSharePage(dewi, 'Home');
+  await openMemberPage(dewi, 'Dewi (me)');
+  const nameRow = dewi.getByTestId('member-name-row');
+  await expect(nameRow).toContainText('Dewi');
+  await nameRow.click();
+  const sheet = dewi.getByRole('dialog', { name: 'Name' });
+  const field = sheet.getByLabel('Name', { exact: true });
+  await expect(field).toHaveValue('Dewi');
+  const save = sheet.getByTestId('member-name-save');
+  await expect(save).toBeDisabled();
+  await field.fill('   ');
+  await expect(save).toBeDisabled();
+  await field.fill('x'.repeat(41));
+  await expect(sheet).toContainText('At most 40 characters.');
+  await expect(save).toBeDisabled();
+  await field.fill('  Dewi Ratna  ');
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect(sheet).toHaveCount(0);
+  await expect(dewi.getByTestId('member-name-row')).toContainText('Dewi Ratna');
+  await expect(dewi.getByRole('heading', { name: 'Dewi Ratna' }).first()).toBeVisible();
+  await shot(dewi, info, 'rename-self');
+  await dewi.goBack();
+  await expect(dewi.getByTestId('sharing-member').filter({ hasText: 'Dewi Ratna (me)' })).toBeVisible();
+
+  // Fandri sees it after a sync; on Dewi's page there is no Name row for him, on his own there is.
+  await openWorkspaceSharePage(page, 'Home');
+  await eventually(page, () => expect(page.getByTestId('sharing-member').filter({ hasText: 'Dewi Ratna' })).toHaveCount(1, { timeout: 1_000 }));
+  await openMemberPage(page, 'Dewi Ratna');
+  await expect(page.getByTestId('member-name-row')).toHaveCount(0);
+  await page.goBack();
+  await openMemberPage(page, 'Fandri (me)');
+  await expect(page.getByTestId('member-name-row')).toContainText('Fandri');
+});
+
 test('an owner stops sharing: the other side says who stopped it, and can add nothing', async ({ page, browser }, info) => {
   const phone = phoneProject(info);
   page.on('dialog', (dialog) => void dialog.accept());
