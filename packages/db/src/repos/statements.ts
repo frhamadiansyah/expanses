@@ -316,7 +316,9 @@ function statementOf(all: StatementLine[], pool: readonly PoolLine[], cycle: Cyc
  */
 function poolLinesOf(all: readonly StatementLine[]): PoolLine[] {
   const settledBy = new Map<string, number>();
-  for (const line of all) if (line.paidBy && !line.instalment) settledBy.set(line.paidBy.transactionId, (settledBy.get(line.paidBy.transactionId) ?? 0) + line.owedMinor);
+  // What the settled purchases count, not their price: one converted to a plan since counts nothing, so its payment is
+  // an ordinary credit again and covers the plan's instalments, which are what the card now bills.
+  for (const line of all) if (line.paidBy && !line.instalment) settledBy.set(line.paidBy.transactionId, (settledBy.get(line.paidBy.transactionId) ?? 0) + line.countedMinor);
   return all.map((line) => {
     let poolMinor = line.countedMinor;
     if (line.balancing || line.paidOff || line.paidBy) poolMinor = 0;

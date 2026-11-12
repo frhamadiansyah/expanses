@@ -266,6 +266,24 @@ describe('what the card’s payments cover on a statement', () => {
     expect((await coverOf(h, AUGUST, '2026-09-01'))[x]).toMatchObject({ coveredMinor: 0, leftMinor: 100_000 });
   });
 
+  it('a purchase paid one by one and then converted to a plan: its payment covers the instalments, and nothing is offered to pay', async () => {
+    const h = await household();
+    const phone = await h.buy('2026-07-02', 'Phone', 300_000);
+    await payCardPurchases(h.database, h.ws, { cardAccountId: h.card.id, fromAccountId: h.bank.id, occurredOn: '2026-07-05', purchaseTransactionIds: [phone], today: '2026-07-05' });
+    await saveInstallment(h.database, h.ws, { cardAccountId: h.card.id, description: 'Phone plan', totalMinor: 300_000, months: 3, firstBilledMonth: '2026-07', transactionId: phone });
+
+    const today = '2026-10-01';
+    const cycles = [statementCycleFor('2026-07-20', 20), AUGUST, SEPTEMBER];
+    const rows = [];
+    for (const cycle of cycles) {
+      const s = await cardStatement(h.database, h.ws, h.card.id, cycle, today);
+      for (const line of s.lines.filter((l) => l.instalment)) rows.push(s.cover[line.key]);
+    }
+    expect(rows).toHaveLength(3);
+    for (const row of rows) expect(row).toMatchObject({ whole: true, leftMinor: 0 });
+    expect(await cardBalance(h)).toBe(0);
+  });
+
   it('refuses to pay more than is left right now, or a purchase a payment now covers whole', async () => {
     const h = await household();
     const a = await h.buy('2026-08-02', 'Bookshop', 100_000);
