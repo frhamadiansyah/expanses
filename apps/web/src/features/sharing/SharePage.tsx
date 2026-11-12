@@ -73,6 +73,8 @@ function ShareBody({ book }: { book: BookRow }) {
   const detail = useSharingDetail(book.id);
   const lost = useLostHere(book.id);
   const [discarding, setDiscarding] = useState(false);
+  // The set-up step never takes the page while a sheet is open on it (fix round 1, 5).
+  const [eventSheet, setEventSheet] = useState(false);
   if (detail.isPending) return null;
   return (
     <>
@@ -83,7 +85,7 @@ function ShareBody({ book }: { book: BookRow }) {
         </InsetGroup>
       ) : null}
       {detail.data ? (
-        <Shared book={book} detail={detail.data} />
+        <Shared book={book} detail={detail.data} sheetOpen={discarding || eventSheet} />
       ) : (
         <ShareForm book={book} refetch={async () => void (await detail.refetch())} onLostShare={() => setDiscarding(true)} />
       )}
@@ -92,7 +94,7 @@ function ShareBody({ book }: { book: BookRow }) {
       <InsetGroup wide>
         <InsetRow testId="sync-details-row" icon={<FileText size={15} aria-hidden />} title="Details" to="/account/workspaces/$bookId/share/details" params={{ bookId: book.id }} />
       </InsetGroup>
-      <ShareEvents />
+      <ShareEvents onSheet={setEventSheet} />
     </>
   );
 }
@@ -126,7 +128,7 @@ function DiscardSheet({ book, onClose }: { book: BookRow; onClose: () => void })
  * The owner's events, each shared from here or left from here: Share opens the event's own sheet, Leave is the event
  * page's (D9). A copy this phone's person is no longer in offers Delete this copy (this phone alone, a safety copy first).
  */
-function ShareEvents() {
+function ShareEvents({ onSheet }: { onSheet: (open: boolean) => void }) {
   const { database, sync, ws } = useApp();
   const invalidate = useInvalidateAll();
   const safetyCopy = useSafetyCopy('before-delete');
@@ -134,6 +136,7 @@ function ShareEvents() {
   const summaries = useSharedEventSummaries();
   const [sharing, setSharing] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
+  useEffect(() => onSheet(sharing !== null), [sharing, onSheet]);
   if (!events.data || summaries.isPending) return null;
   const rows = shareEventRows(events.data, summaries.data ?? {});
   if (rows.length === 0) return null;
@@ -293,7 +296,7 @@ function ShareForm({ book, refetch, onLostShare }: { book: BookRow; refetch: () 
 type Confirming = { kind: 'leave' } | { kind: 'stop' } | { kind: 'forget' } | { kind: 'place' } | null;
 
 /** Shared: the status line, the invite while nobody has joined, the members, Net worth, and the ways out. */
-function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
+function Shared({ book, detail, sheetOpen }: { book: BookRow; detail: SharingDetail; sheetOpen: boolean }) {
   const { sync } = useApp();
   const navigate = useNavigate();
   const live = useSyncStatus(book.id);
@@ -340,7 +343,7 @@ function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
   const joined = joinedOthers(detail);
   const asked = useShareListAsked(book.id);
   const shareList = useShareList(book.id).list;
-  const stepDue = active && !frozen && book.kind !== 'shared' && asked.isSuccess && !asked.isFetching && joined.some((member) => !asked.data.includes(member.memberId));
+  const stepDue = active && !frozen && !sheetOpen && confirming === null && book.kind !== 'shared' && asked.isSuccess && !asked.isFetching && joined.some((member) => !asked.data.includes(member.memberId));
   useEffect(() => {
     if (stepDue) void navigate({ to: '/account/workspaces/$bookId/share/what/start', params: { bookId: book.id }, replace: true });
   }, [stepDue, navigate, book.id]);

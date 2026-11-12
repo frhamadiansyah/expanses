@@ -1,5 +1,9 @@
 import type { CreatedInvite, MoveRefusal } from '@expanses/db';
 
+/** What sharing an event does, said before it is shared: by the event's Share sheet and by the share list alike. */
+export const shareEventFooter = (eventName: string) =>
+  `Everyone in ${eventName} sees every expense of it, who paid and how it is split. What is tagged to it moves out of its workspace: in each person's own books only their own share counts.`;
+
 /** How far sharing one event has got, kept by the sheet across taps and retries. */
 export interface ShareProgress {
   /** Set once the event has become a shared one. */

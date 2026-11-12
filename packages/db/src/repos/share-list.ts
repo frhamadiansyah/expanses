@@ -28,3 +28,25 @@ export async function markShareListAsked(database: Database, bookId: string, mem
   const after = [...new Set([...before, ...memberIds])].sort();
   await database.db.run(sql`INSERT INTO settings (key, value) VALUES (${ASKED_KEY(bookId)}, ${JSON.stringify(after)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
 }
+
+const SEEDED_KEY = 'share.list.seeded';
+
+/**
+ * The first run of the build that brought the list (fix round 1, 5): every member already in a shared workspace from a
+ * phone counts as offered, so a household sharing since before is not sent to the set-up step on updating — the list
+ * is a row of the Share page for them. Runs once per database; only workspace books (an event's own book has no
+ * `books` row).
+ */
+export async function seedShareListAsked(database: Database): Promise<void> {
+  if ((await database.db.values(sql`SELECT 1 FROM settings WHERE key = ${SEEDED_KEY}`)).length > 0) return;
+  if ((await database.db.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'shared_books'`)).length > 0) {
+    const rows = await database.db.values<[string, string]>(sql`
+      SELECT DISTINCT s.book_id, d.member_id FROM shared_books s
+      JOIN book_devices d ON d.book_id = s.book_id AND d.removed_at IS NULL AND d.member_id <> s.member_id
+      WHERE s.book_id IN (SELECT id FROM books)`);
+    const byBook = new Map<string, string[]>();
+    for (const [bookId, memberId] of rows) byBook.set(bookId, [...(byBook.get(bookId) ?? []), memberId]);
+    for (const [bookId, members] of byBook) await markShareListAsked(database, bookId, members);
+  }
+  await database.db.run(sql`INSERT INTO settings (key, value) VALUES (${SEEDED_KEY}, '1') ON CONFLICT (key) DO NOTHING`);
+}

@@ -7,7 +7,7 @@ import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, PickerRow, SubmitRow, TextRow } from '../../ui/native';
 import { CurrencySheet } from '../currency/CurrencySheet';
 import { InviteCard } from '../sharing/InviteCard';
-import { freshShare } from './share-event';
+import { freshShare, shareEventFooter } from './share-event';
 import { useShareEventNow } from './share-event-now';
 import { sayError } from '../sharing/sharing-copy';
 
@@ -68,7 +68,7 @@ export function ShareEventSheet({ event, onClose }: { event: EventRow; onClose: 
         </>
       ) : (
         <form aria-label="Share this event" onSubmit={(e) => void share(e)}>
-          <InsetGroup footer={`Everyone in ${event.name} sees every expense of it, who paid and how it is split. What is tagged to it moves out of its workspace: in each person's own books only their own share counts.`}>
+          <InsetGroup footer={shareEventFooter(event.name)}>
             <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="As the others will see it" required />
             <PickerRow label="Currency" value={currency} onOpen={() => setPickingCurrency(true)} />
             <TextRow label="Without the app" value={names} onChange={(e) => setNames(e.target.value)} placeholder="Names, with commas" />

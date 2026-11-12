@@ -1,4 +1,4 @@
-import { setActiveBook } from '@expanses/db';
+import { seedShareListAsked, setActiveBook } from '@expanses/db';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -26,7 +26,11 @@ export function App({ app, sync: given }: { app: AppDb; sync?: SyncService }) {
    */
   useEffect(() => {
     const off = sync.whenApplied(() => void queryClient.invalidateQueries());
-    void sync.start().catch((error: unknown) => console.warn('Sync did not start', error));
+    // The share list's first run (fix round 1, 5): members already joined count as offered, before a sync brings anyone
+    // new. The sync waits for it, which is one small read; a failure only means the Share page seeds it instead.
+    void seedShareListAsked(app.database)
+      .catch((error: unknown) => console.warn('Share list seed did not run', error))
+      .finally(() => void sync.start().catch((error: unknown) => console.warn('Sync did not start', error)));
     return () => {
       off();
       sync.stop();

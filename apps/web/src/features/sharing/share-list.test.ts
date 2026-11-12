@@ -1,15 +1,23 @@
 import type { GoalShareTarget, GoalShareView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import {
+  allOrNone,
   applyShareChanges,
   changesOf,
-  draftOf,
+  completeReviewSettings,
+  emptyDraft,
   EVENT_LOCKED,
+  eventsToShare,
+  isTicked,
   jointOn,
   keepConfirmed,
   monthOf,
+  NOT_SHARED_YET,
+  reconcile,
   REVIEW_NAME,
   SHARE_LIST_COPY,
+  type ShareChange,
+  type ShareList,
   type ShareListInput,
   shareListOf,
   sharedCount,
@@ -48,13 +56,14 @@ function input(over: Partial<ShareListInput> = {}): ShareListInput {
     bookId: BOOK,
     netWorth: {
       mode: 'separate',
-      reviewing: false,
+      reviewed: true,
       items: [
-        { accountId: 'a-bca', name: 'BCA Tahapan', subtype: 'bank', setting: 'total' },
+        { accountId: 'a-bca', name: 'BCA Tahapan', subtype: 'savings', setting: 'total' },
         { accountId: 'a-gopay', name: 'GoPay', subtype: 'ewallet', setting: 'hidden' },
         { accountId: 'a-card', name: 'Card ending 4417', subtype: 'credit_card', setting: 'total' },
+        { accountId: 'a-rdn', name: 'Broker cash', subtype: 'fund', setting: 'hidden' },
         { accountId: 'a-house', name: 'House', subtype: 'property', setting: 'total' },
-        { accountId: 'a-kpr', name: 'Home loan', subtype: 'loan', setting: null },
+        { accountId: 'a-kpr', name: 'Home loan', subtype: 'loan', setting: 'hidden' },
       ],
       joint: new Set(['a-bca']),
     },
@@ -68,230 +77,306 @@ function input(over: Partial<ShareListInput> = {}): ShareListInput {
     ],
     goalTargets: [target],
     events: [
-      { id: 'e-trip', name: 'Bali trip', startsOn: '2026-10-03', shared: true },
-      { id: 'e-dinner', name: 'Office dinner', startsOn: '2026-09-18', shared: false },
+      { id: 'e-trip', name: 'Bali trip', startsOn: '2026-10-03', currency: 'IDR', shared: true },
+      { id: 'e-dinner', name: 'Office dinner', startsOn: '2026-09-18', currency: 'SGD', shared: false },
     ],
     ...over,
   };
+}
+
+const rows = (list: ShareList) => list.groups.flatMap((group) => group.items);
+const row = (list: ShareList, name: string) => rows(list).find((item) => item.name === name)!;
+
+/** A list whose net worth is changed by `patch`. */
+function listWith(patch: Partial<NonNullable<ShareListInput['netWorth']>>, items?: NonNullable<ShareListInput['netWorth']>['items']) {
+  const base = input();
+  base.netWorth = { ...base.netWorth!, ...patch, ...(items ? { items } : {}) };
+  return shareListOf(base);
 }
 
 describe('the list: which items, in which group, ticked as things stand', () => {
   it('groups accounts and cards, assets and debts, goals, events, in that order', () => {
     const list = shareListOf(input());
     expect(list.groups.map((group) => [group.label, group.items.map((item) => item.name)])).toEqual([
-      ['Accounts & cards', ['BCA Tahapan', 'GoPay', 'Card ending 4417']],
+      ['Accounts & cards', ['BCA Tahapan', 'GoPay', 'Card ending 4417', 'Broker cash']],
       ['Assets & debts', ['House', 'Home loan']],
       ['Goals', ['Hajj', 'New phone']],
       ['Events', ['Bali trip', 'Office dinner']],
     ]);
   });
 
-  it('ticks what is shared now, Joint only on accounts, kind and month as the meta', () => {
-    const items = shareListOf(input()).groups.flatMap((group) => group.items);
-    const by = (name: string) => items.find((item) => item.name === name)!;
-    expect(by('BCA Tahapan')).toMatchObject({ ticked: true, joint: true, canJoint: true, meta: null });
-    expect(by('GoPay')).toMatchObject({ ticked: false, joint: false, canJoint: true });
-    expect(by('House')).toMatchObject({ ticked: true, canJoint: false, meta: 'Property' });
-    // Never reviewed reads not shared: nothing is shared until ticked.
-    expect(by('Home loan')).toMatchObject({ ticked: false, meta: 'Loan' });
-    expect(by('Hajj')).toMatchObject({ ticked: true, locked: null });
-    expect(by('New phone')).toMatchObject({ ticked: false });
-    expect(by('Bali trip')).toMatchObject({ ticked: true, locked: EVENT_LOCKED, meta: 'Oct' });
-    expect(by('Office dinner')).toMatchObject({ ticked: false, locked: null, meta: 'Sep' });
-  });
-
-  it('leaves an event’s trip balance out: the event made it, nobody chose it', () => {
-    const withTrip = input();
-    withTrip.netWorth = { ...withTrip.netWorth!, items: [...withTrip.netWorth!.items, { accountId: 'a-trip', name: 'Bali trip', subtype: 'event_balance', setting: null }] };
-    const list = shareListOf(withTrip);
-    expect(list.groups.flatMap((group) => group.items).filter((item) => item.id === 'a-trip')).toEqual([]);
-    // A review answers for it all the same, keeping it unshared.
-    withTrip.netWorth = { ...withTrip.netWorth, reviewing: true };
-    const reviewing = shareListOf(withTrip);
-    expect(changesOf(reviewing, draftOf(reviewing))[0]).toMatchObject({ kind: 'review', settings: { 'a-trip': 'hidden' } });
+  it('ticks what is shared now; Joint only where the partner can pay from it; kind, month and currency as the meta', () => {
+    const list = shareListOf(input());
+    const draft = emptyDraft(list);
+    expect(row(list, 'BCA Tahapan')).toMatchObject({ shared: true, joint: true, canJoint: true, meta: null, caption: null });
+    expect(row(list, 'GoPay')).toMatchObject({ shared: false, canJoint: true, caption: null });
+    // A broker's cash cannot pay for anything: no Joint (Paid with's kinds).
+    expect(row(list, 'Broker cash')).toMatchObject({ canJoint: false });
+    expect(row(list, 'House')).toMatchObject({ shared: true, canJoint: false, meta: 'Property' });
+    expect(row(list, 'Hajj')).toMatchObject({ shared: true, locked: null });
+    expect(row(list, 'Bali trip')).toMatchObject({ shared: true, locked: EVENT_LOCKED, meta: 'Oct · IDR' });
+    expect(row(list, 'Office dinner')).toMatchObject({ shared: false, locked: null, meta: 'Sep · SGD' });
+    expect(isTicked(draft, row(list, 'BCA Tahapan'))).toBe(true);
+    expect(isTicked(draft, row(list, 'GoPay'))).toBe(false);
   });
 
   it('leaves net worth out while this person is in no active group of the workspace', () => {
-    const list = shareListOf(input({ netWorth: null }));
-    expect(list.groups.map((group) => group.key)).toEqual(['goals', 'events']);
+    expect(shareListOf(input({ netWorth: null })).groups.map((group) => group.key)).toEqual(['goals', 'events']);
   });
 
   it('leaves goals out where the workspace cannot take one (a phone on an old version)', () => {
     const list = shareListOf(input({ goalTargets: [] }));
-    // The goal shared now keeps its tick (eligibility gates turning on, never off); the unshared one is left out.
     expect(list.groups.find((group) => group.key === 'goals')!.items.map((item) => item.name)).toEqual(['Hajj']);
   });
 
-  it('with one tax ID a shared item cannot be unticked, and a review shares every item', () => {
-    const joint = input();
-    joint.netWorth = { ...joint.netWorth!, mode: 'joint' };
-    const items = shareListOf(joint).groups.flatMap((group) => group.items);
-    expect(items.find((item) => item.name === 'BCA Tahapan')!.locked).toBe(JOINT_LINE);
-    expect(items.find((item) => item.name === 'GoPay')!.locked).toBeNull();
-
-    joint.netWorth = { ...joint.netWorth, reviewing: true };
-    const reviewing = shareListOf(joint).groups.filter((group) => group.key === 'accounts' || group.key === 'assets').flatMap((group) => group.items);
-    expect(reviewing.every((item) => item.ticked && item.locked === JOINT_LINE)).toBe(true);
+  it('leaves an event’s trip balance out: the event made it, nobody chose it', () => {
+    const list = listWith({}, [...input().netWorth!.items, { accountId: 'a-trip', name: 'Bali trip', subtype: 'event_balance', setting: null }]);
+    expect(rows(list).filter((item) => item.id === 'a-trip')).toEqual([]);
   });
 
   it('counts what is shared now for the Share page, and what is ticked for the button', () => {
     const list = shareListOf(input());
     // BCA, card, House, Hajj, Bali trip.
     expect(sharedCount(list)).toBe(5);
-    let draft = draftOf(list);
-    expect(tickedCount(list, draft)).toBe(5);
-    draft = tickAll(draft, list.groups.find((group) => group.key === 'goals')!);
+    expect(tickedCount(list, emptyDraft(list))).toBe(5);
+    const draft = tickAll(list, emptyDraft(list), list.groups.find((group) => group.key === 'goals')!);
     expect(tickedCount(list, draft)).toBe(6);
+  });
+});
+
+describe('a net worth review that waits is never answered behind the person’s back', () => {
+  // The reviewer's scenario: one tax ID, Business Mandiri still hidden with the D8 prompt unanswered; a goal is ticked.
+  const d8Items = [
+    { accountId: 'a-bca', name: 'BCA Tahapan', subtype: 'savings', setting: 'total' as const },
+    { accountId: 'a-mandiri', name: 'Business Mandiri', subtype: 'bank', setting: 'hidden' as const },
+  ];
+
+  it('one tax ID, a hidden item after the switch: drawn unticked, Not shared yet, counted nowhere', () => {
+    const list = listWith({ mode: 'joint', reviewed: true }, d8Items);
+    expect(row(list, 'Business Mandiri')).toMatchObject({ shared: false, locked: null, caption: NOT_SHARED_YET });
+    expect(isTicked(emptyDraft(list), row(list, 'Business Mandiri'))).toBe(false);
+    expect(row(list, 'BCA Tahapan')).toMatchObject({ shared: true, locked: JOINT_LINE });
+    expect(sharedCount(list)).toBe(1 + 1 + 1); // BCA, Hajj, Bali trip
+    expect(tickedCount(list, emptyDraft(list))).toBe(3);
+  });
+
+  it('ticking only a goal changes the goal alone: no review, no setting', () => {
+    const list = listWith({ mode: 'joint', reviewed: true }, d8Items);
+    const draft = toggle(list, emptyDraft(list), row(list, 'New phone'));
+    expect(changesOf(list, draft)).toEqual([{ kind: 'share-goal', key: 'share-goal:g-phone', name: 'New phone', goalId: 'g-phone' }]);
+  });
+
+  it('ticked on purpose, the hidden item alone is shared, through its own setting', () => {
+    const list = listWith({ mode: 'joint', reviewed: true }, d8Items);
+    const draft = toggle(list, emptyDraft(list), row(list, 'Business Mandiri'));
+    expect(changesOf(list, draft)).toEqual([{ kind: 'setting', key: 'setting:a-mandiri', name: 'Business Mandiri', accountId: 'a-mandiri', setting: 'total' }]);
+  });
+
+  it('before the review, nothing reads as shared — not even what an earlier group left stored as shared', () => {
+    const list = listWith({ mode: 'separate', reviewed: false });
+    const nw = rows(list).filter((item) => item.group === 'accounts' || item.group === 'assets');
+    expect(nw.every((item) => !item.shared && item.caption === NOT_SHARED_YET && !isTicked(emptyDraft(list), item))).toBe(true);
+    expect(sharedCount(list)).toBe(2); // Hajj, Bali trip
+  });
+
+  it('untouched, Save never calls the review: only the goal goes', async () => {
+    for (const mode of ['joint', 'separate'] as const) {
+      const list = listWith({ mode, reviewed: false });
+      const changes = changesOf(list, toggle(list, emptyDraft(list), row(list, 'New phone')));
+      const reviews: unknown[] = [];
+      await applyShareChanges(changes, runners(reviews), String);
+      expect(reviews).toEqual([]);
+      expect(changes.map((change) => change.kind)).toEqual(['share-goal']);
+    }
+  });
+
+  it('separately, a tick answers the review: what was ticked is shared, the rest stays private', () => {
+    const list = listWith({ mode: 'separate', reviewed: false });
+    const gopay = row(list, 'GoPay');
+    const draft = toggleJoint(toggle(list, emptyDraft(list), gopay), gopay);
+    expect(changesOf(list, draft)).toEqual([
+      {
+        kind: 'review',
+        key: 'review',
+        name: REVIEW_NAME,
+        settings: { 'a-bca': 'hidden', 'a-gopay': 'total', 'a-card': 'hidden', 'a-rdn': 'hidden', 'a-house': 'hidden', 'a-kpr': 'hidden' },
+      },
+      { kind: 'joint', key: 'joint:a-gopay', name: 'GoPay', accountId: 'a-gopay', on: true },
+    ]);
+  });
+
+  it('one tax ID before the review: all or none — one tick ticks every item, and the review shares them all', () => {
+    const list = listWith({ mode: 'joint', reviewed: false });
+    expect(allOrNone(list)).toBe(true);
+    const draft = toggle(list, emptyDraft(list), row(list, 'House'));
+    expect(rows(list).filter((item) => item.group === 'accounts' || item.group === 'assets').every((item) => isTicked(draft, item))).toBe(true);
+    const [review] = changesOf(list, draft);
+    expect(review).toMatchObject({ kind: 'review' });
+    expect(Object.values((review as Extract<ShareChange, { kind: 'review' }>).settings).every((setting) => setting === 'total')).toBe(true);
+    // And untick takes them all back off.
+    const back = toggle(list, draft, row(list, 'GoPay'));
+    expect(changesOf(list, back)).toEqual([]);
+  });
+
+  it('a review sent is made whole: an item that came after the list was read goes as hidden', () => {
+    expect(completeReviewSettings({ 'a-bca': 'total' }, ['a-bca', 'a-new-card'])).toEqual({ 'a-bca': 'total', 'a-new-card': 'hidden' });
+  });
+});
+
+describe('the draft follows the list', () => {
+  it('a row that appears mid-edit opens unticked and is never shared unless ticked', () => {
+    const before = shareListOf(input());
+    const draft = toggle(before, emptyDraft(before), row(before, 'New phone'));
+    const base = input();
+    base.netWorth = { ...base.netWorth!, items: [...base.netWorth!.items, { accountId: 'a-new', name: 'New card', subtype: 'credit_card', setting: null }] };
+    const after = shareListOf(base);
+    expect(isTicked(reconcile(after, draft), row(after, 'New card'))).toBe(false);
+    expect(changesOf(after, draft).map((change) => change.key)).toEqual(['share-goal:g-phone']);
+  });
+
+  it('a change of filing or of the review drops the net worth edits, and keeps the rest', () => {
+    const before = shareListOf(input());
+    let draft = toggle(before, emptyDraft(before), row(before, 'GoPay'));
+    draft = toggle(before, draft, row(before, 'Office dinner'));
+    const after = listWith({ reviewed: false });
+    const kept = reconcile(after, draft);
+    expect(isTicked(kept, row(after, 'GoPay'))).toBe(false);
+    expect(isTicked(kept, row(after, 'Office dinner'))).toBe(true);
+    expect(changesOf(after, draft).map((change) => change.kind)).toEqual(['share-event']);
+  });
+
+  it('a row gone takes its edit with it', () => {
+    const before = shareListOf(input());
+    const draft = toggle(before, emptyDraft(before), row(before, 'Office dinner'));
+    const after = shareListOf(input({ events: [] }));
+    expect(reconcile(after, draft).ticks.size).toBe(0);
   });
 });
 
 describe('the draft', () => {
   const list = shareListOf(input());
-  const item = (name: string) => list.groups.flatMap((group) => group.items).find((row) => row.name === name)!;
 
   it('a locked tick stays; anything else toggles', () => {
-    let draft = draftOf(list);
-    draft = toggle(draft, item('Bali trip'));
-    expect(draft.ticked.has('events:e-trip')).toBe(true);
-    draft = toggle(draft, item('Office dinner'));
-    expect(draft.ticked.has('events:e-dinner')).toBe(true);
-    draft = toggle(draft, item('Office dinner'));
-    expect(draft.ticked.has('events:e-dinner')).toBe(false);
+    let draft = toggle(list, emptyDraft(list), row(list, 'Bali trip'));
+    expect(isTicked(draft, row(list, 'Bali trip'))).toBe(true);
+    draft = toggle(list, draft, row(list, 'Office dinner'));
+    expect(isTicked(draft, row(list, 'Office dinner'))).toBe(true);
+    draft = toggle(list, draft, row(list, 'Office dinner'));
+    expect(isTicked(draft, row(list, 'Office dinner'))).toBe(false);
+    expect(draft.ticks.size).toBe(0);
   });
 
   it('Joint is offered only on a ticked account, and reads off once it is unticked', () => {
-    let draft = draftOf(list);
-    expect(toggleJoint(draft, item('GoPay'))).toBe(draft);
-    expect(toggleJoint(draft, item('House'))).toBe(draft);
-    draft = toggle(draft, item('GoPay'));
-    draft = toggleJoint(draft, item('GoPay'));
-    expect(jointOn(draft, item('GoPay'))).toBe(true);
-    draft = toggle(draft, item('GoPay'));
-    expect(jointOn(draft, item('GoPay'))).toBe(false);
+    let draft = emptyDraft(list);
+    expect(toggleJoint(draft, row(list, 'GoPay'))).toBe(draft);
+    expect(toggleJoint(draft, row(list, 'House'))).toBe(draft);
+    draft = toggleJoint(toggle(list, draft, row(list, 'GoPay')), row(list, 'GoPay'));
+    expect(jointOn(draft, row(list, 'GoPay'))).toBe(true);
+    draft = toggle(list, draft, row(list, 'GoPay'));
+    expect(jointOn(draft, row(list, 'GoPay'))).toBe(false);
   });
 
-  it('Tick all ticks every item of the group', () => {
-    const accounts = list.groups.find((group) => group.key === 'accounts')!;
-    const draft = tickAll(draftOf(list), accounts);
-    expect(accounts.items.every((row) => draft.ticked.has(row.key))).toBe(true);
+  it('the events ticked to share are named for the move warning', () => {
+    const draft = toggle(list, emptyDraft(list), row(list, 'Office dinner'));
+    expect(eventsToShare(list, draft).map((item) => item.name)).toEqual(['Office dinner']);
+    expect(SHARE_LIST_COPY.eventsFooter(['Office dinner'])).toContain('What is tagged to it moves out of its workspace');
   });
 });
 
-describe('what a draft changes, in order', () => {
+describe('what a reviewed draft changes, in order', () => {
   it('nothing changed is no change', () => {
     const list = shareListOf(input());
-    expect(changesOf(list, draftOf(list))).toEqual([]);
+    expect(changesOf(list, emptyDraft(list))).toEqual([]);
   });
 
   it('settings, then Joint, then goals, then events', () => {
     const list = shareListOf(input());
-    const item = (name: string) => list.groups.flatMap((group) => group.items).find((row) => row.name === name)!;
-    let draft = draftOf(list);
-    draft = toggle(draft, item('Office dinner'));
-    draft = toggle(draft, item('New phone'));
-    draft = toggle(draft, item('Hajj'));
-    draft = toggleJoint(toggle(draft, item('GoPay')), item('GoPay'));
-    draft = toggle(draft, item('House'));
-    draft = toggleJoint(draft, item('BCA Tahapan'));
-    expect(changesOf(list, draft)).toEqual([
-      { kind: 'setting', name: 'GoPay', accountId: 'a-gopay', setting: 'total' },
-      { kind: 'setting', name: 'House', accountId: 'a-house', setting: 'hidden' },
-      { kind: 'joint', name: 'BCA Tahapan', accountId: 'a-bca', on: false },
-      { kind: 'joint', name: 'GoPay', accountId: 'a-gopay', on: true },
-      { kind: 'stop-goal', name: 'Hajj', goalId: 'g-hajj' },
-      { kind: 'share-goal', name: 'New phone', goalId: 'g-phone' },
-      { kind: 'share-event', name: 'Office dinner', eventId: 'e-dinner' },
+    let draft = emptyDraft(list);
+    for (const name of ['Office dinner', 'New phone', 'Hajj', 'GoPay', 'House']) draft = toggle(list, draft, row(list, name));
+    draft = toggleJoint(draft, row(list, 'GoPay'));
+    draft = toggleJoint(draft, row(list, 'BCA Tahapan'));
+    expect(changesOf(list, draft).map((change) => change.key)).toEqual([
+      'setting:a-gopay',
+      'setting:a-house',
+      'joint:a-bca',
+      'joint:a-gopay',
+      'stop-goal:g-hajj',
+      'share-goal:g-phone',
+      'share-event:e-dinner',
     ]);
   });
 
   it('an account unticked takes its Joint with it: no Joint change is sent for it', () => {
     const list = shareListOf(input());
-    const bca = list.groups[0]!.items[0]!;
-    expect(changesOf(list, toggle(draftOf(list), bca))).toEqual([{ kind: 'setting', name: 'BCA Tahapan', accountId: 'a-bca', setting: 'hidden' }]);
-  });
-
-  it('while the review waits, Share answers it for every item at once, Joint after it', () => {
-    const reviewing = input();
-    reviewing.netWorth = { ...reviewing.netWorth!, reviewing: true };
-    const list = shareListOf(reviewing);
-    const gopay = list.groups[0]!.items[1]!;
-    const draft = toggleJoint(toggle(draftOf(list), gopay), gopay);
-    expect(changesOf(list, draft)).toEqual([
-      { kind: 'review', name: REVIEW_NAME, settings: { 'a-bca': 'total', 'a-gopay': 'total', 'a-card': 'total', 'a-house': 'total', 'a-kpr': 'hidden' } },
-      { kind: 'joint', name: 'GoPay', accountId: 'a-gopay', on: true },
+    expect(changesOf(list, toggle(list, emptyDraft(list), row(list, 'BCA Tahapan')))).toEqual([
+      { kind: 'setting', key: 'setting:a-bca', name: 'BCA Tahapan', accountId: 'a-bca', setting: 'hidden' },
     ]);
   });
 
   it('a goal whose stop was declined is left shared', () => {
-    const changes = [
-      { kind: 'stop-goal', name: 'Hajj', goalId: 'g-hajj' },
-      { kind: 'share-goal', name: 'New phone', goalId: 'g-phone' },
-    ] as const;
+    const changes: ShareChange[] = [
+      { kind: 'stop-goal', key: 'stop-goal:g-hajj', name: 'Hajj', goalId: 'g-hajj' },
+      { kind: 'share-goal', key: 'share-goal:g-phone', name: 'New phone', goalId: 'g-phone' },
+    ];
     expect(keepConfirmed(changes, () => false)).toEqual([changes[1]]);
     expect(keepConfirmed(changes, () => true)).toEqual(changes);
   });
 });
 
-describe('applying', () => {
-  function runners(fail: Partial<Record<string, string>> = {}) {
-    const calls: string[] = [];
-    const run = (what: string) => async () => {
-      calls.push(what);
-      if (fail[what]) throw new Error(fail[what]);
-    };
-    return {
-      calls,
-      runners: {
-        review: async () => run('review')(),
-        setting: async (id: string, setting: string) => run(`setting ${id} ${setting}`)(),
-        joint: async (id: string, on: boolean) => run(`joint ${id} ${on}`)(),
-        shareGoal: async (id: string) => run(`share-goal ${id}`)(),
-        stopGoal: async (id: string) => run(`stop-goal ${id}`)(),
-        shareEvent: async (id: string) => {
-          await run(`share-event ${id}`)();
-          return `code-${id}`;
-        },
-      },
-    };
-  }
+function runners(reviews: unknown[] = [], fail: Partial<Record<string, string>> = {}, calls: string[] = []) {
+  const run = async (what: string) => {
+    calls.push(what);
+    if (fail[what]) throw new Error(fail[what]);
+  };
+  return {
+    review: async (settings: unknown) => {
+      reviews.push(settings);
+      await run('review');
+    },
+    setting: (id: string, setting: string) => run(`setting ${id} ${setting}`),
+    joint: (id: string, on: boolean) => run(`joint ${id} ${on}`),
+    shareGoal: (id: string) => run(`share-goal ${id}`),
+    stopGoal: (id: string) => run(`stop-goal ${id}`),
+    shareEvent: async (id: string) => {
+      await run(`share-event ${id}`);
+      return { code: `code-${id}`, kept: [] };
+    },
+  };
+}
 
-  it('runs each change in order through its own action, and keeps the invites', async () => {
-    const { calls, runners: r } = runners();
+describe('applying', () => {
+  it('runs each change in order through its own action, and keeps what each event share brought back', async () => {
+    const calls: string[] = [];
     const outcome = await applyShareChanges(
       [
-        { kind: 'setting', name: 'GoPay', accountId: 'a-gopay', setting: 'total' },
-        { kind: 'joint', name: 'GoPay', accountId: 'a-gopay', on: true },
-        { kind: 'share-goal', name: 'New phone', goalId: 'g-phone' },
-        { kind: 'share-event', name: 'Office dinner', eventId: 'e-dinner' },
+        { kind: 'setting', key: 'setting:a-gopay', name: 'GoPay', accountId: 'a-gopay', setting: 'total' },
+        { kind: 'joint', key: 'joint:a-gopay', name: 'GoPay', accountId: 'a-gopay', on: true },
+        { kind: 'share-goal', key: 'share-goal:g-phone', name: 'New phone', goalId: 'g-phone' },
+        { kind: 'share-event', key: 'share-event:e-dinner', name: 'Office dinner', eventId: 'e-dinner' },
       ],
-      r,
+      runners([], {}, calls),
       String,
     );
     expect(calls).toEqual(['setting a-gopay total', 'joint a-gopay true', 'share-goal g-phone', 'share-event e-dinner']);
-    expect(outcome).toEqual({ done: 4, failed: [], invites: [{ eventId: 'e-dinner', name: 'Office dinner', invite: 'code-e-dinner' }] });
+    expect(outcome).toEqual({ done: 4, failed: [], events: [{ eventId: 'e-dinner', name: 'Office dinner', shared: { code: 'code-e-dinner', kept: [] } }] });
   });
 
-  it('one that fails is named with why, and the rest still run', async () => {
-    const { calls, runners: r } = runners({ 'share-goal g-phone': 'A goal is shared only into a shared workspace with another member' });
+  it('one that fails is named with why and its own key, and the rest still run', async () => {
+    const calls: string[] = [];
     const outcome = await applyShareChanges(
       [
-        { kind: 'share-goal', name: 'New phone', goalId: 'g-phone' },
-        { kind: 'stop-goal', name: 'Hajj', goalId: 'g-hajj' },
-        { kind: 'share-event', name: 'Office dinner', eventId: 'e-dinner' },
+        { kind: 'share-goal', key: 'share-goal:g-phone', name: 'New phone', goalId: 'g-phone' },
+        { kind: 'share-goal', key: 'share-goal:g-phone-2', name: 'New phone', goalId: 'g-phone-2' },
+        { kind: 'share-event', key: 'share-event:e-dinner', name: 'Office dinner', eventId: 'e-dinner' },
       ],
-      r,
+      runners([], { 'share-goal g-phone': 'A goal is shared only into a shared workspace with another member', 'share-goal g-phone-2': 'Not now' }, calls),
       (error) => (error as Error).message,
     );
-    expect(calls).toEqual(['share-goal g-phone', 'stop-goal g-hajj', 'share-event e-dinner']);
-    expect(outcome.done).toBe(2);
-    expect(outcome.failed).toEqual([{ name: 'New phone', reason: 'A goal is shared only into a shared workspace with another member' }]);
-    expect(outcome.invites).toHaveLength(1);
-  });
-
-  it('a failed event share brings no invite, and is named', async () => {
-    const { runners: r } = runners({ 'share-event e-dinner': 'The relay could not be reached' });
-    const outcome = await applyShareChanges([{ kind: 'share-event', name: 'Office dinner', eventId: 'e-dinner' }], r, (error) => (error as Error).message);
-    expect(outcome).toEqual({ done: 0, failed: [{ name: 'Office dinner', reason: 'The relay could not be reached' }], invites: [] });
+    expect(calls).toEqual(['share-goal g-phone', 'share-goal g-phone-2', 'share-event e-dinner']);
+    expect(outcome.done).toBe(1);
+    expect(outcome.failed.map((failed) => failed.key)).toEqual(['share-goal:g-phone', 'share-goal:g-phone-2']);
+    expect(outcome.failed[0]!.reason).toBe('A goal is shared only into a shared workspace with another member');
+    expect(outcome.events).toHaveLength(1);
   });
 });
 
@@ -310,6 +395,7 @@ describe('copy', () => {
     expect(SHARE_LIST_COPY.shareButton(1)).toBe('Share 1 item');
     expect(SHARE_LIST_COPY.rowValue(7)).toBe('7 items');
     expect(SHARE_LIST_COPY.workspaceFooter('Family')).toBe('Budgets, bills, categories and Family’s transactions are shared with Family as a whole.');
+    expect(SHARE_LIST_COPY.reviewBody('joint', ['Andi'])).toContain('For the joint tax return, each item also goes to Andi');
   });
 
   it('never says you or your', () => {
@@ -319,7 +405,12 @@ describe('copy', () => {
       SHARE_LIST_COPY.netWorthOff,
       SHARE_LIST_COPY.invitesFooter(['Andi'], 'Family'),
       SHARE_LIST_COPY.workspaceFooter('Family'),
+      SHARE_LIST_COPY.reviewBody('joint', ['Andi']),
+      SHARE_LIST_COPY.reviewBody('separate', ['Andi']),
+      SHARE_LIST_COPY.noName('Bali trip'),
+      SHARE_LIST_COPY.keptHeader('Bali trip'),
       EVENT_LOCKED,
+      NOT_SHARED_YET,
     ];
     for (const line of strings) expect(line).not.toMatch(/\byou(r)?\b/i);
   });

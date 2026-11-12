@@ -1,5 +1,5 @@
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
-import { openAccount } from './accounts';
+import { openAccount, walletCard } from './accounts';
 import { addForm } from './add-transaction';
 import { openGoalForm, setAssumption } from './goals';
 import { goalRow } from './set-aside';
@@ -96,6 +96,11 @@ test('the share list: Rina ticks an account with Joint, a goal and an event; And
   await eventually(rina, () => expect(tick(rina, 'Umrah plan')).toBeVisible({ timeout: 1_000 }));
   await expect(list.getByTestId('share-list-accounts')).toContainText('Ticked: Andi sees its balance on Net worth. Joint: Andi can also pay from it in Family and sees its rows.');
   for (const name of ['Rina Savings', 'Rina Pocket', 'Umrah plan', 'Lombok weekend']) await expect(tick(rina, name)).not.toBeChecked();
+  // Rina has not reviewed her net worth yet: nothing of it reads as shared, and the list says so.
+  await expect(list.getByTestId('share-list-review')).toBeVisible();
+  await expect(list.getByTestId('share-list-row').filter({ hasText: 'Rina Pocket' })).toContainText('Not shared yet');
+  // The event says the currency a share puts it in.
+  await expect(list.getByTestId('share-list-row').filter({ hasText: 'Lombok weekend' })).toContainText('IDR');
   // Joint is offered only once the account is ticked.
   await expect(rina.getByRole('button', { name: 'Joint, Rina Savings' })).toHaveCount(0);
   await tick(rina, 'Rina Savings').click();
@@ -103,6 +108,8 @@ test('the share list: Rina ticks an account with Joint, a goal and an event; And
   await expect(rina.getByRole('button', { name: 'Joint, Rina Savings' })).toHaveAttribute('aria-pressed', 'true');
   await tick(rina, 'Umrah plan').click();
   await tick(rina, 'Lombok weekend').click();
+  // Ticked to share, the event says what sharing it moves, in its Share sheet's own words.
+  await expect(list.getByTestId('share-list-events')).toContainText('What is tagged to it moves out of its workspace');
   await rina.getByRole('button', { name: 'Save', exact: true }).click();
 
   // The event's share ends in its own invite, to send to Andi.
@@ -114,13 +121,13 @@ test('the share list: Rina ticks an account with Joint, a goal and an event; And
   await expect(rina).toHaveURL(/\/share$/);
   await expect(rina.getByTestId('share-list-row')).toContainText('3 items');
 
-  // Andi: the account among Rina's shared ones (and not the one left unticked), and in Paid with as Joint.
-  const rinaShared = andi.locator('section').filter({ has: andi.getByText("Rina's, shared", { exact: true }) });
+  // Andi: the account, joint, is a card of Rina's on his Wallet; the one left unticked is nowhere.
   await eventually(andi, async () => {
     await andi.goto('/wallet');
-    await expect(rinaShared).toContainText('Rina Savings', { timeout: 2_000 });
+    await expect(walletCard(andi, 'Rina Savings')).toBeVisible({ timeout: 2_000 });
   });
-  await expect(rinaShared).not.toContainText('Rina Pocket');
+  await expect(walletCard(andi, 'Rina Savings')).toHaveAccessibleName(/^Rina Savings, Rina’s/);
+  await expect(andi.getByText('Rina Pocket')).toHaveCount(0);
   const paidWith = andi.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Rina Savings, Rina’s, shared', exact: true });
   await eventually(andi, async () => {
     await andi.goto('/transactions');

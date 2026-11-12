@@ -239,7 +239,7 @@ export { computeItemSummary, itemIdOf, ownSentAccountIds, receivedItems, sendSum
 export { ringPicks, setOwnRing } from './sync/net-worth/rings';
 export { markAccountDirtyTx } from './sync/capture';
 // The one list of what is shared with a household: whom it was already offered for, at set-up.
-export { markShareListAsked, shareListAskedFor } from './repos/share-list';
+export { markShareListAsked, seedShareListAsked, shareListAskedFor } from './repos/share-list';
 // Joint net worth §5.3, §7.1 (task 7): Paid with the other's shared item.
 export { paidFromAccount, paidWithItems, PAYABLE_SUBTYPES, type PaidWithItem } from './sync/net-worth/paid-from';
 export type { PaidFrom } from './sync/capture';

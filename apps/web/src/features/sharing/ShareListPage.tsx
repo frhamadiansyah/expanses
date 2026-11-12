@@ -4,6 +4,9 @@ import {
   getJointAccount,
   goalShareOf,
   markShareListAsked,
+  type MoveRefusal,
+  reviewItems,
+  seedShareListAsked,
   type SharingDetail,
   setJointAccount,
   setShareSetting,
@@ -17,7 +20,7 @@ import { Check } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { errorMessage, ErrorBox, cx } from '../../ui';
-import { GROUP_HEADER_CLASS, InsetGroup, InsetRow, PushedTitle, SCREEN, SelectCircle } from '../../ui/native';
+import { GROUP_HEADER_CLASS, InsetGroup, InsetRow, Notice, PushedTitle, SCREEN, SelectCircle } from '../../ui/native';
 import { useInvalidateAll } from '../../lib/queries';
 import { useEvents } from '../events/queries';
 import { freshShare, type ShareProgress } from '../events/share-event';
@@ -27,14 +30,18 @@ import { GOAL_SHARING_COPY } from '../goals/goal-sharing';
 import { useGoalPlans, useGoals, useGoalShareTargets } from '../goals/queries';
 import { InviteCard } from './InviteCard';
 import { useActiveNetWorthGroup, useNetWorthGroup, useReview } from './net-worth-queries';
-import { needsReview, netWorthRowOf, netWorthValue, sayNetWorthError } from './net-worth-state';
+import { netWorthRowOf, netWorthValue, sayNetWorthError } from './net-worth-state';
 import { useSharingDetail } from './queries';
 import {
   applyShareChanges,
   changesOf,
-  draftOf,
+  completeReviewSettings,
+  emptyDraft,
+  eventsToShare,
+  isTicked,
   jointOn,
   keepConfirmed,
+  reconcile,
   type ShareDraft,
   type ShareList,
   type ShareListGroup,
@@ -61,15 +68,30 @@ export function joinedOthers(detail: SharingDetail) {
   return detail.members.filter((member) => !member.me && member.devices.length > 0);
 }
 
-/** Whether the set-up step is still owed on this phone: someone joined whom the list was not yet offered for. */
+/**
+ * Whom the set-up step was already offered for, on this phone. The first run of this build marks every member already
+ * joined first (`seedShareListAsked`), so a household sharing since before gets the Share page row and no redirect.
+ */
 export function useShareListAsked(bookId: string) {
   const { database } = useApp();
-  return useQuery({ queryKey: ['share-list-asked', bookId], queryFn: () => shareListAskedFor(database, bookId) });
+  return useQuery({
+    queryKey: ['share-list-asked', bookId],
+    queryFn: async () => {
+      await seedShareListAsked(database);
+      return shareListAskedFor(database, bookId);
+    },
+  });
+}
+
+/** What an event's share from the list brings back: its invite, and what stayed where it was. */
+interface EventShared {
+  invite: CreatedInvite;
+  kept: MoveRefusal[];
 }
 
 /** Everything the list is made of, read whole and read again after every sync run. */
 export function useShareList(bookId: string): { list: ShareList | null; goalShares: Record<string, Awaited<ReturnType<typeof goalShareOf>>> } {
-  const { database, sync } = useApp();
+  const { database, sync, ws } = useApp();
   const queryClient = useQueryClient();
   useEffect(
     () =>
@@ -107,24 +129,20 @@ export function useShareList(bookId: string): { list: ShareList | null; goalShar
     if (!ready) return null;
     const g = group.data;
     const r = review.data!;
-    const items = r.items;
-    const netWorth =
-      g && g.workspaceBookId === bookId
-        ? {
-            mode: g.mode,
-            reviewing: needsReview({ mode: g.mode, reviewed: r.reviewed, unreviewedItems: items.filter((item) => item.setting === null).length, pendingHidden: r.pending.length }),
-            items,
-            joint: joint.data!,
-          }
-        : null;
     return shareListOf({
       bookId,
-      netWorth,
+      netWorth: g && g.workspaceBookId === bookId ? { mode: g.mode, reviewed: r.reviewed, items: r.items, joint: joint.data! } : null,
       goals: goals.data!.filter((goal) => goal.status !== 'archived').map((goal) => ({ id: goal.id, name: goal.name, share: shares.data![goal.id] ?? null })),
       goalTargets: targets.data!,
-      events: events.data!.map((event) => ({ id: event.id, name: event.name, startsOn: event.startsOn, shared: summaries.data![event.id] !== undefined })),
+      events: events.data!.map((event) => ({
+        id: event.id,
+        name: event.name,
+        startsOn: event.startsOn,
+        currency: event.currency ?? ws.baseCurrency,
+        shared: summaries.data![event.id] !== undefined,
+      })),
     });
-  }, [ready, group.data, review.data, joint.data, goals.data, shares.data, targets.data, events.data, summaries.data, bookId]);
+  }, [ready, group.data, review.data, joint.data, goals.data, shares.data, targets.data, events.data, summaries.data, bookId, ws.baseCurrency]);
   return { list, goalShares: shares.data ?? {} };
 }
 
@@ -157,6 +175,12 @@ function ShareListScreen({ bookId, setup }: { bookId: string; setup: boolean }) 
   return <ShareListBody bookId={bookId} bookName={book.name} detail={detail.data} setup={setup} />;
 }
 
+/** The name this person shares an event under: theirs in the workspace; never an empty one. */
+function personNameOf(detail: SharingDetail): string | null {
+  const name = (detail.members.find((member) => member.me) ?? detail.members.find((member) => member.memberId === detail.memberId))?.name.trim();
+  return name ? name : null;
+}
+
 function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bookName: string; detail: SharingDetail; setup: boolean }) {
   const { database, ws } = useApp();
   const navigate = useNavigate();
@@ -167,20 +191,17 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
   const nwGroup = useNetWorthGroup(bookId);
   const { list, goalShares } = useShareList(bookId);
   const eventRows = useEvents().data ?? [];
-  const [draft, setDraft] = useState<ShareDraft | null>(null);
+  const [edits, setEdits] = useState<ShareDraft | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const [outcome, setOutcome] = useState<ShareOutcome<CreatedInvite> | null>(null);
+  const [outcome, setOutcome] = useState<ShareOutcome<EventShared> | null>(null);
   // Each event's share is kept across a retry (`runShare`): one failed after its book was made carries on from there.
   const progress = useRef(new Map<string, ShareProgress>());
-  const me = detail.members.find((member) => member.me) ?? null;
+  const personName = personNameOf(detail);
   const others = joinedOthers(detail).map((member) => member.name);
   const othersAll = others.length > 0 ? others : detail.members.filter((member) => !member.me).map((member) => member.name);
-
-  // The draft starts from what is shared now, once the list is read.
-  useEffect(() => {
-    if (list && draft === null) setDraft(draftOf(list));
-  }, [list, draft]);
+  // The edits over the list as it is read now (fix round 1, 2): rows that came are as they stand, rows gone drop out.
+  const draft = list ? reconcile(list, edits ?? emptyDraft(list)) : null;
 
   const backToShare = () => navigate({ to: '/account/workspaces/$bookId/share', params: { bookId } });
 
@@ -226,28 +247,31 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
     try {
       // Answered: the step is not offered again, whatever goes through below.
       if (setup) await markAsked();
-      const result = await applyShareChanges<CreatedInvite>(
+      const result = await applyShareChanges<EventShared>(
         changes,
         {
-          review: (settings) => confirmReview(database, ws, settings),
+          // Made whole against the items as they are now (fix round 1, 4): one added since the list was read is sent
+          // as hidden, never left to the review's own default of shared.
+          review: async (settings) => confirmReview(database, ws, completeReviewSettings(settings, (await reviewItems(database, ws)).map((item) => item.accountId))),
           setting: (accountId, setting) => setShareSetting(database, accountId, setting),
           joint: (accountId, on) => setJointAccount(database, accountId, on),
           shareGoal: (goalId) => shareGoal(database, ws, goalId, bookId),
           stopGoal: (goalId) => stopSharingGoal(database, ws, goalId),
           shareEvent: async (eventId) => {
             const event = eventRows.find((row) => row.id === eventId);
+            if (!personName) throw new Error(SHARE_LIST_COPY.noName(event?.name ?? 'This event'));
             const run = progress.current.get(eventId) ?? freshShare();
             progress.current.set(eventId, run);
-            const done = await shareEventNow({ eventId, personName: me?.name ?? '', currency: event?.currency ?? ws.baseCurrency }, run);
+            const done = await shareEventNow({ eventId, personName, currency: event?.currency ?? ws.baseCurrency }, run);
             if (!done) throw new Error('Already being shared. Try again in a moment.');
-            return done.invite;
+            return done;
           },
         },
         (failure) => errorMessage(sayError(sayNetWorthError(failure))),
       );
       await invalidate();
-      setDraft(null);
-      if (result.failed.length > 0 || result.invites.length > 0) setOutcome(result);
+      setEdits(null);
+      if (result.failed.length > 0 || result.events.length > 0) setOutcome(result);
       else await backToShare();
     } catch (failure) {
       setError(sayError(failure));
@@ -267,20 +291,28 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
         {outcome.failed.length > 0 ? (
           <InsetGroup wide header={SHARE_LIST_COPY.failedHeader}>
             {outcome.failed.map((failed) => (
-              <InsetRow key={failed.name} testId="share-list-failed" title={failed.name} subtitle={failed.reason} chevron={false} />
+              <InsetRow key={failed.key} testId="share-list-failed" title={failed.name} subtitle={failed.reason} chevron={false} />
             ))}
           </InsetGroup>
         ) : null}
-        {outcome.invites.map((shared) => (
-          <InviteCard
-            key={shared.eventId}
-            invite={shared.invite}
-            kind="event"
-            bookName={shared.name}
-            inviterName={me?.name ?? ''}
-            header={`Invite to ${shared.name}`}
-            footer={SHARE_LIST_COPY.invitesFooter(othersAll, bookName)}
-          />
+        {outcome.events.map((event) => (
+          <div key={event.eventId}>
+            <InviteCard
+              invite={event.shared.invite}
+              kind="event"
+              bookName={event.name}
+              inviterName={personName ?? ''}
+              header={`Invite to ${event.name}`}
+              footer={SHARE_LIST_COPY.invitesFooter(othersAll, bookName)}
+            />
+            {event.shared.kept.length > 0 ? (
+              <InsetGroup wide header={SHARE_LIST_COPY.keptHeader(event.name)}>
+                {event.shared.kept.map((kept) => (
+                  <InsetRow key={kept.transactionId} testId="share-list-kept" title={kept.why} chevron={false} />
+                ))}
+              </InsetGroup>
+            ) : null}
+          </div>
         ))}
         <InsetGroup wide>
           <InsetRow testId="share-list-done" title="Done" action onClick={() => void backToShare()} />
@@ -290,6 +322,8 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
   }
 
   const netWorthOff = list !== null && list.netWorth === null && nwGroup.isSuccess;
+  const reviewWaits = list?.netWorth && !list.netWorth.reviewed && list.groups.some((group) => group.key === 'accounts' || group.key === 'assets') ? list.netWorth : null;
+  const setDraft = (next: ShareDraft) => setEdits(next);
 
   return (
     <div className={SCREEN} data-testid={setup ? 'share-list-setup' : 'share-list'}>
@@ -322,22 +356,27 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
               />
             </InsetGroup>
           ) : null}
+          {reviewWaits ? (
+            <div className="mb-[14px]">
+              <Notice kind="warning" testId="share-list-review" title={SHARE_LIST_COPY.reviewTitle} body={SHARE_LIST_COPY.reviewBody(reviewWaits.mode, othersAll)} />
+            </div>
+          ) : null}
           {list.groups.map((group) => (
             <TickGroup
               key={group.key}
               group={group}
               draft={draft}
               disabled={busy}
-              footer={groupFooter(group, othersAll, bookName)}
-              onTickAll={() => setDraft(tickAll(draft, group))}
-              onToggle={(item) => setDraft(toggle(draft, item))}
+              footer={groupFooter(group, othersAll, bookName, group.key === 'events' ? eventsToShare(list, draft).map((item) => item.name) : [])}
+              onTickAll={() => setDraft(tickAll(list, draft, group))}
+              onToggle={(item) => setDraft(toggle(list, draft, item))}
               onJoint={(item) => setDraft(toggleJoint(draft, item))}
             />
           ))}
         </>
       ) : null}
       {setup ? (
-        <div className="sticky bottom-0 -mx-4 mt-[10px] bg-gradient-to-b from-transparent to-[var(--ph-bg)] px-4 pt-[18px] pb-[calc(16px+env(safe-area-inset-bottom))]" style={{ backgroundImage: 'linear-gradient(transparent, var(--ph-bg) 22%)' }}>
+        <div className="sticky bottom-0 -mx-4 mt-[10px] px-4 pt-[18px] pb-[calc(16px+env(safe-area-inset-bottom))]" style={{ backgroundImage: 'linear-gradient(transparent, var(--ph-bg) 22%)' }}>
           <button
             type="button"
             data-testid="share-list-share"
@@ -356,10 +395,17 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
   );
 }
 
-/** The sentence under a group: what a tick means for accounts, and why a tick cannot be taken off where one cannot. */
-function groupFooter(group: ShareListGroup, others: readonly string[], bookName: string): string | undefined {
+/**
+ * The sentence under a group: what a tick means for accounts, why a tick cannot be taken off where one cannot, and for
+ * each event ticked to be shared, what sharing it moves (the event Share sheet's own words).
+ */
+function groupFooter(group: ShareListGroup, others: readonly string[], bookName: string, eventsSharing: readonly string[]): string | undefined {
   const reasons = [...new Set(group.items.map((item) => item.locked).filter((reason): reason is string => reason !== null))];
-  const lines = [group.key === 'accounts' ? SHARE_LIST_COPY.accountsFooter(others, bookName) : null, ...reasons].filter((line): line is string => line !== null);
+  const lines = [
+    group.key === 'accounts' ? SHARE_LIST_COPY.accountsFooter(others, bookName) : null,
+    ...reasons,
+    eventsSharing.length > 0 ? SHARE_LIST_COPY.eventsFooter(eventsSharing) : null,
+  ].filter((line): line is string => line !== null);
   return lines.length > 0 ? lines.join(' ') : undefined;
 }
 
@@ -380,7 +426,7 @@ function TickGroup({
   onToggle: (item: ShareListItem) => void;
   onJoint: (item: ShareListItem) => void;
 }) {
-  const allTicked = group.items.every((item) => draft.ticked.has(item.key));
+  const allTicked = group.items.every((item) => isTicked(draft, item));
   return (
     <section className="w-full md:max-w-2xl" style={{ marginBottom: 22 }} data-testid={`share-list-${group.key}`}>
       <div className="flex items-baseline justify-between gap-3 px-[4px] pb-[6px]">
@@ -397,7 +443,7 @@ function TickGroup({
       </div>
       <div className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
         {group.items.map((item) => {
-          const ticked = draft.ticked.has(item.key);
+          const ticked = isTicked(draft, item);
           const fixed = ticked && item.locked !== null;
           const joint = jointOn(draft, item);
           return (
@@ -413,7 +459,10 @@ function TickGroup({
                 className={cx('ph-focus-inset flex min-h-[46px] min-w-0 flex-1 items-center gap-[10px] pl-[13px] text-left active:bg-[var(--ph-fill)]', fixed && 'cursor-default')}
               >
                 <SelectCircle picked={ticked} className={cx('h-[22px] w-[22px]', fixed && 'opacity-50')} />
-                <span className="min-w-0 flex-1 truncate text-[16px] text-[var(--ph-ink)]">{item.name}</span>
+                <span className="min-w-0 flex-1 py-[6px]">
+                  <span className="block truncate text-[16px] text-[var(--ph-ink)]">{item.name}</span>
+                  {item.caption ? <span className="block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{item.caption}</span> : null}
+                </span>
                 {item.meta ? <span className="shrink-0 whitespace-nowrap text-[12.5px] text-[var(--ph-ink-3)]">{item.meta}</span> : null}
               </button>
               {item.canJoint && ticked ? (
