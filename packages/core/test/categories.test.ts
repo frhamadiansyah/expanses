@@ -52,6 +52,20 @@ describe('default categories', () => {
     expect(CATEGORY_ICONS['miscellaneous.top_ups']).toBe('wallet-cards');
   });
 
+  it('offers Early childhood then Development fees as the last children of Education, each with its MCC and icon', () => {
+    const education = DEFAULT_CATEGORIES.find((category) => category.key === 'education')!;
+    expect(education.children!.slice(-2)).toEqual([
+      { key: 'education.early_childhood', name: 'Early childhood' },
+      { key: 'education.development_fees', name: 'Development fees' },
+    ]);
+    expect(DEFAULT_CATEGORY_KEYS.has('education.development_fees')).toBe(true);
+    expect(DEFAULT_CATEGORY_MCCS['education.development_fees']).toBe('8299');
+    expect(CATEGORY_ICONS['education.development_fees']).toBe('building');
+    expect(DEFAULT_CATEGORY_KEYS.has('education.early_childhood')).toBe(true);
+    expect(DEFAULT_CATEGORY_MCCS['education.early_childhood']).toBe('8351');
+    expect(CATEGORY_ICONS['education.early_childhood']).toBe('baby');
+  });
+
   it('offers Platform fee under Miscellaneous, with an icon and no MCC, and every default key unique with a parent that exists', () => {
     const miscellaneous = DEFAULT_CATEGORIES.find((category) => category.key === 'miscellaneous')!;
     expect(miscellaneous.children!.filter((child) => child.key === 'miscellaneous.platform_fee')).toEqual([{ key: 'miscellaneous.platform_fee', name: 'Platform fee' }]);

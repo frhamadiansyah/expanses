@@ -45,7 +45,7 @@ export const CATEGORY_ICONS: Readonly<Record<string, string>> = {
   'protection.critical_insurance': 'shield-alert', 'protection.auto_insurance': 'car',
   education: 'graduation-cap', 'education.administration': 'file-text', 'education.tuition_fees': 'school', 'education.parent_association': 'users',
   'education.after_school_club': 'palette', 'education.field_trip_activities': 'map', 'education.performances': 'drama', 'education.shuttle_bus': 'bus-front',
-  'education.text_books_supplies': 'book-open', 'education.courses_lessons': 'presentation', 'education.pocket_money': 'wallet',
+  'education.text_books_supplies': 'book-open', 'education.courses_lessons': 'presentation', 'education.pocket_money': 'wallet', 'education.early_childhood': 'baby', 'education.development_fees': 'building',
   personal_care: 'sparkles', 'personal_care.self_development': 'brain', 'personal_care.grooming_haircuts': 'scissors', 'personal_care.sports_fitness': 'dumbbell',
   'personal_care.spa_wellness': 'flower-2', 'personal_care.dry_clean_laundry': 'shirt', 'personal_care.counselling_therapy': 'message-circle-heart',
   entertainment: 'clapperboard', 'entertainment.subscriptions': 'repeat', 'entertainment.movies': 'film', 'entertainment.recreation': 'tent',
