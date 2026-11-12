@@ -1,8 +1,8 @@
 import { CreditCard, Landmark, Plus } from 'lucide-react';
 import { useId, useState } from 'react';
 import { cx } from '../../ui';
-import { SearchPill, type Segment, SegmentedControl } from '../../ui/native';
-import type { MoneyAccountSubtype, PaymentOption } from '@expanses/core';
+import { SearchPill, type Segment, SegmentedControl, TreeLines, TreeStem } from '../../ui/native';
+import { currencyInfo, formatMinor, type MoneyAccountSubtype, type PaymentOption } from '@expanses/core';
 import type { AccountRow, CardRow, PaidWithItem } from '@expanses/db';
 import { Sheet, SheetSearchButton } from '../../app/Sheet';
 import { type FormStep, NewCardForm } from '../ownables/AddDebtPage';
@@ -10,17 +10,11 @@ import { CashAccountForm } from '../ownables/CashAccountForm';
 import { paymentKey, placeholderLabel } from './quick-row';
 import type { FormDraft } from './tx-form';
 import { useAccountNumberLast4, useWalletLast4 } from '../cards/card-queries';
+import { assetKindTile } from '../ownables/catalogue-view';
+import { useBalances } from '../../lib/queries';
+import { accountTreeSections, isCardOption, openingParent, paymentLabel, type TreeRow } from './account-tree';
 
-/**
- * What one Paid with row is called.
- *
- * The digits are part of the name only when they are what tells two rows apart — an account carrying a
- * supplementary card offers one row per card, and "Mandiri Bonvoy" alone would name both. An account with a
- * single card is one choice, so its name is the account's: a name nobody has to read digits out of.
- */
-export function paymentLabel(option: PaymentOption): string {
-  return option.cardId ? `${option.accountName} ···· ${option.last4 ?? '????'}` : option.accountName;
-}
+export { isCardOption, paymentLabel };
 
 /**
  * Whether a Paid with row answers what was typed: its name (with a card's last digits), whose it is, or its
@@ -63,15 +57,6 @@ export function removedCardPayment(cards: readonly CardRow[], accounts: readonly
   return { value: accounts.find((account) => account.id === accountId)?.name ?? '', caption: `···· ${card.last4 ?? '????'} · removed card` };
 }
 
-/**
- * Which account — and which card on it — paid: one list, for every screen that asks.
- *
- * Its own file so every screen that asks asks the same question of the same `paymentOptions`: a second copy of
- * this list is a second place for a supplementary card to go missing from — a fault produced six times once.
- */
-/** Whether a row is a card — a card on an account, or a credit card account itself — rather than money held. */
-export const isCardOption = (option: PaymentOption, account: AccountRow | undefined): boolean => Boolean(option.cardId) || account?.kind === 'liability';
-
 export type PaymentTab = 'accounts' | 'cards';
 
 /**
@@ -83,28 +68,6 @@ export function openingPaymentTab(options: readonly PaymentOption[], accounts: r
     ?? options.find((option) => option.accountId === chosenAccountId);
   if (!chosen) return 'accounts';
   return isCardOption(chosen, accounts.find((a) => a.id === chosen.accountId)) ? 'cards' : 'accounts';
-}
-
-export interface PaymentSection {
-  key: 'accounts' | 'cards';
-  title: string;
-  options: PaymentOption[];
-}
-
-/**
- * What the sheet draws: Accounts, then Credit cards, each only when it has rows. A tab narrows to its own kind (none
- * narrows nothing); a search looks across both, whatever tab is open, since the one typed for may be on the other.
- */
-export function paymentSections(options: readonly PaymentOption[], accounts: readonly AccountRow[], tab: PaymentTab | null, typed: string): PaymentSection[] {
-  const searching = typed.trim() !== '';
-  const currency = (option: PaymentOption) => accounts.find((a) => a.id === option.accountId)?.currency;
-  const matching = options.filter((option) => matchesPayment(option, currency(option), typed));
-  const card = (option: PaymentOption) => isCardOption(option, accounts.find((a) => a.id === option.accountId));
-  const sections: PaymentSection[] = [
-    { key: 'accounts', title: 'Accounts', options: matching.filter((option) => !card(option)) },
-    { key: 'cards', title: 'Credit cards', options: matching.filter(card) },
-  ];
-  return sections.filter((section) => section.options.length > 0 && (searching || tab === null || tab === section.key));
 }
 
 /** A partner's shared items, under their name: "Rina's, shared" (joint net worth §7.1). */
@@ -178,6 +141,7 @@ export function PaymentSheet({
   placeholders = new Set<string>(),
   footer,
   shared,
+  leadCurrency,
 }: {
   /** "Paid with", "Received into", "From" or "To", as the mode names it. */
   title: string;
@@ -205,6 +169,8 @@ export function PaymentSheet({
   placeholders?: ReadonlySet<string>;
   /** A line under the list, such as where to go instead for what is not on it. */
   footer?: string;
+  /** To: the From's currency, whose pocket is listed first within an account, so a same-currency move is one tap. */
+  leadCurrency?: string | null;
   /**
    * Joint net worth §7.1: the partner's shared items that can pay, offered under "Rina's, shared" when the form's
    * workspace is the group's. `chosenItemId` is the one Paid with names now, which no own row then does.
@@ -222,13 +188,17 @@ export function PaymentSheet({
   /*
    * Every row carries the digits it is known by, shown beside its name and found by search: a card's own, else a bank
    * account's number (0080), else a wallet's phone. An account with one card used to show none, since its name alone
-   * was enough to choose by — but the digits are how a statement or an alert names it.
+   * was enough to choose by — but the digits are how a statement or an alert names it. A pocket is known by its
+   * account's digits when it has none of its own.
    */
   const numbers = useAccountNumberLast4().data;
   const phones = useWalletLast4().data;
+  const balances = useBalances().data;
+  const parentIdOf = (accountId: string) => accounts.find((a) => a.id === accountId)?.parentId ?? '';
+  const digitsOf = (accountId: string) => numbers?.[accountId] ?? phones?.[accountId];
   const options = allOptions
     .filter((option) => !placeholders.has(option.accountId) || option.accountId === chosenAccountId)
-    .map((option) => ({ ...option, last4: option.last4 ?? numbers?.[option.accountId] ?? phones?.[option.accountId] ?? null }));
+    .map((option) => ({ ...option, last4: option.last4 ?? digitsOf(option.accountId) ?? digitsOf(parentIdOf(option.accountId)) ?? null }));
   const [search, setSearch] = useState('');
   // D of the search mockup: no field on screen until ⌕ in the header asks for one; it then takes the tabs' row.
   const [finding, setFinding] = useState(false);
@@ -236,10 +206,12 @@ export function PaymentSheet({
   const searching = search.trim() !== '';
   // Tabs wherever a card can pay, even with no card yet: the Credit cards tab is where one is added.
   const tabbed = cards;
-  const sections = paymentSections(options, accounts, tabbed ? tab : null, search);
+  const sections = accountTreeSections(options, accounts, { tab: tabbed ? tab : null, typed: search, leadCurrency });
   const sharedSections = shared ? sharedPaymentSections(shared.items, shared, tabbed ? tab : null, search) : [];
-  // Headings only where two kinds share the screen: a search across both, or a partner's shared items below one's own.
-  const headed = sections.length > 1 || sharedSections.length > 0;
+  // Money is always under its kind's heading; Credit cards only where another kind shares the screen with it.
+  const headed = (key: string) => key !== 'cards' || sections.length > 1 || sharedSections.length > 0;
+  // One account open at a time: the one holding the chosen pocket opens by itself.
+  const [open, setOpen] = useState<string | null>(() => openingParent(accountTreeSections(options, accounts, { tab: null, typed: '' }), chosenAccountId));
   const adding: PaymentTab = tabbed ? tab : 'accounts';
   // New account / New credit card: a step this sheet moves to, not a sheet stacked on it, and not a page away.
   const [making, setMaking] = useState<PaymentTab | null>(null);
@@ -253,36 +225,50 @@ export function PaymentSheet({
     ? undefined
     : pickedPayment(options, chosenAccountId, chosenCardId, chosenCardRemoved);
 
-  const row = (option: PaymentOption) => {
+  const choose = (option: PaymentOption) => {
+    onPick(option);
+    onClose();
+  };
+
+  /** The row's lead: the kind of account it is, or a card; in a filled circle when it is the one chosen now. */
+  const lead = (Glyph: typeof CreditCard, isPicked: boolean, stem = false) => (
+    <span aria-hidden className="flex w-[34px] shrink-0 items-center justify-center text-[var(--ph-ink-2)]">
+      {isPicked ? (
+        <span className="flex size-[30px] items-center justify-center rounded-full bg-[var(--ph-ink)] text-[var(--ph-surface)]">
+          <Glyph size={15} />
+        </span>
+      ) : (
+        <Glyph size={16} />
+      )}
+      {/* An open account's tree line starts under its icon and runs to the foot of the row, where a pocket picks it up. */}
+      {stem ? <TreeStem depth={0} iconSize={16} /> : null}
+    </span>
+  );
+
+  const glyphOf = (option: PaymentOption, account: AccountRow | undefined, parent: AccountRow | null) =>
+    isCardOption(option, account) ? CreditCard : assetKindTile('liquid', (parent ?? account)?.subtype ?? '');
+
+  /** A row that picks on tap: an account of one currency, a pocket offered alone or found by a search, a card. */
+  const single = (option: PaymentOption, parent: AccountRow | null) => {
     const account = accounts.find((a) => a.id === option.accountId);
-    const Glyph = isCardOption(option, account) ? CreditCard : Landmark;
     const isPicked = option === picked;
     const label = placeholders.has(option.accountId) ? placeholderLabel(option.accountName) : paymentLabel(option);
+    // A pocket reads as its account, its currency beside the digits — "Bank One Harian", "···· 2204 · USD".
+    const name = placeholders.has(option.accountId) ? label : (parent?.name ?? option.accountName);
     return (
       <li key={paymentKey(option.accountId, option.cardId)}>
         <button
           type="button"
           aria-label={label}
           aria-current={isPicked ? 'true' : undefined}
-          onClick={() => {
-            onPick(option);
-            onClose();
-          }}
+          onClick={() => choose(option)}
           className="ph-focus-inset flex w-full items-center gap-[10px] pl-[10px] text-left active:bg-[var(--ph-fill)]"
         >
-          <span aria-hidden className="flex w-[34px] shrink-0 items-center justify-center text-[var(--ph-ink-2)]">
-            {isPicked ? (
-              <span className="flex size-[30px] items-center justify-center rounded-full bg-[var(--ph-ink)] text-[var(--ph-surface)]">
-                <Glyph size={15} />
-              </span>
-            ) : (
-              <Glyph size={16} />
-            )}
-          </span>
+          {lead(glyphOf(option, account, parent), isPicked)}
           <span className="ph-row-body flex min-h-12 min-w-0 flex-1 items-center gap-2 pr-[13px]">
             {/* The name may be cut short; the digits never are, so they stand apart from it, at the row's end. */}
             <span className="min-w-0 flex-1 truncate text-[15px] text-[var(--ph-ink)]">
-              <Marked text={placeholders.has(option.accountId) ? label : option.accountName} typed={search} />
+              <Marked text={name} typed={search} />
             </span>
             <span aria-hidden className="tabular shrink-0 text-[12.5px] text-[var(--ph-ink-3)]">
               {[option.last4 ? `···· ${option.last4}` : null, option.holderName, account?.currency].filter(Boolean).join(' · ')}
@@ -292,6 +278,73 @@ export function PaymentSheet({
       </li>
     );
   };
+
+  /**
+   * An account holding several currencies: its name, its digits and a chevron, and no currency of its own — tapping
+   * it opens its pockets under it on the tree line, one per currency, each with what it holds. Tapping one picks it.
+   */
+  const parentRows = (row: Extract<TreeRow, { type: 'parent' }>) => {
+    const isOpen = open === row.parent.id;
+    const head = (
+      <li key={`parent:${row.parent.id}`}>
+        <button
+          type="button"
+          aria-label={row.parent.name}
+          aria-expanded={isOpen}
+          onClick={() => setOpen(isOpen ? null : row.parent.id)}
+          className="ph-focus-inset relative flex w-full items-center gap-[10px] pl-[10px] text-left active:bg-[var(--ph-fill)]"
+        >
+          {lead(assetKindTile('liquid', row.parent.subtype), false, isOpen)}
+          <span className="ph-row-body flex min-h-12 min-w-0 flex-1 items-center gap-2 pr-[13px]">
+            <span className="min-w-0 flex-1 truncate text-[15px] text-[var(--ph-ink)]">{row.parent.name}</span>
+            {row.last4 ? <span aria-hidden className="tabular shrink-0 text-[12.5px] text-[var(--ph-ink-3)]">{`···· ${row.last4}`}</span> : null}
+            <span aria-hidden className={cx('w-[12px] shrink-0 text-center text-[17px] leading-none text-[var(--ph-chevron)] transition-transform', isOpen && 'rotate-90')}>
+              {'›'}
+            </span>
+          </span>
+        </button>
+      </li>
+    );
+    if (!isOpen) return [head];
+    return [
+      head,
+      ...row.pockets.map((option, index) => {
+        const currency = accounts.find((a) => a.id === option.accountId)?.currency ?? '';
+        const isPicked = option === picked;
+        const held = balances?.[option.accountId];
+        return (
+          <li key={paymentKey(option.accountId, option.cardId)}>
+            <button
+              type="button"
+              aria-label={option.accountName}
+              aria-current={isPicked ? 'true' : undefined}
+              onClick={() => choose(option)}
+              className="ph-focus-inset relative flex w-full items-center gap-[10px] pl-[44px] text-left active:bg-[var(--ph-fill)]"
+            >
+              <TreeLines depth={1} tree={{ last: index === row.pockets.length - 1 }} />
+              <span aria-hidden className="flex w-[24px] shrink-0 items-center justify-center text-[14px] leading-none">
+                {isPicked ? (
+                  <span className="flex size-[24px] items-center justify-center rounded-full bg-[var(--ph-ink)]">{currency ? currencyInfo(currency).flag : null}</span>
+                ) : currency ? (
+                  currencyInfo(currency).flag
+                ) : null}
+              </span>
+              <span className="ph-row-body flex min-h-11 min-w-0 flex-1 items-center gap-2 pr-[13px]">
+                <span className="min-w-0 flex-1 truncate text-[15px] text-[var(--ph-ink)]">{currency}</span>
+                {held !== undefined && currency ? (
+                  <span aria-hidden className="tabular shrink-0 text-[12.5px] text-[var(--ph-ink-3)]">
+                    {formatMinor(held, currency)}
+                  </span>
+                ) : null}
+              </span>
+            </button>
+          </li>
+        );
+      }),
+    ];
+  };
+
+  const rowsOf = (row: TreeRow) => (row.type === 'parent' ? parentRows(row) : [single(row.option, row.parent)]);
 
   const sharedRow = (item: PaidWithItem) => {
     const Glyph = item.subtype === 'credit_card' ? CreditCard : Landmark;
@@ -423,17 +476,19 @@ export function PaymentSheet({
       <div onTouchMove={() => (document.activeElement as HTMLElement | null)?.blur()} data-testid="payment-sections">
         {sections.map((section, index) => (
           <section key={section.key} aria-label={section.title}>
-            {headed ? (
+            {headed(section.key) ? (
               <h3 className="px-[14px] pt-[10px] pb-[6px] text-[12px] tracking-[0.04em] text-[var(--ph-ink-3)] uppercase">{section.title}</h3>
             ) : null}
             <ul className={LIST}>
-              {section.options.map(row)}
-              {/* The way to add one is the list's own last row, drawn like the rows above it. */}
-              {index === sections.length - 1 ? addRow : null}
+              {section.rows.flatMap(rowsOf)}
+              {/* The way to add a card is the list's own last row, drawn like the rows above it. */}
+              {index === sections.length - 1 && section.key === 'cards' ? addRow : null}
             </ul>
           </section>
         ))}
-        {sections.length === 0 && addRow ? <ul className={cx(LIST, 'mt-3')}>{addRow}</ul> : null}
+        {/* Under kinds of account, Add account is a group of its own at the foot: inside the last kind it would read
+            as adding one of that kind. */}
+        {sections.at(-1)?.key !== 'cards' && addRow ? <ul className={cx(LIST, 'mt-3')}>{addRow}</ul> : null}
         {/* The partner's shared items, after one's own and the way to add one (§7.1): whose they are is the heading. */}
         {sharedSections.map((section) => (
           <section key={`shared:${section.key}`} aria-label={section.title}>
