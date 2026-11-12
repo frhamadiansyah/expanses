@@ -52,6 +52,28 @@ function unitsOf(capture: RawCapture): Unit[] {
     .map((text) => ({ text, line: null, height: 0 }));
 }
 
+/**
+ * The capture with its spaces and line breaks made plain.
+ *
+ * An HTML email reaches the reader the way Mail flattened it: `&nbsp;` as a no-break space, a break as a carriage
+ * return or a line separator. Every word and phrase the reader looks for is written with plain spaces and a plain
+ * `\n`, so "Kartu\u00a0Kredit" slipped past the phrase that says it is a card and read as money in. Each such
+ * character becomes one plain one (a CRLF becomes one `\n`), before anything is read.
+ */
+const ODD_SPACE = /[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]/g;
+const ODD_BREAK = /\r\n?|[\u2028\u2029\u0085\v\f]/g;
+const plainText = (text: string): string => text.replace(ODD_BREAK, '\n').replace(ODD_SPACE, ' ');
+const plainOrNull = (text: string | null): string | null => (text === null ? null : plainText(text));
+
+function withPlainSpaces(capture: RawCapture): RawCapture {
+  return {
+    ...capture,
+    title: plainOrNull(capture.title),
+    body: plainOrNull(capture.body),
+    lines: capture.lines.map((line) => ({ ...line, text: plainText(line.text) })),
+  };
+}
+
 const folded = (text: string) => text.toLowerCase();
 
 /** Whether a unit holds one of these words, at a word boundary — `masuk` but not `termasuk`. */
@@ -736,6 +758,7 @@ export function readCapture(
     offers?: 'skip' | 'transactions' | 'read';
   } = {},
 ): Reading {
+  capture = withPlainSpaces(capture);
   const all = unitsOf(capture);
   const text = all.map((unit) => unit.text).join('\n');
   // What paid is the account the money left, when the capture says so; a masked number elsewhere is the next best.

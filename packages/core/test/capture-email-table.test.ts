@@ -193,6 +193,33 @@ describe('a transaction email read as a labelled table', () => {
     expect(readCapture(email(english, 'Credit Card Transaction'), WORDS, null).type.value).toBe('spent');
   });
 
+  /*
+   * Mail hands an HTML email's text over with the page's own spaces and breaks: `&nbsp;` arrives as U+00A0, and a break
+   * can be a carriage return or a line separator. "Kartu Kredit" with a no-break space is still the card, not money in.
+   */
+  it.each([
+    ['no-break spaces', (body: string) => body.replace(/ /g, ' ')],
+    ['narrow no-break spaces', (body: string) => body.replace(/ /g, ' ')],
+    ['carriage-return line ends', (body: string) => body.replace(/\n/g, '\r\n')],
+    ['bare carriage returns', (body: string) => body.replace(/\n/g, '\r')],
+    ['line separators', (body: string) => body.replace(/\n/g, ' ')],
+  ])('reads a card email whose text came with %s as the same purchase', (_, shape) => {
+    const plain = readCapture(email(perCell({ status: ['Sukses/Approved'] })), WORDS, null);
+    const reading = readCapture(email(shape(perCell({ status: ['Sukses/Approved'] })), shape('Contoh Credit Card Transaction Notification (do not reply)')), WORDS, null);
+    expect(reading.skipped).toBeNull();
+    expect(reading.type).toEqual(plain.type);
+    expect(reading.type.value).toBe('spent');
+    expect(reading.amount?.value).toEqual({ minor: 245_500, currency: 'IDR' });
+    expect(reading.name?.value).toBe('Tokobaju* B-QX7TPLM22');
+    expect(reading.accountHint).toBe('4732');
+    expect(reading.occurredAt?.value).toBe('2026-11-03T09:41');
+  });
+
+  it('never reads a credit card named with a no-break space as money in, outside a table too', () => {
+    const sms = 'Transaksi Kartu Kredit Contoh **** 4732 sebesar Rp 245.500 di TOKOBAJU berhasil.';
+    expect(readCapture({ ...email(sms, null as unknown as string), title: null }, WORDS, null).type.value).toBe('spent');
+  });
+
   it('reads a card email whose advert below mentions refunds and credit as a purchase', () => {
     const reading = readCapture(email(perCell()), WORDS, null);
     expect(reading.type).toEqual({ value: 'spent', confidence: 70, line: null });
