@@ -72,6 +72,11 @@ function debtIconOf(subtype: string): DebtIcon {
   return 'loan';
 }
 
+/** A received debt's drawing: what its loan is against when its owner's phone said, else by its subtype alone. */
+export function receivedDebtIcon(item: Pick<ReceivedItem, 'subtype' | 'sheet'>): DebtIcon {
+  return item.subtype === 'loan' && item.sheet?.icon ? item.sheet.icon : debtIconOf(item.subtype);
+}
+
 const LIABILITY_SUBTYPES = new Set(['credit_card', 'loan', 'payable']);
 
 /**
@@ -145,7 +150,8 @@ export function jointRows(
     const side = item.kind === 'liability' ? 'liability' : 'asset';
     rows.push({ accountId: item.itemId, side, name: item.name, subtype: item.subtype, currency: item.currency, nativeMinor, amountMinor, received: true, owner: item.owner });
     if (side === 'asset') {
-      assets.push({ accountId: item.itemId, name: item.name, planGroup: planGroupOf(item.subtype), valueMinor: amountMinor ?? 0, code: null, subtype: item.subtype, owner: item.owner });
+      // Its catalogue code, when its owner's phone sent one: filed in the same section and drawer as on that phone.
+      assets.push({ accountId: item.itemId, name: item.name, planGroup: planGroupOf(item.subtype), valueMinor: amountMinor ?? 0, code: item.sheet?.code ?? null, subtype: item.subtype, owner: item.owner });
       add(item.owner, amountMinor);
     } else {
       // A debt of nothing owed is not on the sheet, exactly as an own one is left out by `sheetInputsAt`.
@@ -157,7 +163,7 @@ export function jointRows(
       const owed = amountMinor ?? 0;
       // Not due within a year: a summary carries no schedule, so nothing is said about when it falls due (the sheet
       // lists it as long-term; its whole balance still counts in what is owed). Review round 1, finding 5.
-      liabilities.push({ accountId: item.itemId, name: item.name, subtype, balanceMinor: owed, dueWithinYearMinor: 0, note: null, item: null, icon: debtIconOf(item.subtype), owner: item.owner });
+      liabilities.push({ accountId: item.itemId, name: item.name, subtype, balanceMinor: owed, dueWithinYearMinor: 0, note: null, item: item.sheet?.item ?? null, icon: receivedDebtIcon(item), owner: item.owner });
       add(item.owner, amountMinor === null ? null : -amountMinor);
     }
   }
@@ -232,7 +238,7 @@ export function jointSeries(points: readonly NetWorthPoint[], received: readonly
         if (stack) stack.liabilities[kind] += minor;
       } else {
         assets += minor;
-        if (stack) stack.assets[sheetSectionOf({ code: null, subtype: item.subtype })] += minor;
+        if (stack) stack.assets[sheetSectionOf({ code: item.sheet?.code ?? null, subtype: item.subtype })] += minor;
       }
     }
     if (unknown || missing.size > point.missing.length || point.netWorthMinor === null) {

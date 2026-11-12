@@ -130,6 +130,18 @@ describe('jointRows (spec §8.2, D12)', () => {
   });
 });
 
+describe('jointRows: a received item is filed by the facts its owner sent (sheet)', () => {
+  it('a gold holding goes to "Intangible and other" and a paylater keeps its kind, as on the owner’s phone', () => {
+    const received = [
+      item({ itemId: 'i-gold', name: 'Andi gold', subtype: 'investment', balanceMinor: 7_000_000, sheet: { code: '0701' } }),
+      item({ itemId: 'i-pay', name: 'Andi paylater', kind: 'liability', subtype: 'loan', balanceMinor: 1_000_000, sheet: { item: 'online_loan', icon: 'loan' } }),
+    ];
+    const rows = jointRows({ assets: [], liabilities: [], missing: [] }, received, RINA, {}, 'IDR', { members: [RINA, ANDI] });
+    expect(balanceSheet(rows.assets, rows.liabilities).assetGroups.map((group) => group.key)).toEqual(['other']);
+    expect(rows.liabilities[0]).toMatchObject({ item: 'online_loan', icon: 'loan' });
+  });
+});
+
 describe('jointRows, review round 1', () => {
   it('a member with nothing shared yet reads 0 in the legend, not a dash (finding 4)', () => {
     expect(jointRows(own, [], RINA, {}, 'IDR', { members: [RINA, ANDI] }).byOwner).toEqual({ [RINA]: 58_800_000, [ANDI]: 0 });

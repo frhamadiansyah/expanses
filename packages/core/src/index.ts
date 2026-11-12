@@ -600,7 +600,7 @@ export {
   type GroupState,
   type Proposal,
 } from './net-worth/group';
-export { cardBar, type ItemSummary, lastMonthEnds, type PeriodMovement, splitPeriod, summaryHash } from './net-worth/summary';
+export { cardBar, type ItemSheetFacts, type ItemSummary, lastMonthEnds, type PeriodMovement, splitPeriod, summaryHash } from './net-worth/summary';
 export { type CoretaxRowPart, type ItemTax, jointCoretaxInputs, type JointWaiting, yearEndReached } from './net-worth/joint-tax';
 export { closePriceMicro, isIdxListing, type ListedPriceChoice, type ListedPriceSource, listedPriceChoice, priceAgeDays, STALE_PRICE_DAYS } from './prices/listed';
 export { parseYahooChart, parseYahooDividends, type YahooClose, yahooChartUrl, type YahooDividend, yahooDividendsUrl, YahooPriceError, yahooSymbol } from './prices/yahoo';

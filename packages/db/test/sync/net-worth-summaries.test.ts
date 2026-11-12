@@ -296,6 +296,11 @@ describe('summaries: compute, send, receive (joint-net-worth §5.2, §9)', () =>
     expect(got).toMatchObject({ kind: 'asset', balanceMinor: 1_380_000_000, householdMinor: 0 });
     expect(got.openingMinor + got.householdMinor + got.otherUseMinor + got.transferMinor).toBe(got.balanceMinor);
     expect(items.find((i) => i.subtype === 'credit_card')!.card).toMatchObject({ limitMinor: 700_000_000 });
+    // The house carries its catalogue code, so Andi files it in the section and drawer Rina's phone does; a card has no
+    // finer kind than its subtype, so its summary carries no `sheet` at all.
+    const [code] = await rina.database.db.values<[string]>(sql`SELECT coretax_code FROM asset_profiles WHERE account_id = ${house.id}`);
+    expect(got.sheet).toEqual({ code: code![0] });
+    expect('sheet' in items.find((i) => i.subtype === 'credit_card')!).toBe(false);
   });
 
   it('Sari, in the workspace and not in the group, never has any nw_items row', async () => {

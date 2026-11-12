@@ -599,20 +599,48 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   await netWorthReads(dewi, '15.000.000', ['Fandri', '10 jt', 'Dewi', '5 jt']);
   await shot(dewi, info, '16-net-worth-joint');
 
-  // Fandri's shared account opens its own page on Dewi's phone.
+  // Every row of the household's sheet wears its owner's initial on its circle, one's own too: F for Fandri's, D for Dewi's.
   await openDrawers(dewi);
+  const sheetRow = (p: Page, name: string) => p.locator('[data-testid^="sheet-row-"]').filter({ hasText: name });
+  await expect(sheetRow(dewi, 'Fandri Bank').getByTestId('member-badge')).toHaveAttribute('data-letter', 'F');
+  await expect(sheetRow(dewi, 'Dewi Bank').getByTestId('member-badge')).toHaveAttribute('data-letter', 'D');
+  await openDrawers(page);
+  await expect(sheetRow(page, 'Fandri Bank').getByTestId('member-badge')).toHaveAttribute('data-letter', 'F');
+  await expect(sheetRow(page, 'Dewi Bank').getByTestId('member-badge')).toHaveAttribute('data-letter', 'D');
+
+  // Dewi's own account page, opened from the household's sheet, wears her initial on its hero.
+  await sheetRow(dewi, 'Dewi Bank').click();
+  await expect(dewi.getByTestId('balance-card').getByTestId('member-badge')).toHaveAttribute('data-letter', 'D');
+  await dewi.goto('/net-worth');
+  await openDrawers(dewi);
+
+  // Fandri's shared account opens the account page's layout on Dewi's phone, read-only: the hero with his initial, whose
+  // it is and when it was updated in its line, Recent with the one locked other-use total, and no Spend or Edit.
   await dewi.getByRole('link', { name: /^Fandri's Fandri Bank, / }).click();
   await expect(dewi).toHaveURL(/\/net-worth\/shared\//);
   await expect(dewi.getByRole('heading', { name: 'Fandri Bank' })).toBeVisible();
-  await expect(dewi.locator('main')).toContainText('10.000.000');
+  await expect(dewi.getByTestId('shared-item-hero')).toContainText('10.000.000');
+  await expect(dewi.getByTestId('shared-item-mark').getByTestId('member-badge')).toHaveAttribute('data-letter', 'F');
+  await expect(dewi.getByTestId('shared-item-line')).toContainText('Fandri’s · Current account · updated');
+  await expect(dewi.getByTestId('shared-item-recent').getByTestId('other-use')).toContainText('Fandri');
+  await expect(dewi.getByTestId('shared-item-recent').getByTestId('other-use')).toContainText('total only');
+  await expect(dewi.getByRole('button', { name: 'Spend' })).toHaveCount(0);
   await shot(dewi, info, '16b-partner-item');
 
-  // The Assets page lists what Fandri shares, read-only, under his name.
-  await eventually(dewi, async () => {
-    await dewi.goto('/net-worth/assets');
-    const group = dewi.locator('section').filter({ has: dewi.getByText('Shared by Fandri', { exact: true }) });
-    await expect(group).toContainText('Fandri Bank', { timeout: 2_000 });
-  });
+  // The household's Assets page counts both people: one total, one square per kind, one list mixing both — on both phones.
+  for (const phone of [dewi, page]) {
+    await eventually(phone, async () => {
+      await phone.goto('/net-worth/assets');
+      await expect(phone.getByTestId('assets-total')).toContainText('15.000.000', { timeout: 2_000 });
+      await expect(phone.getByTestId('assets-household')).toContainText('Household · ', { timeout: 2_000 });
+    });
+    await expect(phone.getByTestId('assets-household')).toContainText('Fandri');
+    await expect(phone.getByTestId('assets-household')).toContainText('Dewi');
+    await expect(phone.getByText('Shared by Fandri', { exact: true })).toHaveCount(0);
+    await openDrawers(phone);
+  }
+  await expect(dewi.locator('[data-testid^="assets-shared-"]').filter({ hasText: 'Fandri Bank' }).getByTestId('member-badge')).toHaveAttribute('data-letter', 'F');
+  await expect(page.locator('[data-testid^="assets-shared-"]').filter({ hasText: 'Dewi Bank' }).getByTestId('member-badge')).toHaveAttribute('data-letter', 'D');
   await shot(dewi, info, '16a-partner-assets');
 
   // With one tax ID the tax report is the household's, and says it holds both people's items. (The accounts here were
@@ -667,6 +695,23 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   // The household's figure is what it was, less the dinner on the card: 15 jt − 200.000.
   await netWorthReads(page, '14.800.000', ['Fandri', 'Dewi']);
   await netWorthReads(dewi, '14.800.000', ['Fandri', 'Dewi']);
+
+  // The household's Liabilities page lists Fandri's card on both phones, with his initial; on Dewi's it opens his page.
+  for (const phone of [dewi, page]) {
+    await eventually(phone, async () => {
+      await phone.goto('/net-worth/loans');
+      await expect(phone.getByTestId('debts-total')).toContainText('200.000', { timeout: 2_000 });
+    });
+    await expect(phone.getByTestId('debts-household')).toContainText('Household · ');
+    await openDrawers(phone);
+    await expect(phone.locator('[data-testid^="debt-row-"]').filter({ hasText: 'Fandri Card' }).getByTestId('member-badge')).toHaveAttribute('data-letter', 'F');
+  }
+  await dewi.locator('[data-testid^="debt-row-"]').filter({ hasText: 'Fandri Card' }).click();
+  await expect(dewi).toHaveURL(/\/net-worth\/shared\//);
+  await expect(dewi.getByTestId('shared-item-hero')).toContainText('Owed');
+  await expect(dewi.getByTestId('shared-item-recent')).toContainText('Dewi dinner');
+  await expect(dewi.getByTestId('shared-item-recent')).toContainText('Household');
+  await shot(dewi, info, '18b-partner-card');
 
   // Fandri changes to separate tax IDs; Dewi confirms; each reviews again.
   section = await netWorthSection(page);

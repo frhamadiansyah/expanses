@@ -75,7 +75,8 @@ export function SharedItemPage() {
               </>
             }
           >
-            {view.bar && (
+            {/* A card with no limit set has nothing to divide: no bar, rather than "−Rp 200.000 available of Rp 0". */}
+            {view.bar && view.bar.limitMinor > 0 && (
               <div className="space-y-1 border-t-[1px] border-dashed border-[var(--ph-hair)] pt-3">
                 {/* From earlier · Household · other use · available: the parts of the limit, so the bar always adds up (§8.3). */}
                 <div
@@ -137,7 +138,7 @@ export function SharedItemPage() {
                 title={view.otherUse.label}
                 under={`this period · ${view.otherUse.under}`}
                 money={view.otherUse.text}
-                tone={view.otherUse.credit ? 'in' : 'out'}
+                tone={item.otherUseMinor === 0 ? 'ink' : view.otherUse.credit ? 'in' : 'out'}
               />
             </ul>
             <p className="pt-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">

@@ -51,6 +51,10 @@ export interface DebtRow {
   missing: string | null;
   /** The rate `baseMinor` was worked at, for the desktop's "at 16.200". Null in the base currency. */
   rate: number | null;
+  /** On the household's Liabilities page: the member whose it is (`household-lists`). Absent on a single person's page. */
+  owner?: string;
+  /** Another member's shared debt (`accountId` is its itemId): it opens their item's page, read-only. */
+  received?: boolean;
 }
 
 export interface DebtGroup {
