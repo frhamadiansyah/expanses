@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
 import {
   type AccountRow,
+  activityOf,
+  undoActivity,
   archiveGoal,
   changeGoalMonthAmount,
   createAccount,
@@ -531,5 +533,49 @@ describe('a due-month transfer edited later (fix round 2)', () => {
     const cap = await dueCapFor(database, ws, tahapan.id, 1_000_000, TODAY);
     await recordTaggedTransfer(database, ws, { occurredOn: TODAY, description: 'Pindah', amountMinor: 200_000, fromAccountId: tahapan.id, toAccountId: deposito.id, goalId: null });
     await expect(database.transaction((tx) => checkDueCapTx(tx, ws, cap))).rejects.toThrow('Balances just changed. Try again.');
+  });
+});
+
+describe('Activity’s undo of an edit to a due-month transfer (U1)', () => {
+  let deposito: AccountRow;
+  beforeEach(async () => {
+    deposito = await createAccount(database, ws, { name: 'Bank Sejahtera Deposito', kind: 'asset', subtype: 'savings', currency: 'IDR', openingBalanceMinor: 5_000_000, openedOn: '2026-01-01' });
+    await saveGoalDue(database, ws, { goalId: umrahId, on: true, day: 1, mode: 'set_aside', accountId: tahapan.id, toAccountId: null }, '2026-10-05');
+    await setAsideGoalMonth(database, ws, { goalId: umrahId, month: '2026-10', amountMinor: 3_000_000, accountId: tahapan.id, occurredOn: '2026-10-05' });
+    await saveGoalDue(database, ws, { goalId: umrahId, on: true, day: 1, mode: 'transfer', accountId: tahapan.id, toAccountId: tabungan.id }, TODAY);
+  });
+
+  const goalTotal = async () => (await listEarmarks(database, ws)).filter((row) => row.goalId === umrahId).reduce((sum, row) => sum + row.amountMinor, 0);
+  const moveLines = (amountMinor: number, toId: string) => ({
+    occurredOn: TODAY,
+    description: 'Umrah · November',
+    lines: [
+      { accountId: tahapan.id, amountMinor: -amountMinor, currency: 'IDR' },
+      { accountId: toId, amountMinor, currency: 'IDR' },
+    ],
+  });
+  const undoLastEdit = async () => {
+    const [line] = await activityOf(database, ws, { kind: 'edit' } as Parameters<typeof activityOf>[2]);
+    await undoActivity(database, ws, line!.id);
+  };
+
+  it('undoing a To change keeps the goal at 4.000.000 and Giro’s promise at 3.000.000', async () => {
+    const id = await transferGoalMonth(database, ws, { goalId: umrahId, month: '2026-11', amountMinor: 1_000_000, fromAccountId: tahapan.id, toAccountId: tabungan.id, occurredOn: TODAY });
+    await replaceTransaction(database, ws, id, moveLines(1_000_000, deposito.id));
+    await undoLastEdit();
+    expect(await goalTotal()).toBe(4_000_000);
+    expect(await setAsideOn(tahapan.id)).toBe(3_000_000);
+    expect(await setAsideOn(tabungan.id)).toBe(1_000_000);
+    expect((await monthsOf())[0]).toMatchObject({ state: 'done', amountMinor: 1_000_000, toAccountId: tabungan.id });
+  });
+
+  it('undoing a cut from 1.000.000 to 600.000 brings the goal back to 4.000.000', async () => {
+    const id = await transferGoalMonth(database, ws, { goalId: umrahId, month: '2026-11', amountMinor: 1_000_000, fromAccountId: tahapan.id, toAccountId: tabungan.id, occurredOn: TODAY });
+    await replaceTransaction(database, ws, id, moveLines(600_000, tabungan.id));
+    expect(await goalTotal()).toBe(3_600_000);
+    await undoLastEdit();
+    expect(await goalTotal()).toBe(4_000_000);
+    expect(await setAsideOn(tahapan.id)).toBe(3_000_000);
+    expect((await monthsOf())[0]).toMatchObject({ state: 'done', amountMinor: 1_000_000 });
   });
 });

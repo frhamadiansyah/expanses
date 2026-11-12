@@ -844,6 +844,7 @@ export interface LedgerDoor {
    * Only what goes past From's free money may move the goal's own promise there.
    */
   dueCap?: DueCap | null;
+  // Sync apply (`sync/apply.ts`, `sync/net-worth/transfers.ts`) passes none: it replays another phone's edit, which that phone already capped, and goal dues are this phone's own.
 }
 
 /** The words every other door says when it meets the money a sale of an asset brought in. */
