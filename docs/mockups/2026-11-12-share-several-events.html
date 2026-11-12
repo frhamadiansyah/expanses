@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Share several events</title>
+<style>
+  :root { --bg:#f2f2f7; --surface:#fff; --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e0e0e4; --fill:#efeff2; --tint:#1c1c1e; --blue:#007aff; --green:#34c759; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#e6e6ea; color:var(--ink); font:14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; padding:24px 16px 48px; }
+  h1 { font-size:20px; margin:0 0 4px; } .lede { color:#555; margin:0 0 20px; max-width:960px; }
+  h2 { font-size:16px; margin:28px 0 12px; }
+  .pair { display:flex; flex-wrap:wrap; gap:22px; align-items:flex-start; }
+  .col { width:330px; max-width:100%; }
+  .cap { font-weight:600; margin:0 0 8px; } .cap .n { display:inline-block; background:#1c1c1e; color:#fff; border-radius:5px; padding:0 6px; font-size:12px; margin-right:6px; }
+  .phone { background:var(--bg); border-radius:28px; padding:14px 14px 20px; border:1px solid #d4d4d8; min-height:560px; position:relative; overflow:hidden; }
+  .bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .round { width:36px; height:36px; border-radius:50%; background:#e5e5ea; display:flex; align-items:center; justify-content:center; font-size:18px; }
+  .ttl { font-size:18px; font-weight:600; }
+  .gh { font-size:13px; color:var(--ink3); margin:14px 4px 6px; display:flex; justify-content:space-between; align-items:center; }
+  .gh b { color:var(--blue); font-weight:500; font-size:14px; }
+  .ig { background:var(--surface); border-radius:11px; overflow:hidden; }
+  .ir { display:flex; align-items:center; gap:10px; padding:11px 13px; min-height:46px; font-size:16px; position:relative; }
+  .ig .ir + .ir::before { content:""; position:absolute; top:0; left:13px; right:0; border-top:.5px solid var(--hair); }
+  .ig .ir.ic + .ir.ic::before { left:50px; }
+  .ico { width:28px; height:28px; border-radius:50%; background:#eef2ff; color:#4f46e5; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
+  .grow { flex:1; min-width:0; } .t { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .s { font-size:12.5px; color:var(--ink3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .val { color:var(--ink3); white-space:nowrap; flex-shrink:0; font-size:15px; } .val.ink { color:var(--ink2); }
+  .chev { color:#c7c7cc; flex-shrink:0; }
+  .tick { width:24px; height:24px; border-radius:50%; border:1.5px solid #c7c7cc; flex-shrink:0; }
+  .tick.on { background:var(--tint); border-color:var(--tint); color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; }
+  .dim { opacity:.4; }
+  .foot { font-size:12.5px; color:var(--ink3); margin:6px 4px 0; line-height:1.35; }
+  .btn { text-align:center; font-size:16px; padding:12px; } .btn.go { color:var(--blue); font-weight:600; }
+  .dock { position:absolute; left:14px; right:14px; bottom:18px; background:var(--tint); color:#fff; border-radius:14px; text-align:center; padding:14px; font-size:16px; font-weight:600; }
+  .code { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:14px; letter-spacing:.5px; text-align:center; padding:14px 10px 6px; color:var(--ink); }
+  .qr { width:120px; height:120px; margin:6px auto 10px; background:repeating-linear-gradient(45deg,#1c1c1e 0 6px,#fff 6px 12px), repeating-linear-gradient(-45deg,#1c1c1e 0 6px,transparent 6px 12px); border-radius:6px; opacity:.85; }
+  .acts { display:flex; gap:8px; padding:0 12px 12px; } .acts span { flex:1; text-align:center; background:var(--fill); border-radius:10px; padding:9px; font-size:14px; font-weight:500; }
+  .warn { color:#b45309; }
+  .mark { outline:2px dashed #2563eb; outline-offset:2px; border-radius:8px; }
+  .note { font-size:12.5px; color:#444; margin:10px 2px 0; }
+  .sheet { position:absolute; left:0; right:0; bottom:0; background:var(--bg); border-radius:18px 18px 0 0; padding:12px 14px 20px; box-shadow:0 -6px 20px rgba(0,0,0,.12); }
+  .grab { width:36px; height:5px; border-radius:3px; background:#c7c7cc; margin:0 auto 10px; }
+  .scrim { position:absolute; inset:0; background:rgba(0,0,0,.25); }
+</style>
+</head>
+<body>
+<h1>Share several events</h1>
+<p class="lede">Old events shared in one go: tick them, one link, the other person joins them all at once. Each event stays its own share underneath (leave or stop one without touching the others). New events stay private unless shared. Names and events here are made up.</p>
+
+<h2>On the phone that shares</h2>
+<div class="pair">
+
+  <div class="col">
+    <p class="cap"><span class="n">1</span>Share page, Events</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Share</span><span style="width:36px"></span></div>
+      <div class="gh">FAMILY · MEMBERS</div>
+      <div class="ig">
+        <div class="ir"><div class="grow"><div class="t">Budi</div><div class="s">Owner · this phone</div></div><span class="chev">›</span></div>
+        <div class="ir"><div class="grow"><div class="t">Rina</div><div class="s">Member · 1 device</div></div><span class="chev">›</span></div>
+      </div>
+      <div class="gh">EVENTS <b class="mark">Select</b></div>
+      <div class="ig">
+        <div class="ir ic"><span class="ico">📅</span><div class="grow t">Bali trip</div><span class="val">Share</span></div>
+        <div class="ir ic"><span class="ico">📅</span><div class="grow t">Lebaran 2026</div><span class="val">Share</span></div>
+        <div class="ir ic"><span class="ico">📅</span><div class="grow t">Kids' birthday party</div><span class="val">Share</span></div>
+        <div class="ir ic"><span class="ico">📅</span><div class="grow t">Office outing</div><span class="val">Share</span></div>
+        <div class="ir ic"><span class="ico">📅</span><div class="grow t">Japan 2025</div><span class="val ink">Shared</span></div>
+      </div>
+    </div>
+    <p class="note">Same list as today, with <b>Select</b> on the Events header. Tapping one row still shares that event alone, as now.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">2</span>Select mode</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Share</span><span style="width:36px"></span></div>
+      <div class="gh">EVENTS <b>Done</b></div>
+      <div class="ig">
+        <div class="ir ic"><span class="tick on">✓</span><div class="grow t">Bali trip</div></div>
+        <div class="ir ic"><span class="tick on">✓</span><div class="grow t">Lebaran 2026</div></div>
+        <div class="ir ic"><span class="tick on">✓</span><div class="grow t">Kids' birthday party</div></div>
+        <div class="ir ic"><span class="tick"></span><div class="grow t">Office outing</div></div>
+        <div class="ir ic dim"><span class="tick"></span><div class="grow t">Japan 2025</div><span class="val">Shared</span></div>
+      </div>
+      <p class="foot">Events already shared can’t be ticked.</p>
+      <div class="dock mark">Share 3 events</div>
+    </div>
+    <p class="note">Tick the events, then one button at the bottom.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">3</span>Share 3 events (sheet)</p>
+    <div class="phone">
+      <div class="scrim"></div>
+      <div class="sheet" style="top:70px">
+        <div class="grab"></div>
+        <div class="bar"><span class="round">✕</span><span class="ttl">Share 3 events</span><span style="width:36px"></span></div>
+        <div class="ig">
+          <div class="ir"><span>Name</span><span class="grow" style="text-align:right;color:var(--ink2)">Budi</span></div>
+        </div>
+        <div class="gh">EVENTS</div>
+        <div class="ig mark">
+          <div class="ir"><div class="grow"><div class="t">Bali trip</div><div class="s">3–9 Jun 2026</div></div><span class="val">IDR</span><span class="chev">›</span></div>
+          <div class="ir"><div class="grow"><div class="t">Lebaran 2026</div><div class="s">20–24 Mar 2026</div></div><span class="val">IDR</span><span class="chev">›</span></div>
+          <div class="ir"><div class="grow"><div class="t">Kids' birthday party</div><div class="s">14 Feb 2026</div></div><span class="val">IDR</span><span class="chev">›</span></div>
+        </div>
+        <p class="foot">Everyone in an event sees every expense of it, who paid and how it is split. What is tagged to these events moves out of its workspace: in each person’s own books only their own share counts.</p>
+        <div class="ig" style="margin-top:14px"><div class="ir btn go">Share</div></div>
+      </div>
+    </div>
+    <p class="note">One <b>Name</b> for all. Each event keeps its own currency (tap to change). “Without the app” names are left out here and added per event later.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">4</span>One invite</p>
+    <div class="phone">
+      <div class="bar"><span class="round">✕</span><span class="ttl">Share 3 events</span><span style="width:36px"></span></div>
+      <div class="gh">INVITE TO 3 EVENTS</div>
+      <div class="ig mark">
+        <div class="qr"></div>
+        <div class="code">K7QM 2XRA 9TFD WB4N<br>H3CE 6PJV …</div>
+        <div class="acts"><span>Copy link</span><span>Send…</span></div>
+      </div>
+      <p class="foot">One code for all three. Works once, for 7 days.</p>
+      <div class="gh">IN THIS INVITE</div>
+      <div class="ig">
+        <div class="ir"><div class="grow t">Bali trip</div><span class="val">✓ shared</span></div>
+        <div class="ir"><div class="grow t">Lebaran 2026</div><span class="val">✓ shared</span></div>
+        <div class="ir"><div class="grow t">Kids' birthday party</div><span class="val">✓ shared</span></div>
+      </div>
+    </div>
+    <p class="note">The three events are shared now; the one link brings someone into all of them.</p>
+  </div>
+</div>
+
+<h2>On the phone that joins</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">5</span>Join 3 events</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Join</span><span style="width:36px"></span></div>
+      <div class="gh">INVITED BY BUDI</div>
+      <div class="ig mark">
+        <div class="ir"><div class="grow"><div class="t">Bali trip</div><div class="s">3–9 Jun 2026 · IDR</div></div><span class="val ink">as Rina</span><span class="chev">›</span></div>
+        <div class="ir"><div class="grow"><div class="t">Lebaran 2026</div><div class="s">20–24 Mar 2026 · IDR</div></div><span class="val ink">as Rina</span><span class="chev">›</span></div>
+        <div class="ir"><div class="grow"><div class="t">Kids' birthday party</div><div class="s">14 Feb 2026 · IDR</div></div><span class="val warn">Choose</span><span class="chev">›</span></div>
+      </div>
+      <p class="foot">Where an event already has a person with this name, it is picked. The others need a choice.</p>
+      <div class="ig" style="margin-top:14px"><div class="ir btn" style="color:var(--ink3)">Join all</div></div>
+    </div>
+    <p class="note">One screen for the whole invite. <b>Join all</b> stays grey until every event says who this is.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">6</span>Choose, for one event</p>
+    <div class="phone">
+      <div class="scrim"></div>
+      <div class="sheet" style="top:150px">
+        <div class="grab"></div>
+        <div class="bar"><span class="round">✕</span><span class="ttl">Kids' birthday party</span><span style="width:36px"></span></div>
+        <div class="gh">JOINING AS</div>
+        <div class="ig">
+          <div class="ir"><span class="grow">Mama</span><span style="color:var(--blue)">✓</span></div>
+          <div class="ir"><span class="grow">Grandma</span></div>
+          <div class="ir"><span class="grow">Someone new</span></div>
+        </div>
+        <p class="foot">The people already in this event who are not on the app yet.</p>
+      </div>
+    </div>
+    <p class="note">Same choice as joining one event today, per event.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">7</span>Ready</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Join</span><span style="width:36px"></span></div>
+      <div class="gh">INVITED BY BUDI</div>
+      <div class="ig">
+        <div class="ir"><div class="grow"><div class="t">Bali trip</div><div class="s">3–9 Jun 2026 · IDR</div></div><span class="val ink">as Rina</span><span class="chev">›</span></div>
+        <div class="ir"><div class="grow"><div class="t">Lebaran 2026</div><div class="s">20–24 Mar 2026 · IDR</div></div><span class="val ink">as Rina</span><span class="chev">›</span></div>
+        <div class="ir"><div class="grow"><div class="t">Kids' birthday party</div><div class="s">14 Feb 2026 · IDR</div></div><span class="val ink">as Mama</span><span class="chev">›</span></div>
+      </div>
+      <div class="ig" style="margin-top:14px"><div class="ir btn go">Join all</div></div>
+      <p class="foot">Joining brings each event’s history in; it can take a moment per event.</p>
+    </div>
+    <p class="note">After Join all, the Events list shows all three. If one fails, the others stay joined and that one says why, with Try again.</p>
+  </div>
+</div>
+</body>
+</html>
