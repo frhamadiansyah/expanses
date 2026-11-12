@@ -112,8 +112,11 @@ test('on a phone: a receipt links its purchase to a bill, in the month picked on
 
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Sports & fitness Gym fee/ }).click();
-  await page.getByTestId('link-to-bill').click();
+  // Bill reads None, and opens the bill list.
+  await expect(page.getByTestId('receipt-bill')).toContainText('None');
+  await page.getByTestId('receipt-bill').click();
   await expect(page.getByRole('heading', { name: 'Bills in this category first' })).toBeVisible();
+  await expect(page.getByTestId('unlink-bill')).toHaveCount(0);
   await page.screenshot({ path: `${SHOTS}-7-pick-bill.png` });
   await page.getByTestId(/^bill-choice-/).filter({ hasText: 'Gym' }).click();
 
@@ -128,39 +131,76 @@ test('on a phone: a receipt links its purchase to a bill, in the month picked on
   await wheel.getByRole('button', { name: 'Done' }).click();
   await page.getByRole('button', { name: 'Link to bill' }).click();
 
-  // Back on the receipt, which names the bill and the month and can let it go.
+  // Back on the receipt, whose Bill row now reads Linked.
   await expect(page).toHaveURL(/\/transactions\/[^/]+$/);
-  await expect(page.getByTestId('receipt-bill')).toContainText(`Gym · ${thisMonth().label}`);
-  await expect(page.getByTestId('link-to-bill')).toHaveCount(0);
+  await expect(page.getByTestId('receipt-bill')).toContainText('Linked');
   await page.screenshot({ path: `${SHOTS}-10-receipt.png` });
 
-  // The bill's History has the month.
+  // The bill list again: the current bill has its ✓ and its month; Open this bill opens it, and ‹ comes back.
   await page.getByTestId('receipt-bill').click();
+  await expect(page.getByTestId(/^bill-choice-/).filter({ hasText: 'Gym' }).getByTestId('bill-current')).toBeVisible();
+  await expect(page.getByTestId(/^bill-choice-/).filter({ hasText: 'Gym' })).toContainText(thisMonth().label);
+  await page.getByTestId('open-bill').click();
   await expect(page.getByTestId('bill-history')).toContainText('Rp 340.000');
+  await page.getByRole('button', { name: 'Transaction' }).first().click();
+  await expect(page).toHaveURL(/\/transactions\/[^/]+\/bill$/);
 
   // A second purchase for the same month is refused with a short message, until another month is chosen.
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Sports & fitness Gym extra/ }).click();
-  await page.getByTestId('link-to-bill').click();
+  await page.getByTestId('receipt-bill').click();
   await page.getByTestId(/^bill-choice-/).filter({ hasText: 'Gym' }).click();
   await expect(page.getByTestId('link-refusal')).toHaveText(`${thisMonth().label} is already paid`);
   await expect(page.getByRole('button', { name: 'Link to bill' })).toBeDisabled();
   await page.screenshot({ path: `${SHOTS}-11-refused.png` });
 
-  await page.getByTestId('link-month').click();
-  const picker = page.getByRole('dialog', { name: 'Month' });
+  const pickMonth = async (at: { month: string }) => {
+    await page.getByTestId('link-month').click();
+    const picker = page.getByRole('dialog', { name: 'Month' });
+    await picker.getByRole('listbox', { name: 'Month' }).getByRole('option', { name: MONTHS[Number(at.month.slice(5)) - 1]!, exact: true }).click();
+    await picker.getByRole('listbox', { name: 'Year' }).getByRole('option', { name: at.month.slice(0, 4), exact: true }).click();
+    await expect(picker.getByRole('listbox', { name: 'Month' }).getByRole('option', { selected: true })).toHaveText(MONTHS[Number(at.month.slice(5)) - 1]!);
+    await picker.getByRole('button', { name: 'Done' }).click();
+  };
   const earlier = monthsAgo(2);
-  await picker.getByRole('listbox', { name: 'Month' }).getByRole('option', { name: MONTHS[Number(earlier.month.slice(5)) - 1]!, exact: true }).click();
-  await picker.getByRole('listbox', { name: 'Year' }).getByRole('option', { name: earlier.month.slice(0, 4), exact: true }).click();
-  await expect(picker.getByRole('listbox', { name: 'Month' }).getByRole('option', { selected: true })).toHaveText(MONTHS[Number(earlier.month.slice(5)) - 1]!);
-  await picker.getByRole('button', { name: 'Done' }).click();
+  await pickMonth(earlier);
   await expect(page.getByTestId('link-month')).toContainText(earlier.label);
   await expect(page.getByTestId('link-refusal')).toHaveCount(0);
   await page.getByRole('button', { name: 'Link to bill' }).click();
-  await expect(page.getByTestId('receipt-bill')).toContainText(`Gym · ${earlier.label}`);
+  await expect(page.getByTestId('receipt-bill')).toContainText('Linked');
 
-  // Unlink from the receipt frees the month for the purchase again.
+  // Picking the bill again starts at the month it settles; ✓ on that month changes nothing.
+  await page.getByTestId('receipt-bill').click();
+  await expect(page.getByTestId(/^bill-choice-/).filter({ hasText: 'Gym' })).toContainText(earlier.label);
+  await page.getByTestId(/^bill-choice-/).filter({ hasText: 'Gym' }).click();
+  await expect(page.getByTestId('link-month')).toContainText(earlier.label);
+  await expect(page.getByTestId('link-refusal')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Link to bill' }).click();
+  await expect(page.getByTestId('receipt-bill')).toContainText('Linked');
+
+  // Another month moves the link: the month it left is free again, the new one holds it.
+  const further = monthsAgo(3);
+  await page.getByTestId('receipt-bill').click();
+  await page.getByTestId(/^bill-choice-/).filter({ hasText: 'Gym' }).click();
+  await pickMonth(further);
+  await page.getByRole('button', { name: 'Link to bill' }).click();
+  await expect(page.getByTestId('receipt-bill')).toContainText('Linked');
+  await page.getByTestId('receipt-bill').click();
+  await expect(page.getByTestId(/^bill-choice-/).filter({ hasText: 'Gym' })).toContainText(further.label);
+  await page.screenshot({ path: `${SHOTS}-12-moved.png` });
+
+  // The bill, opened from here and left by its ‹, is the receipt's own step: it is never where Delete lands.
+  await page.getByTestId('open-bill').click();
+  await expect(page.getByTestId('bill-hero')).toBeVisible();
+  await page.getByRole('button', { name: 'Transaction' }).first().click();
+
+  // Unlink, from the bill list, frees the month: back on the receipt the row reads None.
   await page.getByTestId('unlink-bill').click();
-  await expect(page.getByTestId('receipt-bill')).toHaveCount(0);
-  await expect(page.getByTestId('link-to-bill')).toBeVisible();
+  await expect(page).toHaveURL(/\/transactions\/[^/]+$/);
+  await expect(page.getByTestId('receipt-bill')).toContainText('None');
+  await page.screenshot({ path: `${SHOTS}-13-none.png` });
+
+  await page.getByRole('button', { name: 'Delete this transaction' }).click();
+  await page.getByRole('button', { name: 'Click again to delete' }).click();
+  await expect(page).toHaveURL(/\/transactions\/?(\?.*)?$/);
 });

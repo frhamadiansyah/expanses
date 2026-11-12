@@ -1,9 +1,9 @@
 import { formatMinor, isoDate } from '@expanses/core';
-import { eventPostingOf, jointRowNote, tagTransactions, unlinkPurchaseFromBill, listPhotos, listTransactions, ownerScope, paidOffMarkOf, setSettledBeforeApp, type TransactionPhotoRow } from '@expanses/db';
+import { eventPostingOf, jointRowNote, tagTransactions, listPhotos, listTransactions, ownerScope, paidOffMarkOf, setSettledBeforeApp, type TransactionPhotoRow } from '@expanses/db';
 import { deleteTransaction } from './member-transfer';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, Link, useNavigate, useRouter } from '@tanstack/react-router';
-import { originHref } from '../../app/from-search';
+import { FROM_TRANSACTION, originHref } from '../../app/from-search';
 import { Copy, EyeOff, Pencil } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { BackButton, ROUND } from '../../app/BackHeader';
@@ -14,8 +14,7 @@ import { loadPurchasePoints } from '../../lib/purchase-points';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { usePhotoUrls } from '../../photos/use-photo-urls';
 import { Card, cx, Empty, ErrorBox } from '../../ui';
-import { DestructiveRow, InsetGroup, InsetRow, SwitchRow } from '../../ui/native';
-import { monthWithYear } from '../bills/bill-link-view';
+import { DestructiveRow, GROUP_GAP, InsetGroup, InsetRow, SwitchRow } from '../../ui/native';
 import { useBillOfPurchase } from '../bills/queries';
 import { showToast } from '../../ui/Toast';
 import { useCardsWithArchived } from '../cards/card-queries';
@@ -156,6 +155,19 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
     today,
   });
 
+  /*
+   * What this purchase may do with a bill, by the same refusals the old "Link to a bill" and Unlink rows asked: a
+   * purchase still posted and filed here, not a trade (changed on its holding) nor a shared event's (changed there).
+   */
+  const mayChange = !(isTrade && holdingId) && (changeable || (isCorrection(tx) && !isTrade)) && !fromEvent;
+  const billRow = tx.status === 'posted' && !elsewhere && (bill !== null || (kind.type === 'expense' && mayChange));
+  // None, or a link this purchase may move or let go: the bill list, its ✓ on the current one. Pay's own payment, or a
+  // link it may not change, opens the bill itself.
+  const openBill = () =>
+    !bill || (bill.linked && changeable)
+      ? void navigate({ to: '/transactions/$transactionId/bill', params: { transactionId } })
+      : void navigate({ to: '/bills/$billId', params: { billId: bill.templateId }, search: FROM_TRANSACTION });
+
   const caption = heroCaption(tx, kind.amountMinor);
   // One purchase split across workspaces, or with a part Not counted: each part, with the workspace it is counted in.
   const parts = splitParts(tx, accounts, book);
@@ -199,20 +211,6 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
       await tagTransactions(database, ws, [transactionId], null);
       await invalidate();
       showToast(`Removed from ${(events.data ?? []).find((event) => event.id === tx?.eventId)?.name ?? 'the event'}`);
-    } catch (e) {
-      setError(e);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  /** Lets the bill's month go: the purchase stays, and the month is owed again. */
-  async function unlinkBill() {
-    setError(null);
-    setBusy(true);
-    try {
-      await unlinkPurchaseFromBill(database, ws, { transactionId });
-      await invalidate();
     } catch (e) {
       setError(e);
     } finally {
@@ -304,139 +302,135 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
         )}
       </section>
 
-      <Card className="divide-y divide-slate-100">
-        {lines.map((line) => (
-          <div key={line.label} className="flex justify-between gap-4 py-2 text-sm">
-            <span className="text-slate-500">{line.label}</span>
-            <span className={cx('tabular text-right', line.tone === 'points' && 'font-medium text-emerald-700')}>{line.value}</span>
-          </div>
-        ))}
-      </Card>
-
-      {/* The bill this settles a month of: a tap opens it; a purchase linked afterwards can be let go again. */}
-      {bill && tx.status === 'posted' && !elsewhere && (
-        <InsetGroup>
-          <InsetRow title="Bill" value={`${bill.name} · ${monthWithYear(bill.billMonth)}`} valueTone="ink-2" testId="receipt-bill" onClick={() => void navigate({ to: '/bills/$billId', params: { billId: bill.templateId } })} />
-          {bill.linked && changeable && <InsetRow action title="Unlink" disabled={busy} onClick={() => void unlinkBill()} testId="unlink-bill" />}
-        </InsetGroup>
-      )}
-
-      {/* The statement's Paid off, where the row's tap lands: on, the purchase asks nothing of the statement. */}
-      {paidOffMark && (
-        <InsetGroup wide>
-          <SwitchRow label={paidOffMark.refund ? 'Settled' : 'Paid off'} checked={paidOffMark.settled} disabled={busy} onChange={(on) => void markPaidOff(on)} />
-        </InsetGroup>
-      )}
-
-      {/* A past purchase on a money account: read here, changed on its form. */}
-      {tx.past && tx.status === 'posted' && (
-        <InsetGroup>
-          <InsetRow title="Past purchase" value="Balance unchanged" chevron={false} testId="receipt-past" />
-        </InsetGroup>
-      )}
-
-      {parts.length > 0 && (
-        <section data-testid="split-parts" aria-labelledby="split-parts-title" className="flex flex-col gap-1.5">
-          <h2 id="split-parts-title" className="px-1 text-[13px] text-[var(--ph-ink-3)]">
-            {tx.splitBooks ? 'Split across workspaces' : 'Split'}
-          </h2>
+      {/* Every group from here down sits one group's gap from the next: an InsetGroup brings its own, the rest are given it. */}
+      <div data-testid="receipt-groups" className="flex flex-col">
+        <div style={{ marginBottom: GROUP_GAP }}>
           <Card className="divide-y divide-slate-100">
-            {parts.map((part, i) => (
-              <div
-                key={`${part.book?.id ?? 'not-counted'}:${part.categoryId}:${i}`}
-                data-testid="split-part"
-                data-excluded={part.excluded ? 'true' : undefined}
-                className="flex items-center gap-3 py-2 text-sm"
-              >
-                {/* The workspace's letter on the category's icon, as a list holding several workspaces marks a row. A part
-                    Not counted has no category and no workspace: a plain mark in the icon's place. */}
-                <span className="relative shrink-0">
-                  {part.book || part.categoryId ? (
-                    <>
-                      <CategoryIcon categoryId={part.categoryId} accounts={accounts} size="sm" />
-                      <WorkspaceBadge book={part.book} corner />
-                    </>
-                  ) : (
-                    <span aria-hidden className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-500">
-                      <EyeOff size={14} />
-                    </span>
-                  )}
-                </span>
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className={cx('truncate', part.excluded && 'text-slate-500')}>{part.categoryName}</span>
-                  <span className="truncate text-xs text-slate-500">
-                    {part.book || part.categoryId
-                      ? [part.book?.name, part.excluded ? 'Excluded from report' : null].filter(Boolean).join(' · ')
-                      : 'In no workspace and no report'}
-                  </span>
-                </span>
-                <span className={cx('tabular text-right', part.excluded && 'text-slate-500 line-through')}>{formatMinor(part.amountMinor, part.currency)}</span>
+            {lines.map((line) => (
+              <div key={line.label} className="flex justify-between gap-4 py-2 text-sm">
+                <span className="text-slate-500">{line.label}</span>
+                <span className={cx('tabular text-right', line.tone === 'points' && 'font-medium text-emerald-700')}>{line.value}</span>
               </div>
             ))}
           </Card>
-        </section>
-      )}
+        </div>
 
-      {(photoRows.data ?? []).length > 0 && (
-        <div data-testid="photo-strip" className="flex gap-2 overflow-x-auto">
-          {(photoRows.data ?? []).map((row) =>
-            urls[row.fileName] ? (
-              // Tapped to see it full size, the same promise the Photos sheet makes while it is being attached.
-              <button
-                key={row.id}
-                type="button"
-                onClick={() => setViewing(row)}
-                className="shrink-0 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+        {/*
+         * The bill this settles a month of, and the statement's Paid off, in one group. Bill reads Linked or None, and a
+         * tap opens the bill list (to link one, move it or let it go) — or the bill itself, for Pay's own payment. Paid
+         * off is the switch the statement offers, where the row's tap lands: on, the purchase asks nothing of the statement.
+         */}
+        {(billRow || paidOffMark) && (
+          <InsetGroup>
+            {billRow && (
+              <InsetRow title="Bill" value={bill ? 'Linked' : 'None'} valueTone={bill ? 'ink-2' : 'ink-3'} chevron testId="receipt-bill" onClick={openBill} />
+            )}
+            {paidOffMark && (
+              <SwitchRow label={paidOffMark.refund ? 'Settled' : 'Paid off'} checked={paidOffMark.settled} disabled={busy} onChange={(on) => void markPaidOff(on)} />
+            )}
+          </InsetGroup>
+        )}
+
+        {/* A past purchase on a money account: read here, changed on its form. */}
+        {tx.past && tx.status === 'posted' && (
+          <InsetGroup>
+            <InsetRow title="Past purchase" value="Balance unchanged" chevron={false} testId="receipt-past" />
+          </InsetGroup>
+        )}
+
+        {parts.length > 0 && (
+          <section data-testid="split-parts" aria-labelledby="split-parts-title" className="flex flex-col gap-1.5" style={{ marginBottom: GROUP_GAP }}>
+            <h2 id="split-parts-title" className="px-1 text-[13px] text-[var(--ph-ink-3)]">
+              {tx.splitBooks ? 'Split across workspaces' : 'Split'}
+            </h2>
+            <Card className="divide-y divide-slate-100">
+              {parts.map((part, i) => (
+                <div
+                  key={`${part.book?.id ?? 'not-counted'}:${part.categoryId}:${i}`}
+                  data-testid="split-part"
+                  data-excluded={part.excluded ? 'true' : undefined}
+                  className="flex items-center gap-3 py-2 text-sm"
+                >
+                  {/* The workspace's letter on the category's icon, as a list holding several workspaces marks a row. A part
+                      Not counted has no category and no workspace: a plain mark in the icon's place. */}
+                  <span className="relative shrink-0">
+                    {part.book || part.categoryId ? (
+                      <>
+                        <CategoryIcon categoryId={part.categoryId} accounts={accounts} size="sm" />
+                        <WorkspaceBadge book={part.book} corner />
+                      </>
+                    ) : (
+                      <span aria-hidden className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+                        <EyeOff size={14} />
+                      </span>
+                    )}
+                  </span>
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className={cx('truncate', part.excluded && 'text-slate-500')}>{part.categoryName}</span>
+                    <span className="truncate text-xs text-slate-500">
+                      {part.book || part.categoryId
+                        ? [part.book?.name, part.excluded ? 'Excluded from report' : null].filter(Boolean).join(' · ')
+                        : 'In no workspace and no report'}
+                    </span>
+                  </span>
+                  <span className={cx('tabular text-right', part.excluded && 'text-slate-500 line-through')}>{formatMinor(part.amountMinor, part.currency)}</span>
+                </div>
+              ))}
+            </Card>
+          </section>
+        )}
+
+        {(photoRows.data ?? []).length > 0 && (
+          <div data-testid="photo-strip" className="flex gap-2 overflow-x-auto" style={{ marginBottom: GROUP_GAP }}>
+            {(photoRows.data ?? []).map((row) =>
+              urls[row.fileName] ? (
+                // Tapped to see it full size, the same promise the Photos sheet makes while it is being attached.
+                <button
+                  key={row.id}
+                  type="button"
+                  onClick={() => setViewing(row)}
+                  className="shrink-0 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+                >
+                  <img src={urls[row.fileName]} alt={`Receipt photo for ${tx.description}`} className="h-24 w-24 rounded-xl object-cover ring-1 ring-slate-200" />
+                </button>
+              ) : (
+                <div key={row.id} className="h-24 w-24 shrink-0 rounded-xl bg-slate-100" aria-hidden />
+              ),
+            )}
+          </div>
+        )}
+
+        {elsewhere ? (
+          <SwitchToEdit book={elsewhere} className="self-center text-center" />
+        ) : (
+          <div className="flex flex-col items-center">
+            {isTrade && holdingId ? (
+              /* The row's whole trailing slot, exactly as `TransactionsPage` and `TransactionsTable` replace it. */
+              <Link
+                to="/net-worth/assets/$accountId"
+                params={{ accountId: holdingId }}
+                title="Edit this on its holding's page so units stay in step"
+                className="min-h-11 py-2 text-sm font-medium text-slate-600 underline"
               >
-                <img src={urls[row.fileName]} alt={`Receipt photo for ${tx.description}`} className="h-24 w-24 rounded-xl object-cover ring-1 ring-slate-200" />
-              </button>
+                Holding
+              </Link>
             ) : (
-              <div key={row.id} className="h-24 w-24 shrink-0 rounded-xl bg-slate-100" aria-hidden />
-            ),
-          )}
-        </div>
-      )}
-
-      {elsewhere ? (
-        <SwitchToEdit book={elsewhere} className="self-center text-center" />
-      ) : (
-        <div className="flex flex-col items-center gap-2">
-          {isTrade && holdingId ? (
-            /* The row's whole trailing slot, exactly as `TransactionsPage` and `TransactionsTable` replace it. */
-            <Link
-              to="/net-worth/assets/$accountId"
-              params={{ accountId: holdingId }}
-              title="Edit this on its holding's page so units stay in step"
-              className="min-h-11 py-2 text-sm font-medium text-slate-600 underline"
-            >
-              Holding
-            </Link>
-          ) : (
-            /* Edit is the round button in the top corner; Delete stays down here, out of a thumb's casual reach. A shared
-               event's transaction is deleted on the event, with its record, never here. */
-            (changeable || (isCorrection(tx) && !isTrade && !elsewhere)) && !fromEvent && (
-              <>
-                {tx.eventId && (
-                  <InsetGroup>
-                    <DestructiveRow calm label="Remove from event" onClick={() => void removeFromEvent()} testId="remove-from-event" />
-                  </InsetGroup>
-                )}
-                {kind.type === 'expense' && tx.status === 'posted' && !bill && (
-                  <InsetGroup>
-                    <DestructiveRow
-                      calm
-                      label="Link to a bill"
-                      onClick={() => void navigate({ to: '/transactions/$transactionId/bill', params: { transactionId } })}
-                      testId="link-to-bill"
-                    />
-                  </InsetGroup>
-                )}
-                <TwoTapDelete busy={busy} onConfirm={() => void remove()} className="self-center" />
-              </>
-            )
-          )}
-        </div>
-      )}
+              /* Edit is the round button in the top corner; Delete stays down here, out of a thumb's casual reach. A shared
+                 event's transaction is deleted on the event, with its record, never here. */
+              (changeable || (isCorrection(tx) && !isTrade && !elsewhere)) && !fromEvent && (
+                <>
+                  {tx.eventId && (
+                    <InsetGroup>
+                      <DestructiveRow calm label="Remove from event" onClick={() => void removeFromEvent()} testId="remove-from-event" />
+                    </InsetGroup>
+                  )}
+                  <TwoTapDelete busy={busy} onConfirm={() => void remove()} className="self-center" />
+                </>
+              )
+            )}
+          </div>
+        )}
+      </div>
 
       {viewing && (
         <Sheet title="Photo" onClose={() => setViewing(null)}>

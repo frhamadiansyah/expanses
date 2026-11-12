@@ -1,11 +1,11 @@
 import { formatMinor, isoDate, monthName } from '@expanses/core';
-import { linkPurchaseToBill, listTransactions, ownerScope, RecurringError } from '@expanses/db';
+import { linkPurchaseToBill, listTransactions, ownerScope, RecurringError, relinkPurchaseToBill, unlinkPurchaseFromBill } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useRouter, useSearch } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
-import { useFrom } from '../../app/from-search';
+import { FROM_TRANSACTION, useFrom } from '../../app/from-search';
 import { Sheet } from '../../app/Sheet';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox, Money } from '../../ui';
@@ -15,7 +15,7 @@ import { classify } from '../transactions/classify';
 import { Wheel } from '../networth/AssetRows';
 import { billCurrencyOf } from './bill-view';
 import { billsForPurchase, candidateLine, monthWithYear, purchaseCount, refusalText, repeatWords, wheelYears } from './bill-link-view';
-import { useBillDetail, useBillLinkCandidates, useBillLinkRefusal, useBillMonthsBefore, useBillTemplates } from './queries';
+import { useBillDetail, useBillLinkCandidates, useBillLinkRefusal, useBillMonthsBefore, useBillOfPurchase, useBillTemplates } from './queries';
 
 /* The two ways to link a purchase that is already recorded to a bill's month: from the bill (these first two pages) and from the purchase. */
 
@@ -171,31 +171,63 @@ export function LinkToBillRoute() {
   return <LinkToBillPage transactionId={transactionId} />;
 }
 
-/** The bills the purchase could settle: those in its own category first, then the rest. */
+/** The list's title, and what the month page's ‹ is named for: "Bill" once the purchase has one, else "Link to a bill". */
+const listTitle = (linked: boolean) => (linked ? 'Bill' : 'Link to a bill');
+
+/**
+ * The bills the purchase could settle: those in its own category first, then the rest. A purchase already linked sees
+ * its bill with a ✓ — picking another bill or month moves the link — and, under the list, Open this bill and Unlink.
+ */
 export function LinkToBillPage({ transactionId }: { transactionId: string }) {
+  const { database, ws } = useApp();
   const navigate = useNavigate();
   const back = useStepBack();
+  const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
-  const { ws } = useApp();
   const tx = usePurchase(transactionId).data ?? null;
+  const current = useBillOfPurchase(transactionId).data ?? null;
   const bills = useBillTemplates().data ?? [];
   const { same, others } = billsForPurchase(bills, tx ? classify(tx).categoryIds : []);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+
+  /** Lets the bill's month go: the purchase stays, the month is owed again, and the receipt reads None. */
+  async function unlink() {
+    setError(null);
+    setBusy(true);
+    try {
+      await unlinkPurchaseFromBill(database, ws, { transactionId });
+      await invalidate();
+      back();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const row = (bill: (typeof bills)[number]) => {
     const payer = accounts.find((a) => a.id === bill.moneyAccountId);
+    const linked = current?.templateId === bill.id;
     return (
       <InsetRow
         key={bill.id}
         testId={`bill-choice-${bill.id}`}
         icon={<CategoryIcon categoryId={bill.categoryAccountId} accounts={accounts} size="row" />}
         title={bill.name}
-        subtitle={[repeatWords(bill), bill.repeat === 'monthly' ? payer?.name : null].filter(Boolean).join(' · ')}
+        // The current bill names the month it settles first: picking it again offers another month of it.
+        subtitle={[linked ? monthWithYear(current.billMonth) : null, repeatWords(bill), bill.repeat === 'monthly' ? payer?.name : null].filter(Boolean).join(' · ')}
         value={
-          bill.amountMinor === null ? null : (
+          linked ? (
+            <span data-testid="bill-current" className="text-[var(--ph-tint)]">
+              <Check size={20} aria-label="Linked" />
+            </span>
+          ) : bill.amountMinor === null ? null : (
             <Money minor={bill.amountMinor} currency={bill.currency ?? payer?.currency ?? ws.baseCurrency} tone="none" />
           )
         }
         valueTone="ink-2"
+        chevron={!linked}
         onClick={() => void navigate({ to: '/transactions/$transactionId/bill/$billId', params: { transactionId, billId: bill.id } })}
       />
     );
@@ -203,7 +235,8 @@ export function LinkToBillPage({ transactionId }: { transactionId: string }) {
 
   return (
     <div className={SCREEN}>
-      <PushedTitle title="Link to a bill" back="Receipt" onBack={back} />
+      <PushedTitle title={listTitle(current !== null)} back="Transaction" onBack={back} />
+      <ErrorBox error={error} />
       {bills.length === 0 ? (
         <InsetGroup>
           <InsetRow title={<span className="font-normal text-[var(--ph-ink-3)]">No recurring bills</span>} />
@@ -213,6 +246,17 @@ export function LinkToBillPage({ transactionId }: { transactionId: string }) {
           {same.length > 0 && <InsetGroup header="Bills in this category first">{same.map(row)}</InsetGroup>}
           {others.length > 0 && <InsetGroup header={same.length > 0 ? 'Other bills' : 'Bills in this category first'}>{others.map(row)}</InsetGroup>}
         </>
+      )}
+      {current?.linked && (
+        <InsetGroup>
+          <InsetRow
+            title="Open this bill"
+            plain
+            testId="open-bill"
+            onClick={() => void navigate({ to: '/bills/$billId', params: { billId: current.templateId }, search: FROM_TRANSACTION })}
+          />
+          <InsetRow action title="Unlink" disabled={busy} onClick={() => void unlink()} testId="unlink-bill" />
+        </InsetGroup>
       )}
     </div>
   );
@@ -245,18 +289,25 @@ export function LinkBillMonthPage({ transactionId, billId }: { transactionId: st
   const today = isoDate();
   const tx = usePurchase(transactionId).data ?? null;
   const bill = useBillDetail(billId, today).data?.bill;
+  // The bill the purchase settles a month of already, if any: its month is where this page starts, and ✓ moves the link.
+  const currentQuery = useBillOfPurchase(transactionId);
+  const current = currentQuery.data ?? null;
   const [chosen, setChosen] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const month = chosen ?? tx?.occurredOn.slice(0, 7) ?? today.slice(0, 7);
+  const month = chosen ?? (current?.templateId === billId ? current.billMonth : null) ?? tx?.occurredOn.slice(0, 7) ?? today.slice(0, 7);
+  // The month it already settles: ✓ changes nothing, and the month's "already settled" is this purchase itself.
+  const unchanged = current?.templateId === billId && current.billMonth === month;
   const refusal = useBillLinkRefusal(billId, month, today);
+  const refused = unchanged ? null : (refusal.data ?? null);
 
   async function link() {
     setError(null);
     setBusy(true);
     try {
-      await linkPurchaseToBill(database, ws, { templateId: billId, billMonth: month, transactionId, today });
+      // One step whether it links or moves: the old month is let go and the new one paid in the same write.
+      await relinkPurchaseToBill(database, ws, { templateId: billId, billMonth: month, transactionId, today });
       await invalidate();
       void navigate({ to: '/transactions/$transactionId', params: { transactionId } });
     } catch (e) {
@@ -271,18 +322,26 @@ export function LinkBillMonthPage({ transactionId, billId }: { transactionId: st
     <div className={SCREEN}>
       <PushedTitle
         title={bill?.name ?? 'Bill'}
-        back="Link to a bill"
+        back={listTitle(current !== null)}
         onBack={back}
-        actions={[{ key: 'link', label: 'Link to bill', glyph: <Check size={20} aria-hidden />, disabled: busy || !tx || !bill || refusal.data != null || refusal.isPending, run: () => void link() }]}
+        actions={[
+          {
+            key: 'link',
+            label: 'Link to bill',
+            glyph: <Check size={20} aria-hidden />,
+            disabled: busy || !tx || !bill || currentQuery.isPending || (!unchanged && (refusal.data != null || refusal.isPending)),
+            run: () => void link(),
+          },
+        ]}
       />
       <ErrorBox error={error} />
       <InsetGroup>
         <PickerRow label="Month" value={monthWithYear(month)} onOpen={() => setPicking(true)} testId="link-month" />
         <ReadOnlyRow label="Purchase" value={tx && kind ? `${formatMinor(kind.amountMinor, kind.currency)} · ${tx.occurredOn.slice(8, 10).replace(/^0/, '')} ${monthName(tx.occurredOn.slice(0, 7), 'short')}` : ''} />
       </InsetGroup>
-      {refusal.data && (
+      {refused && (
         <p role="alert" data-testid="link-refusal" className="px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
-          {refusalText(refusal.data.code, month, refusal.data.message)}
+          {refusalText(refused.code, month, refused.message)}
         </p>
       )}
       {picking && (
