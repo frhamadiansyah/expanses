@@ -258,7 +258,8 @@ describe('joint tax report', () => {
 
   it('the report reader reads each member’s pending count from the group log', async () => {
     const { rina, andi, groupBookId } = await sharing('joint');
-    await andi.database.db.run(sql`INSERT INTO nw_pending (book_id, member_id, count) VALUES (${groupBookId}, ${rina.memberId}, 1)`);
+    // Rina's row is already there (her phone wrote its ring devices on its first sync, 0110): only its count moves.
+    await andi.database.db.run(sql`INSERT INTO nw_pending (book_id, member_id, count) VALUES (${groupBookId}, ${rina.memberId}, 1) ON CONFLICT (book_id, member_id) DO UPDATE SET count = 1`);
     const report = await reportInputsFor(andi.database, andi.ws, YEAR);
     expect(report.joint!.pending).toEqual({ [rina.memberId]: 1 });
   });

@@ -602,6 +602,7 @@ export {
 } from './net-worth/group';
 export { cardBar, type ItemSheetFacts, type ItemSummary, lastMonthEnds, type PeriodMovement, splitPeriod, summaryHash } from './net-worth/summary';
 export { type CoretaxRowPart, type ItemTax, jointCoretaxInputs, type JointWaiting, yearEndReached } from './net-worth/joint-tax';
+export { isRingColour, parseRingPick, RING_COLOURS, type RingColour, type RingPick, resolveRings, takenRings } from './net-worth/rings';
 export { closePriceMicro, isIdxListing, type ListedPriceChoice, type ListedPriceSource, listedPriceChoice, priceAgeDays, STALE_PRICE_DAYS } from './prices/listed';
 export { parseYahooChart, parseYahooDividends, type YahooClose, yahooChartUrl, type YahooDividend, yahooDividendsUrl, YahooPriceError, yahooSymbol } from './prices/yahoo';
 export { type DividendHolding, type DividendMonth, type DividendPayer, dividendView, type DividendView } from './assets/dividends';

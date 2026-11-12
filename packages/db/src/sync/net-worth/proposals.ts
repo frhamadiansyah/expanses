@@ -2,6 +2,7 @@ import { addsMembers, canPropose, uuidv7, type FilingMode, type GroupState } fro
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../../database';
 import { activeNetWorthGroup, departedMembers, groupDissolved, groupStateOf, NetWorthError, proposalOf, refreshPendingCount } from '../../repos/net-worth-sharing';
+import { refreshRing } from './rings';
 import { groupLogWorkspaceOf, viewMember } from '../authority';
 import { withCapture } from '../capture';
 import type { SyncOnceResult } from '../engine';
@@ -212,7 +213,8 @@ export async function netWorthGroup(host: GroupLogHost, workspaceBookId: string)
 /**
  * After a workspace's sync (engine `syncOnce`, after its group log's): a lone group log of this device's that lost the
  * link to another member's is abandoned; a group fallen below two members is dissolved; a group member's device the
- * group log does not have yet is let in; and this member's pending count (D8) follows its items.
+ * group log does not have yet is let in; this member's pending count (D8) follows its items; and its ring colour is
+ * sent again to a device that has just started reading rings (`refreshRing`).
  */
 export async function afterWorkspaceSync(host: GroupLogHost, bookId: string, result: SyncOnceResult): Promise<void> {
   if (result.ended || result.stopped) return;
@@ -242,4 +244,5 @@ export async function afterWorkspaceSync(host: GroupLogHost, bookId: string, res
     if (!(error instanceof SharingError)) throw error;
   }
   await refreshPendingCount(host.database);
+  await refreshRing(host.database, host.device.deviceId, new Date(host.now()));
 }
