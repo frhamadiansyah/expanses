@@ -68,8 +68,13 @@ export function useEventModeWrites() {
   const { database, ws } = useApp();
   const queryClient = useQueryClient();
   const write = async (mode: EventMode | null) => {
-    await writeEventMode(database, mode);
-    await queryClient.invalidateQueries({ queryKey: KEY });
+    // Shown at once — a switch follows the finger — and read back from the phone's own table once it is written.
+    queryClient.setQueryData(KEY, mode);
+    try {
+      await writeEventMode(database, mode);
+    } finally {
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
   };
   return {
     write,
@@ -160,6 +165,11 @@ export function EventModeGroup({ event }: { event: Pick<EventRow, 'id' | 'name' 
   const today = isoDate();
   const on = !!stored && stored.workspaceId === ws.workspaceId && stored.eventId === event.id && eventModeState(stored, today) === 'on';
   const mode = on ? stored : null;
+  // The switch follows the finger in the same frame; the stored answer takes over once it is read back.
+  const [flipped, setFlipped] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (flipped === on) setFlipped(null);
+  }, [on, flipped]);
 
   return (
     <div data-testid="event-mode-group">
@@ -168,8 +178,9 @@ export function EventModeGroup({ event }: { event: Pick<EventRow, 'id' | 'name' 
           label="Event mode"
           testId="event-mode-switch"
           hint={modeHint(event.name)}
-          checked={on}
+          checked={flipped ?? on}
           onChange={(checked) => {
+            setFlipped(checked);
             if (checked) {
               setUndo(null);
               void turnOn(event);
