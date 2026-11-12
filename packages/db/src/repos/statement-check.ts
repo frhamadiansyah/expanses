@@ -746,6 +746,7 @@ export async function recordStatementCheck(
           const was = await linesOf(tx, ws, opening.id);
           const equityId = await systemAccountId(tx, ws, 'opening_balance');
           const lines = openingBalanceLines({ accountId: cardAccountId, kind: 'liability', balanceMinor: previousMinor!, currency: card.currency, equityAccountId: equityId });
+          // No goal due-month cap (`LedgerDoor.dueCap`) on this file's edits: a statement check rewrites card rows, never a due month's transfer.
           await replaceTransactionTx(tx, ws, opening.id, { occurredOn: addDays(period.start, -1), description: was.description, lines, ratesToBase: was.ratesToBase });
         }
       }

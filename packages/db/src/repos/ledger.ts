@@ -6,6 +6,7 @@ import { accounts, auditLog, entries, transactions } from '../schema';
 import { bookTransactions } from '../schema-books';
 import { cardPostings, cards, cardSettlements } from '../schema-cards';
 import { goals } from '../schema-goals';
+import { checkDueCapTx, type DueCap, dueCapForEdit, relinkDueMonthTx } from './goal-due-link';
 import { transactionPointActuals } from '../schema-points';
 import { captureCardChangingTx, captureReorderingTx, captureVoidingTx, capturePostedTx, type PaidFrom, splitRefusalTx } from '../sync/capture';
 import { billPayments, expenseTemplates } from '../schema-recurring';
@@ -838,6 +839,12 @@ export interface LedgerDoor {
   fundSwitch?: boolean;
   /** The caller is `asset-sales.ts` taking back a sale it wrote (Undo sale). */
   assetSale?: boolean;
+  /**
+   * An edit of a goal's due-month transfer (`goal-due-link.ts`): the new-money rule, worked out before the transaction.
+   * Only what goes past From's free money may move the goal's own promise there.
+   */
+  dueCap?: DueCap | null;
+  // Sync apply (`sync/apply.ts`, `sync/net-worth/transfers.ts`) passes none: it replays another phone's edit, which that phone already capped, and goal dues are this phone's own.
 }
 
 /** The words every other door says when it meets the money a sale of an asset brought in. */
@@ -917,8 +924,10 @@ export async function replaceTransaction(
   input: PostTransactionInput,
 ): Promise<string> {
   const before = await factsOf(database, ws, id);
+  // A goal's due-month transfer keeps the new-money rule through an edit: its cap is read here, outside the transaction.
+  const dueCap = await dueCapForEdit(database, ws, id, input);
   const replacement = await database.transaction(async (tx) => {
-    const replacement = await replaceTransactionTx(tx, ws, id, input);
+    const replacement = await replaceTransactionTx(tx, ws, id, input, { dueCap });
     await recordActivityTx(tx, ws, 'edit', replacement, { replaces: id });
     return replacement;
   });
@@ -989,6 +998,8 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   const settle = settleCard ?? pastPurchase;
   // Before anything is read or written: a derived transaction is the event's to change (C1). `markVoidTx` says it again.
   if (!door.eventDerivation) await refuseEventPostingTx(tx, id);
+  // A due-month transfer's cap was worked from From's money before the transaction: refused if that money moved since.
+  if (door.dueCap) await checkDueCapTx(tx, ws, door.dueCap);
   const [original] = await tx
     .select({
       source: transactions.source,
@@ -1126,8 +1137,11 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   }
   if (sharedTransferBooks.length > 0 && !moveToBook) await carrySharedTransferTx(tx, ws, sharedTransferBooks, replacement);
   if (keepAnswer) await carryAnswerTx(tx, ws, id, replacement, input.occurredOn, oldLines, input.lines, input.setAside ?? null);
-  if (keepTagged) await carryTaggedTx(tx, ws, id, replacement, original!.goalId!, wasMove!, nextMove!);
-  else if (nextMove) await parkForGoalTx(tx, ws, replacement, original!.goalId!, nextMove);
+  const cap = door.dueCap && nextMove && door.dueCap.fromAccountId === nextMove.fromAccountId ? door.dueCap.promiseFollowsAtMost : undefined;
+  if (keepTagged) await carryTaggedTx(tx, ws, id, replacement, original!.goalId!, wasMove!, nextMove!, { promiseFollowsAtMost: cap });
+  else if (nextMove) await parkForGoalTx(tx, ws, replacement, original!.goalId!, nextMove, { promiseFollowsAtMost: cap });
+  // A goal's due month follows its transfer to the edit, with what the edit moves now.
+  await relinkDueMonthTx(tx, ws, id, replacement, taggedGoal ? nextMove : null);
   // The date the bank posted it, and the payment made for it (or the purchases a payment was for), are
   // facts about the same money: they follow the correction.
   await tx.update(cardPostings).set({ transactionId: replacement }).where(and(eq(cardPostings.transactionId, id), eq(cardPostings.workspaceId, ws.workspaceId)));

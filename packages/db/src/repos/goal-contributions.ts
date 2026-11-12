@@ -1,4 +1,4 @@
-import { goalShares, monthRange, movedAmount, UNTAGGED, uuidv7 } from '@expanses/core';
+import { goalShares, isoDate, monthRange, movedAmount, UNTAGGED, uuidv7 } from '@expanses/core';
 import { and, eq, gte, inArray, isNotNull, isNull, lte, type SQL, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -14,7 +14,7 @@ import { goalPartsByTradeTx } from './goal-parts';
    was parked there, while a buy paid from a wallet or a current account is fresh money. */
 const PARKED = ['savings', 'investment', 'fund'];
 
-/** Records a change to a set-aside, dated today. Nothing is written when the amount did not move. */
+/** Records a change to a set-aside, dated today (the local day). Nothing is written when the amount did not move. */
 export async function recordContributionTx(tx: Db, ws: WorkspaceContext, goalId: string, accountId: string, deltaMinor: number): Promise<void> {
   if (deltaMinor === 0) return;
   const now = new Date();
@@ -24,7 +24,8 @@ export async function recordContributionTx(tx: Db, ws: WorkspaceContext, goalId:
     goalId,
     accountId,
     deltaMinor,
-    occurredOn: now.toISOString().slice(0, 10),
+    // The phone's own day, as every date the owner sees: just after midnight on the 1st is the new month, not UTC's.
+    occurredOn: isoDate(now),
     source: 'earmark',
     createdAt: now.toISOString(),
   });

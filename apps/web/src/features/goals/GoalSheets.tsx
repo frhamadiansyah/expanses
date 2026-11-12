@@ -1,5 +1,5 @@
 import { expenseLines, formatMinor, formatUnits, isoDate, minorToMajorString, parseMajor } from '@expanses/core';
-import { type AccountRow, type GoalPlanRow, moveSetAside, postTransaction, removeEarmark, retagTrade, saveEarmark, setStandingMonthly } from '@expanses/db';
+import { type AccountRow, type GoalDueSettings, type GoalPlanRow, moveSetAside, postTransaction, removeEarmark, retagTrade, saveEarmark, saveGoalMonthly } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -13,6 +13,8 @@ import { CategoryOptions } from '../cards/options';
 import { useAssetProfiles, useTrades } from '../networth/queries';
 import { type GoalEarmark, inGoalMoney, leftForGoal, lowered, monthlyAfter, monthlyPrefill, movablePurchases, moved, purchaseShare, setAsideFirst, setAsideOf, setAsideOn, STATUS_WORDS } from './goal-actions';
 import { longDay } from './goal-cards';
+import { DueGroup, useDueForm } from './GoalDues';
+import { useGoalDue } from './queries';
 
 
 /** A typed figure in a currency, or null while it is not one yet. */
@@ -156,8 +158,21 @@ export function UseSheet({ plan, earmarks, onClose }: { plan: GoalPlanRow; earma
   );
 }
 
-/** Monthly: what goes to the goal each month by standing arrangement. The amount is all a goal stores of it. */
+/**
+ * Monthly: what goes to the goal each month by standing arrangement, and — when Due each month is on — the day it
+ * comes due like a bill and what each month does: Set aside in an account, or Transfer between two. Off, the amount
+ * is a plan figure only, as it always was.
+ */
 export function MonthlySheet({ plan, onClose }: { plan: GoalPlanRow; onClose: () => void }) {
+  const saved = useGoalDue(plan.goalId);
+  const accounts = useAccounts();
+  // The switch opens as it was saved, and its accounts as they are: the sheet waits for both, so an account list still
+  // loading is never read as "no account left" (which would switch a due off).
+  if (!saved.isSuccess || !accounts.isSuccess) return null;
+  return <MonthlySheetBody plan={plan} saved={saved.data} onClose={onClose} />;
+}
+
+function MonthlySheetBody({ plan, saved, onClose }: { plan: GoalPlanRow; saved: GoalDueSettings | null; onClose: () => void }) {
   const { database, ws } = useApp();
   const currency = plan.currency;
   const standing = plan.goal.standingMonthlyMinor;
@@ -165,18 +180,28 @@ export function MonthlySheet({ plan, onClose }: { plan: GoalPlanRow; onClose: ()
     const opening = monthlyPrefill(plan.requiredMonthlyMinor, plan.plannedMonthlyMinor, standing);
     return opening > 0 ? minorToMajorString(opening, currency) : '';
   });
+  const due = useDueForm(plan.goalId, currency, saved);
   const saving = useSave(onClose);
   const typed = parsed(amount, currency);
   const after = monthlyAfter(plan.requiredMonthlyMinor, plan.plannedMonthlyMinor, standing, typed);
   const valid = amount.trim() === '' || (typed !== null && typed >= 0);
 
-  const save = () => saving.run(() => setStandingMonthly(database, ws, plan.goalId, typed ?? 0));
+  const save = () =>
+    saving.run(async () => {
+      const { form } = due;
+      // No account left to use (none in the goal's currency, the list loaded): it can only be turned off.
+      const on = form.on && (!!form.accountId || !due.loaded);
+      // Off and never on: nothing but the amount is written, exactly as before. Both land together or not at all.
+      const dueInput = on || saved?.active ? { goalId: plan.goalId, on, day: form.day, mode: form.mode, accountId: form.accountId, toAccountId: form.toAccountId } : null;
+      await saveGoalMonthly(database, ws, { goalId: plan.goalId, amountMinor: typed ?? 0, due: dueInput }, isoDate());
+    });
 
   return (
     <Sheet grouped title={`Monthly for ${plan.goal.name}`} onClose={onClose} confirm={{ label: 'Save', disabled: saving.busy || !valid, run: () => void save() }}>
       <InsetGroup>
         <TextRow label="Each month" value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="Amount" />
       </InsetGroup>
+      <DueGroup due={due} goalName={plan.goal.name} />
       <InsetGroup>
         <ReadOnlyRow label="Needed a month" value={formatMinor(plan.requiredMonthlyMinor, currency)} />
         <ReadOnlyRow label="After this" value={`${formatMinor(after.plannedMonthlyMinor, currency)} · ${STATUS_WORDS[after.status]}`} />
