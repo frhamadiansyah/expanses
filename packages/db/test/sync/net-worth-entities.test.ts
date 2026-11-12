@@ -430,9 +430,10 @@ describe("a device's app version travels to its peers (spec §9)", () => {
     await home.settle();
 
     const onFandri = await fandri.database.db.values<[string]>(sql`SELECT app_version FROM book_devices WHERE book_id = ${bookId} AND device_id = ${dewi.deviceId}`);
-    expect(onFandri).toEqual([['0.3.0']]);
+    // With this build's sync level as a fourth segment (fix round 1): '0.3.0' still to every version check.
+    expect(onFandri).toEqual([['0.3.0.1']]);
     const onDewi = await dewi.database.db.values<[string]>(sql`SELECT app_version FROM book_devices WHERE book_id = ${bookId} AND device_id = ${fandri.deviceId}`);
-    expect(onDewi).toEqual([['0.3.0']]);
+    expect(onDewi).toEqual([['0.3.0.1']]);
   });
 
   it('ruling: a device upgraded since it shared corrects its app_version on its next sync, and its peer sees the new one', async () => {
@@ -443,12 +444,12 @@ describe("a device's app version travels to its peers (spec §9)", () => {
     await home.join(dewi, fandri);
     await home.settle();
     const before = await dewi.database.db.values<[string]>(sql`SELECT app_version FROM book_devices WHERE book_id = ${bookId} AND device_id = ${fandri.deviceId}`);
-    expect(before).toEqual([['0.2.0']]);
+    expect(before).toEqual([['0.2.0.1']]);
 
     // Fandri's phone is upgraded: the same device and database, wired to a fresh engine reporting the new version.
     fandri.engine = new SyncEngine(fandri.database, fandri.transport, fandri.keys, undefined, { appVersion: '0.3.0' });
     await home.settle();
     const after = await dewi.database.db.values<[string]>(sql`SELECT app_version FROM book_devices WHERE book_id = ${bookId} AND device_id = ${fandri.deviceId}`);
-    expect(after).toEqual([['0.3.0']]);
+    expect(after).toEqual([['0.3.0.1']]);
   });
 });

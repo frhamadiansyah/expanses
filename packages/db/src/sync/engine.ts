@@ -1,3 +1,4 @@
+import { SYNC_LEVEL, withSyncLevel } from './level';
 import { uuidv7 } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
@@ -232,6 +233,11 @@ export interface SyncEngineOptions {
    * writes its own row (`shareBook`, `joinBook`), so a peer can tell whether it meets `NET_WORTH_MIN_APP_VERSION`. */
   appVersion?: string;
   /**
+   * The sync capability level written with the version (`level.ts`; fix round 1, #1): this build's own unless a test
+   * stands in for an older build (0 writes the version as a build before levels did).
+   */
+  syncLevel?: number;
+  /**
    * Where this device keeps its share records (sharing resilience §6.1), outside the database. Without one the engine
    * keeps none: `backfillShareRecords` writes nothing and `checkShareRecords` finds nothing.
    */
@@ -315,7 +321,7 @@ export class SyncEngine {
     options: SyncEngineOptions = {},
   ) {
     this.sealer = new Sealer(database, device, { onStored: (bookId) => this.recordDirty.add(bookId) });
-    this.appVersion = options.appVersion;
+    this.appVersion = options.appVersion === undefined ? undefined : withSyncLevel(options.appVersion, options.syncLevel ?? SYNC_LEVEL);
     this.records = options.shareRecords;
     this.recordEveryMs = options.recordEveryMs ?? RECORD_EVERY_MS;
     this.onRecordProblem = options.onShareRecordProblem;

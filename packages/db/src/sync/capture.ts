@@ -14,6 +14,7 @@ import { localDate, sendSummariesTx } from './net-worth/summaries';
 import { sendGoalSummariesTx } from './goals/summaries';
 import { reserveAndSplit } from './split';
 import { holderLineageId } from './held';
+import { BILL_LINK_LEVEL, bookAtLevelTx } from './level';
 import type { ChangeSet, Op } from './types';
 
 /*
@@ -1321,7 +1322,7 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
     excluded: Number(flags?.[1] ?? 0) === 1 || partExcluded || allOut ? 1 : 0,
     ...(outLines.length > 0 ? { excludedLines: outLines } : {}),
     // A part never names a bill: the bill it pays may be the private workspace's, and its id is not the partner's to see.
-    bill: part ? null : templateId ? { templateId: payment?.[0] ?? templateId, billMonth: payment?.[1] ?? null } : payment ? { templateId: payment[0], billMonth: payment[1], linked: true } : null,
+    bill: part ? null : templateId ? { templateId: payment?.[0] ?? templateId, billMonth: payment?.[1] ?? null } : payment && (await linksTravelTx(tx, transactionId)) ? { templateId: payment[0], billMonth: payment[1], linked: true } : null,
     money: {
       lines,
       originalCurrency: part ? null : originalCurrency,
@@ -1335,6 +1336,16 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
     // Likewise only where 0068 is.
     ...(typed ? { exactHundredths: part || exact === null ? null : Number(exact) } : {}),
   };
+}
+
+/**
+ * Whether a purchase's link to a bill's month travels (fix round 1, #1): only once every device in its book reads
+ * `linked` (`BILL_LINK_LEVEL`). Before that the link stays on this phone — an older build would post it as a Pay payment
+ * — and the one-time repair sends every link here once the last device has updated.
+ */
+async function linksTravelTx(tx: Db, transactionId: string): Promise<boolean> {
+  const bookId = await bookOfTransaction(tx, transactionId);
+  return bookId === null || (await bookAtLevelTx(tx, bookId, BILL_LINK_LEVEL));
 }
 
 /**

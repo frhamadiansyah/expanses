@@ -49,7 +49,7 @@ describe('R1: bill links an older build never sent', () => {
   const oldLink = (d: Device, transactionId: string, templateId: string, billMonth: string) =>
     d.database.db.run(sql`INSERT INTO bill_payments (transaction_id, workspace_id, template_id, bill_month) VALUES (${transactionId}, ${d.ws.workspaceId}, ${templateId}, ${billMonth})`);
 
-  it('sends each old link once; a link already sent, and one the partner changed since, are left as they are', async () => {
+  it('sends each old link once, as this phone holds it after a full pull; the partner’s newer link stands', async () => {
     const { home, wife, husband, bookId, cat, bill, buy } = await couple();
     const march = await buy(wife, cat, '2026-03-11', 'Fibre March');
     const october = await buy(wife, cat, '2026-10-11', 'Fibre October');
@@ -75,7 +75,8 @@ describe('R1: bill links an older build never sent', () => {
     const sent = (await outboxOps(wife.database)).slice(sentBefore);
     expect(sent.map((op) => op.id)).toContain(march);
     expect(sent.map((op) => op.id)).toContain(october);
-    expect(sent.map((op) => op.id)).not.toContain(changed);
+    // May's purchase: the husband's newer link already reached her phone, so what she holds — and sends — is his.
+    expect(sent.find((op) => op.id === changed)).toMatchObject({ fields: { bill: { billMonth: '2026-05' } } });
     await home.settle();
     expect(await linkOn(husband, march)).toMatchObject({ templateId: bill, billMonth: '2026-03', linked: true });
     expect(await linkOn(husband, october)).toMatchObject({ billMonth: '2026-10', linked: true });
@@ -86,7 +87,7 @@ describe('R1: bill links an older build never sent', () => {
 
     // Once only: run again, nothing more goes.
     const after = (await outboxOps(wife.database)).length;
-    expect(await runSharedBookRepairs(wife.database, bookId, { today: TODAY })).toEqual({ billLinks: null, eventTags: null });
+    expect(await runSharedBookRepairs(wife.database, bookId, { today: TODAY })).toEqual({ billLinks: null, billLinksWaiting: false, eventTags: null });
     expect((await outboxOps(wife.database)).length).toBe(after);
     // The husband's own run: he had no old link. A link made by this build before its first repair goes again (the
     // same value, so nothing changes on either phone); the wife's old April link is not his to send.
@@ -96,6 +97,31 @@ describe('R1: bill links an older build never sent', () => {
     const purchases = async (d: Device) => (await projectBook(d.database, bookId)).purchase as Record<string, unknown>;
     const [w, h] = [await purchases(wife), await purchases(husband)];
     for (const id of [march, october, november]) expect(h[id]).toEqual(w[id]);
+  });
+});
+
+describe('R1 on a purchase the partner recorded (fix round 1, #2)', () => {
+  it('her old link on his purchase reaches him: his creation op naming no bill is no newer word on the link', async () => {
+    const home = new Household();
+    const wife = await home.device('Wife');
+    const husband = await home.device('Husband');
+    const bookId = await home.share(wife);
+    await home.join(husband, wife);
+    await home.settle();
+    const cat = await categoryOf(wife.database, bookId, 'Groceries');
+    const bill = await saveExpenseTemplate(wife.database, wife.ws, { name: 'Fibre', categoryAccountId: cat, moneyAccountId: wife.bank, amountMinor: 410_000, dayOfMonth: 10, startsMonth: '2026-03' });
+    await home.settle();
+    const hcat = await categoryOf(husband.database, bookId, 'Groceries');
+    const his = await postTransaction(husband.database, husband.ws, {
+      occurredOn: '2026-06-11', description: 'Fibre June', lines: [{ accountId: hcat, amountMinor: 410_000, currency: 'IDR' }, { accountId: husband.bank, amountMinor: -410_000, currency: 'IDR' }],
+    });
+    await home.settle();
+    const copy = (await headOf(wife.database, his))!;
+    await wife.database.db.run(sql`INSERT INTO bill_payments (transaction_id, workspace_id, template_id, bill_month) VALUES (${copy}, ${wife.ws.workspaceId}, ${bill}, '2026-06')`);
+    expect((await runSharedBookRepairs(wife.database, bookId, { today: TODAY })).billLinks).toBe(1);
+    await home.settle();
+    expect(await billOfPurchase(husband.database, husband.ws, (await headOf(husband.database, his))!)).toMatchObject({ templateId: bill, billMonth: '2026-06', linked: true });
+    expect(await billOfPurchase(wife.database, wife.ws, copy)).toMatchObject({ billMonth: '2026-06', linked: true });
   });
 });
 
@@ -172,7 +198,7 @@ describe('R2: Family purchases tagged to an event without being moved', () => {
     ]);
     expect(await repairNotices(husband.database)).toEqual([]);
     // Once only.
-    expect(await runSharedBookRepairs(wife.database, s.family, { today: TODAY })).toEqual({ billLinks: null, eventTags: null });
+    expect(await runSharedBookRepairs(wife.database, s.family, { today: TODAY })).toEqual({ billLinks: null, billLinksWaiting: false, eventTags: null });
     await dismissRepairNotice(wife.database, s.family);
     expect(await repairNotices(wife.database)).toEqual([]);
   });

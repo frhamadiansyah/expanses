@@ -6,8 +6,8 @@ import { resolveRates, type RateFetcher } from '../repos/fx';
 import { eventBookOfEventTx } from '../repos/shared-event-records';
 import { moveIntoSharedEvent } from '../repos/shared-event-moves';
 import { partnerPurchaseRefusalTx, sharedRowTx, untagSharedRowsTx } from '../repos/shared-workspace-rows';
-import { captureConfigOf, localDeviceId, projectPurchase, type SharedBook, writeChangeSetsTx } from './capture';
-import { decodeHlc } from './hlc';
+import { captureConfigOf, projectPurchase, type SharedBook, writeChangeSetsTx } from './capture';
+import { BILL_LINK_LEVEL, bookAtLevelTx } from './level';
 import type { Op } from './types';
 
 /*
@@ -17,9 +17,9 @@ import type { Op } from './types';
  * that fails is reported and tried again on the next sync; it never stops a sync, and writes nothing it did not finish.
  *
  * R1 bill links: a purchase linked to a bill's month by an older build never sent the link (in a shared workspace the
- * link was refused; one made before sharing went as no bill). Each such link here is sent now, through the outbox with
- * its clock, unless the partner has had the last word on that purchase's bill since, or another payment settles the
- * same month (it would read as paid twice).
+ * link was refused; one made before sharing went as no bill). Once every device in the book reads links (`level.ts`),
+ * each link here is sent, through the outbox with its clock — after a full pull it is this phone's merged value —
+ * unless another payment settles the same month (it would read as paid twice). While a device is below, it waits.
  *
  * R2 event tags: a shared workspace's purchase tagged to an event but never moved there (owner decision D2, revised):
  * the payer's own phone moves it into the shared event when that event is active here, after fetching a missing rate;
@@ -60,8 +60,10 @@ export interface RepairNotice {
 }
 
 export interface RepairReport {
-  /** R1: links sent; null when it had run already. */
+  /** R1: links sent; null when it had run already, or is waiting (`billLinksWaiting`). */
   billLinks: number | null;
+  /** R1 waits for every device in the book to read links (fix round 1, #1): it runs on a later sync. */
+  billLinksWaiting: boolean;
   /** R2: rows moved and untagged; null when it had run already. */
   eventTags: { moved: number; untagged: number } | null;
 }
@@ -81,7 +83,6 @@ async function activeBookTx(tx: Db, bookId: string): Promise<(SharedBook & { wor
  * `{ bill: { templateId, billMonth, linked: true } }`. Returns how many.
  */
 async function repairBillLinksTx(tx: Tx, database: Database, book: SharedBook): Promise<number> {
-  const me = await localDeviceId(tx);
   const rows = await tx.values<[string, string, string, string, string, string]>(sql`
     SELECT l.lineage_id, l.head_transaction_id, l.paid_by, l.paid_label, p.template_id, p.bill_month
     FROM sync_lineage l
@@ -91,10 +92,8 @@ async function repairBillLinksTx(tx: Tx, database: Database, book: SharedBook): 
     ORDER BY l.lineage_id`);
   const ops: Op[] = [];
   for (const [lineageId, head, paidBy, paidLabel, templateId, billMonth] of rows) {
-    // The partner's last word on this purchase's bill is newer than anything this phone sent: theirs stands.
-    const [clock] = await tx.values<[string]>(sql`
-      SELECT hlc FROM sync_field_clocks WHERE book_id = ${book.bookId} AND entity = 'purchase' AND id = ${lineageId} AND field = 'bill'`);
-    if (clock && decodeHlc(clock[0]).deviceId !== me) continue;
+    // No clock is asked (fix round 1, #2): after a full pull the link here is this phone's merged value — a partner's
+    // newer link or unlink has already been applied over it — and a creation op naming no bill is no word on a link.
     // Another payment settles the same month here (the partner paid it meanwhile): sending the link would pay it twice.
     const other = await tx.values(sql`
       SELECT 1 FROM bill_payments p JOIN transactions t ON t.id = p.transaction_id
@@ -199,13 +198,21 @@ async function tryMove(database: Database, ws: WorkspaceContext, eventId: string
  * others have had their turn, for the caller to log; nothing it wrote half-way stays (each step is one db transaction).
  */
 export async function runSharedBookRepairs(database: Database, bookId: string, options: { fetcher?: RateFetcher; today?: string } = {}): Promise<RepairReport> {
-  const report: RepairReport = { billLinks: null, eventTags: null };
+  const report: RepairReport = { billLinks: null, billLinksWaiting: false, eventTags: null };
   const today = options.today ?? isoDate();
   const failures: unknown[] = [];
   try {
     report.billLinks = await database.transaction(async (tx) => {
       const book = await activeBookTx(tx, bookId);
-      if (!book || (await doneTx(tx, BILL_LINKS, bookId))) return null;
+      if (!book) return null;
+      if (!(await bookAtLevelTx(tx, bookId, BILL_LINK_LEVEL))) {
+        // A device below the level (an older build, or one that joined since): links stay here, and the repair runs
+        // again once it has updated — for the links made meanwhile too.
+        report.billLinksWaiting = true;
+        await tx.run(sql`DELETE FROM settings WHERE key = ${markerKey(BILL_LINKS, bookId)}`);
+        return null;
+      }
+      if (await doneTx(tx, BILL_LINKS, bookId)) return null;
       if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'bill_payments'`)).length === 0) return null;
       const sent = await repairBillLinksTx(tx, database, book);
       await markDoneTx(tx, BILL_LINKS, bookId);
