@@ -23,6 +23,24 @@ export function planGroupChoices(kind: AssetKind | null | undefined, subtype: st
   return PLAN_GROUP_ORDER.filter((group) => allowed.has(group));
 }
 
+/** The two money items one tax code files (0102), told apart only by the account's subtype. */
+const SAME_CODE_KINDS = ['bank', 'savings'] as const;
+type SameCodeKind = (typeof SAME_CODE_KINDS)[number];
+const isSameCodeKind = (value: string | undefined): value is SameCodeKind => (SAME_CODE_KINDS as readonly (string | undefined)[]).includes(value);
+
+/**
+ * What a Description picked from the list — or a code typed — writes. The code, when it differs from the one kept; and,
+ * when a current account is picked as a saving account or a saving account as a current account, the kind
+ * (`setMoneyAccountKind`), since the shared 0102 cannot say which one it is. Only that pair: a pick of another item
+ * sharing a code (a broker's cash as other cash equivalents) changes no account's kind. Empty when nothing changes.
+ */
+export function descriptionPick(current: { code: string; subtype?: string }, next: string, value?: string): { coretaxCode?: string | null; kind?: SameCodeKind } {
+  const pick: { coretaxCode?: string | null; kind?: SameCodeKind } = {};
+  if (next !== current.code) pick.coretaxCode = next === '' ? null : next;
+  if (isSameCodeKind(current.subtype) && isSameCodeKind(value) && value !== current.subtype) pick.kind = value;
+  return pick;
+}
+
 /** How a thing's income is taxed, in the few words a row has room for; what each means sits behind the row's ⓘ. */
 export const TAX_TREATMENT_LABELS: Record<'final' | 'not_object' | 'ordinary', string> = {
   final: 'Final',

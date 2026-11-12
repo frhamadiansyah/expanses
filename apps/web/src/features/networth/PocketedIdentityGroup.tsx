@@ -1,5 +1,5 @@
 import type { PlanGroup } from '@expanses/core';
-import { setPocketedIdentity } from '@expanses/db';
+import { setMoneyAccountKind, setPocketedIdentity } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
@@ -10,7 +10,7 @@ import { errorHint } from './AssetSettings';
 import { CodeSheet, WhatItIsSheet } from './CodeSheets';
 import { PLAN_GROUP_LABELS } from './labels';
 import { useAssetProfiles } from './queries';
-import { planGroupChoices } from './settings-model';
+import { descriptionPick, planGroupChoices } from './settings-model';
 
 /**
  * A bank or saving account with pockets, named as a plain one is: Bank › name, then Group and Description. They are the
@@ -25,7 +25,6 @@ export function PocketedIdentityGroup({ accountId, subtype }: { accountId: strin
   const accounts = useAccounts();
   const profiles = useAssetProfiles();
   const [sheet, setSheet] = useState<'what' | 'code' | null>(null);
-  const [picked, setPicked] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, unknown>>({});
 
   const pocketIds = (accounts.data ?? []).filter((row) => row.parentId === accountId).map((row) => row.id);
@@ -34,22 +33,25 @@ export function PocketedIdentityGroup({ accountId, subtype }: { accountId: strin
   const code = profile?.coretaxCode ?? '';
   const reportable = profile?.reportable ?? true;
 
-  const save = async (row: string, change: Parameters<typeof setPocketedIdentity>[3]) => {
+  const save = async (row: string, change: Parameters<typeof setPocketedIdentity>[3], kind?: 'bank' | 'savings') => {
     setErrors((was) => ({ ...was, [row]: null }));
     try {
-      await setPocketedIdentity(database, ws, accountId, change);
+      // The account and every pocket change kind together; the code, if it changed too, is kept by every pocket.
+      if (kind) await setMoneyAccountKind(database, ws, accountId, kind);
+      if (Object.keys(change).length > 0) await setPocketedIdentity(database, ws, accountId, change);
       await invalidate();
     } catch (e) {
       setErrors((was) => ({ ...was, [row]: e }));
     }
   };
+  // A current and a saving account share 0102, so picking the other one changes the account's kind, not its code.
   const saveCode = (next: string, value?: string) => {
     setSheet(null);
-    setPicked(value ?? null);
-    if (next === code) return;
-    void save('code', { coretaxCode: next === '' ? null : next });
+    const pick = descriptionPick({ code, subtype }, next, value);
+    if (pick.coretaxCode === undefined && pick.kind === undefined) return;
+    void save('code', pick.coretaxCode === undefined ? {} : { coretaxCode: pick.coretaxCode }, pick.kind);
   };
-  const chosen = choiceForCode(codeChoices('asset', code), code, picked ?? subtype);
+  const chosen = choiceForCode(codeChoices('asset', code), code, subtype);
   const groups = planGroupChoices(profile?.assetKind ?? null, subtype, group);
 
   return (
@@ -77,7 +79,7 @@ export function PocketedIdentityGroup({ accountId, subtype }: { accountId: strin
           hint={errorHint(errors.code)}
         />
       </InsetGroup>
-      {sheet === 'what' && <WhatItIsSheet code={code} itemId={picked ?? subtype} onPick={saveCode} onTypeInstead={() => setSheet('code')} onClose={() => setSheet(null)} />}
+      {sheet === 'what' && <WhatItIsSheet code={code} itemId={subtype} onPick={saveCode} onTypeInstead={() => setSheet('code')} onClose={() => setSheet(null)} />}
       {sheet === 'code' && <CodeSheet code={code} onSave={saveCode} onClose={() => setSheet(null)} />}
     </>
   );

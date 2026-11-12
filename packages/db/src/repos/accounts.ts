@@ -449,6 +449,46 @@ export async function setAccountForSpending(database: Database, ws: WorkspaceCon
   });
 }
 
+/** The two kinds of money account one tax code files (0102): a current account and a saving account. */
+export type MoneyAccountKind = 'bank' | 'savings';
+const SAME_CODE_KINDS: readonly string[] = ['bank', 'savings'] satisfies readonly MoneyAccountKind[];
+
+/**
+ * Makes a current account a saving account, or a saving account a current account. Both file under 0102, so the
+ * tax code cannot say which one an account is; the subtype does, and this is the one way it is changed after the
+ * account is opened — picked under Description as the other of the two.
+ *
+ * Only that pair, either way: nothing else becomes one of them and neither becomes anything else. Only the subtype is
+ * written — the balance, its lines, its profile (group, code, tax fields), For spending, digits, card tier, debit cards
+ * and its net-worth share and joint settings are the account's own and stay. An account with pockets changes with
+ * every pocket under it, since a pocket is always its account's kind; a pocket alone is refused.
+ *
+ * What reads the subtype reads the new one from here on, history included: the savings ratio counts money moved into
+ * a saving account as put away and into a current account as not. Captured as a rename is, so a shared item's
+ * net-worth summary — which carries the subtype — goes out again to the partner.
+ */
+export async function setMoneyAccountKind(database: Database, ws: WorkspaceContext, id: string, kind: MoneyAccountKind): Promise<void> {
+  if (!SAME_CODE_KINDS.includes(kind)) throw new AccountError('Only a current account and a saving account change into each other');
+  await database.transaction(async (tx) => {
+    const [account] = await tx.select().from(accounts).where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
+    if (!account) throw new AccountError('Account not found');
+    if (account.kind !== 'asset' || !SAME_CODE_KINDS.includes(account.subtype)) throw new AccountError(`${account.name} is not a current or saving account`);
+    if (account.parentId !== null) throw new AccountError('A pocket is the kind of account it is in');
+    if (account.subtype === kind) return;
+    const pockets = await tx
+      .select({ id: accounts.id })
+      .from(accounts)
+      .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.parentId, id), eq(accounts.kind, 'asset')));
+    const ids = [id, ...pockets.map((pocket) => pocket.id)];
+    await withCapture(
+      tx,
+      ids.map((one) => ({ entity: 'category' as const, id: one })),
+      () => tx.update(accounts).set({ subtype: kind }).where(and(eq(accounts.workspaceId, ws.workspaceId), inArray(accounts.id, ids))),
+    );
+    await writeAudit(tx, ws, 'kind', id, { from: account.subtype, to: kind });
+  });
+}
+
 export async function renameAccount(database: Database, ws: WorkspaceContext, id: string, name: string): Promise<void> {
   if (!name.trim()) throw new AccountError('Name is required');
   await database.transaction((tx) => renameAccountTx(tx, ws, id, name));
