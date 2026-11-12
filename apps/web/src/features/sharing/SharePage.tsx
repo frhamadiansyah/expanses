@@ -1,4 +1,4 @@
-import { type BookRow, LeaveIncompleteError, SharingError, type SharingDetail } from '@expanses/db';
+import { type BookRow, LeaveIncompleteError, SharingError, type SharingDetail, type SharedEventView } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { CalendarDays, FileText, Inbox, Landmark, RefreshCw, TriangleAlert, User } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
@@ -12,6 +12,8 @@ import { useEvents } from '../events/queries';
 import { ShareEventSheet } from '../events/ShareEventSheet';
 import { useSharedEventSummaries, useSharedEventView } from '../events/shared-queries';
 import { pageLocks } from '../events/shared-view';
+import { DELETE_COPY_LABEL, deleteCopyConfirm, deleteEventCopyFlow } from '../events/delete-copy';
+import { useSafetyCopy } from '../workspaces/safety-copy';
 import { InviteCard } from './InviteCard';
 import { type ShareEventRow, shareEventRows } from './share-events';
 import { useNetWorthGroup } from './net-worth-queries';
@@ -118,10 +120,14 @@ function DiscardSheet({ book, onClose }: { book: BookRow; onClose: () => void })
   );
 }
 
-/** The owner's events, each shared from here or left from here: Share opens the event's own sheet, Leave is the event page's (D9). */
+/**
+ * The owner's events, each shared from here or left from here: Share opens the event's own sheet, Leave is the event
+ * page's (D9). A copy this phone's person is no longer in offers Delete this copy (this phone alone, a safety copy first).
+ */
 function ShareEvents() {
-  const { sync } = useApp();
+  const { sync, ws } = useApp();
   const invalidate = useInvalidateAll();
+  const safetyCopy = useSafetyCopy('before-delete');
   const events = useEvents();
   const summaries = useSharedEventSummaries();
   const [sharing, setSharing] = useState<string | null>(null);
@@ -142,12 +148,29 @@ function ShareEvents() {
     }
   }
 
+  async function deleteCopy(view: SharedEventView) {
+    if (!window.confirm(deleteCopyConfirm(view))) return;
+    setError(null);
+    try {
+      await deleteEventCopyFlow({ safetyCopy, remove: () => sync.deleteEventCopy(ws, view.bookId) });
+      await invalidate();
+    } catch (failure) {
+      setError(sayError(failure));
+    }
+  }
+
   return (
     <>
       <ErrorBox error={error} />
       <InsetGroup wide header="Events">
         {rows.map((row) => (
-          <ShareEventLine key={row.eventId} row={row} onShare={() => setSharing(row.eventId)} onLeave={(bookId) => void leave(row, bookId)} />
+          <ShareEventLine
+            key={row.eventId}
+            row={row}
+            onShare={() => setSharing(row.eventId)}
+            onLeave={(bookId) => void leave(row, bookId)}
+            onDeleteCopy={(view) => void deleteCopy(view)}
+          />
         ))}
       </InsetGroup>
       {sharingEvent ? <ShareEventSheet event={sharingEvent} onClose={() => setSharing(null)} /> : null}
@@ -155,19 +178,30 @@ function ShareEvents() {
   );
 }
 
-/** One event. A shared one is read for its book and for whether this phone's person is still in it; one already left has nothing to leave. */
-function ShareEventLine({ row, onShare, onLeave, position }: GroupChild & { row: ShareEventRow; onShare: () => void; onLeave: (bookId: string) => void }) {
+/**
+ * One event. A shared one is read for its book and for whether this phone's person is still in it; one already left
+ * has nothing to leave, and its copy here can be deleted instead.
+ */
+function ShareEventLine({
+  row,
+  onShare,
+  onLeave,
+  onDeleteCopy,
+  position,
+}: GroupChild & { row: ShareEventRow; onShare: () => void; onLeave: (bookId: string) => void; onDeleteCopy: (view: SharedEventView) => void }) {
   const view = useSharedEventView(row.shared ? row.eventId : null).data;
   const leavable = view && !pageLocks(view).readOnly ? view : null;
+  const readOnly = view && pageLocks(view).readOnly ? view : null;
   return (
     <InsetRow
       position={position}
       testId="share-event-row"
       icon={<CalendarDays size={15} aria-hidden />}
       title={row.name}
-      value={row.value}
-      label={row.shared ? `Leave ${row.name}` : `Share ${row.name}`}
-      onClick={row.shared ? (leavable ? () => onLeave(leavable.bookId) : undefined) : onShare}
+      value={readOnly ? DELETE_COPY_LABEL : row.value}
+      valueTone={readOnly ? 'alarm' : undefined}
+      label={readOnly ? `${DELETE_COPY_LABEL} of ${row.name}` : row.shared ? `Leave ${row.name}` : `Share ${row.name}`}
+      onClick={row.shared ? (leavable ? () => onLeave(leavable.bookId) : readOnly ? () => onDeleteCopy(readOnly) : undefined) : onShare}
     />
   );
 }

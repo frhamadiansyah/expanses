@@ -5,6 +5,7 @@ import {
   type Database,
   deleteBook,
   type DeleteBookOptions,
+  deleteEventCopy,
   type DeviceKeys,
   type KeyStore,
   listSharedBooks,
@@ -680,6 +681,20 @@ export class SyncService {
   /** Leave an event at a zero balance (D9): kept here read-only, no longer polled. */
   async leaveEvent(bookId: string): Promise<void> {
     await this.act(bookId, (engine) => engine.leaveEvent(bookId));
+  }
+
+  /**
+   * Delete this copy: a shared event this phone's person is no longer in comes off this phone alone (`deleteEventCopy`),
+   * in the book's turn, so no sync of it runs meanwhile. Nothing is sent; the relay and every other phone are untouched.
+   * The caller takes the safety copy first.
+   */
+  async deleteEventCopy(ws: WorkspaceContext, bookId: string): Promise<{ eventId: string; kept: number }> {
+    const done = await this.logged('erase', bookId, () => this.exclusive(bookId, () => deleteEventCopy(this.database, ws, bookId)));
+    await this.note('erase', bookId, { message: `Event copy deleted here: ${done.kept} own transactions kept` });
+    await this.refresh().catch((error: unknown) => this.failed('refresh', bookId, error));
+    this.emit();
+    this.onApplied();
+    return done;
   }
 
   /** Remove a person from an event at zero and in no record; a person with the app loses their devices in it. */
