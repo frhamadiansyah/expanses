@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fee waived, one way</title>
+<style>
+:root { --bg:#f2f2f7; --surface:#fff; --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e0e0e4; --fill:#efeff2; --tint:#007aff; --up:#248a3d; --warn:#b25000; }
+* { box-sizing:border-box; }
+body { margin:0; background:#e6e6ea; color:var(--ink); font:14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; padding:24px 16px 48px; }
+h1 { font-size:20px; margin:0 0 4px; } .lede { color:#555; margin:0 0 20px; max-width:980px; }
+h2 { font-size:16px; margin:28px 0 12px; }
+.pair { display:flex; flex-wrap:wrap; gap:22px; align-items:flex-start; }
+.col { width:320px; max-width:100%; }
+.cap { font-weight:600; margin:0 0 8px; } .cap .n { display:inline-block; background:#1c1c1e; color:#fff; border-radius:5px; padding:0 6px; font-size:12px; margin-right:6px; }
+.phone { background:var(--bg); border-radius:28px; padding:12px 14px 18px; border:1px solid #d4d4d8; min-height:560px; position:relative; overflow:hidden; }
+.bar { display:flex; align-items:center; justify-content:space-between; margin:2px 0 10px; }
+.round { width:34px; height:34px; border-radius:50%; background:#e5e5ea; display:inline-flex; align-items:center; justify-content:center; font-size:15px; }
+.ttl { font-size:17px; font-weight:600; }
+.gh { font-size:12.5px; color:var(--ink3); margin:16px 6px 5px; text-transform:uppercase; letter-spacing:.03em; }
+.gf { font-size:12.5px; color:var(--ink3); margin:6px 6px 0; }
+.ig { background:var(--surface); border-radius:11px; overflow:hidden; }
+.row { display:flex; align-items:center; gap:10px; padding:10px 13px; min-height:46px; position:relative; font-size:15px; }
+.ig .row + .row::before { content:""; position:absolute; top:0; left:13px; right:0; border-top:.5px solid var(--hair); }
+.grow { flex:1; min-width:0; }
+.s { font-size:12px; color:var(--ink3); }
+.val { color:var(--ink3); white-space:nowrap; } .amt { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.chev { color:#c7c7cc; margin-left:4px; }
+.ok { color:var(--up); }
+.sw { width:46px; height:28px; border-radius:14px; background:#e3e3e8; position:relative; flex-shrink:0; } .sw::after { content:""; position:absolute; top:2px; left:2px; width:24px; height:24px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+.sw.on { background:#34c759; } .sw.on::after { left:auto; right:2px; }
+.scrim { position:absolute; inset:0; background:rgba(0,0,0,.25); }
+.sheet { position:absolute; left:0; right:0; bottom:0; background:var(--bg); border-radius:18px 18px 0 0; padding:10px 14px 22px; box-shadow:0 -6px 20px rgba(0,0,0,.12); }
+.grab { width:36px; height:5px; border-radius:3px; background:#c7c7cc; margin:0 auto 10px; }
+.hero { background:linear-gradient(135deg,#1f3b73,#2f5fb3); color:#fff; border-radius:14px; padding:14px; height:150px; display:flex; flex-direction:column; justify-content:space-between; }
+.chal { background:var(--surface); border-radius:11px; padding:11px 13px; margin-top:12px; }
+.btnrow { color:var(--tint); font-size:15px; padding:10px 13px; }
+.mark { outline:2px dashed #2563eb; outline-offset:2px; border-radius:11px; }
+.note { font-size:12.5px; color:#444; margin:10px 2px 0; }
+.toast { position:absolute; left:14px; right:14px; bottom:18px; background:#fff; border-radius:14px; box-shadow:0 4px 18px rgba(0,0,0,.14); padding:10px 12px; display:flex; align-items:center; gap:10px; font-size:14px; }
+.toast .u { background:var(--fill); border-radius:12px; padding:4px 11px; font-size:13px; font-weight:600; }
+.gone { text-decoration:line-through; color:var(--ink3); }
+</style>
+</head>
+<body>
+<h1>Annual fee: one way to say it came back</h1>
+<p class="lede">One button, <b>Fee waived</b>, in both places: the “This year’s fee” row in Settings and the fee challenge on the card. Both open the same sheet. It fits a fee the app recorded and a fee charged before the app was used. “Waived” and “Fee refunded” as two separate things go away. Names and amounts are made up.</p>
+
+<h2>Where it starts (both open the same sheet)</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">1</span>Settings</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Settings</span><span class="round">✓</span></div>
+      <div class="gh">Annual fee</div>
+      <div class="ig">
+        <div class="row"><div class="grow">Fee</div><span class="amt val">Rp 1.200.000</span></div>
+        <div class="row"><div class="grow">Charged on</div><span class="val">5 Oct</span></div>
+        <div class="row mark"><div class="grow">This year’s fee</div><span class="val">Charged 5 Oct 2026</span><span class="chev">›</span></div>
+        <div class="row"><div class="grow">Fee waiver</div><span class="val">Spend Rp 30.000.000</span><span class="chev">›</span></div>
+      </div>
+      <p class="note">A tap opens the sheet straight away, with no alert in front of it.</p>
+      <div class="gh" style="margin-top:22px"><span class="gone">Before: alert “Waived / Charged as normal”, then a second sheet</span></div>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">2</span>Card page, fee challenge reached</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Nusa Platinum</span><span class="round">⋯</span></div>
+      <div class="hero"><div style="font-size:13px;opacity:.85">Nusa Bank</div><div style="font-size:22px;font-weight:700">Rp 0</div><div style="font-size:12px;opacity:.85">Credit card ·· 4821</div></div>
+      <div class="chal">
+        <div style="font-weight:600">Fee waiver challenge</div>
+        <div class="s">Spent Rp 30.000.000 of Rp 30.000.000 · reached</div>
+      </div>
+      <div class="ig mark" style="margin-top:8px">
+        <div class="btnrow">Fee waived</div>
+      </div>
+      <p class="note">Was “Fee refunded”. Same name as in Settings now.</p>
+    </div>
+  </div>
+</div>
+
+<h2>The one sheet</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">3</span>Fee not in the app (the October case)</p>
+    <div class="phone">
+      <div class="scrim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="bar"><span class="round">✕</span><span class="ttl">Fee waived · 2026</span><span class="round">✓</span></div>
+        <div class="ig">
+          <div class="row"><div class="grow">Back on the card</div><span class="sw on"></span></div>
+          <div class="row"><div class="grow">Amount</div><span class="amt">Rp 1.200.000</span></div>
+          <div class="row"><div class="grow">Came back on</div><span class="val">14 Nov 2026</span><span class="chev">›</span></div>
+        </div>
+        <div class="gf">The 5 Oct charge is not in the app, so this records only the money coming back. The card goes Rp 1.200.000 into credit.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">4</span>Fee recorded in the app</p>
+    <div class="phone">
+      <div class="scrim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="bar"><span class="round">✕</span><span class="ttl">Fee waived · 2026</span><span class="round">✓</span></div>
+        <div class="ig">
+          <div class="row"><div class="grow">Back on the card</div><span class="sw on"></span></div>
+          <div class="row"><div class="grow"><div>Fee charge</div><div class="s">Annual fee · 5 Oct 2026</div></div><span class="amt">Rp 1.200.000</span><span class="chev">›</span></div>
+          <div class="row"><div class="grow">Came back on</div><span class="val">14 Nov 2026</span><span class="chev">›</span></div>
+        </div>
+        <div class="gf">The refund cancels that charge in Fees &amp; charges. Tap Fee charge to pick another charge.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">5</span>Bank cancelled it before charging</p>
+    <div class="phone">
+      <div class="scrim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="bar"><span class="round">✕</span><span class="ttl">Fee waived · 2026</span><span class="round">✓</span></div>
+        <div class="ig">
+          <div class="row"><div class="grow">Back on the card</div><span class="sw"></span></div>
+        </div>
+        <div class="gf">Off: the fee was never charged, so nothing is recorded. The year is marked waived.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>After ✓</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">6</span>Settings and card page</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Settings</span><span class="round">✓</span></div>
+      <div class="ig">
+        <div class="row"><div class="grow">This year’s fee</div><span class="val ok">Waived</span><span class="chev">›</span></div>
+      </div>
+      <div class="gf">Next charge 5 Oct 2027. Tap to change or undo.</div>
+      <div class="chal" style="margin-top:20px">
+        <div style="font-weight:600">Fee waiver challenge</div>
+        <div class="s ok">✓ Fee waived · Rp 1.200.000 back on 14 Nov</div>
+      </div>
+      <div class="toast"><span>✓</span><span class="grow">Fee waived for 2026</span><span class="u">Undo</span></div>
+    </div>
+    <p class="note">One word everywhere, “Waived”. Whichever place it was done from, both places show it.</p>
+  </div>
+</div>
+</body>
+</html>
