@@ -63,8 +63,14 @@ async function assertGoal(tx: Db, ws: WorkspaceContext, goalId: string): Promise
 export async function recordTaggedTransfer(database: Database, ws: WorkspaceContext, input: TaggedTransferInput): Promise<TaggedTransferResult> {
   if (!(input.amountMinor > 0)) throw new AssetError('Enter an amount greater than zero');
   if (input.fromAccountId === input.toAccountId) throw new AssetError('Choose two different accounts');
+  return database.transaction((tx) => recordTaggedTransferTx(tx, ws, input));
+}
 
-  return database.transaction(async (tx) => {
+/** `recordTaggedTransfer` inside the caller's transaction, so a goal's due month and its transfer land together. */
+export async function recordTaggedTransferTx(tx: Db, ws: WorkspaceContext, input: TaggedTransferInput): Promise<TaggedTransferResult> {
+  if (!(input.amountMinor > 0)) throw new AssetError('Enter an amount greater than zero');
+  if (input.fromAccountId === input.toAccountId) throw new AssetError('Choose two different accounts');
+  {
     await assertAccountInWorkspace(tx, ws, input.fromAccountId, 'Account');
     await assertAccountInWorkspace(tx, ws, input.toAccountId, 'Account');
     if (input.goalId) await assertGoal(tx, ws, input.goalId);
@@ -144,7 +150,7 @@ export async function recordTaggedTransfer(database: Database, ws: WorkspaceCont
       landedMinor,
     });
     return { transactionId, setAsideMinor };
-  });
+  }
 }
 
 /**

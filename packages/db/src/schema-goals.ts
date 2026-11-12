@@ -70,3 +70,31 @@ export const goalsBefore0091 = sqliteTable('goals', {
   status: text('status', { enum: ['active', 'achieved', 'archived'] }).notNull(),
   createdAt: text('created_at').notNull(),
 });
+
+/** A goal's Monthly that comes due like a bill (0111): this phone's own, never synced. */
+export const goalDues = sqliteTable('goal_dues', {
+  goalId: text('goal_id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  day: integer('day').notNull(),
+  mode: text('mode', { enum: ['set_aside', 'transfer'] }).notNull(),
+  accountId: text('account_id'),
+  toAccountId: text('to_account_id'),
+  startedMonth: text('started_month').notNull(),
+  active: integer('active').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+/** What was done with one due month of a goal (0111). No row is an open month. */
+export const goalDueMonths = sqliteTable('goal_due_months', {
+  goalId: text('goal_id').notNull(),
+  workspaceId: text('workspace_id').notNull(),
+  month: text('month').notNull(),
+  state: text('state', { enum: ['done', 'skipped'] }).notNull(),
+  mode: text('mode', { enum: ['set_aside', 'transfer'] }),
+  amountMinor: integer('amount_minor'),
+  occurredOn: text('occurred_on'),
+  accountId: text('account_id'),
+  toAccountId: text('to_account_id'),
+  transactionId: text('transaction_id'),
+  createdAt: text('created_at').notNull(),
+});
