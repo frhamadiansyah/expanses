@@ -3,7 +3,10 @@ import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   categoryTotalsIn,
+  confirmDraft,
   convertEventToShared,
+  createDraft,
+  finishSharedEvent,
   createBook,
   inBook,
   listTransactions,
@@ -89,7 +92,7 @@ describe('F0: a phone never moves the partner’s Family purchase (D3)', () => {
     expect((await sharedEventView(s.husband.database, ownerScope(s.husband.ws), s.trip.eventOf(s.husband)))!.expenses).toEqual([]);
   });
 
-  it('nor tags or untags it, by one row or a selection', async () => {
+  it('nor tags it, by one row or a selection', async () => {
     const s = await familyAndTrip();
     const his = await groceries(s, s.husband, 'Market', 90_000);
     await s.settle();
@@ -97,9 +100,7 @@ describe('F0: a phone never moves the partner’s Family purchase (D3)', () => {
     const own = await saveEvent(s.wife.database, ownerScope(s.wife.ws), { name: 'Birthday', startsOn: '2026-10-01', endsOn: '2026-10-31' });
     await expect(tagTransaction(s.wife.database, s.wife.ws, copy, own)).rejects.toMatchObject({ code: 'SHARED_WORKSPACE' });
     await expect(tagTransactions(s.wife.database, s.wife.ws, [copy], own)).rejects.toMatchObject({ code: 'SHARED_WORKSPACE' });
-    // A tag already there from an older build: taking it off is the payer's phone's, too.
-    await s.wife.database.db.run(sql`UPDATE transactions SET event_id = ${own} WHERE id = ${copy}`);
-    await expect(tagTransaction(s.wife.database, s.wife.ws, copy, null)).rejects.toMatchObject({ code: 'PAID_BY_PARTNER', message: 'Paid by Husband: moved from Husband’s phone' });
+
   });
 
   it('nor moves it to another of her workspaces (Move to workspace voids it in Family as a move into an event would)', async () => {
@@ -227,6 +228,63 @@ describe('F2: a Family purchase never carries an event tag (D1)', () => {
       occurredOn: '2026-10-06', description: 'Bakery and coffee', lines: expenseLines({ categoryAccountId: category, paymentAccountId: s.wife.bank, amountMinor: 45_000, currency: 'IDR' }),
     });
     const [row] = await s.wife.database.db.values<[string | null]>(sql`SELECT event_id FROM transactions WHERE id = ${edited}`);
+    expect(row).toEqual([null]);
+    await s.settle();
+    expect(await familyOctober(s, s.wife)).toEqual(await familyOctober(s, s.husband));
+  });
+});
+
+describe('fix round 1: doors that save first, then move or drop the tag (#5, #6)', () => {
+  it('a draft confirmed in Family into the shared event moves there; one refused, or a private event, saves in Family with why', async () => {
+    const s = await familyAndTrip();
+    const category = await categoryOf(s.wife.database, s.family, 'Groceries');
+    const draft = (description: string, accountId = s.wife.bank, currency = 'IDR', amountMinor = 55_000) =>
+      createDraft(s.wife.database, s.wife.ws, { source: 'screen', occurredOn: '2026-10-06', description, amountMinor, currency, accountId, categoryAccountId: category });
+    const moved = await confirmDraft(s.wife.database, s.wife.ws, await draft('Kebab'), { extras: { eventId: s.trip.eventOf(s.wife) } });
+    expect(moved.notMoved).toBeNull();
+    const own = await saveEvent(s.wife.database, ownerScope(s.wife.ws), { name: 'Birthday', startsOn: '2026-10-01', endsOn: '2026-10-31' });
+    const privately = await confirmDraft(s.wife.database, s.wife.ws, await draft('Cake'), { extras: { eventId: own } });
+    expect(privately.notMoved).toBe('Event tag removed: Personal spending can’t be in a private event.');
+    // The trip is called done meanwhile: nothing more moves into it.
+    await finishSharedEvent(s.wife.database, ownerScope(s.wife.ws), s.trip.eventOf(s.wife), true);
+    const refused = await confirmDraft(s.wife.database, s.wife.ws, await draft('Duty free'), { extras: { eventId: s.trip.eventOf(s.wife) } });
+    expect(refused.notMoved).toBe('Saved in Personal. Not moved into Coast week: Coast week is done. Reopen it to change anything.');
+    await s.settle();
+    expect(await s.wife.database.db.values(sql`SELECT id FROM transactions WHERE event_id IS NOT NULL AND status = 'posted' AND id IN (SELECT transaction_id FROM book_transactions WHERE book_id = ${s.family})`)).toEqual([]);
+    expect(await familyOctober(s, s.wife)).toEqual(await familyOctober(s, s.husband));
+    expect((await familyOctober(s, s.wife)).count).toBe(2);
+    const view = (await sharedEventView(s.husband.database, ownerScope(s.husband.ws), s.trip.eventOf(s.husband)))!;
+    expect(view.expenses.map((e) => e.note)).toEqual(['Kebab']);
+  });
+
+  it('Move to workspace into Family drops a private event tag and says so', async () => {
+    const s = await familyAndTrip();
+    const side = await createBook(s.wife.database, s.wife.ws, { name: 'Side job', kind: 'business', baseCurrency: 'IDR', copyCategoriesFrom: s.family });
+    const there = await categoryOf(s.wife.database, side, 'Groceries');
+    const own = await saveEvent(s.wife.database, ownerScope(s.wife.ws), { name: 'Birthday', startsOn: '2026-10-01', endsOn: '2026-10-31' });
+    const cake = await postTransaction(s.wife.database, inBook(s.wife.ws, side), {
+      occurredOn: '2026-10-06', description: 'Cake', eventId: own, lines: expenseLines({ categoryAccountId: there, paymentAccountId: s.wife.bank, amountMinor: 70_000, currency: 'IDR' }),
+    });
+    const family = await categoryOf(s.wife.database, s.family, 'Groceries');
+    const moved = await replaceTransaction(s.wife.database, inBook(s.wife.ws, side), cake, {
+      occurredOn: '2026-10-06', description: 'Cake', moveToBook: true, toBookId: s.family, eventId: own,
+      lines: expenseLines({ categoryAccountId: family, paymentAccountId: s.wife.bank, amountMinor: 70_000, currency: 'IDR' }),
+    });
+    const [row] = await s.wife.database.db.values<[string | null]>(sql`SELECT event_id FROM transactions WHERE id = ${moved}`);
+    expect(row).toEqual([null]);
+    await s.settle();
+    expect(await familyOctober(s, s.wife)).toEqual(await familyOctober(s, s.husband));
+  });
+
+  it('the partner’s purchase can be untagged on this phone: the tag lived here alone', async () => {
+    const s = await familyAndTrip();
+    const his = await groceries(s, s.husband, 'Market', 90_000);
+    await s.settle();
+    const copy = await copyOf(s.wife, his);
+    const own = await saveEvent(s.wife.database, ownerScope(s.wife.ws), { name: 'Birthday', startsOn: '2026-10-01', endsOn: '2026-10-31' });
+    await s.wife.database.db.run(sql`UPDATE transactions SET event_id = ${own} WHERE id = ${copy}`);
+    await tagTransaction(s.wife.database, s.wife.ws, copy, null);
+    const [row] = await s.wife.database.db.values<[string | null]>(sql`SELECT event_id FROM transactions WHERE id = ${copy}`);
     expect(row).toEqual([null]);
     await s.settle();
     expect(await familyOctober(s, s.wife)).toEqual(await familyOctober(s, s.husband));

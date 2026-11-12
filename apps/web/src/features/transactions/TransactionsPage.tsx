@@ -21,6 +21,8 @@ import {
   sharedEventOf,
   tagTransactions,
   eventTagRefusals,
+  isBookShared,
+  tagDroppedText,
   topUpsCategory,
   type TransactionView,
   uncategorisedTransactionIds,
@@ -59,6 +61,7 @@ import { useLineState } from './cashflow-line-store';
 import { DayReorder, landed, movedBy, ReorderControls, reorderAttrs, ReorderScope } from './DayReorder';
 import { EventSheet } from './EventSheet';
 import { keptText, moveHint } from './shared-move';
+import { showToast } from '../../ui/Toast';
 import { homesOf, movedText, rowsToMove } from './event-tagging';
 import { ReceiptLink } from './ReceiptLink';
 import { SelectBar } from './SelectBar';
@@ -622,6 +625,9 @@ export function TransactionsPage() {
     setTagging({ busy: true, error: null });
     const where = allBooks.find((book) => book.id === toBook)?.name ?? 'that workspace';
     const kept: { id: string; why: string }[] = [];
+    // Into a shared workspace a private event's tag is dropped with the move (sync gaps fix round 1, #5), and said.
+    const intoShared = await isBookShared(database, toBook);
+    let tagDropped = false;
     for (const row of chosen) {
       const tx = row.tx!;
       const what = tx.description || 'A transaction';
@@ -656,11 +662,13 @@ export function TransactionsPage() {
           onMissing: () => undefined, where: 'Edit',
         });
         await replaceTransaction(database, ws, tx.id, { ...post.input, ratesToBase, moveToBook: true, toBookId: toBook });
+        if (intoShared && tx.eventId && !sharedSummaries[tx.eventId]) tagDropped = true;
       } catch (e) {
         kept.push({ id: tx.id, why: `${what}: ${e instanceof Error ? e.message : String(e)}` });
       }
     }
     await invalidate();
+    if (tagDropped) showToast(tagDroppedText(where));
     if (kept.length === 0) {
       stopSelecting();
       return;

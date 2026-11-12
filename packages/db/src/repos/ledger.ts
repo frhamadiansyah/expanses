@@ -1122,6 +1122,8 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
     ...(carriedParts !== undefined ? { excludedParts: carriedParts } : {}),
     // A correction is still the same spending, so it stays with the event it was tagged to — unless it says otherwise.
     ...(input.eventId === undefined ? { eventId: original?.eventId ?? null, eventIdCarried: true } : {}),
+    // Moved into a shared workspace, its tag is dropped with the move rather than refusing it (fix round 1, #5).
+    ...(moveToBook ? { eventIdCarried: true } : {}),
     // A correction keeps its place in its day; moved to another day it goes to the top of that one.
     ...(input.dayOrder === undefined ? { dayOrder: original && original.occurredOn === input.occurredOn ? (placed?.[0] ?? null) : null } : {}),
     // The figure typed with cents stays while the edit moves the same money (a new note, date or category); a new

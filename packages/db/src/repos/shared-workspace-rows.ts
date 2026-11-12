@@ -95,16 +95,19 @@ export function sharedTagRefusal(bookName: string): string {
 }
 
 /**
- * Why this transaction may not be given this event tag (or, `eventId` null, have its tag taken off), or null when it
- * may. Only a shared workspace's purchase is ever refused: a tag (D1), or an untag of the partner's purchase (D3).
+ * Why this transaction may not be given this event tag, or null when it may. Only a shared workspace's purchase is ever
+ * refused a tag (D1). Taking a tag off is never refused (fix round 1, #6): the tag lives on this phone alone, the
+ * partner's purchase included, and taking it off is what makes this phone count it as the partner's phone does.
  */
 export async function eventTagRefusalTx(tx: Db, transactionId: string, eventId: string | null): Promise<string | null> {
+  if (eventId === null) return null;
   const row = await sharedRowTx(tx, transactionId);
-  if (!row) return null;
-  if (eventId !== null) return sharedTagRefusal(row.bookName);
-  const [tagged] = await tx.values<[string | null]>(sql`SELECT event_id FROM transactions WHERE id = ${transactionId}`);
-  if (!tagged || tagged[0] === null) return null; // nothing to take off
-  return partnerPurchaseRefusalTx(tx, transactionId, row);
+  return row ? sharedTagRefusal(row.bookName) : null;
+}
+
+/** What a save says when it took a private event's tag off a shared workspace's purchase (fix round 1, #5). */
+export function tagDroppedText(bookName: string): string {
+  return `Event tag removed: ${bookName} spending can’t be in a private event.`;
 }
 
 /**

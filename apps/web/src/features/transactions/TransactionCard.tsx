@@ -8,6 +8,8 @@ import {
   guessCategoryFromHistory,
   memberTransfersOf,
   moveIntoSharedEvent,
+  isBookShared,
+  tagDroppedText,
   ownerScope,
   sharedEventOf,
   paidFromAccount,
@@ -687,6 +689,10 @@ function CardBody({
            * (a split bill) stays here, saved, and the reason is shown.
            */
           if (moveInto) await moveInto(replaced);
+          // Moved into a shared workspace, a private event's tag went with the move (sync gaps fix round 1, #5).
+          else if (moveTo && draft.eventId && target === null && (await isBookShared(database, moveTo))) {
+            notMoved = tagDroppedText(allBooks.find((book) => book.id === moveTo)?.name ?? 'That workspace');
+          }
         }
         else {
           posted = await postTransaction(database, ws, { ...withoutEventTag(post.input), ratesToBase, setAside: setAside.choice, settledBeforeApp: paidOff, ...(offersPast ? { pastPurchase: pastOn } : {}) });

@@ -128,10 +128,7 @@ export async function tagTransaction(database: Database, ws: WorkspaceContext, t
   await tagTransactions(database, ws, [transactionId], eventId);
 }
 
-/**
- * Why each of these rows may not take this tag (`eventId`), or have its tag taken off (null): a shared workspace's
- * purchase never carries one (D1), and only its payer's phone takes an old one off (D3). The rows not listed may.
- */
+/** Why each of these rows may not take this tag: a shared workspace's purchase never carries one (D1). The rest may. */
 export async function eventTagRefusals(database: Database, transactionIds: readonly string[], eventId: string | null): Promise<{ transactionId: string; why: string }[]> {
   const out: { transactionId: string; why: string }[] = [];
   for (const transactionId of [...new Set(transactionIds)]) {
@@ -161,7 +158,7 @@ export async function tagTransactions(database: Database, ws: WorkspaceContext, 
     // Sync gaps D1, D3: checked inside the transaction that writes, so the whole selection is refused or none of it.
     for (const id of ids) {
       const why = await eventTagRefusalTx(tx, id, eventId);
-      if (why) throw new EventError(eventId === null ? 'PAID_BY_PARTNER' : 'SHARED_WORKSPACE', why);
+      if (why) throw new EventError('SHARED_WORKSPACE', why);
     }
     for (let at = 0; at < ids.length; at += TAG_SLICE) {
       await tx
