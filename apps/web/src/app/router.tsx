@@ -40,6 +40,7 @@ import { CardInstalmentsPage } from '../features/cards/CardInstalmentsPage';
 import { CardProductPage, CardSettingsPage } from '../features/cards/CardSettingsPage';
 import { CardByHandPage, CardCatalogPreviewPage } from '../features/cards/CardProductPages';
 import { CardStatementPage } from '../features/cards/CardStatementPage';
+import { JointItemPage } from '../features/wallet/JointItemPage';
 import { WalletPage } from '../features/wallet/WalletPage';
 import { WalletReorderPage } from '../features/wallet/WalletReorderPage';
 import { ProgrammePage } from '../features/cards/ProgrammePage';
@@ -341,6 +342,8 @@ const routeTree = rootRoute.addChildren([
     createRoute({ getParentRoute: () => walletRoute, path: '/wallet', component: () => null }),
     // Money opened from Wallet: its account page, under its raised card. Opened from anywhere else it stands alone.
     createRoute({ getParentRoute: () => walletRoute, path: '/accounts/$accountId', component: AccountPage }),
+    // The partner's joint account or joint card, opened from its card in Wallet: its page under the raised card.
+    createRoute({ getParentRoute: () => walletRoute, path: '/wallet/joint/$itemId', component: JointItemPage }),
     createRoute({
       getParentRoute: () => walletRoute,
       path: '/cards/$cardId',

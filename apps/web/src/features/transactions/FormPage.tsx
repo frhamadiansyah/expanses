@@ -33,7 +33,7 @@ export function NewTransactionRoute() {
   const readOnly = useOpenBookReadOnly();
   // An account's page opens the form already knowing the mode and the account; the tab bar's ＋ says neither. An
   // event's Add spending names the event, and a plan item's "Buy it now" the item and the tab the plan was read in.
-  const { mode, account, to, event, item, expense, ws: tab, amount, currency, note, date } = newRoute.useSearch();
+  const { mode, account, to, event, item, expense, ws: tab, amount, currency, note, date, partner } = newRoute.useSearch();
   const events = useEvents();
   /*
    * A shared event is recorded on its own card (shared events §6, R14): Paid by, Split, its categories, its rate. Read
@@ -140,12 +140,13 @@ export function NewTransactionRoute() {
           seed={{
             moneyId: account,
             toId: to,
+            ...(partner ? { partnerItemId: partner } : {}),
             ...(opening ? { eventId: opening.eventId } : {}),
             ...(buying ? buySeed(buying, ws.baseCurrency) : {}),
           }}
           followUp={followUp}
           // Only the plain blank form: an account's page, an event or a trade brings its own.
-          defaultPaidWith={!account && !to && !opening && !trading && !buying && (mode ?? 'expense') === 'expense'}
+          defaultPaidWith={!account && !to && !partner && !opening && !trading && !buying && (mode ?? 'expense') === 'expense'}
           onBack={back}
           onDone={back}
         />

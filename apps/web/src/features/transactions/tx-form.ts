@@ -318,6 +318,11 @@ export function emptyForm(bookId: string, today: string = isoDate()): FormDraft 
  */
 export interface CardSeed {
   moneyId?: string;
+  /**
+   * A partner's shared item, by item id (a joint card in Wallet): picked as Paid with, or as a transfer's From, once
+   * Paid with lists it. Not a field of the draft: picking it makes the placeholder it posts on (`paidFromAccount`).
+   */
+  partnerItemId?: string;
   toId?: string;
   eventId?: string;
   categoryId?: string;

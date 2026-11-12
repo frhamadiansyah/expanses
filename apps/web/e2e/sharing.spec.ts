@@ -8,6 +8,7 @@ import { fillDay, openNewAsset } from './add-asset';
 import { addForm, addTransaction, addTransfer, fillAmount, openAmount, saveButton } from './add-transaction';
 import { cardPage, saveCardTerms } from './card-section';
 import { openDrawers } from './drawers';
+import { pickView } from './wallet';
 import { openMemberPage, openNetWorthPage, openSharePage, openWorkspacePage, openWorkspaceSharePage, renameWorkspace, shareWorkspace } from './workspace-page';
 
 /*
@@ -301,16 +302,16 @@ test('a workspace in another currency than yours cannot be shared, and says why'
 });
 
 /** Fandri shares a workspace called Home and Dewi joins it: the start of every edge below. */
-async function shareAndJoin(page: Page, dewi: Page) {
+async function shareAndJoin(page: Page, dewi: Page, names: { owner: string; joiner: string } = { owner: 'Fandri', joiner: 'Dewi' }) {
   await openWorkspaceSettings(page, 'Personal');
   await renameWorkspace(page, 'Home');
   await expect(page.getByText('Now called Home.')).toBeVisible();
   await openSharePage(page);
-  const code = await shareWorkspace(page, 'Fandri');
+  const code = await shareWorkspace(page, names.owner);
   await dewi.goto(`/join#${code}`);
   const join = dewi.getByTestId('join-workspace');
   await expect(join.getByText('Home', { exact: true })).toBeVisible({ timeout: 30_000 });
-  await join.getByLabel('Name').fill('Dewi');
+  await join.getByLabel('Name').fill(names.joiner);
   await join.getByRole('button', { name: 'Join', exact: true }).click();
   await expect(join).toHaveCount(0, { timeout: 60_000 });
 }
@@ -997,6 +998,139 @@ test('a joint account: the partner pays from it, both list the same rows with wh
     await expect(rowsOn(dewi)).toHaveCount(0, { timeout: 1_000 });
   });
   await expect(dewi.locator('main')).toContainText('9.470.000');
+});
+
+/*
+ * The partner's joint account and joint card in Wallet (owner, 12 Nov; mockups 2026-11-12-wallet-joint-items A and
+ * -marks option 4). Rina shares a saving account, a credit card and her cash, separate tax IDs, and turns Joint on for
+ * the first two: on Andi's phone they are cards in Wallet with "· Rina’s" after the type, they count in his Balance and
+ * its rows filter to them, they leave the "Rina's, shared" list (her cash stays there), and a tap opens the item's page,
+ * whose Add records a purchase on her card in the shared workspace.
+ */
+test('the partner’s joint account and joint card are cards in Wallet, counted in Balance, and open their own page', async ({ page, browser }, info) => {
+  test.setTimeout(900_000);
+  page.on('dialog', (dialog) => void dialog.accept());
+  const andi = await secondDevice(browser, info);
+  await openAccount(page, { subtype: 'savings', name: 'Joint savings', balance: '8000000' });
+  await openAccount(page, { subtype: 'cash', name: 'Rina Cash', balance: '100000' });
+  await openCard(page, { name: 'Rina Card', last4: '5678', owed: '850000' });
+  await openAccount(andi, { subtype: 'bank', name: 'Andi Payroll', balance: '4300000' });
+  await page.goto('/transactions');
+  await shareAndJoin(page, andi, { owner: 'Rina', joiner: 'Andi' });
+
+  const section = await netWorthSection(page);
+  await eventually(page, () => expect(section.getByTestId('share-net-worth')).toBeVisible({ timeout: 1_000 }));
+  const setup = page.getByTestId('net-worth-setup');
+  await setup.getByTestId('filing-separate').click();
+  await setup.getByRole('button', { name: 'Invite', exact: true }).click();
+  const theirs = await netWorthSection(andi);
+  await eventually(andi, () => expect(theirs.getByTestId('net-worth-asked')).toContainText('Rina asks to share net worth', { timeout: 1_000 }));
+  await theirs.getByRole('button', { name: 'Confirm', exact: true }).click();
+  await eventually(andi, () => expect(theirs.getByTestId('net-worth-status')).toContainText('Shared with Rina', { timeout: 1_000 }));
+  await reviewAndShare(andi, info, 'wj1-review');
+  await reviewAndShare(page, info, 'wj1-review');
+
+  // Shared but not joint yet: nothing of Rina's is a card on Andi's Wallet; all three are in "Rina's, shared".
+  const sharedRows = andi.locator('[data-testid^="shared-item-"]');
+  await eventually(andi, async () => {
+    await andi.goto('/wallet');
+    await expect(andi.getByText("Rina's, shared")).toBeVisible({ timeout: 1_000 });
+    await expect(sharedRows).toHaveCount(3, { timeout: 1_000 });
+  });
+  await expect(walletCard(andi, 'Joint savings')).toHaveCount(0);
+
+  // Rina turns Joint account on for the savings and Joint card on for the card.
+  await page.goto('/wallet');
+  await walletCard(page, 'Joint savings').click();
+  await page.getByRole('checkbox', { name: 'Joint account' }).click({ force: true });
+  await expect(page.getByRole('checkbox', { name: 'Joint account' })).toBeChecked();
+  await page.goto('/wallet');
+  await walletCard(page, 'Rina Card').click();
+  await cardPage(page, 'Settings');
+  await page.getByRole('checkbox', { name: 'Joint card' }).click({ force: true });
+  await expect(page.getByRole('checkbox', { name: 'Joint card' })).toBeChecked();
+
+  // On Andi's Wallet both are cards, after his own of their kind; only her cash is left in "Rina's, shared".
+  await eventually(andi, async () => {
+    await andi.goto('/wallet');
+    await expect(walletCard(andi, 'Joint savings')).toBeVisible({ timeout: 1_000 });
+    await expect(walletCard(andi, 'Rina Card')).toBeVisible({ timeout: 1_000 });
+  });
+  await expect(walletCard(andi, 'Joint savings')).toHaveAccessibleName('Joint savings, Rina’s, Rp 8.000.000');
+  await expect(walletCard(andi, 'Rina Card')).toHaveAccessibleName('Rina Card, Rina’s, Rp 850.000');
+  await expect(sharedRows).toHaveCount(1);
+  await expect(sharedRows).toContainText('Rina Cash');
+
+  // The grid prints whose each is after its type, in the card's own type line, and the Balance counts both.
+  await pickView(andi, 'Grid');
+  const grid = andi.getByRole('region', { name: 'Cards' });
+  const faces = grid.getByTestId('card-face');
+  await expect(faces).toHaveCount(3);
+  await expect(faces.nth(0)).toHaveAttribute('aria-label', /^Andi Payroll/);
+  await expect(faces.nth(1).getByTestId('card-kind')).toHaveText('Saving account · Rina’s');
+  await expect(faces.nth(2).getByTestId('face-type')).toHaveText('Rina Card · Rina’s');
+  await expect(andi.getByTestId('wallet-balance')).toContainText('11.450.000');
+  await expect(andi.getByTestId('wallet-spending-row')).toContainText('12.300.000');
+  await expect(andi.getByTestId('wallet-cards-row')).toContainText('850.000');
+  await andi.getByTestId('wallet-spending-row').click();
+  await expect(andi.getByTestId('wallet-filter')).toContainText('Spending money · 2');
+  await expect(faces).toHaveCount(2);
+  await andi.getByTestId('wallet-cards-row').click();
+  await expect(andi.getByTestId('wallet-filter')).toContainText('Owed on cards · 1');
+  await expect(grid).toContainText('Rina Card');
+  await shot(andi, info, 'wj2-grid');
+
+  // A tap opens the joint account's page: its balance from Rina's phone, Add and Transfer, Settings greyed, its rows.
+  await andi.getByTestId('wallet-cards-row').click();
+  await walletCard(andi, 'Joint savings').click();
+  await expect(andi).toHaveURL(/\/wallet\/joint\/[^/]+$/);
+  await expect(andi.getByTestId('joint-item-hero')).toContainText('8.000.000');
+  await expect(andi.getByTestId('joint-item-from')).toContainText('from Rina’s phone');
+  await expect(andi.getByTestId('joint-add')).toBeEnabled();
+  await expect(andi.getByTestId('joint-transfer')).toBeEnabled();
+  await expect(andi.getByTestId('joint-settings')).toBeDisabled();
+  await expect(andi.locator('main')).toContainText('Joint account · 0 rows');
+  await expect(andi.locator('main')).toContainText('Add and Transfer record in Home. The account’s settings stay on Rina’s phone.');
+  await shot(andi, info, 'wj3-joint-account');
+
+  // The joint card's page: Pay and Settings greyed; Add opens the Add screen paying with her card, and the purchase is its row.
+  await andi.goto('/wallet');
+  await walletCard(andi, 'Rina Card').click();
+  await expect(andi.getByTestId('joint-item-hero')).toContainText('Owed');
+  await expect(andi.getByTestId('joint-pay')).toBeDisabled();
+  await expect(andi.locator('main')).toContainText('Purchases recorded in Home show on both phones. The statement, Pay and points stay on Rina’s phone.');
+  await andi.getByTestId('joint-add').click();
+  await expect(andi).toHaveURL(/\/transactions\/new/);
+  const form = addForm(andi);
+  await expect(form.getByRole('button', { name: /^Paid with/ })).toContainText('Rina Card', { timeout: 10_000 });
+  await openAmount(form);
+  await fillAmount(andi, form, '350000');
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await andi.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
+  await form.getByLabel('Note').fill('Fuel');
+  await saveButton(form).click();
+  await expect(form).toHaveCount(0);
+  await andi.goto('/wallet');
+  await walletCard(andi, 'Rina Card').click();
+  await expect(andi.getByTestId('joint-row').filter({ hasText: 'Fuel' })).toContainText('by me');
+  await expect(andi.locator('main')).toContainText('Joint card · 1 row');
+  await shot(andi, info, 'wj4-joint-card');
+
+  // Reorder cards places her card too: put in front of everything, it stays there once Wallet is read again.
+  await andi.goto('/wallet/reorder');
+  const reorderRows = andi.getByTestId('reorder-row');
+  await expect(reorderRows).toHaveCount(3);
+  await expect(reorderRows.nth(2)).toContainText('Rina Card');
+  const handle = andi.getByRole('button', { name: 'Reorder Rina Card', exact: true });
+  await handle.focus();
+  await andi.keyboard.press('ArrowUp');
+  await andi.keyboard.press('ArrowUp');
+  await expect(reorderRows.nth(0)).toContainText('Rina Card');
+  await andi.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(andi).toHaveURL(/\/wallet$/);
+  await andi.reload();
+  await expect(faces.nth(0)).toHaveAttribute('aria-label', /^Rina Card/);
+  await expect(faces.nth(1)).toHaveAttribute('aria-label', /^Andi Payroll/);
 });
 
 /*

@@ -44,6 +44,13 @@ describe('the Add screen’s address', () => {
     expect(newTransactionSearch({ mode: 'transfer', account: 'wallet', to: 'usd' })).toEqual({ mode: 'transfer', account: 'wallet', to: 'usd' });
     expect(newTransactionSearch({ mode: 'gift' })).toEqual({});
   });
+
+  it('reads a partner’s joint item from its Wallet card, and drops it on an event’s address', () => {
+    expect(newTransactionSearch({ mode: 'expense', partner: 'item-1' })).toEqual({ mode: 'expense', partner: 'item-1' });
+    expect(newTransactionSearch({ mode: 'transfer', partner: 'item-1' })).toEqual({ mode: 'transfer', partner: 'item-1' });
+    expect(newTransactionSearch({ event: 'e1', partner: 'item-1' })).toEqual({ event: 'e1' });
+    expect(newTransactionSearch({ partner: '' })).toEqual({});
+  });
 });
 
 describe('what an address names that this device holds', () => {

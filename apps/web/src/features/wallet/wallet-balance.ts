@@ -101,6 +101,20 @@ export interface WalletBoxInput {
   bills: readonly BillMonthInput[];
   /** YYYY-MM: the calendar month whose bills are still to pay. */
   month: string;
+  /** The partner's joint money and joint cards Wallet holds (`walletJoint`), from their summaries. */
+  joint?: readonly JointBoxInput[];
+}
+
+/**
+ * A partner's joint item as the box counts it: money adds what it holds to Spending money, a card what it owes to Owed
+ * on cards. The figure is the latest its owner's phone sent, however old: it is the latest balance known.
+ */
+export interface JointBoxInput {
+  key: string;
+  side: 'money' | 'credit';
+  /** In `currency`: what the money holds, or what the card owes. */
+  minor: number;
+  currency: string;
 }
 
 export interface WalletBox {
@@ -123,8 +137,17 @@ export interface WalletBox {
 }
 
 /** The whole box, from the rows it is read from (see the file's head). */
-export function walletBox({ book, balances, credit, baseCurrency, rates, setAsides, bills, month }: WalletBoxInput): WalletBox {
-  const spendable = moneySummary(book, balances, baseCurrency, rates, SPENDABLE_KINDS);
+export function walletBox({ book, balances, credit, baseCurrency, rates, setAsides, bills, month, joint = [] }: WalletBoxInput): WalletBox {
+  const own = moneySummary(book, balances, baseCurrency, rates, SPENDABLE_KINDS);
+  // The partner's joint money is spending money too: converted as own money is, a missing rate named the same way.
+  const jointMoney = joint.filter((item) => item.side === 'money').map((item) => ({ minor: item.minor, currency: item.currency }));
+  const shared = sumToBase({ amounts: jointMoney, baseCurrency, ratesToBase: rates });
+  const spendable = {
+    totalMinor: own.totalMinor === null || shared.totalMinor === null ? null : own.totalMinor + shared.totalMinor,
+    missing: [...new Set([...own.missing, ...shared.missing])].sort(),
+    converted: own.converted || jointMoney.some((amount) => amount.currency !== baseCurrency),
+    accounts: own.accounts + jointMoney.length,
+  };
   const counted = new Set(book.filter((a) => a.kind === 'asset' && SPENDABLE_KINDS.has(a.subtype)).map((a) => a.id));
   const kept = setAsides.filter((row) => counted.has(row.accountId));
   const promiseAmounts = kept.map((row) => ({ minor: row.setAsideMinor, currency: row.currency }));
@@ -132,7 +155,7 @@ export function walletBox({ book, balances, credit, baseCurrency, rates, setAsid
   const askedAmounts = credit.flatMap((card) => {
     const owes = owedMinor(balances, card.id);
     return owes > 0 ? [{ minor: owes, currency: card.currency ?? baseCurrency }] : [];
-  });
+  }).concat(joint.flatMap((item) => (item.side === 'credit' && item.minor > 0 ? [{ minor: item.minor, currency: item.currency }] : [])));
   const asked = sumToBase({ amounts: askedAmounts, baseCurrency, ratesToBase: rates });
   const funds = kept.flatMap((row) => row.funds.map((fund) => ({ billId: fund.billId, minor: fund.promisedMinor, currency: row.currency })));
   const owed = billsToPay(bills, month, funds);
@@ -175,6 +198,19 @@ export function filteredCards<T extends { key: string }>(cards: readonly T[], fi
   if (filter === null) return [...cards];
   const ids = new Set((filter === 'spending' ? money : credit).map((account) => account.id));
   return cards.filter((card) => ids.has(card.key));
+}
+
+/**
+ * The two sets the filter rows keep, own and the partner's together: the money cards (`walletMoney` and the joint money)
+ * for Spending money, the credit cards (`walletCredit` and the joint cards) for Owed on cards — as `filteredCards` takes them.
+ */
+export function walletFilterSets(
+  money: readonly Pick<AccountRow, 'id'>[],
+  credit: readonly Pick<AccountRow, 'id'>[],
+  joint: readonly Pick<JointBoxInput, 'key' | 'side'>[],
+): [Pick<AccountRow, 'id'>[], Pick<AccountRow, 'id'>[]] {
+  const of = (side: JointBoxInput['side']) => joint.filter((item) => item.side === side).map((item) => ({ id: item.key }));
+  return [[...money, ...of('money')], [...credit, ...of('credit')]];
 }
 
 /** What a money card's figure is, in the base currency: its balance, or its pockets' for an account with pockets. */
