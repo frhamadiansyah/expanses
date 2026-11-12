@@ -8,24 +8,29 @@ import { feeLine } from './fee-line';
 import { useSpendBonuses } from './spend-bonuses';
 import { shortDate } from './useCardPoints';
 
-/**
- * Settings' "This year's fee" row: how this year's charge stands (the charge's date, Waived, or Refunded once the bank
- * refunded a fee challenge). A tap asks whether it was waived.
- */
-export function YearFeeRow({ page, onAsk, position }: GroupChild & { page: CardPage; onAsk: () => void }) {
+/** How this year's charge stands on the card: its date, or Waived — however it was waived, a refund included. */
+export function useYearFeeLine(page: CardPage) {
   const { cp, currency, today } = page;
   const { refunds } = useSpendBonuses(cp, page.all, today);
   const terms = cp.terms;
-  const line = terms ? feeLine(terms.annualFeeMinor, terms.annualFeeOn, terms.annualFeeWaivedYear, currency, today, refunds.at(-1)?.feeYear ?? null) : null;
+  return terms ? feeLine(terms.annualFeeMinor, terms.annualFeeOn, terms.annualFeeWaivedYear, currency, today, refunds.at(-1)?.feeYear ?? null) : null;
+}
+
+/**
+ * Settings' "This year's fee" row: the charge's date, or Waived in green. A tap opens Fee waived straight away, which
+ * records the waiver, or shows what was recorded with Undo.
+ */
+export function YearFeeRow({ page, onAsk, position }: GroupChild & { page: CardPage; onAsk: () => void }) {
+  const line = useYearFeeLine(page);
   if (!line) return null;
-  const text = line.refunded ? 'Refunded' : line.waived ? 'Waived' : (line.when?.replace('Charged on ', '') ?? line.amount ?? '');
+  const text = line.waived ? 'Waived' : (line.when?.replace('Charged on ', '') ?? line.amount ?? '');
   return (
     <InsetRow
       testId="card-annual-fee"
       position={position}
       plain
       title="This year's fee"
-      value={<span data-testid="year-fee" className={cx(line.soon && 'text-[var(--ph-warn)]')}>{text}</span>}
+      value={<span data-testid="year-fee" className={cx(line.soon && 'text-[var(--ph-warn)]', line.waived && 'text-[var(--ph-up)]')}>{text}</span>}
       onClick={onAsk}
     />
   );

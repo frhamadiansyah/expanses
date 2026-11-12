@@ -14,8 +14,6 @@ import { cardSpendLines, PointsError } from './points';
  * the waiver and never fails to save a card.
  */
 
-export const REFUND_DESCRIPTION = 'Annual fee refund';
-
 const seen = new WeakSet<object>();
 async function tablesExist(db: Db): Promise<boolean> {
   if (seen.has(db)) return true;
@@ -93,53 +91,9 @@ export async function listFeeRefunds(db: Db, ws: WorkspaceContext, accountId?: s
   return rows.map(([transactionId, account, feeYear]) => ({ transactionId, accountId: account, feeYear: Number(feeYear) }));
 }
 
-/**
- * The bank refunded the fee a reached challenge was for. Posts "Annual fee refund" (+amount) into `intoAccountId`,
- * against the Membership fee category, linked to the challenge; the challenge is cleared. The fee's year is that of
- * the charge the card's fee date covers (the year received when the card has no fee date).
- */
-export async function refundFeeChallenge(
-  database: Database,
-  ws: WorkspaceContext,
-  input: { cardId: string; amountMinor: number; receivedOn: string; intoAccountId: string; today: string },
-): Promise<{ transactionId: string }> {
-  if (!(input.amountMinor > 0)) throw new PointsError('Enter the amount refunded');
-  return database.transaction(async (tx) => {
-    const challenge = (await listFeeWaivers(tx, ws)).get(input.cardId);
-    if (!challenge || challenge.kind !== 'challenge') throw new PointsError('This card has no fee challenge');
-    const [into] = await tx.select({ currency: accounts.currency }).from(accounts).where(and(eq(accounts.id, input.intoAccountId), eq(accounts.workspaceId, ws.workspaceId)));
-    if (!into) throw new PointsError('Choose where the refund went');
-    const keys = await categoryIdsByKeyTx(tx, ws);
-    const category = keys['miscellaneous.membership_fee'] ?? keys['miscellaneous.fees_charges'];
-    if (!category) throw new PointsError('The Membership fee category is missing');
-    const feeOn = (await feeFieldsByCard(tx, ws)).get(input.cardId)?.annualFeeOn ?? null;
-    const feeYear = Number((feeOn ? coveredCharge(feeOn, input.today) : input.receivedOn).slice(0, 4));
-    const transactionId = await postTransactionTx(tx, ws, {
-      occurredOn: input.receivedOn,
-      description: REFUND_DESCRIPTION,
-      lines: refundLines({ categoryAccountId: category, paymentAccountId: input.intoAccountId, amountMinor: input.amountMinor, currency: into.currency ?? ws.baseCurrency }),
-    });
-    await tx.run(
-      sql`INSERT INTO card_fee_refunds (transaction_id, workspace_id, account_id, fee_year, challenge_json, created_at)
-          VALUES (${transactionId}, ${ws.workspaceId}, ${input.cardId}, ${feeYear}, ${JSON.stringify(challenge)}, ${new Date().toISOString()})`,
-    );
-    await tx.run(sql`DELETE FROM card_fee_waivers WHERE account_id = ${input.cardId} AND workspace_id = ${ws.workspaceId}`);
-    return { transactionId };
-  });
-}
-
-/** Takes a refund back: the receipt is deleted and the challenge is put back as it was. */
-export async function undoFeeRefund(database: Database, ws: WorkspaceContext, transactionId: string): Promise<void> {
-  await database.transaction(async (tx) => {
-    const [row] = await tx.values<[string, string]>(
-      sql`SELECT account_id, challenge_json FROM card_fee_refunds WHERE transaction_id = ${transactionId} AND workspace_id = ${ws.workspaceId}`,
-    );
-    if (!row) throw new PointsError('That refund is not recorded');
-    await voidTransactionTx(tx, ws, transactionId);
-    await tx.run(sql`DELETE FROM card_fee_refunds WHERE transaction_id = ${transactionId}`);
-    // A waiver set since is left alone: only an empty card gets its challenge back.
-    if (!(await listFeeWaivers(tx, ws)).has(row[0])) await writeWaiver(tx, ws, row[0], JSON.parse(row[1]) as FeeWaiver);
-  });
+/** Puts back a challenge a refund cleared (the old Fee refunded removed it), as it stood. */
+export async function restoreWaiver(db: Db, ws: WorkspaceContext, accountId: string, waiver: FeeWaiver): Promise<void> {
+  await writeWaiver(db, ws, accountId, waiver);
 }
 
 /**

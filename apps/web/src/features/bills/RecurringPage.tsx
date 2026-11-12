@@ -23,7 +23,7 @@ import { PaySeveralSheet } from './PaySeveralSheet';
 import { PaySheet } from './PaySheet';
 import { useBillMoney, useMonthlyBills, useSinkingFunds, useYearlyBills } from './queries';
 import { type DueFee, useAnnualFees, useUpcomingFees } from '../cards/fee-due';
-import { FeeAlert } from '../cards/FeeAlert';
+import { FeeWaivedFlow } from '../cards/FeeWaivedSheet';
 import { FeeRow } from './FeeRow';
 import { Unconverted } from '../workspaces/Unconverted';
 import { type ToastIcon, UndoToast } from '../../ui/UndoToast';
@@ -361,7 +361,7 @@ export function RecurringPage() {
       })()}
 
       {/* The fee question opens from either page: Due soon on Monthly, Annual fees on Repeating. */}
-      {askingFee && <FeeAlert fee={askingFee} today={today} onClose={() => setAskingFee(null)} />}
+      {askingFee && <FeeWaivedFlow fee={askingFee} today={today} chargedAsNormal onClose={() => setAskingFee(null)} />}
 
       {toast && <UndoToast icon={toast.icon} text={toast.text} onUndo={() => void undo()} onDone={clearToast} />}
 

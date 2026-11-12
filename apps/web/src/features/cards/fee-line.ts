@@ -10,9 +10,8 @@ export interface FeeLine {
   when: string | null;
   /** The next charge is within the due-soon window and not waived. */
   soon: boolean;
+  /** This year's charge was waived: marked so, or refunded through the old Fee refunded (one word for both now). */
   waived: boolean;
-  /** This year's charge was refunded by the bank (a fee challenge met). */
-  refunded: boolean;
 }
 
 /** The annual fee row on a card's page; null while neither an amount nor a date is set. */
@@ -26,16 +25,14 @@ export function feeLine(
 ): FeeLine | null {
   if (feeMinor === null && !chargedOn) return null;
   const amount = feeMinor !== null ? formatMinor(feeMinor, currency) : null;
-  if (!chargedOn) return { amount, when: null, soon: false, waived: false, refunded: false };
-  if (refundedYear !== null && refundedYear === Number(coveredCharge(chargedOn, today).slice(0, 4))) {
-    return { amount, when: `Refunded this year · next charge ${feeDateText(chargeAfterWaiver(chargedOn, today))}`, soon: false, waived: false, refunded: true };
-  }
-  if (feeWaived(chargedOn, waivedYear, today)) {
-    return { amount, when: `Waived this year · next charge ${feeDateText(chargeAfterWaiver(chargedOn, today))}`, soon: false, waived: true, refunded: false };
+  if (!chargedOn) return { amount, when: null, soon: false, waived: false };
+  const refunded = refundedYear !== null && refundedYear === Number(coveredCharge(chargedOn, today).slice(0, 4));
+  if (refunded || feeWaived(chargedOn, waivedYear, today)) {
+    return { amount, when: `Waived this year · next charge ${feeDateText(chargeAfterWaiver(chargedOn, today))}`, soon: false, waived: true };
   }
   // The charge that counts is the one that already happened unless the next is close: then that one is named.
   const covered = coveredCharge(chargedOn, today);
   const next = nextFeeDate(chargedOn, today);
   const when = covered < today ? `Charged on ${feeDateText(covered)} · next ${feeDateText(next)}` : `Charged on ${feeDateText(next)}`;
-  return { amount, when, soon: feeDaysAway(chargedOn, today) <= FEE_SOON_DAYS, waived: false, refunded: false };
+  return { amount, when, soon: feeDaysAway(chargedOn, today) <= FEE_SOON_DAYS, waived: false };
 }

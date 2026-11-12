@@ -22,9 +22,9 @@ describe('the annual fee row on a card page', () => {
     const line = feeLine(500_000, '2020-11-20', 2026, 'IDR', '2026-10-26')!;
     expect(line).toMatchObject({ waived: true, soon: false, when: 'Waived this year · next charge 20 Nov 2027' });
   });
-  it('reads refunded with next year’s charge, and is not soon', () => {
+  it('reads a year refunded through the old Fee refunded as waived: one word for both', () => {
     const line = feeLine(500_000, '2020-11-20', null, 'IDR', '2026-10-26', 2026)!;
-    expect(line).toMatchObject({ refunded: true, waived: false, soon: false, when: 'Refunded this year · next charge 20 Nov 2027' });
+    expect(line).toMatchObject({ waived: true, soon: false, when: 'Waived this year · next charge 20 Nov 2027' });
   });
-  it('ignores a refund of another year', () => expect(feeLine(500_000, '2020-11-20', null, 'IDR', '2026-10-26', 2025)!.refunded).toBe(false));
+  it('ignores a refund of another year', () => expect(feeLine(500_000, '2020-11-20', null, 'IDR', '2026-10-26', 2025)!.waived).toBe(false));
 });

@@ -1,9 +1,9 @@
-import { groupTypedAmount, parseGroupedMajor } from '@expanses/core';
+import { chargeAfterWaiver, groupTypedAmount, parseGroupedMajor } from '@expanses/core';
 import { type CardRow, listProgrammes, renameAccount, type RewardProgramRow, saveCardIdentity, saveCardTerms, setAccountForSpending, setEarnsInto, setProgramCrediting, spendingSwitchOn } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
-import { type KeyboardEvent, useState } from 'react';
+import { type KeyboardEvent, type ReactNode, useState } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { typedNameOf } from '../../lib/account-name';
@@ -23,8 +23,9 @@ import { ANCHOR_LABELS, ProductChooser, UNIT_LABELS } from './CardProductPages';
 import { ColumnGroup, Line, SUBTITLE, TextLine, TITLE } from './rows';
 import { termsFields } from './terms-fields';
 import { useCatalogChoice } from './useCatalogChoice';
-import { FeeAlert } from './FeeAlert';
-import { FeeWaiverRow, YearFeeRow } from './AnnualFeeGroup';
+import { feeDateText } from './fee-line';
+import { FeeWaivedFlow } from './FeeWaivedSheet';
+import { FeeWaiverRow, useYearFeeLine, YearFeeRow } from './AnnualFeeGroup';
 import { useInstallments } from '../loans/queries';
 
 const settingsRoute = getRouteApi('/cards/$cardId/settings');
@@ -81,6 +82,13 @@ function PointsGroup({ page, run }: { page: CardPage; run: Run }) {
       <ReadOnlyRow label="Caps reset" value={ANCHOR_LABELS[program.cycleAnchor]} />
     </InsetGroup>
   );
+}
+
+/** The Annual fee group: the fee, its date, This year's fee and Fee waiver; once waived, the next charge under it. */
+function AnnualFeeColumns({ page, rows }: { page: CardPage; rows: ReactNode[] }) {
+  const line = useYearFeeLine(page);
+  const on = page.cp.terms?.annualFeeOn;
+  return <ColumnGroup header="Annual fee" footer={line?.waived && on ? `Next charge ${feeDateText(chargeAfterWaiver(on, page.today))}. Tap to change or undo.` : undefined} columns={[rows]} />;
 }
 
 /**
@@ -200,15 +208,13 @@ export function CardSettingsPage() {
             ],
           ]}
         />
-        <ColumnGroup
-          header="Annual fee"
-          columns={[
-            [
-              <TextRow label="Annual fee" prefix={currency} value={fee} onChange={(e) => setFee(groupTypedAmount(e.target.value, currency))} inputMode="decimal" placeholder="Amount" />,
-              <TextRow label="Charged on" type="date" value={feeOn} onChange={(e) => setFeeOn(e.target.value)} />,
-              ...(cp.terms?.annualFeeOn ? [<YearFeeRow key="year-fee" page={page} onAsk={() => setAskingFee(true)} />] : []),
-              <FeeWaiverRow key="fee-waiver" page={page} />,
-            ],
+        <AnnualFeeColumns
+          page={page}
+          rows={[
+            <TextRow label="Annual fee" prefix={currency} value={fee} onChange={(e) => setFee(groupTypedAmount(e.target.value, currency))} inputMode="decimal" placeholder="Amount" />,
+            <TextRow label="Charged on" type="date" value={feeOn} onChange={(e) => setFeeOn(e.target.value)} />,
+            ...(cp.terms?.annualFeeOn ? [<YearFeeRow key="year-fee" page={page} onAsk={() => setAskingFee(true)} />] : []),
+            <FeeWaiverRow key="fee-waiver" page={page} />,
           ]}
         />
       </form>
@@ -227,11 +233,7 @@ export function CardSettingsPage() {
       <ErrorBox error={error ?? (datesMissing ? new Error('Enter the billing date and the due date') : null)} />
 
       {askingFee && cp.terms && (
-        <FeeAlert
-          fee={{ cardId: card.id, name: card.name, currency, annualFeeMinor: cp.terms.annualFeeMinor, annualFeeOn: cp.terms.annualFeeOn, annualFeeWaivedYear: cp.terms.annualFeeWaivedYear }}
-          today={today}
-          onClose={() => setAskingFee(false)}
-        />
+        <FeeWaivedFlow fee={{ cardId: card.id, currency, annualFeeMinor: cp.terms.annualFeeMinor, annualFeeOn: cp.terms.annualFeeOn }} today={today} onClose={() => setAskingFee(false)} />
       )}
 
       <InsetGroup>
