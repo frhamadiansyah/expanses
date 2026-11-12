@@ -15,7 +15,7 @@ import { ASSET_STACK_KEYS, DEBT_STACK_KEYS, STACK_KEYS } from './stack-keys';
 import { RANGES, rangeChange, SPAN_MONTHS, type Span, spanSlice } from './span';
 import { memberName, useAssetProfiles, useAssetValues, useJointSheet, useNetWorthSeries, useOwnerRings, useSheet } from './queries';
 import { buyChoices } from '../transactions/buy-in-form';
-import { figureOf, jointSeries, ownerRing } from './joint-rows';
+import { figureOf, jointSeries, ownerRing, sheetOwnerOf } from './joint-rows';
 import { isMoneyAccount, useAccounts } from '../../lib/queries';
 import { accountDestination, type AccountDestination } from '../accounts/destination';
 import { foldPockets, type ShownSheetRow } from './overview-rows';
@@ -396,10 +396,10 @@ export function OverviewPage() {
   const unrated = new Set((joint?.rows ?? []).filter((row) => row.amountMinor === null).map((row) => row.accountId));
   const ownerOf: OwnerOf | undefined = joint
     ? (accountId) => {
-        const row = owners.get(accountId);
-        if (!row) return null;
-        const native = row.amountMinor === null ? { minor: row.nativeMinor, currency: row.currency } : null;
-        return { ring: ringsOf ? ownerRing(ringsOf.rings, row.owner) : null, name: memberName(joint.names, row.owner), received: row.received, native };
+        // An account with pockets is one row here though only its pockets are joint rows: it wears their owner's ring.
+        const { owner, received, row } = sheetOwnerOf(accountId, owners, accounts.data ?? [], joint.me);
+        const native = row && row.amountMinor === null ? { minor: row.nativeMinor, currency: row.currency } : null;
+        return { ring: ringsOf ? ownerRing(ringsOf.rings, owner) : null, name: memberName(joint.names, owner), received, native };
       }
     : undefined;
   /*
