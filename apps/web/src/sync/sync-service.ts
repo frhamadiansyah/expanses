@@ -170,6 +170,8 @@ export class SyncService {
   private readonly rateFetcher: RateFetcher | undefined;
   /** Books whose one-time repairs ran without failing since the app opened: not asked again until the next open. */
   private readonly repaired = new Set<string>();
+  /** Devices already logged as on an older version, by book, since the app opened. */
+  private readonly belowLogged = new Set<string>();
   private readonly shareRecords: () => ShareRecordStore | null;
   /** This device's record of sharing failures: local only, never synced. */
   readonly log: SyncLog;
@@ -815,12 +817,20 @@ export class SyncService {
     try {
       const fetcher = this.rateFetcher ?? (this.defaultFetcher ??= frankfurterFetcher());
       const report = await this.exclusive(bookId, () => runSharedBookRepairs(this.database, bookId, { fetcher }));
-      // Bill links go once more when the last device in the book has updated (fix round 3): asked again until then.
-      if (!report.billLinksRerunPending) this.repaired.add(bookId);
+      // An event's log has nothing to repair: never asked again. A workspace is asked on every sync — a few reads — since
+      // each device crossing to a build that writes links earns the links one more pass (fix round 4).
+      if (!report.workspace) this.repaired.add(bookId);
+      // The devices still on an older version, each said once per open.
+      for (const device of report.devicesBelow) {
+        const key = `${bookId}|${device.deviceId}`;
+        if (this.belowLogged.has(key)) continue;
+        this.belowLogged.add(key);
+        await this.note('repair', bookId, { message: `${device.name} (${device.deviceId.slice(0, 8)}) is on an older version (${device.version ?? 'unknown'}): bill links reach it once it updates` });
+      }
       const tags = report.eventTags;
       const changed = (report.billLinks ?? 0) > 0 || (tags !== null && tags.moved + tags.untagged > 0);
       if (report.billLinks !== null || tags !== null) {
-        await this.note('repair', bookId, {
+        if ((report.billLinks ?? 0) > 0 || tags !== null) await this.note('repair', bookId, {
           message: `One-time repair: ${report.billLinks ?? 0} bill links sent; ${tags?.moved ?? 0} tagged purchases moved into their shared event, ${tags?.untagged ?? 0} untagged`,
         });
       }

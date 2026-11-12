@@ -149,7 +149,13 @@ export function carriedAt(at: string | undefined, hlc: string): string | undefin
  * hlc when the op names it as changed, else at the clock `clocks` gives it (a seed or a rejoin sending what it kept at
  * its own clock, recovery review N2). A field with neither does not compete.
  */
-async function purchaseWinnersOf(tx: Db, ctx: BookContext, op: Extract<Op, { op: 'upsert' }>, hlc: string): Promise<Map<string, { value: unknown; hlc: string }>> {
+async function purchaseWinnersOf(
+  tx: Db,
+  ctx: BookContext,
+  op: Extract<Op, { op: 'upsert' }>,
+  hlc: string,
+  authorDevice?: string,
+): Promise<Map<string, { value: unknown; hlc: string }>> {
   const winners = new Map<string, { value: unknown; hlc: string }>();
   const named = op.changed ?? Object.keys(op.fields);
   for (const [field, value] of Object.entries(op.fields)) {
@@ -157,26 +163,13 @@ async function purchaseWinnersOf(tx: Db, ctx: BookContext, op: Extract<Op, { op:
     if (at === undefined) continue;
     const clock = await clockOf(tx, ctx, op.entity, op.id, field);
     if (clock === null || at > clock) winners.set(field, { value, hlc: at });
-    // A bill link resent at the clock it went at (the repair, fix round 3) ties with it here. The tie goes to the greater
-    // value read alike everywhere — a link over none — so a phone whose build took the clock without writing the link
-    // (117) writes it now, the same value again changes nothing, and every phone ends on one answer.
-    else if (field === 'billLink' && at === clock && canonicalLink(value) > canonicalLink(await linkHereTx(tx, op.id))) winners.set(field, { value, hlc: at });
+    // A bill link resent at the clock it went at (the repair) ties with it here. The clock's author wins the tie (fix
+    // round 4): its own word, resent, is written over what this phone holds under that clock — so a phone whose build
+    // took the clock without writing the link (117) writes it now. A tie from anyone else changes nothing: what is here
+    // may be this phone's own old link, and it is no one else's to overturn. The same value again changes nothing.
+    else if (field === 'billLink' && at === clock && authorDevice !== undefined && decodeHlc(clock).deviceId === authorDevice) winners.set(field, { value, hlc: at });
   }
   return winners;
-}
-
-/** A bill link as one string, the same for the same link on every phone: its month and bill, or `''` for none. */
-function canonicalLink(value: unknown): string {
-  const given = value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
-  return given && typeof given.templateId === 'string' && typeof given.billMonth === 'string' ? `${given.billMonth}|${given.templateId}` : '';
-}
-
-/** The link the lineage's head carries here (a `bill_payments` row of a purchase with no bill of its own), or null. */
-async function linkHereTx(tx: Db, lineageId: string): Promise<{ templateId: string; billMonth: string } | null> {
-  const [row] = await tx.values<[string, string]>(sql`
-    SELECT p.template_id, p.bill_month FROM sync_lineage l JOIN transactions t ON t.id = l.head_transaction_id
-    JOIN bill_payments p ON p.transaction_id = t.id WHERE l.lineage_id = ${lineageId} AND t.template_id IS NULL`).catch(() => []);
-  return row ? { templateId: row[0], billMonth: row[1] } : null;
 }
 
 /**
@@ -1011,7 +1004,7 @@ async function applyPurchase(
 ): Promise<boolean> {
   const lineage = await lineageOf(tx, op.id, ctx.bookId);
   if (lineage && lineage.head === null) return true; // void wins, for ever
-  const won = await purchaseWinnersOf(tx, ctx, op, changeSet.hlc);
+  const won = await purchaseWinnersOf(tx, ctx, op, changeSet.hlc, authorDevice);
   if (won.size === 0) return true;
   const winners = Object.fromEntries([...won].map(([field, { value }]) => [field, value]));
   if (!lineage) {

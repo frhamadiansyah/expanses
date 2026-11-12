@@ -6,7 +6,8 @@ import { resolveRates, type RateFetcher } from '../repos/fx';
 import { eventBookOfEventTx } from '../repos/shared-event-records';
 import { moveIntoSharedEvent, refundMatchedByName } from '../repos/shared-event-moves';
 import { partnerPurchaseRefusalTx, sharedRowTx, untagSharedRowsTx } from '../repos/shared-workspace-rows';
-import { captureConfigOf, lineageOfTransaction, projectPurchase, type SharedBook, writeChangeSetsTx } from './capture';
+import { captureConfigOf, lineageOfTransaction, localDeviceId, projectPurchase, type SharedBook, writeChangeSetsTx } from './capture';
+import { decodeHlc } from './hlc';
 import type { Op } from './types';
 import { uuidv5 } from './uuidv5';
 import { meetsVersion } from './events/version';
@@ -41,7 +42,9 @@ export function repairExpenseId(lineageId: string, eventId: string): Promise<str
  */
 
 const BILL_LINKS = 'bill-links';
-const BILL_LINKS_AGAIN = 'bill-links-everywhere';
+
+/** Where R1 keeps the devices it has already sent for once each reached `BILL_LINKS_EVERYWHERE` (fix round 4). */
+const crossedKey = (bookId: string) => `repair.bill-links-crossed.v1.${bookId}`;
 
 /**
  * The first app version that writes a bill link it receives (fix round 3). Every device says its version on its own
@@ -49,11 +52,24 @@ const BILL_LINKS_AGAIN = 'bill-links-everywhere';
  */
 export const BILL_LINKS_EVERYWHERE = '0.5.1';
 
-/** Whether every device still in the book (not removed) says it runs `version` or later; true for a book with none here. */
-async function everyDeviceAtTx(tx: Db, bookId: string, version: string): Promise<boolean> {
-  const rows = await tx.values<[string | null]>(sql`SELECT app_version FROM book_devices WHERE book_id = ${bookId} AND removed_at IS NULL`).catch(() => [] as [string | null][]);
-  return rows.every(([have]) => meetsVersion(have, version));
+/** The book's devices still in it (not removed), each with its name and the version it last said. */
+async function bookDevicesTx(tx: Db, bookId: string): Promise<{ deviceId: string; name: string; version: string | null }[]> {
+  const rows = await tx
+    .values<[string, string, string | null]>(sql`SELECT device_id, name, app_version FROM book_devices WHERE book_id = ${bookId} AND removed_at IS NULL ORDER BY device_id`)
+    .catch(() => [] as [string, string, string | null][]);
+  return rows.map(([deviceId, name, version]) => ({ deviceId, name, version }));
 }
+
+async function crossedTx(tx: Db, bookId: string): Promise<Set<string>> {
+  const [row] = await tx.values<[string]>(sql`SELECT value FROM settings WHERE key = ${crossedKey(bookId)}`);
+  try {
+    const ids = row ? (JSON.parse(row[0]) as unknown) : [];
+    return new Set(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
 const EVENT_TAGS = 'event-tags';
 const NOTICE_PREFIX = 'repair.notice.v1.';
 
@@ -91,8 +107,13 @@ export interface RepairNotice {
 export interface RepairReport {
   /** R1: links sent; null when it had run already. */
   billLinks: number | null;
-  /** R1's second run waits for every device in the book to run this build (fix round 3): asked again on a later sync. */
-  billLinksRerunPending: boolean;
+  /**
+   * The book's devices still on a version before `BILL_LINKS_EVERYWHERE` (fix round 4): links sent to them are taken
+   * as nothing until they update, and each gets one more pass when it does. Empty for a book with none.
+   */
+  devicesBelow: { deviceId: string; name: string; version: string | null }[];
+  /** False for a book that is no shared workspace here (an event's log): it has nothing to repair, and is not asked again. */
+  workspace: boolean;
   /** R2: rows moved and untagged; null when it had run already. */
   eventTags: { moved: number; untagged: number } | null;
 }
@@ -112,33 +133,45 @@ async function activeBookTx(tx: Db, bookId: string): Promise<(SharedBook & { wor
  * `{ billLink: { templateId, billMonth } }`. Returns how many.
  */
 async function repairBillLinksTx(tx: Tx, database: Database, book: SharedBook): Promise<number> {
-  const rows = await tx.values<[string, string, string, string, string, string]>(sql`
-    SELECT l.lineage_id, l.head_transaction_id, l.paid_by, l.paid_label, p.template_id, p.bill_month
-    FROM sync_lineage l
-    JOIN transactions t ON t.id = l.head_transaction_id
-    JOIN bill_payments p ON p.transaction_id = t.id
-    WHERE l.book_id = ${book.bookId} AND t.status = 'posted' AND t.template_id IS NULL
-    ORDER BY l.lineage_id`);
+  const me = await localDeviceId(tx);
+  // Each lineage with a link here, and each whose billLink clock this device wrote (a link, or an unlink, it made).
+  // A null under the clock the purchase was first sent at (its `bill` field's, from the same op) is no unlink: only a
+  // billLink clock of its own says one was made.
+  const rows = await tx.values<[string, string, string, string, string | null]>(sql`
+    SELECT * FROM (
+      SELECT l.lineage_id, l.head_transaction_id AS head, l.paid_by, l.paid_label,
+             (SELECT c.hlc FROM sync_field_clocks c WHERE c.book_id = l.book_id AND c.entity = 'purchase' AND c.id = l.lineage_id AND c.field = 'billLink') AS clock,
+             (SELECT c.hlc FROM sync_field_clocks c WHERE c.book_id = l.book_id AND c.entity = 'purchase' AND c.id = l.lineage_id AND c.field = 'bill') AS billClock
+      FROM sync_lineage l JOIN transactions t ON t.id = l.head_transaction_id
+      WHERE l.book_id = ${book.bookId} AND t.status = 'posted' AND t.template_id IS NULL
+    ) r
+    WHERE EXISTS (SELECT 1 FROM bill_payments p WHERE p.transaction_id = r.head)
+       OR (r.clock IS NOT NULL AND r.clock IS NOT r.billClock)
+    ORDER BY r.lineage_id`);
   const ops: Op[] = [];
-  for (const [lineageId, head, paidBy, paidLabel, templateId, billMonth] of rows) {
-    // No clock is asked (fix round 1, #2): after a full pull the link here is this phone's merged value — a partner's
-    // newer link or unlink has already been applied over it — and a creation op naming no bill is no word on a link.
-    // Another payment settles the same month here (the partner paid it meanwhile): sending the link would pay it twice.
-    const other = await tx.values(sql`
-      SELECT 1 FROM bill_payments p JOIN transactions t ON t.id = p.transaction_id
-      WHERE p.template_id = ${templateId} AND p.bill_month = ${billMonth} AND p.transaction_id <> ${head} AND t.status = 'posted' LIMIT 1`);
-    if (other.length > 0) continue;
+  for (const [lineageId, head, paidBy, paidLabel, clock] of rows) {
     const fields = await projectPurchase(tx, head, book.memberId, { paidBy, paidLabel });
-    if (!fields?.billLink) continue; // a part of a split names no bill
-    // Fix round 3: a link that already went (a clock is kept for it) goes again at that very clock, never a fresh one —
-    // so a partner's newer unlink, still on its way, wins over the resend, and a phone that took the clock without
-    // writing the link (build 117) takes it now (apply's tie at an equal clock). One never sent goes at a fresh clock.
-    const [clock] = await tx.values<[string]>(sql`
-      SELECT hlc FROM sync_field_clocks WHERE book_id = ${book.bookId} AND entity = 'purchase' AND id = ${lineageId} AND field = 'billLink'`);
+    if (!fields) continue;
+    const link = fields.billLink ?? null;
+    /*
+     * Fix round 4, the clock's author wins. Under a clock this device wrote, its own word goes again at that very clock —
+     * a link or an unlink — so a phone that took the clock on an older build without writing it takes it now, and a
+     * partner's newer word still wins. Under another device's clock nothing is sent: its author sends it on its own pass,
+     * and the value here may be an old link of this phone's that never went. With no clock, a link here goes fresh.
+     */
+    if (clock && decodeHlc(clock).deviceId !== me) continue;
+    if (!clock && !link) continue;
+    // Another payment settles the same month here (the partner paid it meanwhile): sending the link would pay it twice.
+    if (link) {
+      const other = await tx.values(sql`
+        SELECT 1 FROM bill_payments p JOIN transactions t ON t.id = p.transaction_id
+        WHERE p.template_id = ${link.templateId} AND p.bill_month = ${link.billMonth} AND p.transaction_id <> ${head} AND t.status = 'posted' LIMIT 1`);
+      if (other.length > 0) continue;
+    }
     ops.push(
       clock
-        ? { entity: 'purchase', id: lineageId, op: 'upsert', fields: { billLink: fields.billLink }, changed: [], clocks: { billLink: clock[0] } }
-        : { entity: 'purchase', id: lineageId, op: 'upsert', fields: { billLink: fields.billLink } },
+        ? { entity: 'purchase', id: lineageId, op: 'upsert', fields: { billLink: link }, changed: [], clocks: { billLink: clock } }
+        : { entity: 'purchase', id: lineageId, op: 'upsert', fields: { billLink: link } },
     );
   }
   await writeChangeSetsTx(tx, captureConfigOf(database), book, ops);
@@ -254,25 +287,29 @@ async function tryMove(
  * others have had their turn, for the caller to log; nothing it wrote half-way stays (each step is one db transaction).
  */
 export async function runSharedBookRepairs(database: Database, bookId: string, options: { fetcher?: RateFetcher; today?: string } = {}): Promise<RepairReport> {
-  const report: RepairReport = { billLinks: null, billLinksRerunPending: false, eventTags: null };
+  const report: RepairReport = { billLinks: null, devicesBelow: [], workspace: false, eventTags: null };
   const today = options.today ?? isoDate();
   const failures: unknown[] = [];
   try {
     report.billLinks = await database.transaction(async (tx) => {
       const book = await activeBookTx(tx, bookId);
       if (!book) return null;
+      report.workspace = true;
       if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'bill_payments'`)).length === 0) return null;
-      // Fix round 3: once now, and once more when every device still in the book runs a build that writes a link it
-      // receives (`BILL_LINKS_EVERYWHERE`): a build before it took the clock of each link sent meanwhile and never
-      // wrote it. A device that never updates delays that second run; it never stops a sync.
+      // Fix round 4: once now, and once more each time another device in the book is seen to have crossed to a build
+      // that writes a link it receives (`BILL_LINKS_EVERYWHERE`) — a build before took each link's clock and never
+      // wrote it. One pass per device crossing, whichever device it is; a device that never updates holds nothing up.
+      const devices = await bookDevicesTx(tx, bookId);
+      report.devicesBelow = devices.filter((d) => !meetsVersion(d.version, BILL_LINKS_EVERYWHERE));
+      const crossed = await crossedTx(tx, bookId);
+      const nowAt = devices.filter((d) => meetsVersion(d.version, BILL_LINKS_EVERYWHERE)).map((d) => d.deviceId);
+      const newly = nowAt.filter((id) => !crossed.has(id));
       const first = !(await doneTx(tx, BILL_LINKS, bookId));
-      const everywhere = await everyDeviceAtTx(tx, bookId, BILL_LINKS_EVERYWHERE);
-      const again = everywhere && !(await doneTx(tx, BILL_LINKS_AGAIN, bookId));
-      report.billLinksRerunPending = !everywhere && !(await doneTx(tx, BILL_LINKS_AGAIN, bookId));
-      if (!first && !again) return null;
+      if (!first && newly.length === 0) return null;
       const sent = await repairBillLinksTx(tx, database, book);
       await markDoneTx(tx, BILL_LINKS, bookId);
-      if (everywhere) await markDoneTx(tx, BILL_LINKS_AGAIN, bookId);
+      const all = [...new Set([...crossed, ...nowAt])].sort();
+      await tx.run(sql`INSERT INTO settings (key, value) VALUES (${crossedKey(bookId)}, ${JSON.stringify(all)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
       return sent;
     });
   } catch (error) {
