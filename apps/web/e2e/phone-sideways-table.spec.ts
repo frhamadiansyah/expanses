@@ -24,8 +24,7 @@ async function eightPurchases(page: Page) {
     .getByLabel('Purchases')
     .fill(['roti 15000', 'kopi 23000', 'bakso 31000', 'sate 42000', 'teh 7000', 'nasi goreng 28000', 'martabak 36000', 'parkir 4000'].join('\n'));
   await page.getByRole('button', { name: 'Review 8' }).click();
-  await expect(page.getByTestId('review-save')).toHaveText('Save 8');
-  await page.getByTestId('review-save').click();
+  await page.getByRole('button', { name: 'Save list' }).click();
   await expect(page).toHaveURL(/\/transactions$/);
   await expect(page.getByTestId('transaction-row')).toHaveCount(8);
 }

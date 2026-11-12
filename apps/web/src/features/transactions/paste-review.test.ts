@@ -1,7 +1,7 @@
 import { parsePurchaseList } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { addedText, canSave, dateRowMode, purchaseInputs, readingKey, reviewCounts, reviewHeader, reviewLabel, reviewRowsFrom, saveLabel, sections, totalMinor, withEdit, withRemoved } from './paste-review';
+import { addedText, canSave, dateRowMode, dayGroups, purchaseInputs, readingKey, reviewCounts, reviewHeader, reviewLabel, reviewRowsFrom, saveLabel, sections, totalMinor, withEdit, withRemoved } from './paste-review';
 
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], currency: string | null): AccountRow => ({
   id, workspaceId: 'ws', parentId: null, kind, subtype, name: id, icon: null, currency, valuationMode: 'derived', systemKey: null, sortOrder: 0, archivedAt: null, createdAt: '2026-09-01T00:00:00Z',
@@ -141,5 +141,20 @@ describe('dateRowMode', () => {
   });
   it('is some when a line comes before the first date', () => {
     expect(mode('kopi 11000\n21okt\nteh 3000')).toBe('some');
+  });
+});
+
+describe('dayGroups', () => {
+  const rows = reviewRowsFrom(parsePurchaseList('kopi 11000\n21 okt\nnasi 22000\nteh 3000\nparkir\n20 okt\nsate 44000', { today: '2026-10-28' }), '2026-10-27');
+  it('groups by each row\'s own day, oldest first, with the page date for undated lines', () => {
+    const groups = dayGroups(rows);
+    expect(groups.map((g) => g.date)).toEqual(['2026-10-20', '2026-10-21', '2026-10-27']);
+    expect(groups.map((g) => g.rows.map((r) => r.note))).toEqual([['sate'], ['nasi', 'teh', 'parkir'], ['kopi']]);
+  });
+  it('totals the amounts of a day and leaves out rows without one', () => {
+    expect(dayGroups(rows).map((g) => g.totalMinor)).toEqual([44000, 25000, 11000]);
+  });
+  it('marks only the lines that took the page date', () => {
+    expect(rows.map((r) => r.noListDate)).toEqual([true, false, false, false, false]);
   });
 });

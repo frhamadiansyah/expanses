@@ -44,15 +44,18 @@ test('a pasted list is read, fixed on the review, and saved as purchases paid fr
   await page.getByRole('button', { name: 'Review 5' }).click();
 
   // Four read, one not; categories come from the notes' history.
-  await expect(page.getByTestId('review-header')).toHaveText('4 of 5 lines ready');
   await expect(row(page, 'gocar')).toContainText('Ride hailing');
   await expect(row(page, 'gocar')).toContainText('18.000');
   await expect(row(page, 'yoshinoya')).toContainText('Restaurants');
   await expect(row(page, 'taxi bluebird')).toContainText('Ride hailing');
   await expect(row(page, 'caterng')).toContainText('Choose a category');
   await expect(row(page, 'parkir')).toContainText('No amount');
+  // No header counts the lines; read rows sit under their day, and the page date applies to undated ones.
+  await expect(page.getByTestId('review-day')).toHaveCount(1);
+  await expect(page.getByTestId('review-day').first().getByTestId('day-total')).toBeVisible();
+  await expect(row(page, 'gocar')).toContainText('no date in the list');
   await expect(page.getByRole('button', { name: 'Save list' })).toBeDisabled();
-  await expect(page.getByTestId('review-save')).toBeDisabled();
+  
   await page.screenshot({ path: test.info().outputPath('page-2-review-fix.png') });
 
   // The typo gets a category.
@@ -73,12 +76,10 @@ test('a pasted list is read, fixed on the review, and saved as purchases paid fr
   await unread.getByLabel('Amount').fill('5000');
   await expect(unread.getByLabel('Amount')).toHaveValue('5.000');
   await unread.getByRole('button', { name: 'Done' }).click();
-  await expect(page.getByTestId('review-header')).toHaveText('5 lines');
   await expect(page.getByTestId('review-total')).toContainText('387.000');
-  await expect(page.getByTestId('review-save')).toHaveText('Save 5');
   await page.screenshot({ path: test.info().outputPath('page-3-review-ready.png') });
 
-  await page.getByTestId('review-save').click();
+  await page.getByRole('button', { name: 'Save list' }).click();
   await expect(page).toHaveURL(/\/transactions$/);
   await expect(page.getByTestId('toast')).toHaveText('Added 5 purchases');
 
@@ -100,14 +101,12 @@ test('Back from the review keeps the text and the fixes, and a removed line is g
   await openPaste(page);
   await page.getByLabel('Purchases').fill('kopi susu 12000\nparkir\nbakso 2');
   await page.getByRole('button', { name: 'Review 3' }).click();
-  await expect(page.getByTestId('review-header')).toHaveText('2 of 3 lines ready');
 
   // A figure that looks like a slip is drawn outlined until it is retyped.
   await expect(row(page, 'bakso').locator('[data-flagged="true"]')).toHaveCount(1);
   await row(page, 'parkir').click();
   await page.getByRole('dialog', { name: 'Not read' }).getByRole('button', { name: 'Remove' }).click();
   await expect(row(page, 'parkir')).toHaveCount(0);
-  await expect(page.getByTestId('review-header')).toHaveText('2 lines');
 
   await row(page, 'bakso').click();
   await page.getByRole('dialog', { name: 'Purchase' }).getByLabel('Amount').fill('20000');
@@ -117,10 +116,9 @@ test('Back from the review keeps the text and the fixes, and a removed line is g
   await page.getByRole('button', { name: 'Paste a list', exact: true }).click();
   await expect(page.getByLabel('Purchases')).toHaveValue('kopi susu 12000\nparkir\nbakso 2');
   await page.getByRole('button', { name: 'Review 3' }).click();
-  await expect(page.getByTestId('review-header')).toHaveText('2 lines');
   await expect(row(page, 'bakso')).toContainText('20.000');
   // Uncategorised is where a row with no category lands.
-  await page.getByTestId('review-save').click();
+  await page.getByRole('button', { name: 'Save list' }).click();
   await expect(page.getByTestId('toast')).toHaveText('Added 2 purchases');
   await page.goto('/wallet');
   await expectWalletFigure(page, 'BCA Tahapan', '968.000');
@@ -138,7 +136,13 @@ test('a line that is only a date sets the day of the lines below it', async ({ p
   await page.getByLabel('Date').fill(pageDate);
   await page.getByLabel('Purchases').fill(`kopi 11000\n${dayMonth(first)}\nnasi 22000\nteh 3000\n# not a purchase\n\n${dayMonth(second)}\nsate 44000`);
   await page.getByRole('button', { name: 'Review 4' }).click();
-  await expect(page.getByTestId('review-header')).toHaveText('4 lines');
+
+  // The rows sit under their day: oldest first, the page date's card first.
+  await expect(page.getByTestId('review-day')).toHaveCount(3);
+  await expect(page.getByTestId('review-day').nth(1).getByTestId('review-row')).toHaveCount(2);
+  await expect(page.getByTestId('review-day').nth(1)).toHaveAttribute('data-date', first);
+  await expect(row(page, 'kopi')).toContainText('no date in the list');
+  await expect(row(page, 'nasi')).not.toContainText('no date in the list');
 
   // Each row's own sheet names its day.
   const dayOf = async (note: string) => {
@@ -153,7 +157,7 @@ test('a line that is only a date sets the day of the lines below it', async ({ p
   expect(await dayOf('teh')).toBe(first);
   expect(await dayOf('sate')).toBe(second);
 
-  await page.getByTestId('review-save').click();
+  await page.getByRole('button', { name: 'Save list' }).click();
   await expect(page.getByTestId('toast')).toHaveText('Added 4 purchases');
   // Four purchases on three days.
   await expect(page.getByTestId('transaction-row')).toHaveCount(4);
@@ -166,7 +170,7 @@ test('lines dated before the account opened are posted as past purchases by them
   await page.getByLabel('Date').fill(await todayIn(page, 10));
   await page.getByLabel('Purchases').fill('kopi susu 12000\nparkir 5000');
   await page.getByRole('button', { name: 'Review 2' }).click();
-  await page.getByTestId('review-save').click();
+  await page.getByRole('button', { name: 'Save list' }).click();
   await expect(page.getByTestId('toast')).toHaveText('Added 2 purchases');
   await page.goto('/wallet');
   await expectWalletFigure(page, 'BCA Tahapan', '1.000.000');
