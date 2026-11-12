@@ -24,6 +24,7 @@ import {
 import { categoryOf, headOf, Household, projectBook, type Device } from './household';
 import { outboxOps } from './sync-helpers';
 import { SyncEngine } from '../../src/sync/engine';
+import { captureConfigOf, writeChangeSetsTx } from '../../src/sync/capture';
 import { Trip } from './trip';
 
 /*
@@ -219,6 +220,63 @@ describe('R1 through the rollout to 0.5.1 (fix rounds 3 and 4)', () => {
     for (const d of [wife, husband]) expect([d.name, (await linkOn(d, march))?.billMonth]).toEqual([d.name, '2026-03']);
   });
 
+  it('her phone restored as a new device resends her links at her old clocks, and they land on his phone (fix round 5)', async () => {
+    const home = new Household();
+    const husband = await home.device('Husband', 'member-Husband', 'IDR', '0.5.0');
+    const wife = await home.device('Wife', 'member-Wife', 'IDR', '0.5.1');
+    const bookId = await home.share(husband);
+    await home.join(wife, husband);
+    await home.settle();
+    const cat = await categoryOf(wife.database, bookId, 'Groceries');
+    const bill = await saveExpenseTemplate(wife.database, wife.ws, { name: 'Fibre', categoryAccountId: cat, moneyAccountId: wife.bank, amountMinor: 410_000, dayOfMonth: 10, startsMonth: '2026-03' });
+    const march = await postTransaction(wife.database, wife.ws, { occurredOn: '2026-03-11', description: 'Fibre March', lines: [{ accountId: cat, amountMinor: 410_000, currency: 'IDR' }, { accountId: wife.bank, amountMinor: -410_000, currency: 'IDR' }] });
+    await home.settle();
+    await linkPurchaseToBill(wife.database, wife.ws, { templateId: bill, billMonth: '2026-03', transactionId: march, today: TODAY });
+    await home.settle();
+    // His 118 phone took her clock and wrote nothing.
+    await unwritten(husband, march, null);
+    // Her phone is restored from a backup: a new device of the same member, invited back by him.
+    const restored = await home.restore(wife, await wife.database.exportBytes());
+    await restored.engine.checkRestore();
+    const { code } = await husband.engine.createInvite(bookId, { inviterName: 'Husband', sameMember: true, memberId: wife.memberId });
+    await restored.engine.joinBook(code, { ws: restored.ws, memberName: 'Wife', deviceName: 'new phone' });
+    await home.settle([restored, husband]);
+    husband.engine = new SyncEngine(husband.database, husband.transport, husband.keys, undefined, { appVersion: '0.5.1', shareRecords: husband.records });
+    await home.settle([restored, husband]);
+    const linkOn = async (d: Device) => billOfPurchase(d.database, d.ws, (await headOf(d.database, march))!);
+    expect(await linkOn(husband)).toBeNull();
+    expect((await runSharedBookRepairs(restored.database, bookId, { today: TODAY })).billLinks).toBe(1);
+    await home.settle([restored, husband]);
+    for (const d of [restored, husband]) expect([d.name, (await linkOn(d))?.billMonth]).toEqual([d.name, '2026-03']);
+  });
+
+  it('her second device resends her links; the partner’s member never wins a tie with her clock (fix round 5)', async () => {
+    const { home, wife, husband, bookId, bill, march, linkOn, update } = await couple('0.5.0');
+    const second = await home.device('Wife', 'member-Wife', 'IDR', '0.5.1');
+    const { code } = await wife.engine.createInvite(bookId, { inviterName: 'Wife', sameMember: true, memberId: wife.memberId });
+    await second.engine.joinBook(code, { ws: second.ws, memberName: 'Wife', deviceName: 'Wife’s tablet', memberId: wife.memberId });
+    await home.settle();
+    await linkPurchaseToBill(wife.database, wife.ws, { templateId: bill, billMonth: '2026-03', transactionId: march, today: TODAY });
+    await home.settle();
+    await unwritten(husband, march, null);
+    await update(husband);
+    // Her tablet's own pass (her first phone makes none here) resends the link her first phone made.
+    expect((await runSharedBookRepairs(second.database, bookId, { today: TODAY })).billLinks).toBe(1);
+    await home.settle();
+    expect((await linkOn(husband, march))?.billMonth).toBe('2026-03');
+
+    // His phone sends February under her clock: her phones keep March.
+    const [clock] = await husband.database.db.values<[string]>(sql`SELECT hlc FROM sync_field_clocks WHERE entity = 'purchase' AND id = ${march} AND field = 'billLink'`);
+    const [row] = await husband.database.db.values<[number, string]>(sql`SELECT epoch, member_id FROM shared_books WHERE book_id = ${bookId}`);
+    await husband.database.transaction((tx) =>
+      writeChangeSetsTx(tx, captureConfigOf(husband.database), { bookId, memberId: row![1], epoch: Number(row![0]) }, [
+        { entity: 'purchase', id: march, op: 'upsert', fields: { billLink: { templateId: bill, billMonth: '2026-02' } }, changed: [], clocks: { billLink: clock![0] } },
+      ]),
+    );
+    await home.settle();
+    for (const d of [wife, second]) expect([d.name, (await linkOn(d, march))?.billMonth]).toEqual([d.name, '2026-03']);
+  });
+
   it('her unlink reaches his phone that still held the link', async () => {
     const { home, wife, husband, bookId, bill, march, linkOn, update } = await couple('0.5.0');
     await linkPurchaseToBill(wife.database, wife.ws, { templateId: bill, billMonth: '2026-03', transactionId: march, today: TODAY });
@@ -237,7 +295,7 @@ describe('R1 through the rollout to 0.5.1 (fix rounds 3 and 4)', () => {
 });
 
 describe('R1 on a purchase the partner recorded (fix round 1, #2)', () => {
-  it('her old link on his purchase recorded on 117 reaches him', async () => {
+  it('her old link on his purchase reaches him, at a fresh clock over his creation default', async () => {
     const home = new Household();
     const wife = await home.device('Wife');
     const husband = await home.device('Husband');
@@ -253,9 +311,12 @@ describe('R1 on a purchase the partner recorded (fix round 1, #2)', () => {
     });
     await home.settle();
     const copy = (await headOf(wife.database, his))!;
-    // He recorded it on 117, which knew no billLink: neither phone holds a clock for it (fix round 4: a clock is its
-    // author's to resend, so one of his would make this his to send).
-    for (const d of [wife, husband]) await d.database.db.run(sql`DELETE FROM sync_field_clocks WHERE entity = 'purchase' AND id = ${his} AND field = 'billLink'`);
+    // His purchase went with its billLink at the creation default, under his clock (fix round 5): no word on a link, so
+    // her old link here goes at a fresh clock rather than wait for his.
+    const clocks = await wife.database.db.values<[string, string]>(sql`
+      SELECT field, hlc FROM sync_field_clocks WHERE entity = 'purchase' AND id = ${his} AND field IN ('bill', 'billLink') ORDER BY field`);
+    expect(clocks.map(([, hlc]) => hlc)[0]).toBe(clocks.map(([, hlc]) => hlc)[1]);
+    expect(clocks[0]![1]).toMatch(new RegExp(`-${husband.deviceId}$`));
     await wife.database.db.run(sql`INSERT INTO bill_payments (transaction_id, workspace_id, template_id, bill_month) VALUES (${copy}, ${wife.ws.workspaceId}, ${bill}, '2026-06')`);
     expect((await runSharedBookRepairs(wife.database, bookId, { today: TODAY })).billLinks).toBe(1);
     await home.settle();

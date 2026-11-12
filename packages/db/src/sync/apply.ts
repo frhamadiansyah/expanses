@@ -163,13 +163,28 @@ async function purchaseWinnersOf(
     if (at === undefined) continue;
     const clock = await clockOf(tx, ctx, op.entity, op.id, field);
     if (clock === null || at > clock) winners.set(field, { value, hlc: at });
-    // A bill link resent at the clock it went at (the repair) ties with it here. The clock's author wins the tie (fix
-    // round 4): its own word, resent, is written over what this phone holds under that clock — so a phone whose build
-    // took the clock without writing the link (117) writes it now. A tie from anyone else changes nothing: what is here
-    // may be this phone's own old link, and it is no one else's to overturn. The same value again changes nothing.
-    else if (field === 'billLink' && at === clock && authorDevice !== undefined && decodeHlc(clock).deviceId === authorDevice) winners.set(field, { value, hlc: at });
+    // A bill link resent at the clock it went at (the repair) ties with it here. The clock's author — the member, on any
+    // of their devices, a restored phone's new one included (fix round 5) — wins the tie: their own word, resent, is
+    // written over what this phone holds under that clock, so a phone whose build took the clock without writing the
+    // link (117) writes it now. A tie from anyone else, or a device not known here, changes nothing: what is here may be
+    // this phone's own old link, and it is no one else's to overturn. The same value again changes nothing.
+    else if (field === 'billLink' && at === clock && authorDevice !== undefined && (await sameMemberTx(tx, ctx.bookId, decodeHlc(clock).deviceId, authorDevice))) {
+      winners.set(field, { value, hlc: at });
+    }
   }
   return winners;
+}
+
+/** The member a device of this book is (or was: a removed device is still known), or null for one not known here. */
+export async function memberOfDeviceTx(tx: Db, bookId: string, deviceId: string): Promise<string | null> {
+  const [row] = await tx.values<[string]>(sql`SELECT member_id FROM book_devices WHERE book_id = ${bookId} AND device_id = ${deviceId}`).catch(() => []);
+  return row?.[0] ?? null;
+}
+
+/** Whether two devices are both known here as the same member of the book. */
+async function sameMemberTx(tx: Db, bookId: string, one: string, other: string): Promise<boolean> {
+  const a = await memberOfDeviceTx(tx, bookId, one);
+  return a !== null && a === (await memberOfDeviceTx(tx, bookId, other));
 }
 
 /**

@@ -6,7 +6,8 @@ import { resolveRates, type RateFetcher } from '../repos/fx';
 import { eventBookOfEventTx } from '../repos/shared-event-records';
 import { moveIntoSharedEvent, refundMatchedByName } from '../repos/shared-event-moves';
 import { partnerPurchaseRefusalTx, sharedRowTx, untagSharedRowsTx } from '../repos/shared-workspace-rows';
-import { captureConfigOf, lineageOfTransaction, localDeviceId, projectPurchase, type SharedBook, writeChangeSetsTx } from './capture';
+import { captureConfigOf, lineageOfTransaction, projectPurchase, type SharedBook, writeChangeSetsTx } from './capture';
+import { memberOfDeviceTx } from './apply';
 import { decodeHlc } from './hlc';
 import type { Op } from './types';
 import { uuidv5 } from './uuidv5';
@@ -133,11 +134,10 @@ async function activeBookTx(tx: Db, bookId: string): Promise<(SharedBook & { wor
  * `{ billLink: { templateId, billMonth } }`. Returns how many.
  */
 async function repairBillLinksTx(tx: Tx, database: Database, book: SharedBook): Promise<number> {
-  const me = await localDeviceId(tx);
-  // Each lineage with a link here, and each whose billLink clock this device wrote (a link, or an unlink, it made).
+  // Each lineage with a link here, and each whose billLink clock this member wrote (a link, or an unlink, it made).
   // A null under the clock the purchase was first sent at (its `bill` field's, from the same op) is no unlink: only a
   // billLink clock of its own says one was made.
-  const rows = await tx.values<[string, string, string, string, string | null]>(sql`
+  const rows = await tx.values<[string, string, string, string, string | null, string | null]>(sql`
     SELECT * FROM (
       SELECT l.lineage_id, l.head_transaction_id AS head, l.paid_by, l.paid_label,
              (SELECT c.hlc FROM sync_field_clocks c WHERE c.book_id = l.book_id AND c.entity = 'purchase' AND c.id = l.lineage_id AND c.field = 'billLink') AS clock,
@@ -149,18 +149,27 @@ async function repairBillLinksTx(tx: Tx, database: Database, book: SharedBook): 
        OR (r.clock IS NOT NULL AND r.clock IS NOT r.billClock)
     ORDER BY r.lineage_id`);
   const ops: Op[] = [];
-  for (const [lineageId, head, paidBy, paidLabel, clock] of rows) {
+  for (const [lineageId, head, paidBy, paidLabel, clock, billClock] of rows) {
     const fields = await projectPurchase(tx, head, book.memberId, { paidBy, paidLabel });
     if (!fields) continue;
     const link = fields.billLink ?? null;
     /*
-     * Fix round 4, the clock's author wins. Under a clock this device wrote, its own word goes again at that very clock —
-     * a link or an unlink — so a phone that took the clock on an older build without writing it takes it now, and a
-     * partner's newer word still wins. Under another device's clock nothing is sent: its author sends it on its own pass,
-     * and the value here may be an old link of this phone's that never went. With no clock, a link here goes fresh.
+     * The clock's author wins (fix rounds 4 and 5), the author being the member — any of their devices, a restored phone's
+     * new one included. Under a clock this member wrote, its own word goes again at that very clock — a link or an
+     * unlink — so a phone that took the clock on an older build without writing it takes it now, and a partner's newer
+     * word still wins. Under another member's clock nothing is sent: its author sends it on its own pass, and the value
+     * here may be an old link of this phone's that never went — unless that clock is only the purchase's creation default
+     * (its `bill` clock, the same op's): a link here then goes at a fresh clock, as one with no clock at all does.
      */
-    if (clock && decodeHlc(clock).deviceId !== me) continue;
-    if (!clock && !link) continue;
+    let fresh = !clock;
+    if (clock) {
+      const author = await memberOfDeviceTx(tx, book.bookId, decodeHlc(clock).deviceId);
+      if (author !== book.memberId) {
+        if (clock !== billClock || !link) continue;
+        fresh = true;
+      }
+    }
+    if (fresh && !link) continue;
     // Another payment settles the same month here (the partner paid it meanwhile): sending the link would pay it twice.
     if (link) {
       const other = await tx.values(sql`
@@ -169,7 +178,7 @@ async function repairBillLinksTx(tx: Tx, database: Database, book: SharedBook): 
       if (other.length > 0) continue;
     }
     ops.push(
-      clock
+      !fresh && clock
         ? { entity: 'purchase', id: lineageId, op: 'upsert', fields: { billLink: link }, changed: [], clocks: { billLink: clock } }
         : { entity: 'purchase', id: lineageId, op: 'upsert', fields: { billLink: link } },
     );
