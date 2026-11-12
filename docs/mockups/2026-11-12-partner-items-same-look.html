@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Partner items, same look</title>
+<style>
+  :root { --bg:#f2f2f7; --surface:#fff; --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e0e0e4; --fill:#efeff2; --blue:#007aff; --red:#c6301f; --green:#047857; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#e6e6ea; color:var(--ink); font:14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; padding:24px 16px 48px; }
+  h1 { font-size:20px; margin:0 0 4px; } .lede { color:#555; margin:0 0 20px; max-width:980px; }
+  h2 { font-size:16px; margin:28px 0 12px; }
+  .pair { display:flex; flex-wrap:wrap; gap:22px; align-items:flex-start; }
+  .col { width:320px; max-width:100%; }
+  .cap { font-weight:600; margin:0 0 8px; } .cap .n { display:inline-block; background:#1c1c1e; color:#fff; border-radius:5px; padding:0 6px; font-size:12px; margin-right:6px; }
+  .phone { background:var(--bg); border-radius:28px; padding:14px 14px 20px; border:1px solid #d4d4d8; min-height:620px; }
+  .bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .round { width:36px; height:36px; border-radius:50%; background:#e5e5ea; display:flex; align-items:center; justify-content:center; font-size:16px; }
+  .ttl { font-size:18px; font-weight:600; }
+  .large { font-size:26px; font-weight:700; margin:2px 4px 10px; }
+  .gh { font-size:13px; color:var(--ink3); margin:14px 4px 6px; text-transform:uppercase; }
+  .ig { background:var(--surface); border-radius:11px; overflow:hidden; }
+  .row { display:flex; align-items:center; gap:10px; padding:9px 12px; min-height:50px; position:relative; }
+  .ig .row + .row::before { content:""; position:absolute; top:0; left:52px; right:0; border-top:.5px solid var(--hair); }
+  .ic { position:relative; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
+  .ring { box-shadow:0 0 0 2px #fff, 0 0 0 4px #db2777; }
+  .badge { position:absolute; right:-4px; bottom:-4px; width:16px; height:16px; border-radius:50%; background:#db2777; color:#fff; font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 1.5px #fff; }
+  .badge.me { background:#2563eb; }
+  .grow { flex:1; min-width:0; } .t { font-size:15.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .s { font-size:12px; color:var(--ink3); }
+  .amt { font-variant-numeric:tabular-nums; font-size:15px; } .neg { color:var(--red); }
+  .hero { background:var(--surface); border-radius:14px; padding:14px; margin-bottom:12px; }
+  .hero .top { display:flex; align-items:center; gap:10px; } .hero .big { font-size:28px; font-weight:600; margin-top:8px; font-variant-numeric:tabular-nums; } .hero .s { margin-top:2px; }
+  .hero .ic { width:40px; height:40px; font-size:18px; } .hero .badge { width:18px; height:18px; font-size:10px; }
+  .acts { display:flex; justify-content:space-around; margin:4px 0 12px; } .acts span { display:flex; flex-direction:column; align-items:center; gap:5px; font-size:12px; color:var(--ink2); } .acts i { width:46px; height:46px; border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center; font-style:normal; font-size:18px; }
+  .ir { display:flex; align-items:center; padding:11px 13px; min-height:44px; font-size:15.5px; position:relative; }
+  .ig .ir + .ir::before { content:""; position:absolute; top:0; left:13px; right:0; border-top:.5px solid var(--hair); }
+  .ir .lab { flex:1; } .ir .val { color:var(--ink3); }
+  .mark { outline:2px dashed #2563eb; outline-offset:2px; border-radius:10px; }
+  .bad { outline:2px dashed #e11d48; outline-offset:2px; border-radius:10px; }
+  .note { font-size:12.5px; color:#444; margin:10px 2px 0; }
+  .foot { font-size:12px; color:var(--ink3); margin:6px 4px 0; }
+  .chart { height:70px; background:linear-gradient(180deg, rgba(37,99,235,.12), rgba(37,99,235,0)); border-radius:8px; position:relative; margin-top:6px; }
+  .chart::after { content:""; position:absolute; left:6px; right:6px; top:20px; height:2px; background:#2563eb; transform:skewY(-6deg); border-radius:2px; }
+</style>
+</head>
+<body>
+<h1>Net worth: the partner’s accounts look like one’s own</h1>
+<p class="lede">On the household’s Net worth, the other person’s accounts wear a coloured ring and open a different, plainer page. Proposed: the same rows and the same account page as one’s own, with the owner shown as a small initial on the icon’s corner. What the other person keeps private stays private: only household purchases and one “other use” total show. Names, accounts and amounts here are made up (Budi and Rina).</p>
+
+<h2>Assets list (Rina’s phone)</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">0</span>Now</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Assets</span><span class="round">⋯</span></div>
+      <div class="gh">Bank &amp; cash</div>
+      <div class="ig">
+        <div class="row"><span class="ic" style="background:#dbeafe">🏦</span><div class="grow"><div class="t">BCA Tahapan</div></div><span class="amt">Rp 18.200.000</span></div>
+        <div class="row"><span class="ic ring bad" style="background:#dbeafe">🏦</span><div class="grow"><div class="t">Mandiri Payroll</div></div><span class="amt">Rp 9.450.000</span></div>
+        <div class="row"><span class="ic" style="background:#dcfce7">📱</span><div class="grow"><div class="t">GoPay</div></div><span class="amt">Rp 640.000</span></div>
+        <div class="row"><span class="ic ring" style="background:#dcfce7">📱</span><div class="grow"><div class="t">OVO</div></div><span class="amt">Rp 215.000</span></div>
+      </div>
+      <div class="gh">Investments</div>
+      <div class="ig">
+        <div class="row"><span class="ic ring" style="background:#fef3c7">📈</span><div class="grow"><div class="t">Government bond</div></div><span class="amt">Rp 25.000.000</span></div>
+      </div>
+    </div>
+    <p class="note">Budi’s accounts wear a pink ring round the icon. Nothing says whose until the ring’s colour is learned.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">P</span>Proposed: initial on the corner</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Assets</span><span class="round">⋯</span></div>
+      <div class="gh">Bank &amp; cash</div>
+      <div class="ig">
+        <div class="row"><span class="ic" style="background:#dbeafe">🏦</span><div class="grow"><div class="t">BCA Tahapan</div></div><span class="amt">Rp 18.200.000</span></div>
+        <div class="row"><span class="ic mark" style="background:#dbeafe">🏦<span class="badge">B</span></span><div class="grow"><div class="t">Mandiri Payroll</div></div><span class="amt">Rp 9.450.000</span></div>
+        <div class="row"><span class="ic" style="background:#dcfce7">📱</span><div class="grow"><div class="t">GoPay</div></div><span class="amt">Rp 640.000</span></div>
+        <div class="row"><span class="ic" style="background:#dcfce7">📱<span class="badge">B</span></span><div class="grow"><div class="t">OVO</div></div><span class="amt">Rp 215.000</span></div>
+      </div>
+      <div class="gh">Investments</div>
+      <div class="ig">
+        <div class="row"><span class="ic" style="background:#fef3c7">📈<span class="badge">B</span></span><div class="grow"><div class="t">Government bond</div></div><span class="amt">Rp 25.000.000</span></div>
+      </div>
+    </div>
+    <p class="note">No ring. The other person’s accounts carry their initial in a small circle on the icon’s corner — the same mark a row from another workspace already wears on Cashflow. One’s own accounts carry nothing.</p>
+  </div>
+</div>
+
+<h2>Tapping an account</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">0a</span>Now: own account (Budi’s phone)</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Mandiri Payroll</span><span class="round">⋯</span></div>
+      <div class="hero"><div class="top"><span class="ic" style="background:#dbeafe">🏦</span><div><div class="t" style="font-weight:600">Mandiri Payroll</div><div class="s">Bank · ••7731</div></div></div><div class="big">Rp 9.450.000</div><div class="s">Balance</div></div>
+      <div class="acts"><span><i>－</i>Spend</span><span><i>＋</i>Receive</span><span><i>⇄</i>Transfer</span><span><i>✎</i>Edit</span></div>
+      <div class="gh">Recent</div>
+      <div class="ig">
+        <div class="row"><span class="ic" style="background:#dcfce7">🛒</span><div class="grow"><div class="t">Supermarket</div><div class="s">11 Nov</div></div><span class="amt neg">Rp 412.000</span></div>
+        <div class="row"><span class="ic" style="background:#fce7f3">🎁</span><div class="grow"><div class="t">Gift for mum</div><div class="s">9 Nov</div></div><span class="amt neg">Rp 300.000</span></div>
+        <div class="row"><span class="ic" style="background:#e0e7ff">💼</span><div class="grow"><div class="t">Salary</div><div class="s">1 Nov</div></div><span class="amt" style="color:var(--green)">Rp 15.000.000</span></div>
+      </div>
+    </div>
+    <p class="note">The full page: hero, buttons, every transaction.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">0b</span>Now: same account on Rina’s phone</p>
+    <div class="phone">
+      <div class="large bad">Mandiri Payroll</div>
+      <div class="hero"><div class="s">Balance</div><div class="big">Rp 9.450.000</div></div>
+      <div class="gh">Last 12 months</div>
+      <div class="ig" style="padding:8px"><div class="chart"></div></div>
+      <div class="gh">Lines visible here</div>
+      <div class="ig">
+        <div class="ir"><span class="lab">Supermarket<br><span class="s">11 Nov 2026</span></span><span class="val" style="color:var(--ink)">Rp 412.000</span></div>
+        <div class="ir"><span class="lab">Budi’s other use<br><span class="s">this period</span></span><span class="val" style="color:var(--ink)">Rp 3.150.000</span></div>
+      </div>
+      <div class="gh">Details</div>
+      <div class="ig"><div class="ir"><span class="lab">Owner</span><span class="val">Budi</span></div><div class="ir"><span class="lab">Updated</span><span class="val">12 Nov 2026</span></div></div>
+    </div>
+    <p class="note">A different page: big title, no icon, “Lines visible here”, Details. Same account, different look.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">P</span>Proposed: same page, Rina’s phone</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Mandiri Payroll</span><span class="round">⋯</span></div>
+      <div class="hero mark"><div class="top"><span class="ic" style="background:#dbeafe">🏦<span class="badge">B</span></span><div><div class="t" style="font-weight:600">Mandiri Payroll</div><div class="s">Budi’s · Bank · updated 12 Nov</div></div></div><div class="big">Rp 9.450.000</div><div class="s">Balance</div></div>
+      <div class="gh">Recent</div>
+      <div class="ig mark">
+        <div class="row"><span class="ic" style="background:#dcfce7">🛒</span><div class="grow"><div class="t">Supermarket</div><div class="s">11 Nov · Household</div></div><span class="amt neg">Rp 412.000</span></div>
+        <div class="row"><span class="ic" style="background:#f1f5f9">🔒</span><div class="grow"><div class="t">Budi’s other use</div><div class="s">this period · total only</div></div><span class="amt neg">Rp 3.150.000</span></div>
+      </div>
+      <div class="gh">Last 12 months</div>
+      <div class="ig" style="padding:8px"><div class="chart"></div></div>
+    </div>
+    <p class="note">The same hero (icon with Budi’s initial, name, balance) and the same Recent list as on Budi’s phone — only what Rina may see: household purchases, and one locked “other use” total instead of his private lines. No Spend/Receive/Edit buttons, since it is not hers to change. Owner and Updated move into the hero’s small line.</p>
+  </div>
+</div>
+
+<h2>Liabilities: same idea</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">P</span>Credit card of Budi’s, on Rina’s phone</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Card 4417</span><span class="round">⋯</span></div>
+      <div class="hero"><div class="top"><span class="ic" style="background:#fee2e2">💳<span class="badge">B</span></span><div><div class="t" style="font-weight:600">Card 4417</div><div class="s">Budi’s · Credit card · updated 12 Nov</div></div></div><div class="big">Rp 4.820.000</div><div class="s">Owed</div>
+        <div style="height:8px;border-radius:4px;background:#e5e7eb;margin-top:10px;overflow:hidden;display:flex"><i style="width:22%;background:#16a34a"></i><i style="width:18%;background:#8e8e93"></i></div><div class="s" style="margin-top:4px">Rp 15.180.000 available of Rp 20.000.000</div></div>
+      <div class="gh">Recent</div>
+      <div class="ig">
+        <div class="row"><span class="ic" style="background:#ffedd5">🍜</span><div class="grow"><div class="t">Family dinner</div><div class="s">10 Nov · Household</div></div><span class="amt neg">Rp 650.000</span></div>
+        <div class="row"><span class="ic" style="background:#f1f5f9">🔒</span><div class="grow"><div class="t">Budi’s other use</div><div class="s">this period · total only</div></div><span class="amt neg">Rp 1.980.000</span></div>
+      </div>
+    </div>
+    <p class="note">Owed, the limit bar, then Recent: the card page’s own layout, read-only.</p>
+  </div>
+</div>
+</body>
+</html>
