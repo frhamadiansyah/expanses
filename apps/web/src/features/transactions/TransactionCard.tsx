@@ -624,6 +624,12 @@ function CardBody({
        */
       const target = draft.eventId ? await sharedEventOf(database, ownerScope(ws), draft.eventId) : null;
       const movesIn = target !== null && draft.eventId !== '' && (!initial || draft.eventId !== initial.eventId || bookShared);
+      // A private event newly chosen for a shared workspace's spending is refused before anything is written; one an
+      // older build left on the row is simply dropped by the save (D1).
+      const keptOldTag = !!initial && draft.eventId === (initial.eventId ?? '');
+      if (bookShared && draft.eventId && target === null && !keptOldTag) {
+        throw new Error('A shared workspace’s spending is never tagged to a private event, so both phones count it alike. Record it in another workspace, or choose a shared event.');
+      }
       const withoutEventTag = <T extends { eventId?: string | null }>(input: T): T =>
         movesIn || (bookShared && target === null) ? { ...input, eventId: null } : input;
       const moveInto = movesIn

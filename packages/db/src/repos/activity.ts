@@ -555,6 +555,8 @@ export async function inputOfTx(tx: Db, ws: WorkspaceContext, id: string): Promi
     mcc: v.mcc,
     cardId: v.cardId,
     eventId: v.eventId,
+    // A fact the row already had: a shared workspace drops it rather than refuse the write (sync gaps D1).
+    eventIdCarried: true,
     templateId: v.templateId,
     billMonth: bill?.[0] ?? null,
     channel: extras?.channel ?? null,
