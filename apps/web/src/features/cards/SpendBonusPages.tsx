@@ -38,7 +38,8 @@ function FeeWaivedButton({ page, item }: { page: CardPage; item: SpendBonusItem 
   const status = useFeeWaivedStatus(card.id, today);
   const [open, setOpen] = useState(false);
   // Only a challenge kept for the fee year a waiver covers now offers it or says it was waived; any other reads as before.
-  const covers = Boolean(status.data && challengeCoversFee(status.data.challengeYear, status.data.year));
+  // A card with no fee date offers it on any reached challenge: the sheet asks for the date first.
+  const covers = Boolean(status.data && (!status.data.dated || challengeCoversFee(status.data.challengeYear, status.data.year)));
   if (!item || item.kind !== 'challenge' || (!covers && !open)) return null;
   const waived = status.data?.waived ? waivedLine(status.data, currency) : null;
   return (
@@ -256,7 +257,7 @@ function WaiverForm({ page }: { page: CardPage }) {
           spendBy: shownKind === 'challenge' ? shownBy || null : null,
           categoryIds: shownCategories,
         };
-        await saveFeeWaiver(database, ws, card.id, waiver, today);
+        await saveFeeWaiver(database, ws, card.id, waiver);
       }
       await invalidate();
       goBack();

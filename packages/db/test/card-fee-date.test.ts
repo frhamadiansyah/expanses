@@ -4,6 +4,7 @@ import { type FeeWaiver, refundLines } from '@expanses/core';
 import {
   annualFeeCharges,
   categoryIdsByKey,
+  challengeYearOf,
   createAccount,
   feeWaivedStatus,
   getCardTerms,
@@ -135,7 +136,7 @@ describe('fee waived', () => {
       expect(await t.balance(t.keys['miscellaneous.membership_fee']!)).toBe(0);
       expect(await occurredOn(t, transactionId)).toBe('2026-11-10');
       expect(await t.year()).toBe(2026);
-      expect(await t.status()).toEqual({ year: 2026, covered: '2026-10-05', waived: true, back: { transactionId, amountMinor: 450_000, on: '2026-11-10', intoAccountId: t.id, cancelsCharge: true }, challengeYear: null });
+      expect(await t.status()).toEqual({ year: 2026, covered: '2026-10-05', waived: true, back: { transactionId, amountMinor: 450_000, on: '2026-11-10', intoAccountId: t.id, cancelsCharge: true }, challengeYear: null, dated: true });
       // Once is enough: a second save says so rather than doing nothing.
       await expect(saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false })).rejects.toThrow(/already marked waived/);
     });
@@ -259,7 +260,7 @@ describe('fee waived', () => {
       await t.database.db.run(sql`INSERT INTO card_fee_refunds (transaction_id, workspace_id, account_id, fee_year, challenge_json, created_at)
         VALUES (${transactionId}, ${t.ws.workspaceId}, ${t.id}, 2026, ${JSON.stringify(challenge)}, '2026-11-03T00:00:00.000Z')`);
       expect(await t.year()).toBeNull();
-      expect(await t.status()).toEqual({ year: 2026, covered: '2026-10-05', waived: true, back: { transactionId, amountMinor: 450_000, on: '2026-11-03', intoAccountId: t.id, cancelsCharge: false }, challengeYear: null });
+      expect(await t.status()).toEqual({ year: 2026, covered: '2026-10-05', waived: true, back: { transactionId, amountMinor: 450_000, on: '2026-11-03', intoAccountId: t.id, cancelsCharge: false }, challengeYear: null, dated: true });
       await undoFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
       expect(await t.status()).toMatchObject({ waived: false, back: null });
       expect(await t.balance(t.id)).toBe(0);
@@ -453,11 +454,11 @@ describe('fee waived', () => {
     const credit = (t: Awaited<ReturnType<typeof setup>>, key: string, occurredOn: string, description: string, amountMinor = 450_000) =>
       postTransaction(t.database, t.ws, { occurredOn, description, lines: refundLines({ categoryAccountId: t.keys[key]!, paymentAccountId: t.id, amountMinor, currency: 'IDR' }) });
 
-    // N1: the challenge keeps the year of the fee it was given for, set the day it is saved.
+    // N1, round 3: the challenge keeps the year of the fee it is for, from its own last day (the nearest annual charge).
     describe('which fee a challenge is for', () => {
-      const challengeOn = async (savedOn: string, countedFrom: string, spendBy: string) => {
+      const challengeOn = async (countedFrom: string, spendBy: string) => {
         const t = await setup();
-        await saveFeeWaiver(t.database, t.ws, t.id, { kind: 'challenge', amountMinor: 3_000_000, countedFrom, spendBy, categoryIds: [] }, savedOn);
+        await saveFeeWaiver(t.database, t.ws, t.id, { kind: 'challenge', amountMinor: 3_000_000, countedFrom, spendBy, categoryIds: [] });
         const at = (today: string) => feeWaivedStatus(t.database.db, t.ws, { cardId: t.id, today });
         return { t, at };
       };
@@ -465,7 +466,7 @@ describe('fee waived', () => {
 
       it('a three-month challenge given after the fee posted is that fee’s, and not next year’s', async () => {
         // The fee posts 5 Oct 2025; the bank gives the challenge on 20 Oct, to spend by 5 Jan 2026.
-        const { at } = await challengeOn('2025-10-20', '2025-10-20', '2026-01-05');
+        const { at } = await challengeOn('2025-10-20', '2026-01-05');
         expect(covers(await at('2025-12-01'))).toBe(true);
         expect(covers(await at('2026-01-10'))).toBe(true);
         // A month before the 2026 fee, the covered charge is 2026's: the old challenge is not about it.
@@ -473,30 +474,67 @@ describe('fee waived', () => {
       });
 
       it('a thirty-day challenge covers its own year only', async () => {
-        const { at } = await challengeOn('2025-10-10', '2025-10-10', '2025-11-09');
+        const { at } = await challengeOn('2025-10-10', '2025-11-09');
         expect(covers(await at('2025-11-01'))).toBe(true);
         expect(covers(await at('2026-09-20'))).toBe(false);
         expect(covers(await at('2026-10-20'))).toBe(false);
       });
 
       it('a challenge given before the fee, within its 30 days, is for that coming fee', async () => {
-        const { at } = await challengeOn('2026-09-15', '2026-09-15', '2026-10-01');
+        const { at } = await challengeOn('2026-09-15', '2026-10-01');
         expect((await at('2026-09-20')).challengeYear).toBe(2026);
         expect(covers(await at('2026-10-20'))).toBe(true);
       });
 
       it('an old challenge with no year kept is read by the charge its last day covers', async () => {
-        const { t, at } = await challengeOn('2025-10-20', '2025-10-20', '2026-01-05');
+        const { t, at } = await challengeOn('2025-10-20', '2026-01-05');
         await t.database.db.run(sql`UPDATE card_fee_waivers SET fee_year = NULL`);
         expect((await at('2026-01-10')).challengeYear).toBe(2025);
         expect(covers(await at('2026-01-10'))).toBe(true);
         expect(covers(await at('2026-09-10'))).toBe(false);
       });
 
+      // P1: a challenge given more than 30 days before the fee is the coming fee's, not last year's.
+      it('a challenge saved two months before the fee (spend by 30 Sep for a 5 Oct fee) is offered for that fee', async () => {
+        const { at } = await challengeOn('2026-08-01', '2026-09-30');
+        expect((await at('2026-08-01')).challengeYear).toBe(2026);
+        expect(covers(await at('2026-09-30'))).toBe(true);
+        expect(covers(await at('2026-10-06'))).toBe(true);
+      });
+
+      it.each([
+        ['2025-11-04', 2025],
+        ['2026-01-05', 2025],
+        ['2026-09-30', 2026],
+        ['2026-08-31', 2026],
+      ])('spend by %s is for the %i fee (the annual charge nearest it)', (spendBy, year) => expect(challengeYearOf('2025-10-05', spendBy)).toBe(year));
+
+      it('reads 29 Feb as 28 Feb in a year without one', () => {
+        expect(challengeYearOf('2024-02-29', '2025-03-10')).toBe(2025);
+        expect(challengeYearOf('2024-02-29', '2025-11-01')).toBe(2026);
+      });
+
+      // P2: editing an old challenge keeps the fee it was for.
+      it('editing an old challenge, a year on, keeps its fee year', async () => {
+        const { t, at } = await challengeOn('2025-10-20', '2026-01-05');
+        await t.database.db.run(sql`UPDATE card_fee_waivers SET fee_year = NULL`);
+        await saveFeeWaiver(t.database, t.ws, t.id, { kind: 'challenge', amountMinor: 2_500_000, countedFrom: '2025-10-20', spendBy: '2026-01-05', categoryIds: [] });
+        expect(await t.database.db.values(sql`SELECT fee_year FROM card_fee_waivers`)).toEqual([[2025]]);
+        expect(covers(await at('2026-09-10'))).toBe(false);
+      });
+
+      it('a challenge saved before the card had a fee date is read by the date set later', async () => {
+        const t = await card();
+        await saveFeeWaiver(t.database, t.ws, t.id, { kind: 'challenge', amountMinor: 3_000_000, countedFrom: '2026-08-01', spendBy: '2026-09-30', categoryIds: [] });
+        expect(await t.database.db.values(sql`SELECT fee_year FROM card_fee_waivers`)).toEqual([[null]]);
+        await setAnnualFeeOn(t.database, t.ws, { cardId: t.id, annualFeeOn: '2025-10-05' });
+        expect((await feeWaivedStatus(t.database.db, t.ws, { cardId: t.id, today: '2026-10-06' })).challengeYear).toBe(2026);
+      });
+
       it('a target, or no waiver, is no challenge', async () => {
         const t = await setup();
         expect((await t.status()).challengeYear).toBeNull();
-        await saveFeeWaiver(t.database, t.ws, t.id, { kind: 'automatic', amountMinor: 50_000_000, countedFrom: null, spendBy: null, categoryIds: [] }, TODAY);
+        await saveFeeWaiver(t.database, t.ws, t.id, { kind: 'automatic', amountMinor: 50_000_000, countedFrom: null, spendBy: null, categoryIds: [] });
         expect((await t.status()).challengeYear).toBeNull();
       });
     });

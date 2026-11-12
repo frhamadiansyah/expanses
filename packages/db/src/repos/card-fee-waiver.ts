@@ -1,11 +1,8 @@
-import { coveredCharge, type FeeWaiver, refundLines } from '@expanses/core';
-import { and, eq, sql } from 'drizzle-orm';
+import { type FeeWaiver } from '@expanses/core';
+import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
-import { accounts } from '../schema';
-import { categoryIdsByKeyTx } from './categories';
 import { feeFieldsByCard } from './fee-columns';
-import { postTransactionTx, voidTransactionTx } from './ledger';
 import { cardSpendLines, PointsError } from './points';
 
 /*
@@ -74,21 +71,42 @@ async function writeWaiver(db: Db, ws: WorkspaceContext, accountId: string, waiv
   if (await feeYearColumn(db)) await db.run(sql`UPDATE card_fee_waivers SET fee_year = ${challenge ? feeYear : null} WHERE account_id = ${accountId} AND workspace_id = ${ws.workspaceId}`);
 }
 
+const dayNumber = (iso: string) => Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10))) / 86_400_000;
+/** The fee's date in `year`; 29 Feb falls on 28 Feb in a year without one. */
+const feeDateIn = (chargedOn: string, year: number) => {
+  const leap = new Date(Date.UTC(year, 1, 29)).getUTCMonth() === 1;
+  const day = chargedOn.slice(5) === '02-29' && !leap ? '02-28' : chargedOn.slice(5);
+  return `${String(year).padStart(4, '0')}-${day}`;
+};
+
 /**
- * Sets a card's waiver, replacing the one it had. A challenge keeps the year of the fee it is for: the charge a waiver
- * covers on `today`, the day it is saved — a challenge the bank gives once the fee has posted is that fee's.
+ * The year of the fee a challenge is for, from its own last day: the annual charge nearest to it. A challenge the bank
+ * gives after the fee posted (spend by early January for an October fee) is that fee's; one ending a month before the
+ * fee is the coming fee's. Never from the day it was saved, so editing a challenge never moves it to another year.
  */
-export async function saveFeeWaiver(database: Database, ws: WorkspaceContext, accountId: string, waiver: FeeWaiver, today?: string): Promise<void> {
+export function challengeYearOf(chargedOn: string, spendBy: string): number {
+  const year = Number(spendBy.slice(0, 4));
+  const by = dayNumber(spendBy);
+  let best = year;
+  for (const candidate of [year - 1, year, year + 1]) {
+    if (Math.abs(dayNumber(feeDateIn(chargedOn, candidate)) - by) < Math.abs(dayNumber(feeDateIn(chargedOn, best)) - by)) best = candidate;
+  }
+  return best;
+}
+
+/** Sets a card's waiver, replacing the one it had. A challenge keeps the year of the fee it is for (`challengeYearOf`). */
+export async function saveFeeWaiver(database: Database, ws: WorkspaceContext, accountId: string, waiver: FeeWaiver): Promise<void> {
   if (!(await tablesExist(database.db))) throw new PointsError('This database needs updating before a fee waiver can be saved');
   await database.transaction(async (tx) => {
     const feeOn = (await feeFieldsByCard(tx, ws)).get(accountId)?.annualFeeOn ?? null;
-    await writeWaiver(tx, ws, accountId, waiver, feeOn && today ? Number(coveredCharge(feeOn, today).slice(0, 4)) : null);
+    await writeWaiver(tx, ws, accountId, waiver, feeOn && waiver.spendBy ? challengeYearOf(feeOn, waiver.spendBy) : null);
   });
 }
 
 /**
  * The year of the fee a card's challenge is for: the one kept when it was saved; for a challenge saved before that
- * was kept, the charge its last day covers (or, on a card with no fee date, its last day's year). Null without one.
+ * was kept, or before the card had a fee date, the charge nearest its last day (or, with no fee date, its last day's
+ * year). Null without one.
  */
 export async function challengeFeeYear(db: Db, ws: WorkspaceContext, accountId: string): Promise<number | null> {
   if (!(await tablesExist(db))) return null;
@@ -99,7 +117,7 @@ export async function challengeFeeYear(db: Db, ws: WorkspaceContext, accountId: 
   if (!row || row[0] !== 'challenge' || !row[1]) return null;
   if (row[2] !== null) return Number(row[2]);
   const feeOn = (await feeFieldsByCard(db, ws)).get(accountId)?.annualFeeOn ?? null;
-  return Number((feeOn ? coveredCharge(feeOn, row[1]) : row[1]).slice(0, 4));
+  return feeOn ? challengeYearOf(feeOn, row[1]) : Number(row[1].slice(0, 4));
 }
 
 export async function clearFeeWaiver(database: Database, ws: WorkspaceContext, accountId: string): Promise<void> {

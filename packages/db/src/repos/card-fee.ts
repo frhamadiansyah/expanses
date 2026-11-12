@@ -206,6 +206,8 @@ export interface FeeWaivedStatus {
   back: FeeBack | null;
   /** The fee year the card's challenge is for, or null without one: Fee waived is offered on it only for this year. */
   challengeYear: number | null;
+  /** The card has its fee date: without it, the year is today's and Fee waived asks for the date first. */
+  dated: boolean;
 }
 
 type RefundRow = { root: string | null; id: string; amountMinor: number; on: string; description: string; into: string };
@@ -262,7 +264,7 @@ export async function feeWaivedStatus(db: Db, ws: WorkspaceContext, input: { car
   const marked = terms.annualFeeWaivedYear === year;
   const row = linked.at(-1) ?? (marked ? older.at(-1) : undefined);
   const back = row ? { transactionId: row.id, amountMinor: row.amountMinor, on: row.on, intoAccountId: row.into, cancelsCharge: row.description === WAIVED_DESCRIPTION } : null;
-  return { year, covered, waived: marked || linked.length > 0, back, challengeYear: await challengeFeeYear(db, ws, input.cardId) };
+  return { year, covered, waived: marked || linked.length > 0, back, challengeYear: await challengeFeeYear(db, ws, input.cardId), dated: terms.annualFeeOn !== null };
 }
 
 export type FeeWaivedInput =
