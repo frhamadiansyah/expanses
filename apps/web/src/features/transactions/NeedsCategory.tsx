@@ -9,8 +9,9 @@ export function NeedsCategory({ count, active = false, onShow, onClear }: { coun
   if (count === 0) return null;
   const face = (
     <>
-      {/* The amber of a question still to answer: the same mark the rows themselves wear. */}
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--ph-warn-panel)] text-[var(--ph-warn-ink)]">
+      {/* Grey, as the box's other lines (To review, Recurring) draw their circles: the box is a list of things to look
+          at, not a warning. The rows themselves keep their own mark. */}
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink-3)]">
         <CircleHelp size={18} strokeWidth={2.2} aria-hidden />
       </span>
       <span className="min-w-0 flex-1">
