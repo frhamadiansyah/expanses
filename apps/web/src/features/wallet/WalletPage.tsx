@@ -11,6 +11,7 @@ import { BalanceSpark } from '../accounts/BalanceSpark';
 import { balanceSeries, crossing, daysBefore } from '../accounts/balance-series';
 import { SPENDABLE_KINDS, freeToSpend, moneySummary, pocketsOf } from '../accounts/pockets';
 import { sharedSections } from '../accounts/shared-accounts';
+import { MemberBadge } from '../workspaces/WorkspaceBadge';
 import { useSetAsideViews } from '../goals/queries';
 import { owedMinor } from '../networth/debt-rows';
 import { useSharedNetWorth } from '../networth/queries';
@@ -294,10 +295,15 @@ export function WalletPage() {
             {section.items.map((item) => (
               <InsetRow
                 key={item.itemId}
-                /* The kind's drawing, ringed in its owner's colour, as the same item wears it on Net worth (D12). */
+                /* The kind's drawing with its owner's initial, as the same item wears it on Net worth (D12). */
                 icon={<item.tile size={16} aria-hidden />}
-                iconRing={item.ring ?? undefined}
-                title={item.name}
+                iconMark={<MemberBadge name={section.ownerName} colour={section.colour} />}
+                title={
+                  <>
+                    {item.name}
+                    <span className="sr-only">, {section.ownerName}'s</span>
+                  </>
+                }
                 subtitle={item.kindLabel}
                 value={<Money minor={item.minor} currency={item.currency} />}
                 valueTone="ink"

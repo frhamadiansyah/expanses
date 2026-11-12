@@ -1,7 +1,7 @@
 import type { ItemSummary } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import { memberName, type ReceivedItem } from './joint-rows';
-import { itemPage, type PurchaseLine, type TransferIn, sharedItemView, linesPaidFrom, transferLines } from './shared-item';
+import { heroLine, itemPage, type PurchaseLine, shortDay, type TransferIn, sharedItemView, linesPaidFrom, transferLines } from './shared-item';
 
 const card: ReceivedItem = {
   itemId: 'i-visa',
@@ -261,5 +261,16 @@ describe('itemPage (finding 3: Accounts → "Andi\'s, shared" → the item, in s
     expect(itemPage(null, 'i-visa', [], []).view).toBeNull();
     // An owner the workspace has not named reads as memberName's fallback.
     expect(itemPage({ group, items: [card], names: {} }, 'i-visa', [], []).view?.details.owner).toBe(memberName({}, 'm-rina'));
+  });
+});
+
+describe('heroLine (the item\'s page in the account page\'s layout: owner and updated in the hero\'s small line)', () => {
+  it('names whose it is, its kind and the day of its figure, with no year in this year', () => {
+    expect(heroLine('Budi', 'Bank', '2026-11-12', '2026-11-12')).toBe('Budi’s · Bank · updated 12 Nov');
+  });
+
+  it('keeps the year on a figure from another year', () => {
+    expect(heroLine('Rina', 'Credit card', '2025-12-31', '2026-01-02')).toBe('Rina’s · Credit card · updated 31 Dec 2025');
+    expect(shortDay('2026-03-04', '2026-11-12')).toBe('4 Mar');
   });
 });

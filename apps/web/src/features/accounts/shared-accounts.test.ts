@@ -36,7 +36,12 @@ describe('sharedSections (joint-net-worth §8.2: separate → "Andi\'s, shared" 
       ['m-andi', "Andi's, shared", ['a1', 'a2']],
       ['m-budi', "Budi's, shared", ['b1']],
     ]);
-    expect(sections[0]!.items[1]).toMatchObject({ name: 'Andi Visa', kindLabel: 'Credit card', minor: 500, currency: 'IDR', ring: 'var(--owner-2)' });
+    expect(sections[0]!.items[1]).toMatchObject({ name: 'Andi Visa', kindLabel: 'Credit card', minor: 500, currency: 'IDR' });
+    // Each owner's initial wears their own colour, the one the household's Net worth gives them on both phones.
+    expect(sections.map((s) => [s.ownerName, s.colour])).toEqual([
+      ['Andi', 'var(--owner-2)'],
+      ['Budi', 'var(--owner-3)'],
+    ]);
     expect(typeof sections[0]!.items[1]!.tile).not.toBe('undefined');
   });
 

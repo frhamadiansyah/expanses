@@ -169,10 +169,11 @@ export interface InsetRowProps extends GroupChild {
   icon?: ReactNode;
   iconColour?: string;
   /**
-   * A ring round the icon circle, in this colour: whose the row is, in a household's Net worth (joint-net-worth §8.2).
-   * The glyph stays the kind's; only the ring says the owner, so the row stays one line.
+   * Laid on the icon circle's bottom-right corner: whose the row is, in a household's Net worth (joint-net-worth §8.2)
+   * — the member's initial (`MemberBadge`). The glyph stays the kind's; only the mark says the owner, so the row stays
+   * one line. Drawn only with `icon`.
    */
-  iconRing?: string;
+  iconMark?: ReactNode;
   title: ReactNode;
   subtitle?: ReactNode;
   /** The title in the regular weight a form row's label has, for a row set among form rows (a Settings page); lists keep medium. */
@@ -231,7 +232,7 @@ export interface InsetRowProps extends GroupChild {
  * A row that slides is not an exception: its action sits *behind* the row, never inside the tap target.
  */
 /** A row's leading glyph, in the kit's own 28 px circle: the neutral fill, or the caller's tint when it gave one. */
-export function RowIcon({ tint, ring, size = 28, children }: { tint?: { background: string; foreground: string } | null; ring?: string; size?: number; children: ReactNode }) {
+export function RowIcon({ tint, size = 28, children }: { tint?: { background: string; foreground: string } | null; size?: number; children: ReactNode }) {
   return (
     <span
       aria-hidden
@@ -241,8 +242,6 @@ export function RowIcon({ tint, ring, size = 28, children }: { tint?: { backgrou
         height: size,
         background: tint?.background ?? 'var(--ph-fill)',
         color: tint?.foreground ?? 'var(--ph-ink-2)',
-        // Drawn inside the 28 px circle, so a ringed row is exactly as tall and as wide as any other.
-        boxShadow: ring ? `inset 0 0 0 2px ${ring}` : undefined,
       }}
     >
       {children}
@@ -253,7 +252,7 @@ export function RowIcon({ tint, ring, size = 28, children }: { tint?: { backgrou
 export function InsetRow({
   icon,
   iconColour,
-  iconRing,
+  iconMark,
   title,
   subtitle,
   plain = false,
@@ -287,11 +286,20 @@ export function InsetRow({
     <span className="w-full text-center text-[17px] leading-[22px] md:text-[15px] md:leading-[20px] font-normal text-[var(--ph-ink)]">{title}</span>
   ) : (
     <>
-      {icon && (
-        <RowIcon tint={tint} ring={iconRing} size={depth > 0 ? NESTED_ICON : undefined}>
-          {icon}
-        </RowIcon>
-      )}
+      {icon &&
+        (iconMark ? (
+          // The mark hangs off the circle's corner, so the row is exactly as tall and as wide as one without it.
+          <span className="relative inline-flex shrink-0">
+            <RowIcon tint={tint} size={depth > 0 ? NESTED_ICON : undefined}>
+              {icon}
+            </RowIcon>
+            {iconMark}
+          </span>
+        ) : (
+          <RowIcon tint={tint} size={depth > 0 ? NESTED_ICON : undefined}>
+            {icon}
+          </RowIcon>
+        ))}
       <span className="min-w-0 flex-1 text-left">
         {/* A row down a tree is a size smaller than a row at the top, as a drawer's kinds are: a long name still fits. */}
         <span className={cx('block truncate text-[var(--ph-ink)]', depth > 0 ? 'text-[15px] leading-[20px] font-normal' : 'text-[17px] leading-[22px] md:text-[15px] md:leading-[20px]', plain ? 'font-normal' : 'font-medium')}>{title}</span>
