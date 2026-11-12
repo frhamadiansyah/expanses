@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cashflow row fixes</title>
+<style>
+  :root { --bg:#f2f2f7; --surface:#fff; --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e0e0e4; --fill:#efeff2;
+          --warnp:#fef3c7; --warni:#78350f; --red:#b91c1c; --green:#047857; --alarm:#c6301f; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#e6e6ea; color:var(--ink); font:14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; padding:24px 16px 48px; }
+  h1 { font-size:20px; margin:0 0 4px; } .lede { color:#555; margin:0 0 24px; max-width:900px; }
+  h2 { font-size:16px; margin:32px 0 12px; }
+  .pair { display:flex; flex-wrap:wrap; gap:24px; align-items:flex-start; }
+  .col { width:340px; max-width:100%; }
+  .cap { font-weight:600; margin:0 0 8px; } .cap span { font-weight:400; color:#666; }
+  .phone { background:var(--bg); border-radius:28px; padding:16px 14px 20px; border:1px solid #d4d4d8; }
+  .card { background:var(--surface); border-radius:12px; padding:0 13px; }
+  .row { display:flex; align-items:center; gap:12px; padding:10px 0; }
+  .card .row + .row { border-top:.5px solid #eef0f2; }
+  .ic { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:17px; }
+  .ic.grey { background:var(--fill); color:var(--ink3); } .ic.amber { background:var(--warnp); color:var(--warni); }
+  .ic.cat { color:#fff; font-size:16px; }
+  .grow { flex:1; min-width:0; } .t { font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .s { font-size:12px; color:var(--ink3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .amt { text-align:right; flex-shrink:0; max-width:42%; } .amt b { display:block; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .amt .x { font-size:12px; color:var(--ink3); white-space:nowrap; }
+  .red { color:var(--red); } .grey { color:var(--ink3); } .strike { text-decoration:line-through; } .dim { opacity:.6; }
+  .chev { color:#c7c7cc; flex-shrink:0; }
+  .tag { margin-left:8px; background:#f1f5f9; color:#64748b; border-radius:4px; padding:0 6px; font-size:12px; font-weight:400; }
+  .day { font-size:12px; color:var(--ink3); margin:14px 4px 6px; display:flex; justify-content:space-between; }
+  .mark { outline:2px dashed #2563eb; outline-offset:2px; border-radius:6px; }
+  .note { font-size:12.5px; color:#444; margin:10px 2px 0; }
+  /* receipt */
+  .hero { text-align:center; margin:6px 0 16px; } .hero .big { font-size:28px; font-weight:600; margin-top:6px; } .hero h3 { margin:4px 0 2px; font-size:17px; } .hero .s { white-space:normal; }
+  .ig { background:var(--surface); border-radius:11px; overflow:hidden; }
+  .ir { display:flex; align-items:center; gap:8px; padding:11px 13px; min-height:44px; font-size:17px; }
+  .ig .ir + .ir { border-top:.5px solid var(--hair); }
+  .ir .lab { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ir .val { color:var(--ink2); white-space:nowrap; flex-shrink:0; }
+  .ir .val.cut { flex-shrink:1; min-width:0; overflow:hidden; text-overflow:ellipsis; text-align:right; flex:1; }
+  .ir.center { justify-content:center; } .ir.alarm { color:var(--alarm); }
+  .sw { width:51px; height:31px; border-radius:16px; background:#34c759; margin-left:auto; position:relative; flex-shrink:0; }
+  .sw::after { content:""; position:absolute; right:2px; top:2px; width:27px; height:27px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+  .sw.off { background:#e9e9eb; } .sw.off::after { right:auto; left:2px; }
+  .pill { font-size:15px; color:var(--ink); background:var(--fill); border-radius:14px; padding:4px 12px; flex-shrink:0; }
+  .gap34 { height:34px; position:relative; } .gap26 { height:26px; position:relative; } .gap18 { height:18px; position:relative; }
+  .ruler { position:absolute; right:-6px; top:2px; bottom:2px; border-right:2px solid #e11d48; }
+  .ruler i { position:absolute; right:6px; top:50%; transform:translateY(-50%); font-style:normal; font-size:11px; color:#e11d48; white-space:nowrap; }
+  .ruler.ok { border-color:#059669; } .ruler.ok i { color:#059669; }
+  .lines { display:flex; flex-direction:column; gap:0; background:var(--surface); border-radius:12px; padding:2px 13px; margin-bottom:0; }
+  .lines div { display:flex; justify-content:space-between; padding:8px 0; font-size:14px; } .lines div + div { border-top:.5px solid #eef0f2; } .lines span:first-child { color:#64748b; }
+  table { border-collapse:collapse; margin-top:8px; font-size:13px; background:#fff; border-radius:8px; overflow:hidden; }
+  td, th { text-align:left; padding:6px 10px; border-bottom:1px solid #eee; vertical-align:top; } th { background:#fafafa; }
+</style>
+</head>
+<body>
+<h1>Cashflow row fixes</h1>
+<p class="lede">Four fixes, each shown as it is today and as proposed. Dashed blue outlines mark what changes. All amounts and names here are made up.</p>
+
+<h2>1 + 2 · Cashflow page</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap">Now <span>(main, TF 114)</span></p>
+    <div class="phone">
+      <div class="card">
+        <div class="row"><span class="ic grey">!</span><div class="grow"><div class="t">To review</div><div class="s">2 not recorded</div></div><b>Rp 85.000</b><span class="chev">›</span></div>
+        <div class="row"><span class="ic grey">🔔</span><div class="grow"><div class="t">Recurring bills</div><div class="s">3 of 7 paid</div></div><b>Rp 1.240.000</b><span class="chev">›</span></div>
+        <div class="row"><span class="ic amber mark">?</span><div class="grow"><div class="t">Uncategorised</div><div class="s">1 needs a category</div></div><span class="chev">›</span></div>
+      </div>
+      <div class="day"><span>Today</span><span>−Rp 312.000</span></div>
+      <div class="card">
+        <div class="row"><span class="ic cat" style="background:#16a34a">🛒</span><div class="grow"><div class="t">Groceries +1</div><div class="s">Fresh Mart · 4417</div></div><div class="amt"><b class="red">Rp 212.000</b><span class="x">⊘ Rp 38.000</span></div></div>
+        <div class="row dim"><span class="ic cat" style="background:#ea580c">🍜</span><div class="grow"><div class="t">Eating out <span class="tag mark">Excluded</span></div><div class="s">Team lunch · 4417</div></div><div class="amt"><b class="red strike mark">Rp 100.000</b></div></div>
+        <div class="row"><span class="ic cat" style="background:#2563eb">⚡</span><div class="grow"><div class="t">Electricity <span class="tag">Oct bill</span></div><div class="s">PLN · BCA</div></div><div class="amt"><b class="red">Rp 450.000</b></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <p class="cap">Proposed</p>
+    <div class="phone">
+      <div class="card">
+        <div class="row"><span class="ic grey">!</span><div class="grow"><div class="t">To review</div><div class="s">2 not recorded</div></div><b>Rp 85.000</b><span class="chev">›</span></div>
+        <div class="row"><span class="ic grey">🔔</span><div class="grow"><div class="t">Recurring bills</div><div class="s">3 of 7 paid</div></div><b>Rp 1.240.000</b><span class="chev">›</span></div>
+        <div class="row"><span class="ic grey mark">?</span><div class="grow"><div class="t">Uncategorised</div><div class="s">1 needs a category</div></div><span class="chev">›</span></div>
+      </div>
+      <div class="day"><span>Today</span><span>−Rp 312.000</span></div>
+      <div class="card">
+        <div class="row"><span class="ic cat" style="background:#16a34a">🛒</span><div class="grow"><div class="t">Groceries +1</div><div class="s">Fresh Mart · 4417</div></div><div class="amt"><b class="red">Rp 212.000</b><span class="x">⊘ Rp 38.000</span></div></div>
+        <div class="row"><span class="ic cat" style="background:#ea580c">🍜</span><div class="grow"><div class="t">Eating out</div><div class="s">Team lunch · 4417</div></div><div class="amt mark"><b class="grey">Rp 100.000</b><span class="x">⊘ All</span></div></div>
+        <div class="row"><span class="ic cat" style="background:#2563eb">⚡</span><div class="grow"><div class="t">Electricity <span class="tag">Oct bill</span></div><div class="s">PLN · BCA</div></div><div class="amt"><b class="red">Rp 450.000</b></div></div>
+      </div>
+    </div>
+    <p class="note"><b>1.</b> Uncategorised gets the same grey circle as To review and Recurring bills.<br><b>2.</b> Excluded whole: no strike-through, no red, no "Excluded" tag, and the row is no longer faded. The amount turns grey and "⊘ All" sits under it, the same ⊘ mark a partly excluded split uses.</p>
+  </div>
+</div>
+
+<p class="note" style="max-width:700px"><b>Other labels after the category today:</b></p>
+<table>
+  <tr><th>Label</th><th>When it shows</th></tr>
+  <tr><td><span class="tag" style="margin:0">Oct bill</span></td><td>A bill paid in a different month from the bill's own month. The row stays on the day it was paid, and budgets count it in the bill's month.</td></tr>
+  <tr><td>+1, +2</td><td>A split: the main category, plus how many other counted categories it has.</td></tr>
+  <tr><td><span class="tag" style="margin:0">Excluded</span></td><td>Excluded from the report as a whole. Removed in this proposal.</td></tr>
+</table>
+<p class="note">The second line can also end with "· ⑂ split" or "· for [goal]", but those are after the note, not after the category.</p>
+
+<h2>3 + 4 · Transaction page (tap a row)</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap">Now</p>
+    <div class="phone">
+      <div class="hero"><div class="ic cat" style="background:#2563eb;margin:0 auto">⚡</div><div class="big">Rp 450.000</div><h3>Electricity token for the apartment</h3><div class="s">Electricity · Home</div><div class="s">Tue, 11 Nov 2026</div></div>
+      <div class="lines"><div><span>Paid with</span><span>BCA</span></div></div>
+      <div class="gap34"></div>
+      <div class="ig">
+        <div class="ir"><span class="lab mark">Bi…</span><span class="val">Electricity token for the apartment · Nov 2026</span><span class="chev">›</span></div>
+        <div class="ir center mark">Unlink</div>
+      </div>
+      <div class="gap34"><span class="ruler"><i>34</i></span></div>
+      <div class="ig"><div class="ir">Paid off<span class="sw off"></span></div></div>
+      <div class="gap34"><span class="ruler"><i>34</i></span></div>
+      <div class="ig"><div class="ir center alarm">Delete</div></div>
+    </div>
+    <p class="note">With no bill linked, "Link to a bill" sits above Delete with a <b>26</b> gap, while the groups above have <b>34</b>. The two gaps come from different spacing rules, which is why it looks off.</p>
+  </div>
+  <div class="col">
+    <p class="cap">Proposed · bill linked</p>
+    <div class="phone">
+      <div class="hero"><div class="ic cat" style="background:#2563eb;margin:0 auto">⚡</div><div class="big">Rp 450.000</div><h3>Electricity token for the apartment</h3><div class="s">Electricity · Home</div><div class="s">Tue, 11 Nov 2026</div></div>
+      <div class="lines"><div><span>Paid with</span><span>BCA</span></div></div>
+      <div class="gap18"></div>
+      <div class="ig mark">
+        <div class="ir"><span style="flex-shrink:0">Bill</span><span class="val cut">Electricity token for the apartment · Nov 2026</span><span class="pill">Unlink</span></div>
+        <div class="ir">Paid off<span class="sw off"></span></div>
+      </div>
+      <div class="gap18"><span class="ruler ok"><i>18</i></span></div>
+      <div class="ig"><div class="ir center alarm">Delete</div></div>
+    </div>
+    <p class="note"><b>4.</b> "Bill" never gets cut off; the bill's name shortens instead. Unlink is a small button at the end of the same row. Tapping the rest of the row opens the bill, as it does today.<br><b>3.</b> Bill and Paid off share one box, and every box is the same distance apart.</p>
+  </div>
+  <div class="col">
+    <p class="cap">Proposed · no bill linked</p>
+    <div class="phone">
+      <div class="hero"><div class="ic cat" style="background:#ea580c;margin:0 auto">🍜</div><div class="big">Rp 100.000</div><h3>Team lunch</h3><div class="s">Eating out · Home</div><div class="s">Tue, 11 Nov 2026</div></div>
+      <div class="lines"><div><span>Paid with</span><span>Card 4417</span></div></div>
+      <div class="gap18"></div>
+      <div class="ig mark">
+        <div class="ir">Link to a bill<span class="chev" style="margin-left:auto">›</span></div>
+        <div class="ir">Paid off<span class="sw"></span></div>
+      </div>
+      <div class="gap18"><span class="ruler ok"><i>18</i></span></div>
+      <div class="ig"><div class="ir center alarm">Delete</div></div>
+    </div>
+    <p class="note">"Link to a bill" moves out of its own box into the Paid off box, as a normal row with a ›. Delete keeps its own box at the bottom.</p>
+  </div>
+</div>
+</body>
+</html>
