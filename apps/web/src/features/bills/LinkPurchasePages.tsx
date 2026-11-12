@@ -1,5 +1,5 @@
 import { formatMinor, isoDate, monthName } from '@expanses/core';
-import { linkPurchaseToBill, listTransactions, ownerScope, RecurringError, relinkPurchaseToBill, unlinkPurchaseFromBill } from '@expanses/db';
+import { eventPostingOf, linkPurchaseToBill, listTransactions, ownerScope, RecurringError, relinkPurchaseToBill, unlinkPurchaseFromBill } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useRouter, useSearch } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
@@ -15,6 +15,7 @@ import { classify } from '../transactions/classify';
 import { Wheel } from '../networth/AssetRows';
 import { billCurrencyOf } from './bill-view';
 import { billsForPurchase, candidateLine, monthWithYear, purchaseCount, refusalText, repeatWords, wheelYears } from './bill-link-view';
+import { historyIndex, stepsBackToReceipt } from './receipt-return';
 import { useBillDetail, useBillLinkCandidates, useBillLinkRefusal, useBillMonthsBefore, useBillOfPurchase, useBillTemplates } from './queries';
 
 /* The two ways to link a purchase that is already recorded to a bill's month: from the bill (these first two pages) and from the purchase. */
@@ -166,6 +167,15 @@ function usePurchase(transactionId: string) {
   });
 }
 
+/**
+ * The shared event a purchase was posted by, through the receipt's own cache entry. Such a purchase is changed on its
+ * event: a link it already has can be opened or let go here, never moved to another bill or month.
+ */
+function useFromEvent(transactionId: string) {
+  const { database } = useApp();
+  return useQuery({ queryKey: ['event-posting', transactionId], queryFn: () => eventPostingOf(database, transactionId) });
+}
+
 export function LinkToBillRoute() {
   const { transactionId } = useParams({ from: '/transactions/$transactionId/bill' });
   return <LinkToBillPage transactionId={transactionId} />;
@@ -186,8 +196,12 @@ export function LinkToBillPage({ transactionId }: { transactionId: string }) {
   const accounts = useAccounts().data ?? [];
   const tx = usePurchase(transactionId).data ?? null;
   const current = useBillOfPurchase(transactionId).data ?? null;
+  // A shared event's purchase keeps the bill it has: Open this bill and Unlink only, the other bills inert.
+  const locked = (useFromEvent(transactionId).data ?? null) !== null;
   const bills = useBillTemplates().data ?? [];
   const { same, others } = billsForPurchase(bills, tx ? classify(tx).categoryIds : []);
+  // Linked to a bill no longer listed (paused or stopped): still named, with its ✓, in a row of its own.
+  const unlisted = current !== null && !bills.some((bill) => bill.id === current.templateId) ? current : null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
@@ -206,6 +220,11 @@ export function LinkToBillPage({ transactionId }: { transactionId: string }) {
     }
   }
 
+  const tick = (
+    <span data-testid="bill-current" className="text-[var(--ph-tint)]">
+      <Check size={20} aria-label="Linked" />
+    </span>
+  );
   const row = (bill: (typeof bills)[number]) => {
     const payer = accounts.find((a) => a.id === bill.moneyAccountId);
     const linked = current?.templateId === bill.id;
@@ -219,16 +238,15 @@ export function LinkToBillPage({ transactionId }: { transactionId: string }) {
         subtitle={[linked ? monthWithYear(current.billMonth) : null, repeatWords(bill), bill.repeat === 'monthly' ? payer?.name : null].filter(Boolean).join(' · ')}
         value={
           linked ? (
-            <span data-testid="bill-current" className="text-[var(--ph-tint)]">
-              <Check size={20} aria-label="Linked" />
-            </span>
+            tick
           ) : bill.amountMinor === null ? null : (
             <Money minor={bill.amountMinor} currency={bill.currency ?? payer?.currency ?? ws.baseCurrency} tone="none" />
           )
         }
         valueTone="ink-2"
-        chevron={!linked}
-        onClick={() => void navigate({ to: '/transactions/$transactionId/bill/$billId', params: { transactionId, billId: bill.id } })}
+        chevron={!linked && !locked}
+        disabled={locked && !linked}
+        onClick={locked ? undefined : () => void navigate({ to: '/transactions/$transactionId/bill/$billId', params: { transactionId, billId: bill.id } })}
       />
     );
   };
@@ -237,6 +255,11 @@ export function LinkToBillPage({ transactionId }: { transactionId: string }) {
     <div className={SCREEN}>
       <PushedTitle title={listTitle(current !== null)} back="Transaction" onBack={back} />
       <ErrorBox error={error} />
+      {unlisted && (
+        <InsetGroup header="Linked to">
+          <InsetRow testId={`bill-choice-${unlisted.templateId}`} title={unlisted.name} subtitle={monthWithYear(unlisted.billMonth)} value={tick} valueTone="ink-2" chevron={false} />
+        </InsetGroup>
+      )}
       {bills.length === 0 ? (
         <InsetGroup>
           <InsetRow title={<span className="font-normal text-[var(--ph-ink-3)]">No recurring bills</span>} />
@@ -248,7 +271,7 @@ export function LinkToBillPage({ transactionId }: { transactionId: string }) {
         </>
       )}
       {current?.linked && (
-        <InsetGroup>
+        <InsetGroup footer={locked ? 'From a shared event: changed on the event. It can be let go here, not moved.' : undefined}>
           <InsetRow
             title="Open this bill"
             plain
@@ -284,6 +307,8 @@ function MonthYearSheet({ month, years, onClose, onPick }: { month: string; year
 export function LinkBillMonthPage({ transactionId, billId }: { transactionId: string; billId: string }) {
   const { database, ws } = useApp();
   const navigate = useNavigate();
+  const router = useRouter();
+  const locked = (useFromEvent(transactionId).data ?? null) !== null;
   const back = useStepBack();
   const invalidate = useInvalidateAll();
   const today = isoDate();
@@ -307,9 +332,13 @@ export function LinkBillMonthPage({ transactionId, billId }: { transactionId: st
     setBusy(true);
     try {
       // One step whether it links or moves: the old month is let go and the new one paid in the same write.
-      await relinkPurchaseToBill(database, ws, { templateId: billId, billMonth: month, transactionId, today });
+      if (!unchanged) await relinkPurchaseToBill(database, ws, { templateId: billId, billMonth: month, transactionId, today });
       await invalidate();
-      void navigate({ to: '/transactions/$transactionId', params: { transactionId } });
+      // Back to the receipt's own entry, so its ‹ goes where it was opened from; a page reached any other way puts
+      // the receipt in its own place.
+      const steps = stepsBackToReceipt(transactionId, historyIndex(router.history));
+      if (steps !== null) router.history.go(steps);
+      else void navigate({ to: '/transactions/$transactionId', params: { transactionId }, replace: true });
     } catch (e) {
       setError(e instanceof RecurringError ? new Error(refusalText(e.code, month, e.message)) : e);
     } finally {
@@ -329,7 +358,7 @@ export function LinkBillMonthPage({ transactionId, billId }: { transactionId: st
             key: 'link',
             label: 'Link to bill',
             glyph: <Check size={20} aria-hidden />,
-            disabled: busy || !tx || !bill || currentQuery.isPending || (!unchanged && (refusal.data != null || refusal.isPending)),
+            disabled: busy || !tx || !bill || currentQuery.isPending || (locked && !unchanged) || (!unchanged && (refusal.data != null || refusal.isPending)),
             run: () => void link(),
           },
         ]}

@@ -135,6 +135,11 @@ test('on a phone: a receipt links its purchase to a bill, in the month picked on
   await expect(page).toHaveURL(/\/transactions\/[^/]+$/);
   await expect(page.getByTestId('receipt-bill')).toContainText('Linked');
   await page.screenshot({ path: `${SHOTS}-10-receipt.png` });
+  // This is the receipt's own entry, not a second one on top of the month page: its ‹ goes back to Cashflow.
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page).toHaveURL(/\/transactions\/?(\?.*)?$/);
+  await page.getByRole('button', { name: /^Sports & fitness Gym fee/ }).click();
+  await expect(page.getByTestId('receipt-bill')).toContainText('Linked');
 
   // The bill list again: the current bill has its ✓ and its month; Open this bill opens it, and ‹ comes back.
   await page.getByTestId('receipt-bill').click();

@@ -16,6 +16,7 @@ import { usePhotoUrls } from '../../photos/use-photo-urls';
 import { Card, cx, Empty, ErrorBox } from '../../ui';
 import { DestructiveRow, GROUP_GAP, InsetGroup, InsetRow, SwitchRow } from '../../ui/native';
 import { useBillOfPurchase } from '../bills/queries';
+import { historyIndex, markReceiptAt } from '../bills/receipt-return';
 import { showToast } from '../../ui/Toast';
 import { useCardsWithArchived } from '../cards/card-queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
@@ -163,10 +164,15 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   const billRow = tx.status === 'posted' && !elsewhere && (bill !== null || (kind.type === 'expense' && mayChange));
   // None, or a link this purchase may move or let go: the bill list, its ✓ on the current one. Pay's own payment, or a
   // link it may not change, opens the bill itself.
-  const openBill = () =>
-    !bill || (bill.linked && changeable)
-      ? void navigate({ to: '/transactions/$transactionId/bill', params: { transactionId } })
-      : void navigate({ to: '/bills/$billId', params: { billId: bill.templateId }, search: FROM_TRANSACTION });
+  const openBill = () => {
+    if (!bill || (bill.linked && changeable)) {
+      // Linking from the list comes back to this very entry (`stepsBackToReceipt`), not a second receipt on top.
+      markReceiptAt(transactionId, historyIndex(router.history));
+      void navigate({ to: '/transactions/$transactionId/bill', params: { transactionId } });
+    } else {
+      void navigate({ to: '/bills/$billId', params: { billId: bill.templateId }, search: FROM_TRANSACTION });
+    }
+  };
 
   const caption = heroCaption(tx, kind.amountMinor);
   // One purchase split across workspaces, or with a part Not counted: each part, with the workspace it is counted in.
