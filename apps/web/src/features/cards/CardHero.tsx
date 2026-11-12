@@ -16,6 +16,7 @@ import { backRadius } from '../accounts/balance-back';
 import { BackSlot } from './CardBack';
 import { useSpendBonuses } from './spend-bonuses';
 import { useFeeWaivedStatus, waivedLine } from './FeeWaivedSheet';
+import { challengeCoversFee } from './fee-line';
 import { categoryMark } from '../categories/CategoryIcon';
 import { CardFace } from './CardFace';
 import { cycleBack, dueDateAfter, dueIn } from './statement-dates';
@@ -438,7 +439,7 @@ export function CardHero({
           items={bonuses.items}
           unit={unit}
           currency={currency}
-          challengeNote={feeStatus.data?.waived ? waivedLine(feeStatus.data, currency) : null}
+          challengeNote={feeStatus.data?.waived && bonuses.waiver?.kind === 'challenge' && challengeCoversFee(bonuses.waiver.spendBy, feeStatus.data.covered) ? waivedLine(feeStatus.data, currency) : null}
           points={cp.program ? { total: pointsBalance?.total ?? 0, posted: pointsBalance?.posted ?? 0, estimated: pointsBalance?.estimated ?? 0 } : null}
         />
       </div>

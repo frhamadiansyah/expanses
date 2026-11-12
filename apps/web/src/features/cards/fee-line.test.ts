@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { feeLine } from './fee-line';
+import { challengeCoversFee, feeLine } from './fee-line';
 
 describe('the annual fee row on a card page', () => {
   it('is absent with neither an amount nor a date', () => expect(feeLine(null, null, null, 'IDR', '2026-10-26')).toBeNull());
@@ -27,4 +27,16 @@ describe('the annual fee row on a card page', () => {
     expect(line).toMatchObject({ waived: true, soon: false, when: 'Waived this year · next charge 20 Nov 2027' });
   });
   it('ignores a refund of another year', () => expect(feeLine(500_000, '2020-11-20', null, 'IDR', '2026-10-26', 2025)!.waived).toBe(false));
+});
+
+describe('which fee year a challenge is about', () => {
+  // The covered charge is 5 Oct 2026.
+  it('covers a challenge ending in the year before the charge, or up to 45 days after it', () => {
+    expect(challengeCoversFee('2026-09-30', '2026-10-05')).toBe(true);
+    expect(challengeCoversFee('2025-10-05', '2026-10-05')).toBe(true);
+    expect(challengeCoversFee('2026-11-19', '2026-10-05')).toBe(true);
+  });
+  it('does not cover last year’s challenge, kept on the card a year on', () => expect(challengeCoversFee('2025-09-30', '2026-10-05')).toBe(false));
+  it('does not cover next year’s challenge, which shows its own progress', () => expect(challengeCoversFee('2027-09-01', '2026-10-05')).toBe(false));
+  it('covers nothing without a last day', () => expect(challengeCoversFee(null, '2026-10-05')).toBe(false));
 });

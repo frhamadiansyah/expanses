@@ -81,12 +81,21 @@ export interface FeeRefund {
   feeYear: number;
 }
 
-/** The refunds of a card's annual fees that are still in force (the receipt not taken back). */
+/**
+ * The refunds of a card's annual fees that are still in force: each by the transaction that stands for it now, an
+ * edit's replacement included (a refund edited before edits carried the link is found through what it replaced).
+ */
 export async function listFeeRefunds(db: Db, ws: WorkspaceContext, accountId?: string): Promise<FeeRefund[]> {
   if (!(await tablesExist(db))) return [];
   const rows = await db.values<[string, string, number]>(
-    sql`SELECT r.transaction_id, r.account_id, r.fee_year FROM card_fee_refunds r JOIN transactions t ON t.id = r.transaction_id AND t.status = 'posted'
-        WHERE r.workspace_id = ${ws.workspaceId} ${accountId ? sql`AND r.account_id = ${accountId}` : sql``} ORDER BY r.created_at`,
+    sql`WITH RECURSIVE chain(root, id) AS (
+          SELECT transaction_id, transaction_id FROM card_fee_refunds WHERE workspace_id = ${ws.workspaceId} ${accountId ? sql`AND account_id = ${accountId}` : sql``}
+          UNION SELECT chain.root, t.id FROM transactions t JOIN chain ON t.replaces_transaction_id = chain.id
+        )
+        SELECT t.id, r.account_id, r.fee_year FROM chain
+        JOIN card_fee_refunds r ON r.transaction_id = chain.root
+        JOIN transactions t ON t.id = chain.id AND t.status = 'posted'
+        ORDER BY r.created_at`,
   );
   return rows.map(([transactionId, account, feeYear]) => ({ transactionId, accountId: account, feeYear: Number(feeYear) }));
 }

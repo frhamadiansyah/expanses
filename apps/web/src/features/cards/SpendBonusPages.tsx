@@ -13,6 +13,7 @@ import { activeDuring } from './catalog-panel';
 import { Line, Meter, SUBTITLE, TextLine } from './rows';
 import { CountsRow } from './CountsRow';
 import { FeeWaivedFlow, useFeeWaivedStatus, waivedLine } from './FeeWaivedSheet';
+import { challengeCoversFee } from './fee-line';
 import { useSpendBonuses } from './spend-bonuses';
 import { expenseAncestors, formatPoints, shortDate } from './useCardPoints';
 
@@ -35,8 +36,11 @@ function windowText(item: SpendBonusItem, currency: string): string {
 function FeeWaivedButton({ page, item }: { page: CardPage; item: SpendBonusItem | undefined }) {
   const { card, cp, currency, today } = page;
   const status = useFeeWaivedStatus(card.id, today);
+  const { waiver } = useSpendBonuses(cp, page.all, today);
   const [open, setOpen] = useState(false);
-  if (!item || item.kind !== 'challenge') return null;
+  // Only a challenge about the fee year a waiver covers now offers it or says it was waived; any other reads as before.
+  const covers = Boolean(status.data && waiver?.kind === 'challenge' && challengeCoversFee(waiver.spendBy, status.data.covered));
+  if (!item || item.kind !== 'challenge' || (!covers && !open)) return null;
   const waived = status.data?.waived ? waivedLine(status.data, currency) : null;
   return (
     <>

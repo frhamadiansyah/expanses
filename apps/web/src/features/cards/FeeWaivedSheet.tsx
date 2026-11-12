@@ -1,5 +1,5 @@
 import { chargeAfterWaiver, dayMonth, formatMinor, groupedMajorString, groupTypedAmount, parseGroupedMajor } from '@expanses/core';
-import { annualFeeCharges, type FeeChargeChoice, feeWaivedStatus, type FeeWaivedStatus, saveFeeWaived, undoFeeWaived } from '@expanses/db';
+import { annualFeeCharges, type FeeChargeChoice, feeWaivedStatus, type FeeWaivedStatus, saveFeeWaived, setAnnualFeeOn, undoFeeWaived } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -8,6 +8,7 @@ import { Sheet } from '../../app/Sheet';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { UndoToast } from '../../ui/UndoToast';
+import { NoticeAlert } from '../../ui/native/NoticeAlert';
 import { InsetGroup, InsetRow, SwitchRow, TextRow } from '../../ui/native';
 import { owedMinor } from '../networth/debt-rows';
 import { DateRow } from '../transactions/CardRows';
@@ -65,14 +66,20 @@ export function FeeWaivedSheet({ fee, today, onClose, onSaved, chargedAsNormal =
   const [amount, setAmount] = useState(fee.annualFeeMinor !== null ? groupedMajorString(fee.annualFeeMinor, currency) : '');
   const [cameBackOn, setCameBackOn] = useState(today);
 
-  const covered = charges.data?.covered ?? status.data?.covered ?? null;
-  // Once the charges are read: on when the charge has happened, off when it is still ahead (waived in advance), and the
-  // charge that looks like the fee picked.
+  const [feeOn, setFeeOn] = useState('');
+  const covered = charges.data?.covered ?? null;
+  const reversedOn = charges.data?.reversedOn ?? null;
+  // Whether the card has its fee date, once read; the choices below are made again when the date is set here.
+  const dated = charges.isSuccess ? charges.data !== null : null;
+  const [readFor, setReadFor] = useState<boolean | null>(null);
+  // Once the charges are read: on when the charge has happened, off when it is still ahead (waived in advance) or a
+  // reversal of it is already on the card, and the charge that looks like the fee picked.
   useEffect(() => {
-    if (!charges.isSuccess) return;
-    setBack((was) => was ?? (covered === null || covered <= today));
-    setChargeId((was) => (was === undefined ? (charges.data?.matched?.transactionId ?? null) : was));
-  }, [charges.isSuccess, charges.data, covered, today]);
+    if (dated === null || readFor === dated) return;
+    setReadFor(dated);
+    setBack(reversedOn ? false : covered === null || covered <= today);
+    setChargeId(charges.data?.matched?.transactionId ?? null);
+  }, [dated, readFor, reversedOn, covered, today, charges.data]);
 
   const year = status.data?.year ?? Number(today.slice(0, 4));
   const title = `Fee waived · ${year}`;
@@ -100,16 +107,35 @@ export function FeeWaivedSheet({ fee, today, onClose, onSaved, chargedAsNormal =
   if (status.data.waived) {
     // What was recorded, and the way to take it back; once undone the sheet asks again.
     const recorded = status.data.back;
+    const into = recorded ? (accounts.data ?? []).find((a) => a.id === recorded.intoAccountId)?.name : undefined;
     return (
       <Sheet grouped closeOnly title={title} onClose={onClose}>
-        <InsetGroup footer={fee.annualFeeOn ? `Next charge ${feeDateText(chargeAfterWaiver(fee.annualFeeOn, today))}.` : undefined}>
+        <InsetGroup footer={dated ? `Next charge ${feeDateText(chargeAfterWaiver(status.data.covered, today))}.` : undefined}>
           <InsetRow plain title="Back on the card" value={recorded ? 'On' : 'Off'} />
           {recorded && <InsetRow plain title={recorded.cancelsCharge ? 'Refund' : 'Amount'} value={formatMinor(recorded.amountMinor, currency)} valueTone="ink" />}
           {recorded && <InsetRow plain title="Came back on" value={feeDateText(recorded.on)} />}
+          {recorded && into && <InsetRow plain title="Came back to" value={into} testId="fee-waived-into" />}
           {!recorded && <InsetRow plain title="Recorded" value="Year marked waived" />}
         </InsetGroup>
         <InsetGroup>
           <InsetRow destructive title="Undo" testId="fee-waived-undo" disabled={busy} onClick={() => void run(() => undoFeeWaived(database, ws, { cardId: fee.cardId, today }), () => {})} />
+        </InsetGroup>
+        <ErrorBox error={error} />
+      </Sheet>
+    );
+  }
+
+  if (!dated) {
+    // No fee date, no year to mark: the date is set here first, and the sheet then asks as for any card.
+    const setDate = () =>
+      void run(
+        () => (feeOn ? setAnnualFeeOn(database, ws, { cardId: fee.cardId, annualFeeOn: feeOn }) : saveFeeWaived(database, ws, { cardId: fee.cardId, today, back: false })),
+        () => {},
+      );
+    return (
+      <Sheet grouped title={title} onClose={onClose} confirm={{ label: 'Save', disabled: busy, run: setDate }}>
+        <InsetGroup footer={<span data-testid="fee-waived-footer">Set the day the fee is charged first.</span>}>
+          <TextRow label="Charged on" type="date" value={feeOn} onChange={(e) => setFeeOn(e.target.value)} />
         </InsetGroup>
         <ErrorBox error={error} />
       </Sheet>
@@ -148,10 +174,14 @@ export function FeeWaivedSheet({ fee, today, onClose, onSaved, chargedAsNormal =
   }
 
   const footer = !back
-    ? 'Off: the fee was never charged, so nothing is recorded. The year is marked waived.'
-    : charge
+    ? reversedOn
+      ? `A reversal of this fee is already recorded on ${feeDateText(reversedOn)}. Nothing more is recorded; the year is marked waived.`
+      : 'Off: the fee was never charged, so nothing is recorded. The year is marked waived.'
+    : charge?.reversedOn
+      ? `A reversal of that charge is already recorded on ${feeDateText(charge.reversedOn)}. Pick another charge, or turn this off.`
+      : charge
       ? `The refund cancels that charge in ${categoryName}. Tap Fee charge to pick another charge.`
-      : `The ${covered ? `${dayMonth(covered)} ` : ''}charge is not in the app, so this records only the money coming back.${typedMinor > 0 ? ` ${creditText(typedMinor, owed, currency)}` : ''}`;
+      : `The ${covered ? `${dayMonth(covered)} ` : ''}charge is not in the app, so this records only the money coming back.${typedMinor > 0 ? ` ${creditText(typedMinor, owed, currency)}` : ''}${reversedOn ? ` A reversal of this fee is already recorded on ${feeDateText(reversedOn)}.` : ''}`;
   const save = () =>
     void run(
       () =>
@@ -199,6 +229,12 @@ export function FeeWaivedFlow({ fee, today, onClose, chargedAsNormal = false }: 
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const [saved, setSaved] = useState<number | null>(null);
+  const [undoing, setUndoing] = useState(false);
+  const [failed, setFailed] = useState<unknown>(null);
+  if (failed) {
+    return <NoticeAlert title="Undo did not go through" text={failed instanceof Error ? failed.message : String(failed)} closeLabel="OK" onClose={onClose} />;
+  }
+  if (undoing) return null;
   if (saved !== null) {
     return (
       <UndoToast
@@ -206,8 +242,14 @@ export function FeeWaivedFlow({ fee, today, onClose, chargedAsNormal = false }: 
         icon="refund"
         onDone={onClose}
         onUndo={() => {
-          void undoFeeWaived(database, ws, { cardId: fee.cardId, today }).then(invalidate);
-          onClose();
+          setUndoing(true);
+          undoFeeWaived(database, ws, { cardId: fee.cardId, today })
+            .then(invalidate)
+            .then(onClose)
+            .catch((e: unknown) => {
+              setUndoing(false);
+              setFailed(e);
+            });
         }}
       />
     );
