@@ -33,6 +33,7 @@ import {
   type WorkspaceContext,
 } from '../src/index';
 import { setupDb } from './helpers';
+import { checkDueCapTx, dueCapFor } from '../src/repos/goal-due-link';
 
 // Invented names and figures.
 const TODAY = '2026-11-12';
@@ -479,5 +480,56 @@ describe('the day a set-aside is dated', () => {
     vi.useRealTimers();
     const rows = await database.db.values<[string]>(sql`SELECT occurred_on FROM goal_contributions WHERE goal_id = ${umrahId}`);
     expect(rows).toEqual([['2026-11-01']]);
+  });
+});
+
+describe('a due-month transfer edited later (fix round 2)', () => {
+  let deposito: AccountRow;
+  beforeEach(async () => {
+    deposito = await createAccount(database, ws, { name: 'Bank Sejahtera Deposito', kind: 'asset', subtype: 'savings', currency: 'IDR', openingBalanceMinor: 5_000_000, openedOn: '2026-01-01' });
+    // Giro holds 3.000.000 for the goal, 27.000.000 free; November transfers 1.000.000 Giro → Tabungan.
+    await saveGoalDue(database, ws, { goalId: umrahId, on: true, day: 1, mode: 'set_aside', accountId: tahapan.id, toAccountId: null }, '2026-10-05');
+    await setAsideGoalMonth(database, ws, { goalId: umrahId, month: '2026-10', amountMinor: 3_000_000, accountId: tahapan.id, occurredOn: '2026-10-05' });
+    await saveGoalDue(database, ws, { goalId: umrahId, on: true, day: 1, mode: 'transfer', accountId: tahapan.id, toAccountId: tabungan.id }, TODAY);
+  });
+
+  const goalTotal = async () => (await listEarmarks(database, ws)).filter((row) => row.goalId === umrahId).reduce((sum, row) => sum + row.amountMinor, 0);
+  const transfer = () => transferGoalMonth(database, ws, { goalId: umrahId, month: '2026-11', amountMinor: 1_000_000, fromAccountId: tahapan.id, toAccountId: tabungan.id, occurredOn: TODAY });
+  const edit = (id: string, amountMinor: number, toId: string) =>
+    replaceTransaction(database, ws, id, {
+      occurredOn: TODAY,
+      description: 'Umrah · November',
+      lines: [
+        { accountId: tahapan.id, amountMinor: -amountMinor, currency: 'IDR' },
+        { accountId: toId, amountMinor, currency: 'IDR' },
+      ],
+    });
+
+  it('raised, the extra is new money too, and Month history shows the new amount', async () => {
+    const id = await transfer();
+    expect(await goalTotal()).toBe(4_000_000);
+    const edited = await edit(id, 1_500_000, tabungan.id);
+    expect(await goalTotal()).toBe(4_500_000);
+    expect(await setAsideOn(tahapan.id)).toBe(3_000_000);
+    expect(await setAsideOn(tabungan.id)).toBe(1_500_000);
+    expect((await monthsOf())[0]).toMatchObject({ month: '2026-11', state: 'done', amountMinor: 1_500_000, transactionId: edited });
+    await undoGoalMonth(database, ws, umrahId, '2026-11');
+    expect(await goalTotal()).toBe(3_000_000);
+  });
+
+  it('sent to another account, the goal keeps its promise in From and the month follows', async () => {
+    const id = await transfer();
+    const edited = await edit(id, 1_000_000, deposito.id);
+    expect(await goalTotal()).toBe(4_000_000);
+    expect(await setAsideOn(tahapan.id)).toBe(3_000_000);
+    expect(await setAsideOn(tabungan.id)).toBe(0);
+    expect(await setAsideOn(deposito.id)).toBe(1_000_000);
+    expect((await monthsOf())[0]).toMatchObject({ state: 'done', amountMinor: 1_000_000, toAccountId: deposito.id, transactionId: edited });
+  });
+
+  it('refuses when From’s balance moved between reading its free money and writing', async () => {
+    const cap = await dueCapFor(database, ws, tahapan.id, 1_000_000, TODAY);
+    await recordTaggedTransfer(database, ws, { occurredOn: TODAY, description: 'Pindah', amountMinor: 200_000, fromAccountId: tahapan.id, toAccountId: deposito.id, goalId: null });
+    await expect(database.transaction((tx) => checkDueCapTx(tx, ws, cap))).rejects.toThrow('Balances just changed. Try again.');
   });
 });

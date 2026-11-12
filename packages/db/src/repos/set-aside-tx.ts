@@ -662,6 +662,8 @@ export async function carryTaggedTx(
   goalId: string,
   was: TaggedMove,
   next: TaggedMove,
+  /** As `parkForGoalTx`'s: a goal's due-month transfer passes what went past From's free money (`goal-due-link.ts`). */
+  opts: { promiseFollowsAtMost?: number } = {},
 ): Promise<void> {
   await tx.update(transactions).set({ goalId }).where(eq(transactions.id, toTransactionId));
   if (!(await canHoldSetAside(tx, ws, next.toAccountId))) return;
@@ -675,7 +677,8 @@ export async function carryTaggedTx(
       ).filter((draw) => !isAnswer(draw))
     : [];
   const wasMoved = own?.amountMinor ?? 0;
-  const nextMoved = withDraws ? Math.min(next.amountMinor, wasMoved + Math.max(0, next.amountMinor - was.amountMinor)) : 0;
+  const grown = withDraws ? Math.min(next.amountMinor, wasMoved + Math.max(0, next.amountMinor - was.amountMinor)) : 0;
+  const nextMoved = opts.promiseFollowsAtMost === undefined ? grown : Math.min(grown, Math.max(0, opts.promiseFollowsAtMost));
   const shifted = await shiftMoveTx(
     tx,
     ws,

@@ -68,6 +68,7 @@ export * from './repos/goals';
 export * from './repos/goal-funding';
 export * from './repos/goal-transfers';
 export * from './repos/goal-dues';
+export { BalancesChangedError } from './repos/goal-due-link';
 export * from './repos/set-aside-tx';
 export * from './repos/set-aside';
 export * from './repos/convert';

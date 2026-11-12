@@ -8,8 +8,8 @@ import { MONEY_SUBTYPES } from './accounts';
 import { recordContributionTx } from './goal-contributions';
 import { GoalDbError, setStandingMonthlyTx } from './goals';
 import { recordTaggedTransferTx } from './goal-transfers';
-import { nativeBalances, voidTransactionTx } from './ledger';
-import { setAsideView } from './set-aside';
+import { voidTransactionTx } from './ledger';
+import { checkDueCapTx, dueCapFor } from './goal-due-link';
 import { adjustSetAsideTx, isPocketParentTx, lowerSetAsideTx } from './set-aside-tx';
 
 /*
@@ -424,10 +424,10 @@ export async function transferGoalMonth(database: Database, ws: WorkspaceContext
   if (!DATE.test(input.occurredOn)) throw new GoalDueError('A date is YYYY-MM-DD');
   // A month is new money for the goal: it keeps what it already has set aside in From, and only what goes past From's
   // free money (the balance less every promise on it) can be its own promise following the money.
-  const view = await setAsideView(database, ws, input.fromAccountId, { date: input.occurredOn });
-  const freeMinor = view ? view.freeMinor : ((await nativeBalances(database, ws, input.occurredOn))[input.fromAccountId] ?? 0);
-  const promiseFollowsAtMost = Math.max(0, input.amountMinor - Math.max(0, freeMinor));
+  const cap = await dueCapFor(database, ws, input.fromAccountId, input.amountMinor, input.occurredOn);
   return database.transaction(async (tx) => {
+    // The free money was read before the transaction: refused if From's balance has moved since.
+    await checkDueCapTx(tx, ws, cap);
     const goal = await assertGoalTx(tx, ws, input.goalId);
     const { state } = await monthTx(tx, ws, input.goalId, input.month, input.occurredOn);
     if (state === 'done') throw new GoalDueError(`${monthName(input.month, 'long')} is already done`);
@@ -440,7 +440,7 @@ export async function transferGoalMonth(database: Database, ws: WorkspaceContext
       toAmountMinor: input.toAmountMinor ?? null,
       goalId: input.goalId,
       ratesToBase: input.ratesToBase,
-      promiseFollowsAtMost,
+      promiseFollowsAtMost: cap.promiseFollowsAtMost,
     });
     await writeRecordTx(tx, ws, input.goalId, input.month, {
       state: 'done',
