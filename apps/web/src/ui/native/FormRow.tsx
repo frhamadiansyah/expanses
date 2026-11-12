@@ -190,14 +190,16 @@ export function TextRow({
   const field = useRef<HTMLInputElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const filled = String(props.value ?? props.defaultValue ?? '') !== '';
-  // An open note closes on a tap anywhere outside the row.
+  // An open note closes on a tap anywhere outside the row. It waits for the click, not the press: closing on the press
+  // moves everything below the note up before the finger lifts, so a tap on another row's ⓘ would land on whatever
+  // slid under it (a "Fewer details" button, say) instead of opening that note.
   useEffect(() => {
     if (!explained) return;
-    const close = (event: PointerEvent) => {
+    const close = (event: MouseEvent) => {
       if (!wrap.current?.contains(event.target as Node)) setExplained(false);
     };
-    document.addEventListener('pointerdown', close);
-    return () => document.removeEventListener('pointerdown', close);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
   }, [explained]);
   return (
     <div className="relative" ref={wrap}>
