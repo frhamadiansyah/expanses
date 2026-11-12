@@ -53,7 +53,7 @@ test('swiping the card, or tapping its dots, shows that plastic’s purchases; t
   await page.goto('/wallet');
   await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^Swipe Card(,|$)/ }).click();
   await expect(page.getByTestId('tile-left-to-pay')).toContainText('Owed now');
-  const owed = await page.getByTestId('tile-unpaid-balance').innerText();
+  const owed = (await page.getByTestId('tile-unpaid-balance').textContent()) ?? '';
   const dots = page.getByRole('group', { name: 'Cards on this account' });
   const primaryDot = dots.getByRole('button', { name: /ending 1111/ });
   const spouseDot = dots.getByRole('button', { name: /ending 2222/ });
@@ -72,7 +72,9 @@ test('swiping the card, or tapping its dots, shows that plastic’s purchases; t
   await expect(recent(page)).toContainText('Spouse market');
   await expect(recent(page)).not.toContainText('Primary dinner');
   await expect(recent(page)).not.toContainText('Old lunch');
-  await expect(page.getByTestId('tile-left-to-pay')).toBeVisible();
+  // The card page is still open and the swipe did not turn the card over (its back stays behind the face).
+  await expect(page.getByTestId('tile-left-to-pay')).toHaveCount(1);
+  await expect(page.locator('[data-flipped]')).toHaveCount(0);
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${SHOTS}/plastic-spouse.png` });
 
@@ -95,9 +97,10 @@ test('swiping the card, or tapping its dots, shows that plastic’s purchases; t
   await expect(page.getByTestId('tile-unpaid-balance')).toHaveText(owed);
   expect(owed).toMatch(/580[.,]000/);
 
-  // A plain tap on the raised card still puts it down.
+  // A plain tap on the raised card still turns it over (a swipe did not): its back shows what is owed.
   await face.click();
-  await expect(page.getByTestId('tile-left-to-pay')).toHaveCount(0);
+  await expect(page.locator('[data-flipped]')).toHaveCount(1);
+  await expect(page.getByTestId('tile-left-to-pay')).toBeVisible();
 });
 
 test('a card with one plastic shows every purchase and has no dots', async ({ page }) => {

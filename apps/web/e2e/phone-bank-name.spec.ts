@@ -43,7 +43,7 @@ test('an account at a bank is called by its bank and its name, while Settings ke
   await expect(page.getByRole('heading', { name: 'Mandiri Xpresi' })).toBeVisible();
   await openSettings(page);
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Xpresi');
-  await expect(page.getByLabel('Bank or institution', { exact: true })).toHaveValue('Bank Mandiri');
+  await expect(page.getByLabel('Bank', { exact: true })).toHaveValue('Bank Mandiri');
 });
 
 test('a credit card is called by its issuer and its name, kept apart in its Settings', async ({ page }) => {

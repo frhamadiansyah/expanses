@@ -48,7 +48,8 @@ test('by thumb: add a pocket, then see the account once on Assets at its ≈ tot
   await expect(page.getByTestId('pocket-IDR')).toContainText('5.400.000');
   await openAssets(page);
   const row = page.getByRole('link', { name: /^Thumb Valas/ });
-  await expect(row).toContainText('3 pockets');
+  // One line: the name and the ≈ total, no pocket count (a pocketed account opens to its pockets).
+  await expect(row).not.toContainText('pocket');
   await expect(row).toContainText('58.982.000');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

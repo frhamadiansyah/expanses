@@ -74,10 +74,10 @@ test('five tabs do not wrap at phone width — the fifth moves behind a …', as
   await expect(page.getByRole('menu', { name: 'More Net worth sections' }).getByRole('menuitem', { name: 'Lend & borrow' })).toBeVisible();
 });
 
-test('the wallet stack prints no figure on a covered card; each is a link named by the card and its figure', async ({ page }) => {
+test('the wallet stack prints no figure on a covered card; each is a control named by the card and its figure', async ({ page }) => {
   await page.goto('/design-kit');
   await expect(page.getByTestId('card-band').filter({ hasText: /miles|points|Rp\s8\.412\.000/ })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: /42\.500 miles/ })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: /42\.500 miles/ })).toHaveCount(1);
 });
 
 test('a table becomes rows on a phone, and the hidden columns are not on screen', async ({ page }) => {
