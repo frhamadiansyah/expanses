@@ -1,4 +1,4 @@
-import { balanceSheet, type ItemSummary } from '@expanses/core';
+import { balanceSheet, type ItemSummary, resolveRings } from '@expanses/core';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { figureOf, groupItems, jointRows, jointSeries, jointStatus, ownerRing, type ReceivedItem } from './joint-rows';
@@ -188,11 +188,14 @@ describe('jointStatus (finding 1: the personal total is never shown as the house
 });
 
 describe('ownerRing', () => {
-  it('assigns ring colours by the order of the group’s members, the same on every phone', () => {
-    expect(ownerRing([RINA, ANDI], RINA)).toBe('var(--owner-1)');
-    expect(ownerRing([RINA, ANDI], ANDI)).toBe('var(--owner-2)');
-    expect(ownerRing([ANDI, RINA, 'm-3'], 'm-3')).toBe('var(--owner-3)');
-    expect(ownerRing([RINA, ANDI], 'someone-else')).toBeNull();
+  it('draws each member in the colour the group resolved for them, the same on every phone', () => {
+    // By place in the group, as before, when nobody picked.
+    const byPlace = resolveRings([RINA, ANDI], {});
+    expect(ownerRing(byPlace, RINA)).toBe('var(--owner-blue)');
+    expect(ownerRing(byPlace, ANDI)).toBe('var(--owner-purple)');
+    // A member's own pick.
+    expect(ownerRing(resolveRings([RINA, ANDI], { [RINA]: { colour: 'teal', at: '2026-11-12T01:00:00.000Z' } }), RINA)).toBe('var(--owner-teal)');
+    expect(ownerRing(byPlace, 'someone-else')).toBeNull();
   });
 });
 

@@ -347,9 +347,11 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
     scopeRule: "book_id = bookId (the group log's local book id)",
     scope: (bookId) => sql`t.book_id = ${bookId}`,
     keyColumns: ['member_id'],
-    fields: { count: 'count' },
+    // `ring` and `ringDevices` (0110): the member's own ring colour and the devices that read it (sync/net-worth/rings.ts).
+    // A build from before them applies `count` and passes them over.
+    fields: { count: 'count', ring: 'ring_json', ringDevices: 'ring_devices_json' },
     localOnInsert: ['book_id'],
-    // Each member's own pending count is theirs to write.
+    // Each member's own pending count, and own ring colour, are theirs to write.
     writer: (_fields, key) => key.member_id ?? null,
   },
   {

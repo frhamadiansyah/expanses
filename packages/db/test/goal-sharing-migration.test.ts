@@ -11,9 +11,9 @@ const refusedByCheck = async (run: Promise<unknown>) => {
 };
 
 describe('migration 0109', () => {
-  it('is the latest and makes the five tables', async () => {
+  it('makes the five tables', async () => {
     const { database } = await setupDb();
-    expect(LATEST_VERSION).toBe(109);
+    expect(LATEST_VERSION).toBeGreaterThanOrEqual(109);
     expect(await goalSharingTablesExist(database.db)).toBe(true);
     const names = (await database.db.values<[string]>(sql`SELECT name FROM sqlite_master WHERE type = 'table' AND (name LIKE 'goal_share%' OR name LIKE 'goal_member%') ORDER BY name`)).map(([n]) => n);
     expect(names).toEqual(['goal_member_funding', 'goal_member_moves', 'goal_share_leaves', 'goal_share_log', 'goal_shares']);

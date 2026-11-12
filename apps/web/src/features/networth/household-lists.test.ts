@@ -3,7 +3,7 @@ import type { AssetValueRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { groupAssets, liveGroups, totalOf } from './asset-rows';
 import { type DebtAccount, groupDebts } from './debt-rows';
-import { type Household, householdAssetGroups, householdAssetPage, householdCaption, householdDebtPage, householdDebtSheet, householdFrom, memberMark } from './household-lists';
+import { type Household, householdAssetGroups, householdAssetPage, householdCaption, householdDebtPage, householdDebtSheet, householdFrom, ownerMark } from './household-lists';
 import { jointStatus, type ReceivedItem } from './joint-rows';
 import { assetSegments, debtSegments } from './share-segments';
 
@@ -83,9 +83,9 @@ function assetsOn(me: string, own: AssetValueRow[], received: ReceivedItem[], { 
   const { live, total, onlyHere } = householdAssetPage(own, [], { accounts, baseCurrency: 'IDR', ratesToBase: rates }, household, shared);
   return {
     total,
-    onlyHere: onlyHere.map((row) => `${memberMark(household, row.owner!).name}: ${row.name}`),
+    onlyHere: onlyHere.map((row) => `${ownerMark({ names: household.names, rings: {} }, row.owner!).name}: ${row.name}`),
     segments: assetSegments(live).map(({ key, minor }) => [key, minor]),
-    list: live.map((group) => [group.group, group.totalMinor, group.drawers.map((drawer) => [drawer.key, drawer.totalMinor, drawer.rows.map((row) => `${memberMark(household, row.owner!).name}: ${row.name}`)])]),
+    list: live.map((group) => [group.group, group.totalMinor, group.drawers.map((drawer) => [drawer.key, drawer.totalMinor, drawer.rows.map((row) => `${ownerMark({ names: household.names, rings: {} }, row.owner!).name}: ${row.name}`)])]),
   };
 }
 
@@ -172,7 +172,7 @@ function debtsOn(me: string, accounts: DebtAccount[], balances: Record<string, n
   return {
     total: sheet.total,
     segments: debtSegments(sheet.groups.flatMap((group) => group.drawers.map((drawer) => ({ key: `${group.kind}:${drawer.key}`, label: drawer.label, totalMinor: drawer.totalMinor, kind: group.kind })))).map(({ key, minor }) => [key, minor]),
-    list: sheet.groups.map((group) => [group.kind, group.drawers.map((drawer) => [drawer.key, drawer.rows.map((row) => `${memberMark(household, row.owner!).name}: ${row.name}`)])]),
+    list: sheet.groups.map((group) => [group.kind, group.drawers.map((drawer) => [drawer.key, drawer.rows.map((row) => `${ownerMark({ names: household.names, rings: {} }, row.owner!).name}: ${row.name}`)])]),
     received: sheet.groups.flatMap((group) => group.rows).filter((row) => row.received).map((row) => row.key),
   };
 }

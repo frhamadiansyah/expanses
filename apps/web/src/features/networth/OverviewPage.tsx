@@ -13,14 +13,13 @@ import { NetWorthChart } from './NetWorthChart';
 import { debtKind, rowKindOf, type RowKind, sheetDrawers } from './sheet-drawers';
 import { ASSET_STACK_KEYS, DEBT_STACK_KEYS, STACK_KEYS } from './stack-keys';
 import { RANGES, rangeChange, SPAN_MONTHS, type Span, spanSlice } from './span';
-import { memberName, useAssetProfiles, useAssetValues, useJointSheet, useNetWorthSeries, useSheet } from './queries';
+import { memberName, useAssetProfiles, useAssetValues, useJointSheet, useNetWorthSeries, useOwnerRings, useSheet } from './queries';
 import { buyChoices } from '../transactions/buy-in-form';
 import { figureOf, jointSeries, ownerRing } from './joint-rows';
 import { isMoneyAccount, useAccounts } from '../../lib/queries';
 import { accountDestination, type AccountDestination } from '../accounts/destination';
 import { foldPockets, type ShownSheetRow } from './overview-rows';
 import { useHasDebts } from '../debt-plan/queries';
-import { MemberBadge } from '../workspaces/WorkspaceBadge';
 
 const MONTH_LABEL = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
 
@@ -210,9 +209,9 @@ function TileIcon({ tile: Glyph, small = false }: { tile: LucideIcon; small?: bo
   return <Glyph size={small ? 14 : 16} aria-hidden />;
 }
 
-/** Whose a row is on the household's sheet: the colour its initial wears, the name a screen reader hears, and whether it is the other's. */
+/** Whose a row is on the household's sheet: the ring its circle wears, the name a screen reader hears, and whether it is the other's. */
 interface RowOwner {
-  colour: string | null;
+  ring: string | null;
   name: string;
   received: boolean;
   /** Set when the row has no base figure: its own balance, in its own currency (review round 1, finding 2). */
@@ -230,22 +229,22 @@ type OwnerOf = (accountId: string) => RowOwner | null;
 /**
  * One account's line in the sheet: the drawing its kind wears, its name, and what it is worth or what it owes.
  *
- * On the household's sheet (D12, D13) the owner is the initial on the circle's corner and nothing else — the row stays
- * one line, with no name and no date under it — and a screen reader hears whose it is. One's own rows wear one's own
- * initial too, so every row says whose it is. The other's item opens its own page.
+ * On the household's sheet (D12, D13) the owner is the ring round the circle and nothing else — the row stays one line,
+ * with no name and no date under it — and a screen reader hears whose it is. One's own rows are ringed in one's own
+ * colour too, so every row says whose it is. The other's item opens its own page.
  */
 function sheetLine(row: SheetRow, currency: string, icon: ReactNode, owner: RowOwner | null, link?: AccountDestination, depth = 0, tree?: TreePlace) {
   const shared = owner?.received === true;
   const shownMinor = owner?.native?.minor ?? row.amountMinor;
   const shownCurrency = owner?.native?.currency ?? currency;
   // On a tree the circle is left off: the kind above already wears it, and a circle on every line crowded the row.
-  // Its name then sits level with the kind's. A household's row keeps it, because the initial on it says whose it is.
+  // Its name then sits level with the kind's. A household's row keeps it, because the ring round it says whose it is.
   const drawn = !tree || owner ? icon : undefined;
   return (
     <InsetRow
       key={row.accountId}
       icon={drawn}
-      iconMark={owner ? <MemberBadge name={owner.name} colour={owner.colour} /> : undefined}
+      iconRing={owner?.ring ?? undefined}
       title={
         owner && !shared ? (
           /* A row that is not a link has no accessible name of its own, so whose it is is read out with its title. */
@@ -373,6 +372,8 @@ export function OverviewPage() {
    * group: null, and the page is personal exactly as it was.
    */
   const household = useJointSheet();
+  // Each member's ring colour, from this phone's copy of the group (each one's own pick, else their place in it).
+  const ringsOf = useOwnerRings();
   const joint = household.data;
   /*
    * Until the page knows whether the household files jointly — or while the household's inputs load, or when they fail
@@ -398,7 +399,7 @@ export function OverviewPage() {
         const row = owners.get(accountId);
         if (!row) return null;
         const native = row.amountMinor === null ? { minor: row.nativeMinor, currency: row.currency } : null;
-        return { colour: ownerRing(joint.members, row.owner), name: memberName(joint.names, row.owner), received: row.received, native };
+        return { ring: ringsOf ? ownerRing(ringsOf.rings, row.owner) : null, name: memberName(joint.names, row.owner), received: row.received, native };
       }
     : undefined;
   /*

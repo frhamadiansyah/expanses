@@ -1,4 +1,4 @@
-import { isoDate } from '@expanses/core';
+import { isoDate, type RingColour, resolveRings } from '@expanses/core';
 import {
   listBondCoupons,
   acquiredDates,
@@ -7,6 +7,7 @@ import {
   listBooks,
   ownSentAccountIds,
   receivedItems,
+  ringPicks,
   sharingDetail,
   assetSaleOf,
   assetValuesAt,
@@ -256,6 +257,60 @@ export function useSharedNetWorth() {
     error: group.error ?? (active !== null ? read.error : null),
     data: active === null ? null : (read.data ?? null),
   };
+}
+
+/** Whose colour is whose in the active group (owner rings, 12 Nov), as `useOwnerRings` reads it. */
+export interface OwnerRings {
+  mode: 'joint' | 'separate';
+  /** This phone's member id. */
+  me: string;
+  /** The group's members, in the order every phone derives alike. */
+  members: string[];
+  names: Record<string, string>;
+  /** Each member's ring colour (`resolveRings`), the same on every phone. */
+  rings: Record<string, RingColour>;
+}
+
+/**
+ * The ring colour of each member of the active group, for this workspace — only from what this phone holds of the
+ * group (its members, their names, and each one's own pick): never waiting on the other's items or on a rate, so
+ * one's own rows are ringed as soon as the page draws. Null with no group, or outside the group's workspace.
+ */
+export function useOwnerRings(): OwnerRings | null {
+  const { database, ws } = useApp();
+  const group = useActiveNetWorthGroup();
+  const active = group.data ?? null;
+  const read = useQuery({
+    queryKey: ['net-worth', 'rings', ws.workspaceId, active?.groupBookId ?? null, active?.proposalId ?? null],
+    enabled: active !== null,
+    queryFn: async (): Promise<OwnerRings | null> => {
+      if (!active) return null;
+      const books = await listBooks(database, ws);
+      if (!books.some((book) => book.id === active.workspaceBookId)) return null;
+      const detail = await sharingDetail(database, active.workspaceBookId, null);
+      const names: Record<string, string> = {};
+      for (const member of detail?.members ?? []) names[member.memberId] = member.name;
+      const rings = resolveRings(active.members, await ringPicks(database, active.groupBookId));
+      return { mode: active.mode, me: active.me, members: active.members, names, rings };
+    },
+  });
+  return active === null ? null : (read.data ?? null);
+}
+
+/**
+ * The ring colours of a workspace's net-worth group, for its Member page: null unless `bookId` is the workspace the
+ * active group belongs to (either mode — a colour may be picked before the household files jointly).
+ */
+export function useBookRings(bookId: string): { me: string; members: string[]; rings: Record<string, RingColour> } | null {
+  const { database } = useApp();
+  const group = useActiveNetWorthGroup();
+  const active = group.data && group.data.workspaceBookId === bookId ? group.data : null;
+  const read = useQuery({
+    queryKey: ['net-worth', 'rings', 'book', bookId, active?.groupBookId ?? null, active?.proposalId ?? null],
+    enabled: active !== null,
+    queryFn: async () => (active ? { me: active.me, members: active.members, rings: resolveRings(active.members, await ringPicks(database, active.groupBookId)) } : null),
+  });
+  return active === null ? null : (read.data ?? null);
 }
 
 /**

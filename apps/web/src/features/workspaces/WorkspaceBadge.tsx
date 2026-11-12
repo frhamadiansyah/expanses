@@ -53,26 +53,3 @@ export function WorkspaceDot({ book, size = 22 }: { book: { name: string; kind: 
     </span>
   );
 }
-
-/**
- * Whose an account is, on the household's Net worth: the member's first letter, white and bold on the member's own
- * colour (`ownerRing`, so each person keeps one colour on both phones), laid on the corner of the account's circle as
- * `WorkspaceBadge corner` is. One's own accounts wear one's own letter, so every row says whose it is. The letter is
- * drawn, not written, and the mark is hidden from a screen reader: the row says whose it is in words.
- */
-export function MemberBadge({ name, colour, size = 'row' }: { name: string; colour: string | null; size?: 'row' | 'hero' }) {
-  const letter = name.trim().charAt(0).toUpperCase() || '·';
-  return (
-    <span
-      aria-hidden
-      data-testid="member-badge"
-      data-letter={letter}
-      title={name}
-      className={cx(
-        'absolute -right-1 -bottom-1 inline-flex items-center justify-center rounded-full leading-none font-bold text-white ring-2 ring-[var(--ph-surface)] before:content-[attr(data-letter)]',
-        size === 'hero' ? 'h-[18px] w-[18px] text-[10px]' : 'h-4 w-4 text-[9px]',
-      )}
-      style={{ background: colour ?? 'var(--ws-shared)' }}
-    />
-  );
-}

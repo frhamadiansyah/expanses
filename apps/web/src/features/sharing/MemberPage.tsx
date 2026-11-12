@@ -1,14 +1,19 @@
-import type { CreatedInvite, SharedDevice, SharedMemberDetail, SharingDetail } from '@expanses/db';
+import type { RingColour } from '@expanses/core';
+import { type CreatedInvite, type SharedDevice, type SharedMemberDetail, type SharingDetail, setOwnRing } from '@expanses/db';
 import { useParams } from '@tanstack/react-router';
 import { Laptop, Link2, Pencil, Smartphone, User } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
+import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { DestructiveRow, InsetGroup, InsetRow, PushedTitle, SCREEN, SubmitRow, TextRow } from '../../ui/native';
+import { useBookRings } from '../networth/queries';
+import { ringRowFooter } from '../networth/rings';
 import { InviteCard } from './InviteCard';
 import { memberNameDraft, NAME_TOO_LONG_LINE } from './member-name';
 import { useBookStatus, useSharingDetail, useSyncStatus } from './queries';
+import { RingColourRow, RingColourSheet } from './RingColour';
 import { useActionRunner, useShareBook } from './share-hooks';
 import { rememberName } from './SharingSection';
 import { syncedAgo } from './sharing-copy';
@@ -74,12 +79,14 @@ function NameSheet({ current, bookName, busy, onSave, onClose }: { current: stri
 }
 
 function Member({ bookId, bookName, detail, member }: { bookId: string; bookName: string; detail: SharingDetail; member: SharedMemberDetail }) {
-  const { sync } = useApp();
+  const { sync, database } = useApp();
+  const invalidate = useInvalidateAll();
   const live = useSyncStatus(bookId);
   const engineStatus = useBookStatus(bookId);
   const [armed, setArmed] = useState<SharedDevice | null>(null);
   const [invite, setInvite] = useState<MadeInvite | null>(null);
   const [renaming, setRenaming] = useState(false);
+  const [picking, setPicking] = useState(false);
   const { busy, error, run } = useActionRunner();
   const me = detail.members.find((each) => each.me) ?? null;
   const now = Date.now();
@@ -90,6 +97,31 @@ function Member({ bookId, bookName, detail, member }: { bookId: string; bookName
   const mine = member.me;
   // Only this member renames themselves (D-D2), while the share is live here; a frozen book takes no rename either.
   const renamable = mine && active && !frozen;
+
+  /*
+   * Ring colour (owner rings, 12 Nov): one's own, on one's own page, while this workspace is the household's net-worth
+   * group (either mode; the rings themselves draw only while it files jointly). The colours another member holds are
+   * named as theirs and cannot be picked.
+   */
+  const bookRings = useBookRings(bookId);
+  const ringColour = mine && active && bookRings ? (bookRings.rings[member.memberId] ?? null) : null;
+  const taken: Partial<Record<RingColour, string>> = {};
+  if (bookRings) {
+    for (const other of bookRings.members) {
+      const colour = bookRings.rings[other];
+      if (other === member.memberId || !colour) continue;
+      taken[colour] = detail.members.find((each) => each.memberId === other)?.name ?? 'Someone';
+    }
+  }
+  const pickRing = (colour: RingColour) => {
+    setPicking(false);
+    void run(async () => {
+      await setOwnRing(database, colour);
+      // As a rename does: the workspace syncs now, and its group log with it, so the partner's phone hears it soon.
+      void sync.syncNow(bookId);
+      await invalidate();
+    });
+  };
 
   const rename = (name: string) => {
     setRenaming(false);
@@ -120,8 +152,18 @@ function Member({ bookId, bookName, detail, member }: { bookId: string; bookName
         />
       ) : null}
 
+      {/* With a ring colour to pick, Name and Ring colour are a group of their own, with what the ring is for under it. */}
+      {ringColour ? (
+        <InsetGroup wide footer={ringRowFooter(member.name)}>
+          {renamable ? (
+            <InsetRow testId="member-name-row" icon={<Pencil size={15} aria-hidden />} title="Name" value={member.name} disabled={busy} onClick={() => setRenaming(true)} />
+          ) : null}
+          <RingColourRow colour={ringColour} disabled={busy} onOpen={() => setPicking(true)} />
+        </InsetGroup>
+      ) : null}
+
       <InsetGroup wide>
-        {renamable ? (
+        {renamable && !ringColour ? (
           <InsetRow testId="member-name-row" icon={<Pencil size={15} aria-hidden />} title="Name" value={member.name} disabled={busy} onClick={() => setRenaming(true)} />
         ) : null}
         <InsetRow icon={<User size={15} aria-hidden />} title="Role" value={member.role === 'owner' ? 'Owner' : 'Member'} chevron={false} />
@@ -183,6 +225,8 @@ function Member({ bookId, bookName, detail, member }: { bookId: string; bookName
           ) : null}
         </InsetGroup>
       ) : null}
+
+      {picking && ringColour ? <RingColourSheet current={ringColour} taken={taken} busy={busy} onPick={pickRing} onClose={() => setPicking(false)} /> : null}
 
       {renaming && renamable ? <NameSheet current={member.name} bookName={bookName} busy={busy} onSave={rename} onClose={() => setRenaming(false)} /> : null}
 

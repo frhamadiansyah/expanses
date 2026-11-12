@@ -1,4 +1,4 @@
-import { convertMinor, type DebtIcon, type ItemSummary, type PlanGroup, type SheetAsset, type SheetLiability, sheetSectionOf } from '@expanses/core';
+import { convertMinor, type DebtIcon, type ItemSummary, type PlanGroup, type RingColour, type SheetAsset, type SheetLiability, sheetSectionOf } from '@expanses/core';
 import type { LiabilityKind, NetWorthPoint } from '@expanses/db';
 
 /*
@@ -199,12 +199,13 @@ export function jointStatus(p: {
 }
 
 /**
- * The ring an owner's rows wear (§8.2): `--owner-1`, `--owner-2`, … by the owner's place in the active group's
- * `members`, which every phone derives alike, so Rina is the same colour on both phones. Null for someone not listed.
+ * The ring an owner's rows wear (§8.2; owner rings, 12 Nov): the `--owner-<colour>` token of the member's colour in
+ * `rings` — `resolveRings` over the group's members and each one's own pick, which every phone derives alike, so Rina
+ * is the same colour on both phones. Null for someone with no colour there (not in the group).
  */
-export function ownerRing(members: readonly string[], owner: string): string | null {
-  const index = members.indexOf(owner);
-  return index < 0 ? null : `var(--owner-${Math.min(index, 5) + 1})`;
+export function ownerRing(rings: Readonly<Record<string, RingColour>>, owner: string): string | null {
+  const colour = rings[owner];
+  return colour ? `var(--owner-${colour})` : null;
 }
 
 /**

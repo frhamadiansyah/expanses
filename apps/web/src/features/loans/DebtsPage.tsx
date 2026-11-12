@@ -10,10 +10,9 @@ import { useHeldRates } from '../accounts/queries';
 import { usePeopleDebts } from '../debts/queries';
 import { debtKindTile } from '../ownables/catalogue-view';
 import { bareFigure, type DebtDrawer, type DebtRow, type DebtSheet, groupDebts } from '../networth/debt-rows';
-import { useJointSheet, useOwnSentIds, useSharedNetWorth, useSheet } from '../networth/queries';
-import { householdCaption, householdDebtPage, householdFrom, memberMark } from '../networth/household-lists';
+import { useJointSheet, useOwnerRings, useOwnSentIds, useSharedNetWorth, useSheet } from '../networth/queries';
+import { householdCaption, householdDebtPage, householdFrom, type OwnerMark, ownerMark } from '../networth/household-lists';
 import { debtKind } from '../networth/sheet-drawers';
-import { MemberBadge } from '../workspaces/WorkspaceBadge';
 import { ShareBoxes, ShowAll } from '../networth/ShareBoxes';
 import { debtSegments } from '../networth/share-segments';
 import { monthlyInstalments } from './instalments';
@@ -79,15 +78,15 @@ function subtitleOf(row: DebtRow): string {
 }
 
 /** A debt's own line: the drawing its kind wears, its name, what it is, and what is owed. */
-function DebtItem({ row, kind, baseCurrency, rates, nested = false, tree, mark }: { row: DebtRow; kind: string; baseCurrency: string; rates: Record<string, number>; nested?: boolean; tree?: TreePlace; mark?: { name: string; colour: string | null } }) {
+function DebtItem({ row, kind, baseCurrency, rates, nested = false, tree, mark }: { row: DebtRow; kind: string; baseCurrency: string; rates: Record<string, number>; nested?: boolean; tree?: TreePlace; mark?: OwnerMark }) {
   return (
     <InsetRow
       {...destination(row)}
       testId={`debt-row-${row.key}`}
       // Inside its kind's open drawer: one step in, no circle, the name level with the kind's — except on the
-      // household's page, where the circle carries the initial that says whose it is.
+      // household's, where the ring round the circle says whose it is. A debt keeps its own circle; the ring is on its edge.
       icon={nested && !mark ? undefined : <KindIcon kind={kind} />}
-      iconMark={mark ? <MemberBadge name={mark.name} colour={mark.colour} /> : undefined}
+      iconRing={mark?.ring ?? undefined}
       depth={nested ? 1 : 0}
       // On the tree line from its kind's drawer, as Assets draws a kind's accounts.
       tree={tree}
@@ -137,8 +136,8 @@ export function DebtsPage() {
   const [showCleared, setShowCleared] = useState(false);
   /*
    * With one tax ID this is the household's page, as Assets is: the total, the squares and the list count what the group
-   * holds — this phone's own debts that were sent and what the other shares — one list per kind, each row with its
-   * owner's initial. An own debt never sent is listed apart, "Only on this phone". Until all of it is in (or offline)
+   * holds — this phone's own debts that were sent and what the other shares — one list per kind, each row ringed in its
+   * owner's colour. An own debt never sent is listed apart, "Only on this phone". Until all of it is in (or offline)
    * the page is this phone's own: it never waits on the household.
    */
   const sharedNw = useSharedNetWorth();
@@ -146,6 +145,10 @@ export function DebtsPage() {
   const sentIds = useOwnSentIds(sharedNw.data?.group.groupBookId ?? null);
   const inHousehold = householdFrom(joint, sentIds.data);
   const household = inHousehold?.household ?? null;
+  // Whose each row is, while the household files jointly: its owner's ring, one's own straight away (`useOwnerRings`).
+  const owners = useOwnerRings();
+  const ringed = owners?.mode === 'joint' ? owners : null;
+  const markOf = (owner: string | undefined) => (ringed ? ownerMark(ringed, owner ?? ringed.me) : undefined);
 
   const rates = { ...(household?.ratesToBase ?? {}), ...(held.data?.rates ?? {}) };
   const ready = accounts.data && balances.data && loans.data && people.data && cards.data && held.data && items.data;
@@ -311,7 +314,7 @@ export function DebtsPage() {
                   />,
                   ...(shown
                     ? drawer.rows.map((row, at) => (
-                        <DebtItem key={row.key} row={row} kind={drawer.key} baseCurrency={baseCurrency} rates={rates} nested tree={{ last: at === drawer.rows.length - 1 }} mark={household && row.owner ? memberMark(household, row.owner) : undefined} />
+                        <DebtItem key={row.key} row={row} kind={drawer.key} baseCurrency={baseCurrency} rates={rates} nested tree={{ last: at === drawer.rows.length - 1 }} mark={markOf(row.owner)} />
                       ))
                     : []),
                 ];
@@ -325,7 +328,7 @@ export function DebtsPage() {
           {household && onlyHere.length > 0 && (
             <InsetGroup header="Only on this phone" footer="Not shared, so not in the household total.">
               {onlyHere.map((row) => (
-                <DebtItem key={row.key} row={row} kind={debtKind(items.data?.[row.accountId ?? ''] ?? null, row.icon).key} baseCurrency={baseCurrency} rates={rates} mark={memberMark(household, household.me)} />
+                <DebtItem key={row.key} row={row} kind={debtKind(items.data?.[row.accountId ?? ''] ?? null, row.icon).key} baseCurrency={baseCurrency} rates={rates} mark={markOf(household.me)} />
               ))}
             </InsetGroup>
           )}

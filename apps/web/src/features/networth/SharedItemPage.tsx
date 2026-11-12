@@ -12,9 +12,8 @@ import { itemTile } from '../accounts/shared-accounts';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { JointRowsGroup } from '../sharing/JointAccountRows';
 import { useJointRows } from '../sharing/net-worth-queries';
-import { MemberBadge } from '../workspaces/WorkspaceBadge';
 import { ownerRing } from './joint-rows';
-import { useHouseholdPurchases, useItemTransfers, useSharedNetWorth } from './queries';
+import { useHouseholdPurchases, useItemTransfers, useOwnerRings, useSharedNetWorth } from './queries';
 import { heroLine, itemPage, shortDay } from './shared-item';
 import { ValueChart } from './ValueChart';
 
@@ -23,7 +22,7 @@ const DAY_LABEL = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateStrin
 
 /**
  * An item of the other's (joint-net-worth §8.3, D11, D13), drawn in the layout one's own account page has, read-only:
- * the bar with its name, the hero (its kind's circle wearing the owner's initial, whose it is, its kind and the day of
+ * the bar with its name, the hero (its kind's circle ringed in the owner's colour, whose it is, its kind and the day of
  * its figure, the balance — or what is owed — and a card's limit bar), then Recent and the last 12 months. No Spend,
  * Receive, Transfer or Edit: it is not this person's to change.
  *
@@ -33,6 +32,7 @@ const DAY_LABEL = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateStrin
 export function SharedItemPage() {
   const { itemId } = useParams({ from: '/net-worth/shared/$itemId' });
   const shared = useSharedNetWorth();
+  const owners = useOwnerRings();
   const accounts = useAccounts();
   const group = shared.data?.group ?? null;
   const found = shared.data?.items.find((each) => each.itemId === itemId) ?? null;
@@ -61,7 +61,7 @@ export function SharedItemPage() {
             currency={view.balance.currency}
             series={null}
             testId="shared-item-hero"
-            corner={<ItemMark tile={itemTile(item)} name={owner} colour={ownerRing(group.members, item.owner)} />}
+            corner={<ItemMark tile={itemTile(item)} ring={owners ? ownerRing(owners.rings, item.owner) : null} />}
             caption={
               <>
                 <span className="block" data-testid="shared-item-line">
@@ -158,14 +158,13 @@ export function SharedItemPage() {
   );
 }
 
-/** The item's kind in its circle, at the hero's size, with its owner's initial on the corner. */
-function ItemMark({ tile: Glyph, name, colour }: { tile: ReturnType<typeof itemTile>; name: string; colour: string | null }) {
+/** The item's kind in its circle, at the hero's size, ringed in its owner's colour as its row is. */
+function ItemMark({ tile: Glyph, ring }: { tile: ReturnType<typeof itemTile>; ring: string | null }) {
   return (
-    <span className="relative inline-flex" data-testid="shared-item-mark">
-      <RowIcon size={36}>
+    <span className="inline-flex" data-testid="shared-item-mark">
+      <RowIcon size={36} ring={ring ?? undefined}>
         <Glyph size={18} aria-hidden />
       </RowIcon>
-      <MemberBadge name={name} colour={colour} size="hero" />
     </span>
   );
 }

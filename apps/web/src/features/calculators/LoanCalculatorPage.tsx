@@ -506,7 +506,7 @@ function SplitBar({ parts, label }: { parts: { minor: number; colour: string }[]
 }
 
 // The kit's tint is ink; the split is the mockup's blue against orange, the system blue the palette already carries.
-const BLUE = 'var(--owner-1)';
+const BLUE = 'var(--owner-blue)';
 const ORANGE = 'var(--ph-warn)';
 const GREY = 'var(--ph-ink-3)';
 const Dot = ({ colour }: { colour: string }) => <span aria-hidden className="mr-[5px] inline-block h-[8px] w-[8px] rounded-full align-[1px]" style={{ background: colour }} />;
