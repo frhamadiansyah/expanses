@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Set aside for bills</title>
+<style>
+:root { --bg:#f2f2f7; --surface:#fff; --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e0e0e4; --fill:#efeff2; --tint:#007aff; --warn:#b25000; --up:#248a3d; --amber:#f59e0b; }
+* { box-sizing:border-box; }
+body { margin:0; background:#e6e6ea; color:var(--ink); font:14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; padding:24px 16px 48px; }
+h1 { font-size:20px; margin:0 0 4px; } .lede { color:#555; margin:0 0 20px; max-width:980px; }
+h2 { font-size:16px; margin:30px 0 12px; }
+.pair { display:flex; flex-wrap:wrap; gap:22px; align-items:flex-start; }
+.col { width:320px; max-width:100%; }
+.cap { font-weight:600; margin:0 0 8px; } .cap .n { display:inline-block; background:#1c1c1e; color:#fff; border-radius:5px; padding:0 6px; font-size:12px; margin-right:6px; }
+.cap .rec { font-size:11.5px; font-weight:600; color:#047857; background:#dcfce7; border-radius:5px; padding:1px 6px; margin-left:6px; }
+.phone { background:var(--bg); border-radius:28px; padding:14px 14px 20px; border:1px solid #d4d4d8; min-height:560px; position:relative; overflow:hidden; }
+.bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.round { width:36px; height:36px; border-radius:50%; background:#e5e5ea; display:flex; align-items:center; justify-content:center; font-size:16px; }
+.ttl { font-size:18px; font-weight:600; }
+.gh { font-size:13px; color:var(--ink3); margin:14px 4px 6px; text-transform:uppercase; letter-spacing:.02em; display:flex; justify-content:space-between; }
+.gf { font-size:12.5px; color:var(--ink3); margin:6px 4px 0; }
+.ig { background:var(--surface); border-radius:11px; overflow:hidden; }
+.row { display:flex; align-items:center; gap:10px; padding:10px 13px; min-height:46px; position:relative; font-size:15.5px; }
+.ig .row + .row::before { content:""; position:absolute; top:0; left:13px; right:0; border-top:.5px solid var(--hair); }
+.ig.icons .row + .row::before { left:50px; }
+.ic { width:28px; height:28px; border-radius:50%; background:var(--fill); display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; }
+.grow { flex:1; min-width:0; } .t { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .s { font-size:12px; color:var(--ink3); }
+.val { color:var(--ink3); } .amt { font-variant-numeric:tabular-nums; }
+.chev { color:#c7c7cc; margin-left:4px; }
+.sw { width:46px; height:28px; border-radius:14px; background:#34c759; position:relative; flex-shrink:0; } .sw::after { content:""; position:absolute; top:2px; right:2px; width:24px; height:24px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+.sw.off { background:#e9e9eb; } .sw.off::after { right:auto; left:2px; }
+.note { font-size:12.5px; color:#444; margin:10px 2px 0; }
+.mark { outline:2px dashed #2563eb; outline-offset:2px; border-radius:10px; }
+.bad { outline:2px dashed #e11d48; outline-offset:2px; border-radius:10px; }
+.chip { font-size:12.5px; border-radius:12px; padding:3px 9px; background:#e5f0ff; color:var(--tint); white-space:nowrap; }
+.chip.done { background:#fef3c7; color:#92400e; }
+.share { display:flex; height:10px; border-radius:5px; overflow:hidden; background:#f1f5f9; margin:4px 0 8px; }
+.key { display:flex; flex-wrap:wrap; gap:6px 12px; font-size:12px; color:var(--ink3); } .key span { display:flex; align-items:center; gap:5px; } .key i { width:9px; height:9px; border-radius:2px; display:inline-block; }
+.panel { background:var(--surface); border-radius:11px; padding:10px 13px; margin-top:8px; }
+.scrim { position:absolute; inset:0; background:rgba(0,0,0,.25); }
+.sheet { position:absolute; left:0; right:0; bottom:0; background:var(--bg); border-radius:18px 18px 0 0; padding:10px 14px 22px; box-shadow:0 -6px 20px rgba(0,0,0,.12); }
+.grab { width:36px; height:5px; border-radius:3px; background:#c7c7cc; margin:0 auto 10px; }
+.btn { background:var(--tint); color:#fff; text-align:center; border-radius:12px; padding:12px; font-weight:600; margin-top:12px; }
+</style>
+</head>
+<body>
+<h1>Set aside for monthly bills</h1>
+<p class="lede">Today only bills that are not monthly can save up (Sinking fund). Proposed: a monthly bill can keep its next payment set aside in a bank account, so that money shows as “Set aside”, not “Free to spend”, until the bill is paid. Nothing moves between accounts; it is a promise on the balance, the same as a goal’s Money set aside. Names and amounts are made up.</p>
+
+<h2>Today</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">0</span>Monthly bill form today</p>
+    <div class="phone">
+      <div class="bar"><div class="round">✕</div><div class="ttl">Electricity</div><div class="round">✓</div></div>
+      <div class="ig">
+        <div class="row"><div class="grow">Amount</div><div class="val">Rp 450.000</div></div>
+        <div class="row"><div class="grow">Repeats</div><div class="val">Monthly</div></div>
+        <div class="row"><div class="grow">Comes out on</div><div class="val">25th</div></div>
+      </div>
+      <div class="ig bad" style="margin-top:18px;padding:16px;text-align:center;color:var(--ink3);font-size:13px">No Sinking fund group for a monthly bill</div>
+      <p class="note">The only way today is a goal with Money set aside, which is not tied to the bill and does not refill after paying.</p>
+    </div>
+  </div>
+</div>
+
+<h2>A · Each bill keeps its next payment set aside <span style="font-weight:400;color:#047857">(recommended)</span></h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">A1</span>Bill form<span class="rec">Recommended</span></p>
+    <div class="phone">
+      <div class="bar"><div class="round">✕</div><div class="ttl">Electricity</div><div class="round">✓</div></div>
+      <div class="ig">
+        <div class="row"><div class="grow">Amount</div><div class="val">Rp 450.000</div></div>
+        <div class="row"><div class="grow">Repeats</div><div class="val">Monthly</div></div>
+        <div class="row"><div class="grow">Comes out on</div><div class="val">25th</div></div>
+      </div>
+      <div class="gh">Set aside</div>
+      <div class="ig mark">
+        <div class="row"><div class="grow">Keep the next one set aside</div><div class="sw"></div></div>
+        <div class="row"><div class="grow">Set aside in</div><div class="val">Payroll account</div><span class="chev">›</span></div>
+      </div>
+      <div class="gf">Rp 450.000 is kept aside in Payroll account until this bill is paid, then the next month’s is kept aside again.</div>
+    </div>
+  </div>
+  <div class="col">
+    <p class="cap"><span class="n">A2</span>Bill page</p>
+    <div class="phone">
+      <div class="bar"><div class="round">‹</div><div class="ttl">Electricity</div><div class="round">⋯</div></div>
+      <div class="ig">
+        <div class="row"><div class="grow"><div>Next</div><div class="s">25 Nov · in 13 days</div></div><div class="amt">Rp 450.000</div></div>
+      </div>
+      <div class="gh">Set aside</div>
+      <div class="ig mark">
+        <div class="row"><div class="grow"><div>Rp 450.000 in Payroll account</div><div class="s">For 25 Nov · since 25 Oct</div></div></div>
+        <div class="row"><div class="grow" style="color:var(--tint)">Stop setting aside</div></div>
+      </div>
+      <div class="gh">Month history</div>
+      <div class="ig">
+        <div class="row"><div class="grow"><div>October</div><div class="s">Paid 24 Oct · from what was set aside</div></div><div class="amt">Rp 438.500</div></div>
+        <div class="row"><div class="grow"><div>September</div><div class="s">Paid 25 Sep</div></div><div class="amt">Rp 452.000</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <p class="cap"><span class="n">A3</span>Account page</p>
+    <div class="phone">
+      <div class="bar"><div class="round">‹</div><div class="ttl">Payroll account</div><div class="round">⋯</div></div>
+      <div class="ig" style="padding:12px 14px"><div class="s">Balance</div><div style="font-size:24px;font-weight:600">Rp 6.800.000</div></div>
+      <div class="ig" style="margin-top:12px">
+        <div class="row"><div class="grow">Set aside</div><div class="amt">Rp 2.150.000</div></div>
+        <div class="row"><div class="grow">Free to spend</div><div class="amt">Rp 4.650.000</div></div>
+      </div>
+      <div class="panel">
+        <div class="share"><i style="flex:1.5;background:#0891b2"></i><i style="flex:.45;background:var(--amber)"></i><i style="flex:.2;background:#fbbf24"></i><i style="flex:4.65"></i></div>
+        <div class="key"><span><i style="background:#0891b2"></i>Holiday 22%</span><span><i style="background:var(--amber)"></i>Electricity 7%</span><span><i style="background:#fbbf24"></i>Internet 3%</span><span><i style="background:#f1f5f9"></i>Free 68%</span></div>
+      </div>
+      <div class="gh">Promised to</div>
+      <div class="ig mark">
+        <div class="row"><div class="grow"><div>Holiday</div><div class="s">Covered</div></div><div class="amt">Rp 1.500.000</div><span class="chev">›</span></div>
+        <div class="row"><div class="grow"><div>Electricity</div><div class="s">Bill · 25 Nov</div></div><div class="amt">Rp 450.000</div><span class="chev">›</span></div>
+        <div class="row"><div class="grow"><div>Internet</div><div class="s">Bill · 28 Nov</div></div><div class="amt">Rp 200.000</div><span class="chev">›</span></div>
+      </div>
+      <p class="note">Bills join goals and sinking funds under Promised to. If more is promised than the account holds, the existing “More is promised than this account holds” warning shows.</p>
+    </div>
+  </div>
+  <div class="col">
+    <p class="cap"><span class="n">A4</span>Recurring bills</p>
+    <div class="phone">
+      <div class="bar"><div class="round">‹</div><div class="ttl">Recurring bills</div><div class="round">＋</div></div>
+      <div class="gh"><span>Due soon</span><span>Rp 1.150.000</span></div>
+      <div class="ig icons">
+        <div class="row"><div class="ic">⚡</div><div class="grow"><div class="t">Electricity</div><div class="s">25 Nov</div></div><span class="chip done">Set aside</span><div class="amt" style="margin-left:6px">Rp 450.000</div></div>
+        <div class="row"><div class="ic">🌐</div><div class="grow"><div class="t">Internet</div><div class="s">28 Nov</div></div><span class="chip done">Set aside</span><div class="amt" style="margin-left:6px">Rp 200.000</div></div>
+        <div class="row"><div class="ic">📱</div><div class="grow"><div class="t">Phone plan</div><div class="s">30 Nov</div></div><div class="amt">Rp 500.000</div></div>
+      </div>
+      <div class="panel">
+        <div class="share"><i style="flex:6.5;background:var(--up)"></i><i style="flex:5;background:var(--amber)"></i></div>
+        <div class="key"><span><i style="background:var(--up)"></i>Set aside Rp 650.000</span><span><i style="background:var(--amber)"></i>Not set aside Rp 500.000</span></div>
+      </div>
+      <p class="note">The existing Set aside / Not set aside key now counts monthly bills too.</p>
+    </div>
+  </div>
+  <div class="col">
+    <p class="cap"><span class="n">A5</span>Paying it</p>
+    <div class="phone">
+      <div class="bar"><div class="round">‹</div><div class="ttl">Electricity</div><div class="round">⋯</div></div>
+      <div class="scrim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="bar" style="margin-bottom:6px"><div class="round">✕</div><div class="ttl" style="font-size:16px">Pay November</div><div style="width:36px"></div></div>
+        <div class="ig">
+          <div class="row"><div class="grow">Amount</div><div class="val">Rp 438.500</div></div>
+          <div class="row"><div class="grow">From</div><div class="val">Payroll account</div><span class="chev">›</span></div>
+        </div>
+        <div class="gf mark" style="padding:4px 6px">Uses the Rp 450.000 set aside. December’s is set aside next.</div>
+        <div class="btn">Pay</div>
+      </div>
+    </div>
+    <p class="note">Paying from the same account uses what was set aside; a smaller bill frees the difference. Paying from another account frees the set-aside money too.</p>
+  </div>
+</div>
+
+<h2>B · Set aside one by one from Due soon</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">B1</span>Recurring bills</p>
+    <div class="phone">
+      <div class="bar"><div class="round">‹</div><div class="ttl">Recurring bills</div><div class="round">＋</div></div>
+      <div class="gh"><span>Due soon</span><span>Rp 1.150.000</span></div>
+      <div class="ig icons">
+        <div class="row"><div class="ic">⚡</div><div class="grow"><div class="t">Electricity</div><div class="s">25 Nov</div></div><span class="chip done">Set aside</span></div>
+        <div class="row"><div class="ic">🌐</div><div class="grow"><div class="t">Internet</div><div class="s">28 Nov</div></div><span class="chip mark">Set aside…</span></div>
+        <div class="row"><div class="ic">📱</div><div class="grow"><div class="t">Phone plan</div><div class="s">30 Nov</div></div><span class="chip">Set aside…</span></div>
+      </div>
+      <p class="note">Tap “Set aside…” on a bill due soon, pick the account. It is held only for that month; next month it must be tapped again. More taps, but no setting on the bill.</p>
+    </div>
+  </div>
+</div>
+
+<h2>C · All bills due soon at once</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">C1</span>Recurring bills</p>
+    <div class="phone">
+      <div class="bar"><div class="round">‹</div><div class="ttl">Recurring bills</div><div class="round">＋</div></div>
+      <div class="ig mark">
+        <div class="row"><div class="grow"><div>Set aside bills due soon</div><div class="s">Rp 1.150.000 · next 30 days</div></div><div class="sw"></div></div>
+        <div class="row"><div class="grow">Set aside in</div><div class="val">Payroll account</div><span class="chev">›</span></div>
+      </div>
+      <div class="gh"><span>Due soon</span><span>Rp 1.150.000</span></div>
+      <div class="ig icons">
+        <div class="row"><div class="ic">⚡</div><div class="grow"><div class="t">Electricity</div><div class="s">25 Nov</div></div><div class="amt">Rp 450.000</div></div>
+        <div class="row"><div class="ic">🌐</div><div class="grow"><div class="t">Internet</div><div class="s">28 Nov</div></div><div class="amt">Rp 200.000</div></div>
+        <div class="row"><div class="ic">📱</div><div class="grow"><div class="t">Phone plan</div><div class="s">30 Nov</div></div><div class="amt">Rp 500.000</div></div>
+      </div>
+      <p class="note">One switch: every bill in the next 30 days is held in one account. Simple, but every bill must come out of the same account, and the held amount jumps as bills enter the window.</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>
