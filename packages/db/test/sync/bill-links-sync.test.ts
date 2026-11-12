@@ -102,10 +102,10 @@ describe('a bill link in a shared workspace reaches the partner', () => {
     const copy = (await headOf(husband.database, purchase))!;
     const [money] = await husband.database.db.values<[string]>(sql`
       SELECT e.account_id FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = ${copy} AND a.kind = 'asset'`);
-    const [[hcat]] = await husband.database.db.values<[string]>(sql`
+    const [category] = await husband.database.db.values<[string]>(sql`
       SELECT e.account_id FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = ${copy} AND a.kind = 'expense'`);
     await replaceTransaction(husband.database, husband.ws, copy, {
-      occurredOn: '2026-10-12', description: 'Fibre Oct', lines: [{ accountId: hcat, amountMinor: 410_000, currency: 'IDR' }, { accountId: money![0], amountMinor: -410_000, currency: 'IDR' }],
+      occurredOn: '2026-10-12', description: 'Fibre Oct', lines: [{ accountId: category![0], amountMinor: 410_000, currency: 'IDR' }, { accountId: money![0], amountMinor: -410_000, currency: 'IDR' }],
     });
     await home.settle();
     expect(await linkOn(wife, purchase)).toMatchObject({ billMonth: '2026-10', linked: true });
