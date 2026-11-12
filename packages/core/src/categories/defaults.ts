@@ -22,7 +22,7 @@ export const DEFAULT_CATEGORIES: readonly DefaultCategory[] = [
   { kind: 'expense', key: 'property', name: 'Property', children: children('property', [['housing_rent', 'Housing rent'], ['house_maintenance', 'House maintenance'], ['community_security', 'Community & security'], ['home_services', 'Home services'], ['decor_furnishings', 'Decor & furnishings'], ['repair_improvements', 'Repair & improvements'], ['real_estate', 'Real estate']]) },
   { kind: 'expense', key: 'health_care', name: 'Health care', children: children('health_care', [['supplements', 'Supplements'], ['outpatient_care', 'Outpatient care'], ['pharmacy', 'Pharmacy'], ['vision_dental_care', 'Vision & dental care'], ['accident_emergency', 'Accident & emergency'], ['general_check_up', 'General check-up']]) },
   { kind: 'expense', key: 'protection', name: 'Protection', children: children('protection', [['health_insurance', 'Health insurance'], ['life_insurance', 'Life insurance'], ['critical_insurance', 'Critical insurance'], ['auto_insurance', 'Auto insurance']]) },
-  { kind: 'expense', key: 'education', name: 'Education', children: children('education', [['administration', 'Administration'], ['tuition_fees', 'Tuition fees'], ['parent_association', 'Parent association'], ['after_school_club', 'After school club'], ['field_trip_activities', 'Field trip activities'], ['performances', 'Performances'], ['shuttle_bus', 'Shuttle bus'], ['text_books_supplies', 'Text books & supplies'], ['courses_lessons', 'Courses/lessons'], ['pocket_money', 'Pocket money']]) },
+  { kind: 'expense', key: 'education', name: 'Education', children: children('education', [['administration', 'Administration'], ['tuition_fees', 'Tuition fees'], ['parent_association', 'Parent association'], ['after_school_club', 'After school club'], ['field_trip_activities', 'Field trip activities'], ['performances', 'Performances'], ['shuttle_bus', 'Shuttle bus'], ['text_books_supplies', 'Text books & supplies'], ['courses_lessons', 'Courses/lessons'], ['pocket_money', 'Pocket money'], ['early_childhood', 'Early childhood'], ['development_fees', 'Development fees']]) },
   { kind: 'expense', key: 'personal_care', name: 'Personal care', children: children('personal_care', [['self_development', 'Self development'], ['grooming_haircuts', 'Grooming & haircuts'], ['sports_fitness', 'Sports & fitness'], ['spa_wellness', 'Spa & wellness'], ['dry_clean_laundry', 'Dry clean & laundry'], ['counselling_therapy', 'Counselling & therapy']]) },
   { kind: 'expense', key: 'entertainment', name: 'Entertainment', children: children('entertainment', [['subscriptions', 'Subscriptions'], ['movies', 'Movies'], ['recreation', 'Recreation'], ['games', 'Games'], ['concert_events', 'Concert & events'], ['craft_hobbies', 'Craft & hobbies']]) },
   { kind: 'expense', key: 'shopping', name: 'Shopping', children: children('shopping', [['clothing', 'Clothing'], ['electronics', 'Electronics'], ['toys', 'Toys'], ['books', 'Books']]) },
@@ -61,6 +61,8 @@ export const DEFAULT_CATEGORY_MCCS: Readonly<Record<string, string>> = {
   // 5999. A workspace can still set its own on the category.
   'miscellaneous.top_ups': '5999',
   education: '8299',
+  'education.development_fees': '8299',
+  'education.early_childhood': '8351',
   'education.text_books_supplies': '5942',
   'education.tuition_fees': '8299',
   entertainment: '7999',
