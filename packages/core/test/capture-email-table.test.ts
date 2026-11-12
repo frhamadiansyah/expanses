@@ -203,6 +203,9 @@ describe('a transaction email read as a labelled table', () => {
     ['carriage-return line ends', (body: string) => body.replace(/\n/g, '\r\n')],
     ['bare carriage returns', (body: string) => body.replace(/\n/g, '\r')],
     ['line separators', (body: string) => body.replace(/\n/g, ' ')],
+    ['zero-width spaces between words', (body: string) => body.replace(/ /g, ' \u200b')],
+    ['zero-width joiners and a byte-order mark', (body: string) => `\ufeff${body.replace(/ /g, '\u200c \u2060')}`],
+    ['soft hyphens inside words', (body: string) => body.replace(/Kredit/g, 'Kre\u00addit').replace(/Merchant/g, 'Mer\u00adchant')],
   ])('reads a card email whose text came with %s as the same purchase', (_, shape) => {
     const plain = readCapture(email(perCell({ status: ['Sukses/Approved'] })), WORDS, null);
     const reading = readCapture(email(shape(perCell({ status: ['Sukses/Approved'] })), shape('Contoh Credit Card Transaction Notification (do not reply)')), WORDS, null);
