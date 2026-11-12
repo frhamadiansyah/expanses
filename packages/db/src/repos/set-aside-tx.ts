@@ -176,7 +176,19 @@ export interface TaggedMove {
  * (`replaceTransaction`) both call it, so an edited transfer leaves the goal exactly where a new one of that amount would.
  * Returns what the goal now has set aside on the destination (0 when it cannot hold a set-aside).
  */
-export async function parkForGoalTx(tx: Db, ws: WorkspaceContext, transactionId: string, goalId: string, move: TaggedMove): Promise<number> {
+export async function parkForGoalTx(
+  tx: Db,
+  ws: WorkspaceContext,
+  transactionId: string,
+  goalId: string,
+  move: TaggedMove,
+  /**
+   * The most of the goal's promise on the source that follows the money. Absent, as much as the move carries. A goal's
+   * due month passes only what went past the source's free money: the rest is new money for the goal, and its promise
+   * on the source stays where it is.
+   */
+  opts: { promiseFollowsAtMost?: number } = {},
+): Promise<number> {
   await tx.update(transactions).set({ goalId }).where(eq(transactions.id, transactionId));
   markGoalDirtyTx(tx, goalId);
   if (!(await canHoldSetAside(tx, ws, move.toAccountId))) return 0;
@@ -185,7 +197,8 @@ export async function parkForGoalTx(tx: Db, ws: WorkspaceContext, transactionId:
     .select({ amountMinor: goalEarmarks.amountMinor })
     .from(goalEarmarks)
     .where(and(eq(goalEarmarks.goalId, goalId), eq(goalEarmarks.accountId, move.fromAccountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
-  const moved = Math.min(move.amountMinor, own?.amountMinor ?? 0);
+  const follows = Math.max(0, Math.min(move.amountMinor, opts.promiseFollowsAtMost ?? move.amountMinor));
+  const moved = Math.min(follows, own?.amountMinor ?? 0);
   // Only where the draw that undoes it can be written: a database stopped at 49 parks exactly as it did before, the
   // source promise untouched, so a void cannot leave the goal with no promise anywhere.
   if (moved > 0 && (await setAsideTablesExist(tx))) {
@@ -649,6 +662,8 @@ export async function carryTaggedTx(
   goalId: string,
   was: TaggedMove,
   next: TaggedMove,
+  /** As `parkForGoalTx`'s: a goal's due-month transfer passes what went past From's free money (`goal-due-link.ts`). */
+  opts: { promiseFollowsAtMost?: number } = {},
 ): Promise<void> {
   await tx.update(transactions).set({ goalId }).where(eq(transactions.id, toTransactionId));
   if (!(await canHoldSetAside(tx, ws, next.toAccountId))) return;
@@ -662,7 +677,8 @@ export async function carryTaggedTx(
       ).filter((draw) => !isAnswer(draw))
     : [];
   const wasMoved = own?.amountMinor ?? 0;
-  const nextMoved = withDraws ? Math.min(next.amountMinor, wasMoved + Math.max(0, next.amountMinor - was.amountMinor)) : 0;
+  const grown = withDraws ? Math.min(next.amountMinor, wasMoved + Math.max(0, next.amountMinor - was.amountMinor)) : 0;
+  const nextMoved = opts.promiseFollowsAtMost === undefined ? grown : Math.min(grown, Math.max(0, opts.promiseFollowsAtMost));
   const shifted = await shiftMoveTx(
     tx,
     ws,

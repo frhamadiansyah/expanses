@@ -61,8 +61,8 @@ export interface DraftRow {
    */
   createdAt?: string;
   /**
-   * The event it arrived tagged with (event mode, 0111), recorded with it on confirm. Optional so a row built by hand
-   * need not name it; every row `listDrafts` reads carries it (null on a database before 0111).
+   * The event it arrived tagged with (event mode, 0112), recorded with it on confirm. Optional so a row built by hand
+   * need not name it; every row `listDrafts` reads carries it (null on a database before 0112).
    */
   eventId?: string | null;
 }
@@ -92,7 +92,7 @@ export interface NewDraft {
   confidence?: number | null;
   externalRef?: string | null;
   rawPayload?: string | null;
-  /** The event it is tagged with as it arrives (event mode). Written only where 0111 is. */
+  /** The event it is tagged with as it arrives (event mode). Written only where 0112 is. */
   eventId?: string | null;
 }
 
@@ -209,8 +209,8 @@ async function writeDraftExact(tx: Db, id: string, exact: number | null | undefi
 }
 
 /*
- * `draft_transactions.event_id` (0111): the event a capture arrived tagged with in event mode. Read and written by name,
- * as `exact_hundredths` is, so a database stopped before 0111 still queues and confirms; there it is simply never set.
+ * `draft_transactions.event_id` (0112): the event a capture arrived tagged with in event mode. Read and written by name,
+ * as `exact_hundredths` is, so a database stopped before 0112 still queues and confirms; there it is simply never set.
  */
 const draftEventColumn = new WeakMap<object, boolean>();
 export async function draftEventExists(db: Db): Promise<boolean> {

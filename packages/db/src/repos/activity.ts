@@ -11,6 +11,7 @@ import { eventPostingOfTx } from './event-only';
 import { exactExists } from './exact-column';
 import { type PostTransactionInput, postTransactionTx, replaceTransactionTx, voidTransactionTx } from './ledger';
 import { fileTransferTx } from './move-group';
+import { type DueCap, dueCapForEdit } from './goal-due-link';
 import { extrasForTx } from './transaction-extras';
 
 /*
@@ -581,11 +582,15 @@ const STALE: Record<string, string> = {
  * nothing changed.
  */
 export async function undoActivity(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
+  // Undoing an edit of a goal's due-month transfer keeps the new-money rule, as the edit itself did: its cap is read
+  // here, before the transaction, as `replaceTransaction` reads it (`goal-due-link.ts`).
+  const before = await activityLine(database, ws, id);
+  const dueCap = before?.undo?.kind === 'edit' ? await dueCapForEdit(database, ws, before.undo.newId, await inputOfTx(database.db, ws, before.undo.oldId)) : null;
   await database.transaction(async (tx) => {
     const line = (await linesOf(tx, ws, { limit: 2000 })).find((candidate) => candidate.id === id);
     if (!line) throw new ActivityError('That line is not in the list any more');
     if (line.state !== 'open' || !line.undo) throw new ActivityError(STALE[line.state] ?? 'This cannot be undone.');
-    await applyUndo(tx, ws, line.undo);
+    await applyUndo(tx, ws, line.undo, dueCap);
     await tx.insert(auditLog).values({
       id: uuidv7(),
       workspaceId: ws.workspaceId,
@@ -598,10 +603,10 @@ export async function undoActivity(database: Database, ws: WorkspaceContext, id:
   });
 }
 
-async function applyUndo(tx: Tx, ws: WorkspaceContext, undo: ActivityUndo): Promise<void> {
+async function applyUndo(tx: Tx, ws: WorkspaceContext, undo: ActivityUndo, dueCap: DueCap | null): Promise<void> {
   switch (undo.kind) {
     case 'edit':
-      await replaceTransactionTx(tx, ws, undo.newId, await inputOfTx(tx, ws, undo.oldId));
+      await replaceTransactionTx(tx, ws, undo.newId, await inputOfTx(tx, ws, undo.oldId), { dueCap });
       return;
     case 'move':
       for (const item of undo.items) await replaceTransactionTx(tx, ws, item.newId, { ...(await inputOfTx(tx, ws, item.oldId)), moveToBook: true, toBookId: undo.toBookId });

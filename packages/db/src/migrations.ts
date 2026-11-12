@@ -108,7 +108,8 @@ import accountCountedFrom from '../migrations/0107_account_counted_from.sql?raw'
 import cardTermsDaysOptional from '../migrations/0108_card_terms_days_optional.sql?raw';
 import sharedGoals from '../migrations/0109_shared_goals.sql?raw';
 import ringColours from '../migrations/0110_ring_colours.sql?raw';
-import draftEvent from '../migrations/0111_draft_event.sql?raw';
+import goalDues from '../migrations/0111_goal_dues.sql?raw';
+import draftEvent from '../migrations/0112_draft_event.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -227,7 +228,8 @@ export const MIGRATIONS: Migration[] = [
   { version: 108, name: 'card_terms_days_optional', sql: cardTermsDaysOptional },
   { version: 109, name: 'shared_goals', sql: sharedGoals },
   { version: 110, name: 'ring_colours', sql: ringColours },
-  { version: 111, name: 'draft_event', sql: draftEvent },
+  { version: 111, name: 'goal_dues', sql: goalDues },
+  { version: 112, name: 'draft_event', sql: draftEvent },
 ];
 
 /** The highest version this build of the app knows how to produce. */
