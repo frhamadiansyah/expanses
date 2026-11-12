@@ -251,6 +251,7 @@ export function CashflowLine() {
               </>
             )}
             <div className="px-2.5 py-2">
+              {line.eventChip && <div className="pb-1.5">{line.eventChip}</div>}
               {error}
               {form}
             </div>
@@ -271,6 +272,7 @@ export function CashflowLine() {
           }}
           {...swipe}
         >
+          {line.eventChip && <div className="pb-1.5">{line.eventChip}</div>}
           {error}
           {lacking && (
             <p role="status" data-testid="line-lacking" className={`px-3 pb-1.5 text-[13px] text-[var(--ph-warn)]${shaking ? ' line-shake-self' : ''}`}>

@@ -14,6 +14,7 @@ import { WorkspaceDot } from '../features/workspaces/WorkspaceBadge';
 import { WorkspaceSheet } from '../features/workspaces/WorkspaceSheet';
 import { cx } from '../ui';
 import { ToastHost } from '../ui/Toast';
+import { EventModeHost } from '../features/events/EventMode';
 import { useApp } from './context';
 import { TabBar } from './TabBar';
 import { usePhone, useSideways } from './use-phone';
@@ -230,6 +231,7 @@ export function Layout() {
         </>
       )}
       <ToastHost />
+      <EventModeHost />
     </div>
   );
 }

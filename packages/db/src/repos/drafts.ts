@@ -63,6 +63,11 @@ export interface DraftRow {
    * arrived. Optional so a row built by hand need not name it; every row `listDrafts` reads carries it.
    */
   createdAt?: string;
+  /**
+   * The event it arrived tagged with (event mode, 0112), recorded with it on confirm. Optional so a row built by hand
+   * need not name it; every row `listDrafts` reads carries it (null on a database before 0112).
+   */
+  eventId?: string | null;
 }
 
 /** What a draft turns out to be: money out, money in, or money moved between two of the owner's own accounts. */
@@ -90,6 +95,8 @@ export interface NewDraft {
   confidence?: number | null;
   externalRef?: string | null;
   rawPayload?: string | null;
+  /** The event it is tagged with as it arrives (event mode). Written only where 0112 is. */
+  eventId?: string | null;
 }
 
 /** How long a captured payload is kept after the draft is resolved. */
@@ -101,7 +108,7 @@ const addDays = (isoDate: string, days: number) => {
   return date.toISOString().slice(0, 10);
 };
 
-const toRow = (row: typeof draftTransactions.$inferSelect & { exactHundredths: number | null }): DraftRow => ({
+const toRow = (row: typeof draftTransactions.$inferSelect & { exactHundredths: number | null; eventId?: string | null }): DraftRow => ({
   id: row.id,
   source: row.source,
   kind: row.kind,
@@ -125,6 +132,7 @@ const toRow = (row: typeof draftTransactions.$inferSelect & { exactHundredths: n
   externalRef: row.externalRef,
   transactionId: row.transactionId,
   createdAt: row.createdAt,
+  eventId: row.eventId ?? null,
 });
 
 /** The captures a draft was read out of, as they were written. A row written by hand may carry none. */
@@ -190,6 +198,7 @@ export async function createDraft(database: Database, ws: WorkspaceContext, draf
   const values = insertValues(ws, draft, new Date().toISOString());
   await database.db.insert(draftTransactions).values(values);
   await writeDraftExact(database.db, values.id, draft.exactHundredths);
+  await writeDraftEvent(database.db, values.id, draft.eventId);
   return values.id;
 }
 
@@ -200,6 +209,45 @@ export async function createDraft(database: Database, ws: WorkspaceContext, draf
 async function writeDraftExact(tx: Db, id: string, exact: number | null | undefined): Promise<void> {
   if (!isExactFigure(exact) || exact % 100 === 0 || !(await draftExactExists(tx))) return;
   await tx.run(sql`UPDATE draft_transactions SET exact_hundredths = ${exact} WHERE id = ${id}`);
+}
+
+/*
+ * `draft_transactions.event_id` (0112): the event a capture arrived tagged with in event mode. Read and written by name,
+ * as `exact_hundredths` is, so a database stopped before 0112 still queues and confirms; there it is simply never set.
+ */
+const draftEventColumn = new WeakMap<object, boolean>();
+export async function draftEventExists(db: Db): Promise<boolean> {
+  if (draftEventColumn.get(db)) return true;
+  const rows = await db.values<[number]>(sql`SELECT 1 FROM pragma_table_info('draft_transactions') WHERE name = 'event_id'`);
+  if (rows.length > 0) draftEventColumn.set(db, true);
+  return rows.length > 0;
+}
+
+async function writeDraftEvent(tx: Db, id: string, eventId: string | null | undefined): Promise<void> {
+  if (eventId === undefined || !(await draftEventExists(tx))) return;
+  await tx.run(sql`UPDATE draft_transactions SET event_id = ${eventId || null} WHERE id = ${id}`);
+}
+
+/** Whether an event is shared on this phone (it has an event book): such an event is moved into, never tagged. */
+async function sharedEventTagTx(tx: Db, eventId: string): Promise<boolean> {
+  const [books] = await tx.values<[number]>(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'event_books'`);
+  return !!books && (await tx.values(sql`SELECT 1 FROM event_books WHERE event_id = ${eventId} LIMIT 1`)).length > 0;
+}
+
+async function draftEventOf(tx: Db, id: string): Promise<string | null> {
+  if (!(await draftEventExists(tx))) return null;
+  // An event deleted since the capture arrived is no answer any more: the purchase is recorded in no event.
+  const [row] = await tx.values<[string | null]>(
+    sql`SELECT d.event_id FROM draft_transactions d JOIN events e ON e.id = d.event_id WHERE d.id = ${id} AND e.archived_at IS NULL`,
+  );
+  const eventId = row?.[0] ?? null;
+  if (!eventId) return null;
+  /*
+   * A shared event is never tagged here: going into one is a move into its records (shared events §6), which the
+   * Review form does where it is seen, after this confirm. A door that confirms without the form (a statement check)
+   * records the purchase in no event rather than half into a shared one.
+   */
+  return (await sharedEventTagTx(tx, eventId)) ? null : eventId;
 }
 
 /** The figure with cents a draft keeps, or null; null on a database before 0068. */
@@ -220,6 +268,7 @@ export async function insertDraftRow(tx: Db, ws: WorkspaceContext, draft: NewDra
   const values = insertValues(ws, draft, now);
   await tx.insert(draftTransactions).values(values);
   await writeDraftExact(tx, values.id, draft.exactHundredths);
+  await writeDraftEvent(tx, values.id, draft.eventId);
   return values.id;
 }
 
@@ -256,6 +305,7 @@ export async function captureDrafts(
     const values = insertValues(ws, draft, now);
     await database.db.insert(draftTransactions).values(values);
     await writeDraftExact(database.db, values.id, draft.exactHundredths);
+    await writeDraftEvent(database.db, values.id, draft.eventId);
     if (draft.externalRef) seen.add(draft.externalRef);
     captured++;
   }
@@ -270,8 +320,16 @@ export async function captureDrafts(
  */
 export async function listDrafts(database: Database, ws: WorkspaceContext, status: DraftRow['status'] = 'pending'): Promise<DraftRow[]> {
   const typed = await draftExactExists(database.db);
+  const tagged = await draftEventExists(database.db);
   const rows = await database.db
-    .select({ ...getTableColumns(draftTransactions), exactHundredths: typed ? sql<number | null>`exact_hundredths` : sql<null>`NULL` })
+    .select({
+      ...getTableColumns(draftTransactions),
+      exactHundredths: typed ? sql<number | null>`exact_hundredths` : sql<null>`NULL`,
+      // Only an event still here: a draft whose event was deleted or archived since it arrived names none (fix round 1, M2).
+      eventId: tagged
+        ? sql<string | null>`(SELECT e.id FROM events e WHERE e.id = ${draftTransactions}.event_id AND e.archived_at IS NULL)`
+        : sql<null>`NULL`,
+    })
     .from(draftTransactions)
     .where(and(eq(draftTransactions.workspaceId, ws.workspaceId), eq(draftTransactions.status, status), isNull(draftTransactions.mergedInto)))
     .orderBy(asc(draftTransactions.occurredOn), asc(draftTransactions.createdAt));
@@ -309,11 +367,11 @@ export async function editDraft(
 }
 
 /** What `editDraft` can change about a draft. */
-export type DraftEdit = Partial<Pick<NewDraft, 'occurredOn' | 'description' | 'amountMinor' | 'exactHundredths' | 'currency' | 'kind' | 'accountId' | 'toAccountId' | 'categoryAccountId' | 'cardId'>>;
+export type DraftEdit = Partial<Pick<NewDraft, 'occurredOn' | 'description' | 'amountMinor' | 'exactHundredths' | 'currency' | 'kind' | 'accountId' | 'toAccountId' | 'categoryAccountId' | 'cardId' | 'eventId'>>;
 
 /** `editDraft` inside a transaction already running: a draft read again is corrected beside the rest of what that writes. */
 export async function editDraftTx(tx: Db, ws: WorkspaceContext, id: string, patch: DraftEdit): Promise<void> {
-  const { exactHundredths, ...fields } = patch;
+  const { exactHundredths, eventId, ...fields } = patch;
   const where = and(eq(draftTransactions.workspaceId, ws.workspaceId), eq(draftTransactions.id, id), eq(draftTransactions.status, 'pending'));
   const [before] = await tx
     .select({ amountMinor: draftTransactions.amountMinor, currency: draftTransactions.currency, kind: draftTransactions.kind })
@@ -321,6 +379,7 @@ export async function editDraftTx(tx: Db, ws: WorkspaceContext, id: string, patc
     .where(where);
   if (!before) return;
   if (Object.keys(fields).length > 0) await tx.update(draftTransactions).set(fields).where(where);
+  await writeDraftEvent(tx, id, eventId);
   if (!(await draftExactExists(tx))) return;
   const moved =
     (fields.amountMinor !== undefined && fields.amountMinor !== before.amountMinor) ||
@@ -447,6 +506,17 @@ export async function confirmDraftTx(
   const exactHundredths = draft.kind === 'transfer' ? null : await exactForLinesTx(tx, cents, lines);
 
   const keptImage = opts.keepPhoto === true ? draft.imageFile : null;
+  // The event it arrived tagged with (event mode), unless the form said otherwise — a form's own Event row, even empty, wins.
+  const arrivedFor = opts.extras?.eventId === undefined ? await draftEventOf(tx, id) : undefined;
+  // A form's event that was deleted or archived meanwhile is no answer either: never recorded into it (fix round 1, M2).
+  // Nor is a shared event ever posted as a plain tag (fix round 2): going into one is a move into its records, which the
+  // caller makes after this confirm. Posted untagged, a move refused or never made leaves an ordinary purchase.
+  const extras =
+    opts.extras?.eventId &&
+    ((await tx.values(sql`SELECT 1 FROM events WHERE id = ${opts.extras.eventId} AND archived_at IS NULL`)).length === 0 ||
+      (await sharedEventTagTx(tx, opts.extras.eventId)))
+      ? { ...opts.extras, eventId: null }
+      : opts.extras;
   const now = new Date().toISOString();
   const transactionId = await postTransactionTx(tx, ws, {
     fileTransfer: draft.kind === 'transfer',
@@ -458,9 +528,11 @@ export async function confirmDraftTx(
     lines,
     exactHundredths,
     ...(charged ? { originalCurrency: draft.currency, originalAmountMinor: Math.abs(draft.amountMinor) } : {}),
-    ...opts.extras,
-    // A shared workspace's spending drops the tag rather than refuse the confirm (`confirmDraft` then moves it).
-    ...(opts.extras?.eventId ? { eventIdCarried: true } : {}),
+    ...(arrivedFor ? { eventId: arrivedFor } : {}),
+    ...extras,
+    // A shared workspace's spending drops the tag rather than refuse the confirm (`confirmDraft` then moves it). So does
+    // one event mode picked as it arrived: a capture filed in a shared workspace is recorded there, in no event (D1).
+    ...(extras?.eventId || (arrivedFor && extras?.eventId === undefined) ? { eventIdCarried: true } : {}),
     setAside: opts.setAside ?? null,
   });
   const purgeAfter = addDays(now.slice(0, 10), RAW_RETENTION_DAYS);

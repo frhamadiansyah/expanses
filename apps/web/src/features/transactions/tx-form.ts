@@ -328,6 +328,18 @@ export interface CardSeed {
   categoryId?: string;
   description?: string;
   amount?: string;
+  /** The amount's currency, when the opener names one: event mode's "Add in". */
+  currency?: string;
+}
+
+/**
+ * The event a draft keeps on another tab. Transfer and Trade always drop it: an event is spending. Income drops only an
+ * event event mode filled in (the chip, fix round 2); one picked by hand, carried by an event's own Add spending, or on
+ * an edit turning a purchase into money back stays — the refund belongs to the event (add-transaction.spec, 1609).
+ */
+export function eventForMode(eventId: string, mode: FormMode, fromEventMode = false): string {
+  if (mode === 'expense') return eventId;
+  return mode === 'income' && !fromEventMode ? eventId : '';
 }
 
 /**
@@ -345,6 +357,7 @@ export function seeded(seed: CardSeed | undefined, accounts: readonly AccountRow
     ...(category ? { categoryId: category } : {}),
     ...(seed?.description ? { description: seed.description } : {}),
     ...(seed?.amount ? { amount: seed.amount } : {}),
+    ...(seed?.currency ? { currency: seed.currency } : {}),
   };
 }
 

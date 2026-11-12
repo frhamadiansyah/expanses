@@ -31,7 +31,7 @@ import { SourcePage } from '../features/capture/SourcePage';
 import { WayPage } from '../features/capture/WayPage';
 import { ImportPage } from '../features/import/ImportPage';
 import { ReviewPage } from '../features/review/ReviewPage';
-import { billFromSearch, type BillFromSearch, fromSearch, trackOrigin } from './from-search';
+import { billFromSearch, type BillFromSearch, fromSearch, reviewSearch, trackOrigin } from './from-search';
 import { CardDetailPage } from '../features/cards/CardDetailPage';
 import { CardPointsCheckPage, CardPointsPage, CardPurchasesPage } from '../features/cards/CardPointsPage';
 import { EarnRulesPage, SpendBonusesPage } from '../features/cards/CardRulesPages';
@@ -543,7 +543,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/tax-report', component: CoretaxPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/recommend', component: RecommendPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/import', component: ImportPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/review', component: ReviewPage, validateSearch: fromSearch }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/review', component: ReviewPage, validateSearch: reviewSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/backup', component: BackupPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/backup/icloud', component: ICloudRestorePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account', component: AccountMenuPage }),

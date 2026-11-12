@@ -105,6 +105,7 @@ export * from './repos/sinking-funds';
 export * from './repos/sinking-views';
 export * from './repos/event-scope';
 export * from './repos/events';
+export * from './repos/event-mode';
 export * from './repos/event-items';
 export * from './repos/event-currency';
 export * from './repos/shared-event-records';

@@ -1,13 +1,17 @@
 import { formatMinor, groupedMajorString, groupTypedAmount, isoDate, parseGroupedMajor, parsePurchaseList, type PaymentOption } from '@expanses/core';
-import { guessCategoryFromHistory, postTransactions, uncategorisedCategory } from '@expanses/db';
+import { guessCategoryFromHistory, moveIntoSharedEvent, ownerScope, postTransactions, sharedEventOf, uncategorisedCategory } from '@expanses/db';
+import { EventChip, useEventModeState } from '../events/EventMode';
+import { moveAfterSave, postTag } from './shared-move';
+import { formEvent } from '../events/event-mode';
+import { useOpenBook } from '../workspaces/queries';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { ArrowRight, CalendarDays, Check, CreditCard, Landmark } from 'lucide-react';
-import { type FormEvent, useMemo, useState } from 'react';
+import { type FormEvent, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useBack } from '../../app/BackHeader';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith } from '../../lib/account-types';
-import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInvalidateAll, useIsBookShared, useResolveRates } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { InsetGroup, PickerRow, PushedTitle, ReadOnlyRow, SCREEN, TextRow, DestructiveRow } from '../../ui/native';
 import { showToast } from '../../ui/Toast';
@@ -32,6 +36,7 @@ import {
   totalMinor,
   withEdit,
   withRemoved,
+  saveListOnce,
 } from './paste-review';
 import { PaymentSheet } from './PaymentSheet';
 import { paymentOptions } from './quick-row';
@@ -77,6 +82,15 @@ export function PasteListPage() {
   const [amountError, setAmountError] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  // Event mode (screen 3): the whole list goes to the event, unless the chip's ✕ leaves this list out.
+  const eventModeState = useEventModeState();
+  const [eventOff, setEventOff] = useState(false);
+  const bookShared = useIsBookShared();
+  // Waits for the mode and the shared events to be read before the list is tagged or saved (fix round 2).
+  const { waiting: modeWaiting, active: listEvent } = formEvent(eventModeState, eventOff, bookShared);
+  const tag = postTag(listEvent?.event.id, !!listEvent?.shared);
+  const openBook = useOpenBook();
+  const savedOnce = useRef(false);
 
   // Who can pay: the accounts a purchase may be paid from, each card on its own. The form's own first choice is the
   // account the Add screen was opened with, else the first listed.
@@ -115,9 +129,11 @@ export function PasteListPage() {
   }
 
   async function save() {
-    if (!rows || !canSave(rows) || !payer || !payerAccount || busy) return;
+    // Once posted, the list is never posted again, whatever happens after (fix round 1, H1).
+    if (!rows || !canSave(rows) || !payer || !payerAccount || busy || savedOnce.current || modeWaiting) return;
     setBusy(true);
     setError(null);
+    let inputs: ReturnType<typeof purchaseInputs>;
     try {
       const uncategorised = rows.some((row) => !row.categoryId) ? await uncategorisedCategory(database, ws, 'expense') : '';
       // A payer in another currency: the day's rate for each day the list covers, asked before anything is written.
@@ -129,16 +145,49 @@ export function PasteListPage() {
           rates[day] = found.rates;
         }
       }
-      const inputs = purchaseInputs(rows, { account: payerAccount, cardId: payer.cardId }, accounts, uncategorised, (day) => rates[day], payerOpeningDay);
-      // One database transaction: the whole list lands or none of it does.
-      await postTransactions(database, ws, inputs);
-      await invalidate();
-      showToast(addedText(inputs.length));
-      await navigate({ to: '/transactions', replace: true });
+      const listed = purchaseInputs(rows, { account: payerAccount, cardId: payer.cardId }, accounts, uncategorised, (day) => rates[day], payerOpeningDay);
+      // A private event is tagged as the list posts; a shared one is moved into after (`postTag`, fix round 1 H2).
+      inputs = tag.eventId ? listed.map((input) => ({ ...input, eventId: tag.eventId })) : listed;
     } catch (e) {
       setError(e);
       setBusy(false);
+      return;
     }
+    const occurred = [...new Set(rows.map((row) => row.occurredOn))];
+    const outcome = await saveListOnce({
+      // One database transaction: the whole list lands or none of it does.
+      post: () => postTransactions(database, ws, inputs),
+      // A shared event: the purchases move into it now, as Select's Add to event moves them (shared events §6, D2).
+      move:
+        tag.moveInto && listEvent
+          ? (ids) =>
+              moveAfterSave(
+                async () => {
+                  const target = await sharedEventOf(database, ownerScope(ws), tag.moveInto!);
+                  if (target?.currency && target.currency !== currency) {
+                    for (const day of occurred) await resolveRates([target.currency, currency], day).catch(() => undefined);
+                  }
+                  return moveIntoSharedEvent(database, ownerScope(ws), tag.moveInto!, ids);
+                },
+                { bookName: openBook?.name ?? 'this workspace', eventName: listEvent.event.name },
+              )
+          : null,
+      saidSaved: addedText(inputs.length),
+      finish: async (note) => {
+        await invalidate().catch(() => undefined);
+        showToast(note);
+        await navigate({ to: '/transactions', replace: true });
+      },
+    });
+    if (!outcome.saved) {
+      setError(outcome.error);
+      setBusy(false);
+      return;
+    }
+    // Saved: the list is gone from the page, and the page cannot post it again.
+    savedOnce.current = true;
+    setRows(null);
+    setText('');
   }
 
   function open(row: ReviewRow) {
@@ -188,6 +237,9 @@ export function PasteListPage() {
           actions={[{ key: 'review', label: reviewLabel(lineCount), glyph: <ArrowRight size={20} aria-hidden />, disabled: lineCount === 0 || !payer || reading, run: () => void review() }]}
         />
         <div className="space-y-3 md:max-w-2xl">
+          {listEvent && (
+            <EventChip name={listEvent.event.name} sharedWith={listEvent.shared?.people.map((person) => person.name)} onRemove={() => setEventOff(true)} />
+          )}
           <div className={SURFACE}>
             <textarea
               autoFocus
@@ -285,7 +337,7 @@ export function PasteListPage() {
         title="Review"
         back="Paste a list"
         onBack={() => setStep('paste')}
-        actions={[{ key: 'save', label: 'Save list', glyph: <Check size={20} aria-hidden />, disabled: !canSave(rows) || busy, run: () => void save() }]}
+        actions={[{ key: 'save', label: 'Save list', glyph: <Check size={20} aria-hidden />, disabled: !canSave(rows) || busy || modeWaiting, run: () => void save() }]}
       />
       <form
         className="space-y-3 md:max-w-2xl"

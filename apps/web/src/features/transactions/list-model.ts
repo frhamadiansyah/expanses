@@ -115,6 +115,8 @@ export interface ListRow {
   moreCounted?: number;
   tx?: TransactionView;
   draft?: DraftRow;
+  /** The event a row not yet saved will go to (One line's preview); a saved row's is `tx.eventId`, a draft's `draft.eventId`. */
+  eventId?: string | null;
   /** A transfer the other member recorded in this shared workspace: date, amount and label only, read only. */
   sharedTransfer?: true;
 }

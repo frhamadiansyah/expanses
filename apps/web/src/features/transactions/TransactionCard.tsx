@@ -47,6 +47,8 @@ import { PushedTitle, SegmentedControl } from '../../ui/native';
 import { useCards, useCardsWithArchived } from '../cards/card-queries';
 import { payableOptions, resolveDefaultPaidWith, useStoredDefaultPaidWith } from '../account/default-paid-with';
 import { useEvents } from '../events/queries';
+import { useSharedEventSummaries } from '../events/shared-queries';
+import { EventChip } from '../events/EventMode';
 import { showToast } from '../../ui/Toast';
 import { moveAfterSave } from './shared-move';
 import { CategoryOptions } from '../cards/options';
@@ -87,7 +89,7 @@ import { draftIn } from './move-workspace';
 import { useBooks, useCategoryBooks } from '../workspaces/queries';
 import { heldForm, releaseForm } from './receipt-split-hold';
 import { applyReceipt, filledLine, type ReceiptFilled, readReceiptPhoto, recognizeEach } from './receipt-fill';
-import { autoCategoryOutOfSet, categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, isExpenseTopUp, memberTransferOf, topUpWallets, typedCurrency, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
+import { autoCategoryOutOfSet, categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, isExpenseTopUp, eventForMode, memberTransferOf, topUpWallets, typedCurrency, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
 /**
@@ -215,6 +217,11 @@ export function TransactionCard(props: {
    * Left off by every opener that brings an account of its own, and by edits, duplicates and captures.
    */
   defaultPaidWith?: boolean;
+  /**
+   * Event mode (screen 3): the event the form opened with, drawn as a chip at its top while the Event row still names
+   * it. Its ✕ leaves this one transaction out; the Event row under Add more details is the same field.
+   */
+  eventChip?: { eventId: string; name: string; sharedWith?: readonly string[] };
 }) {
   // An edit can read a placeholder the purchase is already posted against: one another member paid for (§4.4).
   const accounts = useAccountsFor(props.initial ?? props.duplicateOf);
@@ -250,6 +257,7 @@ function CardBody({
   accounts: ownAccounts,
   photoIds,
   defaultPay,
+  eventChip,
 }: {
   initial?: TransactionView;
   duplicateOf?: TransactionView;
@@ -270,6 +278,7 @@ function CardBody({
   photoIds: string[];
   /** The Default Paid with, already checked against what can pay: the blank form opens on it. */
   defaultPay?: { moneyId: string; cardId: string };
+  eventChip?: { eventId: string; name: string; sharedWith?: readonly string[] };
 }) {
   const { database, ws } = useApp();
   const navigate = useNavigate();
@@ -408,7 +417,9 @@ function CardBody({
   const withTopUps = (d: FormDraft, id = bookTopUps): FormDraft => (d.mode === 'transfer' && id ? { ...d, topUpCategoryId: id } : d);
   // Add more details opens in place, under the card, rather than over it: the extras are part of the one form.
   // Opened from an event it starts open, because the Event row it fills in lives there and should be seen set.
-  const [detailsOpen, setDetailsOpen] = useState(() => !!held || (!!draft.eventId && !!seed?.eventId));
+  // Event mode's event shows as the chip at the top instead, so Add more details stays folded.
+  // A capture that arrived with its event picked (event mode) opens them too, so the Event row is seen set.
+  const [detailsOpen, setDetailsOpen] = useState(() => !!held || (!!draft.eventId && ((!!seed?.eventId && !eventChip) || !!finish?.prefill.eventId)));
   const formRef = useRef<HTMLFormElement>(null);
   const [needsRate, setNeedsRate] = useState<string | null>(null);
   /*
@@ -929,7 +940,7 @@ function CardBody({
       const flag = currencyChoosable({ ...draft, mode: value }) ? {} : { currency: '', chargedAmount: '' };
       // A new transaction starts its guessing again on another tab; one that already exists never guesses.
       if (!prefilled) categorySource.current = null;
-      return set({ mode: value, categoryId: '', splits: [], ...flag });
+      return set({ mode: value, categoryId: '', splits: [], ...flag, eventId: eventForMode(draft.eventId, value, !!eventChip && !draft.editing && draft.eventId === eventChip.eventId) });
     }
     startTrade();
   };
@@ -971,7 +982,7 @@ function CardBody({
   /** The trade rows, opened with no holding chosen: Buy or Sell first, then the holding, both by hand. */
   function startTrade() {
     if (!choices.buys[0]) return;
-    set({ mode: 'trade', purchase: emptyPurchaseDraft('', draft.moneyId, isoDate()) });
+    set({ mode: 'trade', purchase: emptyPurchaseDraft('', draft.moneyId, isoDate()), eventId: eventForMode(draft.eventId, 'trade') });
   }
 
   /*
@@ -1035,6 +1046,7 @@ function CardBody({
   }, [eventSet, membership.isSuccess, membership.data, draft.categoryId]);
   const body = (
     <form ref={formRef} id={headerSave?.formId} onSubmit={submit} aria-label={label} className="flex flex-col gap-[10px]">
+      {eventChip && draft.eventId === eventChip.eventId && !recorded && <EventChip name={eventChip.name} sharedWith={eventChip.sharedWith} onRemove={() => set({ eventId: '' })} />}
       {finish?.header}
       {/*
         Once the payment is written and only the follow-up is left to answer, the form says so and its fields stop

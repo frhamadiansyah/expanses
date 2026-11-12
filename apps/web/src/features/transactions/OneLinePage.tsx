@@ -106,6 +106,7 @@ export function OneLinePage() {
 
         <p className="px-[13px] text-[13px] leading-4 text-[var(--ph-ink-3)]">Shop, amount and how it was paid. Add “yesterday” or a date for another day.</p>
 
+        {line.eventChip}
         <section>
           <h2 className={HEADER}>Will be saved as</h2>
           <ul className={cx(SURFACE, 'outline outline-1 -outline-offset-1 outline-[var(--ph-tint)]')}>{line.previewNode()}</ul>

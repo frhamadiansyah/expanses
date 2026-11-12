@@ -18,6 +18,15 @@ export function fromSearch(search: Record<string, unknown>): FromSearch {
   return search.from === 'cashflow' ? { from: 'cashflow' } : {};
 }
 
+/** Review's address: where it was opened from, and a draft to open on its form at once (event mode fix round 1). */
+export interface ReviewSearch extends FromSearch {
+  draft?: string;
+}
+
+export function reviewSearch(search: Record<string, unknown>): ReviewSearch {
+  return { ...fromSearch(search), ...(typeof search.draft === 'string' && search.draft ? { draft: search.draft } : {}) };
+}
+
 /**
  * A bill's page knows one origin more: a transaction's receipt (or the receipt's bill list) that opened it. Its ‹ then
  * goes back to that receipt, and the bill is the receipt's own step — never remembered as where a Save or a Delete on

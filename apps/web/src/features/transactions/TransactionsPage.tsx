@@ -90,6 +90,9 @@ import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
 import { Unconverted } from '../workspaces/Unconverted';
 import { UndoToast } from '../../ui/UndoToast';
 import { WorkspaceMenu } from '../workspaces/WorkspaceMenu';
+import { EventModeDot, useShownEventMode } from '../events/EventMode';
+import { addInCurrency, eventModeApplies } from '../events/event-mode';
+import { recordsOnForm } from '../review/draft-form';
 import { useBooks, useCategoryBooks, useOpenBook, useWorkspaceBadges } from '../workspaces/queries';
 import { ChoiceSheet } from './ChoiceSheet';
 import { CardSheet } from '../cards/CardSheet';
@@ -163,6 +166,18 @@ function FilterChip({ label, clearLabel, onClear }: { label: ReactNode; clearLab
  * device (or a test reaching an opening balance's receipt) can ask for them.
  */
 const SHOW_OPENING_KEY = 'transactions-show-opening';
+/** The workspace button's letter, with event mode's purple round on its corner while it is on (2E). */
+function WorkspaceGlyph({ letter, trip }: { letter: string; trip: boolean }) {
+  return (
+    <span className="relative flex h-full w-full items-center justify-center">
+      <span aria-hidden className="text-[18px] leading-none font-semibold uppercase">
+        {letter}
+      </span>
+      {trip && <EventModeDot className="right-[-4px] bottom-[-4px]" />}
+    </span>
+  );
+}
+
 export function TransactionsPage() {
   const { database, ws, workspaceName } = useApp();
   const invalidate = useInvalidateAll();
@@ -250,6 +265,8 @@ export function TransactionsPage() {
   const recategorise = useRecategorise();
   // The workspace switcher, reached from the ⋯ menu — the one thing in there that changes the whole app.
   const [choosingWorkspace, setChoosingWorkspace] = useState(false);
+  // Event mode on (2E): a small purple round on the workspace button's corner, and nothing else on the page.
+  const eventMode = useShownEventMode();
   const openBook = useOpenBook();
   /** The row whose "this is another workspace's" line is showing, because somebody tried to edit it. */
   const [elsewhereId, setElsewhereId] = useState<string | null>(null);
@@ -881,6 +898,15 @@ export function TransactionsPage() {
         close();
       });
     }
+    // Captured in event mode for a shared event: recorded on its form, where the move into the event is seen (fix round 1).
+    const queued = (drafts.data ?? []).find((d) => d.id === id);
+    if (queued && recordsOnForm(queued, sharedSummaries)) {
+      return run(id, async () => {
+        await editDraft(database, ws, id, fields);
+        close();
+        await navigate({ to: '/review', search: { draft: id } });
+      });
+    }
     return guarded(id, spendingDoor(fields.accountId ?? '', Math.max(0, fields.amountMinor)), null, async (choice) => {
       await editDraft(database, ws, id, fields);
       await confirmDraft(database, ws, id, { setAside: choice });
@@ -1323,7 +1349,7 @@ export function TransactionsPage() {
           phone
             ? [
                 { key: 'search', label: 'Search', glyph: <Search size={20} aria-hidden />, pressed: showSearch, run: () => setShowSearch((was) => !was) },
-                { key: 'workspace', label: `Workspace, ${openBook?.name ?? workspaceName}`, glyph: <span aria-hidden className="text-[18px] leading-none font-semibold uppercase">{(openBook?.name ?? workspaceName).trim().charAt(0) || '·'}</span>, run: () => setChoosingWorkspace(true) },
+                { key: 'workspace', label: `Workspace, ${openBook?.name ?? workspaceName}${eventMode ? `, event mode on for ${eventMode.event.name}` : ''}`, glyph: <WorkspaceGlyph letter={(openBook?.name ?? workspaceName).trim().charAt(0) || '·'} trip={!!eventMode} />, run: () => setChoosingWorkspace(true) },
               ]
             : []
         }
@@ -1344,7 +1370,9 @@ export function TransactionsPage() {
             <Button
               onClick={() => {
                 close();
-                setAdding(true);
+                // Event mode in a shared event: the event's own card, as the Add screen opens it.
+                if (eventMode?.shared) void navigate({ to: '/transactions/new' });
+                else setAdding(true);
               }}
             >
               Add transaction
@@ -1360,7 +1388,16 @@ export function TransactionsPage() {
       {choosingWorkspace && <WorkspaceMenu onClose={() => setChoosingWorkspace(false)} />}
       {adding && (
         <Sheet grouped title="Add a transaction" onClose={() => setAdding(false)}>
-          <TransactionCard defaultPaidWith onDone={() => setAdding(false)} />
+          <TransactionCard
+            defaultPaidWith
+            {...(eventMode && !eventMode.shared && eventModeApplies(eventMode, shared)
+              ? {
+                  seed: { eventId: eventMode.event.id, ...(addInCurrency(eventMode, ws.baseCurrency) ? { currency: addInCurrency(eventMode, ws.baseCurrency)! } : {}) },
+                  eventChip: { eventId: eventMode.event.id, name: eventMode.event.name },
+                }
+              : {})}
+            onDone={() => setAdding(false)}
+          />
         </Sheet>
       )}
 

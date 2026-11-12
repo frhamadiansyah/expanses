@@ -5,8 +5,11 @@ import {
   guessCategoryFromHistory,
   isPastDefault,
   lastPaidWith,
+  moveIntoSharedEvent,
   type NoteSuggestion,
+  ownerScope,
   postTransaction,
+  sharedEventOf,
   uncategorisedCategory,
 } from '@expanses/db';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -15,7 +18,8 @@ import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { usePhone } from '../../app/use-phone';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
-import { useAccounts, useInOpenBook, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { useAccounts, useInOpenBook, useInvalidateAll, useIsBookShared, useResolveRates } from '../../lib/queries';
+import { useOpenBook } from '../workspaces/queries';
 import { cx } from '../../ui';
 import { InsetGroup, TextRow } from '../../ui/native';
 import { payableOptions, resolveDefaultPaidWith, useStoredDefaultPaidWith } from '../account/default-paid-with';
@@ -52,6 +56,9 @@ import { paymentKey } from './quick-row';
 import { PaidWith, TransactionRow } from './TransactionRow';
 import { formToPost, rateDateFor, settledAmount, withCategoryLater } from './tx-form';
 import { ratesForSave } from './tx-save';
+import { moveAfterSave, postTag } from './shared-move';
+import { EventChip, useEventModeState } from '../events/EventMode';
+import { addInCurrency, formEvent } from '../events/event-mode';
 
 /** A row saved in this sitting: the id it was posted under, the row as it was shown, and what it counts in the base currency. */
 export interface SavedLine {
@@ -88,6 +95,7 @@ export function useOneLine() {
   const queryClient = useQueryClient();
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
+  const openBook = useOpenBook();
   const accounts = useAccounts().data ?? [];
   const cards = (useCards().data ?? []) as CardRow[];
   const numbers = useAccountNumberLast4().data;
@@ -98,6 +106,18 @@ export function useOneLine() {
   const shareIds = useShareCategoryIds();
 
   const today = isoDate();
+  /*
+   * Event mode (screen 3): each line goes to the event, its figure read in "Add in" unless it names a currency of its
+   * own. The chip's ✕ leaves the next line out; the line after it is in the event again.
+   */
+  const eventModeState = useEventModeState();
+  const bookShared = useIsBookShared();
+  const [eventOff, setEventOff] = useState(false);
+  // Waits for the mode and the shared events to be read before a line is tagged or saved (fix round 2).
+  const { waiting: modeWaiting, active: lineEvent } = formEvent(eventModeState, eventOff, bookShared);
+  // Read off the line's own event, so ✕ drops the currency with it (fix round 1, M4).
+  const typedIn = addInCurrency(lineEvent, ws.baseCurrency);
+  const readIn = typedIn ?? ws.baseCurrency;
   const [text, setText] = useState('');
   const [choices, setChoices] = useState<LineChoices>({});
   const [sittingDay, setSittingDay] = useState(today);
@@ -124,7 +144,7 @@ export function useOneLine() {
 
   // Read in the workspace's currency first; a figure with no currency of its own is then in what pays for it, as the
   // Add form's Amount is, so a line paid from a dollar account is read again in dollars.
-  const firstReading = useMemo(() => readExpenseLine(text, { today, currency: ws.baseCurrency, payments: options }), [text, today, ws.baseCurrency, options]);
+  const firstReading = useMemo(() => readExpenseLine(text, { today, currency: readIn, payments: options }), [text, today, readIn, options]);
   const categoryKey = (description: string) => ['line-category', ws.workspaceId, ws.bookId, description] as const;
   const historyFor = (description: string) => guessCategoryFromHistory(database, ws, description, 'expense');
   const history = useQuery({ queryKey: categoryKey(firstReading.description), queryFn: () => historyFor(firstReading.description) });
@@ -140,8 +160,8 @@ export function useOneLine() {
   const payerCurrencyOf = (preview: LinePreview) => (preview.paid ? (byId.get(preview.paid.accountId)?.currency ?? ws.baseCurrency) : ws.baseCurrency);
   const firstPayerCurrency = payerCurrencyOf(firstPreview);
   const reading = useMemo(
-    () => (firstReading.currencyRead || firstPayerCurrency === ws.baseCurrency ? firstReading : readExpenseLine(text, { today, currency: firstPayerCurrency, payments: options })),
-    [firstReading, firstPayerCurrency, ws.baseCurrency, text, today, options],
+    () => (typedIn || firstReading.currencyRead || firstPayerCurrency === ws.baseCurrency ? firstReading : readExpenseLine(text, { today, currency: firstPayerCurrency, payments: options })),
+    [firstReading, firstPayerCurrency, ws.baseCurrency, typedIn, text, today, options],
   );
   const context = contextFor(history.data ?? null, reading.description);
   const preview = reading === firstReading ? firstPreview : previewOf(reading, context, choices);
@@ -170,13 +190,13 @@ export function useOneLine() {
   function type(next: string) {
     const was = firstReading;
     setText(next);
-    setChoices((now) => choicesAfterTyping(now, was, readExpenseLine(next, { today, currency: ws.baseCurrency, payments: options }), next));
+    setChoices((now) => choicesAfterTyping(now, was, readExpenseLine(next, { today, currency: readIn, payments: options }), next));
     setError(null);
   }
 
   /** Saves the line as it reads; the saved row, or null when nothing was written. */
   async function save(): Promise<SavedLine | null> {
-    if (!canSaveLine(preview) || writing.current) return null;
+    if (!canSaveLine(preview) || writing.current || modeWaiting) return null;
     writing.current = true;
     setBusy(true);
     setError(null);
@@ -197,7 +217,10 @@ export function useOneLine() {
           return null;
         }
       }
-      const drafted = lineDraft(line, ws.bookId ?? '', charged?.text ?? '');
+      const lined = lineDraft(line, ws.bookId ?? '', charged?.text ?? '');
+      // A private event is tagged as it posts; a shared one is moved into after (`postTag`, fix round 1 H2).
+      const tag = postTag(lineEvent?.event.id, !!lineEvent?.shared);
+      const drafted = tag.eventId ? { ...lined, eventId: tag.eventId } : lined;
       const draft = line.categoryId ? drafted : withCategoryLater(drafted, await uncategorisedCategory(database, ws, 'expense'));
       const post = formToPost(draft, accounts);
       const rateDate = rateDateFor(draft);
@@ -214,16 +237,46 @@ export function useOneLine() {
         ratesToBase,
         ...(moneyAccount && isPastDefault(openedOn, day) ? { pastPurchase: true } : {}),
       });
-      // Posted: from here a failure (the refresh below) must not let the same line be saved again.
+      // Posted: from here a failure (the move, the refresh below) must not let the same line be saved again.
       const settled = charged?.minor ?? amountMinor;
-      const kept: SavedLine = { id, row: previewRow(line, id, categoryName(line.categoryId)), baseMinor: baseOf(settled, payerCurrency, ws.baseCurrency, ratesToBase) };
+      const kept: SavedLine = {
+        id,
+        row: { ...previewRow(line, id, categoryName(line.categoryId)), eventId: tag.eventId },
+        baseMinor: baseOf(settled, payerCurrency, ws.baseCurrency, ratesToBase),
+      };
       posted = kept;
+      /*
+       * A shared event: the purchase moves into it now, the way tagging a saved purchase into one does (shared events §6,
+       * D2) — the chip said who it is shared with. One that stays (no rate yet), or a move that fails, leaves it saved
+       * here, untagged, and says why; never thrown, so the line is never saved a second time. Moved, the saved row is
+       * the event's own transaction, which its receipt opens.
+       */
+      if (tag.moveInto && lineEvent) {
+        let derived: string | null = null;
+        const notMoved = await moveAfterSave(
+          async () => {
+            const target = await sharedEventOf(database, ownerScope(ws), tag.moveInto!);
+            const wanted = [target?.currency, line.currency, payerCurrency].filter((c): c is string => !!c);
+            await resolveRates([...new Set(wanted)], day).catch(() => undefined);
+            const result = await moveIntoSharedEvent(database, ownerScope(ws), tag.moveInto!, [id]);
+            derived = result.moved[0]?.derivedId ?? null;
+            return result;
+          },
+          { bookName: openBook?.name ?? 'this workspace', eventName: lineEvent.event.name },
+        );
+        if (derived) {
+          kept.id = derived;
+          kept.row = { ...kept.row, id: derived, eventId: tag.moveInto };
+        }
+        if (notMoved) setError(new Error(notMoved));
+      }
       setSaved((rows) => [...rows, kept]);
       setText('');
       setChoices({});
       const after = afterSave(context, line);
       setSittingDay(after.sittingDay);
       setLastPaid(after.lastPaid);
+      setEventOff(false);
       field.current?.focus();
       await invalidate();
     } catch (e) {
@@ -285,7 +338,7 @@ export function useOneLine() {
       </button>
     );
   };
-  const row = previewRow(preview, 'preview', categoryName(preview.categoryId));
+  const row = { ...previewRow(preview, 'preview', categoryName(preview.categoryId)), eventId: lineEvent?.event.id ?? null };
   const paidPart = preview.paid ? (
     <>
       <PaidWith row={row} />
@@ -400,7 +453,7 @@ export function useOneLine() {
     type,
     reading,
     preview,
-    canSave: canSaveLine(preview) && !busy,
+    canSave: canSaveLine(preview) && !busy && !modeWaiting,
     busy,
     error,
     saved,
@@ -412,5 +465,9 @@ export function useOneLine() {
     categoryOf: (id: string) => byId.get(id)?.name,
     previewNode,
     pickers,
+    /** Event mode's chip, for the screen to draw above the line; null while it is off. */
+    eventChip: lineEvent ? (
+      <EventChip name={lineEvent.event.name} sharedWith={lineEvent.shared?.people.map((person) => person.name)} onRemove={() => setEventOff(true)} />
+    ) : null,
   };
 }

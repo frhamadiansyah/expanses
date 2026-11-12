@@ -15,6 +15,7 @@ import { and, eq, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { insertDraftRow, type NewDraft } from '../repos/drafts';
+import { eventModeForCaptureTx } from '../repos/event-mode';
 import { capturedCategoryFromHistory } from '../repos/entry';
 import { accounts, transactions, workspaces } from '../schema';
 import { cards } from '../schema-cards';
@@ -426,8 +427,11 @@ export async function ingestCaptures(
         result.merged += 1;
         continue;
       }
+      // Event mode: a purchase dated inside its range arrives with the event already picked, as a hand pick would set it.
+      // Confirming records it there (and, for a shared event, moves it in, where the person sees it happen).
+      const eventId = await eventModeForCaptureTx(tx, plan.workspace.workspaceId, { occurredOn: plan.draft.occurredOn, kind: plan.draft.kind ?? (plan.draft.amountMinor < 0 ? 'income' : 'expense') }, opts.today);
       // A hand-entered transaction is only ever offered: the draft is made, and the screen asks about the link.
-      await insertDraftRow(tx, plan.workspace, plan.draft, capture.capturedAt);
+      await insertDraftRow(tx, plan.workspace, eventId ? { ...plan.draft, eventId } : plan.draft, capture.capturedAt);
       result.drafts += 1;
     }
     result.discardedImages = await unreferenced(tx, dropped);

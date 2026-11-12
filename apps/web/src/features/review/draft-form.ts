@@ -22,6 +22,15 @@ export type DraftPatch = Required<
 > &
   Pick<NewDraft, 'exactHundredths'>;
 
+/**
+ * Whether recording a draft has to be done on its form (event mode fix round 1): one captured in event mode for a shared
+ * event moves into that event when it is recorded, so it is recorded where that is seen — never by a swipe or a table
+ * row that would record it silently, without the event.
+ */
+export function recordsOnForm(draft: Pick<DraftRow, 'eventId'>, sharedEvents: Readonly<Record<string, unknown>>): boolean {
+  return !!draft.eventId && !!sharedEvents[draft.eventId];
+}
+
 /** The form's fields, filled from what was read. Spread over an empty form: it stays an add, not an edit. */
 export function formFromDraft(draft: DraftRow): Partial<FormDraft> {
   const transfer = draft.kind === 'transfer';
@@ -36,6 +45,8 @@ export function formFromDraft(draft: DraftRow): Partial<FormDraft> {
     amount: draft.amountMinor === 0 ? '' : majorText(draft.amountMinor, draft.currency),
     // A transfer offers no flag: its figure is the From account's own currency.
     currency: transfer ? '' : draft.currency,
+    // Captured in event mode: the event is already picked, on the form's own Event row, to keep or take off.
+    ...(draft.eventId ? { eventId: draft.eventId } : {}),
   };
 }
 
