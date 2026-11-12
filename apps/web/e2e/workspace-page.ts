@@ -49,3 +49,18 @@ export async function openNetWorthPage(page: Page) {
   await page.getByTestId('net-worth-row').click();
   await expect(page).toHaveURL(/\/share\/net-worth$/);
 }
+
+/**
+ * On the Share page of the phone that shared the workspace, once someone has joined: the last step of setting up
+ * sharing (the one list of what is shared) opens by itself, and Later puts it off, back on the Share page. Waits for
+ * the join to reach this phone first.
+ */
+export async function putOffShareList(page: Page) {
+  const step = page.getByTestId('share-list-setup');
+  await expect(async () => {
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await expect(step).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 45_000, intervals: [500, 1_000, 2_000] });
+  await page.getByTestId('share-list-later').click();
+  await expect(page).toHaveURL(/\/share$/);
+}

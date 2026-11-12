@@ -385,15 +385,23 @@ export async function reviewItems(database: Database, ws: WorkspaceContext): Pro
 }
 
 /**
- * The review's Share (§8.1): a row for every item, from `settings` or `total` when the review did not say. In `joint`
- * every item is `total`, whatever was asked (D7).
+ * The review's Share (§8.1): a row for every item, from `settings` or, when the review did not say, `missing` — `total`
+ * by default (the review page lists every item, so one it did not say is one it showed on). A caller that may not have
+ * shown every item (the share list: an account opened between its read and this one) passes `missing: 'hidden'`. In
+ * `joint` every item is `total`, whatever was asked (D7).
  */
-export async function confirmReview(database: Database, ws: WorkspaceContext, settings: Record<string, ShareSetting>): Promise<void> {
+export async function confirmReview(
+  database: Database,
+  ws: WorkspaceContext,
+  settings: Record<string, ShareSetting>,
+  options: { missing?: ShareSetting } = {},
+): Promise<void> {
   const joint = (await activeNetWorthGroup(database))?.mode === 'joint';
   const items = await reviewItems(database, ws);
   const today = todayOf(database);
+  const missing = options.missing ?? 'total';
   await database.transaction(async (tx) => {
-    for (const item of items) await writeSetting(tx, item.accountId, joint ? 'total' : (settings[item.accountId] ?? 'total'));
+    for (const item of items) await writeSetting(tx, item.accountId, joint ? 'total' : (settings[item.accountId] ?? missing));
     await afterReviewConfirmed(tx, today);
   });
   await refreshPendingCount(database);

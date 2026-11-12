@@ -2,7 +2,7 @@ import { type Browser, expect, type Page, test, type TestInfo } from '@playwrigh
 import { openAccount } from './accounts';
 import { choosePayment, saveButton } from './add-transaction';
 import { addPart, fillPart, openSplit, pickPartCategory } from './split-row';
-import { openSharePage, openWorkspacePage, renameWorkspace, shareWorkspace } from './workspace-page';
+import { openSharePage, openWorkspacePage, putOffShareList, renameWorkspace, shareWorkspace } from './workspace-page';
 
 /*
  * A purchase split between a workspace shared with a household and a private one (0084, household sharing): Fandri
@@ -61,6 +61,7 @@ async function shareHome(page: Page, dewi: Page) {
   await join.getByLabel('Name').fill('Dewi');
   await join.getByRole('button', { name: 'Join', exact: true }).click();
   await expect(join).toHaveCount(0, { timeout: 60_000 });
+  await putOffShareList(page);
 }
 
 const rowOf = (page: Page, description: string) => page.getByTestId('transaction-row').filter({ hasText: description });

@@ -54,6 +54,14 @@ describe('share settings (§5.4)', () => {
     expect(Object.fromEntries(items.map((i) => [i.accountId, i.setting]))).toEqual({ [rina.bank]: 'total', [rina.usd]: 'total', [rina.cash]: 'hidden' });
   });
 
+  it('separate: with `missing: hidden`, an item the review did not say about (one opened after the list was read) stays private', async () => {
+    const { rina } = await couple('separate');
+    const card = await createAccount(rina.database, rina.ws, { name: 'New Card', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    await confirmReview(rina.database, rina.ws, { [rina.bank]: 'total', [rina.cash]: 'hidden', [rina.usd]: 'total' }, { missing: 'hidden' });
+    const items = await reviewItems(rina.database, rina.ws);
+    expect(Object.fromEntries(items.map((i) => [i.accountId, i.setting]))).toEqual({ [rina.bank]: 'total', [rina.usd]: 'total', [rina.cash]: 'hidden', [card.id]: 'hidden' });
+  });
+
   it("joint: `Don't share` is refused, and the review shares every item whatever it was asked", async () => {
     const { rina, andi, bookId } = await couple('joint');
     expect(await activeNetWorthGroup(andi.database)).toMatchObject({ workspaceBookId: expect.any(String), mode: 'joint', members: [rina.memberId, andi.memberId] });
