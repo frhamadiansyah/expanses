@@ -1,4 +1,4 @@
-import type { ItemSummary } from '@expanses/core';
+import { type ItemSummary, resolveRings } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import { assetKindTile, debtKindTile } from '../ownables/catalogue-view';
 import { rowKindOf } from '../networth/sheet-drawers';
@@ -29,20 +29,27 @@ describe('sharedSections (joint-net-worth §8.2: separate → "Andi\'s, shared" 
   const members = ['m-rina', 'm-andi', 'm-budi'];
 
   it('lists each other member’s shared items under their name, in the group’s order', () => {
-    const sections = sharedSections('separate', members, names, [
-      item({ itemId: 'b1', owner: 'm-budi', name: 'Budi cash', subtype: 'cash' }),
-      item({ itemId: 'a1', name: 'Andi BCA' }),
-      item({ itemId: 'a2', name: 'Andi Visa', kind: 'liability', subtype: 'credit_card', balanceMinor: 500 }),
-    ]);
+    const rings = resolveRings(members, { 'm-budi': { colour: 'orange', at: '2026-11-12T01:00:00.000Z' } });
+    const sections = sharedSections(
+      'separate',
+      members,
+      names,
+      [
+        item({ itemId: 'b1', owner: 'm-budi', name: 'Budi cash', subtype: 'cash' }),
+        item({ itemId: 'a1', name: 'Andi BCA' }),
+        item({ itemId: 'a2', name: 'Andi Visa', kind: 'liability', subtype: 'credit_card', balanceMinor: 500 }),
+      ],
+      rings,
+    );
     expect(sections.map((s) => [s.owner, s.title, s.items.map((i) => i.itemId)])).toEqual([
       ['m-andi', "Andi's, shared", ['a1', 'a2']],
       ['m-budi', "Budi's, shared", ['b1']],
     ]);
     expect(sections[0]!.items[1]).toMatchObject({ name: 'Andi Visa', kindLabel: 'Credit card', minor: 500, currency: 'IDR' });
-    // Each owner's initial wears their own colour, the one the household's Net worth gives them on both phones.
-    expect(sections.map((s) => [s.ownerName, s.colour])).toEqual([
-      ['Andi', 'var(--owner-2)'],
-      ['Budi', 'var(--owner-3)'],
+    // Each owner's rows are ringed in their own colour — by place, or the one they picked — the same on both phones.
+    expect(sections.map((s) => [s.ownerName, s.ring])).toEqual([
+      ['Andi', 'var(--owner-purple)'],
+      ['Budi', 'var(--owner-orange)'],
     ]);
     expect(typeof sections[0]!.items[1]!.tile).not.toBe('undefined');
   });

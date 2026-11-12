@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
+import { type Browser, expect, type Locator, type Page, test, type TestInfo } from '@playwright/test';
 import { currencyRow, setCurrency } from './currency-field';
 import BetterSqlite3 from 'better-sqlite3';
 import { openAccount, openCard, walletCard } from './accounts';
@@ -598,28 +598,58 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   await netWorthReads(dewi, '15.000.000', ['Fandri', '10 jt', 'Dewi', '5 jt']);
   await shot(dewi, info, '16-net-worth-joint');
 
-  // Every row of the household's sheet wears its owner's initial on its circle, one's own too: F for Fandri's, D for Dewi's.
+  // Every row of the household's sheet is ringed in its owner's colour, one's own too — by their place in the group
+  // while nobody has picked one: blue for Fandri, who set it up, purple for Dewi. The same on both phones.
+  const BLUE = 'var(--owner-blue)';
+  const PURPLE = 'var(--owner-purple)';
+  const TEAL = 'var(--owner-teal)';
+  const ringOf = (row: Locator) => row.locator('[data-ring]');
   await openDrawers(dewi);
   const sheetRow = (p: Page, name: string) => p.locator('[data-testid^="sheet-row-"]').filter({ hasText: name });
-  await expect(sheetRow(dewi, 'Fandri Bank').getByTestId('member-badge')).toHaveAttribute('data-letter', 'F');
-  await expect(sheetRow(dewi, 'Dewi Bank').getByTestId('member-badge')).toHaveAttribute('data-letter', 'D');
+  await expect(ringOf(sheetRow(dewi, 'Fandri Bank'))).toHaveAttribute('data-ring', BLUE);
+  await expect(ringOf(sheetRow(dewi, 'Dewi Bank'))).toHaveAttribute('data-ring', PURPLE);
   await openDrawers(page);
-  await expect(sheetRow(page, 'Fandri Bank').getByTestId('member-badge')).toHaveAttribute('data-letter', 'F');
-  await expect(sheetRow(page, 'Dewi Bank').getByTestId('member-badge')).toHaveAttribute('data-letter', 'D');
+  await expect(ringOf(sheetRow(page, 'Fandri Bank'))).toHaveAttribute('data-ring', BLUE);
+  await expect(ringOf(sheetRow(page, 'Dewi Bank'))).toHaveAttribute('data-ring', PURPLE);
 
-  // Dewi's own account page, opened from the household's sheet, wears her initial on its hero.
+  // Dewi picks her own ring colour on her member page: teal, saved on tap. Fandri's blue is his, and cannot be picked.
+  await openWorkspaceSharePage(dewi, 'Home');
+  await openMemberPage(dewi, 'Dewi (me)');
+  const ringRow = dewi.getByTestId('ring-colour-row');
+  await expect(ringRow).toContainText('Purple');
+  await expect(dewi.getByTestId('member-page')).toContainText('The ring round each of Dewi’s accounts on Net worth, Assets and Liabilities, the same on every phone in the household.');
+  await ringRow.click();
+  const ringSheet = dewi.getByRole('dialog', { name: 'Ring colour' });
+  await expect(ringSheet.getByTestId('ring-option-blue')).toBeDisabled();
+  await expect(ringSheet.getByTestId('ring-option-blue')).toContainText('Fandri’s');
+  await expect(ringSheet).toContainText('Fandri’s colour is taken, so two people never share one.');
+  await shot(dewi, info, '16d-ring-colour');
+  await ringSheet.getByTestId('ring-option-teal').click();
+  await expect(ringSheet).toHaveCount(0);
+  await expect(ringRow).toContainText('Teal');
+  // Her rows are teal on her phone straight away, and on Fandri's once it has synced.
+  await dewi.goto('/net-worth');
+  await openDrawers(dewi);
+  await expect(ringOf(sheetRow(dewi, 'Dewi Bank'))).toHaveAttribute('data-ring', TEAL);
+  await eventually(page, async () => {
+    await page.goto('/net-worth');
+    await openDrawers(page);
+    await expect(ringOf(sheetRow(page, 'Dewi Bank'))).toHaveAttribute('data-ring', TEAL, { timeout: 1_000 });
+  });
+
+  // Dewi's own account page, opened from the household's sheet, wears her ring on its hero.
   await sheetRow(dewi, 'Dewi Bank').click();
-  await expect(dewi.getByTestId('balance-card').getByTestId('member-badge')).toHaveAttribute('data-letter', 'D');
+  await expect(dewi.getByTestId('balance-card').getByTestId('card-currency')).toHaveAttribute('data-ring', TEAL);
   await dewi.goto('/net-worth');
   await openDrawers(dewi);
 
-  // Fandri's shared account opens the account page's layout on Dewi's phone, read-only: the hero with his initial, whose
+  // Fandri's shared account opens the account page's layout on Dewi's phone, read-only: the hero with his ring, whose
   // it is and when it was updated in its line, Recent with the one locked other-use total, and no Spend or Edit.
   await dewi.getByRole('link', { name: /^Fandri's Fandri Bank, / }).click();
   await expect(dewi).toHaveURL(/\/net-worth\/shared\//);
   await expect(dewi.getByRole('heading', { name: 'Fandri Bank' })).toBeVisible();
   await expect(dewi.getByTestId('shared-item-hero')).toContainText('10.000.000');
-  await expect(dewi.getByTestId('shared-item-mark').getByTestId('member-badge')).toHaveAttribute('data-letter', 'F');
+  await expect(ringOf(dewi.getByTestId('shared-item-mark'))).toHaveAttribute('data-ring', BLUE);
   await expect(dewi.getByTestId('shared-item-line')).toContainText('Fandri’s · Current account · updated');
   await expect(dewi.getByTestId('shared-item-recent').getByTestId('other-use')).toContainText('Fandri');
   await expect(dewi.getByTestId('shared-item-recent').getByTestId('other-use')).toContainText('total only');
@@ -638,8 +668,8 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
     await expect(phone.getByText('Shared by Fandri', { exact: true })).toHaveCount(0);
     await openDrawers(phone);
   }
-  await expect(dewi.locator('[data-testid^="assets-shared-"]').filter({ hasText: 'Fandri Bank' }).getByTestId('member-badge')).toHaveAttribute('data-letter', 'F');
-  await expect(page.locator('[data-testid^="assets-shared-"]').filter({ hasText: 'Dewi Bank' }).getByTestId('member-badge')).toHaveAttribute('data-letter', 'D');
+  await expect(ringOf(dewi.locator('[data-testid^="assets-shared-"]').filter({ hasText: 'Fandri Bank' }))).toHaveAttribute('data-ring', BLUE);
+  await expect(ringOf(page.locator('[data-testid^="assets-shared-"]').filter({ hasText: 'Dewi Bank' }))).toHaveAttribute('data-ring', TEAL);
   await shot(dewi, info, '16a-partner-assets');
 
   // With one tax ID the tax report is the household's, and says it holds both people's items. (The accounts here were
@@ -695,7 +725,7 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   await netWorthReads(page, '14.800.000', ['Fandri', 'Dewi']);
   await netWorthReads(dewi, '14.800.000', ['Fandri', 'Dewi']);
 
-  // The household's Liabilities page lists Fandri's card on both phones, with his initial; on Dewi's it opens his page.
+  // The household's Liabilities page lists Fandri's card on both phones, ringed blue; on Dewi's it opens his page.
   for (const phone of [dewi, page]) {
     await eventually(phone, async () => {
       await phone.goto('/net-worth/loans');
@@ -703,7 +733,7 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
     });
     await expect(phone.getByTestId('debts-household')).toContainText('Household · ');
     await openDrawers(phone);
-    await expect(phone.locator('[data-testid^="debt-row-"]').filter({ hasText: 'Fandri Card' }).getByTestId('member-badge')).toHaveAttribute('data-letter', 'F');
+    await expect(ringOf(phone.locator('[data-testid^="debt-row-"]').filter({ hasText: 'Fandri Card' }))).toHaveAttribute('data-ring', BLUE);
   }
   await dewi.locator('[data-testid^="debt-row-"]').filter({ hasText: 'Fandri Card' }).click();
   await expect(dewi).toHaveURL(/\/net-worth\/shared\//);

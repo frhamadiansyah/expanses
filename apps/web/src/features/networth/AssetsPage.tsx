@@ -14,9 +14,8 @@ import { useHoldingLinks, useSecurities } from '../investments/queries';
 import { ShareBoxes, ShowAll } from './ShareBoxes';
 import { assetSegments, heldShares, kindSegments } from './share-segments';
 import { type AssetDrawer, type AssetGroup, type AssetRow, groupAssets, liveGroups, rowSubtitle, soldRows, staleRows, totalOf } from './asset-rows';
-import { useAssetProfiles, useAssetValues, useDueDeposits, useGoneAssets, useJointSheet, useOwnSentIds, useSharedNetWorth, useTrades } from './queries';
-import { householdAssetPage, householdCaption, householdFrom, memberMark } from './household-lists';
-import { MemberBadge } from '../workspaces/WorkspaceBadge';
+import { useAssetProfiles, useAssetValues, useDueDeposits, useGoneAssets, useJointSheet, useOwnerRings, useOwnSentIds, useSharedNetWorth, useTrades } from './queries';
+import { householdAssetPage, householdCaption, householdFrom, type OwnerMark, ownerMark } from './household-lists';
 import { sharedAssetGroups } from './shared-assets';
 import { type ByStockInputs, linesByStock, type StockLine } from './stock-rows';
 
@@ -26,12 +25,6 @@ const CASH_SUBTYPES = new Set<string>(CASH_ITEMS.map((item) => item.id));
 /** The sentence naming what is out of date. The same words it has always been, in the group's own footer. */
 function staleNote(stale: AssetRow[]): string {
   return `${stale.length === 1 ? '1 asset needs' : `${stale.length} assets need`} a fresh price or estimate: ${stale.map((row) => row.name).join(', ')}.`;
-}
-
-/** Whose a row is on the household's page: the initial its circle wears. */
-interface OwnerMark {
-  name: string;
-  colour: string | null;
 }
 
 /** A kind's drawing, at the size a row draws one: the same mark the add-asset picker gave it. */
@@ -45,10 +38,10 @@ function KindIcon({ section, kind }: { section: string; kind: string }) {
  * the name then sits level with the kind's.
  */
 function Row({ row, baseCurrency, money, nested = false, tree, mark }: { row: AssetRow; baseCurrency: string; money: Set<string>; nested?: boolean; tree?: TreePlace; mark?: OwnerMark }) {
-  // On the household's page every row keeps its circle, because the initial on it says whose it is.
+  // While the household files jointly every row keeps its circle, because the ring round it says whose it is.
   const icon = nested && !mark ? undefined : <KindIcon section={row.section} kind={row.kind.key} />;
-  const iconMark = mark ? <MemberBadge name={mark.name} colour={mark.colour} /> : undefined;
-  // A row that is not a link's own name says whose it is in words; the initial is drawn, not read.
+  const iconRing = mark?.ring ?? undefined;
+  // A row's own name says whose it is in words; the ring is drawn, not read.
   const title = mark ? (
     <>
       {row.name}
@@ -66,7 +59,7 @@ function Row({ row, baseCurrency, money, nested = false, tree, mark }: { row: As
         params={{ itemId: row.accountId }}
         testId={`assets-shared-${row.accountId}`}
         icon={icon}
-        iconMark={iconMark}
+        iconRing={iconRing}
         depth={depth}
         tree={tree}
         title={title}
@@ -82,7 +75,7 @@ function Row({ row, baseCurrency, money, nested = false, tree, mark }: { row: As
         to="/accounts/$accountId"
         params={{ accountId: row.accountId }}
         icon={icon}
-        iconMark={iconMark}
+        iconRing={iconRing}
         depth={depth}
         tree={tree}
         title={title}
@@ -100,7 +93,7 @@ function Row({ row, baseCurrency, money, nested = false, tree, mark }: { row: As
         to="/net-worth/lend-borrow"
         search={{ person: row.person }}
         icon={icon}
-        iconMark={iconMark}
+        iconRing={iconRing}
         depth={depth}
         tree={tree}
         title={title}
@@ -120,7 +113,7 @@ function Row({ row, baseCurrency, money, nested = false, tree, mark }: { row: As
       to={to}
       params={{ accountId: row.accountId }}
       icon={icon}
-      iconMark={iconMark}
+      iconRing={iconRing}
       depth={depth}
       tree={tree}
       title={title}
@@ -146,7 +139,7 @@ function StockRowAcross({ stock, tree, mark, section, kind }: { stock: StockLine
       depth={1}
       tree={tree}
       icon={mark ? <KindIcon section={section} kind={kind} /> : undefined}
-      iconMark={mark ? <MemberBadge name={mark.name} colour={mark.colour} /> : undefined}
+      iconRing={mark?.ring ?? undefined}
       title={stock.title}
       subtitle={stock.subtitle}
       value={<Money minor={stock.valueMinor} currency={stock.currency} />}
@@ -243,14 +236,20 @@ export function AssetsPage() {
   /*
    * With one tax ID this is the household's page (owner, 12 Nov, "one square per kind"): the total, the squares and the
    * list count what the group holds — this phone's own accounts that were sent and what the other shares — one list per
-   * kind, each row with its owner's initial, the same on both phones given the same rates. Until all of that is in (or
+   * kind, each row ringed in its owner's colour, the same on both phones given the same rates. Until all of that is in (or
    * when it cannot be, offline) the page is this phone's own, as it always was: it never waits on the household.
    */
   const joint = useJointSheet();
   const sentIds = useOwnSentIds(sharedNw.data?.group.groupBookId ?? null);
   const inHousehold = householdFrom(joint, sentIds.data);
   const household = inHousehold?.household ?? null;
-  const markOf = household ? (owner: string | undefined) => (owner ? memberMark(household, owner) : undefined) : undefined;
+  /*
+   * Whose each row is, while the household files jointly: the ring of its owner's colour. Read from this phone's own
+   * copy of the group alone, so one's own rows are ringed straight away, before the household's figures are in.
+   */
+  const owners = useOwnerRings();
+  const ringed = owners?.mode === 'joint' ? owners : null;
+  const markOf = ringed ? (owner: string | undefined) => ownerMark(ringed, owner ?? ringed.me) : undefined;
   // Separately (or with no group), what the others share is listed apart under their names, counted in nothing.
   const sharedGroups = household ? [] : sharedAssetGroups(sharedNw.data);
   const due = useDueDeposits();
@@ -401,11 +400,11 @@ export function AssetsPage() {
           />
         ))}
 
-      {/* The own accounts the household never received: on this phone only, wearing its own initial, counted in nothing above. */}
-      {onlyHere.length > 0 && markOf && (
+      {/* The own accounts the household never received: on this phone only, ringed as one's own, counted in nothing above. */}
+      {onlyHere.length > 0 && (
         <InsetGroup header="Only on this phone" footer="Not shared, so not in the household total.">
           {onlyHere.map((row) => (
-            <Row key={row.accountId} row={row} baseCurrency={baseCurrency} money={money} mark={markOf(row.owner)} />
+            <Row key={row.accountId} row={row} baseCurrency={baseCurrency} money={money} mark={markOf?.(row.owner)} />
           ))}
         </InsetGroup>
       )}

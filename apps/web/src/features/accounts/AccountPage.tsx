@@ -15,7 +15,7 @@ import {
   Settings,
   SlidersHorizontal,
 } from 'lucide-react';
-import { type ReactElement, type ReactNode, useState } from 'react';
+import { type ReactElement, useState } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -61,9 +61,8 @@ import { currencyName, parentActionKeys, parentTotal, pocketsOf } from './pocket
 import { LINE_DAYS, RECENT_LIMIT, useAccountFlows, useHeldRates, useOpenings, useRecentTransactions } from './queries';
 import { ShareWithHouseholdRow } from '../sharing/ShareWithHousehold';
 import { OwnJointRows } from '../sharing/JointAccountRows';
-import { memberName, ownerRing } from '../networth/joint-rows';
-import { useSharedNetWorth } from '../networth/queries';
-import { MemberBadge } from '../workspaces/WorkspaceBadge';
+import { ownerRing } from '../networth/joint-rows';
+import { useOwnerRings } from '../networth/queries';
 
 /**
  * `/accounts/$accountId` — one page for every money account.
@@ -141,7 +140,7 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
   // A plain current, saving or cash account takes another currency from its ⋯; one with pockets from the foot of its list.
   const takesCurrency = !parent && !pockets && takesPockets(account.subtype);
   const menu = pageCorner(account);
-  const ownMark = useOwnMark();
+  const ownRing = useOwnRing();
   const closedTo = () => void navigate({ to: '/net-worth/assets' });
 
   return (
@@ -174,7 +173,7 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
             currency={account.currency!}
             series={null}
             testId="deposit-card"
-            corner={<CurrencyFlag currency={account.currency!} mark={ownMark} />}
+            corner={<CurrencyFlag currency={account.currency!} ring={ownRing} />}
             caption={
               <>
                 <span className="block">{[inst, typeLabel].filter(Boolean).join(' · ')}</span>
@@ -196,7 +195,7 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
           currency={account.currency!}
           series={series}
           testId="balance-card"
-          corner={<CurrencyFlag currency={account.currency!} mark={ownMark} />}
+          corner={<CurrencyFlag currency={account.currency!} ring={ownRing} />}
           /* A broker's cash is read by the bank it sits at: the broker is already the page's name. The currency
              is the flag in the corner, so the line names only where the money is and what kind of account. */
           caption={account.subtype === 'fund' && inst ? `Custodian · ${inst}` : [inst, typeLabel].filter(Boolean).join(' · ')}
@@ -403,38 +402,35 @@ function ForeignLine({ currency, minor, rates }: { currency: string; minor: numb
   );
 }
 
-/** The currency an account holds, as the round flag in its card's corner, named for a screen reader. */
-function CurrencyFlag({ currency, mark }: { currency: string; mark?: ReactNode }) {
-  const flag = (
+/**
+ * The currency an account holds, as the round flag in its card's corner, named for a screen reader. While the household
+ * files jointly it wears its owner's ring (`useOwnRing`), as the account's row does on Net worth.
+ */
+function CurrencyFlag({ currency, ring }: { currency: string; ring?: string | null }) {
+  return (
     <span
       role="img"
       aria-label={`${currency} · ${currencyName(currency)}`}
       data-testid="card-currency"
+      data-ring={ring ?? undefined}
       className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[17px] leading-none"
+      style={ring ? { boxShadow: `inset 0 0 0 2.5px ${ring}` } : undefined}
     >
       {currencyFlag(currency)}
-    </span>
-  );
-  if (!mark) return flag;
-  return (
-    <span className="relative inline-flex">
-      {flag}
-      {mark}
     </span>
   );
 }
 
 /**
- * This person's own initial, for the hero's circle, while the household files jointly: on the household's Net worth
- * every account wears its owner's initial, so the account's own page wears it too, in the same colour as on both
- * phones. Null on a single person's Net worth, which stays unmarked.
+ * This person's own ring, for the hero's circle, while the household files jointly: on the household's Net worth every
+ * account is ringed in its owner's colour, so the account's own page is too, in the same colour as on both phones.
+ * Read from this phone's copy of the group alone, so it never waits on the household. Null on a single person's Net
+ * worth, or with separate tax IDs, which stay unringed.
  */
-function useOwnMark(): ReactNode {
-  const shared = useSharedNetWorth();
-  const data = shared.data;
-  if (!data || data.group.mode !== 'joint') return null;
-  const name = memberName(data.names, data.group.me);
-  return <MemberBadge name={name} colour={ownerRing(data.group.members, data.group.me)} size="hero" />;
+function useOwnRing(): string | null {
+  const owners = useOwnerRings();
+  if (!owners || owners.mode !== 'joint') return null;
+  return ownerRing(owners.rings, owners.me);
 }
 
 /** The sheet's name says what the action was: there are no tabs to say it (Spend opens an expense, and only that). */

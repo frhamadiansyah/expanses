@@ -1,4 +1,4 @@
-import { sheetSectionOf } from '@expanses/core';
+import { type RingColour, sheetSectionOf } from '@expanses/core';
 import type { AccountSubtype } from '@expanses/db';
 import type { LucideIcon } from 'lucide-react';
 import { assetKindTile, debtKindTile } from '../ownables/catalogue-view';
@@ -14,14 +14,21 @@ import { debtKind, rowKindOf } from '../networth/sheet-drawers';
 export interface SharedSection {
   owner: string;
   title: string;
-    /** The owner's name, for the initial each row wears and what a screen reader hears. */
+  /** The owner's name, for what a screen reader hears of each row. */
   ownerName: string;
-  /** The owner's colour (`ownerRing`): the initial's ground, the same on both phones. */
-  colour: string | null;
+  /** The ring each row's circle wears (`ownerRing`): the owner's colour, the same on both phones. */
+  ring: string | null;
   items: { itemId: string; name: string; kindLabel: string; minor: number; currency: string; tile: LucideIcon }[];
 }
 
-export function sharedSections(mode: 'joint' | 'separate', members: readonly string[], names: Record<string, string>, items: readonly ReceivedItem[]): SharedSection[] {
+/** `rings`: each member's ring colour (`useOwnerRings`); empty while it loads, and the rows are drawn without one. */
+export function sharedSections(
+  mode: 'joint' | 'separate',
+  members: readonly string[],
+  names: Record<string, string>,
+  items: readonly ReceivedItem[],
+  rings: Readonly<Record<string, RingColour>> = {},
+): SharedSection[] {
   // With one tax ID the items are the household's Net worth itself, so they are not listed a second time here.
   if (mode === 'joint') return [];
   const sections: SharedSection[] = [];
@@ -32,7 +39,7 @@ export function sharedSections(mode: 'joint' | 'separate', members: readonly str
       owner,
       title: `${names[owner] ?? 'Someone'}'s, shared`,
       ownerName: names[owner] ?? 'Someone',
-      colour: ownerRing(members, owner),
+      ring: ownerRing(rings, owner),
       items: own.map((item) => ({
         itemId: item.itemId,
         name: item.name,

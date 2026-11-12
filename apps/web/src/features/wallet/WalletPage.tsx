@@ -11,10 +11,9 @@ import { BalanceSpark } from '../accounts/BalanceSpark';
 import { balanceSeries, crossing, daysBefore } from '../accounts/balance-series';
 import { SPENDABLE_KINDS, freeToSpend, moneySummary, pocketsOf } from '../accounts/pockets';
 import { sharedSections } from '../accounts/shared-accounts';
-import { MemberBadge } from '../workspaces/WorkspaceBadge';
 import { useSetAsideViews } from '../goals/queries';
 import { owedMinor } from '../networth/debt-rows';
-import { useSharedNetWorth } from '../networth/queries';
+import { useOwnerRings, useSharedNetWorth } from '../networth/queries';
 import { useWalletCards } from './useWalletCards';
 import { WALLET_VIEW_LABELS, WALLET_VIEWS, changeWalletView, useWalletView } from './wallet-view';
 import { WalletCarousel, WalletGrid } from './WalletViews';
@@ -84,7 +83,8 @@ export function WalletPage() {
   const { accounts, balances, everything, all, book, money, credit, rates, held, today, cards: wallet, ready } = useWalletCards();
   const owed = useSetAsideViews();
   const shared = useSharedNetWorth().data;
-  const sharedGroups = shared ? sharedSections(shared.group.mode, shared.group.members, shared.names, shared.items) : [];
+  const rings = useOwnerRings()?.rings;
+  const sharedGroups = shared ? sharedSections(shared.group.mode, shared.group.members, shared.names, shared.items, rings) : [];
 
   // How the cards are laid out on this device: the pile, a grid, or one at a time (`wallet-view`).
   const view = useWalletView();
@@ -295,9 +295,9 @@ export function WalletPage() {
             {section.items.map((item) => (
               <InsetRow
                 key={item.itemId}
-                /* The kind's drawing with its owner's initial, as the same item wears it on Net worth (D12). */
+                /* The kind's drawing, ringed in its owner's colour, as the same item wears it on Net worth (D12). */
                 icon={<item.tile size={16} aria-hidden />}
-                iconMark={<MemberBadge name={section.ownerName} colour={section.colour} />}
+                iconRing={section.ring ?? undefined}
                 title={
                   <>
                     {item.name}

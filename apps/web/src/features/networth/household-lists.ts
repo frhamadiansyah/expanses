@@ -1,4 +1,4 @@
-import { convertMinor, SHEET_SECTION_LABELS, SHEET_SECTIONS, sheetSectionOf, sumToBase } from '@expanses/core';
+import { convertMinor, type RingColour, SHEET_SECTION_LABELS, SHEET_SECTIONS, sheetSectionOf, sumToBase } from '@expanses/core';
 import type { AccountSubtype } from '@expanses/db';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
 import type { AssetProfileRow, AssetValueRow, PersonDebtRow } from '@expanses/db';
@@ -48,9 +48,15 @@ export function householdFrom(
   return { household: { me, members, names, received, ratesToBase }, sent: new Set(sentIds) };
 }
 
-/** Whose a row is, as its initial draws it: the member's name and colour. */
-export function memberMark(household: Pick<Household, 'members' | 'names'>, member: string): { name: string; colour: string | null } {
-  return { name: memberName(household.names, member), colour: ownerRing(household.members, member) };
+/** Whose a row is: the member's name, for a screen reader, and the ring their rows wear (`ownerRing`). */
+export interface OwnerMark {
+  name: string;
+  ring: string | null;
+}
+
+/** Whose a row is, as its ring draws it: the member's name and the ring of their colour in `owners.rings`. */
+export function ownerMark(owners: { names: Record<string, string>; rings: Readonly<Record<string, RingColour>> }, member: string): OwnerMark {
+  return { name: memberName(owners.names, member), ring: ownerRing(owners.rings, member) };
 }
 
 /** The line under the household's total: "Household · Rina and Budi", in the group's order on both phones. */
