@@ -116,12 +116,11 @@ test('a part excluded from its workspace’s report leaves that Cashflow alone, 
   // Personal: its part counts.
   await page.goto('/transactions');
   await expect(periodTotal(page)).toHaveText('Rp 500.000');
-  await expect(row(page)).not.toContainText('Excluded');
+  await expect(row(page).getByLabel(/^Excluded from report/)).toHaveCount(0);
 
   // Business: listed, marked excluded, out of the total.
   await switchTo(page, 'Business');
-  await expect(row(page)).toContainText('4.000.000');
-  await expect(row(page)).toContainText('Excluded');
+  await expect(row(page).getByLabel(/^Excluded from report, Rp.4\.000\.000$/)).toBeVisible();
   await expect(periodTotal(page)).toHaveText('Rp 0');
 
   await page.goto('/wallet');

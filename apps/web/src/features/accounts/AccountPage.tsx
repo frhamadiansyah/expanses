@@ -530,6 +530,8 @@ function Recent({ accountId, accountIds }: { accountId: string; accountIds: stri
               accounts={accounts.data ?? []}
               testId="account-recent-row"
               title="Open the receipt"
+              // An account's own rows: each reads what it moved the balance by, excluded from the report or not.
+              view="balance"
               onOpen={() => void navigate({ to: '/transactions/$transactionId', params: { transactionId: row.id } })}
             />
           ))}

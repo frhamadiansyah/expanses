@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import type { ListRow } from './list-model';
-import { amountExtraParts, amountLook, billTagOf, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory, excludedHere, hasNotCountedPart, outsideEvents, accountsWithTransactions } from './list-model';
+import { amountExtraParts, amountLook, wholeLeftOut, billTagOf, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory, excludedHere, hasNotCountedPart, outsideEvents, accountsWithTransactions } from './list-model';
 
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], extra: Partial<AccountRow> = {}): AccountRow => ({
   id, workspaceId: 'ws', parentId: null, kind, subtype, name: id, icon: null, currency: kind === 'expense' || kind === 'income' ? null : 'IDR', valuationMode: 'derived', systemKey: null, sortOrder: 0, archivedAt: null, createdAt: '2026-09-01T00:00:00Z', ...extra,
@@ -653,6 +653,55 @@ describe('a split with a line left out of the report (0096)', () => {
     expect(row).toMatchObject({ categoryName: 'Books', moreCounted: 1, amountMinor: 32_500_000, spentMinor: 32_500_000 });
     expect(row!.leftOut).toEqual({ names: ['Tuition fees', 'Electronics'], amountMinor: 205_000_000 });
     expect(amountExtraParts(three, undefined, row).map((p) => p.text)).toEqual(['⊘ Rp 205.000.000']);
+  });
+
+  it('a wholly excluded row reads as one left out entirely: grey, and the whole sum under it with ⊘', () => {
+    // Invented: Rp 64.000 on the card, the whole purchase switched to Exclude from report.
+    const whole = tx('2026-09-21', 'Dinner for the office', [['groceries', 64_000], ['octo', -64_000]], { cardId: 'c1', excluded: true });
+    const [row] = buildRows([whole], [], school, cards);
+    expect(row).toMatchObject({ excluded: true, amountMinor: 64_000 });
+    expect(amountLook(row!)).toEqual({ sign: 0, plus: false, muted: true });
+    expect(amountExtraParts(whole, undefined, row)).toEqual([{ text: '⊘ Rp\u00a064.000', label: 'Excluded from report, Rp\u00a064.000', tone: 'foreign' }]);
+    // As a partial: the whole-charge foreign figure gives way to the ⊘ line; points still follow.
+    const abroad = { ...whole, originalCurrency: 'JPY', originalAmountMinor: 720 };
+    const [abroadRow] = buildRows([abroad], [], school, cards);
+    expect(amountExtraParts(abroad, { points: 12, unit: 'pts', approximate: false }, abroadRow).map((p) => p.text)).toEqual(['⊘ Rp\u00a064.000', '+12 pts']);
+    // Deleted keeps its own look: no ⊘ line, and the amount stays the amount.
+    const gone = { ...whole, status: 'void' as const };
+    const [goneRow] = buildRows([gone], [], school, cards);
+    expect(amountExtraParts(gone, undefined, goneRow)).toEqual([]);
+    expect(amountLook(goneRow!).muted).toBe(false);
+    // Still out of the day's figure.
+    expect(dayTotal([row!])).toBe(0);
+  });
+
+  it('an excluded transfer is never in the report: a plain row, its amount, no ⊘', () => {
+    // Invented: Rp 750.000 moved from BCA to Kantong, with Exclude on, and a Rp 6.500 fee.
+    const move = tx('2026-09-22', 'Top up', [['kantong', 750_000], ['groceries', 6_500], ['bca', -756_500]], { excluded: true });
+    const [row] = buildRows([move], [], school, cards);
+    expect(row).toMatchObject({ type: 'transfer', excluded: true, amountMinor: 750_000 });
+    expect(wholeLeftOut(row!)).toBe(false);
+    expect(amountLook(row!)).toEqual({ sign: 0, plus: false, muted: false });
+    expect(amountExtraParts(move, undefined, row).map((p) => p.text)).toEqual(['+Rp 6.500']);
+  });
+
+  it('an excluded refund reads Rp 0 in grey, its ⊘ sum without a minus', () => {
+    // Invented: Rp 64.000 back on the card for a returned basket, the whole of it excluded.
+    const back = tx('2026-09-23', 'Basket returned', [['groceries', -64_000], ['octo', 64_000]], { cardId: 'c1', excluded: true });
+    const [row] = buildRows([back], [], school, cards);
+    expect(row).toMatchObject({ refund: true, excluded: true, amountMinor: -64_000 });
+    expect(amountLook(row!)).toEqual({ sign: 0, plus: false, muted: true });
+    expect(amountExtraParts(back, undefined, row)).toEqual([{ text: '⊘ Rp 64.000', label: 'Excluded from report, Rp 64.000', tone: 'foreign' }]);
+  });
+
+  it('a balance list shows an excluded purchase as what it took from the account: full amount, its own colour, no ⊘', () => {
+    const whole = tx('2026-09-21', 'Dinner for the office', [['groceries', 64_000], ['octo', -64_000]], { cardId: 'c1', excluded: true });
+    const [row] = buildRows([whole], [], school, cards);
+    expect(wholeLeftOut(row!, 'balance')).toBe(false);
+    expect(amountLook(row!, 'balance')).toEqual({ sign: -1, plus: false, muted: false });
+    expect(amountExtraParts(whole, undefined, { ...row!, view: 'balance' })).toEqual([]);
+    // The report's view stays Option B.
+    expect(wholeLeftOut(row!, 'report')).toBe(true);
   });
 
   it('keeps today’s look when every line is left out, or none is', () => {

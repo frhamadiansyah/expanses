@@ -37,6 +37,12 @@ export function excludedHere(tx: Pick<TransactionView, 'excluded' | 'splitBooks'
 
 export type RowType = 'expense' | 'income' | 'transfer' | 'opening' | 'correction' | 'debt';
 
+/**
+ * What a list's figures are: the report's (Cashflow, an event — an excluded row reads as left out, Rp 0 and ⊘) or an
+ * account's balance moves (its Recent rows — an excluded purchase still took its whole amount, and reads so).
+ */
+export type AmountView = 'report' | 'balance';
+
 export interface ListRow {
   kind: 'tx' | 'draft';
   id: string;
@@ -80,7 +86,10 @@ export interface ListRow {
   feeCurrency?: string;
   holderName: string | null;
   deleted: boolean;
-  /** Marked "not my spending": still listed, faded and struck through, but out of every figure the list adds up. */
+  /**
+   * Marked "not my spending": still listed, but out of every figure the list adds up. It reads as a split with all of it
+   * left out (`wholeLeftOut`): nothing counted on top, in grey, and the whole sum under it with ⊘.
+   */
   excluded: boolean;
   /** What a draft still needs before it can be recorded. Always empty for a recorded row. */
   needs: string[];
@@ -476,7 +485,9 @@ export function groupByCategory(rows: readonly ListRow[]): CategoryGroup[] {
  * what it holds: a purchase split with someone is spending (its own share, red), money a person paid back is money in
  * with a plus but muted, since it is not income and adds nothing to the day, and money lent out stays plain.
  */
-export function amountLook(row: ListRow): { sign: -1 | 0 | 1; plus: boolean; muted: boolean } {
+export function amountLook(row: ListRow, view: AmountView = 'report'): { sign: -1 | 0 | 1; plus: boolean; muted: boolean } {
+  // Wholly out of the report: what counts is nothing, in grey, with no colour for which way the money went.
+  if (wholeLeftOut(row, view)) return { sign: 0, plus: false, muted: true };
   if (row.refund) return { sign: 1, plus: true, muted: false };
   if (row.type === 'expense') return { sign: -1, plus: false, muted: false };
   if (row.type === 'income') return { sign: 1, plus: false, muted: false };
@@ -506,6 +517,29 @@ export interface AmountExtraPart {
 }
 
 /**
+ * A row wholly excluded from the report, read as a split whose every line is left out: what counts is nothing, and the
+ * whole sum is what is left out. A deleted row keeps its own look (faded and struck through, its amount as it was).
+ */
+export function wholeLeftOut(row: { excluded?: boolean; deleted?: boolean; type?: RowType }, view: AmountView = 'report'): boolean {
+  // Only what a report adds up can be left out of it: a transfer, a debt or an opening balance never is, and reads as a
+  // plain row. A balance list shows what moved the account, which an exclusion never changes.
+  return view === 'report' && !!row.excluded && !row.deleted && (row.type === 'expense' || row.type === 'income');
+}
+
+/** What a row leaves out of the report, read under its amount: a partly excluded split's lines, or the whole of an excluded row. */
+function leftOutOf(row: {
+  leftOut?: ListRow['leftOut'];
+  excluded?: boolean;
+  deleted?: boolean;
+  type?: RowType;
+  amountMinor?: number;
+  view?: AmountView;
+}): { amountMinor: number } | undefined {
+  if (row.leftOut) return row.leftOut;
+  return wholeLeftOut(row, row.view) && row.amountMinor !== undefined ? { amountMinor: row.amountMinor } : undefined;
+}
+
+/**
  * The one line under a row's amount: a transfer's fee first ("+Rp 10.000", muted, the figure above it being what
  * landed), then the foreign amount, then the points ("¥1.850 · +38 pts"), each alone when only it applies, and
  * nothing when none does. The foreign amount and the points used to stack as lines of their own, which made a
@@ -514,17 +548,30 @@ export interface AmountExtraPart {
 export function amountExtraParts(
   tx: Pick<TransactionView, 'originalCurrency' | 'originalAmountMinor'>,
   points: PurchasePoints | undefined,
-  fee?: Pick<ListRow, 'feeMinor' | 'currency'> & { feeCurrency?: string | undefined; leftOut?: ListRow['leftOut'] },
+  fee?: Pick<ListRow, 'feeMinor' | 'currency'> & {
+    feeCurrency?: string | undefined;
+    leftOut?: ListRow['leftOut'];
+    /** The row's own: a wholly excluded row reads its whole amount as left out (`wholeLeftOut`). */
+    excluded?: boolean;
+    deleted?: boolean;
+    type?: RowType;
+    amountMinor?: number;
+    /** The list the row is in: a balance list never reads a row as left out. */
+    view?: AmountView;
+  },
 ): AmountExtraPart[] {
   const parts: AmountExtraPart[] = [];
-  // A split with lines left out of the report: their sum, in the muted figure a transfer's fee is, so the row stays as tall.
-  if (fee?.leftOut) {
-    const sum = formatMinor(fee.leftOut.amountMinor, fee.currency);
+  const off = fee ? leftOutOf(fee) : undefined;
+  // A split with lines left out of the report — or a row with all of it left out: their sum, in the muted figure a
+  // transfer's fee is, so the row stays as tall.
+  if (off) {
+    // Always the size of what was left out: money back excluded reads "⊘ Rp 64.000", never with a minus.
+    const sum = formatMinor(Math.abs(off.amountMinor), fee!.currency);
     parts.push({ text: `⊘ ${sum}`, label: `Excluded from report, ${sum}`, tone: 'foreign' });
   }
   if (fee?.feeMinor) parts.push({ text: `+${formatMinor(fee.feeMinor, fee.feeCurrency ?? fee.currency)}`, tone: 'foreign' });
   // The foreign figure is the whole charge: beside a counted part alone it would disagree with the row.
-  if (tx.originalCurrency && tx.originalAmountMinor !== null && !fee?.leftOut) parts.push({ text: formatMinor(tx.originalAmountMinor, tx.originalCurrency), tone: 'foreign' });
+  if (tx.originalCurrency && tx.originalAmountMinor !== null && !off) parts.push({ text: formatMinor(tx.originalAmountMinor, tx.originalCurrency), tone: 'foreign' });
   if (points) {
     const mark = points.points < 0 ? '−' : points.approximate ? '≈ ' : '+';
     parts.push({ text: `${mark}${formatPoints(Math.abs(points.points))} ${points.unit}`, tone: points.points < 0 ? 'lost' : 'earned' });
