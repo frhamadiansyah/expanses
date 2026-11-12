@@ -1,7 +1,7 @@
 import { type BookRow, LeaveIncompleteError, SharingError, type SharingDetail, type SharedEventView, planEventCopyDelete } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { CalendarDays, FileText, Inbox, Landmark, RefreshCw, TriangleAlert, User } from 'lucide-react';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll } from '../../lib/queries';
@@ -20,6 +20,8 @@ import { useNetWorthGroup } from './net-worth-queries';
 import { netWorthRowOf, netWorthValue } from './net-worth-state';
 import { heldLineOf } from './copy-roles';
 import { PlaceHeldSheet } from './PlaceHeldSheet';
+import { SHARE_LIST_COPY, sharedCount } from './share-list';
+import { joinedOthers, useShareList, useShareListAsked } from './ShareListPage';
 import { useBookStatus, useCopyRoles, useLostHere, useShareHealth, useSharingDetail, useSyncStatus } from './queries';
 import { keepOpenInvite, useActionRunner, useOpenInvite, useShareBook } from './share-hooks';
 import { rememberedName, rememberName, thisDeviceName } from './SharingSection';
@@ -333,6 +335,15 @@ function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
   const statusFooter = [failedLine, heldText, silenceText].filter((line): line is string => Boolean(line));
   const ownerNames = detail.members.filter((member) => member.role === 'owner' && !member.me).map((member) => member.name);
   const netWorth = netWorthRowOf(group.data, detail.members);
+  // The one list of what is shared (2026-11-12): offered once on the phone that shared the workspace, as the last step
+  // of setting it up, when someone it was not yet offered for has joined; on the Share page as a row after that.
+  const joined = joinedOthers(detail);
+  const asked = useShareListAsked(book.id);
+  const shareList = useShareList(book.id).list;
+  const stepDue = active && !frozen && book.kind !== 'shared' && asked.isSuccess && !asked.isFetching && joined.some((member) => !asked.data.includes(member.memberId));
+  useEffect(() => {
+    if (stepDue) void navigate({ to: '/account/workspaces/$bookId/share/what/start', params: { bookId: book.id }, replace: true });
+  }, [stepDue, navigate, book.id]);
 
   async function leave() {
     setConfirming(null);
@@ -408,6 +419,18 @@ function Shared({ book, detail }: { book: BookRow; detail: SharingDetail }) {
             />
           ))}
           {!someoneJoined ? <InsetRow testId="sharing-waiting" icon={<User size={15} aria-hidden />} title="Waiting for someone" value={showInvite ? 'Invite open' : undefined} chevron={false} /> : null}
+        </InsetGroup>
+      ) : null}
+
+      {active && !frozen && someoneJoined ? (
+        <InsetGroup wide footer={SHARE_LIST_COPY.workspaceFooter(book.name)}>
+          <InsetRow
+            testId="share-list-row"
+            title={SHARE_LIST_COPY.title(joined.map((member) => member.name), book.name)}
+            value={shareList ? SHARE_LIST_COPY.rowValue(sharedCount(shareList)) : undefined}
+            to="/account/workspaces/$bookId/share/what"
+            params={{ bookId: book.id }}
+          />
         </InsetGroup>
       ) : null}
 

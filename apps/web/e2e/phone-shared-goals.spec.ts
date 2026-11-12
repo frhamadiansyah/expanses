@@ -6,7 +6,7 @@ import { editGoal, goalMenu, openGoalForm, setAssumption } from './goals';
 import { goalCard, goalRow, setAside } from './set-aside';
 import { openHolding } from './goal-funding';
 import { eventually } from './shared-events';
-import { openWorkspaceSharePage, shareWorkspace } from './workspace-page';
+import { openWorkspaceSharePage, putOffShareList, shareWorkspace } from './workspace-page';
 
 /*
  * A goal shared by two phones, end to end (shared goals §12). Bima and Rina share the Personal workspace. Bima makes
@@ -55,6 +55,7 @@ test('a goal shared by two phones: both fund it, each sees the other by name, a 
   await join.getByLabel('Name').fill('Rina');
   await join.getByRole('button', { name: 'Join', exact: true }).click();
   await expect(join).toHaveCount(0, { timeout: 60_000 });
+  await putOffShareList(bima);
 
   // Bima's goal, shared with Rina by its switch.
   await bima.goto('/goals');
