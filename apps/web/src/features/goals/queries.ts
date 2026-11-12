@@ -1,7 +1,9 @@
 import { isoDate } from '@expanses/core';
 import {
   type AccountRow,
+  goalDueOf,
   goalHistory,
+  listGoalDues,
   goalShareOf,
   goalSharesOf,
   privateCopyOf,
@@ -129,4 +131,17 @@ export function useGoalShares() {
 export function usePrivateCopy(goalId: string, enabled: boolean) {
   const { database } = useApp();
   return useQuery({ queryKey: ['goal-private-copy', goalId], queryFn: () => privateCopyOf(database, goalId), enabled });
+}
+
+/** Every goal's Monthly due and its months up to today's (goal dues, 0111). */
+export function useGoalDues() {
+  const { database, ws } = useApp();
+  const today = isoDate();
+  return useQuery({ queryKey: ['goal-dues', ws.workspaceId, today], queryFn: () => listGoalDues(database, ws, today) });
+}
+
+/** One goal's Due each month as stored, or null when it was never set. */
+export function useGoalDue(goalId: string) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['goal-due', ws.workspaceId, goalId], queryFn: () => goalDueOf(database, ws, goalId) });
 }

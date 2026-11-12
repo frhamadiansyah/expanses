@@ -19,7 +19,11 @@ import { setAsideOf } from './goal-actions';
 import { cardHistory, dayMonth, fundedWindow, type GoalCard, goalCard, historyDay, monthsLeftLabel, stageShares } from './goal-cards';
 import { fundingCaption, fundingGroups, type FundingGroup, GOAL_SHARING_COPY, heroSegments, initialsLine, sharedWithLabel } from './goal-sharing';
 import { InfoHeader } from './InfoHeader';
-import { useDraws, useEarmarks, useGoalHistory, useGoalPlans, useGoalShare, usePrivateCopy } from './queries';
+import { useDraws, useEarmarks, useGoalDues, useGoalHistory, useGoalPlans, useGoalShare, usePrivateCopy } from './queries';
+import { type DueToast, MonthHistoryGroup } from './GoalDues';
+import { monthlySubtitle } from './goal-due';
+import { UndoToast } from '../../ui/UndoToast';
+import { useAccounts } from '../../lib/queries';
 
 export function GoalRoute() {
   const { goalId } = useParams({ from: '/goals/$goalId' });
@@ -82,6 +86,9 @@ export function GoalPage({ goalId }: { goalId: string }) {
   const hasPurchase = useHasTaggedPurchase(goalId);
   const [error, setError] = useState<unknown>(null);
   const share = useGoalShare(goalId).data ?? null;
+  const goalDue = (useGoalDues().data ?? []).find((row) => row.settings.goalId === goalId) ?? null;
+  const accountRows = useAccounts().data ?? [];
+  const [toast, setToast] = useState<DueToast | null>(null);
 
   const plans = summary.data?.plans ?? [];
   const plan = plans.find((row) => row.goalId === goalId);
@@ -305,6 +312,21 @@ export function GoalPage({ goalId }: { goalId: string }) {
       </InsetGroup>
       )}
 
+      {/* Due each month (screen 4): the Monthly row says when and where, and the months so far, newest first. */}
+      {goalDue?.settings.active && (
+        <InsetGroup wide>
+          <InsetRow
+            title="Monthly"
+            subtitle={monthlySubtitle(goalDue.settings, (id) => accountRows.find((account) => account.id === id)?.name ?? 'Account') ?? undefined}
+            value={<Money minor={plan.goal.standingMonthlyMinor} currency={currency} />}
+            valueTone="ink"
+            onClick={() => setOpen('monthly')}
+            testId="goal-monthly-row"
+          />
+        </InsetGroup>
+      )}
+      {goalDue && <MonthHistoryGroup goal={{ goalId, name: card.name, currency }} months={goalDue.months} onToast={setToast} />}
+
       <section className="w-full">
         <InfoHeader
           title="Funded by"
@@ -348,6 +370,19 @@ export function GoalPage({ goalId }: { goalId: string }) {
             onClick={() => void navigate({ to: '/goals/$goalId/history', params: { goalId } })}
           />
         </InsetGroup>
+      )}
+
+      {toast && (
+        <UndoToast
+          icon={toast.icon}
+          text={toast.text}
+          onUndo={() => {
+            const t = toast;
+            setToast(null);
+            void t.undo().then(invalidate, setError);
+          }}
+          onDone={() => setToast(null)}
+        />
       )}
     </div>
   );
