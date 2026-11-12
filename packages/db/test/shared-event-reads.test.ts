@@ -122,7 +122,7 @@ describe('a receipt that follows a shared event (§7)', () => {
     // The payment opens on the euro wallet with nothing re-figured: the wallet is in the expense's own currency.
     expect(dinner.posting).toMatchObject({ accountId: t.wallet.id, accountCurrency: 'EUR', accountAmountMinor: null });
     const transactionId = dinner.posting!.transactionId!;
-    expect(await eventPostingOf(t.database, transactionId)).toEqual({ eventId: t.eventId, kind: 'expense', recordId: dinner.expenseId, changedByName: null });
+    expect(await eventPostingOf(t.database, transactionId)).toEqual({ eventId: t.eventId, eventName: 'Coast week', kind: 'expense', recordId: dinner.expenseId, changedByName: null, deletedHere: false });
     await t.database.execScript(`UPDATE event_postings SET changed_by = 'p-andi' WHERE transaction_id = '${transactionId}'`);
     expect((await eventPostingOf(t.database, transactionId))?.changedByName).toBe('Andi');
     expect(await eventPostingOf(t.database, 'not-a-transaction')).toBeNull();

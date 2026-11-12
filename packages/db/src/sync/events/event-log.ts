@@ -149,8 +149,11 @@ export async function shareEvent(host: EventLogHost, ws: WorkspaceContext, input
   return { bookId, personId: memberId };
 }
 
+/** This phone's person in a copy deleted here (`deleteEventCopy`), kept for the held path of `joinEvent`. Never synced. */
+export const DELETED_COPY_MEMBER_KEY = (bookId: string) => `shared-events.copy-member.${bookId}`;
+
 /** Everything this phone holds of an event's log, gone so a rejoin or a refused join starts from nothing (local bookkeeping kept). */
-async function dropEventLogTx(tx: Tx, bookId: string): Promise<void> {
+export async function dropEventLogTx(tx: Tx, bookId: string): Promise<void> {
   for (const table of ['shared_events', 'event_people', 'event_categories', 'event_expenses', 'event_expense_details', 'event_settlements', 'event_items_shared', 'event_log_currency']) {
     await tx.run(sql`DELETE FROM ${sql.raw(table)} WHERE book_id = ${bookId}`);
   }
@@ -215,8 +218,10 @@ export async function joinEvent(host: EventLogHost, code: string, input: JoinEve
   if (!terms || terms.inviteId !== preview.inviteId) throw new SharingError('BAD_CODE', 'That invite is not complete');
   const bookId = preview.bookId;
   const [held] = await host.database.db.values<[string, string | null, string | null]>(sql`
-    SELECT e.event_id, s.state, s.member_id FROM event_books e LEFT JOIN shared_books s ON s.book_id = e.book_id WHERE e.book_id = ${bookId}`);
+    SELECT e.event_id, s.state, coalesce(s.member_id, (SELECT value FROM settings WHERE key = ${DELETED_COPY_MEMBER_KEY(bookId)})) FROM event_books e
+    LEFT JOIN shared_books s ON s.book_id = e.book_id WHERE e.book_id = ${bookId}`);
   if (held && held[1] === 'active') throw new SharingError('ALREADY_SHARED', `${event.name} is already on this device`);
+  // A copy deleted here (`deleteEventCopy`) has no share row, but its person is remembered: an invite back is as them.
   if (held && !(terms.sameMember && (held[2] === null || held[2] === terms.memberId))) {
     throw new SharingError('INVITE_MISMATCH', `This invite is for someone else: ask for an invite for this phone's person in ${event.name}`);
   }
@@ -295,6 +300,13 @@ export async function joinEvent(host: EventLogHost, code: string, input: JoinEve
     await host.database.transaction((tx) => undoRefusedJoinTx(tx, input.ws, bookId, eventId));
     host.sealer.forget();
     throw new SharingError('NAME_TAKEN', `${name} was claimed on another phone a moment ago. Ask for a new invite.`);
+  }
+  if (held) {
+    // A copy deleted here comes back on the Events list, its kept transactions followed by the records again.
+    await host.database.transaction(async (tx) => {
+      await tx.run(sql`UPDATE events SET archived_at = NULL WHERE id = ${eventId}`);
+      await tx.run(sql`DELETE FROM settings WHERE key = ${DELETED_COPY_MEMBER_KEY(bookId)}`);
+    });
   }
   if (!terms.sameMember) {
     await host.database.transaction(async (tx) => {
