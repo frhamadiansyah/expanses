@@ -13,9 +13,9 @@ import { initialsLine } from './goal-sharing';
 import { useGoalPlans, useGoalShares } from './queries';
 
 /** The page's two sections, in funding order: what is saved reaches the compulsory goals first. */
-const SECTIONS: { key: GoalClass; title: string; note: string }[] = [
-  { key: 'compulsory', title: 'Compulsory', note: 'The emergency fund and retirement. What is saved reaches these first.' },
-  { key: 'additional', title: 'Additional', note: 'Everything else, from what is left.' },
+const SECTIONS: { key: GoalClass; title: string }[] = [
+  { key: 'compulsory', title: 'Compulsory' },
+  { key: 'additional', title: 'Additional' },
 ];
 
 /** "Short Rp 500.000 a month", with why behind its ⓘ. */
@@ -158,7 +158,7 @@ export function GoalsPage() {
         if (inSection.length === 0) return null;
         return (
           <section key={section.key} data-testid={`goals-${section.key}`} className="w-full md:max-w-2xl">
-            <InfoHeader title={section.title} info={section.note} />
+            <InfoHeader title={section.title} />
             {/* One row a goal: the figure is read at a glance here, and the goal itself opens on its own page. */}
             <InsetGroup>
               {inSection.map(({ card }) => (
