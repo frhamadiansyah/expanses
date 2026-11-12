@@ -134,7 +134,7 @@ const stepButton = 'ph-focus ph-tap flex h-7 w-7 shrink-0 items-center justify-c
  * real date input laid over the day it shows, so it is still labelled Date and still opens the browser's own picker.
  * `disabled` greys the whole row — a shared expense's date is its payer's alone (D8) — rather than hiding it.
  */
-export function DateRow({ on, onChange, max, disabled = false }: { on: string; onChange: (iso: string) => void; max?: string; disabled?: boolean }) {
+export function DateRow({ on, onChange, max, disabled = false, label = 'Date' }: { on: string; onChange: (iso: string) => void; max?: string; disabled?: boolean; label?: string }) {
   const id = useId();
   return (
     <div className={cx('flex items-center gap-[10px] pl-[10px]', disabled && 'opacity-40')}>
@@ -143,6 +143,7 @@ export function DateRow({ on, onChange, max, disabled = false }: { on: string; o
           <CalendarDays size={15} />
         </RowGlyph>
       </RowLead>
+      {label !== 'Date' && <span className="shrink-0 text-[13px] leading-4 text-[var(--ph-ink-3)]">{label}</span>}
       <span className={cx(ROW_BODY, 'gap-[6px]')}>
         <button type="button" aria-label="A day earlier" disabled={disabled} onClick={() => onChange(stepDay(on, -1))} className={stepButton} style={TAP_REACH}>
           <ChevronLeft size={16} aria-hidden />
@@ -153,7 +154,7 @@ export function DateRow({ on, onChange, max, disabled = false }: { on: string; o
           </span>
           <input
             id={id}
-            aria-label="Date"
+            aria-label={label}
             type="date"
             required
             max={max}

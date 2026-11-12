@@ -1,7 +1,7 @@
 import { formatMinor, groupedMajorString, groupTypedAmount, isoDate, parseGroupedMajor, parsePurchaseList, type PaymentOption } from '@expanses/core';
 import { guessCategoryFromHistory, postTransactions, uncategorisedCategory } from '@expanses/db';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
-import { ArrowRight, Check, CreditCard, Landmark } from 'lucide-react';
+import { ArrowRight, CalendarDays, Check, CreditCard, Landmark } from 'lucide-react';
 import { type FormEvent, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useBack } from '../../app/BackHeader';
@@ -16,10 +16,11 @@ import { useCards } from '../cards/card-queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { DateRow } from './CardRows';
 import { CategoryPicker } from './CategoryPicker';
-import { FormRow, FormRows, RowGlyph } from './FormRow';
+import { FormRow, FormRows, ROW_BODY, RowGlyph, RowLead } from './FormRow';
 import {
   addedText,
   canSave,
+  dateRowMode,
   purchaseInputs,
   readingKey,
   reviewHeader,
@@ -88,7 +89,9 @@ export function PasteListPage() {
   const currency = payerAccount?.currency ?? ws.baseCurrency;
   const payerName = payer ? (payer.cardId ? `${payer.accountName} ···· ${payer.last4 ?? '????'}` : payer.accountName) : '';
 
-  const lineCount = useMemo(() => parsePurchaseList(text, { today: isoDate(), currency }).length, [text, currency]);
+  const parsed = useMemo(() => parsePurchaseList(text, { today: isoDate(), currency }), [text, currency]);
+  const lineCount = parsed.length;
+  const dateMode = dateRowMode(parsed);
 
   async function review() {
     if (lineCount === 0 || !payer || reading) return;
@@ -206,8 +209,23 @@ export function PasteListPage() {
               value={payerName}
               onClick={() => setSheet('payer')}
             />
-            <DateRow on={date} onChange={setDate} />
+            {dateMode === 'all' ? (
+              <div className="flex items-center gap-[10px] pl-[10px]">
+                <RowLead>
+                  <RowGlyph>
+                    <CalendarDays size={15} />
+                  </RowGlyph>
+                </RowLead>
+                <span className={cx(ROW_BODY, 'justify-between')}>
+                  <span className="text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-5">Dates</span>
+                  <span className="text-[12.5px] leading-4 text-[var(--ph-ink-3)]">From the list</span>
+                </span>
+              </div>
+            ) : (
+              <DateRow on={date} onChange={setDate} label={dateMode === 'some' ? 'Lines without a date' : 'Date'} />
+            )}
           </FormRows>
+          {dateMode === 'all' && <p className="px-[13px] text-[13px] leading-4 text-[var(--ph-ink-3)]">Every line has a date in the list.</p>}
         </div>
         {sheet === 'payer' && (
           <PaymentSheet

@@ -1,7 +1,7 @@
 import { parsePurchaseList } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { addedText, canSave, purchaseInputs, readingKey, reviewCounts, reviewHeader, reviewLabel, reviewRowsFrom, saveLabel, sections, totalMinor, withEdit, withRemoved } from './paste-review';
+import { addedText, canSave, dateRowMode, purchaseInputs, readingKey, reviewCounts, reviewHeader, reviewLabel, reviewRowsFrom, saveLabel, sections, totalMinor, withEdit, withRemoved } from './paste-review';
 
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], currency: string | null): AccountRow => ({
   id, workspaceId: 'ws', parentId: null, kind, subtype, name: id, icon: null, currency, valuationMode: 'derived', systemKey: null, sortOrder: 0, archivedAt: null, createdAt: '2026-09-01T00:00:00Z',
@@ -125,5 +125,21 @@ describe('what is posted', () => {
 
   it('refuses a row with no amount', () => {
     expect(() => purchaseInputs(rowsOf('parkir'), { account: accounts[0]!, cardId: null }, accounts, 'uncat', () => undefined)).toThrow(/Line 1/);
+  });
+});
+
+describe('dateRowMode', () => {
+  const mode = (text: string) => dateRowMode(parsePurchaseList(text, { today: '2026-10-28' }));
+  it('is none for an empty text or a list with no date', () => {
+    expect(mode('')).toBe('none');
+    expect(mode('kopi 11000\nteh 3000')).toBe('none');
+  });
+  it('is all when every line has a date from the list', () => {
+    expect(mode('21okt kopi 11000\nteh 3000')).toBe('some');
+    expect(mode('21okt\nkopi 11000\nteh 3000')).toBe('all');
+    expect(mode('21okt kopi 11000\n22 okt teh 3000')).toBe('all');
+  });
+  it('is some when a line comes before the first date', () => {
+    expect(mode('kopi 11000\n21okt\nteh 3000')).toBe('some');
   });
 });

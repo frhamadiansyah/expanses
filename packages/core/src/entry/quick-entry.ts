@@ -1,3 +1,4 @@
+import { monthFromWord } from '../capture/date';
 import { parseMajor } from '../money/money';
 
 /**
@@ -6,8 +7,6 @@ import { parseMajor } from '../money/money';
  * Everything here returns null rather than throwing. A cell that cannot be read yet is simply not
  * filled in yet — the row shows what it still needs, and nothing reaches the ledger until it is right.
  */
-
-const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
 function realDate(y: number, m: number, d: number): string | null {
   const date = new Date(Date.UTC(y, m - 1, d));
@@ -37,11 +36,12 @@ export function parseLooseDate(raw: string, today: string, opts: { dayFirst?: bo
     return dayFirst ? realDate(y, b, a) : realDate(y, a, b);
   }
 
-  const monthOf = (word: string) => MONTHS.indexOf(word.slice(0, 3)) + 1;
-  m = /^(\d{1,2}) ([a-z]{3,})\.?(?: (\d{4}))?$/.exec(s);
-  if (m && monthOf(m[2]!) > 0) return realDate(m[3] ? Number(m[3]) : year, monthOf(m[2]!), Number(m[1]));
-  m = /^([a-z]{3,})\.? (\d{1,2})(?: (\d{4}))?$/.exec(s);
-  if (m && monthOf(m[1]!) > 0) return realDate(m[3] ? Number(m[3]) : year, monthOf(m[1]!), Number(m[2]));
+  // 21 okt · 21okt · 21-okt · 21 oktober 2026 — the day, then a whole month word.
+  m = /^(\d{1,2})[ -]?([a-z]{3,})\.?(?:[ -](\d{4}))?$/.exec(s);
+  if (m && monthFromWord(m[2]!)) return realDate(m[3] ? Number(m[3]) : year, monthFromWord(m[2]!)!, Number(m[1]));
+  // okt 21 · oktober 21 2026
+  m = /^([a-z]{3,})\.?[ -]?(\d{1,2})(?:[ -](\d{4}))?$/.exec(s);
+  if (m && monthFromWord(m[1]!)) return realDate(m[3] ? Number(m[3]) : year, monthFromWord(m[1]!)!, Number(m[2]));
 
   return null;
 }

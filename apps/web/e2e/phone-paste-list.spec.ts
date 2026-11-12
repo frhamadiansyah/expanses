@@ -171,3 +171,19 @@ test('lines dated before the account opened are posted as past purchases by them
   await page.goto('/wallet');
   await expectWalletFigure(page, 'BCA Tahapan', '1.000.000');
 });
+
+test('the Date row says what the dates are for: Date, Lines without a date, or Dates from the list', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '1000000' });
+  await openPaste(page);
+  const box = page.getByLabel('Purchases');
+  await expect(page.getByLabel('Date', { exact: true })).toBeVisible();
+
+  await box.fill('kopi 11000\n21okt\nteh 3000');
+  await expect(page.getByLabel('Lines without a date')).toBeVisible();
+
+  await box.fill('21okt\nkopi 11000\nteh 3000');
+  await expect(page.getByText('From the list')).toBeVisible();
+  await expect(page.getByText('Every line has a date in the list.')).toBeVisible();
+  await expect(page.getByLabel('Lines without a date')).toHaveCount(0);
+  await expect(page.getByLabel('Date', { exact: true })).toHaveCount(0);
+});

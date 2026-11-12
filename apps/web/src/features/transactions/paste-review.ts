@@ -37,6 +37,17 @@ export function reviewRowsFrom(lines: readonly PurchaseLine[], pageDate: string,
 }
 
 /** The rows with an amount, and those without ("Not read"), each in the order of the pasted text. */
+/**
+ * What the Date row of the paste screen says, from the lines as read: `all` when every line took its own date from the
+ * list (the page date is then never used), `some` when only part did, `none` when no line did or there are no lines.
+ */
+export type DateRowMode = 'none' | 'some' | 'all';
+export function dateRowMode(lines: readonly Pick<PurchaseLine, 'occurredOn'>[]): DateRowMode {
+  const dated = lines.filter((line) => line.occurredOn !== null).length;
+  if (dated === 0) return 'none';
+  return dated === lines.length ? 'all' : 'some';
+}
+
 export function sections(rows: readonly ReviewRow[]): { read: ReviewRow[]; unread: ReviewRow[] } {
   return { read: rows.filter((row) => row.amountMinor !== null), unread: rows.filter((row) => row.amountMinor === null) };
 }

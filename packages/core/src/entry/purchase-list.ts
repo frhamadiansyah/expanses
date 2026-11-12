@@ -1,3 +1,4 @@
+import { MONTH_WORDS } from '../capture/date';
 import { currencyInfo } from '../money/currencies';
 import { parseLooseDate } from './quick-entry';
 
@@ -63,7 +64,11 @@ const HUGE_MAJOR = 10n ** 12n;
 const BULLET = /^(?:[-*•–·]\s+|\d{1,3}[.)]\s+)/;
 
 /** Weekday words in front of a date line ("Mon 27 Oct"). */
-const WEEKDAY = /^(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s+/i;
+const WEEKDAY_WORDS = String.raw`(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun|senin|selasa|rabu|kamis|jumat|jum'at|sabtu|minggu|sen|sel|rab|kam|jum|sab|min)`;
+const WEEKDAY = new RegExp(String.raw`^${WEEKDAY_WORDS}\.?,?\s+`, 'i');
+
+/** Month words (English and Indonesian, whole words only), longest first so "oktober" is not cut at "okt". */
+const MONTH_ALT = Object.keys(MONTH_WORDS).sort((a, b) => b.length - a.length).join('|');
 
 // A figure: space-grouped (18 000), or digits joined by dots and commas (read by `readNumber`).
 const NUMBER = String.raw`(?:\d{1,3}(?: \d{3})+(?:,\d+)?|\d+(?:[.,]\d+)*)`;
@@ -139,20 +144,26 @@ export function readDayText(text: string, today: string): string | null {
   return found;
 }
 
+const DAY_MONTH_LINE = new RegExp(String.raw`^\d{1,2}(?:\s+|\s*-\s*|(?=[a-z]))(?:${MONTH_ALT})\.?(?:,?[\s-]+\d{4})?$`, 'i');
+const MONTH_DAY_LINE = new RegExp(String.raw`^(?:${MONTH_ALT})\.?[\s-]*\d{1,2}(?:,?[\s-]+\d{4})?$`, 'i');
+
 /**
  * The day a line names when the whole line is a date: 27/10 · 27/10/2026 · 27-10 · 27 Oct · Oct 27 · 2026-10-27,
  * day first. Without a year it is this year, or last year when that would put it more than a month ahead.
  */
 function dateLine(text: string, today: string): string | null {
   const s = text.replace(WEEKDAY, '').replace(/[\s:.\-–]+$/, '').trim();
-  const shaped = /^\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?$/.test(s) || /^\d{4}-\d{1,2}-\d{1,2}$/.test(s) || /^\d{1,2}\s+[a-z]{3,}\.?(?:,?\s+\d{4})?$/i.test(s) || /^[a-z]{3,}\.?\s+\d{1,2}(?:,?\s+\d{4})?$/i.test(s);
+  const shaped = /^\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?$/.test(s) || /^\d{4}-\d{1,2}-\d{1,2}$/.test(s) || DAY_MONTH_LINE.test(s) || MONTH_DAY_LINE.test(s);
   if (!shaped) return null;
   return readDayText(s, today);
 }
 
 /** A word that names a measure, so a figure such as 1/2 in front of it is a quantity, not a day. */
 const UNIT_AFTER = /^(?:kg|kilo|g|gr|gram|ons|l|lt|liter|litre|ml|pcs|pc|porsi|bungkus|buah|lusin|dozen|pack|box|btl|botol|x)\b/i;
-const LEADING_DAY = /^(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december)\.?)(?=\s)\s+(.+)$/i;
+const LEADING_DAY = new RegExp(
+  String.raw`^(?:${WEEKDAY_WORDS}\.?,?\s+)?(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|\d{1,2}(?:\s+|\s*-\s*|(?=[a-z]))(?:${MONTH_ALT})\.?(?:\s+20\d{2})?|(?:${MONTH_ALT})\.?[\s-]*\d{1,2})(?=\s)\s+(.+)$`,
+  'i',
+);
 
 /**
  * A day typed at the start of a purchase line (25/10 grabcar 50000 · 24 Oct gocar 18000): that line's own day, and the

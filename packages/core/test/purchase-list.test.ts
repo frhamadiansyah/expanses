@@ -281,3 +281,31 @@ describe('parsePurchaseList: date lines', () => {
     expect(rows[0]).toMatchObject({ lineNo: 2, status: 'no-amount', occurredOn: '2026-10-26' });
   });
 });
+
+describe('parsePurchaseList: Indonesian month words and joined shapes', () => {
+  const dayOf = (line: string) => read(`${line}\nx 1000`)[0]!.occurredOn;
+  it.each(['21okt', '21 okt', '21-okt', '21 Okt', '21 oktober', '21 okt 2026', 'okt 21', 'oktober 21', 'Sel 21 Okt', 'Selasa, 21 Oktober', 'Wed 21 Oct', '21 Oct'])('reads %s as a date line', (line) => {
+    expect(dayOf(line)).toBe('2026-10-21');
+  });
+  it('reads the other Indonesian months', () => {
+    expect(dayOf('3 mei')).toBe('2026-05-03');
+    expect(dayOf('5 agu')).toBe('2026-08-05');
+    expect(dayOf('5 agustus')).toBe('2026-08-05');
+    expect(dayOf('1 des')).toBe('2025-12-01');
+    expect(dayOf('2 maret')).toBe('2026-03-02');
+    expect(dayOf('2 nop')).toBe('2026-11-02');
+  });
+  it('gives a purchase line its own day from a joined date', () => {
+    expect(read('21okt grab 32rb')[0]).toMatchObject({ occurredOn: '2026-10-21', note: 'grab', amountMinor: 32000 });
+    expect(read('21 okt grab 32rb')[0]).toMatchObject({ occurredOn: '2026-10-21', note: 'grab' });
+    expect(read('Sel 21 Okt grab 32rb')[0]).toMatchObject({ occurredOn: '2026-10-21', note: 'grab' });
+    expect(read('okt 21 grab 32rb')[0]).toMatchObject({ occurredOn: '2026-10-21', note: 'grab' });
+  });
+  it('keeps words that only start like a month as notes', () => {
+    for (const line of ['2 martabak 30rb', '3 mangga 15rb', '5 jus 20rb', '2 desa 10rb', '4 juice 20rb', '2 marketing 50rb']) {
+      expect(read(line)[0]).toMatchObject({ occurredOn: null, status: 'ok' });
+    }
+    expect(read('2 martabak 30rb')[0]!.note).toBe('2 martabak');
+    expect(read('1/2 kg apel 30rb')[0]).toMatchObject({ occurredOn: null });
+  });
+});
