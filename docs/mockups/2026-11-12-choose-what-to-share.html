@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Choose what to share</title>
+<style>
+:root { --bg:#f2f2f7; --surface:#fff; --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e0e0e4; --fill:#efeff2; --tint:#007aff; --up:#248a3d; }
+* { box-sizing:border-box; }
+body { margin:0; background:#e6e6ea; color:var(--ink); font:14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; padding:24px 16px 48px; }
+h1 { font-size:20px; margin:0 0 4px; } .lede { color:#555; margin:0 0 20px; max-width:980px; }
+h2 { font-size:16px; margin:30px 0 12px; }
+.pair { display:flex; flex-wrap:wrap; gap:22px; align-items:flex-start; }
+.col { width:320px; max-width:100%; }
+.cap { font-weight:600; margin:0 0 8px; } .cap .n { display:inline-block; background:#1c1c1e; color:#fff; border-radius:5px; padding:0 6px; font-size:12px; margin-right:6px; }
+.phone { background:var(--bg); border-radius:28px; padding:12px 14px 18px; border:1px solid #d4d4d8; min-height:680px; position:relative; overflow:hidden; }
+.bar { display:flex; align-items:center; justify-content:space-between; margin:2px 0 8px; }
+.round { width:34px; height:34px; border-radius:50%; background:#e5e5ea; display:inline-flex; align-items:center; justify-content:center; font-size:15px; }
+.ttl { font-size:17px; font-weight:600; }
+.lt { font-size:28px; font-weight:700; margin:2px 4px 6px; }
+.sub { font-size:13px; color:var(--ink3); margin:0 4px 6px; }
+.gh { font-size:12.5px; color:var(--ink3); margin:16px 6px 5px; text-transform:uppercase; letter-spacing:.03em; display:flex; justify-content:space-between; align-items:center; }
+.gh a { color:var(--tint); text-transform:none; letter-spacing:0; font-size:13px; }
+.gf { font-size:12.5px; color:var(--ink3); margin:6px 6px 0; }
+.ig { background:var(--surface); border-radius:11px; overflow:hidden; }
+.row { display:flex; align-items:center; gap:10px; padding:0 13px; min-height:46px; position:relative; font-size:15px; }
+.ig .row + .row::before { content:""; position:absolute; top:0; left:46px; right:0; border-top:.5px solid var(--hair); }
+.ig.plain .row + .row::before { left:13px; }
+.ck { width:22px; height:22px; border-radius:50%; border:1.5px solid #c7c7cc; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:12px; }
+.ck.on { background:var(--tint); border-color:var(--tint); color:#fff; }
+.grow { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.meta { font-size:12.5px; color:var(--ink3); white-space:nowrap; }
+.chev { color:#c7c7cc; margin-left:4px; }
+.jp { font-size:12px; border-radius:11px; padding:3px 9px; border:1px solid #c7c7cc; color:var(--ink2); white-space:nowrap; }
+.jp.on { background:#e5f0ff; border-color:#b6d4ff; color:var(--tint); font-weight:600; }
+.btn { background:var(--tint); color:#fff; text-align:center; border-radius:13px; padding:13px; font-weight:600; font-size:16px; }
+.btn2 { color:var(--tint); text-align:center; padding:11px; font-size:15.5px; }
+.foot { position:absolute; left:14px; right:14px; bottom:16px; background:linear-gradient(transparent, var(--bg) 22%); padding-top:18px; }
+.mark { outline:2px dashed #2563eb; outline-offset:2px; border-radius:10px; }
+.note { font-size:12.5px; color:#444; margin:10px 2px 0; }
+.steps { font-size:12px; color:var(--ink3); text-align:center; margin-bottom:6px; }
+</style>
+</head>
+<body>
+<h1>One list to choose what to share</h1>
+<p class="lede">Today Net worth items, goals and events are each shared from their own page. Proposed: one page, “What’s shared with Andi”, lists all three with a tick per item. It appears once as the last step of setting up sharing, and stays on the Share page to change later. Budgets, bills, categories and Family’s transactions are shared with the workspace already, so they are not on the list. Names and amounts are made up.</p>
+
+<h2>At set-up (after Andi joins Family)</h2>
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">1</span>Last step of sharing</p>
+    <div class="phone">
+      <div class="steps">Step 2 of 2</div>
+      <div class="lt">Share with Andi</div>
+      <p class="sub">Family’s budgets, bills and transactions are already shared. Pick what else Andi sees. Nothing here is shared until ticked.</p>
+
+      <div class="gh"><span>Accounts &amp; cards</span><a>Tick all</a></div>
+      <div class="ig">
+        <div class="row"><span class="ck on">✓</span><span class="grow">BCA Tahapan</span><span class="jp on">Joint</span></div>
+        <div class="row"><span class="ck on">✓</span><span class="grow">Mandiri Tabungan NOW</span><span class="jp">Joint</span></div>
+        <div class="row"><span class="ck"></span><span class="grow">GoPay</span></div>
+        <div class="row"><span class="ck on">✓</span><span class="grow">Card ending 5678</span><span class="jp on">Joint</span></div>
+      </div>
+      <div class="gf">Ticked: Andi sees its balance on Net worth. Joint: Andi can also pay from it in Family and sees its rows.</div>
+
+      <div class="gh"><span>Assets &amp; debts</span><a>Tick all</a></div>
+      <div class="ig plain">
+        <div class="row"><span class="ck on">✓</span><span class="grow">House</span><span class="meta">Property</span></div>
+        <div class="row"><span class="ck"></span><span class="grow">Gold</span><span class="meta">Precious metal</span></div>
+      </div>
+
+      <div class="gh"><span>Goals</span><a>Tick all</a></div>
+      <div class="ig plain">
+        <div class="row"><span class="ck on">✓</span><span class="grow">Hajj</span></div>
+        <div class="row"><span class="ck on">✓</span><span class="grow">Children’s school</span></div>
+        <div class="row"><span class="ck"></span><span class="grow">New phone</span></div>
+      </div>
+
+      <div class="gh"><span>Events</span><a>Tick all</a></div>
+      <div class="ig plain">
+        <div class="row"><span class="ck on">✓</span><span class="grow">Turkey trip</span><span class="meta">Oct</span></div>
+        <div class="row"><span class="ck"></span><span class="grow">Office dinner</span><span class="meta">Sep</span></div>
+      </div>
+      <div style="height:110px"></div>
+      <div class="foot"><div class="btn">Share 7 items</div><div class="btn2">Later</div></div>
+    </div>
+    <p class="note">One screen, ticks only. “Joint” shows only on a ticked account or card. “Later” skips it; the list is on the Share page any time.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">2</span>Share page afterwards</p>
+    <div class="phone">
+      <div class="lt">Share</div>
+      <div class="gh"><span>Family</span></div>
+      <div class="ig plain">
+        <div class="row"><span class="grow">Members</span><span class="meta">2</span><span class="chev">›</span></div>
+        <div class="row mark"><span class="grow">What’s shared with Andi</span><span class="meta">7 items</span><span class="chev">›</span></div>
+        <div class="row"><span class="grow">Details</span><span class="meta">Synced 1 min ago</span><span class="chev">›</span></div>
+      </div>
+      <div class="gf">Budgets, bills, categories and Family’s transactions are shared with Family as a whole.</div>
+      <p class="note">The same list as 1, with a Save (✓) instead of “Share 7 items”. Unticking stops sharing that item, with the same confirmation each page asks today.</p>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">3</span>Something new later</p>
+    <div class="phone">
+      <div class="bar"><span class="round">✕</span><span class="ttl">New goal</span><span class="round">✓</span></div>
+      <div class="ig plain">
+        <div class="row"><span class="grow">Name</span><span class="meta">Umrah</span></div>
+        <div class="row"><span class="grow">Target</span><span class="meta">Rp 60.000.000</span></div>
+      </div>
+      <div class="gh"><span>Sharing</span></div>
+      <div class="ig plain">
+        <div class="row"><span class="grow">Shared with Andi</span><span style="width:46px;height:28px;border-radius:14px;background:#e9e9eb;position:relative;display:inline-block"><span style="position:absolute;top:2px;left:2px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2)"></span></span></div>
+      </div>
+      <p class="note">A new account, goal or event still has its own switch (off), as today — or it can be ticked later on the list in 2. Nothing new is shared by itself.</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>
