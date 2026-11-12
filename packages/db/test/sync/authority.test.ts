@@ -333,18 +333,18 @@ describe("this device's own member edits that the log refuses are put back (fix 
     const { home, fandri, dewi, budi, bookId } = await household();
     await promote(home, fandri, budi, bookId);
     await tick();
-    // Only a member renames themselves (D-D2): Budi demotes Fandri and deletes his row; Fandri, his view lagging (an
-    // owner still, to him), renames himself.
+    await writeMember(budi, bookId, dewi.memberId, `DELETE FROM book_members WHERE member_id = '${dewi.memberId}'`);
     await writeMember(budi, bookId, fandri.memberId, `UPDATE book_members SET role = 'member' WHERE member_id = '${fandri.memberId}'`);
-    await writeMember(budi, bookId, fandri.memberId, `DELETE FROM book_members WHERE member_id = '${fandri.memberId}'`);
     await budi.engine.syncOnce(bookId);
     await tick();
-    await writeMember(fandri, bookId, fandri.memberId, `UPDATE book_members SET name = 'Fandri R' WHERE member_id = '${fandri.memberId}'`);
+    // A name is its member's own (D-D2), so the lagging owner's edit of Dewi's row is of another field: it moves the
+    // existence clock on his phone (an owner, to him) while the log has him a member.
+    await writeMember(fandri, bookId, dewi.memberId, `UPDATE book_members SET joined_at = '2026-08-15' WHERE member_id = '${dewi.memberId}'`);
     await fandri.engine.syncOnce(bookId);
     await home.settle();
     await home.settle();
     const members = await expectSameMembers([fandri, dewi, budi], bookId);
-    expect(members[fandri.memberId]).toBeUndefined();
+    expect(members[dewi.memberId]).toBeUndefined();
   });
 
   it('X5: a member promoting herself keeps it nowhere, her own device included', async () => {
