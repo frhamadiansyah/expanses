@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Goal monthly like a bill</title>
+<style>
+:root { --bg:#f2f2f7; --surface:#fff; --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e0e0e4; --fill:#efeff2; --tint:#007aff; --up:#248a3d; --warn:#b25000; }
+* { box-sizing:border-box; }
+body { margin:0; background:#e6e6ea; color:var(--ink); font:14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; padding:24px 16px 48px; }
+h1 { font-size:20px; margin:0 0 4px; } .lede { color:#555; margin:0 0 20px; max-width:980px; }
+.pair { display:flex; flex-wrap:wrap; gap:22px; align-items:flex-start; }
+.col { width:320px; max-width:100%; }
+.cap { font-weight:600; margin:0 0 8px; } .cap .n { display:inline-block; background:#1c1c1e; color:#fff; border-radius:5px; padding:0 6px; font-size:12px; margin-right:6px; }
+.phone { background:var(--bg); border-radius:28px; padding:12px 14px 18px; border:1px solid #d4d4d8; min-height:620px; position:relative; overflow:hidden; }
+.bar { display:flex; align-items:center; justify-content:space-between; margin:2px 0 10px; }
+.round { width:34px; height:34px; border-radius:50%; background:#e5e5ea; display:inline-flex; align-items:center; justify-content:center; font-size:15px; }
+.ttl { font-size:17px; font-weight:600; }
+.lt { font-size:28px; font-weight:700; margin:2px 4px 8px; }
+.gh { font-size:12.5px; color:var(--ink3); margin:16px 6px 5px; text-transform:uppercase; letter-spacing:.03em; display:flex; justify-content:space-between; }
+.gf { font-size:12.5px; color:var(--ink3); margin:6px 6px 0; }
+.ig { background:var(--surface); border-radius:11px; overflow:hidden; }
+.row { display:flex; align-items:center; gap:10px; padding:10px 13px; min-height:48px; position:relative; font-size:15px; }
+.ig .row + .row::before { content:""; position:absolute; top:0; left:13px; right:0; border-top:.5px solid var(--hair); }
+.ig.icons .row + .row::before { left:50px; }
+.ic { width:28px; height:28px; border-radius:50%; background:var(--fill); display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; }
+.grow { flex:1; min-width:0; }
+.s { font-size:12px; color:var(--ink3); }
+.val { color:var(--ink3); white-space:nowrap; } .amt { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.chev { color:#c7c7cc; margin-left:4px; }
+.sw { width:46px; height:28px; border-radius:14px; background:#34c759; position:relative; flex-shrink:0; } .sw::after { content:""; position:absolute; top:2px; right:2px; width:24px; height:24px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+.btn { font-size:13px; font-weight:600; color:#fff; background:var(--tint); border-radius:14px; padding:5px 12px; white-space:nowrap; }
+.done { font-size:12.5px; color:var(--up); white-space:nowrap; }
+.skip { font-size:12.5px; color:var(--ink3); white-space:nowrap; }
+.scrim { position:absolute; inset:0; background:rgba(0,0,0,.25); }
+.sheet { position:absolute; left:0; right:0; bottom:0; background:var(--bg); border-radius:18px 18px 0 0; padding:10px 14px 22px; box-shadow:0 -6px 20px rgba(0,0,0,.12); }
+.grab { width:36px; height:5px; border-radius:3px; background:#c7c7cc; margin:0 auto 10px; }
+.big { background:var(--tint); color:#fff; text-align:center; border-radius:13px; padding:13px; font-weight:600; font-size:16px; margin-top:14px; }
+.link { color:var(--tint); text-align:center; padding:10px; font-size:15px; }
+.seg { display:flex; background:#e3e3e8; border-radius:9px; padding:2px; width:100%; } .seg span { flex:1; text-align:center; font-size:13px; padding:6px 4px; border-radius:7px; } .seg .on { background:#fff; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.12); }
+.mark { outline:2px dashed #2563eb; outline-offset:2px; border-radius:10px; }
+.note { font-size:12.5px; color:#444; margin:10px 2px 0; }
+.toast { position:absolute; left:14px; right:14px; bottom:18px; background:#fff; border-radius:14px; box-shadow:0 4px 18px rgba(0,0,0,.14); padding:10px 12px; display:flex; align-items:center; gap:10px; font-size:14px; }
+.toast .u { background:var(--fill); border-radius:12px; padding:4px 11px; font-size:13px; font-weight:600; }
+</style>
+</head>
+<body>
+<h1>Goal Monthly that works like a bill: Set aside or Skip each month</h1>
+<p class="lede">Nothing happens by itself. Each month the goal’s Monthly amount comes due, like a bill, and waits for a tap: <b>Set aside</b> (money stays in the account, moves from Free to spend to Set aside) or <b>Transfer</b> (money moves to a savings account), or <b>Skip</b> this month. Names and amounts are made up.</p>
+
+<div class="pair">
+  <div class="col">
+    <p class="cap"><span class="n">1</span>Monthly sheet</p>
+    <div class="phone">
+      <div class="bar"><span></span><span class="ttl">Hajj</span><span></span></div>
+      <div class="scrim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="bar"><span class="round">✕</span><span class="ttl">Monthly for Hajj</span><span class="round">✓</span></div>
+        <div class="ig">
+          <div class="row"><div class="grow">Each month</div><span class="amt">Rp 2.000.000</span></div>
+        </div>
+        <div class="ig mark" style="margin-top:16px">
+          <div class="row"><div class="grow">Due each month</div><span class="sw"></span></div>
+          <div class="row"><div class="grow">On the</div><span class="val">25th</span><span class="chev">›</span></div>
+          <div class="row"><div class="seg"><span class="on">Set aside</span><span>Transfer</span></div></div>
+          <div class="row"><div class="grow">In</div><span class="val">BCA Tahapan</span><span class="chev">›</span></div>
+        </div>
+        <div class="gf">Comes due on the 25th, like a bill. Set aside keeps the money in BCA Tahapan, promised to Hajj; Transfer moves it to another account.</div>
+        <div class="ig" style="margin-top:16px">
+          <div class="row"><div class="grow">Needed a month</div><span class="val">Rp 1.850.000</span></div>
+          <div class="row"><div class="grow">After this</div><span class="val">Rp 2.000.000 · On track</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="note">Off: a plan figure only, as today. On: nothing moves until it is tapped.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">2</span>Recurring page, beside the bills</p>
+    <div class="phone">
+      <div class="lt">Recurring</div>
+      <div class="gh"><span>Due soon</span><span>Rp 650.000</span></div>
+      <div class="ig icons">
+        <div class="row"><span class="ic">⚡</span><div class="grow"><div>Electricity</div><div class="s">25 Nov</div></div><span class="amt">Rp 450.000</span><span class="btn">Pay</span></div>
+        <div class="row"><span class="ic">🌐</span><div class="grow"><div>Internet</div><div class="s">28 Nov</div></div><span class="amt">Rp 200.000</span><span class="btn">Pay</span></div>
+      </div>
+      <div class="gh"><span>Goals this month</span><span>Rp 3.500.000</span></div>
+      <div class="ig icons mark">
+        <div class="row"><span class="ic">🕋</span><div class="grow"><div>Hajj</div><div class="s">25 Nov · Rp 2.000.000</div></div><span class="btn">Set aside</span></div>
+        <div class="row"><span class="ic">🎓</span><div class="grow"><div>Children’s school</div><div class="s">1 Nov · Rp 1.000.000</div></div><span class="done">✓ Transferred</span></div>
+        <div class="row"><span class="ic">📱</span><div class="grow"><div>New phone</div><div class="s">10 Nov · Rp 500.000</div></div><span class="skip">Skipped</span></div>
+      </div>
+      <p class="note">Swipe a goal row for Skip, as a bill. The button says what the goal does: Set aside or Transfer. Done and skipped months stay listed for the month.</p>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">3</span>Tap “Set aside”</p>
+    <div class="phone">
+      <div class="lt">Recurring</div>
+      <div class="scrim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="bar"><span class="round">✕</span><span class="ttl">Hajj · November</span><span style="width:34px"></span></div>
+        <div class="ig">
+          <div class="row"><div class="grow">Amount</div><span class="amt">Rp 2.000.000</span></div>
+          <div class="row"><div class="grow">In</div><span class="val">BCA Tahapan</span><span class="chev">›</span></div>
+          <div class="row"><div class="grow">Free to spend there</div><span class="val">Rp 6.500.000</span></div>
+        </div>
+        <div class="gf">Nothing leaves the account: Rp 2.000.000 moves from Free to spend to Set aside for Hajj.</div>
+        <div class="big">Set aside</div>
+        <div class="link">Skip November</div>
+      </div>
+    </div>
+    <p class="note">The amount can be changed for this month only. For a Transfer goal the sheet has From / To and records a real transfer.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><span class="n">4</span>Goal page after</p>
+    <div class="phone">
+      <div class="bar"><span class="round">‹</span><span class="ttl">Hajj</span><span class="round">⋯</span></div>
+      <div class="ig">
+        <div class="row"><div class="grow"><div>Monthly</div><div class="s">Due on the 25th · Set aside in BCA Tahapan</div></div><span class="amt">Rp 2.000.000</span><span class="chev">›</span></div>
+      </div>
+      <div class="gh"><span>Month history</span></div>
+      <div class="ig">
+        <div class="row"><div class="grow"><div>November</div><div class="s">Set aside 25 Nov · BCA Tahapan</div></div><span class="amt">Rp 2.000.000</span></div>
+        <div class="row"><div class="grow"><div>October</div><div class="s">Skipped</div></div><span class="val">—</span></div>
+        <div class="row"><div class="grow"><div>September</div><div class="s">Set aside 26 Sep · BCA Tahapan</div></div><span class="amt">Rp 2.500.000</span></div>
+      </div>
+      <div class="gf">Tap a month to undo it or change what was set aside.</div>
+      <div class="toast"><span>✓</span><span class="grow">Set aside for Hajj · November</span><span class="u">Undo</span></div>
+    </div>
+    <p class="note">Month history like a bill’s. The light Undo bar (L3) after each tap.</p>
+  </div>
+</div>
+</body>
+</html>
