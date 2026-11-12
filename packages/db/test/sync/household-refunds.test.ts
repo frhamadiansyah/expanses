@@ -39,12 +39,14 @@ describe('refunds in a shared workspace', () => {
     expect(await view(b, bookId)).toEqual(await view(a, bookId));
   });
 
-  it('a refund tagged to an event reaches the partner', async () => {
+  it('a refund in a shared workspace is never tagged to an event (sync gaps D1), and reaches the partner as it is', async () => {
     const { home, a, b, bookId, card, cat } = await setup();
     const eventId = await saveEvent(a.database, a.ws, { name: 'Holiday', startsOn: '2026-09-01', endsOn: '2026-09-30' } as never);
-    await postTransaction(a.database, a.ws, { occurredOn: '2026-09-10', description: 'Buy', eventId, lines: expenseLines({ categoryAccountId: cat, paymentAccountId: card.id, amountMinor: 500_000, currency: 'IDR' }) });
-    const refund = await postTransaction(a.database, a.ws, { occurredOn: '2026-09-12', description: 'Refund', eventId, lines: refundLines({ categoryAccountId: cat, paymentAccountId: card.id, amountMinor: 200_000, currency: 'IDR' }) });
-    await tagTransaction(a.database, a.ws, refund, eventId);
+    const buy = expenseLines({ categoryAccountId: cat, paymentAccountId: card.id, amountMinor: 500_000, currency: 'IDR' });
+    await expect(postTransaction(a.database, a.ws, { occurredOn: '2026-09-10', description: 'Buy', eventId, lines: buy })).rejects.toMatchObject({ code: 'SHARED_EVENT_TAG' });
+    await postTransaction(a.database, a.ws, { occurredOn: '2026-09-10', description: 'Buy', lines: buy });
+    const refund = await postTransaction(a.database, a.ws, { occurredOn: '2026-09-12', description: 'Refund', lines: refundLines({ categoryAccountId: cat, paymentAccountId: card.id, amountMinor: 200_000, currency: 'IDR' }) });
+    await expect(tagTransaction(a.database, a.ws, refund, eventId)).rejects.toMatchObject({ code: 'SHARED_WORKSPACE' });
     await home.settle();
     expect(await skipsOf(b.database)).toEqual([]);
     expect(await view(b, bookId)).toEqual(await view(a, bookId));

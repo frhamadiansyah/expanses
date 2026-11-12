@@ -11,6 +11,7 @@ import { addSharedItemPurchase, setSharedItemDone, saveSharedItem } from './shar
 import { ensureShareAccountTx, postEventRecordTx, rateToBaseTx } from './shared-event-postings';
 import { type EventBookRow, eventRecordsTx, expenseRecordTx, type StoredExpense } from './shared-event-records';
 import { openSharedEventTx, SharedEventDbError } from './shared-event-writes';
+import { partnerPurchaseRefusalTx } from './shared-workspace-rows';
 
 /*
  * Moving spending into a shared event (shared events §6, D2). A purchase tagged into a shared event leaves its workspace:
@@ -56,6 +57,10 @@ async function movableTx(tx: Db, ws: WorkspaceContext, transactionId: string): P
     SELECT occurred_on, description, status, original_currency, original_amount_minor FROM transactions WHERE id = ${transactionId} AND workspace_id = ${ws.workspaceId}`);
   if (!head || head[2] !== 'posted') return 'That transaction was deleted';
   if ((await tx.values(sql`SELECT 1 FROM event_postings WHERE transaction_id = ${transactionId}`)).length > 0) return 'Already in a shared event';
+  // D3 (sync gaps F0): a shared workspace's purchase another member paid is theirs to move. Moved here, its void would
+  // reach the payer's phone and take the charge off their own account.
+  const partners = await partnerPurchaseRefusalTx(tx, transactionId);
+  if (partners) return partners;
   const lines = await tx.values<[string, number, string, string, string, string, string | null]>(sql`
     SELECT e.account_id, e.amount_minor, e.currency, a.kind, a.subtype, a.name, a.icon FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = ${transactionId}`);
   const categories = lines.filter((l) => l[3] === 'expense');

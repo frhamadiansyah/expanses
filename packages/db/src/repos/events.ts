@@ -11,6 +11,7 @@ import { type EventItemRow, listEventItems } from './event-items';
 import { EventError, type EventRow, eventOf, ofBook, toEventRow as toRow } from './event-scope';
 import { extrasTablesExist, notExcluded } from './transaction-extras';
 import { partCountedWhere } from './book-splits';
+import { eventTagRefusalTx } from './shared-workspace-rows';
 
 // The error, the row and the two scoping helpers live in event-scope so the item repository can share them
 // without a cycle. Re-exported here so every path that already imported them from events.ts keeps working.
@@ -124,11 +125,20 @@ export async function deleteEvent(database: Database, ws: WorkspaceContext, id: 
 
 /** Says a payment belongs to an event, or no longer does. */
 export async function tagTransaction(database: Database, ws: WorkspaceContext, transactionId: string, eventId: string | null): Promise<void> {
-  if (eventId !== null) await eventOf(database, ws, eventId);
-  await database.db
-    .update(transactions)
-    .set({ eventId })
-    .where(and(eq(transactions.workspaceId, ws.workspaceId), eq(transactions.id, transactionId)));
+  await tagTransactions(database, ws, [transactionId], eventId);
+}
+
+/**
+ * Why each of these rows may not take this tag (`eventId`), or have its tag taken off (null): a shared workspace's
+ * purchase never carries one (D1), and only its payer's phone takes an old one off (D3). The rows not listed may.
+ */
+export async function eventTagRefusals(database: Database, transactionIds: readonly string[], eventId: string | null): Promise<{ transactionId: string; why: string }[]> {
+  const out: { transactionId: string; why: string }[] = [];
+  for (const transactionId of [...new Set(transactionIds)]) {
+    const why = await eventTagRefusalTx(database.db, transactionId, eventId);
+    if (why) out.push({ transactionId, why });
+  }
+  return out;
 }
 
 /**
@@ -138,7 +148,8 @@ export async function tagTransaction(database: Database, ws: WorkspaceContext, t
  * `tagTransaction`'s own rule, row for row: the event must be this workspace's (checked once, before anything is
  * written), and a row is only ever changed inside this workspace. All of it in one db transaction, so a selection
  * is tagged whole or not at all — never left half in the event because the tenth write failed. `event_id` never
- * travels between devices (`NEVER_SYNCED_COLUMNS`), which is why neither function has anything to capture.
+ * travels between devices (`NEVER_SYNCED_COLUMNS`), which is why neither function has anything to capture — and why a
+ * shared workspace's purchase is refused a tag (D1; `eventTagRefusals` says which rows and why).
  *
  * Written in slices so a long selection stays under SQLite's limit on bound parameters.
  */
@@ -147,6 +158,11 @@ export async function tagTransactions(database: Database, ws: WorkspaceContext, 
   if (ids.length === 0) return;
   if (eventId !== null) await eventOf(database, ws, eventId);
   await database.transaction(async (tx) => {
+    // Sync gaps D1, D3: checked inside the transaction that writes, so the whole selection is refused or none of it.
+    for (const id of ids) {
+      const why = await eventTagRefusalTx(tx, id, eventId);
+      if (why) throw new EventError(eventId === null ? 'PAID_BY_PARTNER' : 'SHARED_WORKSPACE', why);
+    }
     for (let at = 0; at < ids.length; at += TAG_SLICE) {
       await tx
         .update(transactions)
