@@ -8,6 +8,8 @@ import {
   guessCategoryFromHistory,
   memberTransfersOf,
   moveIntoSharedEvent,
+  isBookShared,
+  tagDroppedText,
   ownerScope,
   sharedEventOf,
   paidFromAccount,
@@ -45,7 +47,8 @@ import { PushedTitle, SegmentedControl } from '../../ui/native';
 import { useCards, useCardsWithArchived } from '../cards/card-queries';
 import { payableOptions, resolveDefaultPaidWith, useStoredDefaultPaidWith } from '../account/default-paid-with';
 import { useEvents } from '../events/queries';
-import { useSharedEventSummaries } from '../events/shared-queries';
+import { showToast } from '../../ui/Toast';
+import { moveAfterSave } from './shared-move';
 import { CategoryOptions } from '../cards/options';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { fitsEventSet } from '../categories/offered';
@@ -425,8 +428,6 @@ function CardBody({
    * row, so it follows the row however it was set — by the address an event opened this screen with, or by hand.
    */
   const events = useEvents().data ?? [];
-  // The shared events among them: tagging an existing purchase into one moves it there (shared events §6).
-  const sharedSummaries = useSharedEventSummaries().data ?? {};
   const eventSet = draft.eventId ? (events.find((event) => event.id === draft.eventId)?.setId ?? null) : null;
   /*
    * What Category may hold while recording into that set: its own categories, as the picker offers. A category the
@@ -632,6 +633,39 @@ function CardBody({
       const filed = withTopUps(categorised, topsUp ? (moveTo ? await topUpsCategory(database, inBook(ws, moveTo)) : bookTopUps || (await topUpsCategory(database, ws))) : '');
       const post = formToPost(filed, accounts);
       let posted: string | null = null;
+      /*
+       * Into a shared event by the Event row (shared events §6, D2): the purchase is saved with no tag and then moved
+       * there — it leaves this workspace and becomes this person's own expense on the event, keeping its card, MCC,
+       * photos and points. Read from the database, never from the summaries while they load (sync gaps F2): a tag
+       * stays on this phone alone. A move that is refused (a split bill, no rate yet, the partner's purchase) leaves it
+       * saved here, untagged, and the reason is shown. A shared workspace's spending takes no other event (D1).
+       */
+      const target = draft.eventId ? await sharedEventOf(database, ownerScope(ws), draft.eventId) : null;
+      const movesIn = target !== null && draft.eventId !== '' && (!initial || draft.eventId !== initial.eventId || bookShared);
+      // A private event newly chosen for a shared workspace's spending is refused before anything is written; one an
+      // older build left on the row is simply dropped by the save (D1).
+      const keptOldTag = !!initial && draft.eventId === (initial.eventId ?? '');
+      if (bookShared && draft.eventId && target === null && !keptOldTag) {
+        throw new Error('A shared workspace’s spending is never tagged to a private event, so both phones count it alike. Record it in another workspace, or choose a shared event.');
+      }
+      const withoutEventTag = <T extends { eventId?: string | null }>(input: T): T =>
+        movesIn || (bookShared && target === null) ? { ...input, eventId: null } : input;
+      // A refused move is told after the form closes (fix round 1, #3): the purchase is saved by then, and a form left
+      // open as an add would record it a second time on the next Save.
+      let notMoved: string | null = null;
+      const moveInto = movesIn
+        ? async (transactionId: string) => {
+            notMoved = await moveAfterSave(
+              async () => {
+                // The day's rates the move converts by: the purchase's currencies and the event's, each to the base.
+                const wanted = [target.currency, typedCurrency(filed, accounts), byId.get(filed.moneyId)?.currency].filter((c): c is string => !!c);
+                await resolveRates([...new Set(wanted)], filed.occurredOn).catch(() => undefined);
+                return moveIntoSharedEvent(database, ownerScope(ws), draft.eventId, [transactionId]);
+              },
+              { bookName: openBook?.name ?? 'this workspace', eventName: target.name },
+            );
+          }
+        : null;
       if (post.kind === 'trade') {
         // Units are recorded, so this saves as a purchase and never touches spending. Its rates come from the one
         // place every trade form gets them; a missing day rate is asked for under Add more details, dated by the
@@ -655,7 +689,7 @@ function CardBody({
         else if (post.kind === 'transfer-goal') await recordTaggedTransfer(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
         else if (initial) {
           const replaced = await replaceTransaction(database, ws, initial.id, {
-            ...post.input,
+            ...withoutEventTag(post.input),
             ratesToBase,
             setAside: setAside.choice,
             ...(moveTo ? { moveToBook: true, toBookId: moveTo } : {}),
@@ -668,16 +702,16 @@ function CardBody({
            * The edit is saved first, so what moves is the purchase as corrected; a purchase the move keeps
            * (a split bill) stays here, saved, and the reason is shown.
            */
-          if (draft.eventId && draft.eventId !== initial.eventId && sharedSummaries[draft.eventId]) {
-            // The day's rates the move converts by: the purchase's currencies and the event's, each to the base.
-            const target = await sharedEventOf(database, ownerScope(ws), draft.eventId);
-            const wanted = [target?.currency, typedCurrency(filed, accounts), byId.get(filed.moneyId)?.currency].filter((c): c is string => !!c);
-            await resolveRates([...new Set(wanted)], filed.occurredOn).catch(() => undefined);
-            const { kept } = await moveIntoSharedEvent(database, ownerScope(ws), draft.eventId, [replaced]);
-            if (kept.length > 0) throw new Error(kept[0]!.why);
+          if (moveInto) await moveInto(replaced);
+          // Moved into a shared workspace, a private event's tag went with the move (sync gaps fix round 1, #5).
+          else if (moveTo && draft.eventId && target === null && (await isBookShared(database, moveTo))) {
+            notMoved = tagDroppedText(allBooks.find((book) => book.id === moveTo)?.name ?? 'That workspace');
           }
         }
-        else posted = await postTransaction(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice, settledBeforeApp: paidOff, ...(offersPast ? { pastPurchase: pastOn } : {}) });
+        else {
+          posted = await postTransaction(database, ws, { ...withoutEventTag(post.input), ratesToBase, setAside: setAside.choice, settledBeforeApp: paidOff, ...(offersPast ? { pastPurchase: pastOn } : {}) });
+          if (moveInto) await moveInto(posted);
+        }
         const memory = formToMemory(filed, accounts);
         if (memory) await saveMerchantMcc(database, ws, memory);
       }
@@ -687,6 +721,7 @@ function CardBody({
         written.current = posted;
         try {
           await followUp.posted(posted);
+          if (notMoved) showToast(notMoved);
         } catch (e) {
           setRecorded(true);
           throw e;
@@ -696,6 +731,7 @@ function CardBody({
         return;
       }
       await invalidate();
+      if (notMoved) showToast(notMoved);
       onDone();
     } catch (e) {
       setError(sayPaidWithError(e, sharedShown?.value));

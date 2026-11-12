@@ -781,7 +781,8 @@ describe('fix round 3: a kept trade leaves no id of the copy behind (R2-I1, R2-M
       )[0][0];
     const [never, travelled] = [await landed('Night market'), await landed('Bakery')];
     expect(await fandri.database.db.values(sql`SELECT book_id FROM sync_lineage WHERE head_transaction_id = ${never}`)).toEqual([[personal.id]]);
-    expect(await fandri.database.db.values(sql`SELECT 1 FROM sync_lineage WHERE head_transaction_id = ${travelled}`)).toEqual([]);
+    // Bakery came through the copy: known here under the copy's lineage, in Personal now (sync gaps G5), and not sent.
+    expect(await fandri.database.db.values(sql`SELECT lineage_id, book_id FROM sync_lineage WHERE head_transaction_id = ${travelled}`)).toEqual([[w.own[1]!, personal.id]]);
     const sent = (await outboxOps(fandri.database)).filter((op) => op.entity === 'purchase').map((op) => op.id);
     expect(sent).toContain(never);
     expect(sent).not.toContain(travelled);

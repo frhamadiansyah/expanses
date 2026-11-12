@@ -1,3 +1,4 @@
+import { showToast } from '../../ui/Toast';
 import { dayMonth, formatMinor } from '@expanses/core';
 import {
   addPhoto,
@@ -252,7 +253,7 @@ export function ReviewPage() {
       await learnFromCorrection(database, draft.id, field, value).catch(() => undefined);
     }
     await editDraft(database, ws, draft.id, patch);
-    const { transactionId, keptImage } = await confirmDraft(database, ws, draft.id, {
+    const { transactionId, keptImage, notMoved } = await confirmDraft(database, ws, draft.id, {
       setAside: opts.setAside,
       keepPhoto: keepsPicture(draft),
       charged,
@@ -266,6 +267,8 @@ export function ReviewPage() {
     });
     await settlePicture(draft, transactionId, keptImage);
     resolved({ ...draft, description: patch.description }, 'recorded', transactionId);
+    // A shared workspace's spending moved into its shared event, or saved there with why not (sync gaps fix round 1).
+    if (notMoved) showToast(notMoved);
   }
 
   /** Says a draft is not something to record. It stays, so the same capture is not offered again. */

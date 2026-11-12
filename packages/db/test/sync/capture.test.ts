@@ -385,6 +385,8 @@ describe('capture: purchases', () => {
           channel: 'offline',
           excluded: 0,
           bill: null,
+          // A link to a bill's month after the fact, in its own field (sync gaps fix round 2): none here.
+          billLink: null,
           money: {
             lines: [{ categoryId: groceries.id, amountMinor: 50_000, currency: 'IDR', amountBaseMinor: 50_000, memo: null }],
             originalCurrency: null,

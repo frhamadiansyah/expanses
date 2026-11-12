@@ -7,6 +7,7 @@ import { AfterUpdateCard } from '../features/backup/AfterUpdateCard';
 import { BackupBanner } from '../features/backup/BackupBanner';
 import { InstallHint } from '../features/pwa/InstallHint';
 import { ReadOnlyNotice } from '../features/sharing/ReadOnlyNotice';
+import { RepairNotice } from '../features/sharing/RepairNotice';
 import { usePendingDraftCount } from '../features/review/queries';
 import { useOpenBook } from '../features/workspaces/queries';
 import { WorkspaceDot } from '../features/workspaces/WorkspaceBadge';
@@ -209,6 +210,8 @@ export function Layout() {
           <BackupBanner />
           {/* A share that ended here is read-only (§8.6), and every screen of it says so. */}
           <ReadOnlyNotice />
+          {/* Once: Family purchases the shared-book repair put right (sync gaps R2). */}
+          <RepairNotice />
           <Outlet />
         </div>
       </main>

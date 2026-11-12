@@ -174,6 +174,13 @@ export interface PurchaseFields {
    */
   excludedLines?: string[];
   bill: { templateId: string; billMonth: string | null } | null;
+  /**
+   * The bill month a purchase was linked to after the fact (sync gaps F1: a `bill_payments` row alone, no `template_id`),
+   * or null for none. Its own field, never `bill` (fix round 2): `bill` is a Pay payment only, as every build reads it,
+   * and a build from before this one takes a field it does not know as nothing to post — it reposts the purchase as it
+   * was, carrying its own links. Optional: an op from such a build carries none, and the receiver keeps what it has.
+   */
+  billLink?: { templateId: string; billMonth: string } | null;
   money: PurchaseMoney;
   /**
    * Its place within its day when moved there by hand, or null (0067). Optional: an op from a device without it carries
@@ -1317,6 +1324,7 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
     ...(outLines.length > 0 ? { excludedLines: outLines } : {}),
     // A part never names a bill: the bill it pays may be the private workspace's, and its id is not the partner's to see.
     bill: templateId && !part ? { templateId: payment?.[0] ?? templateId, billMonth: payment?.[1] ?? null } : null,
+    billLink: !templateId && !part && payment ? { templateId: payment[0], billMonth: payment[1] } : null,
     money: {
       lines,
       originalCurrency: part ? null : originalCurrency,
@@ -1453,6 +1461,16 @@ export async function captureCardChangingTx(tx: Db, transactionId: string): Prom
   const lineageId = await lineageOfTransaction(tx, transactionId);
   const inShared = (bookId && books.some((b) => b.bookId === bookId)) || (await lineageRowOf(tx, lineageId)) !== null;
   if (inShared) await session.touchLineage(lineageId, transactionId);
+}
+
+/**
+ * The bill-link door (`linkPurchaseToBill`, `relinkPurchaseToBill`, `unlinkPurchaseFromBill`; sync gaps F1), called
+ * before a purchase's `bill_payments` row changes in place: a shared purchase's `billLink` names it, so its lineage is
+ * touched and goes out again with the new link (or none) at flush. Not money: no summary is marked dirty. A book no
+ * longer shared is read-only (§8.6), as an edit is.
+ */
+export async function captureBillLinkingTx(tx: Db, transactionId: string): Promise<void> {
+  await captureCardChangingTx(tx, transactionId);
 }
 
 /**

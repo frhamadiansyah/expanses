@@ -11,6 +11,7 @@ import { addSharedItemPurchase, setSharedItemDone, saveSharedItem } from './shar
 import { ensureShareAccountTx, postEventRecordTx, rateToBaseTx } from './shared-event-postings';
 import { type EventBookRow, eventRecordsTx, expenseRecordTx, type StoredExpense } from './shared-event-records';
 import { openSharedEventTx, SharedEventDbError } from './shared-event-writes';
+import { partnerPurchaseRefusalTx, untagSharedRowsTx } from './shared-workspace-rows';
 
 /*
  * Moving spending into a shared event (shared events §6, D2). A purchase tagged into a shared event leaves its workspace:
@@ -26,6 +27,8 @@ import { openSharedEventTx, SharedEventDbError } from './shared-event-writes';
 export interface MoveRefusal {
   transactionId: string;
   why: string;
+  /** Another phone moved it already, under the same expense id (a repair move): its void is on its way here. */
+  elsewhere?: true;
 }
 
 const NOT_MOVABLE = 'Only a purchase from one account under one category moves into a shared event';
@@ -56,6 +59,10 @@ async function movableTx(tx: Db, ws: WorkspaceContext, transactionId: string): P
     SELECT occurred_on, description, status, original_currency, original_amount_minor FROM transactions WHERE id = ${transactionId} AND workspace_id = ${ws.workspaceId}`);
   if (!head || head[2] !== 'posted') return 'That transaction was deleted';
   if ((await tx.values(sql`SELECT 1 FROM event_postings WHERE transaction_id = ${transactionId}`)).length > 0) return 'Already in a shared event';
+  // D3 (sync gaps F0): a shared workspace's purchase another member paid is theirs to move. Moved here, its void would
+  // reach the payer's phone and take the charge off their own account.
+  const partners = await partnerPurchaseRefusalTx(tx, transactionId);
+  if (partners) return partners;
   const lines = await tx.values<[string, number, string, string, string, string, string | null]>(sql`
     SELECT e.account_id, e.amount_minor, e.currency, a.kind, a.subtype, a.name, a.icon FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = ${transactionId}`);
   const categories = lines.filter((l) => l[3] === 'expense');
@@ -119,6 +126,23 @@ async function undoneByTx(tx: Db, book: EventBookRow, refund: Pick<Movable, 'des
   return sized.length === 1 ? sized[0]! : null;
 }
 
+/**
+ * Whether a refund is matched to its expense in the event by name (sync gaps fix round 1, #4): a live expense of the
+ * same item, in the refund's own currency. True for a purchase that is no refund (nothing to match). A move done for the
+ * owner rather than by hand (the repair) asks this first: a refund matched only by size may share back the wrong split.
+ */
+export async function refundMatchedByName(database: Database, ws: WorkspaceContext, eventId: string, transactionId: string): Promise<boolean> {
+  return database.transaction(async (tx) => {
+    const purchase = await movableTx(tx, ws, transactionId);
+    if (typeof purchase === 'string' || purchase.amountMinor >= 0) return true;
+    const book = await openSharedEventTx(tx, ws, eventId, true);
+    const item = itemOf(purchase.description);
+    if (item === '') return false;
+    const { expenses } = await eventRecordsTx(tx, book.bookId);
+    return expenses.some((e) => !e.voided && e.amountMinor > 0 && e.currency === purchase.currency && itemOf(e.note ?? '') === item);
+  });
+}
+
 /** The event category by this name, made (captured) when the event has none yet. */
 async function eventCategoryNamedTx(tx: Db, book: EventBookRow, name: string, icon: string | null): Promise<string> {
   const [found] = await tx.values<[string]>(
@@ -170,6 +194,11 @@ export async function moveIntoSharedEvent(
   transactionIds: readonly string[],
   /** A refund's purchase named outright (the event's expense id), by the refund's transaction id; else it is looked for. */
   undoes: Readonly<Record<string, string>> = {},
+  /**
+   * The expense id each move takes, when it must be the same on every phone that makes it (the repair, fix round 1 #7:
+   * the same person's two phones moving the same purchase name one expense). A fresh id otherwise.
+   */
+  options: { expenseIdFor?: (tx: Db, transactionId: string) => Promise<string> } = {},
 ): Promise<{ moved: { transactionId: string; expenseId: string }[]; kept: MoveRefusal[] }> {
   const moved: { transactionId: string; expenseId: string }[] = [];
   const kept: MoveRefusal[] = [];
@@ -187,7 +216,11 @@ export async function moveIntoSharedEvent(
         const categoryId = await eventCategoryNamedTx(tx, book, purchase.categoryName, purchase.categoryIcon);
         // R12: a card goes on earning by the category the purchase was filed under (kept the first time it is given).
         await ensureShareAccountTx(tx, book, categoryId, purchase.categoryId);
-        const expenseId = uuidv7();
+        const expenseId = options.expenseIdFor ? await options.expenseIdFor(tx, transactionId) : uuidv7();
+        // Named alike on another phone, which has moved it already (its expense reached here before its void did).
+        if ((await tx.values(sql`SELECT 1 FROM event_expenses WHERE book_id = ${book.bookId} AND id = ${expenseId}`)).length > 0) {
+          return { transactionId, why: `Already moved into ${book.name} from another phone`, elsewhere: true };
+        }
         let split: SplitInput = { mode: 'equal', people: [book.me] };
         if (purchase.amountMinor < 0) {
           const undone = await undoneByTx(tx, book, purchase, undoes[transactionId] ?? null);
@@ -244,7 +277,8 @@ async function spentBaseTx(tx: Db, transactionId: string): Promise<number> {
 /**
  * Sharing an existing event (§6), once, right after it is shared: its category set becomes the event's categories (a
  * card still earning by the set's), its plan becomes shared items in the event currency at today's rate, and its tagged
- * spending moves in, each item still answered by what bought it. What cannot move stays tagged, as it was.
+ * spending moves in, each item still answered by what bought it. What cannot move stays tagged, as it was — but for a
+ * shared workspace's purchase, whose tag is taken off (sync gaps D1).
  */
 export async function convertEventToShared(database: Database, ws: WorkspaceContext, eventId: string): Promise<{ moved: number; kept: MoveRefusal[] }> {
   const local = await eventOf(database, ownerScope(ws), eventId);
@@ -275,6 +309,9 @@ export async function convertEventToShared(database: Database, ws: WorkspaceCont
   const spent = new Map<string, number>();
   for (const id of tagged) spent.set(id, await spentBaseTx(database.db, id));
   const { moved, kept } = await moveIntoSharedEvent(database, ws, eventId, tagged);
+  // A shared workspace's purchase that cannot move takes no tag either (sync gaps D1): it stays in its workspace,
+  // counted there the same on both phones. Elsewhere what cannot move stays tagged, as it was.
+  if (kept.length > 0) await database.transaction((tx) => untagSharedRowsTx(tx, kept.map((k) => k.transactionId)));
   const expenseOf = new Map(moved.map((m) => [m.transactionId, m.expenseId]));
 
   for (const item of items) {

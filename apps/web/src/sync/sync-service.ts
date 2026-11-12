@@ -14,7 +14,9 @@ import {
   ownRecordsMessage,
   planBookDelete,
   type PreviewedInvite,
+  type RateFetcher,
   recordDevicesSeen,
+  runSharedBookRepairs,
   requestSignerOf,
   SEEN_WRITE_MS,
   type SequencedEntry,
@@ -31,6 +33,7 @@ import { isNative } from '../lib/pwa';
 import { createShareRecordStore } from './share-record-store';
 import { SyncScheduler } from './sync-scheduler';
 import { SyncLog, type SyncLogOp } from './sync-log';
+import { frankfurterFetcher } from '../lib/fx-client';
 // This app's own version (joint-net-worth spec §9), written on this device's book_devices row so a peer can tell
 // whether it meets NET_WORTH_MIN_APP_VERSION before proposing joint mode.
 import pkg from '../../package.json';
@@ -95,6 +98,8 @@ export interface SyncServiceOptions {
   shareRecords?: ShareRecordStore | null;
   now?: () => number;
   intervalMs?: number;
+  /** Where the one-time repairs fetch a missing day's rate (sync gaps R2); the app's rate server by default. */
+  rateFetcher?: RateFetcher;
 }
 
 /**
@@ -163,6 +168,11 @@ export class SyncService {
   private readonly onError: (error: unknown) => void;
   private readonly now: () => number;
   private readonly intervalMs: number | undefined;
+  private readonly rateFetcher: RateFetcher | undefined;
+  /** Books whose one-time repairs ran without failing since the app opened: not asked again until the next open. */
+  private readonly repaired = new Set<string>();
+  /** Devices already logged as on an older version, by book, since the app opened. */
+  private readonly belowLogged = new Set<string>();
   private readonly shareRecords: () => ShareRecordStore | null;
   /** This device's record of sharing failures: local only, never synced. */
   readonly log: SyncLog;
@@ -202,6 +212,7 @@ export class SyncService {
     this.onError = options.onError ?? ((error) => console.warn('Sync failed', error));
     this.now = options.now ?? Date.now;
     this.intervalMs = options.intervalMs;
+    this.rateFetcher = options.rateFetcher;
     this.log = options.log ?? new SyncLog(undefined, () => new Date(this.now()));
     let records: ShareRecordStore | null | undefined = options.shareRecords;
     // Outside a browser and the shell (a test run under node) there is no IndexedDB to keep records in: none is kept.
@@ -798,6 +809,8 @@ export class SyncService {
         await this.note('apply', bookId, { message: `${result.skipped.length} ops refused on apply (${kinds}); kept in sync_skipped` });
       }
       if (result.stopped) await this.note('pull', bookId, { message: `Pull stopped at seq ${result.stopped.seq}: ${result.stopped.reason}` });
+      // Only once the book has pulled to the relay's latest, so a partner's newer write is here to be respected.
+      else if (!result.ended) await this.repair(bookId);
       return result;
     } catch (error) {
       this.setStatus(bookId, { running: false, failing: true, lastError: error });
@@ -808,6 +821,44 @@ export class SyncService {
       throw error;
     }
   }
+
+  /**
+   * The one-time repairs of a shared book (sync gaps R1, R2; `runSharedBookRepairs`), after its first full pull since the
+   * app opened. Never fails the sync: a repair that throws is a line in the log (Share › Details) and runs again on the
+   * next sync. What one sends is drained by the next run, nudged at once.
+   */
+  private async repair(bookId: string): Promise<void> {
+    if (this.repaired.has(bookId)) return;
+    try {
+      const fetcher = this.rateFetcher ?? (this.defaultFetcher ??= frankfurterFetcher());
+      const report = await this.exclusive(bookId, () => runSharedBookRepairs(this.database, bookId, { fetcher }));
+      // An event's log has nothing to repair: never asked again. A workspace is asked on every sync — a few reads — since
+      // each device crossing to a build that writes links earns the links one more pass (fix round 4).
+      if (!report.workspace) this.repaired.add(bookId);
+      // The devices still on an older version, each said once per open.
+      for (const device of report.devicesBelow) {
+        const key = `${bookId}|${device.deviceId}`;
+        if (this.belowLogged.has(key)) continue;
+        this.belowLogged.add(key);
+        await this.note('repair', bookId, { message: `${device.name} (${device.deviceId.slice(0, 8)}) is on an older version (${device.version ?? 'unknown'}): bill links reach it once it updates` });
+      }
+      const tags = report.eventTags;
+      const changed = (report.billLinks ?? 0) > 0 || (tags !== null && tags.moved + tags.untagged > 0);
+      if (report.billLinks !== null || tags !== null) {
+        if ((report.billLinks ?? 0) > 0 || tags !== null) await this.note('repair', bookId, {
+          message: `One-time repair: ${report.billLinks ?? 0} bill links sent; ${tags?.moved ?? 0} tagged purchases moved into their shared event, ${tags?.untagged ?? 0} untagged`,
+        });
+      }
+      if (changed) {
+        this.onApplied();
+        this.triggerAll();
+      }
+    } catch (error) {
+      await this.note('repair', bookId, { error });
+    }
+  }
+
+  private defaultFetcher: RateFetcher | undefined;
 
   /** After a run that reached the relay: when it happened, who was heard from, and whether the screens must re-read. */
   private async touched(bookId: string, result?: SyncOnceResult): Promise<void> {

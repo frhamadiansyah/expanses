@@ -1,6 +1,6 @@
 import { expenseLines, incomeLines, type Reading, transferLines, uuidv7 } from '@expanses/core';
 import { and, asc, eq, getTableColumns, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
-import type { WorkspaceContext } from '../context';
+import { ownerScope, type WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { draftTransactions } from '../schema-drafts';
@@ -8,6 +8,9 @@ import { draftExactExists, exactForLinesTx, isExactFigure } from './exact-column
 import { existingExternalRefs } from './imports';
 import { ledgerSourceOf, type PostTransactionInput, postTransactionTx, type TransactionSource } from './ledger';
 import type { SetAsideChoice } from './set-aside-tx';
+import { moveIntoSharedEvent } from './shared-event-moves';
+import { sharedEventOf } from './shared-event-writes';
+import { sharedRowTx, tagDroppedText } from './shared-workspace-rows';
 
 export class DraftError extends Error {
   constructor(
@@ -342,13 +345,35 @@ export async function editDraftTx(tx: Db, ws: WorkspaceContext, id: string, patc
  * read back afterwards. A capture that was photographed hands its picture back to the caller, which is what writes it
  * into the owner's own photo storage; the reading here never touches those bytes.
  */
-export function confirmDraft(
+export async function confirmDraft(
   database: Database,
   ws: WorkspaceContext,
   id: string,
   opts: ConfirmDraftOptions = {},
-): Promise<{ transactionId: string; keptImage: string | null }> {
-  return database.transaction((tx) => confirmDraftTx(tx, ws, id, opts));
+): Promise<{ transactionId: string; keptImage: string | null; notMoved: string | null }> {
+  const confirmed = await database.transaction((tx) => confirmDraftTx(tx, ws, id, opts));
+  /*
+   * Sync gaps fix round 1 (#5): a shared workspace's spending takes no event tag, so the posting dropped it. Into a
+   * shared event it now moves; refused, or a private event, it stays saved in the workspace, and the screen says why.
+   */
+  const wanted = opts.extras?.eventId ?? null;
+  if (!wanted) return { ...confirmed, notMoved: null };
+  const shared = await sharedRowTx(database.db, confirmed.transactionId);
+  if (!shared) return { ...confirmed, notMoved: null };
+  const event = await sharedEventOf(database, ownerScope(ws), wanted);
+  if (!event) return { ...confirmed, notMoved: tagDroppedText(shared.bookName) };
+  let why: string;
+  try {
+    const { moved, kept } = await moveIntoSharedEvent(database, ownerScope(ws), wanted, [confirmed.transactionId]);
+    if (moved[0]) {
+      const [live] = await database.db.values<[string | null]>(sql`SELECT transaction_id FROM event_postings WHERE record_id = ${moved[0].expenseId}`);
+      return { ...confirmed, transactionId: live?.[0] ?? confirmed.transactionId, notMoved: null };
+    }
+    why = kept[0]?.why ?? 'It could not be moved';
+  } catch (error) {
+    why = error instanceof Error ? error.message : 'It could not be moved';
+  }
+  return { ...confirmed, notMoved: `Saved in ${shared.bookName}. Not moved into ${event.name}: ${why}` };
 }
 
 export interface ConfirmDraftOptions {
@@ -434,6 +459,8 @@ export async function confirmDraftTx(
     exactHundredths,
     ...(charged ? { originalCurrency: draft.currency, originalAmountMinor: Math.abs(draft.amountMinor) } : {}),
     ...opts.extras,
+    // A shared workspace's spending drops the tag rather than refuse the confirm (`confirmDraft` then moves it).
+    ...(opts.extras?.eventId ? { eventIdCarried: true } : {}),
     setAside: opts.setAside ?? null,
   });
   const purgeAfter = addDays(now.slice(0, 10), RAW_RETENTION_DAYS);

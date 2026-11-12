@@ -16,7 +16,9 @@ import {
   personalBook,
   planBookDelete,
   postTransaction,
+  repairNotices,
   requestSignerOf,
+  saveEvent,
   sharingDetail,
   SyncTransportError,
   type SyncTransport,
@@ -172,6 +174,37 @@ describe('SyncService', () => {
     expect((await listSharedBooks(dewi.database))[0]).toMatchObject({ bookId, state: 'unshared', unsharedReason: 'removed' });
     expect(dewi.service.syncing()).toEqual([]);
 
+    fandri.service.stop();
+    dewi.service.stop();
+  });
+
+  it('after a full pull, a shared book’s one-time repairs run once: an old tag on a Family purchase is taken off and logged (sync gaps R2)', async () => {
+    const relay = new MemoryTransport();
+    const fandri = await phone(relay, 'Fandri');
+    const dewi = await phone(relay, 'Dewi');
+    await fandri.service.start();
+    await dewi.service.start();
+    const bookId = (await personalBook(fandri.database, fandri.ws)).id;
+    const lunch = await postTransaction(fandri.database, fandri.ws, {
+      occurredOn: '2026-09-01',
+      description: 'Lunch',
+      lines: expenseLines({ categoryAccountId: await groceries(fandri.database, bookId), paymentAccountId: fandri.bank, amountMinor: 10_000, currency: 'IDR' }),
+    });
+    const party = await saveEvent(fandri.database, fandri.ws, { name: 'Party', startsOn: '2026-09-01', endsOn: '2026-09-30' });
+    // A tag as an older build left it: on this phone alone.
+    await fandri.database.db.run(sql`UPDATE transactions SET event_id = ${party} WHERE id = ${lunch}`);
+    const invite = await fandri.service.share(bookId, { memberName: 'Fandri', deviceName: 'Mac' });
+    await dewi.service.join(invite.code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'iPhone' });
+    await fandri.service.syncNow(bookId);
+    const [row] = await fandri.database.db.values<[string | null]>(sql`SELECT event_id FROM transactions WHERE id = ${lunch}`);
+    expect(row).toEqual([null]);
+    const [notice] = await repairNotices(fandri.database);
+    expect(notice!.rows.map((r) => [r.description, r.eventName, r.outcome])).toEqual([['Lunch', 'Party', 'untagged']]);
+    const lines = (await fandri.service.log.forBook(bookId)).filter((entry) => entry.op === 'repair');
+    expect(lines).toHaveLength(1);
+    await fandri.service.syncNow(bookId);
+    expect((await fandri.service.log.forBook(bookId)).filter((entry) => entry.op === 'repair')).toHaveLength(1);
+    expect(fandri.service.status(bookId).failing).toBe(false);
     fandri.service.stop();
     dewi.service.stop();
   });

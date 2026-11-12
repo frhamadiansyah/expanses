@@ -1,3 +1,4 @@
+import { decodeHlc } from '../../src/sync/hlc';
 import { sql, type SQL } from 'drizzle-orm';
 import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
 import type { Database, Db } from '../../src/database';
@@ -138,9 +139,19 @@ export async function installCaptureTriggers(database: Database, bookId: string)
     `CREATE TEMP TABLE IF NOT EXISTS __apply_paused (x INTEGER);`,
     `CREATE TEMP TABLE IF NOT EXISTS __sealed (seq INTEGER PRIMARY KEY, book_id TEXT NOT NULL, entry_json TEXT, change_json TEXT);`,
     `CREATE TEMP TRIGGER IF NOT EXISTS __capture_sealed AFTER INSERT ON main.sync_outbox BEGIN INSERT INTO __sealed (book_id, entry_json) VALUES (NEW.book_id, NEW.entry_json); END;`,
+    // Every lineage id this database ever held: a purchase's id is the lineage's on the wire, even after a fixture (or
+    // a leave) takes the lineage rows away (G4).
+    `CREATE TEMP TABLE IF NOT EXISTS __lineages_seen (lineage_id TEXT PRIMARY KEY);`,
+    `CREATE TEMP TRIGGER IF NOT EXISTS __capture_lineage_seen AFTER INSERT ON main.sync_lineage BEGIN INSERT OR IGNORE INTO __lineages_seen (lineage_id) VALUES (NEW.lineage_id); END;`,
+    `CREATE TEMP TABLE IF NOT EXISTS __transfers_seen (transfer_id TEXT PRIMARY KEY);`,
   ];
   // A test that stops its database at an older version (a migration test) has no table yet for a later entity.
   const tables = new Set((await database.db.values<[string]>(sql`SELECT name FROM sqlite_master WHERE type = 'table'`)).map(([name]) => name));
+  if (tables.has('shared_transfers')) {
+    ddl.push(
+      `CREATE TEMP TRIGGER IF NOT EXISTS __capture_transfer_seen AFTER INSERT ON main.shared_transfers BEGIN INSERT OR IGNORE INTO __transfers_seen (transfer_id) VALUES (NEW.transfer_id); END;`,
+    );
+  }
   const columnsOf = new Map<string, Set<string>>();
   for (const entity of SHARED_ENTITIES) {
     if (entity.kind !== 'purchase') continue;
@@ -202,21 +213,64 @@ async function outboxOps(database: Database, watchedBookId: string): Promise<Map
  * change-set each apply takes in from another device among the ops a later local write is judged against.
  */
 export function watchPausedWrites(database: Database): void {
+  // A database whose rows were swapped under it (a restore into the same handle, `importBytes`) has a new connection
+  // with no temp tables: the watch is gone there (G8), and apply's writes are simply not marked.
+  const watching = async (tx: Db) => (await tx.values(sql`SELECT 1 FROM temp.sqlite_master WHERE name = '__apply_paused'`)).length > 0;
   configureCapture(database, {
     pausedWrites: {
       begin: async (tx: Db, changeSet?: ChangeSet) => {
+        if (!(await watching(tx))) return;
         await tx.run(sql`INSERT INTO temp.__apply_paused (x) VALUES (1)`);
         if (changeSet) await tx.run(sql`INSERT INTO temp.__sealed (book_id, entry_json, change_json) VALUES ('', NULL, ${JSON.stringify(changeSet)})`);
       },
-      end: async (tx: Db) => void (await tx.run(sql`DELETE FROM temp.__apply_paused`)),
-      applied: async (tx: Db, changeSet: ChangeSet) =>
-        void (await tx.run(sql`INSERT INTO temp.__sealed (book_id, entry_json, change_json) VALUES ('', NULL, ${JSON.stringify(changeSet)})`)),
+      end: async (tx: Db) => {
+        if (await watching(tx)) await tx.run(sql`DELETE FROM temp.__apply_paused`);
+      },
+      applied: async (tx: Db, changeSet: ChangeSet) => {
+        if (await watching(tx)) await tx.run(sql`INSERT INTO temp.__sealed (book_id, entry_json, change_json) VALUES ('', NULL, ${JSON.stringify(changeSet)})`);
+      },
     },
   });
 }
 
 /** The fields an upsert speaks for: those it names as changed, else every field it carries (§7.2). */
+/** The field's clock in an op: the change-set's for a field it names as changed, else the one `clocks` gives (capped). */
+function fieldClock(sealed: SealedOp, field: string): string {
+  const op = sealed.op;
+  if (op.op !== 'upsert' || (op.changed ?? Object.keys(op.fields)).includes(field)) return sealed.hlc;
+  const at = op.clocks?.[field];
+  return at !== undefined && at < sealed.hlc ? at : sealed.hlc;
+}
+
+/**
+ * Among `after` (in hlc order), the op carrying `field` at the latest clock. On a tie a later op takes over only when its
+ * sending device and the clock's device are the same member of the book (fix round 5, as apply rules a billLink tie).
+ */
+async function latestCarrier(database: Database, bookId: string, after: readonly SealedOp[], field: string): Promise<SealedOp | undefined> {
+  const memberOf = async (deviceId: string) =>
+    (await database.db.values<[string]>(sql`SELECT member_id FROM book_devices WHERE book_id = ${bookId} AND device_id = ${deviceId}`))[0]?.[0] ?? null;
+  let best: SealedOp | undefined;
+  for (const sealed of after) {
+    if (sealed.op.op !== 'upsert' || !purchaseNames(sealed.op).includes(field)) continue;
+    const at = fieldClock(sealed, field);
+    if (!best || at > fieldClock(best, field)) {
+      best = sealed;
+      continue;
+    }
+    if (at !== fieldClock(best, field)) continue;
+    const clockMember = await memberOf(decodeHlc(at).deviceId);
+    if (clockMember !== null && clockMember === (await memberOf(decodeHlc(sealed.hlc).deviceId))) best = sealed;
+  }
+  return best;
+}
+
 const names = (op: Op): string[] => (op.op === 'upsert' ? (op.changed ?? Object.keys(op.fields)) : []);
+
+/**
+ * A purchase's fields an op speaks for: as `names`, and those it sends at their own clock too (a bill link resent at the
+ * clock it went at, fix round 3) — judged by that clock (`latestCarrier`), so a newer change still wins over it.
+ */
+const purchaseNames = (op: Op): string[] => (op.op === 'upsert' ? [...new Set([...names(op), ...Object.keys(op.clocks ?? {})])] : []);
 
 /** Whether an op sealed after `mark` carries `field` (an upsert naming it) — or, with no field, is any upsert. */
 function carries(ops: readonly SealedOp[] | undefined, mark: number, field: string | null): boolean {
@@ -359,7 +413,10 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
       const fieldOf = fieldsByTable.get(w.table)!.fieldOf;
       const columns = w.cols === '*' ? [...fieldOf.keys()] : w.cols.split(',').filter(Boolean);
       const fields = [...new Set(columns.map((c) => fieldOf.get(c)).filter((f): f is string => !!f && f !== 'void'))];
-      const missing = fields.filter((f) => !carries(ops.get(`purchase\u0000${lineageId}`), w.mark, f));
+      // A bill_payments row is a Pay payment's (`bill`) or a link's (`billLink`, fix round 2): either op accounts for it.
+      const carried = (f: string) =>
+        carries(ops.get(`purchase\u0000${lineageId}`), w.mark, f) || (f === 'bill' && w.table === 'bill_payments' && (ops.get(`purchase\u0000${lineageId}`) ?? []).some(({ rowid, op }) => rowid > w.mark && purchaseNames(op).includes('billLink')));
+      const missing = fields.filter((f) => !carried(f));
       const message = `${w.table} ${w.key}: purchase ${lineageId} ${missing.join(', ')} changed with no op`;
       if (missing.length && !reported.has(message)) {
         reported.add(message);
@@ -370,10 +427,14 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
     if (lineagesChecked.has(lineageId)) continue;
     lineagesChecked.add(lineageId);
     const [lineage] = await database.db.values<[string | null, string, string]>(sql`SELECT head_transaction_id, paid_by, paid_label FROM sync_lineage WHERE lineage_id = ${lineageId}`);
-    // Forward from its first row, up to a row that starts a lineage of its own.
+    // Forward from its first row, up to a row that starts a lineage of its own. A lineage whose first row is gone from
+    // this phone (a row kept in Personal when its copy was erased heads the copy's lineage there, sync gaps G5) is
+    // followed from its head.
+    const rootHere = (await database.db.values(sql`SELECT 1 FROM transactions WHERE id = ${lineageId}`)).length > 0;
+    const start = rootHere || !lineage?.[0] ? lineageId : lineage[0];
     const [head] = await database.db.values<[string]>(sql`
       WITH RECURSIVE forward(id) AS (
-        SELECT ${lineageId}
+        SELECT ${start}
         UNION ALL
         SELECT t.id FROM transactions t JOIN forward f ON t.replaces_transaction_id = f.id
         WHERE t.id NOT IN (SELECT lineage_id FROM sync_lineage)
@@ -399,7 +460,9 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
       const projected = (await projectPurchase(database.db, expected, member[0], { paidBy: lineage[1], paidLabel: lineage[2] })) as unknown as Record<string, unknown>;
       const after = (ops.get(`purchase\u0000${lineageId}`) ?? []).filter(({ rowid }) => rowid > since);
       for (const field of Object.keys(projected)) {
-        const carrier = [...after].reverse().find(({ op }) => op.op === 'upsert' && names(op).includes(field));
+        // The op whose word on the field is latest, by the clock it carries the field at: a field resent at its own older
+        // clock (fix round 3) loses to a newer change, as on every receiver.
+        const carrier = await latestCarrier(database, bookId, after, field);
         if (!carrier) continue;
         const said = (carrier.op as { fields: Record<string, unknown> }).fields[field];
         // A figure typed with cents is kept only while the purchase's one category line rounds from it (0068): a new
@@ -447,7 +510,14 @@ export async function privateLeaks(database: Database, afterSeq = 0): Promise<st
   const filedIn = new Set(
     (await database.db.values<[string, string]>(sql`SELECT book_id, category_account_id FROM book_categories`)).map(([book, category]) => `${book}|${category}`),
   );
-  const transactionIds = (await database.db.values<[string]>(sql`SELECT id FROM transactions WHERE id NOT IN (SELECT lineage_id FROM sync_lineage)`)).map(([id]) => id);
+  // A transfer shown in a shared workspace travels under its own key (`shared_transfers.transfer_id`, the transfer's
+  // first row's id): that key is the redacted row's name on every phone, never a reading of the transaction (0094, G3).
+  // Kept as seen, so a book erased with its rows since still accounts for what its log carried.
+  const transactionIds = (
+    await database.db.values<[string]>(sql`
+      SELECT id FROM transactions WHERE id NOT IN (SELECT lineage_id FROM sync_lineage) AND id NOT IN (SELECT lineage_id FROM temp.__lineages_seen)
+        AND id NOT IN (SELECT transfer_id FROM temp.__transfers_seen)`)
+  ).map(([id]) => id);
   const leaks: string[] = [];
   for (const [bookId, entryJson] of rows) {
     for (const id of accountIds) if (entryJson.includes(id)) leaks.push(`outbox of ${bookId} carries account ${id}`);
