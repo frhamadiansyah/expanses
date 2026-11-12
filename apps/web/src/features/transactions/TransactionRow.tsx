@@ -11,7 +11,7 @@ import { UndoToast } from '../../ui/UndoToast';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { CategoryPicker } from './CategoryPicker';
 import { isEditable } from './draft';
-import { type AmountExtraPart, amountExtraParts, amountLook, type ListRow, paidWithLook, wholeLeftOut } from './list-model';
+import { type AmountExtraPart, amountExtraParts, amountLook, type AmountView, type ListRow, paidWithLook, wholeLeftOut } from './list-model';
 import { canRefile, emptyForm, refiledPost } from './tx-form';
 import { ratesForSave } from './tx-save';
 
@@ -52,6 +52,7 @@ export function TransactionRow({
   select,
   still = false,
   amount,
+  view = 'report',
 }: {
   row: ListRow;
   accounts: readonly AccountRow[];
@@ -105,14 +106,19 @@ export function TransactionRow({
   still?: boolean;
   /** Drawn in place of the formatted figure, inside the same coloured span: a button standing for the amount, say. */
   amount?: ReactNode;
+  /**
+   * What the list's figures are. `report` (Cashflow, an event): a row excluded from the report reads Rp 0 with the
+   * whole sum under it (⊘). `balance` (an account's Recent): every row reads what it moved, excluded or not.
+   */
+  view?: AmountView;
 }) {
   const transfer = row.type !== 'expense' && row.type !== 'income';
   // Money back on a purchase reads as money in: a plus, in green. Money a person paid back has a plus too, muted.
   // Wholly excluded from the report, a row reads as a split with all of it left out: nothing counted on top, in grey,
   // and the whole sum under it with ⊘ (`amountExtraParts`), so the two kinds of left out look alike.
-  const allOut = wholeLeftOut(row);
+  const allOut = wholeLeftOut(row, view);
   const shownMinor = allOut ? 0 : (amountMinor ?? row.amountMinor);
-  const { sign, plus, muted } = amountLook(row);
+  const { sign, plus, muted } = amountLook(row, view);
   const money = plus ? `+${formatMinor(Math.abs(shownMinor), currency ?? row.currency)}` : formatMinor(shownMinor, currency ?? row.currency);
 
   // Money back wears a small return arrow on its category's circle, where a shared row wears its workspace: the
@@ -241,7 +247,7 @@ export function TransactionRow({
         >
           {amount ?? money}
         </span>
-        {amountExtra ?? (row.leftOut || allOut ? <AmountExtra parts={amountExtraParts(row.tx ?? { originalCurrency: null, originalAmountMinor: null }, undefined, row)} /> : null)}
+        {amountExtra ?? (row.leftOut || allOut ? <AmountExtra parts={amountExtraParts(row.tx ?? { originalCurrency: null, originalAmountMinor: null }, undefined, { ...row, view })} /> : null)}
       </span>
       {trailing}
     </div>
