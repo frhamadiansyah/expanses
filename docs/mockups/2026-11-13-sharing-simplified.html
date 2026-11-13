@@ -1,0 +1,193 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Sharing, simplified</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --green:#34c759; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 18px; max-width:1050px; line-height:1.45; }
+  h2 { font-size:17px; margin:30px 0 8px; }
+  .row3 { display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }
+  .phone { width:310px; background:var(--ground); border-radius:28px; padding:14px 12px 18px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .cap { font-weight:700; margin:0 0 4px; } .note { font-size:13px; color:#555; margin:0 0 10px; min-height:34px; }
+  .nav { display:flex; justify-content:space-between; align-items:center; margin:2px 4px 10px; font-size:15px; } .nav b { font-size:16px; } .nav .t { color:var(--tint); }
+  .step { font-size:12px; color:var(--ink3); text-align:center; margin:-4px 0 6px; }
+  .h { font-size:21px; font-weight:700; margin:2px 4px 6px; } .lede { font-size:13px; color:var(--ink2); margin:0 4px 12px; line-height:1.4; }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+  .sec { font-size:12.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; margin:4px 16px 6px; }
+  .foot { font-size:12.5px; color:var(--ink3); margin:-6px 16px 12px; line-height:1.35; }
+  .r { display:flex; gap:10px; align-items:center; padding:10px 13px; } .r + .r { border-top:.5px solid var(--hair); }
+  .ic { width:28px; height:28px; border-radius:7px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; flex-shrink:0; }
+  .g { flex:1; min-width:0; } .g .a { font-size:15px; } .g .s { font-size:12px; color:var(--ink3); }
+  .val { color:var(--ink3); font-size:14px; } .chev { color:#c7c7cc; margin-left:4px; }
+  .sw { width:44px; height:26px; border-radius:13px; background:#e9e9eb; position:relative; flex-shrink:0; }
+  .sw::after { content:""; position:absolute; top:2px; left:2px; width:22px; height:22px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.25); }
+  .sw.on { background:var(--green); } .sw.on::after { left:20px; }
+  .pill { font-size:11.5px; font-weight:600; padding:3px 9px; border-radius:10px; border:1px solid #c7c7cc; color:var(--ink3); flex-shrink:0; }
+  .pill.on { background:#0a66c2; border-color:#0a66c2; color:#fff; }
+  .field { padding:11px 13px; font-size:15px; } .field .lab { color:var(--ink3); font-size:12px; display:block; }
+  .btn { background:var(--tint); color:#fff; text-align:center; padding:12px; border-radius:12px; font-weight:600; margin:4px 0 8px; }
+  .btn.ghost { background:transparent; color:var(--tint); }
+  .code { font-size:28px; letter-spacing:4px; font-weight:700; text-align:center; padding:14px 0 4px; }
+  table.cmp { border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden; font-size:14px; max-width:1050px; }
+  .cmp td, .cmp th { padding:8px 14px; border-bottom:.5px solid var(--hair); text-align:left; vertical-align:top; }
+  .cmp th { background:#f7f7f9; color:#555; font-weight:600; }
+  .new { color:#1a7f37; font-weight:600; } .old { color:#8e8e93; }
+  .hl { box-shadow:inset 3px 0 0 #ff9f0a; }
+  .q { background:#fff7e6; border-radius:12px; padding:12px 14px; max-width:1020px; margin:8px 0; font-size:14px; line-height:1.45; }
+</style></head><body>
+<h1>Household sharing, simplified</h1>
+<p class="sub">Today sharing has 6 ideas (workspace share, net worth group, shared item, Joint, shared goal, shared event with its own code), a separate tax question, and switches on ~10 pages. Here: <b>one setup, one list, one switch (Shared), and Joint as a separate mark for accounts owned together</b>. Names (Rina, Andi) and figures invented.</p>
+
+<h2>1 · Two ideas only</h2>
+<table class="cmp">
+<tr><th></th><th>What it means for Andi</th><th>For</th></tr>
+<tr><td><b>Shared</b> (switch)<br><span style="color:#8e8e93">off = Private</span></td><td>Andi sees it. An account or asset: its balance, in the household Net worth. A goal: saved for together. An event: planned together.</td><td>Accounts, cards, assets, debts, goals, events</td></tr>
+<tr><td><b>Joint</b> (mark)</td><td>The account is owned together: Andi also sees its rows and can pay from it or add to it (a card in his Wallet). Only offered once Shared is on.</td><td>Accounts and cards only</td></tr>
+</table>
+<p class="sub" style="margin-top:8px">Budgets, bills and transactions in Family are always shared — said once, at setup.</p>
+
+<h2>2 · Setup: three screens instead of two flows</h2>
+<div class="row3">
+  <div class="phone"><p class="cap">① Start</p><p class="note">Family › Share. One name, one button. No tax question here (asked in the tax report, where it matters).</p>
+    <div class="nav"><span class="t">‹ Family</span><b>Share Family</b><span></span></div>
+    <div class="step">Step 1 of 3</div>
+    <p class="lede">Budgets, bills and transactions in Family will be shared. Accounts, goals and events stay private until switched on in step 3.</p>
+    <div class="panel"><div class="field"><span class="lab">Name shown to the other person</span>Rina</div></div>
+    <div class="btn">Create invite</div>
+  </div>
+  <div class="phone"><p class="cap">② Invite</p><p class="note">Same as today: code, Send, Copy. Andi joins with "Join with a code".</p>
+    <div class="nav"><span class="t">‹</span><b>Invite</b><span></span></div>
+    <div class="step">Step 2 of 3</div>
+    <div class="panel"><div class="code">K7Q4-P2</div><div style="text-align:center;font-size:12.5px;color:var(--ink3);padding-bottom:12px">Works once, until 20 Nov</div></div>
+    <div class="btn">Send</div><div class="btn ghost">Copy</div>
+    <div class="panel"><div class="r"><div class="ic" style="background:#c7c7cc">…</div><div class="g"><div class="a">Waiting for someone to join</div></div></div></div>
+  </div>
+  <div class="phone"><p class="cap">③ Shared with Andi</p><p class="note">Opens when Andi joins. <b>Accounts, goals and events in one list.</b> Switch = Shared. Joint appears beside a shared account.</p>
+    <div class="nav"><span class="t">Later</span><b></b><span class="t" style="font-weight:600">Done</span></div>
+    <div class="step">Step 3 of 3</div>
+    <div class="h">Shared with Andi</div>
+    <div class="sec">Accounts &amp; cards</div>
+    <div class="panel">
+      <div class="r hl"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">Joint 2210</div></div><span class="pill on">Joint</span><span class="sw on"></span></div>
+      <div class="r"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">BCA 0917</div></div><span class="pill">Joint</span><span class="sw on"></span></div>
+      <div class="r"><div class="ic" style="background:#555">💳</div><div class="g"><div class="a">Card 4821</div></div><span class="sw"></span></div>
+    </div>
+    <div class="foot">Shared: Andi sees the balance. Joint: owned together — Andi also sees its rows and can pay from it.</div>
+    <div class="sec">Goals</div>
+    <div class="panel">
+      <div class="r hl"><div class="ic" style="background:#34c759">🕋</div><div class="g"><div class="a">Hajj 2030</div><div class="s">Saved for together</div></div><span class="sw on"></span></div>
+      <div class="r"><div class="ic" style="background:#5856d6">🎓</div><div class="g"><div class="a">School fees</div></div><span class="sw"></span></div>
+    </div>
+    <div class="sec">Events</div>
+    <div class="panel">
+      <div class="r hl"><div class="ic" style="background:#ff2d55">✈️</div><div class="g"><div class="a">Turkey Trip 2026</div></div><span class="sw on"></span></div>
+    </div>
+    <div class="sec" style="text-transform:none">Assets &amp; debts (3) ›</div>
+  </div>
+</div>
+
+<h2>3 · After setup: one place, and the same switch everywhere else</h2>
+<div class="row3">
+  <div class="phone"><p class="cap">Family › Share</p><p class="note">Members, invite, and the same list. Nothing else.</p>
+    <div class="nav"><span class="t">‹ Family</span><b>Share</b><span></span></div>
+    <div class="sec">Members</div>
+    <div class="panel"><div class="r"><div class="ic" style="background:#0a66c2">R</div><div class="g"><div class="a">Rina</div><div class="s">This phone</div></div></div><div class="r"><div class="ic" style="background:#af52de">A</div><div class="g"><div class="a">Andi</div></div></div></div>
+    <div class="panel"><div class="r hl"><div class="g"><div class="a">Shared with Andi</div></div><span class="val">6 items</span><span class="chev">›</span></div><div class="r"><div class="g"><div class="a">Invite someone</div></div><span class="chev">›</span></div></div>
+    <div class="panel"><div class="r"><div class="g"><div class="a" style="color:#ff3b30">Stop sharing Family</div></div></div></div>
+  </div>
+  <div class="phone"><p class="cap">An account's Settings</p><p class="note">The same switch; Joint appears under it only when Shared is on.</p>
+    <div class="nav"><span class="t">‹ BCA 0917</span><b>Settings</b><span></span></div>
+    <div class="panel"><div class="r"><div class="g"><div class="a">Name</div></div><span class="val">BCA</span></div></div>
+    <div class="panel"><div class="r hl"><div class="g"><div class="a">Shared with Andi</div></div><span class="sw on"></span></div><div class="r hl"><div class="g"><div class="a">Joint account</div><div class="s">Owned together</div></div><span class="sw"></span></div></div>
+    <div class="foot">Shared: Andi sees the balance. Joint: Andi also sees its rows and can pay from it.</div>
+  </div>
+  <div class="phone"><p class="cap">A goal, and an event</p><p class="note">Only the switch. A shared event needs no second invite code: Andi's phone gets it through Family.</p>
+    <div class="panel"><div class="r"><div class="ic" style="background:#34c759">🕋</div><div class="g"><div class="a">Hajj 2030</div></div></div><div class="r hl"><div class="g"><div class="a">Shared with Andi</div></div><span class="sw on"></span></div></div>
+    <div class="panel"><div class="r"><div class="ic" style="background:#ff2d55">✈️</div><div class="g"><div class="a">Turkey Trip 2026</div></div></div><div class="r hl"><div class="g"><div class="a">Shared with Andi</div></div><span class="sw on"></span></div></div>
+    <div class="foot">A new account, goal or event made in Family starts Private; the add form has the same switch.</div>
+  </div>
+</div>
+
+<h2>4 · What changes</h2>
+<table class="cmp">
+<tr><th>Today</th><th>After</th></tr>
+<tr><td class="old">Share Family, then a second "Net worth" setup with a tax-filing question and a review on Andi's phone</td><td class="new">One setup; net worth sharing starts by itself with the first shared account. Tax filing asked in the tax report</td></tr>
+<tr><td class="old">"Household sharing: Shared / Private" row, a "Joint account" switch, and Share net worth items list</td><td class="new">"Shared with Andi" switch; "Joint account" under it (accounts only)</td></tr>
+<tr><td class="old">Goals shared from each goal's form, after setup</td><td class="new">Goals offered in setup step 3, same list</td></tr>
+<tr><td class="old">Shared event needs its own invite code and "Join with a code" on Events</td><td class="new">Shared event reaches Andi through Family. A code only for someone outside Family (friends on a trip)</td></tr>
+<tr><td class="old">Switches on ~10 pages, different words on each</td><td class="new">One list (Share › Shared with Andi); every item has the same "Shared with Andi" switch</td></tr>
+</table>
+
+<h2 id="joint">5 · Joint without a badge: four ideas for step 3's account list</h2>
+<div class="row3">
+  <div class="phone"><p class="cap">A · A second line under it <span style="color:#1a7f37">(recommended)</span></p><p class="note">Switching Shared on opens one indented line, "Owned together", with its own switch. Same as the account's Settings.</p>
+    <div class="sec">Accounts &amp; cards</div>
+    <div class="panel">
+      <div class="r"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">Joint 2210</div></div><span class="sw on"></span></div>
+      <div class="r hl" style="padding-left:51px"><div class="g"><div class="a" style="font-size:14px">Owned together</div><div class="s">Andi can pay from it</div></div><span class="sw on"></span></div>
+      <div class="r"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">BCA 0917</div></div><span class="sw on"></span></div>
+      <div class="r hl" style="padding-left:51px"><div class="g"><div class="a" style="font-size:14px">Owned together</div></div><span class="sw"></span></div>
+      <div class="r"><div class="ic" style="background:#555">💳</div><div class="g"><div class="a">Card 4821</div></div><span class="sw"></span></div>
+    </div>
+  </div>
+  <div class="phone"><p class="cap">B · Words instead of a switch</p><p class="note">Each row says its state; tap to pick Private, Shared or Owned together.</p>
+    <div class="sec">Accounts &amp; cards</div>
+    <div class="panel">
+      <div class="r hl"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">Joint 2210</div></div><span class="val">Owned together</span><span class="chev">›</span></div>
+      <div class="r"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">BCA 0917</div></div><span class="val">Shared</span><span class="chev">›</span></div>
+      <div class="r"><div class="ic" style="background:#555">💳</div><div class="g"><div class="a">Card 4821</div></div><span class="val">Private</span><span class="chev">›</span></div>
+    </div>
+  </div>
+  <div class="phone"><p class="cap">C · Its own group</p><p class="note">Accounts owned together sit in their own section at the top. "Move to owned together" from a shared account's ⋯.</p>
+    <div class="sec">Owned together</div>
+    <div class="panel"><div class="r hl"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">Joint 2210</div><div class="s">Andi can pay from it</div></div><span class="sw on"></span></div></div>
+    <div class="sec">My accounts &amp; cards</div>
+    <div class="panel">
+      <div class="r"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">BCA 0917</div></div><span class="sw on"></span></div>
+      <div class="r"><div class="ic" style="background:#555">💳</div><div class="g"><div class="a">Card 4821</div></div><span class="sw"></span></div>
+    </div>
+  </div>
+  <div class="phone"><p class="cap">D · Two-person mark on the icon</p><p class="note">A small two-person mark on the account's icon, set from the account's Settings. The list keeps only the switch.</p>
+    <div class="sec">Accounts &amp; cards</div>
+    <div class="panel">
+      <div class="r hl"><div class="ic" style="background:#0a66c2;position:relative">🏦<span style="position:absolute;right:-5px;bottom:-5px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 0 0 1px #c7c7cc;font-size:9px;display:flex;align-items:center;justify-content:center;color:#3c3c43">👥</span></div><div class="g"><div class="a">Joint 2210</div></div><span class="sw on"></span></div>
+      <div class="r"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">BCA 0917</div></div><span class="sw on"></span></div>
+      <div class="r"><div class="ic" style="background:#555">💳</div><div class="g"><div class="a">Card 4821</div></div><span class="sw"></span></div>
+    </div>
+  </div>
+</div>
+
+<h2 id="d-change">6 · With D: changing Joint ↔ not Joint</h2>
+<p class="sub">The two-person mark is changed right on the list (no sheet, so the Shared switch is never repeated), or in the account's Settings. Owner's phone only (the account's holder); Andi's phone shows the mark but can't change it.</p>
+<div class="row3">
+  <div class="phone"><p class="cap">①a From the list: tap the icon <span style="color:#1a7f37">(recommended)</span></p><p class="note">No sheet. Tapping a shared account's icon adds or removes the 👥 mark; a short bar confirms with Undo. The switch stays the only Shared control.</p>
+    <div class="sec">Accounts &amp; cards</div>
+    <div class="panel">
+      <div class="r hl"><div class="ic" style="background:#f0a500;position:relative;box-shadow:0 0 0 2px #fff,0 0 0 4px var(--tint)">🏦<span style="position:absolute;right:-5px;bottom:-5px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 0 0 1px #c7c7cc;font-size:9px;display:flex;align-items:center;justify-content:center">👥</span></div><div class="g"><div class="a">BCA 0917</div></div><span class="sw on"></span></div>
+      <div class="r"><div class="ic" style="background:#555">💳</div><div class="g"><div class="a">Card 4821</div></div><span class="sw"></span></div>
+    </div>
+    <div class="foot">Tap a shared account's icon to mark it owned together 👥 (Andi also sees its rows and can pay from it).</div>
+    <div class="panel" style="background:#3a3a3c;color:#fff;border-radius:12px"><div class="r" style="font-size:13.5px"><div class="g">BCA 0917 owned together 👥</div><span style="color:#64d2ff;font-weight:600">Undo</span></div></div>
+  </div>
+  <div class="phone"><p class="cap">①b From the list: swipe</p><p class="note">Swipe a shared account left: one button, "Owned together" or "Not together".</p>
+    <div class="sec">Accounts &amp; cards</div>
+    <div class="panel">
+      <div class="r hl" style="padding-right:0"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">BCA 0917</div></div><span class="sw on" style="margin-right:8px"></span><span style="background:#0a66c2;color:#fff;font-size:12.5px;font-weight:600;padding:16px 10px;margin:-10px 0">👥 Owned<br>together</span></div>
+      <div class="r"><div class="ic" style="background:#555">💳</div><div class="g"><div class="a">Card 4821</div></div><span class="sw"></span></div>
+    </div>
+    <div class="foot">Less visible: swipe is easy to miss on a setup screen.</div>
+  </div>
+  <div class="phone"><p class="cap">② From the account's Settings</p><p class="note">Same two switches, under the account's name.</p>
+    <div class="nav"><span class="t">‹ BCA 0917</span><b>Settings</b><span></span></div>
+    <div class="panel"><div class="r"><div class="g"><div class="a">Shared with Andi</div></div><span class="sw on"></span></div><div class="r hl"><div class="g"><div class="a">Owned together 👥</div><div class="s">Andi also sees its rows and can pay from it</div></div><span class="sw on"></span></div></div>
+  </div>
+  <div class="phone"><p class="cap">③ Turning it off asks first</p><p class="note">Nothing is deleted; Andi just stops seeing the rows and paying from it.</p>
+    <div class="panel" style="padding:14px 16px;text-align:center">
+      <div style="font-weight:600;margin-bottom:6px">Stop owning BCA 0917 together?</div>
+      <div style="font-size:13px;color:var(--ink2);line-height:1.4">Andi will still see its balance, but not its rows, and can't pay from it any more. Rows Andi already recorded on it stay.</div>
+      <div style="display:flex;border-top:.5px solid var(--hair);margin:12px -16px -14px"><span style="flex:1;padding:11px;color:var(--tint)">Cancel</span><span style="flex:1;padding:11px;color:#ff3b30;border-left:.5px solid var(--hair);font-weight:600">Stop</span></div>
+    </div>
+    <div class="foot" style="margin-top:10px">Rules: Owned together needs Shared on. Turning Shared off turns Owned together off too (asks once for both).</div>
+  </div>
+</div>
+
+<div class="q"><b>Open choice for Rina</b><br>
+Shared events through Family without a code needs a sync change and both phones on the new build. Do it now with the rest, or first ship the list + words, and the event part next?</div>
+</body></html>

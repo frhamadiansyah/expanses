@@ -60,7 +60,7 @@ import { CashflowLine } from './CashflowLine';
 import { useLineState } from './cashflow-line-store';
 import { DayReorder, landed, movedBy, ReorderControls, reorderAttrs, ReorderScope } from './DayReorder';
 import { EventSheet } from './EventSheet';
-import { keptText, moveHint } from './shared-move';
+import { keptText, moveHint, stayedBehind } from './shared-move';
 import { showToast } from '../../ui/Toast';
 import { homesOf, movedText, rowsToMove } from './event-tagging';
 import { ReceiptLink } from './ReceiptLink';
@@ -599,7 +599,9 @@ export function TransactionsPage() {
           const currencies = [target?.currency, tx.originalCurrency, ...tx.entries.map((e) => e.currency)].filter((c): c is string => !!c);
           await resolveRates([...new Set(currencies)], tx.occurredOn).catch(() => undefined);
         }
-        const { kept } = await moveIntoSharedEvent(database, ownerScope(ws), eventId, chosen.map((row) => row.id));
+        const ids = chosen.map((row) => row.id);
+        // Every chosen row comes back moved, listed or kept; one the move said nothing about is kept too, said so.
+        const kept = stayedBehind(ids, await moveIntoSharedEvent(database, ownerScope(ws), eventId, ids));
         await invalidate();
         if (kept.length === 0) {
           stopSelecting();
@@ -1296,8 +1298,13 @@ export function TransactionsPage() {
       <li key={row.id} data-testid="shared-transfer-row" className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-2">
         <CategoryIcon categoryId={null} accounts={accounts} transfer />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium">{row.description ? `Transfer · ${row.description}` : 'Transfer'}</div>
-          {(withDate || row.accountLabel) && <div className="truncate text-xs text-slate-500">{[withDate ? row.date : '', row.accountLabel].filter(Boolean).join(' · ')}</div>}
+          {/* Named by its accounts ("Cash withdrawal"), the note moves to the grey line, where the default "Transfer" is not repeated. */}
+          <div className="truncate text-sm font-medium">{row.transferName ?? (row.description ? `Transfer · ${row.description}` : 'Transfer')}</div>
+          {(withDate || row.accountLabel || (row.transferName && row.description && row.description !== 'Transfer')) && (
+            <div className="truncate text-xs text-slate-500">
+              {[withDate ? row.date : '', row.transferName && row.description !== 'Transfer' ? row.description : '', row.accountLabel].filter(Boolean).join(' · ')}
+            </div>
+          )}
         </div>
         <div className="tabular text-sm font-semibold whitespace-nowrap text-slate-500">{formatMinor(row.amountMinor, row.currency)}</div>
       </li>

@@ -115,7 +115,7 @@ export * from './repos/shared-event-writes';
 export * from './repos/shared-event-reads';
 export * from './repos/shared-event-plan';
 export * from './repos/shared-event-moves';
-export { eventTransferOf, removeTransferFromSharedEvent, TRIP_TRANSFERS_MIN_APP_VERSION, type SharedEventTransferView } from './repos/shared-event-transfers';
+export { eventTransferOf, removeTransferFromSharedEvent, standingTransaction, TRIP_TRANSFERS_MIN_APP_VERSION, type SharedEventTransferView } from './repos/shared-event-transfers';
 export { listSharedTransfers, type SharedTransferRow } from './repos/shared-transfers';
 export * as categorySetsSchema from './schema-category-sets';
 export * from './repos/category-sets';

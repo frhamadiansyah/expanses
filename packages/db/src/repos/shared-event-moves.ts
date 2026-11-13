@@ -1,7 +1,7 @@
 import { convertMinor, eventCategoryIcon, expenseInEvent, rateString, refundSplitLike, SharedEventError, sharesOf, type SplitInput, splitJsonOf, uuidv7 } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { ownerScope, type WorkspaceContext } from '../context';
-import type { Database, Db } from '../database';
+import type { Database, Db, Tx } from '../database';
 import { BookReadOnlyError, withCapture } from '../sync/capture';
 import { listSetCategories } from './category-sets';
 import { listEventItems } from './event-items';
@@ -10,7 +10,7 @@ import { listTransactions } from './ledger';
 import { addSharedItemPurchase, setSharedItemDone, saveSharedItem } from './shared-event-plan';
 import { ensureShareAccountTx, postEventRecordTx, rateToBaseTx } from './shared-event-postings';
 import { type EventBookRow, eventRecordsTx, expenseRecordTx, type StoredExpense } from './shared-event-records';
-import { transferIntoEventTx } from './shared-event-transfers';
+import { nextTripFeeIdTx, transferIntoEventTx } from './shared-event-transfers';
 import { openSharedEventTx, SharedEventDbError } from './shared-event-writes';
 import { partnerPurchaseRefusalTx, untagSharedRowsTx } from './shared-workspace-rows';
 
@@ -186,6 +186,69 @@ class KeptBack extends Error {
 }
 
 /**
+ * One purchase into the shared event, inside the caller's db transaction: it becomes this person's own expense there and
+ * the purchase is replaced in place by the expense's derived transaction (never posted twice). A refusal it can say
+ * before writing comes back; one found after writing is thrown (`KeptBack`), rolling the caller's transaction back.
+ */
+async function expenseIntoEventTx(
+  tx: Tx,
+  ws: WorkspaceContext,
+  book: EventBookRow,
+  transactionId: string,
+  likeId: string | null,
+  expenseIdFor?: (tx: Db, transactionId: string) => Promise<string>,
+): Promise<{ expenseId: string; derivedId: string } | MoveRefusal> {
+  const purchase = await movableTx(tx, ws, transactionId);
+  if (typeof purchase === 'string') return { transactionId, why: purchase };
+  const rateToEvent = await rateToEventTx(tx, book, purchase.currency, purchase.occurredOn);
+  if (rateToEvent === null) return { transactionId, why: `No ${purchase.currency} or ${book.currency} rate for ${purchase.occurredOn} yet` };
+  if ((await rateToBaseTx(tx, purchase.moneyCurrency, book.baseCurrency, purchase.occurredOn)) === null) {
+    return { transactionId, why: `No ${purchase.moneyCurrency} rate for ${purchase.occurredOn} yet` };
+  }
+  const categoryId = await eventCategoryNamedTx(tx, book, purchase.categoryName, purchase.categoryIcon);
+  // R12: a card goes on earning by the category the purchase was filed under (kept the first time it is given).
+  await ensureShareAccountTx(tx, book, categoryId, purchase.categoryId);
+  const expenseId = expenseIdFor ? await expenseIdFor(tx, transactionId) : uuidv7();
+  // Named alike on another phone, which has moved it already (its expense reached here before its void did).
+  if ((await tx.values(sql`SELECT 1 FROM event_expenses WHERE book_id = ${book.bookId} AND id = ${expenseId}`)).length > 0) {
+    return { transactionId, why: `Already moved into ${book.name} from another phone`, elsewhere: true };
+  }
+  let split: SplitInput = { mode: 'equal', people: [book.me] };
+  if (purchase.amountMinor < 0) {
+    const undone = await undoneByTx(tx, book, purchase, likeId);
+    if (undone) split = refundSplitLike(sharesOf(undone), purchase.amountMinor);
+  }
+  await withCapture(
+    tx,
+    [
+      { entity: 'event_expense', id: expenseId, bookId: book.bookId },
+      { entity: 'event_expense_detail', id: expenseId, bookId: book.bookId },
+    ],
+    async () => {
+      await tx.run(sql`
+        INSERT INTO event_expenses (book_id, id, occurred_on, amount_minor, currency, rate_to_event, payer_person_id, payer_member_id, voided_at)
+        VALUES (${book.bookId}, ${expenseId}, ${purchase.occurredOn}, ${purchase.amountMinor}, ${purchase.currency}, ${rateToEvent}, ${book.me}, ${book.me}, NULL)`);
+      await tx.run(sql`
+        INSERT INTO event_expense_details (book_id, id, note, category_id, split_mode, split_json, recorded_by, updated_by)
+        VALUES (${book.bookId}, ${expenseId}, ${purchase.description.trim() || null}, ${categoryId}, ${split.mode}, ${splitJsonOf(split)}, ${book.me}, NULL)`);
+    },
+  );
+  // The purchase itself becomes the expense's derived transaction: replaced in place, never posted twice. The
+  // account it was paid from, and what that account was charged when it is another currency (R5), stay here.
+  await tx.run(sql`
+    INSERT INTO event_postings (book_id, record_id, kind, transaction_id, account_id, account_amount_minor)
+    VALUES (${book.bookId}, ${expenseId}, 'expense', ${transactionId}, ${purchase.moneyAccountId}, ${purchase.moneyCurrency === purchase.currency ? null : purchase.chargedMinor})`);
+  await postEventRecordTx(tx, book.bookId, 'expense', expenseId, null);
+  // Anything short of the purchase replaced by the expense's lines would leave it in its workspace and in the
+  // event at once: the whole move is rolled back instead.
+  const [after] = await tx.values<[string | null, string | null]>(sql`SELECT transaction_id, unposted FROM event_postings WHERE book_id = ${book.bookId} AND record_id = ${expenseId}`);
+  if (!after || after[1] !== null || after[0] === null || after[0] === transactionId) {
+    throw new KeptBack({ transactionId, why: after?.[1] === 'no-rate' ? `No rate for ${purchase.occurredOn} yet` : NOT_MOVABLE });
+  }
+  return { expenseId, derivedId: after[0] };
+}
+
+/**
  * Moves each purchase into the shared event, each in its own db transaction, so one that cannot move never holds the
  * others back. Returns what moved (with the expense each became), what stayed, with why, and the transfers listed on
  * the event instead (a household-shared workspace's transfer, `shared-event-transfers.ts`: off the workspace on every
@@ -215,56 +278,18 @@ export async function moveIntoSharedEvent(
         const book = await openSharedEventTx(tx, ws, eventId);
         // A transfer is listed on the event, never an expense of it; anything else goes on as a purchase.
         const transfer = await transferIntoEventTx(tx, ws, transactionId, book);
-        if (transfer === 'listed') return 'listed';
-        if (transfer !== null) return { transactionId, why: transfer };
-        const purchase = await movableTx(tx, ws, transactionId);
-        if (typeof purchase === 'string') return { transactionId, why: purchase };
-        const rateToEvent = await rateToEventTx(tx, book, purchase.currency, purchase.occurredOn);
-        if (rateToEvent === null) return { transactionId, why: `No ${purchase.currency} or ${book.currency} rate for ${purchase.occurredOn} yet` };
-        if ((await rateToBaseTx(tx, purchase.moneyCurrency, book.baseCurrency, purchase.occurredOn)) === null) {
-          return { transactionId, why: `No ${purchase.moneyCurrency} rate for ${purchase.occurredOn} yet` };
+        if (typeof transfer === 'string') return { transactionId, why: transfer };
+        if (transfer !== null) {
+          // A fee typed on it was split off into a purchase of its own: that moves in as this person's expense, counted
+          // on the event once. Kept back, the whole listing is rolled back with it, so the row stays as it was.
+          if (transfer.fee) {
+            const feeExpenseId = await nextTripFeeIdTx(tx, transfer.transferId, book.bookId);
+            const fee = await expenseIntoEventTx(tx, ws, book, transfer.fee, null, async () => feeExpenseId);
+            if (!('expenseId' in fee)) throw new KeptBack({ transactionId, why: `Its fee could not move: ${fee.why}` });
+          }
+          return 'listed';
         }
-        const categoryId = await eventCategoryNamedTx(tx, book, purchase.categoryName, purchase.categoryIcon);
-        // R12: a card goes on earning by the category the purchase was filed under (kept the first time it is given).
-        await ensureShareAccountTx(tx, book, categoryId, purchase.categoryId);
-        const expenseId = options.expenseIdFor ? await options.expenseIdFor(tx, transactionId) : uuidv7();
-        // Named alike on another phone, which has moved it already (its expense reached here before its void did).
-        if ((await tx.values(sql`SELECT 1 FROM event_expenses WHERE book_id = ${book.bookId} AND id = ${expenseId}`)).length > 0) {
-          return { transactionId, why: `Already moved into ${book.name} from another phone`, elsewhere: true };
-        }
-        let split: SplitInput = { mode: 'equal', people: [book.me] };
-        if (purchase.amountMinor < 0) {
-          const undone = await undoneByTx(tx, book, purchase, undoes[transactionId] ?? null);
-          if (undone) split = refundSplitLike(sharesOf(undone), purchase.amountMinor);
-        }
-        await withCapture(
-          tx,
-          [
-            { entity: 'event_expense', id: expenseId, bookId: book.bookId },
-            { entity: 'event_expense_detail', id: expenseId, bookId: book.bookId },
-          ],
-          async () => {
-            await tx.run(sql`
-              INSERT INTO event_expenses (book_id, id, occurred_on, amount_minor, currency, rate_to_event, payer_person_id, payer_member_id, voided_at)
-              VALUES (${book.bookId}, ${expenseId}, ${purchase.occurredOn}, ${purchase.amountMinor}, ${purchase.currency}, ${rateToEvent}, ${book.me}, ${book.me}, NULL)`);
-            await tx.run(sql`
-              INSERT INTO event_expense_details (book_id, id, note, category_id, split_mode, split_json, recorded_by, updated_by)
-              VALUES (${book.bookId}, ${expenseId}, ${purchase.description.trim() || null}, ${categoryId}, ${split.mode}, ${splitJsonOf(split)}, ${book.me}, NULL)`);
-          },
-        );
-        // The purchase itself becomes the expense's derived transaction: replaced in place, never posted twice. The
-        // account it was paid from, and what that account was charged when it is another currency (R5), stay here.
-        await tx.run(sql`
-          INSERT INTO event_postings (book_id, record_id, kind, transaction_id, account_id, account_amount_minor)
-          VALUES (${book.bookId}, ${expenseId}, 'expense', ${transactionId}, ${purchase.moneyAccountId}, ${purchase.moneyCurrency === purchase.currency ? null : purchase.chargedMinor})`);
-        await postEventRecordTx(tx, book.bookId, 'expense', expenseId, null);
-        // Anything short of the purchase replaced by the expense's lines would leave it in its workspace and in the
-        // event at once: the whole move is rolled back instead.
-        const [after] = await tx.values<[string | null, string | null]>(sql`SELECT transaction_id, unposted FROM event_postings WHERE book_id = ${book.bookId} AND record_id = ${expenseId}`);
-        if (!after || after[1] !== null || after[0] === null || after[0] === transactionId) {
-          throw new KeptBack({ transactionId, why: after?.[1] === 'no-rate' ? `No rate for ${purchase.occurredOn} yet` : NOT_MOVABLE });
-        }
-        return { expenseId, derivedId: after[0] };
+        return expenseIntoEventTx(tx, ws, book, transactionId, undoes[transactionId] ?? null, options.expenseIdFor);
       });
       if (outcome === 'listed') listed.push({ transactionId });
       else if ('expenseId' in outcome) moved.push({ transactionId, ...outcome });

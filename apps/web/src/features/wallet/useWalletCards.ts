@@ -8,12 +8,12 @@ import { groupedFigure, type WalletCard } from '../../ui/native';
 import { parentTotal, pocketCount, pocketsOf, spendingBook } from '../accounts/pockets';
 import { useHeldRates } from '../accounts/queries';
 import { useAccountNumberLast4, useCardIdentities, useCards, useCardTiers, useWalletLast4 } from '../cards/card-queries';
-import { faceFor, prepaidFaceOf, tieredKey } from '../cards/debit-art/faces';
+import { faceFor } from '../cards/debit-art/faces';
 import { type CardPoints, formatPoints, loadCardPoints, pointsValue, shortDate } from '../cards/useCardPoints';
 import { owedMinor } from '../networth/debt-rows';
 import { useAssetProfiles, useSharedNetWorth } from '../networth/queries';
 import { jointChip, readJointOrder, walletJoint, walletKeys } from './wallet-joint';
-import { bankOf, faceKindsOf, moneyChip, walletCredit, walletMoney } from './wallet-model';
+import { bankOf, moneyChip, moneyFaceOf, walletCredit, walletMoney } from './wallet-model';
 
 /** What a credit card's points are counted in, for the line beside the stack. */
 const unitOf = (cp: CardPoints) => cp.programme?.unit ?? cp.program?.unit ?? 'points';
@@ -77,10 +77,7 @@ export function useWalletCards() {
    * debit card's where one is recorded, else the account number's last four and the account's name; a wallet's digits
    * are its phone's. Money nothing is drawn for keeps the plain face with its chip of words ("E-money").
    */
-  const faceOf = (account: AccountRow) => {
-    const bank = bankOf(account.id, everything, profiles);
-    return faceFor([bank, account.name], faceKindsOf(account.subtype)) ?? (account.subtype === 'emoney' ? prepaidFaceOf(bank) : null);
-  };
+  const faceOf = (account: AccountRow) => moneyFaceOf(bankOf(account.id, everything, profiles), account.name, account.subtype, tiers[account.id]);
   const moneyCards: WalletCard[] = money.map((account) => {
     const face = faceOf(account);
     const debit = face?.kind === 'debit' ? [...plastic.filter((card) => card.accountId === account.id)].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary))[0] : undefined;
@@ -91,7 +88,7 @@ export function useWalletCards() {
       last4: face === null ? null : face.kind === 'ewallet' ? (phones[account.id] ?? null) : (debit?.last4 ?? digits[account.id] ?? phones[account.id] ?? null),
       holderName: face?.kind === 'debit' ? (debit?.holderName ?? account.name) : undefined,
       kind: moneyChip(account, digits[account.id]),
-      face: face ? { key: tieredKey(face, tiers[account.id]), kind: face.kind, mark: face.mark } : undefined,
+      face: face ?? undefined,
       figure: moneyFigure(account),
       figureLabel: 'Balance',
       subtitle: parents.has(account.id) ? `${SUBTYPE_LABELS[account.subtype]} · ${pocketCount(pocketsOf(account.id, book).length)}` : `${SUBTYPE_LABELS[account.subtype]} · ${account.currency}`,
@@ -138,11 +135,12 @@ export function useWalletCards() {
   });
   /*
    * The partner's joint cards, drawn like an own card of their kind from what the summary carries — its name, its kind,
-   * its currency and the last four digits its name ends with — and "· Rina’s" after the type. Money nothing is drawn
-   * for keeps the plain face with its chip of words; a card has no catalogue look here, so it is the plain card face.
+   * its currency, its bank and card tier, and the last four digits of its card or its number — and "· Rina’s" after
+   * the type, so the face is the one its holder's phone draws (`moneyFaceOf`). Money nothing is drawn for keeps the
+   * plain face with its chip of words; a card has no catalogue look here, so it is the plain card face.
    */
   const jointCards: WalletCard[] = joint.map((card) => {
-    const face = faceFor([card.name], card.side === 'money' ? faceKindsOf(card.subtype) : ['paylater']);
+    const face = card.side === 'money' ? moneyFaceOf(card.bank, card.name, card.subtype, card.tier) : faceFor([card.name], ['paylater']);
     const whose = `${card.ownerName}’s`;
     return {
       key: card.key,

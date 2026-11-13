@@ -272,7 +272,7 @@ describe('a Family transfer moved into a shared trip', () => {
     expect((await runSharedBookRepairs(wife.database, family)).tripTransfers).toBeNull();
   });
 
-  it('a transfer with its fee on the same row, or one in a workspace no one shares, stays with its reason', async () => {
+  it('a transfer with its fee on the same row is listed, its fee moving in as an expense; one in a workspace no one shares stays with its reason', async () => {
     const s = await familyAndTrip();
     const fees = await categoryOf(s.wife.database, s.family, 'Bank fees').catch(() => categoryOf(s.wife.database, s.family, 'Groceries'));
     const withFee = await postTransaction(s.wife.database, inBook(s.wife.ws, s.family), {
@@ -288,12 +288,11 @@ describe('a Family transfer moved into a shared trip', () => {
       lines: transferLines({ fromAccountId: s.wife.bank, toAccountId: s.wife.cash, amountMinor: 70_000, currency: 'IDR' }),
     });
     const { kept, listed, moved } = await moveIntoSharedEvent(s.wife.database, ownerScope(s.wife.ws), s.trip.eventOf(s.wife), [withFee, privateMove]);
+    // The fee is split off and moved as the transfer's own part (trip exchange fix): only the transfer is said.
     expect(moved).toEqual([]);
-    expect(listed).toEqual([]);
-    expect(kept).toEqual([
-      { transactionId: withFee, why: 'A transfer with a fee on the same row stays: take the fee off first' },
-      { transactionId: privateMove, why: 'Only a transfer in a workspace shared with a household moves into a shared event' },
-    ]);
+    expect(listed).toEqual([{ transactionId: withFee }]);
+    expect(kept).toEqual([{ transactionId: privateMove, why: 'Only a transfer in a workspace shared with a household moves into a shared event' }]);
+    expect((await tripOf(s, s.wife)).expenses.map((e) => [e.note, e.amountMinor, e.currency])).toEqual([['Move to wallet', 6_500, 'IDR']]);
   });
 
   it('a settle-up the trip posted, and a transfer filed in no workspace, each say why they stay', async () => {
@@ -315,7 +314,7 @@ describe('a Family transfer moved into a shared trip', () => {
     expect((await move(everywhere)).kept[0]!.why).toBe('A transfer filed in no workspace shows in every one: only one in a workspace shared with a household moves into a shared event');
   });
 
-  it('a transfer filed in Family before Family was shared (no redacted row: the partner never had it) says so and stays', async () => {
+  it('a transfer filed in Family before Family was shared (no redacted row: the partner never had it) is filed as a transfer and listed', async () => {
     const trip = new Trip();
     const wife = await trip.device('Wife', BUILD);
     const husband = await trip.device('Husband', BUILD);
@@ -336,8 +335,14 @@ describe('a Family transfer moved into a shared trip', () => {
     expect(await wife.database.db.values(sql`SELECT 1 FROM shared_transfers WHERE transaction_id = ${old}`)).toEqual([]);
     expect(await wife.database.db.values(sql`SELECT book_id FROM book_transactions WHERE transaction_id = ${old}`)).toEqual([[family]]);
     const { kept, listed } = await moveIntoSharedEvent(wife.database, ownerScope(wife.ws), trip.eventOf(wife), [old]);
-    expect(listed).toEqual([]);
-    expect(kept).toEqual([{ transactionId: old, why: 'Recorded before Personal sent its transfers to the household, so the other phones never had it: it stays in Personal' }]);
+    // The owner's row on build 122 (trip exchange fix): filed as a transfer now, its redacted row listed on the trip.
+    expect(kept).toEqual([]);
+    expect(listed).toEqual([{ transactionId: old }]);
+    expect(await wife.database.db.values(sql`SELECT book_id FROM book_transactions WHERE transaction_id = ${old}`)).toEqual([]);
+    await trip.home.settle();
+    await trip.settle([wife, husband]);
+    const view = await sharedEventView(husband.database, ownerScope(husband.ws), trip.eventOf(husband));
+    expect(view!.transfers.map((t) => [t.description, t.amountMinor, t.currency])).toEqual([['Old withdrawal', 90_000, 'IDR']]);
   });
 
   it('a purchase beside it still moves as a purchase', async () => {

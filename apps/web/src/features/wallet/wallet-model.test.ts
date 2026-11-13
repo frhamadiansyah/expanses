@@ -1,7 +1,7 @@
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { faceFor } from '../cards/debit-art/faces';
-import { bankOf, faceKindsOf, moneyChip, readBalanceHidden, walletCredit, walletMoney, walletOrder, writeBalanceHidden } from './wallet-model';
+import { faceFor, TIERS } from '../cards/debit-art/faces';
+import { bankOf, faceKindsOf, moneyChip, moneyFaceOf, readBalanceHidden, walletCredit, walletMoney, walletOrder, writeBalanceHidden } from './wallet-model';
 
 const row = (id: string, subtype: string, extra: Partial<AccountRow> = {}) =>
   ({ id, name: id, parentId: null, kind: 'asset', subtype, currency: 'IDR', archivedAt: null, sortOrder: 0, forSpending: 1, ...extra }) as AccountRow;
@@ -168,5 +168,24 @@ describe('bankOf: the bank an account is at, for its drawn face', () => {
     expect(bankOf('wise', accounts, [profile('wise-usd'), profile('wise-idr', 'Bank Jago')])).toBe('Bank Jago');
     // The parent's own, when it has one, comes first.
     expect(bankOf('wise', accounts, [profile('wise', 'Bank Permata'), profile('wise-idr', 'Bank Jago')])).toBe('Bank Permata');
+  });
+});
+
+describe('a money card’s drawn face', () => {
+  // A bank the app draws in tiers, read off the catalogue rather than typed here.
+  const [bank, tiers] = Object.entries(TIERS)[0]!;
+  const base = faceFor([bank], ['debit'])!;
+
+  it('is the bank’s, at the tier the holder chose, whatever the account is called', () => {
+    expect(moneyFaceOf(bank, 'Tabungan bersama', 'savings', tiers[1]!.id)).toEqual({ key: tiers[1]!.key, kind: 'debit', mark: base.mark });
+  });
+
+  it('is the bank’s first card with no tier, or one the bank does not have', () => {
+    expect(moneyFaceOf(bank, 'Tabungan bersama', 'bank', null)?.key).toBe(base.key);
+    expect(moneyFaceOf(bank, 'Tabungan bersama', 'bank', 'nosuchtier')?.key).toBe(base.key);
+  });
+
+  it('is the plain face when neither the bank nor the name names one', () => {
+    expect(moneyFaceOf(null, 'Tabungan bersama', 'savings', tiers[1]!.id)).toBeNull();
   });
 });

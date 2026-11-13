@@ -11,11 +11,23 @@ export interface ItemSheetFacts {
   item?: string;
   icon?: 'home' | 'car' | 'loan';
 }
+/**
+ * What a joint money account's card face is drawn from on its holder's phone (Wallet's `faceOf`), so the partner's
+ * phone draws the same face: its bank (the tax report's Nama institusi), which of the bank's cards it is (0087), and
+ * its number's last four digits (0080) when no card's digits are in the item's `name`. Each key is absent when unset.
+ */
+export interface ItemFace {
+  bank?: string;
+  tier?: string;
+  last4?: string;
+}
+
 /** The account a pocket sits in, as a pocket's summary names it (`ItemSummary.pocketOf`). */
 export interface ItemPocketOf {
   id: string;
   name: string;
 }
+
 /** One owner's item, as sent to the group log (spec §5.2). */
 export interface ItemSummary {
   owner: string;
@@ -52,6 +64,11 @@ export interface ItemSummary {
   joint?: true;
   /** The finer kind (`ItemSheetFacts`); absent when the subtype says it all, or from a peer before this release. */
   sheet?: ItemSheetFacts;
+  /**
+   * Only on a joint money account (`joint`) with something set (`ItemFace`); absent otherwise, so every other summary
+   * is byte-for-byte what it was. A build before this one keeps it in the summary and draws nothing from it.
+   */
+  face?: ItemFace;
   /**
    * Present only on a pocket (one currency of an account with pockets): the account it sits in, known by a one-way id
    * (`uuidv5(groupBookId, 'item:' + parentId)`, never the local account id — and never an item's id, since a pocket
