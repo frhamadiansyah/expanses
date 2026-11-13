@@ -8,6 +8,8 @@ import {
   createAccount,
   createBook,
   createCardAccount,
+  openPocketedAccount,
+  renameAccount,
   deleteUnusedAccount,
   personalBook,
   postTransaction,
@@ -22,7 +24,7 @@ import { markReviewedTx } from '../../src/repos/net-worth-sharing';
 import { AuthorityError } from '../../src/sync/authority';
 import { withCapture } from '../../src/sync/capture';
 import { encodeHlc } from '../../src/sync/hlc';
-import { computeItemSummary, itemIdOf, ownSentAccountIds, receivedItems, sendSummariesTx } from '../../src/sync/net-worth/summaries';
+import { computeItemSummary, itemIdOf, ownSentAccountIds, receivedItems, refreshSummariesTx, sendSummariesTx } from '../../src/sync/net-worth/summaries';
 import type { ChangeSet } from '../../src/sync/types';
 import { categoryOf, headOf, Household, type Device } from './household';
 
@@ -318,6 +320,90 @@ describe('summaries: compute, send, receive (joint-net-worth §5.2, §9)', () =>
     const [code] = await rina.database.db.values<[string]>(sql`SELECT coretax_code FROM asset_profiles WHERE account_id = ${house.id}`);
     expect(got.sheet).toEqual({ code: code![0] });
     expect('sheet' in items.find((i) => i.subtype === 'credit_card')!).toBe(false);
+  });
+
+  it('a pocket names the account it sits in by a one-way id and its name, so Andi can draw the account as one row', async () => {
+    const { home, rina, andi, groupBookId } = await activeGroup();
+    const { parent, pockets } = await openPocketedAccount(rina.database, rina.ws, {
+      item: 'bank',
+      name: 'Travel wallet',
+      pockets: [
+        { currency: 'IDR', openingBalanceMinor: 3_100_000 },
+        { currency: 'USD', openingBalanceMinor: 120_00, openingRateToBase: 15_900 },
+      ],
+    });
+    for (const pocket of pockets) await setShare(rina, pocket.id, 'total');
+    await setShare(rina, rina.bank, 'total');
+    await shareAll(rina);
+    await home.settle();
+    const items = await receivedItems(andi.database, groupBookId);
+    const parentItem = await itemIdOf(groupBookId, parent.id);
+    const got = items.filter((item) => item.pocketOf);
+    expect(got.map((item) => [item.name, item.currency, item.pocketOf])).toEqual(
+      expect.arrayContaining([
+        ['Travel wallet · IDR', 'IDR', { id: parentItem, name: 'Travel wallet' }],
+        ['Travel wallet · USD', 'USD', { id: parentItem, name: 'Travel wallet' }],
+      ]),
+    );
+    expect(got).toHaveLength(2);
+    // The parent is never an item, and its local id never leaves Rina's phone.
+    expect(items.some((item) => item.itemId === parentItem)).toBe(false);
+    expect(JSON.stringify(items)).not.toContain(parent.id);
+    // An account with no pockets carries no `pocketOf` at all: its summary is byte-for-byte what it was.
+    expect(items.filter((item) => !item.pocketOf).every((item) => !('pocketOf' in item))).toBe(true);
+
+    // Renamed on Rina's phone: the pockets go out again under the account's new name.
+    await renameAccount(rina.database, rina.ws, parent.id, 'Holiday wallet');
+    await home.settle();
+    const renamed = (await receivedItems(andi.database, groupBookId)).filter((item) => item.pocketOf);
+    expect(renamed.map((item) => [item.name, item.pocketOf!.name]).sort()).toEqual([
+      ['Holiday wallet · IDR', 'Holiday wallet'],
+      ['Holiday wallet · USD', 'Holiday wallet'],
+    ]);
+  });
+
+  it('a pocket last sent before pocketOf goes out again on the next sync, naming its account', async () => {
+    const { home, rina, groupBookId } = await activeGroup();
+    const { parent, pockets } = await openPocketedAccount(rina.database, rina.ws, {
+      item: 'bank',
+      name: 'Travel wallet',
+      pockets: [
+        { currency: 'IDR', openingBalanceMinor: 3_100_000 },
+        { currency: 'USD', openingBalanceMinor: 120_00, openingRateToBase: 15_900 },
+      ],
+    });
+    for (const pocket of pockets) await setShare(rina, pocket.id, 'total');
+    await shareAll(rina);
+    await home.settle();
+    const db = rina.database.db;
+    // Nothing changed: the refresh sends nothing.
+    expect(await rina.database.transaction((tx) => refreshSummariesTx(tx, [], today))).toBe(0);
+    // As an older build sent it: no pocketOf, and its hash.
+    const usd = await itemIdOf(groupBookId, pockets[1]!.id);
+    const [row] = await db.values<[string]>(sql`SELECT summary_json FROM nw_items WHERE item_id = ${usd}`);
+    const { pocketOf: _pocketOf, ...older } = JSON.parse(row![0]);
+    await db.run(sql`UPDATE nw_items SET summary_json = ${JSON.stringify(older)} WHERE item_id = ${usd}`);
+    await db.run(sql`UPDATE nw_sent SET summary_hash = 'older' WHERE item_id = ${usd}`);
+    expect(await rina.database.transaction((tx) => refreshSummariesTx(tx, [], today))).toBe(1);
+    const [again] = await db.values<[string]>(sql`SELECT summary_json FROM nw_items WHERE item_id = ${usd}`);
+    expect(JSON.parse(again![0]).pocketOf).toEqual({ id: await itemIdOf(groupBookId, parent.id), name: 'Travel wallet' });
+  });
+
+  it('a peer’s pocketOf is read defensively: anything but a short id and name is dropped', async () => {
+    const { home, rina, andi, groupBookId } = await activeGroup();
+    await setShare(rina, rina.bank, 'total');
+    await shareAll(rina);
+    await home.settle();
+    const [row] = await andi.database.db.values<[string, string]>(sql`SELECT item_id, summary_json FROM nw_items WHERE book_id = ${groupBookId}`);
+    const read = async (pocketOf: unknown) => {
+      const summary = { ...JSON.parse(row![1]), pocketOf };
+      await andi.database.db.run(sql`UPDATE nw_items SET summary_json = ${JSON.stringify(summary)} WHERE item_id = ${row![0]}`);
+      return (await receivedItems(andi.database, groupBookId))[0]!;
+    };
+    expect((await read({ id: 'p-1', name: 'Travel wallet' })).pocketOf).toEqual({ id: 'p-1', name: 'Travel wallet' });
+    for (const bad of [null, 'p-1', { id: 'p-1' }, { id: 7, name: 'x' }, { id: 'p-1', name: '' }, { id: 'x'.repeat(65), name: 'n' }, [1]]) {
+      expect('pocketOf' in (await read(bad))).toBe(false);
+    }
   });
 
   it('Sari, in the workspace and not in the group, never has any nw_items row', async () => {
