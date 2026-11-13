@@ -10,8 +10,10 @@ import {
   createAccount,
   createDatabase,
   type Database,
+  createWorkspace,
   extrasFor,
   FEE_CHARGE_DESCRIPTION,
+  feeWaivedStatus,
   FEE_REVERSAL_DESCRIPTION,
   getCardTerms,
   getFeeWaiver,
@@ -25,6 +27,7 @@ import {
   saveFeeWaiver,
   undoFeeWaived,
   voidTransaction,
+  waivedFeeYears,
 } from '../src/index';
 import { createNodeExecutor, type NodeExecutor } from '../src/node';
 import { setupDb } from './helpers';
@@ -284,5 +287,102 @@ describe('migration 0115 (fee waiver lifetime)', () => {
     await database.db.run(sql`INSERT INTO card_fee_waivers (account_id, workspace_id, kind, amount_minor, category_ids, created_at) VALUES ('card-3', 'ws-1', 'lifetime', NULL, '[]', 'x')`);
     await expect(database.db.run(sql`INSERT INTO card_fee_waivers (account_id, workspace_id, kind, amount_minor, category_ids, created_at) VALUES ('card-4', 'ws-1', 'automatic', 0, '[]', 'x')`)).rejects.toThrow();
     await expect(database.db.run(sql`INSERT INTO card_fee_waivers (account_id, workspace_id, kind, amount_minor, category_ids, created_at) VALUES ('card-5', 'ws-1', 'other', 5, '[]', 'x')`)).rejects.toThrow();
+  });
+});
+
+/* Fix round 1 (review, 13 Nov 2026). */
+describe('one waived mark per year', () => {
+  it('keeps 2024 and 2026 both Waived · not charged, and the latest year on the card terms for older readers', async () => {
+    const t = await card({ minor: 500_000, on: '2023-01-05' });
+    await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: '2024-11-13', back: false });
+    await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false });
+    const years = await t.years();
+    expect(years?.current).toMatchObject({ year: 2026, lines: ['waived'] });
+    expect(years?.earlier.map((y) => [y.year, y.lines])).toEqual([[2024, ['waived']]]);
+    expect((await getCardTerms(t.database, t.ws, t.id))?.annualFeeWaivedYear).toBe(2026);
+    // Reset 2026: its own mark goes; 2024 stays, and becomes the latest.
+    await undoFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
+    expect((await t.years())?.current.lines).toEqual(['pending']);
+    expect((await t.years())?.earlier.map((y) => y.year)).toEqual([2024]);
+    expect((await getCardTerms(t.database, t.ws, t.id))?.annualFeeWaivedYear).toBe(2024);
+  });
+
+  it('refuses Waived, not charged once the charge is on the card', async () => {
+    const t = await card();
+    await addFeeCharge(t.database, t.ws, { cardId: t.id, today: TODAY, amountMinor: FEE, on: '2026-10-15' });
+    await expect(saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false })).rejects.toThrow();
+    expect((await t.years())?.current.marked).toBe(false);
+  });
+});
+
+describe('the reversal seen from the other phone', () => {
+  // Phone A charged the fee with its tax and reversed the fee alone; phone B gets both transactions, never the link.
+  const TAXED = 1_265_000;
+  it('reads phone A’s reversal for a fee-and-tax charge as the reversal, and offers no second one', async () => {
+    const t = await card();
+    await addFeeCharge(t.database, t.ws, { cardId: t.id, today: TODAY, amountMinor: TAXED, on: '2026-10-15' });
+    const id = await addFeeReversal(t.database, t.ws, { cardId: t.id, today: TODAY, amountMinor: FEE, on: '2026-11-03' });
+    await t.database.db.run(sql`DELETE FROM card_fee_refunds`);
+    expect((await t.years())?.current).toMatchObject({ lines: ['charged', 'reversal'], state: 'waived', reversal: { transactionId: id, amountMinor: FEE, ours: false } });
+    await expect(addFeeReversal(t.database, t.ws, { cardId: t.id, today: TODAY, amountMinor: FEE, on: '2026-11-04' })).rejects.toThrow();
+    expect(await t.balance()).toBe(-(TAXED - FEE));
+  });
+
+  it('reads it with no charge behind it (before the app) whatever its amount', async () => {
+    const t = await card({ minor: 4_000_000, on: '2026-11-01' });
+    const id = await addFeeReversal(t.database, t.ws, { cardId: t.id, today: TODAY, amountMinor: 1_000_000, on: '2026-11-13' });
+    await t.database.db.run(sql`DELETE FROM card_fee_refunds`);
+    expect((await t.years())?.current).toMatchObject({ lines: ['charged-before-app', 'reversal'], reversal: { transactionId: id, ours: false } });
+  });
+
+  it('refuses a reversal above the charge', async () => {
+    const t = await card();
+    await addFeeCharge(t.database, t.ws, { cardId: t.id, today: TODAY, amountMinor: FEE, on: '2026-10-15' });
+    await expect(addFeeReversal(t.database, t.ws, { cardId: t.id, today: TODAY, amountMinor: FEE + 1, on: '2026-11-03' })).rejects.toThrow();
+    expect(await t.balance()).toBe(-FEE);
+  });
+});
+
+describe('dates in what is refused', () => {
+  it('names days as the app does, never as stored', async () => {
+    const t = await card();
+    await expect(addFeeCharge(t.database, t.ws, { cardId: t.id, today: TODAY, amountMinor: FEE, on: '2026-06-01' })).rejects.toThrow('Pick a day from 25 Sep to 29 Nov');
+    await addFeeCharge(t.database, t.ws, { cardId: t.id, today: TODAY, amountMinor: FEE, on: '2026-10-15' });
+    await expect(addFeeReversal(t.database, t.ws, { cardId: t.id, today: TODAY, amountMinor: FEE, on: '2026-10-14' })).rejects.toThrow('The reversal cannot be before the charge, on 15 Oct');
+  });
+});
+
+describe('one fee-year state everywhere', () => {
+  it('reads a reversal a statement check found as waived for the challenge’s ✓ and for Recurring', async () => {
+    const t = await card();
+    await t.post('Annual fee', 'miscellaneous.membership_fee', FEE, '2026-10-15');
+    const back = await t.refund('Refund', 'miscellaneous.membership_fee', FEE, '2026-11-02');
+    expect(await feeWaivedStatus(t.database.db, t.ws, { cardId: t.id, today: TODAY })).toMatchObject({ waived: true, back: { transactionId: back, amountMinor: FEE, on: '2026-11-02' } });
+    expect(await waivedFeeYears(t.database.db, t.ws, TODAY)).toEqual(new Map([[t.id, 2026]]));
+  });
+  it('leaves a pending or charged year out of the waived ones', async () => {
+    const t = await card();
+    expect(await waivedFeeYears(t.database.db, t.ws, TODAY)).toEqual(new Map());
+    await t.post('Annual fee', 'miscellaneous.membership_fee', FEE, '2026-10-15');
+    expect(await waivedFeeYears(t.database.db, t.ws, TODAY)).toEqual(new Map());
+  });
+});
+
+describe('migration 0115 (waived years)', () => {
+  let executor: NodeExecutor | undefined;
+  afterEach(() => {
+    executor?.close();
+    executor = undefined;
+  });
+  it('copies each card’s waived year into its own row', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    await migrate(database, MIGRATIONS.filter((m) => m.version < 115));
+    const ws = await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
+    const acc = await createAccount(database, ws, { name: 'Old card', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    await saveCardTerms(database, ws, { accountId: acc.id, statementDay: 22, dueDay: 9, creditLimitMinor: null, annualFeeMinor: FEE, annualFeeOn: '2025-10-15' });
+    await database.db.run(sql`UPDATE card_terms SET annual_fee_waived_year = 2025 WHERE account_id = ${acc.id}`);
+    await migrate(database);
+    expect(await database.db.values(sql`SELECT account_id, workspace_id, fee_year FROM card_fee_waived_years`)).toEqual([[acc.id, ws.workspaceId, 2025]]);
   });
 });
