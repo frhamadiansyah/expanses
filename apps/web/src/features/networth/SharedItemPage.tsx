@@ -1,20 +1,21 @@
 import { formatMinor, isoDate } from '@expanses/core';
 import type { AccountSubtype } from '@expanses/db';
 import { useParams } from '@tanstack/react-router';
+import { useApp } from '../../app/context';
 import { ArrowLeftRight, Lock } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
 import { useAccounts } from '../../lib/queries';
 import { cx, Empty, ErrorBox } from '../../ui';
-import { Panel, PushedTitle, RowIcon, SCREEN } from '../../ui/native';
+import { InsetGroup, InsetRow, Panel, PushedTitle, RowIcon, SCREEN } from '../../ui/native';
 import { BalanceCard } from '../accounts/BalanceCard';
 import { itemTile } from '../accounts/shared-accounts';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { JointRowsGroup } from '../sharing/JointAccountRows';
 import { useJointRows } from '../sharing/net-worth-queries';
 import { ownerRing } from './joint-rows';
-import { useHouseholdPurchases, useItemTransfers, useOwnerRings, useSharedNetWorth } from './queries';
-import { heroLine, itemPage, shortDay } from './shared-item';
+import { useHouseholdPurchases, useItemTransfers, useJointSheet, useOwnerRings, useSharedNetWorth } from './queries';
+import { heroLine, itemPage, pocketAccountView, type PocketAccountView, shortDay } from './shared-item';
 import { ValueChart } from './ValueChart';
 
 const MONTH_LABEL = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
@@ -46,6 +47,14 @@ export function SharedItemPage() {
   const today = isoDate();
   // The item's money in reads green and its money out red, whichever side of the sheet it is on: a card owes less by money in.
   const inward = (minor: number) => (item?.kind === 'liability' ? minor < 0 : minor > 0);
+  // The partner's account with pockets (`pocketOf`): its id is no item, but the account its pockets name.
+  const { ws } = useApp();
+  const joint = useJointSheet();
+  const pocketed = found ? null : pocketAccountView(shared.data, itemId, joint.data?.ratesToBase ?? {}, ws.baseCurrency);
+  if (pocketed)
+    return (
+      <PocketAccountPage view={pocketed} back={back} ring={owners ? ownerRing(owners.rings, pocketed.owner) : null} baseCurrency={ws.baseCurrency} today={today} />
+    );
 
   return (
     <div className={SCREEN}>
@@ -154,6 +163,55 @@ export function SharedItemPage() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * The partner's account with pockets, read-only (owner, 13 Nov: one row on both phones): its pockets' total in the
+ * base currency, whose it is, and each pocket in its own currency, opening the pocket's own page.
+ */
+function PocketAccountPage({ view, back, ring, baseCurrency, today }: { view: PocketAccountView; back: { back: string; backTo: '/net-worth' | '/wallet' }; ring: string | null; baseCurrency: string; today: string }) {
+  const updated = view.pockets.map((pocket) => pocket.asOf).sort().at(-1) ?? today;
+  return (
+    <div className={SCREEN}>
+      <PushedTitle title={view.name} back={back.back} backTo={back.backTo} />
+      {view.totalMinor !== null ? (
+        <BalanceCard
+          label="Balance"
+          minor={view.totalMinor}
+          currency={baseCurrency}
+          approximate={view.converted}
+          series={null}
+          testId="shared-item-hero"
+          corner={<ItemMark tile={itemTile({ kind: 'asset', subtype: view.subtype })} ring={ring} />}
+          caption={
+            <span className="block" data-testid="shared-item-line">
+              {heroLine(view.ownerName, SUBTYPE_LABELS[view.subtype as AccountSubtype] ?? view.subtype, updated, today)}
+            </span>
+          }
+        />
+      ) : (
+        <Panel testId="shared-item-hero">
+          <p data-testid="shared-item-missing" className="text-[15px] leading-[20px] text-[var(--ph-warn)]">
+            No {view.missing.join(', ')} rate yet, so the pockets cannot be added up.
+          </p>
+        </Panel>
+      )}
+      <InsetGroup header="Pockets">
+        {view.pockets.map((pocket) => (
+          <InsetRow
+            key={pocket.itemId}
+            title={pocket.currency}
+            value={formatMinor(pocket.balanceMinor, pocket.currency)}
+            valueTone="ink"
+            testId={`shared-pocket-${pocket.itemId}`}
+            label={`${pocket.name}, ${formatMinor(pocket.balanceMinor, pocket.currency)}`}
+            to="/net-worth/shared/$itemId"
+            params={{ itemId: pocket.itemId }}
+          />
+        ))}
+      </InsetGroup>
     </div>
   );
 }

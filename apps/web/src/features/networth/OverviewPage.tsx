@@ -15,7 +15,7 @@ import { ASSET_STACK_KEYS, DEBT_STACK_KEYS, STACK_KEYS } from './stack-keys';
 import { RANGES, rangeChange, SPAN_MONTHS, type Span, spanSlice } from './span';
 import { memberName, useAssetProfiles, useAssetValues, useJointSheet, useNetWorthSeries, useOwnerRings, useSheet } from './queries';
 import { buyChoices } from '../transactions/buy-in-form';
-import { figureOf, jointSeries, ownerRing, sheetOwnerOf } from './joint-rows';
+import { figureOf, jointSeries, ownerRing, receivedPocketAccounts, sheetOwnerOf } from './joint-rows';
 import { isMoneyAccount, useAccounts } from '../../lib/queries';
 import { accountDestination, type AccountDestination } from '../accounts/destination';
 import { foldPockets, type ShownSheetRow } from './overview-rows';
@@ -391,7 +391,9 @@ export function OverviewPage() {
   const sheetMissing = joint ? joint.missing : (sheetInputs.data?.missing ?? []);
   const unchartable = [...new Set(points.flatMap((point) => point.missing))].sort();
   const sheet = joint ? balanceSheet(joint.assets, joint.liabilities) : balanceSheet(sheetInputs.data?.assets ?? [], sheetInputs.data?.liabilities ?? []);
-  const owners = new Map((joint?.rows ?? []).map((row) => [row.accountId, row]));
+  // The partner's accounts with pockets fold to one row each, as this phone's own do: the row is the account's.
+  const theirPockets = joint ? receivedPocketAccounts(joint.received, joint.rows, ws.baseCurrency) : { pockets: new Map(), parents: new Map() };
+  const owners = new Map([...(joint?.rows ?? []), ...theirPockets.parents.values()].map((row) => [row.accountId, row]));
   const unrated = new Set((joint?.rows ?? []).filter((row) => row.amountMinor === null).map((row) => row.accountId));
   const ownerOf: OwnerOf | undefined = joint
     ? (accountId) => {
@@ -447,7 +449,7 @@ export function OverviewPage() {
    */
   const subtypes = new Map<string, AccountSubtype>((accounts.data ?? []).map((account) => [account.id, account.subtype]));
   // The other's items are known by their itemId and say their own kind (§5.2), so they fold with the same kinds.
-  for (const row of joint?.rows ?? []) if (row.received) subtypes.set(row.accountId, row.subtype as AccountSubtype);
+  for (const row of [...(joint?.rows ?? []), ...theirPockets.parents.values()]) if (row.received) subtypes.set(row.accountId, row.subtype as AccountSubtype);
   /*
    * Which drawers are open, by `group:kind`, and shut to begin with: the point of folding a page of account names away
    * is that what you have reads as a handful of types, and a drawer that opens itself is that answer hidden again.
@@ -667,7 +669,7 @@ export function OverviewPage() {
         <div className="grid gap-x-[18px] md:grid-cols-2">
           <SheetColumn
             title="Assets"
-            groups={foldPockets(sheet.assetGroups, accounts.data ?? [], ws.baseCurrency)}
+            groups={foldPockets(sheet.assetGroups, accounts.data ?? [], ws.baseCurrency, theirPockets.pockets)}
             currency={ws.baseCurrency}
             kindOf={assetKind}
             tileOf={(section, kind) => (kind === null ? assetSectionTile(section) : assetKindTile(section, kind))}

@@ -1,7 +1,7 @@
 import type { ItemSummary } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import { memberName, type ReceivedItem } from './joint-rows';
-import { heroLine, itemPage, type PurchaseLine, shortDay, type TransferIn, sharedItemView, linesPaidFrom, transferLines } from './shared-item';
+import { heroLine, itemPage, pocketAccountView, type PurchaseLine, shortDay, type TransferIn, sharedItemView, linesPaidFrom, transferLines } from './shared-item';
 
 const card: ReceivedItem = {
   itemId: 'i-visa',
@@ -272,5 +272,29 @@ describe('heroLine (the item\'s page in the account page\'s layout: owner and up
   it('keeps the year on a figure from another year', () => {
     expect(heroLine('Rina', 'Credit card', '2025-12-31', '2026-01-02')).toBe('Rina’s · Credit card · updated 31 Dec 2025');
     expect(shortDay('2026-03-04', '2026-11-12')).toBe('4 Mar');
+  });
+});
+
+describe('pocketAccountView (the partner’s account with pockets, read-only)', () => {
+  const pocketOf = { id: 'i-travel', name: 'Travel wallet' };
+  const pocket = (itemId: string, currency: string, balanceMinor: number): ReceivedItem => ({ ...card, itemId, kind: 'asset', subtype: 'bank', card: null, name: `Travel wallet · ${currency}`, currency, balanceMinor, pocketOf });
+  const shared = { items: [pocket('i-usd', 'USD', 120_00), pocket('i-idr', 'IDR', 3_100_000), { ...card }], names: { 'm-rina': 'Rina' } };
+
+  it('is the account its pockets name: their total in the base currency, and each pocket in its own', () => {
+    const view = pocketAccountView(shared, 'i-travel', { USD: 15_900 }, 'IDR')!;
+    expect(view).toMatchObject({ name: 'Travel wallet', subtype: 'bank', owner: 'm-rina', ownerName: 'Rina', totalMinor: 3_100_000 + 120_00 * 159, missing: [], converted: true });
+    expect(view.pockets.map((each) => [each.itemId, each.currency, each.balanceMinor])).toEqual([
+      ['i-idr', 'IDR', 3_100_000],
+      ['i-usd', 'USD', 120_00],
+    ]);
+  });
+
+  it('names a missing rate rather than adding up a short total', () => {
+    expect(pocketAccountView(shared, 'i-travel', {}, 'IDR')).toMatchObject({ totalMinor: null, missing: ['USD'] });
+  });
+
+  it('is nothing for an id no pocket names', () => {
+    expect(pocketAccountView(shared, 'i-visa', {}, 'IDR')).toBeNull();
+    expect(pocketAccountView(null, 'i-travel', {}, 'IDR')).toBeNull();
   });
 });
