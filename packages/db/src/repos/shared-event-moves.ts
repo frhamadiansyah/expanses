@@ -87,7 +87,9 @@ async function movableTx(tx: Db, ws: WorkspaceContext, transactionId: string): P
     moneyCurrency: paid![2],
     chargedMinor: -Number(paid![1]),
     currency: original ? head[3]! : category![2],
-    amountMinor: original ? Number(head[4]) : Number(category![1]),
+    // The stored original amount is always above zero (the ledger's rule); a refund's goes in below zero, as its
+    // category line does — else the record reads as a purchase against a credited account and is refused.
+    amountMinor: original ? Math.sign(Number(category![1])) * Math.abs(Number(head[4])) : Number(category![1]),
   };
 }
 

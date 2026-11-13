@@ -161,4 +161,29 @@ describe('refunds in a shared event', () => {
     expect(view.spentMinor).toBe(50_000);
     expect(view.people.reduce((s, p) => s + p.balanceMinor, 0)).toBe(0);
   });
+  it('a refund to a rupiah card typed in the event currency moves in below zero, and the card is credited in rupiah', async () => {
+    // Owner, 13 Nov 2026: a rental deposit back on her own IDR card, typed in the trip's currency, stayed in Family with
+    // "Only a purchase…": its stored original amount is positive, so the record went in above zero against a credit.
+    const t = await holiday();
+    await t.buy(90_000, equal3);
+    const rupiahCard = await createAccount(t.database, t.ws, { name: 'Home card', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    const refund = await postTransaction(t.database, t.inPersonal, {
+      occurredOn: '2026-10-09', description: 'Refund · Harbour grill',
+      lines: refundLines({ categoryAccountId: t.dining.id, paymentAccountId: rupiahCard.id, amountMinor: 168_000, currency: 'IDR' }),
+      originalCurrency: 'TRY', originalAmountMinor: 30_000,
+    });
+    const { moved, kept } = await moveIntoSharedEvent(t.database, t.ws, t.eventId, [refund]);
+    expect(kept).toEqual([]);
+    expect(moved).toHaveLength(1);
+    const view = (await sharedEventView(t.database, t.ws, t.eventId))!;
+    expect(view.spentMinor).toBe(60_000);
+    const row = view.expenses.find((e) => e.expenseId === moved[0]!.expenseId)!;
+    expect(row).toMatchObject({ amountMinor: -30_000, currency: 'TRY', unreadable: null });
+    // The rupiah card still reads the refund it had: credited 168,000, with its original pair kept above zero.
+    const card = await t.database.db.values<[number]>(sql`SELECT sum(e.amount_minor) FROM entries e JOIN transactions x ON x.id = e.transaction_id WHERE e.account_id = ${rupiahCard.id} AND x.status = 'posted'`);
+    expect(Number(card[0]![0])).toBe(168_000);
+    const [now] = await listTransactions(t.database, t.ws, { accountId: rupiahCard.id });
+    expect(now).toMatchObject({ originalCurrency: 'TRY', originalAmountMinor: 30_000, eventId: t.eventId });
+    expect((await listTransactions(t.database, t.inPersonal)).map((v) => v.id)).not.toContain(refund);
+  });
 });
