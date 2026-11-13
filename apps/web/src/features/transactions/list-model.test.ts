@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import type { ListRow } from './list-model';
-import { amountExtraParts, amountLook, wholeLeftOut, billTagOf, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory, excludedHere, hasNotCountedPart, outsideEvents, accountsWithTransactions } from './list-model';
+import { amountExtraParts, amountLook, wholeLeftOut, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory, excludedHere, hasNotCountedPart, outsideEvents, accountsWithTransactions } from './list-model';
 
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], extra: Partial<AccountRow> = {}): AccountRow => ({
   id, workspaceId: 'ws', parentId: null, kind, subtype, name: id, icon: null, currency: kind === 'expense' || kind === 'income' ? null : 'IDR', valuationMode: 'derived', systemKey: null, sortOrder: 0, archivedAt: null, createdAt: '2026-09-01T00:00:00Z', ...extra,
@@ -285,16 +285,6 @@ describe('a purchase marked "not my spending"', () => {
       ['Groceries', 250_000],
       ['Electronics', 0],
     ]);
-  });
-});
-
-describe('billTagOf', () => {
-  it('names the bill month of a payment made in another month, and nothing else', () => {
-    const food: [string, number][] = [['food', 100], ['bca', -100]];
-    expect(billTagOf(tx('2026-09-03', 'Biznet', food, { billMonth: '2026-08' }))).toBe('Aug bill');
-    expect(billTagOf(tx('2026-09-03', 'Rent', food, { billMonth: '2026-09' }))).toBeNull();
-    expect(billTagOf(tx('2026-09-03', 'Coffee', food, { billMonth: null }))).toBeNull();
-    expect(billTagOf(tx('2026-09-03', 'Coffee', food))).toBeNull();
   });
 });
 

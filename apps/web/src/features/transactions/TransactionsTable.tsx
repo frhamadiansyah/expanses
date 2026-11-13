@@ -8,7 +8,7 @@ import { payerLine } from '../sharing/sharing-copy';
 import type { RowBook } from '../workspaces/filing';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { isEditable } from './draft';
-import { billTagOf, type ListRow } from './list-model';
+import type { ListRow } from './list-model';
 import { QuickRowEditor, ROW_GRID, type RowOptions } from './QuickRowEditor';
 import { ReceiptLink } from './ReceiptLink';
 import { isQuickEditable, parsePastedRows, quickFromDraft, quickFromTransaction, type QuickValues, readQuick, shortDate, valuesFromCells } from './quick-row';
@@ -154,7 +154,6 @@ function EditableRow({ row, options, accounts, today, baseCurrency, handlers }: 
   const dirty = !same(values, initial);
   const { needs } = readQuick(values, accounts, today, baseCurrency);
   const busy = handlers.busy === row.id;
-  const billTag = isDraft ? null : billTagOf(row.tx!);
 
   const save = () => {
     if (isDraft) void handlers.saveDraft(row.id, values, needs.length === 0);
@@ -203,7 +202,6 @@ function EditableRow({ row, options, accounts, today, baseCurrency, handlers }: 
             </>
           ) : (
             <>
-              {billTag && <BillTag text={billTag} />}
               <ReceiptLink transactionId={row.id} description={row.description} />
               <TwoTap busy={busy} label="Delete" onConfirm={() => void handlers.deleteRecorded(row.id)} />
             </>
@@ -212,11 +210,6 @@ function EditableRow({ row, options, accounts, today, baseCurrency, handlers }: 
       />
     </div>
   );
-}
-
-/** Paid in one month for another's bill, as on the list: counted in the budget in its bill month, shown on the day paid. */
-function BillTag({ text }: { text: string }) {
-  return <span className="rounded bg-slate-100 px-1.5 text-xs whitespace-nowrap text-slate-500">{text}</span>;
 }
 
 function LockedRow({ row, today, handlers }: { row: ListRow; today: string; handlers: TableHandlers }) {
@@ -240,11 +233,6 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
         <span className="tabular truncate px-2 text-slate-500">{shortDate(row.date, today)}</span>
         <span className="truncate px-2">
           {row.description}
-          {billTagOf(tx) && (
-            <span className="ml-2">
-              <BillTag text={billTagOf(tx)!} />
-            </span>
-          )}
         </span>
         <span className={cx('tabular truncate px-2 text-right font-medium', (row.type === 'income' || row.refund) && 'text-emerald-700', kind && 'text-slate-500')}>
           {sign}

@@ -1,4 +1,4 @@
-import { compareWithinDay, dayNet, formatMinor, isExchangeResultKey, isNotCountedKey, isUncategorisedKey, matchesSearch, monthName, parsePeriod } from '@expanses/core';
+import { compareWithinDay, dayNet, formatMinor, isExchangeResultKey, isNotCountedKey, isUncategorisedKey, matchesSearch, parsePeriod } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, SharedTransferRow, TransactionEntryView, TransactionView } from '@expanses/db';
 import type { PurchasePoints } from '../../lib/purchase-points';
 import { formatPoints } from '../cards/format-points';
@@ -8,14 +8,6 @@ import { classify } from './classify';
  * The transactions list as data: recorded transactions and drafts not yet recorded, in one shape, so
  * search, filters, sorting, days and totals treat both the same way and can be tested without a page.
  */
-
-/**
- * "Aug bill" on a bill payment made in another month than the bill it settles. The list keeps the day it was paid;
- * the budget and the chart count it in its bill month, and the tag is what says why.
- */
-export function billTagOf(tx: Pick<TransactionView, 'occurredOn' | 'billMonth'>): string | null {
-  return tx.billMonth && tx.billMonth !== tx.occurredOn.slice(0, 7) ? `${monthName(tx.billMonth, 'short')} bill` : null;
-}
 
 /** A split part counted in no workspace ("Not counted"): a line on the Not counted equity account. */
 export const isNotCountedLine = (entry: Pick<TransactionEntryView, 'accountKind' | 'accountSystemKey'>): boolean =>

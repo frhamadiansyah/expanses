@@ -69,7 +69,7 @@ import { AmountExtra, DraftSubtitle, PaidWith, TransactionRow, useRecategorise }
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, keepsReadFigure, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
-import { accountsWithTransactions, amountExtraParts, billTagOf, buildRows, sharedTransferRow, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, hasNotCountedPart, type ListFilters, type ListRow, outsideEvents, type Sort, sortRows, totals } from './list-model';
+import { accountsWithTransactions, amountExtraParts, buildRows, sharedTransferRow, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, hasNotCountedPart, type ListFilters, type ListRow, outsideEvents, type Sort, sortRows, totals } from './list-model';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
@@ -1124,7 +1124,6 @@ export function TransactionsPage() {
     const goal = goalName(tradeByTransaction.get(tx.id)?.goalId ?? tx.goalId ?? null);
     const points = purchasePoints.data?.[tx.id];
     const trade = tradeByTransaction.get(tx.id) ?? null;
-    const billTag = billTagOf(tx);
     // Filed in another workspace: it can still be reached and asked about, but it is not dressed as editable.
     // A share that ended here is kept read-only (§8.6): nothing on it is edited, deleted or re-filed.
     const reachable = !trade && isEditable(tx) && !readOnly;
@@ -1183,8 +1182,6 @@ export function TransactionsPage() {
             {/* Outside a single month the day alone is ambiguous, so the circle's day gains its month here. */}
             {withDate && (!singleMonth || grouping !== 'category') && <span className="tabular mr-2 font-normal text-slate-500">{shortDate(row.date, today)}</span>}
             {label}
-            {/* Paid in one month for another's bill: listed on the day paid, counted in the budget in its bill month. */}
-            {billTag && <span className="ml-2 rounded bg-slate-100 px-1.5 text-xs font-normal text-slate-500">{billTag}</span>}
           </>
         }
         subtitle={

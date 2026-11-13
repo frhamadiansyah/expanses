@@ -346,12 +346,14 @@ test('last month’s overdue bill paid from its page says so, can be undone, and
   await sheet.getByRole('button', { name: 'Record payment' }).click();
   await expect(banner).toContainText(`${lastMonth} bill`);
 
-  // Listed on the day it was paid, with a tag saying whose month it was.
+  // Listed on the day it was paid, plain: no tag naming the bill's month on the row (the budget still counts it there).
   await page.goto('/transactions');
-  await expect(page.getByRole('listitem').filter({ hasText: 'Biznet Home' }).first()).toContainText(`${lastMonth.slice(0, 3)} bill`);
-  // The table says the same on a wide screen.
+  await expect(page.getByRole('listitem').filter({ hasText: 'Biznet Home' }).first()).toBeVisible();
+  await expect(page.getByRole('listitem').filter({ hasText: 'Biznet Home' }).first()).not.toContainText(`${lastMonth.slice(0, 3)} bill`);
+  // Nor in the table on a wide screen.
   await page.getByRole('button', { name: 'Table' }).click();
-  await expect(page.getByTestId('table-row').filter({ hasText: `${lastMonth.slice(0, 3)} bill` })).toHaveCount(1);
+  await expect(page.getByTestId('table-row').first()).toBeVisible();
+  await expect(page.getByTestId('table-row').filter({ hasText: `${lastMonth.slice(0, 3)} bill` })).toHaveCount(0);
 });
 
 test('Pay several names the bill it recorded, not the one first picked', async ({ page }) => {
