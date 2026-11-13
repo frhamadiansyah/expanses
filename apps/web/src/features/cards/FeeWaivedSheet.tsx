@@ -1,4 +1,4 @@
-import { chargeAfterWaiver, dayMonth, formatMinor, groupedMajorString, groupTypedAmount, parseGroupedMajor } from '@expanses/core';
+import { dayMonth, formatMinor, groupedMajorString, groupTypedAmount, parseGroupedMajor } from '@expanses/core';
 import { annualFeeCharges, type FeeChargeChoice, feeWaivedStatus, type FeeWaivedStatus, saveFeeWaived, setAnnualFeeOn, undoFeeWaived } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
@@ -8,9 +8,10 @@ import { Sheet } from '../../app/Sheet';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { UndoToast } from '../../ui/UndoToast';
-import { NoticeAlert } from '../../ui/native/NoticeAlert';
+import { ALERT_ROW, NoticeAlert } from '../../ui/native/NoticeAlert';
 import { InsetGroup, InsetRow, SwitchRow, TextRow } from '../../ui/native';
 import { owedMinor } from '../networth/debt-rows';
+import { FeeDayMonthRow } from './FeeDayMonthRow';
 import { DateRow } from '../transactions/CardRows';
 import { feeDateText } from './fee-line';
 
@@ -48,7 +49,7 @@ export function useFeeWaivedStatus(cardId: string, today: string) {
  * Back on the card, on once the charge has happened: with the fee charge recorded, the refund cancels that charge
  * (another can be picked from the card's charges near the date); with none recorded, the amount that came back is
  * recorded on the card alone. Off, the fee was never charged and only the year is marked. A year already waived
- * shows what was recorded, with Undo. `onSaved` hands back the year, for the Undo toast.
+ * shows what was recorded, with Reset (asked to confirm). `onSaved` hands back the year, for the Undo toast.
  */
 export function FeeWaivedSheet({ fee, today, onClose, onSaved, chargedAsNormal = false }: { fee: WaivedFee; today: string; onClose: () => void; onSaved: (year: number) => void; chargedAsNormal?: boolean }) {
   const { database, ws } = useApp();
@@ -61,6 +62,7 @@ export function FeeWaivedSheet({ fee, today, onClose, onSaved, chargedAsNormal =
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [back, setBack] = useState<boolean | null>(null);
   const [chargeId, setChargeId] = useState<string | null | undefined>(undefined);
   const [amount, setAmount] = useState(fee.annualFeeMinor !== null ? groupedMajorString(fee.annualFeeMinor, currency) : '');
@@ -110,7 +112,7 @@ export function FeeWaivedSheet({ fee, today, onClose, onSaved, chargedAsNormal =
     const into = recorded ? (accounts.data ?? []).find((a) => a.id === recorded.intoAccountId)?.name : undefined;
     return (
       <Sheet grouped closeOnly title={title} onClose={onClose}>
-        <InsetGroup footer={dated ? `Next charge ${feeDateText(chargeAfterWaiver(status.data.covered, today))}.` : undefined}>
+        <InsetGroup>
           <InsetRow plain title="Back on the card" value={recorded ? 'On' : 'Off'} />
           {recorded && <InsetRow plain title={recorded.cancelsCharge ? 'Refund' : 'Amount'} value={formatMinor(recorded.amountMinor, currency)} valueTone="ink" />}
           {recorded && <InsetRow plain title="Came back on" value={feeDateText(recorded.on)} />}
@@ -118,9 +120,30 @@ export function FeeWaivedSheet({ fee, today, onClose, onSaved, chargedAsNormal =
           {!recorded && <InsetRow plain title="Recorded" value="Year marked waived" />}
         </InsetGroup>
         <InsetGroup>
-          <InsetRow destructive title="Undo" testId="fee-waived-undo" disabled={busy} onClick={() => void run(() => undoFeeWaived(database, ws, { cardId: fee.cardId, today }), () => {})} />
+          <InsetRow destructive title="Reset" testId="fee-waived-undo" disabled={busy} onClick={() => setConfirming(true)} />
         </InsetGroup>
         <ErrorBox error={error} />
+        {confirming && (
+          <NoticeAlert
+            title={`Reset the ${year} fee?`}
+            text={recorded ? `The ${formatMinor(recorded.amountMinor, currency)} refund comes off the card, and the fee reads as charged again.` : 'The fee reads as charged again.'}
+            actions={
+              <button
+                type="button"
+                data-testid="fee-reset-confirm"
+                className={`${ALERT_ROW} font-semibold text-[var(--ph-alarm)]`}
+                onClick={() => {
+                  setConfirming(false);
+                  void run(() => undoFeeWaived(database, ws, { cardId: fee.cardId, today }), () => {});
+                }}
+              >
+                Reset
+              </button>
+            }
+            closeLabel="Cancel"
+            onClose={() => setConfirming(false)}
+          />
+        )}
       </Sheet>
     );
   }
@@ -132,7 +155,7 @@ export function FeeWaivedSheet({ fee, today, onClose, onSaved, chargedAsNormal =
     return (
       <Sheet grouped title={title} onClose={onClose} confirm={{ label: 'Save', disabled: busy || feeOn === '', run: setDate }}>
         <InsetGroup footer={<span data-testid="fee-waived-footer">Set the day the fee is charged first.</span>}>
-          <TextRow label="Charged on" type="date" value={feeOn} onChange={(e) => setFeeOn(e.target.value)} />
+          <FeeDayMonthRow value={feeOn} today={today} onChange={setFeeOn} />
         </InsetGroup>
         <ErrorBox error={error} />
       </Sheet>

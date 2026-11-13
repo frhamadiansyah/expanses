@@ -685,7 +685,7 @@ export {
   waiverSpend,
   waiverWindow,
 } from './points/spend-bonus';
-export { chargeAfterWaiver, coveredCharge, FEE_SOON_DAYS, feeDaysAway, feeWaived, nextFeeDate, type UpcomingFee, upcomingFees } from './points/fee-date';
+export { chargeAfterWaiver, coveredCharge, FEE_SOON_DAYS, feeDateFromDayMonth, feeDaysAway, feeWaived, nextFeeDate, type UpcomingFee, upcomingFees } from './points/fee-date';
 export {
   extraEffect,
   type ExtraEffect,

@@ -117,3 +117,11 @@ export async function backToCardFromPlans(page: Page) {
   await page.goBack();
   await expect(page.getByTestId('card-instalments')).toBeVisible();
 }
+
+/** Picks "Charged on" (a day and a month, no year) from an ISO date, or clears it with ''. */
+export async function pickChargedOn(page: Page, isoDate: string) {
+  const day = page.getByLabel('Charged on day');
+  const month = page.getByLabel('Charged on month');
+  await day.selectOption(isoDate ? String(Number(isoDate.slice(8, 10))) : '0');
+  if (isoDate) await month.selectOption(String(Number(isoDate.slice(5, 7))));
+}
