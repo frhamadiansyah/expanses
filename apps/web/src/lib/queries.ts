@@ -1,5 +1,5 @@
 import { isoDate } from '@expanses/core';
-import { type AccountRow, categoryIdsOfBook, isBookShared, listAccounts, listCategoryColours, nativeBalances, pocketParentIds, resolveRates } from '@expanses/db';
+import { type AccountRow, categoryIdsOfBook, isBookShared, listAccounts, listCategoryColours, memberPayerAccounts, nativeBalances, pocketParentIds, resolveRates } from '@expanses/db';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { useApp } from '../app/context';
@@ -15,6 +15,15 @@ export function useAccounts() {
     queryKey: ['accounts', ws.workspaceId],
     queryFn: async () => shownAccounts(await listAccounts(database, ws, { includeArchived: true })),
   });
+}
+
+/**
+ * The accounts that stand for another household member (placeholders, spec §4.4), each by the member's name: what a bill
+ * another member pays from an account of their own names on this phone, which `useAccounts` never lists.
+ */
+export function useMemberPayers() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['accounts', ws.workspaceId, 'member-payers'], queryFn: () => memberPayerAccounts(database, ws) });
 }
 
 /** Colours picked by hand for top-level categories, by id. Every mark and chart asks, so they agree. */

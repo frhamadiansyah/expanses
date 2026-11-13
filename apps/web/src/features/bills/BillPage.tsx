@@ -7,7 +7,7 @@ import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { useBack } from '../../app/BackHeader';
 import { useFrom, useFromTransaction } from '../../app/from-search';
-import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInvalidateAll, useMemberPayers } from '../../lib/queries';
 import { cx, ErrorBox, Money } from '../../ui';
 import { UndoToast } from '../../ui/UndoToast';
 import { ActionButtons, type GroupChild, InsetGroup, InsetRow, LargeTitle, Panel, PushedTitle, ReadOnlyRow, type RoundAction, SCREEN } from '../../ui/native';
@@ -59,6 +59,8 @@ export function BillPage({ billId }: { billId: string }) {
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
   const { nameOf: paidName } = usePaidFromLabels(moneyHolders(accounts));
+  // A bill another member pays from an account of their own names no account here (spec §4.4): it says whose it is.
+  const memberPayers = useMemberPayers().data;
   const today = isoDate();
   const detail = useBillDetail(billId, today);
   const fund = (useSinkingFunds(today).data ?? []).find((f) => f.billId === billId);
@@ -218,7 +220,7 @@ export function BillPage({ billId }: { billId: string }) {
           }
         />
         {bill.currency ? <ReadOnlyRow label="Currency" value={bill.currency} /> : null}
-        <ReadOnlyRow label="Paid from" value={account ? paidName(account) : ''} />
+        <ReadOnlyRow label="Paid from" value={account ? paidName(account) : (memberPayers?.get(bill.moneyAccountId) ?? '')} />
         <ReadOnlyRow label="Category" value={category?.name ?? ''} />
         {bookName ? <ReadOnlyRow label="Workspace" value={bookName} /> : null}
       </InsetGroup>

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { account, card, kreditFact, loanRow, readings } from './plan-fixtures';
 import { planDebts } from './plan-inputs';
 import { billPay, cardPay, loanPay } from './pay-target';
-import { type CardMonth, dueItems, dueRow, dueThisMonthCount, type MonthInput, monthItems, monthSections, monthTotals } from './schedule-view';
+import { billCover, type CardMonth, dueItems, dueRow, dueThisMonthCount, type MonthInput, monthItems, monthSections, monthTotals } from './schedule-view';
 
 /**
  * November 2026: the paylater's 4/6 (due 1 Nov) unpaid, BCA Visa's October statement due 18 Nov, Electricity pay-by
@@ -218,7 +218,7 @@ describe('a loan paid off', () => {
 
 describe('a bill paid from a credit card', () => {
   it('keeps its row, says which card, and stays out of the totals the statement already counts', () => {
-    const items = monthItems({ ...input('2026-11-04'), bills: [{ row: electricity(), currency: 'IDR', onCard: 'BCA Visa' }] });
+    const items = monthItems({ ...input('2026-11-04'), bills: [{ row: electricity(), currency: 'IDR', cover: { card: 'BCA Visa' } }] });
     const bill = items.find((i) => i.kind === 'bill')!;
     expect(bill).toMatchObject({ detail: 'Bill · 20 Nov · on BCA Visa', inTotals: false });
     expect(monthTotals(items, '2026-11').dueMinor).toBe(kreditNov('2026-11-04') + 6_214_300 + 2_480_000);
@@ -226,11 +226,55 @@ describe('a bill paid from a credit card', () => {
   });
 });
 
+describe('who answers for a bill (billCover)', () => {
+  const accounts = [
+    { id: 'bank', subtype: 'bank', name: 'Own Bank' },
+    { id: 'card', subtype: 'credit_card', name: 'Own Card' },
+  ];
+  it("a credit card on this phone's list is the card, by name; any other own account is nobody's but this phone's", () => {
+    expect(billCover('card', accounts, new Map())).toEqual({ card: 'Own Card' });
+    expect(billCover('bank', accounts, new Map())).toBeNull();
+  });
+  it("an account this phone does not hold is another member's: by the member's name when it is their placeholder", () => {
+    expect(billCover('ph-1', accounts, new Map([['ph-1', 'Sari']]))).toEqual({ member: 'Sari' });
+    expect(billCover('gone', accounts, new Map())).toEqual({ member: null });
+  });
+});
+
+describe("a bill on one member's own card, seen from both phones", () => {
+  // The payer's phone holds the card; the partner's holds only a placeholder for her (packages/db bill-member-payer.test).
+  const payerPhone = [{ id: 'card-sari', subtype: 'credit_card', name: 'Sari Card' }];
+  const partnerPhone = [{ id: 'bank-bima', subtype: 'bank', name: 'Bima Bank' }];
+  const onPayer = billCover('card-sari', payerPhone, new Map());
+  const onPartner = billCover('ph-sari', partnerPhone, new Map([['ph-sari', 'Sari']]));
+  const late = electricity('overdue');
+  const row = (cover: ReturnType<typeof billCover>) => ({ bill: { ...late.bill, window: late.window, state: late.state, estimateMinor: late.estimateMinor }, currency: 'IDR', cover });
+
+  it('neither Cashflow row asks for it', () => {
+    for (const cover of [onPayer, onPartner]) {
+      expect(dueItems({ debts: [], loanFacts: [], bills: [row(cover)], today: '2026-12-04' })).toEqual([]);
+    }
+  });
+  it("both plans list it out of the totals, the payer's by card and the partner's by member", () => {
+    const plan = (cover: ReturnType<typeof billCover>) => monthItems({ ...input('2026-11-04'), bills: [{ row: electricity(), currency: 'IDR', cover }] });
+    const mine = plan(onPayer);
+    const theirs = plan(onPartner);
+    expect(mine.find((i) => i.kind === 'bill')).toMatchObject({ detail: 'Bill · 20 Nov · on Sari Card', inTotals: false });
+    expect(theirs.find((i) => i.kind === 'bill')).toMatchObject({ detail: 'Bill · 20 Nov · paid by Sari', inTotals: false });
+    expect(monthTotals(theirs, '2026-11')).toEqual(monthTotals(mine, '2026-11'));
+    expect(dueRow(theirs, '2026-11-18')).toEqual(dueRow(mine, '2026-11-18'));
+  });
+  it('a member not known by name reads as another member', () => {
+    const items = monthItems({ ...input('2026-11-04'), bills: [{ row: electricity(), currency: 'IDR', cover: { member: null } }] });
+    expect(items.find((i) => i.kind === 'bill')).toMatchObject({ detail: 'Bill · 20 Nov · paid by another member', inTotals: false });
+  });
+});
+
 describe('the Cashflow row from what is already read', () => {
   it('says what the month model says, without reading a month', () => {
     for (const day of ['2026-11-16', '2026-11-17']) {
       const full = input(day);
-      const bills = full.bills.map(({ row, currency }) => ({ bill: { ...row.bill, window: row.window, state: row.state, estimateMinor: row.estimateMinor }, currency, onCard: null }));
+      const bills = full.bills.map(({ row, currency }) => ({ bill: { ...row.bill, window: row.window, state: row.state, estimateMinor: row.estimateMinor }, currency, cover: null }));
       const pick = (row: ReturnType<typeof dueRow>) => row && { title: row.title, subtitle: row.subtitle, tone: row.tone, rest: row.rest, key: row.item.key, minor: row.item.minor, pay: row.item.pay };
       expect(pick(dueRow(dueItems({ debts: full.debts, loanFacts: full.loanFacts, bills, today: day }), day))).toEqual(pick(dueRow(monthItems(full), day)));
     }
@@ -239,7 +283,7 @@ describe('the Cashflow row from what is already read', () => {
     const full = input('2026-11-18');
     const row = full.bills[0]!.row;
     const bill = { ...row.bill, window: row.window, state: 'dueSoon' as const, estimateMinor: 780_000 };
-    const items = dueItems({ debts: [], loanFacts: [], bills: [{ bill, currency: 'IDR', onCard: 'BCA Visa' }, { bill: { ...bill, id: 'B2', state: 'paid' as const }, currency: 'IDR', onCard: null }], today: '2026-11-18' });
+    const items = dueItems({ debts: [], loanFacts: [], bills: [{ bill, currency: 'IDR', cover: { card: 'BCA Visa' } }, { bill: { ...bill, id: 'B2', state: 'paid' as const }, currency: 'IDR', cover: null }], today: '2026-11-18' });
     expect(dueRow(items, '2026-11-18')).toBeNull();
   });
 });

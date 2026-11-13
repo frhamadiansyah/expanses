@@ -1,4 +1,5 @@
 import { and, eq, or, sql, type SQLWrapper } from 'drizzle-orm';
+import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { sharedBooks } from '../schema-sharing';
 
@@ -49,4 +50,21 @@ export async function isBookShared(database: Database, bookId: string): Promise<
     .from(sharedBooks)
     .where(and(eq(sharedBooks.bookId, bookId), or(eq(sharedBooks.state, 'active'), eq(sharedBooks.state, 'needs_invite'))));
   return !!row;
+}
+
+/**
+ * Every placeholder account in the workspace (spec §4.4) and the member it stands for, by that member's name as the book
+ * holds it now (a rename reaches it; the placeholder's own name is the one it was made with). A bill another member pays
+ * from an account of their own arrives on this phone naming one of these, never their account (`payerAccountTx`), so
+ * this is all a partner's phone can know of who pays it — not whether it is a card. Empty on a database one version
+ * behind, where nothing is shared yet.
+ */
+export async function memberPayerAccounts(database: Database, ws: WorkspaceContext): Promise<Map<string, string>> {
+  if (!(await sharingTablesExist(database.db))) return new Map();
+  const rows = await database.db.values<[string, string | null, string]>(sql`
+    SELECT m.account_id, bm.name, a.name
+    FROM book_member_accounts m
+    JOIN accounts a ON a.id = m.account_id AND a.workspace_id = ${ws.workspaceId}
+    LEFT JOIN book_members bm ON bm.book_id = m.book_id AND bm.member_id = m.member_id`);
+  return new Map(rows.map(([accountId, member, placeholder]) => [accountId, member || placeholder]));
 }
