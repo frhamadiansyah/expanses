@@ -1041,12 +1041,37 @@ export async function billLinkMonth(
   database: Database,
   ws: WorkspaceContext,
   input: { templateId: string; purchasedOn: string; today?: string },
-): Promise<{ month: string; ask: boolean; opensOn: string }> {
+): Promise<BillLinkMonth> {
   const template = await liveTemplate(database, ws, input.templateId);
-  const facts = await billFacts(database, ws, [template]);
-  const rules = linkInput(template, facts, input.today ?? isoDate());
-  const { month, ask } = linkChoice(input.purchasedOn, rules);
-  return { month, ask, opensOn: billWindow(month, template.dayOfMonth, template.payByDay).opensOn };
+  return (await linkMonthsOf(database, ws, [template], input.purchasedOn, input.today ?? isoDate()))[template.id]!;
+}
+
+export interface BillLinkMonth {
+  month: string;
+  ask: boolean;
+  opensOn: string;
+}
+
+/** `billLinkMonth` for many bills at once, keyed by bill id: one read of the bills and their months for all of them. */
+export async function billLinkMonths(
+  database: Database,
+  ws: WorkspaceContext,
+  input: { templateIds: readonly string[]; purchasedOn: string; today?: string },
+): Promise<Record<string, BillLinkMonth>> {
+  if (input.templateIds.length === 0) return {};
+  const wanted = new Set(input.templateIds);
+  const templates = (await listExpenseTemplates(database, ws)).filter((t) => wanted.has(t.id));
+  return linkMonthsOf(database, ws, templates, input.purchasedOn, input.today ?? isoDate());
+}
+
+async function linkMonthsOf(database: Database, ws: WorkspaceContext, templates: ExpenseTemplateRow[], purchasedOn: string, today: string): Promise<Record<string, BillLinkMonth>> {
+  const facts = await billFacts(database, ws, templates);
+  return Object.fromEntries(
+    templates.map((template) => {
+      const { month, ask } = linkChoice(purchasedOn, linkInput(template, facts, today));
+      return [template.id, { month, ask, opensOn: billWindow(month, template.dayOfMonth, template.payByDay).opensOn }];
+    }),
+  );
 }
 
 /** Links a purchase already recorded to one month of a bill, so that month reads as paid with the purchase's own date and amount. */

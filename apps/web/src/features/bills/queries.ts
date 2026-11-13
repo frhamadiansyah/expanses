@@ -1,4 +1,4 @@
-import { billDetail, billLinkCandidates, billLinkMonth, billLinkRefusal, billMonthsBefore, billOfPurchase, bookMoneyFor, listExpenseTemplates, monthlyBills, sinkingFundViews, yearlyBills } from '@expanses/db';
+import { billDetail, billLinkCandidates, billLinkMonths, billLinkRefusal, billMonthsBefore, billOfPurchase, bookMoneyFor, listExpenseTemplates, monthlyBills, sinkingFundViews, yearlyBills } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -58,7 +58,7 @@ export function useBillLinkMonths(billIds: readonly string[], purchasedOn: strin
   const { database, ws } = useApp();
   return useQuery({
     queryKey: ['bill-link-month', ws.workspaceId, ws.bookId ?? null, [...billIds], purchasedOn, today],
-    queryFn: async () => Object.fromEntries(await Promise.all(billIds.map(async (id) => [id, await billLinkMonth(database, ws, { templateId: id, purchasedOn: purchasedOn!, today })] as const))) as Record<string, { month: string; ask: boolean; opensOn: string }>,
+    queryFn: () => billLinkMonths(database, ws, { templateIds: billIds, purchasedOn: purchasedOn!, today }),
     enabled: purchasedOn !== null && billIds.length > 0,
   });
 }

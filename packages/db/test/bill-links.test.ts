@@ -3,6 +3,7 @@ import {
   billDetail,
   billLinkCandidates,
   billLinkMonth,
+  billLinkMonths,
   billLinkRefusal,
   billMonthsBefore,
   billOfPurchase,
@@ -349,6 +350,18 @@ it('a monthly bill out on the 25th, paid by the 5th, takes a payment in the mont
   expect(await at('2026-11-26', '2026-11-26')).toMatchObject({ month: '2026-11', ask: false });
   // Bought 27 Oct, inside October's window, October paid: never September in silence — October, asked.
   expect(await at('2026-10-27')).toMatchObject({ month: '2026-10', ask: true });
+});
+
+it('reads the months of many bills in one go, each as it reads alone', async () => {
+  const h = await setup();
+  const later = await saveExpenseTemplate(h.database, h.ws, {
+    name: 'Apartment service', categoryAccountId: h.category('utilities.water_sanitation'), moneyAccountId: h.bca.id, amountMinor: 640_000, dayOfMonth: 25, payByDay: 5, startsMonth: '2026-09',
+  });
+  const read = { purchasedOn: '2026-11-03', today: '2026-11-13' };
+  const all = await billLinkMonths(h.database, h.ws, { templateIds: [h.bill, later], ...read });
+  expect(all[h.bill]).toEqual(await billLinkMonth(h.database, h.ws, { templateId: h.bill, ...read }));
+  expect(all[later]).toEqual({ month: '2026-10', ask: false, opensOn: '2026-10-25' });
+  expect(await billLinkMonths(h.database, h.ws, { templateIds: [], ...read })).toEqual({});
 });
 
 it('a pay-later bill started in November never takes a 3 Nov payment as October\'s', async () => {
