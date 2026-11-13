@@ -1,7 +1,7 @@
-import { transferLines } from '@expanses/core';
+import { transferLines, transferWithFeeLines } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import { createBook, inBook, listSharedTransfers, listTransactions, postTransaction, replaceTransaction, voidTransaction } from '../../src/index';
-import { Household, skipsOf } from './household';
+import { categoryOf, Household, projectBook, skipsOf } from './household';
 
 /* A transfer recorded in a shared workspace reaches the partner as a redacted row: no accounts, no balance effect. */
 
@@ -73,6 +73,29 @@ describe('transfers in a shared workspace', () => {
     await home.settle();
     expect(await listSharedTransfers(b.database, bookId)).toEqual([]);
     expect(await skipsOf(b.database)).toEqual([]);
+  });
+
+  it('edited into a transfer with a fee (a purchase now), its redacted row goes: the partner sees the purchase, never a stale transfer', async () => {
+    const { home, a, b, bookId } = await setup();
+    const ws = inBook(a.ws, bookId);
+    const id = await postTransaction(a.database, ws, {
+      occurredOn: '2026-09-10',
+      description: 'Cash withdrawal',
+      fileTransfer: true,
+      lines: transferLines({ fromAccountId: a.bank, toAccountId: a.cash, amountMinor: 400_000, currency: 'IDR' }),
+    });
+    await home.settle();
+    expect(await listSharedTransfers(b.database, bookId)).toHaveLength(1);
+    const fee = await categoryOf(a.database, bookId, 'Groceries');
+    await replaceTransaction(a.database, ws, id, {
+      occurredOn: '2026-09-10',
+      description: 'Cash withdrawal',
+      lines: transferWithFeeLines({ fromAccountId: a.bank, toAccountId: a.cash, amountMinor: 400_000, feeMinor: 6_500, currency: 'IDR', feeCategoryId: fee }),
+    });
+    await home.settle();
+    expect(await skipsOf(b.database)).toEqual([]);
+    expect(await listSharedTransfers(b.database, bookId)).toEqual([]);
+    expect(await projectBook(a.database, bookId)).toEqual(await projectBook(b.database, bookId));
   });
 
   it('moved into the shared workspace it appears, moved out it goes, and it is listed by one workspace on the recorder', async () => {

@@ -160,6 +160,29 @@ describe('a Family transfer moved into a shared trip', () => {
     expect(await projectBook(s.wife.database, s.family)).toEqual(await projectBook(s.husband.database, s.family));
   });
 
+  it('edited into a transfer with a fee (a purchase now), it leaves the trip and is Family spending on both phones, with no row left behind', async () => {
+    const s = await familyAndTrip();
+    const id = await withdrawal(s);
+    await s.settle();
+    await moveIntoSharedEvent(s.wife.database, ownerScope(s.wife.ws), s.trip.eventOf(s.wife), [id]);
+    await s.settle();
+    const fees = await categoryOf(s.wife.database, s.family, 'Groceries');
+    const edited = await replaceTransaction(s.wife.database, inBook(s.wife.ws, s.family), id, {
+      occurredOn: '2026-10-08',
+      description: 'ATM withdrawal',
+      lines: transferWithFeeLines({ fromAccountId: s.wife.bank, toAccountId: s.wife.cash, amountMinor: 2_240_000, feeMinor: 7_500, currency: 'IDR', feeCategoryId: fees }),
+    });
+    await s.settle();
+    expect(await skipsOf(s.husband.database)).toEqual([]);
+    for (const d of [s.wife, s.husband]) expect((await tripOf(s, d)).transfers).toEqual([]);
+    // No live redacted row is left pointing at the replaced transaction, on either phone.
+    for (const d of [s.wife, s.husband]) expect(await d.database.db.values(sql`SELECT transfer_id FROM shared_transfers WHERE void = 0`)).toEqual([]);
+    expect(await eventTransferOf(s.wife.database, edited)).toBeNull();
+    expect((await listTransactions(s.wife.database, inBook(s.wife.ws, s.family), {})).map((t) => t.id)).toEqual([edited]);
+    expect(await listSharedTransfers(s.husband.database, s.family)).toEqual([]);
+    expect(await projectBook(s.wife.database, s.family)).toEqual(await projectBook(s.husband.database, s.family));
+  });
+
   it('moved to another workspace it leaves the trip, and moved back it is in Family again, never on the trip', async () => {
     const s = await familyAndTrip();
     const id = await withdrawal(s);

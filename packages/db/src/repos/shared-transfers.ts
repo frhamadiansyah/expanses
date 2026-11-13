@@ -113,10 +113,21 @@ export async function sharedTransferBooksTx(tx: Db, transactionId: string): Prom
   return (await rowsOfTx(tx, transactionId)).map((row) => row.bookId);
 }
 
-/** An edited transfer: its redacted row follows the replacement (new figure, new transaction), in the books it was in. */
-export async function carrySharedTransferTx(tx: Db, ws: WorkspaceContext, books: readonly string[], replacementId: string): Promise<void> {
+/**
+ * An edited transfer: its redacted row follows the replacement (new figure, new transaction), in the books it was in.
+ * An edit that is no bare transfer any more (a fee or a category line added: a purchase now, which travels as one) has
+ * no row to follow it: the old row is voided, on every phone, so nothing is left standing for a transaction that is
+ * gone — neither a stale transfer in the partner's list nor one on a shared event (fix round 1, I1).
+ */
+export async function carrySharedTransferTx(tx: Db, ws: WorkspaceContext, books: readonly string[], replacementId: string, originalId: string): Promise<void> {
   for (const bookId of books) {
-    if (!(await fileSharedTransferTx(tx, ws, replacementId, bookId))) continue;
+    if (await fileSharedTransferTx(tx, ws, replacementId, bookId)) continue;
+    const rows = await tx.values<[string]>(sql`SELECT transfer_id FROM shared_transfers WHERE book_id = ${bookId} AND transaction_id = ${originalId} AND void = 0`);
+    for (const [transferId] of rows) {
+      await withCapture(tx, { entity: KEY, id: transferId, bookId }, () =>
+        tx.run(sql`UPDATE shared_transfers SET void = 1, event_book_id = NULL WHERE book_id = ${bookId} AND transfer_id = ${transferId}`),
+      );
+    }
   }
 }
 

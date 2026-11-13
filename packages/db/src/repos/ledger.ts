@@ -1159,7 +1159,7 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
     }
     if (partner && toBookId) await moveMemberTx(tx, ws, partner, toBookId);
   }
-  if (sharedTransferBooks.length > 0 && !moveToBook) await carrySharedTransferTx(tx, ws, sharedTransferBooks, replacement);
+  if (sharedTransferBooks.length > 0 && !moveToBook) await carrySharedTransferTx(tx, ws, sharedTransferBooks, replacement, id);
   if (keepAnswer) await carryAnswerTx(tx, ws, id, replacement, input.occurredOn, oldLines, input.lines, input.setAside ?? null);
   const cap = door.dueCap && nextMove && door.dueCap.fromAccountId === nextMove.fromAccountId ? door.dueCap.promiseFollowsAtMost : undefined;
   if (keepTagged) await carryTaggedTx(tx, ws, id, replacement, original!.goalId!, wasMove!, nextMove!, { promiseFollowsAtMost: cap });
