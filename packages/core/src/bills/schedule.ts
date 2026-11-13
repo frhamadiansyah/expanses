@@ -194,8 +194,8 @@ export function latestLinkMonth(input: BillMonthsInput): string {
  * The month a purchase is linked to when none is picked, and whether a tap must ask first (`ask`: the month page
  * opens instead of linking). Never a month marked paid in silence that the purchase may not be for.
  *
- * A monthly bill with no pay-by day: the purchase's own month. With one, a bill month is named by the month it comes
- * out, so a payment on 3 Nov for the bill out 25 Oct (pay by 5 Nov) is October's: the month whose window — out day to
+ * A monthly bill bought before it started: its first month, asked. With no pay-by day: the purchase's own month.
+ * With one, a bill month is named by the month it comes out, so a payment on 3 Nov for the bill out 25 Oct (pay by 5 Nov) is October's: the month whose window — out day to
  * pay-by day, `billWindow` — holds the purchase date and is not settled; else the newest month already out by that
  * date when it is still owed, paid late. Otherwise — that month settled, or before the bill started — the purchase's
  * own month, asked: never an older month passed over to in silence, never one before the bill started.
@@ -208,6 +208,8 @@ export function latestLinkMonth(input: BillMonthsInput): string {
 export function linkChoice(purchasedOn: string, input: BillMonthsInput): { month: string; ask: boolean } {
   const month = purchasedOn.slice(0, 7);
   if (input.yearlyMonth == null) {
+    // Bought before the bill started: its first month, asked — an earlier month is linked only when chosen.
+    if (month < input.startsMonth) return { month: input.startsMonth, ask: true };
     if (input.payByDay == null) return { month, ask: false };
     const open = (m: string) => m >= input.startsMonth && !input.settled[m];
     const windowOf = (m: string) => billWindow(m, input.outDay, input.payByDay);

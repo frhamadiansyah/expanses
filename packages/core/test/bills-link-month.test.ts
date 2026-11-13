@@ -137,3 +137,13 @@ describe('never an occurrence before the bill started', () => {
     expect(linkChoice('2026-11-13', yearly('2026-11-13', {}, '2027-03'))).toEqual({ month: '2027-03', ask: true });
   });
 });
+
+describe('a monthly bill bought for before it started', () => {
+  it('no pay-by day: the start month, asked — never a month before it in silence', () => {
+    expect(linkChoice('2025-12-10', monthly('2026-10-28'))).toEqual({ month: '2026-01', ask: true });
+    expect(linkChoice('2026-01-10', monthly('2026-10-28'))).toEqual({ month: '2026-01', ask: false });
+  });
+  it('with a pay-by day too', () => {
+    expect(linkChoice('2025-12-28', payLater('2026-11-13'))).toEqual({ month: '2026-01', ask: true });
+  });
+});

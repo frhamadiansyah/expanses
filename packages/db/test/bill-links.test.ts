@@ -312,8 +312,9 @@ it('a yearly bill takes a purchase in the occurrence nearest it, and its next on
   // This year's paid, next year's linked early: whichever is nearer, asked.
   expect(await billLinkMonth(h.database, h.ws, { templateId: yearly, purchasedOn: '2026-04-02', today: TODAY })).toMatchObject({ month: '2026-03', ask: true });
   expect(await billLinkMonth(h.database, h.ws, { templateId: yearly, purchasedOn: '2026-12-01', today: TODAY })).toMatchObject({ month: '2027-03', ask: true });
-  // A monthly bill starts at the purchase's own month, as it always has.
-  expect((await billLinkMonth(h.database, h.ws, { templateId: h.bill, purchasedOn: '2026-08-30', today: TODAY })).month).toBe('2026-08');
+  // A monthly bill starts at the purchase's own month; bought before the bill started, at its first month, asked.
+  expect(await billLinkMonth(h.database, h.ws, { templateId: h.bill, purchasedOn: '2026-10-30', today: TODAY })).toMatchObject({ month: '2026-10', ask: false });
+  expect(await billLinkMonth(h.database, h.ws, { templateId: h.bill, purchasedOn: '2026-08-30', today: TODAY })).toMatchObject({ month: '2026-10', ask: true });
 });
 
 it('an every-few-months bill takes the occurrence nearest the purchase, and its next one early', async () => {
