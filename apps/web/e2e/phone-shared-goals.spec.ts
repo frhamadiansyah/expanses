@@ -97,7 +97,7 @@ test('a goal shared by two phones: both fund it, each sees the other by name, a 
   await setAside(rina, 'Trip Fund', 'Partner Savings', '10000000');
   const mine = await goalCard(rina, 'Trip Fund');
   await mine.getByRole('button', { name: 'Tag a purchase', exact: true }).click();
-  await (await openHolding(rina, 'Cash Fund')).getByTestId('taggable-row').first().click();
+  await (await openHolding(rina, 'Cash Fund')).getByRole('button', { name: 'Tag 1', exact: true }).click();
 
   // Both phones read the same sums: their own money as Me, the other's by name.
   const onBima = await goalCard(bima, 'Trip Fund');
