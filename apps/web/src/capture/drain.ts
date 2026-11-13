@@ -42,12 +42,12 @@ const nothing = (): IngestResult => ({ drafts: 0, merged: 0, skipped: 0, discard
 
 /** What one drain did: what the captures became, and how many drafts already waiting were read again. */
 export interface DrainResult extends IngestResult {
-  /** Messages an earlier reader left at 0 that now have their figure (`rereadUnreadDrafts`). */
+  /** Messages an earlier reader left at 0 that now have their figure, or took for money in that now read as spent (`rereadUnreadDrafts`). */
   reread: number;
 }
 
 /**
- * Reads again the messages still waiting at 0. Best effort, like the sweep: a draft it could not reach is as it was,
+ * Reads again the messages still waiting at 0, or as money in an earlier reader misread. Best effort, like the sweep: a draft it could not reach is as it was,
  * and the next drain tries again.
  */
 async function rereadWaiting(database: Database, on: string): Promise<number> {

@@ -63,8 +63,12 @@ function unitsOf(capture: RawCapture): Unit[] {
  */
 const ODD_SPACE = /[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]/g;
 const ODD_BREAK = /\r\n?|[\u2028\u2029\u0085\v\f]/g;
-/** Characters that take no room at all: zero-width spaces and joiners, a byte-order mark, a soft hyphen. Dropped. */
-const NO_WIDTH = /[\u200b-\u200d\u2060\ufeff\u00ad]/g;
+/**
+ * Characters that take no room at all: zero-width spaces and joiners, a byte-order mark, a soft hyphen, and the marks
+ * that only set which way text runs (left-to-right and right-to-left marks, embeddings, overrides, isolates), which an
+ * HTML email can carry around its cells. Dropped.
+ */
+const NO_WIDTH = /[\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff\u00ad]/g;
 const plainText = (text: string): string => text.replace(NO_WIDTH, '').replace(ODD_BREAK, '\n').replace(ODD_SPACE, ' ');
 const plainOrNull = (text: string | null): string | null => (text === null ? null : plainText(text));
 
