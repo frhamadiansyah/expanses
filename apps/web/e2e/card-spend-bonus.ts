@@ -1,7 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import { addPlastic, openCard } from './accounts';
 import { addTransaction } from './add-transaction';
-import { cardPage, saveCardTerms, showCardBack } from './card-section';
+import { cardPage, pickChargedOn, saveCardTerms, showCardBack } from './card-section';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 export const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -65,7 +65,7 @@ export async function flipHero(page: Page, name: string) {
 export async function setFee(page: Page, fee: string, chargedOn: string) {
   await cardPage(page, 'Settings');
   await page.getByLabel('Annual fee', { exact: true }).fill(fee);
-  await page.getByLabel('Charged on').fill(chargedOn);
+  await pickChargedOn(page, chargedOn);
   await saveCardTerms(page, 'Annual fee');
   await page.waitForTimeout(400);
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chargeAfterWaiver, coveredCharge, feeDaysAway, feeWaived, nextFeeDate, upcomingFees } from '../src';
+import { chargeAfterWaiver, coveredCharge, feeDateFromDayMonth, feeDaysAway, feeWaived, nextFeeDate, upcomingFees } from '../src';
 
 describe('nextFeeDate', () => {
   it('rolls a past date forward to the coming one', () => {
@@ -53,4 +53,18 @@ describe('a waived fee', () => {
     expect(upcomingFees(cards, '2026-10-26')).toHaveLength(0);
     expect(upcomingFees(cards, '2027-10-20')).toHaveLength(1);
   });
+});
+
+describe('feeDateFromDayMonth', () => {
+  it('is this year once the day has passed', () => expect(feeDateFromDayMonth(10, 15, '2026-11-13')).toBe('2026-10-15'));
+  it('is last year while the day is still ahead', () => expect(feeDateFromDayMonth(10, 15, '2026-10-01')).toBe('2025-10-15'));
+  it('keeps today', () => expect(feeDateFromDayMonth(10, 15, '2026-10-15')).toBe('2026-10-15'));
+  it('keeps 29 Feb on the latest leap year, so it still rolls to 28 Feb in a common year', () => {
+    const stored = feeDateFromDayMonth(2, 29, '2026-11-13');
+    expect(stored).toBe('2024-02-29');
+    expect(nextFeeDate(stored!, '2026-11-13')).toBe('2027-02-28');
+    expect(nextFeeDate(stored!, '2027-11-13')).toBe('2028-02-29');
+    expect(feeDateFromDayMonth(2, 29, '2028-02-28')).toBe('2024-02-29');
+  });
+  it('refuses a day the month does not have', () => expect(feeDateFromDayMonth(4, 31, '2026-11-13')).toBeUndefined());
 });

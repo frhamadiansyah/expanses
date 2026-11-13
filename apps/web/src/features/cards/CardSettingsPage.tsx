@@ -1,4 +1,4 @@
-import { chargeAfterWaiver, groupTypedAmount, parseGroupedMajor } from '@expanses/core';
+import { groupTypedAmount, parseGroupedMajor } from '@expanses/core';
 import { type CardRow, listProgrammes, renameAccount, type RewardProgramRow, saveCardIdentity, saveCardTerms, setAccountForSpending, setEarnsInto, setProgramCrediting, spendingSwitchOn } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
@@ -23,9 +23,9 @@ import { ANCHOR_LABELS, ProductChooser, UNIT_LABELS } from './CardProductPages';
 import { ColumnGroup, Line, SUBTITLE, TextLine, TITLE } from './rows';
 import { termsFields } from './terms-fields';
 import { useCatalogChoice } from './useCatalogChoice';
-import { feeDateText } from './fee-line';
 import { FeeWaivedFlow } from './FeeWaivedSheet';
-import { FeeWaiverRow, useYearFeeLine, YearFeeRow } from './AnnualFeeGroup';
+import { FeeDayMonthRow } from './FeeDayMonthRow';
+import { FeeWaiverRow, YearFeeRow } from './AnnualFeeGroup';
 import { useInstallments } from '../loans/queries';
 
 const settingsRoute = getRouteApi('/cards/$cardId/settings');
@@ -84,11 +84,9 @@ function PointsGroup({ page, run }: { page: CardPage; run: Run }) {
   );
 }
 
-/** The Annual fee group: the fee, its date, This year's fee and Fee waiver; once waived, the next charge under it. */
+/** The Annual fee group: the fee, its date, This year's fee and Fee waiver. */
 function AnnualFeeColumns({ page, rows }: { page: CardPage; rows: ReactNode[] }) {
-  const line = useYearFeeLine(page);
-  const on = page.cp.terms?.annualFeeOn;
-  return <ColumnGroup header="Annual fee" footer={line?.waived && on ? `Next charge ${feeDateText(chargeAfterWaiver(on, page.today))}. Tap to change or undo.` : undefined} columns={[rows]} />;
+  return <ColumnGroup header="Annual fee" columns={[rows]} />;
 }
 
 /**
@@ -212,7 +210,7 @@ export function CardSettingsPage() {
           page={page}
           rows={[
             <TextRow label="Annual fee" prefix={currency} value={fee} onChange={(e) => setFee(groupTypedAmount(e.target.value, currency))} inputMode="decimal" placeholder="Amount" />,
-            <TextRow label="Charged on" type="date" value={feeOn} onChange={(e) => setFeeOn(e.target.value)} />,
+            <FeeDayMonthRow value={feeOn} today={page.today} onChange={setFeeOn} />,
             ...(cp.terms?.annualFeeOn ? [<YearFeeRow key="year-fee" page={page} onAsk={() => setAskingFee(true)} />] : []),
             <FeeWaiverRow key="fee-waiver" page={page} />,
           ]}

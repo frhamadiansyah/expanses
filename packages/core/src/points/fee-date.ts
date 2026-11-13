@@ -73,3 +73,20 @@ export function upcomingFees<T extends { annualFeeOn: string | null; annualFeeWa
     })
     .sort((a, b) => a.days - b.days);
 }
+
+/**
+ * The date stored for a fee picked as a day and month alone: the latest charge on or before `today`, a full date as
+ * before, so every reader rolls it forward unchanged. 29 Feb is kept on a leap year's 29th, which the rolling reads as
+ * 28 Feb in the years without one. `undefined` when the day does not exist in that month.
+ */
+export function feeDateFromDayMonth(month: number, day: number, today: string): string | undefined {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const exists = (year: number) => new Date(Date.UTC(year, month - 1, day)).getUTCMonth() === month - 1 && day >= 1;
+  const thisYear = Number(today.slice(0, 4));
+  for (let year = thisYear; year >= thisYear - 8; year -= 1) {
+    if (!exists(year)) continue;
+    const date = `${String(year).padStart(4, '0')}-${pad(month)}-${pad(day)}`;
+    if (date <= today) return date;
+  }
+  return undefined;
+}

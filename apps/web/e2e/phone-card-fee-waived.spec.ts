@@ -59,7 +59,7 @@ test('phone: Settings with no fee charge recorded: the money back goes on the ca
   await page.getByTestId('card-annual-fee').click();
   await feeSheet(page).getByRole('button', { name: 'Save' }).click();
   await expect(page.getByTestId('year-fee')).toHaveText('Waived');
-  await expect(page.getByText(/^Next charge .+\. Tap to change or undo\.$/)).toBeVisible();
+  await expect(page.getByText(/^Next charge /)).toHaveCount(0);
   await page.waitForTimeout(800);
 
   // The card owes nothing and holds the fee as credit.
@@ -69,7 +69,7 @@ test('phone: Settings with no fee charge recorded: the money back goes on the ca
   await expect(page.getByTestId('tile-credit')).toHaveText('Credit Rp 1.200.000');
 });
 
-test('phone: switched off, the fee was never charged: only the year is marked; the row opens what was recorded, with Undo', async ({ page }) => {
+test('phone: switched off, the fee was never charged: only the year is marked; the row opens what was recorded, with Reset', async ({ page }) => {
   const charged = await cardWithPastFee(page, 'Nusa Sample');
   await page.getByTestId('card-annual-fee').click();
   const sheet = feeSheet(page);
@@ -87,12 +87,20 @@ test('phone: switched off, the fee was never charged: only the year is marked; t
   await expect(page.getByTestId('tile-unpaid-balance')).toHaveText('Rp 0');
   await expect(page.getByTestId('tile-credit')).toHaveCount(0);
 
-  // Tapped again, the row shows what was recorded and offers Undo; undone, the sheet asks again.
+  // Tapped again, the row shows what was recorded and offers Reset; once confirmed, the sheet asks again.
   await cardPage(page, 'Settings');
   await page.getByTestId('card-annual-fee').click();
   const recorded = feeSheet(page);
   await expect(recorded).toContainText('Year marked waived');
   await recorded.getByTestId('fee-waived-undo').click();
+  // Reset asks first: Cancel keeps the year waived, Reset takes it back.
+  const confirm = page.getByRole('alertdialog', { name: /^Reset the \d{4} fee\?$/ });
+  await expect(confirm).toContainText('The fee reads as charged again.');
+  await confirm.getByRole('button', { name: 'Cancel' }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect(recorded).toContainText('Year marked waived');
+  await recorded.getByTestId('fee-waived-undo').click();
+  await page.getByTestId('fee-reset-confirm').click();
   await expect(recorded.getByLabel('Back on the card')).toBeVisible();
   await recorded.getByRole('button', { name: 'Close' }).click();
   await expect(page.getByTestId('year-fee')).toContainText(String(charged.getFullYear()));

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { showMonthly, showRepeating } from './bill-form';
-import { cardPage, saveCardTerms } from './card-section';
+import { cardPage, pickChargedOn, saveCardTerms } from './card-section';
 import { addFarYearlyBill, addMonthlyBill } from './recurring-slider';
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -19,7 +19,7 @@ test('Repeating lists each card’s annual fee, read-only and outside the need; 
   await openCard(page, { name: 'Fee Card', statementDay: '25', dueDay: '12' });
   await cardPage(page, 'Settings');
   await page.getByLabel('Annual fee').fill('777000');
-  await page.getByLabel('Charged on').fill(iso(entered));
+  await pickChargedOn(page, iso(entered));
   await saveCardTerms(page);
   await page.waitForTimeout(800);
   await page.getByRole('main').getByRole('link', { name: /^Instalments/ }).click();

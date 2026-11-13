@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openCard } from './accounts';
-import { cardPage, walletCard, saveCardTerms } from './card-section';
+import { cardPage, pickChargedOn, walletCard, saveCardTerms } from './card-section';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -21,12 +21,13 @@ test('a card’s annual fee date is saved in Settings, shown as the next charge,
   await cardPage(page, 'Settings');
   await expect(page.getByTestId('card-annual-fee')).toHaveCount(0);
   await page.getByLabel('Annual fee').fill('500000');
-  await page.getByLabel('Charged on').fill(iso(entered));
+  await pickChargedOn(page, iso(entered));
   await saveCardTerms(page);
   // The save is written out to storage a moment after it is made; a reload straight away would beat it.
   await page.waitForTimeout(800);
   await page.reload();
-  await expect(page.getByLabel('Charged on')).toHaveValue(iso(entered));
+  await expect(page.getByLabel('Charged on day')).toHaveValue(String(entered.getDate()));
+  await expect(page.getByLabel('Charged on month')).toHaveValue(String(entered.getMonth() + 1));
 
   const row = page.getByTestId('card-annual-fee');
   await expect(row).toContainText("This year's fee");
@@ -69,10 +70,10 @@ test('a card’s annual fee date is saved in Settings, shown as the next charge,
   await expect(page.getByTestId('year-fee')).toHaveText('Waived');
 
   // Clearing the row clears the date; the fee leaves Recurring.
-  await page.getByLabel('Charged on').fill('');
+  await pickChargedOn(page, '');
   await saveCardTerms(page);
   await page.waitForTimeout(800);
   await page.reload();
-  await expect(page.getByLabel('Charged on')).toHaveValue('');
+  await expect(page.getByLabel('Charged on day')).toHaveValue('0');
   await expect(page.getByTestId('card-annual-fee')).toHaveCount(0);
 });
