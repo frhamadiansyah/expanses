@@ -132,14 +132,17 @@ async function chargesNear(tx: Db, ws: WorkspaceContext, cardId: string, covered
     used.add(credit[0]);
     return { transactionId: credit[0], on: credit[1], amountMinor: Number(credit[3]) };
   };
-  // Fee-like charges first, so a reversal goes to the charge it is most likely for.
+  // The likeliest fee first, then the other fee-like charges: a reversal goes to the annual fee before a late fee
+  // nearer the date can take it.
   const reversalOf = new Map<string, Credit>();
-  for (const row of [...charges].sort((a, b) => Number(b.choice.looksLikeFee) - Number(a.choice.looksLikeFee))) {
+  const first = likeliest(charges, feeMinor);
+  const rank = (row: Row) => (row === first ? 2 : row.choice.looksLikeFee ? 1 : 0);
+  for (const row of [...charges].sort((a, b) => rank(b) - rank(a))) {
     const credit = take(row.choice.amountMinor, row.choice.occurredOn);
     row.choice.reversedOn = credit?.on ?? null;
     if (credit) reversalOf.set(row.choice.transactionId, credit);
   }
-  const matched = likeliest(charges, feeMinor);
+  const matched = first;
   const reversal = matched ? (reversalOf.get(matched.choice.transactionId) ?? null) : take(feeMinor, shift(covered, -DAYS_BEFORE));
   return { rows: charges, reversedOn: reversal?.on ?? null, reversal };
 }

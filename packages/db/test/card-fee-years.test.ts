@@ -328,6 +328,17 @@ describe('the reversal seen from the other phone', () => {
     expect(await t.balance()).toBe(-(TAXED - FEE));
   });
 
+  // Review round 2 (N2): a late fee nearer the date must not take the reversal from the annual fee.
+  it('gives the reversal to the annual fee, not to a late fee nearer the fee date', async () => {
+    const t = await card();
+    await t.post('Biaya keterlambatan', 'miscellaneous.fees_charges', 150_000, '2026-10-20');
+    const fee = await t.post('Annual fee', 'miscellaneous.membership_fee', FEE, '2026-11-01');
+    const id = await addFeeReversal(t.database, t.ws, { cardId: t.id, today: TODAY, amountMinor: FEE, on: '2026-11-05' });
+    await t.database.db.run(sql`DELETE FROM card_fee_refunds`);
+    expect((await t.years())?.current).toMatchObject({ charge: { transactionId: fee }, lines: ['charged', 'reversal'], reversal: { transactionId: id, ours: false } });
+    await expect(addFeeReversal(t.database, t.ws, { cardId: t.id, today: TODAY, amountMinor: FEE, on: '2026-11-06' })).rejects.toThrow();
+  });
+
   it('reads it with no charge behind it (before the app) whatever its amount', async () => {
     const t = await card({ minor: 4_000_000, on: '2026-11-01' });
     const id = await addFeeReversal(t.database, t.ws, { cardId: t.id, today: TODAY, amountMinor: 1_000_000, on: '2026-11-13' });
