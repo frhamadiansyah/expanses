@@ -133,24 +133,35 @@ export type ShownSheetRow = SheetRow & { approx?: boolean };
  * An account with pockets is one row on the overview, as it is on the Assets page: Wise, at its pockets' total in the
  * base currency, where its first pocket stood — not Wise USD and Wise SGD side by side. `approx` marks a total reached
  * through a rate, for the ≈ in front of it. Every other row is as it was.
+ *
+ * The partner's pockets fold the same way, by `receivedPockets` (a received pocket's itemId → the account it names,
+ * `pocketOf`, and its currency): this phone has no account for them, so the parent comes from what travelled.
  */
 export function foldPockets(
   groups: readonly SheetGroup[],
   accounts: readonly Pick<AccountRow, 'id' | 'name' | 'kind' | 'parentId' | 'currency'>[],
   baseCurrency: string,
+  receivedPockets: ReadonlyMap<string, { id: string; name: string; currency: string }> = new Map(),
 ): SheetGroup[] {
   const byId = new Map(accounts.map((account) => [account.id, account]));
+  const pocketOf = (accountId: string): { parent: { id: string; name: string }; currency: string } | null => {
+    const theirs = receivedPockets.get(accountId);
+    if (theirs) return { parent: theirs, currency: theirs.currency };
+    const account = byId.get(accountId);
+    const parent = account?.kind === 'asset' && account.parentId ? byId.get(account.parentId) : undefined;
+    return parent && account ? { parent, currency: account.currency ?? baseCurrency } : null;
+  };
   return groups.map((group) => {
     const rows: ShownSheetRow[] = [];
     const at = new Map<string, number>();
     for (const row of group.rows) {
-      const account = byId.get(row.accountId);
-      const parent = account?.kind === 'asset' && account.parentId ? byId.get(account.parentId) : undefined;
-      if (!parent || !account) {
+      const pocket = pocketOf(row.accountId);
+      if (!pocket) {
         rows.push(row);
         continue;
       }
-      const foreign = (account.currency ?? baseCurrency) !== baseCurrency;
+      const { parent } = pocket;
+      const foreign = pocket.currency !== baseCurrency;
       const seen = at.get(parent.id);
       if (seen === undefined) {
         at.set(parent.id, rows.length);
