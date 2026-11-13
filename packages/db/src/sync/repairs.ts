@@ -9,7 +9,7 @@ import { TRIP_TRANSFERS_MIN_APP_VERSION } from '../repos/shared-event-transfers'
 import { partnerPurchaseRefusalTx, sharedRowTx, untagSharedRowsTx } from '../repos/shared-workspace-rows';
 import { captureConfigOf, lineageOfTransaction, projectPurchase, rowUpsertsTx, type SharedBook, writeChangeSetsTx } from './capture';
 import { memberOfDeviceTx } from './apply';
-import { sendSummariesTx } from './net-worth/summaries';
+import { itemsWithStaleFaceTx, sendSummariesTx } from './net-worth/summaries';
 import { decodeHlc } from './hlc';
 import type { Op } from './types';
 import { uuidv5 } from './uuidv5';
@@ -45,8 +45,9 @@ export function repairExpenseId(lineageId: string, eventId: string): Promise<str
  *
  * R4 card faces (fix/sync-card-tier): a joint account's summary now carries what its card face is drawn from (its bank,
  * its card tier, its number's last four: `ItemFace`). An account given a tier before this build sent none, and its
- * summary would not go again until its period ended or a line moved it; this phone's items are sent once now, each only
- * when its summary changed (the hash skip), so the partner draws the face the holder already chose.
+ * summary would not go again until its period ended or a line moved it. Once now, this phone sends the items whose sent
+ * face differs from the one they have (`itemsWithStaleFaceTx`), and only those, so the partner draws the face the holder
+ * already chose; a phone with no joint account sends nothing and logs no note.
  */
 
 const BILL_LINKS = 'bill-links';
@@ -394,8 +395,10 @@ export async function runSharedBookRepairs(database: Database, bookId: string, o
     report.cardFaces = await database.transaction(async (tx) => {
       const book = await activeBookTx(tx, bookId);
       if (!book || (await doneTx(tx, CARD_FACES, bookId))) return null;
-      // No net-worth group here yet: nothing to send, and joining one sends every item anyway.
-      const sent = await sendSummariesTx(tx, 'all', today);
+      // Only the items whose sent face differs from the one they have now; an item merely sent on an earlier day is left
+      // as it is. No net-worth group here yet: nothing to send, and joining one sends every item anyway.
+      const stale = await itemsWithStaleFaceTx(tx);
+      const sent = stale.length > 0 ? await sendSummariesTx(tx, stale, today) : 0;
       await markDoneTx(tx, CARD_FACES, bookId);
       return sent;
     });

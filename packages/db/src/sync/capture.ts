@@ -587,6 +587,20 @@ export function markAccountDirtyTx(tx: Db, accountId: string): void {
   sessionOf(tx)?.markAccountDirty(accountId);
 }
 
+/**
+ * An account and every pocket beside or under it, marked as `markAccountDirtyTx` does: what a joint pocket's card face
+ * is drawn from (its account's tier and digits, the first pocket's bank) is kept on the account or another pocket, so a
+ * write there must send the pockets again too (fix/sync-card-tier).
+ */
+export async function markAccountFamilyDirtyTx(tx: Db, accountId: string): Promise<void> {
+  markAccountDirtyTx(tx, accountId);
+  if (!sessionOf(tx)) return;
+  const kin = await tx.values<[string]>(sql`
+    SELECT id FROM accounts WHERE kind = 'asset' AND id <> ${accountId}
+      AND (parent_id = ${accountId} OR parent_id = (SELECT parent_id FROM accounts WHERE id = ${accountId}))`);
+  for (const [id] of kin) markAccountDirtyTx(tx, id);
+}
+
 /** A shared goal's own member money changed in this transaction, so its summary is recomputed at flush (§8.5). */
 export function markGoalDirtyTx(tx: Db, goalId: string): void {
   sessionOf(tx)?.markGoalDirty(goalId);

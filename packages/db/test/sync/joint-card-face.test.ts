@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   confirmReview,
   createAccount,
+  openPocketedAccount,
   runSharedBookRepairs,
   saveAssetProfile,
   setAccountCardTier,
@@ -176,5 +177,51 @@ describe('a joint account’s card face on the partner’s phone', () => {
     await setShareSetting(rina.database, rina.bank, 'hidden');
     await settle(home);
     expect(await itemOn(andi, groupBookId, rina, rina.bank)).toBeUndefined();
+  });
+
+  it('a joint pocket carries its account’s bank and tier, as the holder’s Wallet draws the account', async () => {
+    const { home, rina, andi, groupBookId } = await sharing();
+    const { parent, pockets } = await openPocketedAccount(rina.database, rina.ws, {
+      item: 'savings',
+      name: 'Tabungan Bersama',
+      pockets: [
+        { currency: 'IDR', openingBalanceMinor: 2_500_000 },
+        { currency: 'USD', openingBalanceMinor: 40_00, openingRateToBase: 15_700 },
+      ],
+    });
+    const [idr, usd] = pockets as [(typeof pockets)[0], (typeof pockets)[0]];
+    await confirmReview(rina.database, rina.ws, { [rina.bank]: 'total', [rina.cash]: 'total', [rina.usd]: 'hidden', [idr.id]: 'total', [usd.id]: 'total' });
+    await setJointAccount(rina.database, usd.id, true);
+    await settle(home);
+    expect((await itemOn(andi, groupBookId, rina, usd.id))?.face).toBeUndefined();
+
+    // The bank on the first pocket's profile and the tier on the account, as the holder's Wallet reads them for its card:
+    // the USD pocket goes out again though neither write touched it.
+    await bankOf(rina, idr.id, 'Bank Contoh Raya');
+    await setAccountCardTier(rina.database, rina.ws, parent.id, 'gold');
+    await settle(home);
+    expect((await itemOn(andi, groupBookId, rina, usd.id))?.face).toEqual({ bank: 'Bank Contoh Raya', tier: 'gold' });
+    // Only the joint pocket carries one.
+    expect((await itemOn(andi, groupBookId, rina, idr.id))?.face).toBeUndefined();
+  });
+
+  it('the one-time repair sends nothing for a phone whose faces have not changed, however old its summaries', async () => {
+    const { home, rina, andi, bookId } = await sharing();
+    const before = await everythingOn(andi);
+    // A day later, with no joint account: nothing goes out, so the one-time note has nothing to count.
+    const later = new Date(Date.parse(`${today}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+    expect((await runSharedBookRepairs(rina.database, bookId, { today: later })).cardFaces).toBe(0);
+    await settle(home);
+    expect(await everythingOn(andi)).toBe(before);
+
+    // A joint account whose face was already sent: still nothing.
+    await setJointAccount(rina.database, rina.bank, true);
+    await setAccountCardTier(rina.database, rina.ws, rina.bank, 'gold');
+    await settle(home);
+    const sent = await everythingOn(andi);
+    expect((await runSharedBookRepairs(andi.database, bookId, { today: later })).cardFaces).toBe(0);
+    await settle(home);
+    expect(await everythingOn(rina)).toContain('"tier":"gold"');
+    expect(await everythingOn(andi)).toBe(sent);
   });
 });
