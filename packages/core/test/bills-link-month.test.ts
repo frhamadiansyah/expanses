@@ -60,13 +60,19 @@ describe('linkChoice', () => {
     expect(monthFor('2026-02-20', yearly('2026-02-20'))).toBe('2026-03');
     // A few weeks after: paying it late.
     expect(monthFor('2026-04-05', yearly('2026-11-13'))).toBe('2026-03');
-    // Late in the year, next year's is nearer.
-    expect(monthFor('2026-11-13', yearly('2026-11-13', { '2026-03': 'paid' }))).toBe('2027-03');
+    // Late in the year, this year's paid: next year's is nearer.
+    expect(linkChoice('2026-11-13', yearly('2026-11-13', { '2026-03': 'paid' }))).toEqual({ month: '2027-03', ask: false });
+    // This year's out and never paid: never next year's while it is open — this year's, paid late.
+    expect(linkChoice('2026-11-13', yearly('2026-11-13'))).toEqual({ month: '2026-03', ask: false });
+    // Soon after this year's, which is paid: this year's, asked, rather than next year's in silence.
+    expect(linkChoice('2026-04-05', yearly('2026-11-13', { '2026-03': 'paid' }))).toEqual({ month: '2026-03', ask: true });
   });
 
   it('the next occurrence when it is nearer only if it can be paid yet, else the one before', () => {
-    // Bought in December 2025 for March 2026, read in December 2025: March is open to it.
-    expect(monthFor('2025-12-20', yearly('2025-12-20', {}, '2025-03'))).toBe('2026-03');
+    // Bought in December 2025 with March 2026 open to it, but March 2025 out and never paid: March 2025, paid late.
+    expect(monthFor('2025-12-20', yearly('2025-12-20', {}, '2025-03'))).toBe('2025-03');
+    // March 2025 paid: March 2026 is nearer, and open.
+    expect(linkChoice('2025-12-20', yearly('2025-12-20', { '2025-03': 'paid' }, '2025-03'))).toEqual({ month: '2026-03', ask: false });
     // Read in November 2026, March 2027 is the latest open: a purchase nearer March 2028 falls back to March 2027.
     expect(monthFor('2027-12-01', yearly('2026-11-13', { '2026-03': 'paid' }))).toBe('2027-03');
     expect(monthFor('2028-01-10', yearly('2026-11-13'))).toBe('2027-03');
@@ -75,8 +81,10 @@ describe('linkChoice', () => {
   it('an every-few-months bill links to the nearest of its months, by the day it comes out', () => {
     // 20 Aug and 20 Nov: the 1st of October is nearer August.
     expect(monthFor('2026-10-01', quarterly('2026-11-25'))).toBe('2026-08');
-    // The 10th of October is nearer November.
-    expect(monthFor('2026-10-10', quarterly('2026-11-25'))).toBe('2026-11');
+    // The 10th of October is nearer November, but August is out and unpaid: August, paid late.
+    expect(monthFor('2026-10-10', quarterly('2026-11-25'))).toBe('2026-08');
+    // August paid: November, nearer.
+    expect(linkChoice('2026-10-10', quarterly('2026-11-25', { '2026-08': 'paid' }))).toEqual({ month: '2026-11', ask: false });
     expect(monthFor('2026-11-20', quarterly('2026-11-25'))).toBe('2026-11');
   });
 });

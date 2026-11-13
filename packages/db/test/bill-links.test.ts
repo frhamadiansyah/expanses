@@ -308,8 +308,9 @@ it('a yearly bill takes a purchase in the occurrence nearest it, and its next on
   expect(await billOfPurchase(h.database, h.ws, early)).toMatchObject({ templateId: yearly, billMonth: '2027-03' });
 
   // The month a purchase starts at: the occurrence nearest its date, not its own month (which the bill does not come out in).
-  expect((await billLinkMonth(h.database, h.ws, { templateId: yearly, purchasedOn: '2026-04-02', today: TODAY })).month).toBe('2026-03');
-  expect((await billLinkMonth(h.database, h.ws, { templateId: yearly, purchasedOn: '2026-12-01', today: TODAY })).month).toBe('2027-03');
+  // This year's paid, next year's linked early: whichever is nearer, asked.
+  expect(await billLinkMonth(h.database, h.ws, { templateId: yearly, purchasedOn: '2026-04-02', today: TODAY })).toMatchObject({ month: '2026-03', ask: true });
+  expect(await billLinkMonth(h.database, h.ws, { templateId: yearly, purchasedOn: '2026-12-01', today: TODAY })).toMatchObject({ month: '2027-03', ask: true });
   // A monthly bill starts at the purchase's own month, as it always has.
   expect((await billLinkMonth(h.database, h.ws, { templateId: h.bill, purchasedOn: '2026-08-30', today: TODAY })).month).toBe('2026-08');
 });
@@ -323,7 +324,8 @@ it('an every-few-months bill takes the occurrence nearest the purchase, and its 
   });
   const NOV = '2026-11-24';
   expect((await billLinkMonth(h.database, h.ws, { templateId: quarterly, purchasedOn: '2026-10-01', today: NOV })).month).toBe('2026-08');
-  expect((await billLinkMonth(h.database, h.ws, { templateId: quarterly, purchasedOn: '2026-10-12', today: NOV })).month).toBe('2026-11');
+  // Nearer November, but August is out and unpaid: August, paid late.
+  expect((await billLinkMonth(h.database, h.ws, { templateId: quarterly, purchasedOn: '2026-10-12', today: NOV })).month).toBe('2026-08');
   await recordBillPayments(h.database, h.ws, { paidOn: '2026-11-20', payments: [{ templateId: quarterly, billMonth: '2026-11', amountMinor: 275_000 }] });
   expect(await billLinkRefusal(h.database, h.ws, { templateId: quarterly, billMonth: '2027-02', today: NOV })).toBeNull();
   expect((await billLinkRefusal(h.database, h.ws, { templateId: quarterly, billMonth: '2027-05', today: NOV }))?.code).toBe('MONTH_AHEAD');
