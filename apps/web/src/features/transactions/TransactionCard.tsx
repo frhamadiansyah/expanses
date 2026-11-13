@@ -400,6 +400,14 @@ function CardBody({
   const formRef = useRef<HTMLFormElement>(null);
   const [needsRate, setNeedsRate] = useState<string | null>(null);
   /*
+   * A save that finds another currency's rate missing moves the one rate field on to it; what was typed there was for
+   * the last currency, so it is cleared rather than carried over and filed as the new one's (fix round 1).
+   */
+  const askRate = (currency: string) => {
+    if (currency !== needsRate) setDraft((d) => ({ ...d, manualRate: '' }));
+    setNeedsRate(currency);
+  };
+  /*
    * The payment a follow-up was handed, once it is written: see the first lines of `submit`. The ref is what Save
    * reads, so a second press can never post a second payment; the flag is what the form draws from it.
    */
@@ -663,7 +671,7 @@ function CardBody({
         // dropped on the other.
         await submitTrade({
           database, ws, input: post.input, holdingCurrency: purchaseCurrency, cashCurrency: purchaseCashCurrency,
-          needsRate, manualRate: draft.manualRate, resolveRates, onMissing: setNeedsRate, where: 'Add more details',
+          needsRate, manualRate: draft.manualRate, resolveRates, onMissing: askRate, where: 'Add more details',
           setAside: setAside.choice,
         });
       } else {
@@ -671,7 +679,7 @@ function CardBody({
         // one place both ways into a save go through. The rate field lives under Add more details and only
         // there (§3.3), so that is the name this screen gives it.
         const ratesToBase = await ratesForSave({
-          database, ws, draft: filed, post, accounts, rateDate, needsRate, resolveRates, onMissing: setNeedsRate, where: 'Add more details',
+          database, ws, draft: filed, post, accounts, rateDate, needsRate, resolveRates, onMissing: askRate, where: 'Add more details',
         });
         // Every branch sends the answer — an edit explicitly, so a question no longer asked clears the old answer.
         // The new id is kept from the two that make a purchase, for a follow-up that answers something with it.

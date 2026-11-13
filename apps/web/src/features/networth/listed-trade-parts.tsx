@@ -312,9 +312,9 @@ export function GoalBox({
         {needsRate ? (
           <TextRow
             label={details.dayRateLabel}
-            hint={ratePreview(draft.dayRate, needsRate, baseCurrency) ?? `${baseCurrency} per 1 ${needsRate}`}
-            value={draft.dayRate}
-            onChange={(e) => change({ dayRate: e.target.value })}
+            hint={ratePreview(details.dayRate, needsRate, baseCurrency) ?? `${baseCurrency} per 1 ${needsRate}`}
+            value={details.dayRate}
+            onChange={(e) => details.setDayRate(e.target.value)}
             inputMode="decimal"
             placeholder="Rate"
           />

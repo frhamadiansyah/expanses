@@ -50,8 +50,14 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
     ...initial,
   });
   const [charged, setCharged] = useState('');
-  const [manualRate, setManualRate] = useState('');
   const [needsRate, setNeedsRate] = useState<string | null>(null);
+  // Rates typed under "Rate that day", each kept under its own currency: the row moving on to another missing
+  // currency never carries a figure typed for the last one (fix round 1).
+  const [typedRates, setTypedRates] = useState<Record<string, string>>({});
+  const manualRate = needsRate ? (typedRates[needsRate] ?? '') : '';
+  const setManualRate = (typed: string) => {
+    if (needsRate) setTypedRates((was) => ({ ...was, [needsRate]: typed }));
+  };
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -129,7 +135,7 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
       const typed = typedInput();
       const ratesToBase = await tradeRatesForSave({
         database, ws, input: typed, holdingCurrency: currency, cashCurrency,
-        needsRate, manualRate, resolveRates, onMissing: setNeedsRate, where: 'Rate that day',
+        needsRate: null, manualRate: '', typedRates, resolveRates, onMissing: setNeedsRate, where: 'Rate that day',
       });
       // The answer still goes with every save — an edit explicitly, so a question no longer asked clears the old one.
       const input = { ...typed, ratesToBase, templateId: templateId ?? null, setAside: setAside.choice };
@@ -139,7 +145,7 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
       onSaved(changed === 0 ? 'Recorded.' : `Recorded. ${changed === 1 ? '1 later sell was' : `${changed} later sells were`} worked out again at the new average cost.`);
       setDraft({ ...emptyTradeDraft(draft.accountId, draft.cashAccountId, today) });
       setCharged('');
-      setManualRate('');
+      setTypedRates({});
       setNeedsRate(null);
     } catch (e) {
       setError(e);

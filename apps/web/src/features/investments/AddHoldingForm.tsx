@@ -52,7 +52,13 @@ export function AddHoldingForm({ picked, brokers, heldAt, onConfirm, onTicker }:
   const accounts = useAccounts().data ?? [];
   const [bought, setBought] = useState<AcquiredParts>(NO_DATE);
   const [needsRate, setNeedsRate] = useState<string | null>(null);
-  const [manualRate, setManualRate] = useState('');
+  // Rates typed under "Rate that day", each kept under its own currency: the row moving on to another missing
+  // currency never carries a figure typed for the last one (fix round 1).
+  const [typedRates, setTypedRates] = useState<Record<string, string>>({});
+  const manualRate = needsRate ? (typedRates[needsRate] ?? '') : '';
+  const setManualRate = (typed: string) => {
+    if (needsRate) setTypedRates((was) => ({ ...was, [needsRate]: typed }));
+  };
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [pickingCurrency, setPickingCurrency] = useState(false);
@@ -102,7 +108,7 @@ export function AddHoldingForm({ picked, brokers, heldAt, onConfirm, onTicker }:
       const ratesToBase = buy
         ? await tradeRatesForSave({
             database, ws, input: { ...buy, accountId: '', kind: 'buy' }, holdingCurrency: security.currency, cashCurrency,
-            needsRate, manualRate, resolveRates, onMissing: setNeedsRate, where: 'Rate that day',
+            needsRate: null, manualRate: '', typedRates, resolveRates, onMissing: setNeedsRate, where: 'Rate that day',
           })
         : undefined;
       const result = await addHolding(database, ws, { ...planned, buy: buy ? { ...buy, ratesToBase, setAside: setAside.choice } : null });

@@ -59,9 +59,9 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: {
   const [draft, setDraft] = useState<NewAssetDraft>(() => emptyDraft(itemId ?? 'fund', ws.baseCurrency, today));
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
-  // New purchase's Paid with sheet, and the day rate a save could not find (asked for under the rate row).
+  // New purchase's Paid with sheet, and the day rates typed for its buy — each kept under its own currency.
   const [paying, setPaying] = useState(false);
-  const [needsRate, setNeedsRate] = useState<string | null>(null);
+  const [dayRates, setDayRates] = useState<Record<string, string>>({});
   const form = useRef<HTMLFormElement>(null);
 
   const change = (patch: Partial<NewAssetDraft>) => setDraft((current) => ({ ...current, ...patch }));
@@ -83,8 +83,12 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: {
   const paidWith = accounts.find((account) => account.id === draft.buy.moneyId);
   const pay: BuyPayment = { cashCurrency: paidWith?.currency ?? draft.currency, isCard: paidWith?.subtype === 'credit_card' };
   const needs = tradeRateNeeds(draft.currency, pay.cashCurrency, ws.baseCurrency);
-  // The rate row asks for the holding's day rate, or for the one a save could not find.
-  const rateCurrency = needsRate ?? (buyingNow ? (needs.dayRates.includes(draft.currency) ? draft.currency : null) : draft.currency !== ws.baseCurrency ? draft.currency : null);
+  /*
+   * A new purchase asks one row per day rate its buy needs — two when neither the holding nor what paid is in the base
+   * — each typed under its own currency, so a rate typed for one is never filed as another's (fix round 1). Left
+   * empty, a row's rate is looked up for the day.
+   */
+  const rateLabel = (currency: string) => (needs.dayRates.length > 1 ? `${currency} rate to ${ws.baseCurrency}` : `Rate to ${ws.baseCurrency}`);
   /** The plan Save would send, or null while it cannot be read yet: the buy's set-aside door reads it. */
   const planned = ((): NewAssetPlan | null => {
     try {
@@ -130,7 +134,7 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: {
                 ...plan.buy,
                 ratesToBase: await tradeRatesForSave({
                   database, ws, input: { ...plan.buy, accountId: '' }, holdingCurrency: plan.account.currency, cashCurrency: pay.cashCurrency,
-                  needsRate: rateCurrency, manualRate: draft.openingRate, resolveRates, onMissing: setNeedsRate, where: `Rate to ${ws.baseCurrency}`,
+                  needsRate: null, manualRate: '', typedRates: dayRates, resolveRates, onMissing: () => undefined, where: rateLabel,
                 }),
                 setAside: setAside.choice,
               },
@@ -192,13 +196,13 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: {
 
   // A currency other than the workspace's asks what it was worth when this was got, under the row that set it.
   const rateRow =
-    rateCurrency ? (
+    draft.currency !== ws.baseCurrency ? (
       <TextRow
         label={`Rate to ${ws.baseCurrency}`}
         aria-label="Opening rate"
         hint={
-          ratePreview(draft.openingRate, rateCurrency, ws.baseCurrency) ??
-          `What one ${rateCurrency} was worth when this was acquired. The ledger needs it to hold one running total; the tax report uses the KMK rate instead.`
+          ratePreview(draft.openingRate, draft.currency, ws.baseCurrency) ??
+          `What one ${draft.currency} was worth when this was acquired. The ledger needs it to hold one running total; the tax report uses the KMK rate instead.`
         }
         value={draft.openingRate}
         onChange={(e) => change({ openingRate: e.target.value })}
@@ -206,6 +210,20 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: {
         placeholder="Rate"
       />
     ) : null;
+
+  const newRateRows = buyingNow
+    ? needs.dayRates.map((currency) => (
+        <TextRow
+          key={currency}
+          label={rateLabel(currency)}
+          hint={ratePreview(dayRates[currency] ?? '', currency, ws.baseCurrency) ?? `What one ${currency} was worth that day. Left empty, it is looked up.`}
+          value={dayRates[currency] ?? ''}
+          onChange={(e) => setDayRates((typed) => ({ ...typed, [currency]: e.target.value }))}
+          inputMode="decimal"
+          placeholder="Rate"
+        />
+      ))
+    : null;
 
   /* No note under a chosen kind: how it is valued showed in the form as words like "par value × price" that only
      got in the way. Only the open picker, before a kind is chosen, says what choosing one does. */
@@ -278,10 +296,7 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: {
             label="New or past purchase"
             segments={WHEN_SEGMENTS}
             value={draft.when}
-            onChange={(key) => {
-              setNeedsRate(null);
-              change({ when: key as PurchaseWhen });
-            }}
+            onChange={(key) => change({ when: key as PurchaseWhen })}
             className="w-full"
           />
         </div>
@@ -323,7 +338,7 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: {
                 placeholder="Amount"
               />
             ) : null}
-            {rateRow}
+            {newRateRows}
           </InsetGroup>
           <CardPointsBox details={{ draft: draft.buy, change: setBuy }} accounts={accounts} show={pay.isCard} />
           {setAside.node}
@@ -399,7 +414,6 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: {
           chosenAccountId={draft.buy.moneyId}
           // Another account starts its charged figure and its card facts over, as Trade's Paid with does.
           onPick={(option) => {
-            setNeedsRate(null);
             setBuy({ moneyId: option.accountId, charged: '', ...(accounts.find((a) => a.id === option.accountId)?.subtype === 'credit_card' ? {} : { spendCategoryId: '', mcc: '' }) });
           }}
           onClose={() => setPaying(false)}

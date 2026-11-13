@@ -1,5 +1,5 @@
 import { convertMinor, isoDate } from '@expanses/core';
-import { createDatabase, createWorkspace, type Database, migrate, type RecordTradeInput, upsertRate, type WorkspaceContext } from '@expanses/db';
+import { createDatabase, createWorkspace, type Database, findRate, migrate, type RecordTradeInput, upsertRate, type WorkspaceContext } from '@expanses/db';
 import { createNodeExecutor } from '@expanses/db/node';
 import { describe, expect, it, vi } from 'vitest';
 import { tradeDoor } from '../goals/set-aside-question';
@@ -132,6 +132,29 @@ describe('tradeRatesForSave', () => {
       }),
     ).rejects.toThrow('Check the decimal separator');
     expect(onMissing).not.toHaveBeenCalled();
+  });
+
+  /*
+   * Fix round 1, important 1: a USD holding paid from an SGD account (base IDR) needs two day rates. A rate typed for
+   * USD is USD's alone: when SGD's is the one missing, the save asks for SGD's and never files the USD figure under SGD.
+   */
+  it('keys each typed rate by its currency, so one typed for USD is never stored as SGD’s', async () => {
+    const { database, ws } = await setupDb();
+    const input = withCharged(buy(182_500, { cashAccountId: 'dbs' }), '2.452,00', 'USD', 'SGD');
+    const onMissing = vi.fn();
+    const nothingHeld = vi.fn().mockResolvedValue({ rates: {} });
+    const save = (typedRates: Record<string, string>) =>
+      tradeRatesForSave({ ...common, database, ws, input, holdingCurrency: 'USD', cashCurrency: 'SGD', typedRates, resolveRates: nothingHeld, onMissing, where: (currency) => `${currency} rate to IDR` });
+    await expect(save({ USD: '16.250,00' })).rejects.toThrow('Type it under “SGD rate to IDR”');
+    expect(onMissing).toHaveBeenCalledWith('SGD');
+    expect(await findRate(database, 'SGD', 'IDR', '2026-03-08')).toBeUndefined();
+    // Asked again with only USD's typed (the row it was typed under), it still refuses rather than borrowing it.
+    await expect(save({ USD: '16.250,00', SGD: '' })).rejects.toThrow(/SGD/);
+    expect(await findRate(database, 'SGD', 'IDR', '2026-03-08')).toBeUndefined();
+    // Each typed under its own currency, each is stored as its own.
+    expect(await save({ USD: '16.250,00', SGD: '12.100,00' })).toEqual({ SGD: 12_100, USD: 16_250 });
+    expect((await findRate(database, 'SGD', 'IDR', '2026-03-08'))?.rate).toBe(12_100);
+    expect((await findRate(database, 'USD', 'IDR', '2026-03-08'))?.rate).toBe(16_250);
   });
 
   // m4 (8a7): a trade dated after today still asks for the rate under today's date, the same clamp
