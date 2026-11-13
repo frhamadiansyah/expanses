@@ -1,0 +1,127 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Transfers in one workspace</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --green:#34c759; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; }
+  h1 { font-size:20px; margin:0 0 4px; } .sub { color:#555; margin:0 0 18px; max-width:1100px; }
+  h2 { font-size:17px; margin:26px 0 6px; }
+  .row3 { display:flex; gap:22px; align-items:flex-start; flex-wrap:wrap; }
+  .phone { width:320px; background:var(--ground); border-radius:28px; padding:14px 12px 18px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .cap { font-weight:700; margin:0 0 4px; } .note { font-size:13px; color:#555; margin:0 0 10px; min-height:36px; }
+  .title { font-size:24px; font-weight:700; margin:4px 4px 10px; display:flex; justify-content:space-between; align-items:center; }
+  .ws { width:30px; height:30px; border-radius:50%; background:var(--surface); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:600; }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:10px; overflow:hidden; }
+  .day { display:flex; gap:10px; align-items:center; padding:8px 13px; border-bottom:.5px solid var(--hair); }
+  .day .n { font-size:22px; font-weight:600; width:30px; } .day .w { font-size:12.5px; color:var(--ink3); line-height:1.2; } .day .w b { color:var(--ink2); }
+  .r { display:flex; gap:10px; align-items:center; padding:9px 13px; } .r + .r { border-top:.5px solid var(--hair); }
+  .ic { width:30px; height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:14px; flex-shrink:0; }
+  .g { flex:1; min-width:0; } .g .a { font-size:15px; } .g .s { font-size:12.5px; color:var(--ink3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .amt { text-align:right; font-size:15px; white-space:nowrap; }
+  .grey { color:var(--ink3); }
+  .gone { opacity:.28; text-decoration:line-through; }
+  .hl { box-shadow:inset 3px 0 0 #ff9f0a; }
+  .key { font-size:12.5px; color:#555; margin-top:6px; } .key span { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; vertical-align:-1px; }
+  table.rules { border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden; margin:6px 0 10px; font-size:14px; }
+  .rules td, .rules th { padding:8px 14px; border-bottom:.5px solid var(--hair); text-align:left; vertical-align:top; }
+  .rules th { background:#f7f7f9; font-weight:600; color:#555; }
+  .opt { background:#fff; border-radius:12px; padding:12px 14px; max-width:1010px; margin:8px 0; font-size:14px; line-height:1.45; }
+  .opt b.t { font-size:15px; }
+  .rec { color:#1a7f37; font-weight:600; }
+</style></head><body>
+<h1>Transfers and card payments belong to one workspace</h1>
+<p class="sub">Today a transfer or card payment the app made by itself (bill Pay, statement Pay, a captured message), one recorded in Family, or an old one shows in <b>every</b> workspace. After: each sits in one workspace, like spending does. Amounts and balances never change, only which list shows the row. All names and figures invented.</p>
+
+<h2>1 · Today → after (same three rows, three workspaces)</h2>
+<div class="row3">
+  <div class="phone"><p class="cap">Personal</p><p class="note">Own money: card payments and own transfers live here.</p>
+    <div class="title">Cashflow <span class="ws">P</span></div>
+    <div class="panel"><div class="day"><span class="n">25</span><span class="w"><b>Sunday</b><br>October 2026</span></div>
+      <div class="r"><div class="ic" style="background:#8e8e93">💳</div><div class="g"><div class="a">Card payment</div><div class="s">0917 → 4821</div></div><div class="amt">Rp 6.400.000</div></div>
+      <div class="r"><div class="ic" style="background:#8e8e93">⇄</div><div class="g"><div class="a">Transfer</div><div class="s">0917 → GoPay</div></div><div class="amt">Rp 500.000</div></div>
+      <div class="r"><div class="ic" style="background:#ff9500">🛒</div><div class="g"><div class="a">Toko Contoh</div><div class="s">Groceries · 4821</div></div><div class="amt">Rp 240.000</div></div>
+    </div></div>
+  <div class="phone"><p class="cap">Family (shared)</p><p class="note">Today the two Personal transfers show here too. After: gone. Joint money stays.</p>
+    <div class="title">Cashflow <span class="ws">F</span></div>
+    <div class="panel"><div class="day"><span class="n">25</span><span class="w"><b>Sunday</b><br>October 2026</span></div>
+      <div class="r gone"><div class="ic" style="background:#8e8e93">💳</div><div class="g"><div class="a">Card payment</div><div class="s">0917 → 4821</div></div><div class="amt">Rp 6.400.000</div></div>
+      <div class="r gone"><div class="ic" style="background:#8e8e93">⇄</div><div class="g"><div class="a">Transfer</div><div class="s">0917 → GoPay</div></div><div class="amt">Rp 500.000</div></div>
+      <div class="r hl"><div class="ic" style="background:#8e8e93">⇄</div><div class="g"><div class="a">Transfer</div><div class="s">0917 → Joint 2210</div></div><div class="amt">Rp 3.000.000</div></div>
+      <div class="r"><div class="ic" style="background:#34c759">🏠</div><div class="g"><div class="a">Electricity</div><div class="s">Utilities · Joint 2210</div></div><div class="amt">Rp 850.000</div></div>
+    </div></div>
+  <div class="phone"><p class="cap">Business</p><p class="note">Today the same two transfers show here as well. After: only Business rows.</p>
+    <div class="title">Cashflow <span class="ws">B</span></div>
+    <div class="panel"><div class="day"><span class="n">25</span><span class="w"><b>Sunday</b><br>October 2026</span></div>
+      <div class="r gone"><div class="ic" style="background:#8e8e93">💳</div><div class="g"><div class="a">Card payment</div><div class="s">0917 → 4821</div></div><div class="amt">Rp 6.400.000</div></div>
+      <div class="r gone"><div class="ic" style="background:#8e8e93">⇄</div><div class="g"><div class="a">Transfer</div><div class="s">0917 → GoPay</div></div><div class="amt">Rp 500.000</div></div>
+      <div class="r"><div class="ic" style="background:#5856d6">💼</div><div class="g"><div class="a">Software Contoh</div><div class="s">Subscriptions · 4821</div></div><div class="amt">Rp 320.000</div></div>
+    </div></div>
+</div>
+<p class="key"><span style="background:#ccc"></span>struck through = shows today, gone after &nbsp; <span style="background:#ff9f0a"></span>touches the joint account, so it stays in Family</p>
+
+<h2>2 · Where each one goes</h2>
+<table class="rules">
+<tr><th>Kind</th><th>Goes to</th></tr>
+<tr><td>Touches a joint account, or the husband's account (e.g. own card → his GoPay)</td><td>Family</td></tr>
+<tr><td>Bill Pay</td><td>The bill's workspace</td></tr>
+<tr><td>Only own accounts: top-ups, card payments, moves, captured SMS/email (wherever typed)</td><td>Personal</td></tr>
+<tr><td>Old ones showing everywhere</td><td>Tidied once by the same rule</td></tr>
+<tr><td>Wrong place</td><td>Swipe → Move to workspace (exists today)</td></tr>
+</table>
+
+<h2>3 · One card, spending in Family and Business, one payment</h2>
+<p class="sub">The card 4821 had Rp 4.000.000 of Family spending and Rp 2.400.000 of Business spending this month. The bank pays Rp 6.400.000 in one go.</p>
+<div class="row3">
+  <div class="phone"><p class="cap">The card's statement (any workspace)</p><p class="note">Every purchase, from every workspace, and the payment that covered them.</p>
+    <div class="panel">
+      <div class="r"><div class="ic" style="background:#34c759">🏠</div><div class="g"><div class="a">Family spending</div><div class="s">12 purchases</div></div><div class="amt">Rp 4.000.000</div></div>
+      <div class="r"><div class="ic" style="background:#5856d6">💼</div><div class="g"><div class="a">Business spending</div><div class="s">3 purchases</div></div><div class="amt">Rp 2.400.000</div></div>
+      <div class="r hl"><div class="ic" style="background:#8e8e93">💳</div><div class="g"><div class="a">Paid</div><div class="s">25 Oct · from 0917 · in Personal</div></div><div class="amt">Rp 6.400.000</div></div>
+    </div></div>
+  <div class="phone"><p class="cap">Family Cashflow</p><p class="note">Its 12 purchases, counted when bought. No payment row: paying the card is not spending.</p>
+    <div class="panel"><div class="day"><span class="n">14</span><span class="w"><b>Wednesday</b><br>October 2026</span></div>
+      <div class="r"><div class="ic" style="background:#ff9500">🛒</div><div class="g"><div class="a">Pasar Contoh</div><div class="s">Groceries · 4821</div></div><div class="amt">Rp 410.000</div></div>
+    </div></div>
+  <div class="phone"><p class="cap">Business Cashflow</p><p class="note">Same: its 3 purchases only.</p>
+    <div class="panel"><div class="day"><span class="n">9</span><span class="w"><b>Friday</b><br>October 2026</span></div>
+      <div class="r"><div class="ic" style="background:#5856d6">💼</div><div class="g"><div class="a">Software Contoh</div><div class="s">Subscriptions · 4821</div></div><div class="amt">Rp 320.000</div></div>
+    </div></div>
+</div>
+<h2 id="ab">4 · Where the Rp 6.400.000 payment row shows: A or B</h2>
+<div class="opt"><b class="t">A · The payment sits in Personal only</b> <span class="rec">(recommended)</span><br>
+Paying a card moves money from the bank to the card. The spending was already counted in Family and Business when each purchase was made, so nothing is missing from either. No split is needed, and nothing is counted twice.</div>
+<div class="row3">
+  <div class="phone"><p class="cap">A · Personal</p><p class="note">One row, the whole payment.</p>
+    <div class="title">Cashflow <span class="ws">P</span></div>
+    <div class="panel"><div class="day"><span class="n">25</span><span class="w"><b>Sunday</b><br>October 2026</span></div>
+      <div class="r hl"><div class="ic" style="background:#8e8e93">💳</div><div class="g"><div class="a">Card payment</div><div class="s">0917 → 4821</div></div><div class="amt">Rp 6.400.000</div></div>
+    </div></div>
+  <div class="phone"><p class="cap">A · Family</p><p class="note">No payment row. Its purchases on 4821 are already here.</p>
+    <div class="title">Cashflow <span class="ws">F</span></div>
+    <div class="panel"><div class="day"><span class="n">25</span><span class="w"><b>Sunday</b><br>October 2026</span></div>
+      <div class="r"><div class="ic" style="background:#34c759">🏠</div><div class="g"><div class="a">Electricity</div><div class="s">Utilities · Joint 2210</div></div><div class="amt">Rp 850.000</div></div>
+    </div></div>
+  <div class="phone"><p class="cap">A · Business</p><p class="note">No payment row. Its purchases on 4821 are already here.</p>
+    <div class="title">Cashflow <span class="ws">B</span></div>
+    <div class="panel"><div class="day"><span class="n">25</span><span class="w"><b>Sunday</b><br>October 2026</span></div>
+      <div class="r grey"><div class="g"><div class="a grey" style="font-size:13px">Nothing on this day</div></div></div>
+    </div></div>
+</div>
+<div class="opt"><b class="t">B · Split the payment into Family Rp 4.000.000 + Business Rp 2.400.000</b><br>
+Each workspace shows its own part of the payment as a grey "not counted" row. More to look at, and more to keep right when a purchase moves between workspaces. Only useful if Business must show "paid back" for its own books.</div>
+<div class="row3">
+  <div class="phone"><p class="cap">B · Personal</p><p class="note">Nothing: the payment is split into the other two.</p>
+    <div class="title">Cashflow <span class="ws">P</span></div>
+    <div class="panel"><div class="day"><span class="n">25</span><span class="w"><b>Sunday</b><br>October 2026</span></div>
+      <div class="r grey"><div class="g"><div class="a grey" style="font-size:13px">Nothing on this day</div></div></div>
+    </div></div>
+  <div class="phone"><p class="cap">B · Family</p><p class="note">Family's part, grey, not counted as spending.</p>
+    <div class="title">Cashflow <span class="ws">F</span></div>
+    <div class="panel"><div class="day"><span class="n">25</span><span class="w"><b>Sunday</b><br>October 2026</span></div>
+      <div class="r hl"><div class="ic" style="background:#c7c7cc">💳</div><div class="g"><div class="a">Card payment · Family part</div><div class="s">0917 → 4821 · not counted</div></div><div class="amt grey">Rp 4.000.000</div></div>
+      <div class="r"><div class="ic" style="background:#34c759">🏠</div><div class="g"><div class="a">Electricity</div><div class="s">Utilities · Joint 2210</div></div><div class="amt">Rp 850.000</div></div>
+    </div></div>
+  <div class="phone"><p class="cap">B · Business</p><p class="note">Business's part, grey, not counted as spending.</p>
+    <div class="title">Cashflow <span class="ws">B</span></div>
+    <div class="panel"><div class="day"><span class="n">25</span><span class="w"><b>Sunday</b><br>October 2026</span></div>
+      <div class="r hl"><div class="ic" style="background:#c7c7cc">💳</div><div class="g"><div class="a">Card payment · Business part</div><div class="s">0917 → 4821 · not counted</div></div><div class="amt grey">Rp 2.400.000</div></div>
+    </div></div>
+</div>
+</body></html>

@@ -209,6 +209,34 @@ export function ownerRing(rings: Readonly<Record<string, RingColour>>, owner: st
 }
 
 /**
+ * The partner's accounts with pockets, for the sheet to fold as it folds this phone's own (`foldPockets`): each pocket
+ * names its account (`pocketOf`), so `pockets` maps a pocket's itemId to that account, and `parents` holds one joint row
+ * an account — its pockets' total in the base currency, whose it is — for the ring and the link its row wears. An
+ * account any pocket of which has no rate is left out: its pockets stay rows of their own, each in its own currency,
+ * as any received item with no rate is drawn. A pocket from a peer before this release names no account and stays too.
+ */
+export function receivedPocketAccounts(
+  received: readonly ReceivedItem[],
+  rows: JointRows['rows'],
+  baseCurrency: string,
+): { pockets: Map<string, { id: string; name: string; currency: string }>; parents: Map<string, JointRows['rows'][number]> } {
+  const byItem = new Map(rows.filter((row) => row.received).map((row) => [row.accountId, row]));
+  const accounts = new Map<string, ReceivedItem[]>();
+  for (const item of received) if (item.pocketOf && item.kind === 'asset') accounts.set(item.pocketOf.id, [...(accounts.get(item.pocketOf.id) ?? []), item]);
+  const pockets = new Map<string, { id: string; name: string; currency: string }>();
+  const parents = new Map<string, JointRows['rows'][number]>();
+  for (const [id, items] of accounts) {
+    const shown = items.map((item) => byItem.get(item.itemId));
+    if (shown.some((row) => !row || row.amountMinor === null)) continue;
+    const first = items[0]!;
+    const totalMinor = shown.reduce((sum, row) => sum + row!.amountMinor!, 0);
+    for (const item of items) pockets.set(item.itemId, { id, name: first.pocketOf!.name, currency: item.currency });
+    parents.set(id, { accountId: id, side: 'asset', name: first.pocketOf!.name, subtype: first.subtype, currency: baseCurrency, nativeMinor: totalMinor, amountMinor: totalMinor, received: true, owner: first.owner });
+  }
+  return { pockets, parents };
+}
+
+/**
  * Whose a row on the household's sheet is (owner rings, 12 Nov). The sheet is not always drawn in the rows `jointRows`
  * holds: an account with pockets is folded into its parent (`foldPockets`), whose id is no row there — only its pockets
  * are. So a row is looked up by its own id, then by its pockets', and a row no joint row speaks for is this phone's own

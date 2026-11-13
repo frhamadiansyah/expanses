@@ -170,6 +170,18 @@ export function payerLine(payer: PurchasePayer): string {
   return label ? `${label} · paid by ${who}` : `Paid by ${who}`;
 }
 
+/**
+ * The payer a row in a shared book names on its second line (`payerLine`), or null when the row names what it was paid
+ * with itself, by its digits, as any row in a private workspace does. That is a purchase this device's own member paid
+ * from an account of their own here: the label their share recorded is only the account's full name, and the row
+ * already knows the account. One someone else paid, or one posted here against a placeholder (from another of this
+ * member's devices, or after a restore), keeps the label — as does every row while the accounts are not read yet.
+ */
+export function payerToShow(payer: PurchasePayer | null, tx: Parameters<typeof postedAgainstPlaceholder>[0], known: ReadonlySet<string>): PurchasePayer | null {
+  if (!payer) return null;
+  return payer.mine && known.size > 0 && !postedAgainstPlaceholder(tx, known) ? null : payer;
+}
+
 /** The currency refusal, word for word as §8.2 says it: the book's currency first, then this app's. */
 export function currencyRefusal(bookCurrency: string, ownCurrency: string): string {
   return `This workspace keeps its money in ${bookCurrency}; this app's own accounts are kept in ${ownCurrency}. Sharing across currencies isn't supported yet.`;

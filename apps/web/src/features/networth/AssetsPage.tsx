@@ -51,6 +51,21 @@ function Row({ row, baseCurrency, money, nested = false, tree, mark }: { row: As
     row.name
   );
   const depth = nested ? 1 : 0;
+  // The other's account with pockets: one row at their total, as on its owner's phone, opening to the pockets read-only.
+  if (row.received && row.pockets !== null)
+    return (
+      <GroupedRow
+        to="/net-worth/shared/$itemId"
+        params={{ itemId: row.accountId }}
+        testId={`assets-shared-${row.accountId}`}
+        icon={icon}
+        iconRing={iconRing}
+        depth={depth}
+        tree={tree}
+        title={title}
+        figure={groupedFigure({ totalMinor: row.missing.length ? null : row.valueMinor, missing: row.missing }, baseCurrency, row.converted)}
+      />
+    );
   // The other's shared item opens what they shared, read-only: never a page of this phone's.
   if (row.received)
     return (

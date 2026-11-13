@@ -1,6 +1,7 @@
 import type { AccountRow, PaidWithItem } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { partnerChoice, partnerItemOfChoice, partnerTitle, partnerTransferSections } from './member-transfer';
+import { sharedPaymentSections } from './PaymentSheet';
 import { emptyForm, memberTransferOf, ownTransferAccountId, type FormDraft } from './tx-form';
 
 /*
@@ -22,10 +23,24 @@ describe('Transfer: the partner’s shared items', () => {
     expect(partnerTransferSections(items, here, 'EUR', 'Household')).toEqual([]);
   });
 
-  it('appear only in the group’s workspace, and only once the other side’s currency is known', () => {
+  it('appear only in the group’s workspace', () => {
     expect(partnerTransferSections(items, { formBookId: 'book-business', groupWorkspaceBookId: 'book-home' }, 'IDR', 'Business')).toEqual([]);
     expect(partnerTransferSections(items, { formBookId: 'book-home', groupWorkspaceBookId: null }, 'IDR', 'Household')).toEqual([]);
-    expect(partnerTransferSections(items, here, '', 'Household')).toEqual([]);
+    expect(partnerTransferSections(items, { formBookId: 'book-business', groupWorkspaceBookId: 'book-home' }, null, 'Business')).toEqual([]);
+  });
+
+  /*
+   * Owner's report (build 122/123): in the household's workspace Paid with listed the partner's account, but To and
+   * From did not — each waited for the other side to be chosen first, and nothing said so. With the other side still
+   * empty, every one of the partner's items is offered, as Paid with offers it; the one picked sets the currency the
+   * other side must then match.
+   */
+  it('appear while the other side is still empty, as Paid with lists them; every currency, since the pick sets it', () => {
+    const all = [['Andi’s, shared with Household', ['i-mandiri', 'i-usd', 'i-wallet']]];
+    expect(titles(sharedPaymentSections(items, here, null, ''))).toEqual([['Andi’s, shared', ['i-mandiri', 'i-usd', 'i-wallet']]]);
+    expect(titles(partnerTransferSections(items, here, null, 'Household'))).toEqual(all);
+    expect(titles(partnerTransferSections(items, here, undefined, 'Household'))).toEqual(all);
+    expect(titles(partnerTransferSections(items, here, '', 'Household'))).toEqual(all);
   });
 
   it('one section per owner; an owner with no name here reads as the workspace’s', () => {

@@ -56,7 +56,6 @@ export function FeeDayMonthRow({ value, today, onChange, position }: GroupChild 
         </span>
       </div>
       {value === '' && partial && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Pick the day and the month.</p>}
-      {value !== '' && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Every year on this day.</p>}
     </div>
   );
 }
