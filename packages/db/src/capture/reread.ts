@@ -14,17 +14,19 @@
  * was hidden by a no-break space) is turned round the same way: only while the draft is still the reader's income —
  * its kind and its sign what that reading gave — and never once the owner has said otherwise.
  */
-import { capturedDayOf, type RawCapture, readCapture, wholeFromHundredths, WORDS } from '@expanses/core';
-import { and, eq, isNotNull, isNull, like, lt, or, sql } from 'drizzle-orm';
+import { capturedDayOf, type RawCapture, wholeFromHundredths } from '@expanses/core';
+import { and, eq, inArray, isNotNull, isNull, like, lt, or, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { type DraftEdit, editDraftTx } from '../repos/drafts';
+import { capturedCategoryFromHistory } from '../repos/entry';
 import { draftExactExists } from '../repos/exact-column';
 import { accounts, workspaces } from '../schema';
+import { captureSettings, captureSources } from '../schema-capture';
 import { draftTransactions } from '../schema-drafts';
-import { planDraft } from './ingest';
+import { cardAccountFor, planDraft } from './ingest';
 import { storedReadingOf } from './learn';
-import { type CaptureSource, sourceById } from './sources';
+import { type CaptureSource, readFromSource, sourceById, spendsOnly } from './sources';
 
 type Row = typeof draftTransactions.$inferSelect;
 
@@ -67,7 +69,7 @@ async function rereadOne(tx: Db, row: Row, today: string): Promise<{ ws: Workspa
   if (!home) return null;
 
   const capture = captureOf(row);
-  const reading = readCapture(capture, WORDS, source.template, { offers: source.readOffers ? 'transactions' : 'skip' });
+  const reading = readFromSource(capture, source, source.readOffers ? 'transactions' : 'skip');
   if (reading.skipped === 'promo' || reading.amount === null) return null;
   // The draft the message would be queued as today, by the queue's own rules: what is taken from it is chosen below.
   const ws: WorkspaceContext = { workspaceId: home.id, baseCurrency: home.baseCurrency };
@@ -101,7 +103,7 @@ async function rereadDirectionOne(
   if (!home) return null;
 
   const capture = captureOf(row);
-  const reading = readCapture(capture, WORDS, source.template, { offers: source.readOffers ? 'transactions' : 'skip' });
+  const reading = readFromSource(capture, source, source.readOffers ? 'transactions' : 'skip');
   if (reading.skipped !== null || reading.amount === null || reading.type.value !== 'spent') return null;
   const ws: WorkspaceContext = { workspaceId: home.id, baseCurrency: home.baseCurrency };
   // What the queue made of it then, and what it makes of it now: whatever on the draft is still the first, the owner
@@ -209,5 +211,87 @@ export async function rereadUnreadDrafts(database: Database, opts: { today: stri
       filled += 1;
     }
     return filled;
+  });
+}
+
+/** Marks the one-time fix below as run on this device (capture settings never leave it). */
+const SPENDING_SENDER_FIX = 'fix.spending-sender-income.v1';
+
+/** The card digits a draft's kept reading named, whatever shape an older build kept it in. */
+function digitsOf(readingJson: string | null): string | null {
+  if (!readingJson) return null;
+  try {
+    const parsed = JSON.parse(readingJson) as { accountHint?: unknown; paymentMethod?: { last4?: unknown } | null } | null;
+    const digits = parsed?.paymentMethod?.last4 ?? parsed?.accountHint;
+    return typeof digits === 'string' && /^\d{3,6}$/.test(digits) ? digits : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Once per device: every draft still waiting as money in from a sender whose emails only report spending (a Maybank
+ * card email, `spendsOnly`) becomes the purchase it was. Older builds read some as income and kept them so, and no
+ * reading of their words can be trusted to say otherwise — they may be gone — so the draft is matched on its source
+ * alone, whatever its sign or its kept reading.
+ *
+ * The figure is made positive; the card is the one its digits name, when one card does; an income category gives way
+ * to the spending category the merchant went to last, or none. A confirmed or dismissed draft is never touched.
+ * Returns how many drafts changed.
+ */
+export async function fixSpendingSenderDrafts(database: Database, opts: { today: string }): Promise<number> {
+  return database.transaction(async (tx) => {
+    const [done] = await tx.select({ key: captureSettings.key }).from(captureSettings).where(eq(captureSettings.key, SPENDING_SENDER_FIX));
+    if (done) return 0;
+    const spending = (await tx.select().from(captureSources)).filter((source) => spendsOnly(source));
+    const rows =
+      spending.length === 0
+        ? []
+        : await tx
+            .select()
+            .from(draftTransactions)
+            .where(
+              and(
+                eq(draftTransactions.status, 'pending'),
+                eq(draftTransactions.kind, 'income'),
+                isNull(draftTransactions.mergedInto),
+                inArray(
+                  draftTransactions.sourceId,
+                  spending.map((source) => source.id),
+                ),
+              ),
+            );
+    let fixed = 0;
+    for (const row of rows) {
+      const source = await sourceById(tx, row.sourceId!);
+      const [home] = await tx.select({ id: workspaces.id, baseCurrency: workspaces.baseCurrency }).from(workspaces).where(eq(workspaces.id, row.workspaceId));
+      if (!source || !home) continue;
+      const ws: WorkspaceContext = { workspaceId: home.id, baseCurrency: home.baseCurrency };
+      // The words, while they are kept, say which card; otherwise the reading the draft kept may.
+      const read = row.rawPayload ? readFromSource(captureOf(row), source, 'read') : null;
+      const card = await cardAccountFor(tx, row.workspaceId, read?.paymentMethod?.last4 ?? read?.accountHint ?? digitsOf(row.readingJson));
+
+      const edit: DraftEdit = { kind: 'expense', amountMinor: Math.abs(row.amountMinor) };
+      const exact = (await draftExactExists(tx)) ? await exactOf(tx, row.id) : null;
+      if (exact !== null) {
+        edit.exactHundredths = exact;
+        // A figure with cents rounded down as money in is rounded up as money out.
+        if (wholeFromHundredths(exact, 'down') === Math.abs(row.amountMinor)) edit.amountMinor = wholeFromHundredths(exact, 'up');
+      }
+      if (card) {
+        edit.accountId = card.id;
+        edit.cardId = card.cardId;
+      }
+      if (row.categoryAccountId === null || (await isIncomeCategory(tx, row.categoryAccountId))) {
+        edit.categoryAccountId = await capturedCategoryFromHistory(tx, ws, row.description, 'expense');
+      }
+      await editDraftTx(tx, ws, row.id, edit);
+      // The kept reading says what the draft now is, so no later re-read turns it back.
+      const kept = storedReadingOf(row.readingJson);
+      if (kept) await tx.update(draftTransactions).set({ readingJson: JSON.stringify({ ...kept, type: { value: 'spent', confidence: 90, line: null } }) }).where(eq(draftTransactions.id, row.id));
+      fixed += 1;
+    }
+    await tx.insert(captureSettings).values({ key: SPENDING_SENDER_FIX, value: new Date().toISOString() }).onConflictDoNothing();
+    return fixed;
   });
 }

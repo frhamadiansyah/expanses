@@ -10,7 +10,7 @@ import { numberColumnExists } from '../repos/cards';
  * Nothing leaves the phone: this is the database's own copy of what was captured, and the words it was read with are
  * files in the package.
  */
-import { capturedDayOf, exponentOf, namesCard, readCapture, type RawCapture, type Reading, uuidv7, wholeFromHundredths, WORDS } from '@expanses/core';
+import { capturedDayOf, exponentOf, namesCard, type RawCapture, type Reading, uuidv7, wholeFromHundredths, WORDS } from '@expanses/core';
 import { and, eq, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -23,7 +23,7 @@ import { captureSettings, captureSkipped } from '../schema-capture';
 import { draftTransactions } from '../schema-drafts';
 import { readingWithLines, storedReadingOf } from './learn';
 import { findMatch, makeTransferPair, mergeInto } from './match';
-import { type CaptureSource, sourceFor } from './sources';
+import { type CaptureSource, readFromSource, sourceFor } from './sources';
 
 /** What the owner wants out of capture: everything, or only the money that left. */
 export type CaptureScope = 'everything' | 'expenses-only';
@@ -382,7 +382,7 @@ export async function ingestCaptures(
       // its duplicates are looked for, and where a skipped copy is kept.
       const home = await workspaceFor(tx, ws, source);
       // A source the owner has opened to offers reads the ones reporting a purchase; every other source skips them all.
-      const reading = readCapture(capture, WORDS, source.template, { offers: source.readOffers ? 'transactions' : 'skip' });
+      const reading = readFromSource(capture, source, source.readOffers ? 'transactions' : 'skip');
       if (reading.skipped === 'promo') {
         await skip(tx, home, 'promo', capture, reading);
         result.skipped += 1;

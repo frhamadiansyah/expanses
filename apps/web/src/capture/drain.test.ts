@@ -1,5 +1,5 @@
 import type { CaptureLine, RawCapture } from '@expanses/core';
-import { createDatabase, createDraft, createWorkspace, listDrafts, migrate, sourceFor } from '@expanses/db';
+import { createDatabase, createDraft, createWorkspace, listDrafts, listSources, migrate, sourceFor } from '@expanses/db';
 import { createNodeExecutor } from '@expanses/db/node';
 import { describe, expect, it } from 'vitest';
 import { drainCaptures, drainNow, lastDrain, pickPhotos, scanReceipt, type CaptureBridge } from './drain';
@@ -449,6 +449,44 @@ describe('a drain reads again what an earlier reader left at nothing', () => {
       expect((await listDrafts(database, ws))[0]).toMatchObject({ amountMinor: 94_300, currency: 'KRW', description: 'TOKO KOPI CONTOH' });
       // Read once: the next drain finds nothing left to read again.
       expect((await drainCaptures(database, ws, bridge([]), '2026-11-05')).reread).toBe(0);
+    } finally {
+      close();
+    }
+  });
+});
+
+describe('a drain puts right a Maybank email an older build queued as money in', () => {
+  it('turns it into a purchase once, and names its source for the bank', async () => {
+    const { database, ws, close } = await setup();
+    try {
+      // The sender as an older build kept it: a name and an address on two lines, read as a source called "Id".
+      const mail: RawCapture = {
+        ...notification,
+        id: 'mail-old',
+        app: 'Maybank\nalerts@maybank.co.id',
+        title: 'Maybank Credit Card Transaction Notification (do not reply)',
+        body: 'Nomor Kartu\tMerchant\tMata Uang\tJumlah\n**** 4732\tKEDAI CONTOH\tIDR\t31,500',
+      };
+      const source = await sourceFor(database.db, mail);
+      // Keyed and named as that build made it: on the sender exactly as handed over, called for its last dot.
+      await database.execScript(`UPDATE capture_sources SET key = '${mail.app}', label = 'Id'`);
+      await createDraft(database, ws, {
+        source: 'notification',
+        kind: 'income',
+        occurredOn: '2026-11-11',
+        description: 'KEDAI CONTOH',
+        amountMinor: -31_500,
+        currency: 'IDR',
+        sourceId: source.id,
+        captureIds: [mail.id],
+        externalRef: `capture:${mail.id}`,
+        rawPayload: null,
+      });
+
+      expect((await drainCaptures(database, ws, bridge([]), '2026-11-13')).reread).toBe(1);
+      expect((await listDrafts(database, ws))[0]).toMatchObject({ kind: 'expense', amountMinor: 31_500 });
+      expect((await listSources(database)).map((one) => one.label)).toEqual(['Maybank']);
+      expect((await drainCaptures(database, ws, bridge([]), '2026-11-13')).reread).toBe(0);
     } finally {
       close();
     }

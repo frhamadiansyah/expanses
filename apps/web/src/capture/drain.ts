@@ -13,10 +13,12 @@
 import { isoDate, type RawCapture, readsAsStatement } from '@expanses/core';
 import {
   type Database,
+  fixSpendingSenderDrafts,
   type IngestResult,
   ingestCaptures,
   purgeCaptureLeftovers,
   rereadUnreadDrafts,
+  tidySenderSources,
   type WorkspaceContext,
 } from '@expanses/db';
 import { App as Shell } from '@capacitor/app';
@@ -51,10 +53,19 @@ export interface DrainResult extends IngestResult {
  * and the next drain tries again.
  */
 async function rereadWaiting(database: Database, on: string): Promise<number> {
+  let changed = 0;
   try {
-    return await rereadUnreadDrafts(database, { today: on });
+    // A sender an older build named for the end of its address ("Id") gets its bank's name back.
+    await tidySenderSources(database);
+    // Once per device: a Maybank email waiting as money in is the purchase it was.
+    changed += await fixSpendingSenderDrafts(database, { today: on });
   } catch {
-    return 0;
+    // Tried again on the next drain: the fix marks itself done only when it ran through.
+  }
+  try {
+    return changed + (await rereadUnreadDrafts(database, { today: on }));
+  } catch {
+    return changed;
   }
 }
 
