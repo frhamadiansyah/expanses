@@ -13,6 +13,7 @@ test('phone: Counts picks categories on a sheet, the row sums them up, and the c
   await page.getByTestId('fee-waiver-row').click();
   await page.getByTestId('waiver-challenge').click();
   await page.getByLabel('Spend', { exact: true }).fill('1500000');
+  await expect(page.getByLabel('Spend', { exact: true })).toHaveValue('1.500.000');
   await page.getByLabel('Counted from').fill(iso(new Date()));
   const by = new Date();
   by.setDate(by.getDate() + 3);

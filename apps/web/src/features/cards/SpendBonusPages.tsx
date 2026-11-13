@@ -1,4 +1,4 @@
-import { type FeeWaiver, formatMinor, matchesSpend, parseMajor, minorToMajorString, type SpendBonusItem, type SpendLine, timeLeftText } from '@expanses/core';
+import { type FeeWaiver, formatMinor, groupedMajorString, groupTypedAmount, matchesSpend, parseGroupedMajor, type SpendBonusItem, type SpendLine, timeLeftText } from '@expanses/core';
 import { clearFeeWaiver, saveFeeWaiver } from '@expanses/db';
 import { getRouteApi, Link } from '@tanstack/react-router';
 import { Check, Plus } from 'lucide-react';
@@ -240,7 +240,7 @@ function WaiverForm({ page }: { page: CardPage }) {
   const goBack = () => window.history.back();
 
   const shownKind: Kind = kind ?? existing?.kind ?? 'none';
-  const shownAmount = amount ?? (existing ? minorToMajorString(existing.amountMinor, currency) : '');
+  const shownAmount = amount ?? (existing ? groupedMajorString(existing.amountMinor, currency) : '');
   const shownFrom = from ?? existing?.countedFrom ?? today;
   const shownBy = by ?? existing?.spendBy ?? '';
   const shownCategories = categories ?? existing?.categoryIds ?? [];
@@ -252,7 +252,7 @@ function WaiverForm({ page }: { page: CardPage }) {
       else {
         const waiver: FeeWaiver = {
           kind: shownKind,
-          amountMinor: parseMajor(shownAmount, currency),
+          amountMinor: parseGroupedMajor(shownAmount, currency),
           countedFrom: shownKind === 'challenge' ? shownFrom : null,
           spendBy: shownKind === 'challenge' ? shownBy || null : null,
           categoryIds: shownCategories,
@@ -292,7 +292,7 @@ function WaiverForm({ page }: { page: CardPage }) {
       </InsetGroup>
       {shownKind !== 'none' && (
         <InsetGroup header={shownKind === 'automatic' ? 'Target' : 'From the bank'}>
-          <TextRow label="Spend" prefix={currency} value={shownAmount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="Amount" />
+          <TextRow label="Spend" prefix={currency} value={shownAmount} onChange={(e) => setAmount(groupTypedAmount(e.target.value, currency))} inputMode="decimal" placeholder="Amount" />
           {shownKind === 'automatic' && <ReadOnlyRow label="Within" value="12 months before the fee date" />}
           {shownKind === 'challenge' && <TextRow label="Counted from" type="date" value={shownFrom} onChange={(e) => setFrom(e.target.value)} />}
           {shownKind === 'challenge' && <TextRow label="Spend by" type="date" value={shownBy} onChange={(e) => setBy(e.target.value)} />}
