@@ -475,6 +475,30 @@ describe('a wallet’s phone digits on its rows', () => {
   });
 });
 
+describe('a fund account’s number digits on its rows', () => {
+  // A broker's cash account: its digits come in by the same map as a bank account's own number (`accountNumberLast4s`).
+  const withFund = [...accounts, account('rdn', 'asset', 'fund', { name: 'Sekuritas Contoh' })];
+  const digits = { rdn: '5046' };
+  // The shared `tx` reads names from the list above, so the fund's side is written over a stand-in bank's.
+  const atFund = (t: TransactionView, i: number) => {
+    t.entries[i] = { ...t.entries[i]!, accountId: 'rdn', accountName: 'Sekuritas Contoh', accountSubtype: 'fund' };
+    return t;
+  };
+  const dividend = atFund(tx('2026-09-12', 'Dividen', [['debit', 125_000], ['salary', -125_000]]), 0);
+
+  it('shows money received into it as "···· 5046", as a bank account’s is shown', () => {
+    const [row] = buildRows([dividend], [], withFund, cards, digits);
+    expect(row).toMatchObject({ last4: '5046', cardId: null });
+    expect(paidWithLook(row!)).toEqual({ name: '', last4: '5046' });
+  });
+
+  it('reads money moved out of it to a bank by both sides’ digits', () => {
+    const move = atFund(tx('2026-09-13', 'Tarik dana', [['bca', 500_000], ['debit', -500_000]]), 1);
+    const [row] = buildRows([move], [], withFund, cards, { ...digits, bca: '0917' });
+    expect(paidWithLook(row!)).toEqual({ name: '5046 → 0917', last4: null });
+  });
+});
+
 describe('amountExtraParts', () => {
   const foreign = { originalCurrency: 'JPY', originalAmountMinor: 1850 };
   const plain = { originalCurrency: null, originalAmountMinor: null };
