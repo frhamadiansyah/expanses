@@ -61,5 +61,48 @@
     <div class="panel start"><div class="day" style="border:0"><b>1 Oct</b> Starting balance<span class="bal">Rp 12.400.000</span></div></div>
   </div>
 </div>
+
+<h1 style="margin-top:30px">If the starting balance is set on 13 Nov (today's figure from the bank: Rp 8.730.000)</h1>
+<p class="sub">Two ways the app could read "Balance Rp 8.730.000, As of 13 Nov" on an account that already has transactions from 1 Oct.</p>
+<div class="row3">
+  <div class="phone">
+    <p class="cap">4 · Works back to the start (recommended)</p><p class="note">The app keeps 1 Oct as the start and works out what it must have been: 8.730.000 − what moved since = <b>Rp 12.900.000</b>. The list ends up exactly like 2.</p>
+    <div class="hero"><div class="k">Balance today</div><div class="v" style="color:#b25000">Rp 8.730.000</div></div>
+    <div class="panel"><div class="day chg"><b>13 Nov</b> Thu<span class="bal">Rp 8.730.000</span></div>
+      <div class="r"><div class="g"><div class="s">No transactions · the figure typed in Settings</div></div></div></div>
+    <div class="panel"><div class="day chg"><b>12 Nov</b> Wed<span class="bal">Rp 8.730.000</span></div>
+      <div class="r"><div class="ic" style="background:#ff9500">🛒</div><div class="g"><div class="a">Groceries</div><div class="s">Superindo</div></div><div class="amt">Rp 420.000</div></div></div>
+    <div class="panel"><div class="day chg"><b>25 Oct</b> Sat<span class="bal">Rp 9.150.000</span></div>
+      <div class="r"><div class="ic" style="background:#34c759">💼</div><div class="g"><div class="a">Salary</div><div class="s">PT Contoh</div></div><div class="amt plus">+Rp 15.000.000</div></div>
+      <div class="r"><div class="ic" style="background:#8e8e93">⇄</div><div class="g"><div class="a">Transfer</div><div class="s">→ BCA Visa · card bill</div></div><div class="amt">Rp 18.250.000</div></div></div>
+    <div class="panel"><div class="day chg"><b>2 Oct</b> Thu<span class="bal">Rp 12.400.000</span></div>
+      <div class="r"><div class="ic" style="background:#5856d6">⚡</div><div class="g"><div class="a">Electricity</div><div class="s">PLN token</div></div><div class="amt">Rp 500.000</div></div></div>
+    <div class="panel start"><div class="day chg" style="border:0"><b>1 Oct</b> Starting balance<span class="bal">Rp 12.900.000</span></div></div>
+  </div>
+  <div class="phone">
+    <p class="cap">5 · Counting starts on 13 Nov</p><p class="note">The start moves to 13 Nov at Rp 8.730.000. Rows before it stay in the list and in Cashflow, but no longer move this balance: they read <b>before counting</b> and have no day balance.</p>
+    <div class="hero"><div class="k">Balance today</div><div class="v" style="color:#b25000">Rp 8.730.000</div></div>
+    <div class="panel start"><div class="day chg" style="border:0"><b>13 Nov</b> Starting balance<span class="bal">Rp 8.730.000</span></div></div>
+    <div class="panel" style="opacity:.6"><div class="day"><b>12 Nov</b> Wed<span class="bal">before counting</span></div>
+      <div class="r"><div class="ic" style="background:#ff9500">🛒</div><div class="g"><div class="a">Groceries</div><div class="s">Superindo</div></div><div class="amt">Rp 420.000</div></div></div>
+    <div class="panel" style="opacity:.6"><div class="day"><b>25 Oct</b> Sat<span class="bal">before counting</span></div>
+      <div class="r"><div class="ic" style="background:#34c759">💼</div><div class="g"><div class="a">Salary</div><div class="s">PT Contoh</div></div><div class="amt plus">+Rp 15.000.000</div></div>
+      <div class="r"><div class="ic" style="background:#8e8e93">⇄</div><div class="g"><div class="a">Transfer</div><div class="s">→ BCA Visa · card bill</div></div><div class="amt">Rp 18.250.000</div></div></div>
+    <div class="panel" style="opacity:.6"><div class="day"><b>2 Oct</b> Thu<span class="bal">before counting</span></div>
+      <div class="r"><div class="ic" style="background:#5856d6">⚡</div><div class="g"><div class="a">Electricity</div><div class="s">PLN token</div></div><div class="amt">Rp 500.000</div></div></div>
+  </div>
+  <div class="phone">
+    <p class="cap">6 · What moving As of to 13 Nov does today</p><p class="note">Today's app moves the start row to 13 Nov but keeps it at Rp 12.400.000, and the earlier rows still count. So every day before 13 Nov reads <b>below zero</b>, and today is still 500.000 short. Fixed by 4 or 5.</p>
+    <div class="hero"><div class="k">Balance today</div><div class="v">Rp 8.230.000</div></div>
+    <div class="panel start"><div class="day" style="border:0"><b>13 Nov</b> Starting balance<span class="bal">Rp 8.230.000</span></div></div>
+    <div class="panel"><div class="day chg"><b>12 Nov</b> Wed<span class="bal">−Rp 4.170.000</span></div>
+      <div class="r"><div class="ic" style="background:#ff9500">🛒</div><div class="g"><div class="a">Groceries</div><div class="s">Superindo</div></div><div class="amt">Rp 420.000</div></div></div>
+    <div class="panel"><div class="day chg"><b>25 Oct</b> Sat<span class="bal">−Rp 3.750.000</span></div>
+      <div class="r"><div class="ic" style="background:#34c759">💼</div><div class="g"><div class="a">Salary</div><div class="s">PT Contoh</div></div><div class="amt plus">+Rp 15.000.000</div></div>
+      <div class="r"><div class="ic" style="background:#8e8e93">⇄</div><div class="g"><div class="a">Transfer</div><div class="s">→ BCA Visa · card bill</div></div><div class="amt">Rp 18.250.000</div></div></div>
+    <div class="panel"><div class="day chg"><b>2 Oct</b> Thu<span class="bal">−Rp 500.000</span></div>
+      <div class="r"><div class="ic" style="background:#5856d6">⚡</div><div class="g"><div class="a">Electricity</div><div class="s">PLN token</div></div><div class="amt">Rp 500.000</div></div></div>
+  </div>
+</div>
 <p class="key"><span></span>changed figure · Cashflow (spent / income) is the same in all three: the starting balance and a correction are never spending or income.</p>
 </body></html>
