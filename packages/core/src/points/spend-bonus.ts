@@ -6,10 +6,13 @@ import { nextFeeDate } from './fee-date';
  * spending target, or a challenge it set after a call). All of them are "spend this much by then" and read alike.
  */
 
-/** A yearly spending target the bank waives the fee for by itself, or a challenge the bank gave for one fee. */
+/**
+ * A yearly spending target the bank waives the fee for by itself, a challenge the bank gave for one fee, or a fee that
+ * is always waived ('lifetime': nothing to spend, no days, no amount — 0).
+ */
 export interface FeeWaiver {
-  kind: 'automatic' | 'challenge';
-  /** The spend to reach. */
+  kind: 'automatic' | 'challenge' | 'lifetime';
+  /** The spend to reach; 0 for a lifetime one. */
   amountMinor: number;
   /** A challenge: the day counting starts. Not used by an automatic one. */
   countedFrom: string | null;
@@ -110,7 +113,12 @@ export function bonusItem(bonus: CycleBonus, eligibleSpendMinor: number, awarded
   };
 }
 
-/** A fee waiver as an item. `feeMinor` is the fee it saves (null when no amount is set). */
+/** Whether a waiver has a spend to reach: a lifetime one has none, so it is never a spend bonus. */
+export function hasSpendTarget(waiver: FeeWaiver): boolean {
+  return waiver.kind !== 'lifetime';
+}
+
+/** A fee waiver as an item (never a lifetime one: see `hasSpendTarget`). `feeMinor` is the fee it saves (null when no amount is set). */
 export function waiverItem(waiver: FeeWaiver, window: WaiverWindow, spentMinor: number, feeMinor: number | null, today: string): SpendBonusItem {
   const goal = waiver.amountMinor;
   const challenge = waiver.kind === 'challenge';
@@ -142,10 +150,4 @@ export function timeLeftText(daysLeft: number): string {
   if (daysLeft === 1) return '1 day left';
   if (daysLeft < 60) return `${daysLeft} days left`;
   return `${Math.round(daysLeft / 30)} months left`;
-}
-
-/** The Fee waiver row in Settings: which kind and its key figure. `formatted` is the amount as money; `by` is "31 Oct". */
-export function waiverRowText(waiver: FeeWaiver | null, formatted: string, by: string | null): string {
-  if (!waiver) return 'None';
-  return waiver.kind === 'challenge' ? `Challenge · by ${by ?? 'no date'}` : `Automatic · ${formatted} a year`;
 }

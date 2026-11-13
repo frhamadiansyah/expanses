@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CycleBonus, SpendLine } from '../src/index';
-import { bonusItem, daysBetween, type FeeWaiver, nearestFirst, timeLeftText, waiverItem, waiverRowText, waiverSpend, waiverWindow } from '../src/index';
+import { bonusItem, daysBetween, type FeeWaiver, nearestFirst, timeLeftText, waiverItem, waiverSpend, waiverWindow } from '../src/index';
 
 const line = (over: Partial<SpendLine>): SpendLine => ({
   transactionId: 't',
@@ -105,11 +105,6 @@ describe('words', () => {
     expect(timeLeftText(1)).toBe('1 day left');
     expect(timeLeftText(9)).toBe('9 days left');
     expect(timeLeftText(120)).toBe('4 months left');
-  });
-  it('says what the settings row holds', () => {
-    expect(waiverRowText(null, '', null)).toBe('None');
-    expect(waiverRowText(challenge, 'Rp 1.500.000', '31 Oct')).toBe('Challenge · by 31 Oct');
-    expect(waiverRowText(automatic, 'Rp 150.000.000', null)).toBe('Automatic · Rp 150.000.000 a year');
   });
   it('counts days', () => {
     expect(daysBetween('2026-10-28', '2026-11-06')).toBe(9);
