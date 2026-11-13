@@ -2,7 +2,7 @@ import { closePurchase, openPurchase, purchaseRowOf } from './purchases';
 import { expect, type Page, test } from '@playwright/test';
 import { expectWalletFigure, openAccount, openSettings } from './accounts';
 import { openNewAsset, fillDay } from './add-asset';
-import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal, openBuyOrSell, saveButton } from './add-transaction';
+import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal, chooseTradeMoney, openBuyOrSell, saveButton } from './add-transaction';
 import { cardPage, cardPointsPage, saveCardTerms, chooseCatalogueCard } from './card-section';
 import { openAssets, openDrawers } from './drawers';
 import { openGoalForm } from './goals';
@@ -45,7 +45,7 @@ test('records a purchase from the transaction window, and it never counts as spe
   const form = await openBuyOrSell(page);
   await form.getByLabel('Grams').fill('2');
   await form.getByLabel(/What it cost, before fees/).fill('3980000');
-  await form.getByLabel('Paid with').first().selectOption({ label: 'BCA Tahapan (IDR)' });
+  await chooseTradeMoney(form, 'BCA Tahapan (IDR)');
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
   // Trade goes back to Net worth, where it was opened; the list is read on Cashflow.
@@ -72,7 +72,7 @@ test('pays for a purchase with the credit card, so the card owes more and the po
   const form = await openBuyOrSell(page);
   await form.getByLabel('Grams').fill('2');
   await form.getByLabel(/What it cost, before fees/).fill('3980000');
-  await form.getByLabel('Paid with').first().selectOption({ label: 'BCA KrisFlyer (IDR)' });
+  await chooseTradeMoney(form, 'BCA KrisFlyer (IDR)');
   await form.getByLabel('MCC').fill('5944');
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
@@ -167,7 +167,7 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
   await buying.getByLabel('Investment').selectOption({ label: 'BBRI · Stockbit' });
   await buying.getByLabel('Lots').fill('1');
   await buying.getByLabel(/What it cost, before fees/).fill('988981');
-  await buying.getByLabel('Paid with').first().selectOption({ label: 'RDN Stockbit (IDR)' });
+  await chooseTradeMoney(buying, 'RDN Stockbit (IDR)');
   await chooseGoal(buying, 'University for Aisyah');
   await saveButton(buying).click();
   await expect(buying).toHaveCount(0);
@@ -326,7 +326,7 @@ test('a purchase can keep its contract note and be left out of the report', asyn
   const form = await openBuyOrSell(page);
   await form.getByLabel('Grams').fill('2');
   await form.getByLabel(/What it cost, before fees/).fill('3980000');
-  await form.getByLabel('Paid with').first().selectOption({ label: 'BCA Tahapan (IDR)' });
+  await chooseTradeMoney(form, 'BCA Tahapan (IDR)');
 
   // The very same row the other three tabs carry, opening the very same details.
   const { more, sheet } = await attachPhoto(page, form, { name: 'note.png', mimeType: 'image/png', buffer: Buffer.from('a contract note') });

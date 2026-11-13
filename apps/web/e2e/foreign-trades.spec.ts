@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { addPurchase, openBuyOrSell, saveButton } from './add-transaction';
+import { addPurchase, chooseTradeMoney, openBuyOrSell, saveButton } from './add-transaction';
 import { expectBalance } from './deposit-maturity';
 import { addHoldingFlow } from './securities';
 import { addMoneyAccount, goalCard, jeniusWithTwoGoals } from './set-aside';
@@ -75,7 +75,7 @@ test('the Buy / sell tab also asks which goal paid for the rupiah that left, on 
   await form.getByLabel('Investment').selectOption({ label: 'AAPL · Stockbit' });
   await form.getByLabel(/^What it cost, before fees/).fill('418,50');
   await form.getByLabel('Shares').fill('100'); // no lot size on a hand-named US stock: 100 shares, as before
-  await form.getByLabel('Paid with').selectOption({ label: 'Jenius (IDR)' });
+  await chooseTradeMoney(form, 'Jenius (IDR)');
   await form.getByLabel(/^Charged in /).pressSequentially('6.800.000');
   // 6.800.000 − 5.000.000 free. Read off the dollar figure, 41.850 "rupiah" would have fitted and asked nothing.
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
