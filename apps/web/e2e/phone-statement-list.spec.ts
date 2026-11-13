@@ -67,6 +67,17 @@ test('a wallet list travels from screenshots to recorded rows, and a second run 
   await transfer.click();
   const form = page.getByRole('form', { name: 'Edit Transfer to Person A' });
   await expect(form.getByLabel('Note')).toHaveValue('Transfer to Person A');
+  // Only what a row carries: no Add more details, no receipt camera, no split, no online or offline on the Note.
+  await expect(page.getByRole('button', { name: /Add more details/ })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'More details' })).toHaveCount(0);
+  await expect(form.getByTestId('amount-photos')).toHaveCount(0);
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await expect(page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Split between categories' })).toHaveCount(0);
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Close' }).click();
+  // A transfer offers no fee row either.
+  await form.getByRole('tab', { name: 'Transfer' }).or(form.getByRole('radio', { name: 'Transfer' })).click();
+  await expect(form.getByText('Fee', { exact: true })).toHaveCount(0);
+  await form.getByRole('tab', { name: 'Expense' }).or(form.getByRole('radio', { name: 'Expense' })).click();
   await page.screenshot({ path: 'test-results/list-sheet.png' });
   await form.getByLabel('Note').fill('Transfer to Person A, lunch');
   await page.getByRole('button', { name: 'Save row' }).click();

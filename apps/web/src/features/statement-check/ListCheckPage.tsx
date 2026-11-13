@@ -333,6 +333,7 @@ function ListBody({ account, accounts, batch }: { account: AccountRow; accounts:
             prefill: formOfRow(editingRow, account.id, currency),
             saveLabel: 'Save row',
             categoryLater: true,
+            rowOnly: true,
             canSubmit: (form) => {
               try {
                 editFromForm(form, account.id, currency, otherIds);

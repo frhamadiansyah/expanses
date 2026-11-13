@@ -137,6 +137,8 @@ describe('list model', () => {
       expect(() => editFromForm({ ...base, moneyId: 'bank' }, 'wallet', 'IDR')).toThrow(/this account/);
       expect(() => editFromForm({ ...base, mode: 'transfer', moneyId: 'bank', toId: 'cash' }, 'wallet', 'IDR')).toThrow(/this account/);
       expect(() => editFromForm({ ...base, amount: '' }, 'wallet', 'IDR')).toThrow(/greater than zero/);
+      // The figure is the account's own: one read in another currency would be posted as if it were.
+      expect(() => editFromForm({ ...base, currency: 'USD' }, 'wallet', 'IDR')).toThrow(/IDR/);
       expect(() => editFromForm({ ...base, mode: 'trade' }, 'wallet', 'IDR')).toThrow();
       // A transfer to an account in another currency would post one figure on both sides.
       expect(() => editFromForm({ ...base, mode: 'transfer', moneyId: 'wallet', toId: 'usd' }, 'wallet', 'IDR', ['bank'])).toThrow(/IDR account/);

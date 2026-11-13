@@ -124,6 +124,12 @@ export interface CardFinish {
    * out, a capture's draft needs its own category.
    */
   categoryLater?: boolean;
+  /**
+   * The form fills a row of a list (the wallet check's), which carries its tab, figure, category, note, day and
+   * accounts only: nothing else is offered — no Add more details, no receipt camera, no online or offline, no split,
+   * no transfer fee, no set-aside question — so nothing is typed that the row would drop.
+   */
+  rowOnly?: boolean;
   /** Drawn above the card's tabs: what the form was filled from. */
   header?: ReactNode;
   /** Drawn under Add more details. */
@@ -459,7 +465,7 @@ function CardBody({
   const post = useMemo(() => postForDoor(draft, accounts), [draft, accounts]);
   const door = post ? doorOfForm(draft, post, accounts, canHold) : null;
   const saved = useSetAsideChoiceOf(initial?.id ?? null);
-  const setAside = useSetAside(door, { excludeTransactionId: initial?.id ?? null, initial: saved.data ?? null, toName: toAccount?.name });
+  const setAside = useSetAside(finish?.rowOnly ? null : door, { excludeTransactionId: initial?.id ?? null, initial: saved.data ?? null, toName: toAccount?.name });
 
   /*
    * One list per question, because the label asks three different things. A purchase is paid with money you can spend
@@ -748,7 +754,7 @@ function CardBody({
    * Two of §4's extras live on the card itself now: a split is chosen in the category picker and read on the Category
    * row, and online or offline is the Note's own glyph. `extraRows` still says whether each is offered here.
    */
-  const offered = extraRows(draft, accounts, { missingRate, sharedBook: bookShared }).filter((row) => !(finish ? DRAFT_OMITS : []).includes(row));
+  const offered = finish?.rowOnly ? [] : extraRows(draft, accounts, { missingRate, sharedBook: bookShared }).filter((row) => !(finish ? DRAFT_OMITS : []).includes(row));
   const offersSplit = offered.includes('split');
   const offersChannel = offered.includes('channel');
   /*
@@ -759,7 +765,7 @@ function CardBody({
   const feeFrom = accounts.find((account) => account.id === draft.moneyId);
   const feeTo = accounts.find((account) => account.id === draft.toId);
   const feeCurrency = feeFrom?.currency ?? ws.baseCurrency;
-  const offersFee = draft.mode === 'transfer' && offersTransferFee(feeFrom, feeTo, accountsLocked);
+  const offersFee = !finish?.rowOnly && draft.mode === 'transfer' && offersTransferFee(feeFrom, feeTo, accountsLocked);
   const defaultFeeCategory =
     accounts.find((account) => account.systemKey === 'miscellaneous.fees_charges' && (allBooks.length < 2 || categoryBooks[account.id] === ws.bookId))?.id ?? '';
   /*
@@ -1472,7 +1478,7 @@ function CardBody({
         </p>
       )}
       {/* One implementation of §4's rows, for adding and for correcting alike. */}
-      {detailsOpen && (
+      {detailsOpen && !finish?.rowOnly && (
         <section aria-label="More details">
           {/*
             A transfer's For goal is one of the details, first in their group. Offered only while adding — `formToPost`
@@ -1503,7 +1509,7 @@ function CardBody({
         shadow — the secondary ink, so it follows the theme. It keeps the 44 pt reach the drawn 40 px does not
         have, and keeps `aria-expanded`, because the word is now the only thing that tells the two states apart.
       */}
-      {(
+      {!finish?.rowOnly && (
       <button
         type="button"
         aria-expanded={detailsOpen}
