@@ -3,8 +3,8 @@ import { useNavigate, useParams } from '@tanstack/react-router';
 import { ArrowLeftRight, Check, Plus, Settings } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
-import { Empty, ErrorBox } from '../../ui';
-import { ActionButtons, PushedTitle, type RoundAction, SCREEN, useWalletSlot } from '../../ui/native';
+import { Empty, ErrorBox, Money } from '../../ui';
+import { ActionButtons, InsetGroup, InsetRow, PushedTitle, type RoundAction, SCREEN, useWalletSlot } from '../../ui/native';
 import { BalanceCard } from '../accounts/BalanceCard';
 import { ownerRing } from '../networth/joint-rows';
 import { useOwnerRings, useSharedNetWorth } from '../networth/queries';
@@ -100,6 +100,19 @@ export function JointItemPage() {
         caption={<span data-testid="joint-item-from">{fromPhoneLine(card.ownerName, seen, card.asOf, Date.now(), isoDate())}</span>}
       />
       <ActionButtons actions={actions} />
+      {money && card.setAsideMinor > 0 ? (
+        // What its holder's account page shows of its set-aside, read-only: one figure, never which goals or bills.
+        <InsetGroup footer={`Set aside for goals and bills on ${card.ownerName}’s phone.`}>
+          <InsetRow title="Set aside" value={<Money minor={card.setAsideMinor} currency={card.currency} />} valueTone="ink" chevron={false} testId="joint-item-set-aside" />
+          <InsetRow
+            title="Free to spend"
+            value={<Money minor={card.minor - card.setAsideMinor} currency={card.currency} />}
+            valueTone={card.minor - card.setAsideMinor < 0 ? 'alarm' : 'ink'}
+            chevron={false}
+            testId="joint-item-free"
+          />
+        </InsetGroup>
+      ) : null}
       {rows.data ? (
         <JointRowsGroup
           rows={rows.data.rows}

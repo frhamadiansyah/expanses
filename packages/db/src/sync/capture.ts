@@ -601,6 +601,17 @@ export async function markAccountFamilyDirtyTx(tx: Db, accountId: string): Promi
   for (const [id] of kin) markAccountDirtyTx(tx, id);
 }
 
+/**
+ * What is set aside on an account changed in this transaction (a goal's earmark, a draw): a joint money account's summary
+ * carries that total (`ItemSummary.setAsideMinor`), so a joint one is marked as `markAccountDirtyTx` does. Any other
+ * account is left alone: its summary carries no set-aside, and marking it would rebuild its tax part for nothing.
+ */
+export async function markSetAsideAccountDirtyTx(tx: Db, accountId: string): Promise<void> {
+  if (!sessionOf(tx)) return;
+  const joint = await tx.values(sql`SELECT 1 FROM nw_joint_accounts WHERE account_id = ${accountId}`).catch(() => []); // none before 0097
+  if (joint.length > 0) markAccountDirtyTx(tx, accountId);
+}
+
 /** A shared goal's own member money changed in this transaction, so its summary is recomputed at flush (§8.5). */
 export function markGoalDirtyTx(tx: Db, goalId: string): void {
   sessionOf(tx)?.markGoalDirty(goalId);

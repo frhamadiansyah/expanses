@@ -40,6 +40,12 @@ export interface JointCard {
   currency: string;
   /** In `currency`: what money holds, or what a card owes (below 0 while it is in credit). */
   minor: number;
+  /**
+   * Money only, in `currency`: what goals and sinking funds have set aside of it on its holder's phone (the summary's
+   * `setAsideMinor`), which the holder's Wallet takes off Spending money and so does this one. 0 when nothing is, and
+   * from a holder's build before it travelled.
+   */
+  setAsideMinor: number;
   /** The day of the summary's figure. */
   asOf: string;
 }
@@ -75,6 +81,7 @@ export function walletJoint(items: readonly ReceivedItem[], me: string, names: R
         tier: item.face?.tier ?? null,
         currency: item.currency,
         minor: item.balanceMinor,
+        setAsideMinor: item.subtype === 'credit_card' ? 0 : (item.setAsideMinor ?? 0),
         asOf: item.asOf,
       };
     });
