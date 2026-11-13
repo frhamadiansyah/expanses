@@ -41,9 +41,10 @@ export interface TableHandlers {
   filingKnown: boolean;
   /**
    * Who paid, for a purchase in a shared workspace (household sharing spec §11): the account cell says what they paid
-   * with, and a purchase another member paid for is corrected in the full form rather than in cells.
+   * with, and a purchase another member paid for is corrected in the full form rather than in cells. Null for one paid
+   * from this member's own account (`payerToShow`), whose cell names it by its digits.
    */
-  payerOf?: (transactionId: string) => PurchasePayer | null;
+  payerOf?: (tx: TransactionView) => PurchasePayer | null;
   /** Posted here against another member's placeholder, known before the payers query answers. */
   paidByOther?: (tx: TransactionView) => boolean;
 }
@@ -238,8 +239,8 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
           {formatMinor(Math.abs(row.amountMinor), row.currency)}
         </span>
         <span className="truncate px-2 text-slate-600">
-          {handlers.payerOf?.(tx.id) ? (
-            payerLine(handlers.payerOf(tx.id)!)
+          {handlers.payerOf?.(tx) ? (
+            payerLine(handlers.payerOf(tx)!)
           ) : handlers.paidByOther?.(tx) ? null : (
             <>
               {row.accountLabel}
