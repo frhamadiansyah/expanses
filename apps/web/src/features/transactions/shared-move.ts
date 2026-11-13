@@ -13,6 +13,20 @@ export function keptText(kept: readonly MoveRefusal[]): string {
 }
 
 /**
+ * What stayed behind a move into a shared event: the rows it kept, with their reasons, and any chosen row it said
+ * nothing about — never left out, so what the list still shows is always said (trip exchange fix). Empty when every
+ * chosen row moved or was listed.
+ */
+export function stayedBehind(
+  chosen: readonly string[],
+  result: { moved: readonly { transactionId: string }[]; listed: readonly { transactionId: string }[]; kept: readonly MoveRefusal[] },
+): MoveRefusal[] {
+  const said = new Set([...result.moved, ...result.listed, ...result.kept].map((row) => row.transactionId));
+  const unsaid = [...new Set(chosen)].filter((id) => !said.has(id)).map((transactionId) => ({ transactionId, why: 'It could not be moved' }));
+  return [...result.kept, ...unsaid];
+}
+
+/**
  * The move after a save (sync gaps fix round 1): the purchase is already saved, so a refused move — or one that throws —
  * is said, never thrown. Thrown, it would leave the form open as an add, and a second Save would record it twice. Null
  * when it moved.

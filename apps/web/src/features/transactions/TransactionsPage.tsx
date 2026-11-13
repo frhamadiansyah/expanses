@@ -60,7 +60,7 @@ import { CashflowLine } from './CashflowLine';
 import { useLineState } from './cashflow-line-store';
 import { DayReorder, landed, movedBy, ReorderControls, reorderAttrs, ReorderScope } from './DayReorder';
 import { EventSheet } from './EventSheet';
-import { keptText, moveHint } from './shared-move';
+import { keptText, moveHint, stayedBehind } from './shared-move';
 import { showToast } from '../../ui/Toast';
 import { homesOf, movedText, rowsToMove } from './event-tagging';
 import { ReceiptLink } from './ReceiptLink';
@@ -586,7 +586,9 @@ export function TransactionsPage() {
           const currencies = [target?.currency, tx.originalCurrency, ...tx.entries.map((e) => e.currency)].filter((c): c is string => !!c);
           await resolveRates([...new Set(currencies)], tx.occurredOn).catch(() => undefined);
         }
-        const { kept } = await moveIntoSharedEvent(database, ownerScope(ws), eventId, chosen.map((row) => row.id));
+        const ids = chosen.map((row) => row.id);
+        // Every chosen row comes back moved, listed or kept; one the move said nothing about is kept too, said so.
+        const kept = stayedBehind(ids, await moveIntoSharedEvent(database, ownerScope(ws), eventId, ids));
         await invalidate();
         if (kept.length === 0) {
           stopSelecting();

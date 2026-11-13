@@ -9,6 +9,7 @@ import {
   ownerScope,
   paidOffMarkOf,
   removeTransferFromSharedEvent,
+  standingTransaction,
   setSettledBeforeApp,
   type TransactionPhotoRow,
 } from '@expanses/db';
@@ -236,6 +237,9 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
       if (onEvent) await removeTransferFromSharedEvent(database, ws, transactionId);
       else await tagTransactions(database, ws, [transactionId], null);
       await invalidate();
+      // A fee split off the transfer for the trip goes back onto it, which replaces it: the receipt follows the row.
+      const standing = onEvent ? await standingTransaction(database, transactionId) : transactionId;
+      if (standing !== transactionId) void navigate({ to: '/transactions/$transactionId', params: { transactionId: standing }, replace: true });
       showToast(`Removed from ${onEvent ? (onEvent.eventName ?? 'the event') : ((events.data ?? []).find((event) => event.id === tx?.eventId)?.name ?? 'the event')}`);
     } catch (e) {
       setError(e);
