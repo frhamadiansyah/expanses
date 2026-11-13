@@ -1,11 +1,11 @@
 import { formatMinor, isoDate, monthName } from '@expanses/core';
-import { eventPostingOf, linkPurchaseToBill, listTransactions, ownerScope, RecurringError, relinkPurchaseToBill, unlinkPurchaseFromBill } from '@expanses/db';
+import { billLinkMonth, billLinkRefusal, eventPostingOf, linkPurchaseToBill, listTransactions, ownerScope, RecurringError, relinkPurchaseToBill, unlinkPurchaseFromBill } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useRouter, useSearch } from '@tanstack/react-router';
-import { Check } from 'lucide-react';
+import { CalendarDays, Check } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
-import { FROM_TRANSACTION, useFrom } from '../../app/from-search';
+import { FROM_TRANSACTION, originHref, useFrom } from '../../app/from-search';
 import { Sheet } from '../../app/Sheet';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox, Money } from '../../ui';
@@ -15,7 +15,7 @@ import { classify } from '../transactions/classify';
 import { Wheel } from '../networth/AssetRows';
 import { billCurrencyOf } from './bill-view';
 import { billsForPurchase, candidateLine, monthWithYear, purchaseCount, refusalText, repeatWords, wheelYears } from './bill-link-view';
-import { historyIndex, stepsBackToReceipt } from './receipt-return';
+import { returnToReceipt } from './receipt-return';
 import { useBillDetail, useBillLinkCandidates, useBillLinkMonths, useBillLinkRefusal, useBillMonthsBefore, useBillOfPurchase, useBillTemplates } from './queries';
 
 /* The two ways to link a purchase that is already recorded to a bill's month: from the bill (these first two pages) and from the purchase. */
@@ -37,14 +37,18 @@ function useStepBack() {
 
 export function LinkPurchaseRoute() {
   const { billId } = useParams({ from: '/bills/$billId/link' });
-  const { month } = useSearch({ from: '/bills/$billId/link' });
-  return <LinkPurchasePage billId={billId} month={month} />;
+  const { month, earlier } = useSearch({ from: '/bills/$billId/link' });
+  return <LinkPurchasePage billId={billId} month={month} earlier={earlier === true} />;
 }
 
-/** The purchases that could settle one month of a bill, newest first. A tap links one and returns to the bill. */
-export function LinkPurchasePage({ billId, month }: { billId: string; month: string }) {
+/**
+ * The purchases that could settle one month of a bill, newest first. A tap links one and steps back to the bill it was
+ * opened from — past Earlier months too when it came through them (`earlier`) — rather than opening the bill again.
+ */
+export function LinkPurchasePage({ billId, month, earlier = false }: { billId: string; month: string; earlier?: boolean }) {
   const { database, ws } = useApp();
   const navigate = useNavigate();
+  const router = useRouter();
   const back = useStepBack();
   const from = useFrom();
   const invalidate = useInvalidateAll();
@@ -65,7 +69,8 @@ export function LinkPurchasePage({ billId, month }: { billId: string; month: str
     try {
       await linkPurchaseToBill(database, ws, { templateId: billId, billMonth: month, transactionId, today });
       await invalidate();
-      void navigate({ to: '/bills/$billId', params: { billId }, search: from });
+      if (router.history.canGoBack()) router.history.go(earlier ? -2 : -1);
+      else void navigate({ to: '/bills/$billId', params: { billId }, search: from, replace: true });
     } catch (e) {
       setError(e);
     } finally {
@@ -145,7 +150,7 @@ export function EarlierMonthsPage({ billId }: { billId: string }) {
                     value={purchaseCount(m.count)}
                     valueTone="ink-3"
                     chevron={m.count > 0}
-                    onClick={m.count > 0 ? () => void navigate({ to: '/bills/$billId/link', params: { billId }, search: { ...from, month: m.month } }) : undefined}
+                    onClick={m.count > 0 ? () => void navigate({ to: '/bills/$billId/link', params: { billId }, search: { ...from, month: m.month, earlier: true } }) : undefined}
                   />
                 ))),
             ...(months.data.nextFrom ? [<InsetRow key="more" action title="Show earlier months" onClick={() => setPages((p) => p + 1)} />] : []),
@@ -185,13 +190,18 @@ export function LinkToBillRoute() {
 const listTitle = (linked: boolean) => (linked ? 'Bill' : 'Link to a bill');
 
 /**
- * The bills the purchase could settle: those in its own category first, then the rest. A purchase already linked sees
- * its bill with a ✓ — picking another bill or month moves the link — and, under the list, Open this bill and Unlink.
+ * The bills the purchase could settle: those in its own category first, then the rest. A tap on a bill links the
+ * purchase at once, in the month the row names (`billLinkMonth`), and steps back to the receipt; a month that cannot
+ * take it opens the month page instead, saying why. A swipe left offers Month, to choose another first. A purchase
+ * already linked sees its bill with a ✓ — a tap on it opens its months, another bill moves the link — and, under the
+ * list, Open this bill and Unlink.
  */
 export function LinkToBillPage({ transactionId }: { transactionId: string }) {
   const { database, ws } = useApp();
   const navigate = useNavigate();
+  const router = useRouter();
   const back = useStepBack();
+  const today = isoDate();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
   const tx = usePurchase(transactionId).data ?? null;
@@ -204,6 +214,36 @@ export function LinkToBillPage({ transactionId }: { transactionId: string }) {
   const unlisted = current !== null && !bills.some((bill) => bill.id === current.templateId) ? current : null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  // The month a tap on each bill links to, named on its row.
+  const linkMonths = useBillLinkMonths(
+    bills.map((bill) => bill.id),
+    tx?.occurredOn ?? null,
+    today,
+  ).data;
+
+  const openMonths = (billId: string) => void navigate({ to: '/transactions/$transactionId/bill/$billId', params: { transactionId, billId } });
+
+  /** Links the purchase to the bill's month at once and returns to the receipt, or opens the month page when it cannot. */
+  async function quickLink(billId: string) {
+    if (!tx) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const month = await billLinkMonth(database, ws, { templateId: billId, purchasedOn: tx.occurredOn, today });
+      if (await billLinkRefusal(database, ws, { templateId: billId, billMonth: month, today })) {
+        // The month page reads the same refusal and says it under the month, with the wheel to choose another.
+        openMonths(billId);
+        return;
+      }
+      await relinkPurchaseToBill(database, ws, { templateId: billId, billMonth: month, transactionId, today });
+      await invalidate();
+      returnToReceipt(router.history, transactionId, originHref);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   /** Lets the bill's month go: the purchase stays, the month is owed again, and the receipt reads None. */
   async function unlink() {
@@ -228,14 +268,16 @@ export function LinkToBillPage({ transactionId }: { transactionId: string }) {
   const row = (bill: (typeof bills)[number]) => {
     const payer = accounts.find((a) => a.id === bill.moneyAccountId);
     const linked = current?.templateId === bill.id;
+    const month = linked ? current.billMonth : (linkMonths?.[bill.id] ?? null);
     return (
       <InsetRow
         key={bill.id}
         testId={`bill-choice-${bill.id}`}
         icon={<CategoryIcon categoryId={bill.categoryAccountId} accounts={accounts} size="row" />}
         title={bill.name}
-        // The current bill names the month it settles first: picking it again offers another month of it.
-        subtitle={[linked ? monthWithYear(current.billMonth) : null, repeatWords(bill), bill.repeat === 'monthly' ? payer?.name : null].filter(Boolean).join(' · ')}
+        // Each bill names its month first: the one the current bill settles (a tap on it offers another), or the one a
+        // tap links to.
+        subtitle={[month ? monthWithYear(month) : null, repeatWords(bill), bill.repeat === 'monthly' ? payer?.name : null].filter(Boolean).join(' · ')}
         value={
           linked ? (
             tick
@@ -244,9 +286,10 @@ export function LinkToBillPage({ transactionId }: { transactionId: string }) {
           )
         }
         valueTone="ink-2"
-        chevron={!linked && !locked}
-        disabled={locked && !linked}
-        onClick={locked ? undefined : () => void navigate({ to: '/transactions/$transactionId/bill/$billId', params: { transactionId, billId: bill.id } })}
+        chevron={false}
+        disabled={(locked && !linked) || (!locked && busy)}
+        onClick={locked ? undefined : linked ? () => openMonths(bill.id) : () => void quickLink(bill.id)}
+        leftActions={locked || linked ? undefined : [{ label: 'Month', name: `Choose the month for ${bill.name}`, icon: CalendarDays, tone: 'primary', onPress: () => openMonths(bill.id) }]}
       />
     );
   };
@@ -306,7 +349,6 @@ function MonthYearSheet({ month, years, onClose, onPick }: { month: string; year
 /** Which month of the bill the purchase settles, starting at the one a tap on the list would link. The ✓ links it and returns to the receipt. */
 export function LinkBillMonthPage({ transactionId, billId }: { transactionId: string; billId: string }) {
   const { database, ws } = useApp();
-  const navigate = useNavigate();
   const router = useRouter();
   const locked = (useFromEvent(transactionId).data ?? null) !== null;
   const back = useStepBack();
@@ -338,11 +380,8 @@ export function LinkBillMonthPage({ transactionId, billId }: { transactionId: st
       // One step whether it links or moves: the old month is let go and the new one paid in the same write.
       if (!unchanged) await relinkPurchaseToBill(database, ws, { templateId: billId, billMonth: month, transactionId, today });
       await invalidate();
-      // Back to the receipt's own entry, so its ‹ goes where it was opened from; a page reached any other way puts
-      // the receipt in its own place.
-      const steps = stepsBackToReceipt(transactionId, historyIndex(router.history));
-      if (steps !== null) router.history.go(steps);
-      else void navigate({ to: '/transactions/$transactionId', params: { transactionId }, replace: true });
+      // Back to the receipt's own entry, so its ‹ goes where it was opened from (Cashflow), however it was reached.
+      returnToReceipt(router.history, transactionId, originHref);
     } catch (e) {
       setError(e instanceof RecurringError ? new Error(refusalText(e.code, month, e.message)) : e);
     } finally {

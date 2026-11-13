@@ -1,6 +1,9 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Locator, test, type Page } from '@playwright/test';
 import { addTransaction } from './add-transaction';
+import { openAccount } from './accounts';
+import { pickBillCategory, pickBillPaidFrom } from './bill-form';
 import { household, MONTHS } from './bill-pause';
+import { todayIn } from './today';
 
 const SHOTS = '/private/tmp/claude-501/-Users-frhamadiansyah-Documents-Projects-Expanses/17ecd7cc-b713-4f21-b1a9-9a90ded56208/scratchpad/link';
 
@@ -25,6 +28,17 @@ async function buyGym(page: Page, description: string, amount: string, date: str
 }
 
 const actions = (page: Page) => page.getByRole('group', { name: 'Actions' });
+
+/** Pointer down, a drag to the left, up — the gesture that reveals a row's actions. */
+async function swipeLeft(page: Page, row: Locator) {
+  const box = (await row.boundingBox())!;
+  const y = box.y + box.height / 2;
+  const from = box.x + box.width - 12;
+  await page.mouse.move(from, y);
+  await page.mouse.down();
+  for (let step = 1; step <= 10; step += 1) await page.mouse.move(from - 120 * (step / 10), y);
+  await page.mouse.up();
+}
 
 test('on a phone: a purchase already recorded is linked to this month from the Pay sheet, and unlinked again', async ({ page }) => {
   await household(page);
@@ -62,6 +76,9 @@ test('on a phone: a purchase already recorded is linked to this month from the P
 
   await expect(actions(page).getByRole('button', { name: 'Pay', exact: true })).toBeVisible();
   await expect(history.getByText('paid')).toHaveCount(0);
+  // Linking stepped back to the bill rather than opening it again: one step back from it is Recurring.
+  await page.goBack();
+  await expect(page).toHaveURL(/\/bills\/?(\?.*)?$/);
   // The purchase is still there.
   await page.goto('/transactions');
   await expect(page.getByText('Gym fee')).toBeVisible();
@@ -96,6 +113,9 @@ test('on a phone: a month before the bill started is linked from Link an earlier
   await expect(history).toContainText('Rp 120.000');
   // Nothing about the bill moved: the card, its status and the start month are as they were.
   expect(await hero.innerText()).toBe(before);
+  // Linked from Earlier months, it stepped back past them to the bill: one step back from it is Recurring.
+  await page.goBack();
+  await expect(page).toHaveURL(/\/bills\/?(\?.*)?$/);
   await page.goto('/bills');
   await expect(page.getByTestId('bill-row').filter({ hasText: 'Gym' })).toContainText('350.000');
   await openGym(page);
@@ -105,7 +125,7 @@ test('on a phone: a month before the bill started is linked from Link an earlier
   await expect(page.getByTestId(`earlier-${four.month}`)).toContainText('1 purchase');
 });
 
-test('on a phone: a receipt links its purchase to a bill, in the month picked on the wheel, and refuses a paid month', async ({ page }) => {
+test('on a phone: a receipt links its purchase to a bill in one tap, another month by a swipe, and refuses a paid month', async ({ page }) => {
   await household(page);
   await buyGym(page, 'Gym fee', '340000', thisMonth().date);
   await buyGym(page, 'Gym extra', '30000', thisMonth().date);
@@ -117,19 +137,11 @@ test('on a phone: a receipt links its purchase to a bill, in the month picked on
   await page.getByTestId('receipt-bill').click();
   await expect(page.getByRole('heading', { name: 'Bills in this category first' })).toBeVisible();
   await expect(page.getByTestId('unlink-bill')).toHaveCount(0);
+  // Each bill names the month a tap links to: a monthly bill's is the purchase's own.
+  await expect(page.getByTestId(/^bill-choice-/).filter({ hasText: 'Gym' })).toContainText(thisMonth().label);
   await page.screenshot({ path: `${SHOTS}-7-pick-bill.png` });
+  // One tap links it, with no month page between.
   await page.getByTestId(/^bill-choice-/).filter({ hasText: 'Gym' }).click();
-
-  // The month starts at the purchase's own; the figure and date of the purchase are read-only below it.
-  const month = page.getByTestId('link-month');
-  await expect(month).toContainText(thisMonth().label);
-  await page.screenshot({ path: `${SHOTS}-8-month.png` });
-  await month.click();
-  const wheel = page.getByRole('dialog', { name: 'Month' });
-  await expect(wheel.getByRole('listbox', { name: 'Month' })).toBeVisible();
-  await page.screenshot({ path: `${SHOTS}-9-wheel.png` });
-  await wheel.getByRole('button', { name: 'Done' }).click();
-  await page.getByRole('button', { name: 'Link to bill' }).click();
 
   // Back on the receipt, whose Bill row now reads Linked.
   await expect(page).toHaveURL(/\/transactions\/[^/]+$/);
@@ -150,14 +162,28 @@ test('on a phone: a receipt links its purchase to a bill, in the month picked on
   await page.getByRole('button', { name: 'Transaction' }).first().click();
   await expect(page).toHaveURL(/\/transactions\/[^/]+\/bill$/);
 
-  // A second purchase for the same month is refused with a short message, until another month is chosen.
+  // A second purchase for the same month: the tap cannot link it, so the month page opens saying why.
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Sports & fitness Gym extra/ }).click();
   await page.getByTestId('receipt-bill').click();
   await page.getByTestId(/^bill-choice-/).filter({ hasText: 'Gym' }).click();
+  await expect(page).toHaveURL(/\/transactions\/[^/]+\/bill\/[^/]+$/);
   await expect(page.getByTestId('link-refusal')).toHaveText(`${thisMonth().label} is already paid`);
   await expect(page.getByRole('button', { name: 'Link to bill' })).toBeDisabled();
   await page.screenshot({ path: `${SHOTS}-11-refused.png` });
+
+  // A swipe left on a bill offers Month, which opens the same page to choose another first.
+  await page.getByRole('button', { name: 'Link to a bill' }).click();
+  await swipeLeft(page, page.getByTestId(/^bill-choice-/).filter({ hasText: 'Gym' }));
+  await page.getByRole('button', { name: 'Choose the month for Gym' }).click();
+  const month = page.getByTestId('link-month');
+  await expect(month).toContainText(thisMonth().label);
+  await page.screenshot({ path: `${SHOTS}-8-month.png` });
+  await month.click();
+  const wheel = page.getByRole('dialog', { name: 'Month' });
+  await expect(wheel.getByRole('listbox', { name: 'Month' })).toBeVisible();
+  await page.screenshot({ path: `${SHOTS}-9-wheel.png` });
+  await wheel.getByRole('button', { name: 'Done' }).click();
 
   const pickMonth = async (at: { month: string }) => {
     await page.getByTestId('link-month').click();
@@ -208,4 +234,44 @@ test('on a phone: a receipt links its purchase to a bill, in the month picked on
   await page.getByRole('button', { name: 'Delete this transaction' }).click();
   await page.getByRole('button', { name: 'Click again to delete' }).click();
   await expect(page).toHaveURL(/\/transactions\/?(\?.*)?$/);
+});
+
+test('on a phone: a yearly bill takes a purchase in one tap, in the month it comes out, not the purchase month', async ({ page }) => {
+  page.on('dialog', (dialog) => void dialog.accept());
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
+  // Out about six weeks from today, so its month is never this one.
+  const [y, m, d] = (await todayIn(page)).split('-').map(Number) as [number, number, number];
+  const out = new Date(y, m - 1, d + 45);
+  const outLabel = `${MONTHS[out.getMonth()]} ${out.getFullYear()}`;
+  await page.goto('/bills/new');
+  await page.getByLabel('Name', { exact: true }).fill('Domain renewal');
+  await page.getByLabel('Amount', { exact: true }).fill('210000');
+  await pickBillCategory(page);
+  await pickBillPaidFrom(page, 'BCA Tahapan');
+  await page.getByLabel('Repeats').selectOption('yearly');
+  await page.getByLabel('Month', { exact: true }).selectOption(String(out.getMonth() + 1));
+  await page.getByLabel('Due by').selectOption(String(Math.min(out.getDate(), 28)));
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page).toHaveURL(/\/bills$/);
+
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Domain early', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '205000', date: await todayIn(page) });
+  await page.getByRole('button', { name: /^Restaurants Domain early/ }).click();
+  await page.getByTestId('receipt-bill').click();
+  const bill = page.getByTestId(/^bill-choice-/).filter({ hasText: 'Domain renewal' });
+  await expect(bill).toContainText(outLabel);
+  // The list reloaded on the way (the app restarted under it): the way back to the receipt is not known any more.
+  await page.reload();
+  await bill.click();
+
+  await expect(page).toHaveURL(/\/transactions\/[^/]+$/);
+  await expect(page.getByTestId('receipt-bill')).toContainText('Linked');
+  // Even so, the receipt's ‹ goes to Cashflow, never back to the bill list just used.
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page).toHaveURL(/\/transactions\/?(\?.*)?$/);
+  await page.goForward();
+  await expect(page).toHaveURL(/\/transactions\/[^/]+$/);
+  await page.getByTestId('receipt-bill').click();
+  await expect(bill.getByTestId('bill-current')).toBeVisible();
+  await expect(bill).toContainText(outLabel);
 });
