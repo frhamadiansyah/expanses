@@ -630,9 +630,10 @@ function CardBody({
       const refusal = followUp?.refuse(draft);
       if (refusal) throw new Error(refusal);
       // "Choose later": an expense or an income saved with no category is filed under its kind's Uncategorised,
-      // made the first time one is needed. A capture's draft keeps its own rule (`finish` returned above).
+      // made the first time one is needed. A capture's draft keeps its own rule (`finish` returned above). Moving to
+      // another workspace names that workspace's Uncategorised, never the open one's, so the move happens.
       const later = categoryLater(draft);
-      const categorised = later ? withCategoryLater(draft, await uncategorisedCategory(database, ws, later)) : draft;
+      const categorised = later ? withCategoryLater(draft, await uncategorisedCategory(database, moveTo ? inBook(ws, moveTo) : ws, later)) : draft;
       const from = accounts.find((account) => account.id === categorised.moneyId);
       const to = accounts.find((account) => account.id === categorised.toId);
       const topsUp = categorised.mode === 'transfer' && !!from && !!to && cardTopsUpWallet(from, to);

@@ -216,3 +216,33 @@ test('a saved purchase moves to another workspace from its Edit screen, and seve
   await expect(listRow(page, 'Supplier dinner')).toContainText('640.000');
   await expect(listRow(page, 'Client lunch')).toContainText('210.000');
 });
+
+test('a purchase moved to another workspace with No category lands there, under that workspace\'s Uncategorised', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
+  await page.goto('/account');
+  await page.getByTestId('add-workspace').click();
+  await page.getByTestId('new-workspace').click();
+  const sheet = page.getByRole('dialog', { name: 'New workspace' });
+  await sheet.getByLabel('Name', { exact: true }).fill('Business');
+  await sheet.getByLabel('Starts with').selectOption({ label: 'Copy from Personal' });
+  await sheet.getByRole('button', { name: 'Create workspace' }).click();
+  await expect(sheet).toHaveCount(0);
+  await switchTo(page, 'Personal');
+  await addTransaction(page, { description: 'Ornek printing', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '93000' });
+
+  await listRow(page, 'Ornek printing').getByRole('button', { name: /^Restaurants/ }).click();
+  await page.getByRole('button', { name: 'Edit this transaction' }).click();
+  const edit = page.getByRole('form', { name: 'Edit a transaction' });
+  await edit.getByRole('button', { name: 'Workspace for this transaction' }).click();
+  await page.getByRole('dialog', { name: 'Move to workspace' }).getByRole('button', { name: 'Business' }).click();
+  await edit.getByRole('button', { name: /^Category/ }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByTestId('category-none').click();
+  await saveButton(edit).click();
+  await expect(edit).toHaveCount(0);
+  await page.goto('/transactions');
+  await expect(listRow(page, 'Ornek printing')).toHaveCount(0);
+
+  await switchTo(page, 'Business');
+  await expect(listRow(page, 'Ornek printing')).toContainText('Uncategorised');
+  await expect(listRow(page, 'Ornek printing')).toContainText('93.000');
+});
