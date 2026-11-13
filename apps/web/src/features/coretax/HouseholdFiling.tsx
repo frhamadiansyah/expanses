@@ -1,3 +1,4 @@
+import { setNetWorthMarks } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -22,12 +23,12 @@ const FILING_INFO =
 
 export function HouseholdFiling() {
   const household = useHousehold();
-  const bookId = household.data && household.data.stage !== 'none' ? household.data.bookId : null;
-  return bookId ? <FilingBody bookId={bookId} /> : null;
+  const h = household.data;
+  return h && (h.stage === 'active' || h.stage === 'waiting' || h.stage === 'asked') ? <FilingBody bookId={h.bookId} reviewDue={h.reviewDue} /> : null;
 }
 
-function FilingBody({ bookId }: { bookId: string }) {
-  const { sync } = useApp();
+function FilingBody({ bookId, reviewDue }: { bookId: string; reviewDue: boolean }) {
+  const { database, sync } = useApp();
   const invalidate = useInvalidateAll();
   const group = useNetWorthGroup(bookId);
   const detail = useSharingDetail(bookId);
@@ -75,13 +76,53 @@ function FilingBody({ bookId }: { bookId: string }) {
             <option value="joint">{FILING_CHOICES.joint} (one tax ID)</option>
           </SelectRow>
         ) : null}
+        {/* A review this person has yet to answer (a group from before this update, or a change): theirs to tap, in the list. */}
+        {active && reviewDue ? <InsetRow testId="filing-review" title="Review what is shared" to="/account/workspaces/$bookId/share/what" params={{ bookId }} /> : null}
         {pending?.kind === 'waiting' ? <InsetRow testId="filing-waiting" title={pending.line} chevron={false} /> : null}
-        {pending?.kind === 'waiting' && pending.cancellable ? <InsetRow title="Cancel" action disabled={busy} onClick={() => void run(() => sync.cancelNetWorth(bookId, pending.proposalId))} /> : null}
+        {pending?.kind === 'waiting' && pending.cancellable ? (
+          <InsetRow
+            title="Cancel"
+            action
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                await sync.cancelNetWorth(bookId, pending.proposalId);
+                // Withdrawn here: no "the others stopped" for it.
+                if (!active) await setNetWorthMarks(database, bookId, { seen: false });
+              })
+            }
+          />
+        ) : null}
         {pending?.kind === 'asked' ? (
           <InsetRow testId="filing-asked" title={pending.line} subtitle={pending.mode === 'joint' ? `Confirming shares every item. ${jointTaxLine(others)}` : undefined} chevron={false} />
         ) : null}
-        {pending?.kind === 'asked' ? <InsetRow title="Confirm" action disabled={busy} onClick={() => void run(() => sync.answerNetWorth(bookId, pending.proposalId, 'confirm'))} /> : null}
-        {pending?.kind === 'asked' ? <InsetRow title="Choose differently" action disabled={busy} onClick={() => void run(() => sync.answerNetWorth(bookId, pending.proposalId, 'decline'))} /> : null}
+        {pending?.kind === 'asked' ? (
+          <InsetRow
+            title="Confirm"
+            action
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                await sync.answerNetWorth(bookId, pending.proposalId, 'confirm');
+                await setNetWorthMarks(database, bookId, { optedOut: false, seen: true });
+              })
+            }
+          />
+        ) : null}
+        {pending?.kind === 'asked' ? (
+          <InsetRow
+            title="Choose differently"
+            action
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                await sync.answerNetWorth(bookId, pending.proposalId, 'decline');
+                // Declined on this phone: the app confirms nothing for this person after this (review round 1, item 3).
+                await setNetWorthMarks(database, bookId, { optedOut: true });
+              })
+            }
+          />
+        ) : null}
       </InsetGroup>
       {active ? (
         <InsetGroup>
@@ -97,7 +138,11 @@ function FilingBody({ bookId }: { bookId: string }) {
             disabled: busy,
             run: () => {
               setLeaving(false);
-              void run(() => sync.leaveNetWorth(bookId));
+              void run(async () => {
+                await sync.leaveNetWorth(bookId);
+                // Stopped on this phone: never confirmed again by the app, until this person starts it again.
+                await setNetWorthMarks(database, bookId, { optedOut: true, intent: [] });
+              });
             },
           }}
         >

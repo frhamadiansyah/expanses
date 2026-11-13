@@ -1,47 +1,57 @@
 import {
   activeNetWorthGroup,
+  clearJointAccounts,
   confirmReview,
   type Database,
   listSharedBooks,
+  netWorthMarks,
   ownSentAccountIds,
-  proposalOf,
   reviewedFor,
   reviewItems,
+  setNetWorthMarks,
   setShareSetting,
   type ShareSetting,
   sharingDetail,
+  storedJointAccount,
   type WorkspaceContext,
 } from '@expanses/db';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useApp } from '../../app/context';
 import type { SyncService } from '../../sync/sync-service';
-import { autoConfirmOf, autoReviewSettings } from './net-worth-auto';
-import type { FilingMode } from './net-worth-state';
+import { autoConfirmOf, autoReviewSettings, othersStopped } from './net-worth-auto';
+import { namesOf, type FilingMode } from './net-worth-state';
 import { workspaceBooks } from './workspace-books';
 
 /*
  * The household this person shares net worth with (2026-11-13), as the item pages need it for their "Shared with Andi"
- * switch: the workspace, whether its net-worth group is active, waiting for the other phone, or not started, and who
- * the others are. Plus the one way an item is switched — the first one switched on starts the group, filed separately.
+ * switch: the workspace, where its net-worth group stands, and who the others are. Plus the one way an item is switched
+ * — the first one switched on starts the group, filed separately — and the steps the app takes by itself (review round
+ * 1: nothing is ever shared without a tap on that person's own phone; an existing household looks the same).
  */
 
 export interface Household {
   bookId: string;
   /**
    * `none`: no group yet (the first switch starts it); `waiting`: started, the other phone has yet to confirm; `asked`:
-   * filing with one tax ID was asked of this phone, answered in the tax report before anything is switched.
+   * a group was asked of this phone and waits for its Confirm in the Tax report; `stopped`: the others stopped sharing
+   * net worth (a switch here starts nothing until they start again); `active`.
    */
-  stage: 'none' | 'waiting' | 'asked' | 'active';
+  stage: 'none' | 'waiting' | 'asked' | 'stopped' | 'active';
   /** The active group's filing; null before one is active. */
   mode: FilingMode | null;
+  /** The active group's review is still to be answered by this person (a group from before this update, or a change). */
+  reviewDue: boolean;
   /** The other members, by name: who "Shared with …" names. */
   others: { memberId: string; name: string }[];
 }
 
 type Deps = { database: Database; ws: WorkspaceContext; sync: SyncService };
 
-/** The household as it stands: an active group first, then a group waiting on this phone's start, then a shared workspace someone joined. */
+/** The line a Shared switch shows while the others have stopped. */
+export const stoppedLine = (others: readonly string[]) => `${namesOf(others) || 'The others'} stopped sharing net worth. It starts again from their phone.`;
+
+/** The household as it stands: an active group first, then one waiting or asked, then a shared workspace someone joined. */
 export async function householdOf({ database, sync }: Pick<Deps, 'database' | 'sync'>): Promise<Household | null> {
   const books = workspaceBooks(await listSharedBooks(database)).filter((book) => book.state === 'active');
   const othersOf = (bookId: string, members?: readonly string[]) => {
@@ -49,7 +59,10 @@ export async function householdOf({ database, sync }: Pick<Deps, 'database' | 's
     return (book?.members ?? []).filter((member) => member.memberId !== book?.memberId && (!members || members.includes(member.memberId))).map(({ memberId, name }) => ({ memberId, name }));
   };
   const active = await activeNetWorthGroup(database);
-  if (active) return { bookId: active.workspaceBookId, stage: 'active', mode: active.mode, others: othersOf(active.workspaceBookId, active.members) };
+  if (active) {
+    const reviewDue = !(await reviewedFor(database, active.groupBookId, active.proposalId));
+    return { bookId: active.workspaceBookId, stage: 'active', mode: active.mode, reviewDue, others: othersOf(active.workspaceBookId, active.members) };
+  }
   const deviceId = await sync.deviceId();
   let first: Household | null = null;
   for (const book of books) {
@@ -57,14 +70,16 @@ export async function householdOf({ database, sync }: Pick<Deps, 'database' | 's
     const view = await sync.netWorthGroup(book.bookId).catch(() => null);
     const pending = view?.pending;
     if (view && pending && !pending.cancelled && pending.members.includes(view.me)) {
-      // A one-tax-ID setup asked of this phone is answered in the tax report; until then nothing here is switched.
-      if (pending.mode === 'joint' && view.waitingFor.includes(view.me)) return { bookId: book.bookId, stage: 'asked', mode: null, others: othersOf(book.bookId, pending.members) };
-      return { bookId: book.bookId, stage: 'waiting', mode: null, others: othersOf(book.bookId, pending.members) };
+      const stage = view.waitingFor.includes(view.me) ? 'asked' : 'waiting';
+      return { bookId: book.bookId, stage, mode: null, reviewDue: false, others: othersOf(book.bookId, pending.members) };
     }
     if (!first) {
       const detail = await sharingDetail(database, book.bookId, deviceId);
       const joined = (detail?.members ?? []).filter((member) => !member.me && member.devices.length > 0);
-      if (joined.length > 0) first = { bookId: book.bookId, stage: 'none', mode: null, others: joined.map(({ memberId, name }) => ({ memberId, name })) };
+      if (joined.length > 0) {
+        const stopped = othersStopped(view, await netWorthMarks(database, book.bookId));
+        first = { bookId: book.bookId, stage: stopped ? 'stopped' : 'none', mode: null, reviewDue: false, others: joined.map(({ memberId, name }) => ({ memberId, name })) };
+      }
     }
   }
   return first;
@@ -79,24 +94,46 @@ export function useHousehold() {
 }
 
 /**
- * Starts the household's net worth, filed separately (the default for a new group, 2026-11-13), with these settings:
- * written first, so whatever the other phone confirms meets them; then the proposal, through the action the old
- * setup's Invite ran. The other phone confirms it by itself (`watchNetWorthAutoSteps`).
+ * An item switched while no group is active yet (none, or waiting for the other phone): remembered on this phone as
+ * switched on here, so the review the app answers once the group is active shares exactly these and nothing else.
  */
-export async function startNetWorth({ database, sync }: Pick<Deps, 'database' | 'sync'>, bookId: string, members: readonly string[], settings: Readonly<Record<string, ShareSetting>>): Promise<void> {
-  for (const [accountId, setting] of Object.entries(settings)) await setShareSetting(database, accountId, setting);
-  await sync.proposeNetWorth(bookId, { mode: 'separate', members: [...members] });
+export async function rememberSwitch(database: Database, bookId: string, accountId: string, on: boolean): Promise<void> {
+  if (await activeNetWorthGroup(database)) return;
+  const marks = await netWorthMarks(database, bookId);
+  const intent = new Set(marks.intent);
+  if (on) intent.add(accountId);
+  else intent.delete(accountId);
+  await setNetWorthMarks(database, bookId, { intent: [...intent] });
 }
 
 /**
- * One item's Shared switch, from its own page: before any group the first one on starts it (everything else private);
- * waiting for the other phone, the setting alone; in an active group not yet reviewed here, the review is answered
- * with what was chosen and this item (one tax ID shares every item whatever is said); otherwise the setting, as the page always wrote it.
+ * Starts the household's net worth, filed separately (the default for a new group, 2026-11-13), with these settings:
+ * written first, and the ones switched on remembered as this person's own choice; then the proposal, through the action
+ * the old setup's Invite ran. Starting is this person's tap, so an earlier stop of theirs is over.
+ */
+export async function startNetWorth({ database, sync }: Pick<Deps, 'database' | 'sync'>, bookId: string, members: readonly string[], settings: Readonly<Record<string, ShareSetting>>): Promise<void> {
+  for (const [accountId, setting] of Object.entries(settings)) await setShareSetting(database, accountId, setting);
+  const intent = Object.entries(settings)
+    .filter(([, setting]) => setting === 'total')
+    .map(([accountId]) => accountId);
+  await setNetWorthMarks(database, bookId, { intent, optedOut: false, seen: true });
+  await sync.proposeNetWorth(bookId, { mode: 'separate', members: [...members] });
+}
+
+/** Refused while the others have stopped: the app never starts net worth again for them. */
+export class OthersStoppedError extends Error {}
+
+/**
+ * One item's Shared switch, from its own page. Before any group the first one on starts it (everything else private);
+ * waiting for the other phone, the setting, remembered as switched here; in an active group whose review this person has
+ * not answered, the tap answers it as the list does — what the others already see stays, this item as switched, nothing
+ * else (one tax ID: the setting only, until the review); otherwise the setting, as the page always wrote it.
  */
 export async function switchItemShared(deps: Deps, household: Household, accountId: string, on: boolean): Promise<void> {
   const { database, ws } = deps;
   const setting: ShareSetting = on ? 'total' : 'hidden';
-  if (household.stage === 'asked') throw new Error('Answer the one tax ID question in the Tax report first.');
+  if (household.stage === 'asked') throw new Error('Answer what was asked in the Tax report first.');
+  if (household.stage === 'stopped') throw new OthersStoppedError(stoppedLine(household.others.map((other) => other.name)));
   if (household.stage === 'none') {
     if (!on) return;
     const settings: Record<string, ShareSetting> = {};
@@ -106,39 +143,80 @@ export async function switchItemShared(deps: Deps, household: Household, account
     return;
   }
   const group = await activeNetWorthGroup(database);
-  if (group && !(await reviewedFor(database, group.groupBookId, group.proposalId))) {
-    await confirmReview(database, ws, await reviewSettingsNow(database, ws, group, { [accountId]: setting }), { missing: 'hidden' });
+  if (group && group.mode === 'separate' && !(await reviewedFor(database, group.groupBookId, group.proposalId))) {
+    const live = new Set(await ownSentAccountIds(database, group.groupBookId));
+    const settings: Record<string, ShareSetting> = {};
+    for (const item of await reviewItems(database, ws)) settings[item.accountId] = live.has(item.accountId) && item.setting === 'total' ? 'total' : 'hidden';
+    settings[accountId] = setting;
+    await confirmReview(database, ws, settings, { missing: 'hidden' });
     return;
   }
   await setShareSetting(database, accountId, setting);
+  if (!group) await rememberSwitch(database, household.bookId, accountId, on);
 }
 
-async function reviewSettingsNow(
-  database: Database,
-  ws: WorkspaceContext,
-  group: { groupBookId: string; proposalId: string; me: string },
-  now: Record<string, ShareSetting> = {},
-): Promise<Record<string, ShareSetting>> {
-  const proposal = await proposalOf(database.db, group.groupBookId, group.proposalId);
-  const live = new Set(await ownSentAccountIds(database, group.groupBookId));
-  return autoReviewSettings(await reviewItems(database, ws), { proposer: proposal?.proposal.proposedBy === group.me, live }, now);
+/** Whether the list shows an account's Owned together while a group waits: the stored choice, never one from before. */
+export async function chosenJoint(database: Database, accountId: string): Promise<boolean> {
+  return storedJointAccount(database, accountId);
 }
 
 /**
- * Runs the steps the old setup asked for by hand, after every sync run and once at the start: the partner's Confirm of
- * a group filed separately, and this person's review of an active group (filed separately: what was chosen; one tax
- * ID: every item, which each member agreed to when proposing or confirming it in the tax report). Each through the action its
- * button ran. One run at a time; a step that failed is tried again a minute later at the soonest. Returns the stop.
+ * One pass of what the app does by itself (review round 1): confirms the very first group filed separately; answers the
+ * review of a group filed separately with exactly what this person switched on here; notes on this phone that a group
+ * was seen; and, with no group here any more, forgets Owned together so a later group never brings it back. Returns
+ * whether it changed anything.
+ */
+export async function netWorthAutoStepsOnce(deps: Deps, step: (key: string, work: () => Promise<void>) => Promise<boolean> = runStep): Promise<boolean> {
+  const { database, ws, sync } = deps;
+  let changed = false;
+  const active = await activeNetWorthGroup(database);
+  let anyGroup = active !== null;
+  for (const book of workspaceBooks(await listSharedBooks(database))) {
+    if (book.state !== 'active' || book.members.length < 2) continue;
+    const view = await sync.netWorthGroup(book.bookId).catch(() => null);
+    const marks = await netWorthMarks(database, book.bookId);
+    const mine = view && ((view.active?.members.includes(view.me) ?? false) || (view.pending && !view.pending.cancelled && view.pending.members.includes(view.me)));
+    if (mine) anyGroup = true;
+    if (mine && !marks.seen) await setNetWorthMarks(database, book.bookId, { seen: true });
+    const proposalId = autoConfirmOf(view, active && active.workspaceBookId !== book.bookId ? active.workspaceBookId : null, marks);
+    if (proposalId) changed = (await step(`confirm:${proposalId}`, () => sync.answerNetWorth(book.bookId, proposalId, 'confirm'))) || changed;
+  }
+  const group = await activeNetWorthGroup(database);
+  if (group && group.mode === 'separate' && !(await reviewedFor(database, group.groupBookId, group.proposalId))) {
+    const marks = await netWorthMarks(database, group.workspaceBookId);
+    const settings = autoReviewSettings(await reviewItems(database, ws), marks.intent);
+    if (settings) {
+      changed =
+        (await step(`review:${group.groupBookId}:${group.proposalId}`, async () => {
+          await confirmReview(database, ws, settings, { missing: 'hidden' });
+          await setNetWorthMarks(database, group.workspaceBookId, { intent: [] });
+          // What the review sends goes now, not at the next scheduled run: the partner is likely looking.
+          await sync.syncNow(group.workspaceBookId);
+        })) || changed;
+    }
+  }
+  // In no group here at all: Owned together means nothing, and must not come back with a group made later.
+  if (!anyGroup && !(await activeNetWorthGroup(database))) await clearJointAccounts(database);
+  return changed;
+}
+
+async function runStep(_key: string, work: () => Promise<void>): Promise<boolean> {
+  await work();
+  return true;
+}
+
+/**
+ * Runs `netWorthAutoStepsOnce` after every sync run and once at the start. One run at a time; a step that failed is tried
+ * again a minute later at the soonest. Returns the stop.
  */
 export function watchNetWorthAutoSteps(deps: Deps, onChanged: () => void): () => void {
   let running = false;
   let again = false;
   let stopped = false;
   const failedAt = new Map<string, number>();
-  const due = (key: string) => (failedAt.get(key) ?? 0) + 60_000 <= Date.now();
 
   async function step(key: string, work: () => Promise<void>): Promise<boolean> {
-    if (!due(key)) return false;
+    if ((failedAt.get(key) ?? 0) + 60_000 > Date.now()) return false;
     try {
       await work();
       failedAt.delete(key);
@@ -148,28 +226,6 @@ export function watchNetWorthAutoSteps(deps: Deps, onChanged: () => void): () =>
       console.warn('Net worth step did not run', key, error);
       return false;
     }
-  }
-
-  async function once(): Promise<boolean> {
-    const { database, ws, sync } = deps;
-    let changed = false;
-    const active = await activeNetWorthGroup(database);
-    for (const book of workspaceBooks(await listSharedBooks(database))) {
-      if (book.state !== 'active' || book.members.length < 2) continue;
-      const view = await sync.netWorthGroup(book.bookId).catch(() => null);
-      const proposalId = autoConfirmOf(view, active && active.workspaceBookId !== book.bookId ? active.workspaceBookId : null);
-      if (proposalId) changed = (await step(`confirm:${proposalId}`, () => sync.answerNetWorth(book.bookId, proposalId, 'confirm'))) || changed;
-    }
-    const group = await activeNetWorthGroup(database);
-    if (group && !(await reviewedFor(database, group.groupBookId, group.proposalId))) {
-      changed =
-        (await step(`review:${group.groupBookId}:${group.proposalId}`, async () => {
-          await confirmReview(database, ws, await reviewSettingsNow(database, ws, group), { missing: 'hidden' });
-          // What the review sends goes now, not at the next scheduled run: the partner is likely looking.
-          await sync.syncNow(group.workspaceBookId);
-        })) || changed;
-    }
-    return changed;
   }
 
   async function run() {
@@ -182,7 +238,7 @@ export function watchNetWorthAutoSteps(deps: Deps, onChanged: () => void): () =>
     try {
       do {
         again = false;
-        if (await once().catch((error: unknown) => (console.warn('Net worth steps did not run', error), false))) onChanged();
+        if (await netWorthAutoStepsOnce(deps, step).catch((error: unknown) => (console.warn('Net worth steps did not run', error), false))) onChanged();
       } while (again && !stopped);
     } finally {
       running = false;

@@ -369,7 +369,7 @@ export const JOINT_SKIPPED = 'Not owned together: sharing its balance did not go
  * account is made joint only once it is shared — then goals, then events, whose share is the slowest and ends in an
  * invite. A draft that touched no net worth tick and no Joint never answers a review.
  */
-export function changesOf(list: ShareList, given: ShareDraft): ShareChange[] {
+export function changesOf(list: ShareList, given: ShareDraft, options: { answerReview?: boolean } = {}): ShareChange[] {
   const draft = reconcile(list, given);
   const out: ShareChange[] = [];
   const nwItems = itemsOf(list).filter(isNetWorth);
@@ -385,7 +385,8 @@ export function changesOf(list: ShareList, given: ShareDraft): ShareChange[] {
         out.push({ kind: 'start', key: 'start', name: START_NAME, settings });
       }
     } else if (!nw.reviewed && stage === 'active') {
-      if (touched) {
+      // Answered on purpose, untouched too: the person's own tap on "Share what is switched on" (review round 1).
+      if (touched || options.answerReview) {
         const settings: Record<string, ShareSetting> = {};
         for (const item of nwItems) settings[item.id] = nw.mode === 'joint' || isTicked(draft, item) ? 'total' : 'hidden';
         for (const item of nw.items) if (LEFT_OUT_SUBTYPES.includes(item.subtype)) settings[item.accountId] = nw.mode === 'joint' ? 'total' : (item.setting ?? 'hidden');
@@ -544,6 +545,8 @@ export const SHARE_LIST_COPY = {
   alwaysSubtitle: 'Budgets, bills and transactions',
   /** The review notice while net worth waits for this person's review (§6 Review). */
   reviewTitle: 'Review items',
+  /** The tap that answers a review left from before this update, or after a change: what is switched on is shared. */
+  reviewAnswer: 'Share what is switched on',
   reviewBody: (mode: FilingMode, others: readonly string[], bookName: string) => {
     if (mode === 'joint') return `${JOINT_LINE} ${jointTaxLine(others)} One tick shares every item, once saved.`;
     const { who, one } = whoSees(others, bookName);

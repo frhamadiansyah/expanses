@@ -488,6 +488,23 @@ function offConfirmOfAll() {
   return { joint: offConfirmOf(list, emptyDraft(list), bca, 'joint', ['Andi'])!, shared: offConfirmOf(list, emptyDraft(list), bca, 'shared', ['Andi'])! };
 }
 
+describe('a review left waiting is answered only by the person’s own tap (review round 1)', () => {
+  it('untouched, nothing answers it; "Share what is switched on" answers it with what the list shows, and nothing else', () => {
+    const list = listWith({ mode: 'separate', reviewed: false, live: new Set(['a-bca']) });
+    expect(changesOf(list, emptyDraft(list))).toEqual([]);
+    const [review] = changesOf(list, emptyDraft(list), { answerReview: true });
+    expect(review).toMatchObject({ kind: 'review' });
+    expect((review as Extract<ShareChange, { kind: 'review' }>).settings).toEqual({ 'a-bca': 'total', 'a-gopay': 'hidden', 'a-card': 'hidden', 'a-rdn': 'hidden', 'a-house': 'hidden', 'a-kpr': 'hidden' });
+  });
+
+  it('a reviewed group, or none at all, has nothing to answer', () => {
+    const reviewed = shareListOf(input());
+    expect(changesOf(reviewed, emptyDraft(reviewed), { answerReview: true })).toEqual([]);
+    const none = listWith({ stage: 'none', reviewed: false });
+    expect(changesOf(none, emptyDraft(none), { answerReview: true })).toEqual([]);
+  });
+});
+
 describe('simplified (2026-11-13): Shared, and Owned together on the icon', () => {
   const none = (over: Partial<NonNullable<ShareListInput['netWorth']>> = {}) => listWith({ stage: 'none', reviewed: false, proposalId: '', joint: new Set(), ...over });
 

@@ -46,7 +46,14 @@ export function App({ app, sync: given }: { app: AppDb; sync?: SyncService }) {
    * Household sharing, simplified (2026-11-13): the partner's Confirm of a net worth group filed separately, and this
    * person's review of one, happen by themselves after each sync run — through the same actions their buttons ran.
    */
-  useEffect(() => watchNetWorthAutoSteps({ database: app.database, ws: app.ws, sync }, () => void queryClient.invalidateQueries()), [app.database, app.ws, sync, queryClient]);
+  useEffect(
+    () =>
+      watchNetWorthAutoSteps({ database: app.database, ws: app.ws, sync }, () => {
+        // Only what a confirm or a review changes is read again (review round 1, item 8): never every figure at once.
+        for (const key of ['net-worth', 'share-list', 'sharing']) void queryClient.invalidateQueries({ queryKey: [key] });
+      }),
+    [app.database, app.ws, sync, queryClient],
+  );
   // A `cicis://join/…` link opened while the shell runs, or the one it was launched by, lands on Join a workspace, the code in
   // the fragment rather than the path.
   useEffect(() => listenForJoinLinks((code) => void router.navigate({ to: '/join', hash: code })), []);

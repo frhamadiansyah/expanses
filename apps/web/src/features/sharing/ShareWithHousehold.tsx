@@ -5,9 +5,9 @@ import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, SwitchRow, TwoPersonGlyph } from '../../ui/native';
-import { switchItemShared, useHousehold } from './household';
-import { useActiveNetWorthGroup, useJointAccount, useShareSetting } from './net-worth-queries';
-import { newItemShared } from './net-worth-items';
+import { chosenJoint, stoppedLine, switchItemShared, useHousehold } from './household';
+import { useQuery } from '@tanstack/react-query';
+import { useActiveNetWorthGroup, useShareSetting } from './net-worth-queries';
 import { JOINT_SHARED_LINE, namesOf, sayNetWorthError, settingOnAdd } from './net-worth-state';
 
 /*
@@ -42,15 +42,17 @@ export function ShareWithHouseholdRow({ accountId, name = '', jointSwitch = fals
   const invalidate = useInvalidateAll();
   const household = useHousehold();
   const setting = useShareSetting(accountId);
-  const jointAccount = useJointAccount(accountId);
+  // Owned together as it reads in the group; while one waits for the other phone, as chosen here (review round 1).
+  const jointAccount = useQuery({ queryKey: ['net-worth', 'joint-chosen', accountId], queryFn: () => chosenJoint(database, accountId) });
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [asking, setAsking] = useState<{ title: string; body: string; run: () => Promise<void> } | null>(null);
   const h = household.data;
   if (!h || h.stage === 'asked' || setting.isPending) return null;
   const others = h.others.map((other) => other.name);
-  // Before any group nothing is shared, whatever an earlier one left stored.
-  const shared = h.stage !== 'none' && setting.data === 'total';
+  // Before any group nothing is shared, whatever an earlier one left stored; nor while the others have stopped.
+  const shared = h.stage !== 'none' && h.stage !== 'stopped' && setting.data === 'total';
+  const stopped = h.stage === 'stopped';
   const locked = h.mode === 'joint' && shared;
   const joint = shared && (jointAccount.data ?? false);
 
@@ -74,13 +76,13 @@ export function ShareWithHouseholdRow({ accountId, name = '', jointSwitch = fals
   return (
     <>
       <ErrorBox error={error} />
-      <InsetGroup footer={locked ? JOINT_SHARED_LINE : undefined}>
+      <InsetGroup footer={locked ? JOINT_SHARED_LINE : stopped ? <span data-testid="share-stopped-line">{stoppedLine(others)}</span> : undefined}>
         <SwitchRow
           testId="share-with-household"
           label={ITEM_SHARE_COPY.shared(others)}
           hint={shared && !locked ? ITEM_SHARE_COPY.sharedHint(others) : undefined}
           checked={shared}
-          disabled={busy || locked}
+          disabled={busy || locked || stopped}
           onChange={(on) => {
             // Shared off on an account owned together asks once for both (mockup ③).
             if (!on && joint) setAsking({ ...ITEM_SHARE_COPY.stopShared(name || 'this account', others), run: () => switchShared(false) });
@@ -135,7 +137,8 @@ export function useShareOnAdd(testId = 'asset-shared-switch'): { row: ReactNode;
   const { database } = useApp();
   const group = useActiveNetWorthGroup();
   const household = useHousehold();
-  const [share, setShare] = useState(newItemShared(true) === true);
+  // A new item starts Private (owner's spec, 2026-11-13): shared only with a tap on its switch.
+  const [share, setShare] = useState(false);
   const mode = group.data?.mode ?? null;
   const row =
     mode === null ? null : (

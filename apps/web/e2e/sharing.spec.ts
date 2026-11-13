@@ -584,6 +584,23 @@ async function filesTogether(page: Page, dewi: Page, info: TestInfo, prefix: str
   await shot(page, info, `${prefix}-filing-asked`);
   await confirmFiling(dewi, info, `${prefix}-filing-confirm`);
   await filingReads(page, 'joint');
+  // One tax ID shares every item: each person says so with a tap of their own (review round 1).
+  await reviewInList(dewi, info, `${prefix}-review`);
+  await reviewInList(page, info, `${prefix}-review`);
+}
+
+/** A review this person has yet to answer, answered with their own tap: Share › Shared with › "Share what is switched on". */
+async function reviewInList(page: Page, info: TestInfo, name: string) {
+  await eventually(page, async () => {
+    await page.goto('/tax-report');
+    await expect(page.getByTestId('filing-review')).toBeVisible({ timeout: 2_000 });
+  });
+  await page.getByTestId('filing-review').click();
+  const answer = page.getByTestId('share-list-review-answer');
+  await expect(answer).toBeVisible({ timeout: 30_000 });
+  await shot(page, info, name);
+  await answer.click();
+  await expect(page).toHaveURL(/\/share$/, { timeout: 60_000 });
 }
 
 /** The status in words: on Sync details since the Share page's redesign (A1), one tap from its Sync row. */
@@ -782,8 +799,9 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   await expect(dewi.getByTestId('shared-item-recent')).toContainText('Household');
   await shot(dewi, info, '18b-partner-card');
 
-  // Fandri changes to separate tax IDs in the Tax report; Dewi's phone confirms by itself, and what was shared stays.
+  // Fandri changes to separate tax IDs in the Tax report; Dewi confirms it there — a change is never confirmed for her.
   await fileAs(page, 'separate');
+  await confirmFiling(dewi, info, '19-filing-separate');
   await filingReads(dewi, 'separate');
   await filingReads(page, 'separate');
 
@@ -1179,7 +1197,7 @@ test('the partner’s joint account and joint card are cards in Wallet, counted 
  * first account switched on in Share › Shared with Dewi starts net worth by itself, and from then a new asset starts
  * Shared (off makes it private). Assets and debts sit behind their own row at the end of the list.
  */
-test('net worth sharing from the one list: the first account starts it, a new asset starts Shared, and assets sit behind their own row', async ({ page, browser }, info) => {
+test('net worth sharing from the one list: the first account starts it, a new asset starts Private, and assets sit behind their own row', async ({ page, browser }, info) => {
   test.setTimeout(900_000);
   page.on('dialog', (dialog) => void dialog.accept());
   const dewi = await secondDevice(browser, info);
@@ -1202,12 +1220,14 @@ test('net worth sharing from the one list: the first account starts it, a new as
   await householdFiling(dewi);
   await filingReads(page, 'separate');
 
-  // A new asset starts Shared while sharing is active; the switch off makes it private.
+  // A new asset starts Private while sharing is active (owner's spec); its switch on shares it.
   await eventually(page, async () => {
     await openNewAsset(page, 'Gold bullion');
-    await expect(page.getByTestId('asset-shared-switch')).toBeChecked({ timeout: 1_000 });
+    await expect(page.getByTestId('asset-shared-switch')).not.toBeChecked({ timeout: 1_000 });
   });
   await page.getByLabel('Name', { exact: true }).fill('Shared gold');
+  await page.getByTestId('asset-shared-switch').click({ force: true });
+  await expect(page.getByTestId('asset-shared-switch')).toBeChecked();
   await pastPurchase(page);
   await fillDay(page, 'Bought', '2024-02-03');
   await page.getByLabel('How much').fill('10');
@@ -1216,7 +1236,6 @@ test('net worth sharing from the one list: the first account starts it, a new as
   await expect(page).toHaveURL(/\/net-worth\/assets$/);
   await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Private gold');
-  await page.getByTestId('asset-shared-switch').click({ force: true });
   await expect(page.getByTestId('asset-shared-switch')).not.toBeChecked();
   await pastPurchase(page);
   await fillDay(page, 'Bought', '2024-02-03');

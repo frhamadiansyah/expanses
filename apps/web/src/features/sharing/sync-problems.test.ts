@@ -48,6 +48,14 @@ describe('the Sync row and its To fix list (redesign A1)', () => {
     expect(problems.find((problem) => problem.key === 'forget')!.title).toBe(KEEP_OWN_PROBLEM);
   });
 
+  it('net worth asked of this phone, and a review left to answer, are listed with where each is answered (review round 1)', () => {
+    const problems = syncProblemsOf({ ...quiet, netWorthAsked: 'Rina set up household net worth: one tax ID.', reviewDue: true });
+    expect(problems.map((problem) => [problem.key, problem.fix?.kind])).toEqual([
+      ['nw-asked', 'tax'],
+      ['nw-review', 'review'],
+    ]);
+  });
+
   it('rows still held by a copy that exists cannot be placed yet: listed, no fix', () => {
     expect(syncProblemsOf({ ...quiet, heldText: '3 rows are in Family (old copy)' })[0]).toMatchObject({ key: 'held', fix: null });
   });

@@ -1,5 +1,6 @@
 import {
   activeNetWorthGroup,
+  netWorthMarks,
   planEventCopyDelete,
   type SharedEventView,
   type CreatedInvite,
@@ -41,7 +42,8 @@ import { GOAL_SHARING_COPY } from '../goals/goal-sharing';
 import { useGoalPlans, useGoals, useGoalShareTargets } from '../goals/queries';
 import { assetKindTile, debtKindTile } from '../ownables/catalogue-view';
 import { InviteCard } from './InviteCard';
-import { startNetWorth } from './household';
+import { chosenJoint, rememberSwitch, startNetWorth, stoppedLine } from './household';
+import { othersStopped } from './net-worth-auto';
 import { JOINT_SHARED_LINE, namesOf, sayNetWorthError } from './net-worth-state';
 import { useSharingDetail } from './queries';
 import {
@@ -107,7 +109,10 @@ interface EventShared {
 }
 
 /** Everything the list is made of, read whole and read again after every sync run. */
-export function useShareList(bookId: string): { list: ShareList | null; goalShares: Record<string, Awaited<ReturnType<typeof goalShareOf>>> } {
+/** Why no account can be switched here: net worth is another workspace's, a group waits for this phone's Confirm, or the others stopped. */
+export type NetWorthBlocked = 'elsewhere' | 'asked' | 'stopped';
+
+export function useShareList(bookId: string): { list: ShareList | null; goalShares: Record<string, Awaited<ReturnType<typeof goalShareOf>>>; blocked: NetWorthBlocked | null } {
   const { database, sync, ws } = useApp();
   const queryClient = useQueryClient();
   useEffect(
@@ -126,15 +131,16 @@ export function useShareList(bookId: string): { list: ShareList | null; goalShar
     queryKey: ['share-list', 'net-worth', ws.workspaceId, bookId],
     // The previous read stands in only for the same workspace: another one's never shows here (round 3).
     placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[3] === bookId ? previous : undefined),
-    queryFn: async (): Promise<NetWorthInput | null> => {
+    queryFn: async (): Promise<{ input: NetWorthInput | null; blocked: NetWorthBlocked | null }> => {
       const g = await activeNetWorthGroup(database);
       // Net worth shared in another workspace: nothing of it is switched here.
-      if (g && g.workspaceBookId !== bookId) return null;
+      if (g && g.workspaceBookId !== bookId) return { input: null, blocked: 'elsewhere' };
       const items = await reviewItems(database, ws);
       const joint = new Set<string>();
-      for (const item of items) if (await getJointAccount(database, item.accountId)) joint.add(item.accountId);
+      // Owned together as it reads in the group; while one waits, as chosen here (review round 1, item 4).
+      for (const item of items) if (await (g ? getJointAccount(database, item.accountId) : chosenJoint(database, item.accountId))) joint.add(item.accountId);
       if (g) {
-        return {
+        return { blocked: null, input: {
           stage: 'active',
           mode: g.mode,
           proposalId: g.proposalId,
@@ -142,15 +148,17 @@ export function useShareList(bookId: string): { list: ShareList | null; goalShar
           items,
           joint,
           live: new Set(await ownSentAccountIds(database, g.groupBookId)),
-        };
+        } };
       }
       // No active group (2026-11-13): the accounts are listed all the same. Started from here and waiting for the other
       // phone, what is stored is what was switched on; not started, nothing is shared and the first switch starts it.
       const view = await sync.netWorthGroup(bookId);
       const pending = view?.pending && !view.pending.cancelled && view.pending.members.includes(view.me) ? view.pending : null;
-      // One tax ID asked of this phone: answered in the tax report first.
-      if (pending && pending.mode === 'joint' && view!.waitingFor.includes(view!.me)) return null;
-      return { stage: pending ? 'waiting' : 'none', mode: 'separate', proposalId: pending?.proposalId ?? '', reviewed: false, items, joint, live: new Set() };
+      // A group asked of this phone and not confirmed by it: answered in the Tax report first.
+      if (pending && view!.waitingFor.includes(view!.me)) return { input: null, blocked: 'asked' };
+      // The others stopped sharing net worth: nothing here starts it again for them (review round 1, item 3).
+      if (!pending && othersStopped(view, await netWorthMarks(database, bookId))) return { input: null, blocked: 'stopped' };
+      return { blocked: null, input: { stage: pending ? 'waiting' : 'none', mode: 'separate', proposalId: pending?.proposalId ?? '', reviewed: false, items, joint: pending ? joint : new Set<string>(), live: new Set() } };
     },
   });
   const goals = useGoals();
@@ -169,7 +177,7 @@ export function useShareList(bookId: string): { list: ShareList | null; goalShar
     if (!ready) return null;
     return shareListOf({
       bookId,
-      netWorth: netWorth.data ?? null,
+      netWorth: netWorth.data?.input ?? null,
       // A goal whose link is not read yet is left out until it is (round 3): never offered as unshared by guess.
       goals: goals.data!
         .filter((goal) => goal.status !== 'archived' && goal.id in shares.data!)
@@ -184,7 +192,7 @@ export function useShareList(bookId: string): { list: ShareList | null; goalShar
       })),
     });
   }, [ready, netWorth.data, goals.data, shares.data, targets.data, events.data, summaries.data, bookId, ws.baseCurrency]);
-  return { list, goalShares: shares.data ?? {} };
+  return { list, goalShares: shares.data ?? {}, blocked: netWorth.data?.blocked ?? null };
 }
 
 /** Share › Shared with Andi. */
@@ -230,7 +238,7 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
   const queryClient = useQueryClient();
   const shareEventNow = useShareEventNow();
   const plans = useGoalPlans();
-  const { list, goalShares } = useShareList(bookId);
+  const { list, goalShares, blocked } = useShareList(bookId);
   const eventRows = useEvents().data ?? [];
   const [edits, setEdits] = useState<ShareDraft | null>(null);
   const [busy, setBusy] = useState(false);
@@ -286,9 +294,9 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
     );
   }
 
-  async function apply() {
+  async function apply(answerReview = false) {
     if (!list || !draft || busy) return;
-    const changes = keepConfirmed(changesOf(list, draft), confirmStop);
+    const changes = keepConfirmed(changesOf(list, draft, { answerReview }), confirmStop);
     // Nothing switched: Done is Later.
     if (setup && changes.length === 0) return void later();
     setBusy(true);
@@ -303,6 +311,7 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
           // a group came meanwhile (the reads after Save bring the list up to date). An item opened since the list was
           // read was never shown, so it is sent private.
           start: async (settings) => {
+            if (blocked === 'stopped') throw new Error(stoppedLine(othersAll));
             const view = await sync.netWorthGroup(bookId);
             if ((await activeNetWorthGroup(database)) || (view?.pending && !view.pending.cancelled)) throw new Error(NET_WORTH_CHANGED);
             const ids = (await reviewItems(database, ws)).map((item) => item.accountId);
@@ -325,7 +334,11 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
             const ids = (await reviewItems(database, ws)).map((item) => item.accountId);
             await confirmReview(database, ws, completeReviewSettings(settings, ids), { missing: 'hidden' });
           },
-          setting: (accountId, setting) => setShareSetting(database, accountId, setting),
+          setting: async (accountId, setting) => {
+            await setShareSetting(database, accountId, setting);
+            // Waiting for the other phone: remembered as switched here, the only items the app's review will share.
+            await rememberSwitch(database, bookId, accountId, setting === 'total');
+          },
           joint: (accountId, on) => setJointAccount(database, accountId, on),
           shareGoal: (goalId) => shareGoal(database, ws, goalId, bookId),
           stopGoal: (goalId) => stopSharingGoal(database, ws, goalId),
@@ -393,8 +406,9 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
     );
   }
 
-  const netWorthOff = list !== null && list.netWorth === null;
-  const reviewWaits = list?.netWorth && (list.netWorth.stage ?? 'active') === 'active' && !list.netWorth.reviewed && list.netWorth.mode === 'joint' && list.groups.some((group) => group.key === 'accounts' || group.key === 'assets') ? list.netWorth : null;
+  const netWorthOff = list !== null && list.netWorth === null ? blocked : null;
+  // A review this person has yet to answer (a group from before this update, or a change): theirs to tap (review round 1).
+  const reviewWaits = list?.netWorth && (list.netWorth.stage ?? 'active') === 'active' && !list.netWorth.reviewed && list.groups.some((group) => group.key === 'accounts' || group.key === 'assets') ? list.netWorth : null;
 
   /** A switch turned: off on something owned together asks first (once for both). */
   function onToggle(item: ShareListItem) {
@@ -475,12 +489,18 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
         <>
           {netWorthOff ? (
             <InsetGroup wide header="Accounts & cards">
-              <InsetRow testId="share-list-net-worth" title={SHARE_LIST_COPY.netWorthAsked} subtitle={undefined} to="/tax-report" />
+              {netWorthOff === 'asked' ? (
+                <InsetRow testId="share-list-net-worth" title={SHARE_LIST_COPY.netWorthAsked} to="/tax-report" />
+              ) : (
+                <InsetRow testId="share-list-net-worth" title={netWorthOff === 'stopped' ? stoppedLine(othersAll) : SHARE_LIST_COPY.netWorthOff} chevron={false} />
+              )}
             </InsetGroup>
           ) : null}
           {reviewWaits ? (
             <div className="mb-[14px]">
-              <Notice kind="warning" testId="share-list-review" title={SHARE_LIST_COPY.reviewTitle} body={SHARE_LIST_COPY.reviewBody(reviewWaits.mode, othersAll, bookName)} />
+              <InsetGroup wide header={SHARE_LIST_COPY.reviewTitle} footer={<span data-testid="share-list-review">{SHARE_LIST_COPY.reviewBody(reviewWaits.mode, othersAll, bookName)}</span>}>
+                <InsetRow testId="share-list-review-answer" title={SHARE_LIST_COPY.reviewAnswer} action disabled={busy} onClick={() => void apply(true)} />
+              </InsetGroup>
             </div>
           ) : null}
           {list.groups.filter((group) => group.key !== 'assets').map((group) => (group.key === 'events' ? <EventsGroup key="events" group={group} onError={setError} /> : drawGroup(group)))}

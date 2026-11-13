@@ -5,6 +5,9 @@ import { heldLineOf } from './copy-roles';
 import { useBookStatus, useCopyRoles, useLostHere, useShareHealth, useSyncStatus } from './queries';
 import { forgetConfirm, lastFailedLine, ownersGoneConfirm, shareSilenceLine } from './sharing-copy';
 import { type SyncProblem, syncProblemsOf, syncRowValue } from './sync-problems';
+import { useHousehold } from './household';
+import { useNetWorthGroup } from './net-worth-queries';
+import { netWorthRowOf } from './net-worth-state';
 
 /*
  * What the Share page's Sync row and Sync details read (2026-11-13, redesign A1): the problems to fix, and the row's
@@ -33,6 +36,9 @@ export function useSyncState(book: BookRow, detail: SharingDetail | null): SyncS
   const health = useShareHealth(book.id).data;
   const roles = useCopyRoles(book.id).data;
   const diag = useQuery({ queryKey: ['sharing', book.id, 'diagnostics'], queryFn: () => sharingDiagnostics(database, book.id) });
+  const household = useHousehold().data;
+  const group = useNetWorthGroup(book.id).data;
+  const nwRow = netWorthRowOf(group, detail?.members ?? []);
   const now = Date.now();
   const status = engineStatus.data?.status ?? null;
   const frozen = engineStatus.data?.frozen ?? false;
@@ -61,6 +67,8 @@ export function useSyncState(book: BookRow, detail: SharingDetail | null): SyncS
     forgetLine: ownersQuiet ? ownersGoneConfirm(book.name, ownerNames, health?.ownersGone.since ?? null) : forgettable ? forgetConfirm(book.name) : null,
     silenceText: active && health ? shareSilenceLine(health.silence, { syncedAt: lastSynced, nowMs: now }) : null,
     outdated: phones.filter((phone) => phone.outdated).map((phone) => ({ name: phone.owner, version: phone.version })),
+    netWorthAsked: nwRow.pending?.kind === 'asked' ? nwRow.pending.line : null,
+    reviewDue: household?.bookId === book.id && household.stage === 'active' && household.reviewDue,
   });
   return { problems, value: syncRowValue({ running: live.running, waiting: detail?.waiting ?? 0 }), lastSynced, active, frozen, ownersQuiet, phones };
 }

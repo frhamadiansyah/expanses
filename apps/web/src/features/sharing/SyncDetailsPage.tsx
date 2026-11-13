@@ -49,14 +49,27 @@ function DetailsBody({ book, detail }: { book: BookRow; detail: SharingDetail | 
   const [fixing, setFixing] = useState<Fixing>(null);
   const [placed, setPlaced] = useState<string | null>(null);
   const { busy, error, run } = useActionRunner();
+  const { database } = useApp();
+  const [copied, setCopied] = useState<string | null>(null);
   const now = Date.now();
   const status = shareStatusLine({ status: engine.data?.status ?? null, pending: engine.isPending, error: engine.error, failing: live.failing, now });
+
+  /** The same text the Technical log shows and copies, read now. */
+  async function copySupport() {
+    setCopied(null);
+    await run(async () => {
+      const text = syncDetailsText(await collectSyncDetails({ database, sync, bookId: book.id, build: await buildName().catch(() => null) }));
+      setCopied(await copyText(text));
+    });
+  }
 
   function fix(problem: SyncProblem) {
     const how = problem.fix;
     if (!how) return undefined;
     if (how.kind === 'sync') return () => void sync.syncNow(book.id);
     if (how.kind === 'holder') return () => void navigate({ to: '/account/workspaces/$bookId', params: { bookId: how.bookId } });
+    if (how.kind === 'tax') return () => void navigate({ to: '/tax-report' });
+    if (how.kind === 'review') return () => void navigate({ to: '/account/workspaces/$bookId/share/what', params: { bookId: book.id } });
     return () => setFixing({ kind: how.kind });
   }
 
@@ -98,8 +111,9 @@ function DetailsBody({ book, detail }: { book: BookRow; detail: SharingDetail | 
         </InsetGroup>
       ) : null}
 
-      <InsetGroup wide>
+      <InsetGroup wide footer={`${SYNC_DETAILS_FOOTER}${copied ? ` ${copied}.` : ''}`}>
         <InsetRow testId="sync-details-log" title="Technical log" to="/account/workspaces/$bookId/share/details/log" params={{ bookId: book.id }} />
+        <InsetRow testId="sync-details-support" title="Copy details for support" action onClick={() => void copySupport()} />
       </InsetGroup>
 
       {fixing?.kind === 'discard' ? <DiscardSheet book={book} onClose={() => setFixing(null)} /> : null}
@@ -155,16 +169,9 @@ export function SyncLogPage() {
     setError(null);
     setNote(null);
     try {
-      await navigator.clipboard.writeText(text);
-      setNote('Copied');
-    } catch {
-      // The clipboard can refuse inside the shell; the share sheet has a Copy of its own.
-      try {
-        const done = await shareText({ title: 'Sync details', text });
-        if (done === 'copied') setNote('Copied');
-      } catch (failure) {
-        setError(failure);
-      }
+      setNote(await copyText(text));
+    } catch (failure) {
+      setError(failure);
     }
   }
 
@@ -190,6 +197,17 @@ export function SyncLogPage() {
       </div>
     </div>
   );
+}
+
+/** Copies the details: the clipboard, or the share sheet's own Copy where the shell refuses the clipboard. "Copied" once done. */
+async function copyText(text: string): Promise<string | null> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return 'Copied';
+  } catch {
+    const done = await shareText({ title: 'Sync details', text });
+    return done === 'copied' ? 'Copied' : null;
+  }
 }
 
 /** The text itself, as one item of its group: the group hands every child a `position`, which a bare element would pass to the DOM. */

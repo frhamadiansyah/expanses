@@ -14,7 +14,11 @@ export type ProblemFix =
   /** A share dead here, or whose owners went quiet: Keep as own copy (C1, D-A11). */
   | { kind: 'forget' }
   /** The last run failed: Sync now. */
-  | { kind: 'sync' };
+  | { kind: 'sync' }
+  /** Net worth asked of this phone (a first group, a change of filing): Confirm or Choose differently in the Tax report. */
+  | { kind: 'tax' }
+  /** A net worth review this person has yet to answer: the Shared with list. */
+  | { kind: 'review' };
 
 export interface SyncProblem {
   key: string;
@@ -43,6 +47,10 @@ export interface ProblemInput {
   silenceText: string | null;
   /** Each other phone still in the share on an app too old to keep in step. */
   outdated: readonly { name: string; version: string | null }[];
+  /** Net worth asked of this phone, in words ("Rina set up household net worth: one tax ID."), or null. */
+  netWorthAsked?: string | null;
+  /** The active group's review is this person's to answer. */
+  reviewDue?: boolean;
 }
 
 export const KEEP_OWN_PROBLEM = 'Keep this copy on its own';
@@ -55,6 +63,8 @@ export function syncProblemsOf(input: ProblemInput): SyncProblem[] {
   for (const holder of input.holders) out.push({ key: `holder:${holder.bookId}`, title: `${holder.label} holds part of this share`, subtitle: 'Open it to delete it', fix: { kind: 'holder', bookId: holder.bookId } });
   if (input.silenceText) out.push({ key: 'silence', title: input.silenceText, subtitle: null, fix: null });
   for (const phone of input.outdated) out.push({ key: `outdated:${phone.name}`, title: `${phone.name}’s phone is on ${phone.version ?? 'an older version'}`, subtitle: 'Update the app on it', fix: null });
+  if (input.netWorthAsked) out.push({ key: 'nw-asked', title: input.netWorthAsked, subtitle: 'Confirm or choose differently in the Tax report', fix: { kind: 'tax' } });
+  if (input.reviewDue) out.push({ key: 'nw-review', title: 'Net worth waits for a review', subtitle: 'Nothing new is shared until it is answered', fix: { kind: 'review' } });
   if (input.forgettable) out.push({ key: 'forget', title: KEEP_OWN_PROBLEM, subtitle: input.forgetLine, fix: { kind: 'forget' } });
   return out;
 }
