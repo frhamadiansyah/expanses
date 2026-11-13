@@ -1,0 +1,65 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Fee waived choice</title>
+<style>
+  :root { --ink:#000; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --green:#34c759; --red:#ff3b30; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; }
+  h1 { font-size:20px; margin:0 0 4px; } h2 { font-size:16px; margin:24px 0 6px; } .sub { color:#555; margin:0 0 14px; max-width:1150px; }
+  .wrap { display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; }
+  .phone { width:300px; background:var(--ground); border-radius:26px; padding:12px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .cap { font-weight:700; margin:0 0 4px; font-size:14px; } .note { font-size:12.5px; color:#555; margin:0 0 8px; min-height:50px; }
+  .bar { display:flex; justify-content:space-between; align-items:center; margin:2px 4px 10px; font-size:16px; } .bar .l, .bar .r { color:var(--tint); font-size:15px; } .bar b { font-weight:600; }
+  .grp { background:var(--surface); border-radius:12px; overflow:hidden; margin-bottom:4px; }
+  .r { display:flex; justify-content:space-between; align-items:center; padding:11px 14px; font-size:15px; gap:8px; } .r + .r { border-top:.5px solid var(--hair); }
+  .v { color:var(--ink3); white-space:nowrap; } .chev::after { content:" ›"; color:#c7c7cc; } .link { color:var(--tint); } .del { color:var(--red); }
+  .ft { font-size:12.5px; color:var(--ink3); margin:4px 14px 8px; line-height:1.35; }
+  .sw { width:44px; height:26px; border-radius:13px; background:var(--green); position:relative; flex-shrink:0; } .sw::after { content:""; position:absolute; right:2px; top:2px; width:22px; height:22px; border-radius:50%; background:#fff; }
+  .seg { display:flex; background:#e3e3e8; border-radius:9px; padding:2px; margin:0 2px 10px; } .seg span { flex:1; text-align:center; padding:7px 0; font-size:13px; font-weight:600; border-radius:7px; color:#333; } .seg .on { background:var(--surface); box-shadow:0 1px 2px rgba(0,0,0,.15); }
+  .new { box-shadow:inset 3px 0 0 #ff9f0a; }
+  .arrow { font-size:26px; color:#888; align-self:center; }
+  .alert { background:rgba(255,255,255,.97); border-radius:14px; margin:18px 8px 0; text-align:center; overflow:hidden; box-shadow:0 4px 20px rgba(0,0,0,.2); }
+  .alert .t { font-weight:600; padding:14px 12px 4px; } .alert .m { font-size:13px; padding:0 12px 12px; color:#333; line-height:1.35; }
+  .alert .b { border-top:.5px solid var(--hair); padding:10px; font-size:16px; }
+</style></head>
+<body>
+<h1>Fee waived: two clear choices, and Reset</h1>
+<p class="sub">Invented figures. Orange edge = changed. The "Back on the card" switch becomes two words at the top. Undo becomes "Reset: charged as normal", and it asks first.</p>
+
+<h2>1 · Not marked yet: what happened to this year's fee?</h2>
+<div class="wrap">
+  <div class="phone"><p class="cap">Before</p><p class="note">A switch called "Back on the card".</p>
+    <div class="bar"><span class="l">✕</span><b>Fee waived · 2026</b><span class="r">Save</span></div>
+    <div class="grp"><div class="r"><span>Back on the card</span><span class="sw"></span></div><div class="r"><span>Fee charge</span><span class="v chev">Not in the app</span></div><div class="r"><span>Amount</span><span>Rp 1.200.000</span></div><div class="r"><span>Came back on</span><span class="v">13 Nov</span></div></div>
+    <div class="grp" style="margin-top:8px"><div class="r"><span class="link">Charged as normal</span></div></div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="phone"><p class="cap">After · Refunded to the card</p><p class="note">Charged, then the money came back. Asks for the amount and the day it came back.</p>
+    <div class="bar"><span class="l">✕</span><b>Fee waived · 2026</b><span class="r">Save</span></div>
+    <div class="seg new"><span class="on">Refunded to the card</span><span>Never charged</span></div>
+    <div class="grp"><div class="r"><span>Fee charge</span><span class="v chev">Not in the app</span></div><div class="r"><span>Amount</span><span>Rp 1.200.000</span></div><div class="r"><span>Came back on</span><span class="v">13 Nov</span></div></div>
+    <div class="ft">A refund of Rp 1.200.000 goes on the card on 13 Nov.</div>
+    <div class="grp" style="margin-top:8px"><div class="r"><span class="link">Charged as normal</span></div></div>
+  </div>
+  <div class="phone"><p class="cap">After · Never charged</p><p class="note">Waived before it was charged (or the bank removed the charge itself). No money moves.</p>
+    <div class="bar"><span class="l">✕</span><b>Fee waived · 2026</b><span class="r">Save</span></div>
+    <div class="seg new"><span>Refunded to the card</span><span class="on">Never charged</span></div>
+    <div class="ft" style="margin-top:2px">Only the 2026 fee is marked waived. The card balance stays as it is.</div>
+    <div class="grp" style="margin-top:8px"><div class="r"><span class="link">Charged as normal</span></div></div>
+  </div>
+</div>
+
+<h2>2 · Already marked: reset it</h2>
+<div class="wrap">
+  <div class="phone"><p class="cap">Before</p><p class="note">What was saved, then a red Undo.</p>
+    <div class="bar"><span class="l">✕</span><b>Fee waived · 2026</b><span></span></div>
+    <div class="grp"><div class="r"><span>Back on the card</span><span class="v">On</span></div><div class="r"><span>Refund</span><span>Rp 1.200.000</span></div><div class="r"><span>Came back on</span><span class="v">13 Nov 2026</span></div></div>
+    <div class="grp" style="margin-top:8px"><div class="r"><span class="del">Undo</span></div></div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="phone"><p class="cap">After</p><p class="note">Says which choice was saved, in the same words. Reset asks first.</p>
+    <div class="bar"><span class="l">✕</span><b>Fee waived · 2026</b><span></span></div>
+    <div class="grp new"><div class="r"><span>Saved as</span><span class="v">Refunded to the card</span></div><div class="r"><span>Refund</span><span>Rp 1.200.000</span></div><div class="r"><span>Came back on</span><span class="v">13 Nov 2026</span></div></div>
+    <div class="grp new" style="margin-top:8px"><div class="r"><span class="del">Reset: charged as normal</span></div></div>
+    <div class="alert"><div class="t">Reset the 2026 fee?</div><div class="m">The Rp 1.200.000 refund comes off the card, and the fee reads as charged again.</div><div class="b del" style="font-weight:600">Reset</div><div class="b link">Cancel</div></div>
+  </div>
+</div>
+</body></html>
