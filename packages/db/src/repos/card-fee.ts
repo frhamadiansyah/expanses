@@ -1,4 +1,20 @@
-import { containsKeyword, coveredCharge, expenseLines, type FeeWaiver as FeeWaiverTerms, type FeeYearLine, feeYearLines, type FeeYearState, feeYearState, refundLines } from '@expanses/core';
+import {
+  containsKeyword,
+  coveredCharge,
+  dayMonth,
+  expenseLines,
+  FEE_CHARGE_DESCRIPTION,
+  FEE_DAYS_AFTER,
+  FEE_DAYS_BEFORE,
+  FEE_REVERSAL_DAYS_AFTER,
+  FEE_REVERSAL_DESCRIPTION,
+  type FeeWaiver as FeeWaiverTerms,
+  type FeeYearLine,
+  feeYearLines,
+  type FeeYearState,
+  feeYearState,
+  refundLines,
+} from '@expanses/core';
 import { and, eq, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -6,7 +22,7 @@ import { accounts } from '../schema';
 import { cardTerms } from '../schema-points';
 import { categoryIdsByKeyTx } from './categories';
 import { challengeFeeYear, listFeeWaivers, restoreWaiver } from './card-fee-waiver';
-import { feeColumnsExist, feeFieldsByCard, writeFeeFields } from './fee-columns';
+import { feeFieldsByCard, writeFeeFields } from './fee-columns';
 import { postTransactionTx, voidTransactionTx } from './ledger';
 import { PointsError } from './points';
 
@@ -14,48 +30,29 @@ import { PointsError } from './points';
 const FEE_WORDS = ['annual fee', 'iuran tahunan', 'membership fee', 'annual membership', 'biaya tahunan', 'biaya kartu', 'iuran kartu'];
 /** The categories an annual fee is filed under. */
 const FEE_KEYS = ['miscellaneous.membership_fee', 'miscellaneous.fees_charges'];
-/**
- * How far from the stored date a recorded charge still counts as that year's fee: a little before it, and up to the
- * statement after it, since a fee charged on the anniversary often posts only on the next statement.
- */
-const DAYS_BEFORE = 20;
-const DAYS_AFTER = 45;
-/** How long after the date a bank's reversal of the fee is still looked for: the fee's own window and a cycle more. */
-const REVERSAL_DAYS_AFTER = 120;
+/** How far from the fee date a recorded charge still counts as that year's fee, and how long its reversal is looked for (core). */
+const DAYS_BEFORE = FEE_DAYS_BEFORE;
+const DAYS_AFTER = FEE_DAYS_AFTER;
+const REVERSAL_DAYS_AFTER = FEE_REVERSAL_DAYS_AFTER;
 
 export const WAIVED_DESCRIPTION = 'Annual fee waived';
-/** What the Fee waiver page names the fee charge it adds, and the reversal it adds (owner, 13 Nov 2026). */
-export const FEE_CHARGE_DESCRIPTION = 'Annual fee';
-export const FEE_REVERSAL_DESCRIPTION = 'Annual fee reversal';
+/** What the Fee waiver page names the fee charge and the reversal it adds (core's words, here for the repo's readers). */
+export { FEE_CHARGE_DESCRIPTION, FEE_REVERSAL_DESCRIPTION };
 /** What money back for a fee the app never recorded is called (the old Fee refunded's name, kept). */
 export const REFUND_DESCRIPTION = 'Annual fee refund';
 
 /** A posted expense charge on the card near the fee date: one the annual fee may have been recorded as. */
-export interface FeeChargeChoice {
+interface FeeChargeChoice {
   transactionId: string;
   occurredOn: string;
   description: string;
   /** What the charge cost, positive: its fee line's own amount on a split charge. */
   amountMinor: number;
-  /** The category it was filed under, which the refund nets. */
+  /** The category it was filed under, which a reversal nets. */
   categoryId: string;
   /** Filed under a fee category or named like the annual fee. */
   looksLikeFee: boolean;
-  /** The day a credit already recorded on the card reversed this charge, or null: such a charge is never refunded again. */
-  reversedOn: string | null;
-}
-
-export interface FeeCharges {
-  /** The charge a waiver covers. */
-  covered: string;
-  /**
-   * The recorded charge Waived refunds unless another is picked: one that looks like the fee and is the card's fee
-   * amount, is named like the annual fee, or is under Membership fee. Null when none is.
-   */
-  matched: FeeChargeChoice | null;
-  /** Every posted expense charge on the card near the covered date, nearest first: what the fee can be picked from. */
-  nearby: FeeChargeChoice[];
-  /** The day a credit already recorded on the card reversed this fee (the matched charge, or the card's fee amount). */
+  /** The day a credit already recorded on the card reversed this charge, or null. */
   reversedOn: string | null;
 }
 
@@ -122,8 +119,15 @@ async function chargesNear(tx: Db, ws: WorkspaceContext, cardId: string, covered
       ORDER BY t.occurred_on ASC, t.id ASC`)
   ).filter(([id, , description, , key, kind]) => !ours.has(id) && (isWorded(description) || (kind === 'expense' && isFeeKey(key))));
   const used = new Set<string>();
-  const take = (amountMinor: number, from: string): Credit | null => {
-    const credit = credits.find(([id, on, , amount]) => !used.has(id) && on >= from && near(Number(amount), amountMinor));
+  /*
+   * The page's own reversal ("Annual fee reversal") is that fee's money back whatever its amount: the other phone gets
+   * it without its card_fee_refunds link, and the bank may reverse the fee without its tax. Any other credit is taken
+   * by the amount, within a percent.
+   */
+  const take = (amountMinor: number | null, from: string): Credit | null => {
+    const fits = ([id, on, description, amount]: (typeof credits)[number]) =>
+      !used.has(id) && on >= from && (description === FEE_REVERSAL_DESCRIPTION || (amountMinor !== null && near(Number(amount), amountMinor)));
+    const credit = credits.find((c) => fits(c) && c[2] === FEE_REVERSAL_DESCRIPTION) ?? credits.find(fits);
     if (!credit) return null;
     used.add(credit[0]);
     return { transactionId: credit[0], on: credit[1], amountMinor: Number(credit[3]) };
@@ -136,7 +140,7 @@ async function chargesNear(tx: Db, ws: WorkspaceContext, cardId: string, covered
     if (credit) reversalOf.set(row.choice.transactionId, credit);
   }
   const matched = likeliest(charges, feeMinor);
-  const reversal = matched ? (reversalOf.get(matched.choice.transactionId) ?? null) : feeMinor !== null ? take(feeMinor, shift(covered, -DAYS_BEFORE)) : null;
+  const reversal = matched ? (reversalOf.get(matched.choice.transactionId) ?? null) : take(feeMinor, shift(covered, -DAYS_BEFORE));
   return { rows: charges, reversedOn: reversal?.on ?? null, reversal };
 }
 
@@ -152,38 +156,52 @@ function likeliest(rows: Row[], feeMinor: number | null): Row | null {
   return best;
 }
 
+/** Whether card_fee_waived_years is there (0115). Once seen it is remembered: a table is never taken away. */
+const yearsSeen = new WeakSet<object>();
+async function waivedYearsTable(tx: Db): Promise<boolean> {
+  if (yearsSeen.has(tx)) return true;
+  if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'card_fee_waived_years'`)).length === 0) return false;
+  yearsSeen.add(tx);
+  return true;
+}
+
+/**
+ * The fee years marked waived on the card, one mark per year (card_fee_waived_years, 0115, this phone's own), and the
+ * year card_terms keeps (the latest), which a database before 0115 has alone.
+ */
+async function waivedYearsTx(tx: Db, ws: WorkspaceContext, cardId: string, latest: number | null): Promise<Set<number>> {
+  const years = new Set<number>(latest !== null ? [latest] : []);
+  if (await waivedYearsTable(tx)) {
+    const rows = await tx.values<[number]>(sql`SELECT fee_year FROM card_fee_waived_years WHERE account_id = ${cardId} AND workspace_id = ${ws.workspaceId}`);
+    for (const [year] of rows) years.add(Number(year));
+  }
+  return years;
+}
+
+/** Marks a year waived, or takes the mark off; card_terms keeps the latest year still marked, for the readers that read it. */
+async function setWaivedYearTx(tx: Db, ws: WorkspaceContext, cardId: string, year: number, waived: boolean): Promise<void> {
+  if (!(await waivedYearsTable(tx))) {
+    // A database before 0115 keeps one year, as it did.
+    await writeFeeFields(tx, ws, cardId, { annualFeeWaivedYear: waived ? year : null });
+    return;
+  }
+  if (waived) {
+    await tx.run(sql`INSERT INTO card_fee_waived_years (account_id, workspace_id, fee_year, created_at) VALUES (${cardId}, ${ws.workspaceId}, ${year}, ${new Date().toISOString()})
+                     ON CONFLICT (account_id, fee_year) DO NOTHING`);
+  } else {
+    await tx.run(sql`DELETE FROM card_fee_waived_years WHERE account_id = ${cardId} AND workspace_id = ${ws.workspaceId} AND fee_year = ${year}`);
+  }
+  const [latest] = await tx.values<[number | null]>(sql`SELECT MAX(fee_year) FROM card_fee_waived_years WHERE account_id = ${cardId} AND workspace_id = ${ws.workspaceId}`);
+  await writeFeeFields(tx, ws, cardId, { annualFeeWaivedYear: latest?.[0] ?? null });
+}
+
+/** A day as the app says it: "15 Oct", with its year when that is not today's ("2 Feb 2027"). */
+const said = (iso: string, today: string) => (iso.slice(0, 4) === today.slice(0, 4) ? dayMonth(iso) : `${dayMonth(iso)} ${iso.slice(0, 4)}`);
+
 async function feeTerms(tx: Db, ws: WorkspaceContext, cardId: string) {
   const fields = (await feeFieldsByCard(tx, ws)).get(cardId);
   const [row] = await tx.select({ annualFeeMinor: cardTerms.annualFeeMinor }).from(cardTerms).where(and(eq(cardTerms.accountId, cardId), eq(cardTerms.workspaceId, ws.workspaceId)));
   return { annualFeeOn: fields?.annualFeeOn ?? null, annualFeeWaivedYear: fields?.annualFeeWaivedYear ?? null, annualFeeMinor: row?.annualFeeMinor ?? null };
-}
-
-/**
- * What Fee waived would refund for the charge it covers now: the recorded charge that looks like the annual fee,
- * every expense charge on the card near that date to pick it from instead, and a reversal of the fee already on the
- * card. Nothing nearby means the fee was never recorded. Null on a card with no fee date.
- */
-export async function annualFeeCharges(database: Database, ws: WorkspaceContext, input: { cardId: string; today: string }): Promise<FeeCharges | null> {
-  const terms = await feeTerms(database.db, ws, input.cardId);
-  if (!terms.annualFeeOn) return null;
-  const covered = coveredCharge(terms.annualFeeOn, input.today);
-  const { rows, reversedOn } = await chargesNear(database.db, ws, input.cardId, covered, terms.annualFeeMinor);
-  return { covered, matched: likeliest(rows, terms.annualFeeMinor)?.choice ?? null, nearby: rows.map((row) => row.choice), reversedOn };
-}
-
-/**
- * The day the card's annual fee is charged, set from Fee waived on a card that has none yet (a challenge set up before
- * the fee date was): the terms row is made when the card has none.
- */
-export async function setAnnualFeeOn(database: Database, ws: WorkspaceContext, input: { cardId: string; annualFeeOn: string }): Promise<void> {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.annualFeeOn)) throw new PointsError('Charged on must be a full date');
-  await database.transaction(async (tx) => {
-    const [card] = await tx.select({ subtype: accounts.subtype }).from(accounts).where(and(eq(accounts.id, input.cardId), eq(accounts.workspaceId, ws.workspaceId)));
-    if (!card || card.subtype !== 'credit_card') throw new PointsError('Account is not a credit card in this workspace');
-    if (!(await feeColumnsExist(tx))) throw new PointsError('This database needs updating before a fee date can be saved');
-    await tx.insert(cardTerms).values({ accountId: input.cardId, workspaceId: ws.workspaceId, statementDay: null, dueDay: null, creditLimitMinor: null, annualFeeMinor: null }).onConflictDoNothing();
-    await writeFeeFields(tx, ws, input.cardId, { annualFeeOn: input.annualFeeOn });
-  });
 }
 
 /** The refunds Fee waived posted on the card (and the old Fee refunded), with every edit of them: never a reversal. */
@@ -268,89 +286,64 @@ async function refundsFor(tx: Db, ws: WorkspaceContext, cardId: string, year: nu
 }
 
 /**
- * This year's fee on the card: the charge covered, whether it is waived — by the mark Fee waived sets, or by a refund
- * kept for that year (the old Fee refunded set no mark) — and the refund that came back for it.
+ * This year's fee on the card, read as the Fee waiver page reads it (`cardFeeYears`): waived once the year is marked or
+ * money back for it is on the card — the app's own refund, or a reversal a statement check found — with what came
+ * back. A card with no fee date reads today's year, by its marks and kept refunds alone.
  */
 export async function feeWaivedStatus(db: Db, ws: WorkspaceContext, input: { cardId: string; today: string }): Promise<FeeWaivedStatus> {
   const terms = await feeTerms(db, ws, input.cardId);
   const covered = coveredOf(terms.annualFeeOn, input.today);
   const year = Number(covered.slice(0, 4));
   const { linked, older } = await refundsFor(db, ws, input.cardId, year, covered);
-  const marked = terms.annualFeeWaivedYear === year;
+  const marks = await waivedYearsTx(db, ws, input.cardId, terms.annualFeeWaivedYear);
+  const record = terms.annualFeeOn ? await feeYearTx(db, ws, input.cardId, terms, await cardStartsOn(db, ws, input.cardId), covered, true) : null;
+  const marked = marks.has(year);
   const row = linked.at(-1) ?? (marked ? older.at(-1) : undefined);
-  const back = row ? { transactionId: row.id, amountMinor: row.amountMinor, on: row.on, intoAccountId: row.into, cancelsCharge: row.description === WAIVED_DESCRIPTION } : null;
-  return { year, covered, waived: marked || linked.length > 0, back, challengeYear: await challengeFeeYear(db, ws, input.cardId), dated: terms.annualFeeOn !== null };
+  const found = record?.reversal && !record.reversal.ours ? record.reversal : null;
+  const back = row
+    ? { transactionId: row.id, amountMinor: row.amountMinor, on: row.on, intoAccountId: row.into, cancelsCharge: row.description === WAIVED_DESCRIPTION }
+    : found
+      ? { transactionId: found.transactionId, amountMinor: found.amountMinor, on: found.on, intoAccountId: input.cardId, cancelsCharge: record?.charge !== null }
+      : null;
+  const waived = record ? record.state === 'waived' : marked || linked.length > 0;
+  return { year, covered, waived, back, challengeYear: await challengeFeeYear(db, ws, input.cardId), dated: terms.annualFeeOn !== null };
 }
 
-export type FeeWaivedInput =
-  | { cardId: string; today: string; back: false }
-  | { cardId: string; today: string; back: true; cameBackOn: string; chargeId: string }
-  | { cardId: string; today: string; back: true; cameBackOn: string; chargeId: null; amountMinor: number };
+/**
+ * Every card whose fee year now is waived, by the page's reading (`cardFeeYears`), with that year: Recurring leaves its
+ * fee out of Due soon and names the charge after it.
+ */
+export async function waivedFeeYears(db: Db, ws: WorkspaceContext, today: string): Promise<Map<string, number>> {
+  const cards = [...(await feeFieldsByCard(db, ws)).entries()].filter(([, fields]) => fields.annualFeeOn !== null);
+  const out = new Map<string, number>();
+  for (const [cardId] of cards) {
+    const terms = await feeTerms(db, ws, cardId);
+    const record = await feeYearTx(db, ws, cardId, terms, await cardStartsOn(db, ws, cardId), coveredCharge(terms.annualFeeOn!, today), true);
+    if (record.state === 'waived') out.set(cardId, record.year);
+  }
+  return out;
+}
+
+export interface FeeWaivedInput {
+  cardId: string;
+  today: string;
+  /** Kept for the callers that say so: the fee is waived with nothing back. */
+  back: false;
+}
 
 /**
- * The bank waived this year's annual fee: the one way it is recorded, from Settings, from a fee challenge and from
- * Recurring. The card needs its fee date first: it says which year is waived.
- *
- * - Back on the card, a fee charge recorded (`chargeId`, one of `annualFeeCharges`' nearby): a refund cancels that
- *   charge in its category, dated `cameBackOn` (never before the charge, never after today). A charge a credit on the
- *   card already reversed is refused.
- * - Back on the card, no charge recorded (`chargeId` null): the money coming back is recorded on the card in the
- *   Membership fee category, as the old Fee refunded did; a card at nothing goes into credit.
- * - Not back (`back` false): the fee was never charged, or its reversal is already recorded; only the year is marked.
- *
- * Every way marks the year waived, and a refund is kept against the year (card_fee_refunds), so Undo takes back
- * exactly what was written. A fee challenge is left on the card, to show it was met.
+ * Waived, not charged: the bank skipped this year's fee. Only the year is marked (one mark per year); no money moves.
+ * The card needs its fee date first: it says which year. Refused once the year reads waived, and once the charge is on
+ * the card (that fee is reversed instead).
  */
-export async function saveFeeWaived(database: Database, ws: WorkspaceContext, input: FeeWaivedInput): Promise<{ year: number; transactionId: string | null }> {
+export async function saveFeeWaived(database: Database, ws: WorkspaceContext, input: FeeWaivedInput): Promise<{ year: number; transactionId: null }> {
   return database.transaction(async (tx) => {
-    const [card] = await tx.select({ subtype: accounts.subtype, currency: accounts.currency }).from(accounts).where(and(eq(accounts.id, input.cardId), eq(accounts.workspaceId, ws.workspaceId)));
-    if (!card || card.subtype !== 'credit_card') throw new PointsError('Account is not a credit card in this workspace');
-    const terms = await feeTerms(tx, ws, input.cardId);
-    if (!terms.annualFeeOn) throw new PointsError('Set the day the fee is charged first.');
-    const status = await feeWaivedStatus(tx, ws, input);
-    if (status.waived) throw new PointsError(`The ${status.year} fee is already marked waived`);
-    const { covered, year } = status;
-
-    let transactionId: string | null = null;
-    if (input.back) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(input.cameBackOn)) throw new PointsError('The day it came back is not a whole date');
-      if (input.cameBackOn > input.today) throw new PointsError('The day it came back cannot be in the future');
-      // A fee still ahead (waived in advance, within 30 days of it) has no charge to come after yet.
-      if (input.cameBackOn < (covered < input.today ? covered : input.today)) throw new PointsError('The day it came back cannot be before the fee was charged');
-      if (!(await hasRefundTable(tx))) throw new PointsError('This database needs updating before a fee can be waived');
-      const currency = card.currency ?? ws.baseCurrency;
-      if (input.chargeId !== null) {
-        const fee = (await chargesNear(tx, ws, input.cardId, covered, terms.annualFeeMinor)).rows.find((row) => row.choice.transactionId === input.chargeId);
-        if (!fee) throw new PointsError('That charge is not one of this card’s charges near the fee date');
-        if (fee.choice.reversedOn) throw new PointsError(`A reversal of that charge is already recorded on ${fee.choice.reversedOn}`);
-        const on = input.cameBackOn < fee.choice.occurredOn ? fee.choice.occurredOn : input.cameBackOn;
-        if (on > input.today) throw new PointsError('The fee charge is dated after today, so its refund cannot be recorded yet');
-        transactionId = await postTransactionTx(tx, ws, {
-          occurredOn: on,
-          description: WAIVED_DESCRIPTION,
-          lines: refundLines({ categoryAccountId: fee.categoryId, paymentAccountId: input.cardId, amountMinor: fee.choice.amountMinor, currency }),
-        });
-      } else {
-        if (!(input.amountMinor > 0)) throw new PointsError('Enter the amount that came back');
-        const { reversedOn } = await chargesNear(tx, ws, input.cardId, covered, terms.annualFeeMinor);
-        if (reversedOn) throw new PointsError(`A reversal of this fee is already recorded on ${reversedOn}.`);
-        const keys = await categoryIdsByKeyTx(tx, ws);
-        const category = keys['miscellaneous.membership_fee'] ?? keys['miscellaneous.fees_charges'];
-        if (!category) throw new PointsError('The Membership fee category is missing');
-        transactionId = await postTransactionTx(tx, ws, {
-          occurredOn: input.cameBackOn,
-          description: REFUND_DESCRIPTION,
-          lines: refundLines({ categoryAccountId: category, paymentAccountId: input.cardId, amountMinor: input.amountMinor, currency }),
-        });
-      }
-      // No challenge is kept with it: the challenge stays on the card (only the old Fee refunded cleared one).
-      await tx.run(
-        sql`INSERT INTO card_fee_refunds (transaction_id, workspace_id, account_id, fee_year, challenge_json, created_at)
-            VALUES (${transactionId}, ${ws.workspaceId}, ${input.cardId}, ${year}, 'null', ${new Date().toISOString()})`,
-      );
-    }
-    await writeFeeFields(tx, ws, input.cardId, { annualFeeWaivedYear: year });
-    return { year, transactionId };
+    const { terms, annualFeeOn } = await feeCardTx(tx, ws, input.cardId);
+    const record = await feeYearTx(tx, ws, input.cardId, terms, await cardStartsOn(tx, ws, input.cardId), coveredCharge(annualFeeOn, input.today), true);
+    if (record.state === 'waived') throw new PointsError(`The ${record.year} fee is already marked waived`);
+    if (record.charge) throw new PointsError(`The ${record.year} fee charge is on the card: add its reversal instead`);
+    await setWaivedYearTx(tx, ws, input.cardId, record.year, true);
+    return { year: record.year, transactionId: null };
   });
 }
 
@@ -368,7 +361,7 @@ export async function undoFeeWaived(database: Database, ws: WorkspaceContext, in
     const past = input.year !== undefined && input.year < Number(current.slice(0, 4));
     const covered = past && terms.annualFeeOn ? feeDateIn(terms.annualFeeOn, input.year!) : current;
     const year = Number(covered.slice(0, 4));
-    const marked = terms.annualFeeWaivedYear === year;
+    const marked = (await waivedYearsTx(tx, ws, input.cardId, terms.annualFeeWaivedYear)).has(year);
     const { linked, older } = await refundsFor(tx, ws, input.cardId, year, covered, past ? shift(covered, REVERSAL_DAYS_AFTER) : null);
     for (const refund of linked) {
       const [kept] = await tx.values<[string]>(sql`SELECT challenge_json FROM card_fee_refunds WHERE transaction_id = ${refund.root}`);
@@ -378,7 +371,7 @@ export async function undoFeeWaived(database: Database, ws: WorkspaceContext, in
       if (challenge && !(await listFeeWaivers(tx, ws)).has(input.cardId)) await restoreWaiver(tx, ws, input.cardId, challenge);
     }
     if (marked) for (const refund of older) await voidTransactionTx(tx, ws, refund.id);
-    if (marked) await writeFeeFields(tx, ws, input.cardId, { annualFeeWaivedYear: null });
+    if (marked) await setWaivedYearTx(tx, ws, input.cardId, year, false);
   });
 }
 
@@ -455,7 +448,7 @@ async function feeYearTx(tx: Db, ws: WorkspaceContext, cardId: string, terms: Te
   const near = await chargesNear(tx, ws, cardId, covered, terms.annualFeeMinor);
   const matched = likeliest(near.rows, terms.annualFeeMinor);
   const charge = matched ? { transactionId: matched.choice.transactionId, on: matched.choice.occurredOn, amountMinor: matched.choice.amountMinor } : null;
-  const marked = terms.annualFeeWaivedYear === year;
+  const marked = (await waivedYearsTx(tx, ws, cardId, terms.annualFeeWaivedYear)).has(year);
   // The current year reads an older Waived's unlinked refund as feeWaivedStatus does; an earlier one only within its own window.
   const { linked, older } = await refundsFor(tx, ws, cardId, year, covered, current ? null : shift(covered, REVERSAL_DAYS_AFTER));
   const ours = linked.at(-1) ?? (marked ? older.at(-1) : undefined);
@@ -530,7 +523,7 @@ export async function addFeeCharge(database: Database, ws: WorkspaceContext, inp
     if (record.marked || record.reversal) throw new PointsError(`The ${record.year} fee is marked waived. Reset it first.`);
     const from = shift(record.covered, -DAYS_BEFORE);
     const to = shift(record.covered, DAYS_AFTER);
-    if (input.on < from || input.on > to) throw new PointsError(`Pick a day from ${from} to ${to}`);
+    if (input.on < from || input.on > to) throw new PointsError(`Pick a day from ${said(from, input.today)} to ${said(to, input.today)}`);
     if (startsOn !== null && input.on < startsOn) throw new PointsError('That day is before the card is counted from: the charge is in its starting balance');
     return postTransactionTx(tx, ws, {
       occurredOn: input.on,
@@ -558,10 +551,11 @@ export async function addFeeReversal(database: Database, ws: WorkspaceContext, i
     if (!(await hasRefundTable(tx))) throw new PointsError('This database needs updating before a fee can be reversed');
     const startsOn = await cardStartsOn(tx, ws, input.cardId);
     const record = await feeYearTx(tx, ws, input.cardId, terms, startsOn, coveredCharge(annualFeeOn, input.today), true);
-    if (record.reversal) throw new PointsError(`Money back for the ${record.year} fee is already on the card, on ${record.reversal.on}`);
+    if (record.reversal) throw new PointsError(`Money back for the ${record.year} fee is already on the card, on ${said(record.reversal.on, input.today)}`);
     let lines;
     if (record.charge) {
-      if (input.on < record.charge.on) throw new PointsError(`The reversal cannot be before the charge, on ${record.charge.on}`);
+      if (input.on < record.charge.on) throw new PointsError(`The reversal cannot be before the charge, on ${said(record.charge.on, input.today)}`);
+      if (input.amountMinor > record.charge.amountMinor) throw new PointsError('The reversal cannot be more than the charge');
       const near = await chargesNear(tx, ws, input.cardId, record.covered, terms.annualFeeMinor);
       const fee = near.rows.find((row) => row.choice.transactionId === record.charge!.transactionId);
       if (!fee) throw new PointsError('The fee charge is no longer on the card');
