@@ -179,19 +179,17 @@ export function matchStatement(rows: readonly StatementRow[], candidates: readon
     outcomes.set(i, { row: i, status: 'differs', candidateId: best.id, statementMinor: r.amountMinor, recordedMinor: best.amountMinor });
   }
 
-  // 3b. The Fee waiver page's fee charge or reversal: the same amount anywhere in that fee's window. Fee rows go first.
-  // A payment (its pool or its words) never takes one; a charge is taken by a fee row only; a credit naming neither a
-  // fee nor a payment ("CR ADJ") asks rather than being matched or offered as missing, which would record it twice.
-  const feeFirst = [...order].sort((a, b) => Number(rows[b]!.isFee) - Number(rows[a]!.isFee));
-  for (const i of feeFirst) {
+  // 3b. The Fee waiver page's fee charge or reversal: the same amount anywhere in that fee's window, taken only by a row
+  // the reader marks as a fee. A payment (its pool or its words) never takes one; any other row ("CR ADJ", a shop's
+  // refund of the same amount) goes the usual way, so nothing it is gets forced onto the page's row.
+  for (const i of order) {
     if (outcomes.has(i)) continue;
     const r = rows[i]!;
-    if (poolOf(i) === 'payment' || PAYMENT_WORD.test(r.description)) continue;
-    if (r.direction === 'out' && !r.isFee) continue;
+    if (!r.isFee || poolOf(i) === 'payment' || PAYMENT_WORD.test(r.description)) continue;
     const fee = candidates.find((c) => c.feeWindow && !used.has(c.id) && c.direction === r.direction && c.amountMinor === r.amountMinor && r.on >= c.feeWindow.from && r.on <= c.feeWindow.to);
     if (!fee) continue;
     used.add(fee.id);
-    outcomes.set(i, r.isFee ? { row: i, status: 'matched', candidateIds: [fee.id] } : { row: i, status: 'ask', candidateIds: [fee.id] });
+    outcomes.set(i, { row: i, status: 'matched', candidateIds: [fee.id] });
   }
 
   // 4. Whatever is left is missing from cicis.

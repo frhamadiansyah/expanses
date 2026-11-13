@@ -295,9 +295,16 @@ describe('the Fee waiver page’s fee rows', () => {
     expect(matchStatement([row('2026-10-28', 'TOKO ELEKTRONIK', 1_150_000)], [charge('2026-10-15', 1_150_000)], OFF).outcomes).toEqual([{ row: 0, status: 'missing', as: 'purchase' }]);
   });
 
-  it('asks about a same-amount credit that names neither a fee nor a payment', () => {
+  // Review round 3: only a credit the reader marks as a fee takes the page's reversal; any other goes the usual way.
+  it('leaves a same-amount credit that names no fee to the usual path', () => {
     const plain = matchStatement([row('2026-11-20', 'CR ADJ', 1_150_000, { direction: 'in' })], [reversal('2026-11-03', 1_150_000)], { ...OFF, refundHints: new Map([[0, true]]) });
-    expect(plain.outcomes).toEqual([{ row: 0, status: 'ask', candidateIds: ['back'] }]);
+    expect(plain.outcomes).toEqual([{ row: 0, status: 'missing', as: 'refund' }]);
+  });
+
+  it('never gives a shop’s refund equal to the fee to the page’s reversal', () => {
+    const shop = matchStatement([row('2026-11-20', 'TOKO ELEKTRONIK REFUND', 1_150_000, { direction: 'in' })], [reversal('2026-11-03', 1_150_000)], { ...OFF, refundHints: new Map([[0, true]]) });
+    expect(shop.outcomes).toEqual([{ row: 0, status: 'missing', as: 'refund' }]);
+    expect(shop.flagged).toEqual([]);
   });
 
   it('keeps the rule narrow: another amount, a row outside the window, or another description is still missing', () => {
