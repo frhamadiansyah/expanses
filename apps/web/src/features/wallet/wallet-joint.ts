@@ -32,7 +32,11 @@ export interface JointCard {
   subtype: string;
   /** Its name, without the last four digits its owner's phone added to it. */
   name: string;
+  /** Its card's last four (from its name), else its account number's (the summary's `face`), else none. */
   last4: string | null;
+  /** Its bank (Nama institusi) and card tier, as its holder set them (the summary's `face`): what its face is drawn from. */
+  bank: string | null;
+  tier: string | null;
   currency: string;
   /** In `currency`: what money holds, or what a card owes (below 0 while it is in credit). */
   minor: number;
@@ -56,18 +60,24 @@ export function splitLast4(name: string): { name: string; last4: string | null }
 export function walletJoint(items: readonly ReceivedItem[], me: string, names: Record<string, string>): JointCard[] {
   return items
     .filter((item) => item.joint === true && item.owner !== me && JOINT_PAYABLE.has(item.subtype) && item.kind === (item.subtype === 'credit_card' ? 'liability' : 'asset'))
-    .map((item) => ({
-      key: jointKey(item.itemId),
-      itemId: item.itemId,
-      owner: item.owner,
-      ownerName: memberName(names, item.owner),
-      side: item.subtype === 'credit_card' ? ('credit' as const) : ('money' as const),
-      subtype: item.subtype,
-      ...splitLast4(item.name),
-      currency: item.currency,
-      minor: item.balanceMinor,
-      asOf: item.asOf,
-    }));
+    .map((item) => {
+      const { name, last4 } = splitLast4(item.name);
+      return {
+        key: jointKey(item.itemId),
+        itemId: item.itemId,
+        owner: item.owner,
+        ownerName: memberName(names, item.owner),
+        side: item.subtype === 'credit_card' ? ('credit' as const) : ('money' as const),
+        subtype: item.subtype,
+        name,
+        last4: last4 ?? item.face?.last4 ?? null,
+        bank: item.face?.bank ?? null,
+        tier: item.face?.tier ?? null,
+        currency: item.currency,
+        minor: item.balanceMinor,
+        asOf: item.asOf,
+      };
+    });
 }
 
 /**

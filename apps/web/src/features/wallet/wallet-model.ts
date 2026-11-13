@@ -1,7 +1,7 @@
 import { type AccountRow, spendingSwitchOn } from '@expanses/db';
 import { keptForSpending } from '../../lib/account-types';
 import { spendingBook } from '../accounts/pockets';
-import type { FaceKind } from '../cards/debit-art/faces';
+import { faceFor, type FaceKind, type FaceRef, prepaidFaceOf, tieredKey } from '../cards/debit-art/faces';
 
 /**
  * Which cards Wallet holds, and in what order: everything money is spent from or owed on.
@@ -85,6 +85,18 @@ export function faceKindsOf(subtype: string): readonly FaceKind[] {
     default:
       return [];
   }
+}
+
+/**
+ * A money card's drawn face: its bank's (the tax report's Nama institusi), else whatever its own name names — a
+ * wallet's app, a prepaid card — and electronic money whose name names no card is the card its bank issues
+ * (`prepaidFaceOf`); at its tier (0087), the bank's first card when it has none. The one rule for an own account and a
+ * partner's joint one (whose bank and tier its holder's summary carries), so both phones draw the same face. Null keeps
+ * the plain face.
+ */
+export function moneyFaceOf(bank: string | null | undefined, name: string, subtype: string, tier: string | null | undefined): FaceRef | null {
+  const face = faceFor([bank, name], faceKindsOf(subtype)) ?? (subtype === 'emoney' ? prepaidFaceOf(bank) : null);
+  return face ? { key: tieredKey(face, tier), kind: face.kind, mark: face.mark } : null;
 }
 
 /**

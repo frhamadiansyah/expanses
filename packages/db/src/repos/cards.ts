@@ -5,7 +5,7 @@ import type { Database, Db, Tx } from '../database';
 import { accounts } from '../schema';
 import { type AccountRow, createAccountTx } from './accounts';
 import { cardIdentity, cards } from '../schema-cards';
-import { markAccountDirtyTx } from '../sync/capture';
+import { markAccountDirtyTx, markAccountFamilyDirtyTx } from '../sync/capture';
 
 export class CardError extends Error {
   constructor(
@@ -160,7 +160,8 @@ export async function setAccountNumberLast4(database: Database, ws: WorkspaceCon
     if (!NUMBERED_SUBTYPES.includes(account.subtype)) throw new CardError('NOT_A_BANK', 'Only a bank or savings account keeps the last four digits of its number');
     if (!(await numberColumnExists(tx))) return;
     await tx.run(sql`UPDATE accounts SET number_last4 = ${digits} WHERE id = ${accountId}`);
-    markAccountDirtyTx(tx, accountId);
+    // A joint pocket's face carries its account's digits too.
+    await markAccountFamilyDirtyTx(tx, accountId);
   });
 }
 

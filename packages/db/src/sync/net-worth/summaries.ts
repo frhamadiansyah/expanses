@@ -1,6 +1,7 @@
 import {
   type CoretaxInputs,
   type CoretaxRowPart,
+  type ItemFace,
   type ItemPocketOf,
   type ItemSheetFacts,
   type ItemSummary,
@@ -16,7 +17,7 @@ import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../../context';
 import type { Database, Db } from '../../database';
 import { assetValueSeries } from '../../repos/asset-values';
-import { BALANCE_SUBTYPES } from '../../repos/accounts';
+import { accountBanksTx, BALANCE_SUBTYPES } from '../../repos/accounts';
 import { type ActiveNetWorthGroup, activeNetWorthGroup, markHeldTx, outsiderDevices, sendAllowance } from '../../repos/net-worth-sharing';
 import { coretaxInputsFor, rowPartOf } from '../../repos/tax-inputs';
 import { withCapture } from '../capture';
@@ -208,7 +209,108 @@ export async function computeItemSummary(
     tax: taxGroup ? await itemTaxOf(tx, ws, accountId, taxGroup, workspaceBookId, today, taxSource) : null,
     ...(jointRow ? { joint: true as const } : {}),
     ...(await sheetFactsOf(tx, accountId, kind, account.subtype)),
+    ...(jointRow && kind === 'asset' ? await faceFactsOf(tx, accountId, primary?.[0] ?? null) : {}),
   };
+}
+
+/** The `face` an item's summary carries now (`computeItemSummary`), without computing the rest: none unless joint money. */
+async function itemFaceTx(tx: Db, accountId: string): Promise<{ face?: ItemFace }> {
+  const [account] = await tx.values<[string]>(sql`SELECT kind FROM accounts WHERE id = ${accountId}`);
+  const [jointRow] = await tx.values<[number]>(sql`SELECT 1 FROM nw_joint_accounts WHERE account_id = ${accountId}`);
+  if (account?.[0] !== 'asset' || !jointRow) return {};
+  const [primary] = await tx.values<[string | null]>(
+    sql`SELECT last4 FROM cards WHERE account_id = ${accountId} AND archived_at IS NULL AND last4 IS NOT NULL ORDER BY is_primary DESC, created_at LIMIT 1`,
+  );
+  return faceFactsOf(tx, accountId, primary?.[0] ?? null);
+}
+
+/**
+ * This phone's live items whose sent summary carries another `face` than the item has now (repair R4): one given a
+ * tier before faces travelled, or made joint since. Nothing else counts — an item merely last sent on an earlier day is
+ * not one — so a phone with no joint account finds none.
+ */
+export async function itemsWithStaleFaceTx(tx: Db): Promise<string[]> {
+  let own: [string, string][] = [];
+  try {
+    own = await tx.values<[string, string]>(sql`
+      SELECT m.account_id, i.summary_json FROM nw_items i
+      JOIN nw_item_map m ON m.item_id = i.item_id AND m.group_book_id = i.book_id
+      JOIN shared_books s ON s.book_id = i.book_id AND s.member_id = i.owner
+      WHERE i.removed = 0 AND s.state = 'active'`);
+  } catch {
+    return []; // a database from before migration 0057
+  }
+  const stale: string[] = [];
+  for (const [accountId, json] of own) {
+    let sent: unknown;
+    try {
+      sent = (JSON.parse(json) as { face?: unknown } | null)?.face;
+    } catch {
+      sent = undefined;
+    }
+    const now = (await itemFaceTx(tx, accountId)).face;
+    if (JSON.stringify(faceOf(sent).face ?? null) !== JSON.stringify(now ?? null)) stale.push(accountId);
+  }
+  return stale;
+}
+
+const FACE_BANK_MAX = 80;
+const FACE_TIER = /^[a-z]{2,24}$/;
+const FACE_DIGITS = /^\d{4}$/;
+
+/** Whether `accounts` has a column (0080 number_last4, 0087 card_tier): a database stopped before has none. */
+async function accountColumnExists(tx: Db, name: string): Promise<boolean> {
+  return (await tx.values(sql`SELECT 1 FROM pragma_table_info('accounts') WHERE name = ${name}`)).length > 0;
+}
+
+/**
+ * What a joint money account's face is drawn from on its holder's phone (`ItemFace`, Wallet's `faceOf`): its bank (the
+ * Nama institusi `accountBanksTx` shows it with — for a pocket, its account's, else the first pocket's that names one;
+ * else its own profile's, for a kind no bank names), its card tier, and its number's last four when no card's digits are
+ * in the item's name (`cardLast4`). A pocket's tier and digits are its account's, where Wallet's card is: the pocket's
+ * own only when the account has none. Never the profile's other fields (its owner's name, its place). Empty — no `face`
+ * key at all — when none is set. Called for a joint account only: an account merely shared, or private, sends none.
+ */
+async function faceFactsOf(tx: Db, accountId: string, cardLast4: string | null): Promise<{ face?: ItemFace }> {
+  const face: ItemFace = {};
+  let bank = (await accountBanksTx(tx, [accountId])).get(accountId) ?? '';
+  if (bank === '') {
+    const [profile] = await tx.values<[string]>(sql`SELECT coretax_fields_json FROM asset_profiles WHERE account_id = ${accountId}`);
+    try {
+      const inst = profile ? (JSON.parse(profile[0]) as Record<string, unknown> | null)?.inst : undefined;
+      bank = typeof inst === 'string' ? inst.trim() : '';
+    } catch {
+      // A profile whose fields do not parse names no bank.
+    }
+  }
+  if (bank.length > 0 && bank.length <= FACE_BANK_MAX) face.bank = bank;
+  // The account first (a pocket's card is its account's), then the item itself.
+  const [parent] = await tx.values<[string | null]>(sql`SELECT parent_id FROM accounts WHERE id = ${accountId}`);
+  const holders = parent?.[0] ? [parent[0], accountId] : [accountId];
+  const firstOf = async (column: 'card_tier' | 'number_last4', valid: RegExp): Promise<string | undefined> => {
+    if (!(await accountColumnExists(tx, column))) return undefined;
+    for (const id of holders) {
+      const [row] = await tx.values<[string | null]>(sql`SELECT ${sql.raw(column)} FROM accounts WHERE id = ${id}`);
+      if (row?.[0] && valid.test(row[0])) return row[0];
+    }
+    return undefined;
+  };
+  const tier = await firstOf('card_tier', FACE_TIER);
+  if (tier) face.tier = tier;
+  const digits = cardLast4 === null ? await firstOf('number_last4', FACE_DIGITS) : undefined;
+  if (digits) face.last4 = digits;
+  return Object.keys(face).length > 0 ? { face } : {};
+}
+
+/** A peer's `face`, read defensively: a short bank name, a tier word and four digits survive; anything else is dropped. */
+function faceOf(sent: unknown): { face?: ItemFace } {
+  if (sent === null || typeof sent !== 'object' || Array.isArray(sent)) return {};
+  const raw = sent as Record<string, unknown>;
+  const face: ItemFace = {};
+  if (typeof raw.bank === 'string' && raw.bank.trim().length > 0 && raw.bank.length <= FACE_BANK_MAX) face.bank = raw.bank.trim();
+  if (typeof raw.tier === 'string' && FACE_TIER.test(raw.tier)) face.tier = raw.tier;
+  if (typeof raw.last4 === 'string' && FACE_DIGITS.test(raw.last4)) face.last4 = raw.last4;
+  return Object.keys(face).length > 0 ? { face } : {};
 }
 
 /**
@@ -460,9 +562,9 @@ export async function receivedItems(database: Database, groupBookId: string): Pr
       const summary = JSON.parse(json) as ItemSummary | null;
       // The owner is the row's, which the writer rule vouches for; never what the summary's own text claims.
       if (summary && typeof summary === 'object') {
-        const { joint, sheet, pocketOf, ...rest } = summary;
-        // Only a literal `true` makes an item joint; anything else a peer sends reads as off.
-        out.push({ ...rest, ...transfersOf(summary), ...(joint === true ? { joint: true as const } : {}), ...sheetOf(sheet), ...pocketOfSent(pocketOf), owner, itemId });
+        const { joint, sheet, face, pocketOf, ...rest } = summary;
+        // Only a literal `true` makes an item joint; anything else a peer sends reads as off. A face only on a joint item.
+        out.push({ ...rest, ...transfersOf(summary), ...(joint === true ? { joint: true as const, ...faceOf(face) } : {}), ...sheetOf(sheet), ...pocketOfSent(pocketOf), owner, itemId });
       }
     } catch {
       // A summary that does not parse is shown as nothing, not as a wrong number.

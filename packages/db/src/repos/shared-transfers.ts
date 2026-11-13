@@ -1,3 +1,4 @@
+import { type TransferName, type TransferSide, transferName } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -153,6 +154,55 @@ export interface SharedTransferRow {
   /** The recorder's shared account the money left / reached; null for a private account, which is never named. */
   fromName: string | null;
   toName: string | null;
+  /** What its two accounts make it ("Cash withdrawal"), when both are ones the recorder shares (`partnerTransferNameTx`); else null. */
+  name: TransferName | null;
+}
+
+/** A summary's name without the card digits its owner's phone added to it ("Joint ···· 2718"). */
+const bareName = (name: string) => name.replace(/ ···· \d{4}$/, '');
+
+/**
+ * What a partner's transfer is called ("Cash withdrawal", "Currency exchange", "Cash deposit"), read on this phone from
+ * what it already holds: the recorder's net-worth items in the workspace's group (each carries its account's subtype
+ * and currency). A side is found by its item id when the account is joint (`from_item`), else by its name — sent only
+ * for an account the recorder shares with the household — matching exactly one of the recorder's items. A private
+ * side (no name), no group here, or a name two items share: null, and the row keeps reading "Transfer". Nothing new
+ * travels, so a transfer from an older build is named the same way.
+ */
+export async function partnerTransferNameTx(
+  db: Db,
+  bookId: string,
+  recordedBy: string,
+  sides: { fromName: string | null; toName: string | null; fromItem: string | null; toItem: string | null },
+): Promise<TransferName | null> {
+  if ((sides.fromName === null && sides.fromItem === null) || (sides.toName === null && sides.toItem === null)) return null;
+  let rows: [string, string][];
+  try {
+    rows = await db.values<[string, string]>(sql`
+      SELECT i.item_id, i.summary_json FROM nw_items i
+      JOIN nw_group_books g ON g.group_book_id = i.book_id
+      JOIN shared_books s ON s.book_id = g.group_book_id AND s.state = 'active'
+      WHERE g.book_id = ${bookId} AND i.owner = ${recordedBy} AND i.removed = 0`);
+  } catch {
+    return null; // a database from before the group log
+  }
+  const items: { itemId: string; name: string; side: TransferSide }[] = [];
+  for (const [itemId, json] of rows) {
+    try {
+      const summary = JSON.parse(json) as { kind?: unknown; subtype?: unknown; currency?: unknown; name?: unknown } | null;
+      if (summary?.kind !== 'asset' || typeof summary.subtype !== 'string' || typeof summary.currency !== 'string' || typeof summary.name !== 'string') continue;
+      items.push({ itemId, name: bareName(summary.name), side: { subtype: summary.subtype, currency: summary.currency } });
+    } catch {
+      // A summary that does not parse names nothing.
+    }
+  }
+  const sideOf = (item: string | null, name: string | null): TransferSide | null => {
+    const byItem = item !== null ? items.find((i) => i.itemId === item) : undefined;
+    if (byItem) return byItem.side;
+    const byName = name !== null ? items.filter((i) => i.name === name) : [];
+    return byName.length === 1 ? byName[0]!.side : null;
+  };
+  return transferName(sideOf(sides.fromItem, sides.fromName), sideOf(sides.toItem, sides.toName));
 }
 
 /**
@@ -165,21 +215,26 @@ export async function listSharedTransfers(database: Database, bookId: string, op
   if (!(await tableExists(database.db))) return [];
   const member = await memberOfTx(database.db, bookId);
   if (!member) return [];
-  const rows = await database.db.values<[string, string, string, number, string, string, string, string | null, string | null]>(sql`
-    SELECT transfer_id, book_id, occurred_on, amount_minor, currency, description, recorded_by, from_name, to_name FROM shared_transfers
+  const rows = await database.db.values<[string, string, string, number, string, string, string, string | null, string | null, string | null, string | null]>(sql`
+    SELECT transfer_id, book_id, occurred_on, amount_minor, currency, description, recorded_by, from_name, to_name, from_item, to_item FROM shared_transfers
     WHERE book_id = ${bookId} AND void = 0 AND recorded_by <> ${member}
       AND (event_book_id IS NULL OR event_book_id NOT IN (SELECT book_id FROM shared_books WHERE state <> 'unshared'))
       AND occurred_on >= ${opts.from ?? '0000-00-00'} AND occurred_on <= ${opts.to ?? '9999-99-99'}
     ORDER BY occurred_on DESC, transfer_id DESC`);
-  return rows.map(([transferId, book, occurredOn, amountMinor, currency, description, recordedBy, fromName, toName]) => ({
-    transferId,
-    bookId: book,
-    occurredOn,
-    amountMinor: Number(amountMinor),
-    currency,
-    description,
-    recordedBy,
-    fromName,
-    toName,
-  }));
+  const out: SharedTransferRow[] = [];
+  for (const [transferId, book, occurredOn, amountMinor, currency, description, recordedBy, fromName, toName, fromItem, toItem] of rows) {
+    out.push({
+      transferId,
+      bookId: book,
+      occurredOn,
+      amountMinor: Number(amountMinor),
+      currency,
+      description,
+      recordedBy,
+      fromName,
+      toName,
+      name: await partnerTransferNameTx(database.db, book, recordedBy, { fromName, toName, fromItem, toItem }),
+    });
+  }
+  return out;
 }

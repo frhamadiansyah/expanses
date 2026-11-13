@@ -48,6 +48,15 @@ describe('which of the partner’s items are Wallet cards', () => {
     expect(credit).toMatchObject({ key: jointKey('card'), side: 'credit', name: 'CIMB World', last4: '5678', minor: 850_000 });
   });
 
+  it('carries the bank, tier and account digits its holder’s summary sends, the card’s digits first', () => {
+    const [plain] = walletJoint([item('a', 'savings', { name: 'Joint savings', face: { bank: 'Bank Contoh', tier: 'gold', last4: '4096' } })], ANDI, names);
+    expect(plain).toMatchObject({ name: 'Joint savings', last4: '4096', bank: 'Bank Contoh', tier: 'gold' });
+    const [carded] = walletJoint([item('b', 'bank', { name: 'Joint ···· 2718', face: { last4: '4096' } })], ANDI, names);
+    expect(carded).toMatchObject({ name: 'Joint', last4: '2718', bank: null, tier: null });
+    const [bare] = walletJoint([item('c', 'bank', { name: 'Joint' })], ANDI, names);
+    expect(bare).toMatchObject({ last4: null, bank: null, tier: null });
+  });
+
   it('names a member the workspace has not named "Someone"', () => {
     expect(walletJoint([item('x', 'cash', { owner: 'member-who' })], ANDI, names)[0]!.ownerName).toBe('Someone');
   });

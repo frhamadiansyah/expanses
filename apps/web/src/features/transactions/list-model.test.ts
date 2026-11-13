@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
-import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
+import type { AccountRow, CardRow, DraftRow, SharedTransferRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import type { ListRow } from './list-model';
-import { categoryButtonLabel, amountExtraParts, amountLook, wholeLeftOut, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory, excludedHere, hasNotCountedPart, outsideEvents, accountsWithTransactions } from './list-model';
+import { categoryButtonLabel, amountExtraParts, amountLook, wholeLeftOut, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory, excludedHere, hasNotCountedPart, outsideEvents, accountsWithTransactions, sharedTransferRow } from './list-model';
 
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], extra: Partial<AccountRow> = {}): AccountRow => ({
   id, workspaceId: 'ws', parentId: null, kind, subtype, name: id, icon: null, currency: kind === 'expense' || kind === 'income' ? null : 'IDR', valuationMode: 'derived', systemKey: null, sortOrder: 0, archivedAt: null, createdAt: '2026-09-01T00:00:00Z', ...extra,
@@ -840,5 +840,16 @@ describe('a transfer named by its accounts', () => {
     expect(make([['bca', -5000000], ['kantong', 5000000]]).transferName).toBeUndefined();
     expect(make([['octo', 45000000], ['bca', -45000000]]).transferName).toBeUndefined();
     expect(make([['groceries', 45000000], ['cash', -45000000]]).transferName).toBeUndefined();
+  });
+});
+
+describe('a partner’s transfer row', () => {
+  const shared = (extra: Partial<SharedTransferRow> = {}): SharedTransferRow => ({
+    transferId: 't1', bookId: 'b', occurredOn: '2026-10-08', amountMinor: 50000000, currency: 'IDR', description: 'Bank Contoh ATM', recordedBy: 'm', fromName: 'Rina Bank', toName: 'Rina Wallet', name: null, ...extra,
+  });
+
+  it('carries the name its two shared accounts make it, and none without one', () => {
+    expect(sharedTransferRow(shared({ name: 'Cash withdrawal' })).transferName).toBe('Cash withdrawal');
+    expect(sharedTransferRow(shared()).transferName).toBeUndefined();
   });
 });
