@@ -195,6 +195,51 @@ describe('readTransactionList', () => {
       const second = tableImage(TABLE.slice(2), { header: true });
       expect(fields(readTransactionList([first, second], { today: TODAY, currency: 'IDR' }).rows)).toEqual(READ);
     });
+
+    it('keeps a money row paid partly in coins, or one that earned points, as a normal row; drops a coins cashback', () => {
+      const entries: TableEntry[] = [
+        { date: '07/09/2026', time: '13:12', text: ['Toko Roti Ornek'], id: ['GJ260907E4K8P2R6TQ'], pay: 'Wallet Saldo + Coins', amount: '-Rp33.900' },
+        { date: '06/09/2026', time: '18:40', text: ['Bakmi Ornek'], id: ['GJ260906F5L9Q3S7UV'], pay: 'Wallet Saldo', amount: '-Rp61.200' },
+        { date: '05/09/2026', time: '09:05', text: ['Cashback Bakmi Ornek'], id: ['GJ260905G6M1R4T8WX'], pay: 'Wallet Coins', amount: '+Rp2.100' },
+      ];
+      // The second entry's payment cell carries a second line: the points it earned.
+      const image = tableImage(entries).flatMap((l) => (l.text === 'Wallet Saldo' ? [{ ...l, box: [l.box[0], l.box[1] - 0.011, l.box[2], l.box[3]] as CaptureLine['box'] }, line('Dapat 50 poin', 0.66, l.box[1] + 0.011, 0.16)] : [l]));
+      const { rows } = readTransactionList([image], { today: TODAY, currency: 'IDR' });
+      expect(rows.map((r) => [r.description, r.source, r.amountMinor, r.coins])).toEqual([
+        ['Toko Roti Ornek', 'Wallet Saldo + Coins', 33900, false],
+        ['Bakmi Ornek', 'Wallet Saldo Dapat 50 poin', 61200, false],
+      ]);
+    });
+
+    it('never takes the payment cell for the note of an entry that has no transaction text, headings or not', () => {
+      const entries: TableEntry[] = [TABLE[0]!, { ...TABLE[3]!, text: [] }];
+      const { rows } = readTransactionList([tableImage(entries)], { today: TODAY, currency: 'IDR' });
+      expect(rows.map((r) => [r.description, r.source])).toEqual([
+        ['Kedai Kopi Lembayung', 'Wallet Saldo'],
+        ['', 'Wallet Saldo'],
+      ]);
+    });
+  });
+
+  it('reads a bank list whose rows print no Rp under a balance line that does', () => {
+    // An invented bank history: the balance at the top carries Rp, the rows' signed figures do not.
+    const row = (name: string, when: string, amount: string, top: number) => [line(name, 0.05, top, 0.5), line(when, 0.05, top + 0.025), line(amount, 0.7, top + 0.025, 0.27)];
+    const image = [
+      line('Saldo Rp2.137.400', 0.05, 0.04, 0.45),
+      ...row('Kantor Ornek payroll', '15 Sep 2026', '+6.850.000', 0.12),
+      ...row('Warung Ornek', '14 Sep 2026', '-43.500', 0.22),
+    ];
+    const { rows } = readTransactionList([image], { today: TODAY, currency: 'IDR' });
+    expect(rows.map((r) => [r.on, r.description, r.amountMinor, r.direction, r.coins])).toEqual([
+      ['2026-09-15', 'Kantor Ornek payroll', 6850000, 'in', false],
+      ['2026-09-14', 'Warung Ornek', 43500, 'out', false],
+    ]);
+  });
+
+  it('keeps the name two lines above the date of the only entry on a screenshot', () => {
+    const image = [line('Apotek Ornek', 0.05, 0.3, 0.5), line('TRX0000000077', 0.05, 0.325, 0.5), line('12 Sep 2026 16:45', 0.05, 0.35), line('−Rp18.750', 0.72, 0.35, 0.25)];
+    const { rows } = readTransactionList([image], { today: TODAY, currency: 'IDR' });
+    expect(rows.map((r) => [r.description, r.ref, r.amountMinor])).toEqual([['Apotek Ornek', 'TRX0000000077', 18750]]);
   });
 
   it('reads an entry of a date and an amount alone, with no words beside them', () => {

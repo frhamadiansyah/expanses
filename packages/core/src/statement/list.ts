@@ -43,8 +43,10 @@ export interface ListReading {
   emptyImages: number[];
 }
 
-/** Words naming what is not money: a source or description saying the entry was paid in coins or points. */
+/** Words naming what is not money: a source saying the entry was paid in coins or points. */
 const COIN_WORDS = /\b(?:coins?|koin|poin|points?|pts)\b/i;
+/** A source that is coins alone (`Coins`, `Wallet Coins`), not money with coins beside it (`Wallet Saldo + Coins`). */
+const COINS_ONLY = /^\S*\s*(?:coins?|koin|poin|points?|pts)$/i;
 const MINUS = '-−–—';
 const AMOUNT = new RegExp(`^([${MINUS}+]?)\\s*(Rp\\.?|IDR)?\\s*([${MINUS}+]?)\\s*(\\d[\\d.,]*)$`, 'i');
 const TRAILING = new RegExp(`(?:^|\\s)([${MINUS}+]?)\\s*(Rp\\.?|IDR)\\s*([${MINUS}+]?)\\s*(\\d[\\d.,]*)$`, 'i');
@@ -198,12 +200,13 @@ function readImage(lines: readonly CaptureLine[], image: number, period: { start
   }
   dates.sort((a, b) => a.y - b.y);
 
-  // Where the list prints money with a currency mark, the amounts stand in one column: a bare figure away from every
-  // marked amount's edges is a cell's words (the end of a wrapped id, say), not an amount.
+  // Where the list prints money with a currency mark, the amounts stand in one column: a bare figure (no separator, no
+  // mark) away from every marked amount's edges is a cell's words (the end of a wrapped id, say), not an amount. A
+  // figure with a separator stays an amount wherever it stands: a bank prints Rp on its balance line and on no row.
   const marked = amounts.filter((a) => a.marked);
   for (let i = amounts.length - 1; i >= 0 && marked.length > 0; i -= 1) {
     const a = amounts[i]!;
-    if (a.marked || marked.some((m) => Math.abs(m.right - a.right) <= 0.03 || Math.abs(m.x - a.x) <= 0.03)) continue;
+    if (a.marked || !a.bare || marked.some((m) => Math.abs(m.right - a.right) <= 0.03 || Math.abs(m.x - a.x) <= 0.03)) continue;
     texts.push({ text: a.text, x: a.x, right: a.right, y: a.y });
     amounts.splice(i, 1);
   }
@@ -252,12 +255,13 @@ function readImage(lines: readonly CaptureLine[], image: number, period: { start
 
   // Above the first entry stands the list's heading row, when the screenshot caught it: a line there joins that entry
   // only as near above it as the other entries' lines stand above theirs (a line's height and a half at the least),
-  // and a heading's word never does. The headings kept say where the columns are.
+  // and a heading's word never does. With no other entry to measure by, as far as any line joins an entry. The
+  // headings kept say where the columns are.
   const headings = new Map<keyof typeof HEADINGS, number>();
   const first = records.reduce<(typeof records)[number] | null>((top, r) => (top === null || r.lo < top.lo ? r : top), null);
   if (first) {
     const above = (r: (typeof records)[number]) => r.pieces.reduce((most, p) => Math.max(most, r.lo - p.y), 0);
-    const allowance = Math.max(1.5 * median, ...records.filter((r) => r !== first).map(above));
+    const allowance = records.length === 1 ? reach : Math.max(1.5 * median, ...records.filter((r) => r !== first).map(above));
     first.pieces = first.pieces.filter((p) => p.y >= first.lo || (headingOf(p.text) === null && first.lo - p.y <= allowance));
     for (const p of texts) {
       const heading = headingOf(p.text);
@@ -270,10 +274,11 @@ function readImage(lines: readonly CaptureLine[], image: number, period: { start
     const columns = columnsOf(r.pieces).map((c) => readColumn(c, median, idAt !== undefined && Math.abs(c[0]!.x - idAt) <= COLUMN_REACH));
     return { r, columns, text: columns.filter((c) => c.words.length > 0) };
   });
-  // A table's transaction text stands in one column: where the heading names it, or where most entries of more than
-  // one column of words start their words.
+  // A table's transaction text stands in one column: where the heading names it, or where the entries of more than one
+  // column of words start their words (most of them; one is enough). An entry whose words all stand right of it has no
+  // transaction text: its payment cell is never taken for the note.
   const starts = entries.filter((e) => e.text.length > 1).map((e) => e.text[0]!.x).sort((a, b) => a - b);
-  const descriptionAt = headings.get('description') ?? (starts.length >= 2 ? starts[Math.floor(starts.length / 2)]! : undefined);
+  const descriptionAt = headings.get('description') ?? (starts.length >= 1 ? starts[Math.floor(starts.length / 2)]! : undefined);
 
   return entries.map(({ r, columns, text }): Found => {
     const ref = columns.find((c) => c.ref !== null)?.ref ?? null;
@@ -315,17 +320,19 @@ export function readTransactionList(images: readonly CaptureLine[][], opts: { to
   const period = { start: isoDay(end - 366 * DAY_MS), end: opts.today };
   const emptyImages: number[] = [];
   const perImage = images.map((lines, i) => readImage(lines, i, period, opts.currency));
-  // A figure with no currency mark and no separator is coins when the list marks the rest in money; a source that names
-  // coins or points makes it so wherever it stands. The description is never asked: a shop may have such a word in its name.
+  // A figure with no currency mark and no separator is coins when the list marks the rest in money. A source naming coins
+  // or points makes a row coins when its figure carries no currency mark, or when the source is coins alone: a row with
+  // Rp paid partly in coins, or one that earned points, is money and is never dropped. The description is never asked:
+  // a shop may have such a word in its name.
   const anyMarked = perImage.some((found) => found.some((r) => r.marked));
   const rows: ListRow[] = [];
   const seen = new Set<string>();
   let previous: ListRow[] = [];
   perImage.forEach((found, image) => {
-    const clean: ListRow[] = found.map(({ marked: _marked, ...row }) => ({
-      ...row,
-      coins: COIN_WORDS.test(row.source ?? '') || (row.coins && anyMarked),
-    }));
+    const clean: ListRow[] = found.map(({ marked, ...row }) => {
+      const source = row.source?.trim() ?? '';
+      return { ...row, coins: (row.coins && anyMarked) || (COIN_WORDS.test(source) && (!marked || COINS_ONLY.test(source))) };
+    });
     if (clean.length === 0) {
       emptyImages.push(image);
       return;
