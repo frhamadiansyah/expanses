@@ -101,7 +101,7 @@ describe('the fee year from the card’s transactions', () => {
 
   it('reads Waived for a year marked waived with nothing charged, and Pending again once reset', async () => {
     const t = await card();
-    await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false });
+    await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
     expect((await t.years())?.current).toMatchObject({ lines: ['waived'], state: 'waived', marked: true });
     await undoFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
     expect((await t.years())?.current).toMatchObject({ lines: ['pending'], state: 'pending', marked: false });
@@ -136,7 +136,7 @@ describe('Add the charge', () => {
     const t = await card({ minor: 3_000_000, on: '2026-11-01' });
     await expect(addFeeCharge(t.database, t.ws, { cardId: t.id, today: TODAY, amountMinor: FEE, on: '2026-10-15' })).rejects.toThrow();
     const u = await card();
-    await saveFeeWaived(u.database, u.ws, { cardId: u.id, today: TODAY, back: false });
+    await saveFeeWaived(u.database, u.ws, { cardId: u.id, today: TODAY });
     await expect(addFeeCharge(u.database, u.ws, { cardId: u.id, today: TODAY, amountMinor: FEE, on: '2026-10-15' })).rejects.toThrow();
     expect(await u.balance()).toBe(0);
   });
@@ -227,7 +227,7 @@ describe('earlier years', () => {
 
   it('lists a past year marked waived, and Reset for that year clears only its mark', async () => {
     const t = await card({ minor: 500_000, on: '2024-01-05' });
-    await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: '2025-11-13', back: false });
+    await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: '2025-11-13' });
     expect((await t.years())?.earlier.map((y) => [y.year, y.lines])).toEqual([[2025, ['waived']]]);
     await undoFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, year: 2025 });
     expect((await getCardTerms(t.database, t.ws, t.id))?.annualFeeWaivedYear).toBeNull();
@@ -236,7 +236,7 @@ describe('earlier years', () => {
 
   it('never resets another year than the one asked for', async () => {
     const t = await card({ minor: 500_000, on: '2024-01-05' });
-    await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false });
+    await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
     await undoFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, year: 2025 });
     expect((await getCardTerms(t.database, t.ws, t.id))?.annualFeeWaivedYear).toBe(2026);
   });
@@ -294,8 +294,8 @@ describe('migration 0115 (fee waiver lifetime)', () => {
 describe('one waived mark per year', () => {
   it('keeps 2024 and 2026 both Waived · not charged, and the latest year on the card terms for older readers', async () => {
     const t = await card({ minor: 500_000, on: '2023-01-05' });
-    await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: '2024-11-13', back: false });
-    await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false });
+    await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: '2024-11-13' });
+    await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
     const years = await t.years();
     expect(years?.current).toMatchObject({ year: 2026, lines: ['waived'] });
     expect(years?.earlier.map((y) => [y.year, y.lines])).toEqual([[2024, ['waived']]]);
@@ -310,7 +310,7 @@ describe('one waived mark per year', () => {
   it('refuses Waived, not charged once the charge is on the card', async () => {
     const t = await card();
     await addFeeCharge(t.database, t.ws, { cardId: t.id, today: TODAY, amountMinor: FEE, on: '2026-10-15' });
-    await expect(saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false })).rejects.toThrow();
+    await expect(saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY })).rejects.toThrow();
     expect((await t.years())?.current.marked).toBe(false);
   });
 });

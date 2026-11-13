@@ -160,7 +160,7 @@ export function FeeYearGroups({ cardId, currency, today, reached }: { cardId: st
     }
   };
   const open = (transactionId: string) => void navigate({ to: '/transactions/$transactionId', params: { transactionId } });
-  const notCharged: MenuChoice = { key: 'waived', label: 'Waived, not charged', testId: 'fee-menu-waived', run: () => void run(() => saveFeeWaived(database, ws, { cardId, today, back: false })) };
+  const notCharged: MenuChoice = { key: 'waived', label: 'Waived, not charged', testId: 'fee-menu-waived', run: () => void run(() => saveFeeWaived(database, ws, { cardId, today })) };
   const addCharge: MenuChoice = {
     key: 'charge',
     label: 'Add the charge',

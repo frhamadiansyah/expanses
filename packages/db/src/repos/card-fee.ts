@@ -330,8 +330,6 @@ export async function waivedFeeYears(db: Db, ws: WorkspaceContext, today: string
 export interface FeeWaivedInput {
   cardId: string;
   today: string;
-  /** Kept for the callers that say so: the fee is waived with nothing back. */
-  back: false;
 }
 
 /**

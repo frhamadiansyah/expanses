@@ -155,7 +155,7 @@ describe('fee waived', () => {
       await postTransaction(t.database, t.ws, { occurredOn: '2026-10-20', description: 'ANNUAL FEE REVERSAL', lines: refundLines({ categoryAccountId: t.keys['miscellaneous.membership_fee']!, paymentAccountId: t.id, amountMinor: 450_000, currency: 'IDR' }) });
       expect(await t.current()).toMatchObject({ charge: { transactionId: fee }, reversal: { on: '2026-10-20', ours: false }, state: 'waived' });
       await expect(t.reverse(450_000, TODAY)).rejects.toThrow('already on the card, on 20 Oct');
-      await expect(saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false })).rejects.toThrow(/already marked waived/);
+      await expect(saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY })).rejects.toThrow(/already marked waived/);
       expect(await t.balance(t.id)).toBe(0);
     });
 
@@ -188,7 +188,7 @@ describe('fee waived', () => {
   describe('Waived, not charged', () => {
     it('only marks the year: nothing is posted, and Undo clears the mark', async () => {
       const t = await setup();
-      expect(await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false })).toEqual({ year: 2026, transactionId: null });
+      expect(await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY })).toEqual({ year: 2026, transactionId: null });
       expect(await t.balance(t.id)).toBe(0);
       expect(await t.status()).toMatchObject({ waived: true, back: null });
       await undoFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
@@ -199,20 +199,20 @@ describe('fee waived', () => {
     it('covers the coming charge when it is within 30 days, waived before it is charged', async () => {
       const t = await card();
       await saveCardTerms(t.database, t.ws, { accountId: t.id, ...terms, annualFeeOn: '2020-11-20' });
-      expect((await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false })).year).toBe(2026);
+      expect((await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY })).year).toBe(2026);
       expect((await getCardTerms(t.database, t.ws, t.id))?.annualFeeWaivedYear).toBe(2026);
     });
 
     it('covers the last charge when the next is over 30 days away', async () => {
       const t = await card();
       await saveCardTerms(t.database, t.ws, { accountId: t.id, ...terms, annualFeeOn: '2024-03-12' });
-      await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false });
+      await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
       expect((await getCardTerms(t.database, t.ws, t.id))?.annualFeeWaivedYear).toBe(2026);
     });
 
     it('keeps the mark through a later save of the terms', async () => {
       const t = await setup();
-      await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false });
+      await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
       await saveCardTerms(t.database, t.ws, { accountId: t.id, ...terms, annualFeeMinor: 450_000, annualFeeOn: '2025-10-05' });
       expect(await t.year()).toBe(2026);
     });
@@ -220,9 +220,9 @@ describe('fee waived', () => {
     // M2: no fee date, no year to mark: refused, with the way to set it.
     it('refuses a card with no fee date, and marks once the date is set', async () => {
       const t = await card();
-      await expect(saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false })).rejects.toThrow('Set the day the fee is charged first.');
+      await expect(saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY })).rejects.toThrow('Set the day the fee is charged first.');
       await saveCardTerms(t.database, t.ws, { accountId: t.id, ...terms, annualFeeOn: '2026-10-05' });
-      expect(await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false })).toEqual({ year: 2026, transactionId: null });
+      expect(await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY })).toEqual({ year: 2026, transactionId: null });
       expect((await feeWaivedStatus(t.database.db, t.ws, { cardId: t.id, today: TODAY })).waived).toBe(true);
     });
   });
