@@ -8,8 +8,9 @@
  * corrections are what teach a source its layout.
  */
 import { evaluateExact } from '@expanses/core';
-import type { AccountRow, DraftRow, NewDraft } from '@expanses/db';
+import type { AccountRow, CardRow, DraftRow, NewDraft } from '@expanses/db';
 import { chargedFigure, DECIMALS_REFUSAL, decimalsDirection, estimatedChargeMinor, type FormDraft, suggestedRate, typedCurrency } from '../transactions/tx-form';
+import { reachOfSides } from '../transactions/list-model';
 import { majorText } from './capture-view';
 
 /**
@@ -21,6 +22,35 @@ export type DraftPatch = Required<
   Pick<NewDraft, 'kind' | 'accountId' | 'toAccountId' | 'categoryAccountId' | 'cardId' | 'amountMinor' | 'currency' | 'description' | 'occurredOn'>
 > &
   Pick<NewDraft, 'exactHundredths'>;
+
+/**
+ * Where a recorded transfer can be found, for the toast that says it was recorded: Cashflow lists a transfer between
+ * own accounts in no workspace (owner, 2026-11-13), so the toast names the place that does — a card's statement, by the
+ * card's digits ("Saved on card 4821’s statement"), else the accounts' own pages. Null — the toast as it always read —
+ * for anything Cashflow still lists (`reachOfSides` not own): spending, income, a transfer with a fee, one touching a
+ * joint account (`jointIds`, pockets read in) or an account this phone does not hold, one to a loan or a holding.
+ */
+export function savedWhere(
+  draft: Pick<DraftRow, 'kind' | 'accountId' | 'toAccountId' | 'cardId'>,
+  accounts: readonly Pick<AccountRow, 'id' | 'name' | 'subtype'>[],
+  cards: readonly Pick<CardRow, 'id' | 'accountId' | 'last4' | 'isPrimary' | 'archived'>[],
+  jointIds: ReadonlySet<string> = new Set(),
+  opts: { fee?: boolean } = {},
+): string | null {
+  if (draft.kind !== 'transfer' || opts.fee) return null;
+  const known = new Set(accounts.map((account) => account.id));
+  const named = [draft.accountId, draft.toAccountId].filter((id): id is string => !!id);
+  const reach = reachOfSides(named.map((id) => ({ accountId: id, accountSubtype: accounts.find((account) => account.id === id)?.subtype ?? null })), known, jointIds);
+  if (reach !== 'own') return null;
+  const sides = named.flatMap((id) => accounts.filter((account) => account.id === id));
+  const card = sides.find((side) => side.subtype === 'credit_card');
+  if (card) {
+    const own = cards.filter((each) => each.accountId === card.id && !each.archived);
+    const digits = (own.find((each) => each.id === draft.cardId) ?? own.find((each) => each.isPrimary) ?? own[0])?.last4;
+    return digits ? `Saved on card ${digits}\u2019s statement` : `Saved on ${card.name}\u2019s statement`;
+  }
+  return 'Saved on both accounts\u2019 pages';
+}
 
 /**
  * Whether recording a draft has to be done on its form (event mode fix round 1): one captured in event mode for a shared

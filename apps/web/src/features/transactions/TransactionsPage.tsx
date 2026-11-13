@@ -69,7 +69,7 @@ import { AmountExtra, DraftSubtitle, PaidWith, TransactionRow, useRecategorise }
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, keepsReadFigure, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
-import { accountsWithTransactions, amountExtraParts, buildRows, sharedTransferRow, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, type ListFilters, type ListRow, outsideEvents, type Sort, sortRows, totals } from './list-model';
+import { accountsWithTransactions, amountExtraParts, buildRows, type CashflowContext, sharedTransferRow, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, type ListFilters, type ListRow, outsideEvents, type Sort, sortRows, totals } from './list-model';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
@@ -100,6 +100,7 @@ import { setCardAccount, sharedCard } from './set-card';
 import { draftIn } from './move-workspace';
 import { formFromTransaction, formToPost } from './tx-form';
 import { ratesForSave } from './tx-save';
+import { useJointAccountIds } from '../sharing/net-worth-queries';
 import { useOpenBookReadOnly, usePurchasePayers } from '../sharing/queries';
 import { payerLine, payerToShow, postedAgainstPlaceholder } from '../sharing/sharing-copy';
 
@@ -491,7 +492,18 @@ export function TransactionsPage() {
     if (needsCategoryShown && needCategoryCount === 0) hideNeedsCategory();
     // `hideNeedsCategory` is rebuilt every render; what decides is the count reaching nought while the filter is on.
   }, [needsCategoryShown, needCategoryCount]);
-  const shown = sortRows(filterRows(rows, { ...filters, month, showOpening }, accounts), sort);
+  /*
+   * Own transfers off Cashflow (owner, 2026-11-13, option C): a transfer between this person's own accounts is listed in
+   * no workspace, one touching a joint account or the partner's in the shared workspace alone, until Transfers is on
+   * (`transferReach`). A page opened for one account — its own history, archived or not — lists them all, as its
+   * statement does; one opened for a category holds no bare transfer anyway.
+   */
+  const jointIds = useJointAccountIds();
+  const cashflow: CashflowContext | undefined = search.account ? undefined : { shared, jointIds };
+  const listed = { ...filters, month, showOpening };
+  const shown = sortRows(filterRows(rows, listed, accounts, cashflow), sort);
+  // Nothing on show but transfers left to the accounts' pages: the empty list offers them rather than "Clear filters".
+  const onlyTransfersHidden = shown.length === 0 && !!cashflow && !filters.showTransfers && filterRows(rows, { ...listed, showTransfers: true }, accounts, cashflow).length > 0;
   const sum = totals(shown);
   /*
    * Rows put in order by hand within their day: only in the day-by-day list sorted by date, where a day is a group, and
@@ -525,10 +537,11 @@ export function TransactionsPage() {
    */
   const taggable = (row: ListRow) =>
     row.kind === 'tx' && !row.deleted && !!row.tx && isEditable(row.tx) && !tradeByTransaction.has(row.tx.id) && !readOnly && filingKnown && !elsewhereOf(row.tx.id);
-  // Only what is still on the list and still taggable is acted on, whatever was ticked before a filter moved.
-  const chosen = rows.filter((row) => selected.has(row.id) && taggable(row));
+  // Only what is still on the list and still taggable is acted on, whatever was ticked before a filter moved — a
+  // transfer Cashflow leaves to the accounts' pages included: it is put on a trip only once Transfers shows it.
+  const chosen = shown.filter((row) => selected.has(row.id) && taggable(row));
   // Select All ticks what can be ticked on the list as it is shown, filters and all.
-  const selectable = rows.filter(taggable);
+  const selectable = shown.filter(taggable);
   const eventName = (eventId: string) => (events.data ?? []).find((event) => event.id === eventId)?.name;
   // The shared events among them: Add to event moves rows into one rather than tagging them (shared events §6).
   const sharedSummaries = useSharedEventSummaries().data ?? {};
@@ -772,7 +785,7 @@ export function TransactionsPage() {
   const keptSentence = phone ? 'The original is kept' : 'The original stays under Show deleted';
   // The chart carries the month's total and its count, so the line that used to say them is left off.
   const chartShown = view === 'list' && !filters.onlyDrafts;  const sortValue = `${sort.key}:${sort.dir}`;
-  const narrowed = filters.q || filters.paid || filters.cat || filters.needsCategory || filters.type !== 'all' || filters.showDeleted || filters.onlyDrafts || sortValue !== 'date:desc' || search.month || search.account;
+  const narrowed = filters.q || filters.paid || filters.cat || filters.needsCategory || filters.type !== 'all' || filters.showDeleted || filters.showTransfers || filters.onlyDrafts || sortValue !== 'date:desc' || search.month || search.account;
 
   function clearAll() {
     setFilters(EMPTY_FILTERS);
@@ -1540,6 +1553,13 @@ export function TransactionsPage() {
           {list.isSuccess && shown.length === 0 &&
             (rows.length === 0 ? (
               <Empty>No transactions in this period.</Empty>
+            ) : onlyTransfersHidden ? (
+              <Empty>
+                Only transfers in this period.{' '}
+                <button type="button" onClick={() => setFilter('showTransfers', true)} className="underline">
+                  Show transfers
+                </button>
+              </Empty>
             ) : (
               <Empty>
                 Nothing matches{filters.q && ` “${filters.q}”`}.{' '}
@@ -1604,9 +1624,12 @@ export function TransactionsPage() {
                 paidOptions={paidOptions}
                 onPaid={(value) => setFilter('paid', value)}
                 onOpenPaid={phone ? () => setPickingPaid(true) : undefined}
+                transfers={!!filters.showTransfers}
+                onTransfers={cashflow ? (on) => setFilter('showTransfers', on) : undefined}
                 onReset={() => {
                   setSort({ key: 'date', dir: 'desc' });
                   setFilter('paid', '');
+                  setFilter('showTransfers', false);
                 }}
               />
               {pickingPaid && <PaidWithSheet choices={paidChoices} value={filters.paid} onPick={(value) => setFilter('paid', value)} onClose={() => setPickingPaid(false)} />}
@@ -1775,6 +1798,7 @@ export function TransactionsPage() {
         onMonth={(next) => setSearch({ month: next === monthOf(today) ? undefined : next })}
         spentMinor={sum.spentMinor}
         currency={listCurrency}
+        transfers={cashflow ? { on: !!filters.showTransfers, onChange: (on) => setFilter('showTransfers', on) } : undefined}
       >
         {/* The hidden page's own error line cannot be seen from here, so the table carries one too. */}
         <div className="space-y-2">

@@ -199,9 +199,73 @@ export interface ListFilters {
    * moved: hidden unless asked for, so the month's spending is not buried under them.
    */
   showOpening?: boolean;
+  /**
+   * The Transfers filter: Cashflow lists the transfers it otherwise leaves to the accounts' own pages (`transferReach`),
+   * so one can be found, edited, deleted or put on a trip. Off at rest; a filter remembered from before it existed is off.
+   */
+  showTransfers?: boolean;
 }
 
-export const EMPTY_FILTERS: ListFilters = { q: '', paid: '', cat: '', type: 'all', month: 'all', showDeleted: false, onlyDrafts: false, needsCategory: false };
+export const EMPTY_FILTERS: ListFilters = { q: '', paid: '', cat: '', type: 'all', month: 'all', showDeleted: false, onlyDrafts: false, needsCategory: false, showTransfers: false };
+
+/**
+ * Where Cashflow is being read, for the transfers it lists (`transferReach`). Left out — an account's own history — and
+ * every transfer is listed, as it always was.
+ */
+export interface CashflowContext {
+  /** The open workspace is shared with the household (Family): the household's transfers are listed there. */
+  shared: boolean;
+  /** This phone's own accounts made joint (the "Joint account" switch): a transfer touching one is the household's. */
+  jointIds: ReadonlySet<string>;
+}
+
+/**
+ * Money that only moves between places it is held: what an own transfer may touch on every side. A holding bought, a
+ * loan paid, money lent and a trip's balance are not here, and a transfer touching one is listed as it always was.
+ */
+const MOVES_BETWEEN = new Set(['bank', 'cash', 'savings', 'ewallet', 'emoney', 'other_cash', 'fund', 'time_deposit', 'credit_card']);
+
+/**
+ * Where Cashflow lists a transfer (owner, 2026-11-13, option C) — a display rule only: nothing is filed, moved or synced
+ * differently, and the account pages, a card's statement, Wallet, Net worth, bills and balances list it as ever.
+ *
+ * - `own`: every money side is this person's own account, none joint — a card paid from the bank, a wallet topped up, a
+ *   move between banks, cash exchanged, a captured or a bill's Pay alike. Listed in no workspace's Cashflow.
+ * - `household`: a side is a joint account (own, made joint) or the partner's (a placeholder: an account this phone's
+ *   own list leaves out, as a transfer with the partner (§7.2) posts against), or the partner's own redacted row (0094).
+ *   Listed in the shared workspace alone.
+ * - null: anything else, listed as today — spending, income, lending, a transfer with a typed fee (the fee is spending
+ *   and keeps its row), a holding bought, a loan paid, a trip's balance, a draft.
+ *
+ * `known` is this phone's own accounts (`useAccounts`); while it is still empty nothing reads as the partner's.
+ */
+export function transferReach(row: ListRow, known: ReadonlySet<string> | ReadonlyMap<string, unknown>, jointIds: ReadonlySet<string>): 'own' | 'household' | null {
+  if (row.kind !== 'tx' || row.type !== 'transfer') return null;
+  if (row.sharedTransfer) return 'household';
+  if (!row.tx || row.feeMinor || row.spentMinor !== 0 || row.earnedMinor !== 0) return null;
+  const money = row.tx.entries.filter((e) => e.accountKind === 'asset' || e.accountKind === 'liability');
+  return reachOfSides(money, known, jointIds);
+}
+
+/**
+ * `transferReach` for a bare transfer's money sides alone — what a draft names before it is recorded, too: own when
+ * every side is this phone's own money account and none joint, the household's when a side is joint or not this
+ * phone's, null when a side is not money that only moves (a loan, a holding, a person) or there are not two sides.
+ */
+export function reachOfSides(
+  sides: readonly { accountId: string; accountSubtype?: string | null }[],
+  known: ReadonlySet<string> | ReadonlyMap<string, unknown>,
+  jointIds: ReadonlySet<string>,
+): 'own' | 'household' | null {
+  if (new Set(sides.map((e) => e.accountId)).size < 2) return null;
+  let household = false;
+  for (const side of sides) {
+    if (known.size > 0 && !known.has(side.accountId)) household = true;
+    else if (!MOVES_BETWEEN.has(side.accountSubtype ?? '')) return null;
+    else if (jointIds.has(side.accountId)) household = true;
+  }
+  return household ? 'household' : 'own';
+}
 
 export interface Sort {
   key: 'date' | 'amount';
@@ -409,9 +473,15 @@ function withinCategory(categoryId: string | null, wanted: string, byId: Map<str
   return false;
 }
 
-export function filterRows(rows: readonly ListRow[], f: ListFilters, accounts: readonly AccountRow[]): ListRow[] {
+export function filterRows(rows: readonly ListRow[], f: ListFilters, accounts: readonly AccountRow[], cashflow?: CashflowContext): ListRow[] {
   const byId = new Map(accounts.map((account) => [account.id, account]));
+  // The one place Cashflow's list, its table and the sideways table leave a transfer to the accounts' pages.
+  const transfersOut = !!cashflow && !f.showTransfers && f.type !== 'transfer';
   return rows.filter((row) => {
+    if (transfersOut) {
+      const reach = transferReach(row, byId, cashflow.jointIds);
+      if (reach === 'own' || (reach === 'household' && !cashflow.shared)) return false;
+    }
     if (f.onlyDrafts && row.kind !== 'draft') return false;
     if (row.deleted && !f.showDeleted) return false;
     if (row.type === 'opening' && !f.showOpening) return false;

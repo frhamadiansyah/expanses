@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { addPlastic, openAccount, openCard } from './accounts';
-import { addForm, addTransaction, choosePayment, fillAmount, saveButton } from './add-transaction';
+import { addForm, addTransaction, choosePayment, fillAmount, saveButton, showTransfers } from './add-transaction';
 import { cardPage, saveCardTerms, showCardBack } from './card-section';
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -98,8 +98,10 @@ test('chosen purchases are paid before the statement, and show as paid', async (
   await expect(page.getByLabel(/^Ranch Market, paid on/)).toBeChecked();
   await expect(lines.filter({ hasText: 'payment' })).toContainText('530.000');
 
-  // Deleting the payment frees them to be paid again.
+  // Deleting the payment frees them to be paid again. A card payment is listed in Cashflow with Transfers on (owner
+  // 2026-11-13); the statement keeps it either way.
   await page.goto('/transactions');
+  await showTransfers(page);
   await page.locator('li', { hasText: /BCA Visa payment/ }).first().click();
   await page.getByRole('button', { name: 'Delete this transaction' }).click();
   await page.getByRole('button', { name: 'Click again to delete' }).click();

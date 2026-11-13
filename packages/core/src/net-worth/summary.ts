@@ -76,6 +76,13 @@ export interface ItemSummary {
    * owner's phone does. Absent on every other item, and from a peer before this release (its pockets then list one by one).
    */
   pocketOf?: ItemPocketOf;
+  /**
+   * Only on a joint money account (`joint`, an asset) with something set aside on it: what goals and sinking funds
+   * promise of it on its holder's phone (`setAsideViews`' total, as the holder's Wallet takes it off Spending money), in
+   * the item's currency. One figure — never a goal's or a bill's name. Absent when nothing is set aside, so every other
+   * summary is byte-for-byte what it was; a build before this one sends none, which reads as nothing set aside.
+   */
+  setAsideMinor?: number;
   /** Only when the group's mode is joint (§8.4): this item's slice of the owner's tax inputs for the latest finished year. */
   tax: ItemTax;
 }

@@ -221,6 +221,32 @@ describe('the partner’s joint items in the Balance', () => {
     expect(walletBox({ ...base, joint: sgdCard })).toMatchObject({ cardsMinor: null, balanceMinor: null, missing: ['SGD'] });
   });
 
+  it('takes what the holder set aside of joint money off Spending money, as the holder’s own Wallet does', () => {
+    const setAside: JointBoxInput[] = [{ ...joint[0]!, setAsideMinor: 3_000_000 }, joint[1]!];
+    expect(walletBox({ ...base, joint: setAside })).toMatchObject({ spendingMinor: 9_300_000, cardsMinor: 2_100_000, balanceMinor: 6_050_000, estimated: false });
+    // The holder's phone: the same account is its own, with the same set-aside, and Spending money drops by the same.
+    const held = [account('payroll', 'bank'), account('savings', 'savings'), card('card-1234')];
+    const holder = walletBox({
+      ...base,
+      book: spendingBook(held),
+      credit: walletCredit(held),
+      balances: { ...balances, savings: 8_000_000 },
+      setAsides: [{ accountId: 'savings', setAsideMinor: 3_000_000, currency: 'IDR', funds: [] }],
+      joint: [joint[1]!],
+    });
+    expect(holder.spendingMinor).toBe(9_300_000);
+  });
+
+  it('leaves Spending money as it was when the holder sent no set-aside (an older build), and never nets one on a card', () => {
+    expect(walletBox({ ...base, joint: [{ ...joint[0]!, setAsideMinor: 0 }, joint[1]!] }).spendingMinor).toBe(12_300_000);
+    expect(walletBox({ ...base, joint: [joint[0]!, { ...joint[1]!, setAsideMinor: 500_000 }] })).toMatchObject({ spendingMinor: 12_300_000, cardsMinor: 2_100_000 });
+  });
+
+  it('converts a joint set-aside in another currency at the same rate as its balance', () => {
+    const usd: JointBoxInput[] = [{ key: 'joint:usd', side: 'money', minor: 10_000, currency: 'USD', setAsideMinor: 2_500 }];
+    expect(walletBox({ ...base, joint: usd, rates: { USD: 16_000 } })).toMatchObject({ spendingMinor: 4_300_000 + 1_200_000, estimated: true });
+  });
+
   it('draws the box over joint money alone', () => {
     expect(walletBox({ ...base, book: [], balances: {}, credit: [], joint: [joint[0]!] }).accounts).toBe(1);
   });

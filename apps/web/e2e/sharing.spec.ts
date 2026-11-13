@@ -5,7 +5,7 @@ import { currencyRow, setCurrency } from './currency-field';
 import BetterSqlite3 from 'better-sqlite3';
 import { openAccount, openCard, walletCard } from './accounts';
 import { fillDay, openNewAsset, pastPurchase } from './add-asset';
-import { addForm, addTransaction, addTransfer, fillAmount, openAmount, saveButton } from './add-transaction';
+import { addForm, addTransaction, addTransfer, fillAmount, openAmount, saveButton, showTransfers } from './add-transaction';
 import { cardPage, saveCardTerms } from './card-section';
 import { openDrawers } from './drawers';
 import { openWithPockets } from './pockets';
@@ -821,6 +821,10 @@ test('a transfer in a shared workspace shows on the partner’s list as "Transfe
   // Fandri moves money between his own accounts in the shared workspace.
   await page.goto('/transactions');
   await addTransfer(page, { from: 'Fandri Bank', to: 'Fandri Pocket', amount: '250000', note: 'Pocket money' });
+  // Between his own accounts: his own Cashflow lists it only with Transfers on (owner 2026-11-13), even in the shared
+  // workspace; the partner's redacted row is the household's and stays on hers.
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Pocket money' })).toHaveCount(0);
+  await showTransfers(page);
   await expect(page.getByText('Pocket money').first()).toBeVisible();
   const shadow = dewi.getByTestId('shared-transfer-row');
   await eventually(dewi, async () => {
@@ -837,6 +841,7 @@ test('a transfer in a shared workspace shows on the partner’s list as "Transfe
 
   // Deleted by its recorder, it goes from the partner's list.
   await page.goto('/transactions');
+  await showTransfers(page);
   await page.locator('li', { hasText: /Pocket money/ }).first().click();
   await page.getByRole('button', { name: 'Delete this transaction' }).click();
   await page.getByRole('button', { name: 'Click again to delete' }).click();

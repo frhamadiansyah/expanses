@@ -2,7 +2,7 @@ import { closePurchase, openPurchase, purchaseRowOf } from './purchases';
 import { expect, type Page, test } from '@playwright/test';
 import { expectWalletFigure, openAccount, openSettings } from './accounts';
 import { openNewAsset, fillDay, pastPurchase } from './add-asset';
-import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal, chooseInvestment, chooseTradeMoney, openBuyOrSell, openTradeMore, saveButton } from './add-transaction';
+import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal, chooseInvestment, chooseTradeMoney, openBuyOrSell, openTradeMore, saveButton, showTransfers } from './add-transaction';
 import { cardPage, cardPointsPage, saveCardTerms, chooseCatalogueCard } from './card-section';
 import { openAssets, openDrawers } from './drawers';
 import { openGoalForm } from './goals';
@@ -162,7 +162,9 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
   await chooseGoal(form, 'University for Aisyah');
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
-  // The row carries the goal once the write has landed, so the next page cannot read a stale database.
+  // The row carries the goal once the write has landed, so the next page cannot read a stale database. An own transfer
+  // is listed in Cashflow with Transfers on (owner 2026-11-13).
+  await showTransfers(page);
   await expect(page.getByText(/for University for Aisyah/)).toBeVisible();
 
   // Parked money is set aside for the goal straight away.

@@ -201,6 +201,17 @@ export async function getJointAccount(database: Database, accountId: string): Pr
   return jointAccountTx(database.db, accountId);
 }
 
+/**
+ * This phone's own accounts the holder made joint (the "Joint account" switch, while shared as `total`): what Cashflow
+ * reads to keep a transfer touching one in the household's shared workspace (owner 2026-11-13). Empty before 0097.
+ */
+export async function jointAccountIds(database: Database): Promise<string[]> {
+  if (!(await tableExists(database.db, 'nw_joint_accounts'))) return [];
+  const rows = await database.db.values<[string]>(sql`
+    SELECT j.account_id FROM nw_joint_accounts j JOIN nw_share_settings s ON s.account_id = j.account_id AND s.setting = 'total'`);
+  return rows.map(([id]) => id);
+}
+
 /** `getJointAccount` inside a transaction. */
 export async function jointAccountTx(db: Db, accountId: string): Promise<boolean> {
   if (!(await tableExists(db, 'nw_joint_accounts'))) return false;

@@ -6,7 +6,7 @@ import { accounts, entries, transactions } from '../schema';
 import { assetProfiles } from '../schema-assets';
 import { goalDraws, goalEarmarks, goalStages, goals } from '../schema-goals';
 import { MONEY_SUBTYPES } from './accounts';
-import { markGoalDirtyTx } from '../sync/capture';
+import { markGoalDirtyTx, markSetAsideAccountDirtyTx } from '../sync/capture';
 import { withGoalCapture } from './goals';
 
 /**
@@ -103,6 +103,8 @@ export async function adjustSetAsideTx(tx: Db, ws: WorkspaceContext, goalId: str
     .where(and(eq(goalEarmarks.goalId, goalId), eq(goalEarmarks.accountId, accountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
   const next = Math.max(0, (existing?.amountMinor ?? 0) + deltaMinor);
   markGoalDirtyTx(tx, goalId);
+  // A joint account's summary carries what is set aside on it (the partner's Wallet takes it off Spending money).
+  await markSetAsideAccountDirtyTx(tx, accountId);
 
   if (next === 0) {
     if (existing) {
