@@ -220,7 +220,7 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
   const pastPurchase = row.type === 'opening' && handlers.tradeHoldings.has(tx.id);
   const kind = pastPurchase
     ? 'Past purchase'
-    : { debt: 'Lend & borrow', transfer: 'Transfer', opening: 'Opening balance', correction: 'Balance correction' }[row.type as 'debt' | 'transfer' | 'opening' | 'correction'];
+    : { debt: 'Lend & borrow', transfer: row.transferName ?? 'Transfer', opening: 'Opening balance', correction: 'Balance correction' }[row.type as 'debt' | 'transfer' | 'opening' | 'correction'];
   const why = row.refund ? 'a refund' : row.type === 'expense' ? 'split or priced in another currency' : row.type === 'income' ? 'income' : 'money moving between accounts';
   // Only a row that could be edited at all is sent off to another workspace to do it.
   const elsewhere = row.deleted || !isEditable(tx) ? null : handlers.elsewhereOf(tx.id);

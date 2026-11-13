@@ -783,3 +783,38 @@ describe('categoryButtonLabel', () => {
     expect(categoryButtonLabel('Shoes back', { workspace: 'Family', refund: true, eventName: 'Lake trip' })).toBe('Category for Shoes back, Family, refund, Lake trip');
   });
 });
+
+describe('a transfer named by its accounts', () => {
+  const cash = account('cash', 'asset', 'cash', { name: 'Cash' });
+  const cashTry = account('cash-try', 'asset', 'cash', { name: 'Cash · TRY', parentId: 'cash', currency: 'TRY' });
+  const all = [...accounts, cash, cashTry, account('fee', 'expense', 'category', { name: 'Fees', systemKey: 'fees' })];
+  const make = (lines: [string, number, number?][], currencies: Record<string, string> = {}) => {
+    const t = tx('2026-10-04', 'Bank Contoh ATM', []);
+    t.entries = lines.map(([accountId, amountMinor, base], i) => {
+      const a = all.find((x) => x.id === accountId)!;
+      return { id: `${t.id}e${i}`, accountId, accountName: a.name, accountKind: a.kind, accountSubtype: a.subtype, amountMinor, currency: currencies[accountId] ?? 'IDR', fxRateToBase: 1, amountBaseMinor: base ?? amountMinor, memo: null, spendCategoryId: null };
+    });
+    return buildRows([t], [], all, cards)[0]!;
+  };
+
+  it('reads a bank into Cash in another currency as a Cash withdrawal, the note and accounts staying in the grey line', () => {
+    const row = make([['bca', -95000000], ['cash-try', 250000]], { 'cash-try': 'TRY' });
+    expect(row).toMatchObject({ type: 'transfer', transferName: 'Cash withdrawal', description: 'Bank Contoh ATM' });
+    expect(row.accountLabel).toContain('→');
+  });
+
+  it('keeps the name when a fee sits beside the transfer', () => {
+    expect(make([['bca', -95000000], ['cash', 94900000], ['fee', 100000]])).toMatchObject({ transferName: 'Cash withdrawal', feeMinor: 100000 });
+  });
+
+  it('reads Cash into Cash in another currency as a Currency exchange, and Cash into a wallet as a Cash deposit', () => {
+    expect(make([['cash', -95000000], ['cash-try', 250000]], { 'cash-try': 'TRY' }).transferName).toBe('Currency exchange');
+    expect(make([['cash', -5000000], ['kantong', 5000000]]).transferName).toBe('Cash deposit');
+  });
+
+  it('leaves bank to bank, a card payment and an ordinary purchase unnamed', () => {
+    expect(make([['bca', -5000000], ['kantong', 5000000]]).transferName).toBeUndefined();
+    expect(make([['octo', 45000000], ['bca', -45000000]]).transferName).toBeUndefined();
+    expect(make([['groceries', 45000000], ['cash', -45000000]]).transferName).toBeUndefined();
+  });
+});

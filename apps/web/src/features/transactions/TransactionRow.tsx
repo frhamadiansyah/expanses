@@ -239,12 +239,13 @@ export function TransactionRow({
         }}
       >
         <span className="block truncate text-sm font-medium">
-          {label ?? ((row.categoryName && row.moreCounted ? `${row.categoryName} +${row.moreCounted}` : row.categoryName) || (row.type === 'correction' ? 'Balance correction' : transfer ? 'Transfer' : 'Uncategorised'))}
+          {label ?? ((row.categoryName && row.moreCounted ? `${row.categoryName} +${row.moreCounted}` : row.categoryName) || (row.type === 'correction' ? 'Balance correction' : transfer ? (row.transferName ?? 'Transfer') : 'Uncategorised'))}
         </span>
         <span className="block truncate text-xs text-slate-500">
           {subtitle ?? (
             <>
-              {row.description ? `${row.description}${row.accountLabel || row.last4 ? ' · ' : ''}` : ''}
+              {/* The default note "Transfer" only repeats a title that already says what the transfer is. */}
+              {row.description && !(row.transferName && row.description === 'Transfer') ? `${row.description}${row.accountLabel || row.last4 ? ' · ' : ''}` : ''}
               <PaidWith row={row} />
             </>
           )}
