@@ -176,6 +176,8 @@ export function sharedTransferRow(transfer: SharedTransferRow): ListRow {
     excluded: false,
     needs: [],
     sharedTransfer: true,
+    // Named by its two accounts where both are ones the recorder shares (`partnerTransferNameTx`), as on the recorder's phone.
+    ...(transfer.name ? { transferName: transfer.name } : {}),
   };
 }
 

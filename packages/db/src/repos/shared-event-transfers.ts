@@ -4,6 +4,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { localDeviceId, withCapture } from '../sync/capture';
 import { meetsVersion } from '../sync/events/version';
+import { partnerTransferNameTx } from './shared-transfers';
 import type { EventBookRow } from './shared-event-records';
 
 /*
@@ -44,8 +45,9 @@ export interface SharedEventTransferView {
   fromName: string | null;
   toName: string | null;
   /**
-   * What the two accounts make the transfer ("Cash withdrawal"), known only where their kinds are: the recorder's own
-   * phone. The partner's copy carries names alone, so it reads null there and the row keeps its note as its title.
+   * What the two accounts make the transfer ("Cash withdrawal"): on the recorder's phone from its own accounts; on the
+   * partner's from the recorder's net-worth items (`partnerTransferNameTx`), so only when both sides are shared.
+   * Null otherwise, and the row keeps its note as its title.
    */
   name?: string | null;
   /** The recorder's own transaction, on the recorder's phone: what a tap opens. Null on the partner's phone. */
@@ -187,16 +189,19 @@ async function ownNamesTx(db: Db, transactionId: string): Promise<{ fromName: st
 /** The household's transfers listed on an event book, oldest first. Only a phone in that household holds any. */
 export async function eventTransfersTx(db: Db, eventBookId: string): Promise<SharedEventTransferView[]> {
   if ((await db.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'shared_transfers'`)).length === 0) return [];
-  const rows = await db.values<[string, string, string, number, string, string, string, string | null, string | null, string | null, string | null]>(sql`
+  const rows = await db.values<[string, string, string, number, string, string, string, string | null, string | null, string | null, string | null, string | null, string | null]>(sql`
     SELECT t.transfer_id, t.book_id, t.occurred_on, t.amount_minor, t.currency, t.description, t.recorded_by, t.from_name, t.to_name, t.transaction_id,
+           t.from_item, t.to_item,
            (SELECT m.name FROM book_members m WHERE m.book_id = t.book_id AND m.member_id = t.recorded_by)
     FROM shared_transfers t WHERE t.event_book_id = ${eventBookId} AND t.void = 0
     ORDER BY t.occurred_on, t.transfer_id`);
   const out: SharedEventTransferView[] = [];
-  for (const [transferId, , occurredOn, amountMinor, currency, description, , fromName, toName, transactionId, recordedByName] of rows) {
+  for (const [transferId, bookId, occurredOn, amountMinor, currency, description, recordedBy, fromName, toName, transactionId, fromItem, toItem, recordedByName] of rows) {
     // The recorder's own live transaction names its own accounts; a stale pointer (not posted here) names none of them.
     const [live] = transactionId ? await db.values(sql`SELECT 1 FROM transactions WHERE id = ${transactionId} AND status = 'posted'`) : [];
-    const names = live ? await ownNamesTx(db, transactionId!) : { fromName, toName };
+    const names = live
+      ? await ownNamesTx(db, transactionId!)
+      : { fromName, toName, name: await partnerTransferNameTx(db, bookId, recordedBy, { fromName, toName, fromItem, toItem }) };
     out.push({
       transferId,
       occurredOn,

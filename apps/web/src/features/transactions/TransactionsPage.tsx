@@ -1280,8 +1280,13 @@ export function TransactionsPage() {
       <li key={row.id} data-testid="shared-transfer-row" className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-2">
         <CategoryIcon categoryId={null} accounts={accounts} transfer />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium">{row.description ? `Transfer · ${row.description}` : 'Transfer'}</div>
-          {(withDate || row.accountLabel) && <div className="truncate text-xs text-slate-500">{[withDate ? row.date : '', row.accountLabel].filter(Boolean).join(' · ')}</div>}
+          {/* Named by its accounts ("Cash withdrawal"), the note moves to the grey line, where the default "Transfer" is not repeated. */}
+          <div className="truncate text-sm font-medium">{row.transferName ?? (row.description ? `Transfer · ${row.description}` : 'Transfer')}</div>
+          {(withDate || row.accountLabel || (row.transferName && row.description && row.description !== 'Transfer')) && (
+            <div className="truncate text-xs text-slate-500">
+              {[withDate ? row.date : '', row.transferName && row.description !== 'Transfer' ? row.description : '', row.accountLabel].filter(Boolean).join(' · ')}
+            </div>
+          )}
         </div>
         <div className="tabular text-sm font-semibold whitespace-nowrap text-slate-500">{formatMinor(row.amountMinor, row.currency)}</div>
       </li>
