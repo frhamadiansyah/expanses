@@ -1,0 +1,117 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Goal funding tidy</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --green:#34c759; --up:#1a7f37; --warn:#c93400; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 16px; max-width:1000px; line-height:1.45; }
+  h2 { font-size:18px; margin:30px 0 4px; } .lead { color:#555; margin:0 0 14px; max-width:1000px; line-height:1.45; font-size:14px; }
+  .row { display:flex; gap:22px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:320px; } .cap { font-weight:700; margin:0 0 3px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:54px; }
+  .phone { background:var(--ground); border-radius:28px; padding:14px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .nav { display:flex; justify-content:space-between; align-items:center; margin:0 4px 10px; font-size:15px; } .nav .t { color:var(--tint); } .nav b { font-size:16px; }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:14px; overflow:hidden; }
+  .hdr { display:flex; justify-content:space-between; font-size:12.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; margin:0 16px 6px; }
+  .foot { font-size:12.5px; color:var(--ink3); margin:-8px 16px 14px; line-height:1.35; }
+  .r { display:flex; gap:10px; align-items:center; padding:10px 14px; white-space:nowrap; min-height:44px; } .r + .r { border-top:.5px solid var(--hair); }
+  .r.sub2 { padding-left:52px; min-height:38px; } .r.sub2 .a { font-size:14px; color:var(--ink2); }
+  .ic { width:28px; height:28px; border-radius:7px; color:#fff; font-size:13px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .g { flex:1; min-width:0; } .a { font-size:15px; overflow:hidden; text-overflow:ellipsis; } .s { font-size:12px; color:var(--ink3); overflow:hidden; text-overflow:ellipsis; }
+  .val { font-size:14px; text-align:right; } .val .x { display:block; font-size:12px; color:var(--ink3); } .chev { color:#c7c7cc; }
+  .tint { color:var(--tint); } .warn { color:var(--warn); } .ok { color:var(--up); }
+  .hero { background:#fff; border-radius:12px; padding:12px 14px; margin-bottom:14px; } .hero .k { font-size:12.5px; color:var(--ink3); } .hero .v { font-size:22px; font-weight:700; }
+  .meter { height:6px; border-radius:3px; background:#e5e5ea; overflow:hidden; margin:8px 0 4px; } .meter i { display:block; height:100%; background:var(--green); }
+  .field .s { white-space:nowrap; } .field { display:flex; align-items:center; gap:8px; padding:10px 14px; } .field + .field, .field + .r, .r + .field { border-top:.5px solid var(--hair); }
+  .input { width:96px; flex-shrink:0; border:1px solid #d1d1d6; border-radius:8px; padding:6px 8px; text-align:right; font-size:15px; } .input.ph { color:#c7c7cc; }
+  .chip { font-size:12px; color:var(--tint); border:1px solid #cfe2ff; background:#f0f6ff; border-radius:12px; padding:3px 9px; flex-shrink:0; }
+  .info { width:18px; height:18px; border-radius:50%; border:1.3px solid var(--tint); color:var(--tint); font-size:11px; display:inline-flex; align-items:center; justify-content:center; margin-left:4px; }
+  .btn { background:var(--tint); color:#fff; text-align:center; padding:11px; border-radius:12px; font-weight:600; }
+  .sheettop { display:flex; justify-content:space-between; align-items:center; margin:0 4px 12px; } .sheettop .t { color:var(--tint); } .sheettop b { font-size:16px; }
+  .chevd { color:#8e8e93; font-size:12px; margin-left:6px; }
+</style></head><body>
+<h1>Goal page: Funded by, and Set aside</h1>
+<p class="sub">Two fixes. <b>Funded by:</b> a multicurrency account is one row (its total in the goal's currency), with its currencies under it, not one row per currency. <b>Set aside:</b> each account says plainly how much is free to use, with "Use all", and the sheet says how much the goal still needs. Names and figures invented. Goal: "Hajj 2030", target Rp 120.000.000.</p>
+
+<h2>1 · Funded by</h2>
+<p class="lead">Today every currency of a multicurrency account is its own row, each with its own conversion, so one account looks like three. After: one row per account; tap ▾ to see its currencies.</p>
+<div class="row">
+  <div class="col"><p class="cap">Today</p><p class="note">One account (BCA Valas) appears three times, mixed with the others.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Goals</span><b>Hajj 2030</b><span style="width:40px"></span></div>
+      <div class="hdr"><span>Funded by</span></div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">BCA Valas · IDR</div></div><div class="val">Rp 20.000.000</div></div>
+        <div class="r"><div class="g"><div class="a">Mandiri Tabungan</div></div><div class="val">Rp 15.000.000</div></div>
+        <div class="r"><div class="g"><div class="a">BCA Valas · USD</div></div><div class="val">US$ 1.200,00<span class="x">(Rp 19.080.000)</span></div></div>
+        <div class="r"><div class="g"><div class="a">BCA Valas · SAR</div><div class="s">short by SAR 300,00</div></div><div class="val">SAR 2.000,00<span class="x">(Rp 8.460.000)</span></div></div>
+        <div class="r"><div class="g"><div class="a">Gold 10 g</div></div><div class="val">Rp 14.200.000</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">After · closed</p><p class="note">One row per account. Subtitle says what kind; the total is in the goal's currency. A shortfall shows on the account.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Goals</span><b>Hajj 2030</b><span style="width:40px"></span></div>
+      <div class="hdr"><span>Funded by</span><span>Rp 76.740.000</span></div>
+      <div class="panel">
+        <div class="r"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">BCA Valas <span class="chevd">▾</span></div><div class="s warn">1 currency short</div></div><div class="val">≈ Rp 47.540.000</div></div>
+        <div class="r"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">Mandiri Tabungan</div><div class="s">Set aside</div></div><div class="val">Rp 15.000.000</div></div>
+        <div class="r"><div class="ic" style="background:#b8860b">🥇</div><div class="g"><div class="a">Gold 10 g</div><div class="s">Tagged purchase</div></div><div class="val">Rp 14.200.000</div></div>
+      </div>
+      <div class="panel"><div class="r"><div class="g"><div class="a tint">＋ Set aside</div></div></div></div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">After · opened</p><p class="note">Tap the row: its currencies show under it, each in its own money with the rupiah beside it. Tap a currency to open it.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Goals</span><b>Hajj 2030</b><span style="width:40px"></span></div>
+      <div class="hdr"><span>Funded by</span><span>Rp 76.740.000</span></div>
+      <div class="panel">
+        <div class="r"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">BCA Valas <span class="chevd">▴</span></div><div class="s">3 currencies</div></div><div class="val">≈ Rp 47.540.000</div></div>
+        <div class="r sub2"><div class="g"><div class="a">IDR</div></div><div class="val">Rp 20.000.000</div></div>
+        <div class="r sub2"><div class="g"><div class="a">USD</div></div><div class="val">US$ 1.200,00<span class="x">Rp 19.080.000</span></div></div>
+        <div class="r sub2"><div class="g"><div class="a">SAR</div><div class="s warn">short by SAR 300,00</div></div><div class="val">SAR 2.000,00<span class="x">Rp 8.460.000</span></div></div>
+        <div class="r"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">Mandiri Tabungan</div><div class="s">Set aside</div></div><div class="val">Rp 15.000.000</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>2 · Set aside</h2>
+<p class="lead">Today the free amount hides behind an ⓘ next to each account. After: the sheet opens with what the goal still needs, and every account shows "Free Rp …" under its name, with "All" to fill it in one tap (never more than the goal still needs).</p>
+<div class="row">
+  <div class="col"><p class="cap">Today</p><p class="note">Only the account name and an empty field. How much can be used is one tap away, in a popup.</p>
+    <div class="phone">
+      <div class="sheettop"><span class="t">Cancel</span><b>Set aside</b><span class="t" style="font-weight:600">Save</span></div>
+      <div class="panel">
+        <div class="field"><div class="g"><div class="a">Mandiri Tabungan <span class="info">i</span></div></div><span class="input ph">IDR</span></div>
+        <div class="field"><div class="g"><div class="a">BCA Valas · USD <span class="info">i</span></div></div><span class="input ph">USD</span></div>
+        <div class="r"><div class="g"><div class="a tint">＋ Set aside</div></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">After</p><p class="note">Top: what the goal still needs. Each account: "Free" under its name; "All" fills it. A multicurrency account lists its currencies under one heading.</p>
+    <div class="phone">
+      <div class="sheettop"><span class="t">Cancel</span><b>Set aside</b><span class="t" style="font-weight:600">Save</span></div>
+      <div class="hero"><div class="k">Hajj 2030 still needs</div><div class="v">Rp 43.260.000</div><div class="meter"><i style="width:64%"></i></div><div class="s">Rp 76.740.000 of Rp 120.000.000</div></div>
+      <div class="hdr"><span>Mandiri Tabungan</span></div>
+      <div class="panel">
+        <div class="field"><div class="g"><div class="a">IDR</div><div class="s"><span class="ok">Free Rp 6.500.000</span> · <span class="tint">All</span></div></div><span class="input">5.000.000</span></div>
+      </div>
+      <div class="hdr"><span>BCA Valas</span></div>
+      <div class="panel">
+        <div class="field"><div class="g"><div class="a">USD</div><div class="s"><span class="ok">Free US$ 340,00</span> · <span class="tint">All</span></div></div><span class="input ph">USD</span></div>
+        <div class="field"><div class="g"><div class="a">SAR</div><div class="s">Free SAR 0</div></div><span class="input ph">SAR</span></div>
+      </div>
+      <div class="panel"><div class="r"><div class="g"><div class="a tint">＋ Another account</div></div></div></div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">After · typing too much</p><p class="note">The line under the account turns orange and says what would be short — before Save, not after.</p>
+    <div class="phone">
+      <div class="sheettop"><span class="t">Cancel</span><b>Set aside</b><span class="t" style="font-weight:600">Save</span></div>
+      <div class="hero"><div class="k">Hajj 2030 still needs</div><div class="v">Rp 43.260.000</div><div class="meter"><i style="width:64%"></i></div><div class="s">After this: Rp 34.260.000 to go</div></div>
+      <div class="hdr"><span>Mandiri Tabungan</span></div>
+      <div class="panel">
+        <div class="field"><div class="g"><div class="a">IDR</div><div class="s warn">Over by Rp 2.500.000</div></div><span class="input">9.000.000</span></div>
+      </div>
+      <div class="foot" style="margin-top:4px">Saving more than is free leaves Mandiri Tabungan short for spending.</div>
+    </div>
+  </div>
+</div>
+</body></html>
