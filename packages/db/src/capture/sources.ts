@@ -8,8 +8,8 @@
  *
  * Everything here is local. What somebody's banking screens look like is not a fact about their money.
  */
-import { appNameOfScreen, fingerprintOf, type RawCapture, sameSource, type Template, uuidv7 } from '@expanses/core';
-import { asc, eq } from 'drizzle-orm';
+import { appNameOfScreen, fingerprintOf, type RawCapture, type Reading, readCapture, sameSource, type Template, uuidv7, WORDS } from '@expanses/core';
+import { and, asc, eq } from 'drizzle-orm';
 import type { Database, Db } from '../database';
 import { captureSources } from '../schema-capture';
 
@@ -83,16 +83,41 @@ const DOMAIN_KINDS = new Set(['co', 'com', 'net', 'org', 'or', 'ac', 'go', 'gov'
  */
 function senderOf(app: string): { key: string; label: string } | null {
   if (app.length > 320) return null;
-  const match = SENDER.exec(app);
+  const match = SENDER.exec(app) ?? looseSenderOf(app);
   if (!match) return null;
   const address = match[2]!.toLowerCase();
   const display = (match[1] ?? '').replace(/^["']|["']$/g, '').trim();
   if (display !== '') return { key: address, label: display };
+  return { key: address, label: domainNameOf(address) };
+}
+
+/** An address somewhere in the sender, with whatever else it says around it. */
+const ADDRESS = /[^\s<>@()"',;:]+@[^\s<>@()"',;:]+\.[a-z]{2,}/gi;
+
+/**
+ * A sender Mail handed over in some other shape: the name, then the address on a line of its own or after a space
+ * ("Bank\nalerts@bank.example"), or in brackets. Exactly one address is the sender's; the words around it are its name.
+ * Read as the name after the last dot, that sender was a source called "Id".
+ */
+function looseSenderOf(app: string): [string, string, string] | null {
+  const found = [...new Set(app.match(ADDRESS) ?? [])];
+  if (found.length !== 1) return null;
+  const address = found[0]!;
+  const display = app
+    .replace(address, ' ')
+    .replace(/mailto:|[<>()[\]]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return [app, display, address];
+}
+
+/** What a domain is named for: "alerts.bank.co.id" is the bank's, its country and its kind of domain stepped past. */
+function domainNameOf(address: string): string {
   const parts = address.slice(address.indexOf('@') + 1).split('.');
   parts.pop();
   while (parts.length > 1 && DOMAIN_KINDS.has(parts[parts.length - 1]!)) parts.pop();
   const name = parts[parts.length - 1] ?? '';
-  return { key: address, label: name === '' ? address : name.charAt(0).toUpperCase() + name.slice(1) };
+  return name === '' ? address : name.charAt(0).toUpperCase() + name.slice(1);
 }
 
 /**
@@ -222,4 +247,71 @@ export async function setSourceReadsOffers(database: Database, sourceId: string,
     .update(captureSources)
     .set({ readOffers: readOffers ? 1 : 0, updatedAt: new Date().toISOString() })
     .where(eq(captureSources.id, sourceId));
+}
+
+/**
+ * The issuers whose credit card emails are purchases the reader can mistake for money in: a Maybank card email says
+ * "transaksi dengan Maybank Kartu Kredit", and a "Kredit" it kept apart from its "Kartu" read as received (the
+ * owner's report, 2026-11-13). Matched on a word of the sender's domain. The debit app's own sender ("m2u…") reads
+ * money arriving as well as money leaving, so it is read as the reader reads it.
+ */
+const CARD_EMAIL_DOMAINS = new Set(['maybank']);
+const NOT_CARD_EMAIL = /^m2u/;
+
+/** The sender's address a source is keyed on, in whatever shape it was handed over, or null for an app or a screen. */
+function addressOf(source: Pick<CaptureSource, 'keyKind' | 'key'>): string | null {
+  return source.keyKind === 'app' ? (senderOf(source.key)?.key ?? null) : null;
+}
+
+/** Whether this source is an issuer's credit card sender (`CARD_EMAIL_DOMAINS`). */
+export function isCardEmailSender(source: Pick<CaptureSource, 'keyKind' | 'key'>): boolean {
+  const address = addressOf(source);
+  if (!address) return false;
+  const at = address.indexOf('@');
+  if (NOT_CARD_EMAIL.test(address.slice(0, at).replace(/^mailto:/, ''))) return false;
+  return address
+    .slice(at + 1)
+    .split('.')
+    .some((part) => CARD_EMAIL_DOMAINS.has(part));
+}
+
+/** Whether the words name a credit card, with whatever space, break or invisible mark between its two words. */
+const CREDIT_CARD = /(?<![\p{L}\p{N}])(?:kartu\s+kredit|credit[\s-]+card)(?![\p{L}\p{N}])/iu;
+const NO_WIDTH = /[\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff\u00ad]/g;
+const namesCreditCard = (capture: RawCapture): boolean =>
+  CREDIT_CARD.test([capture.title, capture.body, ...capture.lines.map((line) => line.text)].filter(Boolean).join('\n').replace(NO_WIDTH, ''));
+
+/**
+ * A capture read the way its source reads: by the reader, with what the source learned. Every place a capture is
+ * read from its source reads it here.
+ *
+ * One mistake is put right: a credit card purchase email from a card sender (`isCardEmailSender`) that the reader
+ * took for money received is spending. A refund or a top-up it names stays what it is, and anything that is no
+ * credit card email, or comes from another sender, is the reader's alone.
+ */
+export function readFromSource(capture: RawCapture, source: CaptureSource, offers: 'skip' | 'transactions' | 'read'): Reading {
+  const reading = readCapture(capture, WORDS, source.template, { offers });
+  if (reading.skipped !== null || reading.amount === null || reading.type.value !== 'received') return reading;
+  if (!isCardEmailSender(source) || !namesCreditCard(capture)) return reading;
+  return { ...reading, type: { value: 'spent', confidence: 90, line: null } };
+}
+
+/**
+ * Names again the senders an older build named for the end of their address ("Id", from "Bank\nalerts@bank.co.id"):
+ * a source whose name is still the one it was given, and whose sender is now read as one. Nothing else about the
+ * source changes — its key, account and template stay, so the next email from it is still found. Returns how many.
+ */
+export async function tidySenderSources(database: Database): Promise<number> {
+  const rows = await database.db.select().from(captureSources).where(eq(captureSources.keyKind, 'app'));
+  let renamed = 0;
+  for (const row of rows) {
+    const sender = senderOf(row.key);
+    if (!sender || sender.key === row.key || row.label !== appNameOf(row.key) || sender.label === row.label) continue;
+    await database.db
+      .update(captureSources)
+      .set({ label: sender.label, updatedAt: new Date().toISOString() })
+      .where(and(eq(captureSources.id, row.id), eq(captureSources.label, row.label)));
+    renamed += 1;
+  }
+  return renamed;
 }

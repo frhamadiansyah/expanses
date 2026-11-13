@@ -127,15 +127,18 @@ function firstWordAt(text: string, list: readonly string[]): number | null {
 function directionText(text: string, words: WordList): string {
   let out = text;
   for (const phrase of words.notDirection) {
-    const haystack = folded(out);
-    const free = (char: string | undefined) => char === undefined || !/[a-z0-9]/.test(char);
-    let from = haystack.indexOf(phrase);
-    while (from >= 0) {
-      if (free(haystack[from - 1]) && free(haystack[from + phrase.length])) {
-        out = out.slice(0, from) + ' '.repeat(phrase.length) + out.slice(from + phrase.length);
-      }
-      from = haystack.indexOf(phrase, from + phrase.length);
-    }
+    // Its words apart by any run of spaces or tabs: an email's "Kartu  Kredit" is still the card.
+    const pattern = new RegExp(`(?<![a-z0-9])${phrase.split(' ').map(escaped).join('[ \\t]+')}(?![a-z0-9])`, 'g');
+    out = blankAt(out, folded(out), pattern);
+  }
+  return out;
+}
+
+/** The text with every place the pattern matches its folded form blanked, every other character where it was. */
+function blankAt(text: string, haystack: string, pattern: RegExp): string {
+  let out = text;
+  for (const found of haystack.matchAll(pattern)) {
+    out = out.slice(0, found.index) + ' '.repeat(found[0].length) + out.slice(found.index + found[0].length);
   }
   return out;
 }
@@ -807,6 +810,13 @@ export function readCapture(
       accountHint,
       paymentMethod,
     };
+  }
+
+  /* A plain notice says a purchase failed where it says what happened — its title or its first sentence ("Transaksi
+     … ditolak", "Transaction declined: …") — and moved no money. Further down, "jika transaksi gagal" is advice. */
+  if (capture.lines.length === 0) {
+    const headline = all.slice(0, capture.title?.trim() ? 2 : 1);
+    if (headline.some((unit) => hasWord(unit.text, words.declined))) return SKIPPED('declined', hint, paymentMethod);
   }
 
   const offers = opts.offers ?? 'skip';

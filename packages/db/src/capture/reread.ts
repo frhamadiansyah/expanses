@@ -14,17 +14,19 @@
  * was hidden by a no-break space) is turned round the same way: only while the draft is still the reader's income —
  * its kind and its sign what that reading gave — and never once the owner has said otherwise.
  */
-import { capturedDayOf, type RawCapture, readCapture, wholeFromHundredths, WORDS } from '@expanses/core';
-import { and, eq, isNotNull, isNull, like, lt, or, sql } from 'drizzle-orm';
+import { capturedDayOf, type RawCapture, wholeFromHundredths } from '@expanses/core';
+import { and, eq, inArray, isNotNull, isNull, like, lt, or, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { type DraftEdit, editDraftTx } from '../repos/drafts';
+import { capturedCategoryFromHistory } from '../repos/entry';
 import { draftExactExists } from '../repos/exact-column';
 import { accounts, workspaces } from '../schema';
+import { captureSettings, captureSources } from '../schema-capture';
 import { draftTransactions } from '../schema-drafts';
 import { planDraft } from './ingest';
 import { storedReadingOf } from './learn';
-import { type CaptureSource, sourceById } from './sources';
+import { type CaptureSource, isCardEmailSender, readFromSource, sourceById } from './sources';
 
 type Row = typeof draftTransactions.$inferSelect;
 
@@ -67,7 +69,7 @@ async function rereadOne(tx: Db, row: Row, today: string): Promise<{ ws: Workspa
   if (!home) return null;
 
   const capture = captureOf(row);
-  const reading = readCapture(capture, WORDS, source.template, { offers: source.readOffers ? 'transactions' : 'skip' });
+  const reading = readFromSource(capture, source, source.readOffers ? 'transactions' : 'skip');
   if (reading.skipped === 'promo' || reading.amount === null) return null;
   // The draft the message would be queued as today, by the queue's own rules: what is taken from it is chosen below.
   const ws: WorkspaceContext = { workspaceId: home.id, baseCurrency: home.baseCurrency };
@@ -101,7 +103,7 @@ async function rereadDirectionOne(
   if (!home) return null;
 
   const capture = captureOf(row);
-  const reading = readCapture(capture, WORDS, source.template, { offers: source.readOffers ? 'transactions' : 'skip' });
+  const reading = readFromSource(capture, source, source.readOffers ? 'transactions' : 'skip');
   if (reading.skipped !== null || reading.amount === null || reading.type.value !== 'spent') return null;
   const ws: WorkspaceContext = { workspaceId: home.id, baseCurrency: home.baseCurrency };
   // What the queue made of it then, and what it makes of it now: whatever on the draft is still the first, the owner
@@ -209,5 +211,102 @@ export async function rereadUnreadDrafts(database: Database, opts: { today: stri
       filled += 1;
     }
     return filled;
+  });
+}
+
+/** Marks the one-time fix below as run on this device (capture settings never leave it). */
+const CARD_EMAIL_FIX = 'fix.card-email-income.v1';
+
+/** What turning one card email the reader took for money in round to a purchase changes, or null to leave it. */
+async function cardEmailFixOf(tx: Db, row: Row, source: CaptureSource, ws: WorkspaceContext, today: string): Promise<DraftEdit | null> {
+  // The reader's income has its figure turned negative; a positive one was turned by hand.
+  if (row.amountMinor >= 0) return null;
+  const edit: DraftEdit = { kind: 'expense', amountMinor: -row.amountMinor };
+  const exact = (await draftExactExists(tx)) ? await exactOf(tx, row.id) : null;
+  if (exact !== null) {
+    edit.exactHundredths = exact;
+    // A figure with cents rounded down as money in is rounded up as money out.
+    if (wholeFromHundredths(exact, 'down') === -row.amountMinor) edit.amountMinor = wholeFromHundredths(exact, 'up');
+  }
+
+  const before = storedReadingOf(row.readingJson);
+  if (!before) {
+    // Nothing kept says what the reader made of it: only a category that is none, or the one the reader would give,
+    // tells it was left alone. Its account stays: no digits are kept to name a card by.
+    const readers = await capturedCategoryFromHistory(tx, ws, row.description, 'income');
+    if (row.categoryAccountId !== null && row.categoryAccountId !== readers) return null;
+    edit.categoryAccountId = await capturedCategoryFromHistory(tx, ws, row.description, 'expense');
+    return edit;
+  }
+
+  // Only the mistaken money in: a refund or a top-up was read as one, and stays.
+  if (before.type.value !== 'received') return null;
+  const capture = captureOf(row);
+  const { draft: then } = await planDraft(tx, ws, capture, source, before, { today });
+  const { draft: now } = await planDraft(tx, ws, capture, source, { ...before, type: { value: 'spent', confidence: 90, line: null } }, { today });
+  // Still what the reader made: its figure, its account and its category. Anything else is the owner's.
+  if (then.kind !== 'income' || -row.amountMinor !== Math.abs(then.amountMinor) || row.currency !== then.currency) return null;
+  if (row.accountId !== (then.accountId ?? null)) return null;
+  if (row.categoryAccountId !== null && row.categoryAccountId !== (then.categoryAccountId ?? null)) return null;
+  if (now.kind !== 'expense' || now.amountMinor <= 0) return null;
+  edit.amountMinor = now.amountMinor;
+  edit.currency = now.currency;
+  edit.exactHundredths = now.exactHundredths ?? null;
+  // The account is still the reader's, so the card its digits name is taken with it.
+  edit.accountId = now.accountId ?? row.accountId;
+  edit.cardId = now.cardId ?? null;
+  edit.categoryAccountId = now.categoryAccountId ?? null;
+  return edit;
+}
+
+/**
+ * Once per device: a credit card email from a card sender (`isCardEmailSender`, a Maybank card email) that an older
+ * build's reader took for money in, still waiting just as the reader left it, becomes the purchase it was. Its words
+ * may be gone, so it is found by its source, and told from the owner's own by what it kept:
+ *
+ * - its kept reading said money received (not a refund or a top-up), and its figure, account and category are still
+ *   what that reading gave — the card its digits name is then taken;
+ * - with no reading kept, its category is none or the reader's own, and its account stays as it is.
+ *
+ * A draft the owner changed, and a confirmed or dismissed one, is never touched. Returns how many drafts changed.
+ */
+export async function fixCardEmailDrafts(database: Database, opts: { today: string }): Promise<number> {
+  return database.transaction(async (tx) => {
+    const [done] = await tx.select({ key: captureSettings.key }).from(captureSettings).where(eq(captureSettings.key, CARD_EMAIL_FIX));
+    if (done) return 0;
+    const senders = (await tx.select().from(captureSources)).filter((source) => isCardEmailSender(source));
+    const rows =
+      senders.length === 0
+        ? []
+        : await tx
+            .select()
+            .from(draftTransactions)
+            .where(
+              and(
+                eq(draftTransactions.status, 'pending'),
+                eq(draftTransactions.kind, 'income'),
+                isNull(draftTransactions.mergedInto),
+                inArray(
+                  draftTransactions.sourceId,
+                  senders.map((source) => source.id),
+                ),
+              ),
+            );
+    let fixed = 0;
+    for (const row of rows) {
+      const source = await sourceById(tx, row.sourceId!);
+      const [home] = await tx.select({ id: workspaces.id, baseCurrency: workspaces.baseCurrency }).from(workspaces).where(eq(workspaces.id, row.workspaceId));
+      if (!source || !home) continue;
+      const ws: WorkspaceContext = { workspaceId: home.id, baseCurrency: home.baseCurrency };
+      const edit = await cardEmailFixOf(tx, row, source, ws, opts.today);
+      if (!edit) continue;
+      await editDraftTx(tx, ws, row.id, edit);
+      // The kept reading says what the draft now is, so no later re-read turns it back.
+      const kept = storedReadingOf(row.readingJson);
+      if (kept) await tx.update(draftTransactions).set({ readingJson: JSON.stringify({ ...kept, type: { value: 'spent', confidence: 90, line: null } }) }).where(eq(draftTransactions.id, row.id));
+      fixed += 1;
+    }
+    await tx.insert(captureSettings).values({ key: CARD_EMAIL_FIX, value: new Date().toISOString() }).onConflictDoNothing();
+    return fixed;
   });
 }
