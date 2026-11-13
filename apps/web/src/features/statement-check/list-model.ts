@@ -1,5 +1,6 @@
-import { expenseLines, incomeLines, type ListOutcome, type ListRow, transferLines } from '@expanses/core';
+import { evaluateExact, expenseLines, exponentOf, incomeLines, type ListOutcome, type ListRow, transferLines } from '@expanses/core';
 import { isPastDefault, type PostTransactionInput, type TransactionView } from '@expanses/db';
+import { decimalsDirection, type FormDraft } from '../transactions/tx-form';
 
 /**
  * The statement check for an account that is not a card, worked out without React: the counts the summary shows, the
@@ -65,6 +66,53 @@ export function newRowsFrom(rows: readonly ListRow[], outcomes: readonly ListOut
 
 export function withEdit(rows: readonly NewRow[], id: number, patch: Partial<Omit<NewRow, 'id'>>): NewRow[] {
   return rows.map((row) => (row.id === id ? { ...row, ...patch } : row));
+}
+
+/**
+ * A new row, opened on the full Add screen (as Review opens a capture): the form's fields over an empty form. The
+ * account is Paid with (or Received into); a transfer stands on the side the list showed, the other account opposite.
+ */
+export function formOfRow(row: NewRow, accountId: string, currency: string): Partial<FormDraft> {
+  const transfer = row.type === 'transfer';
+  const exponent = exponentOf(currency);
+  return {
+    mode: row.type,
+    occurredOn: row.occurredOn,
+    description: row.note,
+    moneyId: transfer && row.direction === 'in' ? row.otherAccountId : accountId,
+    toId: transfer ? (row.direction === 'out' ? row.otherAccountId : accountId) : '',
+    categoryId: transfer ? '' : row.categoryId,
+    amount: String(Number((row.amountMinor / 10 ** exponent).toFixed(exponent))),
+    // A transfer offers no flag: its figure is the From account's own currency.
+    currency: transfer ? '' : currency,
+  };
+}
+
+/**
+ * The full Add screen's form, written back onto its row: nothing is posted (the check's own Record does that). The row
+ * stays this account's: an expense or income paid with it, a transfer with it on one side. Throws, with what to put
+ * right, on a form that is not such a row or has no figure above zero.
+ */
+export function editFromForm(
+  form: FormDraft,
+  accountId: string,
+  currency: string,
+  /** The accounts a transfer may name on its other side (open, in the account's currency); left out, any. */
+  others?: readonly string[],
+): Partial<Omit<NewRow, 'id' | 'ticked'>> {
+  if (form.mode !== 'expense' && form.mode !== 'income' && form.mode !== 'transfer') throw new Error('A row is recorded as an expense, income or a transfer');
+  const read = evaluateExact(form.amount, currency, { fractional: decimalsDirection(form) ?? undefined });
+  if (read === null || read.minor <= 0) throw new Error('Amount must be greater than zero');
+  const common = { type: form.mode, amountMinor: read.minor, note: form.description.trim(), occurredOn: form.occurredOn };
+  if (form.mode === 'transfer') {
+    const side = form.moneyId === accountId ? ('out' as const) : form.toId === accountId ? ('in' as const) : null;
+    if (side === null) throw new Error('A transfer on this list has this account on one side');
+    const otherAccountId = side === 'out' ? form.toId : form.moneyId;
+    if (others && otherAccountId && !others.includes(otherAccountId)) throw new Error(`The other account of a transfer here is an open ${currency} account`);
+    return { ...common, direction: side, otherAccountId, categoryId: '' };
+  }
+  if (form.moneyId !== accountId) throw new Error(form.mode === 'income' ? 'Received into stays this account' : 'Paid with stays this account');
+  return { ...common, direction: form.mode === 'income' ? 'in' : 'out', categoryId: form.categoryId, otherAccountId: '' };
 }
 
 export const toggled = (rows: readonly NewRow[], id: number): NewRow[] => rows.map((row) => (row.id === id ? { ...row, ticked: !row.ticked } : row));

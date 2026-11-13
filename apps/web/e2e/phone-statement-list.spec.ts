@@ -54,9 +54,24 @@ test('a wallet list travels from screenshots to recorded rows, and a second run 
   await expect(page.getByTestId('new-row')).toHaveCount(2);
   await expect(page.getByTestId('new-row').first()).toContainText('+Rp');
   await page.screenshot({ path: 'test-results/list-new.png' });
-  await page.getByTestId('new-row').filter({ hasText: 'Transfer to Person A' }).click();
+  // The icon fixes the category in two taps, as on a Cashflow row; No category takes it back.
+  const transfer = page.getByTestId('new-row').filter({ hasText: 'Transfer to Person A' });
+  await page.getByRole('button', { name: 'Category for Transfer to Person A' }).click();
+  await page.getByRole('dialog', { name: 'Transfer to Person A' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
+  await expect(transfer).toContainText('Restaurants');
+  await page.getByRole('button', { name: 'Category for Transfer to Person A' }).click();
+  await page.getByRole('dialog', { name: 'Transfer to Person A' }).getByTestId('category-none').click();
+  await expect(transfer).toContainText('Choose a category');
+
+  // The rest of the row opens the full Add screen on it; its ✓ writes the row back and posts nothing.
+  await transfer.click();
+  const form = page.getByRole('form', { name: 'Edit Transfer to Person A' });
+  await expect(form.getByLabel('Note')).toHaveValue('Transfer to Person A');
   await page.screenshot({ path: 'test-results/list-sheet.png' });
+  await form.getByLabel('Note').fill('Transfer to Person A, lunch');
   await page.getByRole('button', { name: 'Save row' }).click();
+  await expect(form).toHaveCount(0);
+  await expect(page.getByTestId('new-row').filter({ hasText: 'Transfer to Person A, lunch' })).toContainText('Choose a category');
   await expect(page.getByTestId('record-new')).toHaveText('Record 2');
   await page.getByTestId('record-new').click();
 
