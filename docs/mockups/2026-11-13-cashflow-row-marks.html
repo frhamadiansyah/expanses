@@ -1,0 +1,61 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Cashflow row marks</title>
+<style>
+  :root { --ink:#000; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --green:#34c759; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; }
+  h1 { font-size:20px; margin:0 0 4px; } .sub { color:#555; margin:0 0 18px; max-width:1100px; }
+  .wrap { display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap; }
+  .phone { width:360px; background:var(--ground); border-radius:28px; padding:14px 12px 18px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .panel { background:var(--surface); border-radius:12px; overflow:hidden; margin-bottom:10px; }
+  .day { display:flex; padding:7px 13px; border-bottom:.5px solid var(--hair); font-size:12.5px; color:var(--ink3); } .day b { color:#3c3c43; margin-right:6px; }
+  .r { display:flex; gap:10px; align-items:center; padding:9px 13px; position:relative; } .r + .r { border-top:.5px solid var(--hair); }
+  .ic { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-size:15px; flex-shrink:0; position:relative; }
+  .badge { position:absolute; right:-4px; bottom:-4px; width:15px; height:15px; border-radius:50%; font-size:9px; display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 2px #fff; color:#fff; font-weight:700; }
+  .g { flex:1; min-width:0; } .g .a { font-size:15px; } .g .s { font-size:12.5px; color:var(--ink3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .amt { text-align:right; font-size:15px; } .amt .u { display:block; font-size:12.5px; color:var(--ink3); }
+  .plus { color:var(--green); } .grey { color:var(--ink3); }
+  .num { position:absolute; left:-30px; top:50%; transform:translateY(-50%); width:22px; height:22px; border-radius:50%; background:#ff9f0a; color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .phone.n { padding-left:42px; }
+  .gone { background:#fde8e8; }
+  .key { width:520px; font-size:14px; line-height:1.45; }
+  .key li { margin-bottom:8px; } .key b.k { display:inline-block; width:22px; height:22px; border-radius:50%; background:#ff9f0a; color:#fff; text-align:center; font-size:12px; line-height:22px; margin-right:6px; }
+  .link { color:var(--tint); font-size:13px; margin-left:6px; }
+  .plane { display:inline-block; width:11px; height:11px; vertical-align:-1px; margin-right:3px; }
+</style></head>
+<body>
+<h1>Every mark a Cashflow row can show (phone)</h1>
+<p class="sub">Invented rows. The numbers point to the list on the right. Row 1 shows the "Jun bill" pill that is being removed.</p>
+<div class="wrap">
+  <div class="phone n">
+    <div class="panel">
+      <div class="day"><b>12 Nov</b> Wednesday</div>
+      <div class="r gone"><span class="num">1</span><div class="ic" style="background:#5856d6">⚡</div><div class="g"><div class="a">Electricity <span style="font-size:11px;background:#e5e5ea;color:#3c3c43;border-radius:8px;padding:1px 7px;margin-left:4px">Jun bill</span></div><div class="s">PLN token · 4821</div></div><div class="amt">Rp 500.000</div></div>
+      <div class="r"><span class="num">2</span><div class="ic" style="background:#ff2d55">🍽<span class="badge" style="background:#007aff">↩</span></div><div class="g"><div class="a">Restaurants</div><div class="s">Refund · Harbour grill · 4821</div></div><div class="amt plus">+Rp 120.000</div></div>
+      <div class="r"><span class="num">3</span><div class="ic" style="background:#ff9500">🛒<span class="badge" style="background:#34c759">F</span></div><div class="g"><div class="a">Groceries</div><div class="s">Superindo · 5521</div></div><div class="amt">Rp 245.000</div></div>
+      <div class="r"><span class="num">4</span><div class="ic" style="background:#ff2d55">🍽</div><div class="g"><div class="a">Restaurants</div><div class="s"><svg class="plane" viewBox="0 0 24 24"><path fill="#8e8e93" d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg>Coast week · Dinner Karaköy · 4821</div></div><div class="amt">₺ 1.800<span class="u">Rp 940.000</span></div></div>
+      <div class="r"><span class="num">5</span><div class="ic" style="background:#af52de">🎓</div><div class="g"><div class="a">Education</div><div class="s">Course fee · 4821 · for Kids' school</div></div><div class="amt">Rp 1.500.000</div></div>
+      <div class="r"><span class="num">6</span><div class="ic" style="background:#ff9500">🛒</div><div class="g"><div class="a">Groceries +1</div><div class="s">Hypermart · 4821 · ⑂ split</div></div><div class="amt">Rp 610.000</div></div>
+      <div class="r"><span class="num">7</span><div class="ic" style="background:#ff9500">🛒</div><div class="g"><div class="a">Groceries</div><div class="s">Weekly shop · Paid by Andi</div></div><div class="amt">Rp 380.000</div></div>
+      <div class="r"><span class="num">8</span><div class="ic" style="background:#8e8e93">⇄</div><div class="g"><div class="a">Transfer</div><div class="s">BCA → 2210</div></div><div class="amt">Rp 2.000.000<span class="u">+Rp 2.500 fee</span></div></div>
+      <div class="r"><span class="num">9</span><div class="ic" style="background:#ff9500">🛒</div><div class="g"><div class="a">Groceries</div><div class="s">Office snacks · 4821</div></div><div class="amt grey">Rp 0<span class="u">⊘ Rp 150.000</span></div></div>
+      <div class="r"><span class="num">10</span><div class="ic" style="background:#30b0c7">📈</div><div class="g"><div class="a">Buy · SBR012</div><div class="s">Bank Mitra · 4821<span class="link">Holding ›</span></div></div><div class="amt">Rp 5.000.000</div></div>
+      <div class="r" style="opacity:.55"><span class="num">11</span><div class="ic" style="background:#c7c7cc">?</div><div class="g"><div class="a">Uncategorised</div><div class="s">No description yet · needs an account</div></div><div class="amt">Rp 75.000</div></div>
+      <div class="r"><span class="num">12</span><div class="ic" style="background:#ff9500">🛒</div><div class="g"><div class="a" style="text-decoration:line-through;color:#8e8e93">Groceries</div><div class="s" style="text-decoration:line-through">Deleted · 4821</div></div><div class="amt grey" style="text-decoration:line-through">Rp 90.000</div></div>
+    </div>
+  </div>
+  <ol class="key" style="list-style:none;padding:0">
+    <li><b class="k">1</b><b>"Jun bill" pill</b>: linked to a bill for another month than it was paid in. <b>Being removed</b>; the budget still counts it in June.</li>
+    <li><b class="k">2</b><b>Refund</b>: small return arrow on the icon; amount in green with +.</li>
+    <li><b class="k">3</b><b>Workspace letter</b> on the icon: only when a list mixes workspaces (an account's own history). Takes the refund arrow's place.</li>
+    <li><b class="k">4</b><b>Trip</b>: grey plane + trip name first on the grey line. <b>Foreign amount</b> on top, rupiah under it.</li>
+    <li><b class="k">5</b><b>"for &lt;goal&gt;"</b> at the end of the grey line: money a goal paid for.</li>
+    <li><b class="k">6</b><b>"⑂ split"</b> and <b>"Category +1"</b>: split across categories.</li>
+    <li><b class="k">7</b><b>"Paid by &lt;name&gt;"</b>: in a shared workspace, the partner paid.</li>
+    <li><b class="k">8</b><b>Transfer fee</b> under the amount.</li>
+    <li><b class="k">9</b><b>Left out of reports</b>: Rp 0 in grey, "⊘ Rp X" under it (no pill).</li>
+    <li><b class="k">10</b><b>"Holding ›"</b> link on a buy or sell.</li>
+    <li><b class="k">11</b><b>Not recorded yet</b> (a captured draft): faded, "Uncategorised", "No description yet", "needs an account".</li>
+    <li><b class="k">12</b><b>Deleted</b> (only with Show deleted on): struck through.</li>
+  </ol>
+</div>
+</body></html>
