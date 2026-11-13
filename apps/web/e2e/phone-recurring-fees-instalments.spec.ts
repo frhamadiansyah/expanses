@@ -61,11 +61,10 @@ test('Repeating lists each card’s annual fee, read-only and outside the need; 
   await expect(fee).toContainText('Fee Card');
   await expect(fee).toContainText('777.000');
   await page.screenshot({ path: '/private/tmp/claude-501/-Users-frhamadiansyah-Documents-Projects-Expanses/17ecd7cc-b713-4f21-b1a9-9a90ded56208/scratchpad/s8-repeating.png' });
-  // A tap opens Fee waived; the need is the bills' alone.
-  await fee.click();
-  const feeSheet = page.getByRole('dialog', { name: /^Fee waived · \d{4}$/ });
-  await expect(feeSheet.getByTestId('fee-charged-as-normal')).toBeVisible();
-  await feeSheet.getByRole('button', { name: 'Close' }).click();
+  // The need is the bills' alone; a tap opens the card's Fee waiver page.
   expect(neededBefore).not.toContain('777.000');
   await expect(page.getByTestId('yearly-bill-row')).toHaveCount(1);
+  await fee.click();
+  await expect(page).toHaveURL(/\/settings\/fee-waiver$/);
+  await expect(page.getByText("This year's fee", { exact: true })).toBeVisible();
 });

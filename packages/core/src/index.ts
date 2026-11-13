@@ -678,16 +678,32 @@ export {
   bonusItem,
   daysBetween,
   type FeeWaiver,
+  hasSpendTarget,
   nearestFirst,
   type SpendBonusItem,
   type SpendBonusKind,
   timeLeftText,
   type WaiverWindow,
   waiverItem,
-  waiverRowText,
   waiverSpend,
   waiverWindow,
 } from './points/spend-bonus';
+export {
+  challengeCoversFee,
+  FEE_CHARGE_DESCRIPTION,
+  FEE_DAYS_AFTER,
+  FEE_DAYS_BEFORE,
+  FEE_REVERSAL_DAYS_AFTER,
+  FEE_REVERSAL_DESCRIPTION,
+  feeCandidateWindow,
+  type FeeYearFacts,
+  type FeeYearLine,
+  type FeeYearState,
+  feeProgressWindow,
+  feeWaiverRowText,
+  feeYearLines,
+  feeYearState,
+} from './points/fee-year';
 export { chargeAfterWaiver, coveredCharge, FEE_SOON_DAYS, feeDateFromDayMonth, feeDaysAway, feeWaived, nextFeeDate, type UpcomingFee, upcomingFees } from './points/fee-date';
 export {
   extraEffect,

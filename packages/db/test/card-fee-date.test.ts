@@ -2,7 +2,9 @@ import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { type FeeWaiver, refundLines } from '@expanses/core';
 import {
-  annualFeeCharges,
+  addFeeCharge,
+  addFeeReversal,
+  cardFeeYears,
   categoryIdsByKey,
   challengeYearOf,
   createAccount,
@@ -16,10 +18,10 @@ import {
   REFUND_DESCRIPTION,
   replaceTransaction,
   saveCardTerms,
-  setAnnualFeeOn,
   saveFeeWaived,
   saveFeeWaiver,
   undoFeeWaived,
+  FEE_REVERSAL_DESCRIPTION,
   WAIVED_DESCRIPTION,
 } from '../src/index';
 import { setupDb } from './helpers';
@@ -77,171 +79,151 @@ describe('fee waived', () => {
     const balance = async (id: string) => (await nativeBalances(t.database, t.ws))[id] ?? 0;
     const status = () => feeWaivedStatus(t.database.db, t.ws, { cardId: t.id, today: TODAY });
     const year = async () => (await getCardTerms(t.database, t.ws, t.id))?.annualFeeWaivedYear ?? null;
-    return { ...t, keys, charge, balance, status, year };
+    const current = async () => (await cardFeeYears(t.database.db, t.ws, { cardId: t.id, today: TODAY }))!.current;
+    const reverse = (amountMinor: number, on: string) => addFeeReversal(t.database, t.ws, { cardId: t.id, today: TODAY, amountMinor, on });
+    return { ...t, keys, charge, balance, status, year, current, reverse };
   };
-  const occurredOn = async (t: Awaited<ReturnType<typeof setup>>, id: string | null) => (await t.database.db.values<[string]>(sql`SELECT occurred_on FROM transactions WHERE id = ${id}`))[0]![0];
-
   describe('finding the fee charge', () => {
     /*
-     * The owner's report (build 118): Settings → This year's fee → Waived, and "nothing happens". No charge had been
-     * recorded, so the old Waived wrote the year and refunded nothing without a word. A fee recorded in words it did
-     * not know ("BIAYA KARTU"), or posted on the next statement (past its 20 days), was passed over the same way.
+     * The owner's report (build 118): a fee recorded in words the app did not know ("BIAYA KARTU"), or posted on the
+     * next statement (past its 20 days), was passed over. The fee year reads each of these as Charged.
      */
-    it('says when no charge is recorded at all', async () => {
+    it('reads Pending when no charge is recorded at all', async () => {
       const t = await setup();
-      expect(await annualFeeCharges(t.database, t.ws, { cardId: t.id, today: TODAY })).toEqual({ covered: '2026-10-05', matched: null, nearby: [], reversedOn: null });
+      expect(await t.current()).toMatchObject({ covered: '2026-10-05', charge: null, lines: ['pending'] });
     });
 
     it.each(['BIAYA KARTU TAHUNAN', 'IURAN KARTU UTAMA', 'Annual Fee Member'])('knows "%s" as the fee whatever its category', async (description) => {
       const t = await setup();
       const id = await t.charge(description, 'shopping.clothing', 450_000, '2026-10-06');
-      expect((await annualFeeCharges(t.database, t.ws, { cardId: t.id, today: TODAY }))?.matched?.transactionId).toBe(id);
+      expect((await t.current()).charge?.transactionId).toBe(id);
     });
 
     it('finds a fee posted on the next statement, over a month after the date', async () => {
       const t = await setup();
       const id = await t.charge('Biaya keanggotaan', 'miscellaneous.fees_charges', 450_000, '2026-11-08');
-      expect((await annualFeeCharges(t.database, t.ws, { cardId: t.id, today: TODAY }))?.matched?.transactionId).toBe(id);
+      expect((await t.current()).charge?.transactionId).toBe(id);
     });
 
     it('passes over a stamp duty under Fees & charges nearer the date for the charge of the fee’s amount', async () => {
       const t = await setup();
       await t.charge('Bea meterai', 'miscellaneous.fees_charges', 10_000, '2026-10-05');
       const fee = await t.charge('Fee', 'miscellaneous.fees_charges', 450_000, '2026-10-20');
-      expect((await annualFeeCharges(t.database, t.ws, { cardId: t.id, today: TODAY }))?.matched?.transactionId).toBe(fee);
+      expect((await t.current()).charge?.transactionId).toBe(fee);
     });
 
-    it('lists the charges near the date when none looks like the fee, nearest first, and never takes one for it', async () => {
-      const t = await setup();
-      const lunch = await t.charge('Warung Contoh', 'food_beverage.restaurants', 85_000, '2026-10-04');
-      const plain = await t.charge('KARTU 1234', 'shopping.clothing', 450_000, '2026-10-09');
-      await t.charge('Too early', 'shopping.clothing', 20_000, '2026-09-01');
-      const found = await annualFeeCharges(t.database, t.ws, { cardId: t.id, today: TODAY });
-      expect(found?.matched).toBeNull();
-      expect(found?.nearby.map((c) => [c.transactionId, c.amountMinor, c.looksLikeFee])).toEqual([
-        [lunch, 85_000, false],
-        [plain, 450_000, false],
-      ]);
-    });
-  });
-
-  describe('back on the card, the fee charge recorded', () => {
-    it('refunds that charge in its own category, dated the day it came back, and marks the year', async () => {
-      const t = await setup();
-      const fee = await t.charge('BIAYA KARTU TAHUNAN', 'miscellaneous.membership_fee', 450_000, '2026-10-06');
-      expect(await t.balance(t.id)).toBe(-450_000);
-      const { year, transactionId } = await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: true, cameBackOn: '2026-11-10', chargeId: fee });
-      expect(year).toBe(2026);
-      expect(await t.balance(t.id)).toBe(0);
-      expect(await t.balance(t.keys['miscellaneous.membership_fee']!)).toBe(0);
-      expect(await occurredOn(t, transactionId)).toBe('2026-11-10');
-      expect(await t.year()).toBe(2026);
-      expect(await t.status()).toEqual({ year: 2026, covered: '2026-10-05', waived: true, back: { transactionId, amountMinor: 450_000, on: '2026-11-10', intoAccountId: t.id, cancelsCharge: true }, challengeYear: null, dated: true });
-      // Once is enough: a second save says so rather than doing nothing.
-      await expect(saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false })).rejects.toThrow(/already marked waived/);
-    });
-
-    it('refunds a charge picked from the card’s charges near the date, and refuses one that is not', async () => {
+    it('never takes a charge that does not look like the fee', async () => {
       const t = await setup();
       await t.charge('Warung Contoh', 'food_beverage.restaurants', 85_000, '2026-10-04');
-      const plain = await t.charge('KARTU 1234', 'shopping.clothing', 450_000, '2026-10-09');
-      await expect(saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: true, cameBackOn: TODAY, chargeId: 'not-a-charge' })).rejects.toThrow(/not one of this card/);
-      expect(await t.year()).toBeNull();
-      await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: true, cameBackOn: TODAY, chargeId: plain });
-      expect(await t.balance(t.id)).toBe(-85_000);
-      expect(await t.balance(t.keys['shopping.clothing']!)).toBe(0);
+      await t.charge('KARTU 1234', 'shopping.clothing', 450_000, '2026-10-09');
+      expect((await t.current()).charge).toBeNull();
     });
 
-    it('never dates the refund before the charge it cancels', async () => {
+    // M4: a Fees & charges line that is not the fee is never picked.
+    it('never picks a late fee under Fees & charges, but picks one at the card’s fee amount', async () => {
       const t = await setup();
-      const fee = await t.charge('Iuran kartu', 'miscellaneous.fees_charges', 450_000, '2026-11-08');
-      const { transactionId } = await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: true, cameBackOn: '2026-10-10', chargeId: fee });
-      expect(await occurredOn(t, transactionId)).toBe('2026-11-08');
+      await t.charge('Biaya keterlambatan', 'miscellaneous.fees_charges', 150_000, '2026-10-08');
+      expect((await t.current()).charge).toBeNull();
+      const fee = await t.charge('Fee', 'miscellaneous.fees_charges', 450_000, '2026-10-30');
+      expect((await t.current()).charge?.transactionId).toBe(fee);
     });
 
-    it('Undo voids the refund and clears the year', async () => {
+    // L1: a split charge is read by its fee line, and its reversal nets that line alone.
+    it('reads a split charge by its fee line, and reverses that amount alone', async () => {
       const t = await setup();
-      const fee = await t.charge('Annual fee', 'miscellaneous.membership_fee', 450_000, '2026-10-05');
-      await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: true, cameBackOn: TODAY, chargeId: fee });
-      await undoFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
-      expect(await t.balance(t.id)).toBe(-450_000);
-      expect(await t.year()).toBeNull();
-      expect(await t.status()).toMatchObject({ waived: false, back: null });
-      expect(await listFeeRefunds(t.database.db, t.ws, t.id)).toEqual([]);
-      // Waived again after the Undo, as if fresh.
-      await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: true, cameBackOn: TODAY, chargeId: fee });
-      expect(await t.balance(t.id)).toBe(0);
+      const id = await postTransaction(t.database, t.ws, {
+        occurredOn: '2026-10-05',
+        description: 'Statement charges',
+        lines: [
+          { accountId: t.keys['miscellaneous.membership_fee']!, amountMinor: 450_000, currency: 'IDR' },
+          { accountId: t.keys['shopping.clothing']!, amountMinor: 1_000_000, currency: 'IDR' },
+          { accountId: t.id, amountMinor: -1_450_000, currency: 'IDR' },
+        ],
+      });
+      expect((await t.current()).charge).toMatchObject({ transactionId: id, amountMinor: 450_000 });
+      await t.reverse(450_000, TODAY);
+      expect(await t.balance(t.id)).toBe(-1_000_000);
+      expect(await t.balance(t.keys['shopping.clothing']!)).toBe(1_000_000);
     });
   });
 
-  describe('back on the card, no fee charge recorded', () => {
-    it('records the money coming back on the card, so a card at nothing goes into credit', async () => {
+  describe('a reversal already on the card', () => {
+    // M1: a reversal the bank already posted (an imported statement credit) is never added a second time.
+    it('reads it under the charge, refuses another, and the year reads waived', async () => {
       const t = await setup();
-      expect(await t.balance(t.id)).toBe(0);
-      const { transactionId } = await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: true, cameBackOn: '2026-11-11', chargeId: null, amountMinor: 450_000 });
-      // In credit: the card holds money back, filed against Membership fee.
-      expect(await t.balance(t.id)).toBe(450_000);
-      expect(await t.balance(t.keys['miscellaneous.membership_fee']!)).toBe(-450_000);
-      expect(await occurredOn(t, transactionId)).toBe('2026-11-11');
-      expect(await t.year()).toBe(2026);
-      expect(await listFeeRefunds(t.database.db, t.ws, t.id)).toEqual([{ transactionId, accountId: t.id, feeYear: 2026 }]);
-      expect(await t.status()).toMatchObject({ waived: true, back: { transactionId, amountMinor: 450_000, on: '2026-11-11', cancelsCharge: false } });
-    });
-
-    it('needs an amount and a day that is neither ahead of today nor before the charge, and marks nothing when refused', async () => {
-      const t = await setup();
-      const save = (cameBackOn: string, amountMinor = 450_000) => saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: true, cameBackOn, chargeId: null, amountMinor });
-      await expect(save(TODAY, 0)).rejects.toThrow(/amount/);
-      await expect(save('2026-11-13')).rejects.toThrow(/future/);
-      await expect(save('2026-10-04')).rejects.toThrow(/before/);
-      expect(await t.year()).toBeNull();
+      const fee = await t.charge('ANNUAL FEE', 'miscellaneous.membership_fee', 450_000, '2026-10-05');
+      await postTransaction(t.database, t.ws, { occurredOn: '2026-10-20', description: 'ANNUAL FEE REVERSAL', lines: refundLines({ categoryAccountId: t.keys['miscellaneous.membership_fee']!, paymentAccountId: t.id, amountMinor: 450_000, currency: 'IDR' }) });
+      expect(await t.current()).toMatchObject({ charge: { transactionId: fee }, reversal: { on: '2026-10-20', ours: false }, state: 'waived' });
+      await expect(t.reverse(450_000, TODAY)).rejects.toThrow('already on the card, on 20 Oct');
+      await expect(saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY })).rejects.toThrow(/already marked waived/);
       expect(await t.balance(t.id)).toBe(0);
     });
 
-    it('leaves a fee challenge on the card, and Undo leaves it there too', async () => {
+    it('finds a reversal of the fee’s amount when the fee itself was never recorded', async () => {
       const t = await setup();
-      const challenge: FeeWaiver = { kind: 'challenge', amountMinor: 3_000_000, countedFrom: '2026-10-01', spendBy: '2026-11-01', categoryIds: [] };
-      await saveFeeWaiver(t.database, t.ws, t.id, challenge);
-      await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: true, cameBackOn: TODAY, chargeId: null, amountMinor: 450_000 });
-      expect(await getFeeWaiver(t.database.db, t.ws, t.id)).toEqual(challenge);
-      await undoFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
-      expect(await getFeeWaiver(t.database.db, t.ws, t.id)).toEqual(challenge);
-      expect(await t.balance(t.id)).toBe(0);
-      expect(await t.year()).toBeNull();
+      await postTransaction(t.database, t.ws, { occurredOn: '2026-11-02', description: 'IURAN TAHUNAN DIBATALKAN', lines: refundLines({ categoryAccountId: t.keys['miscellaneous.fees_charges']!, paymentAccountId: t.id, amountMinor: 450_000, currency: 'IDR' }) });
+      expect(await t.current()).toMatchObject({ charge: null, reversal: { on: '2026-11-02' }, lines: ['reversal'] });
+    });
+
+    it('does not take a credit for a different amount, or one not about a fee, as the reversal', async () => {
+      const t = await setup();
+      await t.charge('ANNUAL FEE', 'miscellaneous.membership_fee', 450_000, '2026-10-05');
+      await postTransaction(t.database, t.ws, { occurredOn: '2026-10-20', description: 'Cashback', lines: refundLines({ categoryAccountId: t.keys['shopping.clothing']!, paymentAccountId: t.id, amountMinor: 450_000, currency: 'IDR' }) });
+      await postTransaction(t.database, t.ws, { occurredOn: '2026-10-21', description: 'Annual fee adjustment', lines: refundLines({ categoryAccountId: t.keys['miscellaneous.membership_fee']!, paymentAccountId: t.id, amountMinor: 50_000, currency: 'IDR' }) });
+      expect((await t.current()).reversal).toBeNull();
+    });
+
+    // L-b: a reversal filed as income counts by its name.
+    it('takes an income line named like the fee as a reversal, and not one named otherwise', async () => {
+      const t = await setup();
+      const credit = (on: string, description: string) =>
+        postTransaction(t.database, t.ws, { occurredOn: on, description, lines: refundLines({ categoryAccountId: t.keys['income.other']!, paymentAccountId: t.id, amountMinor: 450_000, currency: 'IDR' }) });
+      await credit('2026-10-21', 'Cashback');
+      expect((await t.current()).reversal).toBeNull();
+      await credit('2026-10-22', 'ANNUAL FEE REVERSAL');
+      expect((await t.current()).reversal?.on).toBe('2026-10-22');
     });
   });
 
-  describe('not back on the card', () => {
+  describe('Waived, not charged', () => {
     it('only marks the year: nothing is posted, and Undo clears the mark', async () => {
       const t = await setup();
-      await t.charge('Annual fee', 'miscellaneous.membership_fee', 450_000, '2026-10-05');
-      expect(await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false })).toEqual({ year: 2026, transactionId: null });
-      expect(await t.balance(t.id)).toBe(-450_000);
+      expect(await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY })).toEqual({ year: 2026, transactionId: null });
+      expect(await t.balance(t.id)).toBe(0);
       expect(await t.status()).toMatchObject({ waived: true, back: null });
       await undoFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
       expect(await t.year()).toBeNull();
-      expect(await t.balance(t.id)).toBe(-450_000);
+      expect(await t.status()).toMatchObject({ waived: false });
     });
 
     it('covers the coming charge when it is within 30 days, waived before it is charged', async () => {
       const t = await card();
       await saveCardTerms(t.database, t.ws, { accountId: t.id, ...terms, annualFeeOn: '2020-11-20' });
-      expect((await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false })).year).toBe(2026);
+      expect((await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY })).year).toBe(2026);
       expect((await getCardTerms(t.database, t.ws, t.id))?.annualFeeWaivedYear).toBe(2026);
     });
 
     it('covers the last charge when the next is over 30 days away', async () => {
       const t = await card();
       await saveCardTerms(t.database, t.ws, { accountId: t.id, ...terms, annualFeeOn: '2024-03-12' });
-      await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false });
+      await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
       expect((await getCardTerms(t.database, t.ws, t.id))?.annualFeeWaivedYear).toBe(2026);
     });
 
     it('keeps the mark through a later save of the terms', async () => {
       const t = await setup();
-      await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false });
+      await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
       await saveCardTerms(t.database, t.ws, { accountId: t.id, ...terms, annualFeeMinor: 450_000, annualFeeOn: '2025-10-05' });
       expect(await t.year()).toBe(2026);
+    });
+
+    // M2: no fee date, no year to mark: refused, with the way to set it.
+    it('refuses a card with no fee date, and marks once the date is set', async () => {
+      const t = await card();
+      await expect(saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY })).rejects.toThrow('Set the day the fee is charged first.');
+      await saveCardTerms(t.database, t.ws, { accountId: t.id, ...terms, annualFeeOn: '2026-10-05' });
+      expect(await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY })).toEqual({ year: 2026, transactionId: null });
+      expect((await feeWaivedStatus(t.database.db, t.ws, { cardId: t.id, today: TODAY })).waived).toBe(true);
     });
   });
 
@@ -270,7 +252,8 @@ describe('fee waived', () => {
     it('the old Waived (a mark, and a refund kept nowhere) reads waived with what came back, and Undo voids it', async () => {
       const t = await setup();
       await t.charge('Annual fee', 'miscellaneous.membership_fee', 450_000, '2026-10-05');
-      await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false });
+      // As the old Waived left it: the year marked over a recorded charge.
+      await t.database.db.run(sql`UPDATE card_terms SET annual_fee_waived_year = 2026 WHERE account_id = ${t.id}`);
       const transactionId = await postTransaction(t.database, t.ws, {
         occurredOn: '2026-10-20',
         description: WAIVED_DESCRIPTION,
@@ -284,53 +267,17 @@ describe('fee waived', () => {
       expect(await t.year()).toBeNull();
       expect(await t.balance(t.id)).toBe(-450_000);
     });
-  });
-
-  describe('review round 1', () => {
-    const challenge: FeeWaiver = { kind: 'challenge', amountMinor: 3_000_000, countedFrom: '2026-10-01', spendBy: '2026-11-01', categoryIds: [] };
-    const refund = (t: Awaited<ReturnType<typeof setup>>, key: string, occurredOn: string, description = REFUND_DESCRIPTION, into = t.id) => ({
-      occurredOn,
-      description,
-      lines: refundLines({ categoryAccountId: t.keys[key]!, paymentAccountId: into, amountMinor: 450_000, currency: 'IDR' }),
-    });
-
-    // H1: an edit replaces the refund's transaction; the link moves with it, so Undo and a second save stay right.
-    it('an edited refund (its date) still reads waived with the money back; Undo voids the edit; a new save only after Undo', async () => {
-      const t = await setup();
-      const { transactionId } = await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: true, cameBackOn: '2026-11-11', chargeId: null, amountMinor: 450_000 });
-      const edited = await replaceTransaction(t.database, t.ws, transactionId!, refund(t, 'miscellaneous.membership_fee', '2026-11-10'));
-      expect(await t.status()).toMatchObject({ waived: true, back: { transactionId: edited, amountMinor: 450_000, on: '2026-11-10' } });
-      expect(await listFeeRefunds(t.database.db, t.ws, t.id)).toEqual([{ transactionId: edited, accountId: t.id, feeYear: 2026 }]);
-      await expect(saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: true, cameBackOn: TODAY, chargeId: null, amountMinor: 450_000 })).rejects.toThrow(/already marked waived/);
-      expect(await t.balance(t.id)).toBe(450_000);
-      await undoFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
-      expect(await t.balance(t.id)).toBe(0);
-      expect(await t.status()).toMatchObject({ waived: false, back: null });
-      await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: true, cameBackOn: TODAY, chargeId: null, amountMinor: 450_000 });
-      expect(await t.balance(t.id)).toBe(450_000);
-    });
-
-    it('a refund of a recorded charge edited into another category is still the year’s, and Undo voids it', async () => {
-      const t = await setup();
-      const fee = await t.charge('Annual fee', 'miscellaneous.membership_fee', 450_000, '2026-10-05');
-      const { transactionId } = await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: true, cameBackOn: TODAY, chargeId: fee });
-      const edited = await replaceTransaction(t.database, t.ws, transactionId!, refund(t, 'miscellaneous.fees_charges', TODAY, WAIVED_DESCRIPTION));
-      expect(await t.status()).toMatchObject({ waived: true, back: { transactionId: edited, cancelsCharge: true } });
-      await undoFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
-      expect(await t.balance(t.id)).toBe(-450_000);
-      expect(await t.balance(t.keys['miscellaneous.fees_charges']!)).toBe(0);
-      expect(await t.year()).toBeNull();
-    });
 
     it('an old Fee refunded year whose refund was edited before edits carried the link reads waived, and Undo voids the edit', async () => {
       const t = await setup();
-      const original = await postTransaction(t.database, t.ws, refund(t, 'miscellaneous.membership_fee', '2026-11-03'));
+      const challenge: FeeWaiver = { kind: 'challenge', amountMinor: 3_000_000, countedFrom: '2026-10-01', spendBy: '2026-11-01', categoryIds: [] };
+      const refund = (occurredOn: string) => ({ occurredOn, description: REFUND_DESCRIPTION, lines: refundLines({ categoryAccountId: t.keys['miscellaneous.membership_fee']!, paymentAccountId: t.id, amountMinor: 450_000, currency: 'IDR' }) });
+      const original = await postTransaction(t.database, t.ws, refund('2026-11-03'));
       await t.database.db.run(sql`INSERT INTO card_fee_refunds (transaction_id, workspace_id, account_id, fee_year, challenge_json, created_at)
         VALUES (${original}, ${t.ws.workspaceId}, ${t.id}, 2026, ${JSON.stringify(challenge)}, '2026-11-03T00:00:00.000Z')`);
-      const edited = await replaceTransaction(t.database, t.ws, original, refund(t, 'miscellaneous.membership_fee', '2026-11-04'));
-      // As an edit made before this fix left it: the kept refund still names the transaction it replaced.
+      const edited = await replaceTransaction(t.database, t.ws, original, refund('2026-11-04'));
+      // As an edit made before edits carried the link left it: the kept refund still names the transaction it replaced.
       await t.database.db.run(sql`UPDATE card_fee_refunds SET transaction_id = ${original} WHERE transaction_id = ${edited}`);
-      expect(await t.year()).toBeNull();
       expect(await t.status()).toMatchObject({ waived: true, back: { transactionId: edited, on: '2026-11-04' } });
       expect(await listFeeRefunds(t.database.db, t.ws, t.id)).toEqual([{ transactionId: edited, accountId: t.id, feeYear: 2026 }]);
       await undoFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
@@ -339,114 +286,83 @@ describe('fee waived', () => {
       expect(await getFeeWaiver(t.database.db, t.ws, t.id)).toEqual(challenge);
     });
 
-    // M1: a reversal the bank already posted (an imported statement credit) is never refunded a second time.
-    it('finds a reversal already on the card, says so, and refuses to refund that charge again', async () => {
+    // L3: an old Fee refunded could go to a bank account: the status names where it went.
+    it('names the account an old refund went to', async () => {
       const t = await setup();
-      const fee = await t.charge('ANNUAL FEE', 'miscellaneous.membership_fee', 450_000, '2026-10-05');
-      await postTransaction(t.database, t.ws, refund(t, 'miscellaneous.membership_fee', '2026-10-20', 'ANNUAL FEE REVERSAL'));
-      const found = await annualFeeCharges(t.database, t.ws, { cardId: t.id, today: TODAY });
-      expect(found?.matched).toMatchObject({ transactionId: fee, reversedOn: '2026-10-20' });
-      expect(found?.reversedOn).toBe('2026-10-20');
-      await expect(saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: true, cameBackOn: TODAY, chargeId: fee })).rejects.toThrow(/already recorded on 2026-10-20/);
-      expect(await t.year()).toBeNull();
-      await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false });
-      expect(await t.balance(t.id)).toBe(0);
-    });
-
-    it('finds a reversal of the fee’s amount when the fee itself was never recorded', async () => {
-      const t = await setup();
-      await postTransaction(t.database, t.ws, refund(t, 'miscellaneous.fees_charges', '2026-11-02', 'IURAN TAHUNAN DIBATALKAN'));
-      expect(await annualFeeCharges(t.database, t.ws, { cardId: t.id, today: TODAY })).toMatchObject({ matched: null, nearby: [], reversedOn: '2026-11-02' });
-    });
-
-    it('does not take a credit for a different amount, or one not about a fee, as the reversal', async () => {
-      const t = await setup();
-      await t.charge('ANNUAL FEE', 'miscellaneous.membership_fee', 450_000, '2026-10-05');
-      await postTransaction(t.database, t.ws, { occurredOn: '2026-10-20', description: 'Cashback', lines: refundLines({ categoryAccountId: t.keys['shopping.clothing']!, paymentAccountId: t.id, amountMinor: 450_000, currency: 'IDR' }) });
-      await postTransaction(t.database, t.ws, { occurredOn: '2026-10-21', description: 'Annual fee adjustment', lines: refundLines({ categoryAccountId: t.keys['miscellaneous.membership_fee']!, paymentAccountId: t.id, amountMinor: 50_000, currency: 'IDR' }) });
-      expect((await annualFeeCharges(t.database, t.ws, { cardId: t.id, today: TODAY }))?.reversedOn).toBeNull();
-    });
-
-    // M2: no fee date, no year to mark: refused, with the way to set it.
-    it('refuses a card with no fee date, every way, and saves once the date is set', async () => {
-      const t = await card();
-      for (const input of [{ back: false } as const, { back: true, cameBackOn: TODAY, chargeId: null, amountMinor: 450_000 } as const]) {
-        await expect(saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, ...input })).rejects.toThrow('Set the day the fee is charged first.');
-      }
-      expect((await nativeBalances(t.database, t.ws))[t.id] ?? 0).toBe(0);
-      // A card with no terms at all: the date makes the row.
-      await setAnnualFeeOn(t.database, t.ws, { cardId: t.id, annualFeeOn: '2026-10-05' });
-      expect(await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false })).toEqual({ year: 2026, transactionId: null });
-      expect((await feeWaivedStatus(t.database.db, t.ws, { cardId: t.id, today: TODAY })).waived).toBe(true);
-    });
-
-    // M4: a Fees & charges line that is not the fee is offered, never picked.
-    it('never picks a late fee under Fees & charges, but picks one at the card’s fee amount', async () => {
-      const t = await setup();
-      const late = await t.charge('Biaya keterlambatan', 'miscellaneous.fees_charges', 150_000, '2026-10-08');
-      let found = await annualFeeCharges(t.database, t.ws, { cardId: t.id, today: TODAY });
-      expect(found?.matched).toBeNull();
-      expect(found?.nearby.map((c) => c.transactionId)).toEqual([late]);
-      const fee = await t.charge('Fee', 'miscellaneous.fees_charges', 450_000, '2026-10-30');
-      found = await annualFeeCharges(t.database, t.ws, { cardId: t.id, today: TODAY });
-      expect(found?.matched?.transactionId).toBe(fee);
-    });
-
-    // L1: a split charge refunds its fee line, not the whole charge.
-    it('reads a split charge by its fee line and refunds that amount alone', async () => {
-      const t = await setup();
-      const id = await postTransaction(t.database, t.ws, {
-        occurredOn: '2026-10-05',
-        description: 'Statement charges',
-        lines: [
-          { accountId: t.keys['miscellaneous.membership_fee']!, amountMinor: 450_000, currency: 'IDR' },
-          { accountId: t.keys['shopping.clothing']!, amountMinor: 1_000_000, currency: 'IDR' },
-          { accountId: t.id, amountMinor: -1_450_000, currency: 'IDR' },
-        ],
+      const bank = await createAccount(t.database, t.ws, { name: 'Sample bank', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+      const transactionId = await postTransaction(t.database, t.ws, {
+        occurredOn: '2026-11-03',
+        description: REFUND_DESCRIPTION,
+        lines: refundLines({ categoryAccountId: t.keys['miscellaneous.membership_fee']!, paymentAccountId: bank.id, amountMinor: 450_000, currency: 'IDR' }),
       });
-      const found = await annualFeeCharges(t.database, t.ws, { cardId: t.id, today: TODAY });
-      expect(found?.matched).toMatchObject({ transactionId: id, amountMinor: 450_000, categoryId: t.keys['miscellaneous.membership_fee'] });
-      await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: true, cameBackOn: TODAY, chargeId: id });
-      expect(await t.balance(t.id)).toBe(-1_000_000);
-      expect(await t.balance(t.keys['shopping.clothing']!)).toBe(1_000_000);
+      await t.database.db.run(sql`INSERT INTO card_fee_refunds (transaction_id, workspace_id, account_id, fee_year, challenge_json, created_at)
+        VALUES (${transactionId}, ${t.ws.workspaceId}, ${t.id}, 2026, 'null', '2026-11-03T00:00:00.000Z')`);
+      expect((await t.status()).back).toMatchObject({ transactionId, intoAccountId: bank.id });
+    });
+  });
+
+  describe('the page’s own reversal', () => {
+    const refund = (t: Awaited<ReturnType<typeof setup>>, key: string, occurredOn: string, description = FEE_REVERSAL_DESCRIPTION) => ({
+      occurredOn,
+      description,
+      lines: refundLines({ categoryAccountId: t.keys[key]!, paymentAccountId: t.id, amountMinor: 450_000, currency: 'IDR' }),
     });
 
-    // L2: a new save keeps no challenge, so Undo never brings back one removed since.
-    it('keeps no challenge with a new refund: one removed after the save stays removed after Undo', async () => {
+    // H1: an edit replaces the reversal's transaction; the link moves with it, so the year stays waived.
+    it('an edited reversal (its date) still reads as the app’s, refuses a second, and Undo voids the edit', async () => {
       const t = await setup();
-      await saveFeeWaiver(t.database, t.ws, t.id, challenge);
-      const { transactionId } = await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: true, cameBackOn: TODAY, chargeId: null, amountMinor: 450_000 });
-      expect(await t.database.db.values(sql`SELECT challenge_json FROM card_fee_refunds WHERE transaction_id = ${transactionId}`)).toEqual([['null']]);
+      await t.charge('Annual fee', 'miscellaneous.membership_fee', 450_000, '2026-10-05');
+      const id = await t.reverse(450_000, '2026-11-11');
+      const edited = await replaceTransaction(t.database, t.ws, id, refund(t, 'miscellaneous.membership_fee', '2026-11-10'));
+      expect(await t.current()).toMatchObject({ reversal: { transactionId: edited, on: '2026-11-10', ours: true }, state: 'waived' });
+      expect(await t.status()).toMatchObject({ waived: true, back: { transactionId: edited, amountMinor: 450_000, on: '2026-11-10' } });
+      expect(await listFeeRefunds(t.database.db, t.ws, t.id)).toEqual([{ transactionId: edited, accountId: t.id, feeYear: 2026 }]);
+      await expect(t.reverse(450_000, TODAY)).rejects.toThrow(/already on the card/);
+      await undoFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
+      expect(await t.balance(t.id)).toBe(-450_000);
+      expect(await t.current()).toMatchObject({ lines: ['charged'], reversal: null });
+    });
+
+    it('a reversal edited into another category is still the year’s, and Undo voids it', async () => {
+      const t = await setup();
+      await t.charge('Annual fee', 'miscellaneous.membership_fee', 450_000, '2026-10-05');
+      const id = await t.reverse(450_000, TODAY);
+      const edited = await replaceTransaction(t.database, t.ws, id, refund(t, 'miscellaneous.fees_charges', TODAY));
+      expect(await t.status()).toMatchObject({ waived: true, back: { transactionId: edited } });
+      await undoFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
+      expect(await t.balance(t.id)).toBe(-450_000);
+      expect(await t.balance(t.keys['miscellaneous.fees_charges']!)).toBe(0);
+    });
+
+    // L2: a reversal keeps no challenge, so Undo never brings back one removed since.
+    it('keeps no challenge with the reversal: one removed afterwards stays removed after Undo', async () => {
+      const t = await setup();
+      await saveFeeWaiver(t.database, t.ws, t.id, { kind: 'challenge', amountMinor: 3_000_000, countedFrom: '2026-10-01', spendBy: '2026-11-01', categoryIds: [] });
+      await t.charge('Annual fee', 'miscellaneous.membership_fee', 450_000, '2026-10-05');
+      const id = await t.reverse(450_000, TODAY);
+      expect(await t.database.db.values(sql`SELECT challenge_json FROM card_fee_refunds WHERE transaction_id = ${id}`)).toEqual([['null']]);
       await clearFeeWaiver(t.database, t.ws, t.id);
       await undoFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
       expect(await getFeeWaiver(t.database.db, t.ws, t.id)).toBeNull();
     });
 
-    // L3: an old Fee refunded could go to a bank account: the status names where it went.
-    it('names the account an old refund went to', async () => {
+    // N3: a reversal typed in by hand is a reversal found on the card; the app's own, edited or not, is the app's.
+    it('reads a hand-typed "Annual fee refund" as a reversal found on the card', async () => {
       const t = await setup();
-      const bank = await createAccount(t.database, t.ws, { name: 'Sample bank', kind: 'asset', subtype: 'bank', currency: 'IDR' });
-      const transactionId = await postTransaction(t.database, t.ws, refund(t, 'miscellaneous.membership_fee', '2026-11-03', REFUND_DESCRIPTION, bank.id));
-      await t.database.db.run(sql`INSERT INTO card_fee_refunds (transaction_id, workspace_id, account_id, fee_year, challenge_json, created_at)
-        VALUES (${transactionId}, ${t.ws.workspaceId}, ${t.id}, 2026, ${JSON.stringify(challenge)}, '2026-11-03T00:00:00.000Z')`);
-      expect((await t.status()).back).toMatchObject({ transactionId, intoAccountId: bank.id });
+      await t.charge('Annual fee', 'miscellaneous.membership_fee', 450_000, '2026-10-05');
+      await postTransaction(t.database, t.ws, refund(t, 'miscellaneous.membership_fee', '2026-10-25', REFUND_DESCRIPTION));
+      expect((await t.current()).reversal).toMatchObject({ on: '2026-10-25', ours: false });
+      // Undo takes back only what the app wrote: the one typed in stays.
+      await undoFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
+      expect(await t.balance(t.id)).toBe(0);
     });
 
-    // L6: the refund is never dated after today.
-    it('refuses to refund a charge dated after today', async () => {
+    // L6: the reversal is never dated before its charge, nor after today.
+    it('refuses a reversal for a charge still ahead', async () => {
       const t = await card();
       await saveCardTerms(t.database, t.ws, { accountId: t.id, ...terms, annualFeeMinor: 450_000, annualFeeOn: '2020-11-20' });
-      const keys = await categoryIdsByKey(t.database, t.ws);
-      const ahead = await postTransaction(t.database, t.ws, {
-        occurredOn: '2026-11-20',
-        description: 'Annual fee',
-        lines: [
-          { accountId: keys['miscellaneous.membership_fee']!, amountMinor: 450_000, currency: 'IDR' },
-          { accountId: t.id, amountMinor: -450_000, currency: 'IDR' },
-        ],
-      });
-      await expect(saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: true, cameBackOn: TODAY, chargeId: ahead })).rejects.toThrow(/after today/);
-      expect((await getCardTerms(t.database, t.ws, t.id))?.annualFeeWaivedYear).toBeNull();
+      await addFeeCharge(t.database, t.ws, { cardId: t.id, today: TODAY, amountMinor: 450_000, on: TODAY });
+      await expect(addFeeReversal(t.database, t.ws, { cardId: t.id, today: TODAY, amountMinor: 450_000, on: '2026-11-13' })).rejects.toThrow(/after today/);
     });
   });
 
@@ -527,7 +443,7 @@ describe('fee waived', () => {
         const t = await card();
         await saveFeeWaiver(t.database, t.ws, t.id, { kind: 'challenge', amountMinor: 3_000_000, countedFrom: '2026-08-01', spendBy: '2026-09-30', categoryIds: [] });
         expect(await t.database.db.values(sql`SELECT fee_year FROM card_fee_waivers`)).toEqual([[null]]);
-        await setAnnualFeeOn(t.database, t.ws, { cardId: t.id, annualFeeOn: '2025-10-05' });
+        await saveCardTerms(t.database, t.ws, { accountId: t.id, ...terms, annualFeeOn: '2025-10-05' });
         expect((await feeWaivedStatus(t.database.db, t.ws, { cardId: t.id, today: '2026-10-06' })).challengeYear).toBe(2026);
       });
 
@@ -537,49 +453,6 @@ describe('fee waived', () => {
         await saveFeeWaiver(t.database, t.ws, t.id, { kind: 'automatic', amountMinor: 50_000_000, countedFrom: null, spendBy: null, categoryIds: [] });
         expect((await t.status()).challengeYear).toBeNull();
       });
-    });
-
-    // N2: Undo takes back only what the app wrote.
-    it('leaves an "Annual fee refund" typed in by hand when Undo takes back a waiver', async () => {
-      const t = await setup();
-      await credit(t, 'miscellaneous.membership_fee', '2026-10-20', REFUND_DESCRIPTION);
-      await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: false });
-      expect((await t.status()).back).toBeNull();
-      await undoFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
-      expect(await t.balance(t.id)).toBe(450_000);
-      expect(await t.year()).toBeNull();
-    });
-
-    // N3: a reversal typed in by hand under the app's own name is still a reversal; the app's own refunds never are.
-    it('sees a hand-typed "Annual fee refund" as a reversal, but never a refund Fee waived posted, edited or not', async () => {
-      const t = await setup();
-      const { transactionId } = await saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: true, cameBackOn: '2026-11-11', chargeId: null, amountMinor: 450_000 });
-      expect((await annualFeeCharges(t.database, t.ws, { cardId: t.id, today: TODAY }))?.reversedOn).toBeNull();
-      await replaceTransaction(t.database, t.ws, transactionId!, { occurredOn: '2026-11-10', description: REFUND_DESCRIPTION, lines: refundLines({ categoryAccountId: t.keys['miscellaneous.membership_fee']!, paymentAccountId: t.id, amountMinor: 450_000, currency: 'IDR' }) });
-      expect((await annualFeeCharges(t.database, t.ws, { cardId: t.id, today: TODAY }))?.reversedOn).toBeNull();
-      await undoFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY });
-      await credit(t, 'miscellaneous.membership_fee', '2026-10-25', REFUND_DESCRIPTION);
-      expect((await annualFeeCharges(t.database, t.ws, { cardId: t.id, today: TODAY }))?.reversedOn).toBe('2026-10-25');
-    });
-
-    // L-a: the reversal is enforced for money back with no charge too.
-    it('refuses money back with no charge recorded when a reversal of the fee is already on the card', async () => {
-      const t = await setup();
-      await credit(t, 'miscellaneous.fees_charges', '2026-10-25', 'Pembatalan iuran tahunan');
-      await expect(saveFeeWaived(t.database, t.ws, { cardId: t.id, today: TODAY, back: true, cameBackOn: TODAY, chargeId: null, amountMinor: 450_000 })).rejects.toThrow(
-        'A reversal of this fee is already recorded on 2026-10-25.',
-      );
-      expect(await t.year()).toBeNull();
-      expect(await t.balance(t.id)).toBe(450_000);
-    });
-
-    // L-b: a reversal filed as income counts by its name.
-    it('takes an income line named like the fee as a reversal, and not one named otherwise', async () => {
-      const t = await setup();
-      await credit(t, 'income.other', '2026-10-21', 'Cashback');
-      expect((await annualFeeCharges(t.database, t.ws, { cardId: t.id, today: TODAY }))?.reversedOn).toBeNull();
-      await credit(t, 'income.other', '2026-10-22', 'ANNUAL FEE REVERSAL');
-      expect((await annualFeeCharges(t.database, t.ws, { cardId: t.id, today: TODAY }))?.reversedOn).toBe('2026-10-22');
     });
 
     // L-d: the walk back through edits has an index.

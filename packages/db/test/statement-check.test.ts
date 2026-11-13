@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   activityOf,
   addCard,
+  addFeeCharge,
+  addFeeReversal,
   type CheckDecisions,
   type CheckDraftRow,
   cardStatement,
@@ -743,5 +745,31 @@ describe('the Activity page after a check', () => {
     const prepared = await h.prepare([image([['12MAY', 'TOKO ALFA', '100,000']], { previous: '0', closing: '100,000' })]);
     await recordStatementCheck(h.database, h.ws, { ...prepared, rows: categorised(prepared.rows, h.groceries) }, NO_DECISIONS);
     expect((await activityOf(h.database, h.ws, {})).filter((l) => l.title.endsWith('statement adjusted'))).toHaveLength(0);
+  });
+});
+
+/*
+ * The Fee waiver page's own fee rows (owner ruling, 13 Nov 2026): the charge it added on the fee date, and the reversal,
+ * are what the statement's fee rows are, posted weeks later; they are never offered again as missing.
+ */
+describe('the Fee waiver page’s fee rows', () => {
+  it('matches the fee row to the charge the page added on the fee date, and the credit to its reversal', async () => {
+    const h = await household();
+    await saveCardTerms(h.database, h.ws, { accountId: h.card.id, statementDay: 10, dueDay: 25, creditLimitMinor: null, annualFeeMinor: 750_000, annualFeeOn: '2025-05-01' });
+    const charge = await addFeeCharge(h.database, h.ws, { cardId: h.card.id, today: TODAY, amountMinor: 750_000, on: '2026-05-01' });
+    const back = await addFeeReversal(h.database, h.ws, { cardId: h.card.id, today: TODAY, amountMinor: 750_000, on: '2026-06-02' });
+    const prepared = await h.prepare([image([['28MAY', 'ANNUAL FEE', '750,000'], ['09JUN', 'ANNUAL FEE REVERSAL', '750,000CR']], { previous: '0', closing: '0' })]);
+    expect(prepared.rows.map((r) => r.outcome)).toEqual([
+      { row: 0, status: 'matched', candidateIds: [charge] },
+      { row: 1, status: 'matched', candidateIds: [back] },
+    ]);
+  });
+
+  it('still offers a fee row of another amount as missing', async () => {
+    const h = await household();
+    await saveCardTerms(h.database, h.ws, { accountId: h.card.id, statementDay: 10, dueDay: 25, creditLimitMinor: null, annualFeeMinor: 750_000, annualFeeOn: '2025-05-01' });
+    await addFeeCharge(h.database, h.ws, { cardId: h.card.id, today: TODAY, amountMinor: 750_000, on: '2026-05-01' });
+    const prepared = await h.prepare([image([['28MAY', 'ANNUAL FEE', '825,000']], { previous: '0', closing: '825,000' })]);
+    expect(prepared.rows[0]!.outcome.status).toBe('missing');
   });
 });

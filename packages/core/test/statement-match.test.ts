@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type Candidate, looksLikeRefund, matchStatement, type StatementRow } from '../src/index';
+import { type Candidate, FEE_CHARGE_DESCRIPTION, FEE_REVERSAL_DESCRIPTION, feeCandidateWindow, looksLikeRefund, matchStatement, type StatementRow } from '../src/index';
 
 const PERIOD = { start: '2026-05-01', end: '2026-05-31' };
 
@@ -245,5 +245,72 @@ describe('looksLikeRefund', () => {
   it('reads a credit naming a shop as a refund with no earlier purchase', () => {
     const credit = row('2026-05-08', 'TOKO SEPATU MAJU', 250_000, { direction: 'in' });
     expect(looksLikeRefund(credit, [])).toBe(true);
+  });
+});
+
+/*
+ * The Fee waiver page's own fee rows (owner ruling, 13 Nov 2026): an "Annual fee" or "Annual fee reversal" the page
+ * added is matched by a statement row of the same amount anywhere inside that fee's window, never offered as missing.
+ * Invented figures; the fee is charged on 15 Oct.
+ */
+describe('the Fee waiver page’s fee rows', () => {
+  const FEE_ON = '2025-10-15';
+  const charge = (on: string, amountMinor: number): Candidate =>
+    cand('fee', on, amountMinor, { description: FEE_CHARGE_DESCRIPTION, feeWindow: feeCandidateWindow(FEE_CHARGE_DESCRIPTION, 'out', FEE_ON, on) ?? undefined });
+  const reversal = (on: string, amountMinor: number): Candidate =>
+    cand('back', on, amountMinor, { direction: 'in', kind: 'refund', description: FEE_REVERSAL_DESCRIPTION, feeWindow: feeCandidateWindow(FEE_REVERSAL_DESCRIPTION, 'in', FEE_ON, on) ?? undefined });
+
+  it('gives the window only to those two descriptions, each in its own direction', () => {
+    expect(feeCandidateWindow(FEE_CHARGE_DESCRIPTION, 'out', FEE_ON, '2026-10-15')).toEqual({ from: '2026-09-25', to: '2026-11-29' });
+    expect(feeCandidateWindow(FEE_REVERSAL_DESCRIPTION, 'in', FEE_ON, '2026-11-13')).toEqual({ from: '2026-09-25', to: '2027-02-12' });
+    expect(feeCandidateWindow('Annual Fee', 'out', FEE_ON, '2026-10-15')).toBeNull();
+    expect(feeCandidateWindow(FEE_CHARGE_DESCRIPTION, 'in', FEE_ON, '2026-10-15')).toBeNull();
+    // Far from any fee date: no window.
+    expect(feeCandidateWindow(FEE_CHARGE_DESCRIPTION, 'out', FEE_ON, '2026-04-15')).toBeNull();
+  });
+
+  it('matches the charge the page added to a fee row posted weeks later, of the same amount', () => {
+    const result = matchStatement([row('2026-11-02', 'ANNUAL FEE', 1_150_000, { isFee: true })], [charge('2026-10-15', 1_150_000)], OFF);
+    expect(result.outcomes).toEqual([{ row: 0, status: 'matched', candidateIds: ['fee'] }]);
+  });
+
+  it('matches the reversal the page added to a fee credit weeks later', () => {
+    const back = matchStatement([row('2026-11-20', 'REVERSAL ANNUAL FEE', 1_150_000, { direction: 'in', isFee: true })], [reversal('2026-11-03', 1_150_000)], OFF);
+    expect(back.outcomes).toEqual([{ row: 0, status: 'matched', candidateIds: ['back'] }]);
+  });
+
+  // Review round 2 (N1): only a fee row takes the page's fee rows; a payment never does; a plain credit asks.
+  it('keeps a payment of the same amount a payment, and matches the bank’s later reversal to the page’s', () => {
+    const rows = [row('2026-11-20', 'PAYMENT THANK YOU', 1_150_000, { direction: 'in' }), row('2026-12-05', 'ANNUAL FEE REVERSAL', 1_150_000, { direction: 'in', isFee: true })];
+    expect(matchStatement(rows, [reversal('2026-11-03', 1_150_000)], OFF).outcomes).toEqual([
+      { row: 0, status: 'payment-untracked' },
+      { row: 1, status: 'matched', candidateIds: ['back'] },
+    ]);
+    // A payment word keeps a credit off the reversal even when it reads like money back.
+    const hinted = matchStatement([row('2026-11-20', 'PAYMENT THANK YOU', 1_150_000, { direction: 'in' })], [reversal('2026-11-03', 1_150_000)], { ...ON, refundHints: new Map([[0, true]]) });
+    expect(hinted.outcomes[0]!.status).toBe('missing');
+  });
+
+  it('keeps a purchase of exactly the fee amount a purchase', () => {
+    expect(matchStatement([row('2026-10-28', 'TOKO ELEKTRONIK', 1_150_000)], [charge('2026-10-15', 1_150_000)], OFF).outcomes).toEqual([{ row: 0, status: 'missing', as: 'purchase' }]);
+  });
+
+  // Review round 3: only a credit the reader marks as a fee takes the page's reversal; any other goes the usual way.
+  it('leaves a same-amount credit that names no fee to the usual path', () => {
+    const plain = matchStatement([row('2026-11-20', 'CR ADJ', 1_150_000, { direction: 'in' })], [reversal('2026-11-03', 1_150_000)], { ...OFF, refundHints: new Map([[0, true]]) });
+    expect(plain.outcomes).toEqual([{ row: 0, status: 'missing', as: 'refund' }]);
+  });
+
+  it('never gives a shop’s refund equal to the fee to the page’s reversal', () => {
+    const shop = matchStatement([row('2026-11-20', 'TOKO ELEKTRONIK REFUND', 1_150_000, { direction: 'in' })], [reversal('2026-11-03', 1_150_000)], { ...OFF, refundHints: new Map([[0, true]]) });
+    expect(shop.outcomes).toEqual([{ row: 0, status: 'missing', as: 'refund' }]);
+    expect(shop.flagged).toEqual([]);
+  });
+
+  it('keeps the rule narrow: another amount, a row outside the window, or another description is still missing', () => {
+    expect(matchStatement([row('2026-11-02', 'ANNUAL FEE', 1_200_000, { isFee: true })], [charge('2026-10-15', 1_150_000)], OFF).outcomes[0]!.status).toBe('missing');
+    expect(matchStatement([row('2026-12-10', 'ANNUAL FEE', 1_150_000, { isFee: true })], [charge('2026-10-15', 1_150_000)], OFF).outcomes[0]!.status).toBe('missing');
+    const typed = cand('typed', '2026-10-15', 1_150_000, { description: 'Annual fee typed by hand' });
+    expect(matchStatement([row('2026-11-02', 'ANNUAL FEE', 1_150_000, { isFee: true })], [typed], OFF).outcomes[0]!.status).toBe('missing');
   });
 });

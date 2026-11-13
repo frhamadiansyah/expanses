@@ -80,7 +80,8 @@ export async function waiverFlow(page: Page, name: string) {
 
   const row = page.getByTestId('fee-waiver-row');
   await expect(row).toContainText('None');
-  await expect(page.getByTestId('year-fee')).toContainText(/\d{4}/);
+  // Settings keeps three rows in Annual fee: no This year's fee.
+  await expect(page.getByTestId('card-annual-fee')).toHaveCount(0);
   await row.click();
   await expect(page.getByRole('heading', { name: 'Fee waiver', exact: true }).first()).toBeVisible();
   // A challenge asks for the spend, the day it counts from, the day to spend by and what counts: no Then or reminder rows.
@@ -90,9 +91,12 @@ export async function waiverFlow(page: Page, name: string) {
   await page.getByLabel('Counted from').fill(iso(days(-10)));
   const by = days(3);
   await page.getByLabel('Spend by').fill(iso(by));
+  // Progress is the spend the challenge counts so far, a plain amount.
+  await expect(page.getByTestId('fee-progress')).toContainText('412.000');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
 
-  await expect(page.getByTestId('fee-waiver-row')).toContainText(`Challenge · by ${by.getDate()} ${MONTHS[by.getMonth()]}`);
+  // What is left to spend, short: Rp 1.088.000 reads as 1,1 jt.
+  await expect(page.getByTestId('fee-waiver-row')).toContainText(/Rp\s1,1 jt to go/);
   // Tapping the row again shows the kind ticked; the card's back carries the challenge with what is left.
   await openWalletCard(page, name);
   await showCardBack(page);
@@ -104,14 +108,15 @@ export async function waiverFlow(page: Page, name: string) {
 }
 
 /**
- * Fee waived from the met challenge (was Fee refunded; option A, 2026-11-12): the fee charge recorded on the card is
- * found and refunded in its category; Undo takes it back; the challenge then says it was waived, with what came back,
- * and Settings' This year's fee reads Waived.
+ * A met challenge's fee, recorded on the Fee waiver page (owner, 13 Nov 2026): the reached challenge's Fee waived opens
+ * the page; the fee charge already on the card is its Charged line, and ⋮ → Add reversal cancels it in its category.
+ * The challenge then says it was waived, with what came back, and Settings' Fee waiver row reads the year waived.
  */
 export async function refundFlow(page: Page, name: string) {
   await buy(page, name, '1200000');
   // The annual fee, as a statement names it, on the day it was charged (this year's, 15 days ago).
   const charged = days(-15);
+  const year = charged.getFullYear();
   await page.goto('/transactions');
   await addTransaction(page, { description: 'BIAYA KARTU TAHUNAN', paidWith: name, category: 'Fees & charges', amount: '800000', date: iso(charged) });
   await openWalletCard(page, name);
@@ -124,35 +129,33 @@ export async function refundFlow(page: Page, name: string) {
 
   await bonus.click();
   await expect(page.getByRole('heading', { name: 'Spend bonuses · nearest first' })).toBeVisible();
-  await expect(page.getByTestId('fee-refunded')).toHaveCount(0);
   await page.getByTestId('fee-waived').click();
-  const sheet = page.getByRole('dialog', { name: /^Fee waived · \d{4}$/ });
-  await expect(sheet.getByLabel('Back on the card')).toBeChecked();
-  const charge = sheet.getByTestId('fee-charge');
-  await expect(charge).toContainText('BIAYA KARTU TAHUNAN');
-  await expect(charge).toContainText('800.000');
-  await expect(sheet.getByLabel('Amount')).toHaveCount(0);
-  await expect(sheet.getByTestId('fee-waived-footer')).toHaveText('The refund cancels that charge in Fees & charges. Tap Fee charge to pick another charge.');
-  // Fee charge lists the card's charges near the date; the fee is the one ticked.
+  await expect(page).toHaveURL(/\/settings\/fee-waiver$/);
+  await expect(page.getByText("This year's fee", { exact: true })).toBeVisible();
+  const charge = page.getByTestId('fee-line-charged');
+  await expect(charge.getByTestId('fee-line-charged-value')).toHaveText(`${charged.getDate()} ${MONTHS[charged.getMonth()]} · Rp 800.000`);
+  await expect(page.getByTestId('fee-line-reversal')).toHaveCount(0);
+
+  // ⋮ on Charged: Add reversal, Open the charge, Cancel. Cancel changes nothing.
   await charge.click();
-  const picker = page.getByRole('dialog', { name: 'Fee charge' });
-  await expect(picker.getByRole('button', { name: /^Noodle House/ })).toHaveCount(2);
-  await expect(picker.getByRole('button', { name: /^Not in the app/ })).toBeVisible();
-  await picker.getByRole('button', { name: /^BIAYA KARTU TAHUNAN/ }).click();
+  const menu = page.getByTestId('fee-menu');
+  await expect(menu.getByRole('button')).toHaveText(['Add reversal', 'Open the charge', 'Cancel']);
+  await menu.getByRole('button', { name: 'Cancel' }).click();
+  await expect(menu).toHaveCount(0);
+  await charge.click();
+  await page.getByTestId('fee-menu-add-reversal').click();
+  const sheet = page.getByRole('dialog', { name: 'Add reversal' });
+  await expect(sheet.getByLabel('Amount')).toHaveValue('800.000');
   await sheet.getByRole('button', { name: 'Save' }).click();
   await expect(sheet).toHaveCount(0);
-  const year = charged.getFullYear();
-  await expect(page.getByRole('status').filter({ hasText: `Fee waived for ${year}` })).toBeVisible();
-  await expect(page.getByTestId('fee-waived-status')).toBeVisible();
-  await page.getByRole('button', { name: 'Undo' }).click();
-  await expect(page.getByTestId('fee-waived')).toBeVisible();
-  await expect(page.getByTestId('fee-waived-status')).toHaveCount(0);
-
-  // Again, this time kept: the refund cancels the Rp 800.000 charge; the challenge stays, saying so.
-  await page.getByTestId('fee-waived').click();
-  await page.getByRole('dialog', { name: /^Fee waived · \d{4}$/ }).getByRole('button', { name: 'Save' }).click();
   const today = new Date();
-  await expect(page.getByTestId('fee-waived-status')).toHaveText(`✓ Fee waived · Rp 800.000 back on ${today.getDate()} ${MONTHS[today.getMonth()]}`);
+  const back = today.getFullYear() === year ? `${today.getDate()} ${MONTHS[today.getMonth()]}` : `${today.getDate()} ${MONTHS[today.getMonth()]} ${today.getFullYear()}`;
+  await expect(page.getByTestId('fee-line-reversal-value')).toHaveText(`${back} · Rp 800.000`);
+  // Once money is back, Charged offers no second reversal.
+  await charge.click();
+  await expect(page.getByTestId('fee-menu').getByRole('button')).toHaveText(['Open the charge', 'Cancel']);
+  await page.getByTestId('fee-menu').getByRole('button', { name: 'Cancel' }).click();
+
   await page.waitForTimeout(800);
   await openWalletCard(page, name);
   await showCardBack(page);
@@ -160,12 +163,16 @@ export async function refundFlow(page: Page, name: string) {
   await expect(page.getByTestId('back-bonus')).toContainText('✓ Fee waived · Rp 800.000');
 
   await page.goto('/transactions');
-  await expect(page.getByText('Annual fee waived')).toBeVisible();
+  await expect(page.getByText('Annual fee reversal')).toBeVisible();
 
-  // This year's fee reads Waived, whichever place it was done from.
   await openWalletCard(page, name);
   await cardPage(page, 'Settings');
-  await expect(page.getByTestId('year-fee')).toHaveText('Waived');
+  await expect(page.getByTestId('fee-waiver-row')).toContainText(`${year} waived`);
+  // ⋮ on Reversal opens it like any transaction.
+  await page.getByTestId('fee-waiver-row').click();
+  await page.getByTestId('fee-line-reversal').click();
+  await page.getByTestId('fee-menu-open-reversal').click();
+  await expect(page).toHaveURL(/\/transactions\/[^/]+$/);
 }
 
 /** A credit card with a primary and a supplementary plastic: each one's face says what that card spent this statement. */

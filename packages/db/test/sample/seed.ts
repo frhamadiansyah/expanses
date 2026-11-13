@@ -208,7 +208,7 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
   const bonvoyPlastic = [primaryCard, spouseCard];
   // Three annual fees: KrisFlyer's is charged in 20 days (Due soon), Bonvoy's the bank agreed to waive this year, and
   // Accor's is far off (shown on its card page only).
-  if (has(93)) await saveFeeWaived(database, ws, { cardId: bonvoy.id, today, back: false });
+  if (has(93)) await saveFeeWaived(database, ws, { cardId: bonvoy.id, today });
 
   await saveMerchantMcc(database, ws, { pattern: 'kopi kenangan', mcc: '5814' });
 

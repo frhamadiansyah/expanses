@@ -21,6 +21,12 @@ export interface Candidate {
   kind: 'purchase' | 'refund' | 'payment';
   description: string;
   isDraft: boolean;
+  /**
+   * The Fee waiver page's own fee charge or reversal ("Annual fee", "Annual fee reversal"): the days a statement row of
+   * the same amount may be dated and still be it (`feeCandidateWindow`). The bank often posts the fee on the statement
+   * after the fee date, well outside the usual three days.
+   */
+  feeWindow?: { from: string; to: string };
 }
 
 export type RowOutcome =
@@ -171,6 +177,19 @@ export function matchStatement(rows: readonly StatementRow[], candidates: readon
     const best = near[0]!.c;
     used.add(best.id);
     outcomes.set(i, { row: i, status: 'differs', candidateId: best.id, statementMinor: r.amountMinor, recordedMinor: best.amountMinor });
+  }
+
+  // 3b. The Fee waiver page's fee charge or reversal: the same amount anywhere in that fee's window, taken only by a row
+  // the reader marks as a fee. A payment (its pool or its words) never takes one; any other row ("CR ADJ", a shop's
+  // refund of the same amount) goes the usual way, so nothing it is gets forced onto the page's row.
+  for (const i of order) {
+    if (outcomes.has(i)) continue;
+    const r = rows[i]!;
+    if (!r.isFee || poolOf(i) === 'payment' || PAYMENT_WORD.test(r.description)) continue;
+    const fee = candidates.find((c) => c.feeWindow && !used.has(c.id) && c.direction === r.direction && c.amountMinor === r.amountMinor && r.on >= c.feeWindow.from && r.on <= c.feeWindow.to);
+    if (!fee) continue;
+    used.add(fee.id);
+    outcomes.set(i, { row: i, status: 'matched', candidateIds: [fee.id] });
   }
 
   // 4. Whatever is left is missing from cicis.

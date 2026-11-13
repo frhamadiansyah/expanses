@@ -15,7 +15,7 @@ import { ActionButtons, PageDots, InsetGroup, InsetRow, type InsetRowProps, Sele
 import { backRadius } from '../accounts/balance-back';
 import { BackSlot } from './CardBack';
 import { useSpendBonuses } from './spend-bonuses';
-import { useFeeWaivedStatus, waivedLine } from './FeeWaivedSheet';
+import { useFeeWaivedStatus, waivedLine } from './fee-waived-status';
 import { challengeCoversFee } from './fee-line';
 import { categoryMark } from '../categories/CategoryIcon';
 import { CardFace } from './CardFace';

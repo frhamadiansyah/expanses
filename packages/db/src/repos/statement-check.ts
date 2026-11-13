@@ -13,6 +13,11 @@ import {
   type CaptureLine,
   cardTopUpLines,
   expenseLines,
+  FEE_CHARGE_DESCRIPTION,
+  FEE_DAYS_BEFORE,
+  FEE_REVERSAL_DAYS_AFTER,
+  FEE_REVERSAL_DESCRIPTION,
+  feeCandidateWindow,
   looksLikeRefund,
   matchStatement,
   categoryKeyOf,
@@ -37,6 +42,7 @@ import { cardStatementSettings, type StatementLinkKind, statementChecks, stateme
 import { ensureSystemAccountTx, systemAccountId } from './accounts';
 import { recordActivityTx } from './activity-log';
 import { ensureCategoryByKeyTx } from './categories';
+import { feeFieldsByCard } from './fee-columns';
 import { cardTopsUpWallet, TOP_UP_KEY } from './money-in';
 import { confirmDraftTx, listDrafts } from './drafts';
 import { guessCategoryFromHistory } from './entry';
@@ -333,6 +339,33 @@ export async function prepareStatementCheck(
     if (taken.has(view.id)) continue;
     const candidate = candidateOf(view, cardAccountId, posted.get(view.id), linked);
     if (candidate) candidates.push(candidate);
+  }
+  /*
+   * The Fee waiver page's own fee charge and reversal (owner ruling, 13 Nov 2026): the bank posts them weeks from the
+   * day the page dated them, so each carries its fee's window, and those dated outside the usual margin are looked for
+   * too. A statement row of the same amount in that window is them, never missing.
+   */
+  const feeOn = (await feeFieldsByCard(database.db, ws)).get(cardAccountId)?.annualFeeOn ?? null;
+  if (feeOn) {
+    const reach = FEE_DAYS_BEFORE + FEE_REVERSAL_DAYS_AFTER;
+    const wideWindow = { accountId: cardAccountId, from: addDays(period.start, -reach), to: addDays(period.end, reach), limit: 2000 };
+    const wide = await listTransactions(database, ownerScope(ws), wideWindow);
+    const hereWide = ws.bookId ? new Set((await listTransactions(database, ws, wideWindow)).map((v) => v.id)) : null;
+    const seen = new Set(candidates.map((c) => c.id));
+    const widePosted = await postingDates(database, ws, wide.map((v) => v.id));
+    for (const view of wide) {
+      if (seen.has(view.id) || taken.has(view.id) || (view.description !== FEE_CHARGE_DESCRIPTION && view.description !== FEE_REVERSAL_DESCRIPTION)) continue;
+      if (hereWide !== null && !hereWide.has(view.id)) continue;
+      const candidate = candidateOf(view, cardAccountId, widePosted.get(view.id), linked);
+      if (candidate) {
+        candidates.push(candidate);
+        viewById.set(view.id, view);
+      }
+    }
+    for (const c of candidates) {
+      const window = feeCandidateWindow(c.description, c.direction, feeOn, c.on);
+      if (window) c.feeWindow = window;
+    }
   }
   const lo = addDays(period.start, -CANDIDATE_MARGIN_DAYS);
   const hi = addDays(period.end, CANDIDATE_MARGIN_DAYS);

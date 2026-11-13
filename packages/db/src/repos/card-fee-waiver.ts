@@ -20,10 +20,11 @@ async function tablesExist(db: Db): Promise<boolean> {
   return true;
 }
 
-type WaiverRow = [string, string, number, string | null, string | null, string];
+type WaiverRow = [string, string, number | null, string | null, string | null, string];
 const toWaiver = ([, kind, amount, from, by, categories]: WaiverRow): FeeWaiver => ({
   kind: kind as FeeWaiver['kind'],
-  amountMinor: Number(amount),
+  // A lifetime waiver keeps no amount (0115): read as nothing to spend.
+  amountMinor: Number(amount ?? 0),
   countedFrom: from,
   spendBy: by,
   categoryIds: JSON.parse(categories) as string[],
@@ -42,7 +43,14 @@ export async function getFeeWaiver(db: Db, ws: WorkspaceContext, accountId: stri
   return (await listFeeWaivers(db, ws)).get(accountId) ?? null;
 }
 
+/**
+ * A lifetime waiver (0115) has nothing to spend, no days and no categories: whatever came with it is dropped, so a
+ * program switched to Free for life keeps nothing of the one before.
+ */
+const normalised = (waiver: FeeWaiver): FeeWaiver => (waiver.kind === 'lifetime' ? { kind: 'lifetime', amountMinor: 0, countedFrom: null, spendBy: null, categoryIds: [] } : waiver);
+
 function check(waiver: FeeWaiver) {
+  if (waiver.kind === 'lifetime') return;
   if (!(waiver.amountMinor > 0)) throw new PointsError('Enter the amount to spend');
   if (waiver.kind === 'challenge') {
     if (!waiver.countedFrom || !waiver.spendBy) throw new PointsError('Enter the day counting starts and the day to spend by');
@@ -59,16 +67,28 @@ async function feeYearColumn(db: Db): Promise<boolean> {
   return true;
 }
 
-async function writeWaiver(db: Db, ws: WorkspaceContext, accountId: string, waiver: FeeWaiver, feeYear: number | null = null) {
+async function writeWaiver(db: Db, ws: WorkspaceContext, accountId: string, given: FeeWaiver, feeYear: number | null = null) {
+  const waiver = normalised(given);
   check(waiver);
   const challenge = waiver.kind === 'challenge';
+  if (waiver.kind === 'lifetime' && !(await lifetimeAllowed(db))) throw new PointsError('This database needs updating before Free for life can be saved');
   await db.run(
     sql`INSERT INTO card_fee_waivers (account_id, workspace_id, kind, amount_minor, counted_from, spend_by, category_ids, created_at)
-        VALUES (${accountId}, ${ws.workspaceId}, ${waiver.kind}, ${waiver.amountMinor}, ${challenge ? waiver.countedFrom : null}, ${challenge ? waiver.spendBy : null}, ${JSON.stringify(waiver.categoryIds)}, ${new Date().toISOString()})
+        VALUES (${accountId}, ${ws.workspaceId}, ${waiver.kind}, ${waiver.kind === 'lifetime' ? null : waiver.amountMinor}, ${challenge ? waiver.countedFrom : null}, ${challenge ? waiver.spendBy : null}, ${JSON.stringify(waiver.categoryIds)}, ${new Date().toISOString()})
         ON CONFLICT (account_id) DO UPDATE SET kind = excluded.kind, amount_minor = excluded.amount_minor, counted_from = excluded.counted_from,
           spend_by = excluded.spend_by, category_ids = excluded.category_ids`,
   );
   if (await feeYearColumn(db)) await db.run(sql`UPDATE card_fee_waivers SET fee_year = ${challenge ? feeYear : null} WHERE account_id = ${accountId} AND workspace_id = ${ws.workspaceId}`);
+}
+
+/** Whether card_fee_waivers takes a lifetime row (0115): its amount is no longer NOT NULL. Once seen it is remembered. */
+const lifetimeSeen = new WeakSet<object>();
+async function lifetimeAllowed(db: Db): Promise<boolean> {
+  if (lifetimeSeen.has(db)) return true;
+  const rows = await db.values<[number]>(sql`SELECT "notnull" FROM pragma_table_info('card_fee_waivers') WHERE name = 'amount_minor'`);
+  if (rows.length === 0 || Number(rows[0]![0]) !== 0) return false;
+  lifetimeSeen.add(db);
+  return true;
 }
 
 const dayNumber = (iso: string) => Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10))) / 86_400_000;

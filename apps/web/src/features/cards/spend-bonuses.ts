@@ -1,5 +1,5 @@
-import { bonusItem, type FeeWaiver, nearestFirst, type SpendBonusItem, type SpendLine, waiverItem, waiverSpend, waiverWindow } from '@expanses/core';
-import { type AccountRow, cardSpendLines, type FeeRefund, listFeeRefunds, listFeeWaivers } from '@expanses/db';
+import { bonusItem, type FeeWaiver, feeProgressWindow, hasSpendTarget, nearestFirst, type SpendBonusItem, type SpendLine, waiverItem, waiverSpend } from '@expanses/core';
+import { type AccountRow, cardFeeYears, cardSpendLines, type FeeRefund, listFeeRefunds, listFeeWaivers } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { activeDuring } from './catalog-panel';
@@ -36,8 +36,11 @@ export function useSpendBonuses(cp: CardPoints, accounts: readonly AccountRow[],
     queryFn: async () => {
       const waiver = (await listFeeWaivers(database.db, ws)).get(card.id) ?? null;
       const refunds = await listFeeRefunds(database.db, ws, card.id);
-      if (!waiver) return { waiver, refunds, waiverLines: [] as SpendLine[], item: null as SpendBonusItem | null };
-      const window = waiverWindow(waiver, feeOn, today);
+      // Free for life has nothing to spend toward: it is the card's waiver, never a spend bonus.
+      if (!waiver || !hasSpendTarget(waiver)) return { waiver, refunds, waiverLines: [] as SpendLine[], item: null as SpendBonusItem | null };
+      // The window the Fee waiver page's Progress counts over: the covered fee's, or the next one's once it is settled.
+      const current = (await cardFeeYears(database.db, ws, { cardId: card.id, today }))?.current ?? null;
+      const window = feeProgressWindow(waiver, feeOn, today, current !== null && current.state !== 'pending');
       const lines = await cardSpendLines(database, ws, card.id, window.from, window.to);
       const spent = waiverSpend(waiver, window, lines, expenseAncestors(accounts as AccountRow[]), card.currency ?? ws.baseCurrency);
       return { waiver, refunds, waiverLines: lines, item: waiverItem(waiver, window, spent, cp.terms?.annualFeeMinor ?? null, today) };

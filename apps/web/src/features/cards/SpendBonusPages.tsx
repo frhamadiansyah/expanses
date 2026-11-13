@@ -12,7 +12,8 @@ import { rewardText } from './CardBack';
 import { activeDuring } from './catalog-panel';
 import { Line, Meter, SUBTITLE, TextLine } from './rows';
 import { CountsRow } from './CountsRow';
-import { FeeWaivedFlow, useFeeWaivedStatus, waivedLine } from './FeeWaivedSheet';
+import { useFeeWaivedStatus, waivedLine } from './fee-waived-status';
+import { FeeYearGroups, useFeeProgress, useFeeYears } from './FeeYearGroups';
 import { challengeCoversFee } from './fee-line';
 import { useSpendBonuses } from './spend-bonuses';
 import { expenseAncestors, formatPoints, shortDate } from './useCardPoints';
@@ -30,37 +31,33 @@ function windowText(item: SpendBonusItem, currency: string): string {
 }
 
 /**
- * Fee waived for a fee challenge (was Fee refunded): reached and not yet waived, the button opens the one Fee waived
- * sheet Settings opens; once waived, the challenge says so, with what came back.
+ * Fee waived for a fee challenge (was Fee refunded): reached and not yet waived, the row opens the Fee waiver page,
+ * the one place the fee year is recorded; once waived, the challenge says so, with what came back.
  */
 function FeeWaivedButton({ page, item }: { page: CardPage; item: SpendBonusItem | undefined }) {
-  const { card, cp, currency, today } = page;
+  const { card, currency, today } = page;
   const status = useFeeWaivedStatus(card.id, today);
-  const [open, setOpen] = useState(false);
   // Only a challenge kept for the fee year a waiver covers now offers it or says it was waived; any other reads as before.
-  // A card with no fee date offers it on any reached challenge: the sheet asks for the date first.
+  // A card with no fee date offers it on any reached challenge: the page's Charged on is set in Settings first.
   const covers = Boolean(status.data && (!status.data.dated || challengeCoversFee(status.data.challengeYear, status.data.year)));
-  if (!item || item.kind !== 'challenge' || (!covers && !open)) return null;
+  if (!item || item.kind !== 'challenge' || !covers) return null;
   const waived = status.data?.waived ? waivedLine(status.data, currency) : null;
+  if (waived) {
+    return (
+      <InsetGroup>
+        <TextLine>
+          <span data-testid="fee-waived-status" className="font-medium text-[var(--ph-up)]">
+            {waived}
+          </span>
+        </TextLine>
+      </InsetGroup>
+    );
+  }
+  if (!item.reached) return null;
   return (
-    <>
-      {waived ? (
-        <InsetGroup>
-          <TextLine>
-            <span data-testid="fee-waived-status" className="font-medium text-[var(--ph-up)]">
-              {waived}
-            </span>
-          </TextLine>
-        </InsetGroup>
-      ) : (
-        item.reached && (
-          <InsetGroup>
-            <InsetRow action title="Fee waived" testId="fee-waived" onClick={() => setOpen(true)} />
-          </InsetGroup>
-        )
-      )}
-      {open && <FeeWaivedFlow fee={{ cardId: card.id, currency, annualFeeMinor: cp.terms?.annualFeeMinor ?? item.rewardMinor, annualFeeOn: cp.terms?.annualFeeOn ?? null }} today={today} onClose={() => setOpen(false)} />}
-    </>
+    <InsetGroup>
+      <InsetRow title="Fee waived" testId="fee-waived" to="/cards/$cardId/settings/fee-waiver" params={{ cardId: card.id }} />
+    </InsetGroup>
   );
 }
 
@@ -224,7 +221,7 @@ export function SpendBonusPage() {
   );
 }
 
-type Kind = 'none' | 'automatic' | 'challenge';
+type Kind = 'none' | FeeWaiver['kind'];
 
 function WaiverForm({ page }: { page: CardPage }) {
   const { database, ws } = useApp();
@@ -245,6 +242,25 @@ function WaiverForm({ page }: { page: CardPage }) {
   const shownBy = by ?? existing?.spendBy ?? '';
   const shownCategories = categories ?? existing?.categoryIds ?? [];
 
+  // Progress counts what the program on screen counts, saved or not: its window and its categories.
+  const years = useFeeYears(card.id, today);
+  const current = years.data?.current ?? null;
+  const settled = current !== null && current.state !== 'pending';
+  const shownWaiver: FeeWaiver | null =
+    shownKind === 'automatic' || shownKind === 'challenge'
+      ? { kind: shownKind, amountMinor: 0, countedFrom: shownKind === 'challenge' ? shownFrom : null, spendBy: shownKind === 'challenge' ? shownBy || null : null, categoryIds: shownCategories }
+      : null;
+  const progress = useFeeProgress(card, all, shownWaiver, page.cp.terms?.annualFeeOn ?? null, today, settled);
+  const typedMinor = (() => {
+    try {
+      return shownAmount.trim() ? parseGroupedMajor(shownAmount, currency) : 0;
+    } catch {
+      return 0;
+    }
+  })();
+  // Free for life, or a target the progress has reached: the bank is likely to skip the fee.
+  const reached = shownKind === 'lifetime' || Boolean(progress && typedMinor > 0 && progress.spentMinor >= typedMinor);
+
   async function save() {
     setError(null);
     try {
@@ -252,10 +268,10 @@ function WaiverForm({ page }: { page: CardPage }) {
       else {
         const waiver: FeeWaiver = {
           kind: shownKind,
-          amountMinor: parseGroupedMajor(shownAmount, currency),
+          amountMinor: shownKind === 'lifetime' ? 0 : parseGroupedMajor(shownAmount, currency),
           countedFrom: shownKind === 'challenge' ? shownFrom : null,
           spendBy: shownKind === 'challenge' ? shownBy || null : null,
-          categoryIds: shownCategories,
+          categoryIds: shownKind === 'lifetime' ? [] : shownCategories,
         };
         await saveFeeWaiver(database, ws, card.id, waiver);
       }
@@ -289,16 +305,23 @@ function WaiverForm({ page }: { page: CardPage }) {
         {choice('none', 'None', 'The fee is charged and stays charged')}
         {choice('automatic', 'Spend a yearly amount', 'The bank waives the fee itself when spending reaches the amount')}
         {choice('challenge', 'Spending challenge', 'The bank set a target and a date, usually after a call')}
+        {choice('lifetime', 'Free for life', 'The fee is always waived')}
       </InsetGroup>
-      {shownKind !== 'none' && (
+      {(shownKind === 'automatic' || shownKind === 'challenge') && (
         <InsetGroup header={shownKind === 'automatic' ? 'Target' : 'From the bank'}>
           <TextRow label="Spend" prefix={currency} value={shownAmount} onChange={(e) => setAmount(groupTypedAmount(e.target.value, currency))} inputMode="decimal" placeholder="Amount" />
           {shownKind === 'automatic' && <ReadOnlyRow label="Within" value="12 months before the fee date" />}
           {shownKind === 'challenge' && <TextRow label="Counted from" type="date" value={shownFrom} onChange={(e) => setFrom(e.target.value)} />}
           {shownKind === 'challenge' && <TextRow label="Spend by" type="date" value={shownBy} onChange={(e) => setBy(e.target.value)} />}
           <CountsRow accounts={all} value={shownCategories} onChange={setCategories} />
+          <ReadOnlyRow
+            label={shownKind === 'automatic' && settled && progress?.feeYear ? `Progress · ${progress.feeYear}` : 'Progress'}
+            value={progress ? formatMinor(progress.spentMinor, currency) : ''}
+            testId="fee-progress"
+          />
         </InsetGroup>
       )}
+      <FeeYearGroups cardId={card.id} currency={currency} today={today} reached={reached} />
     </CardScreen>
   );
 }
