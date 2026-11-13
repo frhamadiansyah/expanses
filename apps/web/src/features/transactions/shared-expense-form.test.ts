@@ -18,7 +18,7 @@ const view: SharedEventView = {
     { personId: 'p-eko', name: 'Eko', initials: 'E', hasApp: false, isMe: false, removed: true, balanceMinor: 0 },
   ],
   categories: [{ categoryId: 'cat-dinners', name: 'Dinners', icon: null, archived: false }],
-  expenses: [], settlements: [], spentMinor: 0, myShareMinor: 0, payments: [], waiting: [], currencyLocked: false,
+  expenses: [], settlements: [], spentMinor: 0, myShareMinor: 0, payments: [], waiting: [], currencyLocked: false, transfers: [],
 };
 const accounts = [
   { id: 'wallet', name: 'Euro wallet', kind: 'asset', subtype: 'cash', currency: 'EUR', archivedAt: null },

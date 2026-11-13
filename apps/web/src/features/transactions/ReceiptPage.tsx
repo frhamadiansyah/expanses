@@ -1,5 +1,17 @@
 import { formatMinor, isoDate } from '@expanses/core';
-import { eventPostingOf, jointRowNote, tagTransactions, listPhotos, listTransactions, ownerScope, paidOffMarkOf, setSettledBeforeApp, type TransactionPhotoRow } from '@expanses/db';
+import {
+  eventPostingOf,
+  eventTransferOf,
+  jointRowNote,
+  tagTransactions,
+  listPhotos,
+  listTransactions,
+  ownerScope,
+  paidOffMarkOf,
+  removeTransferFromSharedEvent,
+  setSettledBeforeApp,
+  type TransactionPhotoRow,
+} from '@expanses/db';
 import { deletedCopyLine } from '../events/delete-copy';
 import { deleteTransaction } from './member-transfer';
 import { useQuery } from '@tanstack/react-query';
@@ -110,6 +122,9 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
    * it: EVENT_POSTING), and it says who last changed the record when that was not this phone's person.
    */
   const fromEvent = useQuery({ queryKey: ['event-posting', transactionId], queryFn: () => eventPostingOf(database, transactionId) }).data ?? null;
+  // A shared workspace's transfer listed on a shared event instead of the workspace (an ATM withdrawal for a trip): the
+  // event it is on, and Remove from event to put it back.
+  const onEvent = useQuery({ queryKey: ['event-transfer', transactionId], queryFn: () => eventTransferOf(database, transactionId) }).data ?? null;
   // Withdrawal rate §7: the withdrawals a spend from foreign money came from.
   const withdrawal = useWithdrawalsUsed(tx?.id ?? null).data ?? null;
   // The recurring bill this purchase settles a month of, when it does (linked afterwards, or paid from the bill).
@@ -210,14 +225,18 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
     }
   }
 
-  /** Takes the purchase out of its event: it comes back to Cashflow, and the event no longer counts it. */
+  /**
+   * Takes the purchase out of its event: it comes back to Cashflow, and the event no longer counts it. A transfer listed
+   * on a shared event comes back to its workspace's list, on every phone in it, and off the event.
+   */
   async function removeFromEvent() {
     setError(null);
     setBusy(true);
     try {
-      await tagTransactions(database, ws, [transactionId], null);
+      if (onEvent) await removeTransferFromSharedEvent(database, ws, transactionId);
+      else await tagTransactions(database, ws, [transactionId], null);
       await invalidate();
-      showToast(`Removed from ${(events.data ?? []).find((event) => event.id === tx?.eventId)?.name ?? 'the event'}`);
+      showToast(`Removed from ${onEvent ? (onEvent.eventName ?? 'the event') : ((events.data ?? []).find((event) => event.id === tx?.eventId)?.name ?? 'the event')}`);
     } catch (e) {
       setError(e);
     } finally {
@@ -309,6 +328,19 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
                 </Link>
               </>
             )}
+          </p>
+        )}
+        {onEvent && (
+          <p className="text-[13px] leading-[17px] text-[var(--ph-ink-3)]" data-testid="on-event">
+            {`On ${onEvent.eventName ?? 'a shared event'}, not counted`}
+            {onEvent.eventId ? (
+              <>
+                {' · '}
+                <Link to="/events/$eventId" params={{ eventId: onEvent.eventId }} className="font-medium text-[var(--ph-tint)]">
+                  Open the event
+                </Link>
+              </>
+            ) : null}
           </p>
         )}
         {tx.excluded && (
@@ -435,7 +467,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
                  event's transaction is deleted on the event, with its record, never here. */
               (changeable || (isCorrection(tx) && !isTrade && !elsewhere)) && !fromEvent && (
                 <>
-                  {tx.eventId && (
+                  {(tx.eventId || onEvent) && (
                     <InsetGroup>
                       <DestructiveRow calm label="Remove from event" onClick={() => void removeFromEvent()} testId="remove-from-event" />
                     </InsetGroup>

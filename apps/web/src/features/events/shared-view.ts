@@ -1,5 +1,5 @@
 import { formatMinor } from '@expanses/core';
-import { type AccountRow, spendingSwitchOn, type NamedPayment, type SharedEventView, type SharedExpenseView, type SharedPersonView, type SharedSettlementView } from '@expanses/db';
+import { type AccountRow, spendingSwitchOn, type NamedPayment, type SharedEventTransferView, type SharedEventView, type SharedExpenseView, type SharedPersonView, type SharedSettlementView } from '@expanses/db';
 import { keptForSpending } from '../../lib/account-types';
 
 /*
@@ -35,7 +35,11 @@ export function spendingSlices(view: Pick<SharedEventView, 'expenses' | 'categor
   return [...totals.values()].filter((slice) => slice.totalMinor > 0).sort((a, b) => b.totalMinor - a.totalMinor);
 }
 
-export type DayItem = { kind: 'expense'; expense: SharedExpenseView } | { kind: 'settlement'; settlement: SharedSettlementView };
+export type DayItem =
+  | { kind: 'expense'; expense: SharedExpenseView }
+  | { kind: 'settlement'; settlement: SharedSettlementView }
+  /** A household transfer listed on the event (an ATM withdrawal): shown, never counted. */
+  | { kind: 'transfer'; transfer: SharedEventTransferView };
 
 export interface DayGroup {
   date: string;
@@ -44,8 +48,11 @@ export interface DayGroup {
   items: DayItem[];
 }
 
-/** The page's records grouped by day, newest day first; in a day, the spending first and then the settle-ups. */
-export function dayGroups(view: Pick<SharedEventView, 'expenses' | 'settlements'>): DayGroup[] {
+/**
+ * The page's records grouped by day, newest day first; in a day, the spending first, then the settle-ups, then the
+ * transfers listed on the event — which add nothing to the day's figure.
+ */
+export function dayGroups(view: Pick<SharedEventView, 'expenses' | 'settlements'> & { transfers?: readonly SharedEventTransferView[] }): DayGroup[] {
   const days = new Map<string, DayGroup>();
   const day = (date: string): DayGroup => {
     const group = days.get(date) ?? { date, spentMinor: 0, items: [] };
@@ -58,6 +65,7 @@ export function dayGroups(view: Pick<SharedEventView, 'expenses' | 'settlements'
     if (counted(expense)) group.spentMinor += expense.eventAmountMinor;
   }
   for (const settlement of view.settlements) day(settlement.occurredOn).items.push({ kind: 'settlement', settlement });
+  for (const transfer of view.transfers ?? []) day(transfer.occurredOn).items.push({ kind: 'transfer', transfer });
   return [...days.values()].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 }
 
@@ -154,6 +162,17 @@ export function expenseRow(e: SharedExpenseView, view: SharedEventView): { title
     share: e.myShareMinor !== 0 ? `share ${formatMinor(e.myShareMinor, e.currency)}` : null,
     flags: [e.unreadable ? `Needs fixing: ${e.unreadable}` : null, e.voided ? 'Deleted' : null, e.unsent ? 'Not sent yet' : null, ...postingFlags(e.posting, view)].filter((flag): flag is string => flag !== null),
   };
+}
+
+/**
+ * A transfer listed on the event (trip withdrawal, mockup panel 2): grey, in its own currency, with no share. Its
+ * accounts as this phone may name them — the recorder's own, or only a shared one on the partner's phone — else who
+ * recorded it; and always "not counted", for it is in no total, balance or settle-up.
+ */
+export function transferRow(t: SharedEventTransferView): { title: string; subtitle: string; amount: string } {
+  const where =
+    t.fromName && t.toName ? `${t.fromName} → ${t.toName}` : t.fromName ? `From ${t.fromName}` : t.toName ? `To ${t.toName}` : `Recorded by ${t.recordedByName}`;
+  return { title: t.description.trim() || 'Transfer', subtitle: `${where} · not counted`, amount: formatMinor(t.amountMinor, t.currency) };
 }
 
 export function settlementRow(s: SharedSettlementView, view: SharedEventView): { title: string; amount: string; flags: string[] } {

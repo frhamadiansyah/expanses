@@ -6,7 +6,7 @@ const noop = { people: () => undefined, categories: () => undefined, done: () =>
 const view = (over: Partial<SharedEventView> = {}): SharedEventView => ({
   eventId: 'ev', bookId: 'b', name: 'Coast week', startsOn: '2026-10-05', endsOn: '2026-10-12', currency: 'TRY', finishedAt: null, state: 'active', me: 'p-rina', myName: 'Rina',
   people: [{ personId: 'p-rina', name: 'Rina', initials: 'R', hasApp: true, isMe: true, removed: false, balanceMinor: 0 }],
-  categories: [], expenses: [], settlements: [], spentMinor: 0, myShareMinor: 0, payments: [], waiting: [], currencyLocked: false, ...over,
+  categories: [], expenses: [], settlements: [], spentMinor: 0, myShareMinor: 0, payments: [], waiting: [], currencyLocked: false, transfers: [], ...over,
 });
 
 describe('the shared event’s ⋯ menu (§6)', () => {

@@ -1,7 +1,7 @@
 import type { NamedPayment, SharedEventView, SharedSettlementView } from '@expanses/db';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { formatMinor } from '@expanses/core';
-import { CircleEllipsis, HandCoins, MoreHorizontal, Plus } from 'lucide-react';
+import { ArrowLeftRight, CircleEllipsis, HandCoins, MoreHorizontal, Plus } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { ErrorBox, Money } from '../../ui';
 import { ICONS } from '../categories/CategoryIcon';
@@ -18,7 +18,7 @@ import { SettleUpSheet } from './SettleUpSheet';
 import { HeroSwipe } from './HeroSwipe';
 import { SharedPlanHero, SharedPlanTab } from './SharedPlanTab';
 import { useFetchEventRates, useSharedEventPlan } from './shared-queries';
-import { balanceBars, dayGroups, expenseRow, mineToSettle, pageLocks, paymentLine, pickedDays, readOnlyLine, settlementDeletable, settlementRow, signedBalance, spendingSlices, waitingLine } from './shared-view';
+import { balanceBars, dayGroups, expenseRow, mineToSettle, pageLocks, paymentLine, pickedDays, readOnlyLine, settlementDeletable, settlementRow, signedBalance, spendingSlices, transferRow, waitingLine } from './shared-view';
 import { TakeOverSheet } from './TakeOverSheet';
 
 const CARDS = ['spending', 'balances', 'plan'] as const;
@@ -245,6 +245,25 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
                   {day.spentMinor > 0 ? <Money minor={day.spentMinor} currency={view.currency} className="ml-auto text-[13px] font-semibold text-[var(--ph-ink-2)]" /> : null}
                 </div>
                 {day.items.map((item, index) => {
+                  if (item.kind === 'transfer') {
+                    // A household transfer listed here (an ATM withdrawal): grey, not counted, no share. The phone that
+                    // recorded it opens its transaction, where Remove from event puts it back in its workspace.
+                    const t = item.transfer;
+                    const row = transferRow(t);
+                    return (
+                      <InsetRow
+                        key={`transfer-${t.transferId}`}
+                        position={{ ...positions[index]!, separator: index > 0 }}
+                        icon={<ArrowLeftRight size={16} strokeWidth={2.2} aria-hidden />}
+                        iconColour="var(--ph-ink-3)"
+                        title={row.title}
+                        subtitle={row.subtitle}
+                        value={<span className="text-[var(--ph-ink-3)]">{row.amount}</span>}
+                        onClick={t.transactionId ? () => void navigate({ to: '/transactions/$transactionId', params: { transactionId: t.transactionId! } }) : undefined}
+                        testId="shared-transfer-row"
+                      />
+                    );
+                  }
                   if (item.kind === 'settlement') {
                     const s = item.settlement;
                     const row = settlementRow(s, view);
