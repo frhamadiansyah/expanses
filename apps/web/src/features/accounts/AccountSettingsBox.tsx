@@ -1,6 +1,7 @@
-import { type AccountRow, changeOpeningDate, setAccountCardTier, setAccountForSpending, setCountedFrom, setAccountNumberLast4, setWalletLast4 } from '@expanses/db';
+import { type AccountRow, changeOpeningDate, firstCountedDay, setAccountCardTier, setAccountForSpending, setCountedFrom, setAccountNumberLast4, setWalletLast4 } from '@expanses/db';
 import { CATALOG } from '@expanses/catalog';
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { keptForSpending, SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
@@ -40,6 +41,8 @@ export function AccountSettingsBox({ account, onError }: { account: AccountRow; 
   const openings = useOpenings([account.id]);
   const opening = openings.data?.[account.id];
   const countedFrom = useCountedFrom();
+  // As of never moves past a transaction already counted (owner, 13 Nov 2026): the picker stops at its day.
+  const firstDay = useQuery({ queryKey: ['first-counted-day', ws.workspaceId, account.id], queryFn: () => firstCountedDay(database, ws, account.id) });
 
   const all = accounts.data ?? [];
   const bank = account.subtype === 'bank' || account.subtype === 'savings';
@@ -183,7 +186,7 @@ export function AccountSettingsBox({ account, onError }: { account: AccountRow; 
             label="As of"
             type="date"
             value={asOf.occurredOn}
-            max={isoDate()}
+            max={firstDay.data && firstDay.data < isoDate() ? firstDay.data : isoDate()}
             onChange={(e) => {
               const on = e.target.value;
               if (!on || on === asOf.occurredOn) return;

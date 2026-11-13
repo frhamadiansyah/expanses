@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createAccount, listCountedFrom, MIGRATIONS, nativeBalances, setCountedFrom, type Database, type WorkspaceContext } from '../src/index';
+import { categoryIdsByKey, createAccount, listCountedFrom, MIGRATIONS, nativeBalances, postTransaction, setCountedFrom, type Database, type WorkspaceContext } from '../src/index';
 import { setupDb } from './helpers';
 
 /** "Counted from" (0107): the As of day of a money account opened at nothing. Null until chosen; never moves a balance. */
@@ -38,5 +38,17 @@ describe('counted from', () => {
     await expect(setCountedFrom(database, ws, gopay.id, 'soon', '2026-10-29')).rejects.toThrow(/date/);
     const cash = await createAccount(database, ws, { name: 'Cash', kind: 'asset', subtype: 'cash', currency: 'IDR', openingBalanceMinor: 100_000, openedOn: '2026-01-01' });
     await expect(setCountedFrom(database, ws, cash.id, '2026-02-01', '2026-10-29')).rejects.toThrow(/opening/);
+  });
+
+  it('never moves past a transaction already on the account', async () => {
+    const gopay = await wallet();
+    const keys = await categoryIdsByKey(database, ws);
+    await postTransaction(database, ws, {
+      occurredOn: '2026-10-05', description: 'Noodle Stall',
+      lines: [{ accountId: keys['food_beverage.takeaways']!, amountMinor: 20_000, currency: 'IDR' }, { accountId: gopay.id, amountMinor: -20_000, currency: 'IDR' }],
+    });
+    await setCountedFrom(database, ws, gopay.id, '2026-10-05', '2026-10-29');
+    await expect(setCountedFrom(database, ws, gopay.id, '2026-10-06', '2026-10-29')).rejects.toThrow('Transactions from 2026-10-05 come before it');
+    expect(await listCountedFrom(database, ws)).toEqual({ [gopay.id]: '2026-10-05' });
   });
 });

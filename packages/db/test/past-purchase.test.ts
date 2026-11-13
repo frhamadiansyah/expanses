@@ -275,4 +275,18 @@ describe('a past purchase on a money account', () => {
     await expect(changeOpeningDate(w.database, w.ws, w.gopay.id, '2026-12-01', '2026-10-31')).rejects.toThrow(/after today/);
     expect(await checkLedgerIntegrity(w.database, w.ws)).toEqual([]);
   });
+
+  it('As of may move earlier, or later up to the first counted transaction, never past it; a past purchase never holds it back', async () => {
+    const w = await world();
+    // Opened 2026-10-28; a past purchase before it, and a counted one on 30 Oct.
+    await w.spend(w.gopay.id, 41_000, '2026-09-19', true);
+    await w.spend(w.gopay.id, 9_000, '2026-10-30');
+    await changeOpeningDate(w.database, w.ws, w.gopay.id, '2026-10-30', '2026-10-31');
+    expect((await openingsOf(w.database, w.ws, [w.gopay.id]))[w.gopay.id]!.occurredOn).toBe('2026-10-30');
+    await expect(changeOpeningDate(w.database, w.ws, w.gopay.id, '2026-10-31', '2026-10-31')).rejects.toThrow('Transactions from 2026-10-30 come before it');
+    expect((await openingsOf(w.database, w.ws, [w.gopay.id]))[w.gopay.id]!.occurredOn).toBe('2026-10-30');
+    await changeOpeningDate(w.database, w.ws, w.gopay.id, '2026-08-01', '2026-10-31');
+    expect(await w.balance(w.gopay.id)).toBe(1_480_000 - 9_000);
+    expect(await checkLedgerIntegrity(w.database, w.ws)).toEqual([]);
+  });
 });

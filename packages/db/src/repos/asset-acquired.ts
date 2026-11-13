@@ -189,6 +189,35 @@ export async function changeOriginalCost(
 }
 
 /**
+ * The day of the first transaction that moves this account's balance, or null: what "As of" may not move past. Left
+ * out: the opening entry itself, a purchase recorded as paid off before the app and its settlement (they net to
+ * nothing on the account), so a past purchase never holds the day back.
+ */
+export async function firstCountedDayTx(tx: Db, ws: WorkspaceContext, accountId: string, openingId: string | null): Promise<string | null> {
+  const rows = await tx.values<[string | null]>(sql`
+    SELECT min(t.occurred_on) FROM transactions t
+    WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted'
+      AND t.id IN (SELECT transaction_id FROM entries WHERE account_id = ${accountId})
+      AND t.id <> ${openingId ?? ''}
+      AND (t.external_ref IS NULL OR t.external_ref NOT LIKE 'before-app:%')
+      AND NOT EXISTS (SELECT 1 FROM transactions s WHERE s.external_ref = 'before-app:' || t.id AND s.status = 'posted')`);
+  return rows[0]?.[0] ?? null;
+}
+
+/** `firstCountedDayTx` for a screen: the latest day As of may take, besides today. */
+export async function firstCountedDay(database: Database, ws: WorkspaceContext, accountId: string): Promise<string | null> {
+  return database.transaction(async (tx) => {
+    const opening = await openingOfTx(tx, ws, accountId);
+    return firstCountedDayTx(tx, ws, accountId, opening?.id ?? null);
+  });
+}
+
+/** Said when As of would move past a transaction already counted: every day before it would read wrong (owner, 13 Nov 2026). */
+export function asOfPastText(firstDay: string): string {
+  return `Transactions from ${firstDay} come before it. Change the balance instead, or pick ${firstDay} or earlier.`;
+}
+
+/**
  * Moves the day a money account's balance is counted from ("As of"): its opening entry is replaced on the new day with
  * the same lines and rate. Only the default for new purchases follows (a purchase dated before it starts out past);
  * nothing already recorded is recounted or rewritten. An account with no opening entry has no day to move.
@@ -200,6 +229,9 @@ export async function changeOpeningDate(database: Database, ws: WorkspaceContext
     await assertAccountInWorkspace(tx, ws, accountId, 'Account');
     const opening = await openingOfTx(tx, ws, accountId);
     if (!opening || opening.occurredOn === on) return;
+    // Later than a counted transaction, the days before the start would read without it (13 Nov 2026): refused.
+    const first = await firstCountedDayTx(tx, ws, accountId, opening.id);
+    if (first !== null && on > first) throw new AssetError(asOfPastText(first));
     const lines = await tx
       .select({ accountId: entries.accountId, amountMinor: entries.amountMinor, currency: entries.currency, fxRateToBase: entries.fxRateToBase, amountBaseMinor: entries.amountBaseMinor, memo: entries.memo })
       .from(entries)
@@ -248,6 +280,10 @@ export async function setCountedFrom(database: Database, ws: WorkspaceContext, a
     await assertAccountInWorkspace(tx, ws, accountId, 'Account');
     if (await openingOfTx(tx, ws, accountId)) throw new AssetError('Its day is the opening entry’s: change that one');
     if (!(await countedColumnExists(tx))) throw new AssetError('This database cannot keep that yet');
+    if (on !== null) {
+      const first = await firstCountedDayTx(tx, ws, accountId, null);
+      if (first !== null && on > first) throw new AssetError(asOfPastText(first));
+    }
     await tx.run(sql`UPDATE accounts SET counted_from = ${on} WHERE id = ${accountId}`);
   });
 }
