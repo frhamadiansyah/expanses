@@ -2,6 +2,7 @@ import type { AccountRow, CardRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { buildRows, dayTotal, EMPTY_FILTERS, filterRows, type ListFilters, sharedTransferRow, totals, transferReach } from './list-model';
 import { DEFAULT_SORT, sortFilterCount } from './SortFilterMenu';
+import { jointWithPockets } from '../sharing/joint-pockets';
 
 /*
  * Own transfers off Cashflow (owner, 2026-11-13, option C): a display rule only. A transfer between the viewer's own
@@ -20,6 +21,7 @@ const accounts = [
   account('cash', 'asset', 'cash', { name: 'Cash' }),
   account('cashUsd', 'asset', 'cash', { name: 'Cash USD', currency: 'USD' }),
   account('joint', 'asset', 'bank', { name: 'Joint Contoh' }),
+  account('jointUsd', 'asset', 'bank', { name: 'Joint Contoh · USD', parentId: 'joint', currency: 'USD' }),
   account('rdn', 'asset', 'fund', { name: 'Broker cash' }),
   account('stock', 'asset', 'investment', { name: 'Contoh shares' }),
   account('loan', 'liability', 'loan', { name: 'Car loan' }),
@@ -70,6 +72,15 @@ describe('which transfers Cashflow keeps where (transferReach)', () => {
 
   it('calls a transfer between own money accounts own: a card payment, a top-up, broker cash, a cash exchange', () => {
     for (const own of [cardPayment, topUp, toBroker, exchange]) expect(reach(own)).toBe('own');
+  });
+
+  it('calls one into a joint account’s pocket the household’s, the pocket read as joint (jointWithPockets)', () => {
+    const intoPocket = tx('Into the joint USD pocket', [['jointUsd', 100_00, 'USD'], ['fx', -100_00, 'USD'], ['fx', 1_600_000_00], ['bank', -1_600_000_00]]);
+    const [row] = buildRows([intoPocket], [], accounts, cards);
+    const known = new Set(accounts.map((a) => a.id));
+    expect(transferReach(row!, known, jointWithPockets(joint, accounts))).toBe('household');
+    // Without the pockets read in, the bare switch alone would have called it own.
+    expect(transferReach(row!, known, joint)).toBe('own');
   });
 
   it('calls one touching a joint account or the partner’s account the household’s', () => {

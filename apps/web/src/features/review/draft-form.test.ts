@@ -330,7 +330,17 @@ describe('savedWhere: where a confirmed own transfer can be found (Cashflow list
 
   it('a top-up or a move between two money accounts is on both accounts’ pages', () => {
     expect(savedWhere({ ...payment, toAccountId: 'wallet' }, ACCOUNTS, cards)).toBe('Saved on both accounts’ pages');
-    expect(savedWhere({ ...payment, toAccountId: null }, ACCOUNTS, cards)).toBe('Saved on the account’s page');
+    // One side alone cannot say where it went: the toast reads as it always did.
+    expect(savedWhere({ ...payment, toAccountId: null }, ACCOUNTS, cards)).toBeNull();
+  });
+
+  it('says nothing for a transfer Cashflow still lists: a joint account, a fee, a loan', () => {
+    const accounts = [...ACCOUNTS, { id: 'joint', name: 'Joint bank', kind: 'asset', subtype: 'bank', currency: 'IDR' }, { id: 'loan', name: 'Car loan', kind: 'liability', subtype: 'loan', currency: 'IDR' }] as AccountRow[];
+    expect(savedWhere({ ...payment, toAccountId: 'joint' }, accounts, cards, new Set(['joint']))).toBeNull();
+    expect(savedWhere(payment, accounts, cards, new Set(), { fee: true })).toBeNull();
+    expect(savedWhere({ ...payment, toAccountId: 'loan' }, accounts, cards)).toBeNull();
+    // A side this phone does not hold (the partner's) is the household's, listed in the shared workspace.
+    expect(savedWhere({ ...payment, toAccountId: 'partner-item' }, accounts, cards)).toBeNull();
   });
 
   it('says nothing for spending or income, which Cashflow lists', () => {

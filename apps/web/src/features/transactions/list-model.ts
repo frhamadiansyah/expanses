@@ -244,9 +244,22 @@ export function transferReach(row: ListRow, known: ReadonlySet<string> | Readonl
   if (row.sharedTransfer) return 'household';
   if (!row.tx || row.feeMinor || row.spentMinor !== 0 || row.earnedMinor !== 0) return null;
   const money = row.tx.entries.filter((e) => e.accountKind === 'asset' || e.accountKind === 'liability');
-  if (new Set(money.map((e) => e.accountId)).size < 2) return null;
+  return reachOfSides(money, known, jointIds);
+}
+
+/**
+ * `transferReach` for a bare transfer's money sides alone — what a draft names before it is recorded, too: own when
+ * every side is this phone's own money account and none joint, the household's when a side is joint or not this
+ * phone's, null when a side is not money that only moves (a loan, a holding, a person) or there are not two sides.
+ */
+export function reachOfSides(
+  sides: readonly { accountId: string; accountSubtype?: string | null }[],
+  known: ReadonlySet<string> | ReadonlyMap<string, unknown>,
+  jointIds: ReadonlySet<string>,
+): 'own' | 'household' | null {
+  if (new Set(sides.map((e) => e.accountId)).size < 2) return null;
   let household = false;
-  for (const side of money) {
+  for (const side of sides) {
     if (known.size > 0 && !known.has(side.accountId)) household = true;
     else if (!MOVES_BETWEEN.has(side.accountSubtype ?? '')) return null;
     else if (jointIds.has(side.accountId)) household = true;

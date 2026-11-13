@@ -124,3 +124,24 @@ test('a transfer Transfers shows is ticked and put on a trip like any row; Selec
   await page.goto(eventUrl);
   await expect(page.getByTestId('event-history').filter({ hasText: 'Trip top-up' })).toHaveCount(1);
 });
+
+test('sideways, the table has its own Transfers switch, the same filter as upright', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Contoh Payroll', balance: '20000000' });
+  await openAccount(page, { subtype: 'ewallet', name: 'Dompet', balance: '0' });
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Warung Contoh', paidWith: 'Contoh Payroll', category: 'Restaurants', amount: '85000' });
+  await addTransfer(page, { from: 'Contoh Payroll', to: 'Dompet', amount: '100000', note: 'Sideways top-up' });
+  await page.setViewportSize({ width: 844, height: 390 });
+  const table = page.getByTestId('sideways-table');
+  await expect(table).toBeVisible();
+  await expect(table).toContainText('Warung Contoh');
+  await expect(table).not.toContainText('Sideways top-up');
+  const toggle = page.getByTestId('sideways-bar').getByRole('button', { name: 'Transfers' });
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(table).toContainText('Sideways top-up');
+  // Upright again, the list keeps the filter: one state, two controls.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(row(page, 'Sideways top-up')).toBeVisible();
+});

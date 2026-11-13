@@ -1798,6 +1798,7 @@ export function TransactionsPage() {
         onMonth={(next) => setSearch({ month: next === monthOf(today) ? undefined : next })}
         spentMinor={sum.spentMinor}
         currency={listCurrency}
+        transfers={cashflow ? { on: !!filters.showTransfers, onChange: (on) => setFilter('showTransfers', on) } : undefined}
       >
         {/* The hidden page's own error line cannot be seen from here, so the table carries one too. */}
         <div className="space-y-2">

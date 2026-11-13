@@ -1,7 +1,9 @@
 import { activeNetWorthGroup, getJointAccount, getShareSetting, itemIdOf, jointAccountIds, jointAccountRows, paidWithItems, pendingHidden, reviewedFor, reviewItems, sharingDetail } from '@expanses/db';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useApp } from '../../app/context';
+import { useAccounts } from '../../lib/queries';
+import { jointWithPockets } from './joint-pockets';
 
 /*
  * What the net-worth screens read (joint-net-worth §6, §8.1). Everything is keyed under `net-worth`, and re-read after
@@ -75,7 +77,9 @@ export function useJointAccountIds(): ReadonlySet<string> {
   const { database } = useApp();
   useRereadOnSync();
   const ids = useQuery({ queryKey: ['net-worth', 'joint-ids'], queryFn: async () => new Set(await jointAccountIds(database)) });
-  return ids.data ?? NO_JOINT;
+  // A joint account's pockets are joint too, and a joint pocket's account (`jointWithPockets`).
+  const accounts = useAccounts().data;
+  return useMemo(() => (ids.data ? jointWithPockets(ids.data, accounts ?? []) : NO_JOINT), [ids.data, accounts]);
 }
 
 /**
