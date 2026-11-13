@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   acquiredDates, type AccountRow, assetValuesAt, checkLedgerIntegrity, createAccount, type Database, getAssetProfile, listAccounts, listTrades, listValuations, nativeBalances, openAsset,
@@ -65,15 +66,22 @@ describe('openAsset', () => {
     expect({ ...of(opened.accountId), accountId: '', name: '' }).toEqual({ ...of(empty.id), accountId: '', name: '' });
   });
 
-  it('leaves nothing behind when the buy cannot be recorded', async () => {
-    const before = (await listAccounts(database, ws)).length;
+  it('leaves nothing behind when the buy cannot be recorded: no account, profile, acquired day, value, trade or sync row', async () => {
+    const TABLES = ['accounts', 'asset_profiles', 'asset_acquired', 'valuations', 'investment_trades', 'transactions', 'entries', 'sync_outbox'];
+    const counts = async () =>
+      Object.fromEntries(await Promise.all(TABLES.map(async (table) => [table, (await database.db.values<[number]>(sql.raw(`SELECT count(*) FROM ${table}`)))[0]![0]] as const)));
+    const before = await counts();
     await expect(
-      openAsset(database, ws, { account: { name: 'ORI031', kind: 'asset', subtype: 'investment', currency: 'IDR' }, profile: BOND, trades: [bondBuy('no-such-account')] }),
+      openAsset(database, ws, {
+        account: { name: 'ORI031', kind: 'asset', subtype: 'investment', currency: 'IDR' },
+        profile: BOND,
+        acquired: { on: '2026-11-10', precision: 'day' },
+        trades: [bondBuy('no-such-account')],
+        valuation: { asOf: '2026-11-12', valueMinor: 7_000_000, basis: 'estimate' },
+      }),
     ).rejects.toThrow();
-    const after = await listAccounts(database, ws);
-    expect(after).toHaveLength(before);
-    expect(after.some((a) => a.name === 'ORI031')).toBe(false);
-    expect(await listTrades(database, ws)).toEqual([]);
+    expect(await counts()).toEqual(before);
+    expect((await listAccounts(database, ws)).some((a) => a.name === 'ORI031')).toBe(false);
   });
 
   it('still opens past purchases against Opening Balances, with a first value', async () => {
