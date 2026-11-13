@@ -20,7 +20,7 @@ test('by thumb: Share is one page — a name, a button, then the invite with Cop
   const button = page.getByTestId('share-button');
   await expect(button).toBeDisabled();
   await expect(page.getByText('Everything is encrypted on this device')).toHaveCount(0);
-  await page.getByRole('button', { name: 'About Name shown to the other person' }).tap();
+  await page.getByRole('button', { name: 'About Name shown' }).tap();
   await expect(page.getByText('Everything is encrypted on this device')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Not now' })).toHaveCount(0);
   await page.getByTestId('share-name').fill('Ana');

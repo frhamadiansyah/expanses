@@ -145,7 +145,7 @@ function ShareForm({ book, refetch, onLostShare }: { book: BookRow; refetch: () 
           <p data-testid="share-lede" className="mb-[12px] px-[4px] text-[13px] leading-[18px] text-[var(--ph-ink-2)]">{SETUP_LEDE(book.name)}</p>
           <InsetGroup wide>
             <TextRow
-              label="Name shown to the other person"
+              label="Name shown"
               data-testid="share-name"
               value={name}
               onChange={(event) => setName(event.target.value)}
@@ -249,12 +249,12 @@ function Shared({ book, detail, sheetOpen }: { book: BookRow; detail: SharingDet
               icon={<User size={15} aria-hidden />}
               title={member.name}
               subtitle={member.me ? 'This phone' : lastChangeLine(silenceOf.get(member.memberId) ?? { lastChangeAt: null }, now)}
-              value={member.role === 'owner' && !member.me ? 'Owner' : undefined}
+              value={member.role === 'owner' ? 'Owner' : 'Member'}
               to="/account/workspaces/$bookId/share/members/$memberId"
               params={{ bookId: book.id, memberId: member.memberId }}
             />
           ))}
-          {!someoneJoined ? <InsetRow testId="sharing-waiting" icon={<User size={15} aria-hidden />} title="Waiting for someone to join" value={showInvite ? 'Invite open' : undefined} chevron={false} /> : null}
+          {!someoneJoined ? <InsetRow testId="sharing-waiting" icon={<User size={15} aria-hidden />} title="Waiting for someone" value={showInvite ? 'Invite open' : undefined} chevron={false} /> : null}
           {detail.owner && !frozen && someoneJoined ? <InsetRow testId="sharing-invite" title={<span className="text-[var(--ph-tint)]">Invite someone</span>} label="Invite someone" chevron={false} disabled={busy} onClick={() => void inviteSomeone()} /> : null}
         </InsetGroup>
       ) : null}

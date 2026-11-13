@@ -148,12 +148,12 @@ test('two people share a workspace: join, record on both, correct each other, re
   await expect(page.getByTestId('ws-share-row')).toContainText('Off');
   await openSharePage(page);
   await expect(page.getByTestId('share-button')).toBeDisabled();
-  await page.getByRole('button', { name: 'About Name shown to the other person' }).click();
+  await page.getByRole('button', { name: 'About Name shown' }).click();
   await expect(page.getByRole('form', { name: 'Share this workspace' })).toContainText('A replaced or restored phone needs a new invite.');
   const code = await shareWorkspace(page, 'Fandri');
   expect(code).toMatch(/^([0-9A-Z]{4}-){12}[0-9A-Z]{4}$/);
   await expect(page.getByTestId('invite-link')).toHaveText(`cicis://join/${code}`);
-  await expect(await shareStatus(page)).toContainText('Up to date');
+  await expect(page.getByTestId('sharing-sync-row')).toContainText('Up to date');
   await expect(page.getByTestId('sharing-waiting')).toContainText('Invite open');
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.getByTestId('share-copy').click();
@@ -255,7 +255,7 @@ test('two people share a workspace: join, record on both, correct each other, re
 
   // Dewi's device is told it was removed (final review, I2), and keeps what it already holds, read-only.
   await openWorkspaceSharePage(dewi, 'Home');
-  await eventually(dewi, () => expect(dewi.getByTestId('sharing-status')).toContainText('Removed from this workspace', { timeout: 1_000 }));
+  await eventually(dewi, async () => expect(await shareStatus(dewi)).toContainText('Removed from this workspace', { timeout: 1_000 }));
   await shot(dewi, info, '6-removed-status');
   await expectReadOnly(dewi, phone, 'Removed from this workspace');
 
@@ -431,7 +431,7 @@ test('an owner stops sharing: the other side says who stopped it, and can add no
   await expect(page.getByTestId('ws-share-row')).toContainText('Off', { timeout: 30_000 });
 
   await openWorkspaceSharePage(dewi, 'Home');
-  await eventually(dewi, () => expect(dewi.getByTestId('sharing-status')).toContainText('No longer shared by Fandri', { timeout: 1_000 }));
+  await eventually(dewi, async () => expect(await shareStatus(dewi)).toContainText('No longer shared by Fandri', { timeout: 1_000 }));
   await shot(dewi, info, '10-stopped-status');
   await expectReadOnly(dewi, phone, 'No longer shared by Fandri');
   await openSwitcher(dewi, phone);
@@ -457,7 +457,7 @@ test("an owner stops and shares again: the member's read-only copy rejoins throu
   await confirmDestructive(page, 'Stop sharing Home', 'Stop sharing?', 'Stop sharing');
   await expect(page.getByTestId('ws-share-row')).toContainText('Off', { timeout: 30_000 });
   await openWorkspaceSharePage(dewi, 'Home');
-  await eventually(dewi, () => expect(dewi.getByTestId('sharing-status')).toContainText('No longer shared by Fandri', { timeout: 1_000 }));
+  await eventually(dewi, async () => expect(await shareStatus(dewi)).toContainText('No longer shared by Fandri', { timeout: 1_000 }));
   await expectReadOnly(dewi, phone, 'No longer shared by Fandri');
 
   // Fandri shares it again, as the same person: the members are Fandri and the remembered Dewi, nobody twice.
@@ -491,7 +491,7 @@ test("an owner stops and shares again: the member's read-only copy rejoins throu
 
   // Shared again on Dewi's side: syncing, no longer read-only, and everything from before is still there.
   await openWorkspaceSharePage(dewi, 'Home');
-  await eventually(dewi, () => expect(dewi.getByTestId('sharing-status')).toContainText('Up to date', { timeout: 1_000 }));
+  await eventually(dewi, async () => expect(await shareStatus(dewi)).toContainText('Up to date', { timeout: 1_000 }));
   await shot(dewi, info, '12-rejoined');
   await dewi.goto('/transactions');
   await expect(dewi.getByTestId('read-only-notice')).toHaveCount(0);
@@ -915,7 +915,7 @@ test('a joint account: the partner pays from it, both list the same rows with wh
     await dewi.goto('/transactions');
     await dewi.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
     await addForm(dewi).getByRole('button', { name: /^Paid with/ }).click();
-    await expect(paidWithJoint).toContainText('Joint', { timeout: 1_000 });
+    await expect(paidWithJoint).toContainText('owned together', { timeout: 1_000 });
   });
   await dewi.goto('/transactions');
   await dewi.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
@@ -1071,6 +1071,8 @@ test('the partner’s joint account and joint card are cards in Wallet, counted 
   // Shared but not joint yet: nothing of Rina's is a card on Andi's Wallet; all three are in "Rina's, shared".
   const sharedRows = andi.locator('[data-testid^="shared-item-"]');
   await eventually(andi, async () => {
+    // Rina's phone sends once its review is in (by itself, after Andi's phone confirmed): brought to the front here.
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
     await andi.goto('/wallet');
     await expect(andi.getByText("Rina's, shared")).toBeVisible({ timeout: 1_000 });
     await expect(sharedRows).toHaveCount(3, { timeout: 1_000 });
@@ -1173,10 +1175,11 @@ test('the partner’s joint account and joint card are cards in Wallet, counted 
 });
 
 /*
- * The Net worth page is one list with switches: the setup carries the Shared row, the Shared list searches and switches
- * each item, an activation asks for one review, and a new asset starts Shared while sharing is active (off makes it private).
+ * Net worth from the one list (2026-11-13): before anything is shared the Add asset form shows no Shared switch; the
+ * first account switched on in Share › Shared with Dewi starts net worth by itself, and from then a new asset starts
+ * Shared (off makes it private). Assets and debts sit behind their own row at the end of the list.
  */
-test('net worth sharing: one Shared list with switches, search, N of M, and a new asset starts Shared', async ({ page, browser }, info) => {
+test('net worth sharing from the one list: the first account starts it, a new asset starts Shared, and assets sit behind their own row', async ({ page, browser }, info) => {
   test.setTimeout(900_000);
   page.on('dialog', (dialog) => void dialog.accept());
   const dewi = await secondDevice(browser, info);
@@ -1190,56 +1193,20 @@ test('net worth sharing: one Shared list with switches, search, N of M, and a ne
   await openNewAsset(page, 'Gold bullion');
   await expect(page.getByTestId('asset-shared-switch')).toHaveCount(0);
 
-  // The setup: filing, the Shared row (all on), and a list that searches and switches before anything is sent.
-  const section = await netWorthSection(page);
-  await expect(section.getByTestId('networth-shared-row')).toContainText('All 2');
-  await section.getByTestId('filing-separate').click();
-  await section.getByTestId('networth-shared-row').click();
-  await expect(page).toHaveURL(/\/share\/net-worth\/items$/);
-  const switches = page.getByTestId('networth-item-switch');
-  await expect(switches).toHaveCount(2);
-  await page.getByTestId('networth-items-search').fill('wall');
-  await expect(switches).toHaveCount(1);
-  await page.getByTestId('networth-items-search').fill('zzz');
-  await expect(switches).toHaveCount(0);
-  await page.getByTestId('networth-items-search').fill('WALLET');
-  await expect(switches).toHaveCount(1);
-  await expect(page.getByRole('checkbox', { name: 'Fandri Wallet' })).toBeChecked();
-  await page.getByRole('checkbox', { name: 'Fandri Wallet' }).click({ force: true });
-  await expect(page.getByRole('checkbox', { name: 'Fandri Wallet' })).not.toBeChecked();
-  await page.goBack();
-  // The filing answer survived the trip to the list.
-  await expect(section.getByTestId('networth-shared-row')).toContainText('1 of 2');
-  await section.getByRole('button', { name: 'Invite', exact: true }).click();
-  await expect(section.getByTestId('net-worth-waiting')).toContainText('Waiting for Dewi', { timeout: 30_000 });
-
-  // Dewi confirms; each reviews once. What was switched off stays off in Fandri's review.
-  const theirs = await netWorthSection(dewi);
-  await eventually(dewi, () => expect(theirs.getByTestId('net-worth-asked')).toContainText('Fandri asks to share net worth', { timeout: 1_000 }));
-  await theirs.getByRole('button', { name: 'Confirm', exact: true }).click();
-  await eventually(dewi, () => expect(theirs.getByTestId('net-worth-status')).toContainText('Shared with Fandri', { timeout: 1_000 }));
-  await reviewAndShare(dewi, info, 'nw-list-dewi');
+  // The list: one account switched on, Save. Dewi's phone confirms by itself.
   await openWorkspaceSharePage(page, 'Home');
-  await openNetWorthPage(page);
-  await page.getByTestId('networth-shared-row').click();
-  await expect(page.getByTestId('net-worth-review')).toBeVisible();
-  await expect(page.getByRole('checkbox', { name: 'Fandri Wallet' })).not.toBeChecked();
-  await expect(page.getByRole('checkbox', { name: 'Fandri Bank' })).toBeChecked();
-  await page.getByTestId('net-worth-share').click();
-  await expect(page.getByTestId('net-worth-review')).toHaveCount(0, { timeout: 30_000 });
-
-  // Active: the switches save at once, and the Net worth page reads N of M.
-  await page.getByRole('checkbox', { name: 'Fandri Wallet' }).click({ force: true });
-  await expect(page.getByRole('checkbox', { name: 'Fandri Wallet' })).toBeChecked();
-  await page.getByRole('checkbox', { name: 'Fandri Wallet' }).click({ force: true });
-  await expect(page.getByRole('checkbox', { name: 'Fandri Wallet' })).not.toBeChecked();
-  await page.goBack();
-  await expect(page.getByTestId('net-worth-filing')).toContainText('Filed separately');
-  await expect(page.getByTestId('networth-shared-row')).toContainText('1 of 2');
+  await page.getByTestId('share-list-row').click();
+  await setSwitch(page, 'Fandri Bank', true);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page).toHaveURL(/\/share$/, { timeout: 60_000 });
+  await householdFiling(dewi);
+  await filingReads(page, 'separate');
 
   // A new asset starts Shared while sharing is active; the switch off makes it private.
-  await openNewAsset(page, 'Gold bullion');
-  await expect(page.getByTestId('asset-shared-switch')).toBeChecked();
+  await eventually(page, async () => {
+    await openNewAsset(page, 'Gold bullion');
+    await expect(page.getByTestId('asset-shared-switch')).toBeChecked({ timeout: 1_000 });
+  });
   await page.getByLabel('Name', { exact: true }).fill('Shared gold');
   await pastPurchase(page);
   await fillDay(page, 'Bought', '2024-02-03');
@@ -1258,12 +1225,15 @@ test('net worth sharing: one Shared list with switches, search, N of M, and a ne
   await page.getByRole('button', { name: 'Add asset' }).last().click();
   await expect(page).toHaveURL(/\/net-worth\/assets$/);
 
+  // The list counts it, and the assets are behind their own row.
   await openWorkspaceSharePage(page, 'Home');
-  await openNetWorthPage(page);
-  await expect(page.getByTestId('networth-shared-row')).toContainText('2 of 4');
-  await page.getByTestId('networth-shared-row').click();
-  await expect(page.getByRole('checkbox', { name: 'Shared gold' })).toBeChecked();
-  await expect(page.getByRole('checkbox', { name: 'Private gold' })).not.toBeChecked();
+  await expect(page.getByTestId('share-list-row')).toContainText('1 account · 1 asset or debt');
+  await page.getByTestId('share-list-row').click();
+  await expect(page.getByTestId('share-list-assets-row')).toContainText('Assets & debts (2)');
+  await page.getByTestId('share-list-assets-row').click();
+  await expect(page.getByRole('checkbox', { name: 'Shared gold', exact: true })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'Private gold', exact: true })).not.toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'Fandri Wallet', exact: true })).not.toBeChecked();
   await shot(page, info, 'nw-list-active');
 });
 
@@ -1409,7 +1379,7 @@ test('leave and delete, share again, join: the couple’s clean-up through the s
   await confirmDestructive(page, 'Stop sharing Home', 'Stop sharing?', 'Stop sharing');
   await expect(page.getByTestId('ws-share-row')).toContainText('Off', { timeout: 30_000 });
   await fandri.goto(`/account/workspaces/${secondCopy}/share`);
-  await eventually(fandri, () => expect(fandri.getByTestId('sharing-status')).toContainText('No longer shared by Dewi', { timeout: 1_000 }));
+  await eventually(fandri, async () => expect(await shareStatus(fandri)).toContainText('No longer shared by Dewi', { timeout: 1_000 }));
   await fandri.goto(`/account/workspaces/${secondCopy}`);
   await fandri.getByTestId('delete-workspace').click();
   const deleteSheet = fandri.getByRole('dialog', { name: 'Delete workspace' });
