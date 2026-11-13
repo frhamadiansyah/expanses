@@ -272,3 +272,83 @@ describe('the one-time fix of Maybank card drafts waiting as income', () => {
     expect((await listDrafts(database, ws, 'pending')).map((draft) => draft.kind)).toEqual(['income', 'income']);
   });
 });
+
+describe('the draft build 114 stored for a Maybank card email', () => {
+  /*
+   * Field by field what release/114's ingest wrote (run from that release on this invented email, its sender handed
+   * over as a name and an address on two lines and its "Kartu Kredit" broken over a line): a source keyed on the
+   * sender as handed over and named "Id"; a pending draft of money in, its figure negative, on the card's account (the
+   * digits named it) with no card chosen and no category, its reading kept saying received with the figure and the
+   * digits, its words kept.
+   */
+  const RAW = `Maybank Credit Card Transaction Notification (do not reply)\n${CARD_EMAIL.replace(/Kartu Kredit/g, 'Kartu\nKredit')}`;
+  const READING =
+    '{"skipped":null,"amount":{"value":{"minor":47500,"currency":"IDR"},"confidence":90,"line":null},"occurredAt":{"value":"2026-11-05T18:22","confidence":90,"line":null},"type":{"value":"received","confidence":85,"line":null},"name":{"value":"Ojekku* A-QZ81LMNOPQ2","confidence":90,"line":null},"accountHint":"4732","paymentMethod":null}';
+
+  async function asBuild114Stored(made: Awaited<ReturnType<typeof workspace>>, over: Partial<typeof draftTransactions.$inferInsert> = {}) {
+    await made.database.db.insert(captureSources).values({
+      id: 'src-114',
+      workspaceId: null,
+      keyKind: 'app',
+      key: `Maybank\n${SENDER}`,
+      label: 'Id',
+      accountId: null,
+      templateJson: null,
+      readOffers: 0,
+      capturedCount: 1,
+      createdAt: '2026-11-11T12:57:00.000Z',
+      updatedAt: '2026-11-11T12:57:00.000Z',
+    });
+    await made.database.db.insert(draftTransactions).values({
+      id: 'draft-114',
+      workspaceId: made.ws.workspaceId,
+      source: 'notification',
+      kind: 'income',
+      status: 'pending',
+      rawPayload: RAW,
+      rawPurgeAfter: null,
+      occurredOn: '2026-11-05',
+      description: 'Ojekku* A-QZ81LMNOPQ2',
+      amountMinor: -47_500,
+      currency: 'IDR',
+      accountId: made.card,
+      toAccountId: null,
+      categoryAccountId: null,
+      cardId: null,
+      sourceId: 'src-114',
+      captureIds: '["mail-114"]',
+      imageFile: null,
+      readingJson: READING,
+      mergedInto: null,
+      confidence: 90,
+      externalRef: 'capture:mail-114',
+      transactionId: null,
+      createdAt: '2026-11-11T19:57:00+07:00',
+      resolvedAt: null,
+      ...over,
+    });
+  }
+
+  it.each([
+    ['with its words kept', {}],
+    ['with its words gone', { rawPayload: null }],
+  ])('becomes a purchase on the card its digits name, %s', async (_, over) => {
+    const made = await workspace();
+    await asBuild114Stored(made, over);
+
+    expect(await tidySenderSources(made.database)).toBe(1);
+    expect(await fixCardEmailDrafts(made.database, { today: DAY })).toBe(1);
+
+    expect(await row(made.database, 'draft-114')).toMatchObject({ kind: 'expense', amountMinor: 47_500, currency: 'IDR', accountId: made.card, cardId: made.cardId, categoryAccountId: null, status: 'pending' });
+    expect((await listSources(made.database)).map((source) => source.label)).toEqual(['Maybank']);
+  });
+
+  it('is left as it is once the owner gave it a category of their own', async () => {
+    const made = await workspace();
+    const other = (await listAccounts(made.database, made.ws)).filter((account) => account.kind === 'income')[1] ?? null;
+    expect(other).not.toBeNull();
+    await asBuild114Stored(made, { categoryAccountId: other!.id });
+    expect(await fixCardEmailDrafts(made.database, { today: DAY })).toBe(0);
+    expect((await row(made.database, 'draft-114')).kind).toBe('income');
+  });
+});
