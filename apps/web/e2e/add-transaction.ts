@@ -59,6 +59,16 @@ export async function choosePayment(page: Page, name: string, sheet: string | Re
 }
 
 /**
+ * A trade's Paid with (Buy) or Proceeds into (Sell): the same account sheet a purchase's Paid with opens. `name` is
+ * the account's name; a "(IDR)" left on it from the old picker's labels is dropped.
+ */
+export async function chooseTradeMoney(form: Locator, name: string, sell = false) {
+  const label = sell ? 'Proceeds into' : 'Paid with';
+  await form.getByRole('button', { name: new RegExp(`^${label}`) }).first().click();
+  await choosePayment(form.page(), name.replace(/ \([A-Z]{3}\)$/, ''), label);
+}
+
+/**
  * Trade, as a person opens it now: Net worth's corner, onto the Add screen's trade rows under their Buy and Sell tabs.
  * The Add form's tabs no longer offer it. `kind` taps the Sell tab when selling.
  */
@@ -182,7 +192,7 @@ export async function addPurchase(
     if ((await more.count()) > 0 && (await more.getAttribute('aria-expanded')) !== 'true') await more.click();
     await form.getByLabel(/^Fee /).fill(trade.fee);
   }
-  await form.getByLabel(sell ? 'Proceeds into' : 'Paid with').selectOption({ label: trade.paidWith });
+  await chooseTradeMoney(form, trade.paidWith, sell);
   if (trade.charged) await form.getByLabel(/^Charged in /).pressSequentially(trade.charged);
   if (trade.date) await form.getByLabel('Date').fill(trade.date);
   if (trade.goal) await chooseGoal(form, trade.goal);

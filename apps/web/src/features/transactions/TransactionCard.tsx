@@ -92,30 +92,6 @@ import { applyReceipt, filledLine, type ReceiptFilled, readReceiptPhoto, recogni
 import { autoCategoryOutOfSet, categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, isExpenseTopUp, eventForMode, memberTransferOf, topUpWallets, typedCurrency, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
-/**
- * The accounts a money field may name — the old form's own list, unchanged, for the rows Tasks 11 and 12 turn
- * into sheets of their own (a transfer's To, and what a purchase was paid with).
- */
-function MoneyAccountOptions({ accounts, spendableOnly, keep, placeholders }: { accounts: AccountRow[]; spendableOnly?: boolean; keep?: string; placeholders?: ReadonlySet<string> }) {
-  // A placeholder (§4.4) is never offered; the one the row already names stays, as who paid (final review, minor 2).
-  const money = moneyHolders(accounts).filter((a) => (!spendableOnly || canPayWith(a, keep)) && (!placeholders?.has(a.id) || a.id === keep));
-  return (
-    <>
-      <option value="">Choose…</option>
-      <optgroup label="Accounts">
-        {money.filter((a) => a.kind === 'asset').map((a) => (
-          <option key={a.id} value={a.id}>{placeholders?.has(a.id) ? placeholderLabel(a.name) : `${a.name} (${a.currency})`}</option>
-        ))}
-      </optgroup>
-      <optgroup label="Credit cards & debts">
-        {money.filter((a) => a.kind === 'liability').map((a) => (
-          <option key={a.id} value={a.id}>{`${a.name} (${a.currency})`}</option>
-        ))}
-      </optgroup>
-    </>
-  );
-}
-
 /** Stands in for Uncategorised while the ✓ asks whether the form would post; Save files under the real one. */
 const CATEGORY_LATER = '\u0000category-later';
 
@@ -400,7 +376,7 @@ function CardBody({
     setReceipt(null);
   };
 
-  const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal' | 'split' | 'move' | 'photos' | 'feeCategory'>(null);
+  const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal' | 'split' | 'move' | 'photos' | 'feeCategory' | 'tradeMoney'>(null);
   /*
    * A saved transaction moved to another workspace on its Edit screen: the workspace it goes to, or null while it stays.
    * Its category is swapped for that workspace's copy as the move is chosen, and the save says to move it.
@@ -456,6 +432,15 @@ function CardBody({
   const purchase = draft.purchase;
   const chosen = [...choices.buys, ...choices.sells].find((option) => option.value === `${purchase.mode}:${purchase.accountId}`);
   const purchaseMoney = byId.get(purchase.moneyId);
+  // Buy is paid with what a purchase may be paid with, cards included; Sell's money lands in a bank or cash account.
+  const tradeMoneyOptions: PaymentOption[] = withoutPlaceholders(
+    paymentOptions(
+      moneyHolders(accounts).filter((a) => canPayWith(a, purchase.moneyId) && (purchase.mode === 'buy' || a.kind === 'asset' || a.id === purchase.moneyId)),
+      [],
+    ),
+    listedIds,
+    purchase.moneyId,
+  );
   const purchaseCurrency = byId.get(purchase.accountId)?.currency ?? ws.baseCurrency;
   // The paying or receiving account's currency; with none chosen yet, the holding's own (nothing crosses).
   const purchaseCashCurrency = purchaseMoney ? (purchaseMoney.currency ?? ws.baseCurrency) : purchaseCurrency;
@@ -1134,20 +1119,17 @@ function CardBody({
               value={purchase.useLots ? purchase.lots : purchase.units}
               onChange={(text) => setPurchase(purchase.useLots ? { lots: text } : { units: text })}
             />
-            <SelectFormRow
+            {/* Paid with / To: the same sheet a purchase's Paid with and a transfer's From and To open (owner, 13 Nov 2026). */}
+            <FormRow
+              lead="value"
               icon={<RowGlyph>{purchase.mode === 'buy' ? <CreditCard size={15} /> : <Landmark size={15} />}</RowGlyph>}
               label={payRow.label}
               caption={payRow.caption}
-              hint={payRow.hint}
               divided={purchase.mode === 'buy'}
-              /* The options are a component, so there are no `<option>`s here to read the chosen one off; the
-                 row is handed the very label `MoneyAccountOptions` gives that account. */
-              display={purchaseMoney ? (placeholders.has(purchaseMoney.id) ? placeholderLabel(purchaseMoney.name) : `${purchaseMoney.name} (${purchaseMoney.currency})`) : ''}
-              value={purchase.moneyId}
-              onChange={(moneyId) => setPurchase({ moneyId, moneyIsCard: byId.get(moneyId)?.subtype === 'credit_card', charged: '' })}
-            >
-              <MoneyAccountOptions accounts={accounts} spendableOnly keep={purchase.moneyId} placeholders={placeholders} />
-            </SelectFormRow>
+              value={purchaseMoney ? (placeholders.has(purchaseMoney.id) ? placeholderLabel(purchaseMoney.name) : purchaseMoney.name) : ''}
+              chevron
+              onClick={() => setSheet('tradeMoney')}
+            />
             {purchaseNeeds.charged && (
               <MoneyFieldRow
                 currency={purchaseCashCurrency}
@@ -1631,6 +1613,17 @@ function CardBody({
           value={draft.mode === 'trade' ? purchase.goalId : draft.goalId}
           groups={[{ choices: [{ value: '', label: 'None', glyph: <Target size={15} /> }, ...goals.map((goal) => ({ value: goal.id, label: goal.name, glyph: <Target size={15} /> }))] }]}
           onPick={(goalId) => (draft.mode === 'trade' ? setPurchase({ goalId }) : set({ goalId }))}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet === 'tradeMoney' && (
+        <PaymentSheet
+          title={payRow.label}
+          options={tradeMoneyOptions}
+          accounts={accounts}
+          placeholders={placeholders}
+          chosenAccountId={purchase.moneyId}
+          onPick={(option) => setPurchase({ moneyId: option.accountId, moneyIsCard: byId.get(option.accountId)?.subtype === 'credit_card', charged: '' })}
           onClose={() => setSheet(null)}
         />
       )}

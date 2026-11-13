@@ -4,7 +4,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import BetterSqlite3 from 'better-sqlite3';
 import { openNewAsset, fillDay } from './add-asset';
-import { addTransaction, closeDetails, shareWith, choosePayment, openBuyOrSell, saveButton } from './add-transaction';
+import { addTransaction, closeDetails, shareWith, choosePayment, chooseTradeMoney, openBuyOrSell, saveButton } from './add-transaction';
 import { openDrawers } from './drawers';
 import { openAsset } from './asset-page';
 
@@ -95,7 +95,7 @@ test('the receipt refuses what every other screen refuses: a trade, and an openi
   const form = await openBuyOrSell(page);
   await form.getByLabel('Grams').fill('2');
   await form.getByLabel(/What it cost, before fees/).fill('3980000');
-  await form.getByLabel('Paid with').first().selectOption({ label: 'BCA Tahapan (IDR)' });
+  await chooseTradeMoney(form, 'BCA Tahapan (IDR)');
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
   // Trade goes back to Net worth, where it was opened; the list is read on Cashflow.
