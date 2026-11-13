@@ -49,7 +49,7 @@ export function newRowsFrom(rows: readonly ListRow[], outcomes: readonly ListOut
       ? [
           {
             id,
-            note: row.description || row.source || '',
+            note: row.description,
             amountMinor: row.amountMinor,
             direction: row.direction,
             type: row.direction === 'in' ? ('income' as const) : ('expense' as const),

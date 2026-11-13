@@ -35,6 +35,11 @@ describe('list model', () => {
     ]);
   });
 
+  it('never takes what a row was paid with for its note', () => {
+    const paid = { ...row('2026-09-15', '', 5000, 'out'), source: 'Wallet Saldo' };
+    expect(newRowsFrom([paid], [{ row: 0, status: 'new' }])[0]!.note).toBe('');
+  });
+
   it('records only ticked rows and asks a transfer for its other account', () => {
     let made = newRowsFrom(rows, outcomes);
     expect(canRecord(made)).toBe(true);
