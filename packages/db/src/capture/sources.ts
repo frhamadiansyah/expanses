@@ -250,34 +250,49 @@ export async function setSourceReadsOffers(database: Database, sourceId: string,
 }
 
 /**
- * Senders whose emails only ever report money going out: a Maybank card or account email is a purchase, whatever
- * "Kartu Kredit", "kredit" or "dana masuk" it prints (the owner's rule, 2026-11-13). Matched on a word of the sender's
- * domain, so every Maybank address is one; a declined purchase is still skipped by the reader.
+ * The issuers whose credit card emails are purchases the reader can mistake for money in: a Maybank card email says
+ * "transaksi dengan Maybank Kartu Kredit", and a "Kredit" it kept apart from its "Kartu" read as received (the
+ * owner's report, 2026-11-13). Matched on a word of the sender's domain. The debit app's own sender ("m2u…") reads
+ * money arriving as well as money leaving, so it is read as the reader reads it.
  */
-const SPENDING_ONLY_DOMAINS = new Set(['maybank']);
+const CARD_EMAIL_DOMAINS = new Set(['maybank']);
+const NOT_CARD_EMAIL = /^m2u/;
 
 /** The sender's address a source is keyed on, in whatever shape it was handed over, or null for an app or a screen. */
 function addressOf(source: Pick<CaptureSource, 'keyKind' | 'key'>): string | null {
   return source.keyKind === 'app' ? (senderOf(source.key)?.key ?? null) : null;
 }
 
-/** Whether every capture from this source is money going out. */
-export function spendsOnly(source: Pick<CaptureSource, 'keyKind' | 'key'>): boolean {
+/** Whether this source is an issuer's credit card sender (`CARD_EMAIL_DOMAINS`). */
+export function isCardEmailSender(source: Pick<CaptureSource, 'keyKind' | 'key'>): boolean {
   const address = addressOf(source);
   if (!address) return false;
+  const at = address.indexOf('@');
+  if (NOT_CARD_EMAIL.test(address.slice(0, at).replace(/^mailto:/, ''))) return false;
   return address
-    .slice(address.indexOf('@') + 1)
+    .slice(at + 1)
     .split('.')
-    .some((part) => SPENDING_ONLY_DOMAINS.has(part));
+    .some((part) => CARD_EMAIL_DOMAINS.has(part));
 }
 
+/** Whether the words name a credit card, with whatever space, break or invisible mark between its two words. */
+const CREDIT_CARD = /(?<![\p{L}\p{N}])(?:kartu\s+kredit|credit[\s-]+card)(?![\p{L}\p{N}])/iu;
+const NO_WIDTH = /[\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff\u00ad]/g;
+const namesCreditCard = (capture: RawCapture): boolean =>
+  CREDIT_CARD.test([capture.title, capture.body, ...capture.lines.map((line) => line.text)].filter(Boolean).join('\n').replace(NO_WIDTH, ''));
+
 /**
- * A capture read the way its source reads: by the reader, with what the source learned, and — for a sender whose
- * emails only report spending — always as money out. Every place a capture is read from its source reads it here.
+ * A capture read the way its source reads: by the reader, with what the source learned. Every place a capture is
+ * read from its source reads it here.
+ *
+ * One mistake is put right: a credit card purchase email from a card sender (`isCardEmailSender`) that the reader
+ * took for money received is spending. A refund or a top-up it names stays what it is, and anything that is no
+ * credit card email, or comes from another sender, is the reader's alone.
  */
 export function readFromSource(capture: RawCapture, source: CaptureSource, offers: 'skip' | 'transactions' | 'read'): Reading {
   const reading = readCapture(capture, WORDS, source.template, { offers });
-  if (reading.skipped !== null || reading.type.value === 'spent' || !spendsOnly(source)) return reading;
+  if (reading.skipped !== null || reading.amount === null || reading.type.value !== 'received') return reading;
+  if (!isCardEmailSender(source) || !namesCreditCard(capture)) return reading;
   return { ...reading, type: { value: 'spent', confidence: 90, line: null } };
 }
 

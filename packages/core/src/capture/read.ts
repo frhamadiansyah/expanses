@@ -812,6 +812,13 @@ export function readCapture(
     };
   }
 
+  /* A plain notice says a purchase failed where it says what happened — its title or its first sentence ("Transaksi
+     … ditolak", "Transaction declined: …") — and moved no money. Further down, "jika transaksi gagal" is advice. */
+  if (capture.lines.length === 0) {
+    const headline = all.slice(0, capture.title?.trim() ? 2 : 1);
+    if (headline.some((unit) => hasWord(unit.text, words.declined))) return SKIPPED('declined', hint, paymentMethod);
+  }
+
   const offers = opts.offers ?? 'skip';
   const units = offers === 'read' ? all : withoutOffers(all, words, offers === 'transactions');
   if (units === null) return SKIPPED('promo', hint, paymentMethod);

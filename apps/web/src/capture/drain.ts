@@ -13,7 +13,7 @@
 import { isoDate, type RawCapture, readsAsStatement } from '@expanses/core';
 import {
   type Database,
-  fixSpendingSenderDrafts,
+  fixCardEmailDrafts,
   type IngestResult,
   ingestCaptures,
   purgeCaptureLeftovers,
@@ -57,8 +57,8 @@ async function rereadWaiting(database: Database, on: string): Promise<number> {
   try {
     // A sender an older build named for the end of its address ("Id") gets its bank's name back.
     await tidySenderSources(database);
-    // Once per device: a Maybank email waiting as money in is the purchase it was.
-    changed += await fixSpendingSenderDrafts(database, { today: on });
+    // Once per device: a Maybank card email an older reader left waiting as money in is the purchase it was.
+    changed += await fixCardEmailDrafts(database, { today: on });
   } catch {
     // Tried again on the next drain: the fix marks itself done only when it ran through.
   }

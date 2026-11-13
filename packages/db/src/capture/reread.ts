@@ -24,9 +24,9 @@ import { draftExactExists } from '../repos/exact-column';
 import { accounts, workspaces } from '../schema';
 import { captureSettings, captureSources } from '../schema-capture';
 import { draftTransactions } from '../schema-drafts';
-import { cardAccountFor, planDraft } from './ingest';
+import { planDraft } from './ingest';
 import { storedReadingOf } from './learn';
-import { type CaptureSource, readFromSource, sourceById, spendsOnly } from './sources';
+import { type CaptureSource, isCardEmailSender, readFromSource, sourceById } from './sources';
 
 type Row = typeof draftTransactions.$inferSelect;
 
@@ -215,37 +215,68 @@ export async function rereadUnreadDrafts(database: Database, opts: { today: stri
 }
 
 /** Marks the one-time fix below as run on this device (capture settings never leave it). */
-const SPENDING_SENDER_FIX = 'fix.spending-sender-income.v1';
+const CARD_EMAIL_FIX = 'fix.card-email-income.v1';
 
-/** The card digits a draft's kept reading named, whatever shape an older build kept it in. */
-function digitsOf(readingJson: string | null): string | null {
-  if (!readingJson) return null;
-  try {
-    const parsed = JSON.parse(readingJson) as { accountHint?: unknown; paymentMethod?: { last4?: unknown } | null } | null;
-    const digits = parsed?.paymentMethod?.last4 ?? parsed?.accountHint;
-    return typeof digits === 'string' && /^\d{3,6}$/.test(digits) ? digits : null;
-  } catch {
-    return null;
+/** What turning one card email the reader took for money in round to a purchase changes, or null to leave it. */
+async function cardEmailFixOf(tx: Db, row: Row, source: CaptureSource, ws: WorkspaceContext, today: string): Promise<DraftEdit | null> {
+  // The reader's income has its figure turned negative; a positive one was turned by hand.
+  if (row.amountMinor >= 0) return null;
+  const edit: DraftEdit = { kind: 'expense', amountMinor: -row.amountMinor };
+  const exact = (await draftExactExists(tx)) ? await exactOf(tx, row.id) : null;
+  if (exact !== null) {
+    edit.exactHundredths = exact;
+    // A figure with cents rounded down as money in is rounded up as money out.
+    if (wholeFromHundredths(exact, 'down') === -row.amountMinor) edit.amountMinor = wholeFromHundredths(exact, 'up');
   }
+
+  const before = storedReadingOf(row.readingJson);
+  if (!before) {
+    // Nothing kept says what the reader made of it: only a category that is none, or the one the reader would give,
+    // tells it was left alone. Its account stays: no digits are kept to name a card by.
+    const readers = await capturedCategoryFromHistory(tx, ws, row.description, 'income');
+    if (row.categoryAccountId !== null && row.categoryAccountId !== readers) return null;
+    edit.categoryAccountId = await capturedCategoryFromHistory(tx, ws, row.description, 'expense');
+    return edit;
+  }
+
+  // Only the mistaken money in: a refund or a top-up was read as one, and stays.
+  if (before.type.value !== 'received') return null;
+  const capture = captureOf(row);
+  const { draft: then } = await planDraft(tx, ws, capture, source, before, { today });
+  const { draft: now } = await planDraft(tx, ws, capture, source, { ...before, type: { value: 'spent', confidence: 90, line: null } }, { today });
+  // Still what the reader made: its figure, its account and its category. Anything else is the owner's.
+  if (then.kind !== 'income' || -row.amountMinor !== Math.abs(then.amountMinor) || row.currency !== then.currency) return null;
+  if (row.accountId !== (then.accountId ?? null)) return null;
+  if (row.categoryAccountId !== null && row.categoryAccountId !== (then.categoryAccountId ?? null)) return null;
+  if (now.kind !== 'expense' || now.amountMinor <= 0) return null;
+  edit.amountMinor = now.amountMinor;
+  edit.currency = now.currency;
+  edit.exactHundredths = now.exactHundredths ?? null;
+  // The account is still the reader's, so the card its digits name is taken with it.
+  edit.accountId = now.accountId ?? row.accountId;
+  edit.cardId = now.cardId ?? null;
+  edit.categoryAccountId = now.categoryAccountId ?? null;
+  return edit;
 }
 
 /**
- * Once per device: every draft still waiting as money in from a sender whose emails only report spending (a Maybank
- * card email, `spendsOnly`) becomes the purchase it was. Older builds read some as income and kept them so, and no
- * reading of their words can be trusted to say otherwise — they may be gone — so the draft is matched on its source
- * alone, whatever its sign or its kept reading.
+ * Once per device: a credit card email from a card sender (`isCardEmailSender`, a Maybank card email) that an older
+ * build's reader took for money in, still waiting just as the reader left it, becomes the purchase it was. Its words
+ * may be gone, so it is found by its source, and told from the owner's own by what it kept:
  *
- * The figure is made positive; the card is the one its digits name, when one card does; an income category gives way
- * to the spending category the merchant went to last, or none. A confirmed or dismissed draft is never touched.
- * Returns how many drafts changed.
+ * - its kept reading said money received (not a refund or a top-up), and its figure, account and category are still
+ *   what that reading gave — the card its digits name is then taken;
+ * - with no reading kept, its category is none or the reader's own, and its account stays as it is.
+ *
+ * A draft the owner changed, and a confirmed or dismissed one, is never touched. Returns how many drafts changed.
  */
-export async function fixSpendingSenderDrafts(database: Database, opts: { today: string }): Promise<number> {
+export async function fixCardEmailDrafts(database: Database, opts: { today: string }): Promise<number> {
   return database.transaction(async (tx) => {
-    const [done] = await tx.select({ key: captureSettings.key }).from(captureSettings).where(eq(captureSettings.key, SPENDING_SENDER_FIX));
+    const [done] = await tx.select({ key: captureSettings.key }).from(captureSettings).where(eq(captureSettings.key, CARD_EMAIL_FIX));
     if (done) return 0;
-    const spending = (await tx.select().from(captureSources)).filter((source) => spendsOnly(source));
+    const senders = (await tx.select().from(captureSources)).filter((source) => isCardEmailSender(source));
     const rows =
-      spending.length === 0
+      senders.length === 0
         ? []
         : await tx
             .select()
@@ -257,7 +288,7 @@ export async function fixSpendingSenderDrafts(database: Database, opts: { today:
                 isNull(draftTransactions.mergedInto),
                 inArray(
                   draftTransactions.sourceId,
-                  spending.map((source) => source.id),
+                  senders.map((source) => source.id),
                 ),
               ),
             );
@@ -267,31 +298,15 @@ export async function fixSpendingSenderDrafts(database: Database, opts: { today:
       const [home] = await tx.select({ id: workspaces.id, baseCurrency: workspaces.baseCurrency }).from(workspaces).where(eq(workspaces.id, row.workspaceId));
       if (!source || !home) continue;
       const ws: WorkspaceContext = { workspaceId: home.id, baseCurrency: home.baseCurrency };
-      // The words, while they are kept, say which card; otherwise the reading the draft kept may.
-      const read = row.rawPayload ? readFromSource(captureOf(row), source, 'read') : null;
-      const card = await cardAccountFor(tx, row.workspaceId, read?.paymentMethod?.last4 ?? read?.accountHint ?? digitsOf(row.readingJson));
-
-      const edit: DraftEdit = { kind: 'expense', amountMinor: Math.abs(row.amountMinor) };
-      const exact = (await draftExactExists(tx)) ? await exactOf(tx, row.id) : null;
-      if (exact !== null) {
-        edit.exactHundredths = exact;
-        // A figure with cents rounded down as money in is rounded up as money out.
-        if (wholeFromHundredths(exact, 'down') === Math.abs(row.amountMinor)) edit.amountMinor = wholeFromHundredths(exact, 'up');
-      }
-      if (card) {
-        edit.accountId = card.id;
-        edit.cardId = card.cardId;
-      }
-      if (row.categoryAccountId === null || (await isIncomeCategory(tx, row.categoryAccountId))) {
-        edit.categoryAccountId = await capturedCategoryFromHistory(tx, ws, row.description, 'expense');
-      }
+      const edit = await cardEmailFixOf(tx, row, source, ws, opts.today);
+      if (!edit) continue;
       await editDraftTx(tx, ws, row.id, edit);
       // The kept reading says what the draft now is, so no later re-read turns it back.
       const kept = storedReadingOf(row.readingJson);
       if (kept) await tx.update(draftTransactions).set({ readingJson: JSON.stringify({ ...kept, type: { value: 'spent', confidence: 90, line: null } }) }).where(eq(draftTransactions.id, row.id));
       fixed += 1;
     }
-    await tx.insert(captureSettings).values({ key: SPENDING_SENDER_FIX, value: new Date().toISOString() }).onConflictDoNothing();
+    await tx.insert(captureSettings).values({ key: CARD_EMAIL_FIX, value: new Date().toISOString() }).onConflictDoNothing();
     return fixed;
   });
 }

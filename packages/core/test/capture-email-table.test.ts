@@ -236,6 +236,21 @@ describe('a transaction email read as a labelled table', () => {
     expect(readCapture({ ...email(sms, null as unknown as string), title: null }, WORDS, null).type.value).toBe('spent');
   });
 
+  it.each([
+    ['in its first sentence', 'Transaksi Kartu Kredit Contoh **** 4732 sebesar Rp 245.500 di TOKOBAJU ditolak. Silakan coba lagi.', null],
+    ['in its title', 'Kartu **** 4732 sebesar Rp 245.500 di TOKOBAJU.', 'Transaksi Gagal'],
+    ['in English', 'Transaction declined: card ending 4732, SGD 18.40 at KEDAICONTOH.', null],
+  ])('skips a plain notice that says the purchase was declined %s', (_, body, title) => {
+    const reading = readCapture({ ...email(body), title }, WORDS, null);
+    expect(reading.skipped).toBe('declined');
+    expect(reading.amount).toBeNull();
+  });
+
+  it('records a plain notice whose words about failing come only further down', () => {
+    const body = 'Pembayaran Rp38.000 berhasil di TOKO KOPI. Simpan bukti ini. Jika transaksi gagal, hubungi 1500000.';
+    expect(readCapture({ ...email(body), title: null }, WORDS, null).skipped).toBeNull();
+  });
+
   it('reads a card email whose advert below mentions refunds and credit as a purchase', () => {
     const reading = readCapture(email(perCell()), WORDS, null);
     expect(reading.type).toEqual({ value: 'spent', confidence: 70, line: null });
