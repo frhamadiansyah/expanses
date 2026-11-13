@@ -1,18 +1,12 @@
-import { dayMonth, type FeeYearLine, formatMinor } from '@expanses/core';
+import { challengeCoversFee, dayMonth, type FeeYearLine, formatMinor } from '@expanses/core';
 import type { FeeYearRecord } from '@expanses/db';
 import { shortMoney } from '../networth/value-chart';
 
 /** "12 Mar 2027". */
 export const feeDateText = (iso: string) => `${dayMonth(iso)} ${iso.slice(0, 4)}`;
 
-/**
- * Whether a fee challenge is about the fee year a waiver covers now: the year kept on the challenge when it was saved
- * (the charge it was given for, even when given after the fee posted) is the covered charge's. Only such a challenge
- * offers Fee waived or says the fee was waived; last year's reads as ended, and next year's shows its own progress.
- */
-export function challengeCoversFee(challengeYear: number | null, coveredYear: number): boolean {
-  return challengeYear !== null && challengeYear === coveredYear;
-}
+/** Whether a fee challenge is about the fee year a waiver covers now (core's rule, kept here for the card's pages). */
+export { challengeCoversFee };
 
 /** A fee line's date: "15 Oct" in the fee year the line is about, "2 Feb 2027" in any other. */
 export const lineDate = (iso: string, feeYear: number) => (Number(iso.slice(0, 4)) === feeYear ? dayMonth(iso) : feeDateText(iso));

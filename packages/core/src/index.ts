@@ -689,6 +689,7 @@ export {
   waiverWindow,
 } from './points/spend-bonus';
 export {
+  challengeCoversFee,
   FEE_CHARGE_DESCRIPTION,
   FEE_DAYS_AFTER,
   FEE_DAYS_BEFORE,

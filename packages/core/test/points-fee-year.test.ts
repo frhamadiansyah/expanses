@@ -69,27 +69,32 @@ describe('fee progress window', () => {
 describe('fee waiver row', () => {
   const T = '2026-11-13';
   it('names the settled year first', () => {
-    expect(feeWaiverRowText({ year: 2026, state: 'waived' }, automatic, 'Rp 18 jt', T)).toBe('2026 waived');
-    expect(feeWaiverRowText({ year: 2026, state: 'waived' }, challenge, 'Rp 8,6 jt', T)).toBe('2026 waived');
-    expect(feeWaiverRowText({ year: 2026, state: 'charged' }, null, null, T)).toBe('2026 charged');
-    expect(feeWaiverRowText({ year: 2026, state: 'charged' }, automatic, 'Rp 18 jt', T)).toBe('2026 charged');
+    expect(feeWaiverRowText({ year: 2026, state: 'waived' }, automatic, 'Rp 18 jt', T, 2026)).toBe('2026 waived');
+    expect(feeWaiverRowText({ year: 2026, state: 'waived' }, challenge, 'Rp 8,6 jt', T, 2026)).toBe('2026 waived');
+    expect(feeWaiverRowText({ year: 2026, state: 'charged' }, null, null, T, 2026)).toBe('2026 charged');
+    expect(feeWaiverRowText({ year: 2026, state: 'charged' }, automatic, 'Rp 18 jt', T, 2026)).toBe('2026 charged');
   });
   it('reads None without a program, and what is left to spend with one', () => {
-    expect(feeWaiverRowText({ year: 2026, state: 'pending' }, null, null, T)).toBe('None');
-    expect(feeWaiverRowText(null, null, null, T)).toBe('None');
-    expect(feeWaiverRowText({ year: 2026, state: 'pending' }, automatic, 'Rp 18 jt', T)).toBe('Rp 18 jt to go');
-    expect(feeWaiverRowText({ year: 2026, state: 'pending' }, challenge, 'Rp 8,6 jt', T)).toBe('Rp 8,6 jt to go');
+    expect(feeWaiverRowText({ year: 2026, state: 'pending' }, null, null, T, 2026)).toBe('None');
+    expect(feeWaiverRowText(null, null, null, T, 2026)).toBe('None');
+    expect(feeWaiverRowText({ year: 2026, state: 'pending' }, automatic, 'Rp 18 jt', T, 2026)).toBe('Rp 18 jt to go');
+    expect(feeWaiverRowText({ year: 2026, state: 'pending' }, challenge, 'Rp 8,6 jt', T, 2026)).toBe('Rp 8,6 jt to go');
   });
   it('says Reached with nothing left to spend, and Free for life for a fee that is always waived', () => {
-    expect(feeWaiverRowText({ year: 2026, state: 'pending' }, automatic, null, T)).toBe('Reached');
-    expect(feeWaiverRowText({ year: 2026, state: 'pending' }, lifetime, null, T)).toBe('Free for life');
+    expect(feeWaiverRowText({ year: 2026, state: 'pending' }, automatic, null, T, 2026)).toBe('Reached');
+    expect(feeWaiverRowText({ year: 2026, state: 'pending' }, lifetime, null, T, 2026)).toBe('Free for life');
   });
   // Mockup section 5: the fee is charged, then the bank's challenge runs; Settings follows the challenge, not the charge.
   it('follows a running challenge on a charged year, and reads charged once it ended short', () => {
-    expect(feeWaiverRowText({ year: 2026, state: 'charged' }, challenge, 'Rp 8,6 jt', T)).toBe('Rp 8,6 jt to go');
-    expect(feeWaiverRowText({ year: 2026, state: 'charged' }, challenge, null, T)).toBe('Reached');
-    expect(feeWaiverRowText({ year: 2026, state: 'charged' }, challenge, 'Rp 8,6 jt', '2027-01-20')).toBe('2026 charged');
+    expect(feeWaiverRowText({ year: 2026, state: 'charged' }, challenge, 'Rp 8,6 jt', T, 2026)).toBe('Rp 8,6 jt to go');
+    expect(feeWaiverRowText({ year: 2026, state: 'charged' }, challenge, null, T, 2026)).toBe('Reached');
+    expect(feeWaiverRowText({ year: 2026, state: 'charged' }, challenge, 'Rp 8,6 jt', '2027-01-20', 2026)).toBe('2026 charged');
     // Ended but reached: still waiting for the bank's reversal.
-    expect(feeWaiverRowText({ year: 2026, state: 'charged' }, challenge, null, '2027-01-20')).toBe('Reached');
+    expect(feeWaiverRowText({ year: 2026, state: 'charged' }, challenge, null, '2027-01-20', 2026)).toBe('Reached');
+  });
+  // Review round 2: last year's met challenge, still on the card, says nothing about the 2026 fee.
+  it('reads charged when the challenge is another fee year’s', () => {
+    expect(feeWaiverRowText({ year: 2026, state: 'charged' }, challenge, null, T, 2025)).toBe('2026 charged');
+    expect(feeWaiverRowText({ year: 2026, state: 'charged' }, challenge, 'Rp 8,6 jt', T, null)).toBe('2026 charged');
   });
 });

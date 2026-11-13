@@ -75,13 +75,29 @@ export function feeProgressWindow(waiver: FeeWaiver, feeOn: string | null, today
  * A charged year with a bank's challenge (owner ruling, mockup section 5) follows the challenge while it runs or once
  * it is reached — the reversal is still to come — and reads charged only once it ended short.
  */
-export function feeWaiverRowText(year: { year: number; state: FeeYearState } | null, waiver: FeeWaiver | null, toGo: string | null, today: string): string {
-  const challengeOpen = waiver?.kind === 'challenge' && (toGo === null || (waiver.spendBy !== null && today <= waiver.spendBy));
+export function feeWaiverRowText(
+  year: { year: number; state: FeeYearState } | null,
+  waiver: FeeWaiver | null,
+  toGo: string | null,
+  today: string,
+  challengeYear: number | null,
+): string {
+  // Only the covered year's own challenge: last year's, met and left on the card, says nothing about this fee.
+  const ours = year !== null && challengeCoversFee(challengeYear, year.year);
+  const challengeOpen = ours && waiver?.kind === 'challenge' && (toGo === null || (waiver.spendBy !== null && today <= waiver.spendBy));
   if (year && year.state === 'waived') return `${year.year} waived`;
   if (year && year.state === 'charged' && !challengeOpen) return `${year.year} charged`;
   if (!waiver) return 'None';
   if (waiver.kind === 'lifetime') return 'Free for life';
   return toGo === null ? 'Reached' : `${toGo} to go`;
+}
+
+/**
+ * Whether a fee challenge is about the fee year a waiver covers now: the year kept on the challenge when it was saved
+ * (the charge it was given for, even when given after the fee posted) is the covered charge's.
+ */
+export function challengeCoversFee(challengeYear: number | null, coveredYear: number): boolean {
+  return challengeYear !== null && challengeYear === coveredYear;
 }
 
 /** How far before a fee date its charge may be dated, and after it (the statement after the anniversary). */

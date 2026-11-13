@@ -4,6 +4,7 @@ import { PickerRow } from '../../ui/native';
 import type { GroupChild } from '../../ui/native/InsetList';
 import type { CardPage } from './card-page';
 import { feeToGo } from './fee-line';
+import { useFeeWaivedStatus } from './fee-waived-status';
 import { useFeeProgress, useFeeYears } from './FeeYearGroups';
 import { useSpendBonuses } from './spend-bonuses';
 
@@ -19,8 +20,10 @@ export function FeeWaiverRow({ page, position }: GroupChild & { page: CardPage }
   const years = useFeeYears(card.id, today);
   const current = years.data?.current ?? null;
   const progress = useFeeProgress(card, all, waiver, cp.terms?.annualFeeOn ?? null, today, current !== null && current.state !== 'pending');
-  const loading = !ready || years.isPending || progress === undefined;
+  // The year the card's challenge is for: only that year's challenge speaks for a charged fee.
+  const status = useFeeWaivedStatus(card.id, today);
+  const loading = !ready || years.isPending || status.isPending || progress === undefined;
   const toGo = waiver && progress ? feeToGo(waiver.amountMinor - progress.spentMinor, currency) : null;
-  const text = loading ? '' : feeWaiverRowText(current ? { year: current.year, state: current.state } : null, waiver, toGo, today);
+  const text = loading ? '' : feeWaiverRowText(current ? { year: current.year, state: current.state } : null, waiver, toGo, today, status.data?.challengeYear ?? null);
   return <PickerRow position={position} label="Fee waiver" value={text} testId="fee-waiver-row" onOpen={() => void navigate({ to: '/cards/$cardId/settings/fee-waiver', params: { cardId: card.id } })} />;
 }
