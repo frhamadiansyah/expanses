@@ -1,3 +1,4 @@
+import { pastPurchase } from './add-asset';
 import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { openAssets } from './drawers';
@@ -223,6 +224,9 @@ test('Add a holding shows every row from the start, and what was typed stays whe
   // One page, as Add asset: the ticker is its first row, and the rest are there before one is chosen.
   await expect(page.getByRole('button', { name: /^Ticker/ })).toContainText('Choose');
   await expect(page.getByLabel('Broker', { exact: true })).toBeVisible();
+  // It opens on New purchase, dated today; Past purchase asks the day it was bought instead.
+  await expect(page.getByLabel('Date', { exact: true })).toBeVisible();
+  await pastPurchase(page);
   await expect(page.getByRole('button', { name: /^Bought/ })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add holding' })).toBeDisabled();
   await page.getByLabel('Price per share', { exact: true }).pressSequentially('8750');

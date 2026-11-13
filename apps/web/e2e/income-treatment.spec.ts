@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openSettings } from './accounts';
-import { openNewAsset, fillDay } from './add-asset';
+import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { openAssets, openDrawers } from './drawers';
 import { addHoldingFlow } from './securities';
 import { openTradeForm, openTradeRow, recordTrade } from './trades';
@@ -27,6 +27,7 @@ async function addStock(page: Page) {
 async function addBond(page: Page, name: string, cost: string) {
   await openNewAsset(page, 'Government bonds');
   await page.getByLabel('Name', { exact: true }).fill(name);
+  await pastPurchase(page);
   await fillDay(page, 'Bought', `${YEAR}-02-10`);
   await page.getByLabel('Par value', { exact: true }).fill('100');
   await page.getByLabel('Purchase value', { exact: true }).fill(cost);

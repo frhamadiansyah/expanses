@@ -371,7 +371,16 @@ export function TradeDetails({
  * What a purchase on a credit card asks beyond the account: the category it counts under for points and its MCC, in a
  * box of their own under the first. Drawn only for a buy paid by a card, and nowhere else.
  */
-export function CardPointsBox({ details, accounts, show }: { details: TradeDetailsState; accounts: readonly AccountRow[]; show: boolean }) {
+export function CardPointsBox({
+  details,
+  accounts,
+  show,
+}: {
+  /** The two facts and how to change them: the sheets' details, or Add asset's New purchase. */
+  details: { draft: { spendCategoryId: string; mcc: string }; change: (patch: { spendCategoryId?: string; mcc?: string }) => void };
+  accounts: readonly AccountRow[];
+  show: boolean;
+}) {
   if (!show) return null;
   const { draft, change } = details;
   return (

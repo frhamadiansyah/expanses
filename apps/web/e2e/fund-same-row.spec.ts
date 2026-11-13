@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { fillDay, openNewAsset } from './add-asset';
+import { fillDay, openNewAsset, pastPurchase } from './add-asset';
 import { openAsset } from './asset-page';
 import { openAssets } from './drawers';
 
@@ -19,6 +19,7 @@ test.beforeEach(({ page }) => {
 async function fundAt(page: Page, o: { name: string; amount: string; value: string; place: string }): Promise<string> {
   await openNewAsset(page, 'Mutual fund');
   await page.getByLabel('Name', { exact: true }).fill(o.name);
+  await pastPurchase(page);
   await fillDay(page, 'Bought', '2026-01-15');
   await page.getByLabel('Amount', { exact: true }).fill(o.amount);
   await page.getByRole('button', { name: 'Add asset' }).last().click();

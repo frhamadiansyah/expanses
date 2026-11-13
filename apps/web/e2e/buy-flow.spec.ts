@@ -1,7 +1,7 @@
 import { closePurchase, openPurchase, purchaseRowOf } from './purchases';
 import { expect, type Page, test } from '@playwright/test';
 import { expectWalletFigure, openAccount, openSettings } from './accounts';
-import { openNewAsset, fillDay } from './add-asset';
+import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal, chooseInvestment, chooseTradeMoney, openBuyOrSell, saveButton } from './add-transaction';
 import { cardPage, cardPointsPage, saveCardTerms, chooseCatalogueCard } from './card-section';
 import { openAssets, openDrawers } from './drawers';
@@ -22,6 +22,7 @@ async function addAccount(page: Page, name: string, type: string, balanceLabel: 
 async function addGold(page: Page) {
   await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
+  await pastPurchase(page);
   await fillDay(page, 'Bought', '2026-03-09');
   await page.getByLabel('How much').fill('10');
   await page.getByLabel('Total cost', { exact: true }).fill('18600000');

@@ -1,6 +1,6 @@
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { asHeld, brokerChoices, brokerlessNames, brokerlessNote, emptyHoldingDraft, landsOnNote, NEW_BROKER, NO_BROKER_CHOICE, namedSecurity, OPENING, planAddHolding, totalOf, unitsOf } from './add-holding';
+import { asHeld, brokerChoices, brokerlessNames, brokerlessNote, emptyHoldingDraft, landsOnNote, NEW_BROKER, NO_BROKER_CHOICE, namedSecurity, newPurchaseMoney, OPENING, planAddHolding, totalOf, unitsOf } from './add-holding';
 
 const bbca = { ticker: 'BBCA', name: 'BBCA name', market: 'IDX', currency: 'IDR', lotSize: 100, kind: 'share' as const };
 const aapl = { ticker: 'AAPL', name: 'AAPL name', market: 'NASDAQ', currency: 'USD', lotSize: null, kind: 'share' as const };
@@ -159,5 +159,34 @@ describe('planAddHolding with nothing bought yet', () => {
     const empty = { ...emptyHoldingDraft('', 'IDR'), brokerChoice: NO_BROKER_CHOICE };
     expect(planAddHolding({ kind: 'listed', security: bbca }, empty, '2026-09-21', 'IDR')).toMatchObject({ broker: null, buy: null });
     expect(() => planAddHolding({ kind: 'listed', security: bbca }, { ...empty, quantity: '10', price: '8.750' }, '2026-09-21', 'IDR')).toThrow('Choose when it was bought');
+  });
+});
+
+describe('a share bought now', () => {
+  /* Invented figures: ten lots on a card, or from the broker's own cash. */
+  const draft = { ...emptyHoldingDraft('2026-11-13', 'IDR'), brokerChoice: 'rdn', quantity: '10', price: '4.120', paidFrom: 'visa' };
+
+  it('carries the category for points and the MCC when a card pays, as Trade does', () => {
+    const plan = planAddHolding({ kind: 'listed', security: bbca }, { ...draft, spendCategoryId: 'investments', mcc: ' 6211 ' }, '2026-11-13', 'IDR', true);
+    expect(plan.buy).toMatchObject({ cashAccountId: 'visa', grossMinor: 4_120_000, spendCategoryId: 'investments', mcc: '6211' });
+  });
+
+  it('leaves the card facts off a buy from an account', () => {
+    const plan = planAddHolding({ kind: 'listed', security: bbca }, { ...draft, paidFrom: 'rdn', spendCategoryId: 'investments', mcc: '6211' }, '2026-11-13', 'IDR');
+    expect(plan.buy).not.toHaveProperty('spendCategoryId');
+    expect(plan.buy).not.toHaveProperty('mcc');
+  });
+
+  it('asks what paid, once something is typed', () => {
+    expect(() => planAddHolding({ kind: 'listed', security: bbca }, { ...draft, paidFrom: '' }, '2026-11-13', 'IDR')).toThrow('Choose what paid for it');
+  });
+
+  it('pays from the broker’s cash unless another account is picked, as Trade does', () => {
+    const brokers = [{ id: 'rdn' }];
+    expect(newPurchaseMoney('rdn', brokers, '')).toBe('rdn');
+    expect(newPurchaseMoney('rdn', brokers, 'visa')).toBe('visa');
+    // A broker not opened yet has no cash to pay from; nor does no broker at all.
+    expect(newPurchaseMoney(NEW_BROKER, brokers, '')).toBe('');
+    expect(newPurchaseMoney(NO_BROKER_CHOICE, brokers, '')).toBe('');
   });
 });
