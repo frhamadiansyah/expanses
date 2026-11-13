@@ -1,0 +1,74 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Share row, one tax ID</title>
+<style>
+  :root { --ink:#000; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --green:#34c759; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; }
+  h1 { font-size:20px; margin:0 0 4px; } h2 { font-size:16px; margin:24px 0 6px; } .sub { color:#555; margin:0 0 14px; max-width:1150px; }
+  .wrap { display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }
+  .phone { width:310px; background:var(--ground); border-radius:26px; padding:12px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .cap { font-weight:700; margin:0 0 4px; font-size:14px; } .note { font-size:12.5px; color:#555; margin:0 0 8px; min-height:50px; }
+  .bar { display:flex; justify-content:space-between; align-items:center; margin:2px 4px 10px; font-size:16px; } .bar .l { color:var(--tint); font-size:15px; } .bar b { font-weight:600; }
+  .hd { font-size:12.5px; color:var(--ink3); text-transform:uppercase; margin:8px 14px 5px; }
+  .grp { background:var(--surface); border-radius:12px; overflow:hidden; margin-bottom:4px; }
+  .r { display:flex; justify-content:space-between; align-items:center; padding:11px 14px; font-size:15px; } .r + .r { border-top:.5px solid var(--hair); }
+  .v { color:var(--ink3); } .chev::after { content:" ›"; color:#c7c7cc; } .link { color:var(--tint); }
+  .ft { font-size:12.5px; color:var(--ink3); margin:4px 14px 8px; line-height:1.35; }
+  .menu { background:rgba(255,255,255,.97); border-radius:12px; box-shadow:0 6px 24px rgba(0,0,0,.2); margin:6px 30px 0 60px; overflow:hidden; font-size:15px; }
+  .menu div { padding:10px 14px; } .menu div + div { border-top:.5px solid var(--hair); } .off { color:#c7c7cc; }
+  .pill { width:44px; height:26px; border-radius:13px; background:var(--green); position:relative; opacity:.45; } .pill::after { content:""; position:absolute; right:2px; top:2px; width:22px; height:22px; border-radius:50%; background:#fff; }
+  .lock { font-size:12px; color:var(--ink3); }
+  .tagx { font-size:13px; color:var(--green); font-weight:600; }
+  .new { box-shadow:inset 3px 0 0 #ff9f0a; }
+  .arrow { font-size:26px; color:#888; align-self:center; }
+  .chk { color:var(--tint); font-weight:700; }
+</style></head>
+<body>
+<h1>"Share with Household" when the household files with One tax ID</h1>
+<p class="sub">With One tax ID, every item has to be in the household's tax report, so no item can be set to "Don't share". Today the screens still show a picker and switches that look changeable but aren't. After: they say "Shared" plainly, explain why once, and a <b>Change</b> link goes to the page where the filing choice is made.</p>
+
+<h2>1 · Account Settings (bank or card), bottom of the page</h2>
+<div class="wrap">
+  <div class="phone"><p class="cap">Before</p><p class="note">A picker. Tapping it shows "Don't share" greyed out, so nothing can change.</p>
+    <div class="bar"><span class="l">‹ BCA Tahapan</span><b>Settings</b><span></span></div>
+    <div class="grp"><div class="r"><span>Share with Household</span><span class="v chev">Balance and one total</span></div><div class="r"><span>Joint account</span><span class="pill" style="opacity:1;background:#e5e5ea"></span></div></div>
+    <div class="ft">Balance and one total: the others see its balance…</div>
+    <div class="menu"><div>✓ Balance and one total</div><div class="off">Don't share</div></div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="phone"><p class="cap">After</p><p class="note">No picker. It reads Shared, says why, and offers Change.</p>
+    <div class="bar"><span class="l">‹ BCA Tahapan</span><b>Settings</b><span></span></div>
+    <div class="grp new"><div class="r"><span>Share with Household</span><span class="tagx">Shared</span></div><div class="r"><span>Joint account</span><span class="pill" style="opacity:1;background:#e5e5ea"></span></div></div>
+    <div class="ft">One tax ID: every item is in the household's tax report, so every item is shared. <span class="link">Change</span></div>
+  </div>
+</div>
+
+<h2>2 · Workspace → Share → net worth list</h2>
+<div class="wrap">
+  <div class="phone"><p class="cap">Before</p><p class="note">Every switch looks like it can be turned off, but it can't.</p>
+    <div class="bar"><span class="l">‹ Family</span><b>Share</b><span></span></div>
+    <div class="hd">Net worth</div>
+    <div class="grp"><div class="r"><span>BCA Tahapan</span><span class="pill"></span></div><div class="r"><span>BCA Visa · 4821</span><span class="pill"></span></div><div class="r"><span>Antam gold</span><span class="pill"></span></div></div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="phone"><p class="cap">After</p><p class="note">"Shared" words instead of switches; the reason once at the top, with Change.</p>
+    <div class="bar"><span class="l">‹ Family</span><b>Share</b><span></span></div>
+    <div class="hd">Net worth</div>
+    <div class="ft" style="margin-top:0">One tax ID: every item is in the household's tax report, so every item is shared. <span class="link">Change</span></div>
+    <div class="grp new"><div class="r"><span>BCA Tahapan</span><span class="tagx">Shared</span></div><div class="r"><span>BCA Visa · 4821</span><span class="tagx">Shared</span></div><div class="r"><span>Antam gold</span><span class="tagx">Shared</span></div></div>
+  </div>
+</div>
+
+<h2>3 · Where "Change" goes: the Share net worth page (it exists today)</h2>
+<p class="sub">Today it is reached by Account → Workspaces → Family → Share → Net worth. Choosing Separate is sent to the husband's phone to accept, like the first invite. After that, each item can be set to "Don't share".</p>
+<div class="wrap">
+  <div class="phone"><p class="cap">Share net worth</p><p class="note">The filing choice and who joins.</p>
+    <div class="bar"><span class="l">‹ Share</span><b>Net worth</b><span></span></div>
+    <div class="hd">How the household files tax</div>
+    <div class="grp"><div class="r"><span>One tax ID</span><span class="chk">✓</span></div><div class="r"><span>Separate</span><span></span></div></div>
+    <div class="ft">One tax ID: the yearly return lists both members, so Net worth and the tax report are the household's. Separate: each keeps their own; what the other shares is visible but not counted.</div>
+    <div class="hd">Who joins</div>
+    <div class="grp"><div class="r"><span>Andi</span><span class="chk">✓</span></div></div>
+    <div class="grp" style="margin-top:10px"><div class="r" style="justify-content:center"><span class="link">Send change</span></div></div>
+  </div>
+</div>
+</body></html>
