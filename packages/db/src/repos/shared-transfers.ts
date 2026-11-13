@@ -75,21 +75,26 @@ async function sharedNameTx(tx: Db, accountId: string, name: string): Promise<st
   return row?.[0] === 'total' ? name : null;
 }
 
-/** Files a bare transfer in a shared workspace: writes (or revives) its redacted row. False when it cannot be shown. */
-export async function fileSharedTransferTx(tx: Db, ws: WorkspaceContext, transactionId: string, bookId: string): Promise<boolean> {
+/**
+ * Files a bare transfer in a shared workspace: writes (or revives) its redacted row, with its figure read afresh. False
+ * when it cannot be shown. `eventBookId`, when given, lists it on that shared event in the same write (0114): one op
+ * the partner applies whole, never a row and then a second change to it under the same clock.
+ */
+export async function fileSharedTransferTx(tx: Db, ws: WorkspaceContext, transactionId: string, bookId: string, eventBookId?: string | null): Promise<boolean> {
   if (!(await tableExists(tx))) return false;
   const member = await memberOfTx(tx, bookId);
   const figure = member ? await figureOfTx(tx, transactionId) : null;
   if (!member || !figure) return false;
   void ws;
   const transferId = await lineageOfTransaction(tx, transactionId);
+  const listing = eventBookId !== undefined;
   await withCapture(tx, { entity: KEY, id: transferId, bookId }, () =>
     tx.run(sql`
-      INSERT INTO shared_transfers (book_id, transfer_id, occurred_on, amount_minor, currency, description, recorded_by, void, transaction_id, from_name, to_name, from_item, to_item)
-      VALUES (${bookId}, ${transferId}, ${figure.occurredOn}, ${figure.amountMinor}, ${figure.currency}, ${figure.description}, ${member}, 0, ${transactionId}, ${figure.fromName}, ${figure.toName}, ${figure.fromItem}, ${figure.toItem})
+      INSERT INTO shared_transfers (book_id, transfer_id, occurred_on, amount_minor, currency, description, recorded_by, void, transaction_id, from_name, to_name, from_item, to_item${listing ? sql`, event_book_id` : sql``})
+      VALUES (${bookId}, ${transferId}, ${figure.occurredOn}, ${figure.amountMinor}, ${figure.currency}, ${figure.description}, ${member}, 0, ${transactionId}, ${figure.fromName}, ${figure.toName}, ${figure.fromItem}, ${figure.toItem}${listing ? sql`, ${eventBookId ?? null}` : sql``})
       ON CONFLICT (book_id, transfer_id) DO UPDATE SET occurred_on = excluded.occurred_on, amount_minor = excluded.amount_minor,
         currency = excluded.currency, description = excluded.description, void = 0, transaction_id = excluded.transaction_id,
-        from_name = excluded.from_name, to_name = excluded.to_name, from_item = excluded.from_item, to_item = excluded.to_item`),
+        from_name = excluded.from_name, to_name = excluded.to_name, from_item = excluded.from_item, to_item = excluded.to_item${listing ? sql`, event_book_id = excluded.event_book_id` : sql``}`),
   );
   return true;
 }

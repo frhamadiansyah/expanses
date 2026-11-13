@@ -1,10 +1,15 @@
-import { transferName } from '@expanses/core';
+import { isExchangeResultKey, type PostingLine, transferName } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
-import type { Database, Db } from '../database';
-import { localDeviceId, withCapture } from '../sync/capture';
+import type { Database, Db, Tx } from '../database';
+import { captureRevaluingTx, localDeviceId, withCapture } from '../sync/capture';
 import { meetsVersion } from '../sync/events/version';
-import type { EventBookRow } from './shared-event-records';
+import { namespaceOf, uuidv5 } from '../sync/uuidv5';
+import { postTransactionTx, replaceTransactionTx } from './ledger';
+import { eventBookOfEventTx, type EventBookRow } from './shared-event-records';
+import { postEventRecordTx } from './shared-event-postings';
+import { fileSharedTransferTx } from './shared-transfers';
+import { partnerPurchaseRefusalTx } from './shared-workspace-rows';
 
 /*
  * A household-shared workspace's transfer listed on a shared event (trip withdrawal, owner, 13 Nov 2026): an ATM
@@ -88,62 +93,184 @@ async function devicesNotInEventTx(tx: Db, bookId: string, eventBookId: string):
   return rows.filter(([id]) => id !== self).map(([, name]) => name || 'another phone');
 }
 
-/**
- * Why a transfer with no workspace row stays (review fix round 1, M8): filed in a shared workspace before that workspace
- * sent its transfers to the household (the partner never had it); filed in no workspace, so it shows in every one; or
- * filed in a workspace no one shares.
- */
-async function bareTransferRefusalTx(tx: Db, transactionId: string): Promise<string> {
-  const filed = await tx.values<[string, string | null, number]>(sql`
-    SELECT bt.book_id, b.name, EXISTS (SELECT 1 FROM shared_books s WHERE s.book_id = bt.book_id) FROM book_transactions bt
-    LEFT JOIN books b ON b.id = bt.book_id WHERE bt.transaction_id = ${transactionId} ORDER BY bt.book_id`);
-  const shared = filed.find(([, , isShared]) => Number(isShared) === 1);
-  if (shared) {
-    const name = shared[1] || 'the shared workspace';
-    return `Recorded before ${name} sent its transfers to the household, so the other phones never had it: it stays in ${name}`;
-  }
+/** The shared workspace a transaction is filed in (`book_transactions`), or null: filed nowhere, or in no shared one. */
+async function sharedFiledBookTx(tx: Db, transactionId: string): Promise<string | null> {
+  if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'shared_books'`)).length === 0) return null;
+  const [row] = await tx.values<[string]>(sql`
+    SELECT bt.book_id FROM book_transactions bt JOIN shared_books s ON s.book_id = bt.book_id
+    WHERE bt.transaction_id = ${transactionId} AND s.state <> 'unshared' ORDER BY bt.book_id LIMIT 1`);
+  return row?.[0] ?? null;
+}
+
+/** Why a transfer in no shared workspace stays: filed in no workspace, so it shows in every one; or in one no one shares. */
+async function unsharedTransferRefusalTx(tx: Db, transactionId: string): Promise<string> {
+  const filed = await tx.values(sql`SELECT 1 FROM book_transactions WHERE transaction_id = ${transactionId}`);
   if (filed.length === 0) return 'A transfer filed in no workspace shows in every one: only one in a workspace shared with a household moves into a shared event';
   return 'Only a transfer in a workspace shared with a household moves into a shared event';
 }
 
+interface LedgerLine {
+  accountId: string;
+  amountMinor: number;
+  currency: string;
+  amountBaseMinor: number;
+  fxRateToBase: number;
+  memo: string | null;
+  spendCategoryId: string | null;
+  kind: string;
+  subtype: string;
+  systemKey: string | null;
+}
+
+async function ledgerLinesTx(tx: Db, transactionId: string): Promise<LedgerLine[]> {
+  const rows = await tx.values<[string, number, string, number, number, string | null, string | null, string, string, string | null]>(sql`
+    SELECT e.account_id, e.amount_minor, e.currency, e.amount_base_minor, e.fx_rate_to_base, e.memo, e.spend_category_id, a.kind, a.subtype, a.system_key
+    FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = ${transactionId} ORDER BY e.rowid`);
+  return rows.map(([accountId, amountMinor, currency, amountBaseMinor, fxRateToBase, memo, spendCategoryId, kind, subtype, systemKey]) => ({
+    accountId,
+    amountMinor: Number(amountMinor),
+    currency,
+    amountBaseMinor: Number(amountBaseMinor),
+    fxRateToBase: Number(fxRateToBase),
+    memo,
+    spendCategoryId,
+    kind,
+    subtype,
+    systemKey,
+  }));
+}
+
+const isMoneyLine = (line: LedgerLine) => (line.kind === 'asset' || line.kind === 'liability') && !['receivable', 'payable', 'event_balance'].includes(line.subtype);
+
 /**
- * What moving a transaction into a shared event does when it is a transfer: 'listed' once its workspace row names the
+ * A fee typed on a transfer (the Add form's Fee row, an ATM fee): the row's one category line, spending above zero,
+ * beside money that left one account and reached another, paid from the account the money left, in its currency. Never
+ * an exchange's own gain or loss line (the withdrawal rate's bookkeeping), which is no fee anyone typed.
+ */
+function typedFeeOf(lines: readonly LedgerLine[]): { fee: LedgerLine; from: LedgerLine } | null {
+  const categories = lines.filter((l) => l.kind === 'income' || l.kind === 'expense');
+  if (categories.length !== 1) return null;
+  const [fee] = categories;
+  if (fee!.kind !== 'expense' || fee!.amountMinor <= 0 || isExchangeResultKey(fee!.systemKey)) return null;
+  const money = lines.filter(isMoneyLine);
+  if (!money.some((l) => l.amountMinor > 0)) return null;
+  const from = money.filter((l) => l.amountMinor < 0 && l.currency === fee!.currency).sort((a, b) => a.amountMinor - b.amountMinor)[0];
+  if (!from || -from.amountMinor <= fee!.amountMinor) return null;
+  return { fee: fee!, from };
+}
+
+const postingOf = (line: LedgerLine, amountMinor = line.amountMinor, amountBaseMinor = line.amountBaseMinor): PostingLine => ({
+  accountId: line.accountId,
+  amountMinor,
+  currency: line.currency,
+  memo: line.memo,
+  amountBaseMinor,
+  ...(line.spendCategoryId ? { spendCategoryId: line.spendCategoryId } : {}),
+});
+
+const ratesOf = (lines: readonly LedgerLine[]): Record<string, number> => Object.fromEntries(lines.map((line) => [line.currency, line.fxRateToBase]));
+
+/**
+ * The trip expense a transfer's typed fee became, named alike on every phone that could ask: by the transfer's workspace
+ * row and the event. Remove from event finds it by this id to take the fee back off the trip.
+ */
+export async function tripFeeExpenseId(transferId: string, eventBookId: string): Promise<string> {
+  return uuidv5(await namespaceOf(eventBookId), `trip-fee:${transferId}`);
+}
+
+/** A transfer listed on a shared event: the transaction it now is, and the fee purchase split off it to move as an expense. */
+export interface TransferListing {
+  transactionId: string;
+  /** The workspace row's id (the transfer's lineage): what the fee's expense id is named by. */
+  transferId: string;
+  fee: string | null;
+}
+
+/**
+ * What moving a transaction into a shared event does when it is a transfer: listed once its workspace row names the
  * event, the reason it stays when it cannot be listed, or null when it is no transfer (a purchase or a refund, which
  * move as expenses) — or no transaction here at all, which the purchase path reports.
+ *
+ * Three shapes of a household-shared workspace's transfer list (trip exchange fix, owner's report on build 122):
+ * - one with its redacted row (0094): its figure is filed again first, so a row an older build wrote with the rupiah
+ *   the exchange spread holds reads the lira that landed, on the partner's phone and the trip;
+ * - one filed in the workspace as a purchase, recorded before the workspace sent its transfers as redacted rows: it is
+ *   filed as a transfer now (the partner's purchase copy is voided, the redacted row takes its place), then listed;
+ * - one with a fee typed on it: the fee is split off into a purchase of its own, from the same account, which the
+ *   caller moves into the event as an expense (counted there, once), and the transfer itself is listed, not counted.
+ * Every check that can refuse runs before anything is written. The ledger's balances never change: a split moves the
+ * fee's money onto a row of its own, line for line.
  */
-export async function transferIntoEventTx(tx: Db, ws: WorkspaceContext, transactionId: string, book: EventBookRow): Promise<'listed' | string | null> {
-  const [head] = await tx.values<[string]>(sql`SELECT status FROM transactions WHERE id = ${transactionId} AND workspace_id = ${ws.workspaceId}`);
+export async function transferIntoEventTx(tx: Tx, ws: WorkspaceContext, transactionId: string, book: EventBookRow): Promise<TransferListing | string | null> {
+  const [head] = await tx.values<[string, string, string | null]>(sql`
+    SELECT status, occurred_on, description FROM transactions WHERE id = ${transactionId} AND workspace_id = ${ws.workspaceId}`);
   if (!head || head[0] !== 'posted') return null;
   // A shared event's own posting (a settle-up, a share): the purchase path says so in its own words.
   if ((await tx.values(sql`SELECT 1 FROM event_postings WHERE transaction_id = ${transactionId}`)).length > 0) return null;
+  const lines = await ledgerLinesTx(tx, transactionId);
+  if (lines.length === 0) return null;
   const row = await liveRowTx(tx, transactionId);
-  if (!row) {
-    const lines = await tx.values<[number, string, string]>(sql`
-      SELECT e.amount_minor, a.kind, a.subtype FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = ${transactionId}`);
-    const categories = lines.filter(([, kind]) => kind === 'income' || kind === 'expense');
-    if (lines.length === 0) return null;
-    // A transfer with no workspace row: nothing would take it off another phone's list. Why it has none, in its words.
-    if (categories.length === 0) return bareTransferRefusalTx(tx, transactionId);
-    // Money leaving one account and reaching another, with a fee spent beside it: a transfer and a purchase in one row.
-    const money = lines.filter(([, kind, subtype]) => (kind === 'asset' || kind === 'liability') && !['receivable', 'payable', 'event_balance'].includes(subtype));
-    const fee = categories.length === 1 && categories[0]![1] === 'expense' && money.some(([amount]) => Number(amount) > 0) && money.some(([amount]) => Number(amount) < 0);
-    return fee ? 'A transfer with a fee on the same row stays: take the fee off first' : null;
+  const categories = lines.filter((l) => l.kind === 'income' || l.kind === 'expense');
+  const fee = row ? null : typedFeeOf(lines);
+  let bookId: string;
+  if (row) {
+    if (row.eventBookId !== null) return 'Already in a shared event';
+    bookId = row.bookId;
+  } else if (categories.length === 0 || fee) {
+    const filed = await sharedFiledBookTx(tx, transactionId);
+    if (!filed) return unsharedTransferRefusalTx(tx, transactionId);
+    // A shared workspace's purchase another member paid is theirs to move (D3): only its recorder's phone splits it.
+    const partners = await partnerPurchaseRefusalTx(tx, transactionId);
+    if (partners) return partners;
+    bookId = filed;
+  } else {
+    return null;
   }
-  if (row.eventBookId !== null) return 'Already in a shared event';
-  const below = await devicesBelowTx(tx, row.bookId);
+  const below = await devicesBelowTx(tx, bookId);
   if (below.length > 0) {
-    const [named] = await tx.values<[string]>(sql`SELECT name FROM books WHERE id = ${row.bookId}`);
+    const [named] = await tx.values<[string]>(sql`SELECT name FROM books WHERE id = ${bookId}`);
     return `Update cicis on ${below.join(' and ')} first: until then it would stay in ${named?.[0] || 'the shared workspace'} there`;
   }
   // Every phone in the workspace must have the trip, or the transfer would vanish there (review fix round 1, M3).
-  const outside = await devicesNotInEventTx(tx, row.bookId, book.bookId);
+  const outside = await devicesNotInEventTx(tx, bookId, book.bookId);
   if (outside.length > 0) return `${outside.join(' and ')} ${outside.length === 1 ? 'is' : 'are'} not in ${book.name}, so there it would show in neither place`;
-  await withCapture(tx, { entity: KEY, id: row.transferId, bookId: row.bookId }, () =>
-    tx.run(sql`UPDATE shared_transfers SET event_book_id = ${book.bookId} WHERE book_id = ${row.bookId} AND transfer_id = ${row.transferId}`),
-  );
+
+  let listedId = transactionId;
+  let feeId: string | null = null;
+  if (fee) {
+    // The transfer without its fee (its money leg lighter by the fee, every other line as it was); the fee a purchase
+    // of its own, from the account the money left, filed by its category. The replacement is filed nowhere yet: its
+    // redacted row below files it in the workspace, and the purchase it was leaves the partner's phone at flush.
+    const rest = lines.filter((l) => l !== fee.fee).map((l) => (l === fee.from ? postingOf(l, l.amountMinor + fee.fee.amountMinor, l.amountBaseMinor + fee.fee.amountBaseMinor) : postingOf(l)));
+    listedId = await replaceTransactionTx(tx, ws, transactionId, {
+      occurredOn: head[1],
+      description: head[2] ?? '',
+      // A card's fee named its category on the card's line (points): the transfer left has no fee to name.
+      lines: rest.map((line) => (line.spendCategoryId === fee.fee.accountId ? { ...line, spendCategoryId: null } : line)),
+      ratesToBase: ratesOf(lines),
+    });
+    const [card] = await tx.values<[string | null]>(sql`SELECT card_id FROM transactions WHERE id = ${transactionId}`);
+    feeId = await postTransactionTx(tx, ws, {
+      occurredOn: head[1],
+      description: head[2] ?? '',
+      lines: [postingOf(fee.fee), { ...postingOf(fee.from, -fee.fee.amountMinor, -fee.fee.amountBaseMinor), spendCategoryId: fee.from.spendCategoryId ? fee.fee.accountId : null }],
+      ratesToBase: ratesOf(lines),
+      cardId: card?.[0] ?? null,
+    });
+  } else if (!row) {
+    // Filed as a purchase before the workspace sent transfers as redacted rows: it leaves the book (the partner's copy,
+    // if it ever took one, is voided at flush) and its redacted row takes its place.
+    await captureRevaluingTx(tx, transactionId);
+    await tx.run(sql`DELETE FROM book_transactions WHERE transaction_id = ${transactionId}`);
+  }
+  // Its redacted row, figure read afresh (an older build's row read the rupiah the exchange spread holds, not the lira
+  // that landed), listed on the event in the same write.
+  if (!(await fileSharedTransferTx(tx, ws, listedId, bookId, book.bookId))) throw new Error('This transfer cannot be shown to the household');
+  const listed = await liveRowTx(tx, listedId);
+  if (!listed) throw new Error('The transfer has no workspace row to list');
   // An event tag an older build left on it never travelled: listed, it is on the event by the row alone, on every phone.
-  await tx.run(sql`UPDATE transactions SET event_id = NULL WHERE id = ${transactionId} AND event_id IS NOT NULL`);
-  return 'listed';
+  await tx.run(sql`UPDATE transactions SET event_id = NULL WHERE id = ${listedId} AND event_id IS NOT NULL`);
+  return { transactionId: listedId, transferId: listed.transferId, fee: feeId };
 }
 
 /**
@@ -160,8 +287,64 @@ export async function removeTransferFromSharedEvent(database: Database, ws: Work
     await withCapture(tx, { entity: KEY, id: row.transferId, bookId: row.bookId }, () =>
       tx.run(sql`UPDATE shared_transfers SET event_book_id = NULL WHERE book_id = ${row.bookId} AND transfer_id = ${row.transferId}`),
     );
+    await feeBackFromEventTx(tx, ws, transactionId, row.transferId, row.eventBookId);
     return true;
   });
+}
+
+/**
+ * The fee split off a transfer when it was listed on the event (`transferIntoEventTx`), put back where it was: its
+ * expense voided on the event (its derived transaction with it), and its line on the transfer again, from the same
+ * account, under the category it was typed in — one row in the workspace, counted there, as before the move. Left on
+ * the event when the event can no longer be written to here (done, left, its copy deleted): it is changed there.
+ */
+async function feeBackFromEventTx(tx: Tx, ws: WorkspaceContext, transactionId: string, transferId: string, eventBookId: string): Promise<void> {
+  const expenseId = await tripFeeExpenseId(transferId, eventBookId);
+  const [posting] = await tx.values<[string | null]>(sql`
+    SELECT p.transaction_id FROM event_postings p JOIN event_expenses x ON x.book_id = p.book_id AND x.id = p.record_id
+    WHERE p.book_id = ${eventBookId} AND p.record_id = ${expenseId} AND x.voided_at IS NULL`);
+  if (!posting?.[0]) return;
+  const [event] = await tx.values<[string]>(sql`SELECT event_id FROM event_books WHERE book_id = ${eventBookId}`);
+  const book = event ? await eventBookOfEventTx(tx, event[0]) : null;
+  if (!book || book.workspaceId !== ws.workspaceId || book.state !== 'active' || book.finishedAt) return;
+  // The fee purchase the expense replaced: its lines are the fee as it was typed (category, account, figures).
+  const [original] = await tx.values<[string | null]>(sql`SELECT replaces_transaction_id FROM transactions WHERE id = ${posting[0]}`);
+  const feeLines = original?.[0] ? await ledgerLinesTx(tx, original[0]) : [];
+  const fee = feeLines.find((l) => l.kind === 'expense');
+  const paid = feeLines.find(isMoneyLine);
+  if (!fee || !paid) return;
+  await withCapture(tx, { entity: 'event_expense', id: expenseId, bookId: eventBookId }, () =>
+    tx.run(sql`UPDATE event_expenses SET voided_at = ${new Date().toISOString()} WHERE book_id = ${eventBookId} AND id = ${expenseId}`),
+  );
+  await postEventRecordTx(tx, eventBookId, 'expense', expenseId, null);
+  const [head] = await tx.values<[string, string | null]>(sql`SELECT occurred_on, description FROM transactions WHERE id = ${transactionId}`);
+  const lines = await ledgerLinesTx(tx, transactionId);
+  const from = lines.find((l) => l.accountId === paid.accountId && l.currency === paid.currency && l.amountMinor < 0);
+  if (!head || !from) return;
+  await replaceTransactionTx(tx, ws, transactionId, {
+    occurredOn: head[0],
+    description: head[1] ?? '',
+    lines: [
+      ...lines.map((l) => (l === from ? { ...postingOf(l, l.amountMinor + paid.amountMinor, l.amountBaseMinor + paid.amountBaseMinor), ...(paid.spendCategoryId ? { spendCategoryId: paid.spendCategoryId } : {}) } : postingOf(l))),
+      postingOf(fee),
+    ],
+    ratesToBase: { ...ratesOf(lines), ...ratesOf(feeLines) },
+  });
+}
+
+/**
+ * The posted transaction a transaction stands as now: itself, or the replacement an edit made of it (following the
+ * replaces chain forward). Remove from event puts a fee back on its transfer, which replaces it: the receipt follows.
+ */
+export async function standingTransaction(database: Database, transactionId: string): Promise<string> {
+  const [row] = await database.db.values<[string]>(sql`
+    WITH RECURSIVE chain(id, depth) AS (
+      SELECT ${transactionId}, 0
+      UNION ALL
+      SELECT t.id, c.depth + 1 FROM transactions t JOIN chain c ON t.replaces_transaction_id = c.id WHERE c.depth < 50
+    )
+    SELECT c.id FROM chain c JOIN transactions t ON t.id = c.id WHERE t.status = 'posted' ORDER BY c.depth DESC LIMIT 1`);
+  return row?.[0] ?? transactionId;
 }
 
 /** The event a transfer recorded here is listed on, for its receipt: the event's local id and name, or null when none. */

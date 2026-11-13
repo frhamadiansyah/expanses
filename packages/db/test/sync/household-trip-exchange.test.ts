@@ -2,6 +2,7 @@ import { exchangeLines, exchangeWithFeeLines, expenseLines } from '@expanses/cor
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
+  categoryTotalsIn,
   createAccount,
   inBook,
   listSharedTransfers,
@@ -11,6 +12,7 @@ import {
   ownerScope,
   personalBook,
   postTransaction,
+  removeTransferFromSharedEvent,
   sharedEventOf,
   sharedEventView,
   voidTransaction,
@@ -83,6 +85,14 @@ async function familyRows(s: Setup, d: Device): Promise<string[]> {
   return [...own, ...partner].sort();
 }
 
+/** What Family counts as spending in October on a phone, events left out: the expense categories' total. */
+async function familySpend(s: Setup, d: Device): Promise<number> {
+  const { rows } = await categoryTotalsIn(d.database, inBook(d.ws, s.family), 'expense', '2026-10-01', '2026-10-31', { excludeEvents: true });
+  return rows.reduce((sum, r) => sum + r.amountBaseMinor, 0);
+}
+
+const pick = (balances: Record<string, number>, ids: readonly string[]) => Object.fromEntries(ids.map((id) => [id, balances[id] ?? 0]));
+
 /**
  * Select → Add to event on the Cashflow list, as `TransactionsPage.tagChosen` runs it once the confirm is answered: the
  * event read from the database (a shared one, so the rows move), then every chosen row handed to the move.
@@ -150,18 +160,135 @@ describe('a cross-currency withdrawal in Family moved into the shared trip', () 
     expect(await familyRows(s, s.husband)).toEqual([]);
   });
 
-  it('recorded before Family was shared (filed as a purchase, no redacted row), it stays and says why', async () => {
+  it('the owner’s row: filed in Family as a purchase (before Family sent its transfers), moved, is listed and leaves Family on both phones', async () => {
     let id = '';
     const s = await familyAndTrip(async (wife, lira, exchange, family) => {
       id = await atm(wife, family, lira, exchange);
     });
-    // The receipt's "Paid by" comes from here: it travels as a purchase, labelled with every non-category account.
+    // The owner's receipt reads "Paid with … + Currency Exchange + …": it travels as a purchase, with no redacted row.
     expect(await s.wife.database.db.values(sql`SELECT paid_label FROM sync_lineage WHERE head_transaction_id = ${id}`)).toEqual([['Wife Wallet + Currency Exchange + Wife Lira']]);
     expect(await s.wife.database.db.values(sql`SELECT 1 FROM shared_transfers WHERE transaction_id = ${id}`)).toEqual([]);
+    const before = await nativeBalances(s.wife.database, s.wife.ws);
+    // The husband's phone never took the purchase copy (no category line: TOO_FEW_LINES), as build 122 said.
+    const skipped = await skipsOf(s.husband.database);
+
     const result = await addToTrip(s, [id]);
-    expectAccounted([id], result);
-    expect(result.kept).toEqual([{ transactionId: id, why: 'Recorded before Personal sent its transfers to the household, so the other phones never had it: it stays in Personal' }]);
+    expect(result).toEqual({ moved: [], kept: [], listed: [{ transactionId: id }] });
+    await s.settle();
+    // Nothing more is skipped: the void and the redacted row apply.
+    expect(await skipsOf(s.husband.database)).toEqual(skipped);
+    expect(await skipsOf(s.wife.database)).toEqual([]);
+    // Off Family on both phones: the purchase the partner held goes, and nothing stands in for it in the list.
+    expect(await familyRows(s, s.wife)).toEqual([]);
+    expect(await familyRows(s, s.husband)).toEqual([]);
+    for (const d of [s.wife, s.husband]) {
+      const view = (await sharedEventView(d.database, ownerScope(d.ws), s.trip.eventOf(d)))!;
+      expect(view.transfers.map((t) => [t.description, t.amountMinor, t.currency])).toEqual([['Bank Contoh ATM', 250_000, 'TRY']]);
+      expect(view.spentMinor).toBe(0);
+      expect(await familySpend(s, d)).toBe(0);
+    }
+    expect(await s.wife.database.db.values(sql`SELECT status FROM transactions WHERE id = ${id}`)).toEqual([['posted']]);
+    expect(await nativeBalances(s.wife.database, s.wife.ws)).toEqual(before);
+    expect(await projectBook(s.wife.database, s.family)).toEqual(await projectBook(s.husband.database, s.family));
+
+    // Remove from event: back in Family on both phones, as a transfer now, still counted nowhere.
+    expect(await removeTransferFromSharedEvent(s.wife.database, inBook(s.wife.ws, s.family), id)).toBe(true);
+    await s.settle();
     expect(await familyRows(s, s.wife)).toEqual(['Bank Contoh ATM']);
+    expect(await familyRows(s, s.husband)).toEqual(['partner: Bank Contoh ATM 250000 TRY']);
+    for (const d of [s.wife, s.husband]) expect(await familySpend(s, d)).toBe(0);
+    expect(await nativeBalances(s.wife.database, s.wife.ws)).toEqual(before);
+  });
+
+  it('a row synced with the old rupiah figure (build 122), moved: the partner and the trip read the lira that landed, once', async () => {
+    const s = await familyAndTrip();
+    const id = await atm(s.wife, s.family, s.lira, s.exchange);
+    await s.settle();
+    // What build 122 wrote on both phones: the rupiah the spread line holds, not the lira.
+    for (const d of [s.wife, s.husband]) await d.database.db.run(sql`UPDATE shared_transfers SET amount_minor = 1450000, currency = 'IDR' WHERE book_id = ${s.family}`);
+    expect(await familyRows(s, s.husband)).toEqual(['partner: Bank Contoh ATM 1450000 IDR']);
+
+    expect(await addToTrip(s, [id])).toEqual({ moved: [], kept: [], listed: [{ transactionId: id }] });
+    await s.settle();
+    expect(await skipsOf(s.husband.database)).toEqual([]);
+    for (const d of [s.wife, s.husband]) {
+      const view = (await sharedEventView(d.database, ownerScope(d.ws), s.trip.eventOf(d)))!;
+      expect(view.transfers.map((t) => [t.description, t.amountMinor, t.currency])).toEqual([['Bank Contoh ATM', 250_000, 'TRY']]);
+      expect(view.expenses).toEqual([]);
+      expect(view.spentMinor).toBe(0);
+    }
+    expect(await familyRows(s, s.husband)).toEqual([]);
+    expect(await projectBook(s.wife.database, s.family)).toEqual(await projectBook(s.husband.database, s.family));
+  });
+
+  it('the rate gap (Currency Exchange lines) counts nowhere: not in Family, not on the trip, before, after and once removed', async () => {
+    const s = await familyAndTrip();
+    const id = await atm(s.wife, s.family, s.lira, s.exchange);
+    await s.settle();
+    const before = await nativeBalances(s.wife.database, s.wife.ws);
+    for (const d of [s.wife, s.husband]) expect(await familySpend(s, d)).toBe(0);
+    await addToTrip(s, [id]);
+    await s.settle();
+    for (const d of [s.wife, s.husband]) {
+      expect(await familySpend(s, d)).toBe(0);
+      expect((await sharedEventView(d.database, ownerScope(d.ws), s.trip.eventOf(d)))!.spentMinor).toBe(0);
+    }
+    expect(await removeTransferFromSharedEvent(s.wife.database, inBook(s.wife.ws, s.family), id)).toBe(true);
+    await s.settle();
+    for (const d of [s.wife, s.husband]) {
+      expect(await familySpend(s, d)).toBe(0);
+      expect((await sharedEventView(d.database, ownerScope(d.ws), s.trip.eventOf(d)))!.transfers).toEqual([]);
+    }
+    expect(await familyRows(s, s.husband)).toEqual(['partner: Bank Contoh ATM 250000 TRY']);
+    expect(await nativeBalances(s.wife.database, s.wife.ws)).toEqual(before);
+  });
+
+  it('a typed fee moves with it and counts once, on the trip, as a fee; Family no longer counts it; Remove from event puts both back', async () => {
+    const s = await familyAndTrip();
+    const fees = await categoryOf(s.wife.database, s.family, 'Fees & charges');
+    const id = await atm(s.wife, s.family, s.lira, s.exchange, fees);
+    await s.settle();
+    const before = await nativeBalances(s.wife.database, s.wife.ws);
+    // Before: the fee is Family spending on both phones, and the row is one row.
+    for (const d of [s.wife, s.husband]) expect(await familySpend(s, d)).toBe(25_000);
+    expect(await familyRows(s, s.wife)).toEqual(['Bank Contoh ATM']);
+
+    const result = await addToTrip(s, [id]);
+    expect(result).toEqual({ moved: [], kept: [], listed: [{ transactionId: id }] });
+    await s.settle();
+    expect(await skipsOf(s.husband.database)).toEqual([]);
+    expect(await skipsOf(s.wife.database)).toEqual([]);
+    expect(await familyRows(s, s.wife)).toEqual([]);
+    expect(await familyRows(s, s.husband)).toEqual([]);
+    // Rp 25.000 at 560 a lira: TRY 44,64.
+    for (const d of [s.wife, s.husband]) {
+      expect(await familySpend(s, d)).toBe(0);
+      const view = (await sharedEventView(d.database, ownerScope(d.ws), s.trip.eventOf(d)))!;
+      expect(view.transfers.map((t) => [t.description, t.amountMinor, t.currency])).toEqual([['Bank Contoh ATM', 250_000, 'TRY']]);
+      expect(view.expenses.map((e) => [e.note, e.amountMinor, e.currency, e.categoryName])).toEqual([['Bank Contoh ATM', 25_000, 'IDR', 'Fees & charges']]);
+      expect(view.spentMinor).toBe(4_464);
+    }
+    // Every account holds what it held: the rupiah wallet still paid the fee, once.
+    expect(await nativeBalances(s.wife.database, s.wife.ws)).toMatchObject(pick(before, [s.wife.cash, s.lira, s.exchange]));
+    expect(await projectBook(s.wife.database, s.family)).toEqual(await projectBook(s.husband.database, s.family));
+
+    // Remove from event: the transfer and its fee are one Family row again, counted in Family on both phones; the trip
+    // has neither.
+    const listed = (await sharedEventView(s.wife.database, ownerScope(s.wife.ws), s.trip.eventOf(s.wife)))!.transfers[0]!.transactionId!;
+    expect(await removeTransferFromSharedEvent(s.wife.database, inBook(s.wife.ws, s.family), listed)).toBe(true);
+    await s.settle();
+    expect(await skipsOf(s.husband.database)).toEqual([]);
+    // One row again on both phones: the recorder's own, and the partner's copy of the purchase it is once more.
+    expect(await familyRows(s, s.wife)).toEqual(['Bank Contoh ATM']);
+    expect(await familyRows(s, s.husband)).toEqual(['Bank Contoh ATM']);
+    for (const d of [s.wife, s.husband]) {
+      expect(await familySpend(s, d)).toBe(25_000);
+      const view = (await sharedEventView(d.database, ownerScope(d.ws), s.trip.eventOf(d)))!;
+      expect(view.transfers).toEqual([]);
+      expect(view.spentMinor).toBe(0);
+    }
+    expect(pick(await nativeBalances(s.wife.database, s.wife.ws), [s.wife.cash, s.lira, s.exchange])).toEqual(pick(before, [s.wife.cash, s.lira, s.exchange]));
+    expect(await projectBook(s.wife.database, s.family)).toEqual(await projectBook(s.husband.database, s.family));
   });
 });
 
@@ -185,8 +312,8 @@ describe('Add to event never drops a chosen row silently', () => {
     const ids = [early, listedOne, withFee, snack, deleted, 'no-such-transaction', listedOne];
     const result = await addToTrip(s, ids);
     expectAccounted(ids, result);
-    expect(result.listed).toEqual([{ transactionId: listedOne }]);
+    expect(result.listed).toEqual([{ transactionId: early }, { transactionId: listedOne }, { transactionId: withFee }]);
     expect(result.moved.map((m) => m.transactionId)).toEqual([snack]);
-    expect(result.kept.map((k) => k.transactionId)).toEqual([early, withFee, deleted, 'no-such-transaction']);
+    expect(result.kept.map((k) => k.transactionId)).toEqual([deleted, 'no-such-transaction']);
   });
 });
