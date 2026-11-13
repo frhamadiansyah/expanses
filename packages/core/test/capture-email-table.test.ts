@@ -221,6 +221,16 @@ describe('a transaction email read as a labelled table', () => {
     expect(reading.occurredAt?.value).toBe('2026-11-03T09:41');
   });
 
+  it.each([
+    ['two spaces', 'Kartu  Kredit'],
+    ['a tab', 'Kartu\tKredit'],
+  ])('never reads a credit card whose two words are apart by %s as money in', (_, card) => {
+    const body = perCell().replace(/Kartu Kredit/g, card);
+    expect(readCapture(email(body), WORDS, null).type.value).toBe('spent');
+    const sms = `Transaksi ${card} Contoh **** 4732 sebesar Rp 245.500 di TOKOBAJU berhasil.`;
+    expect(readCapture({ ...email(sms), title: null }, WORDS, null).type.value).toBe('spent');
+  });
+
   it('never reads a credit card named with a no-break space as money in, outside a table too', () => {
     const sms = 'Transaksi Kartu Kredit Contoh **** 4732 sebesar Rp 245.500 di TOKOBAJU berhasil.';
     expect(readCapture({ ...email(sms, null as unknown as string), title: null }, WORDS, null).type.value).toBe('spent');
