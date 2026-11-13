@@ -28,7 +28,7 @@ import {
   uncategorisedTransactionIds,
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
+import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { CalendarDays, ChevronDown, CircleAlert, CircleCheck, Home, LayoutGrid, List, Pencil, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -69,7 +69,7 @@ import { AmountExtra, DraftSubtitle, PaidWith, TransactionRow, useRecategorise }
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, keepsReadFigure, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
-import { accountsWithTransactions, amountExtraParts, buildRows, sharedTransferRow, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, hasNotCountedPart, type ListFilters, type ListRow, outsideEvents, type Sort, sortRows, totals } from './list-model';
+import { accountsWithTransactions, amountExtraParts, buildRows, sharedTransferRow, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, type ListFilters, type ListRow, outsideEvents, type Sort, sortRows, totals } from './list-model';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
@@ -1193,9 +1193,6 @@ export function TransactionsPage() {
               <PaidWith row={row} />
             )}
             {goal && ` · for ${goal}`}
-            {/* One purchase split across workspaces, or with a part Not counted: narrowed to one workspace, the row is
-                its part; the receipt is the whole. */}
-            {(tx.splitBooks || hasNotCountedPart(tx)) && ' · ⑂ split'}
           </>
         }
         // Asked for by trying to edit it: the row says where it lives, and offers to take you there.
@@ -1205,18 +1202,8 @@ export function TransactionsPage() {
         amountExtra={<AmountExtra parts={amountExtraParts(tx, phone ? undefined : points, row)} />}
         trailing={
           selecting ? undefined : <>
-            {trade ? (
-              <Link
-                to="/net-worth/assets/$accountId"
-                params={{ accountId: trade.accountId }}
-                className="text-sm font-medium text-slate-600 underline"
-                title="Edit this on its holding's page so units stay in step"
-              >
-                Holding
-              </Link>
-            ) : (
-              clickable && <Pencil size={16} className="hidden text-slate-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 md:block" aria-hidden />
-            )}
+            {/* A trade is edited on its holding's page: its receipt's Open holding goes there, the row offers no link. */}
+            {!trade && clickable && <Pencil size={16} className="hidden text-slate-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 md:block" aria-hidden />}
             <ReceiptLink description={row.description} transactionId={tx.id} />
             {/* A wide screen's way to move it: the ≡ handle, and Move up and Move down without dragging. */}
             {dayIds && dayIds.length > 1 && !phone && (

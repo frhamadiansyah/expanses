@@ -222,7 +222,7 @@ test('a card row filed under Top-ups records as the top-up it was: what landed i
   await expect(recorded).toHaveCount(1);
   await expect(recorded).toContainText('4821 → GoPay');
   await expect(recorded).toContainText('1.000.000');
-  await expect(recorded.getByTestId('amount-extra')).toHaveText(/^\+Rp\s10\.000$/);
+  await expect(recorded.getByTestId('amount-extra')).toHaveText(/^\+ Rp\s10\.000$/);
   await page.goto('/wallet');
   await expectWalletFigure(page, 'GoPay', '1.000.000');
 });

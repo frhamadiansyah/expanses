@@ -460,15 +460,10 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
         ) : (
           <div className="flex flex-col items-center">
             {isTrade && holdingId ? (
-              /* The row's whole trailing slot, exactly as `TransactionsPage` and `TransactionsTable` replace it. */
-              <Link
-                to="/net-worth/assets/$accountId"
-                params={{ accountId: holdingId }}
-                title="Edit this on its holding's page so units stay in step"
-                className="min-h-11 py-2 text-sm font-medium text-slate-600 underline"
-              >
-                Holding
-              </Link>
+              /* A trade is edited on its holding's page, so units stay in step: the receipt's one way there. */
+              <InsetGroup className="w-full">
+                <InsetRow action title="Open holding" testId="open-holding" onClick={() => void navigate({ to: '/net-worth/assets/$accountId', params: { accountId: holdingId } })} />
+              </InsetGroup>
             ) : (
               /* Edit is the round button in the top corner; Delete stays down here, out of a thumb's casual reach. A shared
                  event's transaction is deleted on the event, with its record, never here. */

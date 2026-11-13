@@ -1,6 +1,5 @@
 import { formatMinor } from '@expanses/core';
 import type { AccountRow, PurchasePayer, TransactionView } from '@expanses/db';
-import { Link } from '@tanstack/react-router';
 import { Lock, RotateCcw, X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Button, cx } from '../../ui';
@@ -251,16 +250,8 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
         <span className="truncate px-2 text-slate-600">{kind ? <span className="rounded bg-slate-100 px-1.5 text-xs text-slate-500">{kind}</span> : row.categoryName && row.moreCounted ? `${row.categoryName} +${row.moreCounted}` : row.categoryName}</span>
         <span className="flex items-center justify-end gap-1 pl-1">
           <ReceiptLink transactionId={tx.id} description={row.description} />
-          {handlers.tradeHoldings.has(tx.id) ? (
-            <Link
-              to="/net-worth/assets/$accountId"
-              params={{ accountId: handlers.tradeHoldings.get(tx.id)! }}
-              className="px-2 text-xs text-slate-500 underline"
-              title="Edit this on its holding's page so units stay in step"
-            >
-              Holding
-            </Link>
-          ) : elsewhere ? (
+          {/* A trade is edited on its holding's page, reached from its receipt's Open holding: no link on the row. */}
+          {handlers.tradeHoldings.has(tx.id) ? null : elsewhere ? (
             <SwitchToEdit book={elsewhere} className="px-2 text-right" />
           ) : (
             editable && (

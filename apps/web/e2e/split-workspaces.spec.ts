@@ -58,7 +58,7 @@ test('a purchase split across workspaces lists each part in its workspace, and t
   await expect(row).toContainText('Groceries');
   await expect(row).not.toContainText('Restaurants');
   await expect(row).toContainText('900.000');
-  await expect(row).toContainText('⑂ split');
+  await expect(row).not.toContainText('⑂ split');
   await expect(page.getByTestId('period-total')).toHaveText('Rp 900.000');
 
   // The receipt: the whole charge, and each part with its workspace.
@@ -82,6 +82,6 @@ test('a purchase split across workspaces lists each part in its workspace, and t
   await expect(theirs).toHaveCount(1);
   await expect(theirs).toContainText('Restaurants');
   await expect(theirs).toContainText('450.000');
-  await expect(theirs).toContainText('⑂ split');
+  await expect(theirs).not.toContainText('⑂ split');
   await expect(page.getByTestId('period-total')).toHaveText('Rp 450.000');
 });

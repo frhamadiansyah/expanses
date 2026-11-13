@@ -498,8 +498,8 @@ describe('amountExtraParts', () => {
   });
 
   it('reads a transfer’s fee under the amount, muted, before a foreign amount; a row with none says nothing of it', () => {
-    expect(amountExtraParts(plain, undefined, { feeMinor: 10_000, currency: 'IDR' })).toEqual([{ text: '+Rp\u00a010.000', tone: 'foreign' }]);
-    expect(line(amountExtraParts(foreign, { points: 38, unit: 'pts', approximate: false }, { feeMinor: 10_000, currency: 'IDR' }))).toBe('+Rp\u00a010.000 · JP¥1.850 · +38 pts');
+    expect(amountExtraParts(plain, undefined, { feeMinor: 10_000, currency: 'IDR' })).toEqual([{ text: '+ Rp\u00a010.000', label: 'Fee, Rp\u00a010.000', tone: 'foreign' }]);
+    expect(line(amountExtraParts(foreign, { points: 38, unit: 'pts', approximate: false }, { feeMinor: 10_000, currency: 'IDR' }))).toBe('+ Rp\u00a010.000 · JP¥1.850 · +38 pts');
     expect(amountExtraParts(plain, undefined, { currency: 'IDR' })).toEqual([]);
   });
 });
@@ -686,7 +686,7 @@ describe('a split with a line left out of the report (0096)', () => {
     expect(row).toMatchObject({ type: 'transfer', excluded: true, amountMinor: 750_000 });
     expect(wholeLeftOut(row!)).toBe(false);
     expect(amountLook(row!)).toEqual({ sign: 0, plus: false, muted: false });
-    expect(amountExtraParts(move, undefined, row).map((p) => p.text)).toEqual(['+Rp 6.500']);
+    expect(amountExtraParts(move, undefined, row).map((p) => p.text)).toEqual(['+ Rp 6.500']);
   });
 
   it('an excluded refund reads Rp 0 in grey, its ⊘ sum without a minus', () => {

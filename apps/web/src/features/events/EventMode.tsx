@@ -102,12 +102,19 @@ export function EventMark({ size = 12, className = '' }: { size?: number; classN
   return <Plane size={size} strokeWidth={2.25} aria-hidden className={`shrink-0 ${className}`} />;
 }
 
-/** The start of a row's grey line when the row is in an event: the mark, the event, and the dot before the rest. */
-export function RowEventLead({ name }: { name: string }) {
+/**
+ * A row in an event: a small grey plane on its category's circle, in the corner a refund's arrow takes (13 Nov) — the
+ * grey line stays as any row's, and the receipt names the event. Named by the event for a pointer and a screen reader.
+ */
+export function RowEventBadge({ name }: { name: string }) {
   return (
-    <span data-testid="row-event">
-      <EventMark size={11} className="mr-[3px] inline align-[-1px]" />
-      {`${name} · `}
+    <span
+      data-testid="row-event"
+      title={name}
+      className="absolute -right-1 -bottom-1 flex h-[15px] w-[15px] items-center justify-center rounded-full bg-[var(--ph-ink-3)] text-[var(--ph-surface)] ring-2 ring-[var(--ph-surface)]"
+    >
+      <EventMark size={9} />
+      <span className="sr-only">{name}</span>
     </span>
   );
 }

@@ -75,10 +75,10 @@ test('a part Not counted is in no workspace’s Cashflow, while the card owes th
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
 
-  // Personal counts its Rp 500.000; the row is its part, marked as split.
+  // Personal counts its Rp 500.000; the row is its part, its grey line no longer marked as split.
   await page.goto('/transactions');
   await expect(row(page)).toContainText('500.000');
-  await expect(row(page)).toContainText('⑂ split');
+  await expect(row(page)).not.toContainText('⑂ split');
   await expect(periodTotal(page)).toHaveText('Rp 500.000');
 
   // The receipt: the whole charge, each part with its workspace, and the part in none.

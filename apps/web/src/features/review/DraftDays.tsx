@@ -7,7 +7,7 @@ import { DayHeader } from '../transactions/DayHeader';
 import { CaptureTypeMark } from './CaptureTypeMark';
 import { captureRowView, draftDays, effectiveCategory } from './capture-view';
 import { draftShowsEvent } from '../events/event-mode';
-import { RowEventLead } from '../events/EventMode';
+import { RowEventBadge } from '../events/EventMode';
 import { useSharedEventSummaries } from '../events/shared-queries';
 import { useIsBookShared } from '../../lib/queries';
 import { useEventName } from '../transactions/TransactionRow';
@@ -92,24 +92,26 @@ function DraftFace({ draft, accounts, source, categoryId }: { draft: DraftRow; a
   const from = nameOf(draft.accountId);
   const to = nameOf(draft.toAccountId);
   const warn = (text: string) => <span>{text}</span>;
-  // Captured in event mode (screen 4): the event it will be recorded in leads the grey line, as on every list.
+  // Captured in event mode (screen 4): the event it will be recorded in puts its plane on the icon, as on every list.
   const sharedEvents = useSharedEventSummaries().data ?? {};
   const bookShared = useIsBookShared();
   const eventName = useEventName(draftShowsEvent(draft.eventId, sharedEvents, bookShared) ? (draft.eventId ?? null) : null);
 
   return (
     <span className="flex items-center gap-3 py-2">
-      {transfer || category ? (
-        <CategoryIcon categoryId={category?.id ?? null} accounts={accounts} transfer={transfer} />
-      ) : (
-        <UnknownCategoryMark />
-      )}
+      <span className="relative inline-flex shrink-0">
+        {transfer || category ? (
+          <CategoryIcon categoryId={category?.id ?? null} accounts={accounts} transfer={transfer} />
+        ) : (
+          <UnknownCategoryMark />
+        )}
+        {eventName && <RowEventBadge name={eventName} />}
+      </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">
           {transfer ? 'Transfer' : category ? category.name : warn('Choose category')}
         </span>
         <span className="block truncate text-xs text-slate-500">
-          {eventName && <RowEventLead name={eventName} />}
           {view.type && <CaptureTypeMark type={view.type} />}
           {draft.description}
           {' · '}

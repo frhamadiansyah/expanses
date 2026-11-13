@@ -150,8 +150,10 @@ test('sends trade edits to the holding’s page instead of the transaction form'
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
   const row = page.locator('li', { hasText: 'Bought 2 Antam gold bars' }).last();
   await expect(row.getByRole('button', { name: 'Edit' })).toHaveCount(0);
-  // The row's link opens the gold's own page, where its ⋮ edits it.
-  await row.getByRole('link', { name: 'Holding', exact: true }).click();
+  // The row has no Holding link: its receipt's Open holding opens the gold's own page, where its ⋮ edits it.
+  await expect(row.getByRole('link', { name: 'Holding', exact: true })).toHaveCount(0);
+  await row.getByRole('link', { name: 'Receipt for Bought 2 Antam gold bars' }).click();
+  await page.getByRole('button', { name: 'Open holding', exact: true }).click();
   await expect(page).toHaveURL(/\/net-worth\/assets\/[^/?]+$/);
   await expect(page.getByRole('heading', { name: 'Antam gold bars' })).toBeVisible();
 });

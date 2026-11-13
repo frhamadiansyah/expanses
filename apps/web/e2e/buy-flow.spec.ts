@@ -54,7 +54,9 @@ test('records a purchase from the transaction window, and it never counts as spe
   // The purchase shows as a purchase, not as spending.
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
   const row = page.locator('li', { hasText: 'Bought 2 Antam gold bars' }).last();
-  await expect(row.getByRole('link', { name: 'Holding', exact: true })).toHaveAttribute('href', /\/net-worth\/assets\/[^/]+$/);
+  // No Holding link on the row: the receipt's Open holding is the way to it.
+  await expect(row.getByRole('link', { name: 'Receipt for Bought 2 Antam gold bars' })).toBeVisible();
+  await expect(row.getByRole('link', { name: 'Holding', exact: true })).toHaveCount(0);
 
   // Cash fell by what it cost, and the gold is held at cost: net worth is unchanged.
   await page.goto('/net-worth');
@@ -252,7 +254,7 @@ test('a card purchase with a fee, tagged to a goal, moves the units, the goal an
   // The two assertions above are the anchor the three below need: a `toHaveCount(0)` run the instant after a
   // navigation passes on a page that has not drawn yet, whatever the page would eventually have shown.
   await expect(page.getByTestId('receipt-hero')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Holding', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open holding', exact: true })).toBeVisible();
   // The round button in the header is the receipt's one Edit; the footer's is gone, and must not come back for a trade.
   await expect(page.getByRole('button', { name: 'Edit this transaction' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
