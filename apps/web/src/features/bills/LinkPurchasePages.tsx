@@ -374,8 +374,8 @@ export function LinkBillMonthPage({ transactionId, billId }: { transactionId: st
   const unchanged = current?.templateId === billId && current.billMonth === month;
   const refusal = useBillLinkRefusal(billId, month, today);
   const refused = unchanged ? null : (refusal.data ?? null);
-  // Started at a month not out yet on the purchase date (a bill paid in the window after it comes out): said first.
-  const notOutYet = chosen === null && current?.templateId !== billId && startChoice?.ask ? startChoice.opensOn : null;
+  // Started at a month the tap asked about because it is not out yet on the purchase date: said first.
+  const notOutYet = chosen === null && current?.templateId !== billId && startChoice?.ask && tx && startChoice.opensOn > tx.occurredOn ? startChoice.opensOn : null;
 
   async function link() {
     setError(null);

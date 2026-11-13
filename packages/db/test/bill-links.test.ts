@@ -345,6 +345,8 @@ it('a monthly bill out on the 25th, paid by the 5th, takes a payment in the mont
   // October paid: a payment on 3 Nov is November's, which is not out until the 25th — asked first.
   expect(await at('2026-11-03')).toEqual({ month: '2026-11', ask: true, opensOn: '2026-11-25' });
   expect(await at('2026-11-26', '2026-11-26')).toMatchObject({ month: '2026-11', ask: false });
+  // Bought 27 Oct, inside October's window, October paid: never September in silence — October, asked.
+  expect(await at('2026-10-27')).toMatchObject({ month: '2026-10', ask: true });
 });
 
 it('a pay-later bill started in November never takes a 3 Nov payment as October\'s', async () => {
