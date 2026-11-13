@@ -176,13 +176,46 @@ export async function numberColumnExists(tx: Db): Promise<boolean> {
   return rows.length > 0;
 }
 
-/** Each bank account's number digits, by account id: what its rows show as "···· 1234" when no card paid. */
+/**
+ * The money accounts whose number is kept only as the tax report's "Account number" (the kas row's `acct`): a broker's
+ * cash account, whose Settings asks for its number there and nowhere else (`setAccountNumberLast4` refuses it).
+ */
+const TAX_NUMBERED_SUBTYPES: readonly string[] = ['fund'];
+
+/** The last four digits of a whole number as typed ("0072-1938-5046" → "5046"), or null with fewer than four. */
+function lastFourOf(number: string | null | undefined): string | null {
+  const digits = (number ?? '').replace(/\D/g, '');
+  return digits.length >= 4 ? digits.slice(-4) : null;
+}
+
+/**
+ * Each money account's number digits, by account id: what its rows and pickers show as "···· 1234" when no card paid.
+ * A bank or savings account's are its own (0080). A fund account's are read off its tax report's account number, the
+ * one place its number is typed — display only: nothing is written, so nothing new travels between phones, and a
+ * bank alert is still filed only by a bank account's own digits.
+ */
 export async function accountNumberLast4s(database: Database, ws: WorkspaceContext): Promise<Record<string, string>> {
-  if (!(await numberColumnExists(database.db))) return {};
+  const digits: Record<string, string> = {};
+  const types = sql.join(TAX_NUMBERED_SUBTYPES.map((subtype) => sql`${subtype}`), sql`, `);
+  const taxed = await database.db.values<[string, string]>(
+    sql`SELECT a.id, p.coretax_fields_json FROM accounts a JOIN asset_profiles p ON p.account_id = a.id
+        WHERE a.workspace_id = ${ws.workspaceId} AND a.subtype IN (${types}) AND a.archived_at IS NULL`,
+  );
+  for (const [id, json] of taxed) {
+    let acct: unknown;
+    try {
+      acct = (JSON.parse(json) as { acct?: unknown }).acct;
+    } catch {
+      continue; // a profile whose fields cannot be read shows no digits
+    }
+    const last4 = typeof acct === 'string' ? lastFourOf(acct) : null;
+    if (last4) digits[id] = last4;
+  }
+  if (!(await numberColumnExists(database.db))) return digits;
   const rows = await database.db.values<[string, string]>(
     sql`SELECT id, number_last4 FROM accounts WHERE workspace_id = ${ws.workspaceId} AND number_last4 IS NOT NULL AND archived_at IS NULL`,
   );
-  return Object.fromEntries(rows);
+  return { ...digits, ...Object.fromEntries(rows) };
 }
 
 /** A wallet's one row for its phone digits: never a card, so never through `addCard`. */

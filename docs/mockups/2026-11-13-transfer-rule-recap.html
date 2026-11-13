@@ -1,0 +1,56 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Transfer rule recap</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --green:#34c759; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 20px; max-width:900px; }
+  h2 { font-size:17px; margin:28px 0 8px; }
+  .q { background:#fff; border-radius:16px; padding:16px 18px; max-width:880px; font-size:18px; font-weight:600; text-align:center; }
+  .arrows { display:flex; max-width:916px; justify-content:space-around; color:var(--ink3); font-size:13px; margin:6px 0; }
+  .two { display:flex; gap:16px; max-width:916px; flex-wrap:wrap; }
+  .box { flex:1; min-width:280px; background:#fff; border-radius:16px; padding:14px 16px; }
+  .box h3 { margin:0 0 6px; font-size:16px; } .box .tag { display:inline-block; font-size:12px; font-weight:600; padding:2px 8px; border-radius:10px; margin-bottom:8px; }
+  .no .tag { background:#e8f0fe; color:#1a56c4; } .yes .tag { background:#e6f6ea; color:#1a7f37; }
+  .box ul { margin:6px 0 0; padding-left:18px; line-height:1.5; font-size:14px; } .box .ex { font-size:13px; color:#555; margin-top:8px; }
+  .r { display:flex; gap:10px; align-items:center; padding:8px 0; border-top:.5px solid var(--hair); font-size:14px; } .r:first-of-type { border-top:0; }
+  .ic { width:26px; height:26px; border-radius:7px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; flex-shrink:0; background:#8e8e93; }
+  .r .g { flex:1; } .r .s { font-size:12px; color:var(--ink3); }
+  .list { background:#fff; border-radius:16px; padding:6px 16px 10px; max-width:884px; }
+  .item { display:flex; gap:12px; padding:10px 0; border-top:.5px solid var(--hair); font-size:14px; line-height:1.45; } .item:first-child { border-top:0; }
+  .item .n { font-weight:700; color:#ff9f0a; width:18px; flex-shrink:0; }
+  .same { color:#1a7f37; font-weight:600; }
+</style></head><body>
+<h1>Transfers: one rule</h1>
+<p class="sub">Only for transfers (money moving between accounts). Spending and income are not affected. Nothing is deleted or moved: balances, net worth, card statements and account pages stay exactly as today. Names and figures invented.</p>
+
+<div class="q">Does the transfer involve someone else's money?<br><span style="font-size:14px;font-weight:400;color:#555">(the husband's account, or a joint account)</span></div>
+<div class="arrows"><span>↓ No: only my own accounts</span><span>↓ Yes</span></div>
+<div class="two">
+  <div class="box no"><span class="tag">NO → my own move</span><h3>Not in Cashflow</h3>
+    <ul><li>Shows on the <b>card statement</b> and the <b>account page</b>, as today.</li><li>Cashflow → Filter → <b>Transfers</b> shows them when needed.</li></ul>
+    <div class="ex">Examples:</div>
+    <div class="r"><div class="ic">💳</div><div class="g">Card payment<div class="s">my bank 0917 → my card 4821</div></div></div>
+    <div class="r"><div class="ic">⇄</div><div class="g">Top-up<div class="s">my bank 0917 → my GoPay</div></div></div>
+    <div class="r"><div class="ic">💱</div><div class="g">Currency exchange<div class="s">my Cash IDR → my Cash TRY</div></div></div>
+  </div>
+  <div class="box yes"><span class="tag">YES → household money</span><h3>In Family's Cashflow only</h3>
+    <ul><li>Both phones see it in Family.</li><li>Not in Personal or Business.</li></ul>
+    <div class="ex">Examples:</div>
+    <div class="r"><div class="ic">⇄</div><div class="g">To joint account<div class="s">my bank 0917 → Joint 2210</div></div></div>
+    <div class="r"><div class="ic">⇄</div><div class="g">To husband<div class="s">my card 4821 → his GoPay</div></div></div>
+    <div class="r"><div class="ic">💳</div><div class="g">Joint card payment<div class="s">Joint 2210 → joint card 7710</div></div></div>
+  </div>
+</div>
+
+<h2>Two extras (already agreed)</h2>
+<div class="list">
+  <div class="item"><span class="n">+</span><div><b>A fee I type</b> in Fees &amp; charges is spending: it always shows in Cashflow (and on the trip, if the transfer moved there).</div></div>
+  <div class="item"><span class="n">+</span><div><b>Moved into a trip:</b> the transfer shows on the trip page as grey "not counted". A rate above market (no fee typed) counts nowhere.</div></div>
+</div>
+
+<h2>What will feel different</h2>
+<div class="list">
+  <div class="item"><span class="n">1</span><div>Card payments and top-ups disappear from Cashflow. To check one: open the card or the bank account, or turn on the Transfers filter.</div></div>
+  <div class="item"><span class="n">2</span><div>A captured card-payment SMS, once confirmed, is not in Cashflow. The confirmation says <b>"Saved on card 4821's statement"</b>.</div></div>
+  <div class="item"><span class="n">3</span><div>To move my own exchange (Cash IDR → Cash TRY) into a trip: turn on the Transfers filter first, then Select → Add to trip.</div></div>
+  <div class="item"><span class="n">4</span><div class="same">Unchanged: balances, net worth, card statements, account pages, bills, Debt-free plan, monthly totals. Only what Cashflow lists changes.</div></div>
+</div>
+</body></html>
