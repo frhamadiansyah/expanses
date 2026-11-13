@@ -260,6 +260,9 @@ function AssetBody({ value }: { value: AssetValueRow }) {
         })
       : [];
 
+  // An edit is named for what it changes, in the words its round button uses: Edit buy, Edit coupon, Edit units.
+  const editTitleOf = (tradeKind: TradeRow['kind']) =>
+    `Edit ${tradeKind === 'buy' ? 'buy' : tradeKind === 'sell' ? 'sell' : tradeKind === 'income' ? incomeWordOf(kind).toLowerCase() : 'units'}`;
   const trade = (title: string, initial: Partial<TradeDraft>) => () => setSheet({ kind: 'trade', title, initial, editing: null });
   // A share listed on IDX buys and sells in its own sheet: price on IDX's tick, whole lots, the broker's fee.
   const idxShare = listedSecurity && isIdxListing(listedSecurity) ? listedSecurity : null;
@@ -734,7 +737,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           onEdit={() =>
             sheet.trade.switchedWith
               ? void editSwitch(sheet.trade)
-              : setSheet({ kind: 'trade', title: 'Edit trade', initial: draftFromTrade(sheet.trade, currency), editing: sheet.trade })
+              : setSheet({ kind: 'trade', title: editTitleOf(sheet.trade.kind), initial: draftFromTrade(sheet.trade, currency), editing: sheet.trade })
           }
           onDelete={() => void removeTrade(sheet.trade)}
           // A buy's or a sell's goal, when there is a goal to give it; a switch moved money between funds, not toward one.

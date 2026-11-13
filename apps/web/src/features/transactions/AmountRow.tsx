@@ -91,7 +91,10 @@ function MoneyField({
   disabled = false,
   typing = false,
   end = false,
+  invalid = false,
 }: {
+  /** The figure is refused as it stands (a sell of more than is held): said to a screen reader. */
+  invalid?: boolean;
   field: MoneyFieldSpec;
   /** The figure sits at the row's end, as a value on the right of a row does: the fee beside its category. */
   end?: boolean;
@@ -126,7 +129,7 @@ function MoneyField({
        * the most-pressed control on the card. `self-stretch` gives the button its row's height and the inner
        * span keeps the figure exactly where it was, so this changes what receives the tap and not the look.
        */
-      <button type="button" aria-label={label} onClick={onKeypad} disabled={disabled} className={cx(className, 'flex items-center self-stretch', end ? 'justify-end text-right' : 'text-left')}>
+      <button type="button" aria-label={label} aria-invalid={invalid || undefined} onClick={onKeypad} disabled={disabled} className={cx(className, 'flex items-center self-stretch', end ? 'justify-end text-right' : 'text-left')}>
         {/* Nothing typed yet: the cursor stands before the placeholder's first letter, as in any empty field, not after the word. */}
         {typing && !value && <span aria-hidden data-testid="typing-mark" className="ph-caret" style={{ marginLeft: 0, marginRight: -1 }} />}
         <span className="min-w-0 truncate">{value ? amountFace(value, currency, refund, fractional) : <span className="text-[var(--ph-ink-3)]">{placeholder}</span>}</span>
@@ -138,6 +141,7 @@ function MoneyField({
     <input
       ref={inputRef}
       aria-label={label}
+      aria-invalid={invalid || undefined}
       inputMode="decimal"
       value={value}
       disabled={disabled}
@@ -521,7 +525,10 @@ export function FigureRow({
   placeholder = 'Amount',
   pill,
   clearLabel = 'Clear amount',
+  invalid = false,
 }: {
+  /** The figure is refused as it stands: more than is held. */
+  invalid?: boolean;
   /** Its accessible name, its text and the currency it is read in. */
   field: MoneyFieldSpec;
   /** The flag to draw for `field.currency`. */
@@ -555,6 +562,7 @@ export function FigureRow({
               onChange={onChange}
               onKeypad={() => setKeypad((open) => !open)}
               typing={keypad}
+              invalid={invalid}
               placeholder={placeholder}
               className="min-w-0 flex-1 text-[17px] leading-[22px] md:text-[15px] md:leading-5 text-[var(--ph-ink)] tabular ph-focus-inset"
             />

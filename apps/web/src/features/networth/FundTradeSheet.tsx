@@ -10,6 +10,7 @@ import { DateRow } from '../transactions/CardRows';
 import { FormRows } from '../transactions/FormRow';
 import { TradeHoldingRow, TradeMoneyRow } from '../transactions/TradeRows';
 import { currencyFlag } from '../transactions/tx-form';
+import { keepsAll } from './sell-all';
 import { typedAmount } from './trade-form';
 import { CashSheet, ResultRow, SheetTradeDetails, signedMinor, typedMinor, useCashSide, useTradeDetails, useTradeSave } from './trade-sheet-parts';
 
@@ -107,7 +108,10 @@ export function FundTradeSheet({
           <FigureRow
             field={{ which: 'amount', label: 'Amount', value: shownAmount, currency }}
             flag={currencyFlag(currency)}
+            invalid={Boolean(sell?.tooMany)}
             onChange={(text) => {
+              // Leaving the row writes All's own figure back, tidied: still All, so every unit is still sold.
+              if (keepsAll(all, text, all && sell ? sell.grossMinor : null, currency)) return;
               setAll(false);
               setAmount(text);
             }}

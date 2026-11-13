@@ -19,7 +19,14 @@ test('phone: a fund bought by amount grows by it, then sold with All down to not
   await page.getByRole('button', { name: 'Sell', exact: true }).click();
   await fillFigure(sheet, 'Amount', '4000000');
   await expect(page.getByRole('button', { name: 'Record sell' })).toBeDisabled();
-  await sheet.getByRole('button', { name: 'All', exact: true }).click();
+  const all = sheet.getByRole('button', { name: 'All', exact: true });
+  await all.click();
+  // The keypad opened on All's figure and closed with DONE writes it back tidied: still All (fix round 1).
+  await sheet.getByLabel('Amount', { exact: true }).click();
+  const keypad = page.getByTestId('keypad');
+  await keypad.getByRole('button', { name: 'DONE' }).click();
+  await expect(keypad).toHaveCount(0);
+  await expect(all).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('fund-gain')).toContainText('+Rp 52.000');
   await page.getByRole('button', { name: 'Record sell' }).click();
   await expect(sheet).toHaveCount(0);

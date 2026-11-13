@@ -140,7 +140,7 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    // Enter submits too: the question is a condition on it.
+    // The sheet's ✓ submits, as Expense's does; the question is a condition on it all the same.
     if (!tradeFormReady(setAside.ready, waitingForPosted)) return;
     setError(null);
     setBusy(true);
@@ -188,7 +188,11 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
         ? { goalId: SPLIT, parts: [{ goalId: draft.goalId && draft.goalId !== SPLIT ? draft.goalId : (goals[0]?.id ?? ''), amount: '' }] }
         : { goalId },
     );
-  const typedTax = draft.tax.trim() !== '' && !/^0([.,]0+)?$/.test(draft.tax.trim());
+  // Decided once, as the form opens: an edited buy that carried a tax keeps its row while the figure is retyped.
+  const [typedTax] = useState(() => {
+    const tax = (initial?.tax ?? '').trim();
+    return tax !== '' && !/^0([.,]0+)?$/.test(tax);
+  });
   const rateRow = needsRate ? (
     <FieldRow
       label="Rate that day"

@@ -59,6 +59,7 @@ test('Sell half the value: half the money comes out, the rest is gain; never mor
 
   await amount.fill('2000000');
   await expect(page.getByTestId('fund-worth')).toContainText('Rp 1.552.000');
+  await expect(amount).toHaveAttribute('aria-invalid', 'true');
   await expect(page.getByRole('button', { name: 'Record sell' })).toBeDisabled();
 
   await amount.fill('776000');
@@ -68,8 +69,13 @@ test('Sell half the value: half the money comes out, the rest is gain; never mor
   await expect(page.getByTestId('asset-grid')).toContainText('Rp 750.000');
 
   await page.getByRole('button', { name: 'Sell', exact: true }).click();
-  await sheet.getByRole('button', { name: 'All', exact: true }).click();
+  const all = sheet.getByRole('button', { name: 'All', exact: true });
+  await all.click();
   await expect(amount).toHaveValue('776.000');
+  // Into the row and out again changes nothing: leaving it tidies the figure, and All stays on (fix round 1).
+  await amount.focus();
+  await amount.blur();
+  await expect(all).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Record sell' }).click();
   await expect(sheet).toHaveCount(0);
   await expect(page.getByTestId('asset-grid')).toContainText('Rp 0');
