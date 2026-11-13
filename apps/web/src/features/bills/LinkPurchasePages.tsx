@@ -270,6 +270,8 @@ export function LinkToBillPage({ transactionId }: { transactionId: string }) {
     const payer = accounts.find((a) => a.id === bill.moneyAccountId);
     const linked = current?.templateId === bill.id;
     const month = linked ? current.billMonth : (linkMonths?.[bill.id]?.month ?? null);
+    // A tap that would open the month page rather than link says so: the month is offered, to be chosen.
+    const monthWords = month ? `${monthWithYear(month)}${!linked && (current !== null || linkMonths?.[bill.id]?.ask) ? ' · choose' : ''}` : null;
     return (
       <InsetRow
         key={bill.id}
@@ -278,7 +280,7 @@ export function LinkToBillPage({ transactionId }: { transactionId: string }) {
         title={bill.name}
         // Each bill names its month first: the one the current bill settles (a tap on it offers another), or the one a
         // tap links to.
-        subtitle={[month ? monthWithYear(month) : null, repeatWords(bill), bill.repeat === 'monthly' ? payer?.name : null].filter(Boolean).join(' · ')}
+        subtitle={[monthWords, repeatWords(bill), bill.repeat === 'monthly' ? payer?.name : null].filter(Boolean).join(' · ')}
         value={
           linked ? (
             tick

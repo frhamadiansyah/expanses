@@ -1035,7 +1035,8 @@ export async function billLinkRefusal(
 
 /**
  * The month of a bill a purchase is linked to when none is picked, and `ask`: whether a tap should open the month page
- * first rather than link (`linkChoice` in core). `opensOn` is the day that month comes out. Not checked against refusals.
+ * first rather than link (`linkChoice` in core), or a link to that month would be refused as paid, skipped or not out
+ * yet. `opensOn` is the day that month comes out. `billLinkRefusal` is still the word on a link.
  */
 export async function billLinkMonth(
   database: Database,
@@ -1068,8 +1069,11 @@ async function linkMonthsOf(database: Database, ws: WorkspaceContext, templates:
   const facts = await billFacts(database, ws, templates);
   return Object.fromEntries(
     templates.map((template) => {
-      const { month, ask } = linkChoice(purchasedOn, linkInput(template, facts, today));
-      return [template.id, { month, ask, opensOn: billWindow(month, template.dayOfMonth, template.payByDay).opensOn }];
+      const rules = linkInput(template, facts, today);
+      const { month, ask } = linkChoice(purchasedOn, rules);
+      // A month a link would be refused for (paid, skipped, not out yet) is asked about too, so a list can say so first.
+      const shut = rules.settled[month] === 'paid' || rules.settled[month] === 'skipped' || month > latestLinkMonthOf(rules);
+      return [template.id, { month, ask: ask || shut, opensOn: billWindow(month, template.dayOfMonth, template.payByDay).opensOn }];
     }),
   );
 }

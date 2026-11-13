@@ -172,6 +172,8 @@ test('on a phone: a receipt links its purchase to a bill in one tap, another mon
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Sports & fitness Gym extra/ }).click();
   await page.getByTestId('receipt-bill').click();
+  // The row says before the tap that this month is to be chosen, not linked.
+  await expect(page.getByTestId(/^bill-choice-/).filter({ hasText: 'Gym' })).toContainText(`${thisMonth().label} · choose`);
   await page.getByTestId(/^bill-choice-/).filter({ hasText: 'Gym' }).click();
   await expect(page).toHaveURL(/\/transactions\/[^/]+\/bill\/[^/]+$/);
   await expect(page.getByTestId('link-refusal')).toHaveText(`${thisMonth().label} is already paid`);
@@ -265,7 +267,7 @@ test('on a phone: a yearly bill not begun yet takes a purchase in the month it c
   await page.getByRole('button', { name: /^Restaurants Domain early/ }).click();
   await page.getByTestId('receipt-bill').click();
   const bill = page.getByTestId(/^bill-choice-/).filter({ hasText: 'Domain renewal' });
-  await expect(bill).toContainText(outLabel);
+  await expect(bill).toContainText(`${outLabel} · choose`);
   // The list reloaded on the way (the app restarted under it): the way back to the receipt is not known any more.
   await page.reload();
   // Bought before the bill's first occurrence: the tap opens the month page at that occurrence rather than linking.

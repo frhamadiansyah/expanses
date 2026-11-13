@@ -362,6 +362,9 @@ it('reads the months of many bills in one go, each as it reads alone', async () 
   expect(all[h.bill]).toEqual(await billLinkMonth(h.database, h.ws, { templateId: h.bill, ...read }));
   expect(all[later]).toEqual({ month: '2026-10', ask: false, opensOn: '2026-10-25' });
   expect(await billLinkMonths(h.database, h.ws, { templateIds: [], ...read })).toEqual({});
+  // A month already paid would be refused: asked, so the list says so before the tap.
+  await recordBillPayments(h.database, h.ws, { paidOn: '2026-11-02', payments: [{ templateId: h.bill, billMonth: '2026-11', amountMinor: 395_000 }] });
+  expect((await billLinkMonths(h.database, h.ws, { templateIds: [h.bill], ...read }))[h.bill]).toMatchObject({ month: '2026-11', ask: true });
 });
 
 it('a pay-later bill started in November never takes a 3 Nov payment as October\'s', async () => {
