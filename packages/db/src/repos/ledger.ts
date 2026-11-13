@@ -1479,9 +1479,11 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     // A purchase split across workspaces is filed in none of them by that table: it shows where it has a part (0084).
     if (await bookSplitsExist(database.db)) conds.push(splitHasPartIn(transactions.id, bookId));
     if (await eventOnlyExists(database.db)) conds.push(notEventOnly(transactions.id));
-    // A transfer recorded in a shared workspace (0094) is listed by that workspace alone, as one filed in a book is.
+    // A transfer recorded in a shared workspace (0094) is listed by that workspace alone, as one filed in a book is —
+    // and by none once it is listed on a shared event instead (0114): the event page lists it, read owner-wide, and the
+    // account's own history keeps it.
     if ((await database.db.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'shared_transfers'`)).length > 0) {
-      conds.push(sql`${transactions.id} NOT IN (SELECT transaction_id FROM shared_transfers WHERE transaction_id IS NOT NULL AND void = 0 AND book_id <> ${bookId})`);
+      conds.push(sql`${transactions.id} NOT IN (SELECT transaction_id FROM shared_transfers WHERE transaction_id IS NOT NULL AND void = 0 AND (book_id <> ${bookId} OR event_book_id IS NOT NULL))`);
     }
   }
   // Within a day (compareWithinDay): rows never moved first, newest first; then moved rows by their place. A database

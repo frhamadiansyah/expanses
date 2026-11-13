@@ -10,6 +10,7 @@ import { listTransactions } from './ledger';
 import { addSharedItemPurchase, setSharedItemDone, saveSharedItem } from './shared-event-plan';
 import { ensureShareAccountTx, postEventRecordTx, rateToBaseTx } from './shared-event-postings';
 import { type EventBookRow, eventRecordsTx, expenseRecordTx, type StoredExpense } from './shared-event-records';
+import { transferIntoEventTx } from './shared-event-transfers';
 import { openSharedEventTx, SharedEventDbError } from './shared-event-writes';
 import { partnerPurchaseRefusalTx, untagSharedRowsTx } from './shared-workspace-rows';
 
@@ -186,8 +187,10 @@ class KeptBack extends Error {
 
 /**
  * Moves each purchase into the shared event, each in its own db transaction, so one that cannot move never holds the
- * others back. Returns what moved (with the expense each became) and what stayed, with why. The event itself not being
- * open for writing (not shared here, no longer shared, Done) is thrown, as every other shared event write throws it.
+ * others back. Returns what moved (with the expense each became), what stayed, with why, and the transfers listed on
+ * the event instead (a household-shared workspace's transfer, `shared-event-transfers.ts`: off the workspace on every
+ * phone, on the event not counted, the transaction itself untouched). The event itself not being open for writing (not
+ * shared here, no longer shared, Done) is thrown, as every other shared event write throws it.
  */
 export async function moveIntoSharedEvent(
   database: Database,
@@ -201,14 +204,19 @@ export async function moveIntoSharedEvent(
    * the same person's two phones moving the same purchase name one expense). A fresh id otherwise.
    */
   options: { expenseIdFor?: (tx: Db, transactionId: string) => Promise<string> } = {},
-): Promise<{ moved: { transactionId: string; expenseId: string; derivedId: string }[]; kept: MoveRefusal[] }> {
+): Promise<{ moved: { transactionId: string; expenseId: string; derivedId: string }[]; kept: MoveRefusal[]; listed: { transactionId: string }[] }> {
   // `derivedId`: the expense's own transaction in this phone's books, which the purchase was replaced by.
   const moved: { transactionId: string; expenseId: string; derivedId: string }[] = [];
   const kept: MoveRefusal[] = [];
+  const listed: { transactionId: string }[] = [];
   for (const transactionId of [...new Set(transactionIds)]) {
     try {
-      const outcome = await database.transaction(async (tx): Promise<{ expenseId: string; derivedId: string } | MoveRefusal> => {
+      const outcome = await database.transaction(async (tx): Promise<{ expenseId: string; derivedId: string } | MoveRefusal | 'listed'> => {
         const book = await openSharedEventTx(tx, ws, eventId);
+        // A transfer is listed on the event, never an expense of it; anything else goes on as a purchase.
+        const transfer = await transferIntoEventTx(tx, ws, transactionId, book);
+        if (transfer === 'listed') return 'listed';
+        if (transfer !== null) return { transactionId, why: transfer };
         const purchase = await movableTx(tx, ws, transactionId);
         if (typeof purchase === 'string') return { transactionId, why: purchase };
         const rateToEvent = await rateToEventTx(tx, book, purchase.currency, purchase.occurredOn);
@@ -258,7 +266,8 @@ export async function moveIntoSharedEvent(
         }
         return { expenseId, derivedId: after[0] };
       });
-      if ('expenseId' in outcome) moved.push({ transactionId, ...outcome });
+      if (outcome === 'listed') listed.push({ transactionId });
+      else if ('expenseId' in outcome) moved.push({ transactionId, ...outcome });
       else kept.push(outcome);
     } catch (error) {
       if (error instanceof KeptBack) kept.push(error.refusal);
@@ -267,7 +276,7 @@ export async function moveIntoSharedEvent(
       else throw error;
     }
   }
-  return { moved, kept };
+  return { moved, kept, listed };
 }
 
 /** What a posted purchase spent, in the base currency: its expense lines added up. */

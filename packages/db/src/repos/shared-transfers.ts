@@ -96,11 +96,14 @@ async function rowsOfTx(tx: Db, transactionId: string): Promise<{ bookId: string
   return rows.map(([bookId, transferId]) => ({ bookId, transferId }));
 }
 
-/** A transfer voided: its redacted row is void for the partner too (void wins for ever on the row). */
+/**
+ * A transfer voided: its redacted row is void for the partner too. A void row is on no shared event either (0114), so a
+ * transfer filed in the workspace again later (moved back in) comes back to its list, not to the event it was on.
+ */
 export async function voidSharedTransferTx(tx: Db, transactionId: string): Promise<void> {
   for (const { bookId, transferId } of await rowsOfTx(tx, transactionId)) {
     await withCapture(tx, { entity: KEY, id: transferId, bookId }, () =>
-      tx.run(sql`UPDATE shared_transfers SET void = 1 WHERE book_id = ${bookId} AND transfer_id = ${transferId}`),
+      tx.run(sql`UPDATE shared_transfers SET void = 1, event_book_id = NULL WHERE book_id = ${bookId} AND transfer_id = ${transferId}`),
     );
   }
 }
@@ -133,7 +136,8 @@ export interface SharedTransferRow {
 
 /**
  * The transfers other members recorded in a shared workspace, newest first: what the partner's list shows beside its
- * own rows. The recorder's own phone never lists them (it has the real transfer).
+ * own rows. The recorder's own phone never lists them (it has the real transfer). One listed on a shared event instead
+ * (0114) is the event's to show, not the workspace's.
  */
 export async function listSharedTransfers(database: Database, bookId: string, opts: { from?: string; to?: string } = {}): Promise<SharedTransferRow[]> {
   if (!(await tableExists(database.db))) return [];
@@ -141,7 +145,7 @@ export async function listSharedTransfers(database: Database, bookId: string, op
   if (!member) return [];
   const rows = await database.db.values<[string, string, string, number, string, string, string, string | null, string | null]>(sql`
     SELECT transfer_id, book_id, occurred_on, amount_minor, currency, description, recorded_by, from_name, to_name FROM shared_transfers
-    WHERE book_id = ${bookId} AND void = 0 AND recorded_by <> ${member}
+    WHERE book_id = ${bookId} AND void = 0 AND recorded_by <> ${member} AND event_book_id IS NULL
       AND occurred_on >= ${opts.from ?? '0000-00-00'} AND occurred_on <= ${opts.to ?? '9999-99-99'}
     ORDER BY occurred_on DESC, transfer_id DESC`);
   return rows.map(([transferId, book, occurredOn, amountMinor, currency, description, recordedBy, fromName, toName]) => ({

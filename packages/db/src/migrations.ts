@@ -111,6 +111,7 @@ import ringColours from '../migrations/0110_ring_colours.sql?raw';
 import goalDues from '../migrations/0111_goal_dues.sql?raw';
 import draftEvent from '../migrations/0112_draft_event.sql?raw';
 import feeWaiverYear from '../migrations/0113_fee_waiver_year.sql?raw';
+import tripTransfers from '../migrations/0114_trip_transfers.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -232,6 +233,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 111, name: 'goal_dues', sql: goalDues },
   { version: 112, name: 'draft_event', sql: draftEvent },
   { version: 113, name: 'fee_waiver_year', sql: feeWaiverYear },
+  { version: 114, name: 'trip_transfers', sql: tripTransfers },
 ];
 
 /** The highest version this build of the app knows how to produce. */
