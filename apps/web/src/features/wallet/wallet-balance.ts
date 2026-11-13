@@ -115,6 +115,8 @@ export interface JointBoxInput {
   /** In `currency`: what the money holds, or what the card owes. */
   minor: number;
   currency: string;
+  /** Money only, in `currency`: what its holder's phone set aside of it, taken off Spending money as an own set-aside is. */
+  setAsideMinor?: number;
 }
 
 export interface WalletBox {
@@ -150,7 +152,10 @@ export function walletBox({ book, balances, credit, baseCurrency, rates, setAsid
   };
   const counted = new Set(book.filter((a) => a.kind === 'asset' && SPENDABLE_KINDS.has(a.subtype)).map((a) => a.id));
   const kept = setAsides.filter((row) => counted.has(row.accountId));
-  const promiseAmounts = kept.map((row) => ({ minor: row.setAsideMinor, currency: row.currency }));
+  // The partner's joint money's set-asides, as its holder's phone sent them: off Spending money here as on the holder's.
+  const promiseAmounts = kept
+    .map((row) => ({ minor: row.setAsideMinor, currency: row.currency }))
+    .concat(joint.flatMap((item) => (item.side === 'money' && (item.setAsideMinor ?? 0) > 0 ? [{ minor: item.setAsideMinor!, currency: item.currency }] : [])));
   const promised = sumToBase({ amounts: promiseAmounts, baseCurrency, ratesToBase: rates });
   const askedAmounts = credit.flatMap((card) => {
     const owes = owedMinor(balances, card.id);

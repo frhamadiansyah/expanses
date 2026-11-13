@@ -10,7 +10,7 @@ import { MONEY_SUBTYPES } from './accounts';
 import { recordContributionTx } from './goal-contributions';
 import { healthTablesExist } from './health-tables';
 import { isPocketParentTx } from './set-aside-tx';
-import { type CaptureTarget, markGoalDirtyTx, withCapture } from '../sync/capture';
+import { type CaptureTarget, markGoalDirtyTx, markSetAsideAccountDirtyTx, withCapture } from '../sync/capture';
 import { goalLinkOfTx } from '../sync/goals/scope';
 import { markGoalDeletedTx } from './goal-sharing';
 import { goalSharingTablesExist } from './goal-sharing-tables';
@@ -412,6 +412,8 @@ export async function archiveGoal(database: Database, ws: WorkspaceContext, goal
       tx.update(goals).set({ status: 'archived' }).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws.workspaceId))),
     );
     markGoalDirtyTx(tx, goalId);
+    // An archived goal promises nothing: what it set aside on a joint account leaves that account's summary.
+    await markEarmarkedAccountsDirtyTx(tx, goalId);
     // An archived goal comes due no more (0111): its switch goes off, and what was done stays.
     if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'goal_dues'`)).length > 0) {
       await tx.run(sql`UPDATE goal_dues SET active = 0 WHERE goal_id = ${goalId} AND workspace_id = ${ws.workspaceId}`);
@@ -432,6 +434,7 @@ export async function deleteGoal(database: Database, ws: WorkspaceContext, goalI
     const sharer = await otherSharerTx(tx, goalId);
     if (sharer !== null) throw new GoalDbError(`${sharer} shared this goal; leave it instead`);
     await markGoalDeletedTx(tx, goalId);
+    await markEarmarkedAccountsDirtyTx(tx, goalId);
     await deleteGoalRowsTx(tx, ws, goalId);
   });
 }
@@ -455,6 +458,11 @@ export async function deleteGoalRowsTx(tx: Db, ws: WorkspaceContext, goalId: str
     if (tables.has(table)) await tx.run(sql`DELETE FROM ${sql.raw(table)} WHERE goal_id = ${goalId} AND workspace_id = ${w}`);
   }
   await tx.run(sql`DELETE FROM goals WHERE id = ${goalId} AND workspace_id = ${w}`);
+}
+
+/** Every account a goal has something set aside on, marked for its net-worth summary (a joint one carries the total). */
+async function markEarmarkedAccountsDirtyTx(tx: Db, goalId: string): Promise<void> {
+  for (const [accountId] of await tx.values<[string]>(sql`SELECT DISTINCT account_id FROM goal_earmarks WHERE goal_id = ${goalId}`)) await markSetAsideAccountDirtyTx(tx, accountId);
 }
 
 /** Writes the order the owner dragged the goals into; the first is funded first. */
@@ -517,6 +525,8 @@ export async function saveEarmark(database: Database, ws: WorkspaceContext, inpu
     // Only the difference is a contribution: re-saving the same amount moved nothing.
     await recordContributionTx(tx, ws, input.goalId, input.accountId, input.amountMinor - (before?.amountMinor ?? 0));
     markGoalDirtyTx(tx, input.goalId);
+    // A joint account's summary carries what is set aside on it (the partner's Wallet takes it off Spending money).
+    await markSetAsideAccountDirtyTx(tx, input.accountId);
   });
 }
 
@@ -533,6 +543,7 @@ export async function removeEarmark(database: Database, ws: WorkspaceContext, go
       .where(and(eq(goalEarmarks.goalId, goalId), eq(goalEarmarks.accountId, accountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
     await recordContributionTx(tx, ws, goalId, accountId, -before.amountMinor);
     markGoalDirtyTx(tx, goalId);
+    await markSetAsideAccountDirtyTx(tx, accountId);
   });
 }
 
@@ -588,5 +599,7 @@ export async function moveSetAside(
     await recordContributionTx(tx, ws, input.toGoalId, input.accountId, input.amountMinor);
     markGoalDirtyTx(tx, input.fromGoalId);
     markGoalDirtyTx(tx, input.toGoalId);
+    // The account's total is the same after a move between its goals: the hash skip then sends nothing.
+    await markSetAsideAccountDirtyTx(tx, input.accountId);
   });
 }

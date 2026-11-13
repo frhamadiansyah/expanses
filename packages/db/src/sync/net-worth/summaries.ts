@@ -19,6 +19,7 @@ import type { Database, Db } from '../../database';
 import { assetValueSeries } from '../../repos/asset-values';
 import { accountBanksTx, BALANCE_SUBTYPES } from '../../repos/accounts';
 import { type ActiveNetWorthGroup, activeNetWorthGroup, markHeldTx, outsiderDevices, sendAllowance } from '../../repos/net-worth-sharing';
+import { setAsideTotals } from '../../repos/set-aside';
 import { coretaxInputsFor, rowPartOf } from '../../repos/tax-inputs';
 import { withCapture } from '../capture';
 import { uuidv5 } from '../uuidv5';
@@ -126,6 +127,7 @@ export async function computeItemSummary(
   today: string,
   taxGroup: Pick<ActiveNetWorthGroup, 'groupBookId' | 'workspaceBookId' | 'mode'> | null = null,
   taxSource: TaxSource = freshTaxSource(),
+  setAsides?: SetAsideSource,
 ): Promise<ItemSummary> {
   const account = await accountOf(tx, ws.workspaceId, accountId);
   if (!account || (account.kind !== 'asset' && account.kind !== 'liability')) throw new Error(`summaries: ${accountId} is not an item`);
@@ -210,7 +212,74 @@ export async function computeItemSummary(
     ...(jointRow ? { joint: true as const } : {}),
     ...(await sheetFactsOf(tx, accountId, kind, account.subtype)),
     ...(jointRow && kind === 'asset' ? await faceFactsOf(tx, accountId, primary?.[0] ?? null) : {}),
+    ...(jointRow && kind === 'asset' ? await setAsideFactsOf(ws, accountId, setAsides ?? freshSetAsideSource(tx, today)) : {}),
   };
+}
+
+/**
+ * What every account of a workspace has set aside on it today (`setAsideTotals`, the figure the holder's Wallet takes
+ * off), worked out at most once per workspace for one send or one check: a send of several joint accounts reads it once.
+ */
+export type SetAsideSource = (ws: WorkspaceContext) => Promise<Record<string, number>>;
+
+export function freshSetAsideSource(tx: Db, today: string): SetAsideSource {
+  const read = new Map<string, Promise<Record<string, number>>>();
+  return (ws) => {
+    let totals = read.get(ws.workspaceId);
+    if (!totals) {
+      totals = setAsideTotals(readView(tx), ws, today);
+      read.set(ws.workspaceId, totals);
+    }
+    return totals;
+  };
+}
+
+/**
+ * A joint money account's `setAsideMinor` (`ItemSummary.setAsideMinor`): the whole of what goals — own or shared — and
+ * sinking funds promise of it on this phone, the figure the holder's Wallet takes off Spending money. Never a goal's or a
+ * bill's name. Empty — no key at all — when nothing is set aside. Called for a joint asset only.
+ */
+async function setAsideFactsOf(ws: WorkspaceContext, accountId: string, source: SetAsideSource): Promise<{ setAsideMinor?: number }> {
+  return setAsideOf((await source(ws))[accountId]);
+}
+
+/** A `setAsideMinor`, sent or read: a whole figure above nought, else none (a peer's anything else reads as nothing set aside). */
+function setAsideOf(sent: unknown): { setAsideMinor?: number } {
+  return typeof sent === 'number' && Number.isSafeInteger(sent) && sent > 0 ? { setAsideMinor: sent } : {};
+}
+
+/**
+ * This phone's live joint money items whose sent summary carries another `setAsideMinor` than the account has now: one
+ * set aside on before the figure travelled, or one whose set-aside changed where nothing marked it (a sinking fund's
+ * saving growing with the days, a shared goal archived by its sharer's phone). `refreshSummariesTx` sends them again on
+ * every sync, so no one-time repair is needed. Nothing is worked out on a phone with no joint account.
+ */
+export async function itemsWithStaleSetAsideTx(tx: Db, today: string, source: SetAsideSource = freshSetAsideSource(tx, today)): Promise<string[]> {
+  let own: [string, string, string, string][] = [];
+  try {
+    own = await tx.values<[string, string, string, string]>(sql`
+      SELECT m.account_id, i.summary_json, a.workspace_id, w.base_currency FROM nw_items i
+      JOIN nw_item_map m ON m.item_id = i.item_id AND m.group_book_id = i.book_id
+      JOIN shared_books s ON s.book_id = i.book_id AND s.member_id = i.owner
+      JOIN nw_joint_accounts j ON j.account_id = m.account_id
+      JOIN accounts a ON a.id = m.account_id AND a.kind = 'asset'
+      JOIN workspaces w ON w.id = a.workspace_id
+      WHERE i.removed = 0 AND s.state = 'active'`);
+  } catch {
+    return []; // a database from before the joint switch (0097)
+  }
+  const stale: string[] = [];
+  for (const [accountId, json, workspaceId, baseCurrency] of own) {
+    const now = await source({ workspaceId, baseCurrency });
+    let sent: unknown;
+    try {
+      sent = (JSON.parse(json) as { setAsideMinor?: unknown } | null)?.setAsideMinor;
+    } catch {
+      sent = undefined;
+    }
+    if ((setAsideOf(sent).setAsideMinor ?? 0) !== (setAsideOf(now[accountId]).setAsideMinor ?? 0)) stale.push(accountId);
+  }
+  return stale;
 }
 
 /** The `face` an item's summary carries now (`computeItemSummary`), without computing the rest: none unless joint money. */
@@ -464,7 +533,13 @@ async function writeItemTx(tx: Db, groupBookId: string, itemId: string, owner: s
  * `touchedFrom`: the earliest date the write being flushed touched, when known (capture passes it); a write wholly after
  * the tax year's 31 December keeps each item's tax part as last sent (final review item 7). Unknown = build it, once.
  */
-export async function sendSummariesTx(tx: Db, accountIds: readonly string[] | 'all', today: string, touchedFrom?: string): Promise<number> {
+export async function sendSummariesTx(
+  tx: Db,
+  accountIds: readonly string[] | 'all',
+  today: string,
+  touchedFrom?: string,
+  setAsides: SetAsideSource = freshSetAsideSource(tx, today),
+): Promise<number> {
   // One group per person (§4): the one active group this member is in, read by the one group-state reader (task 5).
   const group = await activeNetWorthGroup(tx);
   if (!group) return 0;
@@ -493,7 +568,7 @@ export async function sendSummariesTx(tx: Db, accountIds: readonly string[] | 'a
       // The tax row only after this person's Share of the active proposal (task 10 review round 1): a Change to one tax
       // ID must not send it on a mere refresh (`live`) before the review has said what it now carries.
       const summary: ItemSummary = {
-        ...(await computeItemSummary(tx, ws, accountId, memberId, workspaceBookId, today, allowance === 'all' ? group : null, taxSource)),
+        ...(await computeItemSummary(tx, ws, accountId, memberId, workspaceBookId, today, allowance === 'all' ? group : null, taxSource, setAsides)),
         ...(await pocketOfTx(tx, ws, accountId, groupBookId)),
       };
       const hash = summaryHash(summary);
@@ -562,9 +637,11 @@ export async function receivedItems(database: Database, groupBookId: string): Pr
       const summary = JSON.parse(json) as ItemSummary | null;
       // The owner is the row's, which the writer rule vouches for; never what the summary's own text claims.
       if (summary && typeof summary === 'object') {
-        const { joint, sheet, face, pocketOf, ...rest } = summary;
-        // Only a literal `true` makes an item joint; anything else a peer sends reads as off. A face only on a joint item.
-        out.push({ ...rest, ...transfersOf(summary), ...(joint === true ? { joint: true as const, ...faceOf(face) } : {}), ...sheetOf(sheet), ...pocketOfSent(pocketOf), owner, itemId });
+        const { joint, sheet, face, pocketOf, setAsideMinor, ...rest } = summary;
+        // Only a literal `true` makes an item joint; anything else a peer sends reads as off. A face and a set-aside only
+        // on a joint item; a set-aside that is not a whole figure above nought reads as nothing set aside.
+        const jointFacts = joint === true ? { joint: true as const, ...faceOf(face), ...setAsideOf(setAsideMinor) } : {};
+        out.push({ ...rest, ...transfersOf(summary), ...jointFacts, ...sheetOf(sheet), ...pocketOfSent(pocketOf), owner, itemId });
       }
     } catch {
       // A summary that does not parse is shown as nothing, not as a wrong number.
@@ -606,6 +683,10 @@ export async function refreshSummariesTx(tx: Db, pending: readonly string[], tod
       ids.add(accountId);
     }
   }
-  return ids.size === 0 ? 0 : sendSummariesTx(tx, [...ids], today);
+  // A joint account's set-aside changed where nothing marked it, or was never sent (a build before it travelled).
+  // Read once for the check and the send that follows it (nothing at all on a phone with no joint account).
+  const setAsides = freshSetAsideSource(tx, today);
+  for (const accountId of await itemsWithStaleSetAsideTx(tx, today, setAsides)) ids.add(accountId);
+  return ids.size === 0 ? 0 : sendSummariesTx(tx, [...ids], today, undefined, setAsides);
 }
 
