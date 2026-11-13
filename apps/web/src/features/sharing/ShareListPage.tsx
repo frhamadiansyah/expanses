@@ -402,8 +402,11 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
     const next = toggle(list, draft, item);
     const ask = offConfirmOf(list, draft, item, 'shared', othersAll);
     setHint(null);
-    if (ask) setAsking({ ask, next, undo: null });
-    else setEdits(next);
+    if (ask) {
+      // The question stands alone: no bar over the sheet.
+      setUndo(null);
+      setAsking({ ask, next, undo: null });
+    } else setEdits(next);
   }
 
   /** The icon tapped (mockup ①a): owned together on or off, with a short Undo bar; off asks first. */
@@ -418,8 +421,10 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
     const next = toggleJoint(draft, item);
     const bar = { text: SHARE_LIST_COPY.undoLine(item.name, jointOn(next, item)), before: draft };
     const ask = offConfirmOf(list, draft, item, 'joint', othersAll);
-    if (ask) setAsking({ ask, next, undo: bar });
-    else {
+    if (ask) {
+      setUndo(null);
+      setAsking({ ask, next, undo: bar });
+    } else {
       setEdits(next);
       setUndo(bar);
     }
@@ -495,8 +500,8 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
           ) : null}
         </>
       ) : null}
-      {hint ? <ToastCard text={hint} data-testid="share-list-hint" /> : null}
-      {undo && !hint ? (
+      {hint && !asking ? <ToastCard text={hint} data-testid="share-list-hint" /> : null}
+      {undo && !hint && !asking ? (
         <UndoToast
           text={undo.text}
           testId="share-list-undo"

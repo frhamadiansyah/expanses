@@ -90,8 +90,8 @@ export async function startNetWorth({ database, sync }: Pick<Deps, 'database' | 
 
 /**
  * One item's Shared switch, from its own page: before any group the first one on starts it (everything else private);
- * waiting for the other phone, the setting alone; in an active group not yet reviewed here (filed separately), the
- * review is answered with what was chosen and this item; otherwise the setting, as the page always wrote it.
+ * waiting for the other phone, the setting alone; in an active group not yet reviewed here, the review is answered
+ * with what was chosen and this item (one tax ID shares every item whatever is said); otherwise the setting, as the page always wrote it.
  */
 export async function switchItemShared(deps: Deps, household: Household, accountId: string, on: boolean): Promise<void> {
   const { database, ws } = deps;
@@ -106,7 +106,7 @@ export async function switchItemShared(deps: Deps, household: Household, account
     return;
   }
   const group = await activeNetWorthGroup(database);
-  if (group && group.mode === 'separate' && !(await reviewedFor(database, group.groupBookId, group.proposalId))) {
+  if (group && !(await reviewedFor(database, group.groupBookId, group.proposalId))) {
     await confirmReview(database, ws, await reviewSettingsNow(database, ws, group, { [accountId]: setting }), { missing: 'hidden' });
     return;
   }
@@ -126,7 +126,8 @@ async function reviewSettingsNow(
 
 /**
  * Runs the steps the old setup asked for by hand, after every sync run and once at the start: the partner's Confirm of
- * a group filed separately, and this person's review of an active group filed separately. Each through the action its
+ * a group filed separately, and this person's review of an active group (filed separately: what was chosen; one tax
+ * ID: every item, which each member agreed to when proposing or confirming it in the tax report). Each through the action its
  * button ran. One run at a time; a step that failed is tried again a minute later at the soonest. Returns the stop.
  */
 export function watchNetWorthAutoSteps(deps: Deps, onChanged: () => void): () => void {
@@ -160,8 +161,13 @@ export function watchNetWorthAutoSteps(deps: Deps, onChanged: () => void): () =>
       if (proposalId) changed = (await step(`confirm:${proposalId}`, () => sync.answerNetWorth(book.bookId, proposalId, 'confirm'))) || changed;
     }
     const group = await activeNetWorthGroup(database);
-    if (group && group.mode === 'separate' && !(await reviewedFor(database, group.groupBookId, group.proposalId))) {
-      changed = (await step(`review:${group.groupBookId}:${group.proposalId}`, async () => confirmReview(database, ws, await reviewSettingsNow(database, ws, group), { missing: 'hidden' }))) || changed;
+    if (group && !(await reviewedFor(database, group.groupBookId, group.proposalId))) {
+      changed =
+        (await step(`review:${group.groupBookId}:${group.proposalId}`, async () => {
+          await confirmReview(database, ws, await reviewSettingsNow(database, ws, group), { missing: 'hidden' });
+          // What the review sends goes now, not at the next scheduled run: the partner is likely looking.
+          await sync.syncNow(group.workspaceBookId);
+        })) || changed;
     }
     return changed;
   }

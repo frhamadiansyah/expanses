@@ -77,7 +77,9 @@ function FilingBody({ bookId }: { bookId: string }) {
         ) : null}
         {pending?.kind === 'waiting' ? <InsetRow testId="filing-waiting" title={pending.line} chevron={false} /> : null}
         {pending?.kind === 'waiting' && pending.cancellable ? <InsetRow title="Cancel" action disabled={busy} onClick={() => void run(() => sync.cancelNetWorth(bookId, pending.proposalId))} /> : null}
-        {pending?.kind === 'asked' ? <InsetRow testId="filing-asked" title={pending.line} chevron={false} /> : null}
+        {pending?.kind === 'asked' ? (
+          <InsetRow testId="filing-asked" title={pending.line} subtitle={pending.mode === 'joint' ? `Confirming shares every item. ${jointTaxLine(others)}` : undefined} chevron={false} />
+        ) : null}
         {pending?.kind === 'asked' ? <InsetRow title="Confirm" action disabled={busy} onClick={() => void run(() => sync.answerNetWorth(bookId, pending.proposalId, 'confirm'))} /> : null}
         {pending?.kind === 'asked' ? <InsetRow title="Choose differently" action disabled={busy} onClick={() => void run(() => sync.answerNetWorth(bookId, pending.proposalId, 'decline'))} /> : null}
       </InsetGroup>

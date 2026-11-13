@@ -47,7 +47,7 @@ export default defineConfig({
     {
       name: 'phone',
       use: { ...devices['Desktop Chrome'], viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: false, deviceScaleFactor: 3 },
-      testMatch: [/phone[.-]/, /sharing\.spec\.ts$/],
+      testMatch: [/phone[.-]/, /sharing\.spec\.ts$/, /sharing-simplified\.spec\.ts$/],
     },
   ],
 });

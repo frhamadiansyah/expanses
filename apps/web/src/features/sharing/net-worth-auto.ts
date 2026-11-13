@@ -7,7 +7,8 @@ import type { NetWorthGroupView, ShareSetting } from '@expanses/db';
  * - The partner's Confirm: a group filed separately shares nothing of the partner's by being confirmed (each item stays
  *   private until its own Shared switch is on), so their phone confirms it as soon as it arrives. One tax ID shares
  *   every item: it is never confirmed here, but asked in the tax report.
- * - The review: an activation sends nothing until the person's review (`sendAllowance`). It is answered with exactly
+ * - The review: an activation sends nothing until the person's review (`sendAllowance`). One tax ID shares every item —
+ *   agreed to by each member when proposing it or confirming it in the tax report. Filed separately, it is answered with exactly
  *   what was chosen — on the phone that switched the first account on, what it stored when it did; on the other, only
  *   what the partner already sees — so nothing goes out that nobody switched on.
  *
