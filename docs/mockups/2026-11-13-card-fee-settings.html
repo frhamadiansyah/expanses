@@ -1,0 +1,94 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Card fee settings</title>
+<style>
+  :root { --ink:#000; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --green:#34c759; --red:#ff3b30; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; }
+  h1 { font-size:20px; margin:0 0 4px; } h2 { font-size:16px; margin:24px 0 6px; } .sub { color:#555; margin:0 0 14px; max-width:1150px; }
+  .wrap { display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; }
+  .phone { width:300px; background:var(--ground); border-radius:26px; padding:12px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .cap { font-weight:700; margin:0 0 4px; font-size:14px; } .note { font-size:12.5px; color:#555; margin:0 0 8px; min-height:50px; }
+  .bar { display:flex; justify-content:space-between; align-items:center; margin:2px 4px 10px; font-size:16px; } .bar .l, .bar .r { color:var(--tint); font-size:15px; } .bar b { font-weight:600; }
+  .hd { font-size:12.5px; color:var(--ink3); text-transform:uppercase; margin:8px 14px 5px; }
+  .grp { background:var(--surface); border-radius:12px; overflow:hidden; margin-bottom:4px; }
+  .r { display:flex; justify-content:space-between; align-items:center; padding:11px 14px; font-size:15px; gap:8px; } .r + .r { border-top:.5px solid var(--hair); }
+  .r > span:first-child { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .v { color:var(--ink3); white-space:nowrap; } .chev::after { content:" ›"; color:#c7c7cc; } .green { color:var(--green); } .link { color:var(--tint); } .del { color:var(--red); }
+  .ft { font-size:12.5px; color:var(--ink3); margin:4px 14px 8px; line-height:1.35; }
+  .new { box-shadow:inset 3px 0 0 #ff9f0a; } .strike { background:#fde8e8; }
+  .sw { width:44px; height:26px; border-radius:13px; background:var(--green); position:relative; flex-shrink:0; } .sw::after { content:""; position:absolute; right:2px; top:2px; width:22px; height:22px; border-radius:50%; background:#fff; }
+  .arrow { font-size:26px; color:#888; align-self:center; }
+  .wheel { display:flex; justify-content:center; gap:30px; background:var(--surface); border-radius:12px; padding:8px 0; margin-top:6px; font-size:17px; color:#bbb; text-align:center; line-height:1.9; } .wheel b { color:#000; font-weight:500; display:block; }
+</style></head>
+<body>
+<h1>Card Settings → Annual fee, and the Fee waived sheet</h1>
+<p class="sub">Invented figures. Orange edge = changed. Pink = removed.</p>
+
+<h2>1 · Annual fee group in card Settings</h2>
+<div class="wrap">
+  <div class="phone"><p class="cap">Before</p><p class="note">Charged on is a full date with a year; the title is cut; the 2027 line under the group.</p>
+    <div class="bar"><span class="l">‹ BCA Visa</span><b>Settings</b><span class="r">✓</span></div>
+    <div class="hd">Annual fee</div>
+    <div class="grp">
+      <div class="r"><span>Annual fee</span><span class="v">Rp 1.200.000</span></div>
+      <div class="r"><span>Charged on</span><span class="v">15/10/2026</span></div>
+      <div class="r"><span style="max-width:120px">This year's fee</span><span class="v green">Waived</span></div>
+      <div class="r"><span>Fee waiver</span><span class="v chev">Spend Rp 60.000.000 by 30 Sep</span></div>
+    </div>
+    <div class="ft strike">Next charge 15 Oct 2027. Tap to change or undo.</div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="phone"><p class="cap">After</p><p class="note">Day and month only; full title; no 2027 line.</p>
+    <div class="bar"><span class="l">‹ BCA Visa</span><b>Settings</b><span class="r">✓</span></div>
+    <div class="hd">Annual fee</div>
+    <div class="grp">
+      <div class="r"><span>Annual fee</span><span class="v">Rp 1.200.000</span></div>
+      <div class="r new"><span>Charged on</span><span class="v">15 Oct</span></div>
+      <div class="r new"><span>This year's fee</span><span class="v green">Waived</span></div>
+      <div class="r"><span>Fee waiver</span><span class="v chev">Rp 60 jt by 30 Sep</span></div>
+    </div>
+    <p class="cap" style="margin-top:12px">Tapping Charged on</p>
+    <div class="wheel"><div>14<b>15</b>16</div><div>Sep<b>Oct</b>Nov</div></div>
+    <div class="ft">Every year on this day. The year is worked out: the latest charge on or before today.</div>
+  </div>
+</div>
+
+<h2>2 · Tapping "This year's fee" before it is waived</h2>
+<div class="wrap">
+  <div class="phone"><p class="cap">Before = After</p><p class="note">Opens Fee waived straight away. "Charged as normal" closes it without changing anything.</p>
+    <div class="bar"><span class="l">✕</span><b>Fee waived · 2026</b><span class="r">Save</span></div>
+    <div class="grp">
+      <div class="r"><span>Back on the card</span><span class="sw"></span></div>
+      <div class="r"><span>Fee charge</span><span class="v chev">Annual fee · 15 Oct</span></div>
+      <div class="r"><span>Came back on</span><span class="v">13 Nov</span></div>
+    </div>
+    <div class="ft">The fee's charge is cancelled on the card by a refund dated 13 Nov.</div>
+    <div class="grp"><div class="r"><span class="link">Charged as normal</span><span></span></div></div>
+  </div>
+</div>
+
+<h2>3 · Tapping "This year's fee" once it is waived</h2>
+<div class="wrap">
+  <div class="phone"><p class="cap">Before</p><p class="note">What was recorded, Undo, and the 2027 line.</p>
+    <div class="bar"><span class="l">✕</span><b>Fee waived · 2026</b><span></span></div>
+    <div class="grp">
+      <div class="r"><span>Back on the card</span><span class="v">On</span></div>
+      <div class="r"><span>Refund</span><span>Rp 1.200.000</span></div>
+      <div class="r"><span>Came back on</span><span class="v">13 Nov 2026</span></div>
+      <div class="r"><span>Came back to</span><span class="v">BCA Visa</span></div>
+    </div>
+    <div class="ft strike">Next charge 15 Oct 2027.</div>
+    <div class="grp"><div class="r"><span class="del">Undo</span><span></span></div></div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="phone"><p class="cap">After</p><p class="note">Same, without the 2027 line.</p>
+    <div class="bar"><span class="l">✕</span><b>Fee waived · 2026</b><span></span></div>
+    <div class="grp">
+      <div class="r"><span>Back on the card</span><span class="v">On</span></div>
+      <div class="r"><span>Refund</span><span>Rp 1.200.000</span></div>
+      <div class="r"><span>Came back on</span><span class="v">13 Nov 2026</span></div>
+      <div class="r"><span>Came back to</span><span class="v">BCA Visa</span></div>
+    </div>
+    <div class="grp" style="margin-top:10px"><div class="r"><span class="del">Undo</span><span></span></div></div>
+  </div>
+</div>
+</body></html>
