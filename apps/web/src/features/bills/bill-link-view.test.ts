@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { billsForPurchase, candidateLine, monthWithYear, purchaseCount, refusalText, repeatWords, wheelYears } from './bill-link-view';
+import { billsForPurchase, candidateLine, monthWithYear, purchaseCount, refusalText, repeatWords, wheelYears, billTapAction } from './bill-link-view';
 
 describe('the link screens', () => {
   it('names a month with its year', () => {
@@ -31,5 +31,22 @@ describe('the link screens', () => {
     expect(refusalText('ALREADY_SETTLED', '2026-03', 'x')).toBe('March 2026 is already paid');
     expect(refusalText('SKIPPED', '2026-03', 'x')).toBe('March 2026 is skipped. Unskip it first.');
     expect(refusalText('MONTH_AHEAD', '2026-03', 'That month is not out yet')).toBe('That month is not out yet');
+  });
+});
+
+describe('what a tap on a bill in the receipt’s list does', () => {
+  const ready = { settled: true, linked: false, locked: false, hasPurchase: true };
+  it('links at once only once the purchase’s current link is known to be none', () => {
+    expect(billTapAction(ready)).toBe('link');
+    // Still reading whether it is linked (a cold open, a reload, the other phone's link arriving): nothing yet.
+    expect(billTapAction({ ...ready, settled: false })).toBe('wait');
+    expect(billTapAction({ ...ready, hasPurchase: false })).toBe('wait');
+  });
+  it('a purchase linked already opens the month page: the link moves only by its ✓', () => {
+    expect(billTapAction({ ...ready, linked: true })).toBe('months');
+  });
+  it('a shared event’s purchase does nothing from here', () => {
+    expect(billTapAction({ ...ready, locked: true })).toBe('none');
+    expect(billTapAction({ ...ready, locked: true, linked: true })).toBe('none');
   });
 });

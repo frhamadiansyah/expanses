@@ -14,7 +14,7 @@ import { CategoryIcon } from '../categories/CategoryIcon';
 import { classify } from '../transactions/classify';
 import { Wheel } from '../networth/AssetRows';
 import { billCurrencyOf } from './bill-view';
-import { billsForPurchase, candidateLine, monthWithYear, purchaseCount, refusalText, repeatWords, wheelYears } from './bill-link-view';
+import { billsForPurchase, billTapAction, candidateLine, monthWithYear, purchaseCount, refusalText, repeatWords, wheelYears } from './bill-link-view';
 import { returnToReceipt } from './receipt-return';
 import { useBillDetail, useBillLinkCandidates, useBillLinkMonths, useBillLinkRefusal, useBillMonthsBefore, useBillOfPurchase, useBillTemplates } from './queries';
 
@@ -205,9 +205,13 @@ export function LinkToBillPage({ transactionId }: { transactionId: string }) {
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
   const tx = usePurchase(transactionId).data ?? null;
-  const current = useBillOfPurchase(transactionId).data ?? null;
+  const currentQuery = useBillOfPurchase(transactionId);
+  const current = currentQuery.data ?? null;
   // A shared event's purchase keeps the bill it has: Open this bill and Unlink only, the other bills inert.
-  const locked = (useFromEvent(transactionId).data ?? null) !== null;
+  const eventQuery = useFromEvent(transactionId);
+  const locked = (eventQuery.data ?? null) !== null;
+  // Whether a link and an event are known: until both are read a tap does nothing, so it never acts on a guess.
+  const settled = currentQuery.isSuccess && eventQuery.isSuccess;
   const bills = useBillTemplates().data ?? [];
   const { same, others } = billsForPurchase(bills, tx ? classify(tx).categoryIds : []);
   // Linked to a bill no longer listed (paused or stopped): still named, with its ✓, in a row of its own.
@@ -236,10 +240,17 @@ export function LinkToBillPage({ transactionId }: { transactionId: string }) {
         openMonths(billId);
         return;
       }
-      await relinkPurchaseToBill(database, ws, { templateId: billId, billMonth: month, transactionId, today });
+      // A plain link, never a move: a purchase linked meanwhile (by the other phone, say) is refused, not moved.
+      await linkPurchaseToBill(database, ws, { templateId: billId, billMonth: month, transactionId, today });
       await invalidate();
       returnToReceipt(router.history, transactionId, originHref);
     } catch (e) {
+      // Linked already after all: the month page, as for any purchase with a link — its ✓ is what moves one.
+      if (e instanceof RecurringError && e.code === 'ALREADY_LINKED') {
+        await invalidate();
+        openMonths(billId);
+        return;
+      }
       setError(e);
     } finally {
       setBusy(false);
@@ -269,6 +280,7 @@ export function LinkToBillPage({ transactionId }: { transactionId: string }) {
   const row = (bill: (typeof bills)[number]) => {
     const payer = accounts.find((a) => a.id === bill.moneyAccountId);
     const linked = current?.templateId === bill.id;
+    const action = billTapAction({ settled, linked: current !== null, locked, hasPurchase: tx !== null });
     const month = linked ? current.billMonth : (linkMonths?.[bill.id]?.month ?? null);
     // A tap that would open the month page rather than link says so: the month is offered, to be chosen.
     const monthWords = month ? `${monthWithYear(month)}${!linked && (current !== null || linkMonths?.[bill.id]?.ask) ? ' · choose' : ''}` : null;
@@ -290,9 +302,9 @@ export function LinkToBillPage({ transactionId }: { transactionId: string }) {
         }
         valueTone="ink-2"
         chevron={false}
-        disabled={(locked && !linked) || (!locked && busy)}
-        onClick={locked ? undefined : current !== null ? () => openMonths(bill.id) : () => void quickLink(bill.id)}
-        leftActions={locked || current !== null ? undefined : [{ label: 'Month', name: `Choose the month for ${bill.name}`, icon: CalendarDays, tone: 'primary', onPress: () => openMonths(bill.id) }]}
+        disabled={(locked && !linked) || (!locked && busy) || action === 'wait'}
+        onClick={action === 'months' ? () => openMonths(bill.id) : action === 'link' ? () => void quickLink(bill.id) : undefined}
+        leftActions={action !== 'link' ? undefined : [{ label: 'Month', name: `Choose the month for ${bill.name}`, icon: CalendarDays, tone: 'primary', onPress: () => openMonths(bill.id) }]}
       />
     );
   };

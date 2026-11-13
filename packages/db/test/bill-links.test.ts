@@ -352,6 +352,20 @@ it('a monthly bill out on the 25th, paid by the 5th, takes a payment in the mont
   expect(await at('2026-10-27')).toMatchObject({ month: '2026-10', ask: true });
 });
 
+it('the quick link never moves a link the purchase has: linking it to another bill is refused, and it stays', async () => {
+  const h = await setup();
+  const other = await saveExpenseTemplate(h.database, h.ws, {
+    name: 'Router rental', categoryAccountId: h.internetCategory, moneyAccountId: h.bca.id, amountMinor: 45_000, dayOfMonth: 12, startsMonth: '2026-09',
+  });
+  const purchase = await h.buy('2026-10-09', 395_000);
+  await linkPurchaseToBill(h.database, h.ws, { templateId: h.bill, billMonth: '2026-10', transactionId: purchase, today: TODAY });
+  // As a tap made before the screen knew of that link would ask: refused, nothing moved.
+  expect(await h.code(linkPurchaseToBill(h.database, h.ws, { templateId: other, billMonth: '2026-10', transactionId: purchase, today: TODAY }))).toBe('ALREADY_LINKED');
+  expect(await billOfPurchase(h.database, h.ws, purchase)).toMatchObject({ templateId: h.bill, billMonth: '2026-10' });
+  const otherOctober = (await billDetail(h.database, h.ws, other, TODAY)).history.find((m) => m.month === '2026-10');
+  expect(otherOctober?.state).not.toBe('paid');
+});
+
 it('reads the months of many bills in one go, each as it reads alone', async () => {
   const h = await setup();
   const later = await saveExpenseTemplate(h.database, h.ws, {
