@@ -16,7 +16,7 @@ import { Wheel } from '../networth/AssetRows';
 import { billCurrencyOf } from './bill-view';
 import { billsForPurchase, candidateLine, monthWithYear, purchaseCount, refusalText, repeatWords, wheelYears } from './bill-link-view';
 import { historyIndex, stepsBackToReceipt } from './receipt-return';
-import { useBillDetail, useBillLinkCandidates, useBillLinkRefusal, useBillMonthsBefore, useBillOfPurchase, useBillTemplates } from './queries';
+import { useBillDetail, useBillLinkCandidates, useBillLinkMonths, useBillLinkRefusal, useBillMonthsBefore, useBillOfPurchase, useBillTemplates } from './queries';
 
 /* The two ways to link a purchase that is already recorded to a bill's month: from the bill (these first two pages) and from the purchase. */
 
@@ -303,7 +303,7 @@ function MonthYearSheet({ month, years, onClose, onPick }: { month: string; year
   );
 }
 
-/** Which month of the bill the purchase settles, starting at the purchase's own. The ✓ links it and returns to the receipt. */
+/** Which month of the bill the purchase settles, starting at the one a tap on the list would link. The ✓ links it and returns to the receipt. */
 export function LinkBillMonthPage({ transactionId, billId }: { transactionId: string; billId: string }) {
   const { database, ws } = useApp();
   const navigate = useNavigate();
@@ -321,7 +321,11 @@ export function LinkBillMonthPage({ transactionId, billId }: { transactionId: st
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const month = chosen ?? (current?.templateId === billId ? current.billMonth : null) ?? tx?.occurredOn.slice(0, 7) ?? today.slice(0, 7);
+  // Not linked to this bill yet: the month the bill list links to on a tap — the purchase's own for a monthly bill, the
+  // nearest occurrence for a yearly or every-few-months one (a month it comes out in, so not refused for that).
+  const startQuery = useBillLinkMonths([billId], tx?.occurredOn ?? null, today);
+  const start = startQuery.data?.[billId] ?? null;
+  const month = chosen ?? (current?.templateId === billId ? current.billMonth : null) ?? start ?? tx?.occurredOn.slice(0, 7) ?? today.slice(0, 7);
   // The month it already settles: ✓ changes nothing, and the month's "already settled" is this purchase itself.
   const unchanged = current?.templateId === billId && current.billMonth === month;
   const refusal = useBillLinkRefusal(billId, month, today);
@@ -358,7 +362,7 @@ export function LinkBillMonthPage({ transactionId, billId }: { transactionId: st
             key: 'link',
             label: 'Link to bill',
             glyph: <Check size={20} aria-hidden />,
-            disabled: busy || !tx || !bill || currentQuery.isPending || (locked && !unchanged) || (!unchanged && (refusal.data != null || refusal.isPending)),
+            disabled: busy || !tx || !bill || currentQuery.isPending || (chosen === null && start === null && startQuery.isPending) || (locked && !unchanged) || (!unchanged && (refusal.data != null || refusal.isPending)),
             run: () => void link(),
           },
         ]}

@@ -164,6 +164,47 @@ export function payableBillMonths({ today, startsMonth, settled, yearlyMonth, re
   return [...open.filter((m) => settled[m] !== 'paused'), ...open.filter((m) => settled[m] === 'paused')];
 }
 
+/** The last month on or before `from` that a bill with this schedule is owed in. */
+export function previousOwedMonth(from: string, yearlyMonth: number, every?: number | null, startsMonth?: string): string {
+  if (every == null || every === 12) {
+    const year = Number(from.slice(0, 4));
+    return `${Number(from.slice(5, 7)) >= yearlyMonth ? year : year - 1}-${pad(yearlyMonth)}`;
+  }
+  let month = from;
+  for (let i = 0; i < every; i += 1, month = addMonths(month, -1)) if (isOwedMonth(month, yearlyMonth, every, startsMonth)) return month;
+  return month;
+}
+
+/**
+ * The newest month a purchase may be linked to: the latest the Pay sheet offers, never before this month. A monthly
+ * bill reaches next month at most. A yearly or every-few-months bill also reaches its first occurrence after this
+ * month, so the next one can be paid early even while the one out now is already settled.
+ */
+export function latestLinkMonth(input: BillMonthsInput): string {
+  const month = monthOf(input.today);
+  const months = [month, currentBillMonth(input), ...payableBillMonths(input)];
+  if (input.yearlyMonth != null) {
+    const after = addMonths(month, 1);
+    months.push(nextOwedMonth(after > input.startsMonth ? after : input.startsMonth, input.yearlyMonth, input.repeatEvery, input.startsMonth));
+  }
+  return months.reduce((a, b) => (a > b ? a : b));
+}
+
+/**
+ * The month a purchase is linked to when none is picked. A monthly bill: the purchase's own month. A yearly or
+ * every-few-months bill: the occurrence whose day is nearest the purchase date, the later one on a tie — unless the
+ * later one cannot be linked yet (after `latestLinkMonth`), when it is the one before.
+ */
+export function defaultLinkMonth(purchasedOn: string, input: BillMonthsInput): string {
+  const month = purchasedOn.slice(0, 7);
+  if (input.yearlyMonth == null) return month;
+  const next = nextOwedMonth(month, input.yearlyMonth, input.repeatEvery, input.startsMonth);
+  const previous = previousOwedMonth(month, input.yearlyMonth, input.repeatEvery, input.startsMonth);
+  if (next > latestLinkMonth(input)) return previous;
+  const away = (m: string) => Math.abs(daysFrom(purchasedOn, dayIn(m, input.outDay)));
+  return away(previous) < away(next) ? previous : next;
+}
+
 /** The months a pause covers: from its first month up to, not including, the month the bill comes back. */
 export function pausedMonths(from: string, until: string): string[] {
   const months: string[] = [];

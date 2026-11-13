@@ -2,6 +2,8 @@ import { afterEach, expect, it } from 'vitest';
 import {
   billDetail,
   billLinkCandidates,
+  billLinkMonth,
+  billLinkRefusal,
   billMonthsBefore,
   billOfPurchase,
   createAccount,
@@ -287,6 +289,45 @@ it('a yearly bill offers only the months it comes out in', async () => {
   const list = await billMonthsBefore(h.database, h.ws, { templateId: yearly });
   expect(list.months.map((m) => m.month)).toEqual(['2026-03']);
   expect(await h.code(linkPurchaseToBill(h.database, h.ws, { templateId: yearly, billMonth: '2026-05', transactionId: (await billLinkCandidates(h.database, h.ws, { templateId: yearly, billMonth: '2026-05' }))[0]!.transactionId, today: TODAY }))).toBe('NOT_OWED');
+});
+
+it('a yearly bill takes a purchase in the occurrence nearest it, and its next one early once this one is paid', async () => {
+  const h = await setup();
+  const water = h.category('utilities.water_sanitation');
+  const yearly = await saveExpenseTemplate(h.database, h.ws, {
+    name: 'Car insurance', categoryAccountId: water, moneyAccountId: h.bca.id, amountMinor: 4_800_000, dayOfMonth: 15, repeat: 'yearly', repeatMonth: 3, startsMonth: '2026-03',
+  });
+  const MARCH = '2026-03-20';
+  // Paid for this year on its page; a second purchase this month is for next year's, paid early.
+  await recordBillPayments(h.database, h.ws, { paidOn: '2026-03-16', payments: [{ templateId: yearly, billMonth: '2026-03', amountMinor: 4_800_000 }] });
+  const early = await h.buy(MARCH, 4_650_000, water, 'Insurance 2027');
+  expect(await billLinkRefusal(h.database, h.ws, { templateId: yearly, billMonth: '2027-03', today: MARCH })).toBeNull();
+  // Two years ahead is still not out.
+  expect((await billLinkRefusal(h.database, h.ws, { templateId: yearly, billMonth: '2028-03', today: MARCH }))?.code).toBe('MONTH_AHEAD');
+  await linkPurchaseToBill(h.database, h.ws, { templateId: yearly, billMonth: '2027-03', transactionId: early, today: MARCH });
+  expect(await billOfPurchase(h.database, h.ws, early)).toMatchObject({ templateId: yearly, billMonth: '2027-03' });
+
+  // The month a purchase starts at: the occurrence nearest its date, not its own month (which the bill does not come out in).
+  expect(await billLinkMonth(h.database, h.ws, { templateId: yearly, purchasedOn: '2026-04-02', today: TODAY })).toBe('2026-03');
+  expect(await billLinkMonth(h.database, h.ws, { templateId: yearly, purchasedOn: '2026-12-01', today: TODAY })).toBe('2027-03');
+  // A monthly bill starts at the purchase's own month, as it always has.
+  expect(await billLinkMonth(h.database, h.ws, { templateId: h.bill, purchasedOn: '2026-08-30', today: TODAY })).toBe('2026-08');
+});
+
+it('an every-few-months bill takes the occurrence nearest the purchase, and its next one early', async () => {
+  const h = await setup();
+  const water = h.category('utilities.water_sanitation');
+  // August, November, February, May.
+  const quarterly = await saveExpenseTemplate(h.database, h.ws, {
+    name: 'Water filter service', categoryAccountId: water, moneyAccountId: h.bca.id, amountMinor: 275_000, dayOfMonth: 20, repeat: 'months', repeatMonth: 8, repeatEvery: 3, startsMonth: '2026-08',
+  });
+  const NOV = '2026-11-24';
+  expect(await billLinkMonth(h.database, h.ws, { templateId: quarterly, purchasedOn: '2026-10-01', today: NOV })).toBe('2026-08');
+  expect(await billLinkMonth(h.database, h.ws, { templateId: quarterly, purchasedOn: '2026-10-12', today: NOV })).toBe('2026-11');
+  await recordBillPayments(h.database, h.ws, { paidOn: '2026-11-20', payments: [{ templateId: quarterly, billMonth: '2026-11', amountMinor: 275_000 }] });
+  expect(await billLinkRefusal(h.database, h.ws, { templateId: quarterly, billMonth: '2027-02', today: NOV })).toBeNull();
+  expect((await billLinkRefusal(h.database, h.ws, { templateId: quarterly, billMonth: '2027-05', today: NOV }))?.code).toBe('MONTH_AHEAD');
+  expect((await billLinkRefusal(h.database, h.ws, { templateId: quarterly, billMonth: '2026-12', today: NOV }))?.code).toBe('NOT_OWED');
 });
 
 it('a purchase from another category can be linked, and counts as the bill month with its own figure', async () => {

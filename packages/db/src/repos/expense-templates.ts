@@ -6,6 +6,8 @@ import {
   billWindow,
   type BillWindow,
   currentBillMonth,
+  defaultLinkMonth,
+  latestLinkMonth as latestLinkMonthOf,
   nextOccurrenceMonth,
   isOwedMonth,
   expenseLines,
@@ -996,11 +998,14 @@ export interface LinkPurchaseInput {
   today?: string;
 }
 
-/** The newest month a purchase may be linked to: the latest the Pay sheet offers, never before this month. */
+/** A bill's schedule and settled months as the link rules read them on a day. */
+function linkInput(template: ExpenseTemplateRow, facts: BillFacts, today: string) {
+  return { today, startsMonth: template.startsMonth, outDay: template.dayOfMonth, payByDay: template.payByDay, settled: settledOf(template, facts), yearlyMonth: template.repeatMonth, repeatEvery: template.repeatEvery };
+}
+
+/** The newest month a purchase may be linked to (see `latestLinkMonth` in core): a yearly bill's next one can be paid early. */
 function latestLinkMonth(template: ExpenseTemplateRow, facts: BillFacts, today: string): string {
-  const input = { today, startsMonth: template.startsMonth, outDay: template.dayOfMonth, payByDay: template.payByDay, settled: settledOf(template, facts), yearlyMonth: template.repeatMonth, repeatEvery: template.repeatEvery };
-  const payable = payableBillMonths(input);
-  return [monthOf(today), currentBillMonth(input), ...payable].reduce((a, b) => (a > b ? a : b));
+  return latestLinkMonthOf(linkInput(template, facts, today));
 }
 
 async function liveTemplate(database: Database, ws: WorkspaceContext, templateId: string): Promise<ExpenseTemplateRow> {
@@ -1026,6 +1031,16 @@ export async function billLinkRefusal(
   if ((facts.skips.get(template.id) ?? new Set()).has(billMonth)) return { code: 'SKIPPED', message: 'That month is skipped. Unskip it first.' };
   if (await isSettled(database.db, ws, template.id, billMonth)) return { code: 'ALREADY_SETTLED', message: `${template.name} is already settled for that month` };
   return null;
+}
+
+/**
+ * The month of a bill a purchase is linked to when none is picked: its own month for a monthly bill, the occurrence
+ * nearest its date for a yearly or every-few-months one (see `defaultLinkMonth` in core). Not checked against refusals.
+ */
+export async function billLinkMonth(database: Database, ws: WorkspaceContext, input: { templateId: string; purchasedOn: string; today?: string }): Promise<string> {
+  const template = await liveTemplate(database, ws, input.templateId);
+  const facts = await billFacts(database, ws, [template]);
+  return defaultLinkMonth(input.purchasedOn, linkInput(template, facts, input.today ?? isoDate()));
 }
 
 /** Links a purchase already recorded to one month of a bill, so that month reads as paid with the purchase's own date and amount. */
