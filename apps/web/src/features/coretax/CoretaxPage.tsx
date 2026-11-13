@@ -7,6 +7,7 @@ import { Empty, ErrorBox, Money } from '../../ui';
 import { InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN, SelectRow, TextRow } from '../../ui/native';
 import { useSheet } from '../networth/queries';
 import { FreezePanel } from './FreezePanel';
+import { HouseholdFiling } from './HouseholdFiling';
 import { BusinessSection } from './BusinessSection';
 import { IncomeSection } from './IncomeSection';
 import { KmkRates } from './KmkRates';
@@ -106,6 +107,9 @@ export function CoretaxPage() {
           ))}
         </InsetGroup>
       )}
+
+      {/* How the household files (2026-11-13): asked here, where it matters, rather than when net worth is first shared. */}
+      <HouseholdFiling />
 
       <InsetGroup header="Tax year">
         <SelectRow label="Tax year" value={String(taxYear)} onChange={(e) => setTaxYear(Number(e.target.value))}>

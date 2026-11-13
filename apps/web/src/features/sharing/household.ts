@@ -28,8 +28,11 @@ import { workspaceBooks } from './workspace-books';
 
 export interface Household {
   bookId: string;
-  /** `none`: no group yet (the first switch starts it); `waiting`: started here, the other phone has yet to confirm. */
-  stage: 'none' | 'waiting' | 'active';
+  /**
+   * `none`: no group yet (the first switch starts it); `waiting`: started, the other phone has yet to confirm; `asked`:
+   * filing with one tax ID was asked of this phone, answered in the tax report before anything is switched.
+   */
+  stage: 'none' | 'waiting' | 'asked' | 'active';
   /** The active group's filing; null before one is active. */
   mode: FilingMode | null;
   /** The other members, by name: who "Shared with …" names. */
@@ -55,7 +58,7 @@ export async function householdOf({ database, sync }: Pick<Deps, 'database' | 's
     const pending = view?.pending;
     if (view && pending && !pending.cancelled && pending.members.includes(view.me)) {
       // A one-tax-ID setup asked of this phone is answered in the tax report; until then nothing here is switched.
-      if (pending.mode === 'joint' && view.waitingFor.includes(view.me)) return null;
+      if (pending.mode === 'joint' && view.waitingFor.includes(view.me)) return { bookId: book.bookId, stage: 'asked', mode: null, others: othersOf(book.bookId, pending.members) };
       return { bookId: book.bookId, stage: 'waiting', mode: null, others: othersOf(book.bookId, pending.members) };
     }
     if (!first) {
@@ -93,6 +96,7 @@ export async function startNetWorth({ database, sync }: Pick<Deps, 'database' | 
 export async function switchItemShared(deps: Deps, household: Household, accountId: string, on: boolean): Promise<void> {
   const { database, ws } = deps;
   const setting: ShareSetting = on ? 'total' : 'hidden';
+  if (household.stage === 'asked') throw new Error('Answer the one tax ID question in the Tax report first.');
   if (household.stage === 'none') {
     if (!on) return;
     const settings: Record<string, ShareSetting> = {};

@@ -782,7 +782,7 @@ export function LoanDetailPage() {
       )}
 
       {/* Joint net worth (§8.1): what the household sees of it. Nothing while this person is in no group. */}
-      <ShareWithHouseholdRow accountId={accountId} />
+      <ShareWithHouseholdRow accountId={accountId} name={name} />
 
       {terms && opened === 'pay' && <PaySheet accountId={accountId} loanName={name} currency={currency} balanceMinor={balanceMinor} onClose={close} />}
       {terms && opened === 'extra' && <PayExtraSheet accountId={accountId} currency={currency} balanceMinor={balanceMinor} terms={terms} onClose={close} />}
