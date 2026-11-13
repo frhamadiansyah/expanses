@@ -1,32 +1,31 @@
-import { type CaptureLine, formatMinor, groupedMajorString, groupTypedAmount, isoDate, type ListOutcome, type ListRow, matchList, parseGroupedMajor, readTransactionList } from '@expanses/core';
+import { type CaptureLine, formatMinor, isoDate, type ListOutcome, type ListRow, matchList, readTransactionList } from '@expanses/core';
 import { type AccountRow, guessCategoryFromHistory, listTransactions, ownerScope, postTransactions, uncategorisedCategory } from '@expanses/db';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Check, Plus, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
-import { Sheet } from '../../app/Sheet';
 import { native } from '../../capture/native';
 import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { Button, cx, Empty, ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, LargeTitle, PickerRow, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, LargeTitle, SCREEN } from '../../ui/native';
 import { showToast } from '../../ui/Toast';
 import { useOpeningDay } from '../accounts/queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
-import { DateRow } from '../transactions/CardRows';
 import { CategoryPicker } from '../transactions/CategoryPicker';
-import { FormRows } from '../transactions/FormRow';
 import { shortDate } from '../transactions/quick-row';
+import { TransactionCard } from '../transactions/TransactionCard';
 import { dropStatementBatch, statementBatch } from './batch';
 import {
   addedToast,
   candidateOf,
   canRecord,
+  editFromForm,
+  formOfRow,
   listCounts,
   listInputs,
   type NewRow,
   newRowsFrom,
   recordLabel,
-  type RowType,
   tickedRows,
   toggled,
   withEdit,
@@ -57,7 +56,7 @@ interface Checked {
   emptyImages: number[];
 }
 
-type View = 'result' | 'recorded' | 'new' | 'differs' | 'skipped' | 'notListed';
+type View = 'result' | 'recorded' | 'new' | 'differs' | 'notListed';
 
 interface Shot {
   file: File;
@@ -103,14 +102,20 @@ function ListBody({ account, accounts, batch }: { account: AccountRow; accounts:
   const [checked, setChecked] = useState<Checked | null>(null);
   const [newRows, setNewRows] = useState<NewRow[]>([]);
   const [view, setView] = useState<View>('result');
+  // The row open on the full Add screen, and the row whose icon is choosing its category.
   const [editing, setEditing] = useState<number | null>(null);
-  const [draft, setDraft] = useState<{ note: string; amount: string; type: RowType; categoryId: string; otherAccountId: string; occurredOn: string } | null>(null);
-  const [picking, setPicking] = useState(false);
-  const [amountError, setAmountError] = useState('');
+  const [picking, setPicking] = useState<number | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const started = useRef(false);
+  // Where the list stood when a row was opened on the full screen: back from it, the list is where it was left.
+  const listScroll = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (editing !== null || listScroll.current === null) return;
+    window.scrollTo(0, listScroll.current);
+    listScroll.current = null;
+  }, [editing]);
 
   const shotsRef = useRef(shots);
   shotsRef.current = shots;
@@ -270,7 +275,10 @@ function ListBody({ account, accounts, batch }: { account: AccountRow; accounts:
   const toResult = { back: `${account.name} statement`, onBack: () => setView('result') };
   const nameOf = (id: string) => accounts.find((a) => a.id === id)?.name ?? '';
   const today = isoDate();
-  const others = moneyHolders(accounts).filter((a) => a.id !== account.id && a.archivedAt === null && (a.currency ?? ws.baseCurrency) === currency);
+  // What a transfer row may name on its other side: one figure is posted on both, so an open account in this currency.
+  const otherIds = moneyHolders(accounts)
+    .filter((a) => a.id !== account.id && a.archivedAt === null && (a.currency ?? ws.baseCurrency) === currency)
+    .map((a) => a.id);
 
   async function record() {
     if (!canRecord(newRows) || busy) return;
@@ -304,40 +312,10 @@ function ListBody({ account, accounts, batch }: { account: AccountRow; accounts:
   }
 
   function open(row: NewRow) {
+    listScroll.current = window.scrollY;
     setEditing(row.id);
-    setAmountError('');
-    setDraft({
-      note: row.note,
-      amount: groupedMajorString(row.amountMinor, currency),
-      type: row.type,
-      categoryId: row.categoryId,
-      otherAccountId: row.otherAccountId,
-      occurredOn: row.occurredOn,
-    });
-  }
-  function closeSheet() {
-    setEditing(null);
-    setDraft(null);
-    setPicking(false);
-    setAmountError('');
-  }
-  function apply() {
-    if (editing === null || !draft) return;
-    let amountMinor: number;
-    try {
-      amountMinor = parseGroupedMajor(draft.amount, currency);
-    } catch (e) {
-      setAmountError(e instanceof Error ? e.message : 'Not an amount');
-      return;
-    }
-    if (amountMinor <= 0) {
-      setAmountError('An amount above zero');
-      return;
-    }
-    setNewRows((was) =>
-      withEdit(was, editing, { note: draft.note.trim(), amountMinor, type: draft.type, categoryId: draft.type === 'transfer' ? '' : draft.categoryId, otherAccountId: draft.otherAccountId, occurredOn: draft.occurredOn }),
-    );
-    closeSheet();
+    // Opened from partway down the list: the form starts at its top, as a screen of its own does.
+    window.scrollTo(0, 0);
   }
 
   const subtitleOf = (row: NewRow) =>
@@ -345,11 +323,46 @@ function ListBody({ account, accounts, batch }: { account: AccountRow; accounts:
   const signed = (row: NewRow) => `${(row.type === 'transfer' ? row.direction === 'in' : row.type === 'income') ? '+' : '−'}${money(row.amountMinor)}`;
 
   const editingRow = editing === null ? undefined : newRows.find((r) => r.id === editing);
+  const pickingRow = picking === null ? undefined : newRows.find((r) => r.id === picking);
+
+  // A row opens on the full Add screen, as Cashflow's Edit and Review's capture do: ✓ writes the form back onto the
+  // row and posts nothing — the check's own Record posts the ticked rows together.
+  if (view === 'new' && editingRow) {
+    return (
+      <div className={SCREEN}>
+        <TransactionCard
+          key={editingRow.id}
+          full
+          title="Edit row"
+          label={`Edit ${editingRow.note || 'row'}`}
+          onBack={() => setEditing(null)}
+          onDone={() => setEditing(null)}
+          finish={{
+            prefill: formOfRow(editingRow, account.id, currency),
+            saveLabel: 'Save row',
+            categoryLater: true,
+            rowOnly: true,
+            refusal: (form) => {
+              try {
+                editFromForm(form, account.id, currency, otherIds);
+                return null;
+              } catch (e) {
+                return e instanceof Error ? e.message : 'This row cannot be saved as it stands';
+              }
+            },
+            onSubmit: async (form) => {
+              const patch = editFromForm(form, account.id, currency, otherIds);
+              setNewRows((was) => withEdit(was, editingRow.id, patch));
+            },
+          }}
+        />
+      </div>
+    );
+  }
   const bar = [
     { n: counts.recorded, tone: 'var(--ph-chevron)' },
     { n: counts.new, tone: 'var(--ph-ink)' },
     { n: counts.differs, tone: 'var(--ph-ink-3)' },
-    { n: counts.skipped, tone: 'var(--ph-hair)' },
   ].filter((part) => part.n > 0);
 
   const listRows = (status: ListOutcome['status']) => outcomes.flatMap((o, i) => (o.status === status ? [{ row: rows[i]!, outcome: o, index: i }] : []));
@@ -360,7 +373,6 @@ function ListBody({ account, accounts, batch }: { account: AccountRow; accounts:
       {view === 'recorded' && <LargeTitle title="Already recorded" {...toResult} />}
       {view === 'new' && <LargeTitle title={`New · ${newRows.length}`} {...toResult} />}
       {view === 'differs' && <LargeTitle title="Amount differs" {...toResult} />}
-      {view === 'skipped' && <LargeTitle title="Skipped" {...toResult} />}
       {view === 'notListed' && <LargeTitle title="Recorded, not on this list" {...toResult} />}
 
       {view === 'result' && (
@@ -388,11 +400,10 @@ function ListBody({ account, accounts, batch }: { account: AccountRow; accounts:
             </InsetGroup>
           )}
           <ErrorBox error={error} />
-          <InsetGroup header="Rows" footer={counts.skipped > 0 ? 'Skipped: cashback paid in coins, not money.' : undefined}>
+          <InsetGroup header="Rows">
             <InsetRow testId="count-recorded" title="Already recorded" value={String(counts.recorded)} onClick={() => setView('recorded')} />
             <InsetRow testId="count-new" title="New — record here" value={String(counts.new)} onClick={() => setView('new')} />
             <InsetRow testId="count-differs" title="Amount differs" value={String(counts.differs)} onClick={() => setView('differs')} />
-            <InsetRow testId="count-skipped" title="Skipped" value={String(counts.skipped)} onClick={() => setView('skipped')} />
           </InsetGroup>
           <InsetGroup>
             <InsetRow testId="count-not-listed" title="Recorded, not on this list" value={String(counts.notOnList)} onClick={() => setView('notListed')} />
@@ -421,15 +432,6 @@ function ListBody({ account, accounts, batch }: { account: AccountRow; accounts:
               value={`${row.direction === 'in' ? '+' : '−'}${money(row.amountMinor)}`}
               chevron={false}
             />
-          ))}
-        </InsetGroup>
-      )}
-
-      {view === 'skipped' && (
-        <InsetGroup footer="Paid in coins or points, not money: left out of the account.">
-          {listRows('skipped').length === 0 && <InsetRow title="None" chevron={false} />}
-          {listRows('skipped').map(({ row, index }) => (
-            <InsetRow key={index} testId="skipped-row" title={row.description} subtitle={`${shortDate(row.on, today)}${row.source ? ` · ${row.source}` : ''}`} value={String(row.amountMinor)} chevron={false} />
           ))}
         </InsetGroup>
       )}
@@ -470,8 +472,23 @@ function ListBody({ account, accounts, batch }: { account: AccountRow; accounts:
                     >
                       {row.ticked && <Check size={15} strokeWidth={3} aria-hidden />}
                     </button>
+                    {row.type === 'transfer' ? (
+                      <span className="shrink-0">
+                        <CategoryIcon categoryId={null} accounts={accounts} transfer />
+                      </span>
+                    ) : (
+                      // The icon is its own button, as on a Cashflow row: it fixes the category in two taps.
+                      <button
+                        type="button"
+                        aria-label={`Category for ${row.note || 'row'}`}
+                        title="Change the category"
+                        onClick={() => setPicking(row.id)}
+                        className="ph-focus shrink-0 rounded-full"
+                      >
+                        <CategoryIcon categoryId={row.categoryId || null} accounts={accounts} />
+                      </button>
+                    )}
                     <button type="button" data-testid="new-row" onClick={() => open(row)} className="ph-focus-inset flex min-w-0 flex-1 items-center gap-3 text-left active:bg-[var(--ph-fill)]">
-                      <CategoryIcon categoryId={row.type === 'transfer' ? null : row.categoryId || null} accounts={accounts} />
                       <span className="ph-row-body flex min-h-[60px] min-w-0 flex-1 items-center gap-2 pr-[14px]">
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[17px] leading-[22px] text-[var(--ph-ink)]">{row.note || 'No note'}</span>
@@ -492,56 +509,17 @@ function ListBody({ account, accounts, batch }: { account: AccountRow; accounts:
         </>
       )}
 
-      {editingRow && draft && !picking && (
-        <Sheet grouped title={editingRow.note || 'Row'} onClose={closeSheet} confirm={{ label: 'Save row', run: apply }}>
-          <div className="space-y-3 pb-2">
-            <InsetGroup>
-              <SelectRow
-                label="Type"
-                value={draft.type}
-                onChange={(e) => {
-                  const type = e.target.value as RowType;
-                  setDraft({ ...draft, type, categoryId: type === draft.type ? draft.categoryId : '' });
-                }}
-              >
-                <option value="expense">Expense</option>
-                <option value="income">Income</option>
-                <option value="transfer">Transfer</option>
-              </SelectRow>
-              <TextRow
-                label="Amount"
-                prefix={currency}
-                value={draft.amount}
-                inputMode="decimal"
-                placeholder="Amount"
-                onChange={(e) => {
-                  setAmountError('');
-                  setDraft({ ...draft, amount: groupTypedAmount(e.target.value, currency) });
-                }}
-              />
-              {draft.type === 'transfer' ? (
-                <SelectRow label={editingRow.direction === 'out' ? 'To account' : 'From account'} value={draft.otherAccountId} onChange={(e) => setDraft({ ...draft, otherAccountId: e.target.value })}>
-                  <option value="">Choose an account</option>
-                  {others.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </SelectRow>
-              ) : (
-                <PickerRow label="Category" value={draft.categoryId ? nameOf(draft.categoryId) : ''} placeholder="Choose a category" onOpen={() => setPicking(true)} />
-              )}
-              <TextRow label="Note" value={draft.note} placeholder="Note" onChange={(e) => setDraft({ ...draft, note: e.target.value })} />
-            </InsetGroup>
-            {amountError && <p role="alert" className="px-[13px] text-[13px] leading-4 text-[var(--ph-alarm-ink)]">{amountError}</p>}
-            <FormRows>
-              <DateRow on={draft.occurredOn} onChange={(occurredOn) => setDraft({ ...draft, occurredOn })} />
-            </FormRows>
-          </div>
-        </Sheet>
-      )}
-      {editingRow && draft && picking && draft.type !== 'transfer' && (
-        <CategoryPicker kind={draft.type} lockKind value={draft.categoryId} onPick={(categoryId) => setDraft({ ...draft, categoryId })} onClose={() => setPicking(false)} />
+      {pickingRow && pickingRow.type !== 'transfer' && (
+        <CategoryPicker
+          kind={pickingRow.type}
+          lockKind
+          title={pickingRow.note || 'Row'}
+          value={pickingRow.categoryId}
+          onPick={(categoryId) => setNewRows((was) => withEdit(was, pickingRow.id, { categoryId }))}
+          // No category: recorded under Uncategorised (`listInputs`).
+          {...(pickingRow.categoryId ? { onNone: () => setNewRows((was) => withEdit(was, pickingRow.id, { categoryId: '' })) } : {})}
+          onClose={() => setPicking(null)}
+        />
       )}
     </div>
   );

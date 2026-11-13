@@ -118,8 +118,24 @@ export interface CardFinish {
   onSubmit: (draft: FormDraft, setAside: SetAsideChoice | null) => Promise<void>;
   /** A condition of the caller's on top of the card's own, for when the ✓ lights. */
   canSubmit?: (draft: FormDraft) => boolean;
+  /**
+   * Why the caller cannot take the form as it stands, or null: shown under the card, in the words a save would show,
+   * and the ✓ stays dim while there is one.
+   */
+  refusal?: (draft: FormDraft) => string | null;
   /** The ✓'s name. */
   saveLabel?: string;
+  /**
+   * The caller files a row left with no category under Uncategorised itself, so the picker offers No category. Left
+   * out, a capture's draft needs its own category.
+   */
+  categoryLater?: boolean;
+  /**
+   * The form fills a row of a list (the wallet check's), which carries its tab, figure, category, note, day and
+   * accounts only: nothing else is offered — no Add more details, no receipt camera, no online or offline, no split,
+   * no transfer fee, no set-aside question — so nothing is typed that the row would drop.
+   */
+  rowOnly?: boolean;
   /** Drawn above the card's tabs: what the form was filled from. */
   header?: ReactNode;
   /** Drawn under Add more details. */
@@ -456,7 +472,7 @@ function CardBody({
   const post = useMemo(() => postForDoor(draft, accounts), [draft, accounts]);
   const door = post ? doorOfForm(draft, post, accounts, canHold) : null;
   const saved = useSetAsideChoiceOf(initial?.id ?? null);
-  const setAside = useSetAside(door, { excludeTransactionId: initial?.id ?? null, initial: saved.data ?? null, toName: toAccount?.name });
+  const setAside = useSetAside(finish?.rowOnly ? null : door, { excludeTransactionId: initial?.id ?? null, initial: saved.data ?? null, toName: toAccount?.name });
 
   /*
    * One list per question, because the label asks three different things. A purchase is paid with money you can spend
@@ -621,9 +637,10 @@ function CardBody({
       const refusal = followUp?.refuse(draft);
       if (refusal) throw new Error(refusal);
       // "Choose later": an expense or an income saved with no category is filed under its kind's Uncategorised,
-      // made the first time one is needed. A capture's draft keeps its own rule (`finish` returned above).
+      // made the first time one is needed. A capture's draft keeps its own rule (`finish` returned above). Moving to
+      // another workspace names that workspace's Uncategorised, never the open one's, so the move happens.
       const later = categoryLater(draft);
-      const categorised = later ? withCategoryLater(draft, await uncategorisedCategory(database, ws, later)) : draft;
+      const categorised = later ? withCategoryLater(draft, await uncategorisedCategory(database, moveTo ? inBook(ws, moveTo) : ws, later)) : draft;
       const from = accounts.find((account) => account.id === categorised.moneyId);
       const to = accounts.find((account) => account.id === categorised.toId);
       const topsUp = categorised.mode === 'transfer' && !!from && !!to && cardTopsUpWallet(from, to);
@@ -745,7 +762,7 @@ function CardBody({
    * Two of §4's extras live on the card itself now: a split is chosen in the category picker and read on the Category
    * row, and online or offline is the Note's own glyph. `extraRows` still says whether each is offered here.
    */
-  const offered = extraRows(draft, accounts, { missingRate, sharedBook: bookShared }).filter((row) => !(finish ? DRAFT_OMITS : []).includes(row));
+  const offered = finish?.rowOnly ? [] : extraRows(draft, accounts, { missingRate, sharedBook: bookShared }).filter((row) => !(finish ? DRAFT_OMITS : []).includes(row));
   const offersSplit = offered.includes('split');
   const offersChannel = offered.includes('channel');
   /*
@@ -756,7 +773,7 @@ function CardBody({
   const feeFrom = accounts.find((account) => account.id === draft.moneyId);
   const feeTo = accounts.find((account) => account.id === draft.toId);
   const feeCurrency = feeFrom?.currency ?? ws.baseCurrency;
-  const offersFee = draft.mode === 'transfer' && offersTransferFee(feeFrom, feeTo, accountsLocked);
+  const offersFee = !finish?.rowOnly && draft.mode === 'transfer' && offersTransferFee(feeFrom, feeTo, accountsLocked);
   const defaultFeeCategory =
     accounts.find((account) => account.systemKey === 'miscellaneous.fees_charges' && (allBooks.length < 2 || categoryBooks[account.id] === ws.bookId))?.id ?? '';
   /*
@@ -855,8 +872,8 @@ function CardBody({
     try {
       if (draft.mode === 'transfer' && draft.partner) memberTransferOf(draft, accounts, '', '');
       // A category left for later is answered at Save (Uncategorised); a capture's draft still needs its own.
-      else formToPost(withTopUps(finish ? draft : withCategoryLater(draft, CATEGORY_LATER)), accounts);
-      return finish?.canSubmit?.(draft) ?? true;
+      else formToPost(withTopUps(finish && !finish.categoryLater ? draft : withCategoryLater(draft, CATEGORY_LATER)), accounts);
+      return (finish?.canSubmit?.(draft) ?? true) && !finish?.refusal?.(draft);
     } catch {
       return false;
     }
@@ -1303,7 +1320,7 @@ function CardBody({
               <FormRow
                 lead="value"
                 label="Category"
-                placeholder={!finish && categoryLater(draft) ? 'Choose later' : 'Select category'}
+                placeholder={(!finish || finish.categoryLater) && categoryLater(draft) ? 'Choose later' : 'Select category'}
                 icon={categoryLead}
                 value={categoryName}
                 caption=""
@@ -1459,7 +1476,7 @@ function CardBody({
         </p>
       )}
       {/* One implementation of §4's rows, for adding and for correcting alike. */}
-      {detailsOpen && (
+      {detailsOpen && !finish?.rowOnly && (
         <section aria-label="More details">
           {/*
             A transfer's For goal is one of the details, first in their group. Offered only while adding — `formToPost`
@@ -1490,7 +1507,7 @@ function CardBody({
         shadow — the secondary ink, so it follows the theme. It keeps the 44 pt reach the drawn 40 px does not
         have, and keeps `aria-expanded`, because the word is now the only thing that tells the two states apart.
       */}
-      {(
+      {!finish?.rowOnly && (
       <button
         type="button"
         aria-expanded={detailsOpen}
@@ -1502,6 +1519,14 @@ function CardBody({
       )}
       </fieldset>
 
+      {(() => {
+        const refusal = finish?.refusal?.(draft);
+        return refusal ? (
+          <p data-testid="finish-refusal" role="alert" className="px-[13px] text-[13px] leading-4 text-[var(--ph-alarm-ink)]">
+            {refusal}
+          </p>
+        ) : null;
+      })()}
       {finish?.footer}
 
       {/* The set-aside question (E2) sits above the dock, in the kit's inset groups, so the dock stays one line. */}
@@ -1713,6 +1738,15 @@ function CardBody({
             } else set({ categoryId });
           }}
           onClose={() => setSheet(null)}
+          // No category: a wrong category taken back, filed under its kind's Uncategorised at Save, where the form may.
+          {...(draft.categoryId && (finish ? finish.categoryLater : true) && categoryLater({ ...draft, categoryId: '' })
+            ? {
+                onNone: () => {
+                  categorySource.current = 'hand';
+                  set({ categoryId: '' });
+                },
+              }
+            : {})}
           {...(offersSplit ? { onSplit: () => setSheet('split'), splitRefusal: extraRowRefusal('split', draft) } : {})}
           {...(moveTo ? { bookId: moveTo } : {})}
         />

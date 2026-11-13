@@ -272,6 +272,21 @@ test('Edit — from the receipt or from the swipe — opens the Add screen on th
   await expect(page.getByRole('button', { name: 'Delete this transaction', exact: true })).toHaveCount(0);
 });
 
+test('a wrong category is taken back on the edit screen: No category files it under Uncategorised', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
+  await page.goto('/transactions');
+  await record(page, 'Toko Ornek', 'Restaurants', '64000');
+  await face(page, 'Toko Ornek', 'Restaurants').click();
+  await page.getByRole('button', { name: 'Edit this transaction' }).click();
+  const form = editForm(page);
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByTestId('category-none').click();
+  await expect(form.getByRole('button', { name: /^Category/ })).toContainText('Choose later');
+  await saveButton(form).click();
+  await expect(form).toHaveCount(0);
+  await expect(row(page, 'Toko Ornek')).toContainText('Uncategorised');
+});
+
 /**
  * A purchase in another currency, corrected from the swipe, opens the very same screen as any other — the edit
  * screen no longer looks different by currency. The full card has a row for each of the two figures, so the

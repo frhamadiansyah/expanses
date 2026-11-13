@@ -1,4 +1,4 @@
-import { formatMinor, groupedMajorString, groupTypedAmount, parseGroupedMajor } from '@expanses/core';
+import { formatMinor, groupedMajorString, groupTypedAmount, isUncategorisedKey, parseGroupedMajor } from '@expanses/core';
 import { type AccountRow, type CheckDraftRow, creditKindOf } from '@expanses/db';
 import { MoreHorizontal } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
@@ -29,6 +29,7 @@ export function MissingRows({
   walletDigits,
   accounts,
   onPick,
+  onNone,
   onTopUp,
   onCorrect,
   onKind,
@@ -43,6 +44,8 @@ export function MissingRows({
   walletDigits: Readonly<Record<string, string>>;
   accounts: readonly AccountRow[];
   onPick: (index: number, categoryId: string) => void;
+  /** No category: the row is filed under Uncategorised, and only this row (the merchant's others are left as they are). */
+  onNone: (index: number) => void;
   onTopUp: (index: number, topUp: { walletAccountId: string; feeMinor: number }) => void;
   onCorrect: (index: number, patch: { on: string; amountMinor: number }) => void;
   onKind: (index: number, kind: 'refund' | 'payment') => void;
@@ -139,6 +142,9 @@ export function MissingRows({
           lockKind
           title={picking.description}
           value={picking.categoryId ?? undefined}
+          // No category takes a chosen one back; with none chosen yet there is nothing to take back.
+          noneChosen={isUncategorisedKey(accounts.find((a) => a.id === picking.categoryId)?.systemKey)}
+          {...(picking.categoryId ? { onNone: () => onNone(picking.index) } : {})}
           onPick={(categoryId) => {
             onPick(picking.index, categoryId);
             // Top-ups on a card's purchase: where it went and the fee are asked at once.

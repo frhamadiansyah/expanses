@@ -39,6 +39,11 @@ export interface StatementWords {
    * reading. Named groups: `currency`, `amount`, `marker` (checked against `inMarkers` and `outMarkers`) and `rate`.
    */
   foreignDetail: RegExp;
+  /**
+   * The headings a wallet's or a bank's transaction list prints over its columns, each a whole line: they say which
+   * column is the transaction's text, which its id and which what it was paid with, and are never an entry's words.
+   */
+  listHeadings: { description: string[]; reference: string[]; payment: string[]; other: string[] };
 }
 
 export const STATEMENT_WORDS: StatementWords = {
@@ -67,5 +72,11 @@ export const STATEMENT_WORDS: StatementWords = {
     'sg', 'sgp', 'my', 'us', 'usa', 'tr', 'tur', 'cn', 'chn', 'jp', 'jpn',
   ],
   dateSeparators: ['-', '/', '.', ' '],
+  listHeadings: {
+    description: ['transaksi', 'transaction', 'transactions', 'keterangan', 'deskripsi', 'description', 'detail', 'rincian', 'merchant'],
+    reference: ['id transaksi', 'transaction id', 'id', 'ref', 'reference', 'no. referensi', 'nomor referensi', 'reference no.'],
+    payment: ['metode pembayaran', 'sumber dana', 'dibayar dengan', 'bayar pakai', 'payment method', 'paid with', 'source'],
+    other: ['tanggal', 'date', 'waktu', 'time', 'tanggal & waktu', 'jumlah', 'amount', 'nominal', 'status'],
+  },
   foreignDetail: /^\(?\s*(?<currency>[A-Za-z]{3})\s*(?<amount>\d[\d.,]*)\s*(?<marker>[A-Za-z]{1,6})?\s*[xX×*@]\s*(?<rate>\d[\d.,]*)\s*\)?$/,
 };

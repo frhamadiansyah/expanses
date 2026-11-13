@@ -162,6 +162,8 @@ export function CategoryPicker({
   splitRefusal = null,
   bookId,
   header,
+  onNone,
+  noneChosen = !value,
 }: {
   /** The tab the form is on, which is the kind the sheet opens showing. */
   kind: 'expense' | 'income';
@@ -198,6 +200,13 @@ export function CategoryPicker({
   bookId?: string;
   /** A row above the list (the split sheet's Workspace chooser), drawn only while the list is, not on New category. */
   header?: ReactNode;
+  /**
+   * "No category", offered first, for a screen that files a row left without one under Uncategorised: a wrong
+   * category taken back. Left out, the row is not drawn — where a category has to be chosen.
+   */
+  onNone?: () => void;
+  /** Whether No category carries the ✓: by default when nothing is chosen. */
+  noneChosen?: boolean;
 }) {
   const accounts = useAccounts().data ?? [];
   const membership = useCategorySetMembership().data ?? {};
@@ -316,6 +325,27 @@ export function CategoryPicker({
           </div>
         )}
 
+
+        {onNone && !search.trim() && (
+          <div className="overflow-hidden rounded-[18px] bg-[var(--ph-surface)] py-1">
+            <button
+              type="button"
+              data-testid="category-none"
+              aria-current={noneChosen ? 'true' : undefined}
+              onClick={() => {
+                onNone();
+                onClose();
+              }}
+              className="ph-focus-inset relative flex w-full items-center gap-3 pl-[14px] text-left active:bg-[var(--ph-fill)]"
+            >
+              <EventCategoryGlyph icon={null} />
+              <span className="ph-row-body flex min-h-[46px] min-w-0 flex-1 items-center gap-2 pr-[14px]">
+                <span className="min-w-0 flex-1 truncate text-[15px] text-[var(--ph-ink)]">No category</span>
+                {noneChosen && <Check size={18} aria-hidden className="shrink-0 text-[var(--ph-tint)]" />}
+              </span>
+            </button>
+          </div>
+        )}
 
         {groups.map((group) => (
           <div

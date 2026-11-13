@@ -1,7 +1,8 @@
 import type { ListOutcome, ListRow } from '@expanses/core';
 import type { TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { addedToast, candidateOf, canRecord, listCounts, listInputs, newRowsFrom, recordLabel, toggled, withEdit } from './list-model';
+import { emptyForm, type FormDraft } from '../transactions/tx-form';
+import { addedToast, candidateOf, canRecord, editFromForm, formOfRow, listCounts, listInputs, newRowsFrom, recordLabel, toggled, withEdit } from './list-model';
 
 const row = (on: string, description: string, amountMinor: number, direction: 'out' | 'in'): ListRow => ({
   on,
@@ -33,6 +34,11 @@ describe('list model', () => {
       [0, 'expense', 'cat-food', true],
       [1, 'income', '', true],
     ]);
+  });
+
+  it('never takes what a row was paid with for its note', () => {
+    const paid = { ...row('2026-09-15', '', 5000, 'out'), source: 'Wallet Saldo' };
+    expect(newRowsFrom([paid], [{ row: 0, status: 'new' }])[0]!.note).toBe('');
   });
 
   it('records only ticked rows and asks a transfer for its other account', () => {
@@ -83,5 +89,63 @@ describe('list model', () => {
     expect(candidateOf(view('posted', [7000, -7000]), 'wallet')).toMatchObject({ amountMinor: 7000, direction: 'in' });
     expect(candidateOf(view('void', [-5000, 5000]), 'wallet')).toBeNull();
     expect(candidateOf(view('posted', [0, 0]), 'wallet')).toBeNull();
+  });
+
+  describe('the row on the full Add screen', () => {
+    const made = newRowsFrom(rows, outcomes, { 0: 'cat-food' });
+    const form = (row: (typeof made)[number]): FormDraft => ({ ...emptyForm('book', '2026-09-20'), ...formOfRow(row, 'wallet', 'IDR') });
+
+    it('opens an expense on the account, with its figure, category, note and day', () => {
+      expect(formOfRow(made[0]!, 'wallet', 'IDR')).toMatchObject({ mode: 'expense', moneyId: 'wallet', toId: '', amount: '41000', categoryId: 'cat-food', description: 'Noodle Stall', occurredOn: '2026-09-19', currency: 'IDR' });
+    });
+
+    it('opens a transfer with the account on the side the list showed', () => {
+      const out = withEdit(made, 0, { type: 'transfer', otherAccountId: 'bank' })[0]!;
+      expect(formOfRow(out, 'wallet', 'IDR')).toMatchObject({ mode: 'transfer', moneyId: 'wallet', toId: 'bank', categoryId: '', currency: '' });
+      const into = withEdit(made, 1, { type: 'transfer', otherAccountId: 'bank' })[1]!;
+      expect(formOfRow(into, 'wallet', 'IDR')).toMatchObject({ mode: 'transfer', moneyId: 'bank', toId: 'wallet' });
+    });
+
+    it('writes the form back onto the row, posting nothing: a new figure, category, note and day', () => {
+      const edited = { ...form(made[0]!), amount: '45.500', categoryId: 'cat-cafe', description: ' Noodle Stall Tebet ', occurredOn: '2026-09-18' };
+      expect(editFromForm(edited, 'wallet', 'IDR')).toEqual({
+        type: 'expense',
+        direction: 'out',
+        amountMinor: 45500,
+        categoryId: 'cat-cafe',
+        otherAccountId: '',
+        note: 'Noodle Stall Tebet',
+        occurredOn: '2026-09-18',
+      });
+      // No category: filed under Uncategorised when recorded.
+      expect(editFromForm({ ...edited, categoryId: '' }, 'wallet', 'IDR').categoryId).toBe('');
+    });
+
+    it('reads a transfer back by which side the account is on', () => {
+      const base = form(made[0]!);
+      expect(editFromForm({ ...base, mode: 'transfer', moneyId: 'bank', toId: 'wallet', categoryId: 'cat-food' }, 'wallet', 'IDR')).toMatchObject({
+        type: 'transfer',
+        direction: 'in',
+        otherAccountId: 'bank',
+        categoryId: '',
+      });
+      expect(editFromForm({ ...base, mode: 'transfer', moneyId: 'wallet', toId: 'bank' }, 'wallet', 'IDR')).toMatchObject({ direction: 'out', otherAccountId: 'bank' });
+    });
+
+    it('refuses a form that moves the row off its account, or has no figure', () => {
+      const base = form(made[0]!);
+      expect(() => editFromForm({ ...base, moneyId: 'bank' }, 'wallet', 'IDR')).toThrow(/this account/);
+      expect(() => editFromForm({ ...base, mode: 'transfer', moneyId: 'bank', toId: 'cash' }, 'wallet', 'IDR')).toThrow(/this account/);
+      expect(() => editFromForm({ ...base, amount: '' }, 'wallet', 'IDR')).toThrow(/greater than zero/);
+      // The figure is the account's own: one read in another currency would be posted as if it were.
+      expect(() => editFromForm({ ...base, currency: 'USD' }, 'wallet', 'IDR')).toThrow(/IDR/);
+      // A partner's shared item on a transfer is a household transfer, not a row of this list.
+      const partner = { side: 'to' as const, owner: 'p', itemId: 'item', currency: 'IDR' } as unknown as NonNullable<FormDraft['partner']>;
+      expect(() => editFromForm({ ...base, mode: 'transfer', moneyId: 'wallet', toId: '', partner }, 'wallet', 'IDR')).toThrow(/partner/);
+      expect(() => editFromForm({ ...base, mode: 'trade' }, 'wallet', 'IDR')).toThrow();
+      // A transfer to an account in another currency would post one figure on both sides.
+      expect(() => editFromForm({ ...base, mode: 'transfer', moneyId: 'wallet', toId: 'usd' }, 'wallet', 'IDR', ['bank'])).toThrow(/IDR account/);
+      expect(editFromForm({ ...base, mode: 'transfer', moneyId: 'wallet', toId: 'bank' }, 'wallet', 'IDR', ['bank'])).toMatchObject({ otherAccountId: 'bank' });
+    });
   });
 });

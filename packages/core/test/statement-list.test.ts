@@ -35,7 +35,6 @@ describe('readTransactionList', () => {
       expect(rows.map((r) => [r.on, r.time, r.description, r.ref, r.source, r.amountMinor, r.direction, r.coins])).toEqual([
         ['2026-09-19', '12:31', 'Noodle Stall', 'TRX20260919A1B2C3', 'Wallet balance', 41000, 'out', false],
         ['2026-09-18', '09:05', 'Top up from bank', 'TRX20260918D4E5F6', 'Bank transfer', 1000000, 'in', false],
-        ['2026-09-17', '18:20', 'Cashback ride', 'TRX20260917G7H8J9', 'Coins', 41, 'in', true],
         ['2026-09-16', '15:00', 'Transfer to Person A', 'TRX20260916K1L2M3', 'Wallet balance', 10500, 'out', false],
       ]);
     });
@@ -55,14 +54,14 @@ describe('readTransactionList', () => {
     ]);
   });
 
-  it('marks a bare figure coins when the list prints money with Rp, and a coins source anywhere', () => {
+  it('leaves out a bare figure when the list prints money with Rp, and a row with a coins source anywhere', () => {
     const entries: Entry[] = [
       ['Shop A', 'TRX0000000001', '19 Sep 2026 10:00', '−Rp9.000', 'Wallet'],
       ['Shop B', 'TRX0000000002', '18 Sep 2026 10:00', '12', 'Wallet'],
       ['Shop C', 'TRX0000000003', '17 Sep 2026 10:00', '−Rp15.000', 'Poin'],
     ];
     const { rows } = readTransactionList([walletImage(entries)], { today: TODAY, currency: 'IDR' });
-    expect(rows.map((r) => r.coins)).toEqual([false, true, true]);
+    expect(rows.map((r) => [r.description, r.coins])).toEqual([['Shop A', false]]);
   });
 
   it('keeps a bare figure as money when the list never prints a currency and names no coins', () => {
@@ -83,10 +82,12 @@ describe('readTransactionList', () => {
   it('counts an entry once where two screenshots overlap, by its reference or its words', () => {
     const first = walletImage(PAGE.slice(0, 3));
     const second = walletImage(PAGE.slice(2));
-    expect(readTransactionList([first, second], { today: TODAY, currency: 'IDR' }).rows).toHaveLength(4);
+    expect(readTransactionList([first, second], { today: TODAY, currency: 'IDR' }).rows).toHaveLength(3);
     // No reference printed: the repeated run is still found by date, name and amount.
     const bare = (entries: Entry[]) => walletImage(entries.map(([n, , w, a, s]) => [n, '', w, a, s] as Entry));
-    expect(readTransactionList([bare(PAGE.slice(0, 3)), bare(PAGE.slice(2))], { today: TODAY, currency: 'IDR' }).rows).toHaveLength(4);
+    expect(readTransactionList([bare(PAGE.slice(0, 3)), bare(PAGE.slice(2))], { today: TODAY, currency: 'IDR' }).rows).toHaveLength(3);
+    // A screenshot overlapping the one before only on a coins row still has its new rows counted once.
+    expect(readTransactionList([bare(PAGE.slice(0, 3)), bare(PAGE.slice(2, 3)), bare(PAGE.slice(2))], { today: TODAY, currency: 'IDR' }).rows).toHaveLength(3);
   });
 
   it('ignores a heading above the first entry and reports a screenshot with nothing', () => {
@@ -95,6 +96,164 @@ describe('readTransactionList', () => {
     expect(reading.rows).toHaveLength(1);
     expect(reading.rows[0]!.description).toBe('Noodle Stall');
     expect(reading.emptyImages).toEqual([1]);
+  });
+
+  describe('a table of columns: date | transaction | id | payment | amount', () => {
+    // An invented wallet history laid out as a table, each cell its own Vision line(s). A cell of one line sits at the
+    // row's middle; a wrapped cell's lines stand from the row's top. Rows are 0.075 apart.
+    type Cell = readonly string[];
+    interface TableEntry {
+      date: string;
+      time: string;
+      text: Cell;
+      id: Cell;
+      pay: string;
+      amount: string;
+      /** How far the payment cell stands off the row's middle: minus is higher. */
+      payDy?: number;
+    }
+    const STEP = 0.022;
+    const cell = (texts: Cell, x: number, top: number, w: number) =>
+      texts.length === 1 ? [line(texts[0]!, x, top + STEP / 2, w)] : texts.map((t, k) => line(t, x, top + k * STEP, w));
+    const right = (text: string, y: number) => {
+      const w = 0.012 * text.length;
+      return line(text, 0.97 - w, y, w);
+    };
+    function tableImage(entries: readonly TableEntry[], opts: { header?: boolean } = {}): CaptureLine[] {
+      const first = 0.12;
+      const header = opts.header
+        ? [
+            line('Tanggal', 0.03, first - 0.045, 0.1),
+            line('Transaksi', 0.17, first - 0.045, 0.12),
+            line('ID transaksi', 0.43, first - 0.045, 0.14),
+            line('Metode pembayaran', 0.63, first - 0.045, 0.18),
+            right('Jumlah', first - 0.045),
+          ]
+        : [];
+      return [
+        ...header,
+        ...entries.flatMap((e, i) => {
+          const top = first + i * 0.075;
+          return [
+            line(e.date, 0.03, top, 0.11),
+            line(e.time, 0.03, top + STEP, 0.06),
+            ...cell(e.text, 0.17, top, 0.24),
+            ...cell(e.id, 0.43, top, 0.18),
+            line(e.pay, 0.66, top + STEP / 2 + (e.payDy ?? 0), 0.16),
+            right(e.amount, top + STEP / 2),
+          ];
+        }),
+      ];
+    }
+
+    const TABLE: TableEntry[] = [
+      { date: '14/09/2026', time: '19:42', text: ['Kedai Kopi Lembayung'], id: ['GJ260914A7Q4', 'M9X2KD'], pay: 'Wallet Saldo', amount: '-Rp58.300', payDy: -0.004 },
+      { date: '13/09/2026', time: '08:15', text: ['Martabak Bang Juned', 'Cabang Timur'], id: ['GJ260913B3R8T5W1PZ'], pay: 'Tabungan Bank Contoh', amount: '-Rp112.750' },
+      { date: '12/09/2026', time: '21:03', text: ['Cashback Warung Sate', 'Pak Darmo'], id: ['GJ260912C6V2', 'N8L4QE'], pay: 'Wallet Coins', amount: '150' },
+      { date: '11/09/2026', time: '12:30', text: ['Pasar Poin Segar'], id: ['GJ260911D1F7H3J9KM'], pay: 'Wallet Saldo', amount: '-Rp27.400' },
+      { date: '10/09/2026', time: '07:55', text: ['Isi saldo dari bank'], id: ['TRXABCDEFGH1', '2345'], pay: 'Transfer bank', amount: '+Rp500.000' },
+    ];
+    const READ = [
+      ['2026-09-14', '19:42', 'Kedai Kopi Lembayung', 'GJ260914A7Q4M9X2KD', 'Wallet Saldo', 58300, 'out', false],
+      ['2026-09-13', '08:15', 'Martabak Bang Juned Cabang Timur', 'GJ260913B3R8T5W1PZ', 'Tabungan Bank Contoh', 112750, 'out', false],
+      ['2026-09-11', '12:30', 'Pasar Poin Segar', 'GJ260911D1F7H3J9KM', 'Wallet Saldo', 27400, 'out', false],
+      ['2026-09-10', '07:55', 'Isi saldo dari bank', 'TRXABCDEFGH12345', 'Transfer bank', 500000, 'in', false],
+    ];
+    const fields = (rows: ReturnType<typeof readTransactionList>['rows']) =>
+      rows.map((r) => [r.on, r.time, r.description, r.ref, r.source, r.amountMinor, r.direction, r.coins]);
+
+    for (const header of [false, true]) {
+      it(`reads each cell whole, the transaction text as the note and the payment as its source (${header ? 'with' : 'without'} the heading row)`, () => {
+        const { rows } = readTransactionList([tableImage(TABLE, { header })], { today: TODAY, currency: 'IDR' });
+        expect(fields(rows)).toEqual(READ);
+      });
+    }
+
+    it('never takes the payment text as the note, whether it stands level with the transaction text or above it', () => {
+      for (const payDy of [0, -0.004, -0.009]) {
+        const { rows } = readTransactionList([tableImage(TABLE.map((e) => ({ ...e, payDy })), { header: true })], { today: TODAY, currency: 'IDR' });
+        expect(rows.map((r) => [r.description, r.source])).toEqual(READ.map((r) => [r[2], r[4]]));
+      }
+    });
+
+    it('keeps a row paid through a linked bank as this wallet\'s money row, and leaves a coins cashback out entirely', () => {
+      const { rows } = readTransactionList([tableImage(TABLE)], { today: TODAY, currency: 'IDR' });
+      expect(rows[1]).toMatchObject({ source: 'Tabungan Bank Contoh', coins: false, amountMinor: 112750 });
+      expect(rows.some((r) => r.description.startsWith('Cashback'))).toBe(false);
+      // A screenshot of coins rows alone was still read: it is not reported as empty.
+      const coinsOnly = readTransactionList([tableImage(TABLE.slice(2, 3))], { today: TODAY, currency: 'IDR' });
+      expect(coinsOnly).toEqual({ rows: [], emptyImages: [] });
+    });
+
+    it('reads one entry under the heading row with no heading word in it', () => {
+      const { rows } = readTransactionList([tableImage(TABLE.slice(0, 1), { header: true })], { today: TODAY, currency: 'IDR' });
+      expect(fields(rows)).toEqual(READ.slice(0, 1));
+    });
+
+    it('counts an entry once where two screenshots of the table overlap, each with its heading row', () => {
+      const first = tableImage(TABLE.slice(0, 3), { header: true });
+      const second = tableImage(TABLE.slice(2), { header: true });
+      expect(fields(readTransactionList([first, second], { today: TODAY, currency: 'IDR' }).rows)).toEqual(READ);
+    });
+
+    it('keeps a money row paid partly in coins, or one that earned points, as a normal row; drops a coins cashback', () => {
+      const entries: TableEntry[] = [
+        { date: '07/09/2026', time: '13:12', text: ['Toko Roti Ornek'], id: ['GJ260907E4K8P2R6TQ'], pay: 'Wallet Saldo + Coins', amount: '-Rp33.900' },
+        { date: '06/09/2026', time: '18:40', text: ['Bakmi Ornek'], id: ['GJ260906F5L9Q3S7UV'], pay: 'Wallet Saldo', amount: '-Rp61.200' },
+        { date: '05/09/2026', time: '09:05', text: ['Cashback Bakmi Ornek'], id: ['GJ260905G6M1R4T8WX'], pay: 'Wallet Coins', amount: '+Rp2.100' },
+        { date: '04/09/2026', time: '11:25', text: ['Apotek Ornek'], id: ['GJ260904H7N2S5U9YZ'], pay: 'Bonus Poin', amount: '-Rp27.800' },
+      ];
+      // The second entry's payment cell carries a second line: the points it earned.
+      const image = tableImage(entries).flatMap((l) => (l.text === 'Wallet Saldo' ? [{ ...l, box: [l.box[0], l.box[1] - 0.011, l.box[2], l.box[3]] as CaptureLine['box'] }, line('Dapat 50 poin', 0.66, l.box[1] + 0.011, 0.16)] : [l]));
+      const { rows } = readTransactionList([image], { today: TODAY, currency: 'IDR' });
+      expect(rows.map((r) => [r.description, r.source, r.amountMinor, r.coins])).toEqual([
+        ['Toko Roti Ornek', 'Wallet Saldo + Coins', 33900, false],
+        ['Bakmi Ornek', 'Wallet Saldo Dapat 50 poin', 61200, false],
+        ['Apotek Ornek', 'Bonus Poin', 27800, false],
+      ]);
+    });
+
+    it('never takes the payment cell for the note of an entry that has no transaction text, headings or not', () => {
+      const entries: TableEntry[] = [TABLE[0]!, { ...TABLE[3]!, text: [] }];
+      const { rows } = readTransactionList([tableImage(entries)], { today: TODAY, currency: 'IDR' });
+      expect(rows.map((r) => [r.description, r.source])).toEqual([
+        ['Kedai Kopi Lembayung', 'Wallet Saldo'],
+        ['', 'Wallet Saldo'],
+      ]);
+    });
+  });
+
+  it('reads a bank list whose rows print no Rp under a balance line that does', () => {
+    // An invented bank history: the balance at the top carries Rp, the rows' signed figures do not.
+    const row = (name: string, when: string, amount: string, top: number) => [line(name, 0.05, top, 0.5), line(when, 0.05, top + 0.025), line(amount, 0.7, top + 0.025, 0.27)];
+    const image = [
+      line('Saldo Rp2.137.400', 0.05, 0.04, 0.45),
+      ...row('Kantor Ornek payroll', '15 Sep 2026', '+6.850.000', 0.12),
+      ...row('Warung Ornek', '14 Sep 2026', '-43.500', 0.22),
+    ];
+    const { rows } = readTransactionList([image], { today: TODAY, currency: 'IDR' });
+    expect(rows.map((r) => [r.on, r.description, r.amountMinor, r.direction, r.coins])).toEqual([
+      ['2026-09-15', 'Kantor Ornek payroll', 6850000, 'in', false],
+      ['2026-09-14', 'Warung Ornek', 43500, 'out', false],
+    ]);
+  });
+
+  it('keeps the name two lines above the date of the only entry on a screenshot', () => {
+    const image = [line('Apotek Ornek', 0.05, 0.3, 0.5), line('TRX0000000077', 0.05, 0.325, 0.5), line('12 Sep 2026 16:45', 0.05, 0.35), line('−Rp18.750', 0.72, 0.35, 0.25)];
+    const { rows } = readTransactionList([image], { today: TODAY, currency: 'IDR' });
+    expect(rows.map((r) => [r.description, r.ref, r.amountMinor])).toEqual([['Apotek Ornek', 'TRX0000000077', 18750]]);
+  });
+
+  it('reads an entry of a date and an amount alone, with no words beside them', () => {
+    const image = [line('19 Sep 2026 10:00', 0.05, 0.12), line('−Rp7.000', 0.72, 0.12, 0.25)];
+    const { rows } = readTransactionList([image], { today: TODAY, currency: 'IDR' });
+    expect(rows).toEqual([expect.objectContaining({ description: '', source: null, ref: null, amountMinor: 7000 })]);
+  });
+
+  it('does not take a shop named with a coin word for a coins row', () => {
+    const entries: Entry[] = [['Poin Cafe', 'TRX0000000001', '19 Sep 2026 10:00', '−Rp9.000', 'Wallet']];
+    const { rows } = readTransactionList([walletImage(entries)], { today: TODAY, currency: 'IDR' });
+    expect(rows[0]).toMatchObject({ description: 'Poin Cafe', source: 'Wallet', coins: false });
   });
 
   it('reads cents for a currency that has them', () => {
