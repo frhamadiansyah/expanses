@@ -1,0 +1,72 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Cashflow row marks v2</title>
+<style>
+  :root { --ink:#000; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --green:#34c759; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; }
+  h1 { font-size:20px; margin:0 0 4px; } h2 { font-size:16px; margin:26px 0 6px; } .sub { color:#555; margin:0 0 14px; max-width:1100px; }
+  .wrap { display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }
+  .phone { width:330px; background:var(--ground); border-radius:26px; padding:12px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .cap { font-weight:700; margin:0 0 4px; font-size:14px; } .note { font-size:12.5px; color:#555; margin:0 0 8px; min-height:34px; }
+  .panel { background:var(--surface); border-radius:12px; overflow:hidden; margin-bottom:8px; }
+  .r { display:flex; gap:10px; align-items:center; padding:9px 13px; } .r + .r { border-top:.5px solid var(--hair); }
+  .ic { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-size:15px; flex-shrink:0; position:relative; }
+  .badge { position:absolute; right:-4px; bottom:-4px; width:15px; height:15px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 2px #fff; color:#fff; font-size:9px; font-weight:700; }
+  .badge svg { width:9px; height:9px; }
+  .g { flex:1; min-width:0; } .g .a { font-size:15px; } .g .s { font-size:12.5px; color:var(--ink3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .amt { text-align:right; font-size:15px; } .amt .u { display:block; font-size:12.5px; color:var(--ink3); }
+  .plus { color:var(--green); } .grey { color:var(--ink3); }
+  .tag { display:inline-block; font-size:11px; font-weight:700; color:#fff; background:#ff9f0a; border-radius:5px; padding:1px 6px; margin-right:6px; }
+  .btn { display:block; text-align:center; background:var(--surface); border-radius:12px; padding:11px; color:var(--tint); margin-top:8px; }
+  .kv { display:flex; justify-content:space-between; padding:9px 13px; font-size:14px; } .kv + .kv { border-top:.5px solid var(--hair); } .kv span:last-child { color:var(--ink3); }
+  .big { text-align:center; padding:14px 0 6px; } .big .v { font-size:28px; font-weight:700; } .big .k { font-size:13px; color:var(--ink3); }
+  .plane { width:9px; height:9px; }
+</style></head>
+<body>
+<h1>Cashflow row marks: changes asked on 13 Nov</h1>
+<p class="sub">1 removed (the "Jun bill" pill). 2, 3, 9 unchanged. Below: 4 trip, 6 split, 8 fee, 10 trades, 12 deleted.</p>
+
+<h2>4 · Trip: a small plane on the icon, no trip name on the grey line</h2>
+<p class="sub">A trip's spending is <b>not</b> in Cashflow normally. It shows only (a) on an <b>account's own page</b> (its history keeps everything), (b) in a workspace with <b>Settings → Budget → "Events count in the budget"</b> on, and (c) on the <b>trip's own page</b>. In those places the row gets a small grey plane on its icon, like the refund arrow. If a row is both a refund and on a trip, the refund arrow wins (the plane is still on the receipt).</p>
+<div class="wrap">
+  <div class="phone"><p class="cap">Before</p><p class="note">Trip name leads the grey line.</p>
+    <div class="panel"><div class="r"><div class="ic" style="background:#ff2d55">🍽</div><div class="g"><div class="a">Restaurants</div><div class="s">✈ Coast week · Dinner Karaköy · 4821</div></div><div class="amt">₺ 1.800<span class="u">Rp 940.000</span></div></div></div></div>
+  <div class="phone"><p class="cap">After</p><p class="note">Plane badge on the icon; grey line as any row.</p>
+    <div class="panel"><div class="r"><div class="ic" style="background:#ff2d55">🍽<span class="badge" style="background:#8e8e93"><svg class="plane" viewBox="0 0 24 24"><path fill="#fff" d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg></span></div><div class="g"><div class="a">Restaurants</div><div class="s">Dinner Karaköy · 4821</div></div><div class="amt">₺ 1.800<span class="u">Rp 940.000</span></div></div></div></div>
+</div>
+
+<h2>6 · Split across categories: alternatives to "⑂ split"</h2>
+<div class="wrap">
+  <div class="phone"><p class="cap"><span class="tag">A</span>"+1" only</p><p class="note">Drop "⑂ split" entirely; "Groceries +1" already says there's another category.</p>
+    <div class="panel"><div class="r"><div class="ic" style="background:#ff9500">🛒</div><div class="g"><div class="a">Groceries +1</div><div class="s">Hypermart · 4821</div></div><div class="amt">Rp 610.000</div></div></div></div>
+  <div class="phone"><p class="cap"><span class="tag">B</span>Number on the icon</p><p class="note">A "2" badge on the icon, like the refund arrow; title stays "Groceries".</p>
+    <div class="panel"><div class="r"><div class="ic" style="background:#ff9500">🛒<span class="badge" style="background:#8e8e93">2</span></div><div class="g"><div class="a">Groceries</div><div class="s">Hypermart · 4821</div></div><div class="amt">Rp 610.000</div></div></div></div>
+  <div class="phone"><p class="cap"><span class="tag">C</span>Words</p><p class="note">"2 categories" at the end of the grey line instead of ⑂.</p>
+    <div class="panel"><div class="r"><div class="ic" style="background:#ff9500">🛒</div><div class="g"><div class="a">Groceries</div><div class="s">Hypermart · 4821 · 2 categories</div></div><div class="amt">Rp 610.000</div></div></div></div>
+</div>
+
+<h2>8 · Transfer fee: like ⊘, without the word "fee"</h2>
+<div class="wrap">
+  <div class="phone"><p class="cap">Before</p><p class="note"></p>
+    <div class="panel"><div class="r"><div class="ic" style="background:#8e8e93">⇄</div><div class="g"><div class="a">Transfer</div><div class="s">BCA → 2210</div></div><div class="amt">Rp 2.000.000<span class="u">+Rp 2.500 fee</span></div></div></div></div>
+  <div class="phone"><p class="cap">After</p><p class="note">Same look as 9's "⊘ Rp 150.000".</p>
+    <div class="panel"><div class="r"><div class="ic" style="background:#8e8e93">⇄</div><div class="g"><div class="a">Transfer</div><div class="s">BCA → 2210</div></div><div class="amt">Rp 2.000.000<span class="u">+ Rp 2.500</span></div></div>
+    <div class="r"><div class="ic" style="background:#ff9500">🛒</div><div class="g"><div class="a">Groceries</div><div class="s">Office snacks · 4821</div></div><div class="amt grey">Rp 0<span class="u">⊘ Rp 150.000</span></div></div></div></div>
+</div>
+
+<h2>10 · Trade rows: "Holding" vs tapping the row</h2>
+<p class="sub">They open different pages. Tapping the row opens the <b>receipt</b> (read only for a trade; its own "Holding" button sits at its foot). "Holding" opens the <b>holding's page</b>, where a trade is edited so units stay right. Proposal: remove "Holding" from the row; the receipt's button is one tap further.</p>
+<div class="wrap">
+  <div class="phone"><p class="cap">Row, after</p><p class="note">No "Holding" link.</p>
+    <div class="panel"><div class="r"><div class="ic" style="background:#30b0c7">📈</div><div class="g"><div class="a">Buy · SBR012</div><div class="s">Bank Mitra · 4821</div></div><div class="amt">Rp 5.000.000</div></div></div></div>
+  <div class="phone"><p class="cap">Tap the row → receipt</p><p class="note">Read only; Edit lives on the holding.</p>
+    <div class="big"><div class="k">Buy · SBR012</div><div class="v">Rp 5.000.000</div></div>
+    <div class="panel"><div class="kv"><span>Date</span><span>12 Nov 2026</span></div><div class="kv"><span>Paid with</span><span>BCA Visa · 4821</span></div><div class="kv"><span>Par value</span><span>Rp 5.000.000</span></div></div>
+    <span class="btn">Open holding</span></div>
+  <div class="phone"><p class="cap">"Open holding" → holding page</p><p class="note">Units, value, every trade; Edit a trade here.</p>
+    <div class="big"><div class="k">SBR012 · Bank Mitra</div><div class="v">Rp 15.000.000</div><div class="k">3 purchases · coupon 6,40%</div></div>
+    <div class="panel"><div class="kv"><span>12 Nov · Buy</span><span>Rp 5.000.000</span></div><div class="kv"><span>3 Aug · Buy</span><span>Rp 5.000.000</span></div><div class="kv"><span>2 Mar · Buy</span><span>Rp 5.000.000</span></div></div></div>
+</div>
+
+<h2>12 · Deleted rows</h2>
+<p class="sub">On the <b>phone they never show</b>. "Show deleted" is a filter only on a wide screen (Mac/iPad), where a deleted row reads struck through. Delete keeps a hidden marker so the other phone deletes it too and Undo works; it is never counted anywhere. The filter can be removed if it isn't wanted.</p>
+</body></html>
