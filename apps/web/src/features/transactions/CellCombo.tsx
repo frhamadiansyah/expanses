@@ -25,6 +25,7 @@ export function CellCombo({
   placeholder,
   resolve,
   invalid,
+  disabled,
   className,
 }: {
   value: string;
@@ -35,6 +36,8 @@ export function CellCombo({
   /** Reads typed text into a choice when the list was not used, such as a pasted "Bonvoy 8802". */
   resolve?: (text: string) => string | null;
   invalid?: boolean;
+  /** Not yet usable, such as while its choices are still loading. */
+  disabled?: boolean;
   className?: string;
 }) {
   const [query, setQuery] = useState<string | null>(null);
@@ -100,6 +103,7 @@ export function CellCombo({
         aria-controls={listId}
         aria-autocomplete="list"
         autoComplete="off"
+        disabled={disabled}
         value={query ?? selected?.label ?? ''}
         placeholder={placeholder}
         onFocus={(event) => event.currentTarget.select()}
