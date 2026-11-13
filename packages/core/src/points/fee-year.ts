@@ -71,10 +71,42 @@ export function feeProgressWindow(waiver: FeeWaiver, feeOn: string | null, today
  * Settings' Fee waiver row: the covered year once it is settled ("2026 waived", "2026 charged"); else None without a
  * program, Free for life for a fee always waived, Reached with nothing left, or what is left ("Rp 18 jt to go").
  * `toGo` is what is left to spend as money, null when nothing is.
+ *
+ * A charged year with a bank's challenge (owner ruling, mockup section 5) follows the challenge while it runs or once
+ * it is reached — the reversal is still to come — and reads charged only once it ended short.
  */
-export function feeWaiverRowText(year: { year: number; state: FeeYearState } | null, waiver: FeeWaiver | null, toGo: string | null): string {
-  if (year && year.state !== 'pending') return `${year.year} ${year.state}`;
+export function feeWaiverRowText(year: { year: number; state: FeeYearState } | null, waiver: FeeWaiver | null, toGo: string | null, today: string): string {
+  const challengeOpen = waiver?.kind === 'challenge' && (toGo === null || (waiver.spendBy !== null && today <= waiver.spendBy));
+  if (year && year.state === 'waived') return `${year.year} waived`;
+  if (year && year.state === 'charged' && !challengeOpen) return `${year.year} charged`;
   if (!waiver) return 'None';
   if (waiver.kind === 'lifetime') return 'Free for life';
   return toGo === null ? 'Reached' : `${toGo} to go`;
+}
+
+/** How far before a fee date its charge may be dated, and after it (the statement after the anniversary). */
+export const FEE_DAYS_BEFORE = 20;
+export const FEE_DAYS_AFTER = 45;
+/** How long after the fee date a bank's reversal of it is still looked for: the fee's own window and a cycle more. */
+export const FEE_REVERSAL_DAYS_AFTER = 120;
+
+/** What the Fee waiver page names the fee charge it adds, and the reversal it adds (owner, 13 Nov 2026). */
+export const FEE_CHARGE_DESCRIPTION = 'Annual fee';
+export const FEE_REVERSAL_DESCRIPTION = 'Annual fee reversal';
+
+/**
+ * The days a statement row may be dated and still be the fee charge or reversal the Fee waiver page added on `on`: the
+ * window of the fee date that day belongs to. Only those two descriptions, each in its own direction (a charge out, a
+ * reversal in), have one; anything else, or a day near no fee date, gets null.
+ */
+export function feeCandidateWindow(description: string, direction: 'out' | 'in', feeOn: string, on: string): WaiverWindow | null {
+  const after = description === FEE_CHARGE_DESCRIPTION && direction === 'out' ? FEE_DAYS_AFTER : description === FEE_REVERSAL_DESCRIPTION && direction === 'in' ? FEE_REVERSAL_DAYS_AFTER : null;
+  if (after === null) return null;
+  const year = Number(on.slice(0, 4));
+  for (const y of [year, year - 1, year + 1]) {
+    const date = inYear(feeOn, y);
+    const window = { from: shift(date, -FEE_DAYS_BEFORE), to: shift(date, after) };
+    if (on >= window.from && on <= window.to) return window;
+  }
+  return null;
 }
