@@ -518,8 +518,9 @@ function CardBody({
 
   /*
    * Joint net worth §7.2: a transfer with a partner. To lists their shared items — and From, for money received from
-   * them — in the group's workspace only, and only those in the other side's currency. The transfer is recorded once in
-   * the group log; a side of one being corrected is corrected as the transfer (`editMemberTransfer`).
+   * them — in the group's workspace only, and only those in the other side's currency once that side is chosen; with
+   * it still empty, all of them, the pick setting the currency. The transfer is recorded once in the group log; a side
+   * of one being corrected is corrected as the transfer (`editMemberTransfer`).
    */
   const workspaceName = openBook?.name ?? 'the household';
   const partnerWhere = { formBookId: draft.bookId, groupWorkspaceBookId: netWorthGroup.data?.workspaceBookId };
@@ -1508,8 +1509,9 @@ function CardBody({
           options={paymentOptions(landing, [])}
           accounts={accounts}
           chosenAccountId={draft.partner?.side === 'to' ? '' : draft.toId}
-          // Within an account, the pocket in the From's currency first: a same-currency move is one tap away.
-          leadCurrency={draft.partner?.side === 'from' ? null : account?.currency}
+          // Within an account, the pocket in the From's currency first — a partner's item's, when From is theirs: a
+          // same-currency move is one tap away.
+          leadCurrency={draft.partner?.side === 'from' ? draft.partner.currency : account?.currency}
           // One's own account clears a partner's item on this side; a partner on the From side stays.
           onPick={(option) => {
             set({ toId: option.accountId, partner: draft.partner?.side === 'from' ? draft.partner : null });
@@ -1585,6 +1587,8 @@ function CardBody({
           chosenCardId={draft.cardId}
           chosenCardRemoved={removedCard !== null}
           cards={draft.mode === 'expense'}
+          // A transfer to a partner's item picked first: the pocket in its currency leads, as To leads with From's.
+          leadCurrency={draft.mode === 'transfer' && draft.partner?.side === 'to' ? draft.partner.currency : undefined}
           // One's own account clears a partner's item; the placeholder a saved purchase names keeps what it says.
           onPick={(option) => {
             const picked = byId.get(option.accountId);

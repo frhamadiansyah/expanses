@@ -11,8 +11,8 @@ import {
 /*
  * Transfers between partners on the Transfer tab (joint-net-worth §7.2, D15; task 8). In the net-worth group's workspace,
  * **To** lists the partner's shared items under "Andi’s, shared with Household" — and **From** likewise, for recording
- * money received from them — only those in the transfer's currency. The transfer is recorded once, in the group log;
- * each party's phone posts its own side.
+ * money received from them — only those in the transfer's currency once the other side names it. The transfer is
+ * recorded once, in the group log; each party's phone posts its own side.
  */
 
 /** The heading a partner's items sit under on the Transfer tab: whose they are, and which workspace they are shared with. */
@@ -27,8 +27,10 @@ export interface PartnerSection {
 
 /**
  * The partner's shared items a transfer can go to or come from (§7.2): only when the form's workspace is the net-worth
- * group's, and only those in `currency` — the other side's (both items must be in the transfer's currency). None until
- * that side is chosen. One section per owner, in the order the items come.
+ * group's. Once the other side is chosen, only those in `currency` — its currency (both items must be in the
+ * transfer's currency). While that side is still empty, every one of them, as Paid with lists them: the item picked
+ * sets the currency the other side must then be in (owner's report, build 122/123 — To and From waited for each
+ * other, so neither ever showed the partner's account). One section per owner, in the order the items come.
  */
 export function partnerTransferSections(
   items: readonly PaidWithItem[],
@@ -36,10 +38,10 @@ export function partnerTransferSections(
   currency: string | null | undefined,
   workspaceName: string,
 ): PartnerSection[] {
-  if (!currency || !where.groupWorkspaceBookId || where.formBookId !== where.groupWorkspaceBookId) return [];
+  if (!where.groupWorkspaceBookId || where.formBookId !== where.groupWorkspaceBookId) return [];
   const sections: PartnerSection[] = [];
   for (const item of items) {
-    if (item.currency !== currency) continue;
+    if (currency && item.currency !== currency) continue;
     let section = sections.find((s) => s.key === item.owner);
     if (!section) sections.push((section = { key: item.owner, title: partnerTitle(item.ownerName, workspaceName), items: [] }));
     section.items.push(item);
