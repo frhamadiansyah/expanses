@@ -210,6 +210,31 @@ describe('a stop is never overridden', () => {
 });
 
 describe('Owned together never comes back by itself (item 4)', () => {
+  it('at launch, before the sync engine has started, a choice made while the group waits is kept', async () => {
+    const h = await household();
+    await startNetWorth(deps(h.rina), h.bookId, [h.andiMember], { [h.rina.bank]: 'total', [h.rina.cash]: 'hidden' });
+    await setJointAccount(h.rina.database, h.rina.bank, true);
+    // The app opened again: a service whose engine is not made yet reads no group at all.
+    const fresh = new SyncService({
+      database: h.rina.database,
+      keyStore: new MemoryKeyStore(),
+      shareRecords: new MemoryShareRecordStore(),
+      transportFor: () => {
+        throw new Error('not started');
+      },
+      onApplied: () => {},
+      onError: () => {},
+      intervalMs: 60 * 60_000,
+    });
+    expect(await fresh.netWorthGroup(h.bookId)).toBeNull();
+    await netWorthAutoStepsOnce({ database: h.rina.database, ws: h.rina.ws, sync: fresh });
+    expect(await storedJointAccount(h.rina.database, h.rina.bank)).toBe(true);
+    // And a pass that reads the group waiting keeps it too.
+    await netWorthAutoStepsOnce(deps(h.rina));
+    expect(await storedJointAccount(h.rina.database, h.rina.bank)).toBe(true);
+    h.stop();
+  });
+
   it('a group gone: the joint mark reads as nothing, is forgotten, and a new group does not bring it back', async () => {
     const h = await household();
     await startNetWorth(deps(h.rina), h.bookId, [h.andiMember], { [h.rina.bank]: 'total', [h.rina.cash]: 'hidden' });

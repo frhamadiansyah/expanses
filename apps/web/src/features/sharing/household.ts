@@ -112,6 +112,8 @@ export async function rememberSwitch(database: Database, bookId: string, account
  * the old setup's Invite ran. Starting is this person's tap, so an earlier stop of theirs is over.
  */
 export async function startNetWorth({ database, sync }: Pick<Deps, 'database' | 'sync'>, bookId: string, members: readonly string[], settings: Readonly<Record<string, ShareSetting>>): Promise<void> {
+  // A fresh start owns nothing together until a tap says so: a mark left from an earlier group never comes back.
+  await clearJointAccounts(database);
   for (const [accountId, setting] of Object.entries(settings)) await setShareSetting(database, accountId, setting);
   const intent = Object.entries(settings)
     .filter(([, setting]) => setting === 'total')
@@ -170,14 +172,16 @@ export async function netWorthAutoStepsOnce(deps: Deps, step: (key: string, work
   const { database, ws, sync } = deps;
   let changed = false;
   const active = await activeNetWorthGroup(database);
-  let anyGroup = active !== null;
   for (const book of workspaceBooks(await listSharedBooks(database))) {
     if (book.state !== 'active' || book.members.length < 2) continue;
     const view = await sync.netWorthGroup(book.bookId).catch(() => null);
     const marks = await netWorthMarks(database, book.bookId);
     const mine = view && ((view.active?.members.includes(view.me) ?? false) || (view.pending && !view.pending.cancelled && view.pending.members.includes(view.me)));
-    if (mine) anyGroup = true;
     if (mine && !marks.seen) await setNetWorthMarks(database, book.bookId, { seen: true });
+    // A group this phone was in, known to be gone (the engine read the groups, and none is active or waiting): Owned
+    // together is forgotten, so a group made later never brings it back. Never while the state is unknown (the engine not
+    // started: `view` null) or a group waits (re-review round 2).
+    if (view && marks.seen && !view.active && !(view.pending && !view.pending.cancelled)) await clearJointAccounts(database);
     const proposalId = autoConfirmOf(view, active && active.workspaceBookId !== book.bookId ? active.workspaceBookId : null, marks);
     if (proposalId) changed = (await step(`confirm:${proposalId}`, () => sync.answerNetWorth(book.bookId, proposalId, 'confirm'))) || changed;
   }
@@ -195,8 +199,6 @@ export async function netWorthAutoStepsOnce(deps: Deps, step: (key: string, work
         })) || changed;
     }
   }
-  // In no group here at all: Owned together means nothing, and must not come back with a group made later.
-  if (!anyGroup && !(await activeNetWorthGroup(database))) await clearJointAccounts(database);
   return changed;
 }
 

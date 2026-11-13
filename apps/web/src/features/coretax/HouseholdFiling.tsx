@@ -1,4 +1,4 @@
-import { setNetWorthMarks } from '@expanses/db';
+import { clearJointAccounts, setNetWorthMarks } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -142,6 +142,7 @@ function FilingBody({ bookId, reviewDue }: { bookId: string; reviewDue: boolean 
                 await sync.leaveNetWorth(bookId);
                 // Stopped on this phone: never confirmed again by the app, until this person starts it again.
                 await setNetWorthMarks(database, bookId, { optedOut: true, intent: [] });
+                await clearJointAccounts(database);
               });
             },
           }}
