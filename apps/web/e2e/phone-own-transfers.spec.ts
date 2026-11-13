@@ -133,14 +133,15 @@ test('sideways, the table has its own Transfers switch, the same filter as uprig
   await addTransfer(page, { from: 'Contoh Payroll', to: 'Dompet', amount: '100000', note: 'Sideways top-up' });
   await page.setViewportSize({ width: 844, height: 390 });
   const table = page.getByTestId('sideways-table');
-  await expect(table).toBeVisible();
-  await expect(table).toContainText('Warung Contoh');
-  await expect(table).not.toContainText('Sideways top-up');
+  // A table row's cells are inputs; each row names itself by its receipt link.
+  const receipt = (what: string) => table.getByRole('link', { name: `Receipt for ${what}` });
+  await expect(receipt('Warung Contoh')).toBeVisible();
+  await expect(receipt('Sideways top-up')).toHaveCount(0);
   const toggle = page.getByTestId('sideways-bar').getByRole('button', { name: 'Transfers' });
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-  await expect(table).toContainText('Sideways top-up');
+  await expect(receipt('Sideways top-up')).toBeVisible();
   // Upright again, the list keeps the filter: one state, two controls.
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(row(page, 'Sideways top-up')).toBeVisible();
