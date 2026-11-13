@@ -101,7 +101,7 @@ import { draftIn } from './move-workspace';
 import { formFromTransaction, formToPost } from './tx-form';
 import { ratesForSave } from './tx-save';
 import { useOpenBookReadOnly, usePurchasePayers } from '../sharing/queries';
-import { payerLine, postedAgainstPlaceholder } from '../sharing/sharing-copy';
+import { payerLine, payerToShow, postedAgainstPlaceholder } from '../sharing/sharing-copy';
 
 const route = getRouteApi('/transactions');
 
@@ -423,6 +423,9 @@ export function TransactionsPage() {
   const duplicable = useDuplicable(recorded);
   const knownAccounts = new Set(accounts.map((account) => account.id));
   const onPlaceholder = (tx: TransactionView) => postedAgainstPlaceholder(tx, knownAccounts);
+  // The payer line a row shows instead of its own Paid with: never on a purchase paid from this member's own account,
+  // which reads by its digits as in a private workspace.
+  const payerShown = (tx: TransactionView) => payerToShow(payerOf(tx.id), tx, knownAccounts);
   const paidByOther = (tx: TransactionView) => {
     const payer = payerOf(tx.id);
     return onPlaceholder(tx) || (payer !== null && !payer.mine);
@@ -1191,8 +1194,8 @@ export function TransactionsPage() {
         subtitle={
           <>
             {tx.description ? `${tx.description} · ` : ''}
-            {payerOf(tx.id) ? (
-              payerLine(payerOf(tx.id)!)
+            {payerShown(tx) ? (
+              payerLine(payerShown(tx)!)
             ) : onPlaceholder(tx) ? null : (
               <PaidWith row={row} />
             )}
@@ -1236,7 +1239,7 @@ export function TransactionsPage() {
     elsewhereOf,
     // Read-only: no row of an ended share is edited in cells (a typed new row is refused by capture, in words).
     filingKnown: filingKnown && !readOnly,
-    payerOf,
+    payerOf: payerShown,
     paidByOther,
   };
 
