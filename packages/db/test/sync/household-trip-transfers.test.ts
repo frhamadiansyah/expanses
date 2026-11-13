@@ -3,6 +3,8 @@ import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   createBook,
+  deleteEventCopy,
+  finishSharedEvent,
   eventTransferOf,
   inBook,
   listSharedTransfers,
@@ -314,5 +316,94 @@ describe('a Family transfer moved into a shared trip', () => {
       expect(view.transfers).toHaveLength(1);
       expect(view.spentMinor).toBe(6_000);
     }
+  });
+});
+
+describe('who must have the trip, and which phones count (review fix round 1)', () => {
+  it('stays in Family while someone in Family is not in the trip: there it would show nowhere', async () => {
+    const trip = new Trip();
+    const wife = await trip.device('Wife', BUILD);
+    const husband = await trip.device('Husband', BUILD);
+    const family = await trip.home.share(wife);
+    await trip.home.join(husband, wife);
+    await trip.home.settle();
+    await trip.share(wife);
+    await trip.settle([wife]);
+    const s = { trip, home: trip.home, wife, husband, family, settle: async () => undefined } as unknown as Setup;
+    const id = await withdrawal(s);
+    const { kept, listed } = await moveIntoSharedEvent(wife.database, ownerScope(wife.ws), trip.eventOf(wife), [id]);
+    expect(listed).toEqual([]);
+    expect(kept).toEqual([{ transactionId: id, why: "Husband's phone is not in Coast week, so there it would show in neither place" }]);
+  });
+
+  it('counts the recorder’s own second phone, and a phone whose version is not known; never a removed one', async () => {
+    const s = await familyAndTrip();
+    const tablet = await s.home.device('Tablet', 'workspace-Wife', 'IDR', '0.5.1');
+    const { code } = await s.wife.engine.linkDevice(s.family, { inviterName: 'Wife' });
+    await tablet.engine.joinBook(code, { ws: tablet.ws, memberName: 'Wife', deviceName: 'Tablet' });
+    await s.home.settle([s.wife, s.husband, tablet]);
+    const id = await withdrawal(s);
+    const move = () => moveIntoSharedEvent(s.wife.database, ownerScope(s.wife.ws), s.trip.eventOf(s.wife), [id]);
+    expect((await move()).kept[0]!.why).toBe('Update cicis on Tablet first: until then it would stay in Personal there');
+    // The tablet is removed from the workspace: it no longer counts.
+    await s.wife.database.db.run(sql`UPDATE book_devices SET removed_at = '2026-11-13T00:00:00Z' WHERE book_id = ${s.family} AND device_id = ${tablet.deviceId}`);
+    // A phone that has never said its version is taken as an older one.
+    await s.wife.database.db.run(sql`UPDATE book_devices SET app_version = NULL WHERE book_id = ${s.family} AND device_id = ${s.husband.deviceId}`);
+    expect((await move()).kept[0]!.why).toBe("Update cicis on Husband's phone first: until then it would stay in Personal there");
+    await s.wife.database.db.run(sql`UPDATE book_devices SET app_version = ${BUILD} WHERE book_id = ${s.family} AND device_id = ${s.husband.deviceId}`);
+    expect((await move()).listed).toEqual([{ transactionId: id }]);
+  });
+
+  it('Remove from event works after the trip is done', async () => {
+    const s = await familyAndTrip();
+    const id = await withdrawal(s);
+    await s.settle();
+    await moveIntoSharedEvent(s.wife.database, ownerScope(s.wife.ws), s.trip.eventOf(s.wife), [id]);
+    await s.settle();
+    await finishSharedEvent(s.wife.database, ownerScope(s.wife.ws), s.trip.eventOf(s.wife), true);
+    await s.settle();
+    expect(await removeTransferFromSharedEvent(s.wife.database, s.wife.ws, id)).toBe(true);
+    await s.settle();
+    expect(await familyRows(s, s.wife)).toEqual(['ATM withdrawal']);
+    expect(await familyRows(s, s.husband)).toEqual(['partner: ATM withdrawal']);
+  });
+
+  it('a phone that left the trip, or deleted its copy, lists the transfer in Family again; Remove from event still works', async () => {
+    const s = await familyAndTrip();
+    const id = await withdrawal(s);
+    await s.settle();
+    await moveIntoSharedEvent(s.wife.database, ownerScope(s.wife.ws), s.trip.eventOf(s.wife), [id]);
+    await s.settle();
+    // The husband leaves the trip: he no longer holds it, so the transfer is back in his Family list.
+    await s.husband.engine.leaveEvent(s.trip.bookId);
+    await s.trip.settle([s.wife]);
+    expect(await familyRows(s, s.husband)).toEqual(['partner: ATM withdrawal']);
+    expect(await familyRows(s, s.wife)).toEqual([]);
+    // He deletes his read-only copy: still in his Family list.
+    await deleteEventCopy(s.husband.database, s.husband.ws, s.trip.bookId);
+    await s.home.settle();
+    expect(await familyRows(s, s.husband)).toEqual(['partner: ATM withdrawal']);
+    // She takes it off the trip (she is the last with the app, so she stays in it): both lists agree again.
+    expect(await removeTransferFromSharedEvent(s.wife.database, s.wife.ws, id)).toBe(true);
+    await s.home.settle();
+    expect(await familyRows(s, s.wife)).toEqual(['ATM withdrawal']);
+    expect(await familyRows(s, s.husband)).toEqual(['partner: ATM withdrawal']);
+    expect(await projectBook(s.wife.database, s.family)).toEqual(await projectBook(s.husband.database, s.family));
+  });
+
+  it('the recorder who left the trip lists it in Family again, and still takes it off the event', async () => {
+    const s = await familyAndTrip();
+    const id = await withdrawal(s);
+    await s.settle();
+    await moveIntoSharedEvent(s.wife.database, ownerScope(s.wife.ws), s.trip.eventOf(s.wife), [id]);
+    await s.settle();
+    await s.wife.engine.leaveEvent(s.trip.bookId);
+    await s.trip.settle([s.husband]);
+    expect(await familyRows(s, s.wife)).toEqual(['ATM withdrawal']);
+    expect(await eventTransferOf(s.wife.database, id)).toMatchObject({ eventName: 'Coast week' });
+    expect(await removeTransferFromSharedEvent(s.wife.database, s.wife.ws, id)).toBe(true);
+    await s.home.settle();
+    expect(await familyRows(s, s.husband)).toEqual(['partner: ATM withdrawal']);
+    expect((await tripOf(s, s.husband)).transfers).toEqual([]);
   });
 });

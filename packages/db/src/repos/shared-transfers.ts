@@ -147,8 +147,9 @@ export interface SharedTransferRow {
 
 /**
  * The transfers other members recorded in a shared workspace, newest first: what the partner's list shows beside its
- * own rows. The recorder's own phone never lists them (it has the real transfer). One listed on a shared event instead
- * (0114) is the event's to show, not the workspace's.
+ * own rows. The recorder's own phone never lists them (it has the real transfer). One listed on a shared event this
+ * phone still holds (0114) is the event's to show, not the workspace's; one on an event this phone left, or whose copy
+ * it deleted, is listed here again.
  */
 export async function listSharedTransfers(database: Database, bookId: string, opts: { from?: string; to?: string } = {}): Promise<SharedTransferRow[]> {
   if (!(await tableExists(database.db))) return [];
@@ -156,7 +157,8 @@ export async function listSharedTransfers(database: Database, bookId: string, op
   if (!member) return [];
   const rows = await database.db.values<[string, string, string, number, string, string, string, string | null, string | null]>(sql`
     SELECT transfer_id, book_id, occurred_on, amount_minor, currency, description, recorded_by, from_name, to_name FROM shared_transfers
-    WHERE book_id = ${bookId} AND void = 0 AND recorded_by <> ${member} AND event_book_id IS NULL
+    WHERE book_id = ${bookId} AND void = 0 AND recorded_by <> ${member}
+      AND (event_book_id IS NULL OR event_book_id NOT IN (SELECT book_id FROM shared_books WHERE state <> 'unshared'))
       AND occurred_on >= ${opts.from ?? '0000-00-00'} AND occurred_on <= ${opts.to ?? '9999-99-99'}
     ORDER BY occurred_on DESC, transfer_id DESC`);
   return rows.map(([transferId, book, occurredOn, amountMinor, currency, description, recordedBy, fromName, toName]) => ({

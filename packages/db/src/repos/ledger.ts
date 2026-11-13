@@ -1480,10 +1480,12 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     if (await bookSplitsExist(database.db)) conds.push(splitHasPartIn(transactions.id, bookId));
     if (await eventOnlyExists(database.db)) conds.push(notEventOnly(transactions.id));
     // A transfer recorded in a shared workspace (0094) is listed by that workspace alone, as one filed in a book is —
-    // and by none once it is listed on a shared event instead (0114): the event page lists it, read owner-wide, and the
-    // account's own history keeps it.
+    // and by none once it is listed on a shared event this phone still holds (0114): the event page lists it, read
+    // owner-wide, and the account's own history keeps it. A phone that left the event, or deleted its copy, lists it in
+    // the workspace again, so nothing ever vanishes from it (review fix round 1, M3).
     if ((await database.db.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'shared_transfers'`)).length > 0) {
-      conds.push(sql`${transactions.id} NOT IN (SELECT transaction_id FROM shared_transfers WHERE transaction_id IS NOT NULL AND void = 0 AND (book_id <> ${bookId} OR event_book_id IS NOT NULL))`);
+      conds.push(sql`${transactions.id} NOT IN (SELECT transaction_id FROM shared_transfers WHERE transaction_id IS NOT NULL AND void = 0
+        AND (book_id <> ${bookId} OR event_book_id IN (SELECT book_id FROM shared_books WHERE state <> 'unshared')))`);
     }
   }
   // Within a day (compareWithinDay): rows never moved first, newest first; then moved rows by their place. A database

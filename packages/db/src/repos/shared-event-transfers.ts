@@ -69,6 +69,20 @@ async function devicesBelowTx(tx: Db, bookId: string): Promise<string[]> {
 }
 
 /**
+ * The other devices in the workspace that are not in the event (`book_devices` of each book; a device's id is the same in
+ * every book it is in), by name. On one of them the transfer would leave the workspace's list and be on no trip page.
+ */
+async function devicesNotInEventTx(tx: Db, bookId: string, eventBookId: string): Promise<string[]> {
+  const self = await localDeviceId(tx);
+  const rows = await tx.values<[string, string]>(sql`
+    SELECT device_id, name FROM book_devices
+    WHERE book_id = ${bookId} AND removed_at IS NULL
+      AND device_id NOT IN (SELECT device_id FROM book_devices WHERE book_id = ${eventBookId} AND removed_at IS NULL)
+    ORDER BY name, device_id`);
+  return rows.filter(([id]) => id !== self).map(([, name]) => name || 'another phone');
+}
+
+/**
  * What moving a transaction into a shared event does when it is a transfer: 'listed' once its workspace row names the
  * event, the reason it stays when it cannot be listed, or null when it is no transfer (a purchase or a refund, which
  * move as expenses) — or no transaction here at all, which the purchase path reports.
@@ -95,6 +109,9 @@ export async function transferIntoEventTx(tx: Db, ws: WorkspaceContext, transact
     const [named] = await tx.values<[string]>(sql`SELECT name FROM books WHERE id = ${row.bookId}`);
     return `Update cicis on ${below.join(' and ')} first: until then it would stay in ${named?.[0] || 'the shared workspace'} there`;
   }
+  // Every phone in the workspace must have the trip, or the transfer would vanish there (review fix round 1, M3).
+  const outside = await devicesNotInEventTx(tx, row.bookId, book.bookId);
+  if (outside.length > 0) return `${outside.join(' and ')} ${outside.length === 1 ? 'is' : 'are'} not in ${book.name}, so there it would show in neither place`;
   await withCapture(tx, { entity: KEY, id: row.transferId, bookId: row.bookId }, () =>
     tx.run(sql`UPDATE shared_transfers SET event_book_id = ${book.bookId} WHERE book_id = ${row.bookId} AND transfer_id = ${row.transferId}`),
   );
