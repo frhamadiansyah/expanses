@@ -274,11 +274,30 @@ describe('the Fee waiver page’s fee rows', () => {
     expect(result.outcomes).toEqual([{ row: 0, status: 'matched', candidateIds: ['fee'] }]);
   });
 
-  it('matches the reversal the page added, as money back or as a credit taken for a payment', () => {
+  it('matches the reversal the page added to a fee credit weeks later', () => {
     const back = matchStatement([row('2026-11-20', 'REVERSAL ANNUAL FEE', 1_150_000, { direction: 'in', isFee: true })], [reversal('2026-11-03', 1_150_000)], OFF);
     expect(back.outcomes).toEqual([{ row: 0, status: 'matched', candidateIds: ['back'] }]);
-    const plain = matchStatement([row('2026-11-20', 'CR ADJ', 1_150_000, { direction: 'in' })], [reversal('2026-11-03', 1_150_000)], OFF);
-    expect(plain.outcomes).toEqual([{ row: 0, status: 'matched', candidateIds: ['back'] }]);
+  });
+
+  // Review round 2 (N1): only a fee row takes the page's fee rows; a payment never does; a plain credit asks.
+  it('keeps a payment of the same amount a payment, and matches the bank’s later reversal to the page’s', () => {
+    const rows = [row('2026-11-20', 'PAYMENT THANK YOU', 1_150_000, { direction: 'in' }), row('2026-12-05', 'ANNUAL FEE REVERSAL', 1_150_000, { direction: 'in', isFee: true })];
+    expect(matchStatement(rows, [reversal('2026-11-03', 1_150_000)], OFF).outcomes).toEqual([
+      { row: 0, status: 'payment-untracked' },
+      { row: 1, status: 'matched', candidateIds: ['back'] },
+    ]);
+    // A payment word keeps a credit off the reversal even when it reads like money back.
+    const hinted = matchStatement([row('2026-11-20', 'PAYMENT THANK YOU', 1_150_000, { direction: 'in' })], [reversal('2026-11-03', 1_150_000)], { ...ON, refundHints: new Map([[0, true]]) });
+    expect(hinted.outcomes[0]!.status).toBe('missing');
+  });
+
+  it('keeps a purchase of exactly the fee amount a purchase', () => {
+    expect(matchStatement([row('2026-10-28', 'TOKO ELEKTRONIK', 1_150_000)], [charge('2026-10-15', 1_150_000)], OFF).outcomes).toEqual([{ row: 0, status: 'missing', as: 'purchase' }]);
+  });
+
+  it('asks about a same-amount credit that names neither a fee nor a payment', () => {
+    const plain = matchStatement([row('2026-11-20', 'CR ADJ', 1_150_000, { direction: 'in' })], [reversal('2026-11-03', 1_150_000)], { ...OFF, refundHints: new Map([[0, true]]) });
+    expect(plain.outcomes).toEqual([{ row: 0, status: 'ask', candidateIds: ['back'] }]);
   });
 
   it('keeps the rule narrow: another amount, a row outside the window, or another description is still missing', () => {
