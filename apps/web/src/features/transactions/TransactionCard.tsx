@@ -1607,6 +1607,9 @@ function CardBody({
           onPick={(option) =>
             setPurchase({ mode: option.mode, accountId: option.accountId, lotSize: option.lotSize, useLots: (option.lotSize ?? 1) > 1, ...brokerCash(option.accountId) })
           }
+          /* Buying one not held yet: Add asset, on New purchase, records the holding and this buy together, then opens
+             the holding's page — so there is no second trade to make here (owner's mockup, panel 4). */
+          onNew={purchase.mode === 'buy' ? () => void navigate({ to: '/net-worth/assets/new', search: { from: 'trade' } }) : undefined}
           onClose={() => setSheet(null)}
         />
       )}

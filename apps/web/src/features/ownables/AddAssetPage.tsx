@@ -37,7 +37,19 @@ export function AddAssetPage() {
       confirm={confirm ? { label: 'Add asset', ...confirm } : undefined}
     >
       {/* The picker lays its whole screen on the kit's ground, so the form's groups sit on it as they are. */}
-      {chosen && <AddAssetForm key={chosen} itemId={chosen} onDone={() => void navigate({ to: '/net-worth/assets' })} onConfirm={setConfirm} />}
+      {/* From Trade's ＋ New investment, the save already recorded the buy: the new holding's page opens, with no second trade. */}
+      {chosen && (
+        <AddAssetForm
+          key={chosen}
+          itemId={chosen}
+          onDone={(accountId) =>
+            void (start.from === 'trade' && accountId
+              ? navigate({ to: '/net-worth/assets/$accountId', params: { accountId }, replace: true })
+              : navigate({ to: '/net-worth/assets' }))
+          }
+          onConfirm={setConfirm}
+        />
+      )}
     </OwnablePicker>
   );
 }
