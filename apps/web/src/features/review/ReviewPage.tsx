@@ -42,7 +42,8 @@ import { CaptureViewer } from './CaptureViewer';
 import { DraftDays } from './DraftDays';
 import { DraftSheet } from './DraftSheet';
 import { keepsPicture } from './keep-picture';
-import { corrections, draftPatch, foreignPair, quickCharge, recordsOnForm } from './draft-form';
+import { corrections, draftPatch, foreignPair, quickCharge, recordsOnForm, savedWhere } from './draft-form';
+import { useCards } from '../cards/card-queries';
 import { chargedFigure, type FormDraft } from '../transactions/tx-form';
 import { useCaptureSources, useDraftCategoryGuesses, useDrafts } from './queries';
 import { SkippedList } from './SkippedList';
@@ -77,6 +78,7 @@ export function ReviewPage() {
   const drafts = useDrafts();
   const guesses = useDraftCategoryGuesses(drafts.data ?? []).data;
   const accounts = useAccounts().data ?? [];
+  const cards = useCards().data ?? [];
   const sources = useCaptureSources().data ?? [];
   const sharedSummaries = useSharedEventSummaries().data ?? {};
   const openBook = useOpenBook();
@@ -108,7 +110,7 @@ export function ReviewPage() {
   /** The full-screen picture, and the field it was opened at — null means "the picture as a whole". */
   const [viewing, setViewing] = useState<{ draft: DraftRow; focus: 'amount' | 'name' | 'date' | null } | null>(null);
   /** What the phone just did, and the way back — the bills list's own toast, for the same reason. */
-  const [toast, setToast] = useState<{ text: string; icon: ToastIcon; undo: () => Promise<void>; expire?: () => Promise<void> } | null>(null);
+  const [toast, setToast] = useState<{ text: string; detail?: string; icon: ToastIcon; undo: () => Promise<void>; expire?: () => Promise<void> } | null>(null);
   /*
    * What the toast does when it goes without Undo — a discarded capture's picture is dropped only then, so Undo brings
    * the draft back whole. Kept in a ref as well, so leaving the page (or a new toast) still does it.
@@ -144,15 +146,18 @@ export function ReviewPage() {
 
   /**
    * Says what the phone just did, with the way back on the toast. A charge worked out from the day's rate is said
-   * with it: nobody saw that figure before it posted.
+   * with it: nobody saw that figure before it posted. A transfer recorded says where it went (`savedWhere`): Cashflow
+   * lists a transfer between own accounts in no workspace, so the toast names the statement or page that does.
    */
   function resolved(draft: DraftRow, what: 'recorded' | 'discarded', transactionId: string | null, expire?: () => Promise<void>, charged?: Charged | null) {
     setEditing(null);
     void expiring.current?.();
     expiring.current = expire ?? null;
+    const where = what === 'recorded' ? savedWhere(draft, accounts, cards) : null;
     setToast({
       icon: what === 'recorded' ? 'recorded' : 'discarded',
       text: `${what === 'recorded' ? 'Recorded' : 'Discarded'} ${draft.description}${charged ? ` · ${formatMinor(charged.amountMinor, charged.currency)}` : ''}`,
+      ...(where ? { detail: where } : {}),
       undo: () => undo(draft, transactionId),
       expire,
     });
@@ -229,8 +234,9 @@ export function ReviewPage() {
     await run(draft.id, async () => {
       const { transactionId, keptImage } = await confirmDraft(database, ws, draft.id, { setAside: null, keepPhoto, charged });
       await settlePicture(draft, transactionId, keptImage);
-      // A charge nobody saw before it posted is always said, with the way back, whichever button recorded it.
-      if (opts.undoable || charged) resolved(draft, 'recorded', transactionId, undefined, charged);
+      // A charge nobody saw before it posted is always said, with the way back, whichever button recorded it — and so is
+      // where a transfer went, since Cashflow does not list it.
+      if (opts.undoable || charged || draft.kind === 'transfer') resolved(draft, 'recorded', transactionId, undefined, charged);
     });
   }
 
@@ -307,7 +313,7 @@ export function ReviewPage() {
       }
       setError(new Error(notIn));
     }
-    resolved({ ...draft, description: patch.description }, 'recorded', transactionId);
+    resolved({ ...draft, ...patch }, 'recorded', transactionId);
     // A shared workspace's spending moved into its shared event, or saved there with why not (sync gaps fix round 1).
     if (notMoved) showToast(notMoved);
   }
@@ -408,6 +414,7 @@ export function ReviewPage() {
         <UndoToast
           icon={toast.icon}
           text={toast.text}
+          detail={toast.detail}
           onUndo={() =>
             void run('undo', async () => {
               const takeBack = toast.undo;

@@ -8,7 +8,7 @@
  * corrections are what teach a source its layout.
  */
 import { evaluateExact } from '@expanses/core';
-import type { AccountRow, DraftRow, NewDraft } from '@expanses/db';
+import type { AccountRow, CardRow, DraftRow, NewDraft } from '@expanses/db';
 import { chargedFigure, DECIMALS_REFUSAL, decimalsDirection, estimatedChargeMinor, type FormDraft, suggestedRate, typedCurrency } from '../transactions/tx-form';
 import { majorText } from './capture-view';
 
@@ -21,6 +21,27 @@ export type DraftPatch = Required<
   Pick<NewDraft, 'kind' | 'accountId' | 'toAccountId' | 'categoryAccountId' | 'cardId' | 'amountMinor' | 'currency' | 'description' | 'occurredOn'>
 > &
   Pick<NewDraft, 'exactHundredths'>;
+
+/**
+ * Where a recorded transfer can be found, for the toast that says it was recorded: Cashflow lists a transfer between
+ * own accounts in no workspace (owner, 2026-11-13), so the toast names the place that does — a card's statement, by the
+ * card's digits ("Saved on card 4821’s statement"), else the accounts' own pages. Null for anything but a transfer.
+ */
+export function savedWhere(
+  draft: Pick<DraftRow, 'kind' | 'accountId' | 'toAccountId' | 'cardId'>,
+  accounts: readonly Pick<AccountRow, 'id' | 'name' | 'subtype'>[],
+  cards: readonly Pick<CardRow, 'id' | 'accountId' | 'last4' | 'isPrimary' | 'archived'>[],
+): string | null {
+  if (draft.kind !== 'transfer') return null;
+  const sides = [draft.accountId, draft.toAccountId].flatMap((id) => accounts.filter((account) => account.id === id));
+  const card = sides.find((side) => side.subtype === 'credit_card');
+  if (card) {
+    const own = cards.filter((each) => each.accountId === card.id && !each.archived);
+    const digits = (own.find((each) => each.id === draft.cardId) ?? own.find((each) => each.isPrimary) ?? own[0])?.last4;
+    return digits ? `Saved on card ${digits}\u2019s statement` : `Saved on ${card.name}\u2019s statement`;
+  }
+  return sides.length > 1 ? 'Saved on both accounts\u2019 pages' : 'Saved on the account\u2019s page';
+}
 
 /**
  * Whether recording a draft has to be done on its form (event mode fix round 1): one captured in event mode for a shared

@@ -6,9 +6,9 @@ import { type ChipOption, chipDot } from './ChipMenu';
 
 export const DEFAULT_SORT = 'date:desc';
 
-/** How many of the menu's two controls are off their rest: the sort and the paid-with filter. Zero means nothing to reset. */
-export function sortFilterCount(p: { sortValue: string; paid: string }): number {
-  return (p.sortValue !== DEFAULT_SORT ? 1 : 0) + (p.paid ? 1 : 0);
+/** How many of the menu's controls are off their rest: the sort, the paid-with filter and Transfers. Zero means nothing to reset. */
+export function sortFilterCount(p: { sortValue: string; paid: string; transfers?: boolean }): number {
+  return (p.sortValue !== DEFAULT_SORT ? 1 : 0) + (p.paid ? 1 : 0) + (p.transfers ? 1 : 0);
 }
 
 /** What a phone's tab bar and home indicator take off the foot of the screen. */
@@ -21,8 +21,8 @@ const HEAD = 'bg-[var(--ph-fill)] px-3.5 py-2 text-[11px] uppercase tracking-[0.
 
 /**
  * One icon for the list's sort and its Paid with filter, in the grey capsule the other controls on the row wear. It
- * opens one fixed-width menu: the four sorts, then Paid with (a searchable list here, the phone's sheet there) and
- * Reset. Dark with a dot while either is off its rest.
+ * opens one fixed-width menu: the four sorts, then Paid with (a searchable list here, the phone's sheet there),
+ * Transfers (Cashflow's own transfers, listed only while it is ticked) and Reset. Dark with a dot while any is off its rest.
  */
 export function SortFilterMenu({
   sorts,
@@ -32,6 +32,8 @@ export function SortFilterMenu({
   paidOptions,
   onPaid,
   onOpenPaid,
+  transfers,
+  onTransfers,
   onReset,
 }: {
   sorts: readonly { value: string; label: string }[];
@@ -42,6 +44,9 @@ export function SortFilterMenu({
   onPaid: (value: string) => void;
   /** A phone picks the account in its own sheet: the menu closes and this opens it. */
   onOpenPaid?: () => void;
+  /** The Transfers filter: Cashflow lists the own transfers it leaves to the accounts' pages. Absent, no row is drawn. */
+  transfers?: boolean;
+  onTransfers?: (on: boolean) => void;
   onReset: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -51,7 +56,7 @@ export function SortFilterMenu({
   const menu = useRef<HTMLDivElement>(null);
   const [above, setAbove] = useState(false);
   const listId = useId();
-  const count = sortFilterCount({ sortValue, paid });
+  const count = sortFilterCount({ sortValue, paid, transfers });
   const dot = chipDot({ active: count > 0, iconOnly: true, count });
   const paidName = paidOptions.find((option) => option.value === paid && option.value)?.label;
 
@@ -150,6 +155,22 @@ export function SortFilterMenu({
                   <ChevronRight size={14} aria-hidden />
                 </span>
               </button>
+              {onTransfers && (
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={!!transfers}
+                  data-testid="transfers-filter"
+                  onClick={() => {
+                    onTransfers(!transfers);
+                    setOpen(false);
+                  }}
+                  className={cx(ROW, 'justify-between', transfers && 'font-semibold')}
+                >
+                  <span>Transfers</span>
+                  {transfers && <Check size={16} aria-hidden className="shrink-0" />}
+                </button>
+              )}
               <button
                 type="button"
                 role="menuitem"

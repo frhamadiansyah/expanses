@@ -9,6 +9,7 @@ import {
   saveCardTerms,
   getJointAccount,
   inBook,
+  jointAccountIds,
   jointAccountRows,
   editMemberTransfer,
   jointRowNote,
@@ -106,10 +107,14 @@ describe('the Joint account switch', () => {
     expect(await getJointAccount(s.rina.database, s.rina.bank)).toBe(false);
     await setShareSetting(s.rina.database, s.rina.usd, 'hidden');
     await expect(setJointAccount(s.rina.database, s.rina.usd, true)).rejects.toMatchObject({ code: 'item-not-shared' });
+    expect(await jointAccountIds(s.rina.database)).toEqual([]);
     await setJointAccount(s.rina.database, s.rina.bank, true);
     expect(await getJointAccount(s.rina.database, s.rina.bank)).toBe(true);
+    // What Cashflow reads to keep a transfer touching it in the shared workspace (owner 2026-11-13).
+    expect(await jointAccountIds(s.rina.database)).toEqual([s.rina.bank]);
     await setShareSetting(s.rina.database, s.rina.bank, 'hidden');
     expect(await getJointAccount(s.rina.database, s.rina.bank)).toBe(false);
+    expect(await jointAccountIds(s.rina.database)).toEqual([]);
     await setShareSetting(s.rina.database, s.rina.bank, 'total');
     expect(await getJointAccount(s.rina.database, s.rina.bank)).toBe(false);
   });

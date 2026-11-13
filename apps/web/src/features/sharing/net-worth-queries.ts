@@ -1,4 +1,4 @@
-import { activeNetWorthGroup, getJointAccount, getShareSetting, itemIdOf, jointAccountRows, paidWithItems, pendingHidden, reviewedFor, reviewItems, sharingDetail } from '@expanses/db';
+import { activeNetWorthGroup, getJointAccount, getShareSetting, itemIdOf, jointAccountIds, jointAccountRows, paidWithItems, pendingHidden, reviewedFor, reviewItems, sharingDetail } from '@expanses/db';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useApp } from '../../app/context';
@@ -63,6 +63,19 @@ export function usePaidWithItems(bookId: string) {
 export function useJointAccount(accountId: string) {
   const { database } = useApp();
   return useQuery({ queryKey: ['net-worth', 'joint', accountId], queryFn: () => getJointAccount(database, accountId) });
+}
+
+const NO_JOINT: ReadonlySet<string> = new Set();
+
+/**
+ * This phone's own accounts made joint: Cashflow lists a transfer touching one in the shared workspace alone, as the
+ * household's (owner 2026-11-13). Empty until read, which lists such a transfer nowhere for that moment, never everywhere.
+ */
+export function useJointAccountIds(): ReadonlySet<string> {
+  const { database } = useApp();
+  useRereadOnSync();
+  const ids = useQuery({ queryKey: ['net-worth', 'joint-ids'], queryFn: async () => new Set(await jointAccountIds(database)) });
+  return ids.data ?? NO_JOINT;
 }
 
 /**
