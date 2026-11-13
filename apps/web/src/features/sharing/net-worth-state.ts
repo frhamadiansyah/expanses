@@ -112,11 +112,19 @@ export function pendingPrompt(itemNames: readonly string[], others: readonly str
  */
 export type ShareRowState =
   | { kind: 'choose'; value: 'total' | 'hidden' | null; label: string; hiddenAllowed: boolean }
-  | { kind: 'not-yet-shared'; label: string };
+  | { kind: 'not-yet-shared'; label: string }
+  /** One tax ID with the item shared: a plain row reading Shared, no picker. */
+  | { kind: 'plain'; label: string };
+
+export const HOUSEHOLD_SHARING = 'Household sharing';
+export const SETTING_LABEL: Record<'total' | 'hidden', string> = { total: 'Shared', hidden: 'Private' };
+/** One tax ID: why every item reads Shared; the Share list says it once, above Net worth. */
+export const JOINT_SHARED_LINE = "One tax ID: every item is in the household's tax report, so every item is shared.";
 
 export function shareRowOf(mode: FilingMode, setting: 'total' | 'hidden' | null): ShareRowState {
   if (mode === 'joint' && setting === 'hidden') return { kind: 'not-yet-shared', label: 'Not yet shared' };
-  const label = setting === null ? 'Not reviewed' : setting === 'total' ? 'Balance and one total' : "Don't share";
+  if (mode === 'joint' && setting === 'total') return { kind: 'plain', label: SETTING_LABEL.total };
+  const label = setting === null ? 'Not reviewed' : SETTING_LABEL[setting];
   return { kind: 'choose', value: setting, label, hiddenAllowed: mode === 'separate' };
 }
 

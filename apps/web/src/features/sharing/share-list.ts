@@ -2,7 +2,7 @@ import { type GoalShareTarget, type GoalShareView, PAYABLE_SUBTYPES, type ShareS
 import { SUBTYPE_LABELS } from '../../lib/account-types';
 import { shareEventFooter } from '../events/share-event';
 import { shareRowState } from '../goals/goal-sharing';
-import { type FilingMode, JOINT_LINE, jointTaxLine, namesOf } from './net-worth-state';
+import { type FilingMode, JOINT_LINE, JOINT_SHARED_LINE, jointTaxLine, namesOf } from './net-worth-state';
 
 /*
  * One list to choose what to share with a household (2026-11-12): net worth items (with Joint), goals and events, a
@@ -129,7 +129,7 @@ export function shareListOf(input: ShareListInput): ShareList {
         caption: !shared && waiting ? NOT_SHARED_YET : null,
         shared,
         // One tax ID: an item shared stays shared (D7).
-        locked: shared && nw.mode === 'joint' ? JOINT_LINE : null,
+        locked: shared && nw.mode === 'joint' ? JOINT_SHARED_LINE : null,
         canJoint: PAYABLE_SUBTYPES.includes(item.subtype),
         joint: PAYABLE_SUBTYPES.includes(item.subtype) && shared && nw.joint.has(item.accountId),
       };

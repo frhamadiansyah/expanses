@@ -1,6 +1,6 @@
 import { NetWorthError, type NetWorthGroupView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { canInvite, jointTaxLine, netWorthRowOf, notReadyLine, pendingPrompt, ADD_SOMEONE_LINE, FILING_CHOICES, netWorthValue, inviteesFor, needsReview, sayNetWorthError, settingOnAdd, shareRowOf, toggleInvitee } from './net-worth-state';
+import { HOUSEHOLD_SHARING, JOINT_SHARED_LINE, SETTING_LABEL, canInvite, jointTaxLine, netWorthRowOf, notReadyLine, pendingPrompt, ADD_SOMEONE_LINE, FILING_CHOICES, netWorthValue, inviteesFor, needsReview, sayNetWorthError, settingOnAdd, shareRowOf, toggleInvitee } from './net-worth-state';
 
 const rina = { memberId: 'r', name: 'Rina', role: 'owner' as const };
 const andi = { memberId: 'a', name: 'Andi', role: 'member' as const };
@@ -100,15 +100,18 @@ describe('setup', () => {
 
 describe("an item's Share with Household row (review round 1, finding 3)", () => {
   it('shows what is stored, never a default in its place', () => {
-    expect(shareRowOf('separate', 'hidden')).toEqual({ kind: 'choose', value: 'hidden', label: "Don't share", hiddenAllowed: true });
-    expect(shareRowOf('separate', 'total')).toEqual({ kind: 'choose', value: 'total', label: 'Balance and one total', hiddenAllowed: true });
+    expect(shareRowOf('separate', 'hidden')).toEqual({ kind: 'choose', value: 'hidden', label: 'Private', hiddenAllowed: true });
+    expect(shareRowOf('separate', 'total')).toEqual({ kind: 'choose', value: 'total', label: 'Shared', hiddenAllowed: true });
     expect(shareRowOf('separate', null)).toEqual({ kind: 'choose', value: null, label: 'Not reviewed', hiddenAllowed: true });
   });
 
   it("one tax ID: a hidden item is not yet shared (D8), an unreviewed one is not reviewed, and Don't share is off", () => {
     expect(shareRowOf('joint', 'hidden')).toEqual({ kind: 'not-yet-shared', label: 'Not yet shared' });
     expect(shareRowOf('joint', null)).toEqual({ kind: 'choose', value: null, label: 'Not reviewed', hiddenAllowed: false });
-    expect(shareRowOf('joint', 'total')).toEqual({ kind: 'choose', value: 'total', label: 'Balance and one total', hiddenAllowed: false });
+    expect(shareRowOf('joint', 'total')).toEqual({ kind: 'plain', label: 'Shared' });
+    expect(SETTING_LABEL).toEqual({ total: 'Shared', hidden: 'Private' });
+    expect(HOUSEHOLD_SHARING).toBe('Household sharing');
+    expect(JOINT_SHARED_LINE).toBe("One tax ID: every item is in the household's tax report, so every item is shared.");
   });
 });
 

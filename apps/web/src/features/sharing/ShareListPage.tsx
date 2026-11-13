@@ -18,9 +18,9 @@ import {
   stopSharingGoal,
 } from '@expanses/db';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams } from '@tanstack/react-router';
+import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { errorMessage, ErrorBox, cx } from '../../ui';
 import { GROUP_HEADER_CLASS, InsetGroup, InsetRow, Notice, PushedTitle, SCREEN, SelectCircle } from '../../ui/native';
@@ -33,7 +33,7 @@ import { GOAL_SHARING_COPY } from '../goals/goal-sharing';
 import { useGoalPlans, useGoals, useGoalShareTargets } from '../goals/queries';
 import { InviteCard } from './InviteCard';
 import { useNetWorthGroup } from './net-worth-queries';
-import { netWorthRowOf, netWorthValue, sayNetWorthError } from './net-worth-state';
+import { JOINT_SHARED_LINE, netWorthRowOf, netWorthValue, sayNetWorthError } from './net-worth-state';
 import { useSharingDetail } from './queries';
 import {
   applyShareChanges,
@@ -394,9 +394,10 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
               <Notice kind="warning" testId="share-list-review" title={SHARE_LIST_COPY.reviewTitle} body={SHARE_LIST_COPY.reviewBody(reviewWaits.mode, othersAll, bookName)} />
             </div>
           ) : null}
-          {list.groups.map((group) => (
+          {list.groups.map((group, index) => (
             <TickGroup
               key={group.key}
+              topLine={isNetWorthGroup(group) && list.groups.findIndex(isNetWorthGroup) === index && group.items.some((item) => item.locked === JOINT_SHARED_LINE) ? <JointSharedLine bookId={bookId} /> : null}
               group={group}
               draft={draft}
               disabled={busy}
@@ -432,8 +433,22 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
  * The sentence under a group: what a tick means for accounts, why a tick cannot be taken off where one cannot, and for
  * each event ticked to be shared, what sharing it moves (the event Share sheet's own words).
  */
+const isNetWorthGroup = (group: ShareListGroup) => group.key === 'accounts' || group.key === 'assets';
+
+/** One tax ID: why every net worth item reads Shared, said once above the first net worth group. */
+function JointSharedLine({ bookId }: { bookId: string }) {
+  return (
+    <p data-testid="share-list-joint-line" className="px-[4px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
+      {JOINT_SHARED_LINE}{' '}
+      <Link to="/account/workspaces/$bookId/share/net-worth" params={{ bookId }} className="text-[var(--ph-tint)]">
+        Change
+      </Link>
+    </p>
+  );
+}
+
 function groupFooter(group: ShareListGroup, others: readonly string[], bookName: string, eventsSharing: readonly string[]): string | undefined {
-  const reasons = [...new Set(group.items.map((item) => item.locked).filter((reason): reason is string => reason !== null))];
+  const reasons = [...new Set(group.items.map((item) => item.locked).filter((reason): reason is string => reason !== null && reason !== JOINT_SHARED_LINE))];
   const lines = [
     group.key === 'accounts' ? SHARE_LIST_COPY.accountsFooter(others, bookName) : null,
     ...reasons,
@@ -447,6 +462,7 @@ function TickGroup({
   draft,
   disabled,
   footer,
+  topLine,
   onTickAll,
   onToggle,
   onJoint,
@@ -455,6 +471,7 @@ function TickGroup({
   draft: ShareDraft;
   disabled: boolean;
   footer?: string;
+  topLine?: ReactNode;
   onTickAll: () => void;
   onToggle: (item: ShareListItem) => void;
   onJoint: (item: ShareListItem) => void;
@@ -462,6 +479,7 @@ function TickGroup({
   const allTicked = group.items.every((item) => isTicked(draft, item));
   return (
     <section className="w-full md:max-w-2xl" style={{ marginBottom: 22 }} data-testid={`share-list-${group.key}`}>
+      {topLine}
       <div className="flex items-baseline justify-between gap-3 px-[4px] pb-[6px]">
         <h2 className={GROUP_HEADER_CLASS}>{group.label}</h2>
         <button
@@ -491,7 +509,11 @@ function TickGroup({
                 onClick={() => !fixed && onToggle(item)}
                 className={cx('ph-focus-inset flex min-h-[46px] min-w-0 flex-1 items-center gap-[10px] pl-[13px] text-left active:bg-[var(--ph-fill)]', fixed && 'cursor-default')}
               >
-                <SelectCircle picked={ticked} className={cx('h-[22px] w-[22px]', fixed && 'opacity-50')} />
+                {fixed && item.locked === JOINT_SHARED_LINE ? (
+                  <span className="shrink-0 text-[13px] font-medium text-[var(--ph-up)]">Shared</span>
+                ) : (
+                  <SelectCircle picked={ticked} className={cx('h-[22px] w-[22px]', fixed && 'opacity-50')} />
+                )}
                 <span className="min-w-0 flex-1 py-[6px]">
                   <span className="block truncate text-[16px] text-[var(--ph-ink)]">{item.name}</span>
                   {item.caption ? <span className="block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{item.caption}</span> : null}
