@@ -35,7 +35,6 @@ describe('readTransactionList', () => {
       expect(rows.map((r) => [r.on, r.time, r.description, r.ref, r.source, r.amountMinor, r.direction, r.coins])).toEqual([
         ['2026-09-19', '12:31', 'Noodle Stall', 'TRX20260919A1B2C3', 'Wallet balance', 41000, 'out', false],
         ['2026-09-18', '09:05', 'Top up from bank', 'TRX20260918D4E5F6', 'Bank transfer', 1000000, 'in', false],
-        ['2026-09-17', '18:20', 'Cashback ride', 'TRX20260917G7H8J9', 'Coins', 41, 'in', true],
         ['2026-09-16', '15:00', 'Transfer to Person A', 'TRX20260916K1L2M3', 'Wallet balance', 10500, 'out', false],
       ]);
     });
@@ -55,14 +54,14 @@ describe('readTransactionList', () => {
     ]);
   });
 
-  it('marks a bare figure coins when the list prints money with Rp, and a coins source anywhere', () => {
+  it('leaves out a bare figure when the list prints money with Rp, and a row with a coins source anywhere', () => {
     const entries: Entry[] = [
       ['Shop A', 'TRX0000000001', '19 Sep 2026 10:00', '−Rp9.000', 'Wallet'],
       ['Shop B', 'TRX0000000002', '18 Sep 2026 10:00', '12', 'Wallet'],
       ['Shop C', 'TRX0000000003', '17 Sep 2026 10:00', '−Rp15.000', 'Poin'],
     ];
     const { rows } = readTransactionList([walletImage(entries)], { today: TODAY, currency: 'IDR' });
-    expect(rows.map((r) => r.coins)).toEqual([false, true, true]);
+    expect(rows.map((r) => [r.description, r.coins])).toEqual([['Shop A', false]]);
   });
 
   it('keeps a bare figure as money when the list never prints a currency and names no coins', () => {
@@ -83,10 +82,12 @@ describe('readTransactionList', () => {
   it('counts an entry once where two screenshots overlap, by its reference or its words', () => {
     const first = walletImage(PAGE.slice(0, 3));
     const second = walletImage(PAGE.slice(2));
-    expect(readTransactionList([first, second], { today: TODAY, currency: 'IDR' }).rows).toHaveLength(4);
+    expect(readTransactionList([first, second], { today: TODAY, currency: 'IDR' }).rows).toHaveLength(3);
     // No reference printed: the repeated run is still found by date, name and amount.
     const bare = (entries: Entry[]) => walletImage(entries.map(([n, , w, a, s]) => [n, '', w, a, s] as Entry));
-    expect(readTransactionList([bare(PAGE.slice(0, 3)), bare(PAGE.slice(2))], { today: TODAY, currency: 'IDR' }).rows).toHaveLength(4);
+    expect(readTransactionList([bare(PAGE.slice(0, 3)), bare(PAGE.slice(2))], { today: TODAY, currency: 'IDR' }).rows).toHaveLength(3);
+    // A screenshot overlapping the one before only on a coins row still has its new rows counted once.
+    expect(readTransactionList([bare(PAGE.slice(0, 3)), bare(PAGE.slice(2, 3)), bare(PAGE.slice(2))], { today: TODAY, currency: 'IDR' }).rows).toHaveLength(3);
   });
 
   it('ignores a heading above the first entry and reports a screenshot with nothing', () => {
@@ -155,7 +156,6 @@ describe('readTransactionList', () => {
     const READ = [
       ['2026-09-14', '19:42', 'Kedai Kopi Lembayung', 'GJ260914A7Q4M9X2KD', 'Wallet Saldo', 58300, 'out', false],
       ['2026-09-13', '08:15', 'Martabak Bang Juned Cabang Timur', 'GJ260913B3R8T5W1PZ', 'Tabungan Bank Contoh', 112750, 'out', false],
-      ['2026-09-12', '21:03', 'Cashback Warung Sate Pak Darmo', 'GJ260912C6V2N8L4QE', 'Wallet Coins', 150, 'in', true],
       ['2026-09-11', '12:30', 'Pasar Poin Segar', 'GJ260911D1F7H3J9KM', 'Wallet Saldo', 27400, 'out', false],
       ['2026-09-10', '07:55', 'Isi saldo dari bank', 'TRXABCDEFGH12345', 'Transfer bank', 500000, 'in', false],
     ];
@@ -176,10 +176,13 @@ describe('readTransactionList', () => {
       }
     });
 
-    it('keeps a row paid through a linked bank as this wallet\'s money row, and a coins row as coins', () => {
+    it('keeps a row paid through a linked bank as this wallet\'s money row, and leaves a coins cashback out entirely', () => {
       const { rows } = readTransactionList([tableImage(TABLE)], { today: TODAY, currency: 'IDR' });
       expect(rows[1]).toMatchObject({ source: 'Tabungan Bank Contoh', coins: false, amountMinor: 112750 });
-      expect(rows[2]).toMatchObject({ coins: true });
+      expect(rows.some((r) => r.description.startsWith('Cashback'))).toBe(false);
+      // A screenshot of coins rows alone was still read: it is not reported as empty.
+      const coinsOnly = readTransactionList([tableImage(TABLE.slice(2, 3))], { today: TODAY, currency: 'IDR' });
+      expect(coinsOnly).toEqual({ rows: [], emptyImages: [] });
     });
 
     it('reads one entry under the heading row with no heading word in it', () => {

@@ -28,7 +28,10 @@ export interface ListRow {
   amountMinor: number;
   /** `out` for a minus amount; `in` for a plus or an unsigned amount. */
   direction: 'out' | 'in';
-  /** Paid in coins or points: a bare figure, not money. Such a row is skipped, never recorded. */
+  /**
+   * Paid in coins or points: a bare figure, not money. `readTransactionList` leaves such rows out, so its rows are always
+   * false here; the field stays for the matcher, which skips any it is given.
+   */
   coins: boolean;
   /** Index of the screenshot it came from, 0-based. */
   image: number;
@@ -36,7 +39,7 @@ export interface ListRow {
 
 export interface ListReading {
   rows: ListRow[];
-  /** Images that gave no row at all. */
+  /** Images that gave no row at all (a screenshot of coins rows only gave rows, though none is kept). */
   emptyImages: number[];
 }
 
@@ -302,7 +305,7 @@ function readImage(lines: readonly CaptureLine[], image: number, period: { start
 }
 
 /**
- * Every entry of a list once, in the order printed, from the screenshots' Vision lines. `today` places a date that
+ * Every entry of a list once, in the order printed, from the screenshots' Vision lines, leaving out those paid in coins. `today` places a date that
  * prints no year within the year before it; `currency` is the account's.
  */
 export function readTransactionList(images: readonly CaptureLine[][], opts: { today: string; currency: string }): ListReading {
@@ -335,6 +338,9 @@ export function readTransactionList(images: readonly CaptureLine[][], opts: { to
       }
     }
     for (const row of clean.slice(overlap)) {
+      // A row paid in coins or points is no money of the account's: it is left out of the reading entirely, though it
+      // still counts for the overlap of screenshots and for a screenshot having been read.
+      if (row.coins) continue;
       if (row.ref !== null) {
         if (seen.has(row.ref)) continue;
         seen.add(row.ref);

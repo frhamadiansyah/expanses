@@ -37,17 +37,15 @@ test('a wallet list travels from screenshots to recorded rows, and a second run 
   };
 
   await check();
-  await expect(page.getByTestId('list-headline')).toContainText('5 rows read');
+  // The coins cashback is left out entirely: not read as a row, not counted, not listed.
+  await expect(page.getByTestId('list-headline')).toContainText('4 rows read');
   await expect(page.getByTestId('count-recorded')).toHaveText(/^Already recorded1›?$/);
   await expect(page.getByTestId('count-new')).toHaveText(/^New — record here2›?$/);
   await expect(page.getByTestId('count-differs')).toHaveText(/^Amount differs1›?$/);
-  await expect(page.getByTestId('count-skipped')).toHaveText(/^Skipped1›?$/);
+  await expect(page.getByTestId('count-skipped')).toHaveCount(0);
   await expect(page.getByTestId('count-not-listed')).toHaveText(/^Recorded, not on this list1›?$/);
   await page.screenshot({ path: 'test-results/list-summary.png' });
 
-  await page.getByTestId('count-skipped').click();
-  await expect(page.getByTestId('skipped-row')).toContainText('Cashback ride');
-  await page.getByRole('button', { name: 'Dompet Satu statement' }).click();
   await page.getByTestId('count-not-listed').click();
   await expect(page.getByTestId('not-listed-row')).toContainText('Bus fare');
   await page.getByRole('button', { name: 'Dompet Satu statement' }).click();
@@ -63,7 +61,7 @@ test('a wallet list travels from screenshots to recorded rows, and a second run 
   await page.getByTestId('record-new').click();
 
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
-  await expect(page.getByText('Added 2 · skipped 1')).toBeVisible();
+  await expect(page.getByText('Added 2', { exact: true })).toBeVisible();
   await page.goto('/wallet');
   await expectWalletFigure(page, 'Dompet Satu', '1.435.500');
 
@@ -98,9 +96,9 @@ test('screenshots picked from Photos reach the account choice and then the list 
   await page.getByTestId('statement-account').filter({ hasText: 'Dompet Satu' }).click();
   await expect(page.getByRole('heading', { name: 'Dompet Satu statement' })).toBeVisible();
   // Three entries overlap between the two pictures and count once.
-  await expect(page.getByTestId('list-headline')).toContainText('5 rows read');
+  await expect(page.getByTestId('list-headline')).toContainText('4 rows read');
   await expect(page.getByTestId('count-new')).toHaveText(/^New — record here4›?$/);
-  await expect(page.getByTestId('count-skipped')).toHaveText(/^Skipped1›?$/);
+  await expect(page.getByTestId('count-skipped')).toHaveCount(0);
 });
 
 test('rows older than the day the account is counted from are recorded as past, and the balance stays', async ({ page }) => {

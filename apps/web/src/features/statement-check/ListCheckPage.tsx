@@ -57,7 +57,7 @@ interface Checked {
   emptyImages: number[];
 }
 
-type View = 'result' | 'recorded' | 'new' | 'differs' | 'skipped' | 'notListed';
+type View = 'result' | 'recorded' | 'new' | 'differs' | 'notListed';
 
 interface Shot {
   file: File;
@@ -349,7 +349,6 @@ function ListBody({ account, accounts, batch }: { account: AccountRow; accounts:
     { n: counts.recorded, tone: 'var(--ph-chevron)' },
     { n: counts.new, tone: 'var(--ph-ink)' },
     { n: counts.differs, tone: 'var(--ph-ink-3)' },
-    { n: counts.skipped, tone: 'var(--ph-hair)' },
   ].filter((part) => part.n > 0);
 
   const listRows = (status: ListOutcome['status']) => outcomes.flatMap((o, i) => (o.status === status ? [{ row: rows[i]!, outcome: o, index: i }] : []));
@@ -360,7 +359,6 @@ function ListBody({ account, accounts, batch }: { account: AccountRow; accounts:
       {view === 'recorded' && <LargeTitle title="Already recorded" {...toResult} />}
       {view === 'new' && <LargeTitle title={`New · ${newRows.length}`} {...toResult} />}
       {view === 'differs' && <LargeTitle title="Amount differs" {...toResult} />}
-      {view === 'skipped' && <LargeTitle title="Skipped" {...toResult} />}
       {view === 'notListed' && <LargeTitle title="Recorded, not on this list" {...toResult} />}
 
       {view === 'result' && (
@@ -388,11 +386,10 @@ function ListBody({ account, accounts, batch }: { account: AccountRow; accounts:
             </InsetGroup>
           )}
           <ErrorBox error={error} />
-          <InsetGroup header="Rows" footer={counts.skipped > 0 ? 'Skipped: cashback paid in coins, not money.' : undefined}>
+          <InsetGroup header="Rows">
             <InsetRow testId="count-recorded" title="Already recorded" value={String(counts.recorded)} onClick={() => setView('recorded')} />
             <InsetRow testId="count-new" title="New — record here" value={String(counts.new)} onClick={() => setView('new')} />
             <InsetRow testId="count-differs" title="Amount differs" value={String(counts.differs)} onClick={() => setView('differs')} />
-            <InsetRow testId="count-skipped" title="Skipped" value={String(counts.skipped)} onClick={() => setView('skipped')} />
           </InsetGroup>
           <InsetGroup>
             <InsetRow testId="count-not-listed" title="Recorded, not on this list" value={String(counts.notOnList)} onClick={() => setView('notListed')} />
@@ -421,15 +418,6 @@ function ListBody({ account, accounts, batch }: { account: AccountRow; accounts:
               value={`${row.direction === 'in' ? '+' : '−'}${money(row.amountMinor)}`}
               chevron={false}
             />
-          ))}
-        </InsetGroup>
-      )}
-
-      {view === 'skipped' && (
-        <InsetGroup footer="Paid in coins or points, not money: left out of the account.">
-          {listRows('skipped').length === 0 && <InsetRow title="None" chevron={false} />}
-          {listRows('skipped').map(({ row, index }) => (
-            <InsetRow key={index} testId="skipped-row" title={row.description} subtitle={`${shortDate(row.on, today)}${row.source ? ` · ${row.source}` : ''}`} value={String(row.amountMinor)} chevron={false} />
           ))}
         </InsetGroup>
       )}
