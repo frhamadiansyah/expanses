@@ -1,0 +1,42 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Event mode mark</title>
+<style>
+  :root { --trip:#5e5ce6; --ground:#f2f2f7; --card:#fff; --label:#000; --grey:#8e8e93; --sep:#c6c6c8; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:#000; }
+  h1 { font-size:20px; margin:0 0 4px; } .sub { color:#555; margin:0 0 20px; }
+  .grid { display:grid; grid-template-columns:repeat(5, 240px); gap:18px; }
+  .opt { background:var(--card); border-radius:14px; padding:14px; }
+  .opt.dark { --ground:#000; --card:#1c1c1e; --label:#fff; --grey:#98989d; --trip:#7d7aff; background:#000; color:#fff; }
+  .n { font-weight:700; } .cap { font-size:13px; color:#666; margin:6px 0 0; min-height:52px; } .dark .cap { color:#aaa; }
+  .hdr { display:flex; align-items:center; justify-content:space-between; background:var(--ground); border-radius:10px; padding:10px 12px; margin-top:10px; }
+  .t { font-size:22px; font-weight:700; color:var(--label); }
+  .r { display:flex; gap:10px; align-items:center; }
+  .hb { position:relative; width:34px; height:34px; border-radius:50%; background:var(--card); display:flex; align-items:center; justify-content:center; color:var(--label); font-weight:600; box-shadow:0 0 0 0.5px var(--sep); }
+  .dot { position:absolute; right:-4px; bottom:-4px; width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 2px var(--ground); }
+  .dot svg { width:11px; height:11px; }
+  .row { display:flex; gap:8px; align-items:center; padding:8px 4px 0; font-size:13px; color:var(--grey); }
+  .row svg { width:12px; height:12px; }
+  .lab { color:var(--label); font-size:14px; }
+</style></head>
+<body>
+<h1>Event mode mark on the workspace button</h1>
+<p class="sub">Now: the ✈️ emoji, which iOS draws in its own blue and grey, so it can't take the app's colour. A–D replace it with a drawn plane, one colour. The same mark would replace ✈️ in the row captions, the menu row and the Add chip.</p>
+<div class="grid" id="g"></div>
+<svg width="0" height="0" style="position:absolute"><symbol id="plane" viewBox="0 0 24 24"><path fill="currentColor" d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></symbol></svg>
+<script>
+const plane = (c) => `<svg style="color:${c}"><use href="#plane"/></svg>`;
+const opts = [
+  ['Now', 'Purple round, ✈️ emoji (blue on iOS).', 'background:var(--trip)', '<span style="font-size:10px">✈️</span>', '✈️'],
+  ['A', 'Purple round, white drawn plane. Same place and size as now. <b>Recommended.</b>', 'background:var(--trip)', plane('#fff'), plane('var(--trip)')],
+  ['B', 'Plain purple dot, no plane. Quietest; the menu row says which trip.', 'background:var(--trip); width:11px; height:11px; right:-1px; bottom:-1px', '', plane('var(--trip)')],
+  ['C', 'Grey plane on a white round: no colour at all, like the other header icons.', 'background:var(--card); box-shadow:0 0 0 0.5px var(--sep), 0 0 0 2.5px var(--ground)', plane('var(--grey)'), plane('var(--grey)')],
+  ['D', 'Black plane on a white round (white on dark).', 'background:var(--card); box-shadow:0 0 0 0.5px var(--sep), 0 0 0 2.5px var(--ground)', plane('var(--label)'), plane('var(--label)')],
+];
+let html = '';
+for (const dark of [false, true]) for (const [n, cap, style, inner, cap2] of opts) html += `
+  <div class="opt ${dark ? 'dark' : ''}"><div class="n">${n}${dark ? ' · dark' : ''}</div><p class="cap">${dark ? '' : cap}</p>
+  <div class="hdr"><span class="t">Cashflow</span><span class="r"><span class="hb">⌕</span><span class="hb">F<span class="dot" style="${style}">${inner}</span></span></span></div>
+  <div class="row">${cap2}<span>Turkey trip · 4821</span></div><div class="row lab" style="padding-left:4px">Dinner Karaköy</div></div>`;
+document.getElementById('g').innerHTML = html;
+</script>
+</body></html>
