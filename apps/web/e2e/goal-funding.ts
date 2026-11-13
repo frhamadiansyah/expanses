@@ -62,7 +62,8 @@ export async function fundingSheetWalk(page: Page) {
   const buy = holding.getByTestId('taggable-row').first();
   await expect(buy).toContainText('Bought');
   await expect(buy).toContainText('No goal');
-  await buy.click();
+  await expect(buy).toHaveAttribute('aria-checked', 'true');
+  await holding.getByRole('button', { name: 'Tag 1', exact: true }).click();
   await expect(sheet.getByTestId('tagged-row')).toHaveCount(1);
   await expect(sheet.getByTestId('tagged-row')).toContainText('Antam gold bars');
 
@@ -82,14 +83,15 @@ export async function fundingSheetWalk(page: Page) {
   await page.getByRole('button', { name: /^Funding/ }).click();
   const second = page.getByRole('dialog', { name: 'Funding' });
   await second.getByRole('button', { name: 'Tag a purchase' }).click();
-  const again = (await openHolding(page, 'Antam gold bars')).getByTestId('taggable-row').first();
-  await expect(again).toContainText('Hajj for two');
-  await again.click();
+  const buys = await openHolding(page, 'Antam gold bars');
+  await expect(buys.getByTestId('taggable-row').first()).toContainText('Hajj for two');
+  await buys.getByRole('button', { name: 'Tag 1', exact: true }).click();
   const ask = page.getByRole('dialog', { name: 'Move this purchase?' });
   await expect(ask).toBeVisible();
-  await ask.getByRole('button', { name: 'Keep where it is' }).click();
+  await expect(ask).toContainText('Hajj for two');
+  await ask.getByRole('button', { name: 'Keep where they are' }).click();
   await expect(second.getByTestId('tagged-row')).toHaveCount(0);
-  await again.click();
+  await buys.getByRole('button', { name: 'Tag 1', exact: true }).click();
   await page.getByRole('dialog', { name: 'Move this purchase?' }).getByRole('button', { name: 'Move to this goal' }).click();
   await expect(second.getByTestId('tagged-row')).toHaveCount(1);
   await second.getByRole('button', { name: 'Done' }).click();

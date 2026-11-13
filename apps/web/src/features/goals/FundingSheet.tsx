@@ -5,11 +5,12 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { useAccounts } from '../../lib/queries';
-import { type GroupChild, InsetGroup, InsetRow, SearchPill } from '../../ui/native';
+import { type GroupChild, InsetGroup, InsetRow, SearchPill, SelectCircle } from '../../ui/native';
 import { useAssetProfiles, useTrades } from '../networth/queries';
 import { longDay } from './goal-cards';
 import { useGoals } from './queries';
 import { SetAsideGroup, type SetAsideState } from './SetAside';
+import { allTicked, askAboutMoves, toggleAll, toggleOne } from './tag-selection';
 
 /** What the Funding sheet keeps while the goal form is open: the buys tagged to the goal, changed only when ✓ saves the goal. */
 export interface TagState {
@@ -76,21 +77,84 @@ function TaggedRow({ trade, onRemove, position }: GroupChild & { trade: TradeRow
   );
 }
 
+/** A holding's buys, each with a tick (all ticked when it opens), a "Select all" row, and "Tag N" for the ticked ones. */
+function BuysSheet({
+  name,
+  buys,
+  sizeOf,
+  paidOf,
+  serves,
+  onTag,
+  onClose,
+}: {
+  name: string;
+  buys: readonly TradeRow[];
+  sizeOf: (trade: TradeRow) => string;
+  paidOf: (trade: TradeRow) => string;
+  serves: (trade: TradeRow) => string;
+  onTag: (tradeIds: string[]) => void;
+  onClose: () => void;
+}) {
+  const all = buys.map((trade) => trade.id);
+  const [ticked, setTicked] = useState<string[]>(all);
+  const every = allTicked(all, ticked);
+  const count = ticked.length;
+  return (
+    <Sheet title={name} onClose={onClose} grouped confirm={{ label: `Tag ${count}`, disabled: count === 0, run: () => onTag(all.filter((id) => ticked.includes(id))) }}>
+      <div className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={every}
+          aria-label="Select all"
+          data-testid="taggable-all"
+          onClick={() => setTicked(toggleAll(all, ticked))}
+          className="ph-focus-inset flex min-h-[46px] w-full items-center gap-[10px] px-[13px] text-left active:bg-[var(--ph-fill)]"
+        >
+          <SelectCircle picked={every} className="h-[22px] w-[22px]" />
+          <span className="text-[16px] text-[var(--ph-ink)]">Select all</span>
+        </button>
+        {buys.map((trade) => {
+          const on = ticked.includes(trade.id);
+          return (
+            <button
+              key={trade.id}
+              type="button"
+              role="checkbox"
+              aria-checked={on}
+              aria-label={`Bought ${longDay(trade.occurredOn)}, ${sizeOf(trade)}`}
+              data-testid="taggable-row"
+              onClick={() => setTicked(toggleOne(ticked, trade.id))}
+              className="ph-focus-inset flex min-h-[46px] w-full items-center gap-[10px] px-[13px] text-left active:bg-[var(--ph-fill)]"
+            >
+              <SelectCircle picked={on} className="h-[22px] w-[22px]" />
+              <span className="min-w-0 flex-1 py-[6px]">
+                <span className="block truncate text-[16px] text-[var(--ph-ink)]">{`Bought ${longDay(trade.occurredOn)} · ${sizeOf(trade)}`}</span>
+                {trade.unitsMicro > 0 && <span className="block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{`Paid ${paidOf(trade)}`}</span>}
+              </span>
+              <span className="shrink-0 whitespace-nowrap text-[12.5px] text-[var(--ph-ink-3)]">{serves(trade)}</span>
+            </button>
+          );
+        })}
+      </div>
+    </Sheet>
+  );
+}
+
 /**
  * Tag a purchase: a search and tabs by kind on top, then the holdings that have earlier buys left to tag. A holding
- * opens its own sheet of buys, each with when and how much it was and which goal it already serves. A tap on a buy
- * tags it to this goal; one that serves another goal asks before it moves.
+ * opens its own sheet of buys, each with when and how much it was and which goal it already serves, all ticked. Unticking
+ * leaves a buy out; "Tag N" tags the ticked ones together, and asks once, naming the goals, when some serve another goal.
  */
-export function TagPurchaseSheet({ goalId, tagged, onPick, onClose }: { goalId: string | undefined; tagged: readonly string[]; onPick: (tradeId: string) => void; onClose: () => void }) {
+export function TagPurchaseSheet({ goalId, tagged, onPickMany, savedLater = false, onClose }: { goalId: string | undefined; tagged: readonly string[]; onPickMany: (tradeIds: string[]) => void; /** True on the goal form, where the tags are written when the goal is saved. */ savedLater?: boolean; onClose: () => void }) {
   const trades = taggable(useTrades().data ?? []).filter((trade) => !tagged.includes(trade.id));
   const goals = useGoals().data ?? [];
   const { nameOf, sizeOf, sizeOfAll, paidOf, kindOf } = useHoldingWords();
-  const [asking, setAsking] = useState<TradeRow | null>(null);
+  const [asking, setAsking] = useState<{ ids: string[]; count: number; goals: string[] } | null>(null);
   const [opened, setOpened] = useState<string | null>(null);
   const [typed, setTyped] = useState('');
   const [tab, setTab] = useState<HoldingKind | 'all'>('all');
   const serves = (trade: TradeRow) => (trade.goalParts?.length ? 'Several goals' : (goals.find((goal) => goal.id === trade.goalId)?.name ?? 'No goal'));
-  const elsewhere = (trade: TradeRow) => Boolean(trade.goalParts?.length) || (trade.goalId !== null && trade.goalId !== goalId);
 
   // One entry per holding, with its buys left to tag, oldest first as the ledger has them.
   const byAccount = new Map<string, TradeRow[]>();
@@ -152,33 +216,27 @@ export function TagPurchaseSheet({ goalId, tagged, onPick, onClose }: { goalId: 
         )}
       </Sheet>
       {holding && (
-        <Sheet title={holding.name} onClose={() => setOpened(null)} grouped>
-          <InsetGroup>
-            {holding.buys.map((trade) => (
-              <InsetRow
-                key={trade.id}
-                testId="taggable-row"
-                title={`Bought ${longDay(trade.occurredOn)} · ${sizeOf(trade)}`}
-                subtitle={trade.unitsMicro > 0 ? `Paid ${paidOf(trade)}` : undefined}
-                value={serves(trade)}
-                plain
-                chevron={false}
-                onClick={() => {
-                  if (elsewhere(trade)) setAsking(trade);
-                  else {
-                    onPick(trade.id);
-                    onClose();
-                  }
-                }}
-              />
-            ))}
-          </InsetGroup>
-        </Sheet>
+        <BuysSheet
+          key={holding.accountId}
+          name={holding.name}
+          buys={holding.buys}
+          sizeOf={sizeOf}
+          paidOf={paidOf}
+          serves={serves}
+          onClose={() => setOpened(null)}
+          onTag={(ids) => {
+            const moves = askAboutMoves(holding.buys, ids, goalId, (id) => goals.find((goal) => goal.id === id)?.name ?? 'No goal');
+            if (moves.count === 0) {
+              onPickMany(ids);
+              onClose();
+            } else setAsking({ ids, ...moves });
+          }}
+        />
       )}
       {asking && (
-        <Sheet title="Move this purchase?" onClose={() => setAsking(null)} grouped>
+        <Sheet title={asking.count === 1 ? 'Move this purchase?' : 'Move these purchases?'} onClose={() => setAsking(null)} grouped>
           <p className="px-[4px] pb-[10px] text-[15px] leading-[20px] text-[var(--ph-ink-2)]">
-            {nameOf(asking.accountId)} bought {longDay(asking.occurredOn)} serves {serves(asking)}. It moves to this goal when the goal is saved.
+            {asking.count === 1 ? '1 of the ticked purchases serves' : `${asking.count} of the ticked purchases serve`} {asking.goals.join(', ')}. {asking.count === 1 ? 'It moves' : 'They move'} to this goal{savedLater ? ' when the goal is saved' : ''}.
           </p>
           <InsetGroup>
             <InsetRow
@@ -186,14 +244,14 @@ export function TagPurchaseSheet({ goalId, tagged, onPick, onClose }: { goalId: 
               label="Move to this goal"
               action
               onClick={() => {
-                onPick(asking.id);
+                onPickMany(asking.ids);
                 setAsking(null);
                 onClose();
               }}
             />
           </InsetGroup>
           <InsetGroup>
-            <InsetRow title="Keep where it is" label="Keep where it is" action onClick={() => setAsking(null)} />
+            <InsetRow title="Keep where they are" label="Keep where they are" action onClick={() => setAsking(null)} />
           </InsetGroup>
         </Sheet>
       )}
@@ -221,7 +279,7 @@ export function FundingSheet({ goalId, setAside, tags, onClose }: { goalId: stri
           ]}
         </InsetGroup>
       </Sheet>
-      {tagging && <TagPurchaseSheet goalId={goalId} tagged={tags.ids} onPick={tags.add} onClose={() => setTagging(false)} />}
+      {tagging && <TagPurchaseSheet goalId={goalId} tagged={tags.ids} onPickMany={(ids) => ids.forEach(tags.add)} savedLater onClose={() => setTagging(false)} />}
     </>
   );
 }

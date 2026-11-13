@@ -13,6 +13,7 @@ import { KeyItem } from '../bills/RepeatingBills';
 import { useTrades } from '../networth/queries';
 import { FundingRow } from './funding';
 import { TagPurchaseSheet } from './FundingSheet';
+import { applyTagChanges } from './goal-tags';
 import { SetAsideSheet } from './SetAside';
 import { MonthlySheet, MoveSheet, TakeBackSheet, useHasTaggedPurchase, UseSheet } from './GoalSheets';
 import { setAsideOf } from './goal-actions';
@@ -197,7 +198,7 @@ export function GoalPage({ goalId }: { goalId: string }) {
         <TagPurchaseSheet
           goalId={goalId}
           tagged={trades.filter((trade) => trade.goalId === goalId).map((trade) => trade.id)}
-          onPick={(tradeId) => void retagTrade(database, ws, tradeId, goalId).then(invalidate, setError)}
+          onPickMany={(tradeIds) => void applyTagChanges((tradeId, to) => retagTrade(database, ws, tradeId, to), goalId, { tag: tradeIds, untag: [] }).then(({ failed }) => { invalidate(); if (failed.length > 0) setError(new Error(failed[0]!.message)); })}
           onClose={() => setTagging(false)}
         />
       )}
