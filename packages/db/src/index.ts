@@ -234,6 +234,7 @@ export {
   reviewItems,
   setShareSetting,
   getJointAccount,
+  jointAccountIds,
   setJointAccount,
   type ActiveNetWorthGroup,
   type NetWorthErrorCode,

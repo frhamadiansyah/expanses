@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard, walletCard } from './accounts';
 import { addItem, chooseCategory, moneyIn, planFor, showPlanCard } from './event-plan';
-import { addTransaction, addTransfer, saveButton } from './add-transaction';
+import { addTransaction, addTransfer, saveButton, showTransfers } from './add-transaction';
 import { cardPage, saveCardTerms } from './card-section';
 import { openWorkspacePage, workspaceLine } from './workspace-page';
 
@@ -663,6 +663,8 @@ test('a transfer shows only in the workspace it was recorded in, and moves to an
   await newWorkspace(page, 'Business', 'Copy from Personal');
   await page.goto('/transactions');
   await addTransfer(page, { from: 'BCA Tahapan', to: 'GoPay', amount: '300000', note: 'Holiday top up' });
+  // An own transfer is listed in Cashflow with Transfers on (owner 2026-11-13); where it is filed is unchanged.
+  await showTransfers(page);
   await expect(page.getByText('Holiday top up').first()).toBeVisible();
 
   // Personal never saw it.
@@ -671,6 +673,7 @@ test('a transfer shows only in the workspace it was recorded in, and moves to an
 
   // Back in Business, move it to Personal from its Edit screen.
   await switchWorkspace(page, 'Business');
+  await showTransfers(page);
   await page.getByRole('link', { name: 'Receipt for Holiday top up' }).click();
   await page.getByRole('button', { name: 'Edit this transaction' }).click();
   const edit = page.getByRole('dialog', { name: 'Edit transaction' });
@@ -682,5 +685,6 @@ test('a transfer shows only in the workspace it was recorded in, and moves to an
   await expect(page.getByText('Holiday top up')).toHaveCount(0);
 
   await switchWorkspace(page, 'Personal');
+  await showTransfers(page);
   await expect(page.getByText('Holiday top up').first()).toBeVisible();
 });

@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { expectWalletFigure } from './accounts';
-import { addForm, chooseGoal, choosePayment, chooseTo, saveButton } from './add-transaction';
+import { addForm, chooseGoal, choosePayment, chooseTo, saveButton, showTransfers } from './add-transaction';
 import { addGoal, addMoneyAccount, goalCard, typeAmount, typeSecondFigure } from './set-aside';
 
 /*
@@ -15,6 +15,8 @@ test.beforeEach(({ page }) => {
 
 async function openReceipt(page: Page, what: string) {
   await page.goto('/transactions');
+  // An own transfer is listed in Cashflow with Transfers on (owner 2026-11-13).
+  await showTransfers(page);
   const row = page.getByTestId('transaction-row').filter({ hasText: what }).first();
   await expect(row).toBeVisible();
   await row.getByRole('button').filter({ hasNotText: /^$/ }).first().click();

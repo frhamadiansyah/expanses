@@ -1,7 +1,7 @@
 import type { AccountRow, DraftRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { chargedFigure, DECIMALS_REFUSAL, emptyForm, estimatedCharge, type FormDraft } from '../transactions/tx-form';
-import { canRecord, corrections, draftPatch, foreignPair, formFromDraft, quickCharge } from './draft-form';
+import { canRecord, corrections, draftPatch, foreignPair, formFromDraft, quickCharge, savedWhere } from './draft-form';
 
 const draft = (over: Partial<DraftRow> = {}): DraftRow => ({
   id: 'd1',
@@ -306,5 +306,49 @@ describe('recording a foreign draft without opening the form', () => {
   it('works out money received the same way, from the figure’s size', () => {
     const row = abroad({ kind: 'income', amountMinor: -94_300, accountId: 'bank' });
     expect(quickCharge(row, { from: 'KRW', to: 'IDR' }, RATES, 'IDR')).toEqual({ kind: 'charged', amountMinor: 1_034_471, currency: 'IDR' });
+  });
+});
+
+describe('savedWhere: where a confirmed own transfer can be found (Cashflow lists it nowhere, owner 2026-11-13)', () => {
+  const cards = [
+    { id: 'plastic', accountId: 'visa-account', last4: '4821', holderName: null, isPrimary: true },
+    { id: 'second', accountId: 'visa-account', last4: '7300', holderName: 'Partner', isPrimary: false },
+  ];
+  const payment = draft({ kind: 'transfer', description: 'CARD PAYMENT', accountId: 'bank', toAccountId: 'visa-account', categoryAccountId: null });
+
+  it('names the card whose statement a card payment is on, by its digits', () => {
+    expect(savedWhere(payment, ACCOUNTS, cards)).toBe('Saved on card 4821’s statement');
+  });
+
+  it('names the card the capture read, when it read one of the account’s cards', () => {
+    expect(savedWhere({ ...payment, cardId: 'second' }, ACCOUNTS, cards)).toBe('Saved on card 7300’s statement');
+  });
+
+  it('names the card account when it has no digits on record', () => {
+    expect(savedWhere(payment, ACCOUNTS, [])).toBe('Saved on Travel card’s statement');
+  });
+
+  it('a top-up or a move between two money accounts is on both accounts’ pages', () => {
+    expect(savedWhere({ ...payment, toAccountId: 'wallet' }, ACCOUNTS, cards)).toBe('Saved on both accounts’ pages');
+    // One side alone cannot say where it went: the toast reads as it always did.
+    expect(savedWhere({ ...payment, toAccountId: null }, ACCOUNTS, cards)).toBeNull();
+  });
+
+  it('says nothing for a transfer Cashflow still lists: a joint account, a fee, a loan', () => {
+    const accounts = [...ACCOUNTS, { id: 'joint', name: 'Joint bank', kind: 'asset', subtype: 'bank', currency: 'IDR' }, { id: 'loan', name: 'Car loan', kind: 'liability', subtype: 'loan', currency: 'IDR' }] as AccountRow[];
+    expect(savedWhere({ ...payment, toAccountId: 'joint' }, accounts, cards, new Set(['joint']))).toBeNull();
+    expect(savedWhere(payment, accounts, cards, new Set(), { fee: true })).toBeNull();
+    expect(savedWhere({ ...payment, toAccountId: 'loan' }, accounts, cards)).toBeNull();
+    // A side this phone does not hold (the partner's) is the household's, listed in the shared workspace.
+    expect(savedWhere({ ...payment, toAccountId: 'partner-item' }, accounts, cards)).toBeNull();
+  });
+
+  it('says nothing for spending or income, which Cashflow lists', () => {
+    expect(savedWhere(draft(), ACCOUNTS, cards)).toBeNull();
+    expect(savedWhere(draft({ kind: 'income' }), ACCOUNTS, cards)).toBeNull();
+  });
+
+  it('never speaks to the reader as "you"', () => {
+    for (const each of [payment, { ...payment, toAccountId: 'wallet' }]) expect(savedWhere(each, ACCOUNTS, cards)).not.toMatch(/\byou(r)?\b/i);
   });
 });

@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { addForm, addTransaction, saveButton, chooseTo } from './add-transaction';
+import { addForm, addTransaction, saveButton, chooseTo, showTransfers } from './add-transaction';
 import { openWorkspacePage, workspaceLine } from './workspace-page';
 
 /**
@@ -137,7 +137,8 @@ test('a transfer is filed in the workspace it was recorded in, listed there only
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
 
-  // Personal: the transfer is on the list, and the month's chart has nothing to draw.
+  // Personal: the transfer is on the list with Transfers on (owner 2026-11-13), and the month's chart has nothing to draw.
+  await showTransfers(page);
   await expect(page.getByText('Top up').first()).toBeVisible();
   await expect(page.getByTestId('spending-report')).toContainText('Nothing recorded for');
 

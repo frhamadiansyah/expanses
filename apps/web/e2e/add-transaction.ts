@@ -199,6 +199,26 @@ export async function addTransfer(
 }
 
 /**
+ * Cashflow lists a transfer between own accounts only with Transfers on (owner 2026-11-13): ticked in Sort and filter,
+ * or — when nothing but such transfers is in the period — from the empty list's own Show transfers.
+ */
+export async function showTransfers(page: Page) {
+  const empty = page.getByRole('button', { name: 'Show transfers', exact: true });
+  const menu = page.getByRole('button', { name: 'Sort and filter' });
+  await expect(empty.or(menu).first()).toBeVisible();
+  if (await empty.isVisible()) {
+    await empty.click();
+    return;
+  }
+  await menu.click();
+  const item = page.getByRole('menuitemcheckbox', { name: 'Transfers' });
+  // Already on (a filter kept from before): the menu is put away as it was.
+  if ((await item.getAttribute('aria-checked')) === 'true') await menu.click();
+  else await item.click();
+  await expect(page.getByRole('menu', { name: 'Sort and filter' })).toHaveCount(0);
+}
+
+/**
  * Records a purchase or a sale through Trade's Buy or Sell tab.
  *
  * `what` is the holding's own name, as the picker lists it under the Buy or Sell tab: nothing is prefixed. The amount
