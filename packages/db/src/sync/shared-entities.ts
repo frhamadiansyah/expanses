@@ -685,6 +685,8 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
 export const NEVER_SYNCED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   books: ['workspace_id', 'kind', 'sort_order', 'created_at'],
   // number_last4 (0080), for_spending (0086) and card_tier (0087) and counted_from (0107) are a money account's; a category never has any.
+  // A money account never travels as an `accounts` row: a joint one's card tier and number digits go in its net-worth
+  // summary's `face` instead (summaries.ts `faceFactsOf`), and only while it is joint.
   accounts: ['workspace_id', 'valuation_mode', 'created_at', 'number_last4', 'for_spending', 'card_tier', 'counted_from'],
   budgets: ['workspace_id', 'created_at', 'updated_at'],
   budget_overrides: ['workspace_id'],

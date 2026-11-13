@@ -9,6 +9,7 @@ import { TRIP_TRANSFERS_MIN_APP_VERSION } from '../repos/shared-event-transfers'
 import { partnerPurchaseRefusalTx, sharedRowTx, untagSharedRowsTx } from '../repos/shared-workspace-rows';
 import { captureConfigOf, lineageOfTransaction, projectPurchase, rowUpsertsTx, type SharedBook, writeChangeSetsTx } from './capture';
 import { memberOfDeviceTx } from './apply';
+import { sendSummariesTx } from './net-worth/summaries';
 import { decodeHlc } from './hlc';
 import type { Op } from './types';
 import { uuidv5 } from './uuidv5';
@@ -41,6 +42,11 @@ export function repairExpenseId(lineageId: string, eventId: string): Promise<str
  * the payer's own phone moves it into the shared event when that event is active here, after fetching a missing rate;
  * anything else — the partner's purchase, a private event, a move refused — is untagged (the tag never travelled, so
  * nothing is sent), and listed for a one-time notice.
+ *
+ * R4 card faces (fix/sync-card-tier): a joint account's summary now carries what its card face is drawn from (its bank,
+ * its card tier, its number's last four: `ItemFace`). An account given a tier before this build sent none, and its
+ * summary would not go again until its period ended or a line moved it; this phone's items are sent once now, each only
+ * when its summary changed (the hash skip), so the partner draws the face the holder already chose.
  */
 
 const BILL_LINKS = 'bill-links';
@@ -76,6 +82,7 @@ async function crossedTx(tx: Db, bookId: string, key = crossedKey(bookId)): Prom
 }
 
 const EVENT_TAGS = 'event-tags';
+const CARD_FACES = 'card-faces';
 const NOTICE_PREFIX = 'repair.notice.v1.';
 
 const markerKey = (name: string, bookId: string) => `repair.${name}.v1.${bookId}`;
@@ -123,6 +130,8 @@ export interface RepairReport {
   eventTags: { moved: number; untagged: number } | null;
   /** R3: transfers listed on a shared event sent again; null when no device had newly crossed to 0.5.2. */
   tripTransfers: number | null;
+  /** R4: this phone's net-worth items sent again with their card faces; null when it had run already. */
+  cardFaces: number | null;
 }
 
 /** The shared book here, active and with its members known; null for anything else. */
@@ -324,7 +333,7 @@ async function resendTripTransfersTx(tx: Tx, database: Database, book: SharedBoo
  * others have had their turn, for the caller to log; nothing it wrote half-way stays (each step is one db transaction).
  */
 export async function runSharedBookRepairs(database: Database, bookId: string, options: { fetcher?: RateFetcher; today?: string } = {}): Promise<RepairReport> {
-  const report: RepairReport = { billLinks: null, devicesBelow: [], workspace: false, eventTags: null, tripTransfers: null };
+  const report: RepairReport = { billLinks: null, devicesBelow: [], workspace: false, eventTags: null, tripTransfers: null, cardFaces: null };
   const today = options.today ?? isoDate();
   const failures: unknown[] = [];
   try {
@@ -376,6 +385,18 @@ export async function runSharedBookRepairs(database: Database, bookId: string, o
       const sent = await resendTripTransfersTx(tx, database, book);
       const all = [...new Set([...crossed, ...nowAt])].sort();
       await tx.run(sql`INSERT INTO settings (key, value) VALUES (${tripCrossedKey(bookId)}, ${JSON.stringify(all)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
+      return sent;
+    });
+  } catch (error) {
+    failures.push(error);
+  }
+  try {
+    report.cardFaces = await database.transaction(async (tx) => {
+      const book = await activeBookTx(tx, bookId);
+      if (!book || (await doneTx(tx, CARD_FACES, bookId))) return null;
+      // No net-worth group here yet: nothing to send, and joining one sends every item anyway.
+      const sent = await sendSummariesTx(tx, 'all', today);
+      await markDoneTx(tx, CARD_FACES, bookId);
       return sent;
     });
   } catch (error) {

@@ -9,7 +9,7 @@ import { notPlaceholder, sharingTablesExist } from '../sync/placeholder';
 import { hasBooks, personalBookIdTx } from './books';
 import { recordActivityTx } from './activity-log';
 import { postTransactionTx } from './ledger';
-import { captureMoneyAccountRenamingTx, withCapture } from '../sync/capture';
+import { captureMoneyAccountRenamingTx, markAccountDirtyTx, withCapture } from '../sync/capture';
 
 export type AccountRow = typeof accounts.$inferSelect & {
   /**
@@ -299,6 +299,8 @@ export async function setAccountCardTier(database: Database, ws: WorkspaceContex
     if (!(await tierColumnExists(tx))) throw new AccountError('This database cannot keep that yet');
     await tx.run(sql`UPDATE accounts SET card_tier = ${word} WHERE id = ${id}`);
     await writeAudit(tx, ws, 'card_tier', id, { cardTier: word });
+    // A joint account's summary carries its tier (`ItemFace`), so the partner's phone draws the same face.
+    markAccountDirtyTx(tx, id);
   });
 }
 

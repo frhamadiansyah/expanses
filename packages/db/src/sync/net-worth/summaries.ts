@@ -1,6 +1,7 @@
 import {
   type CoretaxInputs,
   type CoretaxRowPart,
+  type ItemFace,
   type ItemSheetFacts,
   type ItemSummary,
   type ItemTax,
@@ -207,7 +208,55 @@ export async function computeItemSummary(
     tax: taxGroup ? await itemTaxOf(tx, ws, accountId, taxGroup, workspaceBookId, today, taxSource) : null,
     ...(jointRow ? { joint: true as const } : {}),
     ...(await sheetFactsOf(tx, accountId, kind, account.subtype)),
+    ...(jointRow && kind === 'asset' ? await faceFactsOf(tx, accountId, primary?.[0] ?? null) : {}),
   };
+}
+
+const FACE_BANK_MAX = 80;
+const FACE_TIER = /^[a-z]{2,24}$/;
+const FACE_DIGITS = /^\d{4}$/;
+
+/** Whether `accounts` has a column (0080 number_last4, 0087 card_tier): a database stopped before has none. */
+async function accountColumnExists(tx: Db, name: string): Promise<boolean> {
+  return (await tx.values(sql`SELECT 1 FROM pragma_table_info('accounts') WHERE name = ${name}`)).length > 0;
+}
+
+/**
+ * What a joint money account's face is drawn from on its holder's phone (`ItemFace`, Wallet's `faceOf`): its profile's
+ * Nama institusi, its card tier, and its number's last four when no card's digits are in the item's name (`cardLast4`).
+ * Only the account's own facts, never the profile's other fields (its owner's name, its place). Empty — no `face` key
+ * at all — when none is set. Called for a joint account only: an account merely shared, or private, sends none of it.
+ */
+async function faceFactsOf(tx: Db, accountId: string, cardLast4: string | null): Promise<{ face?: ItemFace }> {
+  const face: ItemFace = {};
+  const [profile] = await tx.values<[string]>(sql`SELECT coretax_fields_json FROM asset_profiles WHERE account_id = ${accountId}`);
+  try {
+    const inst = profile ? (JSON.parse(profile[0]) as Record<string, unknown> | null)?.inst : undefined;
+    const bank = typeof inst === 'string' ? inst.trim() : '';
+    if (bank.length > 0 && bank.length <= FACE_BANK_MAX) face.bank = bank;
+  } catch {
+    // A profile whose fields do not parse names no bank.
+  }
+  if (await accountColumnExists(tx, 'card_tier')) {
+    const [row] = await tx.values<[string | null]>(sql`SELECT card_tier FROM accounts WHERE id = ${accountId}`);
+    if (row?.[0] && FACE_TIER.test(row[0])) face.tier = row[0];
+  }
+  if (cardLast4 === null && (await accountColumnExists(tx, 'number_last4'))) {
+    const [row] = await tx.values<[string | null]>(sql`SELECT number_last4 FROM accounts WHERE id = ${accountId}`);
+    if (row?.[0] && FACE_DIGITS.test(row[0])) face.last4 = row[0];
+  }
+  return Object.keys(face).length > 0 ? { face } : {};
+}
+
+/** A peer's `face`, read defensively: a short bank name, a tier word and four digits survive; anything else is dropped. */
+function faceOf(sent: unknown): { face?: ItemFace } {
+  if (sent === null || typeof sent !== 'object' || Array.isArray(sent)) return {};
+  const raw = sent as Record<string, unknown>;
+  const face: ItemFace = {};
+  if (typeof raw.bank === 'string' && raw.bank.trim().length > 0 && raw.bank.length <= FACE_BANK_MAX) face.bank = raw.bank.trim();
+  if (typeof raw.tier === 'string' && FACE_TIER.test(raw.tier)) face.tier = raw.tier;
+  if (typeof raw.last4 === 'string' && FACE_DIGITS.test(raw.last4)) face.last4 = raw.last4;
+  return Object.keys(face).length > 0 ? { face } : {};
 }
 
 /**
@@ -437,9 +486,9 @@ export async function receivedItems(database: Database, groupBookId: string): Pr
       const summary = JSON.parse(json) as ItemSummary | null;
       // The owner is the row's, which the writer rule vouches for; never what the summary's own text claims.
       if (summary && typeof summary === 'object') {
-        const { joint, sheet, ...rest } = summary;
-        // Only a literal `true` makes an item joint; anything else a peer sends reads as off.
-        out.push({ ...rest, ...transfersOf(summary), ...(joint === true ? { joint: true as const } : {}), ...sheetOf(sheet), owner, itemId });
+        const { joint, sheet, face, ...rest } = summary;
+        // Only a literal `true` makes an item joint; anything else a peer sends reads as off. A face only on a joint item.
+        out.push({ ...rest, ...transfersOf(summary), ...(joint === true ? { joint: true as const, ...faceOf(face) } : {}), ...sheetOf(sheet), owner, itemId });
       }
     } catch {
       // A summary that does not parse is shown as nothing, not as a wrong number.
