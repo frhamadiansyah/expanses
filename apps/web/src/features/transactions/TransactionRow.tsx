@@ -14,7 +14,7 @@ import { isEditable } from './draft';
 import { type AmountExtraPart, amountExtraParts, amountLook, type AmountView, type ListRow, paidWithLook, wholeLeftOut } from './list-model';
 import { canRefile, emptyForm, refiledPost } from './tx-form';
 import { ratesForSave } from './tx-save';
-import { rowEventLead } from '../events/event-mode';
+import { RowEventLead } from '../events/EventMode';
 import { useEvents } from '../events/queries';
 
 /** An event's name by its id, from the one owner-wide read of events; null for none, or one no longer here. */
@@ -125,7 +125,7 @@ export function TransactionRow({
   view?: AmountView;
 }) {
   const transfer = row.type !== 'expense' && row.type !== 'income';
-  // A row in an event names it first on its grey line ("✈️ Lake trip · …"), on every list, in event mode or not.
+  // A row in an event names it first on its grey line ("<plane> Lake trip · …"), on every list, in event mode or not.
   const eventName = useEventName(hideEvent ? null : (row.eventId ?? row.tx?.eventId ?? row.draft?.eventId ?? null));
   // Money back on a purchase reads as money in: a plus, in green. Money a person paid back has a plus too, muted.
   // Wholly excluded from the report, a row reads as a split with all of it left out: nothing counted on top, in grey,
@@ -236,7 +236,7 @@ export function TransactionRow({
           {label ?? ((row.categoryName && row.moreCounted ? `${row.categoryName} +${row.moreCounted}` : row.categoryName) || (row.type === 'correction' ? 'Balance correction' : transfer ? 'Transfer' : 'Uncategorised'))}
         </span>
         <span className="block truncate text-xs text-slate-500">
-          {eventName && <span data-testid="row-event">{`${rowEventLead(eventName)} · `}</span>}
+          {eventName && <RowEventLead name={eventName} />}
           {subtitle ?? (
             <>
               {row.description ? `${row.description}${row.accountLabel || row.last4 ? ' · ' : ''}` : ''}

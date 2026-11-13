@@ -6,7 +6,8 @@ import { CategoryIcon, UnknownCategoryMark } from '../categories/CategoryIcon';
 import { DayHeader } from '../transactions/DayHeader';
 import { CaptureTypeMark } from './CaptureTypeMark';
 import { captureRowView, draftDays, effectiveCategory } from './capture-view';
-import { draftShowsEvent, rowEventLead } from '../events/event-mode';
+import { draftShowsEvent } from '../events/event-mode';
+import { RowEventLead } from '../events/EventMode';
 import { useSharedEventSummaries } from '../events/shared-queries';
 import { useIsBookShared } from '../../lib/queries';
 import { useEventName } from '../transactions/TransactionRow';
@@ -108,7 +109,7 @@ function DraftFace({ draft, accounts, source, categoryId }: { draft: DraftRow; a
           {transfer ? 'Transfer' : category ? category.name : warn('Choose category')}
         </span>
         <span className="block truncate text-xs text-slate-500">
-          {eventName && <span data-testid="row-event">{`${rowEventLead(eventName)} · `}</span>}
+          {eventName && <RowEventLead name={eventName} />}
           {view.type && <CaptureTypeMark type={view.type} />}
           {draft.description}
           {' · '}

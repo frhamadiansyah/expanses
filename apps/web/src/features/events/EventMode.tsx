@@ -11,13 +11,13 @@ import {
 } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, X } from 'lucide-react';
+import { ChevronRight, Plane, X } from 'lucide-react';
 import { type CSSProperties, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { ToastCard, UndoToast } from '../../ui/UndoToast';
 import { InsetGroup, InsetRow, SwitchRow, tapReach, TextRow } from '../../ui/native';
 import { CurrencySheet } from '../transactions/CurrencySheet';
-import { EVENT_MARK, endedText, eventModeApplies, menuLine, modeFooter, modeHint, sharedWithLine, takesEventMode } from './event-mode';
+import { endedText, eventModeApplies, menuLine, modeFooter, modeHint, sharedWithLine, takesEventMode } from './event-mode';
 import { useIsBookShared } from '../../lib/queries';
 import { useOpenBookReadOnly } from '../sharing/queries';
 import { useEvents } from './queries';
@@ -66,7 +66,7 @@ export function useEventModeState(): { ready: boolean; active: ActiveEventMode |
 
 /**
  * Event mode as the open workspace shows it (fix round 2): a private event never fills in a shared workspace's spending,
- * so there the ✈️ dot and the menu row stay away too.
+ * so there the plane dot and the menu row stay away too.
  */
 export function useShownEventMode(): ActiveEventMode | null {
   const active = useEventMode();
@@ -94,15 +94,33 @@ export function useEventModeWrites() {
   };
 }
 
-/** The 18 px purple round on a corner of the workspace button (2E). */
+/**
+ * The mark every place names an event by: a drawn plane in one colour, never the ✈️ emoji, which iOS paints in its own
+ * blue (owner, 13 Nov 2026, option C of docs/mockups/2026-11-13-event-mode-mark.html). It takes the colour of its text.
+ */
+export function EventMark({ size = 12, className = '' }: { size?: number; className?: string }) {
+  return <Plane size={size} strokeWidth={2.25} aria-hidden className={`shrink-0 ${className}`} />;
+}
+
+/** The start of a row's grey line when the row is in an event: the mark, the event, and the dot before the rest. */
+export function RowEventLead({ name }: { name: string }) {
+  return (
+    <span data-testid="row-event">
+      <EventMark size={11} className="mr-[3px] inline align-[-1px]" />
+      {`${name} · `}
+    </span>
+  );
+}
+
+/** The 18 px round on a corner of the workspace button (2E, option C): a grey plane on white, no colour of its own. */
 export function EventModeDot({ className = '' }: { className?: string }) {
   return (
     <span
       aria-hidden
       data-testid="event-mode-dot"
-      className={`pointer-events-none absolute flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[var(--ph-trip)] text-[10px] leading-none text-white shadow-[0_0_0_2px_var(--ph-ground)] ${className}`}
+      className={`pointer-events-none absolute flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[var(--ph-surface)] text-[var(--ph-ink-3)] shadow-[0_0_0_0.5px_var(--ph-ink-3),0_0_0_2.5px_var(--ph-ground)] ${className}`}
     >
-      {EVENT_MARK}
+      <EventMark size={11} />
     </span>
   );
 }
@@ -121,8 +139,8 @@ export function EventModeMenuRow({ active, onClose }: { active: ActiveEventMode;
       }}
       className="flex min-h-11 w-full items-center gap-2.5 bg-[var(--ph-trip-panel)] px-3.5 py-2.5 text-left"
     >
-      <span aria-hidden className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-[var(--ph-trip)] text-[11px] leading-none text-white">
-        {EVENT_MARK}
+      <span aria-hidden className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-[var(--ph-surface)] text-[var(--ph-ink-3)]">
+        <EventMark size={12} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[15px] leading-[20px] font-semibold text-[var(--ph-ink)]">{active.event.name}</span>
@@ -134,16 +152,15 @@ export function EventModeMenuRow({ active, onClose }: { active: ActiveEventMode;
 }
 
 /**
- * The event at the top of the Add form while event mode is on (screen 3): "✈️ <event> ✕", the ✕ leaving this one
+ * The event at the top of the Add form while event mode is on (screen 3): "<plane> <event> ✕", the ✕ leaving this one
  * transaction out. For a shared event, one grey line under it names who will see it.
  */
 export function EventChip({ name, sharedWith, onRemove }: { name: string; sharedWith?: readonly string[] | undefined; onRemove: () => void }) {
   return (
     <div className="flex flex-col items-center gap-[4px]" data-testid="event-chip">
       <span className="inline-flex max-w-full items-center gap-[6px] rounded-[14px] bg-[var(--ph-trip-panel)] py-[5px] pr-[6px] pl-[11px] text-[14px] leading-[18px] font-semibold text-[var(--ph-trip)]">
-        <span className="min-w-0 truncate">
-          {EVENT_MARK} {name}
-        </span>
+        <EventMark size={13} />
+        <span className="min-w-0 truncate">{name}</span>
         <button
           type="button"
           aria-label={`Leave this one out of ${name}`}

@@ -83,7 +83,7 @@ test('event mode: on from the event, a dot and a menu row on Cashflow, the Add f
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add a transaction' }).first().click();
   const form = addForm(page);
-  await expect(form.getByTestId('event-chip')).toContainText('✈️ Lake trip');
+  await expect(form.getByTestId('event-chip')).toContainText('Lake trip');
   await expect(form.getByRole('button', { name: 'Currency' })).toContainText('🇹🇷');
   await page.goBack();
   await addSpend(page, { note: 'Lakeside lunch', amount: '650', paidWith: 'Lira cash' });
@@ -98,7 +98,7 @@ test('event mode: on from the event, a dot and a menu row on Cashflow, the Add f
   // …and every list that shows it names the event first on its grey line: the account's own history.
   await openWalletAccount(page, 'Lira cash');
   const recent = page.getByTestId('account-recent');
-  await expect(recent.getByRole('button', { name: /Lakeside lunch/ })).toHaveAccessibleName('Groceries ✈️ Lake trip · Lakeside lunch · Lira cash');
+  await expect(recent.getByRole('button', { name: /Lakeside lunch/ })).toHaveAccessibleName('Groceries Lake trip · Lakeside lunch · Lira cash');
   await expect(recent.getByRole('button', { name: /Corner shop/ })).toHaveAccessibleName('Groceries Corner shop · Lira cash');
 
   // Off by hand, from the event: the light Undo bar puts it back.
@@ -170,7 +170,7 @@ test('event mode in a shared event: the Add form says who it is shared with, and
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add a transaction' }).first().click();
   const card = sharedCard(page);
-  await expect(card.getByTestId('event-chip')).toContainText('✈️ Coast week');
+  await expect(card.getByTestId('event-chip')).toContainText('Coast week');
   await expect(card.getByTestId('event-chip-shared')).toHaveText('Shared with Budi');
   await recordSharedSpend(page, { note: 'Boat ride', amount: '300000', paidWith: 'Rina Bank' });
 
@@ -182,7 +182,7 @@ test('event mode in a shared event: the Add form says who it is shared with, and
   await openWalletAccount(page, 'Rina Bank');
   const accountId = new URL(page.url()).pathname.split('/').pop()!;
   await page.goto(`/transactions/new?mode=expense&account=${accountId}`);
-  await expect(card.getByTestId('event-chip')).toContainText('✈️ Coast week');
+  await expect(card.getByTestId('event-chip')).toContainText('Coast week');
   await expect(card.getByRole('button', { name: /^Paid with/ })).toContainText('Rina Bank');
   await page.goBack();
 
@@ -203,8 +203,8 @@ test('event mode in a shared event: the Add form says who it is shared with, and
   await inject(page, [notice({ id: 'note-coast', capturedAt: await page.evaluate(() => new Date().toISOString()), body: 'Pembayaran Rp38.000 berhasil. Merchant: PANTAI KIOSK' })]);
   await page.goto('/review');
   const draft = page.getByTestId('draft-row').filter({ hasText: 'PANTAI KIOSK' });
-  await expect(draft.getByTestId('row-event')).toHaveText('✈️ Coast week · ');
+  await expect(draft.getByTestId('row-event')).toHaveText('Coast week · ');
   await draft.click();
-  await expect(page.getByTestId('event-chip')).toContainText('✈️ Coast week');
+  await expect(page.getByTestId('event-chip')).toContainText('Coast week');
   await expect(page.getByTestId('event-chip-shared')).toHaveText('Shared with Budi');
 });
