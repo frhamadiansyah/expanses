@@ -65,6 +65,14 @@ export interface AssetDrawer {
   missing: string[];
 }
 
+/**
+ * Sold out: a holding with nothing left that a sell took it to. A fund tracked by money has no units, so it is sold out
+ * when nothing is in it and it is worth nothing. A holding with nothing bought yet — added to record its buys after —
+ * is held at nothing, never sold.
+ */
+const isSold = (value: AssetValueRow) =>
+  value.everSold !== false && ((value.mode === 'market' && value.unitsMicro === 0) || (value.mode === 'amount' && value.valueMinor === 0 && value.costMinor === 0));
+
 function toRow(value: AssetValueRow, profile: AssetProfileRow | undefined, due: boolean, subtype: AccountRow['subtype']): AssetRow {
   /*
    * The code beside the name comes from the asset's own profile, and — for money owed to you — from the debt's, which
@@ -83,7 +91,7 @@ function toRow(value: AssetValueRow, profile: AssetProfileRow | undefined, due: 
     method: METHOD_LABELS[value.mode],
     coretax: code && filed ? `${code} · ${CORETAX_SECTION_LABELS[filed] ?? filed}` : '',
     stale: value.stale,
-    sold: (value.mode === 'market' && value.unitsMicro === 0) || (value.mode === 'amount' && value.valueMinor === 0 && value.costMinor === 0),
+    sold: isSold(value),
     due,
     pockets: null,
     missing: [],
@@ -104,8 +112,6 @@ export interface AssetGrouping {
   due?: ReadonlySet<string>;
 }
 
-// A fund tracked by money has no units: it is sold out when nothing is in it and it is worth nothing.
-const isSold = (value: AssetValueRow) => (value.mode === 'market' && value.unitsMicro === 0) || (value.mode === 'amount' && value.valueMinor === 0 && value.costMinor === 0);
 
 /**
  * What kind of thing a row is, in the balance sheet's own words.

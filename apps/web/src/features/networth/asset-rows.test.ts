@@ -65,6 +65,25 @@ describe('groupAssets', () => {
     expect(liveGroups(groups).flatMap((group) => group.rows).map((row) => row.accountId)).toEqual(['bca', 'gold', 'house']);
   });
 
+  it('keeps a holding with nothing bought yet with the held ones, at nothing, never under Sold', () => {
+    const empty = [
+      ...values,
+      value({ accountId: 'sbr', name: 'SBR012', planGroup: 'invest', subtype: 'investment', mode: 'market', source: 'cost', unitsMicro: 0, everSold: false }),
+      value({ accountId: 'rdpu', name: 'Money market fund', planGroup: 'invest', subtype: 'investment', mode: 'amount', source: 'cost', everSold: false }),
+    ];
+    const groups = groupAssets(empty, profiles, idrOnly);
+    expect(soldRows(groups).map((row) => row.name)).toEqual(['TLKM shares']);
+    const live = liveGroups(groups).flatMap((group) => group.rows);
+    expect(live.find((row) => row.accountId === 'sbr')).toMatchObject({ sold: false, valueMinor: 0 });
+    expect(live.find((row) => row.accountId === 'rdpu')).toMatchObject({ sold: false, valueMinor: 0 });
+    expect(rowSubtitle(live.find((row) => row.accountId === 'sbr')!)).toBe('');
+  });
+
+  it('puts a holding a sell took to nothing under Sold', () => {
+    const sold = [value({ accountId: 'bbri', name: 'BBRI shares', planGroup: 'invest', subtype: 'investment', mode: 'market', source: 'cost', unitsMicro: 0, everSold: true })];
+    expect(soldRows(groupAssets(sold, [], idrOnly)).map((row) => row.accountId)).toEqual(['bbri']);
+  });
+
   it('names how each value was worked out', () => {
     const rows = groupAssets(values, profiles, idrOnly).flatMap((group) => group.rows);
     expect(rows.find((row) => row.accountId === 'bca')!.method).toBe('Ledger balance');

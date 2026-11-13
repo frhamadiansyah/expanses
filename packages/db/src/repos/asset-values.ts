@@ -53,6 +53,11 @@ export interface AssetValueRow extends AssetValue {
   /** The owner should type a fresh price or estimate. */
   stale: boolean;
   /**
+   * A holding a sell has taken units (or money) out of, by the date: one at nothing is then sold out, where one with
+   * nothing bought yet is simply held at nothing. Left out by older readers, which then read any empty holding as sold.
+   */
+  everSold?: boolean;
+  /**
    * Who owes the money, for money owed to you: it is kept by the Lend & borrow ledger, which is where the debt — and
    * the code that says what kind of receivable it is — is administered. Null for everything else.
    */
@@ -164,6 +169,7 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
       person: debtCodeByAccount.get(account.id)?.personName ?? null,
       unitsMicro: position ? position.unitsMicro : null,
       stale: isStaleValue(value, date),
+      everSold: (tradesByAccount.get(account.id) ?? []).some((trade) => trade.kind === 'sell' && trade.occurredOn <= date),
     };
   });
 }
