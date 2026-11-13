@@ -1,0 +1,79 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Cash withdrawal label</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --green:#34c759; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; }
+  h1 { font-size:20px; margin:0 0 4px; } .sub { color:#555; margin:0 0 18px; max-width:1100px; }
+  .row3 { display:flex; gap:22px; align-items:flex-start; }
+  .phone { width:340px; background:var(--ground); border-radius:28px; padding:14px 12px 18px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .cap { font-weight:700; margin:0 0 4px; } .note { font-size:13px; color:#555; margin:0 0 10px; min-height:52px; }
+  .title { font-size:26px; font-weight:700; margin:6px 4px 10px; display:flex; justify-content:space-between; align-items:center; }
+  .ws { width:32px; height:32px; border-radius:50%; background:var(--surface); display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:600; position:relative; }
+  .ws .d { position:absolute; right:-4px; bottom:-4px; width:17px; height:17px; border-radius:50%; background:var(--surface); box-shadow:0 0 0 .5px var(--ink3),0 0 0 2.5px var(--ground); display:flex; align-items:center; justify-content:center; color:var(--ink3); font-size:9px; }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:10px; overflow:hidden; }
+  .day { display:flex; gap:10px; align-items:center; padding:8px 13px; border-bottom:.5px solid var(--hair); }
+  .day .n { font-size:24px; font-weight:600; width:34px; } .day .w { font-size:12.5px; color:var(--ink3); line-height:1.2; } .day .w b { color:var(--ink2); }
+  .day .t { margin-left:auto; font-size:13px; font-weight:600; color:var(--ink2); }
+  .r { display:flex; gap:10px; align-items:center; padding:9px 13px; } .r + .r { border-top:.5px solid var(--hair); }
+  .ic { width:30px; height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:14px; flex-shrink:0; }
+  .g { flex:1; min-width:0; } .g .a { font-size:15px; } .g .s { font-size:12.5px; color:var(--ink3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .amt { text-align:right; font-size:15px; } .amt .sh { display:block; font-size:12.5px; color:var(--ink3); }
+  .plus { color:var(--green); } .grey { color:var(--ink3); }
+  .gone { opacity:.28; text-decoration:line-through; }
+  .new { box-shadow:inset 3px 0 0 #ff9f0a; }
+  .hero { background:var(--surface); border-radius:14px; padding:12px 14px; margin-bottom:10px; }
+  .hero .k { font-size:12.5px; color:var(--ink3); } .hero .v { font-size:24px; font-weight:700; }
+  .key { font-size:12.5px; color:#555; margin-top:14px; } .key span { display:inline-block; width:10px; height:10px; background:#ff9f0a; border-radius:2px; margin-right:4px; }
+  .phone { width:320px; }
+  table.rules { border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden; margin:6px 0 22px; font-size:14px; }
+  .rules td, .rules th { padding:8px 14px; border-bottom:.5px solid var(--hair); text-align:left; }
+  .rules th { background:#f7f7f9; font-weight:600; color:#555; }
+  h2 { font-size:17px; margin:26px 0 6px; }
+  .form .r .lab { margin-left:auto; color:var(--ink3); font-size:13px; }
+  .hl { box-shadow:inset 3px 0 0 #ff9f0a; }
+</style></head><body>
+<h1>How a transfer shows it is an ATM withdrawal</h1>
+<p class="sub">No category and no new field. The app names a transfer by the two accounts it already has: money going <b>into a Cash account from a bank or e-wallet</b> reads <b>Cash withdrawal</b>. The note stays free for the ATM's name. A category is not used because a category would count the cash as spending, and then every purchase paid with that cash would be counted a second time. All figures invented.</p>
+
+<h2>1 · The rule (worked out by the app)</h2>
+<table class="rules">
+<tr><th>From</th><th>To</th><th>Row reads</th></tr>
+<tr><td>Bank or e-wallet</td><td>Cash (any currency)</td><td><b>Cash withdrawal</b></td></tr>
+<tr><td>Cash</td><td>Cash in another currency</td><td><b>Currency exchange</b></td></tr>
+<tr><td>Cash</td><td>Bank or e-wallet</td><td><b>Cash deposit</b></td></tr>
+<tr><td colspan="2">Anything else (bank → bank, top-up, card payment…)</td><td>as today</td></tr>
+</table>
+
+<h2>2 · Cashflow row, before → after</h2>
+<div class="row3">
+  <div class="phone"><p class="cap">Today</p><p class="note">Only "Transfer". Nothing says it was an ATM.</p>
+    <div class="panel"><div class="day"><span class="n">4</span><span class="w"><b>Sunday</b><br>October 2026</span></div>
+      <div class="r "><div class="ic" style="background:#8e8e93">⇄</div><div class="g"><div class="a">Transfer</div><div class="s">Bank Contoh ATM · Joint bank → Cash TRY</div></div><div class="amt">Rp 950.000</div></div>
+    </div></div>
+  <div class="phone"><p class="cap">After</p><p class="note">Title says what it is; the note and the two accounts move to the grey line. Same amount, still not counted.</p>
+    <div class="panel"><div class="day"><span class="n">4</span><span class="w"><b>Sunday</b><br>October 2026</span></div>
+      <div class="r hl"><div class="ic" style="background:#8e8e93">🏧</div><div class="g"><div class="a">Cash withdrawal</div><div class="s">Bank Contoh ATM · Joint bank → Cash TRY</div></div><div class="amt">Rp 950.000</div></div>
+    </div></div>
+  <div class="phone"><p class="cap">On the trip, after moving it there</p><p class="note">Same name on the trip page: grey, <b>not counted</b>, shown in the trip's currency.</p>
+    <div class="panel"><div class="day"><span class="n">4</span><span class="w"><b>Sunday</b><br>October 2026</span></div>
+      <div class="r hl"><div class="ic" style="background:#c7c7cc">🏧</div><div class="g"><div class="a">Cash withdrawal</div><div class="s">Bank Contoh ATM · Joint bank → Cash TRY · not counted</div></div><div class="amt"><span class="grey">₺ 2.500</span></div></div>
+      <div class="r "><div class="ic" style="background:#ff2d55">🍽</div><div class="g"><div class="a">Harbour grill</div><div class="s">Restaurants · Paid by Andi</div></div><div class="amt">₺ 1.200</div></div>
+    </div></div>
+</div>
+
+<h2>3 · The row in the screenshot: which account it came from decides the name</h2>
+<div class="row3">
+  <div class="phone"><p class="cap">Recorded from Cash · IDR (as now)</p><p class="note">Rupiah cash changed into lira, so it reads <b>Currency exchange</b>. The bank balance is not touched.</p>
+    <div class="panel"><div class="day"><span class="n">4</span><span class="w"><b>Sunday</b><br>October 2026</span></div>
+      <div class="r hl"><div class="ic" style="background:#8e8e93">💱</div><div class="g"><div class="a">Currency exchange</div><div class="s">Bank Contoh ATM · Cash IDR → Cash TRY</div></div><div class="amt">Rp 950.000</div></div>
+    </div></div>
+  <div class="phone form"><p class="cap">If it came out of the bank at the ATM</p><p class="note">Edit → change <b>From</b> to the bank account. Then the bank balance drops, Cash IDR stays as it was, and the row reads Cash withdrawal.</p>
+    <div class="panel">
+      <div class="r"><div class="ic" style="background:#c7c7cc">↗</div><div class="g"><div class="a">Cash · IDR → <b>Joint bank</b></div></div><span class="lab">From ›</span></div>
+      <div class="r"><div class="ic" style="background:#c7c7cc">↙</div><div class="g"><div class="a">Cash · TRY</div></div><span class="lab">To ›</span></div>
+    </div></div>
+  <div class="phone"><p class="cap">Then in Cashflow</p><p class="note">Ready to move into the trip in one step (Select → Add to event).</p>
+    <div class="panel"><div class="day"><span class="n">4</span><span class="w"><b>Sunday</b><br>October 2026</span></div>
+      <div class="r hl"><div class="ic" style="background:#8e8e93">🏧</div><div class="g"><div class="a">Cash withdrawal</div><div class="s">Bank Contoh ATM · Joint bank → Cash TRY</div></div><div class="amt">Rp 950.000</div></div>
+    </div></div>
+</div>
+<p class="key"><span></span>what changes.</p>
+</body></html>

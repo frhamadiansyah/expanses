@@ -247,6 +247,13 @@ describe('the ring, the days and the bars of a shared event', () => {
     for (const line of Object.values(transferRow(t))) expect(line).not.toMatch(/\byou(r)?\b/i);
   });
 
+  it('titles a transfer by what its accounts make it, the note moving to the grey line', () => {
+    const t: SharedEventTransferView = { transferId: 't1', occurredOn: '2026-10-04', amountMinor: 250_000, currency: 'TRY', description: 'Bank Contoh ATM', recordedByName: 'Lestari', fromName: 'Joint bank', toName: 'Cash TRY', transactionId: 'tx1', name: 'Cash withdrawal' };
+    expect(transferRow(t)).toEqual({ title: 'Cash withdrawal', subtitle: 'Bank Contoh ATM · Joint bank → Cash TRY · not counted', amount: formatMinor(250_000, 'TRY') });
+    expect(transferRow({ ...t, description: 'Transfer' }).subtitle).toBe('Joint bank → Cash TRY · not counted');
+    expect(transferRow({ ...t, name: null }).title).toBe('Bank Contoh ATM');
+  });
+
   it('scales the balance bars to the largest, tones them, and leaves out people who left', () => {
     const p = (personId: string, balanceMinor: number, removed = false) => ({ personId, name: personId, initials: 'x', hasApp: true, isMe: false, removed, balanceMinor });
     const bars = balanceBars({ people: [p('maya', 2_100), p('yoga', 2_650), p('dimas', -900), p('lestari', -1_950), p('gone', 99_999, true), p('even', 0)] });

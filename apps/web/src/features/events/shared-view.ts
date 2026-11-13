@@ -172,7 +172,10 @@ export function expenseRow(e: SharedExpenseView, view: SharedEventView): { title
 export function transferRow(t: SharedEventTransferView): { title: string; subtitle: string; amount: string } {
   const where =
     t.fromName && t.toName ? `${t.fromName} → ${t.toName}` : t.fromName ? `From ${t.fromName}` : t.toName ? `To ${t.toName}` : `Recorded by ${t.recordedByName}`;
-  return { title: t.description.trim() || 'Transfer', subtitle: `${where} · not counted`, amount: formatMinor(t.amountMinor, t.currency) };
+  const note = t.description.trim();
+  // Named by its accounts ("Cash withdrawal"): the note moves to the grey line, where the default "Transfer" is not repeated.
+  if (t.name) return { title: t.name, subtitle: [note && note !== 'Transfer' ? note : '', where, 'not counted'].filter(Boolean).join(' · '), amount: formatMinor(t.amountMinor, t.currency) };
+  return { title: note || 'Transfer', subtitle: `${where} · not counted`, amount: formatMinor(t.amountMinor, t.currency) };
 }
 
 export function settlementRow(s: SharedSettlementView, view: SharedEventView): { title: string; amount: string; flags: string[] } {

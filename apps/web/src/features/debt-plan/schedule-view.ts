@@ -28,11 +28,41 @@ export interface MonthInput {
    * The open book's bills owed in this month and the one before (a bill out late in a month is paid by a day in the
    * next), each with the currency it is written in. Only those whose pay-by day is in the month are its items.
    */
-  bills: readonly { row: BillMonthRow; currency: string; /** The credit card that pays it, by name. */ onCard?: string | null }[];
+  bills: readonly { row: BillMonthRow; currency: string; /** What answers for it instead of this plan (`billCover`). */ cover?: BillCover | null }[];
   show: { loans: boolean; cards: boolean; bills: boolean };
   baseCurrency: string;
   ratesToBase: Readonly<Record<string, number>>;
 }
+
+/**
+ * What already answers for a bill, so the plan lists it without counting it and the Cashflow row does not ask for it:
+ * the credit card whose statement it lands on, or the household member who pays it from an account of their own.
+ */
+export type BillCover = { card: string } | { member: string | null };
+
+/**
+ * A bill's cover from the account it is paid from (`moneyAccountId`), read the same on every phone of a shared
+ * workspace. On this phone's list, a credit card is the card and any other account is this phone's own to pay. Not on
+ * its list, the account is another member's own: a bill arrives on a partner's phone naming a placeholder for its payer,
+ * never their account (spec §4.4), so whether it is a card cannot be known here — and the payer's phone already
+ * reminds them, by its card or on its own row. Left to the payer, then, by the member's name when it is theirs
+ * (`memberPayers`, the placeholders by member). So a bill on her own card is out of both phones' Cashflow rows and both
+ * plans' totals alike. A placeholder for this phone's own member (a restored or new phone gets its own bills back on
+ * one) is no one else's: such a bill stays this phone's to pay.
+ */
+export function billCover(
+  accountId: string,
+  accounts: readonly { id: string; subtype: string; name: string }[],
+  memberPayers: ReadonlyMap<string, { name: string; self: boolean }>,
+): BillCover | null {
+  const payer = accounts.find((a) => a.id === accountId);
+  if (payer) return payer.subtype === 'credit_card' ? { card: payer.name } : null;
+  const member = memberPayers.get(accountId);
+  if (member?.self) return null;
+  return { member: member?.name ?? null };
+}
+
+const coverWords = (cover: BillCover): string => ('card' in cover ? `on ${cover.card}` : `paid by ${cover.member ?? 'another member'}`);
 
 function toBase(minor: number | null, currency: string, base: string, rates: Readonly<Record<string, number>>): number | null {
   if (minor === null) return null;
@@ -176,7 +206,7 @@ function cardItems(input: MonthInput): PlanItem[] {
 
 function billItems(input: MonthInput): PlanItem[] {
   const current = monthOf(input.today);
-  return input.bills.flatMap(({ row, currency, onCard }) => {
+  return input.bills.flatMap(({ row, currency, cover }) => {
     if (row.state === 'skipped' || row.state === 'paused') return [];
     // A bill is due in the month of its pay-by day (spec §6.4); the current month also carries an earlier one still overdue.
     const payMonth = monthOf(row.window.payBy);
@@ -192,9 +222,10 @@ function billItems(input: MonthInput): PlanItem[] {
           debtKey: null,
           name: row.bill.name,
           title: row.bill.name,
-          // Paid on a credit card, the bill lands on that card's statement: listed, but the statement counts it.
-          detail: onCard ? `Bill · ${dayMonth(dueOn)} · on ${onCard}` : `Bill · ${dayMonth(dueOn)}`,
-          inTotals: !onCard,
+          // Paid on a credit card, the bill lands on that card's statement: listed, but the statement counts it. Paid by
+          // another member from an account of theirs, it is theirs to count (`billCover`).
+          detail: cover ? `Bill · ${dayMonth(dueOn)} · ${coverWords(cover)}` : `Bill · ${dayMonth(dueOn)}`,
+          inTotals: !cover,
           dueOn,
           status: paid ? 'paid' : late ? 'late' : 'upcoming',
           daysLate: late ? Math.max(1, daysFrom(dueOn, input.today)) : 0,
@@ -236,13 +267,14 @@ export function monthItems(input: MonthInput): PlanItem[] {
 export interface DueBill {
   bill: { id: string; name: string; amountMinor: number | null; window: { payBy: string }; state: BillMonthRow['state']; estimateMinor: number | null };
   currency: string;
-  onCard: string | null;
+  cover: BillCover | null;
 }
 
 /**
  * The Cashflow row's items from what is already read (spec §4.6): each loan's late instalments and next one, each
  * card's statement (the plan's own reading, `useCardFacts`), and this month's bills as Recurring lists them. No month is
- * read for it. Paid, skipped and paused bills are left out, and a bill paid from a card (its statement asks).
+ * read for it. Paid, skipped and paused bills are left out, and a bill something else answers for (`billCover`): one
+ * paid from a card (its statement asks) or by another member from an account of theirs (their phone asks).
  */
 export function dueItems(input: { debts: readonly PlanDebt[]; loanFacts: readonly LoanPlanFact[]; bills: readonly DueBill[]; today: string; baseCurrency?: string; ratesToBase?: Readonly<Record<string, number>> }): PlanItem[] {
   const month = monthOf(input.today);
@@ -267,8 +299,8 @@ export function dueItems(input: { debts: readonly PlanDebt[]; loanFacts: readonl
       if (debt.next.status === 'upcoming') items.push(debt.next);
     } else if (debt.kind === 'card') items.push(debt.next);
   }
-  for (const { bill, currency, onCard } of input.bills) {
-    if (onCard || bill.state === 'paid' || bill.state === 'skipped' || bill.state === 'paused') continue;
+  for (const { bill, currency, cover } of input.bills) {
+    if (cover || bill.state === 'paid' || bill.state === 'skipped' || bill.state === 'paused') continue;
     const late = bill.state === 'overdue';
     const dueOn = bill.window.payBy;
     items.push(
