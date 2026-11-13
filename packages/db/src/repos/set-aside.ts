@@ -1,5 +1,5 @@
 import { type AccountSetAside, type BorrowMark, type FundClaim, fundingOrder, isoDate, movedAmount, type SetAsideClaim, setAsideOn } from '@expanses/core';
-import { and, eq, inArray, lte, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
@@ -149,6 +149,27 @@ export async function setAsideViews(database: Database, ws: WorkspaceContext, op
     };
   }
   return views;
+}
+
+/**
+ * What `setAsideViews` gives each account as `setAsideMinor` on `date`, and nothing else: the earmarks of the goals not
+ * archived, and what each sinking fund has saved. A promise is not dated and the total is never capped at the balance,
+ * so neither balances, borrows nor the share-out are read. Only accounts with something set aside are in it. For a
+ * joint account's net-worth summary, worked out on every send.
+ */
+export async function setAsideTotals(database: Database, ws: WorkspaceContext, date: string = isoDate()): Promise<Record<string, number>> {
+  const totals: Record<string, number> = {};
+  const add = (accountId: string, minor: number) => {
+    if (minor > 0) totals[accountId] = (totals[accountId] ?? 0) + minor;
+  };
+  const earmarks = await database.db.values<[string, number]>(sql`
+    SELECT e.account_id, e.amount_minor FROM goal_earmarks e
+    JOIN goals g ON g.id = e.goal_id AND g.workspace_id = ${ws.workspaceId}
+    JOIN accounts a ON a.id = e.account_id AND a.workspace_id = ${ws.workspaceId}
+    WHERE e.workspace_id = ${ws.workspaceId} AND g.status <> 'archived'`);
+  for (const [accountId, minor] of earmarks) add(accountId, Number(minor));
+  for (const fund of await sinkingFundViews(database, ws, date)) add(fund.accountId, fund.savedMinor);
+  return totals;
 }
 
 export async function setAsideView(database: Database, ws: WorkspaceContext, accountId: string, opts: SetAsideViewOptions = {}): Promise<AccountSetAsideRow | null> {
