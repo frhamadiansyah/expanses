@@ -1,0 +1,65 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Starting balance list</title>
+<style>
+  :root { --ink:#000; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --green:#34c759; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; }
+  h1 { font-size:20px; margin:0 0 4px; } .sub { color:#555; margin:0 0 18px; max-width:1100px; }
+  .row3 { display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }
+  .phone { width:330px; background:var(--ground); border-radius:28px; padding:14px 12px 18px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .cap { font-weight:700; margin:0 0 4px; } .note { font-size:13px; color:#555; margin:0 0 10px; min-height:52px; }
+  .hero { background:var(--surface); border-radius:14px; padding:12px 14px; margin-bottom:10px; }
+  .hero .k { font-size:12.5px; color:var(--ink3); } .hero .v { font-size:26px; font-weight:700; }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:8px; overflow:hidden; }
+  .day { display:flex; align-items:center; padding:7px 13px; border-bottom:.5px solid var(--hair); font-size:12.5px; color:var(--ink3); }
+  .day b { color:#3c3c43; margin-right:6px; } .day .bal { margin-left:auto; }
+  .r { display:flex; gap:10px; align-items:center; padding:9px 13px; } .r + .r { border-top:.5px solid var(--hair); }
+  .ic { width:30px; height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:14px; flex-shrink:0; }
+  .g { flex:1; min-width:0; } .g .a { font-size:15px; } .g .s { font-size:12.5px; color:var(--ink3); }
+  .amt { text-align:right; font-size:15px; } .plus { color:var(--green); }
+  .chg { background:#fff4e5; } .chg .bal, .chg.v { color:#b25000 !important; font-weight:600; }
+  .start { background:#f7f7fa; }
+  .key { font-size:12.5px; color:#555; margin-top:14px; } .key span { display:inline-block; width:10px; height:10px; background:#fff4e5; border:1px solid #f0c48a; border-radius:2px; margin-right:4px; }
+</style></head>
+<body>
+<h1>BCA Tahapan's own page: the list after a starting balance change, and after Adjust</h1>
+<p class="sub">Same account and same transactions, with invented figures. The starting balance was typed as Rp 12.400.000 on 1 Oct, but the real figure was Rp 12.900.000. The list's rows are the same in every case; only the balance under each day changes. Shaded = figures that changed.</p>
+<div class="row3">
+  <div class="phone">
+    <p class="cap">1 · Before</p><p class="note">Started at Rp 12.400.000 on 1 Oct. Today's balance is Rp 500.000 under what the bank shows.</p>
+    <div class="hero"><div class="k">Balance today</div><div class="v">Rp 8.230.000</div></div>
+    <div class="panel"><div class="day"><b>12 Nov</b> Wed<span class="bal">Rp 8.230.000</span></div>
+      <div class="r"><div class="ic" style="background:#ff9500">🛒</div><div class="g"><div class="a">Groceries</div><div class="s">Superindo</div></div><div class="amt">Rp 420.000</div></div></div>
+    <div class="panel"><div class="day"><b>25 Oct</b> Sat<span class="bal">Rp 8.650.000</span></div>
+      <div class="r"><div class="ic" style="background:#34c759">💼</div><div class="g"><div class="a">Salary</div><div class="s">PT Contoh</div></div><div class="amt plus">+Rp 15.000.000</div></div>
+      <div class="r"><div class="ic" style="background:#8e8e93">⇄</div><div class="g"><div class="a">Transfer</div><div class="s">→ BCA Visa · card bill</div></div><div class="amt">Rp 18.250.000</div></div></div>
+    <div class="panel"><div class="day"><b>2 Oct</b> Thu<span class="bal">Rp 11.900.000</span></div>
+      <div class="r"><div class="ic" style="background:#5856d6">⚡</div><div class="g"><div class="a">Electricity</div><div class="s">PLN token</div></div><div class="amt">Rp 500.000</div></div></div>
+    <div class="panel start"><div class="day" style="border:0"><b>1 Oct</b> Starting balance<span class="bal">Rp 12.400.000</span></div></div>
+  </div>
+  <div class="phone">
+    <p class="cap">2 · After changing the starting balance</p><p class="note">Settings → Balance → Rp 12.900.000. Every day's balance from 1 Oct is +Rp 500.000. No new row.</p>
+    <div class="hero"><div class="k">Balance today</div><div class="v" style="color:#b25000">Rp 8.730.000</div></div>
+    <div class="panel"><div class="day chg"><b>12 Nov</b> Wed<span class="bal">Rp 8.730.000</span></div>
+      <div class="r"><div class="ic" style="background:#ff9500">🛒</div><div class="g"><div class="a">Groceries</div><div class="s">Superindo</div></div><div class="amt">Rp 420.000</div></div></div>
+    <div class="panel"><div class="day chg"><b>25 Oct</b> Sat<span class="bal">Rp 9.150.000</span></div>
+      <div class="r"><div class="ic" style="background:#34c759">💼</div><div class="g"><div class="a">Salary</div><div class="s">PT Contoh</div></div><div class="amt plus">+Rp 15.000.000</div></div>
+      <div class="r"><div class="ic" style="background:#8e8e93">⇄</div><div class="g"><div class="a">Transfer</div><div class="s">→ BCA Visa · card bill</div></div><div class="amt">Rp 18.250.000</div></div></div>
+    <div class="panel"><div class="day chg"><b>2 Oct</b> Thu<span class="bal">Rp 12.400.000</span></div>
+      <div class="r"><div class="ic" style="background:#5856d6">⚡</div><div class="g"><div class="a">Electricity</div><div class="s">PLN token</div></div><div class="amt">Rp 500.000</div></div></div>
+    <div class="panel start"><div class="day chg" style="border:0"><b>1 Oct</b> Starting balance<span class="bal">Rp 12.900.000</span></div></div>
+  </div>
+  <div class="phone">
+    <p class="cap">3 · Or: Adjust instead</p><p class="note">Adjust today to Rp 8.730.000. A correction row appears on 13 Nov; every earlier balance stays as it was.</p>
+    <div class="hero"><div class="k">Balance today</div><div class="v" style="color:#b25000">Rp 8.730.000</div></div>
+    <div class="panel"><div class="day chg"><b>13 Nov</b> Thu<span class="bal">Rp 8.730.000</span></div>
+      <div class="r chg"><div class="ic" style="background:#c7c7cc">±</div><div class="g"><div class="a">Balance correction</div><div class="s">Adjusted to what the bank shows</div></div><div class="amt plus">+Rp 500.000</div></div></div>
+    <div class="panel"><div class="day"><b>12 Nov</b> Wed<span class="bal">Rp 8.230.000</span></div>
+      <div class="r"><div class="ic" style="background:#ff9500">🛒</div><div class="g"><div class="a">Groceries</div><div class="s">Superindo</div></div><div class="amt">Rp 420.000</div></div></div>
+    <div class="panel"><div class="day"><b>25 Oct</b> Sat<span class="bal">Rp 8.650.000</span></div>
+      <div class="r"><div class="ic" style="background:#34c759">💼</div><div class="g"><div class="a">Salary</div><div class="s">PT Contoh</div></div><div class="amt plus">+Rp 15.000.000</div></div>
+      <div class="r"><div class="ic" style="background:#8e8e93">⇄</div><div class="g"><div class="a">Transfer</div><div class="s">→ BCA Visa · card bill</div></div><div class="amt">Rp 18.250.000</div></div></div>
+    <div class="panel start"><div class="day" style="border:0"><b>1 Oct</b> Starting balance<span class="bal">Rp 12.400.000</span></div></div>
+  </div>
+</div>
+<p class="key"><span></span>changed figure · Cashflow (spent / income) is the same in all three: the starting balance and a correction are never spending or income.</p>
+</body></html>
