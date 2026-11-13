@@ -107,8 +107,8 @@ export function pendingPrompt(itemNames: readonly string[], others: readonly str
 
 /**
  * An item page's Share with Household row (§8.1, review round 1 finding 3): the stored setting as it is, never a
- * default in its place. One tax ID with the item still hidden (D8) is "Not yet shared", with Share; an item never
- * reviewed is "Not reviewed", with the settings to choose from.
+ * default in its place. One tax ID with the item hidden (D8) or never reviewed is "Not shared yet", with Share;
+ * separately, an item never reviewed is "Not reviewed", with the settings to choose from.
  */
 export type ShareRowState =
   | { kind: 'choose'; value: 'total' | 'hidden' | null; label: string; hiddenAllowed: boolean }
@@ -122,7 +122,7 @@ export const SETTING_LABEL: Record<'total' | 'hidden', string> = { total: 'Share
 export const JOINT_SHARED_LINE = "One tax ID: every item is in the household's tax report, so every item is shared.";
 
 export function shareRowOf(mode: FilingMode, setting: 'total' | 'hidden' | null): ShareRowState {
-  if (mode === 'joint' && setting === 'hidden') return { kind: 'not-yet-shared', label: 'Not yet shared' };
+  if (mode === 'joint' && (setting === 'hidden' || setting === null)) return { kind: 'not-yet-shared', label: 'Not shared yet' };
   if (mode === 'joint' && setting === 'total') return { kind: 'plain', label: SETTING_LABEL.total };
   const label = setting === null ? 'Not reviewed' : SETTING_LABEL[setting];
   return { kind: 'choose', value: setting, label, hiddenAllowed: mode === 'separate' };

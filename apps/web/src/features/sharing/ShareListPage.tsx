@@ -40,6 +40,7 @@ import {
   changesOf,
   completeReviewSettings,
   emptyDraft,
+  jointLineGroup,
   eventsToShare,
   isTicked,
   jointOn,
@@ -394,10 +395,10 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
               <Notice kind="warning" testId="share-list-review" title={SHARE_LIST_COPY.reviewTitle} body={SHARE_LIST_COPY.reviewBody(reviewWaits.mode, othersAll, bookName)} />
             </div>
           ) : null}
-          {list.groups.map((group, index) => (
+          {list.groups.map((group) => (
             <TickGroup
               key={group.key}
-              topLine={isNetWorthGroup(group) && list.groups.findIndex(isNetWorthGroup) === index && group.items.some((item) => item.locked === JOINT_SHARED_LINE) ? <JointSharedLine bookId={bookId} /> : null}
+              topLine={jointLineGroup(list) === group.key ? <JointSharedLine bookId={bookId} /> : null}
               group={group}
               draft={draft}
               disabled={busy}
@@ -429,13 +430,7 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
   );
 }
 
-/**
- * The sentence under a group: what a tick means for accounts, why a tick cannot be taken off where one cannot, and for
- * each event ticked to be shared, what sharing it moves (the event Share sheet's own words).
- */
-const isNetWorthGroup = (group: ShareListGroup) => group.key === 'accounts' || group.key === 'assets';
-
-/** One tax ID: why every net worth item reads Shared, said once above the first net worth group. */
+/** One tax ID: why every net worth item reads Shared, said once above the first net worth group that has a fixed item. */
 function JointSharedLine({ bookId }: { bookId: string }) {
   return (
     <p data-testid="share-list-joint-line" className="px-[4px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
@@ -447,6 +442,10 @@ function JointSharedLine({ bookId }: { bookId: string }) {
   );
 }
 
+/**
+ * The sentence under a group: what a tick means for accounts, why a tick cannot be taken off where one cannot, and for
+ * each event ticked to be shared, what sharing it moves (the event Share sheet's own words).
+ */
 function groupFooter(group: ShareListGroup, others: readonly string[], bookName: string, eventsSharing: readonly string[]): string | undefined {
   const reasons = [...new Set(group.items.map((item) => item.locked).filter((reason): reason is string => reason !== null && reason !== JOINT_SHARED_LINE))];
   const lines = [

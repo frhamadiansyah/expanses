@@ -29,6 +29,7 @@ import {
   tickedCount,
   toggle,
   toggleJoint,
+  jointLineGroup,
 } from './share-list';
 import { JOINT_SHARED_LINE } from './net-worth-state';
 
@@ -165,6 +166,17 @@ describe('a net worth review that waits is never answered behind the person’s 
     expect(row(list, 'BCA Tahapan')).toMatchObject({ shared: true, locked: JOINT_SHARED_LINE });
     expect(sharedCount(list)).toBe(1 + 1 + 1); // BCA, Hajj, Bali trip
     expect(tickedCount(list, emptyDraft(list))).toBe(3);
+  });
+
+  it('the One tax ID reason line goes above the first net worth group that has a fixed item, not just the first group', () => {
+    const both = listWith({ mode: 'joint', reviewed: true }, d8Items);
+    expect(jointLineGroup(both)).toBe('accounts');
+    const assetOnly = listWith({ mode: 'joint', reviewed: true }, [
+      { accountId: 'a-mandiri', name: 'Business Mandiri', subtype: 'bank', setting: 'hidden' as const },
+      { accountId: 'a-house', name: 'House', subtype: 'property', setting: 'total' as const },
+    ]);
+    expect(jointLineGroup(assetOnly)).toBe('assets');
+    expect(jointLineGroup(listWith({ mode: 'separate', reviewed: true }, d8Items))).toBeNull();
   });
 
   it('ticking only a goal changes the goal alone: no review, no setting', () => {

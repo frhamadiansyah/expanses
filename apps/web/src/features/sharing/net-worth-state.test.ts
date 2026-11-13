@@ -98,7 +98,7 @@ describe('setup', () => {
   });
 });
 
-describe("an item's Share with Household row (review round 1, finding 3)", () => {
+describe('Household sharing', () => {
   it('shows what is stored, never a default in its place', () => {
     expect(shareRowOf('separate', 'hidden')).toEqual({ kind: 'choose', value: 'hidden', label: 'Private', hiddenAllowed: true });
     expect(shareRowOf('separate', 'total')).toEqual({ kind: 'choose', value: 'total', label: 'Shared', hiddenAllowed: true });
@@ -106,8 +106,8 @@ describe("an item's Share with Household row (review round 1, finding 3)", () =>
   });
 
   it("one tax ID: a hidden item is not yet shared (D8), an unreviewed one is not reviewed, and Don't share is off", () => {
-    expect(shareRowOf('joint', 'hidden')).toEqual({ kind: 'not-yet-shared', label: 'Not yet shared' });
-    expect(shareRowOf('joint', null)).toEqual({ kind: 'choose', value: null, label: 'Not reviewed', hiddenAllowed: false });
+    expect(shareRowOf('joint', 'hidden')).toEqual({ kind: 'not-yet-shared', label: 'Not shared yet' });
+    expect(shareRowOf('joint', null)).toEqual({ kind: 'not-yet-shared', label: 'Not shared yet' });
     expect(shareRowOf('joint', 'total')).toEqual({ kind: 'plain', label: 'Shared' });
     expect(SETTING_LABEL).toEqual({ total: 'Shared', hidden: 'Private' });
     expect(HOUSEHOLD_SHARING).toBe('Household sharing');

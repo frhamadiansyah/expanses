@@ -876,12 +876,18 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   await walletCard(page, 'Fandri Bank').click();
   await expect(page.getByTestId('joint-row')).toHaveCount(0);
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  const householdRow = page.getByTestId('share-with-household');
+  await expect(householdRow).toContainText('Shared');
   const joint = page.getByRole('checkbox', { name: 'Joint account' });
   await expect(joint).not.toBeChecked();
   await joint.scrollIntoViewIfNeeded();
   await joint.click({ force: true });
   await expect(joint).toBeChecked();
   await shot(page, info, 'j2-switch-on');
+  // The Shared row opens Share net worth.
+  await householdRow.click();
+  await expect(page).toHaveURL(/share\/net-worth/);
+  await page.goBack();
   await page.goBack();
 
   // Dewi's Paid with lists it with the Joint tag, and she pays from it.

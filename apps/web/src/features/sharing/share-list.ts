@@ -169,6 +169,12 @@ export function shareListOf(input: ShareListInput): ShareList {
   return { groups, netWorth: nw };
 }
 
+/** The net worth group that draws the One tax ID reason line, once: the first with an item whose tick is fixed by it. */
+export function jointLineGroup(list: Pick<ShareList, 'groups'>): ShareGroupKey | null {
+  const group = list.groups.find((g) => (g.key === 'accounts' || g.key === 'assets') && g.items.some((item) => item.locked === JOINT_SHARED_LINE));
+  return group ? group.key : null;
+}
+
 /** The one tick every net worth row reads while a one-tax-ID review waits (all or none, `allOrNone`). */
 export const ALL_NET_WORTH = 'netWorth:all';
 

@@ -14,9 +14,9 @@ import { HOUSEHOLD_SHARING, SETTING_LABEL, sayNetWorthError, settingOnAdd, share
  */
 
 /**
- * An item page's "Household sharing" row: the stored setting as it is (review round 1, finding 3). One tax ID with
- * the item still hidden (D8) reads "Not yet shared" with Share; an item never reviewed reads "Not reviewed" until a
- * setting is chosen; `Private` is greyed out while the household files jointly.
+ * An item page's "Household sharing" row: the stored setting as it is (review round 1, finding 3). Under One tax ID there
+ * is never a picker: a shared item reads Shared (a link to Share net worth), one still hidden (D8) or never reviewed
+ * reads "Not shared yet" with Share. Separately, a picker of Shared / Private.
  */
 export function ShareWithHouseholdRow({ accountId, jointSwitch = false }: { accountId: string; /** The page of a money account or a credit card: the Joint switch sits under the share row, once it is shared. 'card' words it for a card. */ jointSwitch?: boolean | 'card' }) {
   const { database } = useApp();
