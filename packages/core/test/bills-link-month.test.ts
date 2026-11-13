@@ -56,8 +56,8 @@ describe('linkChoice', () => {
   });
 
   it('a yearly bill links to the occurrence nearest the purchase date', () => {
-    // A month before it comes out: paying it early.
-    expect(monthFor('2026-02-20', yearly('2026-02-20'))).toBe('2026-03');
+    // A month before its first occurrence: that first one, asked — never last year's, before the bill started.
+    expect(linkChoice('2026-02-20', yearly('2026-02-20'))).toEqual({ month: '2026-03', ask: true });
     // A few weeks after: paying it late.
     expect(monthFor('2026-04-05', yearly('2026-11-13'))).toBe('2026-03');
     // Late in the year, this year's paid: next year's is nearer.
@@ -126,5 +126,14 @@ describe('a monthly bill paid in the window after it comes out', () => {
 
   it('a monthly bill with no pay-by day keeps the purchase month and never asks', () => {
     expect(linkChoice('2026-11-03', { ...monthly('2026-11-13'), outDay: 25 })).toEqual({ month: '2026-11', ask: false });
+  });
+});
+
+describe('never an occurrence before the bill started', () => {
+  it('an every-3-months bill from August, bought on 1 July: August, asked', () => {
+    expect(linkChoice('2026-07-01', quarterly('2026-07-01'))).toEqual({ month: '2026-08', ask: true });
+  });
+  it('a yearly bill starting March 2027, bought in November 2026: March 2027, asked', () => {
+    expect(linkChoice('2026-11-13', yearly('2026-11-13', {}, '2027-03'))).toEqual({ month: '2027-03', ask: true });
   });
 });

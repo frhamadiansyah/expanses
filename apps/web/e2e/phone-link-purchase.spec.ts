@@ -236,7 +236,7 @@ test('on a phone: a receipt links its purchase to a bill in one tap, another mon
   await expect(page).toHaveURL(/\/transactions\/?(\?.*)?$/);
 });
 
-test('on a phone: a yearly bill takes a purchase in one tap, in the month it comes out, not the purchase month', async ({ page }) => {
+test('on a phone: a yearly bill not begun yet takes a purchase in the month it comes out, asked first on its month page', async ({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
   // Out about six weeks from today, so its month is never this one.
@@ -262,7 +262,12 @@ test('on a phone: a yearly bill takes a purchase in one tap, in the month it com
   await expect(bill).toContainText(outLabel);
   // The list reloaded on the way (the app restarted under it): the way back to the receipt is not known any more.
   await page.reload();
+  // Bought before the bill's first occurrence: the tap opens the month page at that occurrence rather than linking.
   await bill.click();
+  await expect(page).toHaveURL(/\/transactions\/[^/]+\/bill\/[^/]+$/);
+  await expect(page.getByTestId('link-month')).toContainText(outLabel);
+  await expect(page.getByTestId('link-refusal')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Link to bill' }).click();
 
   await expect(page).toHaveURL(/\/transactions\/[^/]+$/);
   await expect(page.getByTestId('receipt-bill')).toContainText('Linked');

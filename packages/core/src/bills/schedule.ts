@@ -203,7 +203,7 @@ export function latestLinkMonth(input: BillMonthsInput): string {
  * A yearly or every-few-months bill: the newest occurrence already out on the purchase date when it is still owed,
  * paid late — never a later one while an earlier one is open. Settled, the occurrence whose day is nearest the
  * purchase date: the next one, paid early (the later on a tie, and only when it can be linked yet, `latestLinkMonth`),
- * or the settled one, asked.
+ * or the settled one, asked. Bought before the bill started: its first occurrence, asked.
  */
 export function linkChoice(purchasedOn: string, input: BillMonthsInput): { month: string; ask: boolean } {
   const month = purchasedOn.slice(0, 7);
@@ -225,6 +225,8 @@ export function linkChoice(purchasedOn: string, input: BillMonthsInput): { month
   if (dayIn(earlier, input.outDay) > purchasedOn) earlier = previousOwedMonth(addMonths(earlier, -1), yearlyMonth, every, startsMonth);
   // Out and never paid: that one, paid late — never a later occurrence while an earlier one is open.
   if (earlier >= startsMonth && !input.settled[earlier]) return { month: earlier, ask: false };
+  // Before the bill started: its first occurrence, asked — never one before it.
+  if (earlier < startsMonth) return { month: nextOwedMonth(startsMonth, yearlyMonth, every, startsMonth), ask: true };
   const later = nextOwedMonth(addMonths(earlier, 1), yearlyMonth, every, startsMonth);
   if (later > latestLinkMonth(input)) return { month: earlier, ask: true };
   const away = (m: string) => Math.abs(daysFrom(purchasedOn, dayIn(m, input.outDay)));
