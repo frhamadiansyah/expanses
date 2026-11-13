@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { openAccount } from './accounts';
-import { fillDay, openNewAsset } from './add-asset';
+import { fillDay, openNewAsset, pastPurchase } from './add-asset';
 import { openDrawers } from './drawers';
 import { openGoalForm } from './goals';
 import { addSetAsideRow, closeSetAsideRows, goalCard, goalRow } from './set-aside';
@@ -10,6 +10,7 @@ export async function bankAndGold(page: Page) {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
   await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
+  await pastPurchase(page);
   await fillDay(page, 'Bought', '2026-03-09');
   await page.getByLabel('How much').fill('10');
   await page.getByLabel('Total cost', { exact: true }).fill('18000000');

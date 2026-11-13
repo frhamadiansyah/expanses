@@ -11,6 +11,11 @@ export async function openNewAsset(page: Page, pick: string) {
   await page.goto('/net-worth/assets');
   await page.getByRole('link', { name: 'Add asset' }).click();
   await expect(page).toHaveURL(/\/net-worth\/assets\/new$/);
+  await pickNewAsset(page, pick);
+}
+
+/** On the New asset page already: finds `pick` in the picker and opens its form. */
+export async function pickNewAsset(page: Page, pick: string) {
   await expect(page.getByRole('heading', { name: 'New asset' })).toBeVisible();
   /*
    * On a phone the search is behind the corner's own button — the kit's pill, drawn in the title's row — so the field
@@ -23,6 +28,15 @@ export async function openNewAsset(page: Page, pick: string) {
   // carries brackets is typed without them — the click still names the entry's own label, punctuation and all.
   await search.pressSequentially(pick.replace(/[^\p{L}\p{N}\s-]+/gu, ' ').replace(/\s+/g, ' ').trim());
   await page.getByRole('button', { name: pick }).click();
+}
+
+/**
+ * A holding's purchase part opens on New purchase, which records a buy made now from an account; a walk that types
+ * what was owned before picks Past purchase first, whose rows move no account.
+ */
+export async function pastPurchase(page: Page) {
+  await page.getByRole('radio', { name: 'Past purchase' }).click();
+  await expect(page.getByRole('radio', { name: 'Past purchase' })).toBeChecked();
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

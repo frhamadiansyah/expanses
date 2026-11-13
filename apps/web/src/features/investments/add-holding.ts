@@ -34,11 +34,23 @@ export interface HoldingDraft {
   charged: string;
   /** The goal this buy is for, or ''. */
   goalId: string;
+  /** Bought now on a credit card: the category it counts under for points, and its merchant code. */
+  spendCategoryId: string;
+  mcc: string;
 }
 
 export const emptyHoldingDraft = (today: string, currency: string): HoldingDraft => ({
-  brokerChoice: NO_BROKER_CHOICE, brokerName: '', brokerCurrency: currency, quantity: '', price: '', fee: '', occurredOn: today, paidFrom: OPENING, charged: '', goalId: '',
+  brokerChoice: NO_BROKER_CHOICE, brokerName: '', brokerCurrency: currency, quantity: '', price: '', fee: '', occurredOn: today, paidFrom: OPENING, charged: '', goalId: '', spendCategoryId: '', mcc: '',
 });
+
+/**
+ * What pays for a share bought now: the account picked by hand, else the broker's cash — a broker is its cash account
+ * — as Trade's Buy chooses a broker's share. A broker not opened yet, or none, has nothing to pay from yet.
+ */
+export function newPurchaseMoney(brokerChoice: string, brokers: readonly { id: string }[], picked: string): string {
+  if (picked) return picked;
+  return brokers.some((broker) => broker.id === brokerChoice) ? brokerChoice : '';
+}
 
 /** The owner's ruling: a broker is its cash account, subtype `fund` — and a pocket's parent, never the pocket. */
 export function brokerChoices(accounts: readonly AccountRow[]): AccountRow[] {
@@ -100,7 +112,7 @@ export function asHeld(picked: Picked, held: readonly SecurityRow[]): Picked {
  * What `addHolding` is handed, before `tradeRatesForSave` adds the rates — with the charged amount already on the buy
  * (`withCharged`), so the set-aside door reads what really left the account. Throws with words meant for the screen.
  */
-export function planAddHolding(picked: Picked, draft: HoldingDraft, today: string, cashCurrency: string): AddHoldingInput {
+export function planAddHolding(picked: Picked, draft: HoldingDraft, today: string, cashCurrency: string, card = false): AddHoldingInput {
   const security = securityOf(picked);
   let broker: AddHoldingInput['broker'] = null;
   if (draft.brokerChoice === NEW_BROKER) {
@@ -108,8 +120,11 @@ export function planAddHolding(picked: Picked, draft: HoldingDraft, today: strin
     broker = { name: draft.brokerName.trim(), currency: draft.brokerCurrency };
   } else if (draft.brokerChoice !== NO_BROKER_CHOICE) broker = { accountId: draft.brokerChoice };
   const what = picked.kind === 'held' ? { id: picked.security.id } : security;
-  // Nothing typed about a purchase: the holding alone, its buys recorded on it after (as Add asset adds a fund).
-  if (draft.quantity.trim() === '' && draft.price.trim() === '' && draft.fee.trim() === '') return { security: what, broker, buy: null };
+  // Past purchase with nothing typed: the holding alone, its buys recorded on it after (as Add asset adds a fund). A
+  // new purchase always records its buy, so it asks for what is missing instead of saving the holding empty.
+  const past = draft.paidFrom === OPENING;
+  if (past && draft.quantity.trim() === '' && draft.price.trim() === '' && draft.fee.trim() === '') return { security: what, broker, buy: null };
+  if (draft.paidFrom === '') throw new Error('Choose what paid for it');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.occurredOn)) throw new Error('Choose when it was bought');
   if (draft.occurredOn > today) throw new Error('A purchase cannot be dated after today');
   const unitsMicro = unitsOf(draft.quantity, security.lotSize);
@@ -119,8 +134,10 @@ export function planAddHolding(picked: Picked, draft: HoldingDraft, today: strin
   const feeMinor = draft.fee.trim() === '' ? 0 : parseMajor(draft.fee, security.currency);
   if (feeMinor < 0) throw new Error('A fee cannot be negative');
   const cashAccountId = draft.paidFrom === OPENING ? null : draft.paidFrom;
+  // What the points engine needs of a card purchase, as Trade's Buy sends it.
+  const cardFacts = card && cashAccountId ? { spendCategoryId: draft.spendCategoryId || null, mcc: draft.mcc.trim() || null } : {};
   const { accountId: _account, kind: _kind, ...buy } = withCharged(
-    { accountId: '', kind: 'buy', occurredOn: draft.occurredOn, unitsMicro, grossMinor, feeMinor, taxMinor: 0, cashAccountId, goalId: draft.goalId || null },
+    { accountId: '', kind: 'buy', occurredOn: draft.occurredOn, unitsMicro, grossMinor, feeMinor, taxMinor: 0, cashAccountId, goalId: draft.goalId || null, ...cardFacts },
     draft.charged,
     security.currency,
     cashAccountId === null ? security.currency : cashCurrency,

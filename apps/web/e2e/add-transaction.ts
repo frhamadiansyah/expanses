@@ -69,6 +69,18 @@ export async function chooseTradeMoney(form: Locator, name: string, sell = false
 }
 
 /**
+ * A trade's Investment: the row opens its own sheet, drawn as Paid with is — the holdings under their kind, searchable.
+ * `name` is the holding's own name, as the sheet lists it; `index` instead takes the tab's n-th holding.
+ */
+export async function chooseInvestment(form: Locator, pick: string | { index: number }) {
+  await form.getByRole('button', { name: /^Investment/ }).click();
+  const sheet = form.page().getByRole('dialog', { name: 'Investment' });
+  const rows = sheet.getByTestId('investment-sections').locator('section button');
+  await (typeof pick === 'string' ? sheet.getByRole('button', { name: pick, exact: true }) : rows.nth(pick.index)).click();
+  await expect(sheet).toHaveCount(0);
+}
+
+/**
  * Trade, as a person opens it now: Net worth's corner, onto the Add screen's trade rows under their Buy and Sell tabs.
  * The Add form's tabs no longer offer it. `kind` taps the Sell tab when selling.
  */
@@ -80,7 +92,7 @@ export async function openBuyOrSell(page: Page, kind: 'buy' | 'sell' = 'buy'): P
   await form.getByRole('radio', { name: kind === 'sell' ? 'Sell' : 'Buy' }).click();
   await expect(form.getByLabel('Investment')).toBeVisible();
   // The holding is chosen by hand too; a spec that names none takes the first one the tab offers.
-  await form.getByLabel('Investment').selectOption({ index: 1 });
+  await chooseInvestment(form, { index: 0 });
   return form;
 }
 
@@ -181,7 +193,7 @@ export async function addPurchase(
 ) {
   const sell = trade.mode === 'sell';
   const form = await openBuyOrSell(page, trade.mode);
-  await form.getByLabel('Investment').selectOption({ label: trade.what });
+  await chooseInvestment(form, trade.what);
   await form.getByLabel(sell ? /^Proceeds, before fees/ : /^What it cost, before fees/).fill(trade.amount);
   if (trade.lots) await form.getByLabel('Lots').fill(trade.lots);
   // Whatever this holding calls its units — Grams for gold, Shares for a stock without lots.

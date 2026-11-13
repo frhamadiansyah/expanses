@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { openNewAsset, fillDay } from './add-asset';
+import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { backFromSettings, openSettings, openValueSheet } from './accounts';
 import { openDrawers } from './drawers';
 
@@ -9,6 +9,7 @@ export async function addPriced(page: Page, pick: string, name: string, lines: [
   await page.getByLabel('Name', { exact: true }).fill(name);
   for (const [i, [on, much, cost]] of lines.entries()) {
     if (i > 0) await page.getByRole('button', { name: 'Add another purchase' }).click();
+    if (i === 0) await pastPurchase(page);
     await fillDay(page, 'Bought', on, i);
     // A bond's rows read by par value; everything else by how much.
     const bond = /bonds$/.test(pick);

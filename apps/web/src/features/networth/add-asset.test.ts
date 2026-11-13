@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { byMoneyItem, emptyDraft, emptyPurchase, needsEstimate, needsPurchases, type NewAssetDraft, planNewAsset } from './add-asset';
+import { byMoneyItem, emptyBuy, emptyDraft, emptyPurchase, needsEstimate, needsPurchases, type NewAssetDraft, planNewAsset } from './add-asset';
 
 /** A whole day, typed to the day. */
 const day = (iso: string) => ({ year: iso.slice(0, 4), month: String(Number(iso.slice(5, 7))), day: String(Number(iso.slice(8, 10))) });
@@ -7,7 +7,7 @@ const day = (iso: string) => ({ year: iso.slice(0, 4), month: String(Number(iso.
 const TODAY = '2026-09-12';
 
 const goldDraft = (overrides: Partial<NewAssetDraft> = {}): NewAssetDraft => ({
-  ...emptyDraft('gold', 'IDR', TODAY),
+  ...emptyDraft('gold', 'IDR', TODAY), when: 'past',
   name: 'Antam gold bars',
   purchases: [
     { on: day('2024-02-03'), units: '10', cost: '13.100.000' },
@@ -28,7 +28,7 @@ const houseDraft = (overrides: Partial<NewAssetDraft> = {}): NewAssetDraft => ({
 describe('the item chosen decides the profile written', () => {
   it('keeps what the eight old kinds always did', () => {
     const plan = planNewAsset(
-      { ...emptyDraft('gold', 'IDR', '2026-09-18'), name: 'Antam gold bars', purchases: [{ on: day('2024-02-03'), units: '10', cost: '13100000' }] },
+      { ...emptyDraft('gold', 'IDR', '2026-09-18'), when: 'past', name: 'Antam gold bars', purchases: [{ on: day('2024-02-03'), units: '10', cost: '13100000' }] },
       '2026-09-18',
     );
     expect(plan.profile).toMatchObject({ assetKind: 'gold', coretaxSection: 'lainnya', coretaxCode: '0701', planGroup: 'invest', unitKind: 'grams', acquiredYear: 2024 });
@@ -58,14 +58,14 @@ describe('the item chosen decides the profile written', () => {
 
   it('weighs gold jewellery in grams, or takes a value when the owner would rather type one', () => {
     const grams = planNewAsset(
-      { ...emptyDraft('gold_jewellery', 'IDR', '2026-09-18'), name: 'Kalung', purchases: [{ on: day('2025-01-01'), units: '25', cost: '35000000' }] },
+      { ...emptyDraft('gold_jewellery', 'IDR', '2026-09-18'), when: 'past', name: 'Kalung', purchases: [{ on: day('2025-01-01'), units: '25', cost: '35000000' }] },
       '2026-09-18',
     );
     expect(grams.profile).toMatchObject({ assetKind: 'gold', coretaxCode: '0702', unitKind: 'grams' });
     expect(grams.trades).toHaveLength(1);
 
     const typed = planNewAsset(
-      { ...emptyDraft('gold_jewellery', 'IDR', '2026-09-18'), name: 'Kalung', typedInstead: true, acquired: day('2025-01-01'), cost: '35000000', estimate: '40000000' },
+      { ...emptyDraft('gold_jewellery', 'IDR', '2026-09-18'), when: 'past', name: 'Kalung', typedInstead: true, acquired: day('2025-01-01'), cost: '35000000', estimate: '40000000' },
       '2026-09-18',
     );
     expect(typed.profile).toMatchObject({ assetKind: 'other', coretaxCode: '0702', coretaxSection: 'lainnya', unitKind: null });
@@ -191,7 +191,7 @@ describe('the rate an asset opens at', () => {
   it('needs a rate for the purchases, dated at the earliest one', () => {
     const plan = planNewAsset(
       {
-        ...emptyDraft('stock', 'IDR', '2026-09-21'),
+        ...emptyDraft('stock', 'IDR', '2026-09-21'), when: 'past',
         name: 'US shares',
         currency: 'USD',
         purchases: [
@@ -207,7 +207,7 @@ describe('the rate an asset opens at', () => {
 
 describe('a mutual fund, tracked by money', () => {
   const fundDraft = (purchases: { units: string; cost: string }[], estimate = '') => ({
-    ...emptyDraft('fund', 'IDR', '2026-10-19'),
+    ...emptyDraft('fund', 'IDR', '2026-10-19'), when: 'past' as const,
     name: 'Sucor Money Market',
     purchases: purchases.map((p) => ({ on: { year: '2026', month: '8', day: '1' }, ...p })),
     estimate,
@@ -231,5 +231,80 @@ describe('a mutual fund, tracked by money', () => {
 
   it('still asks shares for both units and cost', () => {
     expect(byMoneyItem('stock')).toBe(false);
+  });
+});
+
+describe('a new purchase, paid now', () => {
+  /* Invented figures: a bond bought today on a card, through a marketplace. */
+  const bondDraft = (buy: Partial<NewAssetDraft['buy']> = {}, overrides: Partial<NewAssetDraft> = {}): NewAssetDraft => {
+    const draft = emptyDraft('bond', 'IDR', TODAY);
+    return { ...draft, name: 'ORI031', ...overrides, buy: { ...draft.buy, units: '7.000.000', cost: '7.000.000', moneyId: 'bank', ...buy } };
+  };
+  const bank = { cashCurrency: 'IDR', isCard: false };
+  const card = { cashCurrency: 'IDR', isCard: true };
+
+  it('is what adding a holding starts on, dated today', () => {
+    expect(emptyDraft('bond', 'IDR', TODAY).when).toBe('new');
+    expect(emptyDraft('gold', 'IDR', TODAY).when).toBe('new');
+    expect(emptyDraft('bond', 'IDR', TODAY).buy.on).toBe(TODAY);
+    expect(emptyBuy(TODAY)).toMatchObject({ on: TODAY, units: '', cost: '', fee: '', moneyId: '' });
+  });
+
+  it('gives the buy Trade records, paid from the account chosen, and no opening positions', () => {
+    const plan = planNewAsset(bondDraft({ fee: '15.000' }), TODAY, bank);
+    expect(plan.trades).toEqual([]);
+    expect(plan.buy).toEqual({
+      kind: 'buy', occurredOn: TODAY, unitsMicro: 7_000_000_000_000, grossMinor: 7_000_000, feeMinor: 15_000, taxMinor: 0, cashAccountId: 'bank', goalId: null,
+    });
+    expect(plan.account.openingBalanceMinor).toBe(0);
+    expect(plan.acquired).toEqual({ on: TODAY, precision: 'day' });
+    expect(plan.profile).toMatchObject({ assetKind: 'bond', acquiredYear: 2026 });
+    // Nothing posts against Opening Balances, so the opening asks no rate.
+    expect(plan.rateNeededMinor).toBe(0);
+  });
+
+  it('carries the category for points and the MCC when a card pays', () => {
+    const plan = planNewAsset(bondDraft({ moneyId: 'visa', spendCategoryId: 'investments', mcc: ' 6211 ' }), TODAY, card);
+    expect(plan.buy).toMatchObject({ cashAccountId: 'visa', spendCategoryId: 'investments', mcc: '6211' });
+  });
+
+  it('drops the card facts when a bank account pays', () => {
+    const plan = planNewAsset(bondDraft({ spendCategoryId: 'investments', mcc: '6211' }), TODAY, bank);
+    expect(plan.buy).not.toHaveProperty('spendCategoryId');
+    expect(plan.buy).not.toHaveProperty('mcc');
+  });
+
+  it('asks what was charged when the paying account is in another currency, as Trade does', () => {
+    const usd = (charged: string) => planNewAsset(bondDraft({ moneyId: 'jenius', charged }, { currency: 'USD', name: 'US Treasury' }), TODAY, bank);
+    expect(() => usd('')).toThrow('Charged in IDR');
+    expect(usd('1.650.000').buy).toMatchObject({ cashMinor: 1_650_000, grossMinor: 700_000_000 });
+  });
+
+  it('never sells, and only ever records one buy', () => {
+    const plan = planNewAsset(bondDraft(), TODAY, bank);
+    expect(plan.buy!.kind).toBe('buy');
+  });
+
+  it('says what is missing, in Trade’s words', () => {
+    expect(() => planNewAsset(bondDraft({ moneyId: '' }), TODAY, bank)).toThrow('Choose what paid for it');
+    expect(() => planNewAsset(bondDraft({ cost: '' }), TODAY, bank)).toThrow('Enter what it cost, before fees');
+    expect(() => planNewAsset(bondDraft({ units: '' }), TODAY, bank)).toThrow(/how many units/);
+    expect(() => planNewAsset(bondDraft({ on: '2027-01-01' }), TODAY, bank)).toThrow(/after today/);
+  });
+
+  it('buys a fund tracked by money by amount, its units optional', () => {
+    const draft = emptyDraft('fund', 'IDR', TODAY);
+    const plan = planNewAsset({ ...draft, name: 'Money market fund', buy: { ...draft.buy, cost: '2.500.000', moneyId: 'bank' } }, TODAY, bank);
+    expect(plan.buy).toMatchObject({ unitsMicro: 0, grossMinor: 2_500_000 });
+  });
+
+  it('leaves Past purchase exactly as it was: opening positions, no buy', () => {
+    const plan = planNewAsset(goldDraft(), TODAY, bank);
+    expect(plan.buy).toBeNull();
+    expect(plan.trades).toHaveLength(2);
+  });
+
+  it('leaves the buy off anything that is not a holding', () => {
+    expect(planNewAsset(houseDraft(), TODAY, bank).buy).toBeNull();
   });
 });

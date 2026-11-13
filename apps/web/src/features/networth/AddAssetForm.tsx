@@ -1,13 +1,22 @@
-import { ASSET_FAMILIES, ASSET_ITEMS, goldBrandMatches, isoDate } from '@expanses/core';
-import { createAccount, openDebtBalance, recordTrade, recordValuation, saveAcquired, saveAssetProfile } from '@expanses/db';
+import { ASSET_FAMILIES, ASSET_ITEMS, goldBrandMatches, isoDate, tradeRateNeeds } from '@expanses/core';
+import { type OpenAssetInput, openAsset, openDebtBalance, type RecordTradeInput } from '@expanses/db';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
-import { useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { openingRateFor, ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
-import { byMoneyItem, chosenItem, emptyDraft, emptyPurchase, needsEstimate, needsPurchases, type NewAssetDraft, planNewAsset, type PurchaseDraft } from './add-asset';
+import { InsetGroup, InsetRow, PickerRow, SegmentedControl, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { tradeDoor } from '../goals/set-aside-question';
+import { useSetAside } from '../goals/SetAsideQuestion';
+import { tradeMoneyChoices } from '../transactions/buy-in-form';
+import { PaymentSheet } from '../transactions/PaymentSheet';
+import {
+  byMoneyItem, type BuyPayment, chosenItem, emptyDraft, emptyPurchase, type NewAssetDraft, type NewAssetPlan, type NewBuyDraft, needsEstimate, needsPurchases, planNewAsset,
+  type PurchaseDraft, type PurchaseWhen,
+} from './add-asset';
 import { AcquiredRow, MoneyRow } from './AssetRows';
+import { CardPointsBox } from './trade-sheet-parts';
+import { tradeRatesForSave } from './trade-money';
 import { useShareOnAdd } from '../sharing/ShareWithHousehold';
 import { SuggestRow } from '../ownables/CashAccountForm';
 
@@ -29,8 +38,20 @@ export interface FormConfirm {
   run: () => void;
 }
 
-export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void; itemId?: string; onConfirm?: (confirm: FormConfirm | null) => void }) {
+/** New purchase or Past purchase, at the top of a holding's purchase part. */
+const WHEN_SEGMENTS: readonly { key: PurchaseWhen; label: string }[] = [
+  { key: 'new', label: 'New purchase' },
+  { key: 'past', label: 'Past purchase' },
+];
+
+export function AddAssetForm({ onDone, itemId, onConfirm }: {
+  /** Saved: handed the new asset's account, so a screen may open it. */
+  onDone: (accountId: string | null) => void;
+  itemId?: string;
+  onConfirm?: (confirm: FormConfirm | null) => void;
+}) {
   const { database, ws } = useApp();
+  const accounts = useAccounts().data ?? [];
   const household = useShareOnAdd();
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
@@ -38,6 +59,9 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
   const [draft, setDraft] = useState<NewAssetDraft>(() => emptyDraft(itemId ?? 'fund', ws.baseCurrency, today));
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  // New purchase's Paid with sheet, and the day rates typed for its buy — each kept under its own currency.
+  const [paying, setPaying] = useState(false);
+  const [dayRates, setDayRates] = useState<Record<string, string>>({});
   const form = useRef<HTMLFormElement>(null);
 
   const change = (patch: Partial<NewAssetDraft>) => setDraft((current) => ({ ...current, ...patch }));
@@ -52,15 +76,43 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
   const canType = rawBehaviour.opens === 'holding' && rawBehaviour.orTyped === true;
   const buying = needsPurchases(draft.itemId, draft.typedInstead);
   const legacyCash = draft.itemId === 'cash';
+  const buyingNow = buying && draft.when === 'new';
+
+  // New purchase: what paid, as Trade's Buy offers it — the same list, cards included — and what that asks of the buy.
+  const moneyOptions = tradeMoneyChoices(accounts, 'buy', draft.buy.moneyId);
+  const paidWith = accounts.find((account) => account.id === draft.buy.moneyId);
+  const pay: BuyPayment = { cashCurrency: paidWith?.currency ?? draft.currency, isCard: paidWith?.subtype === 'credit_card' };
+  const needs = tradeRateNeeds(draft.currency, pay.cashCurrency, ws.baseCurrency);
+  /*
+   * A new purchase asks one row per day rate its buy needs — two when neither the holding nor what paid is in the base
+   * — each typed under its own currency, so a rate typed for one is never filed as another's (fix round 1). Left
+   * empty, a row's rate is looked up for the day.
+   */
+  const rateLabel = (currency: string) => (needs.dayRates.length > 1 ? `${currency} rate to ${ws.baseCurrency}` : `Rate to ${ws.baseCurrency}`);
+  /** The plan Save would send, or null while it cannot be read yet: the buy's set-aside door reads it. */
+  const planned = ((): NewAssetPlan | null => {
+    try {
+      return planNewAsset(draft, today, pay);
+    } catch {
+      return null;
+    }
+  })();
+  const buyInput: RecordTradeInput | null = planned?.buy ? { ...planned.buy, accountId: '' } : null;
+  // A buy is a set-aside door, as on Trade: one taking more than is free asks which goal paid.
+  const setAside = useSetAside(buyInput ? tradeDoor(buyInput) : null);
+  const setBuy = (patch: Partial<NewBuyDraft>) => setDraft((current) => ({ ...current, buy: { ...current.buy, ...patch } }));
 
   async function submit(event?: FormEvent) {
     event?.preventDefault();
     setError(null);
     setBusy(true);
     try {
-      const plan = planNewAsset(draft, today);
+      if (!setAside.ready) return;
+      const plan = planNewAsset(draft, today, pay);
       // One rate for the whole opening, as before: typed (parseRate, checked, stored for that day) or resolved for the day.
+      // A new purchase opens nothing against Opening Balances, so it asks none here: its buy's rates come below.
       const openingRateToBase = await openingRateFor({ database, ws, currency: plan.account.currency, openedOn: plan.rateDate, openingBalanceMinor: plan.rateNeededMinor, typed: draft.openingRate, resolveRates });
+      let opened: string | null = null;
       if (plan.person) {
         // Money owed is kept by the Lend & borrow ledger, which opens the account and its profile itself.
         const owed = await openDebtBalance(database, ws, {
@@ -73,47 +125,51 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
           openingRateToBase,
         });
         await household.save([owed.id]);
+        opened = owed.id;
       } else if (plan.profile) {
-        const account = await createAccount(database, ws, {
-          name: plan.account.name,
-          kind: 'asset',
-          subtype: plan.account.subtype as 'investment' | 'property' | 'vehicle' | 'bank',
-          currency: plan.account.currency,
-          openingBalanceMinor: plan.account.openingBalanceMinor,
-          openedOn: plan.account.openedOn,
-          openingRateToBase,
+        // The buy made now, with the rates Trade works out for it (spec §5.2) and the set-aside answer; else the past ones.
+        const trades: OpenAssetInput['trades'] = plan.buy
+          ? [
+              {
+                ...plan.buy,
+                ratesToBase: await tradeRatesForSave({
+                  database, ws, input: { ...plan.buy, accountId: '' }, holdingCurrency: plan.account.currency, cashCurrency: pay.cashCurrency,
+                  needsRate: null, manualRate: '', typedRates: dayRates, resolveRates, onMissing: () => undefined, where: rateLabel,
+                }),
+                setAside: setAside.choice,
+              },
+            ]
+          : plan.trades.map((trade) => ({
+              kind: 'buy' as const,
+              occurredOn: trade.occurredOn,
+              unitsMicro: trade.unitsMicro,
+              grossMinor: trade.grossMinor,
+              feeMinor: 0,
+              taxMinor: 0,
+              cashAccountId: null,
+              ratesToBase: openingRateToBase === undefined ? undefined : { [plan.account.currency]: openingRateToBase },
+            }));
+        // All or nothing: a buy that cannot be recorded leaves no half-made holding behind.
+        const asset = await openAsset(database, ws, {
+          account: {
+            name: plan.account.name,
+            kind: 'asset',
+            subtype: plan.account.subtype as 'investment' | 'property' | 'vehicle' | 'bank',
+            currency: plan.account.currency,
+            openingBalanceMinor: plan.account.openingBalanceMinor,
+            openedOn: plan.account.openedOn,
+            openingRateToBase,
+          },
+          profile: plan.profile,
+          acquired: plan.acquired,
+          trades,
+          valuation: plan.valuation,
         });
-        await saveAssetProfile(database, ws, {
-          accountId: account.id,
-          assetKind: plan.profile.assetKind,
-          planGroup: plan.profile.planGroup,
-          unitKind: plan.profile.unitKind,
-          lotSize: plan.profile.lotSize,
-          coretaxSection: plan.profile.coretaxSection,
-          coretaxCode: plan.profile.coretaxCode,
-          acquiredYear: plan.profile.acquiredYear,
-        });
-        if (plan.acquired) await saveAcquired(database, ws, account.id, plan.acquired);
-        for (const trade of plan.trades) {
-          await recordTrade(database, ws, {
-            accountId: account.id,
-            kind: 'buy',
-            occurredOn: trade.occurredOn,
-            unitsMicro: trade.unitsMicro,
-            grossMinor: trade.grossMinor,
-            feeMinor: 0,
-            taxMinor: 0,
-            cashAccountId: null,
-            ratesToBase: openingRateToBase === undefined ? undefined : { [plan.account.currency]: openingRateToBase },
-          });
-        }
-        if (plan.valuation) {
-          await recordValuation(database, ws, { accountId: account.id, ...plan.valuation });
-        }
-        await household.save([account.id]);
+        await household.save([asset.accountId]);
+        opened = asset.accountId;
       }
       await invalidate();
-      onDone();
+      onDone(opened);
     } catch (e) {
       setError(e);
     } finally {
@@ -127,7 +183,8 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
   const chosenBehaviour = chosenItem(draft.itemId, draft.typedInstead).behaviour;
   const byPar = chosenBehaviour.opens === 'holding' && chosenBehaviour.valuedBy === 'face';
   // Ready once it has a name and, where a year is asked, a year: the rest is optional or checked on save.
-  const ready = draft.name.trim() !== '' && (!(estimated || legacyCash) || draft.acquired.year.trim() !== '');
+  // A new purchase also waits on the set-aside question, when its buy asks one.
+  const ready = draft.name.trim() !== '' && (!(estimated || legacyCash) || draft.acquired.year.trim() !== '') && setAside.ready;
   useEffect(() => {
     // `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first.
     onConfirm?.({ disabled: busy || !ready, run: () => form.current?.requestSubmit() });
@@ -153,6 +210,20 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
         placeholder="Rate"
       />
     ) : null;
+
+  const newRateRows = buyingNow
+    ? needs.dayRates.map((currency) => (
+        <TextRow
+          key={currency}
+          label={rateLabel(currency)}
+          hint={ratePreview(dayRates[currency] ?? '', currency, ws.baseCurrency) ?? `What one ${currency} was worth that day. Left empty, it is looked up.`}
+          value={dayRates[currency] ?? ''}
+          onChange={(e) => setDayRates((typed) => ({ ...typed, [currency]: e.target.value }))}
+          inputMode="decimal"
+          placeholder="Rate"
+        />
+      ))
+    : null;
 
   /* No note under a chosen kind: how it is valued showed in the form as words like "par value × price" that only
      got in the way. Only the open picker, before a kind is chosen, says what choosing one does. */
@@ -218,6 +289,63 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
       )}
 
       {buying && (
+        /* New purchase records the buy made now, paid from an account, as Trade's Buy would; Past purchase is what was
+           owned before, which moves no account (owner, 13 Nov 2026). */
+        <div className="px-[4px] pb-[12px]">
+          <SegmentedControl
+            label="New or past purchase"
+            segments={WHEN_SEGMENTS}
+            value={draft.when}
+            onChange={(key) => change({ when: key as PurchaseWhen })}
+            className="w-full"
+          />
+        </div>
+      )}
+
+      {buyingNow && (
+        <>
+          <InsetGroup header="Purchase" footer={pay.isCard ? 'Paid with a card: the card owes it now; paying the card later is a transfer.' : undefined}>
+            <TextRow label="Date" type="date" value={draft.buy.on} max={today} onChange={(e) => setBuy({ on: e.target.value })} />
+            <TextRow
+              label={byMoney ? 'Units' : byPar ? 'Par value' : 'How much'}
+              value={draft.buy.units}
+              inputMode="decimal"
+              placeholder={byMoney ? 'Optional' : byPar ? 'Amount' : 'Quantity'}
+              suffix={item.behaviour.opens === 'holding' && item.behaviour.unitKind === 'grams' ? 'g' : undefined}
+              info={byPar ? 'Usually the same as the purchase value; it differs when bought on the secondary market.' : undefined}
+              onChange={(e) => setBuy({ units: e.target.value })}
+            />
+            {/* Before fees, as Trade asks it: the fee has a row of its own. */}
+            <MoneyRow
+              label={byMoney ? 'Amount' : byPar ? 'Purchase value' : 'Cost'}
+              value={draft.buy.cost}
+              onChange={(cost) => setBuy({ cost })}
+              currency={draft.currency}
+              base={ws.baseCurrency}
+              onCurrency={(currency) => {
+                setBuy({ charged: '' });
+                setCurrency(currency);
+              }}
+            />
+            <MoneyRow label="Fee" value={draft.buy.fee} onChange={(fee) => setBuy({ fee })} currency={draft.currency} placeholder="None" />
+            <PickerRow label="Paid with" value={paidWith?.name ?? null} placeholder="Account" onOpen={() => setPaying(true)} />
+            {needs.charged && paidWith ? (
+              <MoneyRow
+                label={`Charged in ${pay.cashCurrency}`}
+                value={draft.buy.charged}
+                onChange={(charged) => setBuy({ charged })}
+                currency={pay.cashCurrency}
+                placeholder="Amount"
+              />
+            ) : null}
+            {newRateRows}
+          </InsetGroup>
+          <CardPointsBox details={{ draft: draft.buy, change: setBuy }} accounts={accounts} show={pay.isCard} />
+          {setAside.node}
+        </>
+      )}
+
+      {buying && !buyingNow && (
         <>
           {draft.purchases.map((purchase, index) => (
             <InsetGroup
@@ -278,6 +406,19 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: { onDone: () => void
       ) : null}
 
       <ErrorBox error={error} />
+      {paying && (
+        <PaymentSheet
+          title="Paid with"
+          options={moneyOptions}
+          accounts={accounts}
+          chosenAccountId={draft.buy.moneyId}
+          // Another account starts its charged figure and its card facts over, as Trade's Paid with does.
+          onPick={(option) => {
+            setBuy({ moneyId: option.accountId, charged: '', ...(accounts.find((a) => a.id === option.accountId)?.subtype === 'credit_card' ? {} : { spendCategoryId: '', mcc: '' }) });
+          }}
+          onClose={() => setPaying(false)}
+        />
+      )}
     </form>
   );
 }

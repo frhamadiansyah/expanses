@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openSettings, walletCard } from './accounts';
-import { openNewAsset, fillDay } from './add-asset';
+import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { openAssets, openDrawers } from './drawers';
 import { forgetRates } from './pockets';
 import { openShortTrade, recordShortTrade } from './trades';
@@ -25,6 +25,7 @@ async function addBankAsset(page: Page) {
 async function addGold(page: Page) {
   await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
+  await pastPurchase(page);
   await fillDay(page, 'Bought', `${YEAR}-03-09`);
   await page.getByLabel('How much').fill('10');
   await page.getByLabel('Total cost', { exact: true }).fill('18600000');

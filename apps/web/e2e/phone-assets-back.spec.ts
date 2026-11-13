@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { fillDay, openNewAsset } from './add-asset';
+import { fillDay, openNewAsset, pastPurchase } from './add-asset';
 import { addEstimated } from './asset-page';
 import { openDrawer } from './drawers';
 
@@ -16,6 +16,7 @@ test('Back from a fund returns to Assets with the drawer open and the page where
   }
   await openNewAsset(page, 'Mutual fund');
   await page.getByLabel('Name', { exact: true }).fill('Sucor Money Market');
+  await pastPurchase(page);
   await fillDay(page, 'Bought', '2026-01-15');
   await page.getByLabel('Amount', { exact: true }).fill('1000000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();

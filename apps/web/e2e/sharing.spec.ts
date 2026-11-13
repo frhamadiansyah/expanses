@@ -4,7 +4,7 @@ import { type Browser, expect, type Locator, type Page, test, type TestInfo } fr
 import { currencyRow, setCurrency } from './currency-field';
 import BetterSqlite3 from 'better-sqlite3';
 import { openAccount, openCard, walletCard } from './accounts';
-import { fillDay, openNewAsset } from './add-asset';
+import { fillDay, openNewAsset, pastPurchase } from './add-asset';
 import { addForm, addTransaction, addTransfer, fillAmount, openAmount, saveButton } from './add-transaction';
 import { cardPage, saveCardTerms } from './card-section';
 import { openDrawers } from './drawers';
@@ -1217,6 +1217,7 @@ test('net worth sharing: one Shared list with switches, search, N of M, and a ne
   await openNewAsset(page, 'Gold bullion');
   await expect(page.getByTestId('asset-shared-switch')).toBeChecked();
   await page.getByLabel('Name', { exact: true }).fill('Shared gold');
+  await pastPurchase(page);
   await fillDay(page, 'Bought', '2024-02-03');
   await page.getByLabel('How much').fill('10');
   await page.getByLabel('Total cost', { exact: true }).fill('13100000');
@@ -1226,6 +1227,7 @@ test('net worth sharing: one Shared list with switches, search, N of M, and a ne
   await page.getByLabel('Name', { exact: true }).fill('Private gold');
   await page.getByTestId('asset-shared-switch').click({ force: true });
   await expect(page.getByTestId('asset-shared-switch')).not.toBeChecked();
+  await pastPurchase(page);
   await fillDay(page, 'Bought', '2024-02-03');
   await page.getByLabel('How much').fill('10');
   await page.getByLabel('Total cost', { exact: true }).fill('13100000');
@@ -1508,6 +1510,7 @@ test('in a joint household every row of Net worth is ringed in its owner’s col
   });
   await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Fandri gold');
+  await pastPurchase(page);
   await fillDay(page, 'Bought', '2024-02-03');
   await page.getByLabel('How much').fill('10');
   await page.getByLabel('Total cost', { exact: true }).fill('13100000');

@@ -55,9 +55,16 @@ export async function tradeRatesForSave(p: {
   cashCurrency: string;
   needsRate: string | null;
   manualRate: string;
+  /**
+   * Rates typed per currency, where a form draws one row for each day rate it needs (two when neither side is the
+   * base). Given, each currency takes only its own typed rate and `needsRate`/`manualRate` are not read: a rate typed
+   * for one currency is never filed as another's.
+   */
+  typedRates?: Readonly<Record<string, string>>;
   resolveRates: (currencies: string[], onDate: string) => Promise<{ rates: Record<string, number> }>;
   onMissing: (currency: string) => void;
-  where: string;
+  /** The row a missing rate is typed under, named for the message; per currency where each has its own row. */
+  where: string | ((currency: string) => string);
 }): Promise<Record<string, number>> {
   if (p.input.kind === 'unit_change') return {};
   const base = p.ws.baseCurrency;
@@ -77,7 +84,7 @@ export async function tradeRatesForSave(p: {
 
   const onDate = p.input.occurredOn > isoDate() ? isoDate() : p.input.occurredOn;
   for (const currency of needs.dayRates) {
-    const typed = p.needsRate === currency ? p.manualRate : '';
+    const typed = p.typedRates ? (p.typedRates[currency] ?? '') : p.needsRate === currency ? p.manualRate : '';
     try {
       // `openingBalanceMinor` only has to be non-zero here: the rate does not depend on the amount.
       const rate = await openingRateFor({ database: p.database, ws: p.ws, currency, openedOn: onDate, openingBalanceMinor: p.input.grossMinor, typed, resolveRates: p.resolveRates });
@@ -92,7 +99,7 @@ export async function tradeRatesForSave(p: {
     } catch (error) {
       if (typed.trim()) throw error; // the typed rate's own refusal: not a number, or ten times off
       p.onMissing(currency);
-      throw new Error(`No ${currency}→${base} rate for ${onDate}. Type it under “${p.where}”.`);
+      throw new Error(`No ${currency}→${base} rate for ${onDate}. Type it under “${typeof p.where === 'function' ? p.where(currency) : p.where}”.`);
     }
   }
   return ratesToBase;

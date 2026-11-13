@@ -3,10 +3,10 @@ import { type AccountRow, addHolding, type AddHoldingInput, type RecordTradeInpu
 import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
-import { useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, rateLine, PickerRow, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, rateLine, PickerRow, ReadOnlyRow, SegmentedControl, SelectRow, TextRow } from '../../ui/native';
 import { CurrencySheet } from '../currency/CurrencySheet';
 import { useHeldRates } from '../accounts/queries';
 import { tradeDoor } from '../goals/set-aside-question';
@@ -15,7 +15,11 @@ import { baseCostPreview, tradeRatesForSave } from '../networth/trade-money';
 import type { FormConfirm } from '../networth/AddAssetForm';
 import { type AcquiredParts, acquiredOn, NO_DATE } from '../networth/acquired';
 import { AcquiredRow, MoneyRow } from '../networth/AssetRows';
-import { emptyHoldingDraft, type HoldingDraft, NEW_BROKER, OPENING, type Picked, planAddHolding, securityOf, totalOf } from './add-holding';
+import { tradeMoneyChoices } from '../transactions/buy-in-form';
+import { PaymentSheet } from '../transactions/PaymentSheet';
+import { CardPointsBox } from '../networth/trade-sheet-parts';
+import type { PurchaseWhen } from '../networth/add-asset';
+import { emptyHoldingDraft, type HoldingDraft, NEW_BROKER, newPurchaseMoney, OPENING, type Picked, planAddHolding, securityOf, totalOf } from './add-holding';
 
 export function AddHoldingForm({ picked, brokers, heldAt, onConfirm, onTicker }: {
   /** The share chosen, or null before one is: every row is there from the start, and the ✓ waits for it. */
@@ -39,17 +43,34 @@ export function AddHoldingForm({ picked, brokers, heldAt, onConfirm, onTicker }:
   /* What is already owned, as Add asset adds it (spec: Add a holding is past-only): a purchase from before the app,
      recorded against Opening Balances so no bank moves, on a day picked as Add asset's Bought is — or nothing bought
      yet, its buys recorded with Buy on its page after. */
-  const [draft, setDraft] = useState<HoldingDraft>(() => ({ ...emptyHoldingDraft('', security.currency), brokerChoice: brokers[0]?.id ?? NEW_BROKER, paidFrom: OPENING }));
+  const [draft, setDraft] = useState<HoldingDraft>(() => ({ ...emptyHoldingDraft(today, security.currency), brokerChoice: brokers[0]?.id ?? NEW_BROKER, paidFrom: OPENING }));
+  /* New purchase (the default, owner 13 Nov 2026) records the buy made now, paid from the broker's cash unless another
+     account or a card is picked, as Trade's Buy does; Past purchase is what was owned before, which moves no account. */
+  const [when, setWhen] = useState<PurchaseWhen>('new');
+  const [pickedMoney, setPickedMoney] = useState('');
+  const [paying, setPaying] = useState(false);
+  const accounts = useAccounts().data ?? [];
   const [bought, setBought] = useState<AcquiredParts>(NO_DATE);
   const [needsRate, setNeedsRate] = useState<string | null>(null);
-  const [manualRate, setManualRate] = useState('');
+  // Rates typed under "Rate that day", each kept under its own currency: the row moving on to another missing
+  // currency never carries a figure typed for the last one (fix round 1).
+  const [typedRates, setTypedRates] = useState<Record<string, string>>({});
+  const manualRate = needsRate ? (typedRates[needsRate] ?? '') : '';
+  const setManualRate = (typed: string) => {
+    if (needsRate) setTypedRates((was) => ({ ...was, [needsRate]: typed }));
+  };
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [pickingCurrency, setPickingCurrency] = useState(false);
   const form = useRef<HTMLFormElement>(null);
   const change = (patch: Partial<HoldingDraft>) => setDraft((d) => ({ ...d, ...patch }));
 
-  const cashCurrency = security.currency;
+  const paidFrom = when === 'past' ? OPENING : newPurchaseMoney(draft.brokerChoice, brokers, pickedMoney);
+  const paidWith = when === 'past' ? undefined : accounts.find((account) => account.id === paidFrom);
+  const isCard = paidWith?.subtype === 'credit_card';
+  // A past purchase moves no money, so it is in the share's own currency throughout; a new one is in what paid.
+  const cashCurrency = paidWith?.currency ?? security.currency;
+  const sent: HoldingDraft = { ...draft, paidFrom };
   const total = totalOf(draft, security.lotSize, security.currency);
   const lotted = (security.lotSize ?? 1) > 1;
   const foreign = security.currency !== ws.baseCurrency;
@@ -57,7 +78,7 @@ export function AddHoldingForm({ picked, brokers, heldAt, onConfirm, onTicker }:
   /** The plan the save sends, or null while it is incomplete: the one input the preview, the door and the save read. */
   const plan = ((): AddHoldingInput | null => {
     try {
-      return picked ? planAddHolding(picked, draft, today, cashCurrency) : null;
+      return picked ? planAddHolding(picked, sent, today, cashCurrency, isCard) : null;
     } catch {
       return null;
     }
@@ -82,12 +103,12 @@ export function AddHoldingForm({ picked, brokers, heldAt, onConfirm, onTicker }:
     setBusy(true);
     try {
       if (!picked) throw new Error('Choose a ticker');
-      const planned = planAddHolding(picked, draft, today, cashCurrency);
+      const planned = planAddHolding(picked, sent, today, cashCurrency, isCard);
       const buy = planned.buy;
       const ratesToBase = buy
         ? await tradeRatesForSave({
             database, ws, input: { ...buy, accountId: '', kind: 'buy' }, holdingCurrency: security.currency, cashCurrency,
-            needsRate, manualRate, resolveRates, onMissing: setNeedsRate, where: 'Rate that day',
+            needsRate: null, manualRate: '', typedRates, resolveRates, onMissing: setNeedsRate, where: 'Rate that day',
           })
         : undefined;
       const result = await addHolding(database, ws, { ...planned, buy: buy ? { ...buy, ratesToBase, setAside: setAside.choice } : null });
@@ -132,32 +153,82 @@ export function AddHoldingForm({ picked, brokers, heldAt, onConfirm, onTicker }:
         ) : null}
       </InsetGroup>
 
-      <InsetGroup header="Past purchase" footer="Bought earlier, so no account's balance moves.">
-        <AcquiredRow
-          label="Bought"
-          value={bought}
-          onChange={(next) => {
-            setBought(next);
-            let occurredOn = '';
-            try {
-              occurredOn = acquiredOn(next, today).on;
-            } catch {
-              // No year yet: no day to buy on.
-            }
-            change({ occurredOn });
+      <div className="px-[4px] pb-[12px]">
+        <SegmentedControl
+          label="New or past purchase"
+          segments={[
+            { key: 'new', label: 'New purchase' },
+            { key: 'past', label: 'Past purchase' },
+          ]}
+          value={when}
+          onChange={(key) => {
+            setWhen(key as PurchaseWhen);
+            setNeedsRate(null);
+            // Each opens on its own day: today for a purchase made now, nothing picked yet for one made before.
+            setBought(NO_DATE);
+            change({ occurredOn: key === 'new' ? today : '', charged: '' });
           }}
+          className="w-full"
         />
-        <TextRow
-          label={lotted ? 'Lots' : 'Shares'}
-          info={lotted ? `${security.lotSize} shares a lot.` : undefined}
-          value={draft.quantity}
-          onChange={(e) => change({ quantity: e.target.value })}
-          inputMode="decimal"
-          placeholder="Quantity"
-        />
-        <MoneyRow label="Price per share" value={draft.price} onChange={(price) => change({ price })} currency={security.currency} />
-        <ReadOnlyRow label="Total" value={total === null ? null : formatMinor(total, security.currency)} />
-      </InsetGroup>
+      </div>
+
+      {when === 'new' ? (
+        <>
+          <InsetGroup header="Purchase" footer={isCard ? 'Paid with a card: the card owes it now; paying the card later is a transfer.' : undefined}>
+            <TextRow label="Date" type="date" value={draft.occurredOn} max={today} onChange={(e) => change({ occurredOn: e.target.value })} />
+            <TextRow
+              label={lotted ? 'Lots' : 'Shares'}
+              info={lotted ? `${security.lotSize} shares a lot.` : undefined}
+              value={draft.quantity}
+              onChange={(e) => change({ quantity: e.target.value })}
+              inputMode="decimal"
+              placeholder="Quantity"
+            />
+            <MoneyRow label="Price per share" value={draft.price} onChange={(price) => change({ price })} currency={security.currency} />
+            <ReadOnlyRow label="Total" value={total === null ? null : formatMinor(total, security.currency)} />
+            <MoneyRow label="Fee" value={draft.fee} onChange={(fee) => change({ fee })} currency={security.currency} placeholder="None" />
+            {/* With nothing to pay from yet — a broker not opened yet has no cash — ✓ waits on this row, so it says so. */}
+            <PickerRow
+              label="Paid with"
+              value={paidWith?.name ?? null}
+              placeholder="Account"
+              hint={paidFrom === '' ? (draft.brokerChoice === NEW_BROKER ? 'A broker not opened yet has no cash to pay from: choose what paid for it.' : 'Choose what paid for it.') : undefined}
+              onOpen={() => setPaying(true)}
+            />
+            {paidWith && cashCurrency !== security.currency ? (
+              <MoneyRow label={`Charged in ${cashCurrency}`} value={draft.charged} onChange={(charged) => change({ charged })} currency={cashCurrency} placeholder="Amount" />
+            ) : null}
+          </InsetGroup>
+          <CardPointsBox details={{ draft, change }} accounts={accounts} show={isCard} />
+        </>
+      ) : (
+        <InsetGroup header="Past purchase" footer="Bought earlier, so no account's balance moves.">
+          <AcquiredRow
+            label="Bought"
+            value={bought}
+            onChange={(next) => {
+              setBought(next);
+              let occurredOn = '';
+              try {
+                occurredOn = acquiredOn(next, today).on;
+              } catch {
+                // No year yet: no day to buy on.
+              }
+              change({ occurredOn });
+            }}
+          />
+          <TextRow
+            label={lotted ? 'Lots' : 'Shares'}
+            info={lotted ? `${security.lotSize} shares a lot.` : undefined}
+            value={draft.quantity}
+            onChange={(e) => change({ quantity: e.target.value })}
+            inputMode="decimal"
+            placeholder="Quantity"
+          />
+          <MoneyRow label="Price per share" value={draft.price} onChange={(price) => change({ price })} currency={security.currency} />
+          <ReadOnlyRow label="Total" value={total === null ? null : formatMinor(total, security.currency)} />
+        </InsetGroup>
+      )}
 
       {/* A share in another currency: the rate its cost is filed at, in the workspace's money, for the tax report. */}
       {needsRate || foreign ? (
@@ -180,6 +251,20 @@ export function AddHoldingForm({ picked, brokers, heldAt, onConfirm, onTicker }:
 
       {setAside.node}
       <ErrorBox error={error} />
+      {paying && (
+        <PaymentSheet
+          title="Paid with"
+          options={tradeMoneyChoices(accounts, 'buy', paidFrom)}
+          accounts={accounts}
+          chosenAccountId={paidFrom}
+          onPick={(option) => {
+            setPickedMoney(option.accountId);
+            setNeedsRate(null);
+            change({ charged: '' });
+          }}
+          onClose={() => setPaying(false)}
+        />
+      )}
       {pickingCurrency && <CurrencySheet value={draft.brokerCurrency} baseCurrency={ws.baseCurrency} onPick={(brokerCurrency) => change({ brokerCurrency })} onClose={() => setPickingCurrency(false)} />}
     </form>
   );

@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import BetterSqlite3 from 'better-sqlite3';
-import { openNewAsset, fillDay } from './add-asset';
+import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { addTransaction, closeDetails, shareWith, choosePayment, chooseTradeMoney, openBuyOrSell, saveButton } from './add-transaction';
 import { openDrawers } from './drawers';
 import { openAsset } from './asset-page';
@@ -84,6 +84,7 @@ test('the receipt refuses what every other screen refuses: a trade, and an openi
 
   await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
+  await pastPurchase(page);
   await fillDay(page, 'Bought', '2026-03-09');
   await page.getByLabel('How much').fill('10');
   await page.getByLabel('Total cost', { exact: true }).fill('18600000');
@@ -183,6 +184,7 @@ test('the receipt does not offer This was a purchase', async ({ page }) => {
 
   await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
+  await pastPurchase(page);
   await fillDay(page, 'Bought', '2026-03-09');
   await page.getByLabel('How much').fill('10');
   await page.getByLabel('Total cost', { exact: true }).fill('18600000');

@@ -239,7 +239,14 @@ export function useTradeDetails(o: { holdingCurrency: string; cashCurrency: stri
       setNeedsRate(currency);
       setOpen(true);
     },
+    /** The row a missing day rate is typed under, named for that currency's own rate. */
+    dayRateLabelOf: (currency: string) => (pair ? `${currency} rate that day` : 'Rate that day'),
     dayRateLabel: needsRate && pair ? `${needsRate} rate that day` : 'Rate that day',
+    /** The rate typed for the currency the row asks now — never another currency's. */
+    dayRate: needsRate ? (draft.dayRates[needsRate] ?? '') : '',
+    setDayRate: (typed: string) => {
+      if (needsRate) setDraft((was) => ({ ...was, dayRates: { ...was.dayRates, [needsRate]: typed } }));
+    },
     apply,
   };
 }
@@ -340,9 +347,9 @@ export function TradeDetails({
             {needsRate ? (
               <TextRow
                 label={details.dayRateLabel}
-                hint={ratePreview(draft.dayRate, needsRate, ws.baseCurrency) ?? `${ws.baseCurrency} per 1 ${needsRate}`}
-                value={draft.dayRate}
-                onChange={(e) => change({ dayRate: e.target.value })}
+                hint={ratePreview(details.dayRate, needsRate, ws.baseCurrency) ?? `${ws.baseCurrency} per 1 ${needsRate}`}
+                value={details.dayRate}
+                onChange={(e) => details.setDayRate(e.target.value)}
                 inputMode="decimal"
                 placeholder="Rate"
               />
@@ -371,7 +378,16 @@ export function TradeDetails({
  * What a purchase on a credit card asks beyond the account: the category it counts under for points and its MCC, in a
  * box of their own under the first. Drawn only for a buy paid by a card, and nowhere else.
  */
-export function CardPointsBox({ details, accounts, show }: { details: TradeDetailsState; accounts: readonly AccountRow[]; show: boolean }) {
+export function CardPointsBox({
+  details,
+  accounts,
+  show,
+}: {
+  /** The two facts and how to change them: the sheets' details, or Add asset's New purchase. */
+  details: { draft: { spendCategoryId: string; mcc: string }; change: (patch: { spendCategoryId?: string; mcc?: string }) => void };
+  accounts: readonly AccountRow[];
+  show: boolean;
+}) {
   if (!show) return null;
   const { draft, change } = details;
   return (
@@ -406,7 +422,7 @@ export function useTradeSave(o: {
     try {
       const ratesToBase = await tradeRatesForSave({
         database, ws, input, holdingCurrency: o.holdingCurrency, cashCurrency: o.cashCurrency ?? ws.baseCurrency,
-        needsRate: o.details.needsRate, manualRate: o.details.draft.dayRate, resolveRates, onMissing: o.details.onMissing, where: o.details.dayRateLabel,
+        needsRate: null, manualRate: '', typedRates: o.details.draft.dayRates, resolveRates, onMissing: o.details.onMissing, where: o.details.dayRateLabelOf,
       });
       // A past trade names no account: Opening Balances stands for it, as the full form's empty choice did.
       await recordTrade(database, ws, { ...input, cashAccountId: input.cashAccountId || null, ratesToBase, setAside: setAside.choice });

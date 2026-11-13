@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { fillDay } from './add-asset';
+import { fillDay, pastPurchase } from './add-asset';
 import { currencyRow, setCurrency } from './currency-field';
 
 /** The owner's preview switch (developer settings, linked from nowhere): the US list, granted on this device. */
@@ -61,6 +61,8 @@ export async function addHoldingFlow(
     await page.getByLabel('Broker name').pressSequentially(o.broker.new);
     if (o.broker.currency) await setCurrency(currencyRow(page, 'Its currency'), o.broker.currency);
   }
+  // Add a holding opens on New purchase; what this walk types was owned before, which moves no account.
+  await pastPurchase(page);
   await page.getByLabel(/^(Lots|Shares)$/).pressSequentially(o.quantity);
   await page.getByLabel(/^Price per share/).pressSequentially(o.price);
   // Add a holding is past-only: what was bought before the app, on a day picked as Add asset's Bought is.

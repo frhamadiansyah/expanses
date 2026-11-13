@@ -1,6 +1,6 @@
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
 import { openAccount } from './accounts';
-import { fillDay, openNewAsset } from './add-asset';
+import { fillDay, openNewAsset, pastPurchase } from './add-asset';
 import { openDrawers } from './drawers';
 import { editGoal, goalMenu, openGoalForm, setAssumption } from './goals';
 import { goalCard, goalRow, setAside } from './set-aside';
@@ -83,6 +83,7 @@ test('a goal shared by two phones: both fund it, each sees the other by name, a 
   await expect(hers.getByTestId('goal-shared-with')).toContainText('Shared with Bima');
   await openNewAsset(rina, 'Gold bullion');
   await rina.getByLabel('Name', { exact: true }).fill('Cash Fund');
+  await pastPurchase(rina);
   await fillDay(rina, 'Bought', '2026-03-09');
   await rina.getByLabel('How much').fill('10');
   await rina.getByLabel('Total cost', { exact: true }).fill('4000000');

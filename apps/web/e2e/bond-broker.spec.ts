@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { fillDay, openNewAsset } from './add-asset';
+import { fillDay, openNewAsset, pastPurchase } from './add-asset';
 import { openDrawers } from './drawers';
 import { addHoldingFlow } from './securities';
 
@@ -9,6 +9,7 @@ test('a government bond is held at a bank as readily as at a broker, or at a pla
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '1000000' });
   await openNewAsset(page, 'Government bonds');
   await page.getByLabel('Name', { exact: true }).fill('Retail bond');
+  await pastPurchase(page);
   await fillDay(page, 'Bought', '2026-02-10');
   await page.getByLabel('Par value', { exact: true }).fill('1000000');
   await page.getByLabel('Purchase value', { exact: true }).fill('1000000');

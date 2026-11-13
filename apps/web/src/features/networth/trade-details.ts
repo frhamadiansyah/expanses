@@ -16,14 +16,17 @@ export interface TradeDetailsDraft {
   parts: PartDraft[];
   /** The rate between the holding's currency and the money account's, one `pairRate().from` in `.to`. */
   rate: string;
-  /** A day rate the save could not find, typed under it as the full form's own "Rate that day". */
-  dayRate: string;
+  /**
+   * Day rates the save could not find, typed under "Rate that day" — each kept under its own currency, so the row
+   * moving on to another missing currency never carries the figure with it (fix round 1).
+   */
+  dayRates: Record<string, string>;
   /** A buy paid by credit card: the purchase category (so points count) and the merchant code. */
   spendCategoryId: string;
   mcc: string;
 }
 
-export const emptyTradeDetails = (): TradeDetailsDraft => ({ fee: '', tax: '', goalId: '', parts: [], rate: '', dayRate: '', spendCategoryId: '', mcc: '' });
+export const emptyTradeDetails = (): TradeDetailsDraft => ({ fee: '', tax: '', goalId: '', parts: [], rate: '', dayRates: {}, spendCategoryId: '', mcc: '' });
 
 /**
  * Which way "Rate that day" reads when the money account's currency is not the holding's: one `from` is so many

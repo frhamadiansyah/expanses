@@ -1,7 +1,7 @@
 import { type GoldPriceChoice, type PriceRow, type PriceSource, uuidv7, type ValuationBasis, type ValuationRow } from '@expanses/core';
 import { and, desc, eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
-import type { Database } from '../database';
+import type { Database, Db } from '../database';
 import { goldPriceChoices, prices, valuations } from '../schema-assets';
 import { markAccountDirtyTx } from '../sync/capture';
 import { AssetError, assertAccountInWorkspace } from './assets';
@@ -112,21 +112,28 @@ export async function recordValuation(
   ws: WorkspaceContext,
   input: { accountId: string; asOf: string; valueMinor: number; basis: ValuationBasis; note?: string | null },
 ): Promise<string> {
+  return database.transaction((tx) => recordValuationTx(tx, ws, input));
+}
+
+/** `recordValuation` inside a transaction already running: Add asset writes the first estimate with the asset itself. */
+export async function recordValuationTx(
+  tx: Db,
+  ws: WorkspaceContext,
+  input: { accountId: string; asOf: string; valueMinor: number; basis: ValuationBasis; note?: string | null },
+): Promise<string> {
   if (!Number.isSafeInteger(input.valueMinor) || input.valueMinor < 0) throw new AssetError('A value cannot be negative');
   const id = uuidv7();
-  await database.transaction(async (tx) => {
-    await assertAccountInWorkspace(tx, ws, input.accountId, 'Asset');
-    markAccountDirtyTx(tx, input.accountId); // joint net worth §9: its value changed
-    await tx.insert(valuations).values({
-      id,
-      workspaceId: ws.workspaceId,
-      accountId: input.accountId,
-      asOf: input.asOf,
-      valueMinor: input.valueMinor,
-      basis: input.basis,
-      note: input.note ?? null,
-      createdAt: new Date().toISOString(),
-    });
+  await assertAccountInWorkspace(tx, ws, input.accountId, 'Asset');
+  markAccountDirtyTx(tx, input.accountId); // joint net worth §9: its value changed
+  await tx.insert(valuations).values({
+    id,
+    workspaceId: ws.workspaceId,
+    accountId: input.accountId,
+    asOf: input.asOf,
+    valueMinor: input.valueMinor,
+    basis: input.basis,
+    note: input.note ?? null,
+    createdAt: new Date().toISOString(),
   });
   return id;
 }

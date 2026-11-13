@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { openAccount } from './accounts';
-import { fillDay, openNewAsset } from './add-asset';
+import { fillDay, openNewAsset, pastPurchase } from './add-asset';
 import { openAsset } from './asset-page';
 
 export const FUND = 'Sucorinvest Money Market Fund';
@@ -14,6 +14,7 @@ export async function fundByMoney(page: Page) {
   await openAccount(page, { subtype: 'bank', name: 'BCA', balance: '10000000' });
   await openNewAsset(page, 'Mutual fund');
   await page.getByLabel('Name', { exact: true }).fill(FUND);
+  await pastPurchase(page);
   await fillDay(page, 'Bought', '2026-01-15');
   await expect(page.getByLabel('Units', { exact: true })).toHaveAttribute('placeholder', 'Optional');
   await page.getByLabel('Amount', { exact: true }).fill('1000000');

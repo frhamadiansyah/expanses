@@ -9,7 +9,10 @@ import {
   presetFor,
   type UnitKind,
 } from '@expanses/core';
+import type { RecordTradeInput } from '@expanses/db';
 import { type AcquiredParts, acquiredOn, type DatePrecision, NO_DATE } from './acquired';
+import { draftToInput } from './trade-form';
+import { withCharged } from './trade-money';
 
 export interface PurchaseDraft {
   /** When it was bought: a year, and a month and day if known. */
@@ -20,11 +23,37 @@ export interface PurchaseDraft {
   cost: string;
 }
 
+/** A holding's purchase: one made now, paid from an account (New purchase), or ones made before (Past purchase). */
+export type PurchaseWhen = 'new' | 'past';
+
+/** New purchase: the one buy, as Trade's Buy asks it — the day, how much, what it cost, a fee, and what paid. */
+export interface NewBuyDraft {
+  /** YYYY-MM-DD; today unless changed. */
+  on: string;
+  /** Units, grams or par value, as typed; optional for a fund tracked by money. */
+  units: string;
+  /** What it cost before fees, in the holding's currency. */
+  cost: string;
+  fee: string;
+  /** The account or card that paid. */
+  moneyId: string;
+  /** A card purchase: the category it counts under for points, and its merchant code. */
+  spendCategoryId: string;
+  mcc: string;
+  /** What left the paying account in its own currency, when that is not the holding's. */
+  charged: string;
+}
+
+export const emptyBuy = (today: string): NewBuyDraft => ({ on: today, units: '', cost: '', fee: '', moneyId: '', spendCategoryId: '', mcc: '', charged: '' });
+
 export interface NewAssetDraft {
   /** An id from the catalogue — a named item, or an `else:NNNN` code out of "Something else". */
   itemId: string;
   name: string;
   currency: string;
+  /** Holdings: bought now (`buy`) or owned before (`purchases`). Ignored by everything else. */
+  when: PurchaseWhen;
+  buy: NewBuyDraft;
   /** Holdings: what the owner already has, entered as opening positions. */
   purchases: PurchaseDraft[];
   /** Property, vehicles and other assets: when it was acquired and what it cost. */
@@ -64,6 +93,11 @@ export interface NewAssetPlan {
   person: { direction: 'lent' | 'borrowed'; personName: string; coretaxCode: string; balanceMinor: number } | null;
   /** Opening positions, paid from Opening Balances so bank balances do not move. */
   trades: { occurredOn: string; unitsMicro: number; grossMinor: number }[];
+  /**
+   * New purchase: the buy to record with the holding, read by Trade's own rules (`draftToInput`, `withCharged`) — so
+   * adding it this way is the same as adding it empty and buying it from Trade. Null for Past purchase and the rest.
+   */
+  buy: Omit<RecordTradeInput, 'accountId'> | null;
   valuation: { asOf: string; valueMinor: number; basis: 'estimate' } | null;
   /**
    * What will post in the asset's own currency and so needs a rate to base: the purchases' total cost when there
@@ -119,6 +153,9 @@ export function emptyDraft(itemId: string, currency: string, today: string, type
     itemId,
     name: '',
     currency,
+    // A holding being added is most often one just bought: New purchase first (owner, 13 Nov 2026).
+    when: needsPurchases(itemId, typedInstead) ? 'new' : 'past',
+    buy: emptyBuy(today),
     purchases: needsPurchases(itemId, typedInstead) ? [emptyPurchase()] : [],
     acquired: NO_DATE,
     cost: '',
@@ -129,11 +166,47 @@ export function emptyDraft(itemId: string, currency: string, today: string, type
   };
 }
 
+/** What New purchase needs to know about what paid: its currency, and whether it is a credit card. */
+export interface BuyPayment {
+  cashCurrency: string;
+  isCard: boolean;
+}
+
+/** New purchase's buy, by Trade's rules: `draftToInput` for the figures and the card's facts, `withCharged` for another currency. */
+function planBuy(draft: NewAssetDraft, today: string, pay: BuyPayment | undefined): Omit<RecordTradeInput, 'accountId'> {
+  const { buy } = draft;
+  if (!buy.moneyId) throw new Error('Choose what paid for it');
+  const byMoney = byMoneyItem(draft.itemId, draft.typedInstead);
+  const input = draftToInput(
+    {
+      kind: 'buy',
+      // Not opened yet: the save puts the new holding's id on it.
+      accountId: 'new',
+      occurredOn: buy.on,
+      units: buy.units,
+      gross: buy.cost,
+      fee: buy.fee,
+      tax: '',
+      cashAccountId: buy.moneyId,
+      goalId: '',
+      parts: [],
+      spendCategoryId: buy.spendCategoryId,
+      mcc: buy.mcc,
+    },
+    draft.currency,
+    today,
+    byMoney,
+    pay?.isCard ?? false,
+  );
+  const { accountId: _new, ...rest } = withCharged(input, buy.charged, draft.currency, pay?.cashCurrency ?? draft.currency);
+  return rest;
+}
+
 /**
- * Turns what the owner typed into the account, profile, opening positions and first estimate to write.
- * Throws with a message meant for the screen.
+ * Turns what the owner typed into the account, profile, opening positions (or the buy made now) and first estimate to
+ * write. `pay` is what paid for a new purchase. Throws with a message meant for the screen.
  */
-export function planNewAsset(draft: NewAssetDraft, today: string): NewAssetPlan {
+export function planNewAsset(draft: NewAssetDraft, today: string, pay?: BuyPayment): NewAssetPlan {
   const item = chosenItem(draft.itemId, draft.typedInstead);
   const { behaviour } = item;
   const holding = behaviour.opens === 'holding' ? behaviour : null;
@@ -144,8 +217,12 @@ export function planNewAsset(draft: NewAssetDraft, today: string): NewAssetPlan 
   let openingBalanceMinor = 0;
   let openedOn = today;
   let acquired: NewAssetPlan['acquired'] = null;
+  let buy: NewAssetPlan['buy'] = null;
 
-  if (needsPurchases(draft.itemId, draft.typedInstead)) {
+  if (needsPurchases(draft.itemId, draft.typedInstead) && draft.when === 'new') {
+    buy = planBuy(draft, today, pay);
+    acquired = { on: buy.occurredOn, precision: 'day' };
+  } else if (needsPurchases(draft.itemId, draft.typedInstead)) {
     for (const purchase of draft.purchases) {
       const hasUnits = purchase.units.trim() !== '';
       const hasCost = purchase.cost.trim() !== '';
@@ -203,6 +280,7 @@ export function planNewAsset(draft: NewAssetDraft, today: string): NewAssetPlan 
     acquired: holding ? acquired : null,
     person: behaviour.opens === 'person' ? { direction: behaviour.direction, personName, coretaxCode: item.code, balanceMinor: openingBalanceMinor } : null,
     trades,
+    buy,
     valuation,
     rateNeededMinor: trades.length ? trades.reduce((sum, trade) => sum + trade.grossMinor, 0) : openingBalanceMinor,
     rateDate: trades.length ? trades.reduce((earliest, trade) => (trade.occurredOn < earliest ? trade.occurredOn : earliest), trades[0]!.occurredOn) : openedOn,

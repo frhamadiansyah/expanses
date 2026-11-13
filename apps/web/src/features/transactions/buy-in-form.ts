@@ -1,6 +1,9 @@
-import { parseMajor, parseUnits, unitsFromLots } from '@expanses/core';
+import { type AssetKind, parseMajor, parseUnits, type PaymentOption, unitsFromLots } from '@expanses/core';
 import type { AccountRow, AssetProfileRow, AssetValueRow, RecordTradeInput } from '@expanses/db';
+import { canPayWith } from '../../lib/account-types';
+import { moneyHolders } from '../../lib/queries';
 import { withCharged } from '../networth/trade-money';
+import { paymentOptions, withoutPlaceholders } from './quick-row';
 
 export interface BuyChoice {
   /** "buy:<accountId>" or "sell:<accountId>", the value the picker carries. */
@@ -11,6 +14,10 @@ export interface BuyChoice {
   /** 100 for an IDX stock, 1 for a US stock, null when the holding has no lots. */
   lotSize: number | null;
   unitLabel: string;
+  /** The holding's kind, which heading the Investment sheet lists it under; null for one with no profile. */
+  kind: AssetKind | null;
+  /** Where it is held (a bond's or a fund's Held at), when its name does not already say it. */
+  heldAt: string | null;
 }
 
 const UNIT_LABELS: Record<string, string> = { units: 'Units', shares: 'Shares', grams: 'Grams', face: 'Par value' };
@@ -20,6 +27,7 @@ export function buyChoices(values: AssetValueRow[], profiles: AssetProfileRow[])
   const holdings = values.filter((value) => value.mode === 'market');
   const choice = (value: AssetValueRow, mode: 'buy' | 'sell'): BuyChoice => {
     const profile = profiles.find((row) => row.accountId === value.accountId);
+    const inst = profile?.coretaxFields.inst?.trim() ?? '';
     return {
       value: `${mode}:${value.accountId}`,
       // The holding's own name: the tab already says Buy or Sell, so the list does not say it again.
@@ -28,12 +36,61 @@ export function buyChoices(values: AssetValueRow[], profiles: AssetProfileRow[])
       mode,
       lotSize: profile?.lotSize ?? null,
       unitLabel: UNIT_LABELS[profile?.unitKind ?? 'units'] ?? 'Units',
+      kind: profile?.assetKind ?? null,
+      // "RDPU · Bibit" already says where it is: the place is never said twice.
+      heldAt: inst && !value.name.toLowerCase().includes(inst.toLowerCase()) ? inst : null,
     };
   };
   return {
     buys: holdings.map((value) => choice(value, 'buy')),
     sells: holdings.filter((value) => (value.unitsMicro ?? 0) > 0).map((value) => choice(value, 'sell')),
   };
+}
+
+/** The Investment sheet's headings, in the order they are listed: anything else goes last, under Other. */
+const KIND_SECTIONS: readonly { key: string; title: string; kinds: readonly (AssetKind | null)[] }[] = [
+  { key: 'bond', title: 'Bonds', kinds: ['bond'] },
+  { key: 'fund', title: 'Funds', kinds: ['fund'] },
+  { key: 'stock', title: 'Stocks', kinds: ['stock'] },
+  { key: 'gold', title: 'Gold', kinds: ['gold'] },
+];
+
+export interface InvestmentSection {
+  key: string;
+  title: string;
+  rows: BuyChoice[];
+}
+
+/**
+ * The Investment sheet's list: the tab's holdings under their kind's heading, each kind in the order the holdings
+ * came, and a search that looks at the name and where it is held. A heading with nothing under it is left out.
+ */
+export function investmentSections(choices: readonly BuyChoice[], typed: string): InvestmentSection[] {
+  const wanted = typed.trim().toLowerCase();
+  const matches = (choice: BuyChoice) => !wanted || [choice.label, choice.heldAt ?? ''].some((text) => text.toLowerCase().includes(wanted));
+  const found = choices.filter(matches);
+  const named = new Set(KIND_SECTIONS.flatMap((section) => section.kinds));
+  const sections: InvestmentSection[] = KIND_SECTIONS.map((section) => ({
+    key: section.key,
+    title: section.title,
+    rows: found.filter((choice) => section.kinds.includes(choice.kind)),
+  }));
+  sections.push({ key: 'other', title: 'Other', rows: found.filter((choice) => !named.has(choice.kind)) });
+  return sections.filter((section) => section.rows.length > 0);
+}
+
+/**
+ * What a trade's money can be — Trade's Paid with on a buy, Proceeds into on a sell — the one list Trade and Add
+ * asset's New purchase both offer: what can pay (`canPayWith`), cards included, on a buy; money held, never a card,
+ * on a sell. An account this device does not list (`listed`, a placeholder of household sharing) is left out unless
+ * it is the one the trade already names.
+ */
+export function tradeMoneyChoices(accounts: readonly AccountRow[], mode: 'buy' | 'sell', current: string, listed?: ReadonlySet<string>): PaymentOption[] {
+  const options = paymentOptions(
+    moneyHolders(accounts).filter((a) => canPayWith(a, current) && (mode === 'buy' || a.kind === 'asset' || a.id === current)),
+    [],
+  );
+  return listed ? withoutPlaceholders(options, listed, current) : options;
 }
 
 export interface PurchaseDraft {

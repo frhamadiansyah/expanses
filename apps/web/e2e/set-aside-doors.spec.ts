@@ -3,7 +3,7 @@ import { openLoan, personRow } from './people';
 import { openAccount, openCard, walletCard } from './accounts';
 import { cardPage, saveCardTerms } from './card-section';
 import { addForm, choosePayment, saveButton } from './add-transaction';
-import { openNewAsset, fillDay } from './add-asset';
+import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { openDrawers } from './drawers';
 import { addBill, addMoneyAccount, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, typeAmount } from './set-aside';
 import { openShortTrade, openTradeDetails, pickTradeCash, recordShortTrade, shortTrade } from './trades';
@@ -326,6 +326,7 @@ test('paying Budi back from Jenius asks; the loan came into another account', as
 async function addGold(page: Page) {
   await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).pressSequentially('Antam gold bars');
+  await pastPurchase(page);
   await fillDay(page, 'Bought', '2026-03-09');
   await page.getByLabel('How much').pressSequentially('10');
   await page.getByLabel('Total cost', { exact: true }).pressSequentially('18600000');

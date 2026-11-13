@@ -107,7 +107,7 @@ export function sharedPaymentSections(
 }
 
 /** The label with the typed words marked, as search in Mail marks them. */
-function Marked({ text, typed }: { text: string; typed: string }) {
+export function Marked({ text, typed }: { text: string; typed: string }) {
   const wanted = typed.trim().toLowerCase();
   const at = wanted ? text.toLowerCase().indexOf(wanted) : -1;
   if (at < 0) return <>{text}</>;
@@ -125,7 +125,8 @@ const TABS: readonly Segment[] = [
   { key: 'cards', label: 'Credit cards' },
 ];
 
-const LIST = 'overflow-hidden rounded-[11px] bg-[var(--ph-surface)] [&>li+li>button>.ph-row-body]:border-t-[0.5px] [&>li+li>button>.ph-row-body]:border-[var(--ph-hair)]';
+/** One box of rows in the sheet's look, a hairline between rows; shared with the Investment sheet. */
+export const LIST = 'overflow-hidden rounded-[11px] bg-[var(--ph-surface)] [&>li+li>button>.ph-row-body]:border-t-[0.5px] [&>li+li>button>.ph-row-body]:border-[var(--ph-hair)]';
 
 export function PaymentSheet({
   title,

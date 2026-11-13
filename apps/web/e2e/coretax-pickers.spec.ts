@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { fillDay } from './add-asset';
+import { fillDay, pastPurchase } from './add-asset';
 import { expectWalletFigure, openSettings, walletCard } from './accounts';
 import { openDeposit } from './deposit-maturity';
 import { openAssets, openDrawers } from './drawers';
@@ -105,6 +105,7 @@ test('a family, then the thing: an apartment and gold jewellery file under their
   await page.getByPlaceholder('Search everything that can be owned').fill('gold jewellery');
   await page.getByRole('button', { name: 'Gold jewellery' }).click();
   await page.getByLabel('Name', { exact: true }).fill('Kalung emas');
+  await pastPurchase(page);
   await fillDay(page, 'Bought', '2025-01-01');
   await page.getByLabel('How much').fill('25');
   await page.getByLabel('Total cost', { exact: true }).fill('35000000');
