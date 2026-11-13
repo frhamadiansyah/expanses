@@ -19,7 +19,7 @@
   .alert { background:rgba(255,255,255,.97); border-radius:14px; margin:18px 8px 0; text-align:center; overflow:hidden; box-shadow:0 4px 20px rgba(0,0,0,.2); }
   .alert .t { font-weight:600; padding:14px 12px 4px; } .alert .m { font-size:13px; padding:0 12px 12px; color:#333; line-height:1.35; }
   .alert .b { border-top:.5px solid var(--hair); padding:10px; font-size:16px; }
-</style><style>.r > span:first-child { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .hd { font-size:12.5px; color:var(--ink3); text-transform:uppercase; margin:8px 14px 5px; } .green { color:var(--green); } .strike { background:#fde8e8; } .wheel { display:flex; justify-content:center; gap:30px; background:var(--surface); border-radius:12px; padding:8px 0; margin-top:6px; font-size:17px; color:#bbb; text-align:center; line-height:1.9; } .wheel b { color:#000; font-weight:500; display:block; }</style></head><body>
+</style><style>.r > span:first-child { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .hd { font-size:12.5px; color:var(--ink3); text-transform:uppercase; margin:8px 14px 5px; } .green { color:var(--green); } .strike { background:#fde8e8; } .wheel { display:flex; justify-content:center; gap:30px; background:var(--surface); border-radius:12px; padding:8px 0; margin-top:6px; font-size:17px; color:#bbb; text-align:center; line-height:1.9; } .wheel b { color:#000; font-weight:500; display:block; }</style><style>.panel { background:var(--surface); border-radius:12px; overflow:hidden; margin-bottom:8px; } .day { display:flex; padding:7px 13px; border-bottom:.5px solid var(--hair); font-size:12.5px; color:var(--ink3); } .day b { color:#3c3c43; margin-right:6px; } .day .t { margin-left:auto; } .tr { display:flex; gap:10px; align-items:center; padding:9px 13px; } .ic { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-size:15px; flex-shrink:0; position:relative; } .badge { position:absolute; right:-4px; bottom:-4px; width:15px; height:15px; border-radius:50%; font-size:9px; display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 2px #fff; color:#fff; background:#007aff; } .g { flex:1; min-width:0; } .g .a { font-size:15px; } .g .s { font-size:12.5px; color:var(--ink3); } .amt { text-align:right; font-size:15px; } .amt .u { display:block; font-size:12.5px; color:var(--ink3); } .plus { color:var(--green); } .greyed { color:var(--ink3); } .empty { padding:14px; text-align:center; color:var(--ink3); font-size:13px; } .sum { display:flex; justify-content:space-between; font-size:13px; padding:8px 13px; color:#3c3c43; background:#fafafa; border-top:.5px solid var(--hair); }</style></head><body>
 <h1>Card annual fee: everything in one place (final)</h1>
 <p class="sub">This replaces the two earlier fee mockups. Invented figures. Orange edge = changed, pink = removed.</p>
 <h2>1 · Annual fee group in card Settings</h2>
@@ -87,6 +87,24 @@
     <div class="grp new"><div class="r"><span>Saved as</span><span class="v">Refunded to the card</span></div><div class="r"><span>Refund</span><span>Rp 1.200.000</span></div><div class="r"><span>Came back on</span><span class="v">13 Nov 2026</span></div><div class="r"><span>Came back to</span><span class="v">BCA Visa</span></div></div>
     <div class="grp new" style="margin-top:8px"><div class="r"><span class="del">Reset</span></div></div>
     <div class="alert"><div class="t">Reset the 2026 fee?</div><div class="m">The Rp 1.200.000 refund comes off the card, and the fee reads as charged again.</div><div class="b del" style="font-weight:600">Reset</div><div class="b link">Cancel</div></div>
+  </div>
+</div>
+<h2>4 · What the card's list and Cashflow show</h2>
+<p class="sub">Card BCA Visa · 4821, fee Rp 1.200.000 charged 15 Oct. Three cases.</p>
+<div class="wrap">
+  <div class="phone"><p class="cap">A · Refunded to the card, charge in the app</p><p class="note">Two rows: the charge in Oct, the refund in Nov (green, return arrow). Oct spending includes the fee; Nov spending goes down by it. The card owes nothing for the fee.</p>
+    <div class="panel"><div class="day"><b>13 Nov</b> Thu</div><div class="tr"><div class="ic" style="background:#8e8e93">🎫<span class="badge">↩</span></div><div class="g"><div class="a">Membership fee</div><div class="s">Annual fee waived · 4821</div></div><div class="amt plus">+Rp 1.200.000</div></div></div>
+    <div class="panel"><div class="day"><b>15 Oct</b> Wed</div><div class="tr"><div class="ic" style="background:#8e8e93">🎫</div><div class="g"><div class="a">Membership fee</div><div class="s">Annual fee · 4821</div></div><div class="amt ">Rp 1.200.000</div></div></div>
+  </div>
+  <div class="phone"><p class="cap">B · Refunded to the card, charge NOT in the app</p><p class="note">Your October case. One row: the refund in Nov. The card goes into credit Rp 1.200.000.</p>
+    <div class="panel"><div class="day"><b>13 Nov</b> Thu</div><div class="tr"><div class="ic" style="background:#8e8e93">🎫<span class="badge">↩</span></div><div class="g"><div class="a">Membership fee</div><div class="s">Annual fee refund · 4821</div></div><div class="amt plus">+Rp 1.200.000</div></div></div>
+    <div class="empty">No October row: the charge was before the app.</div>
+    <div class="sum"><span>Nov Membership fee</span><span>−Rp 1.200.000</span></div>
+    <p class="note" style="margin-top:8px;min-height:0"><b>Choice:</b> as is, November's spending drops by Rp 1.200.000 for a fee that was never counted. Proposal: this refund is left out of reports (⊘), so only the card balance changes:</p>
+    <div class="panel"><div class="day"><b>13 Nov</b> Thu</div><div class="tr"><div class="ic" style="background:#8e8e93">🎫<span class="badge">↩</span></div><div class="g"><div class="a">Membership fee</div><div class="s">Annual fee refund · 4821</div></div><div class="amt greyed">Rp 0<span class="u">⊘ Rp 1.200.000</span></div></div></div>
+  </div>
+  <div class="phone"><p class="cap">C · Never charged</p><p class="note">Nothing is added to any list. Only Settings reads "This year's fee · Waived". Card balance unchanged.</p>
+    <div class="panel"><div class="day"><b>13 Nov</b> Thu</div><div class="empty">No fee rows</div></div>
   </div>
 </div>
 </body></html>
