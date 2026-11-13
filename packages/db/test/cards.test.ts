@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { accountNumberLast4s, addCard, archiveCard, cardsSchema, createAccount, createCardAccount, listCards, listIssuers, listWalletLast4, saveCardIdentity, updateCard, setAccountNumberLast4, setWalletLast4 } from '../src/index';
+import { accountNumberLast4s, addCard, archiveAccount, archiveCard, cardsSchema, createAccount, createCardAccount, getAssetProfile, listCards, listIssuers, listWalletLast4, openCashAccount, saveAssetProfile, saveCardIdentity, updateCard, setAccountNumberLast4, setWalletLast4 } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
 let current: TestDb | undefined;
@@ -228,6 +228,44 @@ describe('a bank account’s number, by its last four digits (0080)', () => {
     await expect(setAccountNumberLast4(database, ws, wallet.id, '4321')).rejects.toThrow(/bank or savings/);
     await setAccountNumberLast4(database, ws, bank.id, '  ');
     expect(await accountNumberLast4s(database, ws)).toEqual({});
+  });
+});
+
+describe('a fund account’s number, read off its tax report row', () => {
+  /** A broker's cash account whose number was typed where its Settings asks for it: the tax report's Account number. */
+  async function fundNumbered(number: string) {
+    current = await setupDb();
+    const { database, ws } = current;
+    const fund = await openCashAccount(database, ws, { item: 'fund', name: 'Sekuritas Contoh', currency: 'IDR', bank: 'Bank Contoh' });
+    const profile = (await getAssetProfile(database, ws, fund.id))!;
+    await saveAssetProfile(database, ws, { ...profile, coretaxFields: { ...profile.coretaxFields, acct: number } });
+    return { database, ws, fund };
+  }
+
+  it('shows the last four digits of the number, as a bank account’s own are shown', async () => {
+    const { database, ws, fund } = await fundNumbered('0072-1938-5046');
+    expect(await accountNumberLast4s(database, ws)).toEqual({ [fund.id]: '5046' });
+  });
+
+  it('shows nothing for a number shorter than four digits, or none, or an account put away', async () => {
+    const short = await fundNumbered('083');
+    expect(await accountNumberLast4s(short.database, short.ws)).toEqual({});
+    current?.executor.close();
+
+    const kept = await fundNumbered('7781 2290');
+    await archiveAccount(kept.database, kept.ws, kept.fund.id);
+    expect(await accountNumberLast4s(kept.database, kept.ws)).toEqual({});
+  });
+
+  it('never reads a bank account’s tax report number over the digits kept on the account itself', async () => {
+    current = await setupDb();
+    const { database, ws } = current;
+    const bank = await openCashAccount(database, ws, { item: 'bank', name: 'Bank Contoh', currency: 'IDR' });
+    await setAccountNumberLast4(database, ws, bank.id, '3310');
+    const profile = (await getAssetProfile(database, ws, bank.id))!;
+    // A whole number that ends otherwise: the account's own digits stand.
+    await saveAssetProfile(database, ws, { ...profile, coretaxFields: { acct: '5512 8870' } });
+    expect(await accountNumberLast4s(database, ws)).toEqual({ [bank.id]: '3310' });
   });
 });
 

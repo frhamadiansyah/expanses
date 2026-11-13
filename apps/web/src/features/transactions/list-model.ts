@@ -231,7 +231,7 @@ export function buildRows(
   cards: readonly CardRow[],
   /**
    * The digits an account shows when no card paid, by account: a digital wallet's phone number (`listWalletLast4`),
-   * a bank account's own number (`accountNumberLast4s`). Never a card's.
+   * a bank or fund account's number (`accountNumberLast4s`). Never a card's.
    */
   walletLast4: Readonly<Record<string, string>> = {},
   /**
