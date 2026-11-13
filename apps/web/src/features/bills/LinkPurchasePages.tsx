@@ -1,4 +1,4 @@
-import { formatMinor, isoDate, monthName } from '@expanses/core';
+import { dayMonth, formatMinor, isoDate, monthName } from '@expanses/core';
 import { billLinkMonth, billLinkRefusal, eventPostingOf, linkPurchaseToBill, listTransactions, ownerScope, RecurringError, relinkPurchaseToBill, unlinkPurchaseFromBill } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useRouter, useSearch } from '@tanstack/react-router';
@@ -229,9 +229,10 @@ export function LinkToBillPage({ transactionId }: { transactionId: string }) {
     setError(null);
     setBusy(true);
     try {
-      const month = await billLinkMonth(database, ws, { templateId: billId, purchasedOn: tx.occurredOn, today });
-      if (await billLinkRefusal(database, ws, { templateId: billId, billMonth: month, today })) {
-        // The month page reads the same refusal and says it under the month, with the wheel to choose another.
+      const { month, ask } = await billLinkMonth(database, ws, { templateId: billId, purchasedOn: tx.occurredOn, today });
+      if (ask || (await billLinkRefusal(database, ws, { templateId: billId, billMonth: month, today }))) {
+        // The month page reads the same refusal, or says when the month comes out, under the month, with the wheel to
+        // choose another.
         openMonths(billId);
         return;
       }
@@ -268,7 +269,7 @@ export function LinkToBillPage({ transactionId }: { transactionId: string }) {
   const row = (bill: (typeof bills)[number]) => {
     const payer = accounts.find((a) => a.id === bill.moneyAccountId);
     const linked = current?.templateId === bill.id;
-    const month = linked ? current.billMonth : (linkMonths?.[bill.id] ?? null);
+    const month = linked ? current.billMonth : (linkMonths?.[bill.id]?.month ?? null);
     return (
       <InsetRow
         key={bill.id}
@@ -366,12 +367,15 @@ export function LinkBillMonthPage({ transactionId, billId }: { transactionId: st
   // Not linked to this bill yet: the month the bill list links to on a tap — the purchase's own for a monthly bill, the
   // nearest occurrence for a yearly or every-few-months one (a month it comes out in, so not refused for that).
   const startQuery = useBillLinkMonths([billId], tx?.occurredOn ?? null, today);
-  const start = startQuery.data?.[billId] ?? null;
+  const startChoice = startQuery.data?.[billId] ?? null;
+  const start = startChoice?.month ?? null;
   const month = chosen ?? (current?.templateId === billId ? current.billMonth : null) ?? start ?? tx?.occurredOn.slice(0, 7) ?? today.slice(0, 7);
   // The month it already settles: ✓ changes nothing, and the month's "already settled" is this purchase itself.
   const unchanged = current?.templateId === billId && current.billMonth === month;
   const refusal = useBillLinkRefusal(billId, month, today);
   const refused = unchanged ? null : (refusal.data ?? null);
+  // Started at a month not out yet on the purchase date (a bill paid in the window after it comes out): said first.
+  const notOutYet = chosen === null && current?.templateId !== billId && startChoice?.ask ? startChoice.opensOn : null;
 
   async function link() {
     setError(null);
@@ -414,6 +418,11 @@ export function LinkBillMonthPage({ transactionId, billId }: { transactionId: st
       {refused && (
         <p role="alert" data-testid="link-refusal" className="px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
           {refusalText(refused.code, month, refused.message)}
+        </p>
+      )}
+      {!refused && notOutYet && (
+        <p data-testid="link-not-out" className="px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
+          {`${monthWithYear(month)} is not out until ${dayMonth(notOutYet)}`}
         </p>
       )}
       {picking && (

@@ -308,10 +308,10 @@ it('a yearly bill takes a purchase in the occurrence nearest it, and its next on
   expect(await billOfPurchase(h.database, h.ws, early)).toMatchObject({ templateId: yearly, billMonth: '2027-03' });
 
   // The month a purchase starts at: the occurrence nearest its date, not its own month (which the bill does not come out in).
-  expect(await billLinkMonth(h.database, h.ws, { templateId: yearly, purchasedOn: '2026-04-02', today: TODAY })).toBe('2026-03');
-  expect(await billLinkMonth(h.database, h.ws, { templateId: yearly, purchasedOn: '2026-12-01', today: TODAY })).toBe('2027-03');
+  expect((await billLinkMonth(h.database, h.ws, { templateId: yearly, purchasedOn: '2026-04-02', today: TODAY })).month).toBe('2026-03');
+  expect((await billLinkMonth(h.database, h.ws, { templateId: yearly, purchasedOn: '2026-12-01', today: TODAY })).month).toBe('2027-03');
   // A monthly bill starts at the purchase's own month, as it always has.
-  expect(await billLinkMonth(h.database, h.ws, { templateId: h.bill, purchasedOn: '2026-08-30', today: TODAY })).toBe('2026-08');
+  expect((await billLinkMonth(h.database, h.ws, { templateId: h.bill, purchasedOn: '2026-08-30', today: TODAY })).month).toBe('2026-08');
 });
 
 it('an every-few-months bill takes the occurrence nearest the purchase, and its next one early', async () => {
@@ -322,12 +322,29 @@ it('an every-few-months bill takes the occurrence nearest the purchase, and its 
     name: 'Water filter service', categoryAccountId: water, moneyAccountId: h.bca.id, amountMinor: 275_000, dayOfMonth: 20, repeat: 'months', repeatMonth: 8, repeatEvery: 3, startsMonth: '2026-08',
   });
   const NOV = '2026-11-24';
-  expect(await billLinkMonth(h.database, h.ws, { templateId: quarterly, purchasedOn: '2026-10-01', today: NOV })).toBe('2026-08');
-  expect(await billLinkMonth(h.database, h.ws, { templateId: quarterly, purchasedOn: '2026-10-12', today: NOV })).toBe('2026-11');
+  expect((await billLinkMonth(h.database, h.ws, { templateId: quarterly, purchasedOn: '2026-10-01', today: NOV })).month).toBe('2026-08');
+  expect((await billLinkMonth(h.database, h.ws, { templateId: quarterly, purchasedOn: '2026-10-12', today: NOV })).month).toBe('2026-11');
   await recordBillPayments(h.database, h.ws, { paidOn: '2026-11-20', payments: [{ templateId: quarterly, billMonth: '2026-11', amountMinor: 275_000 }] });
   expect(await billLinkRefusal(h.database, h.ws, { templateId: quarterly, billMonth: '2027-02', today: NOV })).toBeNull();
   expect((await billLinkRefusal(h.database, h.ws, { templateId: quarterly, billMonth: '2027-05', today: NOV }))?.code).toBe('MONTH_AHEAD');
   expect((await billLinkRefusal(h.database, h.ws, { templateId: quarterly, billMonth: '2026-12', today: NOV }))?.code).toBe('NOT_OWED');
+});
+
+it('a monthly bill out on the 25th, paid by the 5th, takes a payment in the month whose window holds it', async () => {
+  const h = await setup();
+  const water = h.category('utilities.water_sanitation');
+  const later = await saveExpenseTemplate(h.database, h.ws, {
+    name: 'Apartment service', categoryAccountId: water, moneyAccountId: h.bca.id, amountMinor: 640_000, dayOfMonth: 25, payByDay: 5, startsMonth: '2026-09',
+  });
+  const at = (purchasedOn: string, today = '2026-11-13') => billLinkMonth(h.database, h.ws, { templateId: later, purchasedOn, today });
+  expect(await at('2026-10-27')).toMatchObject({ month: '2026-10', ask: false });
+  expect(await at('2026-11-03')).toMatchObject({ month: '2026-10', ask: false });
+  // Past October's pay-by day, October still owed: paid late, still October's.
+  expect(await at('2026-11-10')).toMatchObject({ month: '2026-10', ask: false });
+  await recordBillPayments(h.database, h.ws, { paidOn: '2026-10-28', payments: [{ templateId: later, billMonth: '2026-10', amountMinor: 640_000 }] });
+  // October paid: a payment on 3 Nov is November's, which is not out until the 25th — asked first.
+  expect(await at('2026-11-03')).toEqual({ month: '2026-11', ask: true, opensOn: '2026-11-25' });
+  expect(await at('2026-11-26', '2026-11-26')).toMatchObject({ month: '2026-11', ask: false });
 });
 
 it('a purchase from another category can be linked, and counts as the bill month with its own figure', async () => {

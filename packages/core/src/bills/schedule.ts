@@ -191,18 +191,41 @@ export function latestLinkMonth(input: BillMonthsInput): string {
 }
 
 /**
- * The month a purchase is linked to when none is picked. A monthly bill: the purchase's own month. A yearly or
- * every-few-months bill: the occurrence whose day is nearest the purchase date, the later one on a tie — unless the
- * later one cannot be linked yet (after `latestLinkMonth`), when it is the one before.
+ * The month a purchase is linked to when none is picked.
+ *
+ * A monthly bill with no pay-by day: the purchase's own month. With one, a bill month is named by the month it comes
+ * out, so a payment on 3 Nov for the bill out 25 Oct (pay by 5 Nov) is October's: the month whose window — out day to
+ * pay-by day, `billWindow` — holds the purchase date and is not settled; else the latest month already out by that
+ * date and not settled, paid late; else the purchase's own month, which `linkNeedsAsking` then asks about.
+ *
+ * A yearly or every-few-months bill: the occurrence whose day is nearest the purchase date, the later one on a tie —
+ * unless the later one cannot be linked yet (after `latestLinkMonth`), when it is the one before.
  */
 export function defaultLinkMonth(purchasedOn: string, input: BillMonthsInput): string {
   const month = purchasedOn.slice(0, 7);
-  if (input.yearlyMonth == null) return month;
+  if (input.yearlyMonth == null) {
+    if (input.payByDay == null) return month;
+    const open = (m: string) => !input.settled[m];
+    const windowOf = (m: string) => billWindow(m, input.outDay, input.payByDay);
+    const months = [addMonths(month, -1), month];
+    const within = months.find((m) => open(m) && windowOf(m).opensOn <= purchasedOn && purchasedOn <= windowOf(m).payBy);
+    if (within) return within;
+    return [...months].reverse().find((m) => open(m) && windowOf(m).opensOn <= purchasedOn) ?? month;
+  }
   const next = nextOwedMonth(month, input.yearlyMonth, input.repeatEvery, input.startsMonth);
   const previous = previousOwedMonth(month, input.yearlyMonth, input.repeatEvery, input.startsMonth);
   if (next > latestLinkMonth(input)) return previous;
   const away = (m: string) => Math.abs(daysFrom(purchasedOn, dayIn(m, input.outDay)));
   return away(previous) < away(next) ? previous : next;
+}
+
+/**
+ * Whether a tap should ask before linking a purchase to `month` (the month page, saying when it comes out): a monthly
+ * bill with a pay-by day whose month is not out yet on the purchase date — the purchase fell in no open window.
+ */
+export function linkNeedsAsking(purchasedOn: string, month: string, input: BillMonthsInput): boolean {
+  if (input.yearlyMonth != null || input.payByDay == null) return false;
+  return billWindow(month, input.outDay, input.payByDay).opensOn > purchasedOn;
 }
 
 /** The months a pause covers: from its first month up to, not including, the month the bill comes back. */

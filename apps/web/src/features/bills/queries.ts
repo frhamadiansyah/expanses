@@ -51,14 +51,14 @@ export function useBillLinkRefusal(billId: string, month: string, today: string)
 }
 
 /**
- * The month of each bill a purchase dated `purchasedOn` links to when none is picked (see `billLinkMonth`): its own
- * month for a monthly bill, the nearest occurrence for a yearly or every-few-months one. Keyed by bill id.
+ * The month of each bill a purchase dated `purchasedOn` links to when none is picked, whether a tap asks first, and
+ * the day that month comes out (see `billLinkMonth`). Keyed by bill id.
  */
 export function useBillLinkMonths(billIds: readonly string[], purchasedOn: string | null, today: string) {
   const { database, ws } = useApp();
   return useQuery({
     queryKey: ['bill-link-month', ws.workspaceId, ws.bookId ?? null, [...billIds], purchasedOn, today],
-    queryFn: async () => Object.fromEntries(await Promise.all(billIds.map(async (id) => [id, await billLinkMonth(database, ws, { templateId: id, purchasedOn: purchasedOn!, today })] as const))) as Record<string, string>,
+    queryFn: async () => Object.fromEntries(await Promise.all(billIds.map(async (id) => [id, await billLinkMonth(database, ws, { templateId: id, purchasedOn: purchasedOn!, today })] as const))) as Record<string, { month: string; ask: boolean; opensOn: string }>,
     enabled: purchasedOn !== null && billIds.length > 0,
   });
 }

@@ -90,6 +90,7 @@ export {
   previousOwedMonth,
   latestLinkMonth,
   defaultLinkMonth,
+  linkNeedsAsking,
   periodicRepeat,
   yearlyListed,
   yearlyRepeat,

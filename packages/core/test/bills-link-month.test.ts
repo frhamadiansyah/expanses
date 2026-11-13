@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { type BillMonthsInput, defaultLinkMonth, latestLinkMonth, previousOwedMonth } from '../src/index';
+import { type BillMonthsInput, defaultLinkMonth, latestLinkMonth, linkNeedsAsking, previousOwedMonth } from '../src/index';
 
 const monthly = (today: string, settled: BillMonthsInput['settled'] = {}): BillMonthsInput => ({ today, startsMonth: '2026-01', outDay: 10, payByDay: null, settled });
 const yearly = (today: string, settled: BillMonthsInput['settled'] = {}, startsMonth = '2026-03'): BillMonthsInput => ({
   today, startsMonth, outDay: 15, payByDay: null, settled, yearlyMonth: 3,
 });
+/** Out on the 25th, paid by the 5th of the next month: the bill out 25 Oct is October's. */
+const payLater = (today: string, settled: BillMonthsInput['settled'] = {}): BillMonthsInput => ({ today, startsMonth: '2026-01', outDay: 25, payByDay: 5, settled });
 /** Every 3 months from August: Aug, Nov, Feb, May. */
 const quarterly = (today: string, settled: BillMonthsInput['settled'] = {}): BillMonthsInput => ({
   today, startsMonth: '2026-08', outDay: 20, payByDay: null, settled, yearlyMonth: 8, repeatEvery: 3,
@@ -74,5 +76,30 @@ describe('defaultLinkMonth', () => {
     // The 10th of October is nearer November.
     expect(defaultLinkMonth('2026-10-10', quarterly('2026-11-25'))).toBe('2026-11');
     expect(defaultLinkMonth('2026-11-20', quarterly('2026-11-25'))).toBe('2026-11');
+  });
+});
+
+describe('a monthly bill paid in the window after it comes out', () => {
+  it('links to the bill month whose window holds the purchase date, not the purchase month', () => {
+    expect(defaultLinkMonth('2026-10-27', payLater('2026-11-13'))).toBe('2026-10');
+    expect(defaultLinkMonth('2026-11-03', payLater('2026-11-13'))).toBe('2026-10');
+    expect(defaultLinkMonth('2026-11-26', payLater('2026-11-26', { '2026-10': 'paid' }))).toBe('2026-11');
+  });
+
+  it('a month already settled is passed over: paid late, the month out before it; not out yet, the purchase month, asked', () => {
+    // October settled, November not out until the 25th: November, and the month page asks first.
+    const octoberPaid = payLater('2026-11-03', { '2026-10': 'paid' });
+    expect(defaultLinkMonth('2026-11-03', octoberPaid)).toBe('2026-11');
+    expect(linkNeedsAsking('2026-11-03', '2026-11', octoberPaid)).toBe(true);
+    // Past October's pay-by day with October still owed: October, paid late, no question.
+    expect(defaultLinkMonth('2026-11-10', payLater('2026-11-13'))).toBe('2026-10');
+    expect(linkNeedsAsking('2026-11-10', '2026-10', payLater('2026-11-13'))).toBe(false);
+    expect(linkNeedsAsking('2026-11-26', '2026-11', payLater('2026-11-26'))).toBe(false);
+  });
+
+  it('a bill with no pay-by day, and a yearly one, are never asked about this way', () => {
+    expect(defaultLinkMonth('2026-11-03', { ...monthly('2026-11-13'), outDay: 25 })).toBe('2026-11');
+    expect(linkNeedsAsking('2026-11-03', '2026-11', { ...monthly('2026-11-13'), outDay: 25 })).toBe(false);
+    expect(linkNeedsAsking('2026-02-20', '2026-03', yearly('2026-02-20'))).toBe(false);
   });
 });

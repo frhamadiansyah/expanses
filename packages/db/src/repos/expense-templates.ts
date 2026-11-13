@@ -8,6 +8,7 @@ import {
   currentBillMonth,
   defaultLinkMonth,
   latestLinkMonth as latestLinkMonthOf,
+  linkNeedsAsking,
   nextOccurrenceMonth,
   isOwedMonth,
   expenseLines,
@@ -1034,13 +1035,21 @@ export async function billLinkRefusal(
 }
 
 /**
- * The month of a bill a purchase is linked to when none is picked: its own month for a monthly bill, the occurrence
- * nearest its date for a yearly or every-few-months one (see `defaultLinkMonth` in core). Not checked against refusals.
+ * The month of a bill a purchase is linked to when none is picked (`defaultLinkMonth` in core): its own month for a
+ * monthly bill, or the one whose pay window holds its date when the bill has a pay-by day; the nearest occurrence for a
+ * yearly or every-few-months one. `ask`: a tap should open the month page first, since that month is not out yet on
+ * the purchase date (`linkNeedsAsking`); `opensOn` is the day it comes out. Not checked against refusals.
  */
-export async function billLinkMonth(database: Database, ws: WorkspaceContext, input: { templateId: string; purchasedOn: string; today?: string }): Promise<string> {
+export async function billLinkMonth(
+  database: Database,
+  ws: WorkspaceContext,
+  input: { templateId: string; purchasedOn: string; today?: string },
+): Promise<{ month: string; ask: boolean; opensOn: string }> {
   const template = await liveTemplate(database, ws, input.templateId);
   const facts = await billFacts(database, ws, [template]);
-  return defaultLinkMonth(input.purchasedOn, linkInput(template, facts, input.today ?? isoDate()));
+  const rules = linkInput(template, facts, input.today ?? isoDate());
+  const month = defaultLinkMonth(input.purchasedOn, rules);
+  return { month, ask: linkNeedsAsking(input.purchasedOn, month, rules), opensOn: billWindow(month, template.dayOfMonth, template.payByDay).opensOn };
 }
 
 /** Links a purchase already recorded to one month of a bill, so that month reads as paid with the purchase's own date and amount. */
