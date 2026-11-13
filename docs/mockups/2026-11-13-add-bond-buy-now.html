@@ -1,0 +1,93 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Add bond, buy now</title>
+<style>
+  :root { --ink:#000; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; }
+  h1 { font-size:20px; margin:0 0 4px; } .sub { color:#555; margin:0 0 18px; max-width:1150px; }
+  .row4 { display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }
+  .phone { width:310px; background:var(--ground); border-radius:28px; padding:14px 12px 18px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .cap { font-weight:700; margin:0 0 4px; } .note { font-size:13px; color:#555; margin:0 0 10px; min-height:66px; }
+  .bar { display:flex; justify-content:space-between; align-items:center; margin:4px 4px 12px; font-size:17px; }
+  .bar .l, .bar .r { color:var(--tint); font-size:15px; } .bar b { font-weight:600; }
+  .seg { display:flex; background:#e3e3e8; border-radius:9px; padding:2px; margin:0 4px 12px; }
+  .seg span { flex:1; text-align:center; padding:6px 0; font-size:13px; font-weight:600; border-radius:7px; color:#333; }
+  .seg .on { background:var(--surface); box-shadow:0 1px 2px rgba(0,0,0,.15); }
+  .hd { font-size:12.5px; color:var(--ink3); text-transform:uppercase; margin:10px 16px 6px; }
+  .grp { background:var(--surface); border-radius:12px; overflow:hidden; margin-bottom:6px; }
+  .r { display:flex; justify-content:space-between; align-items:center; padding:11px 14px; font-size:15px; } .r + .r { border-top:.5px solid var(--hair); }
+  .r .v { color:var(--ink3); } .r .v.set { color:var(--ink); } .chev::after { content:" ›"; color:#c7c7cc; }
+  .ft { font-size:12.5px; color:var(--ink3); margin:4px 16px 8px; }
+  .new { box-shadow:inset 3px 0 0 #ff9f0a; }
+  .sheet { background:var(--surface); border-radius:12px; overflow:hidden; }
+  .sheet .r .ic { width:28px; height:28px; border-radius:7px; background:#e5e5ea; display:inline-flex; align-items:center; justify-content:center; margin-right:10px; font-size:13px; }
+  .tabs { display:flex; gap:6px; margin:0 4px 10px; } .tabs span { padding:5px 12px; border-radius:14px; background:#e3e3e8; font-size:13px; } .tabs .on { background:var(--ink); color:#fff; }
+  .tick { color:var(--tint); font-weight:700; }
+  .key { font-size:12.5px; color:#555; margin-top:14px; } .key span { display:inline-block; width:10px; height:10px; background:#ff9f0a; border-radius:2px; margin-right:4px; }
+</style></head>
+<body>
+<h1>Adding a government bond bought now (by card, via a marketplace)</h1>
+<p class="sub">Today: Add asset only asks about a <b>past purchase</b>, which moves no account. Leave it empty and the bond lands under <b>Sold</b>, and Trade can only buy a bond that already exists. Proposal: one screen does it. Add asset asks <b>Buying now</b> or <b>Owned before</b>. Buying now records the real purchase, so the card owes it at once. Trade's Investment list also gets <b>＋ New investment</b>.</p>
+<div class="row4">
+  <div class="phone">
+    <p class="cap">1 · Add asset → Government bond</p><p class="note">New switch at the top. <b>Buying now</b> is the default for a bond with nothing typed yet.</p>
+    <div class="bar"><span class="l">Cancel</span><b>Government bond</b><span class="r">Save</span></div>
+    <div class="seg new"><span class="on">Buying now</span><span>Owned before</span></div>
+    <div class="grp">
+      <div class="r"><span>Series</span><span class="v set chev">ORI027</span></div>
+      <div class="r"><span>Held at</span><span class="v set chev">Bank Mitra (Tokopedia)</span></div>
+      <div class="r"><span>Coupon</span><span class="v set">6,40% a year</span></div>
+      <div class="r"><span>Matures</span><span class="v set chev">15 Jul 2028</span></div>
+    </div>
+    <div class="hd">Purchase</div>
+    <div class="grp new">
+      <div class="r"><span>Date</span><span class="v set chev">Today</span></div>
+      <div class="r"><span>Par value</span><span class="v">Amount</span></div>
+      <div class="r"><span>Paid</span><span class="v">Amount</span></div>
+      <div class="r"><span>Paid with</span><span class="v set chev">BCA Visa · 4821</span></div>
+    </div>
+    <div class="ft">Paid with a card: the card owes it now; paying the card later is a transfer.</div>
+  </div>
+  <div class="phone">
+    <p class="cap">2 · Paid with</p><p class="note">The same sheet as Transfer From/To and a purchase's Paid with: accounts and cards, search, the chosen one ticked.</p>
+    <div class="bar"><span class="l">Cancel</span><b>Paid with</b><span class="r"></span></div>
+    <div class="tabs"><span>Accounts</span><span class="on">Credit cards</span></div>
+    <div class="sheet">
+      <div class="r"><span><span class="ic">💳</span>BCA Visa · 4821</span><span class="tick">✓</span></div>
+      <div class="r"><span><span class="ic">💳</span>Mandiri Signature · 5521</span></div>
+      <div class="r"><span><span class="ic">💳</span>HSBC Live+ · 0917</span></div>
+    </div>
+    <div class="hd">When a card is picked</div>
+    <div class="grp">
+      <div class="r"><span>Category for points</span><span class="v set chev">Investments</span></div>
+      <div class="r"><span>MCC</span><span class="v">Optional</span></div>
+    </div>
+  </div>
+  <div class="phone">
+    <p class="cap">3 · Owned before</p><p class="note">Today's past-purchase rows, unchanged: no account moves. With no purchase typed, the bond is kept as <b>held, nothing yet</b>, never under Sold.</p>
+    <div class="bar"><span class="l">Cancel</span><b>Government bond</b><span class="r">Save</span></div>
+    <div class="seg"><span>Buying now</span><span class="on">Owned before</span></div>
+    <div class="grp">
+      <div class="r"><span>Series</span><span class="v set chev">SBR012</span></div>
+      <div class="r"><span>Held at</span><span class="v set chev">Bank Mitra</span></div>
+    </div>
+    <div class="hd">Past purchase</div>
+    <div class="grp">
+      <div class="r"><span>Bought</span><span class="v set chev">Mar 2024</span></div>
+      <div class="r"><span>Par value</span><span class="v">Amount</span></div>
+      <div class="r"><span>Paid</span><span class="v">Amount</span></div>
+    </div>
+    <div class="ft">Bought earlier, so no account's balance moves.</div>
+  </div>
+  <div class="phone">
+    <p class="cap">4 · Trade → Buy → Investment</p><p class="note">The holding list ends with <b>＋ New investment</b>: it opens step 1 already on Buying now, then comes back to the trade.</p>
+    <div class="bar"><span class="l">Cancel</span><b>Investment</b><span class="r"></span></div>
+    <div class="sheet">
+      <div class="r"><span>SBR012 · Bank Mitra</span></div>
+      <div class="r"><span>BBRI · Stockbit</span></div>
+      <div class="r"><span>Antam gold</span></div>
+      <div class="r new" style="color:var(--tint)"><span>＋ New investment</span></div>
+    </div>
+  </div>
+</div>
+<p class="key"><span></span>new</p>
+</body></html>
