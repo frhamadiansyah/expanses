@@ -1617,7 +1617,8 @@ function CardBody({
           }
           /* Buying one not held yet: Add asset, on New purchase, records the holding and this buy together, then opens
              the holding's page — so there is no second trade to make here (owner's mockup, panel 4). */
-          onNew={purchase.mode === 'buy' ? () => void navigate({ to: '/net-worth/assets/new', search: { from: 'trade' } }) : undefined}
+          // Never while editing a saved buy: that trade is already of a holding, and leaving would drop the edit.
+          onNew={purchase.mode === 'buy' && !initial ? () => void navigate({ to: '/net-worth/assets/new', search: { from: 'trade' } }) : undefined}
           onClose={() => setSheet(null)}
         />
       )}
