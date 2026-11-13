@@ -57,6 +57,17 @@ describe('which of the partner’s items are Wallet cards', () => {
     expect(bare).toMatchObject({ last4: null, bank: null, tier: null });
   });
 
+  it('carries what its holder set aside of joint money, 0 when the summary sends none, and never on a card', () => {
+    const [kept, none, credit] = walletJoint(
+      [item('a', 'savings', { balanceMinor: 8_000_000, setAsideMinor: 3_000_000 }), item('b', 'bank', { balanceMinor: 1_000_000 }), item('c', 'credit_card', { balanceMinor: 400_000, setAsideMinor: 90_000 })],
+      ANDI,
+      names,
+    );
+    expect(kept).toMatchObject({ minor: 8_000_000, setAsideMinor: 3_000_000 });
+    expect(none!.setAsideMinor).toBe(0);
+    expect(credit!.setAsideMinor).toBe(0);
+  });
+
   it('names a member the workspace has not named "Someone"', () => {
     expect(walletJoint([item('x', 'cash', { owner: 'member-who' })], ANDI, names)[0]!.ownerName).toBe('Someone');
   });
