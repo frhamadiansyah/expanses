@@ -1,46 +1,26 @@
-import { formatMinor, waiverRowText } from '@expanses/core';
+import { feeWaiverRowText } from '@expanses/core';
 import { useNavigate } from '@tanstack/react-router';
-import { cx } from '../../ui';
-import { InsetRow, PickerRow } from '../../ui/native';
+import { PickerRow } from '../../ui/native';
 import type { GroupChild } from '../../ui/native/InsetList';
 import type { CardPage } from './card-page';
-import { feeLine } from './fee-line';
+import { feeToGo } from './fee-line';
+import { useFeeProgress, useFeeYears } from './FeeYearGroups';
 import { useSpendBonuses } from './spend-bonuses';
-import { shortDate } from './useCardPoints';
-
-/** How this year's charge stands on the card: its date, or Waived — however it was waived, a refund included. */
-export function useYearFeeLine(page: CardPage) {
-  const { cp, currency, today } = page;
-  const { refunds } = useSpendBonuses(cp, page.all, today);
-  const terms = cp.terms;
-  return terms ? feeLine(terms.annualFeeMinor, terms.annualFeeOn, terms.annualFeeWaivedYear, currency, today, refunds.at(-1)?.feeYear ?? null) : null;
-}
 
 /**
- * Settings' "This year's fee" row: the charge's date, or Waived in green. A tap opens Fee waived straight away, which
- * records the waiver, or shows what was recorded with Undo.
+ * Settings' one Fee waiver row (owner, 13 Nov 2026): the covered year once it is settled ("2026 waived", "2026
+ * charged"), else None without a program, or what is left to spend ("Rp 18 jt to go"). Plain grey, whatever it says.
+ * It opens the Fee waiver page, where the program is set and the fee year recorded.
  */
-export function YearFeeRow({ page, onAsk, position }: GroupChild & { page: CardPage; onAsk: () => void }) {
-  const line = useYearFeeLine(page);
-  if (!line) return null;
-  const text = line.waived ? 'Waived' : (line.when?.replace('Charged on ', '') ?? line.amount ?? '');
-  return (
-    <InsetRow
-      testId="card-annual-fee"
-      position={position}
-      plain
-      title="This year's fee"
-      value={<span data-testid="year-fee" className={cx(line.soon && 'text-[var(--ph-warn)]', line.waived && 'text-[var(--ph-up)]')}>{text}</span>}
-      onClick={onAsk}
-    />
-  );
-}
-
-/** Settings' one Fee waiver row: None until a yearly target or a bank's challenge is set; it opens the page that sets it. */
 export function FeeWaiverRow({ page, position }: GroupChild & { page: CardPage }) {
   const navigate = useNavigate();
-  const { card, cp, currency, today } = page;
-  const { waiver } = useSpendBonuses(cp, page.all, today);
-  const text = waiverRowText(waiver, waiver ? formatMinor(waiver.amountMinor, currency) : '', waiver?.spendBy ? shortDate(waiver.spendBy) : null);
+  const { card, cp, currency, today, all } = page;
+  const { waiver, ready } = useSpendBonuses(cp, all, today);
+  const years = useFeeYears(card.id, today);
+  const current = years.data?.current ?? null;
+  const progress = useFeeProgress(card, all, waiver, cp.terms?.annualFeeOn ?? null, today, current !== null && current.state !== 'pending');
+  const loading = !ready || years.isPending || progress === undefined;
+  const toGo = waiver && progress ? feeToGo(waiver.amountMinor - progress.spentMinor, currency) : null;
+  const text = loading ? '' : feeWaiverRowText(current ? { year: current.year, state: current.state } : null, waiver, toGo);
   return <PickerRow position={position} label="Fee waiver" value={text} testId="fee-waiver-row" onOpen={() => void navigate({ to: '/cards/$cardId/settings/fee-waiver', params: { cardId: card.id } })} />;
 }

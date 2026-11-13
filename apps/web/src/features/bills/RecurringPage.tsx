@@ -23,7 +23,6 @@ import { PaySeveralSheet } from './PaySeveralSheet';
 import { PaySheet } from './PaySheet';
 import { useBillMoney, useMonthlyBills, useSinkingFunds, useYearlyBills } from './queries';
 import { type DueFee, useAnnualFees, useUpcomingFees } from '../cards/fee-due';
-import { FeeWaivedFlow } from '../cards/FeeWaivedSheet';
 import { FeeRow } from './FeeRow';
 import { Unconverted } from '../workspaces/Unconverted';
 import { type ToastIcon, UndoToast } from '../../ui/UndoToast';
@@ -131,7 +130,8 @@ export function RecurringPage() {
   const fees = useUpcomingFees(today);
   const annualFees = useAnnualFees(today);
   const plans = useInstallments();
-  const [askingFee, setAskingFee] = useState<DueFee | null>(null);
+  // A card's fee opens its Fee waiver page: the one place a fee year is recorded.
+  const openFee = (fee: DueFee) => void navigate({ to: '/cards/$cardId/settings/fee-waiver', params: { cardId: fee.cardId } });
   const accounts = useAccounts().data ?? [];
   const rows = bills.data ?? [];
 
@@ -282,7 +282,7 @@ export function RecurringPage() {
       />
 
       {page === 1 && <RepeatingList bills={yearly.data ?? []} needs={needs} />}
-      {page === 1 && <AnnualFees fees={annualFees} onOpen={(fee) => setAskingFee(fee.card)} />}
+      {page === 1 && <AnnualFees fees={annualFees} onOpen={(fee) => openFee(fee.card)} />}
 
       {page === 0 && bills.isSuccess && rows.length === 0 && (
         <InsetGroup>
@@ -297,7 +297,7 @@ export function RecurringPage() {
         const sections = sectionsOf(rows);
         const soon = sections.find((section) => section.key === 'dueSoon');
         const feeRows = fees.map((fee, i) => (
-          <FeeRow key={fee.card.cardId} fee={fee} separator={i > 0 || (soon?.rows.length ?? 0) > 0} onOpen={() => setAskingFee(fee.card)} />
+          <FeeRow key={fee.card.cardId} fee={fee} separator={i > 0 || (soon?.rows.length ?? 0) > 0} onOpen={() => openFee(fee.card)} />
         ));
         const shown = feeRows.length > 0 && !soon ? [...sections, { key: 'dueSoon' as const, title: 'Due soon', rows: [] as MonthlyBill[] }] : sections;
         return shown.map((section) => (
@@ -364,9 +364,6 @@ export function RecurringPage() {
           />
         );
       })()}
-
-      {/* The fee question opens from either page: Due soon on Monthly, Annual fees on Repeating. */}
-      {askingFee && <FeeWaivedFlow fee={askingFee} today={today} chargedAsNormal onClose={() => setAskingFee(null)} />}
 
       {toast && <UndoToast icon={toast.icon} text={toast.text} onUndo={() => void undo()} onDone={clearToast} />}
 

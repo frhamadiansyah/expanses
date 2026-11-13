@@ -1,41 +1,8 @@
-import { chargeAfterWaiver, coveredCharge, dayMonth, FEE_SOON_DAYS, feeDaysAway, feeWaived, formatMinor, nextFeeDate } from '@expanses/core';
+import { dayMonth, type FeeYearLine, formatMinor } from '@expanses/core';
+import type { FeeYearRecord } from '@expanses/db';
 
 /** "12 Mar 2027". */
 export const feeDateText = (iso: string) => `${dayMonth(iso)} ${iso.slice(0, 4)}`;
-
-export interface FeeLine {
-  /** The fee as money, when an amount is set. */
-  amount: string | null;
-  /** "Charged on 12 Mar 2026 · next 12 Mar 2027" (or just "Charged on <date>" when the next is soon), or "Waived this year · next charge 12 Nov 2027"; null with no date. */
-  when: string | null;
-  /** The next charge is within the due-soon window and not waived. */
-  soon: boolean;
-  /** This year's charge was waived: marked so, or refunded through the old Fee refunded (one word for both now). */
-  waived: boolean;
-}
-
-/** The annual fee row on a card's page; null while neither an amount nor a date is set. */
-export function feeLine(
-  feeMinor: number | null,
-  chargedOn: string | null,
-  waivedYear: number | null,
-  currency: string,
-  today: string,
-  refundedYear: number | null = null,
-): FeeLine | null {
-  if (feeMinor === null && !chargedOn) return null;
-  const amount = feeMinor !== null ? formatMinor(feeMinor, currency) : null;
-  if (!chargedOn) return { amount, when: null, soon: false, waived: false };
-  const refunded = refundedYear !== null && refundedYear === Number(coveredCharge(chargedOn, today).slice(0, 4));
-  if (refunded || feeWaived(chargedOn, waivedYear, today)) {
-    return { amount, when: `Waived this year · next charge ${feeDateText(chargeAfterWaiver(chargedOn, today))}`, soon: false, waived: true };
-  }
-  // The charge that counts is the one that already happened unless the next is close: then that one is named.
-  const covered = coveredCharge(chargedOn, today);
-  const next = nextFeeDate(chargedOn, today);
-  const when = covered < today ? `Charged on ${feeDateText(covered)} · next ${feeDateText(next)}` : `Charged on ${feeDateText(next)}`;
-  return { amount, when, soon: feeDaysAway(chargedOn, today) <= FEE_SOON_DAYS, waived: false };
-}
 
 /**
  * Whether a fee challenge is about the fee year a waiver covers now: the year kept on the challenge when it was saved
@@ -44,4 +11,49 @@ export function feeLine(
  */
 export function challengeCoversFee(challengeYear: number | null, coveredYear: number): boolean {
   return challengeYear !== null && challengeYear === coveredYear;
+}
+
+/** A fee line's date: "15 Oct" in the fee year the line is about, "2 Feb 2027" in any other. */
+export const lineDate = (iso: string, feeYear: number) => (Number(iso.slice(0, 4)) === feeYear ? dayMonth(iso) : feeDateText(iso));
+
+/** One line of a fee year: `Title  value`, and the transaction it opens, if any. */
+export interface FeeRow {
+  kind: FeeYearLine;
+  title: string;
+  value: string;
+  transactionId: string | null;
+}
+
+/**
+ * A fee year's lines on the Fee waiver page, top first, as plain values: the charge or Pending/Waived with the card's
+ * fee, then the reversal. `fullDates` keeps every date's year (a past year's own page).
+ */
+export function feeRows(record: FeeYearRecord, feeMinor: number | null, currency: string, fullDates = false): FeeRow[] {
+  const date = (iso: string) => (fullDates ? feeDateText(iso) : lineDate(iso, record.year));
+  const fee = feeMinor !== null ? formatMinor(feeMinor, currency) : null;
+  const withFee = (head: string) => (fee ? `${head} · ${fee}` : head);
+  return record.lines.map((kind): FeeRow => {
+    if (kind === 'charged' && record.charge) return { kind, title: 'Charged', value: `${date(record.charge.on)} · ${formatMinor(record.charge.amountMinor, currency)}`, transactionId: record.charge.transactionId };
+    if (kind === 'charged-before-app') return { kind, title: 'Charged', value: `${date(record.covered)} · before the app`, transactionId: null };
+    if (kind === 'reversal' && record.reversal) return { kind, title: 'Reversal', value: `${date(record.reversal.on)} · ${formatMinor(record.reversal.amountMinor, currency)}`, transactionId: record.reversal.transactionId };
+    if (kind === 'waived') return { kind, title: 'Waived', value: withFee('not charged'), transactionId: null };
+    return { kind: 'pending', title: 'Pending', value: withFee(date(record.covered)), transactionId: null };
+  });
+}
+
+/** An earlier year's one line: "Reversed · Rp …", "Charged · Rp …" or "Waived · not charged", with that year's own money. */
+export function earlierFeeText(record: FeeYearRecord, currency: string): string {
+  if (record.reversal) return `Reversed · ${formatMinor(record.reversal.amountMinor, currency)}`;
+  if (record.charge) return `Charged · ${formatMinor(record.charge.amountMinor, currency)}`;
+  return 'Waived · not charged';
+}
+
+/**
+ * What is left to spend, short, for Settings' Fee waiver row: rupiah millions as "jt", the way the app already shortens
+ * them; any other amount or currency in full. Null with nothing left.
+ */
+export function feeToGo(remainingMinor: number, currency: string): string | null {
+  if (remainingMinor <= 0) return null;
+  if (currency !== 'IDR' || remainingMinor < 1_000_000) return formatMinor(remainingMinor, currency);
+  return formatMinor(0, currency).replace('0', `${(remainingMinor / 1_000_000).toLocaleString('id-ID', { maximumFractionDigits: 1 })} jt`);
 }

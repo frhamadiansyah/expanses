@@ -36,6 +36,7 @@ import { CardDetailPage } from '../features/cards/CardDetailPage';
 import { CardPointsCheckPage, CardPointsPage, CardPurchasesPage } from '../features/cards/CardPointsPage';
 import { EarnRulesPage, SpendBonusesPage } from '../features/cards/CardRulesPages';
 import { FeeWaiverPage, SpendBonusListPage, SpendBonusPage } from '../features/cards/SpendBonusPages';
+import { FeeYearPage } from '../features/cards/FeeYearGroups';
 import { CardInstalmentsPage } from '../features/cards/CardInstalmentsPage';
 import { CardProductPage, CardSettingsPage } from '../features/cards/CardSettingsPage';
 import { CardByHandPage, CardCatalogPreviewPage } from '../features/cards/CardProductPages';
@@ -386,6 +387,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/rules', component: EarnRulesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/bonuses', component: SpendBonusesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/fee-waiver', component: FeeWaiverPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/fee-waiver/$year', component: FeeYearPage }),
   // The card's spend bonuses to read: the list, nearest to its goal first, and one bonus with its terms and purchases.
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/bonuses', component: SpendBonusListPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/bonuses/$bonusId', component: SpendBonusPage }),

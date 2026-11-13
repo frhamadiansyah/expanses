@@ -1,4 +1,4 @@
-import { bonusItem, type FeeWaiver, nearestFirst, type SpendBonusItem, type SpendLine, waiverItem, waiverSpend, waiverWindow } from '@expanses/core';
+import { bonusItem, type FeeWaiver, hasSpendTarget, nearestFirst, type SpendBonusItem, type SpendLine, waiverItem, waiverSpend, waiverWindow } from '@expanses/core';
 import { type AccountRow, cardSpendLines, type FeeRefund, listFeeRefunds, listFeeWaivers } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
@@ -36,7 +36,8 @@ export function useSpendBonuses(cp: CardPoints, accounts: readonly AccountRow[],
     queryFn: async () => {
       const waiver = (await listFeeWaivers(database.db, ws)).get(card.id) ?? null;
       const refunds = await listFeeRefunds(database.db, ws, card.id);
-      if (!waiver) return { waiver, refunds, waiverLines: [] as SpendLine[], item: null as SpendBonusItem | null };
+      // Free for life has nothing to spend toward: it is the card's waiver, never a spend bonus.
+      if (!waiver || !hasSpendTarget(waiver)) return { waiver, refunds, waiverLines: [] as SpendLine[], item: null as SpendBonusItem | null };
       const window = waiverWindow(waiver, feeOn, today);
       const lines = await cardSpendLines(database, ws, card.id, window.from, window.to);
       const spent = waiverSpend(waiver, window, lines, expenseAncestors(accounts as AccountRow[]), card.currency ?? ws.baseCurrency);

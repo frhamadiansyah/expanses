@@ -23,9 +23,8 @@ import { ANCHOR_LABELS, ProductChooser, UNIT_LABELS } from './CardProductPages';
 import { ColumnGroup, Line, SUBTITLE, TextLine, TITLE } from './rows';
 import { termsFields } from './terms-fields';
 import { useCatalogChoice } from './useCatalogChoice';
-import { FeeWaivedFlow } from './FeeWaivedSheet';
 import { FeeDayMonthRow } from './FeeDayMonthRow';
-import { FeeWaiverRow, YearFeeRow } from './AnnualFeeGroup';
+import { FeeWaiverRow } from './AnnualFeeGroup';
 import { useInstallments } from '../loans/queries';
 
 const settingsRoute = getRouteApi('/cards/$cardId/settings');
@@ -84,7 +83,7 @@ function PointsGroup({ page, run }: { page: CardPage; run: Run }) {
   );
 }
 
-/** The Annual fee group: the fee, its date, This year's fee and Fee waiver. */
+/** The Annual fee group: the fee, the day it is charged on, and Fee waiver. */
 function AnnualFeeColumns({ page, rows }: { page: CardPage; rows: ReactNode[] }) {
   return <ColumnGroup header="Annual fee" columns={[rows]} />;
 }
@@ -110,7 +109,6 @@ export function CardSettingsPage() {
   const [limit, setLimit] = useState('');
   const [fee, setFee] = useState('');
   const [feeOn, setFeeOn] = useState('');
-  const [askingFee, setAskingFee] = useState(false);
   const plans = useInstallments(cardId);
   const [plasticSheet, setPlasticSheet] = useState<CardRow | 'new' | null>(null);
   const [loadedName, setLoadedName] = useState<string | null>(null);
@@ -211,7 +209,6 @@ export function CardSettingsPage() {
           rows={[
             <TextRow label="Annual fee" prefix={currency} value={fee} onChange={(e) => setFee(groupTypedAmount(e.target.value, currency))} inputMode="decimal" placeholder="Amount" />,
             <FeeDayMonthRow value={feeOn} today={page.today} onChange={setFeeOn} />,
-            ...(cp.terms?.annualFeeOn ? [<YearFeeRow key="year-fee" page={page} onAsk={() => setAskingFee(true)} />] : []),
             <FeeWaiverRow key="fee-waiver" page={page} />,
           ]}
         />
@@ -229,10 +226,6 @@ export function CardSettingsPage() {
       actions={[{ key: 'save', label: 'Save', glyph: <Check size={20} aria-hidden />, run: () => void done() }]}
     >
       <ErrorBox error={error ?? (datesMissing ? new Error('Enter the billing date and the due date') : null)} />
-
-      {askingFee && cp.terms && (
-        <FeeWaivedFlow fee={{ cardId: card.id, currency, annualFeeMinor: cp.terms.annualFeeMinor, annualFeeOn: cp.terms.annualFeeOn }} today={today} onClose={() => setAskingFee(false)} />
-      )}
 
       <InsetGroup>
         <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} onBlur={saveName} onKeyDown={leave} placeholder="Name" />
