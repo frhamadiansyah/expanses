@@ -65,7 +65,8 @@ import { usePurchasePayers } from '../sharing/queries';
 import { useOpenBook } from '../workspaces/queries';
 import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
 import { AmountRow, FeeRow } from './AmountRow';
-import { buyChoices, emptyPurchaseDraft, type PurchaseDraft, transferTargets } from './buy-in-form';
+import { buyChoices, emptyPurchaseDraft, type PurchaseDraft, tradeMoneyChoices, transferTargets } from './buy-in-form';
+import { InvestmentSheet } from './InvestmentSheet';
 import { amountRowText, chargedRowText, feeRowText, goalRowText, holdingFace, holdingRowText, payRowText, unitsRowText } from './buy-rows';
 import { DateRow, NoteRow } from './CardRows';
 import { CategoryPicker } from './CategoryPicker';
@@ -376,7 +377,7 @@ function CardBody({
     setReceipt(null);
   };
 
-  const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal' | 'split' | 'move' | 'photos' | 'feeCategory' | 'tradeMoney'>(null);
+  const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal' | 'split' | 'move' | 'photos' | 'feeCategory' | 'tradeMoney' | 'investment'>(null);
   /*
    * A saved transaction moved to another workspace on its Edit screen: the workspace it goes to, or null while it stays.
    * Its category is swapped for that workspace's copy as the move is chosen, and the save says to move it.
@@ -433,14 +434,7 @@ function CardBody({
   const chosen = [...choices.buys, ...choices.sells].find((option) => option.value === `${purchase.mode}:${purchase.accountId}`);
   const purchaseMoney = byId.get(purchase.moneyId);
   // Buy is paid with what a purchase may be paid with, cards included; Sell's money lands in a bank or cash account.
-  const tradeMoneyOptions: PaymentOption[] = withoutPlaceholders(
-    paymentOptions(
-      moneyHolders(accounts).filter((a) => canPayWith(a, purchase.moneyId) && (purchase.mode === 'buy' || a.kind === 'asset' || a.id === purchase.moneyId)),
-      [],
-    ),
-    listedIds,
-    purchase.moneyId,
-  );
+  const tradeMoneyOptions: PaymentOption[] = tradeMoneyChoices(accounts, purchase.mode, purchase.moneyId, listedIds);
   const purchaseCurrency = byId.get(purchase.accountId)?.currency ?? ws.baseCurrency;
   // The paying or receiving account's currency; with none chosen yet, the holding's own (nothing crosses).
   const purchaseCashCurrency = purchaseMoney ? (purchaseMoney.currency ?? ws.baseCurrency) : purchaseCurrency;
@@ -1069,7 +1063,9 @@ function CardBody({
            * validation — nothing here reads a figure for itself.
            */
           <FormRows className="rounded-none">
-            <SelectFormRow
+            {/* The holdings in a sheet of their own, as Paid with is (owner, 13 Nov 2026): by kind, searchable, the chosen one marked. */}
+            <FormRow
+              lead="value"
               icon={
                 <RowGlyph>
                   <HoldingGlyph size={15} />
@@ -1077,22 +1073,10 @@ function CardBody({
               }
               label={holdingRow.label}
               caption={holdingRow.caption}
-              hint={holdingRow.hint}
-              /* The picker groups its options — "Investments › Antam" — and that group is now the caption, so
-                 the row draws the holding's own name rather than saying Bought twice and truncating the name. */
-              display={chosen ? holdingFace(chosen.label) : ''}
-              value={`${purchase.mode}:${purchase.accountId}`}
-              onChange={(value) => {
-                const option = [...choices.buys, ...choices.sells].find((row) => row.value === value)!;
-                setPurchase({ mode: option.mode, accountId: option.accountId, lotSize: option.lotSize, useLots: (option.lotSize ?? 1) > 1, ...brokerCash(option.accountId) });
-              }}
-            >
-              {/* Only the holdings of the tab on: Buy offers every holding, Sell the ones with units to sell. */}
-              {purchase.accountId === '' && <option value={`${purchase.mode}:`}>Choose…</option>}
-              {(purchase.mode === 'buy' ? choices.buys : choices.sells).map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </SelectFormRow>
+              value={chosen ? holdingFace(chosen.label) : ''}
+              chevron
+              onClick={() => setSheet('investment')}
+            />
             {(
             <>
             <MoneyFieldRow
@@ -1613,6 +1597,16 @@ function CardBody({
           value={draft.mode === 'trade' ? purchase.goalId : draft.goalId}
           groups={[{ choices: [{ value: '', label: 'None', glyph: <Target size={15} /> }, ...goals.map((goal) => ({ value: goal.id, label: goal.name, glyph: <Target size={15} /> }))] }]}
           onPick={(goalId) => (draft.mode === 'trade' ? setPurchase({ goalId }) : set({ goalId }))}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet === 'investment' && (
+        <InvestmentSheet
+          choices={purchase.mode === 'buy' ? choices.buys : choices.sells}
+          chosenAccountId={purchase.accountId}
+          onPick={(option) =>
+            setPurchase({ mode: option.mode, accountId: option.accountId, lotSize: option.lotSize, useLots: (option.lotSize ?? 1) > 1, ...brokerCash(option.accountId) })
+          }
           onClose={() => setSheet(null)}
         />
       )}

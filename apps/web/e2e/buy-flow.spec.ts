@@ -2,7 +2,7 @@ import { closePurchase, openPurchase, purchaseRowOf } from './purchases';
 import { expect, type Page, test } from '@playwright/test';
 import { expectWalletFigure, openAccount, openSettings } from './accounts';
 import { openNewAsset, fillDay } from './add-asset';
-import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal, chooseTradeMoney, openBuyOrSell, saveButton } from './add-transaction';
+import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal, chooseInvestment, chooseTradeMoney, openBuyOrSell, saveButton } from './add-transaction';
 import { cardPage, cardPointsPage, saveCardTerms, chooseCatalogueCard } from './card-section';
 import { openAssets, openDrawers } from './drawers';
 import { openGoalForm } from './goals';
@@ -164,7 +164,7 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
 
   // One lot of 100 shares at Rp 9.889,81 leaves Rp 1.011.019 behind.
   const buying = await openBuyOrSell(page);
-  await buying.getByLabel('Investment').selectOption({ label: 'BBRI · Stockbit' });
+  await chooseInvestment(buying, 'BBRI · Stockbit');
   await buying.getByLabel('Lots').fill('1');
   await buying.getByLabel(/What it cost, before fees/).fill('988981');
   await chooseTradeMoney(buying, 'RDN Stockbit (IDR)');

@@ -1,6 +1,6 @@
 import type { AccountRow, AssetProfileRow, AssetValueRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { buyChoices, emptyPurchaseDraft, type PurchaseDraft, purchaseDraftToInput, transferTargets } from './buy-in-form';
+import { buyChoices, emptyPurchaseDraft, investmentSections, type PurchaseDraft, purchaseDraftToInput, tradeMoneyChoices, transferTargets } from './buy-in-form';
 
 const TODAY = '2026-09-12';
 
@@ -81,6 +81,77 @@ describe('buyChoices', () => {
     const { buys } = buyChoices(values, profiles);
     expect(buys.find((choice) => choice.accountId === 'bbri')).toMatchObject({ lotSize: 100, unitLabel: 'Shares' });
     expect(buys.find((choice) => choice.accountId === 'gold')).toMatchObject({ lotSize: null, unitLabel: 'Grams' });
+  });
+});
+
+describe('investmentSections', () => {
+  const held: AssetValueRow[] = [
+    value({ accountId: 'bbri', name: 'BBRI · Stockbit', mode: 'market' }),
+    value({ accountId: 'sbr', name: 'SBR012', mode: 'market' }),
+    value({ accountId: 'gold', name: 'Antam gold bars', mode: 'market', unitsMicro: 0 }),
+    value({ accountId: 'ori', name: 'ORI027', mode: 'market' }),
+    value({ accountId: 'rdpu', name: 'Sucorinvest Money Market', mode: 'market' }),
+  ];
+  const kinds = [
+    profile('bbri'),
+    profile('sbr', { assetKind: 'bond', unitKind: 'face', lotSize: null, coretaxFields: { inst: 'Bank Mitra' } }),
+    profile('gold', { assetKind: 'gold', unitKind: 'grams', lotSize: null }),
+    profile('ori', { assetKind: 'bond', unitKind: 'face', lotSize: null, coretaxFields: { inst: '  ' } }),
+    profile('rdpu', { assetKind: 'fund', unitKind: 'units', lotSize: null, coretaxFields: { inst: 'Bibit' } }),
+  ];
+
+  it('groups the holdings by kind, bonds first, each kept in its own order', () => {
+    const { buys } = buyChoices(held, kinds);
+    const sections = investmentSections(buys, '');
+    expect(sections.map((section) => section.title)).toEqual(['Bonds', 'Funds', 'Stocks', 'Gold']);
+    expect(sections[0]!.rows.map((row) => row.accountId)).toEqual(['sbr', 'ori']);
+  });
+
+  it('says where each is held, and nothing when the name already says it or none is typed', () => {
+    const { buys } = buyChoices([...held, value({ accountId: 'twice', name: 'RDPU · Bibit', mode: 'market' })], [...kinds, profile('twice', { assetKind: 'fund', coretaxFields: { inst: 'Bibit' } })]);
+    const by = (id: string) => buys.find((choice) => choice.accountId === id)!;
+    expect(by('sbr').heldAt).toBe('Bank Mitra');
+    expect(by('ori').heldAt).toBeNull();
+    expect(by('bbri').heldAt).toBeNull();
+    expect(by('twice').heldAt).toBeNull();
+    expect(by('sbr').label).toBe('SBR012');
+  });
+
+  it('lists only what can be sold on the Sell tab', () => {
+    const { sells } = buyChoices(held, kinds);
+    expect(investmentSections(sells, '').map((section) => section.title)).toEqual(['Bonds', 'Funds', 'Stocks']);
+  });
+
+  it('finds a holding by its name or by where it is held', () => {
+    const { buys } = buyChoices(held, kinds);
+    expect(investmentSections(buys, 'mitra').flatMap((section) => section.rows.map((row) => row.accountId))).toEqual(['sbr']);
+    expect(investmentSections(buys, 'antam').flatMap((section) => section.rows.map((row) => row.accountId))).toEqual(['gold']);
+    expect(investmentSections(buys, 'nothing like it')).toEqual([]);
+  });
+
+  it('puts a kind it has no heading for under Other, last', () => {
+    const { buys } = buyChoices([value({ accountId: 'x', name: 'Painting', mode: 'market' }), ...held], [profile('x', { assetKind: 'other' }), ...kinds]);
+    expect(investmentSections(buys, '').map((section) => section.title)).toEqual(['Bonds', 'Funds', 'Stocks', 'Gold', 'Other']);
+  });
+});
+
+describe('tradeMoneyChoices', () => {
+  const accounts = [
+    account('bca', 'BCA Tahapan', 'bank'),
+    account('visa', 'BCA Visa', 'credit_card', 'liability'),
+    account('loan', 'KPR', 'loan', 'liability'),
+    account('house', 'House', 'property'),
+  ];
+  it('pays a buy with money or a card, never a loan or a thing owned', () => {
+    expect(tradeMoneyChoices(accounts, 'buy', '').map((option) => option.accountId)).toEqual(['bca', 'visa']);
+  });
+  it('lands a sell in money, never on a card', () => {
+    expect(tradeMoneyChoices(accounts, 'sell', '').map((option) => option.accountId)).toEqual(['bca']);
+  });
+  it('leaves out an account this device does not list, unless the trade names it', () => {
+    const listed = new Set(['visa']);
+    expect(tradeMoneyChoices(accounts, 'buy', '', listed).map((option) => option.accountId)).toEqual(['visa']);
+    expect(tradeMoneyChoices(accounts, 'buy', 'bca', listed).map((option) => option.accountId)).toEqual(['bca', 'visa']);
   });
 });
 
