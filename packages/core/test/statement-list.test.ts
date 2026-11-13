@@ -201,6 +201,7 @@ describe('readTransactionList', () => {
         { date: '07/09/2026', time: '13:12', text: ['Toko Roti Ornek'], id: ['GJ260907E4K8P2R6TQ'], pay: 'Wallet Saldo + Coins', amount: '-Rp33.900' },
         { date: '06/09/2026', time: '18:40', text: ['Bakmi Ornek'], id: ['GJ260906F5L9Q3S7UV'], pay: 'Wallet Saldo', amount: '-Rp61.200' },
         { date: '05/09/2026', time: '09:05', text: ['Cashback Bakmi Ornek'], id: ['GJ260905G6M1R4T8WX'], pay: 'Wallet Coins', amount: '+Rp2.100' },
+        { date: '04/09/2026', time: '11:25', text: ['Apotek Ornek'], id: ['GJ260904H7N2S5U9YZ'], pay: 'Bonus Poin', amount: '-Rp27.800' },
       ];
       // The second entry's payment cell carries a second line: the points it earned.
       const image = tableImage(entries).flatMap((l) => (l.text === 'Wallet Saldo' ? [{ ...l, box: [l.box[0], l.box[1] - 0.011, l.box[2], l.box[3]] as CaptureLine['box'] }, line('Dapat 50 poin', 0.66, l.box[1] + 0.011, 0.16)] : [l]));
@@ -208,6 +209,7 @@ describe('readTransactionList', () => {
       expect(rows.map((r) => [r.description, r.source, r.amountMinor, r.coins])).toEqual([
         ['Toko Roti Ornek', 'Wallet Saldo + Coins', 33900, false],
         ['Bakmi Ornek', 'Wallet Saldo Dapat 50 poin', 61200, false],
+        ['Apotek Ornek', 'Bonus Poin', 27800, false],
       ]);
     });
 

@@ -46,7 +46,7 @@ export interface ListReading {
 /** Words naming what is not money: a source saying the entry was paid in coins or points. */
 const COIN_WORDS = /\b(?:coins?|koin|poin|points?|pts)\b/i;
 /** A source that is coins alone (`Coins`, `Wallet Coins`), not money with coins beside it (`Wallet Saldo + Coins`). */
-const COINS_ONLY = /^\S*\s*(?:coins?|koin|poin|points?|pts)$/i;
+const COINS_ONLY = /^(?:(?:\S+\s+)?(?:coins?|koin)|poin|points?|pts)$/i;
 const MINUS = '-−–—';
 const AMOUNT = new RegExp(`^([${MINUS}+]?)\\s*(Rp\\.?|IDR)?\\s*([${MINUS}+]?)\\s*(\\d[\\d.,]*)$`, 'i');
 const TRAILING = new RegExp(`(?:^|\\s)([${MINUS}+]?)\\s*(Rp\\.?|IDR)\\s*([${MINUS}+]?)\\s*(\\d[\\d.,]*)$`, 'i');
