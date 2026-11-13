@@ -11,7 +11,7 @@ import { UndoToast } from '../../ui/UndoToast';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { CategoryPicker } from './CategoryPicker';
 import { isEditable } from './draft';
-import { type AmountExtraPart, amountExtraParts, amountLook, type AmountView, type ListRow, paidWithLook, wholeLeftOut } from './list-model';
+import { type AmountExtraPart, amountExtraParts, amountLook, type AmountView, categoryButtonLabel, type ListRow, paidWithLook, wholeLeftOut } from './list-model';
 import { canRefile, emptyForm, refiledPost } from './tx-form';
 import { ratesForSave } from './tx-save';
 import { RowEventBadge } from '../events/EventMode';
@@ -46,6 +46,7 @@ export function TransactionRow({
   under,
   iconLabel,
   iconMark,
+  iconMarkLabel,
   amountExtra,
   trailing,
   onOpen,
@@ -65,6 +66,8 @@ export function TransactionRow({
   hideEvent = false,
 }: {
   row: ListRow;
+  /** What `iconMark` says aloud (its workspace's name), for the category button's spoken name. */
+  iconMarkLabel?: string | null;
   /** The event's own page: every row there is in it, so no row wears the event's plane. */
   hideEvent?: boolean;
   accounts: readonly AccountRow[];
@@ -209,7 +212,7 @@ export function TransactionRow({
       {refile ? (
         <button
           type="button"
-          aria-label={`Category for ${row.description}`}
+          aria-label={categoryButtonLabel(row.description, { workspace: iconMark ? iconMarkLabel : null, refund: row.refund, eventName })}
           title="Change the category"
           onClick={(event) => {
             // The row around it may be clickable too; re-filing is not opening.
@@ -245,6 +248,8 @@ export function TransactionRow({
               <PaidWith row={row} />
             </>
           )}
+          {/* The plane on the icon, said aloud as part of the row: VoiceOver reads the row's face, not its circle. */}
+          {eventName && <span className="sr-only">{` · ${eventName}`}</span>}
         </span>
       </Face>
       {/* Outside the tap target, never inside it: what goes here can itself be a control, and a <button>

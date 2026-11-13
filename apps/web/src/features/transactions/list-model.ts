@@ -9,6 +9,15 @@ import { classify } from './classify';
  * search, filters, sorting, days and totals treat both the same way and can be tested without a page.
  */
 
+/**
+ * The category button's spoken name: the row, then what the marks on its icon say — its workspace, a refund, the event
+ * it is in. Only one mark is drawn on the corner; all of them are said, since the button's name replaces what it holds.
+ */
+export function categoryButtonLabel(description: string, marks: { workspace?: string | null; refund?: boolean; eventName?: string | null }): string {
+  const words = [marks.workspace, marks.refund ? 'refund' : null, marks.eventName].filter(Boolean);
+  return [`Category for ${description}`, ...words].join(', ');
+}
+
 /** A split part counted in no workspace ("Not counted"): a line on the Not counted equity account. */
 export const isNotCountedLine = (entry: Pick<TransactionEntryView, 'accountKind' | 'accountSystemKey'>): boolean =>
   entry.accountKind === 'equity' && isNotCountedKey(entry.accountSystemKey);

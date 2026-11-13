@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import type { ListRow } from './list-model';
-import { amountExtraParts, amountLook, wholeLeftOut, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory, excludedHere, hasNotCountedPart, outsideEvents, accountsWithTransactions } from './list-model';
+import { categoryButtonLabel, amountExtraParts, amountLook, wholeLeftOut, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory, excludedHere, hasNotCountedPart, outsideEvents, accountsWithTransactions } from './list-model';
 
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], extra: Partial<AccountRow> = {}): AccountRow => ({
   id, workspaceId: 'ws', parentId: null, kind, subtype, name: id, icon: null, currency: kind === 'expense' || kind === 'income' ? null : 'IDR', valuationMode: 'derived', systemKey: null, sortOrder: 0, archivedAt: null, createdAt: '2026-09-01T00:00:00Z', ...extra,
@@ -773,5 +773,13 @@ describe('Paid with lists only accounts with transactions', () => {
   });
   it('keeps the account the filter is on even with none', () => {
     expect(accountsWithTransactions(money, new Set(['bca']), 'cash').map((a) => a.id)).toEqual(['cash', 'bca']);
+  });
+});
+
+describe('categoryButtonLabel', () => {
+  it('names the row, then what the marks on its icon say: workspace, refund, event', () => {
+    expect(categoryButtonLabel('Superindo', {})).toBe('Category for Superindo');
+    expect(categoryButtonLabel('Lakeside lunch', { eventName: 'Lake trip' })).toBe('Category for Lakeside lunch, Lake trip');
+    expect(categoryButtonLabel('Shoes back', { workspace: 'Family', refund: true, eventName: 'Lake trip' })).toBe('Category for Shoes back, Family, refund, Lake trip');
   });
 });

@@ -1177,6 +1177,7 @@ export function TransactionsPage() {
         iconLabel={withDate && grouping === 'category' && singleMonth && row.date ? String(Number(row.date.slice(8, 10))) : undefined}
         // Whose spending this is, when the list holds more than one workspace: its letter on the icon's corner.
         iconMark={badges.mark(tx.id) ? <WorkspaceBadge book={badges.mark(tx.id)} corner /> : undefined}
+        iconMarkLabel={badges.mark(tx.id)?.name ?? null}
         label={
           <>
             {/* Outside a single month the day alone is ambiguous, so the circle's day gains its month here. */}

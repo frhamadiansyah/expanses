@@ -98,7 +98,7 @@ test('event mode: on from the event, a dot and a menu row on Cashflow, the Add f
   // …and every list that shows it marks it with a plane on its icon, the grey line left as any row's: the account's own history.
   await openWalletAccount(page, 'Lira cash');
   const recent = page.getByTestId('account-recent');
-  await expect(recent.getByRole('button', { name: /Lakeside lunch/ })).toHaveAccessibleName('Groceries Lakeside lunch · Lira cash');
+  await expect(recent.getByRole('button', { name: /Lakeside lunch/ })).toHaveAccessibleName('Groceries Lakeside lunch · Lira cash · Lake trip');
   await expect(recent.getByTestId('row-event')).toHaveCount(1);
   await expect(recent.getByTestId('row-event')).toHaveAttribute('title', 'Lake trip');
   await expect(recent.getByRole('button', { name: /Corner shop/ })).toHaveAccessibleName('Groceries Corner shop · Lira cash');
