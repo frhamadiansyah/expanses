@@ -33,7 +33,7 @@ import {
   type TransactionView,
   uncategorisedCategory,
 } from '@expanses/db';
-import { ArrowDownLeft, ArrowUpRight, Check, CreditCard, Hash, Home, Landmark, Layers, Tag, Split, Target } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Check, CreditCard, Hash, Home, Landmark, Tag, Split, Target } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { type CSSProperties, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
@@ -51,7 +51,6 @@ import { useSharedEventSummaries } from '../events/shared-queries';
 import { EventChip } from '../events/EventMode';
 import { showToast } from '../../ui/Toast';
 import { moveAfterSave } from './shared-move';
-import { CategoryOptions } from '../cards/options';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { fitsEventSet } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
@@ -64,16 +63,17 @@ import { useActiveNetWorthGroup, usePaidWithItems } from '../sharing/net-worth-q
 import { usePurchasePayers } from '../sharing/queries';
 import { useOpenBook } from '../workspaces/queries';
 import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
-import { AmountRow, FeeRow } from './AmountRow';
+import { AmountRow, FeeRow, FigureRow } from './AmountRow';
 import { buyChoices, emptyPurchaseDraft, type PurchaseDraft, tradeMoneyChoices, transferTargets } from './buy-in-form';
 import { InvestmentSheet } from './InvestmentSheet';
-import { amountRowText, chargedRowText, feeRowText, goalRowText, holdingFace, holdingRowText, payRowText, unitsRowText } from './buy-rows';
+import { amountRowText, chargedRowText, feeRowText, holdingFace, holdingRowText, payRowText, unitsRowText } from './buy-rows';
 import { DateRow, NoteRow } from './CardRows';
 import { CategoryPicker } from './CategoryPicker';
 import { ChoiceSheet } from './ChoiceSheet';
 import { useOpenings, useOpeningDay } from '../accounts/queries';
-import { Chevron, FieldRow, FormRow, FormRows, MoneyFieldRow, ROW_BODY, RowGlyph, RowLead, SelectFormRow } from './FormRow';
+import { Chevron, FieldRow, FormRow, FormRows, ROW_BODY, RowGlyph, RowLead, SelectFormRow } from './FormRow';
 import { MoreDetails } from './MoreDetails';
+import { TradeDetailRows, TradeHoldingRow, TradeMoneyRow, TradeUnitsRow } from './TradeRows';
 import { NoteSuggestions } from './NoteSuggestions';
 import { partnerTitle, partnerTransferSections } from './member-transfer';
 import { TransferRates } from './TransferRates';
@@ -887,13 +887,12 @@ function CardBody({
    * has always had, and — separately — the caption, the prompt and the hint that are drawn. The tab reads like
    * Expense, Income and Transfer now, and moving the currency onto the flag must not move it out of the name.
    */
-  const holdingRow = holdingRowText(purchase.mode);
+  const holdingRow = holdingRowText();
   const costRow = amountRowText(purchase.mode, purchaseCurrency);
   const unitsRow = unitsRowText({ useLots: purchase.useLots, lotSize: purchase.lotSize, unitLabel: chosen?.unitLabel ?? 'Units' });
   const feeRow = feeRowText(purchaseCurrency);
   const payRow = payRowText(purchase.mode);
   const chargedRow = chargedRowText({ mode: purchase.mode, cashCurrency: purchaseCashCurrency, moneyName: purchaseMoney?.name ?? 'the account' });
-  const goalRow = goalRowText(purchase.mode);
   /* The holding wears the drawing the Assets page gives its kind, as a transfer's accounts do in their own list. */
   const HoldingGlyph = assetKindTile('invest', byId.get(purchase.accountId)?.subtype ?? '');
 
@@ -1088,73 +1087,38 @@ function CardBody({
            * validation — nothing here reads a figure for itself.
            */
           <FormRows className="rounded-none">
-            {/* The holdings in a sheet of their own, as Paid with is (owner, 13 Nov 2026): by kind, searchable, the chosen one marked. */}
-            <FormRow
-              lead="value"
-              icon={
-                <RowGlyph>
-                  <HoldingGlyph size={15} />
-                </RowGlyph>
-              }
-              label={holdingRow.label}
-              caption={holdingRow.caption}
-              value={chosen ? holdingFace(chosen.label) : ''}
-              chevron
-              onClick={() => setSheet('investment')}
-            />
-            {(
-            <>
-            <MoneyFieldRow
-              currency={purchaseCurrency}
-              flag={currencyFlag(purchaseCurrency)}
-              label={costRow.label}
-              caption={costRow.caption}
-              placeholder={costRow.placeholder}
-              value={purchase.amount}
-              onChange={(amount) => setPurchase({ amount })}
-            />
-            <FieldRow
-              icon={
-                <RowGlyph>
-                  <Layers size={15} />
-                </RowGlyph>
-              }
-              label={unitsRow.label}
-              caption={unitsRow.caption}
-              hint={unitsRow.hint}
-              placeholder={unitsRow.placeholder}
-              inputMode="decimal"
-              divided={purchase.useLots}
-              value={purchase.useLots ? purchase.lots : purchase.units}
-              onChange={(text) => setPurchase(purchase.useLots ? { lots: text } : { units: text })}
-            />
-            {/* Paid with / To: the same sheet a purchase's Paid with and a transfer's From and To open (owner, 13 Nov 2026). */}
-            <FormRow
-              lead="value"
-              icon={<RowGlyph>{purchase.mode === 'buy' ? <CreditCard size={15} /> : <Landmark size={15} />}</RowGlyph>}
-              label={payRow.label}
-              caption={payRow.caption}
-              divided={purchase.mode === 'buy'}
+            {/*
+              Expense's order and look (owner, 13 Nov 2026): Paid with (Received into) first, the same account sheet;
+              the amount as Expense's amount row; the holding as Expense's Category row, opening its own sheet; the
+              units its kind is counted in; the date. Note-free: a trade's words are its holding's, never typed.
+            */}
+            <TradeMoneyRow
+              kind={purchase.mode}
               value={purchaseMoney ? (placeholders.has(purchaseMoney.id) ? placeholderLabel(purchaseMoney.name) : purchaseMoney.name) : ''}
-              chevron
               onClick={() => setSheet('tradeMoney')}
             />
+            <FigureRow
+              field={{ which: 'amount', label: costRow.label, value: purchase.amount, currency: purchaseCurrency }}
+              flag={currencyFlag(purchaseCurrency)}
+              onChange={(amount) => setPurchase({ amount })}
+            />
             {purchaseNeeds.charged && (
-              <MoneyFieldRow
-                currency={purchaseCashCurrency}
+              <FigureRow
+                field={{ which: 'charged', label: chargedRow.label, value: purchase.charged, currency: purchaseCashCurrency }}
                 flag={currencyFlag(purchaseCashCurrency)}
-                label={chargedRow.label}
-                caption={chargedRow.caption}
-                placeholder={chargedRow.placeholder}
-                hint={chargedRow.hint}
-                divided
-                value={purchase.charged}
+                clearLabel={`Clear ${chargedRow.label}`}
                 onChange={(charged) => setPurchase({ charged })}
               />
             )}
+            <TradeHoldingRow glyph={<HoldingGlyph size={15} />} label={holdingRow.label} name={chosen ? holdingFace(chosen.label) : ''} onClick={() => setSheet('investment')} />
+            <TradeUnitsRow
+              label={unitsRow.label}
+              caption={unitsRow.caption}
+              placeholder={unitsRow.placeholder}
+              value={purchase.useLots ? purchase.lots : purchase.units}
+              onChange={(text) => setPurchase(purchase.useLots ? { lots: text } : { units: text })}
+            />
             <DateRow on={purchase.occurredOn} onChange={(occurredOn) => setPurchase({ occurredOn })} max={isoDate()} />
-            </>
-            )}
           </FormRows>
         ) : (
           <FormRows className="rounded-none">
@@ -1397,58 +1361,6 @@ function CardBody({
         </FormRows>
       )}
 
-      {draft.mode === 'trade' && (goals.length > 0 || (purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card')) && (
-        <FormRows>
-          {goals.length > 0 && (
-            <FormRow
-              icon={
-                <RowGlyph>
-                  <Target size={15} />
-                </RowGlyph>
-              }
-              label="Goal"
-              value={goals.find((goal) => goal.id === purchase.goalId)?.name ?? 'None'}
-              onClick={() => setSheet('goal')}
-            />
-          )}
-          {purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card' && (
-            <>
-              <SelectFormRow
-                icon={
-                  <RowGlyph>
-                    <Tag size={15} />
-                  </RowGlyph>
-                }
-                label="Category for points"
-                caption="For points"
-                hint="Not spending: it only tells the points engine what the card bought."
-                divided={goals.length > 0}
-                display={purchase.spendCategoryId ? (byId.get(purchase.spendCategoryId)?.name ?? '') : ''}
-                value={purchase.spendCategoryId}
-                onChange={(spendCategoryId) => setPurchase({ spendCategoryId })}
-              >
-                <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
-              </SelectFormRow>
-              <FieldRow
-                icon={
-                  <RowGlyph>
-                    <Hash size={15} />
-                  </RowGlyph>
-                }
-                label="MCC"
-                caption="MCC"
-                hint="Gold and jewellery shops are 5944."
-                placeholder="Code"
-                inputMode="numeric"
-                divided
-                value={purchase.mcc}
-                onChange={(mcc) => setPurchase({ mcc })}
-              />
-            </>
-          )}
-        </FormRows>
-      )}
-
       {/* Withdrawal rate §7, R15: the Rate against the market, and out of foreign cash its cost and gain or loss. */}
       {draft.mode === 'transfer' && crossCurrency && <TransferRates draft={draft} accounts={accounts} editingId={initial?.id ?? null} />}
 
@@ -1487,14 +1399,22 @@ function CardBody({
             openWith={!!held && !held.recorded}
             lead={
               draft.mode === 'trade' ? (
-                <MoneyFieldRow
-                  currency={purchaseCurrency}
-                  flag={currencyFlag(purchaseCurrency)}
-                  label={feeRow.label}
-                  caption={feeRow.caption}
-                  placeholder={feeRow.placeholder}
-                  value={purchase.fee}
-                  onChange={(fee) => setPurchase({ fee })}
+                // Goal, a card's two facts for points, then the fee: the trade's own details, ahead of Photos and Exclude.
+                <TradeDetailRows
+                  kind={purchase.mode}
+                  goal={{ goals, value: purchase.goalId, onPick: (goalId) => setPurchase({ goalId }) }}
+                  {...(purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card'
+                    ? {
+                        points: {
+                          accounts,
+                          categoryId: purchase.spendCategoryId,
+                          mcc: purchase.mcc,
+                          onCategory: (spendCategoryId: string) => setPurchase({ spendCategoryId }),
+                          onMcc: (mcc: string) => setPurchase({ mcc }),
+                        },
+                      }
+                    : {})}
+                  fee={{ label: feeRow.label, value: purchase.fee, onChange: (fee) => setPurchase({ fee }) }}
                 />
               ) : undefined
             }

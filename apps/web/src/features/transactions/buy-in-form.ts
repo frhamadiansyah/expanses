@@ -4,6 +4,7 @@ import { canPayWith } from '../../lib/account-types';
 import { moneyHolders } from '../../lib/queries';
 import { withCharged } from '../networth/trade-money';
 import { paymentOptions, withoutPlaceholders } from './quick-row';
+import { unitWord } from './buy-rows';
 
 export interface BuyChoice {
   /** "buy:<accountId>" or "sell:<accountId>", the value the picker carries. */
@@ -20,7 +21,6 @@ export interface BuyChoice {
   heldAt: string | null;
 }
 
-const UNIT_LABELS: Record<string, string> = { units: 'Units', shares: 'Shares', grams: 'Grams', face: 'Par value' };
 
 /** Holdings measured in units: the only things you can buy or sell from the transaction window. */
 export function buyChoices(values: AssetValueRow[], profiles: AssetProfileRow[]): { buys: BuyChoice[]; sells: BuyChoice[] } {
@@ -35,7 +35,7 @@ export function buyChoices(values: AssetValueRow[], profiles: AssetProfileRow[])
       accountId: value.accountId,
       mode,
       lotSize: profile?.lotSize ?? null,
-      unitLabel: UNIT_LABELS[profile?.unitKind ?? 'units'] ?? 'Units',
+      unitLabel: unitWord(profile?.unitKind),
       kind: profile?.assetKind ?? null,
       // "RDPU · Bibit" already says where it is: the place is never said twice.
       heldAt: inst && !value.name.toLowerCase().includes(inst.toLowerCase()) ? inst : null,

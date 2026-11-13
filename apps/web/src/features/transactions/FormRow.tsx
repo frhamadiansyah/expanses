@@ -368,6 +368,30 @@ export function SelectFormRow({
   return withHint(row, hint);
 }
 
+/** A pill at a row's right end — a sell's All — pressed or not. */
+export interface RowPill {
+  label: string;
+  on: boolean;
+  run: () => void;
+}
+
+/** The pill itself, as the short trade sheets drew their All: the fill, and the tint once it is on. */
+export function RowPillButton({ pill }: { pill: RowPill }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={pill.on}
+      onClick={pill.run}
+      className={cx(
+        'ph-focus shrink-0 rounded-full px-[10px] py-[3px] text-[13px] leading-[18px] font-semibold',
+        pill.on ? 'bg-[var(--ph-tint)] text-[var(--ph-surface)]' : 'bg-[var(--ph-fill)] text-[var(--ph-tint)]',
+      )}
+    >
+      {pill.label}
+    </button>
+  );
+}
+
 /**
  * A row typed into in place, read the way the amount row is read: the figure is the row's own text on the left
  * and the caption on the right says what it is — "2 · Grams", "5944 · MCC". No chevron: nothing opens.
@@ -383,6 +407,10 @@ export function FieldRow({
   inputMode,
   divided,
   disabled = false,
+  pill,
+  invalid = false,
+  onFocus,
+  onBlur,
 }: {
   icon?: ReactNode;
   label: string;
@@ -395,6 +423,12 @@ export function FieldRow({
   divided?: boolean;
   /** Read, not typed into: a shared expense's rate is its payer's alone (shared events D8). */
   disabled?: boolean;
+  /** A pill before the caption: a sell's All. */
+  pill?: RowPill;
+  /** The figure is refused as it stands (more than is held): said to a screen reader, the words go elsewhere. */
+  invalid?: boolean;
+  onFocus?: () => void;
+  onBlur?: () => void;
 }) {
   const row = (
     <div className={cx('flex items-center gap-[10px] pl-[10px]', disabled && 'opacity-40')}>
@@ -402,13 +436,18 @@ export function FieldRow({
       <span className={bodyClass(divided)}>
         <input
           aria-label={label}
+          aria-invalid={invalid || undefined}
           inputMode={inputMode}
           value={value}
           disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
+          onFocus={onFocus}
+          onBlur={onBlur}
           placeholder={placeholder}
+          autoComplete="off"
           className={ROW_FIELD}
         />
+        {pill && <RowPillButton pill={pill} />}
         {caption && (
           <span aria-hidden className="shrink-0 text-[12.5px] leading-4 text-[var(--ph-ink-3)]">
             {caption}

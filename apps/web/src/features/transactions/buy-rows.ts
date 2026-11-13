@@ -14,6 +14,9 @@
 
 export type BuyMode = 'buy' | 'sell';
 
+/** A trade's money side: a buy pays, a sell or a payment lands somewhere. */
+export type TradeSide = BuyMode | 'income';
+
 export interface BuyRowText {
   /** The accessible name: unchanged from the label the row carried when it was a label-left row. */
   label: string;
@@ -25,12 +28,12 @@ export interface BuyRowText {
   hint?: string;
 }
 
-/** The holding row: what was bought or sold. */
-export function holdingRowText(mode: BuyMode): BuyRowText {
-  return {
-    label: 'Investment',
-    caption: mode === 'buy' ? 'Bought' : 'Sold',
-  };
+/**
+ * The holding row: what was bought or sold. It reads like Expense's Category row — the holding's name and nothing
+ * else (owner, 13 Nov 2026): the Buy / Sell tab above it already says which way it went, so there is no caption.
+ */
+export function holdingRowText(): BuyRowText {
+  return { label: 'Investment', caption: '', placeholder: 'Investment' };
 }
 
 /**
@@ -64,13 +67,15 @@ export function unitsRowText({ useLots, lotSize, unitLabel }: { useLots: boolean
   return { label, caption: useLots ? `${label} · ${lotSize ?? 1} shares` : label, placeholder: 'How many' };
 }
 
-/** Where the money came from, or where it landed. */
-export function payRowText(mode: BuyMode): BuyRowText {
-  if (mode === 'sell') return { label: 'Proceeds into', caption: 'Proceeds into' };
-  return {
-    label: 'Paid with',
-    caption: 'Paid with',
-  };
+/** Where the money came from, or where it landed: the Expense and Income forms' own words. */
+export function payRowText(mode: TradeSide): BuyRowText {
+  const label = mode === 'buy' ? 'Paid with' : 'Received into';
+  return { label, caption: label };
+}
+
+/** What the money row reads while a trade made before the app names no account: Opening Balances stands for it. */
+export function pastWord(mode: TradeSide): string {
+  return mode === 'buy' ? 'Past purchase' : mode === 'sell' ? 'Past sale' : 'Past payment';
 }
 
 /** A foreign trade's settling figure: what the paying account itself moved, in its own currency. */
@@ -85,6 +90,13 @@ export function chargedRowText({ mode, cashCurrency, moneyName }: { mode: BuyMod
 
 /** The goal a purchase funds, or the goal a sale takes units out of. */
 export function goalRowText(mode: BuyMode): BuyRowText {
-  const label = mode === 'buy' ? 'For goal' : 'Sell from goal';
+  const label = mode === 'buy' ? 'Goal' : 'From goal';
   return { label, caption: label };
+}
+
+const UNIT_WORDS: Record<string, string> = { units: 'Units', shares: 'Shares', grams: 'Grams', face: 'Par value' };
+
+/** The units row's word for a holding, by how it is counted: Grams, Shares, Par value; Units for anything else. */
+export function unitWord(unitKind: string | null | undefined): string {
+  return UNIT_WORDS[unitKind ?? 'units'] ?? 'Units';
 }
