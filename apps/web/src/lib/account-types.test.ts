@@ -2,7 +2,7 @@ import { CASH_ITEMS } from '@expanses/core';
 import type { AccountRow, AccountSubtype } from '@expanses/db';
 import { BALANCE_SUBTYPES, MONEY_SUBTYPES as LEDGER_MONEY, SPENDABLE_SUBTYPES as LEDGER_SPENDABLE } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { ACCOUNT_TYPES, canMoveMoneyIn, canPayWith, canReceiveInto, canTransferBetween, canTransferWith, keptForSpending, MONEY_SUBTYPES, SPENDABLE_SUBTYPES, SUBTYPE_LABELS, WALLET_SUBTYPES } from './account-types';
+import { ACCOUNT_TYPES, canMoveMoneyIn, canPayWith, canTradeCashWith, canReceiveInto, canTransferBetween, canTransferWith, keptForSpending, MONEY_SUBTYPES, SPENDABLE_SUBTYPES, SUBTYPE_LABELS, WALLET_SUBTYPES } from './account-types';
 
 describe('the account types someone can open', () => {
   /**
@@ -276,5 +276,28 @@ describe('what Withdraw and Top up may bring money in from', () => {
     expect(canMoveMoneyIn(card, cash)).toBe(false);
     expect(canMoveMoneyIn(a('kpr', 'liability', 'loan'), wallet)).toBe(false);
     expect(canTransferWith(card)).toBe(false);
+  });
+});
+
+/** An asset page's Buy offers what the full Buy form's Paid with offers that a card adds; a sale, a coupon and a payout never name a card. */
+describe('the money side of a trade on an asset page', () => {
+  const row = (id: string, subtype: AccountRow['subtype'], kind: AccountRow['kind'] = 'asset', forSpending?: number) => ({ id, kind, subtype, forSpending }) as AccountRow;
+
+  it('keeps the money a buy could always be paid from, a broker’s cash included', () => {
+    expect(canTradeCashWith(row('b', 'bank'), 'buy')).toBe(true);
+    expect(canTradeCashWith(row('r', 'fund'), 'buy')).toBe(true);
+    expect(canTradeCashWith(row('t', 'time_deposit'), 'buy')).toBe(false);
+  });
+
+  it('adds a credit card whose For spending switch is on, to a buy only', () => {
+    expect(canTradeCashWith(row('c', 'credit_card', 'liability'), 'buy')).toBe(true);
+    expect(canTradeCashWith(row('c', 'credit_card', 'liability', 0), 'buy')).toBe(false);
+    expect(canTradeCashWith(row('c', 'credit_card', 'liability'), 'sell')).toBe(false);
+    expect(canTradeCashWith(row('c', 'credit_card', 'liability'), 'income')).toBe(false);
+    expect(canTradeCashWith(row('l', 'loan', 'liability'), 'buy')).toBe(false);
+  });
+
+  it('keeps a card switched off when the trade already names it', () => {
+    expect(canTradeCashWith(row('c', 'credit_card', 'liability', 0), 'buy', 'c')).toBe(true);
   });
 });

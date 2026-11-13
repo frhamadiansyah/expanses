@@ -181,6 +181,17 @@ export function canPayWith(account: Pick<AccountRow, 'id' | 'kind' | 'subtype'> 
 }
 
 /**
+ * May this account be the money side of a trade on an asset page? The list those sheets always had — money the ledger
+ * moves, a broker's cash included — and, on a **buy** only, a credit card, by the full Buy form's own rule
+ * (`canPayWith`: its "For spending" switch on, or already the one the trade names). A sale, a coupon or a payout never
+ * lands on a card.
+ */
+export function canTradeCashWith(account: Pick<AccountRow, 'id' | 'kind' | 'subtype'> & SpendingSwitch, kind: string, current?: string | null): boolean {
+  if (MONEY_SUBTYPES.includes(account.subtype)) return true;
+  return kind === 'buy' && account.subtype === 'credit_card' && canPayWith(account, current);
+}
+
+/**
  * May a transaction's money be **received into** this account?
  *
  * Money you hold, and a broker's cash is one of them: a dividend or a coupon lands in the RDN, which is the one

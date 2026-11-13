@@ -8,7 +8,7 @@ import { ErrorBox } from '../../ui';
 import { InsetGroup, TextRow } from '../../ui/native';
 import { KeyboardStrip } from '../../ui/native/KeyboardStrip';
 import { dayLabel } from './asset-page';
-import { CashRow, CashSheet, HoldingRow, ResultRow, signedMinor, TradeDetails, TypedRow, typedMinor, useCashSide, useTradeDetails, useTradeSave } from './trade-sheet-parts';
+import { CardPointsBox, CashRow, CashSheet, HoldingRow, ResultRow, signedMinor, TradeDetails, TypedRow, typedMinor, useCashSide, useTradeDetails, useTradeSave } from './trade-sheet-parts';
 
 const PAID_INFO =
   "The receipt's total, with any tax on it. A fee charged on top of it goes under Fee in the details; the cost is the two together, which is what left the account. The sizes above the keyboard are the brand's own bar sizes; any other weight can be typed.";
@@ -48,7 +48,7 @@ export function GoldTradeSheet({
   const [occurredOn, setOccurredOn] = useState(today);
   const [picking, setPicking] = useState(false);
   const [typingGrams, setTypingGrams] = useState(false);
-  const side = useCashSide(null);
+  const side = useCashSide(null, kind);
   const heldMicro = position?.unitsMicro ?? 0;
   const moneyMinor = typedMinor(money, currency);
   const typed = typedGramsMicro(grams);
@@ -60,7 +60,7 @@ export function GoldTradeSheet({
       ? { accountId: holding.accountId, kind, occurredOn, unitsMicro, grossMinor: moneyMinor, feeMinor: 0, taxMinor: 0, cashAccountId: side.cashAccountId, goalId: null }
       : null;
   const cashCurrency = side.cashAccount?.currency ?? undefined;
-  const details = useTradeDetails({ holdingCurrency: currency, cashCurrency });
+  const details = useTradeDetails({ holdingCurrency: currency, card: side.isCard && kind === 'buy', cashCurrency });
   const { input, problem } = details.apply(typedInput);
   const saving = useTradeSave({ input, holdingCurrency: currency, cashCurrency, details, onDone: onClose });
   // The fee comes off the gain, as the ledger books it; tax withheld is filed as tax, not taken from the gain.
@@ -136,6 +136,8 @@ export function GoldTradeSheet({
         <CashRow label={kind === 'buy' ? 'Paid from' : 'To'} side={side} onOpen={() => setPicking(true)} />
         <TextRow label="Date" type="date" value={occurredOn} max={today} onChange={(e) => setOccurredOn(e.target.value)} />
       </InsetGroup>
+
+      <CardPointsBox details={details} accounts={side.accounts} show={side.isCard && kind === 'buy'} />
 
       <TradeDetails past={{ on: side.past, set: side.setPast }} kind={kind} details={details} currency={currency} emptyWord="None" whole={unitsMicro ? formatUnits(unitsMicro) : ''} unitLabel="g" problem={problem} />
 

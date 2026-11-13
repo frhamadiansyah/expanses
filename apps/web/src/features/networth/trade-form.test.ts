@@ -164,6 +164,8 @@ describe('a trade split between goals', () => {
     fee: '10.680',
     tax: '0',
     cashAccountId: 'rdn',
+    spendCategoryId: '',
+    mcc: '',
     goalId: SPLIT,
     parts: [
       { goalId: 'emergency', amount: '500' },
@@ -198,5 +200,22 @@ describe('a trade split between goals', () => {
   it('an edit of a split trade opens on its parts', () => {
     const trade = { kind: 'buy' as const, accountId: 'bbca', occurredOn: '2026-10-20', unitsMicro: 800_000_000, grossMinor: 7_120_000, feeMinor: 10_680, taxMinor: 0, cashAccountId: 'rdn', goalId: null, goalParts: [{ goalId: 'emergency', unitsMicro: 500_000_000, moneyMinor: 0 }] };
     expect(draftFromTrade(trade, 'IDR')).toMatchObject({ goalId: SPLIT, parts: [{ goalId: 'emergency', amount: '500' }] });
+  });
+});
+
+describe('a buy paid by credit card', () => {
+  const card = draft({ units: '2', gross: '3.980.000', cashAccountId: 'card', spendCategoryId: 'shopping', mcc: ' 5944 ' });
+
+  it('sends the purchase category and MCC when the paying account is a card', () => {
+    expect(draftToInput(card, 'IDR', TODAY, false, true)).toMatchObject({ spendCategoryId: 'shopping', mcc: '5944' });
+  });
+
+  it('sends neither when the account is not a card, or the trade is a sale', () => {
+    expect(draftToInput(card, 'IDR', TODAY)).not.toHaveProperty('spendCategoryId');
+    expect(draftToInput({ ...card, kind: 'sell' }, 'IDR', TODAY, false, true)).not.toHaveProperty('spendCategoryId');
+  });
+
+  it('sends null for a category or MCC left empty', () => {
+    expect(draftToInput({ ...card, spendCategoryId: '', mcc: '' }, 'IDR', TODAY, false, true)).toMatchObject({ spendCategoryId: null, mcc: null });
   });
 });

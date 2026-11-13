@@ -2,9 +2,10 @@ import { formatPriceMicro, isoDate, type Position, tradeCashMovedMinor, type Tra
 import { type AccountRow, type RecordTradeInput, recordTrade, replaceTrade, type TradeRow } from '@expanses/db';
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
-import { useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { ratePreview } from '../../lib/rates';
 import { ErrorBox, InputRow, Money, RowHint, SelectRow } from '../../ui';
+import { CategoryOptions } from '../cards/options';
 import { useSetAsideChoiceOf } from '../goals/queries';
 import { tradeDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
@@ -62,6 +63,10 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
   const sell = holding?.byMoney ? null : sellPreview(draft, position, currency);
   const change = (patch: Partial<TradeDraft>) => setDraft((current) => ({ ...current, ...patch }));
   const cashAccount = cashAccounts.find((account) => account.id === draft.cashAccountId);
+  // A credit card pays for a buy only; a sale, a payment or a change of units never names one.
+  const cardPaid = draft.kind === 'buy' && cashAccount?.subtype === 'credit_card';
+  const payers = cashAccounts.filter((account) => account.subtype !== 'credit_card' || draft.kind === 'buy');
+  const allAccounts = useAccounts().data ?? [];
   // An opening position pays from Opening Balances, which moves in the holding's own currency.
   const cashCurrency = cashAccount ? (cashAccount.currency ?? ws.baseCurrency) : currency;
   const needs = tradeRateNeeds(currency, cashCurrency, ws.baseCurrency);
@@ -70,13 +75,13 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
   const nothingReaches = (() => {
     if (draft.kind === 'buy' || draft.kind === 'unit_change') return false;
     try {
-      return tradeCashMovedMinor(draftToInput(draft, currency, today, holding?.byMoney)) === 0;
+      return tradeCashMovedMinor(draftToInput(draft, currency, today, holding?.byMoney, cardPaid)) === 0;
     } catch {
       return false;
     }
   })();
   /** What `submit` sends, before its rates: the one input the door, the question and the save all read. */
-  const typedInput = (): RecordTradeInput => withCharged(draftToInput(draft, currency, today, holding?.byMoney), charged, currency, cashCurrency);
+  const typedInput = (): RecordTradeInput => withCharged(draftToInput(draft, currency, today, holding?.byMoney, cardPaid), charged, currency, cashCurrency);
 
   /*
    * An edit of a trade that crossed a currency opens with "Charged in" filled from what its own transaction posted
@@ -91,6 +96,14 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
     prefilled.current = true;
     setCharged((typed) => prefillCharged({ editingCashAccountId: editing.cashAccountId, cashAccountId: draft.cashAccountId, postedCash, cashCurrency, typed }) ?? typed);
   }, [editing, postedCash, draft.cashAccountId, cashCurrency]);
+  // The same read gives back a card purchase's category and MCC, so an edit keeps what the points engine was told.
+  const cardFilled = useRef(false);
+  const postedCard = posted.data;
+  useEffect(() => {
+    if (cardFilled.current || !editing || !postedCard) return;
+    cardFilled.current = true;
+    setDraft((current) => ({ ...current, spendCategoryId: postedCard.spendCategoryId ?? '', mcc: postedCard.mcc ?? '' }));
+  }, [editing, postedCard]);
   const waitingForPosted = waitingForPostedMoney(!!editing, posted.isPending);
 
   // The one buy rule (`tradeDoor`), read off the input `submit` sends; an incomplete draft asks nothing yet. An edit
@@ -143,7 +156,17 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
     <form onSubmit={submit} className="flex flex-col gap-[10px]">
       {/* Option B: one card holding every row of the trade, as the Add Transaction card's Buy / sell tab draws it. */}
       <FormRows>
-        <SelectRow label="What happened" value={draft.kind} onChange={(e) => change({ kind: e.target.value as TradeKind })}>
+        <SelectRow
+          label="What happened"
+          value={draft.kind}
+          onChange={(e) => {
+            const kind = e.target.value as TradeKind;
+            // Leaving a buy leaves the card: pick the first account that can take the money instead.
+            const leavesCard = kind !== 'buy' && cashAccount?.subtype === 'credit_card';
+            change(leavesCard ? { kind, cashAccountId: cashAccounts.find((account) => account.subtype !== 'credit_card')?.id ?? '' } : { kind });
+            if (leavesCard) setCharged('');
+          }}
+        >
           {KINDS.map((kind) => (
             <option key={kind.value} value={kind.value}>
               {kind.label}
@@ -194,7 +217,7 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
             setCharged('');
           }}
         >
-          {cashAccounts.map((account) => (
+          {payers.map((account) => (
             <option key={account.id} value={account.id}>
               {account.name}
             </option>
@@ -235,7 +258,7 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
       ) : null}
 
       {/* The second card, as on the Add Transaction card: the goal, and the rate when the save could not find one. */}
-      {(draft.kind === 'buy' || draft.kind === 'sell' || needsRate) && (
+      {(draft.kind === 'buy' || draft.kind === 'sell' || needsRate || cardPaid) && (
         <FormRows>
           {(draft.kind === 'buy' || draft.kind === 'sell') && (
             <SelectRow
@@ -258,6 +281,19 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
               ))}
               {goals.length > 1 && <option value={SPLIT}>Split between goals…</option>}
             </SelectRow>
+          )}
+          {cardPaid && (
+            <>
+              <SelectRow
+                label="Category for points"
+                hint="Not spending: it only tells the points engine what the card bought."
+                value={draft.spendCategoryId}
+                onChange={(e) => change({ spendCategoryId: e.target.value })}
+              >
+                <CategoryOptions accounts={allAccounts} kind="expense" parentSuffix="(general)" />
+              </SelectRow>
+              <InputRow label="MCC" hint="Gold and jewellery shops are 5944." value={draft.mcc} onChange={(e) => change({ mcc: e.target.value })} inputMode="numeric" placeholder="Code" />
+            </>
           )}
           {needsRate && (
             <InputRow

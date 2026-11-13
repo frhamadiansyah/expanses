@@ -18,9 +18,12 @@ export interface TradeDetailsDraft {
   rate: string;
   /** A day rate the save could not find, typed under it as the full form's own "Rate that day". */
   dayRate: string;
+  /** A buy paid by credit card: the purchase category (so points count) and the merchant code. */
+  spendCategoryId: string;
+  mcc: string;
 }
 
-export const emptyTradeDetails = (): TradeDetailsDraft => ({ fee: '', tax: '', goalId: '', parts: [], rate: '', dayRate: '' });
+export const emptyTradeDetails = (): TradeDetailsDraft => ({ fee: '', tax: '', goalId: '', parts: [], rate: '', dayRate: '', spendCategoryId: '', mcc: '' });
 
 /**
  * Which way "Rate that day" reads when the money account's currency is not the holding's: one `from` is so many
@@ -64,7 +67,7 @@ export function detailMinor(text: string, currency: string, label: string, fallb
 export function withDetails(
   input: RecordTradeInput,
   details: TradeDetailsDraft,
-  o: { holdingCurrency: string; cashCurrency: string; baseCurrency: string; byMoney: boolean },
+  o: { holdingCurrency: string; cashCurrency: string; baseCurrency: string; byMoney: boolean; /** The money account is a credit card. */ card?: boolean },
 ): RecordTradeInput {
   const feeMinor = detailMinor(details.fee, o.holdingCurrency, 'Fee', input.feeMinor);
   const taxMinor = detailMinor(details.tax, o.holdingCurrency, 'Tax withheld', input.taxMinor);
@@ -80,7 +83,8 @@ export function withDetails(
           ),
         }
       : { goalId: details.goalId || null };
-  const out: RecordTradeInput = { ...input, feeMinor, taxMinor, ...goal };
+  const points = o.card && input.kind === 'buy' ? { spendCategoryId: details.spendCategoryId || null, mcc: details.mcc.trim() || null } : {};
+  const out: RecordTradeInput = { ...input, feeMinor, taxMinor, ...goal, ...points };
 
   const pair = pairRate(o.holdingCurrency, o.cashCurrency, o.baseCurrency);
   if (!pair || input.kind === 'unit_change') return out;

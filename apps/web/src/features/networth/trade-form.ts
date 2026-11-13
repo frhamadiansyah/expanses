@@ -18,6 +18,9 @@ export interface TradeDraft {
   goalId: string;
   /** The trade split between goals, while `goalId` is `SPLIT`: each goal's units, or its amount for a fund by money. */
   parts: PartDraft[];
+  /** A buy paid by credit card: the purchase's category (so points count) and its merchant code. */
+  spendCategoryId: string;
+  mcc: string;
 }
 
 export const emptyTradeDraft = (accountId: string, cashAccountId: string, today: string): TradeDraft => ({
@@ -31,6 +34,8 @@ export const emptyTradeDraft = (accountId: string, cashAccountId: string, today:
   cashAccountId,
   goalId: '',
   parts: [],
+  spendCategoryId: '',
+  mcc: '',
 });
 
 /**
@@ -69,7 +74,7 @@ const amount = (text: string, currency: string, label: string): number => {
 
 /** Turns what was typed into a trade to record, with messages meant for the screen. */
 /** `byMoney`: the holding is a fund tracked by money, whose buys and sells need no units (spec 2026-10-19-fund-by-amount). */
-export function draftToInput(draft: TradeDraft, currency: string, today: string, byMoney = false): RecordTradeInput {
+export function draftToInput(draft: TradeDraft, currency: string, today: string, byMoney = false, card = false): RecordTradeInput {
   if (!draft.accountId) throw new Error('Choose what was bought or sold');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.occurredOn)) throw new Error('Choose a date');
   if (draft.occurredOn > today) throw new Error('A trade cannot be dated after today');
@@ -112,6 +117,8 @@ export function draftToInput(draft: TradeDraft, currency: string, today: string,
     feeMinor: fee,
     taxMinor: tax,
     cashAccountId: draft.cashAccountId || null,
+    // What the points engine needs of a card purchase, as the full form sends it (buy-in-form).
+    ...(card && draft.kind === 'buy' ? { spendCategoryId: draft.spendCategoryId || null, mcc: draft.mcc.trim() || null } : {}),
     ...(draft.goalId === SPLIT
       ? { goalId: null, goalParts: partsFromTyped(draft.parts, byMoney ? draft.gross : draft.units, byMoney, currency) }
       : { goalId: draft.goalId || null }),

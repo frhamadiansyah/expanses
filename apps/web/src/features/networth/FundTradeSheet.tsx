@@ -6,7 +6,7 @@ import { ErrorBox } from '../../ui';
 import { InsetGroup, TextRow } from '../../ui/native';
 import { dayLabel } from './asset-page';
 import { typedAmount } from './trade-form';
-import { CashRow, CashSheet, HoldingRow, ResultRow, signedMinor, TradeDetails, TypedRow, typedMinor, useCashSide, useTradeDetails, useTradeSave } from './trade-sheet-parts';
+import { CardPointsBox, CashRow, CashSheet, HoldingRow, ResultRow, signedMinor, TradeDetails, TypedRow, typedMinor, useCashSide, useTradeDetails, useTradeSave } from './trade-sheet-parts';
 
 const BUY_INFO =
   "Units = amount ÷ NAV. An order placed before 13:00 WIB gets that day's NAV, published in the evening; after 13:00, the next business day's. If the fund app confirms a slightly different number, correct it on the trade. A fee in the details is added to the cost, not taken from the units.";
@@ -52,7 +52,7 @@ export function FundTradeSheet({
   const [all, setAll] = useState(false);
   const [occurredOn, setOccurredOn] = useState(today);
   const [picking, setPicking] = useState(false);
-  const side = useCashSide(defaultCashId);
+  const side = useCashSide(defaultCashId, kind);
   const heldMicro = position?.unitsMicro ?? 0;
   const priceMicro = lastPrice?.priceMicro ?? null;
   const amountMinor = typedMinor(amount, currency);
@@ -70,7 +70,7 @@ export function FundTradeSheet({
       ? { accountId: holding.accountId, kind, occurredOn, unitsMicro: trade.unitsMicro, grossMinor: trade.grossMinor, feeMinor: 0, taxMinor: 0, cashAccountId: side.cashAccountId, goalId: null }
       : null;
   const cashCurrency = side.cashAccount?.currency ?? undefined;
-  const details = useTradeDetails({ holdingCurrency: currency, cashCurrency, byMoney: byMoney !== null });
+  const details = useTradeDetails({ holdingCurrency: currency, card: side.isCard && kind === 'buy', cashCurrency, byMoney: byMoney !== null });
   const { input, problem } = details.apply(typedInput);
   const saving = useTradeSave({ input, holdingCurrency: currency, cashCurrency, details, onDone: onClose });
   // The fee comes off the gain, as the ledger books it; tax withheld is filed as tax, not taken from the gain.
