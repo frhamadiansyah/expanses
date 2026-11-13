@@ -275,6 +275,9 @@ async function postedBasis(tx: Db, transactionId: string, holdingAccountId: stri
 export interface PostedTradeMoney {
   cashMinor?: number;
   ratesToBase: Record<string, number>;
+  /** A buy paid by credit card: the purchase category on the card's line and the transaction's MCC, so an edit keeps them. */
+  spendCategoryId?: string | null;
+  mcc?: string | null;
 }
 
 /**
@@ -309,7 +312,14 @@ export async function postedTradeMoney(database: Database, ws: WorkspaceContext,
   if (!row) throw new AssetError('Trade not found in this workspace');
   if (!row.transactionId) return { ratesToBase: {} };
   const { accounts: tradeAccounts } = await tradeAccountsFor(database.db, ws, row.accountId, row.cashAccountId);
-  return postedMoneyTx(database.db, row.transactionId, tradeAccounts, row.kind);
+  const money = await postedMoneyTx(database.db, row.transactionId, tradeAccounts, row.kind);
+  if (row.kind !== 'buy' || !row.cashAccountId) return money;
+  const [card] = await database.db
+    .select({ spendCategoryId: entries.spendCategoryId, mcc: transactions.mcc })
+    .from(entries)
+    .innerJoin(transactions, eq(transactions.id, entries.transactionId))
+    .where(and(eq(entries.transactionId, row.transactionId), eq(entries.accountId, row.cashAccountId)));
+  return card ? { ...money, spendCategoryId: card.spendCategoryId ?? null, mcc: card.mcc ?? null } : money;
 }
 
 /**

@@ -3,7 +3,7 @@ import { type AccountRow, type RecordTradeInput, recordTrade } from '@expanses/d
 import { Info } from 'lucide-react';
 import { type InputHTMLAttributes, type ReactNode, useEffect, useId, useState } from 'react';
 import { useApp } from '../../app/context';
-import { MONEY_SUBTYPES } from '../../lib/account-types';
+import { canTradeCashWith } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { ratePreview } from '../../lib/rates';
 import { cx } from '../../ui';
@@ -11,6 +11,7 @@ import { type GroupChild, InsetGroup, InsetRow, PickerRow, ROW_PAD_X, ROW_PAD_Y,
 import { useGoals } from '../goals/queries';
 import { tradeDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
+import { CategoryOptions } from '../cards/options';
 import { PaymentSheet } from '../transactions/PaymentSheet';
 import { detailsToggleLabel } from '../transactions/tx-form';
 import { GoalParts } from './GoalParts';
@@ -142,9 +143,10 @@ export function ResultRow({
 }
 
 /** The accounts money can come from or go to, as the full form offers them, and the one chosen now. */
-export function useCashSide(defaultId: string | null) {
+export function useCashSide(defaultId: string | null, kind: 'buy' | 'sell' = 'sell') {
   const accounts = useAccounts();
-  const choices: AccountRow[] = moneyHolders(accounts.data ?? []).filter((account) => MONEY_SUBTYPES.includes(account.subtype));
+  // A buy may also be charged to a credit card, as the full Buy form allows (`canTradeCashWith`).
+  const choices: AccountRow[] = moneyHolders(accounts.data ?? []).filter((account) => canTradeCashWith(account, kind));
   const [picked, setPicked] = useState('');
   // Owned before the app: recorded against Opening Balances, so no account's balance moves (an empty cash account).
   const [past, setPast] = useState(false);
@@ -156,6 +158,8 @@ export function useCashSide(defaultId: string | null) {
     choices,
     cashAccountId,
     cashAccount,
+    /** The paying account is a credit card: the purchase then asks its category for points, and an MCC. */
+    isCard: cashAccount?.subtype === 'credit_card',
     past,
     setPast,
     /** An account to move, or a past trade that moves none. */
@@ -199,7 +203,7 @@ const NO_GOAL = '__none';
  * find. Folding it away keeps every value, and the save still sends them. Picking an account in another currency
  * opens it, since its Rate that day is then needed before the trade can be recorded.
  */
-export function useTradeDetails(o: { holdingCurrency: string; cashCurrency: string | undefined; byMoney?: boolean }) {
+export function useTradeDetails(o: { holdingCurrency: string; cashCurrency: string | undefined; byMoney?: boolean; card?: boolean }) {
   const { ws } = useApp();
   const goals = useGoals();
   const [open, setOpen] = useState(false);
@@ -216,7 +220,7 @@ export function useTradeDetails(o: { holdingCurrency: string; cashCurrency: stri
   function apply(input: RecordTradeInput | null): { input: RecordTradeInput | null; problem: string | null } {
     if (!input) return { input: null, problem: null };
     try {
-      return { input: withDetails(input, draft, { holdingCurrency: o.holdingCurrency, cashCurrency, baseCurrency: ws.baseCurrency, byMoney: !!o.byMoney }), problem: null };
+      return { input: withDetails(input, draft, { holdingCurrency: o.holdingCurrency, cashCurrency, baseCurrency: ws.baseCurrency, byMoney: !!o.byMoney, card: !!o.card }), problem: null };
     } catch (e) {
       return { input: null, problem: e instanceof Error ? e.message : String(e) };
     }
@@ -360,6 +364,23 @@ export function TradeDetails({
         {detailsToggleLabel(details.open)}
       </button>
     </>
+  );
+}
+
+/**
+ * What a purchase on a credit card asks beyond the account: the category it counts under for points and its MCC, in a
+ * box of their own under the first. Drawn only for a buy paid by a card, and nowhere else.
+ */
+export function CardPointsBox({ details, accounts, show }: { details: TradeDetailsState; accounts: readonly AccountRow[]; show: boolean }) {
+  if (!show) return null;
+  const { draft, change } = details;
+  return (
+    <InsetGroup footer="Not spending: it only tells the points engine what the card bought.">
+      <SelectRow label="Category for points" value={draft.spendCategoryId} onChange={(e) => change({ spendCategoryId: e.target.value })}>
+        <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
+      </SelectRow>
+      <TextRow label="MCC" value={draft.mcc} onChange={(e) => change({ mcc: e.target.value })} inputMode="numeric" placeholder="Code" />
+    </InsetGroup>
   );
 }
 

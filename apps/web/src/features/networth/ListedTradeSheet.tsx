@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { useApp } from '../../app/context';
-import { MONEY_SUBTYPES } from '../../lib/account-types';
+import { canTradeCashWith } from '../../lib/account-types';
 import { moneyHolders, useAccounts } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, SelectRow, SwitchRow, TextRow } from '../../ui/native';
@@ -12,7 +12,7 @@ import { dayLabel } from './asset-page';
 import { useBrokerFees } from './BrokerFeesGroup';
 import { feeRowText, lotsText, workedOut } from './listed-trade-model';
 import { AmountRow, FeeRow, FigureRow, GoalBox, ReadRow, RecordRow, StepBar, TapRow } from './listed-trade-parts';
-import { useTradeDetails, useTradeSave } from './trade-sheet-parts';
+import { CardPointsBox, useTradeDetails, useTradeSave } from './trade-sheet-parts';
 
 /** IDX trades in lots of 100 shares. */
 const IDX_LOT = 100;
@@ -66,7 +66,7 @@ export function ListedTradeSheet({
   const [editing, setEditing] = useState<'price' | 'lots' | null>(null);
   const [feeOpen, setFeeOpen] = useState(false);
   // With no broker named, the cash side is asked for, from the accounts the full form offers.
-  const cashChoices = moneyHolders(accounts.data ?? []).filter((account) => MONEY_SUBTYPES.includes(account.subtype));
+  const cashChoices = moneyHolders(accounts.data ?? []).filter((account) => canTradeCashWith(account, kind));
   const [picked, setPicked] = useState('');
   // Owned before the app: recorded against Opening Balances, so neither the broker's cash nor any account moves.
   const [past, setPast] = useState(false);
@@ -101,7 +101,8 @@ export function ListedTradeSheet({
       ? { accountId: holding.accountId, kind, occurredOn, unitsMicro, grossMinor, feeMinor: worked.feeMinor, taxMinor: worked.taxMinor, cashAccountId, goalId: null }
       : null;
   const cashCurrency = cashAccount?.currency ?? undefined;
-  const details = useTradeDetails({ holdingCurrency: holding.currency, cashCurrency });
+  const onCard = kind === 'buy' && cashAccount?.subtype === 'credit_card';
+  const details = useTradeDetails({ holdingCurrency: holding.currency, cashCurrency, card: onCard });
   const { input, problem } = details.apply(typedInput);
   const saving = useTradeSave({ input, holdingCurrency: holding.currency, cashCurrency, details, onDone: onClose });
   const sold = kind === 'sell' && position && !tooMany && lots >= 1 ? { basis: sellBasisMinor(position, unitsMicro), average: averagePriceMicro(position) } : null;
@@ -170,6 +171,8 @@ export function ListedTradeSheet({
           </SelectRow>
         ) : null}
       </InsetGroup>
+
+      <CardPointsBox details={details} accounts={accounts.data ?? []} show={onCard} />
 
       <GoalBox kind={kind} details={details} currency={holding.currency} whole={formatUnits(unitsMicro)} unitLabel="shares" baseCurrency={ws.baseCurrency} />
 

@@ -3,7 +3,7 @@ import { editValuation, recordValuation, type TradeRow, upsertPrice, type Valuat
 import { useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { useApp } from '../../app/context';
-import { MONEY_SUBTYPES } from '../../lib/account-types';
+import { canTradeCashWith } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, TextRow } from '../../ui/native';
@@ -162,8 +162,9 @@ export function TradeSheet({
   const accounts = useAccounts();
   const positions = usePositions();
   const goals = useGoals();
-  // The cash side of a trade: a buy is paid from money, a broker's cash included.
-  const cashAccounts = moneyHolders(accounts.data ?? []).filter((account) => MONEY_SUBTYPES.includes(account.subtype));
+  // The cash side of a trade: a buy is paid from money, a broker's cash included, or a credit card (the form hides the
+  // card on a sale); the account an edited trade already names is always kept.
+  const cashAccounts = moneyHolders(accounts.data ?? []).filter((account) => canTradeCashWith(account, 'buy') || account.id === editing?.cashAccountId);
   return (
     <Sheet grouped tall expanded title={title} onClose={onClose}>
       {accounts.isSuccess && positions.isSuccess && (

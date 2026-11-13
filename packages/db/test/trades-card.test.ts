@@ -9,6 +9,8 @@ import {
   type Database,
   listTransactions,
   nativeBalances,
+  postedTradeMoney,
+  replaceTrade,
   recordTrade,
   saveAssetProfile,
   type WorkspaceContext,
@@ -76,6 +78,21 @@ describe('buying a holding with a credit card', () => {
     const lines = await cardSpendLines(database, ws, card.id, CYCLE.from, CYCLE.to);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatchObject({ amountMinor: 3_980_000, categoryId: categories['shopping'], mcc: '5944' });
+  });
+
+  it('reads the category and MCC back for an edit, and a replaced trade keeps them', async () => {
+    const { tradeId } = await buyOnCard();
+    const posted = await postedTradeMoney(database, ws, tradeId);
+    expect(posted).toMatchObject({ spendCategoryId: categories['shopping'], mcc: '5944' });
+
+    const again = await replaceTrade(database, ws, tradeId, {
+      accountId: gold.id, kind: 'buy', occurredOn: '2026-09-12', unitsMicro: 2_000_000, grossMinor: 3_980_000, feeMinor: 0, taxMinor: 0,
+      cashAccountId: card.id, spendCategoryId: posted.spendCategoryId, mcc: posted.mcc,
+    });
+    const lines = await cardSpendLines(database, ws, card.id, CYCLE.from, CYCLE.to);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ categoryId: categories['shopping'], mcc: '5944' });
+    expect((await postedTradeMoney(database, ws, again.tradeId)).mcc).toBe('5944');
   });
 
   it('still records the purchase when no category is given, and earns nothing', async () => {

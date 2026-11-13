@@ -110,3 +110,15 @@ describe('detailMinor', () => {
     expect(detailMinor('0', 'IDR', 'Fee', 9_225)).toBe(0);
   });
 });
+
+describe('withDetails on a card', () => {
+  it('puts the purchase category and MCC on a buy paid by card', () => {
+    const input = withDetails(gold('buy', 9_350_000), details({ spendCategoryId: 'shopping', mcc: '5944' }), { ...idr, card: true });
+    expect(input).toMatchObject({ spendCategoryId: 'shopping', mcc: '5944' });
+  });
+
+  it('leaves them off a sale, and off a buy paid from a bank', () => {
+    expect(withDetails(gold('sell', 8_700_000), details({ spendCategoryId: 'shopping', mcc: '5944' }), { ...idr, card: true })).not.toHaveProperty('spendCategoryId');
+    expect(withDetails(gold('buy', 9_350_000), details({ spendCategoryId: 'shopping', mcc: '5944' }), idr)).not.toHaveProperty('spendCategoryId');
+  });
+});
