@@ -278,7 +278,12 @@ function WaiverForm({ page }: { page: CardPage }) {
     />
   );
   return (
-    <>
+    <CardScreen
+      title="Fee waiver"
+      back="Settings"
+      fallback={`/cards/${card.id}/settings`}
+      actions={[{ key: 'save', label: 'Save', glyph: <Check size={20} aria-hidden />, run: () => void save() }]}
+    >
       <ErrorBox error={error} />
       <InsetGroup header="How is the fee waived?">
         {choice('none', 'None', 'The fee is charged and stays charged')}
@@ -294,10 +299,7 @@ function WaiverForm({ page }: { page: CardPage }) {
           <CountsRow accounts={all} value={shownCategories} onChange={setCategories} />
         </InsetGroup>
       )}
-      <InsetGroup>
-        <InsetRow action title="Save" testId="waiver-save" onClick={() => void save()} />
-      </InsetGroup>
-    </>
+    </CardScreen>
   );
 }
 
@@ -305,10 +307,10 @@ function WaiverForm({ page }: { page: CardPage }) {
 export function FeeWaiverPage() {
   const { cardId } = waiverRoute.useParams();
   const { page, gate } = useCardPage(cardId);
+  if (page) return <WaiverForm page={page} />;
   return (
     <CardScreen title="Fee waiver" back="Settings" fallback={`/cards/${cardId}/settings`}>
       {gate}
-      {page && <WaiverForm page={page} />}
     </CardScreen>
   );
 }

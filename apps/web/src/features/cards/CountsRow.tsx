@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { cx } from '../../ui';
 import { PickerRow, SelectCircle } from '../../ui/native';
+import type { GroupChild } from '../../ui/native/InsetList';
 import { categoryGroups, offeredCategories } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
 
@@ -28,7 +29,8 @@ export function CountsRow({
   label = 'Counts',
   never = false,
   info,
-}: {
+  position,
+}: GroupChild & {
   accounts: readonly AccountRow[];
   value: string[];
   onChange: (ids: string[]) => void;
@@ -40,7 +42,7 @@ export function CountsRow({
   const [open, setOpen] = useState(false);
   return (
     <>
-      <PickerRow label={label} value={countsSummary(accounts, value, never ? 'None' : 'All purchases')} info={info} onOpen={() => setOpen(true)} testId={never ? 'never-row' : 'counts-row'} />
+      <PickerRow position={position} label={label} value={countsSummary(accounts, value, never ? 'None' : 'All purchases')} info={info} onOpen={() => setOpen(true)} testId={never ? 'never-row' : 'counts-row'} />
       {open && (
         <CountsSheet
           title={label}
