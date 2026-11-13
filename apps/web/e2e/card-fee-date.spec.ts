@@ -47,9 +47,10 @@ test('a card’s annual fee date is saved in Settings, listed in Recurring insid
   const pending = page.getByTestId('fee-line-pending');
   await expect(pending.getByTestId('fee-line-pending-value')).toHaveText(`${next.getDate()} ${MONTHS[next.getMonth()]} · Rp 500.000`);
 
-  // Waived before it is charged: ⋮ → Waived, not charged. No money moves; the fee leaves Recurring.
+  // Waived before it is charged: the fee is still ahead, so ⋮ offers Waived, not charged alone. No money moves; the fee
+  // leaves Recurring.
   await pending.click();
-  await expect(page.getByTestId('fee-menu').getByRole('button')).toHaveText(['Add the charge', 'Waived, not charged', 'Cancel']);
+  await expect(page.getByTestId('fee-menu').getByRole('button')).toHaveText(['Waived, not charged', 'Cancel']);
   await page.getByTestId('fee-menu-waived').click();
   await expect(page.getByTestId('fee-line-waived-value')).toHaveText('not charged · Rp 500.000');
   await page.goto('/bills');

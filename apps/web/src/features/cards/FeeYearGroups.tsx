@@ -167,7 +167,13 @@ export function FeeYearGroups({ cardId, currency, today, reached }: { cardId: st
     testId: 'fee-menu-add-charge',
     run: () => setAdding({ kind: 'charge', amount: amountText(feeMinor), on: record.covered <= today ? record.covered : today }),
   };
-  const addReversal: MenuChoice = { key: 'reversal', label: 'Add reversal', testId: 'fee-menu-add-reversal', run: () => setAdding({ kind: 'reversal', amount: amountText(feeMinor ?? record.charge?.amountMinor ?? null), on: today }) };
+  // The charge's own amount (the fee and its tax, as charged) when it is on the card; the card's fee before the app.
+  const addReversal: MenuChoice = {
+    key: 'reversal',
+    label: 'Add reversal',
+    testId: 'fee-menu-add-reversal',
+    run: () => setAdding({ kind: 'reversal', amount: amountText(record.charge ? record.charge.amountMinor : feeMinor), on: today }),
+  };
   const reset: MenuChoice = { key: 'reset', label: 'Reset', destructive: true, testId: 'fee-menu-reset', run: () => setResetting(true) };
 
   const choicesFor = (row: FeeRow): MenuChoice[] => {
@@ -175,13 +181,13 @@ export function FeeYearGroups({ cardId, currency, today, reached }: { cardId: st
       case 'pending':
         // A charge before the card is counted from is in its starting balance: it is never added again, only reversed.
         if (record.beforeApp) return [notCharged, addReversal];
+        // A fee still ahead has nothing to add yet: it can only be waived in advance.
+        if (record.covered > today) return [notCharged];
         return reached ? [notCharged, addCharge] : [addCharge, notCharged];
       case 'charged':
         return [
           ...(record.reversal ? [] : [addReversal]),
           { key: 'open', label: 'Open the charge', testId: 'fee-menu-open-charge', run: () => open(row.transactionId!) },
-          // An older mark under a recorded charge, with nothing back: the way to take the mark off.
-          ...(record.marked && !record.reversal ? [reset] : []),
         ];
       case 'reversal':
         return [{ key: 'open', label: 'Open the reversal', testId: 'fee-menu-open-reversal', run: () => open(row.transactionId!) }];

@@ -21,6 +21,6 @@ export function FeeWaiverRow({ page, position }: GroupChild & { page: CardPage }
   const progress = useFeeProgress(card, all, waiver, cp.terms?.annualFeeOn ?? null, today, current !== null && current.state !== 'pending');
   const loading = !ready || years.isPending || progress === undefined;
   const toGo = waiver && progress ? feeToGo(waiver.amountMinor - progress.spentMinor, currency) : null;
-  const text = loading ? '' : feeWaiverRowText(current ? { year: current.year, state: current.state } : null, waiver, toGo);
+  const text = loading ? '' : feeWaiverRowText(current ? { year: current.year, state: current.state } : null, waiver, toGo, today);
   return <PickerRow position={position} label="Fee waiver" value={text} testId="fee-waiver-row" onOpen={() => void navigate({ to: '/cards/$cardId/settings/fee-waiver', params: { cardId: card.id } })} />;
 }

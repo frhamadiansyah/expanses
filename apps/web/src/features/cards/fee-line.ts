@@ -1,5 +1,6 @@
 import { dayMonth, type FeeYearLine, formatMinor } from '@expanses/core';
 import type { FeeYearRecord } from '@expanses/db';
+import { shortMoney } from '../networth/value-chart';
 
 /** "12 Mar 2027". */
 export const feeDateText = (iso: string) => `${dayMonth(iso)} ${iso.slice(0, 4)}`;
@@ -49,11 +50,11 @@ export function earlierFeeText(record: FeeYearRecord, currency: string): string 
 }
 
 /**
- * What is left to spend, short, for Settings' Fee waiver row: rupiah millions as "jt", the way the app already shortens
- * them; any other amount or currency in full. Null with nothing left.
+ * What is left to spend, short, for Settings' Fee waiver row: rupiah millions as the app's axis shortens them
+ * (`shortMoney`, "18 jt"), after the currency; any other currency in full. Null with nothing left.
  */
 export function feeToGo(remainingMinor: number, currency: string): string | null {
   if (remainingMinor <= 0) return null;
   if (currency !== 'IDR' || remainingMinor < 1_000_000) return formatMinor(remainingMinor, currency);
-  return formatMinor(0, currency).replace('0', `${(remainingMinor / 1_000_000).toLocaleString('id-ID', { maximumFractionDigits: 1 })} jt`);
+  return formatMinor(0, currency).replace('0', shortMoney(remainingMinor, currency));
 }
