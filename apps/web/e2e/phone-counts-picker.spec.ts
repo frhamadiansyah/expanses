@@ -60,7 +60,7 @@ test('phone: Counts picks categories on a sheet, the row sums them up, and the c
   await page.getByRole('checkbox', { name: 'Shopping', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Transportation', exact: true }).click();
   await page.getByRole('button', { name: 'Done' }).click();
-  await page.getByTestId('waiver-save').click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.getByTestId('fee-waiver-row').click();
   await page.reload();
   await expect(page.getByTestId('counts-row')).toContainText('Shopping, Transport');
@@ -69,7 +69,7 @@ test('phone: Counts picks categories on a sheet, the row sums them up, and the c
   await page.getByTestId('counts-row').click();
   await page.getByRole('checkbox', { name: 'All purchases' }).click();
   await page.getByRole('button', { name: 'Done' }).click();
-  await page.getByTestId('waiver-save').click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.getByTestId('fee-waiver-row').click();
   await page.reload();
   await expect(page.getByTestId('counts-row')).toContainText('All purchases');

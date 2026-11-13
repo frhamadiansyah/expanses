@@ -90,7 +90,7 @@ export async function waiverFlow(page: Page, name: string) {
   await page.getByLabel('Counted from').fill(iso(days(-10)));
   const by = days(3);
   await page.getByLabel('Spend by').fill(iso(by));
-  await page.getByTestId('waiver-save').click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
 
   await expect(page.getByTestId('fee-waiver-row')).toContainText(`Challenge · by ${by.getDate()} ${MONTHS[by.getMonth()]}`);
   // Tapping the row again shows the kind ticked; the card's back carries the challenge with what is left.
