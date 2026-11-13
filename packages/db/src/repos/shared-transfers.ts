@@ -30,9 +30,14 @@ async function figureOfTx(tx: Db, transactionId: string): Promise<{ occurredOn: 
   const lines = await tx.values<[number, string, string, string, string]>(sql`
     SELECT e.amount_minor, e.currency, a.kind, a.id, a.name FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = ${transactionId}`);
   if (lines.some(([, , kind]) => kind === 'income' || kind === 'expense')) return null;
-  const leg = lines.filter(([amount]) => Number(amount) > 0).sort((a, b) => Number(b[0]) - Number(a[0]))[0];
+  // The legs are the accounts money left and reached. Between two currencies the row also carries the app's own
+  // Currency Exchange lines (equity, the spread): never the figure, or a TRY withdrawal would read as the rupiah the
+  // exchange line holds. Equity lines only when there is no money leg at all, as every row was read before.
+  const money = lines.filter(([, , kind]) => kind === 'asset' || kind === 'liability');
+  const legs = money.some(([amount]) => Number(amount) > 0) ? money : lines;
+  const leg = legs.filter(([amount]) => Number(amount) > 0).sort((a, b) => Number(b[0]) - Number(a[0]))[0];
   if (!leg) return null;
-  const out = lines.filter(([amount]) => Number(amount) < 0).sort((a, b) => Number(a[0]) - Number(b[0]))[0];
+  const out = legs.filter(([amount]) => Number(amount) < 0).sort((a, b) => Number(a[0]) - Number(b[0]))[0];
   return {
     occurredOn: head[0],
     description: head[1].trim(),

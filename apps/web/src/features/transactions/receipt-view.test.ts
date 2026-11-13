@@ -301,6 +301,34 @@ describe('the word between a share and a bill', () => {
     expect(heroCaption(whole, 400_000)).toBeNull();
   });
 
+  it('says nothing on a transfer between two currencies: what landed and what left are one move, not a share', () => {
+    // An ATM abroad: Rp 1.450.000 out of the rupiah wallet, TRY 2.500,00 into the lira one, the spread on Currency Exchange.
+    const atm = dinner({
+      description: 'Bank Contoh ATM',
+      cardId: null,
+      entries: [
+        { accountId: 'acct-idr', accountKind: 'asset', accountSubtype: 'cash', amountMinor: -1_450_000, amountBaseMinor: -1_450_000, currency: 'IDR' },
+        { accountId: 'acct-fx', accountKind: 'equity', accountSystemKey: 'currency_exchange', amountMinor: 1_450_000, amountBaseMinor: 1_450_000, currency: 'IDR' },
+        { accountId: 'acct-try', accountKind: 'asset', accountSubtype: 'cash', amountMinor: 250_000, amountBaseMinor: 1_400_000, currency: 'TRY' },
+        { accountId: 'acct-fx', accountKind: 'equity', accountSystemKey: 'currency_exchange', amountMinor: -250_000, amountBaseMinor: -1_400_000, currency: 'TRY' },
+      ],
+    } as unknown as Partial<TransactionView>);
+    // The hero is the lira that landed, as `ReceiptPage` passes it.
+    expect(heroCaption(atm, 250_000)).toBeNull();
+  });
+
+  it('says nothing on a transfer with its fee beside it', () => {
+    const topUp = dinner({
+      cardId: null,
+      entries: [
+        { accountId: 'acct-bank', accountKind: 'asset', accountSubtype: 'bank', amountMinor: -506_500, amountBaseMinor: -506_500, currency: 'IDR' },
+        { accountId: 'acct-wallet', accountKind: 'asset', accountSubtype: 'cash', amountMinor: 500_000, amountBaseMinor: 500_000, currency: 'IDR' },
+        { accountId: 'cat-restaurants', accountKind: 'expense', amountMinor: 6_500, amountBaseMinor: 6_500, currency: 'IDR' },
+      ],
+    } as unknown as Partial<TransactionView>);
+    expect(heroCaption(topUp, 500_000)).toBeNull();
+  });
+
   it('says nothing about a transaction with no money entry to compare against', () => {
     const noMoney = dinner({ entries: [{ accountId: 'cat-restaurants', accountKind: 'expense', amountMinor: 100_000, amountBaseMinor: 100_000, currency: 'IDR' }] } as Partial<TransactionView>);
     expect(heroCaption(noMoney, 100_000)).toBeNull();

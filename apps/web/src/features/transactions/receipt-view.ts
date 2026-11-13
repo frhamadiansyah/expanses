@@ -1,6 +1,7 @@
 import { formatMinor, monthName } from '@expanses/core';
 import type { AccountRow, CardRow, PersonDebtRow, PurchasePayer, SplitBook, TransactionView, WithdrawalsUsed } from '@expanses/db';
 import { fromWithdrawalsText, receiptWithdrawalLine } from '../../lib/withdrawal-rate';
+import { classify } from './classify';
 import { isNotCountedLine } from './list-model';
 import type { PurchasePoints } from '../../lib/purchase-points';
 import { formatPoints } from '../cards/useCardPoints';
@@ -69,6 +70,9 @@ function paidEntry(tx: TransactionView) {
 export function heroCaption(tx: TransactionView, heroMinor: number): string | null {
   const { paid } = paidEntry(tx);
   if (!paid) return null;
+  // A transfer is never a share: its hero is what landed, which differs from what left by a fee beside it or, between
+  // two currencies, by being another currency. It reads as every transfer's receipt does, with no word under it.
+  if (classify(tx).type === 'transfer') return null;
   return Math.abs(paid.amountMinor) === heroMinor ? null : 'My share';
 }
 
