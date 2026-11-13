@@ -278,8 +278,10 @@ function readImage(lines: readonly CaptureLine[], image: number, period: { start
   return entries.map(({ r, columns, text }): Found => {
     const ref = columns.find((c) => c.ref !== null)?.ref ?? null;
     let description = '';
-    let rest: string[];
-    if (descriptionAt === undefined && text.length === 1) {
+    let rest: string[] = [];
+    if (text.length === 0) {
+      // A date and an amount alone: nothing to describe it.
+    } else if (descriptionAt === undefined && text.length === 1) {
       // No columns to go by: the first line is the description and the rest what it was paid from.
       [description = '', ...rest] = text[0]!.words;
     } else {

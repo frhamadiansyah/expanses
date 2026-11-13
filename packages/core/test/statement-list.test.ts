@@ -197,6 +197,12 @@ describe('readTransactionList', () => {
     });
   });
 
+  it('reads an entry of a date and an amount alone, with no words beside them', () => {
+    const image = [line('19 Sep 2026 10:00', 0.05, 0.12), line('−Rp7.000', 0.72, 0.12, 0.25)];
+    const { rows } = readTransactionList([image], { today: TODAY, currency: 'IDR' });
+    expect(rows).toEqual([expect.objectContaining({ description: '', source: null, ref: null, amountMinor: 7000 })]);
+  });
+
   it('does not take a shop named with a coin word for a coins row', () => {
     const entries: Entry[] = [['Poin Cafe', 'TRX0000000001', '19 Sep 2026 10:00', '−Rp9.000', 'Wallet']];
     const { rows } = readTransactionList([walletImage(entries)], { today: TODAY, currency: 'IDR' });
