@@ -177,6 +177,46 @@ test('a statement older than the card’s start records as already paid off, wit
   await expectWalletFigure(page, 'BCA Visa', '2.000.000');
 });
 
+test('a wrong category on a missing card row is taken back: No category files that row alone under Uncategorised', async ({ page }) => {
+  await page.clock.setSystemTime(TODAY);
+  await openCard(page, { name: 'BCA Visa', statementDay: '10', dueDay: '25' });
+  await page.goto('/wallet');
+  await page.getByRole('link', { name: 'BCA Visa' }).click();
+  await cardPage(page, 'Statement');
+  await page.getByRole('button', { name: 'Earlier statement' }).click();
+  await page.getByTestId('check-statement').click();
+  await setStatementImages(page, [
+    statementLines([
+      ['20AUG', 'KEDAI ORNEK SATU', '37,000'],
+      ['24AUG', 'KEDAI ORNEK SATU', '52,000'],
+    ]),
+    summaryLines([['New Balance', '89,000']]),
+  ]);
+  await page.getByTestId('statement-files').setInputFiles(screenshotFiles(2));
+  await page.getByRole('button', { name: 'Check 2 screenshots' }).click();
+  await page.getByTestId('count-missing').click();
+
+  const missing = page.getByTestId('missing-row');
+  await missing.filter({ hasText: '37.000' }).getByRole('button', { name: /Choose category/ }).click();
+  const picker = page.getByRole('dialog', { name: 'KEDAI ORNEK SATU' });
+  // Nothing chosen yet: nothing to take back.
+  await expect(picker.getByTestId('category-none')).toHaveCount(0);
+  await picker.getByRole('button', { name: 'Restaurants', exact: true }).click();
+  await expect(missing.filter({ hasText: '52.000' })).toContainText('Restaurants');
+
+  // The 37.000 was not a restaurant: No category files it under Uncategorised; its twin keeps Restaurants.
+  await missing.filter({ hasText: '37.000' }).getByRole('button', { name: /Restaurants/ }).click();
+  await picker.getByTestId('category-none').click();
+  await expect(missing.filter({ hasText: '37.000' })).toContainText('Uncategorised');
+  await expect(missing.filter({ hasText: '52.000' })).toContainText('Restaurants');
+  await expect(page.getByTestId('record-all')).toHaveText('Record all 2');
+  await page.getByTestId('record-all').click();
+  await expect(page.getByRole('status').filter({ hasText: 'August statement checked — ✓ Reconciled' })).toBeVisible();
+
+  await page.goto('/transactions?month=2026-08');
+  await expect(page.getByTestId('transaction-row').filter({ hasText: '37.000' })).toContainText('Uncategorised');
+});
+
 test('a card row filed under Top-ups records as the top-up it was: what landed in the wallet, and the fee beside it', async ({ page }) => {
   await page.clock.setSystemTime(TODAY);
   await openCard(page, { name: 'BCA Visa', statementDay: '10', dueDay: '25', last4: '4821' });

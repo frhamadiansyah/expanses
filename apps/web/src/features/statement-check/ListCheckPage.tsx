@@ -529,7 +529,15 @@ function ListBody({ account, accounts, batch }: { account: AccountRow; accounts:
         </Sheet>
       )}
       {editingRow && draft && picking && draft.type !== 'transfer' && (
-        <CategoryPicker kind={draft.type} lockKind value={draft.categoryId} onPick={(categoryId) => setDraft({ ...draft, categoryId })} onClose={() => setPicking(false)} />
+        <CategoryPicker
+          kind={draft.type}
+          lockKind
+          value={draft.categoryId}
+          onPick={(categoryId) => setDraft({ ...draft, categoryId })}
+          // No category: recorded under Uncategorised (`listInputs`).
+          {...(draft.categoryId ? { onNone: () => setDraft({ ...draft, categoryId: '' }) } : {})}
+          onClose={() => setPicking(false)}
+        />
       )}
     </div>
   );

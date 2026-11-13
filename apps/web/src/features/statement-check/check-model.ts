@@ -76,6 +76,14 @@ export function withTopUp(rows: readonly CheckDraftRow[], index: number, topUp: 
   return rows.map((r) => (r.index === index ? { ...r, topUp } : r));
 }
 
+/**
+ * The row at `index` filed under `categoryId` by the owner, alone: No category (Uncategorised) is said of one row, so it
+ * does not spread to the merchant's other rows as a picked category does (`fillSameMerchant`). Pure.
+ */
+export function withOwnCategory(rows: readonly CheckDraftRow[], index: number, categoryId: string): CheckDraftRow[] {
+  return rows.map((r) => (r.index === index ? { ...r, categoryId, categorySource: 'owner', topUp: null } : r));
+}
+
 /** What a top-up row comes to: what lands in the wallet and the fee, which together are the row's figure. */
 export function topUpFigures(row: CheckDraftRow): { landsMinor: number; feeMinor: number } {
   const feeMinor = row.topUp?.feeMinor ?? 0;

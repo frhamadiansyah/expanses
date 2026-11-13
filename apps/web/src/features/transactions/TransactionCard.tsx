@@ -119,6 +119,11 @@ export interface CardFinish {
   canSubmit?: (draft: FormDraft) => boolean;
   /** The ✓'s name. */
   saveLabel?: string;
+  /**
+   * The caller files a row left with no category under Uncategorised itself, so the picker offers No category. Left
+   * out, a capture's draft needs its own category.
+   */
+  categoryLater?: boolean;
   /** Drawn above the card's tabs: what the form was filled from. */
   header?: ReactNode;
   /** Drawn under Add more details. */
@@ -853,7 +858,7 @@ function CardBody({
     try {
       if (draft.mode === 'transfer' && draft.partner) memberTransferOf(draft, accounts, '', '');
       // A category left for later is answered at Save (Uncategorised); a capture's draft still needs its own.
-      else formToPost(withTopUps(finish ? draft : withCategoryLater(draft, CATEGORY_LATER)), accounts);
+      else formToPost(withTopUps(finish && !finish.categoryLater ? draft : withCategoryLater(draft, CATEGORY_LATER)), accounts);
       return finish?.canSubmit?.(draft) ?? true;
     } catch {
       return false;
@@ -1311,7 +1316,7 @@ function CardBody({
               <FormRow
                 lead="value"
                 label="Category"
-                placeholder={!finish && categoryLater(draft) ? 'Choose later' : 'Select category'}
+                placeholder={(!finish || finish.categoryLater) && categoryLater(draft) ? 'Choose later' : 'Select category'}
                 icon={categoryLead}
                 value={categoryName}
                 caption=""
@@ -1707,6 +1712,15 @@ function CardBody({
             } else set({ categoryId });
           }}
           onClose={() => setSheet(null)}
+          // No category: a wrong category taken back, filed under its kind's Uncategorised at Save, where the form may.
+          {...(draft.categoryId && (finish ? finish.categoryLater : true) && categoryLater({ ...draft, categoryId: '' })
+            ? {
+                onNone: () => {
+                  categorySource.current = 'hand';
+                  set({ categoryId: '' });
+                },
+              }
+            : {})}
           {...(offersSplit ? { onSplit: () => setSheet('split'), splitRefusal: extraRowRefusal('split', draft) } : {})}
           {...(moveTo ? { bookId: moveTo } : {})}
         />

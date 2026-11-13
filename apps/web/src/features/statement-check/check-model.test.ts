@@ -16,6 +16,7 @@ import {
   takenByOthers,
   topUpFigures,
   unchosenTied,
+  withOwnCategory,
   withTopUp,
 } from './check-model';
 
@@ -280,5 +281,18 @@ describe('plasticChoice', () => {
     expect(plasticChoice([a, b], 'gone').chosen).toBe('b');
     expect(plasticChoice([b], undefined).choosable).toBe(false);
     expect(plasticChoice([], undefined).chosen).toBeNull();
+  });
+});
+
+describe('withOwnCategory', () => {
+  it('files one row alone, leaving the same merchant\'s other rows as they were, and takes it out of being a top-up', () => {
+    const rows = [missing({ index: 70, categoryId: 'food', topUp: { walletAccountId: 'w', feeMinor: 0 } }), missing({ index: 71 })];
+    const after = withOwnCategory(rows, 70, 'unc');
+    expect(after.map((r) => [r.categoryId, r.categorySource, r.topUp ?? null])).toEqual([
+      ['unc', 'owner', null],
+      [null, null, null],
+    ]);
+    expect(canRecordAll(after, {})).toBe(false);
+    expect(canRecordAll(withOwnCategory(after, 71, 'unc'), {})).toBe(true);
   });
 });

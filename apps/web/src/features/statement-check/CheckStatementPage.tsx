@@ -13,6 +13,7 @@ import {
   prepareStatementCheck,
   recordStatementCheck,
   setCreditKind,
+  uncategorisedCategory,
   withRows,
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
@@ -29,7 +30,7 @@ import { useAccountNumberLast4, useCards, useWalletLast4 } from '../cards/card-q
 import { cycleBack } from '../cards/statement-dates';
 import { dropStatementBatch, setCheckedNote, statementBatch } from './batch';
 import { AskList, type CandidateInfo, type CheckList, CheckResult, DiffersList, FlaggedList, MatchedList, PaymentsList } from './CheckResult';
-import { canRecordAll, corrected, needsCategory, needsWallet, plasticChoice, recordLabel, statementMonth, withTopUp } from './check-model';
+import { canRecordAll, corrected, needsCategory, needsWallet, plasticChoice, recordLabel, statementMonth, withOwnCategory, withTopUp } from './check-model';
 import { MissingRows } from './MissingRows';
 
 /** `/cards/$cardId/check?start&end&batch`: the period when the card page knows it, and lines already read (S2). */
@@ -379,6 +380,14 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
           walletDigits={{ ...(accountNumbers ?? {}), ...(walletNumbers ?? {}) }}
           accounts={accounts}
           onPick={(index, categoryId) => setRows((was) => fillSameMerchant(was, index, categoryId))}
+          onNone={(index) =>
+            void (async () => {
+              // The real Uncategorised, made the first time one is needed: a card row is recorded with a category.
+              const id = await uncategorisedCategory(database, ws, 'expense');
+              await invalidate();
+              setRows((was) => withOwnCategory(was, index, id));
+            })().catch(setError)
+          }
           onTopUp={(index, topUp) => setRows((was) => withTopUp(was, index, topUp))}
           onCorrect={(index, patch) => setRows((was) => was.map((r) => (r.index === index ? corrected(r, patch) : r)))}
           onKind={onKind}
