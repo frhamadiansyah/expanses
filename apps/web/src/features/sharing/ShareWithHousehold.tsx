@@ -53,7 +53,7 @@ export function ShareWithHouseholdRow({ accountId, jointSwitch = false }: { acco
       <>
         <ErrorBox error={error} />
         <InsetGroup>
-          <InsetRow testId="share-with-household" title={HOUSEHOLD_SHARING} value={row.label} chevron={false} />
+          <InsetRow testId="share-with-household" plain title={HOUSEHOLD_SHARING} value={row.label} chevron={false} />
           <InsetRow title="Share" action onClick={() => void change('total')} />
         </InsetGroup>
       </>
@@ -74,7 +74,7 @@ export function ShareWithHouseholdRow({ accountId, jointSwitch = false }: { acco
       <>
         <ErrorBox error={error} />
         <InsetGroup>
-          <InsetRow testId="share-with-household" title={HOUSEHOLD_SHARING} value={row.label} valueTone="gain" to="/account/workspaces/$bookId/share/net-worth" params={{ bookId: group.data.workspaceBookId }} />
+          <InsetRow testId="share-with-household" plain title={HOUSEHOLD_SHARING} value={row.label} to="/account/workspaces/$bookId/share/net-worth" params={{ bookId: group.data.workspaceBookId }} />
           {jointRows}
         </InsetGroup>
       </>
