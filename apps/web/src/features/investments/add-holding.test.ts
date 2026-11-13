@@ -181,6 +181,14 @@ describe('a share bought now', () => {
     expect(() => planAddHolding({ kind: 'listed', security: bbca }, { ...draft, paidFrom: '' }, '2026-11-13', 'IDR')).toThrow('Choose what paid for it');
   });
 
+  it('refuses a new purchase with nothing typed rather than saving the holding empty, as Add asset does', () => {
+    const blank = { ...emptyHoldingDraft('2026-11-13', 'IDR'), brokerChoice: 'rdn' };
+    expect(() => planAddHolding({ kind: 'listed', security: bbca }, { ...blank, paidFrom: '' }, '2026-11-13', 'IDR')).toThrow('Choose what paid for it');
+    expect(() => planAddHolding({ kind: 'listed', security: bbca }, { ...blank, paidFrom: 'rdn' }, '2026-11-13', 'IDR')).toThrow('Enter how many lots');
+    // Past purchase with nothing typed still adds the holding alone.
+    expect(planAddHolding({ kind: 'listed', security: bbca }, { ...blank, paidFrom: OPENING }, '2026-11-13', 'IDR').buy).toBeNull();
+  });
+
   it('pays from the broker’s cash unless another account is picked, as Trade does', () => {
     const brokers = [{ id: 'rdn' }];
     expect(newPurchaseMoney('rdn', brokers, '')).toBe('rdn');

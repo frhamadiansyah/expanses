@@ -187,7 +187,14 @@ export function AddHoldingForm({ picked, brokers, heldAt, onConfirm, onTicker }:
             <MoneyRow label="Price per share" value={draft.price} onChange={(price) => change({ price })} currency={security.currency} />
             <ReadOnlyRow label="Total" value={total === null ? null : formatMinor(total, security.currency)} />
             <MoneyRow label="Fee" value={draft.fee} onChange={(fee) => change({ fee })} currency={security.currency} placeholder="None" />
-            <PickerRow label="Paid with" value={paidWith?.name ?? null} placeholder="Account" onOpen={() => setPaying(true)} />
+            {/* With nothing to pay from yet — a broker not opened yet has no cash — ✓ waits on this row, so it says so. */}
+            <PickerRow
+              label="Paid with"
+              value={paidWith?.name ?? null}
+              placeholder="Account"
+              hint={paidFrom === '' ? (draft.brokerChoice === NEW_BROKER ? 'A broker not opened yet has no cash to pay from: choose what paid for it.' : 'Choose what paid for it.') : undefined}
+              onOpen={() => setPaying(true)}
+            />
             {paidWith && cashCurrency !== security.currency ? (
               <MoneyRow label={`Charged in ${cashCurrency}`} value={draft.charged} onChange={(charged) => change({ charged })} currency={cashCurrency} placeholder="Amount" />
             ) : null}

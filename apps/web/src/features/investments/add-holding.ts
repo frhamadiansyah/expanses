@@ -120,8 +120,11 @@ export function planAddHolding(picked: Picked, draft: HoldingDraft, today: strin
     broker = { name: draft.brokerName.trim(), currency: draft.brokerCurrency };
   } else if (draft.brokerChoice !== NO_BROKER_CHOICE) broker = { accountId: draft.brokerChoice };
   const what = picked.kind === 'held' ? { id: picked.security.id } : security;
-  // Nothing typed about a purchase: the holding alone, its buys recorded on it after (as Add asset adds a fund).
-  if (draft.quantity.trim() === '' && draft.price.trim() === '' && draft.fee.trim() === '') return { security: what, broker, buy: null };
+  // Past purchase with nothing typed: the holding alone, its buys recorded on it after (as Add asset adds a fund). A
+  // new purchase always records its buy, so it asks for what is missing instead of saving the holding empty.
+  const past = draft.paidFrom === OPENING;
+  if (past && draft.quantity.trim() === '' && draft.price.trim() === '' && draft.fee.trim() === '') return { security: what, broker, buy: null };
+  if (draft.paidFrom === '') throw new Error('Choose what paid for it');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.occurredOn)) throw new Error('Choose when it was bought');
   if (draft.occurredOn > today) throw new Error('A purchase cannot be dated after today');
   const unitsMicro = unitsOf(draft.quantity, security.lotSize);
@@ -130,7 +133,6 @@ export function planAddHolding(picked: Picked, draft: HoldingDraft, today: strin
   if (!(grossMinor > 0)) throw new Error('Enter a price greater than zero');
   const feeMinor = draft.fee.trim() === '' ? 0 : parseMajor(draft.fee, security.currency);
   if (feeMinor < 0) throw new Error('A fee cannot be negative');
-  if (draft.paidFrom === '') throw new Error('Choose what paid for it');
   const cashAccountId = draft.paidFrom === OPENING ? null : draft.paidFrom;
   // What the points engine needs of a card purchase, as Trade's Buy sends it.
   const cardFacts = card && cashAccountId ? { spendCategoryId: draft.spendCategoryId || null, mcc: draft.mcc.trim() || null } : {};
