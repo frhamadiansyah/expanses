@@ -146,7 +146,7 @@ function BuysSheet({
  * opens its own sheet of buys, each with when and how much it was and which goal it already serves, all ticked. Unticking
  * leaves a buy out; "Tag N" tags the ticked ones together, and asks once, naming the goals, when some serve another goal.
  */
-export function TagPurchaseSheet({ goalId, tagged, onPickMany, onClose }: { goalId: string | undefined; tagged: readonly string[]; onPickMany: (tradeIds: string[]) => void; onClose: () => void }) {
+export function TagPurchaseSheet({ goalId, tagged, onPickMany, savedLater = false, onClose }: { goalId: string | undefined; tagged: readonly string[]; onPickMany: (tradeIds: string[]) => void; /** True on the goal form, where the tags are written when the goal is saved. */ savedLater?: boolean; onClose: () => void }) {
   const trades = taggable(useTrades().data ?? []).filter((trade) => !tagged.includes(trade.id));
   const goals = useGoals().data ?? [];
   const { nameOf, sizeOf, sizeOfAll, paidOf, kindOf } = useHoldingWords();
@@ -236,7 +236,7 @@ export function TagPurchaseSheet({ goalId, tagged, onPickMany, onClose }: { goal
       {asking && (
         <Sheet title={asking.count === 1 ? 'Move this purchase?' : 'Move these purchases?'} onClose={() => setAsking(null)} grouped>
           <p className="px-[4px] pb-[10px] text-[15px] leading-[20px] text-[var(--ph-ink-2)]">
-            {asking.count === 1 ? '1 of the ticked purchases serves' : `${asking.count} of the ticked purchases serve`} {asking.goals.join(', ')}. {asking.count === 1 ? 'It moves' : 'They move'} to this goal when the goal is saved.
+            {asking.count === 1 ? '1 of the ticked purchases serves' : `${asking.count} of the ticked purchases serve`} {asking.goals.join(', ')}. {asking.count === 1 ? 'It moves' : 'They move'} to this goal{savedLater ? ' when the goal is saved' : ''}.
           </p>
           <InsetGroup>
             <InsetRow
@@ -279,7 +279,7 @@ export function FundingSheet({ goalId, setAside, tags, onClose }: { goalId: stri
           ]}
         </InsetGroup>
       </Sheet>
-      {tagging && <TagPurchaseSheet goalId={goalId} tagged={tags.ids} onPickMany={(ids) => ids.forEach(tags.add)} onClose={() => setTagging(false)} />}
+      {tagging && <TagPurchaseSheet goalId={goalId} tagged={tags.ids} onPickMany={(ids) => ids.forEach(tags.add)} savedLater onClose={() => setTagging(false)} />}
     </>
   );
 }
