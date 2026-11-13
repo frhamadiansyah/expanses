@@ -183,7 +183,8 @@ async function expenseBuiltTx(tx: Db, book: EventBookRow, recordId: string, post
       if (charged !== null) {
         const card = account.subtype === 'credit_card';
         paidFrom = { accountId: posting.accountId, currency: account.currency, chargedMinor: charged, spendCategoryId: card ? ((await earnCategoryTx(tx, book.bookId, record.categoryId)) ?? share) : null };
-        if (!same) original = { currency: record.currency, amountMinor: record.amountMinor };
+        // The ledger keeps an original amount above zero: a refund's is its size, the sign is the lines'.
+        if (!same) original = { currency: record.currency, amountMinor: Math.abs(record.amountMinor) };
       }
     }
   }

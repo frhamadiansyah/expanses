@@ -6,9 +6,10 @@ export function moveHint(eventName: string, sharedWith: number | null): string {
   return `Moves to ${eventName}, shared with ${sharedWith} ${sharedWith === 1 ? 'person' : 'people'}.`;
 }
 
-/** What stayed behind a move, and the first reason. */
+/** What stayed behind a move, and every different reason, so one row's reason is never read as all of theirs. */
 export function keptText(kept: readonly MoveRefusal[]): string {
-  return `${kept.length} stayed where ${kept.length === 1 ? 'it was' : 'they were'}: ${kept[0]!.why}`;
+  const reasons = [...new Set(kept.map((row) => row.why))];
+  return `${kept.length} stayed where ${kept.length === 1 ? 'it was' : 'they were'}: ${reasons.join('; ')}`;
 }
 
 /**

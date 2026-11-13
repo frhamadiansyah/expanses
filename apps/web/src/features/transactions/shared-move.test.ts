@@ -9,7 +9,8 @@ describe('tagging into a shared event (§6)', () => {
 
   it('says what stayed, and why', () => {
     expect(keptText([{ transactionId: 't', why: 'A refund stays where it is' }])).toBe('1 stayed where it was: A refund stays where it is');
-    expect(keptText([{ transactionId: 'a', why: 'x' }, { transactionId: 'b', why: 'y' }])).toBe('2 stayed where they were: x');
+    expect(keptText([{ transactionId: 'a', why: 'x' }, { transactionId: 'b', why: 'y' }])).toBe('2 stayed where they were: x; y');
+    expect(keptText([{ transactionId: 'a', why: 'x' }, { transactionId: 'b', why: 'x' }])).toBe('2 stayed where they were: x');
   });
 });
 
