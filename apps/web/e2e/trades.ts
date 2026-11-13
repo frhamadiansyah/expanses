@@ -29,8 +29,8 @@ async function startOn(page: Page, doing: TradeDoing, holding: string) {
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: BUTTON[doing], exact: true }).click();
 }
 
-/** The sheet the full trade form sits in: the one dialog holding "What happened". */
-export const tradeForm = (page: Page): Locator => page.getByRole('dialog').filter({ has: page.getByLabel('What happened') });
+/** The sheet the full trade form sits in: the one dialog whose ✓ is Record (Save changes on an edit). */
+export const tradeForm = (page: Page): Locator => page.getByRole('dialog').filter({ has: page.getByRole('button', { name: /^(Record|Save changes)$/ }) });
 
 /**
  * The holding's own page, then what to do on it: the full form, open in a sheet. Only for a holding with no short sheet
@@ -56,18 +56,18 @@ export async function openShortTrade(page: Page, doing: 'buy' | 'sell', holding:
   return sheet;
 }
 
-/** The short sheet's account row ("Paid from" or "To"), and the account picked from its list. */
-export async function pickTradeCash(page: Page, sheet: Locator, row: 'Paid from' | 'To', account: string) {
+/** The trade's account row ("Paid with" or "Received into"), and the account picked from its list. */
+export async function pickTradeCash(page: Page, sheet: Locator, row: 'Paid with' | 'Received into', account: string) {
   await sheet.getByRole('button', { name: new RegExp(`^${row}`) }).click();
   const list = page.getByRole('dialog', { name: row, exact: true });
   await list.getByRole('button', { name: new RegExp(`^${escape(account)}`) }).first().click();
   await expect(list).toHaveCount(0);
 }
 
-/** "Add more details" under the short sheet's box: the second box, in the same sheet. */
+/** "Add more details" under the sheet's card: the second card, in the same sheet, with the Fee in it. */
 export async function openTradeDetails(sheet: Locator) {
   await sheet.getByRole('button', { name: 'Add more details' }).click();
-  await expect(sheet.getByLabel('Fee', { exact: true })).toBeVisible();
+  await expect(sheet.getByLabel(/^Fee( \([A-Z]{3}\))?$/)).toBeVisible();
 }
 
 /** Record buy / Record sell, and wait for the short sheet to close: it closes on a saved trade only. */
@@ -77,7 +77,7 @@ export async function recordShortTrade(page: Page, doing: 'buy' | 'sell') {
   await expect(sheet).toHaveCount(0);
 }
 
-/** Record, and wait for the sheet to close: it closes on a saved trade only. */
+/** Record — the sheet's ✓ — and wait for the sheet to close: it closes on a saved trade only. */
 export async function recordTrade(page: Page, button = 'Record') {
   const form = tradeForm(page);
   await form.getByRole('button', { name: button, exact: true }).click();

@@ -1078,20 +1078,17 @@ function CardBody({
         )}
         {draft.mode === 'trade' ? (
           /*
-           * §3.6, as rows: what · amount · units or lots · fee · Paid with / Proceeds into · Date, then a second
-           * card for the goal and — only on a credit card — the two facts the points engine needs. There is no
-           * workspace row here either: a trade posts through `recordTrade`, whose money half touches no category.
+           * Expense's order and look (owner, 13 Nov 2026): Paid with (Received into) first, the same account sheet;
+           * the amount as Expense's amount row; the holding as Expense's Category row, opening its own sheet; the
+           * units its kind is counted in; the date. The goal, a card's two facts for points and the fee are under
+           * Add more details. There is no workspace row: a trade posts through `recordTrade`, whose money half
+           * touches no category, and no Note: a trade's words are its holding's.
            *
            * `purchaseDraftToInput` and `recordTrade` are called exactly as before; only the layout moved. Every
-           * message they throw still arrives in the `ErrorBox` above Save, which is the whole of this tab's
-           * validation — nothing here reads a figure for itself.
+           * message they throw still arrives in the `ErrorBox`, which is the whole of this tab's validation —
+           * nothing here reads a figure for itself.
            */
           <FormRows className="rounded-none">
-            {/*
-              Expense's order and look (owner, 13 Nov 2026): Paid with (Received into) first, the same account sheet;
-              the amount as Expense's amount row; the holding as Expense's Category row, opening its own sheet; the
-              units its kind is counted in; the date. Note-free: a trade's words are its holding's, never typed.
-            */}
             <TradeMoneyRow
               kind={purchase.mode}
               value={purchaseMoney ? (placeholders.has(purchaseMoney.id) ? placeholderLabel(purchaseMoney.name) : purchaseMoney.name) : ''}
@@ -1106,7 +1103,7 @@ function CardBody({
               <FigureRow
                 field={{ which: 'charged', label: chargedRow.label, value: purchase.charged, currency: purchaseCashCurrency }}
                 flag={currencyFlag(purchaseCashCurrency)}
-                clearLabel={`Clear ${chargedRow.label}`}
+                clearLabel="Clear charged"
                 onChange={(charged) => setPurchase({ charged })}
               />
             )}

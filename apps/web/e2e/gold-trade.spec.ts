@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
+import { chooseGoal } from './add-transaction';
 import { expectBalance } from './deposit-maturity';
 import { GOLD, goldAtPrice } from './gold-trade';
 import { addGoal } from './set-aside';
@@ -14,15 +15,17 @@ test('Buy gold bars: grams and the receipt’s total, and the holding gains both
   await page.getByRole('button', { name: 'Buy', exact: true }).click();
   const sheet = page.getByRole('dialog');
   await expect(sheet.getByRole('heading', { name: 'Buy' })).toBeVisible();
+  // The holding is fixed and named alone, as Expense's Category row reads: no second line under it.
   const holding = page.getByTestId('trade-holding');
-  await expect(holding).toContainText(GOLD);
-  await expect(holding).toContainText(/12 g · last Rp\s1\.950\.000\/g · \d{1,2} \w{3} \d{4}/);
+  await expect(holding).toHaveText(GOLD);
+  // Paid with first, as Expense: the bank is chosen already.
+  await expect(sheet.getByRole('button', { name: /^Paid with/ })).toContainText('BCA');
   await expect(page.getByRole('button', { name: 'Record buy' })).toBeDisabled();
   await sheet.getByLabel('Grams', { exact: true }).fill('5');
   await sheet.getByLabel('Total paid', { exact: true }).pressSequentially('9850000');
-  await expect(sheet.getByLabel('Total paid', { exact: true })).toHaveValue('9.850.000');
-  await sheet.getByRole('button', { name: 'About Total paid' }).click();
-  await expect(sheet).toContainText("The receipt's total, with any tax on it. A fee charged on top of it goes under Fee in the details");
+  await expect(sheet.getByLabel('Total paid', { exact: true })).toHaveValue('9850000');
+  // The code before the figure, as Expense's amount row writes it.
+  await expect(sheet.getByText('IDR', { exact: true })).toBeVisible();
   // Nothing to work out on a buy.
   await expect(page.getByTestId('gold-gain')).toHaveCount(0);
   await page.getByRole('button', { name: 'Record buy' }).click();
@@ -37,7 +40,7 @@ test('Sell gold bars: the gain against the average cost, no more grams than are 
   await page.getByRole('button', { name: 'Sell', exact: true }).click();
   const sheet = page.getByRole('dialog');
   await expect(sheet.getByRole('heading', { name: 'Sell' })).toBeVisible();
-  await expect(page.getByTestId('trade-holding')).toContainText(/12 g · cost Rp\s1\.875\.000\/g/);
+  await expect(sheet.getByRole('button', { name: /^Received into/ })).toContainText('BCA');
   const grams = sheet.getByLabel('Grams', { exact: true });
   await grams.fill('2');
   await sheet.getByLabel('Received', { exact: true }).pressSequentially('3640000');
@@ -71,11 +74,13 @@ test('Add more details opens a second box in the same sheet; a fee folded away i
   const toggle = sheet.getByRole('button', { name: 'Add more details' });
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await toggle.click();
-  // The same dialog, one more box: Fee, Tax withheld and the goal, each empty in a word, never a sample figure.
+  // The same dialog, one more card: the goal and the Fee, empty in a word, never a sample figure. Tax withheld is a sell's.
   await expect(page.getByRole('dialog')).toHaveCount(1);
-  await expect(fee).toHaveAttribute('placeholder', 'None');
-  await expect(sheet.getByLabel('Tax withheld', { exact: true })).toHaveAttribute('placeholder', 'None');
-  await expect(sheet.getByLabel('For goal')).toBeVisible();
+  await expect(fee).toHaveAttribute('placeholder', 'Fee');
+  await expect(sheet.getByLabel('Tax withheld', { exact: true })).toHaveCount(0);
+  await expect(sheet.getByRole('button', { name: /^Goal/ })).toContainText('None');
+  // A bank pays: no card, so no rows for points.
+  await expect(sheet.getByRole('button', { name: 'Category for points' })).toHaveCount(0);
   // One currency on both sides: no rate to ask.
   await expect(sheet.getByLabel('Rate that day')).toHaveCount(0);
   // The first box stays first: Grams still holds what was typed, above the new box.
@@ -96,7 +101,7 @@ test('Add more details opens a second box in the same sheet; a fee folded away i
   await expectBalance(page, 'BCA', '20.100.000'); // 30.000.000 − 9.900.000
 });
 
-test('a past purchase is recorded with no account moving: Paid from reads Past purchase', async ({ page }) => {
+test('a past purchase is recorded with no account moving: Paid with reads Past purchase', async ({ page }) => {
   await goldAtPrice(page);
   await page.getByRole('button', { name: 'Buy', exact: true }).click();
   const sheet = page.getByRole('dialog');
@@ -104,7 +109,7 @@ test('a past purchase is recorded with no account moving: Paid from reads Past p
   await sheet.getByLabel('Total paid', { exact: true }).pressSequentially('9850000');
   await openTradeDetails(sheet);
   await sheet.getByLabel('Past purchase', { exact: true }).click();
-  await expect(sheet.getByRole('button', { name: /^Paid from/ })).toContainText('Past purchase');
+  await expect(sheet.getByRole('button', { name: /^Paid with/ })).toContainText('Past purchase');
   await page.getByRole('button', { name: 'Record buy' }).click();
   await expect(sheet).toHaveCount(0);
   await expect(page.getByTestId('asset-grid')).toContainText('17 g');
@@ -119,7 +124,7 @@ test('a sell from a goal takes its grams out of that goal', async ({ page }) => 
   await sheet.getByLabel('Grams', { exact: true }).fill('5');
   await sheet.getByLabel('Total paid', { exact: true }).pressSequentially('9850000');
   await openTradeDetails(sheet);
-  await sheet.getByLabel('For goal').selectOption({ label: 'Hajj fund' });
+  await chooseGoal(sheet, 'Hajj fund');
   await page.getByRole('button', { name: 'Record buy' }).click();
   await expect(sheet).toHaveCount(0);
 
@@ -128,7 +133,7 @@ test('a sell from a goal takes its grams out of that goal', async ({ page }) => 
   await sheet.getByLabel('Grams', { exact: true }).fill('2');
   await sheet.getByLabel('Received', { exact: true }).pressSequentially('3900000');
   await openTradeDetails(sheet);
-  await sheet.getByLabel('Sell from goal').selectOption({ label: 'Hajj fund' });
+  await chooseGoal(sheet, 'Hajj fund');
   await page.getByRole('button', { name: 'Record sell' }).click();
   await expect(sheet).toHaveCount(0);
   await expect(page.getByTestId('asset-grid')).toContainText('15 g');
@@ -139,7 +144,7 @@ test('a sell from a goal takes its grams out of that goal', async ({ page }) => 
   await sheet.getByLabel('Grams', { exact: true }).fill('4');
   await sheet.getByLabel('Received', { exact: true }).pressSequentially('7800000');
   await openTradeDetails(sheet);
-  await sheet.getByLabel('Sell from goal').selectOption({ label: 'Hajj fund' });
+  await chooseGoal(sheet, 'Hajj fund');
   await page.getByRole('button', { name: 'Record sell' }).click();
   await expect(sheet.getByText(/Hajj fund holds/)).toBeVisible();
 });
@@ -151,11 +156,11 @@ test('Rate that day is asked only when the money account is in another currency,
   const sheet = page.getByRole('dialog');
   await sheet.getByLabel('Grams', { exact: true }).fill('5');
   await sheet.getByLabel('Total paid', { exact: true }).pressSequentially('9800000');
-  await pickTradeCash(page, sheet, 'Paid from', 'BCA');
+  await pickTradeCash(page, sheet, 'Paid with', 'BCA');
   await openTradeDetails(sheet);
   await expect(sheet.getByLabel('Rate that day')).toHaveCount(0);
 
-  await pickTradeCash(page, sheet, 'Paid from', 'Dollar Saver');
+  await pickTradeCash(page, sheet, 'Paid with', 'Dollar Saver');
   const rate = sheet.getByLabel('Rate that day');
   await expect(rate).toBeVisible();
   // Not saved until the rate is typed.

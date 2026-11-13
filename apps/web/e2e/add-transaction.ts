@@ -39,8 +39,40 @@ export async function openPocketOf(dialog: Locator, name: string) {
 
 /** A transfer's or a trade's Goal: its own box under the form, a row, then the goal in its sheet. */
 export async function chooseGoal(form: Locator, goal: string) {
-  await form.getByRole('button', { name: /^Goal/ }).click();
-  await form.page().getByRole('dialog', { name: 'Goal', exact: true }).getByRole('button', { name: goal, exact: true }).click();
+  // A sell takes its units From goal; everything else names its Goal.
+  await form.getByRole('button', { name: /^(Goal|From goal)$/ }).click();
+  await form.page().getByRole('dialog', { name: /^(Goal|From goal)$/ }).getByRole('button', { name: goal, exact: true }).click();
+}
+
+/**
+ * A trade's money figure — its amount, or Charged in — typed as the Expense form's amount is: a text field on a
+ * desktop, the keypad's dock on a phone, where the figure is a button that opens it. `amount` is digits on a phone.
+ */
+export async function fillFigure(form: Locator, label: string | RegExp, amount: string) {
+  const field = form.getByLabel(label, typeof label === 'string' ? { exact: true } : undefined).first();
+  await field.waitFor();
+  if ((await field.evaluate((node) => node.tagName)) === 'INPUT') return field.fill(amount);
+  if (!/^\d+$/.test(amount)) throw new Error(`The keypad types digits: ${amount} has to be typed on a desktop`);
+  await field.click();
+  const keypad = form.page().getByTestId('keypad');
+  await keypad.waitFor({ state: 'visible' });
+  for (const digit of amount) await keypad.getByRole('button', { name: digit, exact: true }).click();
+  await keypad.getByRole('button', { name: 'DONE' }).click();
+  await expect(keypad).toHaveCount(0);
+}
+
+/** Opens a trade's Add more details, when it is not open already: Goal, the card's points rows and Fee are there. */
+export async function openTradeMore(form: Locator) {
+  const more = form.getByRole('button', { name: 'Add more details' });
+  if ((await more.count()) > 0 && (await more.getAttribute('aria-expanded')) !== 'true') await more.click();
+}
+
+/** A card buy's Category for points: the row, then the category in the Select category sheet Expense opens. */
+export async function choosePointsCategory(form: Locator, category: string) {
+  await form.getByRole('button', { name: 'Category for points' }).click();
+  const sheet = form.page().getByRole('dialog', { name: 'Select category' });
+  await sheet.getByRole('button', { name: category, exact: true }).first().click();
+  await expect(sheet).toHaveCount(0);
 }
 
 /**
@@ -59,11 +91,11 @@ export async function choosePayment(page: Page, name: string, sheet: string | Re
 }
 
 /**
- * A trade's Paid with (Buy) or Proceeds into (Sell): the same account sheet a purchase's Paid with opens. `name` is
+ * A trade's Paid with (Buy) or Received into (Sell): the same account sheet a purchase's Paid with opens. `name` is
  * the account's name; a "(IDR)" left on it from the old picker's labels is dropped.
  */
 export async function chooseTradeMoney(form: Locator, name: string, sell = false) {
-  const label = sell ? 'Proceeds into' : 'Paid with';
+  const label = sell ? 'Received into' : 'Paid with';
   await form.getByRole('button', { name: new RegExp(`^${label}`) }).first().click();
   await choosePayment(form.page(), name.replace(/ \([A-Z]{3}\)$/, ''), label);
 }
@@ -169,9 +201,8 @@ export async function addTransfer(
 /**
  * Records a purchase or a sale through Trade's Buy or Sell tab.
  *
- * `what` is the holding's own name, as the picker lists it under the Buy or Sell tab: nothing is prefixed. None of these
- * figures goes near the keypad: the trade rows are plain inputs at every width, because the amount row and its dock
- * belong to `draft.amount`, and a trade's cost lives in `draft.purchase`.
+ * `what` is the holding's own name, as the picker lists it under the Buy or Sell tab: nothing is prefixed. The amount
+ * and Charged in are Expense's amount row (`fillFigure`): a phone types them on the keypad.
  */
 export async function addPurchase(
   page: Page,
@@ -194,23 +225,21 @@ export async function addPurchase(
   const sell = trade.mode === 'sell';
   const form = await openBuyOrSell(page, trade.mode);
   await chooseInvestment(form, trade.what);
-  await form.getByLabel(sell ? /^Proceeds, before fees/ : /^What it cost, before fees/).fill(trade.amount);
+  // Expense's order: Paid with (Received into), the amount, the holding, its units, the date.
+  await chooseTradeMoney(form, trade.paidWith, sell);
+  await fillFigure(form, sell ? /^Proceeds, before fees/ : /^What it cost, before fees/, trade.amount);
+  if (trade.charged) await fillFigure(form, /^Charged in /, trade.charged);
   if (trade.lots) await form.getByLabel('Lots').fill(trade.lots);
   // Whatever this holding calls its units — Grams for gold, Shares for a stock without lots.
-  if (trade.units) await form.getByLabel(/^(Units|Shares|Grams)$/).fill(trade.units);
-  // A trade's Fee waits under Add more details.
-  if (trade.fee) {
-    const more = form.getByRole('button', { name: 'Add more details' });
-    if ((await more.count()) > 0 && (await more.getAttribute('aria-expanded')) !== 'true') await more.click();
-    await form.getByLabel(/^Fee /).fill(trade.fee);
-  }
-  await chooseTradeMoney(form, trade.paidWith, sell);
-  if (trade.charged) await form.getByLabel(/^Charged in /).pressSequentially(trade.charged);
+  if (trade.units) await form.getByLabel(/^(Units|Shares|Grams|Par value)$/).fill(trade.units);
   if (trade.date) await form.getByLabel('Date').fill(trade.date);
+  // Goal, the card's two facts and the Fee wait under Add more details.
+  if (trade.goal || trade.pointsCategory || trade.mcc || trade.fee) await openTradeMore(form);
   if (trade.goal) await chooseGoal(form, trade.goal);
   // Offered only on a credit card, and only when buying — the card's two facts, not the trade's.
-  if (trade.pointsCategory) await form.getByLabel('Category for points').selectOption({ label: trade.pointsCategory });
+  if (trade.pointsCategory) await choosePointsCategory(form, trade.pointsCategory);
   if (trade.mcc) await form.getByLabel('MCC').fill(trade.mcc);
+  if (trade.fee) await form.getByLabel(/^Fee /).fill(trade.fee);
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
   // Saved, Trade goes back to Net worth; callers read on from Cashflow, where the Add form used to leave them.

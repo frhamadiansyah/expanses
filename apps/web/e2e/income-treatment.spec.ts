@@ -3,7 +3,7 @@ import { openAccount, openSettings } from './accounts';
 import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { openAssets, openDrawers } from './drawers';
 import { addHoldingFlow } from './securities';
-import { openTradeForm, openTradeRow, recordTrade } from './trades';
+import { openTradeForm, openTradeRow, pickTradeCash, recordTrade } from './trades';
 
 /** Trades recorded by these tests are dated this year, so this is the year that holds them. */
 const YEAR = new Date().getFullYear();
@@ -41,9 +41,10 @@ async function addBond(page: Page, name: string, cost: string) {
 async function recordDividend(page: Page) {
   // The holding's own Dividend button opens the full form on its page.
   const form = await openTradeForm(page, 'income', 'BBRI');
-  await expect(form.getByLabel('What happened')).toHaveValue('income');
+  // A payment: what it was before tax, its tax withheld on the card, where it was received.
+  await expect(form.getByRole('heading', { name: 'Dividend' })).toBeVisible();
   await form.getByLabel('Date').fill(`${YEAR}-06-10`);
-  await form.getByLabel('Money account').selectOption({ label: 'BCA Tahapan' });
+  await pickTradeCash(page, form, 'Received into', 'BCA Tahapan');
   await form.getByLabel('Amount before tax (IDR)').fill('1000000');
   await form.getByLabel('Tax withheld (IDR)').fill('100000');
   await recordTrade(page);

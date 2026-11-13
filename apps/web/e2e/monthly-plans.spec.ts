@@ -46,7 +46,7 @@ test('a monthly plan set on the holding comes due on Recurring, and Record there
   await page.getByRole('button', { name: `Record ${FUND}` }).click();
   const sheet = page.getByRole('dialog');
   await expect(sheet.getByLabel('What it cost, before fees (IDR)')).toHaveValue(/500\.000/);
-  await expect(sheet.getByLabel('Money account')).toContainText('BCA');
+  await expect(sheet.getByRole('button', { name: /^Paid with/ })).toContainText('BCA');
   await sheet.getByRole('button', { name: 'Record', exact: true }).click();
   await expect(sheet).toHaveCount(0);
 

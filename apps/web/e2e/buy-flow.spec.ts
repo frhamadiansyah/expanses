@@ -2,7 +2,7 @@ import { closePurchase, openPurchase, purchaseRowOf } from './purchases';
 import { expect, type Page, test } from '@playwright/test';
 import { expectWalletFigure, openAccount, openSettings } from './accounts';
 import { openNewAsset, fillDay, pastPurchase } from './add-asset';
-import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal, chooseInvestment, chooseTradeMoney, openBuyOrSell, saveButton } from './add-transaction';
+import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal, chooseInvestment, chooseTradeMoney, openBuyOrSell, openTradeMore, saveButton } from './add-transaction';
 import { cardPage, cardPointsPage, saveCardTerms, chooseCatalogueCard } from './card-section';
 import { openAssets, openDrawers } from './drawers';
 import { openGoalForm } from './goals';
@@ -76,6 +76,10 @@ test('pays for a purchase with the credit card, so the card owes more and the po
   await form.getByLabel('Grams').fill('2');
   await form.getByLabel(/What it cost, before fees/).fill('3980000');
   await chooseTradeMoney(form, 'BCA KrisFlyer (IDR)');
+  // A card's two facts for points wait under Add more details, one line each, with no hint under them.
+  await openTradeMore(form);
+  await expect(form.getByText('Not spending: it only tells the points engine what the card bought.')).toHaveCount(0);
+  await expect(form.getByText('Gold and jewellery shops are 5944.')).toHaveCount(0);
   await form.getByLabel('MCC').fill('5944');
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
@@ -171,6 +175,7 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
   await buying.getByLabel('Lots').fill('1');
   await buying.getByLabel(/What it cost, before fees/).fill('988981');
   await chooseTradeMoney(buying, 'RDN Stockbit (IDR)');
+  await openTradeMore(buying);
   await chooseGoal(buying, 'University for Aisyah');
   await saveButton(buying).click();
   await expect(buying).toHaveCount(0);
@@ -225,7 +230,7 @@ test('a card purchase with a fee, tagged to a goal, moves the units, the goal an
     fee: '15000',
     paidWith: 'BCA KrisFlyer (IDR)',
     goal: 'Hajj fund',
-    pointsCategory: 'Shopping (general)',
+    pointsCategory: 'Shopping',
     mcc: '5944',
   });
 
@@ -297,7 +302,7 @@ test('a purchase paid by card reaches the points engine with the MCC and categor
     amount: '1350000',
     units: '1',
     paidWith: 'BCA KF Signature (IDR)',
-    pointsCategory: 'Shopping (general)',
+    pointsCategory: 'Shopping',
     mcc: '5944',
   });
 

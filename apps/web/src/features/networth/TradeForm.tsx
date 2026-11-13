@@ -192,8 +192,8 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
   const rateRow = needsRate ? (
     <FieldRow
       label="Rate that day"
-      caption={`${ws.baseCurrency} per 1 ${needsRate}`}
-      hint={ratePreview(manualRate, needsRate, ws.baseCurrency) ?? undefined}
+      // Always a line under it, so the field is never redrawn (and its typing lost) as the preview appears.
+      hint={ratePreview(manualRate, needsRate, ws.baseCurrency) ?? `${ws.baseCurrency} per 1 ${needsRate}`}
       value={manualRate}
       onChange={setManualRate}
       inputMode="decimal"
@@ -221,7 +221,7 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
           <FigureRow
             field={{ which: 'charged', label: `Charged in ${cashCurrency}`, value: charged, currency: cashCurrency }}
             flag={currencyFlag(cashCurrency)}
-            clearLabel={`Clear charged in ${cashCurrency}`}
+            clearLabel="Clear charged"
             onChange={setCharged}
           />
         )}

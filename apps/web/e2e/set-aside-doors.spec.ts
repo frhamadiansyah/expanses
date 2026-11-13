@@ -2,7 +2,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openLoan, personRow } from './people';
 import { openAccount, openCard, walletCard } from './accounts';
 import { cardPage, saveCardTerms } from './card-section';
-import { addForm, choosePayment, saveButton } from './add-transaction';
+import { addForm, choosePayment, saveButton, chooseGoal } from './add-transaction';
 import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { openDrawers } from './drawers';
 import { addBill, addMoneyAccount, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, typeAmount } from './set-aside';
@@ -341,12 +341,12 @@ async function addGold(page: Page) {
 async function buyGold(page: Page, grams: string, cost: string, goal: string | null) {
   // The gold's own Buy opens its sheet on its page; the goal is behind its "Add more details".
   const sheet = await openShortTrade(page, 'buy', 'Antam gold bars');
-  await pickTradeCash(page, sheet, 'Paid from', 'Jenius');
+  await pickTradeCash(page, sheet, 'Paid with', 'Jenius');
   await sheet.getByLabel('Grams', { exact: true }).pressSequentially(grams);
   await sheet.getByLabel('Total paid', { exact: true }).pressSequentially(cost);
   if (goal) {
     await openTradeDetails(sheet);
-    await sheet.getByLabel('For goal').selectOption({ label: goal });
+    await chooseGoal(sheet, goal);
   }
 }
 

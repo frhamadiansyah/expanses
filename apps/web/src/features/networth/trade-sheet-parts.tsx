@@ -330,8 +330,8 @@ export function SheetTradeDetails({
               {pair ? (
                 <FieldRow
                   label="Rate that day"
-                  caption={`${pair.to} per 1 ${pair.from}`}
-                  hint={ratePreview(draft.rate, pair.from, pair.to) ?? undefined}
+                  // Always a line under it, so the field is never redrawn (and its typing lost) as the preview appears.
+                  hint={ratePreview(draft.rate, pair.from, pair.to) ?? `${pair.to} per 1 ${pair.from}`}
                   value={draft.rate}
                   onChange={(rate) => change({ rate })}
                   inputMode="decimal"
@@ -341,8 +341,7 @@ export function SheetTradeDetails({
               {needsRate ? (
                 <FieldRow
                   label={details.dayRateLabel}
-                  caption={`${ws.baseCurrency} per 1 ${needsRate}`}
-                  hint={ratePreview(details.dayRate, needsRate, ws.baseCurrency) ?? undefined}
+                  hint={ratePreview(details.dayRate, needsRate, ws.baseCurrency) ?? `${ws.baseCurrency} per 1 ${needsRate}`}
                   value={details.dayRate}
                   onChange={details.setDayRate}
                   inputMode="decimal"

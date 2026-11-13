@@ -33,7 +33,7 @@ test('phone: Trade keeps Net worth on the bar, has Buy and Sell tabs, and the + 
   await expect(bar.getByRole('link', { name: 'Net worth' })).toHaveAttribute('aria-current', 'page');
   await expect(bar.getByRole('link', { name: 'Transactions' })).not.toHaveAttribute('aria-current', 'page');
 
-  // Buy shows the paid-from rows, Sell the proceeds rows; the tabs are the Add form's control, with no Expense / Income / Transfer.
+  // Buy shows Paid with, Sell Received into, as Expense and Income do; the tabs are the Add form's control, with no Expense / Income / Transfer.
   await expect(page.getByText('Trade', { exact: true }).first()).toBeVisible();
   await expect(form.getByRole('radio', { name: 'Expense' })).toHaveCount(0);
   // Opens on Buy, as Add opens on Expense; the holding is not chosen, and every row is there.
@@ -48,10 +48,10 @@ test('phone: Trade keeps Net worth on the bar, has Buy and Sell tabs, and the + 
   await expect(form.getByLabel('Paid with')).toBeVisible();
   await expect(form.getByText('A credit card works')).toHaveCount(0);
   await expect(form.getByText('Units are recorded')).toHaveCount(0);
-  await expect(form.getByLabel('Proceeds into')).toHaveCount(0);
+  await expect(form.getByLabel('Received into')).toHaveCount(0);
   await form.getByRole('radio', { name: 'Sell' }).click();
   await expect(form.getByRole('radio', { name: 'Sell' })).toBeChecked();
-  await expect(form.getByLabel('Proceeds into')).toBeVisible();
+  await expect(form.getByLabel('Received into')).toBeVisible();
   await expect(form.getByLabel(/^Proceeds, before fees/)).toBeVisible();
   await expect(form.getByLabel('Paid with')).toHaveCount(0);
   await form.getByRole('radio', { name: 'Buy' }).click();
@@ -87,5 +87,5 @@ test('phone: a share kept at a broker pays from, and is paid into, that broker o
   await chooseInvestment(form, 'BBCA · Stockbit Sekuritas');
   await expect(form.getByLabel('Paid with')).toContainText('Stockbit Sekuritas');
   await form.getByRole('radio', { name: 'Sell' }).click();
-  await expect(form.getByLabel('Proceeds into')).toContainText('Stockbit Sekuritas');
+  await expect(form.getByLabel('Received into')).toContainText('Stockbit Sekuritas');
 });
