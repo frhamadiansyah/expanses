@@ -20,7 +20,7 @@ test('by thumb: Share is one page — a name, a button, then the invite with Cop
   const button = page.getByTestId('share-button');
   await expect(button).toBeDisabled();
   await expect(page.getByText('Everything is encrypted on this device')).toHaveCount(0);
-  await page.getByRole('button', { name: 'About Name' }).tap();
+  await page.getByRole('button', { name: 'About Name shown' }).tap();
   await expect(page.getByText('Everything is encrypted on this device')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Not now' })).toHaveCount(0);
   await page.getByTestId('share-name').fill('Ana');
@@ -30,12 +30,14 @@ test('by thumb: Share is one page — a name, a button, then the invite with Cop
   // The invite is there as soon as it is made, with Copy; nobody has joined, so the members say so.
   await expect(page.getByTestId('invite-code')).toHaveText(/^([0-9A-Z]{4}-){12}[0-9A-Z]{4}$/, { timeout: 60_000 });
   await expect(page.getByTestId('share-copy')).toBeVisible();
-  await expect(page.getByTestId('sharing-status')).toContainText('Up to date');
+  // Redesign A1: no status line, one Sync row; the way out last, Stop sharing for the only owner.
+  await expect(page.getByTestId('share-step')).toHaveText('Step 2 of 3');
+  await expect(page.getByTestId('sharing-sync-row')).toContainText('Up to date');
   await expect(page.getByTestId('sharing-member')).toHaveCount(1);
-  await expect(page.getByTestId('sharing-member')).toContainText('Owner');
+  await expect(page.getByTestId('sharing-member')).toContainText('This phone');
   await expect(page.getByTestId('sharing-waiting')).toContainText('Invite open');
-  await expect(page.getByRole('button', { name: 'Leave', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Stop sharing', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Leave Home', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Stop sharing Home', exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
   // The member's own page: the role, this device, and an owner's actions on themselves.
@@ -53,29 +55,33 @@ test('by thumb: Share is one page — a name, a button, then the invite with Cop
   await expect(page.getByTestId('ws-share-row')).toContainText('On');
 });
 
-test('by thumb: Share › Details shows the sharing bookkeeping and the sync log, before and after sharing', async ({ page }) => {
+test('by thumb: Share › Sync details › Technical log shows the sharing bookkeeping and the sync log, before and after sharing', async ({ page }) => {
   await page.goto('/account');
   await openWorkspacePage(page, 'Personal');
   await page.getByTestId('ws-share-row').tap();
 
   // Before anything is shared: no shared_books row, nothing logged, and still a page to copy.
   await page.getByTestId('sync-details-row').tap();
+  await page.getByTestId('sync-details-log').tap();
   const details = page.getByTestId('sync-details-text');
   await expect(details).toContainText('State none');
   await expect(details).toContainText('Relay book none');
   await expect(details).toContainText('Log: nothing recorded on this device');
   await expect(page.getByTestId('sync-details-copy')).toBeVisible();
   await page.goBack();
+  await page.goBack();
 
   await page.getByTestId('share-name').fill('Ana');
   await page.getByTestId('share-button').tap();
   await expect(page.getByTestId('invite-code')).toBeVisible({ timeout: 60_000 });
-  // The status row always has words, and a second line saying when this device last synced.
-  await expect(page.getByTestId('sharing-status')).toContainText('Up to date');
-  await expect(page.getByTestId('sharing-status')).toContainText('Last synced');
+  // The Sync row says it is up to date; Sync details says the status in words and when this device last synced.
+  await expect(page.getByTestId('sharing-sync-row')).toContainText('Up to date');
+  await page.getByTestId('sharing-sync-row').tap();
+  await expect(page.getByTestId('sync-details-status')).toContainText('Up to date');
+  await expect(page.getByTestId('sync-details')).toContainText('Last synced');
 
   // After: the relay book by its short id, and the share in the log; ids only, no names.
-  await page.getByTestId('sync-details-row').tap();
+  await page.getByTestId('sync-details-log').tap();
   await expect(details).toContainText('State active');
   await expect(details).toContainText(/Relay book [0-9a-f]{8} · epoch 1/);
   await expect(details).toContainText('device row yes · epoch key opens');

@@ -4,23 +4,11 @@ import { openWorkspaceSharePage } from './workspace-page';
 
 test.describe.configure({ timeout: 120_000 });
 
-test('by thumb: the Share page lists a personal event as Not shared, and tapping it opens the event’s Share sheet', async ({ page }) => {
+test('by thumb: events are no longer at the bottom of the Share page (redesign A1): they are in Shared with, once someone joined', async ({ page }) => {
   await page.goto('/account');
-  await openWorkspaceSharePage(page, 'Personal');
-  // No events yet: no Events section.
-  await expect(page.getByTestId('share-event-row')).toHaveCount(0);
-
   await newEvent(page, 'Coast week');
   await openWorkspaceSharePage(page, 'Personal');
-
-  const row = page.getByTestId('share-event-row');
-  await expect(row).toHaveCount(1);
-  await expect(row).toContainText('Coast week');
-  await expect(row).toContainText('Not shared');
-  await expect(row).toHaveAccessibleName('Share Coast week');
-  // No sentence under the row.
-  await expect(page.getByText(/moves out of/i)).toHaveCount(0);
-
-  await row.tap();
-  await expect(page.getByRole('form', { name: 'Share this event' })).toBeVisible();
+  await expect(page.getByTestId('share-button')).toBeVisible();
+  await expect(page.getByTestId('share-event-row')).toHaveCount(0);
+  await expect(page.getByText('Coast week')).toHaveCount(0);
 });

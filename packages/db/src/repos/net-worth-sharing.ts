@@ -198,7 +198,64 @@ async function writeSetting(db: Db, accountId: string, setting: ShareSetting): P
 
 /** Whether the household may record into this account too (the "Joint account" switch). Only ever true while it is shared as `total`. */
 export async function getJointAccount(database: Database, accountId: string): Promise<boolean> {
+  // Owned together means something only inside an active group (review round 1, item 4): a flag left from a group that
+  // ended reads as nothing, here and in everything that reads it.
+  if (!(await activeNetWorthGroup(database))) return false;
   return jointAccountTx(database.db, accountId);
+}
+
+/** The stored flag, whatever the group: the list's own reading of what was chosen while a group waits to be confirmed. */
+export async function storedJointAccount(database: Database, accountId: string): Promise<boolean> {
+  return jointAccountTx(database.db, accountId);
+}
+
+/**
+ * Forgets every Owned together on this phone (local, never synced): run when this phone is in no net-worth group any
+ * more, so a group made later never brings one back without a new tap on its own switch.
+ */
+export async function clearJointAccounts(database: Database): Promise<void> {
+  if (!(await tableExists(database.db, 'nw_joint_accounts'))) return;
+  const ids = (await database.db.values<[string]>(sql`SELECT account_id FROM nw_joint_accounts`)).map(([id]) => id);
+  if (ids.length === 0) return;
+  await database.transaction(async (tx) => {
+    await tx.run(sql`DELETE FROM nw_joint_accounts`);
+    for (const id of ids) markAccountDirtyTx(tx, id);
+  });
+}
+
+/*
+ * What each phone keeps for itself about the household's net worth (review round 1; local, in `settings`, never
+ * synced): the items this person switched on before a group was active (`intent`, the only ones a review answered by
+ * the app may share), that this person stopped sharing or declined (`optedOut`: nothing is confirmed for them by the
+ * app after that), and that a group was seen here (`seen`: one gone since, not by this person, is the others' stop).
+ */
+export interface NetWorthMarks {
+  intent: string[];
+  optedOut: boolean;
+  seen: boolean;
+}
+
+const MARKS_KEY = (workspaceBookId: string) => `nw.marks.${workspaceBookId}`;
+
+export async function netWorthMarks(database: Database, workspaceBookId: string): Promise<NetWorthMarks> {
+  const [row] = await database.db.values<[string]>(sql`SELECT value FROM settings WHERE key = ${MARKS_KEY(workspaceBookId)}`);
+  const empty: NetWorthMarks = { intent: [], optedOut: false, seen: false };
+  if (!row) return empty;
+  try {
+    const parsed = JSON.parse(row[0]) as Partial<NetWorthMarks>;
+    return {
+      intent: Array.isArray(parsed.intent) ? parsed.intent.filter((id): id is string => typeof id === 'string') : [],
+      optedOut: parsed.optedOut === true,
+      seen: parsed.seen === true,
+    };
+  } catch {
+    return empty;
+  }
+}
+
+export async function setNetWorthMarks(database: Database, workspaceBookId: string, patch: Partial<NetWorthMarks>): Promise<void> {
+  const value = JSON.stringify({ ...(await netWorthMarks(database, workspaceBookId)), ...patch });
+  await database.db.run(sql`INSERT INTO settings (key, value) VALUES (${MARKS_KEY(workspaceBookId)}, ${value}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
 }
 
 /**
@@ -207,6 +264,7 @@ export async function getJointAccount(database: Database, accountId: string): Pr
  */
 export async function jointAccountIds(database: Database): Promise<string[]> {
   if (!(await tableExists(database.db, 'nw_joint_accounts'))) return [];
+  if (!(await activeNetWorthGroup(database))) return [];
   const rows = await database.db.values<[string]>(sql`
     SELECT j.account_id FROM nw_joint_accounts j JOIN nw_share_settings s ON s.account_id = j.account_id AND s.setting = 'total'`);
   return rows.map(([id]) => id);

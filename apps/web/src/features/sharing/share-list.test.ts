@@ -25,11 +25,15 @@ import {
   type ShareListInput,
   shareListOf,
   sharedCount,
-  tickAll,
   tickedCount,
   toggle,
   toggleJoint,
   jointLineGroup,
+  GOAL_SHARED_CAPTION,
+  offConfirmOf,
+  START_NAME,
+  sharedSummary,
+  WAITING_CAPTION,
 } from './share-list';
 import { JOINT_SHARED_LINE } from './net-worth-state';
 
@@ -103,13 +107,13 @@ function listWith(patch: Partial<NonNullable<ShareListInput['netWorth']>>, items
 }
 
 describe('the list: which items, in which group, ticked as things stand', () => {
-  it('groups accounts and cards, assets and debts, goals, events, in that order', () => {
+  it('one list: accounts and cards, goals, events, then assets and debts last (behind their own row)', () => {
     const list = shareListOf(input());
     expect(list.groups.map((group) => [group.label, group.items.map((item) => item.name)])).toEqual([
       ['Accounts & cards', ['BCA Tahapan', 'GoPay', 'Card ending 4417', 'Broker cash']],
-      ['Assets & debts', ['House', 'Home loan']],
       ['Goals', ['Hajj', 'New phone']],
       ['Events', ['Bali trip', 'Office dinner']],
+      ['Assets & debts', ['House', 'Home loan']],
     ]);
   });
 
@@ -121,7 +125,8 @@ describe('the list: which items, in which group, ticked as things stand', () => 
     // A broker's cash cannot pay for anything: no Joint (Paid with's kinds).
     expect(row(list, 'Broker cash')).toMatchObject({ canJoint: false });
     expect(row(list, 'House')).toMatchObject({ shared: true, canJoint: false, meta: 'Property' });
-    expect(row(list, 'Hajj')).toMatchObject({ shared: true, locked: null });
+    expect(row(list, 'Hajj')).toMatchObject({ shared: true, locked: null, caption: GOAL_SHARED_CAPTION });
+    expect(row(list, 'New phone')).toMatchObject({ shared: false, caption: null });
     expect(row(list, 'Bali trip')).toMatchObject({ shared: true, locked: EVENT_LOCKED, meta: 'Oct · IDR' });
     expect(row(list, 'Office dinner')).toMatchObject({ shared: false, locked: null, meta: 'Sep · SGD' });
     expect(isTicked(draft, row(list, 'BCA Tahapan'))).toBe(true);
@@ -142,12 +147,17 @@ describe('the list: which items, in which group, ticked as things stand', () => 
     expect(rows(list).filter((item) => item.id === 'a-trip')).toEqual([]);
   });
 
+  it('says what is shared for the Share page’s row, by kind', () => {
+    expect(sharedSummary(shareListOf(input()))).toBe('2 accounts · 1 goal · 1 event · 1 asset or debt');
+    expect(sharedSummary(shareListOf(input({ netWorth: null, goals: [], events: [] })))).toBe('Nothing yet');
+  });
+
   it('counts what is shared now for the Share page, and what is ticked for the button', () => {
     const list = shareListOf(input());
     // BCA, card, House, Hajj, Bali trip.
     expect(sharedCount(list)).toBe(5);
     expect(tickedCount(list, emptyDraft(list))).toBe(5);
-    const draft = tickAll(list, emptyDraft(list), list.groups.find((group) => group.key === 'goals')!);
+    const draft = toggle(list, emptyDraft(list), row(list, 'New phone'));
     expect(tickedCount(list, draft)).toBe(6);
   });
 });
@@ -402,6 +412,7 @@ function runners(reviews: unknown[] = [], fail: Partial<Record<string, string>> 
       reviews.push(settings);
       await run('review');
     },
+    start: () => run('start'),
     setting: (id: string, setting: string) => run(`setting ${id} ${setting}`),
     joint: (id: string, on: boolean) => run(`joint ${id} ${on}`),
     shareGoal: (id: string) => run(`share-goal ${id}`),
@@ -470,19 +481,132 @@ describe('a review refused', () => {
   });
 });
 
+/** Every question the list asks before taking something back, for the copy test. */
+function offConfirmOfAll() {
+  const list = shareListOf(input());
+  const bca = row(list, 'BCA Tahapan');
+  return { joint: offConfirmOf(list, emptyDraft(list), bca, 'joint', ['Andi'])!, shared: offConfirmOf(list, emptyDraft(list), bca, 'shared', ['Andi'])! };
+}
+
+describe('a review left waiting is answered only by the person’s own tap (review round 1)', () => {
+  it('untouched, nothing answers it; "Share what is switched on" answers it with what the list shows, and nothing else', () => {
+    const list = listWith({ mode: 'separate', reviewed: false, live: new Set(['a-bca']) });
+    expect(changesOf(list, emptyDraft(list))).toEqual([]);
+    const [review] = changesOf(list, emptyDraft(list), { answerReview: true });
+    expect(review).toMatchObject({ kind: 'review' });
+    expect((review as Extract<ShareChange, { kind: 'review' }>).settings).toEqual({ 'a-bca': 'total', 'a-gopay': 'hidden', 'a-card': 'hidden', 'a-rdn': 'hidden', 'a-house': 'hidden', 'a-kpr': 'hidden' });
+  });
+
+  it('a reviewed group, or none at all, has nothing to answer', () => {
+    const reviewed = shareListOf(input());
+    expect(changesOf(reviewed, emptyDraft(reviewed), { answerReview: true })).toEqual([]);
+    const none = listWith({ stage: 'none', reviewed: false });
+    expect(changesOf(none, emptyDraft(none), { answerReview: true })).toEqual([]);
+  });
+});
+
+describe('simplified (2026-11-13): Shared, and Owned together on the icon', () => {
+  const none = (over: Partial<NonNullable<ShareListInput['netWorth']>> = {}) => listWith({ stage: 'none', reviewed: false, proposalId: '', joint: new Set(), ...over });
+
+  it('before any net worth group, accounts and assets are listed all the same, none shared, whatever an old group left stored', () => {
+    const list = none();
+    expect(list.groups.map((group) => group.key)).toEqual(['accounts', 'goals', 'events', 'assets']);
+    const nw = rows(list).filter((item) => item.group === 'accounts' || item.group === 'assets');
+    expect(nw.every((item) => !item.shared && !item.joint && item.caption === null)).toBe(true);
+  });
+
+  it('the first account switched on starts the group: one start, ticked shared, everything else private, then Owned together', () => {
+    const list = none();
+    const gopay = row(list, 'GoPay');
+    const draft = toggleJoint(toggle(list, emptyDraft(list), gopay), gopay);
+    expect(changesOf(list, draft)).toEqual([
+      {
+        kind: 'start',
+        key: 'start',
+        name: START_NAME,
+        settings: { 'a-bca': 'hidden', 'a-gopay': 'total', 'a-card': 'hidden', 'a-rdn': 'hidden', 'a-house': 'hidden', 'a-kpr': 'hidden' },
+      },
+      { kind: 'joint', key: 'joint:a-gopay', name: 'GoPay', accountId: 'a-gopay', on: true },
+    ]);
+  });
+
+  it('a goal or an event alone starts nothing', () => {
+    const list = none();
+    expect(changesOf(list, toggle(list, emptyDraft(list), row(list, 'New phone'))).map((change) => change.kind)).toEqual(['share-goal']);
+  });
+
+  it('a start refused takes its Owned together along, reported as not done', async () => {
+    const calls: string[] = [];
+    const outcome = await applyShareChanges(
+      [
+        { kind: 'start', key: 'start', name: START_NAME, settings: { 'a-gopay': 'total' } },
+        { kind: 'joint', key: 'joint:a-gopay', name: 'GoPay', accountId: 'a-gopay', on: true },
+      ],
+      { ...runners([], { start: 'Update the app on Andi’s iPhone' }, calls) },
+      (error) => (error as Error).message,
+    );
+    expect(calls).toEqual(['start']);
+    expect(outcome.failed.map((failed) => failed.key)).toEqual(['start', 'joint:a-gopay']);
+  });
+
+  it('while the other phone has yet to sync, what was switched on reads shared, waiting, and changes one by one', () => {
+    const list = listWith({ stage: 'waiting', reviewed: false, proposalId: 'p-1' });
+    expect(row(list, 'BCA Tahapan')).toMatchObject({ shared: true, joint: true, caption: WAITING_CAPTION });
+    expect(row(list, 'GoPay')).toMatchObject({ shared: false, caption: null });
+    const draft = toggle(list, emptyDraft(list), row(list, 'GoPay'));
+    expect(changesOf(list, draft)).toEqual([{ kind: 'setting', key: 'setting:a-gopay', name: 'GoPay', accountId: 'a-gopay', setting: 'total' }]);
+  });
+
+  it('Owned together only once Shared: the icon of an account not shared does nothing, nor of a goal or an asset', () => {
+    const list = shareListOf(input());
+    const draft = emptyDraft(list);
+    expect(toggleJoint(draft, row(list, 'GoPay'))).toBe(draft);
+    expect(toggleJoint(draft, row(list, 'House'))).toBe(draft);
+    expect(toggleJoint(draft, row(list, 'Hajj'))).toBe(draft);
+    expect(jointOn(toggleJoint(draft, row(list, 'Card ending 4417')), row(list, 'Card ending 4417'))).toBe(true);
+  });
+
+  it('turning Owned together off asks first; turning it on does not', () => {
+    const list = shareListOf(input());
+    const draft = emptyDraft(list);
+    const ask = offConfirmOf(list, draft, row(list, 'BCA Tahapan'), 'joint', ['Andi']);
+    expect(ask).toEqual({
+      title: 'Stop owning BCA Tahapan together?',
+      body: 'Andi will still see its balance, but not its rows, and can’t pay from it any more. Rows Andi already recorded on it stay.',
+      confirm: 'Stop',
+    });
+    expect(offConfirmOf(list, draft, row(list, 'Card ending 4417'), 'joint', ['Andi'])).toBeNull();
+  });
+
+  it('Shared off on an account owned together asks once for both, and takes Owned together with it', () => {
+    const list = shareListOf(input());
+    const draft = emptyDraft(list);
+    const bca = row(list, 'BCA Tahapan');
+    expect(offConfirmOf(list, draft, bca, 'shared', ['Andi'])).toMatchObject({ title: 'Stop sharing BCA Tahapan with Andi?', confirm: 'Stop' });
+    // A shared account not owned together, or a goal, goes off without a question here.
+    expect(offConfirmOf(list, draft, row(list, 'Card ending 4417'), 'shared', ['Andi'])).toBeNull();
+    // Switching on never asks.
+    expect(offConfirmOf(list, draft, row(list, 'GoPay'), 'shared', ['Andi'])).toBeNull();
+    const off = toggle(list, draft, bca);
+    expect(jointOn(off, bca)).toBe(false);
+    expect(changesOf(list, off)).toEqual([{ kind: 'setting', key: 'setting:a-bca', name: 'BCA Tahapan', accountId: 'a-bca', setting: 'hidden' }]);
+  });
+});
+
 describe('copy', () => {
   it('names the one other member, or the workspace when there are more', () => {
-    expect(SHARE_LIST_COPY.setupTitle(['Andi'], 'Family')).toBe('Share with Andi');
-    expect(SHARE_LIST_COPY.title(['Andi'], 'Family')).toBe('What’s shared with Andi');
-    expect(SHARE_LIST_COPY.title(['Andi', 'Sari'], 'Family')).toBe('What’s shared with Family');
+    expect(SHARE_LIST_COPY.title(['Andi'], 'Family')).toBe('Shared with Andi');
+    expect(SHARE_LIST_COPY.title(['Andi', 'Sari'], 'Family')).toBe('Shared with Family');
   });
 
   it('reads as the mockup, with real names', () => {
-    expect(SHARE_LIST_COPY.lede(['Andi'], 'Family')).toBe('Family’s budgets, bills and transactions are already shared. Pick what else Andi sees. Nothing here is shared until ticked.');
-    expect(SHARE_LIST_COPY.accountsFooter(['Andi'], 'Family')).toBe('Ticked: Andi sees its balance on Net worth. Joint: Andi can also pay from it in Family and sees its rows.');
-    expect(SHARE_LIST_COPY.accountsFooter(['Andi', 'Sari'], 'Family')).toBe('Ticked: Andi and Sari see its balance on Net worth. Joint: Andi and Sari can also pay from it in Family and see its rows.');
-    expect(SHARE_LIST_COPY.shareButton(7)).toBe('Share 7 items');
-    expect(SHARE_LIST_COPY.shareButton(1)).toBe('Share 1 item');
+    expect(SHARE_LIST_COPY.step).toBe('Step 3 of 3');
+    expect(SHARE_LIST_COPY.accountsFooter(['Andi'], 'Family')).toBe('Shared: Andi sees the balance. Tap a shared account’s icon to mark it owned together: Andi also sees its rows and can pay from it.');
+    expect(SHARE_LIST_COPY.accountsFooter(['Andi', 'Sari'], 'Family')).toBe('Shared: Andi and Sari see the balance. Tap a shared account’s icon to mark it owned together: Andi and Sari also see its rows and can pay from it.');
+    expect(SHARE_LIST_COPY.done).toBe('Done');
+    expect(SHARE_LIST_COPY.assetsRow(3)).toBe('Assets & debts (3)');
+    expect(SHARE_LIST_COPY.undoLine('BCA 0917', true)).toBe('BCA 0917 owned together');
+    expect(SHARE_LIST_COPY.undoLine('BCA 0917', false)).toBe('BCA 0917 no longer owned together');
     expect(SHARE_LIST_COPY.rowValue(7)).toBe('7 items');
     expect(SHARE_LIST_COPY.workspaceFooter('Family')).toBe('Budgets, bills, categories and Family’s transactions are shared with Family as a whole.');
     expect(SHARE_LIST_COPY.reviewBody('joint', ['Andi'], 'Family')).toContain('For the joint tax return, each item also goes to Andi');
@@ -496,7 +620,6 @@ describe('copy', () => {
 
   it('never says you or your', () => {
     const strings = [
-      SHARE_LIST_COPY.lede(['Andi'], 'Family'),
       SHARE_LIST_COPY.accountsFooter(['Andi'], 'Family'),
       SHARE_LIST_COPY.netWorthOff,
       SHARE_LIST_COPY.invitesFooter(['Andi'], 'Family'),
@@ -508,6 +631,9 @@ describe('copy', () => {
       JOINT_SKIPPED,
       EVENT_LOCKED,
       NOT_SHARED_YET,
+      WAITING_CAPTION,
+      SHARE_LIST_COPY.notShareableHint,
+      ...Object.values(offConfirmOfAll()).flatMap((ask) => [ask.title, ask.body]),
     ];
     for (const line of strings) expect(line).not.toMatch(/\byou(r)?\b/i);
   });

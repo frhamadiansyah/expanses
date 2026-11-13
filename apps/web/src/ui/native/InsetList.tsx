@@ -7,6 +7,7 @@ import { groupHeader, type HeaderProgress, type RowPosition, rowPositions } from
 import { GROUP_GAP, GROUP_RADIUS, NESTED_ICON, nestedPad, ROW_ICON, ROW_ICON_GAP, ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP } from './metrics';
 import { iconTint, planRow, type Tone } from './row';
 import { type TreePlace, TreeLines } from './TreeLines';
+import { TwoPersonMark } from './TwoPersonMark';
 
 /**
  * Primitives 1 and 2: the grouped inset list, and the row.
@@ -174,6 +175,8 @@ export interface InsetRowProps extends GroupChild {
    * its edge — so only the ring says the owner, and the row stays one line.
    */
   iconRing?: string;
+  /** Owned together (2026-11-13): the two-person mark on the icon's lower right, in place of a "Joint" pill. */
+  iconMark?: boolean;
   title: ReactNode;
   subtitle?: ReactNode;
   /** The title in the regular weight a form row's label has, for a row set among form rows (a Settings page); lists keep medium. */
@@ -232,11 +235,11 @@ export interface InsetRowProps extends GroupChild {
  * A row that slides is not an exception: its action sits *behind* the row, never inside the tap target.
  */
 /** A row's leading glyph, in the kit's own 28 px circle: the neutral fill, or the caller's tint when it gave one. */
-export function RowIcon({ tint, ring, size = 28, children }: { tint?: { background: string; foreground: string } | null; ring?: string; size?: number; children: ReactNode }) {
+export function RowIcon({ tint, ring, size = 28, mark = false, children }: { tint?: { background: string; foreground: string } | null; ring?: string; size?: number; /** Owned together: the two-person badge on its lower right. */ mark?: boolean; children: ReactNode }) {
   return (
     <span
       aria-hidden
-      className="flex shrink-0 items-center justify-center rounded-full"
+      className="relative flex shrink-0 items-center justify-center rounded-full"
       data-ring={ring}
       style={{
         width: size,
@@ -249,6 +252,7 @@ export function RowIcon({ tint, ring, size = 28, children }: { tint?: { backgrou
       }}
     >
       {children}
+      {mark ? <TwoPersonMark /> : null}
     </span>
   );
 }
@@ -257,6 +261,7 @@ export function InsetRow({
   icon,
   iconColour,
   iconRing,
+  iconMark = false,
   title,
   subtitle,
   plain = false,
@@ -291,7 +296,7 @@ export function InsetRow({
   ) : (
     <>
       {icon && (
-        <RowIcon tint={tint} ring={iconRing} size={depth > 0 ? NESTED_ICON : undefined}>
+        <RowIcon tint={tint} ring={iconRing} mark={iconMark} size={depth > 0 ? NESTED_ICON : undefined}>
           {icon}
         </RowIcon>
       )}

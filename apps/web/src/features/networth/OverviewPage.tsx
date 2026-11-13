@@ -13,7 +13,7 @@ import { NetWorthChart } from './NetWorthChart';
 import { debtKind, rowKindOf, type RowKind, sheetDrawers } from './sheet-drawers';
 import { ASSET_STACK_KEYS, DEBT_STACK_KEYS, STACK_KEYS } from './stack-keys';
 import { RANGES, rangeChange, SPAN_MONTHS, type Span, spanSlice } from './span';
-import { memberName, useAssetProfiles, useAssetValues, useJointSheet, useNetWorthSeries, useOwnerRings, useSheet } from './queries';
+import { memberName, useAssetProfiles, useAssetValues, useJointSheet, useNetWorthSeries, useOwnedTogether, useOwnerRings, useSheet } from './queries';
 import { buyChoices } from '../transactions/buy-in-form';
 import { figureOf, jointSeries, ownerRing, receivedPocketAccounts, sheetOwnerOf } from './joint-rows';
 import { isMoneyAccount, useAccounts } from '../../lib/queries';
@@ -152,6 +152,7 @@ function SheetColumn({
   /** Rows with no base figure (a received item with no rate): drawn in their own currency, their totals blank. */
   unrated?: ReadonlySet<string>;
 }) {
+  const together = useOwnedTogether();
   return (
     // `min-w-0`: a column in a grid is as wide as its widest row unless it is told it may be narrower, and a row whose
     // title truncates is still as wide as the whole title — which is what pushed this page sideways.
@@ -178,7 +179,7 @@ function SheetColumn({
                 onToggle={() => onToggle(key)}
               />,
               /* Marked by its own key, so a spec can say which section a row was drawn in. */
-              ...(shown ? [<div key={`${key}:rows`} data-testid={`sheet-section-${group.key}`}>{fold(group, kindOf, tileOf, open, onToggle, currency, ownerOf, unrated, linkOf, 1)}</div>] : []),
+              ...(shown ? [<div key={`${key}:rows`} data-testid={`sheet-section-${group.key}`}>{fold(group, kindOf, tileOf, open, onToggle, currency, ownerOf, unrated, linkOf, 1, together)}</div>] : []),
             ];
           })}
         </InsetGroup>
@@ -190,7 +191,7 @@ function SheetColumn({
             /* Marked by its own key, so a spec can say which section a row was drawn in. */
             <div key={group.key} data-testid={`sheet-section-${group.key}`}>
               <InsetGroup wide header={oneGroupOnly ? undefined : group.label} trailing={oneGroupOnly ? undefined : <SheetFigure minor={figureOf(group.totalMinor, group.rows.map((row) => row.accountId), unrated)} currency={currency} />}>
-                {fold(group, kindOf, tileOf, open, onToggle, currency, ownerOf, unrated, linkOf)}
+                {fold(group, kindOf, tileOf, open, onToggle, currency, ownerOf, unrated, linkOf, 0, together)}
               </InsetGroup>
             </div>
           ),
@@ -232,7 +233,7 @@ type OwnerOf = (accountId: string) => RowOwner | null;
  * with no name and no date under it — and a screen reader hears whose it is. One's own rows are ringed in one's own
  * colour too, so every row says whose it is. The other's item opens its own page.
  */
-function sheetLine(row: SheetRow, currency: string, icon: ReactNode, owner: RowOwner | null, link?: AccountDestination, depth = 0, tree?: TreePlace) {
+function sheetLine(row: SheetRow, currency: string, icon: ReactNode, owner: RowOwner | null, link?: AccountDestination, depth = 0, tree?: TreePlace, together = false) {
   const shared = owner?.received === true;
   const shownMinor = owner?.native?.minor ?? row.amountMinor;
   const shownCurrency = owner?.native?.currency ?? currency;
@@ -244,6 +245,7 @@ function sheetLine(row: SheetRow, currency: string, icon: ReactNode, owner: RowO
       key={row.accountId}
       icon={drawn}
       iconRing={owner?.ring ?? undefined}
+      iconMark={together}
       title={
         owner && !shared ? (
           /* A row that is not a link has no accessible name of its own, so whose it is is read out with its title. */
@@ -293,6 +295,8 @@ function fold(
    * next section, level again, reads as the next one. Each kind's accounts go one further in.
    */
   depth = 0,
+  /** Owned together: the two-person mark on the row's icon (2026-11-13). */
+  together: (accountId: string) => boolean = () => false,
 ) {
   const drawers = sheetDrawers(group.rows, (row) => kindOf(group.key, row));
   return drawers.flatMap((drawer, index) => {
@@ -330,6 +334,7 @@ function fold(
               // with no section above it has no line to carry on (the liabilities' cards hang from Credit cards alone,
               // drawn and sized as the assets' accounts are — owner, 23 Oct).
               { last: at === drawer.rows.length - 1, rails: depth > 0 && index !== drawers.length - 1 ? [iconCentre(depth - 1)] : [] },
+              together(row.accountId),
             ),
           )
         : []),

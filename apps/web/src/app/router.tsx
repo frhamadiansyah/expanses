@@ -109,10 +109,9 @@ import { SecurityPricePage } from '../features/investments/SecurityPricePage';
 import { DeveloperSettingsPage } from '../features/workspaces/DeveloperSettingsPage';
 import { WorkspacePage } from '../features/workspaces/WorkspacePage';
 import { MemberPage } from '../features/sharing/MemberPage';
-import { NetWorthPage } from '../features/sharing/NetWorthPage';
-import { NetWorthItemsPage } from '../features/sharing/NetWorthItemsPage';
+import { NetWorthMoved } from '../features/sharing/NetWorthMoved';
 import { SharePage } from '../features/sharing/SharePage';
-import { SyncDetailsPage } from '../features/sharing/SyncDetailsPage';
+import { SyncDetailsPage, SyncLogPage } from '../features/sharing/SyncDetailsPage';
 import { AccountMenuPage } from '../features/account/AccountMenuPage';
 import { JoinPage } from '../features/sharing/JoinPage';
 import { SharedItemPage } from '../features/networth/SharedItemPage';
@@ -557,8 +556,9 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId', component: WorkspacePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share', component: SharePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/details', component: SyncDetailsPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/net-worth', component: NetWorthPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/net-worth/items', component: NetWorthItemsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/details/log', component: SyncLogPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/net-worth', component: NetWorthMoved }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/net-worth/items', component: NetWorthMoved }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/what', component: ShareListPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/what/start', component: ShareListSetupPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/members/$memberId', component: MemberPage }),

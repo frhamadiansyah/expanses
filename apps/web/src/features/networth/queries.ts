@@ -38,7 +38,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { withShownNames } from '../../lib/account-name';
 import { isMoneyAccount, useAccounts, useResolveRates } from '../../lib/queries';
-import { useActiveNetWorthGroup } from '../sharing/net-worth-queries';
+import { useActiveNetWorthGroup, useJointAccountIds } from '../sharing/net-worth-queries';
 import { groupItems, jointRows, type JointRows, jointStatus, type JointStatus, type ReceivedItem } from './joint-rows';
 
 export function useAssetValues(date?: string) {
@@ -233,6 +233,17 @@ export function useUndoableByHand(accountId: string) {
  * Keyed under `net-worth` and read through `useActiveNetWorthGroup`, so a sync run re-reads it: a partner's new
  * summary arrives with a run, not with a local write.
  */
+/**
+ * Whether a row is owned together (2026-11-13): one of this phone's own accounts made joint (and its pockets), or a
+ * partner's shared item whose holder made it joint. What draws the two-person mark on a row's icon.
+ */
+export function useOwnedTogether(): (id: string) => boolean {
+  const own = useJointAccountIds();
+  const shared = useSharedNetWorth().data;
+  const received = new Set((shared?.items ?? []).filter((item) => item.joint === true).map((item) => item.itemId));
+  return (id: string) => own.has(id) || received.has(id);
+}
+
 export function useSharedNetWorth() {
   const { database, ws } = useApp();
   const group = useActiveNetWorthGroup();

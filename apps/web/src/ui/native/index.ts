@@ -9,6 +9,7 @@ import './tokens.css';
 
 /* The primitives. */
 export { SelectCircle } from './SelectCircle';
+export { OWNED_TOGETHER, TwoPersonGlyph, TwoPersonMark } from './TwoPersonMark';
 export { GROUP_HEADER_CLASS, InsetGroup, InsetRow, RowIcon, toneClass, useWide, WideColumn, type GroupChild, type InsetRowProps } from './InsetList';
 export { CornerButton, CornerMenu, LargeTitle, OverflowMenu, PushedTitle } from './NavTitle';
 export { SegmentedControl } from './Segmented';

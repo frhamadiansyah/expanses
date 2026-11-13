@@ -4,7 +4,6 @@ import { openAccount, walletCard } from './accounts';
 import { addTransaction } from './add-transaction';
 import { mockRates } from './pockets';
 import { corner, eventually, newEvent, openTrip, recordSharedSpend, sharedCard, showBalances, showCard, spendingRow } from './shared-events';
-import { openWorkspaceSharePage } from './workspace-page';
 
 /*
  * Shared events, end to end (shared events §9 step 5). Rina and Andi each on a phone of their own; Budi is a name
@@ -60,9 +59,11 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   await expect(andi.getByTestId('shared-event')).toBeVisible({ timeout: 60_000 });
 
   // The Share page's Events section names who each event is shared with.
-  await rina.goto('/account');
-  await openWorkspaceSharePage(rina, 'Personal');
-  await eventually(rina, () => expect(rina.getByTestId('share-event-row').first()).toContainText('Shared with 2 people', { timeout: 1_000 }));
+  // (The Share page's Events section moved into Shared with, 2026-11-13: the trip itself names him once he is in.)
+  await eventually(rina, async () => {
+    await openTrip(rina);
+    await expect(rina.getByTestId('shared-event')).toContainText('Andi', { timeout: 1_000 });
+  });
 
   // Rina pays a €90 fish dinner from her euro wallet, for all three; the keypad types the amount.
   await openTrip(rina);

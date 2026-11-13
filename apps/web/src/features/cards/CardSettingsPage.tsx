@@ -295,7 +295,7 @@ export function CardSettingsPage() {
       <PointsGroup page={page} run={run} />
 
       {!isDebit && <TrackPaymentsSetting cardAccountId={card.id} />}
-      <ShareWithHouseholdRow accountId={card.id} jointSwitch={!isDebit ? 'card' : false} />
+      <ShareWithHouseholdRow accountId={card.id} name={card.name} jointSwitch={!isDebit ? 'card' : false} />
     </CardScreen>
   );
 }

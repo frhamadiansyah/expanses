@@ -1,5 +1,8 @@
 import {
   activeNetWorthGroup,
+  netWorthMarks,
+  planEventCopyDelete,
+  type SharedEventView,
   type CreatedInvite,
   confirmReview,
   getJointAccount,
@@ -19,32 +22,44 @@ import {
 } from '@expanses/db';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
-import { Check } from 'lucide-react';
+import { CalendarDays, Check, CreditCard, Lock, type LucideIcon, Target } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
+import { Sheet } from '../../app/Sheet';
 import { errorMessage, ErrorBox, cx } from '../../ui';
-import { GROUP_HEADER_CLASS, InsetGroup, InsetRow, Notice, PushedTitle, SCREEN, SelectCircle } from '../../ui/native';
+import { ToastCard, UndoToast } from '../../ui/UndoToast';
+import { GROUP_HEADER_CLASS, InsetGroup, InsetRow, Notice, OWNED_TOGETHER, PushedTitle, RowIcon, SCREEN } from '../../ui/native';
 import { useInvalidateAll } from '../../lib/queries';
 import { useEvents } from '../events/queries';
 import { freshShare, type ShareProgress } from '../events/share-event';
 import { useShareEventNow } from '../events/share-event-now';
-import { useSharedEventSummaries } from '../events/shared-queries';
+import { useSharedEventSummaries, useSharedEventView } from '../events/shared-queries';
+import { pageLocks } from '../events/shared-view';
+import { DELETE_COPY_LABEL, deleteEventCopyFlow } from '../events/delete-copy';
+import { ShareEventSheet } from '../events/ShareEventSheet';
+import { useSafetyCopy } from '../workspaces/safety-copy';
 import { GOAL_SHARING_COPY } from '../goals/goal-sharing';
 import { useGoalPlans, useGoals, useGoalShareTargets } from '../goals/queries';
+import { assetKindTile, debtKindTile } from '../ownables/catalogue-view';
 import { InviteCard } from './InviteCard';
-import { useNetWorthGroup } from './net-worth-queries';
-import { JOINT_SHARED_LINE, netWorthRowOf, netWorthValue, sayNetWorthError } from './net-worth-state';
+import { chosenJoint, rememberSwitch, startNetWorth, stoppedLine } from './household';
+import { othersStopped } from './net-worth-auto';
+import { JOINT_SHARED_LINE, namesOf, sayNetWorthError } from './net-worth-state';
 import { useSharingDetail } from './queries';
 import {
   applyShareChanges,
   changesOf,
   completeReviewSettings,
   emptyDraft,
-  jointLineGroup,
   eventsToShare,
   isTicked,
+  jointLineGroup,
   jointOn,
   keepConfirmed,
+  NET_WORTH_CHANGED,
+  type NetWorthInput,
+  type OffConfirm,
+  offConfirmOf,
   reconcile,
   reviewStillShown,
   type ShareDraft,
@@ -54,8 +69,6 @@ import {
   type ShareOutcome,
   SHARE_LIST_COPY,
   shareListOf,
-  tickAll,
-  tickedCount,
   toggle,
   toggleJoint,
 } from './share-list';
@@ -96,7 +109,10 @@ interface EventShared {
 }
 
 /** Everything the list is made of, read whole and read again after every sync run. */
-export function useShareList(bookId: string): { list: ShareList | null; goalShares: Record<string, Awaited<ReturnType<typeof goalShareOf>>> } {
+/** Why no account can be switched here: net worth is another workspace's, a group waits for this phone's Confirm, or the others stopped. */
+export type NetWorthBlocked = 'elsewhere' | 'asked' | 'stopped';
+
+export function useShareList(bookId: string): { list: ShareList | null; goalShares: Record<string, Awaited<ReturnType<typeof goalShareOf>>>; blocked: NetWorthBlocked | null } {
   const { database, sync, ws } = useApp();
   const queryClient = useQueryClient();
   useEffect(
@@ -115,20 +131,34 @@ export function useShareList(bookId: string): { list: ShareList | null; goalShar
     queryKey: ['share-list', 'net-worth', ws.workspaceId, bookId],
     // The previous read stands in only for the same workspace: another one's never shows here (round 3).
     placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[3] === bookId ? previous : undefined),
-    queryFn: async () => {
+    queryFn: async (): Promise<{ input: NetWorthInput | null; blocked: NetWorthBlocked | null }> => {
       const g = await activeNetWorthGroup(database);
-      if (!g || g.workspaceBookId !== bookId) return null;
+      // Net worth shared in another workspace: nothing of it is switched here.
+      if (g && g.workspaceBookId !== bookId) return { input: null, blocked: 'elsewhere' };
       const items = await reviewItems(database, ws);
       const joint = new Set<string>();
-      for (const item of items) if (await getJointAccount(database, item.accountId)) joint.add(item.accountId);
-      return {
-        mode: g.mode,
-        proposalId: g.proposalId,
-        reviewed: await reviewedFor(database, g.groupBookId, g.proposalId),
-        items,
-        joint,
-        live: new Set(await ownSentAccountIds(database, g.groupBookId)),
-      };
+      // Owned together as it reads in the group; while one waits, as chosen here (review round 1, item 4).
+      for (const item of items) if (await (g ? getJointAccount(database, item.accountId) : chosenJoint(database, item.accountId))) joint.add(item.accountId);
+      if (g) {
+        return { blocked: null, input: {
+          stage: 'active',
+          mode: g.mode,
+          proposalId: g.proposalId,
+          reviewed: await reviewedFor(database, g.groupBookId, g.proposalId),
+          items,
+          joint,
+          live: new Set(await ownSentAccountIds(database, g.groupBookId)),
+        } };
+      }
+      // No active group (2026-11-13): the accounts are listed all the same. Started from here and waiting for the other
+      // phone, what is stored is what was switched on; not started, nothing is shared and the first switch starts it.
+      const view = await sync.netWorthGroup(bookId);
+      const pending = view?.pending && !view.pending.cancelled && view.pending.members.includes(view.me) ? view.pending : null;
+      // A group asked of this phone and not confirmed by it: answered in the Tax report first.
+      if (pending && view!.waitingFor.includes(view!.me)) return { input: null, blocked: 'asked' };
+      // The others stopped sharing net worth: nothing here starts it again for them (review round 1, item 3).
+      if (!pending && othersStopped(view, await netWorthMarks(database, bookId))) return { input: null, blocked: 'stopped' };
+      return { blocked: null, input: { stage: pending ? 'waiting' : 'none', mode: 'separate', proposalId: pending?.proposalId ?? '', reviewed: false, items, joint: pending ? joint : new Set<string>(), live: new Set() } };
     },
   });
   const goals = useGoals();
@@ -147,7 +177,7 @@ export function useShareList(bookId: string): { list: ShareList | null; goalShar
     if (!ready) return null;
     return shareListOf({
       bookId,
-      netWorth: netWorth.data ?? null,
+      netWorth: netWorth.data?.input ?? null,
       // A goal whose link is not read yet is left out until it is (round 3): never offered as unshared by guess.
       goals: goals.data!
         .filter((goal) => goal.status !== 'archived' && goal.id in shares.data!)
@@ -162,10 +192,10 @@ export function useShareList(bookId: string): { list: ShareList | null; goalShar
       })),
     });
   }, [ready, netWorth.data, goals.data, shares.data, targets.data, events.data, summaries.data, bookId, ws.baseCurrency]);
-  return { list, goalShares: shares.data ?? {} };
+  return { list, goalShares: shares.data ?? {}, blocked: netWorth.data?.blocked ?? null };
 }
 
-/** Share › What’s shared with Andi. */
+/** Share › Shared with Andi. */
 export function ShareListPage() {
   const { bookId } = useParams({ from: '/account/workspaces/$bookId/share/what' });
   return <ShareListScreen bookId={bookId} setup={false} />;
@@ -202,19 +232,24 @@ function personNameOf(detail: SharingDetail): string | null {
 }
 
 function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bookName: string; detail: SharingDetail; setup: boolean }) {
-  const { database, ws } = useApp();
+  const { database, sync, ws } = useApp();
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
   const queryClient = useQueryClient();
   const shareEventNow = useShareEventNow();
   const plans = useGoalPlans();
-  const nwGroup = useNetWorthGroup(bookId);
-  const { list, goalShares } = useShareList(bookId);
+  const { list, goalShares, blocked } = useShareList(bookId);
   const eventRows = useEvents().data ?? [];
   const [edits, setEdits] = useState<ShareDraft | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [outcome, setOutcome] = useState<ShareOutcome<EventShared> | null>(null);
+  const [assetsOpen, setAssetsOpen] = useState(false);
+  // The short bar after an icon tap (mockup ①a): what changed, and the draft to go back to.
+  const [undo, setUndo] = useState<{ text: string; before: ShareDraft } | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
+  // Turning something off asks first (mockup ③): what is asked, and the draft it leads to.
+  const [asking, setAsking] = useState<{ ask: OffConfirm; next: ShareDraft; undo: { text: string; before: ShareDraft } | null } | null>(null);
   // Each event's share is kept across a retry (`runShare`): one failed after its book was made carries on from there.
   const progress = useRef(new Map<string, ShareProgress>());
   const personName = personNameOf(detail);
@@ -259,9 +294,11 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
     );
   }
 
-  async function apply() {
+  async function apply(answerReview = false) {
     if (!list || !draft || busy) return;
-    const changes = keepConfirmed(changesOf(list, draft), confirmStop);
+    const changes = keepConfirmed(changesOf(list, draft, { answerReview }), confirmStop);
+    // Nothing switched: Done is Later.
+    if (setup && changes.length === 0) return void later();
     setBusy(true);
     setError(null);
     try {
@@ -270,6 +307,16 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
       const result = await applyShareChanges<EventShared>(
         changes,
         {
+          // The first account switched on starts the household's net worth (2026-11-13), filed separately — refused when
+          // a group came meanwhile (the reads after Save bring the list up to date). An item opened since the list was
+          // read was never shown, so it is sent private.
+          start: async (settings) => {
+            if (blocked === 'stopped') throw new Error(stoppedLine(othersAll));
+            const view = await sync.netWorthGroup(bookId);
+            if ((await activeNetWorthGroup(database)) || (view?.pending && !view.pending.cancelled)) throw new Error(NET_WORTH_CHANGED);
+            const ids = (await reviewItems(database, ws)).map((item) => item.accountId);
+            await startNetWorth({ database, sync }, bookId, joinedOthers(detail).map((member) => member.memberId), completeReviewSettings(settings, ids));
+          },
           // Made whole against the items as they are now (fix round 1, 4): one added since the list was read is sent
           // as hidden, never left to the review's own default of shared.
           review: async (settings) => {
@@ -287,7 +334,11 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
             const ids = (await reviewItems(database, ws)).map((item) => item.accountId);
             await confirmReview(database, ws, completeReviewSettings(settings, ids), { missing: 'hidden' });
           },
-          setting: (accountId, setting) => setShareSetting(database, accountId, setting),
+          setting: async (accountId, setting) => {
+            await setShareSetting(database, accountId, setting);
+            // Waiting for the other phone: remembered as switched here, the only items the app's review will share.
+            await rememberSwitch(database, bookId, accountId, setting === 'total');
+          },
           joint: (accountId, on) => setJointAccount(database, accountId, on),
           shareGoal: (goalId) => shareGoal(database, ws, goalId, bookId),
           stopGoal: (goalId) => stopSharingGoal(database, ws, goalId),
@@ -305,6 +356,7 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
       );
       await invalidate();
       setEdits(null);
+      setUndo(null);
       if (result.failed.length > 0 || result.events.length > 0) setOutcome(result);
       else await backToShare();
     } catch (failure) {
@@ -314,9 +366,8 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
     }
   }
 
-  const count = list && draft ? tickedCount(list, draft) : 0;
   const changed = list && draft ? changesOf(list, draft).length > 0 : false;
-  const title = setup ? SHARE_LIST_COPY.setupTitle(othersAll, bookName) : SHARE_LIST_COPY.title(othersAll, bookName);
+  const title = SHARE_LIST_COPY.title(othersAll, bookName);
 
   if (outcome) {
     return (
@@ -355,15 +406,72 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
     );
   }
 
-  const netWorthOff = list !== null && list.netWorth === null && nwGroup.isSuccess;
-  const reviewWaits = list?.netWorth && !list.netWorth.reviewed && list.groups.some((group) => group.key === 'accounts' || group.key === 'assets') ? list.netWorth : null;
-  const setDraft = (next: ShareDraft) => setEdits(next);
+  const netWorthOff = list !== null && list.netWorth === null ? blocked : null;
+  // A review this person has yet to answer (a group from before this update, or a change): theirs to tap (review round 1).
+  const reviewWaits = list?.netWorth && (list.netWorth.stage ?? 'active') === 'active' && !list.netWorth.reviewed && list.groups.some((group) => group.key === 'accounts' || group.key === 'assets') ? list.netWorth : null;
+
+  /** A switch turned: off on something owned together asks first (once for both). */
+  function onToggle(item: ShareListItem) {
+    if (!list || !draft) return;
+    const next = toggle(list, draft, item);
+    const ask = offConfirmOf(list, draft, item, 'shared', othersAll);
+    setHint(null);
+    if (ask) {
+      // The question stands alone: no bar over the sheet.
+      setUndo(null);
+      setAsking({ ask, next, undo: null });
+    } else setEdits(next);
+  }
+
+  /** The icon tapped (mockup ①a): owned together on or off, with a short Undo bar; off asks first. */
+  function onIcon(item: ShareListItem) {
+    if (!list || !draft) return;
+    if (!isTicked(draft, item)) {
+      setUndo(null);
+      setHint(SHARE_LIST_COPY.notShareableHint);
+      return;
+    }
+    setHint(null);
+    const next = toggleJoint(draft, item);
+    const bar = { text: SHARE_LIST_COPY.undoLine(item.name, jointOn(next, item)), before: draft };
+    const ask = offConfirmOf(list, draft, item, 'joint', othersAll);
+    if (ask) {
+      setUndo(null);
+      setAsking({ ask, next, undo: bar });
+    } else {
+      setEdits(next);
+      setUndo(bar);
+    }
+  }
+
+  const groupOf = (key: string) => list?.groups.find((group) => group.key === key) ?? null;
+  const assets = groupOf('assets');
+  const drawGroup = (group: ShareListGroup) => (
+    <SwitchGroup
+      key={group.key}
+      topLine={list && jointLineGroup(list) === group.key ? <JointSharedLine /> : null}
+      group={group}
+      draft={draft!}
+      disabled={busy}
+      footer={groupFooter(group, othersAll, bookName, group.key === 'events' ? eventsToShare(list!, draft!).map((item) => item.name) : [])}
+      onToggle={onToggle}
+      onIcon={onIcon}
+    />
+  );
 
   return (
     <div className={SCREEN} data-testid={setup ? 'share-list-setup' : 'share-list'}>
       {setup ? (
         <header className="mb-[10px] pt-[6px]">
-          <p className="text-center text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{SHARE_LIST_COPY.step}</p>
+          <div className="flex items-center justify-between px-[4px]">
+            <button type="button" data-testid="share-list-later" disabled={busy} onClick={() => void later()} className="ph-focus ph-tap text-[17px] leading-[22px] text-[var(--ph-tint)] disabled:opacity-40 md:text-[15px]">
+              {SHARE_LIST_COPY.later}
+            </button>
+            <button type="button" data-testid="share-list-share" disabled={busy || !list} onClick={() => void apply()} className="ph-focus ph-tap text-[17px] leading-[22px] font-semibold text-[var(--ph-tint)] disabled:opacity-40 md:text-[15px]">
+              {busy ? 'Sharing…' : SHARE_LIST_COPY.done}
+            </button>
+          </div>
+          <p className="mt-[4px] text-center text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{SHARE_LIST_COPY.step}</p>
           <h1 className="mt-[6px] px-[4px] text-[28px] leading-[34px] font-bold text-[var(--ph-ink)]">{title}</h1>
         </header>
       ) : (
@@ -375,67 +483,83 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
           actions={[{ key: 'save', label: 'Save', glyph: <Check size={20} aria-hidden />, disabled: busy || !changed, run: () => void apply() }]}
         />
       )}
-      <p className="mb-[14px] px-[4px] text-[13px] leading-[18px] text-[var(--ph-ink-3)]">{SHARE_LIST_COPY.lede(othersAll, bookName)}</p>
       <ErrorBox error={error} />
+      <AlwaysShared bookName={bookName} />
       {list && draft ? (
         <>
           {netWorthOff ? (
-            <InsetGroup wide header="Accounts & cards" footer={SHARE_LIST_COPY.netWorthOff}>
-              <InsetRow
-                testId="share-list-net-worth"
-                title="Net worth"
-                value={netWorthValue(netWorthRowOf(nwGroup.data, detail.members))}
-                to="/account/workspaces/$bookId/share/net-worth"
-                params={{ bookId }}
-              />
+            <InsetGroup wide header="Accounts & cards">
+              {netWorthOff === 'asked' ? (
+                <InsetRow testId="share-list-net-worth" title={SHARE_LIST_COPY.netWorthAsked} to="/tax-report" />
+              ) : (
+                <InsetRow testId="share-list-net-worth" title={netWorthOff === 'stopped' ? stoppedLine(othersAll) : SHARE_LIST_COPY.netWorthOff} chevron={false} />
+              )}
             </InsetGroup>
           ) : null}
           {reviewWaits ? (
             <div className="mb-[14px]">
-              <Notice kind="warning" testId="share-list-review" title={SHARE_LIST_COPY.reviewTitle} body={SHARE_LIST_COPY.reviewBody(reviewWaits.mode, othersAll, bookName)} />
+              <InsetGroup wide header={SHARE_LIST_COPY.reviewTitle} footer={<span data-testid="share-list-review">{SHARE_LIST_COPY.reviewBody(reviewWaits.mode, othersAll, bookName)}</span>}>
+                <InsetRow testId="share-list-review-answer" title={SHARE_LIST_COPY.reviewAnswer} action disabled={busy} onClick={() => void apply(true)} />
+              </InsetGroup>
             </div>
           ) : null}
-          {list.groups.map((group) => (
-            <TickGroup
-              key={group.key}
-              topLine={jointLineGroup(list) === group.key ? <JointSharedLine bookId={bookId} /> : null}
-              group={group}
-              draft={draft}
-              disabled={busy}
-              footer={groupFooter(group, othersAll, bookName, group.key === 'events' ? eventsToShare(list, draft).map((item) => item.name) : [])}
-              onTickAll={() => setDraft(tickAll(list, draft, group))}
-              onToggle={(item) => setDraft(toggle(list, draft, item))}
-              onJoint={(item) => setDraft(toggleJoint(draft, item))}
-            />
-          ))}
+          {list.groups.filter((group) => group.key !== 'assets').map((group) => (group.key === 'events' ? <EventsGroup key="events" group={group} onError={setError} /> : drawGroup(group)))}
+          {assets ? (
+            <>
+              <InsetGroup wide>
+                <InsetRow
+                  testId="share-list-assets-row"
+                  title={SHARE_LIST_COPY.assetsRow(assets.items.length)}
+                  value={assetsOpen ? undefined : SHARE_LIST_COPY.rowValue(assets.items.filter((item) => isTicked(draft, item)).length)}
+                  chevron={!assetsOpen}
+                  onClick={() => setAssetsOpen((open) => !open)}
+                />
+              </InsetGroup>
+              {assetsOpen ? drawGroup(assets) : null}
+            </>
+          ) : null}
         </>
       ) : null}
-      {setup ? (
-        <div className="sticky bottom-0 -mx-4 mt-[10px] px-4 pt-[18px] pb-[calc(16px+env(safe-area-inset-bottom))]" style={{ backgroundImage: 'linear-gradient(transparent, var(--ph-bg) 22%)' }}>
-          <button
-            type="button"
-            data-testid="share-list-share"
-            disabled={busy || count === 0}
-            onClick={() => void apply()}
-            className="ph-focus w-full rounded-[13px] bg-[var(--ph-tint)] p-[13px] text-center text-[16px] font-semibold text-[var(--ph-surface)] disabled:opacity-40"
-          >
-            {busy ? 'Sharing…' : SHARE_LIST_COPY.shareButton(count)}
-          </button>
-          <button type="button" data-testid="share-list-later" disabled={busy} onClick={() => void later()} className="ph-focus w-full p-[11px] text-center text-[15.5px] text-[var(--ph-tint)] disabled:opacity-40">
-            {SHARE_LIST_COPY.later}
-          </button>
-        </div>
+      {hint && !asking ? <ToastCard text={hint} data-testid="share-list-hint" /> : null}
+      {undo && !hint && !asking ? (
+        <UndoToast
+          text={undo.text}
+          testId="share-list-undo"
+          onUndo={() => {
+            setEdits(undo.before);
+            setUndo(null);
+          }}
+          onDone={() => setUndo(null)}
+        />
+      ) : null}
+      {asking ? (
+        <Sheet
+          title={asking.ask.title}
+          onClose={() => setAsking(null)}
+          confirm={{
+            label: asking.ask.confirm,
+            run: () => {
+              setEdits(asking.next);
+              setUndo(asking.undo);
+              setAsking(null);
+            },
+          }}
+        >
+          <p data-testid="share-list-ask" className="text-[15px] leading-[20px]">
+            {asking.ask.body}
+          </p>
+        </Sheet>
       ) : null}
     </div>
   );
 }
 
 /** One tax ID: why every net worth item reads Shared, said once above the first net worth group that has a fixed item. */
-function JointSharedLine({ bookId }: { bookId: string }) {
+function JointSharedLine() {
   return (
     <p data-testid="share-list-joint-line" className="px-[4px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
       {JOINT_SHARED_LINE}{' '}
-      <Link to="/account/workspaces/$bookId/share/net-worth" params={{ bookId }} className="text-[var(--ph-tint)]">
+      <Link to="/tax-report" className="text-[var(--ph-tint)]">
         Change
       </Link>
     </p>
@@ -443,8 +567,8 @@ function JointSharedLine({ bookId }: { bookId: string }) {
 }
 
 /**
- * The sentence under a group: what a tick means for accounts, why a tick cannot be taken off where one cannot, and for
- * each event ticked to be shared, what sharing it moves (the event Share sheet's own words).
+ * The sentence under a group: what Shared and owned together mean for accounts, why a switch cannot be turned off where
+ * one cannot, and for each event switched on to be shared, what sharing it moves (the event Share sheet's own words).
  */
 function groupFooter(group: ShareListGroup, others: readonly string[], bookName: string, eventsSharing: readonly string[]): string | undefined {
   const reasons = [...new Set(group.items.map((item) => item.locked).filter((reason): reason is string => reason !== null && reason !== JOINT_SHARED_LINE))];
@@ -456,89 +580,201 @@ function groupFooter(group: ShareListGroup, others: readonly string[], bookName:
   return lines.length > 0 ? lines.join(' ') : undefined;
 }
 
-function TickGroup({
+/** The drawing a row's icon wears: the kind of account or asset, a goal's target, an event's calendar. */
+function glyphOf(item: ShareListItem): LucideIcon {
+  if (item.group === 'goals') return Target;
+  if (item.group === 'events') return CalendarDays;
+  if (item.subtype === 'credit_card') return CreditCard;
+  if (item.group === 'accounts') return assetKindTile('liquid', item.subtype ?? '');
+  return DEBT_SUBTYPES.has(item.subtype ?? '') ? debtKindTile(item.subtype ?? '') : assetKindTile('', item.subtype ?? '');
+}
+
+const DEBT_SUBTYPES = new Set(['loan', 'mortgage', 'vehicle_loan', 'online_loan', 'payable', 'other_loans', 'paylater', 'installment']);
+
+function SwitchGroup({
   group,
   draft,
   disabled,
   footer,
   topLine,
-  onTickAll,
   onToggle,
-  onJoint,
+  onIcon,
 }: {
   group: ShareListGroup;
   draft: ShareDraft;
   disabled: boolean;
   footer?: string;
   topLine?: ReactNode;
-  onTickAll: () => void;
   onToggle: (item: ShareListItem) => void;
-  onJoint: (item: ShareListItem) => void;
+  onIcon: (item: ShareListItem) => void;
 }) {
-  const allTicked = group.items.every((item) => isTicked(draft, item));
   return (
     <section className="w-full md:max-w-2xl" style={{ marginBottom: 22 }} data-testid={`share-list-${group.key}`}>
       {topLine}
-      <div className="flex items-baseline justify-between gap-3 px-[4px] pb-[6px]">
-        <h2 className={GROUP_HEADER_CLASS}>{group.label}</h2>
-        <button
-          type="button"
-          disabled={disabled || allTicked}
-          onClick={onTickAll}
-          aria-label={`Tick all ${group.label}`}
-          className="ph-focus text-[13px] leading-[16px] text-[var(--ph-tint)] disabled:opacity-40"
-        >
-          {SHARE_LIST_COPY.tickAll}
-        </button>
-      </div>
+      <h2 className={cx(GROUP_HEADER_CLASS, 'px-[4px] pb-[6px]')}>{group.label}</h2>
       <div className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
         {group.items.map((item) => {
           const ticked = isTicked(draft, item);
           const fixed = ticked && item.locked !== null;
           const joint = jointOn(draft, item);
+          const Glyph = glyphOf(item);
+          const icon = (
+            <RowIcon mark={joint}>
+              <Glyph size={15} aria-hidden />
+            </RowIcon>
+          );
           return (
-            <div key={item.key} className="flex items-center pr-[13px]" data-testid="share-list-row">
-              <button
-                type="button"
-                role="checkbox"
-                aria-checked={ticked}
-                aria-label={item.name}
-                aria-disabled={fixed || undefined}
-                disabled={disabled}
-                onClick={() => !fixed && onToggle(item)}
-                className={cx('ph-focus-inset flex min-h-[46px] min-w-0 flex-1 items-center gap-[10px] pl-[13px] text-left active:bg-[var(--ph-fill)]', fixed && 'cursor-default')}
-              >
-                {fixed && item.locked === JOINT_SHARED_LINE ? (
-                  <span className="shrink-0 text-[13px] font-medium text-[var(--ph-up)]">Shared</span>
-                ) : (
-                  <SelectCircle picked={ticked} className={cx('h-[22px] w-[22px]', fixed && 'opacity-50')} />
-                )}
-                <span className="min-w-0 flex-1 py-[6px]">
-                  <span className="block truncate text-[16px] text-[var(--ph-ink)]">{item.name}</span>
-                  {item.caption ? <span className="block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{item.caption}</span> : null}
-                </span>
-                {item.meta ? <span className="shrink-0 whitespace-nowrap text-[12.5px] text-[var(--ph-ink-3)]">{item.meta}</span> : null}
-              </button>
-              {item.canJoint && ticked ? (
+            <div key={item.key} className="flex min-h-[50px] items-center gap-[10px] px-[13px] py-[6px]" data-testid="share-list-row">
+              {item.canJoint ? (
                 <button
                   type="button"
                   aria-pressed={joint}
-                  aria-label={`Joint, ${item.name}`}
+                  aria-label={`Owned together, ${item.name}`}
                   disabled={disabled}
-                  onClick={() => onJoint(item)}
-                  className={cx(
-                    'ph-focus ml-[8px] shrink-0 rounded-[11px] border px-[9px] py-[3px] text-[12px] whitespace-nowrap',
-                    joint ? 'border-[var(--ph-tint)] bg-[var(--ph-fill)] font-semibold text-[var(--ph-tint)]' : 'border-[var(--ph-chevron)] text-[var(--ph-ink-2)]',
-                  )}
+                  onClick={() => onIcon(item)}
+                  className="ph-focus ph-tap shrink-0 rounded-full"
+                  data-testid="share-list-icon"
                 >
-                  {SHARE_LIST_COPY.joint}
+                  {icon}
                 </button>
-              ) : null}
+              ) : (
+                icon
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[16px] leading-[21px] text-[var(--ph-ink)]">
+                  {item.name}
+                  {joint ? <span className="sr-only">, {OWNED_TOGETHER}</span> : null}
+                </span>
+                {item.caption ? <span className="block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{item.caption}</span> : null}
+              </span>
+              {item.meta ? <span className="shrink-0 whitespace-nowrap text-[12.5px] text-[var(--ph-ink-3)]">{item.meta}</span> : null}
+              <ListSwitch label={item.name} checked={ticked} disabled={disabled || fixed} onChange={() => !fixed && onToggle(item)} />
             </div>
           );
         })}
       </div>
       {footer ? <p className="px-[4px] pt-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{footer}</p> : null}
     </section>
+  );
+}
+
+/** The kit's switch, on a row that has more in it than a label: named by the item. */
+function ListSwitch({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled: boolean; onChange: () => void }) {
+  return (
+    <span className={cx('ph-focus-within relative h-[31px] w-[51px] shrink-0 rounded-full transition-colors', checked ? 'bg-[var(--ph-switch-on)]' : 'bg-[var(--ph-track)]', disabled && 'opacity-40')}>
+      <span
+        aria-hidden
+        className="absolute top-[2px] left-[2px] h-[27px] w-[27px] rounded-full bg-[var(--ph-knob)] shadow-[0_2px_5px_rgba(0,0,0,0.18)] transition-transform"
+        style={{ transform: checked ? 'translateX(20px)' : undefined }}
+      />
+      <input
+        type="checkbox"
+        aria-label={label}
+        checked={checked}
+        disabled={disabled}
+        onChange={onChange}
+        className="absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-full opacity-0 disabled:cursor-default"
+      />
+    </span>
+  );
+}
+
+/**
+ * Events in the list (redesign C, D): each with its switch and where it stands. On opens today's share sheet (its own
+ * code, as before); off is today's Leave, asked first; a copy this phone can no longer change offers Delete this copy.
+ * They act at once, as the Share page's events did: sharing an event moves its tagged spending, so it is never a draft.
+ */
+function EventsGroup({ group, onError }: { group: ShareListGroup; onError: (error: unknown) => void }) {
+  const { database, sync, ws } = useApp();
+  const invalidate = useInvalidateAll();
+  const safetyCopy = useSafetyCopy('before-delete');
+  const events = useEvents().data ?? [];
+  const [sharing, setSharing] = useState<string | null>(null);
+  const sharingEvent = events.find((event) => event.id === sharing) ?? null;
+
+  async function leave(name: string, bookId: string) {
+    if (!window.confirm(`Leave ${name}? What was recorded stays with the others.`)) return;
+    onError(null);
+    try {
+      await sync.leaveEvent(bookId);
+      await invalidate();
+    } catch (failure) {
+      onError(sayError(failure));
+    }
+  }
+
+  async function deleteCopy(view: SharedEventView) {
+    onError(null);
+    try {
+      const done = await deleteEventCopyFlow(view, {
+        plan: () => planEventCopyDelete(database, ws, view.bookId),
+        confirm: (text) => window.confirm(text),
+        safetyCopy,
+        remove: () => sync.deleteEventCopy(ws, view.bookId),
+      });
+      if (done === 'deleted') await invalidate();
+    } catch (failure) {
+      onError(sayError(failure));
+    }
+  }
+
+  return (
+    <section className="w-full md:max-w-2xl" style={{ marginBottom: 22 }} data-testid="share-list-events">
+      <h2 className={cx(GROUP_HEADER_CLASS, 'px-[4px] pb-[6px]')}>{group.label}</h2>
+      <div className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
+        {group.items.map((item) => (
+          <EventLine key={item.key} item={item} onShare={() => setSharing(item.id)} onLeave={(bookId) => void leave(item.name, bookId)} onDeleteCopy={(view) => void deleteCopy(view)} />
+        ))}
+      </div>
+      {sharingEvent ? <ShareEventSheet event={sharingEvent} onClose={() => setSharing(null)} /> : null}
+    </section>
+  );
+}
+
+function EventLine({ item, onShare, onLeave, onDeleteCopy }: { item: ShareListItem; onShare: () => void; onLeave: (bookId: string) => void; onDeleteCopy: (view: SharedEventView) => void }) {
+  const view = useSharedEventView(item.shared ? item.id : null).data;
+  const leavable = view && !pageLocks(view).readOnly ? view : null;
+  // A copy waiting for an invite is still its person's (review minor 2): only one left, removed or stopped is deleted.
+  const readOnly = view && pageLocks(view).readOnly && view.state !== 'needs_invite' ? view : null;
+  const others = (view?.people ?? []).filter((person) => !person.isMe && !person.removed);
+  const inIt = others.filter((person) => person.hasApp).map((person) => person.name);
+  const waitingFor = others.filter((person) => !person.hasApp).map((person) => person.name);
+  const line = !item.shared ? item.meta : readOnly ? null : inIt.length > 0 ? `${namesOf(inIt)} ${inIt.length === 1 ? 'is' : 'are'} in` : view ? `Waiting for ${namesOf(waitingFor) || 'someone'} to join` : null;
+  return (
+    <div className="flex min-h-[50px] items-center gap-[10px] px-[13px] py-[6px]" data-testid="share-list-row">
+      <RowIcon>
+        <CalendarDays size={15} aria-hidden />
+      </RowIcon>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[16px] leading-[21px] text-[var(--ph-ink)]">{item.name}</span>
+        {line ? (
+          item.shared && inIt.length === 0 && view ? (
+            <Link to="/events/$eventId" params={{ eventId: item.id }} data-testid="share-event-state" className="block truncate text-[12.5px] leading-[16px] text-[var(--ph-warn)]">
+              {line} ›
+            </Link>
+          ) : (
+            <span data-testid="share-event-state" className={cx('block truncate text-[12.5px] leading-[16px]', item.shared ? 'text-[var(--ph-up)]' : 'text-[var(--ph-ink-3)]')}>
+              {line}
+            </span>
+          )
+        ) : null}
+      </span>
+      {readOnly ? (
+        <button type="button" data-testid="share-event-delete-copy" onClick={() => onDeleteCopy(readOnly)} className="ph-focus ph-tap shrink-0 text-[15px] text-[var(--ph-alarm)]">
+          {DELETE_COPY_LABEL}
+        </button>
+      ) : (
+        <ListSwitch label={item.name} checked={item.shared} disabled={item.shared && !leavable} onChange={() => (item.shared ? leavable && onLeave(leavable.bookId) : onShare())} />
+      )}
+    </div>
+  );
+}
+
+/** What the workspace always shares, said once at the top: no switch, it is what sharing the workspace is. */
+function AlwaysShared({ bookName }: { bookName: string }) {
+  return (
+    <InsetGroup wide header={SHARE_LIST_COPY.alwaysHeader(bookName)}>
+      <InsetRow testId="share-list-always" icon={<Lock size={15} aria-hidden />} title={SHARE_LIST_COPY.alwaysTitle(bookName)} subtitle={SHARE_LIST_COPY.alwaysSubtitle} value="Always" chevron={false} />
+    </InsetGroup>
   );
 }

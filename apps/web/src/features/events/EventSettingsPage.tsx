@@ -12,6 +12,8 @@ import { eventDates } from './EventsPage';
 import { useEventHistory, useEventPlan, useEvents } from './queries';
 import { ShareEventSheet } from './ShareEventSheet';
 import { useSharedEventSummaries } from './shared-queries';
+import { useHousehold } from '../sharing/household';
+import { ITEM_SHARE_COPY } from '../sharing/ShareWithHousehold';
 
 /**
  * An event's settings: what the gear on the event page opens. Name, dates, categories and currency as rows (a tap opens
@@ -33,6 +35,7 @@ export function EventSettingsPage() {
   const summaries = useSharedEventSummaries();
   const [editing, setEditing] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const household = useHousehold();
   const [error, setError] = useState<unknown>(null);
 
   const isShared = summaries.data?.[eventId] !== undefined;
@@ -92,8 +95,13 @@ export function EventSettingsPage() {
             <SwitchRow label="Plan" checked={!event.planOff} onChange={(on) => void run(() => setEventPlanOff(database, ws, event.id, !on))} testId="settings-plan" />
             <SwitchRow label="Done" checked={event.finishedAt !== null} onChange={(on) => void run(() => finishEvent(database, ws, event.id, on))} testId="settings-done" />
           </InsetGroup>
+          {/* The same "Shared with Andi" switch every item has (2026-11-13); on opens today's share sheet, with its code. */}
           <InsetGroup>
-            <InsetRow title="Share this event" label="Share this event" onClick={() => setSharing(true)} action testId="settings-share" />
+            {household.data && household.data.others.length > 0 ? (
+              <SwitchRow label={ITEM_SHARE_COPY.shared(household.data.others.map((other) => other.name))} checked={sharing} onChange={(on) => on && setSharing(true)} testId="settings-share" />
+            ) : (
+              <InsetRow title="Share this event" label="Share this event" onClick={() => setSharing(true)} action testId="settings-share" />
+            )}
           </InsetGroup>
           <InsetGroup>
             <DestructiveRow

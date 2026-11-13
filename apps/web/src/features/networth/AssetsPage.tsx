@@ -14,7 +14,7 @@ import { useHoldingLinks, useSecurities } from '../investments/queries';
 import { ShareBoxes, ShowAll } from './ShareBoxes';
 import { assetSegments, heldShares, kindSegments } from './share-segments';
 import { type AssetDrawer, type AssetGroup, type AssetRow, groupAssets, liveGroups, rowSubtitle, soldRows, staleRows, totalOf } from './asset-rows';
-import { useAssetProfiles, useAssetValues, useDueDeposits, useGoneAssets, useJointSheet, useOwnerRings, useOwnSentIds, useSharedNetWorth, useTrades } from './queries';
+import { useAssetProfiles, useAssetValues, useDueDeposits, useGoneAssets, useJointSheet, useOwnedTogether, useOwnerRings, useOwnSentIds, useSharedNetWorth, useTrades } from './queries';
 import { householdAssetPage, householdCaption, householdFrom, type OwnerMark, ownerMark } from './household-lists';
 import { sharedAssetGroups } from './shared-assets';
 import { type ByStockInputs, linesByStock, type StockLine } from './stock-rows';
@@ -41,6 +41,8 @@ function Row({ row, baseCurrency, money, nested = false, tree, mark }: { row: As
   // While the household files jointly every row keeps its circle, because the ring round it says whose it is.
   const icon = nested && !mark ? undefined : <KindIcon section={row.section} kind={row.kind.key} />;
   const iconRing = mark?.ring ?? undefined;
+  // Owned together (2026-11-13): the two-person mark on the icon, wherever the row draws one.
+  const iconMark = useOwnedTogether()(row.accountId);
   // A row's own name says whose it is in words; the ring is drawn, not read.
   const title = mark ? (
     <>
@@ -60,6 +62,7 @@ function Row({ row, baseCurrency, money, nested = false, tree, mark }: { row: As
         testId={`assets-shared-${row.accountId}`}
         icon={icon}
         iconRing={iconRing}
+        iconMark={iconMark}
         depth={depth}
         tree={tree}
         title={title}
@@ -75,6 +78,7 @@ function Row({ row, baseCurrency, money, nested = false, tree, mark }: { row: As
         testId={`assets-shared-${row.accountId}`}
         icon={icon}
         iconRing={iconRing}
+        iconMark={iconMark}
         depth={depth}
         tree={tree}
         title={title}
@@ -91,6 +95,7 @@ function Row({ row, baseCurrency, money, nested = false, tree, mark }: { row: As
         params={{ accountId: row.accountId }}
         icon={icon}
         iconRing={iconRing}
+        iconMark={iconMark}
         depth={depth}
         tree={tree}
         title={title}
@@ -109,6 +114,7 @@ function Row({ row, baseCurrency, money, nested = false, tree, mark }: { row: As
         search={{ person: row.person }}
         icon={icon}
         iconRing={iconRing}
+        iconMark={iconMark}
         depth={depth}
         tree={tree}
         title={title}
@@ -129,6 +135,7 @@ function Row({ row, baseCurrency, money, nested = false, tree, mark }: { row: As
       params={{ accountId: row.accountId }}
       icon={icon}
       iconRing={iconRing}
+      iconMark={iconMark}
       depth={depth}
       tree={tree}
       title={title}

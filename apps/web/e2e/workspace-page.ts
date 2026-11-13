@@ -44,12 +44,6 @@ export async function openMemberPage(page: Page, member: string | RegExp) {
   await expect(page.getByTestId('member-page')).toBeVisible();
 }
 
-/** On a Share page: the Net worth row → the Net worth page. */
-export async function openNetWorthPage(page: Page) {
-  await page.getByTestId('net-worth-row').click();
-  await expect(page).toHaveURL(/\/share\/net-worth$/);
-}
-
 /**
  * On the Share page of the phone that shared the workspace, once someone has joined: the last step of setting up
  * sharing (the one list of what is shared) opens by itself, and Later puts it off, back on the Share page. Waits for

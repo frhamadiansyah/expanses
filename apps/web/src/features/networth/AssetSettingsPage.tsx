@@ -354,8 +354,8 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
         />
       )}
 
-      {/* Joint net worth (§8.1): what the household sees of it, and for a money account the Joint switch under it. Nothing while this person is in no group. */}
-      {account && <ShareWithHouseholdRow accountId={accountId} jointSwitch={money} />}
+      {/* "Shared with Andi", and for a money account "Owned together" under it (2026-11-13). Nothing while there is no household. */}
+      {account && <ShareWithHouseholdRow accountId={accountId} name={account.name} jointSwitch={money} />}
 
       {valuing && value && <ValueSheet accountId={accountId} currency={value.currency} onClose={() => setValuing(false)} />}
       {selling && value && (

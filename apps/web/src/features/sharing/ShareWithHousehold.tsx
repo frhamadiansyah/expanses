@@ -1,102 +1,127 @@
-import { activeNetWorthGroup, type ShareSetting, setJointAccount, setShareSetting } from '@expanses/db';
+import { activeNetWorthGroup, setJointAccount, setShareSetting } from '@expanses/db';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
+import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, SelectRow, SwitchRow } from '../../ui/native';
-import { useActiveNetWorthGroup, useJointAccount, useShareSetting } from './net-worth-queries';
-import { newItemShared } from './net-worth-items';
-import { HOUSEHOLD_SHARING, SETTING_LABEL, sayNetWorthError, settingOnAdd, shareRowOf } from './net-worth-state';
+import { InsetGroup, SwitchRow, TwoPersonGlyph } from '../../ui/native';
+import { chosenJoint, stoppedLine, switchItemShared, useHousehold } from './household';
+import { useQuery } from '@tanstack/react-query';
+import { useActiveNetWorthGroup, useShareSetting } from './net-worth-queries';
+import { JOINT_SHARED_LINE, namesOf, sayNetWorthError, settingOnAdd } from './net-worth-state';
 
 /*
- * Each item's own say in joint net worth (spec §8.1, D7, D9). Nothing at all is drawn while this person is in no active
- * group: a household that never set it up sees no trace of it.
+ * Each item's own say in household net worth (spec §8.1, D7, D9; simplified 2026-11-13): one "Shared with Andi" switch,
+ * and for a money account or a card, "Owned together" under it once it is shared. The first item switched on starts the
+ * household's net worth, filed separately (`switchItemShared`). Nothing at all is drawn while there is no household —
+ * no shared workspace someone joined — so a person who never shared sees no trace of it.
  */
+
+/** The words both switches use, on every page that has them. */
+export const ITEM_SHARE_COPY = {
+  shared: (others: readonly string[]) => `Shared with ${namesOf(others) || 'the household'}`,
+  sharedHint: (others: readonly string[]) => `${namesOf(others) || 'The household'} sees its balance in Net worth.`,
+  together: 'Owned together',
+  togetherHint: (others: readonly string[]) => `${namesOf(others) || 'The household'} also sees its rows and can pay from it.`,
+  stopTogether: (name: string, others: readonly string[]) => ({
+    title: `Stop owning ${name} together?`,
+    body: `${namesOf(others) || 'The others'} will still see its balance, but not its rows, and can’t pay from it any more. Rows ${namesOf(others) || 'they'} already recorded on it stay.`,
+  }),
+  stopShared: (name: string, others: readonly string[]) => ({
+    title: `Stop sharing ${name} with ${namesOf(others) || 'the household'}?`,
+    body: `${namesOf(others) || 'The others'} will no longer see its balance or its rows, and can’t pay from it any more. Rows ${namesOf(others) || 'they'} already recorded on it stay.`,
+  }),
+} as const;
 
 /**
- * An item page's "Household sharing" row: the stored setting as it is (review round 1, finding 3). Under One tax ID there
- * is never a picker: a shared item reads Shared (a link to Share net worth), one still hidden (D8) or never reviewed
- * reads "Not shared yet" with Share. Separately, a picker of Shared / Private.
+ * An item page's two switches. `jointSwitch`: a money account or a credit card, which can be owned together. Under One
+ * tax ID an item shared stays shared (D7): its switch stands on, with why.
  */
-export function ShareWithHouseholdRow({ accountId, jointSwitch = false }: { accountId: string; /** The page of a money account or a credit card: the Joint switch sits under the share row, once it is shared. 'card' words it for a card. */ jointSwitch?: boolean | 'card' }) {
-  const { database } = useApp();
+export function ShareWithHouseholdRow({ accountId, name = '', jointSwitch = false }: { accountId: string; /** The item's name, for the question before taking it back. */ name?: string; jointSwitch?: boolean | 'card' }) {
+  const { database, sync, ws } = useApp();
   const invalidate = useInvalidateAll();
-  const group = useActiveNetWorthGroup();
+  const household = useHousehold();
   const setting = useShareSetting(accountId);
-  const jointAccount = useJointAccount(accountId);
+  // Owned together as it reads in the group; while one waits for the other phone, as chosen here (review round 1).
+  const jointAccount = useQuery({ queryKey: ['net-worth', 'joint-chosen', accountId], queryFn: () => chosenJoint(database, accountId) });
   const [error, setError] = useState<unknown>(null);
-  if (!group.data || setting.isPending) return null;
-  const row = shareRowOf(group.data.mode, setting.data ?? null);
+  const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState<{ title: string; body: string; run: () => Promise<void> } | null>(null);
+  const h = household.data;
+  if (!h || h.stage === 'asked' || setting.isPending) return null;
+  const others = h.others.map((other) => other.name);
+  // Before any group nothing is shared, whatever an earlier one left stored; nor while the others have stopped.
+  const shared = h.stage !== 'none' && h.stage !== 'stopped' && setting.data === 'total';
+  const stopped = h.stage === 'stopped';
+  const locked = h.mode === 'joint' && shared;
+  const joint = shared && (jointAccount.data ?? false);
 
-  async function change(next: ShareSetting) {
+  async function go(work: () => Promise<void>) {
+    if (busy) return;
+    setBusy(true);
     setError(null);
     try {
-      await setShareSetting(database, accountId, next);
+      await work();
       await invalidate();
     } catch (failure) {
       setError(sayNetWorthError(failure));
+    } finally {
+      setBusy(false);
     }
   }
 
-  async function changeJoint(on: boolean) {
-    setError(null);
-    try {
-      await setJointAccount(database, accountId, on);
-      await invalidate();
-    } catch (failure) {
-      setError(sayNetWorthError(failure));
-    }
-  }
+  const switchShared = (on: boolean) => go(() => switchItemShared({ database, ws, sync }, h, accountId, on));
+  const switchJoint = (on: boolean) => go(() => setJointAccount(database, accountId, on));
 
-  if (row.kind === 'not-yet-shared') {
-    return (
-      <>
-        <ErrorBox error={error} />
-        <InsetGroup>
-          <InsetRow testId="share-with-household" plain title={HOUSEHOLD_SHARING} value={row.label} chevron={false} />
-          <InsetRow title="Share" action onClick={() => void change('total')} />
-        </InsetGroup>
-      </>
-    );
-  }
-  const jointRows =
-    jointSwitch && (row.kind === 'plain' || (row.kind === 'choose' && row.value === 'total')) ? (
-      <SwitchRow
-        label={jointSwitch === 'card' ? 'Joint card' : 'Joint account'}
-        checked={jointAccount.data ?? false}
-        onChange={(on) => void changeJoint(on)}
-        info={`With it on, the others can record into this ${jointSwitch === 'card' ? 'card' : 'account'} and the rows recorded in the shared workspace show on both phones, each with who recorded it. Either person can change or delete any of them. The ${jointSwitch === 'card' ? 'balance and statement stay' : 'balance stays'} on this phone.`}
-      />
-    ) : null;
-  if (row.kind === 'plain') {
-    // One tax ID: every item is shared, so the row only reads Shared and opens where that is decided.
-    return (
-      <>
-        <ErrorBox error={error} />
-        <InsetGroup>
-          <InsetRow testId="share-with-household" plain title={HOUSEHOLD_SHARING} value={row.label} to="/account/workspaces/$bookId/share/net-worth" params={{ bookId: group.data.workspaceBookId }} />
-          {jointRows}
-        </InsetGroup>
-      </>
-    );
-  }
   return (
     <>
       <ErrorBox error={error} />
-      <InsetGroup>
-        <SelectRow label={HOUSEHOLD_SHARING} value={row.value ?? ''} onChange={(event) => event.target.value && void change(event.target.value as ShareSetting)}>
-          {row.value === null ? (
-            <option value="" disabled>
-              {row.label}
-            </option>
-          ) : null}
-          <option value="total">{SETTING_LABEL.total}</option>
-          <option value="hidden" disabled={!row.hiddenAllowed}>
-            {SETTING_LABEL.hidden}
-          </option>
-        </SelectRow>
-        {jointRows}
+      <InsetGroup footer={locked ? JOINT_SHARED_LINE : stopped ? <span data-testid="share-stopped-line">{stoppedLine(others)}</span> : undefined}>
+        <SwitchRow
+          testId="share-with-household"
+          label={ITEM_SHARE_COPY.shared(others)}
+          hint={shared && !locked ? ITEM_SHARE_COPY.sharedHint(others) : undefined}
+          checked={shared}
+          disabled={busy || locked || stopped}
+          onChange={(on) => {
+            // Shared off on an account owned together asks once for both (mockup ③).
+            if (!on && joint) setAsking({ ...ITEM_SHARE_COPY.stopShared(name || 'this account', others), run: () => switchShared(false) });
+            else void switchShared(on);
+          }}
+        />
+        {jointSwitch && shared ? (
+          <SwitchRow
+            testId="owned-together-switch"
+            icon={<TwoPersonGlyph size={14} />}
+            label={ITEM_SHARE_COPY.together}
+            hint={ITEM_SHARE_COPY.togetherHint(others)}
+            checked={joint}
+            disabled={busy}
+            onChange={(on) => {
+              if (!on) setAsking({ ...ITEM_SHARE_COPY.stopTogether(name || `this ${jointSwitch === 'card' ? 'card' : 'account'}`, others), run: () => switchJoint(false) });
+              else void switchJoint(true);
+            }}
+          />
+        ) : null}
       </InsetGroup>
+      {asking ? (
+        <Sheet
+          title={asking.title}
+          onClose={() => setAsking(null)}
+          confirm={{
+            label: 'Stop',
+            run: () => {
+              const run = asking.run;
+              setAsking(null);
+              void run();
+            },
+          }}
+        >
+          <p data-testid="share-off-ask" className="text-[15px] leading-[20px]">
+            {asking.body}
+          </p>
+        </Sheet>
+      ) : null}
     </>
   );
 }
@@ -111,11 +136,20 @@ export function ShareWithHouseholdRow({ accountId, jointSwitch = false }: { acco
 export function useShareOnAdd(testId = 'asset-shared-switch'): { row: ReactNode; save: (accountIds: readonly string[]) => Promise<void> } {
   const { database } = useApp();
   const group = useActiveNetWorthGroup();
-  const [share, setShare] = useState(newItemShared(true) === true);
+  const household = useHousehold();
+  // A new item starts Private (owner's spec, 2026-11-13): shared only with a tap on its switch.
+  const [share, setShare] = useState(false);
   const mode = group.data?.mode ?? null;
   const row =
     mode === null ? null : (
-      <SwitchRow testId={testId} label="Shared" checked={mode === 'joint' || share} disabled={mode === 'joint'} onChange={setShare} info="Visible to the household in net worth" />
+      <SwitchRow
+        testId={testId}
+        label={ITEM_SHARE_COPY.shared((household.data?.others ?? []).map((other) => other.name))}
+        checked={mode === 'joint' || share}
+        disabled={mode === 'joint'}
+        onChange={setShare}
+        info={ITEM_SHARE_COPY.sharedHint((household.data?.others ?? []).map((other) => other.name))}
+      />
     );
   async function save(accountIds: readonly string[]) {
     // The group as it is when the form saves, not as the screen last read it: a joint household's new item is always

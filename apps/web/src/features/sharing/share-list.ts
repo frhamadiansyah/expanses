@@ -5,8 +5,8 @@ import { shareRowState } from '../goals/goal-sharing';
 import { type FilingMode, JOINT_LINE, JOINT_SHARED_LINE, jointTaxLine, namesOf } from './net-worth-state';
 
 /*
- * One list to choose what to share with a household (2026-11-12): net worth items (with Joint), goals and events, a
- * tick each. Budgets, bills, categories and the workspace's transactions are the workspace's already, so they are not
+ * One list to choose what to share with a household (2026-11-12; simplified 2026-11-13): accounts and cards, goals and
+ * events, then assets and debts, a Shared switch each; an account owned together wears the two-person mark on its icon. Budgets, bills, categories and the workspace's transactions are the workspace's already, so they are not
  * here. Pure: which items, in which group, ticked as things stand, what a draft changes, and the counts — the page only
  * draws it and runs each change through the share action the item's own page already uses (`applyShareChanges`).
  *
@@ -28,12 +28,20 @@ export const LEFT_OUT_SUBTYPES: readonly string[] = ['event_balance'];
 
 export const NOT_SHARED_YET = 'Not shared yet';
 
+/** Under an item switched on before the other phone confirmed the household's net worth: it shows there once it syncs. */
+export const WAITING_CAPTION = 'Shows on the other phone once it syncs';
+
+/** Under a goal shared with the household. */
+export const GOAL_SHARED_CAPTION = 'Saved for together';
+
 export interface ShareListItem {
   /** Unique across groups: `group:id`. */
   key: string;
   group: ShareGroupKey;
   id: string;
   name: string;
+  /** A net worth item's account kind, for its icon; null for a goal or an event. */
+  subtype: string | null;
   /** The quiet word at the row's end: an asset's kind, an event's month and currency. */
   meta: string | null;
   /** A line under the name: "Not shared yet" for an item its review still waits on. */
@@ -55,6 +63,12 @@ export interface ShareListGroup {
 }
 
 export interface NetWorthInput {
+  /**
+   * Where the household's net worth is (2026-11-13): `none` — no group yet, the first account switched on starts one;
+   * `waiting` — this phone started it and the other has yet to confirm, so what is stored is what was switched on;
+   * `active` (left out) — a group this person is in.
+   */
+  stage?: 'none' | 'waiting' | 'active';
   mode: FilingMode;
   /** The active proposal the list was read under: a Save answers the review of this one only. */
   proposalId: string;
@@ -90,7 +104,7 @@ export interface ShareList {
   netWorth: NetWorthInput | null;
 }
 
-export const EVENT_LOCKED = 'A shared event stays shared. Leave is under Events on the Share page.';
+export const EVENT_LOCKED = 'A shared event stays shared. Leaving it is on the event’s own page.';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -107,26 +121,33 @@ export function allOrNone(list: Pick<ShareList, 'netWorth'>): boolean {
 
 export function shareListOf(input: ShareListInput): ShareList {
   const groups: ShareListGroup[] = [];
+  // Assets and debts come last, behind a row of their own: most households share accounts first.
+  let assetsGroup: ShareListGroup | null = null;
   const nw = input.netWorth;
   if (nw) {
     const accounts: ShareListItem[] = [];
     const assets: ShareListItem[] = [];
+    const stage = nw.stage ?? 'active';
     for (const item of nw.items) {
       if (LEFT_OUT_SUBTYPES.includes(item.subtype)) continue;
-      // Before the review: what is live in this group's log, which the partner sees now (a Change with the same members
-      // keeps it refreshing); stored as shared but not live — a new group — is not. After it: the stored setting.
-      const shared = nw.reviewed ? item.setting === 'total' : nw.live.has(item.accountId);
+      // No group: nothing is shared, whatever an earlier group left stored. Waiting for the other phone: what is stored
+      // is what was switched on here since the start. Before the review: what is live in this group's log, which the
+      // partner sees now (a Change with the same members keeps it refreshing); stored as shared but not live — a new
+      // group — is not. After it: the stored setting.
+      const shared = stage === 'none' ? false : stage === 'waiting' || nw.reviewed ? item.setting === 'total' : nw.live.has(item.accountId);
       // Not shared yet: before the review, anything not live; after it, an item never asked about, or (one tax ID)
       // still hidden after the switch (D8). A `Don't share` chosen while filing separately is an answer, not a wait.
-      const waiting = !nw.reviewed || item.setting === null || (nw.mode === 'joint' && item.setting === 'hidden');
+      // Before any group, an item is simply off.
+      const waiting = stage === 'active' && (!nw.reviewed || item.setting === null || (nw.mode === 'joint' && item.setting === 'hidden'));
       const isAccount = ACCOUNT_CARD_SUBTYPES.includes(item.subtype);
       const row: ShareListItem = {
         key: `${isAccount ? 'accounts' : 'assets'}:${item.accountId}`,
         group: isAccount ? 'accounts' : 'assets',
         id: item.accountId,
         name: item.name,
+        subtype: item.subtype,
         meta: isAccount ? null : (SUBTYPE_LABELS[item.subtype as keyof typeof SUBTYPE_LABELS] ?? null),
-        caption: !shared && waiting ? NOT_SHARED_YET : null,
+        caption: stage === 'waiting' && shared ? WAITING_CAPTION : !shared && waiting ? NOT_SHARED_YET : null,
         shared,
         // One tax ID: an item shared stays shared (D7).
         locked: shared && nw.mode === 'joint' ? JOINT_SHARED_LINE : null,
@@ -136,7 +157,7 @@ export function shareListOf(input: ShareListInput): ShareList {
       (isAccount ? accounts : assets).push(row);
     }
     if (accounts.length > 0) groups.push({ key: 'accounts', label: 'Accounts & cards', items: accounts });
-    if (assets.length > 0) groups.push({ key: 'assets', label: 'Assets & debts', items: assets });
+    if (assets.length > 0) assetsGroup = { key: 'assets', label: 'Assets & debts', items: assets };
   }
 
   const targets = input.goalTargets.filter((target) => target.bookId === input.bookId);
@@ -146,7 +167,7 @@ export function shareListOf(input: ShareListInput): ShareList {
     const row = shareRowState(targets, goal.share);
     if (row.kind !== 'switch' || row.bookId !== input.bookId) continue;
     const shared = goal.share?.state === 'on';
-    goals.push({ key: `goals:${goal.id}`, group: 'goals', id: goal.id, name: goal.name, meta: null, caption: null, shared, locked: null, canJoint: false, joint: false });
+    goals.push({ key: `goals:${goal.id}`, group: 'goals', id: goal.id, name: goal.name, subtype: null, meta: null, caption: shared ? GOAL_SHARED_CAPTION : null, shared, locked: null, canJoint: false, joint: false });
   }
   if (goals.length > 0) groups.push({ key: 'goals', label: 'Goals', items: goals });
 
@@ -155,6 +176,7 @@ export function shareListOf(input: ShareListInput): ShareList {
     group: 'events',
     id: event.id,
     name: event.name,
+    subtype: null,
     // The currency a share puts it in, fixed once shared: said before the tick.
     meta: [monthOf(event.startsOn), event.currency].filter((part): part is string => !!part).join(' · ') || null,
     caption: null,
@@ -165,6 +187,7 @@ export function shareListOf(input: ShareListInput): ShareList {
     joint: false,
   }));
   if (events.length > 0) groups.push({ key: 'events', label: 'Events', items: events });
+  if (assetsGroup) groups.push(assetsGroup);
 
   return { groups, netWorth: nw };
 }
@@ -193,7 +216,7 @@ export interface ShareDraft {
 }
 
 function basisOf(list: Pick<ShareList, 'netWorth'>): string | null {
-  return list.netWorth ? `${list.netWorth.proposalId}|${list.netWorth.mode}|${list.netWorth.reviewed ? 'reviewed' : 'waiting'}` : null;
+  return list.netWorth ? `${list.netWorth.stage ?? 'active'}|${list.netWorth.proposalId}|${list.netWorth.mode}|${list.netWorth.reviewed ? 'reviewed' : 'waiting'}` : null;
 }
 
 const itemsOf = (list: ShareList) => list.groups.flatMap((group) => group.items);
@@ -258,11 +281,35 @@ export function toggleJoint(draft: ShareDraft, item: ShareListItem): ShareDraft 
   return { ...draft, joints };
 }
 
-/** Tick all: every item of the group ticked. */
-export function tickAll(list: ShareList, draft: ShareDraft, group: ShareListGroup): ShareDraft {
-  let next = draft;
-  for (const item of group.items) if (!isTicked(next, item)) next = toggle(list, next, item);
-  return next;
+/** What turning something off asks first (2026-11-13, mockup ③); null when it goes without a question. */
+export interface OffConfirm {
+  title: string;
+  body: string;
+  confirm: string;
+}
+
+/**
+ * The question before taking something back: Owned together turned off, or Shared turned off on an account owned
+ * together (asked once for both). Turning anything on, and Shared off on anything else, asks nothing.
+ */
+export function offConfirmOf(list: ShareList, given: ShareDraft, item: ShareListItem, what: 'shared' | 'joint', others: readonly string[]): OffConfirm | null {
+  const draft = reconcile(list, given);
+  if (!jointOn(draft, item)) return null;
+  if (what === 'shared' && !isTicked(draft, item)) return null;
+  const who = namesOf(others) || 'The others';
+  const one = others.length <= 1;
+  if (what === 'joint') {
+    return {
+      title: `Stop owning ${item.name} together?`,
+      body: `${who} will still see its balance, but not its rows, and can’t pay from it any more. Rows ${who} already recorded on it stay.`,
+      confirm: 'Stop',
+    };
+  }
+  return {
+    title: `Stop sharing ${item.name} with ${who}?`,
+    body: `${who} will no longer see its balance or its rows, and can’t pay from it any more. Rows ${who} already recorded on it stay${one ? '' : ' with them'}.`,
+    confirm: 'Stop',
+  };
 }
 
 /** How many items the draft ticks: the button's "Share N items". */
@@ -275,6 +322,19 @@ export function sharedCount(list: ShareList): number {
   return itemsOf(list).filter((item) => item.shared).length;
 }
 
+/** The Share page's line under "Shared with Andi": "3 accounts · 1 goal · 2 events", or "Nothing yet". */
+export function sharedSummary(list: ShareList): string {
+  const count = (key: ShareGroupKey) => list.groups.find((group) => group.key === key)?.items.filter((item) => item.shared).length ?? 0;
+  const words = (n: number, one: string, many: string) => (n > 0 ? `${n} ${n === 1 ? one : many}` : null);
+  const parts = [
+    words(count('accounts'), 'account', 'accounts'),
+    words(count('goals'), 'goal', 'goals'),
+    words(count('events'), 'event', 'events'),
+    words(count('assets'), 'asset or debt', 'assets and debts'),
+  ].filter((part): part is string => part !== null);
+  return parts.length > 0 ? parts.join(' · ') : 'Nothing yet';
+}
+
 /** The events ticked now that are not shared yet: each will move its tagged spending when shared. */
 export function eventsToShare(list: ShareList, draft: ShareDraft): ShareListItem[] {
   return (list.groups.find((group) => group.key === 'events')?.items ?? []).filter((item) => !item.shared && isTicked(draft, item));
@@ -283,6 +343,11 @@ export function eventsToShare(list: ShareList, draft: ShareDraft): ShareListItem
 /* ---------------------------------------------------------------------------------------------------------- changes */
 
 export type ShareChange =
+  /**
+   * No net-worth group yet and an account or asset switched on (2026-11-13): the group is started, filed separately,
+   * with every item's setting as switched — on shared, the rest private.
+   */
+  | { kind: 'start'; key: string; name: string; settings: Record<string, ShareSetting> }
   /** The review of the active net-worth group, answered for every item (`confirmReview`), asked for by a tick here. */
   | { kind: 'review'; key: string; name: string; settings: Record<string, ShareSetting> }
   | { kind: 'setting'; key: string; name: string; accountId: string; setting: ShareSetting }
@@ -293,23 +358,35 @@ export type ShareChange =
 
 export const REVIEW_NAME = 'Accounts, cards, assets and debts';
 
+/** The start's name in a failure line. */
+export const START_NAME = 'Net worth with the household';
+
 /** A Joint not tried because the review sharing its account did not go through. */
-export const JOINT_SKIPPED = 'Not made joint: the net worth review did not go through.';
+export const JOINT_SKIPPED = 'Not owned together: sharing its balance did not go through.';
 
 /**
  * What the draft changes, in the order it is applied: net worth settings (or the review) first, Joint after them — an
  * account is made joint only once it is shared — then goals, then events, whose share is the slowest and ends in an
  * invite. A draft that touched no net worth tick and no Joint never answers a review.
  */
-export function changesOf(list: ShareList, given: ShareDraft): ShareChange[] {
+export function changesOf(list: ShareList, given: ShareDraft, options: { answerReview?: boolean } = {}): ShareChange[] {
   const draft = reconcile(list, given);
   const out: ShareChange[] = [];
   const nwItems = itemsOf(list).filter(isNetWorth);
   const nw = list.netWorth;
   if (nw && nwItems.length > 0) {
     const touched = draft.ticks.get(ALL_NET_WORTH) === true || nwItems.some((item) => isTicked(draft, item) !== item.shared || (item.canJoint && jointOn(draft, item) !== item.joint));
-    if (!nw.reviewed) {
-      if (touched) {
+    const stage = nw.stage ?? 'active';
+    if (stage === 'none') {
+      if (nwItems.some((item) => isTicked(draft, item))) {
+        const settings: Record<string, ShareSetting> = {};
+        for (const item of nwItems) settings[item.id] = isTicked(draft, item) ? 'total' : 'hidden';
+        for (const item of nw.items) if (LEFT_OUT_SUBTYPES.includes(item.subtype)) settings[item.accountId] = 'hidden';
+        out.push({ kind: 'start', key: 'start', name: START_NAME, settings });
+      }
+    } else if (!nw.reviewed && stage === 'active') {
+      // Answered on purpose, untouched too: the person's own tap on "Share what is switched on" (review round 1).
+      if (touched || options.answerReview) {
         const settings: Record<string, ShareSetting> = {};
         for (const item of nwItems) settings[item.id] = nw.mode === 'joint' || isTicked(draft, item) ? 'total' : 'hidden';
         for (const item of nw.items) if (LEFT_OUT_SUBTYPES.includes(item.subtype)) settings[item.accountId] = nw.mode === 'joint' ? 'total' : (item.setting ?? 'hidden');
@@ -367,6 +444,8 @@ export function completeReviewSettings(settings: Readonly<Record<string, ShareSe
 
 /** Each change through the share action its own page uses. A goal turned off asks first (its page's own question). */
 export interface ShareRunners<Shared> {
+  /** Starts the household's net worth, filed separately, and writes each item's setting. */
+  start(settings: Record<string, ShareSetting>): Promise<void>;
   review(settings: Record<string, ShareSetting>): Promise<void>;
   setting(accountId: string, setting: ShareSetting): Promise<void>;
   joint(accountId: string, on: boolean): Promise<void>;
@@ -400,6 +479,9 @@ export async function applyShareChanges<Shared>(changes: readonly ShareChange[],
     }
     try {
       switch (change.kind) {
+        case 'start':
+          await runners.start(change.settings);
+          break;
         case 'review':
           await runners.review(change.settings);
           break;
@@ -421,7 +503,7 @@ export async function applyShareChanges<Shared>(changes: readonly ShareChange[],
       }
       outcome.done += 1;
     } catch (error) {
-      if (change.kind === 'review') reviewFailed = true;
+      if (change.kind === 'review' || change.kind === 'start') reviewFailed = true;
       outcome.failed.push({ key: change.key, name: change.name, reason: say(error) });
     }
   }
@@ -446,31 +528,37 @@ function whoSees(others: readonly string[], bookName: string): { who: string; on
 }
 
 export const SHARE_LIST_COPY = {
-  setupTitle: (others: readonly string[], bookName: string) => `Share with ${audienceOf(others, bookName)}`,
-  title: (others: readonly string[], bookName: string) => `What’s shared with ${audienceOf(others, bookName)}`,
-  step: 'Step 2 of 2',
-  lede: (others: readonly string[], bookName: string) => {
-    const { who, one } = whoSees(others, bookName);
-    return `${bookName}’s budgets, bills and transactions are already shared. Pick what else ${who} ${one ? 'sees' : 'see'}. Nothing here is shared until ticked.`;
-  },
+  title: (others: readonly string[], bookName: string) => `Shared with ${audienceOf(others, bookName)}`,
+  step: 'Step 3 of 3',
   accountsFooter: (others: readonly string[], bookName: string) => {
     const { who, one } = whoSees(others, bookName);
-    return `Ticked: ${who} ${one ? 'sees' : 'see'} its balance on Net worth. Joint: ${who} can also pay from it in ${bookName} and ${one ? 'sees' : 'see'} its rows.`;
+    return `Shared: ${who} ${one ? 'sees' : 'see'} the balance. Tap a shared account’s icon to mark it owned together: ${who} also ${one ? 'sees' : 'see'} its rows and can pay from it.`;
   },
+  /** A tap on the icon of an account not shared: the one line said instead. */
+  notShareableHint: 'Switch Shared on first: only a shared account can be owned together.',
+  /** The short bar after the icon was tapped, with Undo. */
+  undoLine: (name: string, on: boolean) => (on ? `${name} owned together` : `${name} no longer owned together`),
+  assetsRow: (count: number) => `Assets & debts (${count})`,
+  /** The box at the top (redesign C): what sharing the workspace shares, always. */
+  alwaysHeader: (bookName: string) => `Always shared in ${bookName}`,
+  alwaysTitle: (bookName: string) => `${bookName}’s records`,
+  alwaysSubtitle: 'Budgets, bills and transactions',
   /** The review notice while net worth waits for this person's review (§6 Review). */
   reviewTitle: 'Review items',
+  /** The tap that answers a review left from before this update, or after a change: what is switched on is shared. */
+  reviewAnswer: 'Share what is switched on',
   reviewBody: (mode: FilingMode, others: readonly string[], bookName: string) => {
     if (mode === 'joint') return `${JOINT_LINE} ${jointTaxLine(others)} One tick shares every item, once saved.`;
     const { who, one } = whoSees(others, bookName);
     return `Net worth was set up again and waits for this review. What is ticked is what ${who} ${one ? 'sees' : 'see'}; unticking an item and saving takes it back.`;
   },
-  tickAll: 'Tick all',
-  joint: 'Joint',
-  shareButton: (count: number) => `Share ${count} ${count === 1 ? 'item' : 'items'}`,
+  done: 'Done',
   later: 'Later',
   rowValue: (count: number) => (count === 0 ? 'None' : `${count} ${count === 1 ? 'item' : 'items'}`),
   workspaceFooter: (bookName: string) => `Budgets, bills, categories and ${bookName}’s transactions are shared with ${bookName} as a whole.`,
-  netWorthOff: 'Accounts, cards, assets and debts are listed here once net worth is shared.',
+  netWorthOff: 'Net worth is shared in another workspace, so accounts are switched there.',
+  /** A one-tax-ID setup asked of this phone and not answered yet: answered in the tax report. */
+  netWorthAsked: 'Filing with one tax ID was asked. It is answered in the Tax report.',
   /** Under Events, once, while any event is ticked to be shared: the event Share sheet's own words. */
   eventsFooter: (names: readonly string[]) =>
     names.length === 1
