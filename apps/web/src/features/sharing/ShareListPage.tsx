@@ -1,5 +1,7 @@
 import {
   activeNetWorthGroup,
+  planEventCopyDelete,
+  type SharedEventView,
   type CreatedInvite,
   confirmReview,
   getJointAccount,
@@ -19,7 +21,7 @@ import {
 } from '@expanses/db';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
-import { CalendarDays, Check, CreditCard, type LucideIcon, Target } from 'lucide-react';
+import { CalendarDays, Check, CreditCard, Lock, type LucideIcon, Target } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -30,13 +32,17 @@ import { useInvalidateAll } from '../../lib/queries';
 import { useEvents } from '../events/queries';
 import { freshShare, type ShareProgress } from '../events/share-event';
 import { useShareEventNow } from '../events/share-event-now';
-import { useSharedEventSummaries } from '../events/shared-queries';
+import { useSharedEventSummaries, useSharedEventView } from '../events/shared-queries';
+import { pageLocks } from '../events/shared-view';
+import { DELETE_COPY_LABEL, deleteEventCopyFlow } from '../events/delete-copy';
+import { ShareEventSheet } from '../events/ShareEventSheet';
+import { useSafetyCopy } from '../workspaces/safety-copy';
 import { GOAL_SHARING_COPY } from '../goals/goal-sharing';
 import { useGoalPlans, useGoals, useGoalShareTargets } from '../goals/queries';
 import { assetKindTile, debtKindTile } from '../ownables/catalogue-view';
 import { InviteCard } from './InviteCard';
 import { startNetWorth } from './household';
-import { JOINT_SHARED_LINE, sayNetWorthError } from './net-worth-state';
+import { JOINT_SHARED_LINE, namesOf, sayNetWorthError } from './net-worth-state';
 import { useSharingDetail } from './queries';
 import {
   applyShareChanges,
@@ -459,6 +465,7 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
         />
       )}
       <ErrorBox error={error} />
+      <AlwaysShared bookName={bookName} />
       {list && draft ? (
         <>
           {netWorthOff ? (
@@ -471,7 +478,7 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
               <Notice kind="warning" testId="share-list-review" title={SHARE_LIST_COPY.reviewTitle} body={SHARE_LIST_COPY.reviewBody(reviewWaits.mode, othersAll, bookName)} />
             </div>
           ) : null}
-          {list.groups.filter((group) => group.key !== 'assets').map(drawGroup)}
+          {list.groups.filter((group) => group.key !== 'assets').map((group) => (group.key === 'events' ? <EventsGroup key="events" group={group} onError={setError} /> : drawGroup(group)))}
           {assets ? (
             <>
               <InsetGroup wide>
@@ -644,5 +651,105 @@ function ListSwitch({ label, checked, disabled, onChange }: { label: string; che
         className="absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-full opacity-0 disabled:cursor-default"
       />
     </span>
+  );
+}
+
+/**
+ * Events in the list (redesign C, D): each with its switch and where it stands. On opens today's share sheet (its own
+ * code, as before); off is today's Leave, asked first; a copy this phone can no longer change offers Delete this copy.
+ * They act at once, as the Share page's events did: sharing an event moves its tagged spending, so it is never a draft.
+ */
+function EventsGroup({ group, onError }: { group: ShareListGroup; onError: (error: unknown) => void }) {
+  const { database, sync, ws } = useApp();
+  const invalidate = useInvalidateAll();
+  const safetyCopy = useSafetyCopy('before-delete');
+  const events = useEvents().data ?? [];
+  const [sharing, setSharing] = useState<string | null>(null);
+  const sharingEvent = events.find((event) => event.id === sharing) ?? null;
+
+  async function leave(name: string, bookId: string) {
+    if (!window.confirm(`Leave ${name}? What was recorded stays with the others.`)) return;
+    onError(null);
+    try {
+      await sync.leaveEvent(bookId);
+      await invalidate();
+    } catch (failure) {
+      onError(sayError(failure));
+    }
+  }
+
+  async function deleteCopy(view: SharedEventView) {
+    onError(null);
+    try {
+      const done = await deleteEventCopyFlow(view, {
+        plan: () => planEventCopyDelete(database, ws, view.bookId),
+        confirm: (text) => window.confirm(text),
+        safetyCopy,
+        remove: () => sync.deleteEventCopy(ws, view.bookId),
+      });
+      if (done === 'deleted') await invalidate();
+    } catch (failure) {
+      onError(sayError(failure));
+    }
+  }
+
+  return (
+    <section className="w-full md:max-w-2xl" style={{ marginBottom: 22 }} data-testid="share-list-events">
+      <h2 className={cx(GROUP_HEADER_CLASS, 'px-[4px] pb-[6px]')}>{group.label}</h2>
+      <div className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
+        {group.items.map((item) => (
+          <EventLine key={item.key} item={item} onShare={() => setSharing(item.id)} onLeave={(bookId) => void leave(item.name, bookId)} onDeleteCopy={(view) => void deleteCopy(view)} />
+        ))}
+      </div>
+      {sharingEvent ? <ShareEventSheet event={sharingEvent} onClose={() => setSharing(null)} /> : null}
+    </section>
+  );
+}
+
+function EventLine({ item, onShare, onLeave, onDeleteCopy }: { item: ShareListItem; onShare: () => void; onLeave: (bookId: string) => void; onDeleteCopy: (view: SharedEventView) => void }) {
+  const view = useSharedEventView(item.shared ? item.id : null).data;
+  const leavable = view && !pageLocks(view).readOnly ? view : null;
+  // A copy waiting for an invite is still its person's (review minor 2): only one left, removed or stopped is deleted.
+  const readOnly = view && pageLocks(view).readOnly && view.state !== 'needs_invite' ? view : null;
+  const others = (view?.people ?? []).filter((person) => !person.isMe && !person.removed);
+  const inIt = others.filter((person) => person.hasApp).map((person) => person.name);
+  const waitingFor = others.filter((person) => !person.hasApp).map((person) => person.name);
+  const line = !item.shared ? item.meta : readOnly ? null : inIt.length > 0 ? `${namesOf(inIt)} ${inIt.length === 1 ? 'is' : 'are'} in` : view ? `Waiting for ${namesOf(waitingFor) || 'someone'} to join` : null;
+  return (
+    <div className="flex min-h-[50px] items-center gap-[10px] px-[13px] py-[6px]" data-testid="share-list-row">
+      <RowIcon>
+        <CalendarDays size={15} aria-hidden />
+      </RowIcon>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[16px] leading-[21px] text-[var(--ph-ink)]">{item.name}</span>
+        {line ? (
+          item.shared && inIt.length === 0 && view ? (
+            <Link to="/events/$eventId" params={{ eventId: item.id }} data-testid="share-event-state" className="block truncate text-[12.5px] leading-[16px] text-[var(--ph-warn)]">
+              {line} ›
+            </Link>
+          ) : (
+            <span data-testid="share-event-state" className={cx('block truncate text-[12.5px] leading-[16px]', item.shared ? 'text-[var(--ph-up)]' : 'text-[var(--ph-ink-3)]')}>
+              {line}
+            </span>
+          )
+        ) : null}
+      </span>
+      {readOnly ? (
+        <button type="button" data-testid="share-event-delete-copy" onClick={() => onDeleteCopy(readOnly)} className="ph-focus ph-tap shrink-0 text-[15px] text-[var(--ph-alarm)]">
+          {DELETE_COPY_LABEL}
+        </button>
+      ) : (
+        <ListSwitch label={item.name} checked={item.shared} disabled={item.shared && !leavable} onChange={() => (item.shared ? leavable && onLeave(leavable.bookId) : onShare())} />
+      )}
+    </div>
+  );
+}
+
+/** What the workspace always shares, said once at the top: no switch, it is what sharing the workspace is. */
+function AlwaysShared({ bookName }: { bookName: string }) {
+  return (
+    <InsetGroup wide header={SHARE_LIST_COPY.alwaysHeader(bookName)}>
+      <InsetRow testId="share-list-always" icon={<Lock size={15} aria-hidden />} title={SHARE_LIST_COPY.alwaysTitle(bookName)} subtitle={SHARE_LIST_COPY.alwaysSubtitle} value="Always" chevron={false} />
+    </InsetGroup>
   );
 }

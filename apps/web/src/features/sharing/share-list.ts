@@ -322,6 +322,19 @@ export function sharedCount(list: ShareList): number {
   return itemsOf(list).filter((item) => item.shared).length;
 }
 
+/** The Share page's line under "Shared with Andi": "3 accounts · 1 goal · 2 events", or "Nothing yet". */
+export function sharedSummary(list: ShareList): string {
+  const count = (key: ShareGroupKey) => list.groups.find((group) => group.key === key)?.items.filter((item) => item.shared).length ?? 0;
+  const words = (n: number, one: string, many: string) => (n > 0 ? `${n} ${n === 1 ? one : many}` : null);
+  const parts = [
+    words(count('accounts'), 'account', 'accounts'),
+    words(count('goals'), 'goal', 'goals'),
+    words(count('events'), 'event', 'events'),
+    words(count('assets'), 'asset or debt', 'assets and debts'),
+  ].filter((part): part is string => part !== null);
+  return parts.length > 0 ? parts.join(' · ') : 'Nothing yet';
+}
+
 /** The events ticked now that are not shared yet: each will move its tagged spending when shared. */
 export function eventsToShare(list: ShareList, draft: ShareDraft): ShareListItem[] {
   return (list.groups.find((group) => group.key === 'events')?.items ?? []).filter((item) => !item.shared && isTicked(draft, item));
@@ -525,6 +538,10 @@ export const SHARE_LIST_COPY = {
   /** The short bar after the icon was tapped, with Undo. */
   undoLine: (name: string, on: boolean) => (on ? `${name} owned together` : `${name} no longer owned together`),
   assetsRow: (count: number) => `Assets & debts (${count})`,
+  /** The box at the top (redesign C): what sharing the workspace shares, always. */
+  alwaysHeader: (bookName: string) => `Always shared in ${bookName}`,
+  alwaysTitle: (bookName: string) => `${bookName}’s records`,
+  alwaysSubtitle: 'Budgets, bills and transactions',
   /** The review notice while net worth waits for this person's review (§6 Review). */
   reviewTitle: 'Review items',
   reviewBody: (mode: FilingMode, others: readonly string[], bookName: string) => {

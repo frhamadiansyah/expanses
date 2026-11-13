@@ -32,6 +32,7 @@ import {
   GOAL_SHARED_CAPTION,
   offConfirmOf,
   START_NAME,
+  sharedSummary,
   WAITING_CAPTION,
 } from './share-list';
 import { JOINT_SHARED_LINE } from './net-worth-state';
@@ -144,6 +145,11 @@ describe('the list: which items, in which group, ticked as things stand', () => 
   it('leaves an event’s trip balance out: the event made it, nobody chose it', () => {
     const list = listWith({}, [...input().netWorth!.items, { accountId: 'a-trip', name: 'Bali trip', subtype: 'event_balance', setting: null }]);
     expect(rows(list).filter((item) => item.id === 'a-trip')).toEqual([]);
+  });
+
+  it('says what is shared for the Share page’s row, by kind', () => {
+    expect(sharedSummary(shareListOf(input()))).toBe('2 accounts · 1 goal · 1 event · 1 asset or debt');
+    expect(sharedSummary(shareListOf(input({ netWorth: null, goals: [], events: [] })))).toBe('Nothing yet');
   });
 
   it('counts what is shared now for the Share page, and what is ticked for the button', () => {
