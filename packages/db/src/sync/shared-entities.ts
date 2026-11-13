@@ -361,7 +361,22 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
     scopeRule: 'book_id = bookId (a transfer recorded in the shared workspace, redacted: no accounts)',
     scope: (bookId) => sql`t.book_id = ${bookId}`,
     keyColumns: ['transfer_id'],
-    fields: { occurredOn: 'occurred_on', amountMinor: 'amount_minor', currency: 'currency', description: 'description', recordedBy: 'recorded_by', void: 'void', fromName: 'from_name', toName: 'to_name', fromItem: 'from_item', toItem: 'to_item' },
+    // `eventBookId` (0114): the shared event the transfer is listed on instead of the workspace. A build from before it
+    // applies the rest and passes it over; a recorder moves one only once every device in the workspace has the field
+    // (`TRIP_TRANSFERS_MIN_APP_VERSION`).
+    fields: {
+      occurredOn: 'occurred_on',
+      amountMinor: 'amount_minor',
+      currency: 'currency',
+      description: 'description',
+      recordedBy: 'recorded_by',
+      void: 'void',
+      fromName: 'from_name',
+      toName: 'to_name',
+      fromItem: 'from_item',
+      toItem: 'to_item',
+      eventBookId: 'event_book_id',
+    },
     localOnInsert: ['book_id'],
     // Only the member who recorded it writes it.
     writer: (fields) => (typeof fields.recordedBy === 'string' ? fields.recordedBy : null),

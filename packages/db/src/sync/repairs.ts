@@ -5,8 +5,9 @@ import type { Database, Db, Tx } from '../database';
 import { resolveRates, type RateFetcher } from '../repos/fx';
 import { eventBookOfEventTx } from '../repos/shared-event-records';
 import { moveIntoSharedEvent, refundMatchedByName } from '../repos/shared-event-moves';
+import { TRIP_TRANSFERS_MIN_APP_VERSION } from '../repos/shared-event-transfers';
 import { partnerPurchaseRefusalTx, sharedRowTx, untagSharedRowsTx } from '../repos/shared-workspace-rows';
-import { captureConfigOf, lineageOfTransaction, projectPurchase, type SharedBook, writeChangeSetsTx } from './capture';
+import { captureConfigOf, lineageOfTransaction, projectPurchase, rowUpsertsTx, type SharedBook, writeChangeSetsTx } from './capture';
 import { memberOfDeviceTx } from './apply';
 import { decodeHlc } from './hlc';
 import type { Op } from './types';
@@ -61,8 +62,11 @@ async function bookDevicesTx(tx: Db, bookId: string): Promise<{ deviceId: string
   return rows.map(([deviceId, name, version]) => ({ deviceId, name, version }));
 }
 
-async function crossedTx(tx: Db, bookId: string): Promise<Set<string>> {
-  const [row] = await tx.values<[string]>(sql`SELECT value FROM settings WHERE key = ${crossedKey(bookId)}`);
+/** Where R3 keeps the devices it has already sent for once each reached `TRIP_TRANSFERS_MIN_APP_VERSION`. */
+const tripCrossedKey = (bookId: string) => `repair.trip-transfers-crossed.v1.${bookId}`;
+
+async function crossedTx(tx: Db, bookId: string, key = crossedKey(bookId)): Promise<Set<string>> {
+  const [row] = await tx.values<[string]>(sql`SELECT value FROM settings WHERE key = ${key}`);
   try {
     const ids = row ? (JSON.parse(row[0]) as unknown) : [];
     return new Set(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []);
@@ -117,6 +121,8 @@ export interface RepairReport {
   workspace: boolean;
   /** R2: rows moved and untagged; null when it had run already. */
   eventTags: { moved: number; untagged: number } | null;
+  /** R3: transfers listed on a shared event sent again; null when no device had newly crossed to 0.5.2. */
+  tripTransfers: number | null;
 }
 
 /** The shared book here, active and with its members known; null for anything else. */
@@ -291,12 +297,34 @@ async function tryMove(
 }
 
 /**
+ * R3 (trip withdrawal, review fix round 1): each transfer this phone recorded that is listed on a shared event goes out
+ * again, whole, at a fresh clock. A build before 0.5.2 that received the row (a seed when it joined the workspace after
+ * the move) took the `eventBookId` clock and wrote nothing, so it lists the transfer in the workspace; updated, it takes
+ * the value now. The row is its recorder's alone to write (`recordedBy`), and this phone holds the live transaction it
+ * stands behind, so a fresh clock overturns no one else's word. Returns how many rows went.
+ */
+async function resendTripTransfersTx(tx: Tx, database: Database, book: SharedBook): Promise<number> {
+  const listed = new Set(
+    (
+      await tx.values<[string]>(sql`
+        SELECT transfer_id FROM shared_transfers
+        WHERE book_id = ${book.bookId} AND void = 0 AND event_book_id IS NOT NULL AND recorded_by = ${book.memberId}
+          AND transaction_id IN (SELECT id FROM transactions WHERE status = 'posted')`)
+    ).map(([id]) => id),
+  );
+  if (listed.size === 0) return 0;
+  const ops = (await rowUpsertsTx(tx, book, 'book_transfer')).filter((op) => listed.has(op.id));
+  await writeChangeSetsTx(tx, captureConfigOf(database), book, ops);
+  return ops.length;
+}
+
+/**
  * Runs the one-time repairs of a shared book on this phone, each once. Called after a sync that pulled the book to the
  * relay's latest. A repair that throws leaves its marker unwritten (it runs again next time) and is rethrown after the
  * others have had their turn, for the caller to log; nothing it wrote half-way stays (each step is one db transaction).
  */
 export async function runSharedBookRepairs(database: Database, bookId: string, options: { fetcher?: RateFetcher; today?: string } = {}): Promise<RepairReport> {
-  const report: RepairReport = { billLinks: null, devicesBelow: [], workspace: false, eventTags: null };
+  const report: RepairReport = { billLinks: null, devicesBelow: [], workspace: false, eventTags: null, tripTransfers: null };
   const today = options.today ?? isoDate();
   const failures: unknown[] = [];
   try {
@@ -330,6 +358,26 @@ export async function runSharedBookRepairs(database: Database, bookId: string, o
       report.eventTags = await repairEventTags(database, book, { ...(options.fetcher ? { fetcher: options.fetcher } : {}), today });
       await database.transaction((tx) => markDoneTx(tx, EVENT_TAGS, bookId));
     }
+  } catch (error) {
+    failures.push(error);
+  }
+  try {
+    report.tripTransfers = await database.transaction(async (tx) => {
+      const book = await activeBookTx(tx, bookId);
+      if (!book) return null;
+      const column = await tx.values(sql`SELECT 1 FROM pragma_table_info('shared_transfers') WHERE name = 'event_book_id'`);
+      if (column.length === 0) return null;
+      // One pass each time another device in the book is seen at a build that writes the event it receives: the one
+      // that crossed may have taken a listed row on its older build. A device that never updates holds nothing up.
+      const devices = await bookDevicesTx(tx, bookId);
+      const crossed = await crossedTx(tx, bookId, tripCrossedKey(bookId));
+      const nowAt = devices.filter((d) => meetsVersion(d.version, TRIP_TRANSFERS_MIN_APP_VERSION)).map((d) => d.deviceId);
+      if (nowAt.every((id) => crossed.has(id))) return null;
+      const sent = await resendTripTransfersTx(tx, database, book);
+      const all = [...new Set([...crossed, ...nowAt])].sort();
+      await tx.run(sql`INSERT INTO settings (key, value) VALUES (${tripCrossedKey(bookId)}, ${JSON.stringify(all)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
+      return sent;
+    });
   } catch (error) {
     failures.push(error);
   }

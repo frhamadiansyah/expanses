@@ -1,5 +1,5 @@
 import { formatMinor } from '@expanses/core';
-import type { AccountRow, SharedEventView, SharedExpenseView } from '@expanses/db';
+import type { AccountRow, SharedEventTransferView, SharedEventView, SharedExpenseView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import {
   balanceLine,
@@ -20,6 +20,7 @@ import {
   sharedWithText,
   takeOverBatches,
   takeOverRows,
+  transferRow,
   waitingLine,
 } from './shared-view';
 
@@ -35,7 +36,7 @@ const view = (over: Partial<SharedEventView> = {}): SharedEventView => ({
     { fromPersonId: 'p-andi', fromName: 'Andi', toPersonId: 'p-rina', toName: 'Rina', amountMinor: 290_000 },
     { fromPersonId: 'p-budi', fromName: 'Budi', toPersonId: 'p-dewi', toName: 'Dewi', amountMinor: 190_000 },
   ],
-  waiting: [], currencyLocked: true, ...over,
+  waiting: [], currencyLocked: true, transfers: [], ...over,
 });
 
 const expense = {
@@ -223,6 +224,27 @@ describe('the ring, the days and the bars of a shared event', () => {
     const none = pickedDays(days, 'none');
     expect(none.map((d) => [d.date, d.spentMinor])).toEqual([['2026-10-07', 5]]);
     expect(none[0]!.items.every((i) => i.kind === 'expense')).toBe(true);
+  });
+
+  it('lists a household transfer on its day after the spending, counted in no day total and in no picked category', () => {
+    const t: SharedEventTransferView = { transferId: 't1', occurredOn: '2026-10-07', amountMinor: 1_850_000, currency: 'IDR', description: 'ATM withdrawal', recordedByName: 'Lestari', fromName: 'Joint bank', toName: 'Wallet', transactionId: 'tx1' };
+    const days = dayGroups({ expenses: [e({ expenseId: '2', occurredOn: '2026-10-07', categoryId: 'c-food', eventAmountMinor: 30 })], settlements: [], transfers: [t, { ...t, transferId: 't2', occurredOn: '2026-10-05' }] });
+    expect(days.map((d) => [d.date, d.spentMinor, d.items.map((i) => i.kind)])).toEqual([
+      ['2026-10-07', 30, ['expense', 'transfer']],
+      ['2026-10-05', 0, ['transfer']],
+    ]);
+    expect(pickedDays(days, 'c-food').map((d) => d.items.map((i) => i.kind))).toEqual([['expense']]);
+  });
+
+  it('writes a listed transfer grey: its description, the two accounts, not counted, no share', () => {
+    const t: SharedEventTransferView = { transferId: 't1', occurredOn: '2026-10-07', amountMinor: 1_850_000, currency: 'IDR', description: 'ATM withdrawal', recordedByName: 'Lestari', fromName: 'Joint bank', toName: 'Wallet', transactionId: 'tx1' };
+    expect(transferRow(t)).toEqual({ title: 'ATM withdrawal', subtitle: 'Joint bank → Wallet · not counted', amount: formatMinor(1_850_000, 'IDR') });
+    expect(transferRow({ ...t, description: ' ', toName: null }).title).toBe('Transfer');
+    expect(transferRow({ ...t, toName: null }).subtitle).toBe('From Joint bank · not counted');
+    expect(transferRow({ ...t, fromName: null }).subtitle).toBe('To Wallet · not counted');
+    // The partner's phone names no private account: who recorded it instead.
+    expect(transferRow({ ...t, fromName: null, toName: null, transactionId: null }).subtitle).toBe('Recorded by Lestari · not counted');
+    for (const line of Object.values(transferRow(t))) expect(line).not.toMatch(/\byou(r)?\b/i);
   });
 
   it('scales the balance bars to the largest, tones them, and leaves out people who left', () => {

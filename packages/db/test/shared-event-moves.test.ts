@@ -102,7 +102,8 @@ describe('moveIntoSharedEvent', () => {
     const transfer = await postTransaction(t.database, t.ws, { occurredOn: '2026-10-06', description: 'Top up', lines: transferLines({ fromAccountId: bank.id, toAccountId: cash.id, amountMinor: 500_000, currency: 'IDR' }) });
     const { moved, kept } = await moveIntoSharedEvent(t.database, t.ws, t.eventId, [transfer]);
     expect(moved).toEqual([]);
-    expect(kept).toEqual([{ transactionId: transfer, why: 'Only a purchase from one account under one category moves into a shared event' }]);
+    // A transfer in no shared workspace has no row to take it off another phone's list (trip withdrawal, 0114).
+    expect(kept).toEqual([{ transactionId: transfer, why: 'A transfer filed in no workspace shows in every one: only one in a workspace shared with a household moves into a shared event' }]);
   });
 
   it('leaves a purchase with no rate to the event currency where it was, and writes nothing to the event', async () => {

@@ -5,6 +5,7 @@ import type { Database, Db } from '../database';
 import type { ChangeSet } from '../sync/types';
 import type { EventUnposted } from './shared-event-postings';
 import { type EventBookRow, eventBookOfEventTx, eventRecordsTx, expenseReadIssue } from './shared-event-records';
+import { eventTransfersTx, type SharedEventTransferView } from './shared-event-transfers';
 
 /*
  * What the screens read of a shared event (shared events §6, §7). Figures are in the event currency unless a field
@@ -125,6 +126,11 @@ export interface SharedEventView {
   currencyLocked: boolean;
   /** The records left out of the figures because they cannot be added up, and why (I2). Always set by `sharedEventView`. */
   unreadable?: { recordId: string; reason: string }[];
+  /**
+   * The household's transfers listed on the event (an ATM withdrawal for the trip, 0114): shown, never counted — in no
+   * total, share, balance or settle-up. Only a phone in the household that recorded them holds any.
+   */
+  transfers: SharedEventTransferView[];
 }
 
 /** The record ids whose ops still wait in this phone's outbox for the event's book. */
@@ -252,6 +258,7 @@ async function viewOfTx(db: Db, book: EventBookRow): Promise<SharedEventView> {
     // Any expense row locks it, readable or not, as `setSharedEventCurrency` counts them (M1).
     currencyLocked: expenses.length > 0,
     unreadable: [...issues].map(([recordId, reason]) => ({ recordId, reason })),
+    transfers: await eventTransfersTx(db, book.bookId),
   };
 }
 

@@ -843,7 +843,9 @@ export class SyncService {
         await this.note('repair', bookId, { message: `${device.name} (${device.deviceId.slice(0, 8)}) is on an older version (${device.version ?? 'unknown'}): bill links reach it once it updates` });
       }
       const tags = report.eventTags;
-      const changed = (report.billLinks ?? 0) > 0 || (tags !== null && tags.moved + tags.untagged > 0);
+      const changed = (report.billLinks ?? 0) > 0 || (tags !== null && tags.moved + tags.untagged > 0) || (report.tripTransfers ?? 0) > 0;
+      // R3: transfers listed on a shared event, sent again for a device that has updated since it took them.
+      if ((report.tripTransfers ?? 0) > 0) await this.note('repair', bookId, { message: `${report.tripTransfers} transfers listed on a shared event sent again for a phone that updated` });
       if (report.billLinks !== null || tags !== null) {
         if ((report.billLinks ?? 0) > 0 || tags !== null) await this.note('repair', bookId, {
           message: `One-time repair: ${report.billLinks ?? 0} bill links sent; ${tags?.moved ?? 0} tagged purchases moved into their shared event, ${tags?.untagged ?? 0} untagged`,
