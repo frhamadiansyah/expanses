@@ -102,6 +102,11 @@ test('event mode: on from the event, a dot and a menu row on Cashflow, the Add f
   await expect(recent.getByTestId('row-event')).toHaveCount(1);
   await expect(recent.getByTestId('row-event')).toHaveAttribute('title', 'Lake trip');
   await expect(recent.getByRole('button', { name: /Corner shop/ })).toHaveAccessibleName('Groceries Corner shop · Lira cash');
+  // On the trip's own page every row is the trip's: no plane on any of them.
+  await page.goto('/events');
+  await page.getByTestId('event-row').filter({ hasText: 'Lake trip' }).click();
+  await expect(page.getByTestId('event-history').filter({ hasText: 'Lakeside lunch' })).toBeVisible();
+  await expect(page.getByTestId('event-history').getByTestId('row-event')).toHaveCount(0);
 
   // Off by hand, from the event: the light Undo bar puts it back.
   await page.goto('/transactions');

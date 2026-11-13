@@ -347,6 +347,14 @@ it('a monthly bill out on the 25th, paid by the 5th, takes a payment in the mont
   expect(await at('2026-11-26', '2026-11-26')).toMatchObject({ month: '2026-11', ask: false });
 });
 
+it('a pay-later bill started in November never takes a 3 Nov payment as October\'s', async () => {
+  const h = await setup();
+  const fresh = await saveExpenseTemplate(h.database, h.ws, {
+    name: 'Parking pass', categoryAccountId: h.category('utilities.water_sanitation'), moneyAccountId: h.bca.id, amountMinor: 310_000, dayOfMonth: 25, payByDay: 5, startsMonth: '2026-11',
+  });
+  expect(await billLinkMonth(h.database, h.ws, { templateId: fresh, purchasedOn: '2026-11-03', today: '2026-11-03' })).toEqual({ month: '2026-11', ask: true, opensOn: '2026-11-25' });
+});
+
 it('a purchase from another category can be linked, and counts as the bill month with its own figure', async () => {
   const h = await setup();
   const other = await h.buy('2026-09-03', 380_000, h.category('utilities.electricity'), 'Wifi top-up');

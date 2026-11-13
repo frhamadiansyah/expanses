@@ -97,6 +97,14 @@ describe('a monthly bill paid in the window after it comes out', () => {
     expect(linkNeedsAsking('2026-11-26', '2026-11', payLater('2026-11-26'))).toBe(false);
   });
 
+  it('never a month before the bill started: started in November, a payment on 3 Nov is November, asked', () => {
+    const fresh: BillMonthsInput = { ...payLater('2026-11-03'), startsMonth: '2026-11' };
+    expect(defaultLinkMonth('2026-11-03', fresh)).toBe('2026-11');
+    expect(linkNeedsAsking('2026-11-03', '2026-11', fresh)).toBe(true);
+    expect(defaultLinkMonth('2026-11-27', fresh)).toBe('2026-11');
+    expect(defaultLinkMonth('2026-12-02', { ...fresh, today: '2026-12-02' })).toBe('2026-11');
+  });
+
   it('a bill with no pay-by day, and a yearly one, are never asked about this way', () => {
     expect(defaultLinkMonth('2026-11-03', { ...monthly('2026-11-13'), outDay: 25 })).toBe('2026-11');
     expect(linkNeedsAsking('2026-11-03', '2026-11', { ...monthly('2026-11-13'), outDay: 25 })).toBe(false);

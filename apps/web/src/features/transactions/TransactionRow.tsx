@@ -62,8 +62,11 @@ export function TransactionRow({
   still = false,
   amount,
   view = 'report',
+  hideEvent = false,
 }: {
   row: ListRow;
+  /** The event's own page: every row there is in it, so no row wears the event's plane. */
+  hideEvent?: boolean;
   accounts: readonly AccountRow[];
   /** What the amount is written in; the row's own currency unless a screen keeps one column in its own. */
   currency?: string;
@@ -122,8 +125,8 @@ export function TransactionRow({
   view?: AmountView;
 }) {
   const transfer = row.type !== 'expense' && row.type !== 'income';
-  // A row in an event wears a small plane on its icon, on every list, in event mode or not.
-  const eventName = useEventName(row.eventId ?? row.tx?.eventId ?? row.draft?.eventId ?? null);
+  // A row in an event wears a small plane on its icon where rows from many places mix — not on the event's own page.
+  const eventName = useEventName(hideEvent ? null : (row.eventId ?? row.tx?.eventId ?? row.draft?.eventId ?? null));
   // Money back on a purchase reads as money in: a plus, in green. Money a person paid back has a plus too, muted.
   // Wholly excluded from the report, a row reads as a split with all of it left out: nothing counted on top, in grey,
   // and the whole sum under it with ⊘ (`amountExtraParts`), so the two kinds of left out look alike.

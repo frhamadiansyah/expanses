@@ -462,7 +462,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
             {isTrade && holdingId ? (
               /* A trade is edited on its holding's page, so units stay in step: the receipt's one way there. */
               <InsetGroup className="w-full">
-                <InsetRow action title="Open holding" testId="open-holding" onClick={() => void navigate({ to: '/net-worth/assets/$accountId', params: { accountId: holdingId } })} />
+                <InsetRow action title={<span className="text-[var(--ph-tint)]">Open holding</span>} label="Open holding" testId="open-holding" onClick={() => void navigate({ to: '/net-worth/assets/$accountId', params: { accountId: holdingId } })} />
               </InsetGroup>
             ) : (
               /* Edit is the round button in the top corner; Delete stays down here, out of a thumb's casual reach. A shared

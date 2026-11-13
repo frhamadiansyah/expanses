@@ -576,6 +576,7 @@ function LocalEventPage() {
                         row={listRow}
                         accounts={accounts}
                         testId="event-history"
+                        hideEvent
                         amountMinor={expense?.amountBaseMinor ?? 0}
                         currency={ws.baseCurrency}
                         // The foreign figure under the amount, as every other list draws it.
