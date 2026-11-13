@@ -13,9 +13,11 @@ import {
   postTransaction,
   removeTransferFromSharedEvent,
   replaceTransaction,
+  runSharedBookRepairs,
   sharedEventView,
   voidTransaction,
 } from '../../src/index';
+import { SyncEngine } from '../../src/sync/engine';
 import { categoryOf, projectBook, skipsOf, type Device } from './household';
 import { Trip } from './trip';
 
@@ -230,6 +232,41 @@ describe('a Family transfer moved into a shared trip', () => {
     await trip.settle([wife, husband]);
     expect(await familyRows(s, husband)).toEqual([]);
     expect((await tripOf(s, husband)).transfers.map((t) => t.description)).toEqual(['ATM withdrawal']);
+  });
+
+  it('a phone on an older build that joins Family after the move gets the event again once it updates, and the phones agree', async () => {
+    const trip = new Trip();
+    const wife = await trip.device('Wife', BUILD);
+    const husband = await trip.device('Husband', '0.5.1');
+    const family = await trip.home.share(wife);
+    await trip.share(wife);
+    await trip.join(husband, wife);
+    await trip.settle([wife, husband]);
+    const s = { trip, home: trip.home, wife, husband, family, settle: async () => undefined } as unknown as Setup;
+    const id = await withdrawal(s);
+    expect((await moveIntoSharedEvent(wife.database, ownerScope(wife.ws), trip.eventOf(wife), [id])).listed).toHaveLength(1);
+    expect((await runSharedBookRepairs(wife.database, family)).tripTransfers).toBe(1);
+    await trip.home.join(husband, wife);
+    await trip.home.settle();
+    // What 0.5.1 does with the seed: takes every field's clock, writes no event (it has no column for it).
+    await husband.database.db.run(sql`UPDATE shared_transfers SET event_book_id = NULL`);
+    expect(await familyRows(s, husband)).toEqual(['partner: ATM withdrawal']);
+    // While he is on 0.5.1, nothing more goes, however often her phone runs its repairs.
+    expect((await runSharedBookRepairs(wife.database, family)).tripTransfers).toBeNull();
+
+    husband.engine = new SyncEngine(husband.database, husband.transport, husband.keys, undefined, { appVersion: BUILD, shareRecords: husband.records });
+    await trip.home.settle();
+    // His own pass sends nothing: the row is hers.
+    expect((await runSharedBookRepairs(husband.database, family)).tripTransfers).toBe(0);
+    expect((await runSharedBookRepairs(wife.database, family)).tripTransfers).toBe(1);
+    await trip.home.settle();
+    await trip.settle([wife, husband]);
+    expect(await skipsOf(husband.database)).toEqual([]);
+    expect(await familyRows(s, husband)).toEqual([]);
+    expect((await tripOf(s, husband)).transfers.map((t) => t.description)).toEqual(['ATM withdrawal']);
+    expect(await projectBook(wife.database, family)).toEqual(await projectBook(husband.database, family));
+    // One pass for his crossing: none after.
+    expect((await runSharedBookRepairs(wife.database, family)).tripTransfers).toBeNull();
   });
 
   it('a transfer with its fee on the same row, or one in a workspace no one shares, stays with its reason', async () => {
