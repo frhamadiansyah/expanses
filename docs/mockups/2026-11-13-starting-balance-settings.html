@@ -1,0 +1,79 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Starting balance</title>
+<style>
+  :root { --ink:#000; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --red:#ff3b30; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; }
+  h1 { font-size:20px; margin:0 0 4px; } .sub { color:#555; margin:0 0 18px; max-width:1150px; }
+  .row4 { display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }
+  .phone { width:300px; background:var(--ground); border-radius:28px; padding:14px 12px 18px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .cap { font-weight:700; margin:0 0 4px; } .note { font-size:13px; color:#555; margin:0 0 10px; min-height:70px; }
+  .bar { display:flex; justify-content:space-between; align-items:center; margin:4px 4px 12px; font-size:17px; }
+  .bar .l, .bar .r { color:var(--tint); font-size:15px; } .bar b { font-weight:600; }
+  .hd { font-size:12.5px; color:var(--ink3); text-transform:uppercase; margin:10px 16px 6px; }
+  .grp { background:var(--surface); border-radius:12px; overflow:hidden; margin-bottom:6px; }
+  .r { display:flex; justify-content:space-between; align-items:center; padding:11px 14px; font-size:15px; } .r + .r { border-top:.5px solid var(--hair); }
+  .r .v { color:var(--ink3); } .r .v.set { color:var(--ink); } .chev::after { content:" ›"; color:#c7c7cc; }
+  .ft { font-size:12.5px; color:var(--ink3); margin:4px 16px 8px; line-height:1.35; }
+  .new { box-shadow:inset 3px 0 0 #ff9f0a; }
+  .big { text-align:center; font-size:34px; font-weight:600; margin:18px 0 4px; } .big small { font-size:15px; color:var(--ink3); display:block; font-weight:400; }
+  .keys { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:12px; } .keys span { background:var(--surface); border-radius:8px; text-align:center; padding:10px 0; font-size:20px; }
+  .diff { background:#fff4e5; border-radius:10px; padding:9px 12px; font-size:13px; margin:8px 4px; line-height:1.35; }
+  .alert { background:rgba(255,255,255,.96); border-radius:14px; margin:30px 10px; text-align:center; overflow:hidden; box-shadow:0 4px 20px rgba(0,0,0,.2); }
+  .alert .t { font-weight:600; padding:16px 14px 4px; } .alert .m { font-size:13px; padding:0 14px 14px; color:#333; line-height:1.35; }
+  .alert .b { border-top:.5px solid var(--hair); padding:11px; color:var(--tint); font-size:16px; } .alert .b.bold { font-weight:600; }
+  .key { font-size:12.5px; color:#555; margin-top:14px; } .key span { display:inline-block; width:10px; height:10px; background:#ff9f0a; border-radius:2px; margin-right:4px; }
+</style></head>
+<body>
+<h1>Starting balance in Settings: bank and credit card</h1>
+<p class="sub">The starting point (the balance on the day the app starts counting) can be changed in the account's Settings. Changing it moves every balance after that day by the difference, so Save asks first. <b>Adjust</b> on the account page stays for later counts: it adds a correction row and leaves the start as it was.</p>
+<div class="row4">
+  <div class="phone">
+    <p class="cap">1 · Bank → Settings</p><p class="note"><b>Balance</b> becomes a row that opens the keypad (today it is read only). <b>As of</b> works as today.</p>
+    <div class="bar"><span class="l">‹ BCA Tahapan</span><b>Settings</b><span class="r"></span></div>
+    <div class="grp">
+      <div class="r"><span>Name</span><span class="v set">BCA Tahapan</span></div>
+      <div class="r"><span>Last 4</span><span class="v set">2210</span></div>
+    </div>
+    <div class="hd">Starting balance</div>
+    <div class="grp">
+      <div class="r new"><span>Balance</span><span class="v set chev">Rp 12.400.000</span></div>
+      <div class="r"><span>As of</span><span class="v set chev">1 Oct 2026</span></div>
+    </div>
+    <div class="ft">What the account held on that day. Every balance after it is counted from here.</div>
+  </div>
+  <div class="phone">
+    <p class="cap">2 · Credit card → Settings</p><p class="note">New on a card: <b>Owed</b> and <b>As of</b>: what the card owed on the day the app started counting it.</p>
+    <div class="bar"><span class="l">‹ BCA Visa</span><b>Settings</b><span class="r"></span></div>
+    <div class="grp">
+      <div class="r"><span>Statement day</span><span class="v set chev">17</span></div>
+      <div class="r"><span>Due day</span><span class="v set chev">5</span></div>
+      <div class="r"><span>Limit</span><span class="v set chev">Rp 40.000.000</span></div>
+    </div>
+    <div class="hd">Starting balance</div>
+    <div class="grp new">
+      <div class="r"><span>Owed</span><span class="v set chev">Rp 3.150.000</span></div>
+      <div class="r"><span>As of</span><span class="v set chev">1 Oct 2026</span></div>
+    </div>
+    <div class="ft">Rp 0 when the card was paid off that day.</div>
+  </div>
+  <div class="phone">
+    <p class="cap">3 · Tapping Balance / Owed</p><p class="note">The usual keypad sheet. Under the figure: what the change does to today's balance.</p>
+    <div class="bar"><span class="l">Cancel</span><b>Balance on 1 Oct</b><span class="r">Save</span></div>
+    <div class="big">Rp 12.900.000<small>was Rp 12.400.000</small></div>
+    <div class="diff">+Rp 500.000 on every balance from 1 Oct.<br>Today: Rp 8.730.000 → <b>Rp 9.230.000</b></div>
+    <div class="keys"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>000</span><span>0</span><span>⌫</span></div>
+  </div>
+  <div class="phone">
+    <p class="cap">4 · Save asks first</p><p class="note">Only when transactions come after that day. A statement already checked as matching says so too.</p>
+    <div class="bar"><span class="l">Cancel</span><b>Balance on 1 Oct</b><span class="r">Save</span></div>
+    <div class="alert">
+      <div class="t">Change the starting balance?</div>
+      <div class="m">Every balance from 1 Oct moves by +Rp 500.000, including today's. The Oct statement check will be read again.<br><br>To fix only today's figure, use Adjust on the account page instead.</div>
+      <div class="b bold">Change it</div>
+      <div class="b">Use Adjust instead</div>
+      <div class="b">Cancel</div>
+    </div>
+  </div>
+</div>
+<p class="key"><span></span>new or changed · figures are invented</p>
+</body></html>
