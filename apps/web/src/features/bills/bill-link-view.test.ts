@@ -50,3 +50,9 @@ describe('what a tap on a bill in the receipt’s list does', () => {
     expect(billTapAction({ ...ready, locked: true, linked: true })).toBe('none');
   });
 });
+
+describe('a paused month under the Month row', () => {
+  it('says it is paused, as a skipped month says it is skipped', () => {
+    expect(refusalText('PAUSED', '2026-11', 'That month is paused')).toBe('November 2026 is paused. Resume the bill first.');
+  });
+});

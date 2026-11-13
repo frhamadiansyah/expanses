@@ -12,6 +12,7 @@ import {
   listAccounts,
   listTransactions,
   monthlyBills,
+  pauseBill,
   postTransaction,
   RecurringError,
   recordBillPayments,
@@ -365,6 +366,18 @@ it('the quick link never moves a link the purchase has: linking it to another bi
   expect(await billOfPurchase(h.database, h.ws, purchase)).toMatchObject({ templateId: h.bill, billMonth: '2026-10' });
   const otherOctober = (await billDetail(h.database, h.ws, other, TODAY)).history.find((m) => m.month === '2026-10');
   expect(otherOctober?.state).not.toBe('paid');
+});
+
+it('a paused month is refused as a skipped one is, and the list asks about it', async () => {
+  const h = await setup();
+  // Paused from November until January: November and December have no bill.
+  await pauseBill(h.database, h.ws, h.bill, '2027-01', '2026-11-01');
+  expect(await billLinkRefusal(h.database, h.ws, { templateId: h.bill, billMonth: '2026-11', today: '2026-11-13' })).toMatchObject({ code: 'PAUSED' });
+  expect((await billLinkMonths(h.database, h.ws, { templateIds: [h.bill], purchasedOn: '2026-11-03', today: '2026-11-13' }))[h.bill]).toMatchObject({ month: '2026-11', ask: true });
+  const purchase = await h.buy('2026-11-03', 395_000);
+  expect(await h.code(linkPurchaseToBill(h.database, h.ws, { templateId: h.bill, billMonth: '2026-11', transactionId: purchase, today: '2026-11-13' }))).toBe('PAUSED');
+  // October, not paused, still links.
+  expect(await billLinkRefusal(h.database, h.ws, { templateId: h.bill, billMonth: '2026-10', today: '2026-11-13' })).toBeNull();
 });
 
 it('reads the months of many bills in one go, each as it reads alone', async () => {

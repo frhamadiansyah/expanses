@@ -41,6 +41,7 @@ export function wheelYears(purchaseMonth: string, todayMonth: string): string[] 
 export function refusalText(code: string | undefined, month: string, fallback: string): string {
   if (code === 'ALREADY_SETTLED') return `${monthWithYear(month)} is already paid`;
   if (code === 'SKIPPED') return `${monthWithYear(month)} is skipped. Unskip it first.`;
+  if (code === 'PAUSED') return `${monthWithYear(month)} is paused. Resume the bill first.`;
   return fallback;
 }
 
