@@ -1,4 +1,4 @@
-import { compareWithinDay, dayNet, formatMinor, isExchangeResultKey, isNotCountedKey, isUncategorisedKey, matchesSearch, parsePeriod } from '@expanses/core';
+import { compareWithinDay, dayNet, formatMinor, isExchangeResultKey, isNotCountedKey, isUncategorisedKey, matchesSearch, parsePeriod, transferName } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, SharedTransferRow, TransactionEntryView, TransactionView } from '@expanses/db';
 import type { PurchasePoints } from '../../lib/purchase-points';
 import { formatPoints } from '../cards/format-points';
@@ -81,6 +81,8 @@ export interface ListRow {
   last4: string | null;
   /** The digits named in a two-sided label, in its order: what a search by digits finds such a row by. Absent when none. */
   sidesLast4?: string[];
+  /** What a transfer is called when its two accounts say so: "Cash withdrawal", "Currency exchange", "Cash deposit". Absent otherwise. */
+  transferName?: string;
   /** A transfer's fee in the row's currency, read under its amount ("+ Rp 10.000"); absent on anything else. */
   feeMinor?: number;
   /** The currency the fee was charged in, when it is not the row's (a transfer between two currencies). */
@@ -317,6 +319,9 @@ export function buildRows(
     }));
     const sidesLast4 = sides.flatMap((side) => (side.last4 ? [side.last4] : []));
     const type: RowType = tx.entries.some((e) => isPerson(e.accountId)) ? 'debt' : c.type;
+    // Named by the two accounts the money moved between; a fee or an exchange spread beside them is not a side.
+    const moved = type === 'transfer' && money.length === 2 ? [...money].sort((a, b) => a.amountMinor - b.amountMinor) : [];
+    const named = moved.length === 2 ? transferName({ subtype: moved[0]!.accountSubtype ?? '', currency: moved[0]!.currency }, { subtype: moved[1]!.accountSubtype ?? '', currency: moved[1]!.currency }) : null;
     // Signed, so money back on a purchase (a refund credits its category) takes away from spending rather than adding to it.
     // `counted` leaves out the lines switched to Exclude from report on their own (0096), which the day's total must not add.
     const baseOf = (kind: 'expense' | 'income', counted = false) =>
@@ -346,6 +351,7 @@ export function buildRows(
       // a pocket's row keeps its currency beside its digits, where another account shows its digits alone
       ...(!between && accountIds.length === 1 && pocketCode(accountIds[0]!) ? { pocketCurrency: pocketCode(accountIds[0]!)! } : {}),
       ...(sidesLast4.length > 0 ? { sidesLast4 } : {}),
+      ...(named ? { transferName: named } : {}),
       ...(c.feeMinor ? { feeMinor: c.feeMinor, ...(c.feeCurrency ? { feeCurrency: c.feeCurrency } : {}) } : {}),
       holderName: card?.holderName ?? null,
       deleted: tx.status === 'void',

@@ -14,7 +14,7 @@ import { type BillMonthRow, billsInMonth, cardStatements, debtMovements, type De
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useMemo } from 'react';
 import { useApp } from '../../app/context';
-import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
+import { useAccounts, useBalances, useInvalidateAll, useMemberPayers } from '../../lib/queries';
 import { useHeldRates } from '../accounts/queries';
 import { usePeopleDebts } from '../debts/queries';
 import { useCardFacts, useInstallments, useLoanItems, useLoans } from '../loans/queries';
@@ -23,7 +23,7 @@ import { methodOf, type PlanSummary, planSummary } from './plan-view';
 import { billCurrencyOf } from '../bills/bill-view';
 import { cycleDueIn, dueDateAfter } from '../cards/statement-dates';
 import type { PlanItem } from './plan-inputs';
-import { type CardMonth, type DueBill, dueItems, dueRow, type DueRowModel, type MonthInput, monthItems } from './schedule-view';
+import { billCover, type CardMonth, type DueBill, dueItems, dueRow, type DueRowModel, type MonthInput, monthItems } from './schedule-view';
 import { useMonthlyBills } from '../bills/queries';
 
 /** Every open loan's standing and schedule from today (spec §6.2). */
@@ -228,15 +228,11 @@ export function usePlanMonth(month: string | null, show: MonthInput['show'] = AL
   const before = useBillsInMonth(month === null ? null : addMonths(month, -1));
   const bills = useBillsInMonth(month);
   const accounts = useAccounts();
+  const members = useMemberPayers();
   const rows = [...(before.data ?? []), ...(bills.data ?? [])];
   const currencyOf = (row: BillMonthRow) => billCurrencyOf(row.bill, accounts.data ?? [], ws.baseCurrency);
-  /** A bill paid from a credit card, by the card's name: its statement already counts it. */
-  const cardNameOf = (accountId: string) => {
-    const payer = (accounts.data ?? []).find((a) => a.id === accountId);
-    return payer?.subtype === 'credit_card' ? payer.name : null;
-  };
   const held = useHeldRates(rows.map(currencyOf));
-  const queries = [cards, before, bills, accounts, held];
+  const queries = [cards, before, bills, accounts, members, held];
   const failed = error ?? facts.error ?? queries.find((q) => q.error)?.error ?? null;
   if (month === null || !model || !facts.data || !queries.every((q) => q.isSuccess)) return { items: null, error: failed };
   return {
@@ -246,7 +242,8 @@ export function usePlanMonth(month: string | null, show: MonthInput['show'] = AL
       debts: model.debts,
       loanFacts: facts.data,
       cards: cards.data![month] ?? [],
-      bills: rows.map((row) => ({ row, currency: currencyOf(row), onCard: cardNameOf(row.bill.moneyAccountId) })),
+      // A bill on a card, or another member's own account, is listed but counted elsewhere: the same on both phones.
+      bills: rows.map((row) => ({ row, currency: currencyOf(row), cover: billCover(row.bill.moneyAccountId, accounts.data!, members.data!) })),
       show,
       baseCurrency: ws.baseCurrency,
       ratesToBase: { ...(held.data?.rates ?? {}), ...model.ratesToBase },
@@ -291,12 +288,10 @@ export function useDueRow(): DueRowModel | null {
   const facts = useLoanPlanFacts(today);
   const bills = useMonthlyBills(today);
   const accounts = useAccounts();
-  if (!model || !facts.data || !bills.data || !accounts.data) return null;
+  // A bill another member pays from an account of their own is on their phone's row, not this one's (`billCover`).
+  const members = useMemberPayers();
+  if (!model || !facts.data || !bills.data || !accounts.data || !members.data) return null;
   const all = accounts.data;
-  const onCard = (accountId: string) => {
-    const payer = all.find((a) => a.id === accountId);
-    return payer?.subtype === 'credit_card' ? payer.name : null;
-  };
-  const due: DueBill[] = bills.data.map((bill) => ({ bill, currency: billCurrencyOf(bill, all, ws.baseCurrency), onCard: onCard(bill.moneyAccountId) }));
+  const due: DueBill[] = bills.data.map((bill) => ({ bill, currency: billCurrencyOf(bill, all, ws.baseCurrency), cover: billCover(bill.moneyAccountId, all, members.data) }));
   return dueRow(dueItems({ debts: model.debts, loanFacts: facts.data, bills: due, today, baseCurrency: ws.baseCurrency, ratesToBase: model.ratesToBase }), today);
 }

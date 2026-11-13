@@ -1108,7 +1108,7 @@ export function TransactionsPage() {
       row.type === 'debt'
         ? 'Lend & borrow'
         : row.type === 'transfer'
-          ? 'Transfer'
+          ? (row.transferName ?? 'Transfer')
           : row.type === 'opening'
             ? // A holding owned before the app is bought against Opening Balances: a purchase, not a first balance.
               tradeByTransaction.has(tx.id)

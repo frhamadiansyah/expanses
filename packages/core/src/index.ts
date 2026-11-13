@@ -76,6 +76,7 @@ export {
 } from './ledger/lines';
 export { displayAmount, netWorth, type NetWorthAccount, type NetWorthResult } from './ledger/balances';
 export { isNotCountedKey, NOT_COUNTED_KEY, NOT_COUNTED_LINE } from './ledger/not-counted';
+export { transferName, type TransferName, type TransferSide } from './ledger/transfer-name';
 export { addMonths, daysInMonth, isoDate, lastNMonths, monthOf, monthRange } from './reports/periods';
 export {
   BILL_DUE_SOON_DAYS,

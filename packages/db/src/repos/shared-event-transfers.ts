@@ -1,3 +1,4 @@
+import { transferName } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -42,6 +43,11 @@ export interface SharedEventTransferView {
    */
   fromName: string | null;
   toName: string | null;
+  /**
+   * What the two accounts make the transfer ("Cash withdrawal"), known only where their kinds are: the recorder's own
+   * phone. The partner's copy carries names alone, so it reads null there and the row keeps its note as its title.
+   */
+  name?: string | null;
   /** The recorder's own transaction, on the recorder's phone: what a tap opens. Null on the partner's phone. */
   transactionId: string | null;
 }
@@ -168,12 +174,14 @@ export async function eventTransferOf(database: Database, transactionId: string)
 }
 
 /** The account names of a transfer recorded here: the largest line out and the largest line in. */
-async function ownNamesTx(db: Db, transactionId: string): Promise<{ fromName: string | null; toName: string | null }> {
-  const lines = await db.values<[number, string]>(sql`
-    SELECT e.amount_minor, a.name FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = ${transactionId} AND a.kind IN ('asset', 'liability')`);
+async function ownNamesTx(db: Db, transactionId: string): Promise<{ fromName: string | null; toName: string | null; name: string | null }> {
+  const lines = await db.values<[number, string, string, string]>(sql`
+    SELECT e.amount_minor, a.name, a.subtype, e.currency FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = ${transactionId} AND a.kind IN ('asset', 'liability')`);
   const out = lines.filter(([amount]) => Number(amount) < 0).sort((a, b) => Number(a[0]) - Number(b[0]))[0];
   const into = lines.filter(([amount]) => Number(amount) > 0).sort((a, b) => Number(b[0]) - Number(a[0]))[0];
-  return { fromName: out?.[1] ?? null, toName: into?.[1] ?? null };
+  // Named only by a plain two-sided transfer; a fee line beside it is not a money account.
+  const name = lines.length === 2 && out && into ? transferName({ subtype: out[2], currency: out[3] }, { subtype: into[2], currency: into[3] }) : null;
+  return { fromName: out?.[1] ?? null, toName: into?.[1] ?? null, name };
 }
 
 /** The household's transfers listed on an event book, oldest first. Only a phone in that household holds any. */
