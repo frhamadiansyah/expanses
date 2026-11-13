@@ -184,7 +184,8 @@ export function TransactionsPage() {
   const navigate = useNavigate({ from: '/transactions' });
   const search = route.useSearch();
   const month = search.month ?? monthOf(isoDate());
-  const accounts = useAccounts().data ?? [];
+  const accountsQuery = useAccounts();
+  const accounts = accountsQuery.data ?? [];
   // Category pickers and filters on this page read the open book; money accounts are every book's.
   const inBook = useInOpenBook();
   // A shared event's own copies of its categories are filed in no book; kept out even before the book's list is read.
@@ -192,8 +193,10 @@ export function TransactionsPage() {
   const inOpenBook = (a: AccountRow) => inBook(a) && !shareIds.has(a.id);
   // And no picker on this page offers a set category: they belong to an event (§6). The row editor's cell used
   // to, because it went through a second filter that had no membership test.
-  const membership = useCategorySetMembership().data ?? {};
-  const cards = useCards().data ?? [];
+  const membershipQuery = useCategorySetMembership();
+  const membership = membershipQuery.data ?? {};
+  const cardsQuery = useCards();
+  const cards = cardsQuery.data ?? [];
   // The digits a row shows when no card paid: a wallet's phone, or a bank account's own number (0080).
   const wallets = useWalletLast4().data;
   const numbers = useAccountNumberLast4().data;
@@ -711,7 +714,7 @@ export function TransactionsPage() {
     stopSelecting();
   }
 
-  const rowOptions = buildRowOptions(accounts, cards, inOpenBook, membership);
+  const rowOptions = buildRowOptions(accounts, cards, inOpenBook, membership, accountsQuery.isSuccess && cardsQuery.isSuccess && membershipQuery.isSuccess);
   // Only what can pay: the form's own rule, so a locked deposit or a house is not a choice here either.
   const paidKept = filters.paid.startsWith('acct:')
     ? filters.paid.slice('acct:'.length)

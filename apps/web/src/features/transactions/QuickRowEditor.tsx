@@ -27,6 +27,8 @@ export function buildRowOptions(
   inOpenBook: (a: AccountRow) => boolean = () => true,
   /** Which categories belong to a category set. They belong to an event (§6), so no picker offers them. */
   membership: Record<string, unknown> = {},
+  /** False while the queries these lists come from are still loading; the cells wait rather than offer nothing. */
+  ready = true,
 ) {
   const money = moneyHolders(accounts);
   const toCombo = (option: PaymentOption): ComboOption => ({
@@ -51,6 +53,7 @@ export function buildRowOptions(
     .sort((x, y) => (x.keywords ?? '').localeCompare(y.keywords ?? ''));
   const categoryMatch = categoryRows.map((a) => ({ id: a.id, name: a.name, parentName: a.parentId ? (byId.get(a.parentId)?.name ?? null) : null }));
   return {
+    ready,
     /**
      * The paid-with list for one row. Built here rather than handed over whole, because what a row may offer
      * depends on what it already names: a purchase recorded against a house still has to show the house, and one
@@ -147,6 +150,7 @@ export function QuickRowEditor({
         value={paymentKey(values.accountId, values.cardId)}
         options={options.paidFor(paymentKey(values.accountId, values.cardId))}
         resolve={options.resolvePaid}
+        disabled={!options.ready}
         invalid={missing('paid with')}
         onChange={(key) => {
           const [accountId = '', cardId = ''] = key.split(':');
@@ -159,6 +163,7 @@ export function QuickRowEditor({
         value={values.categoryId}
         options={options.categories}
         resolve={options.resolveCategory}
+        disabled={!options.ready}
         invalid={missing('category')}
         onChange={(categoryId) => onChange({ categoryId })}
       />

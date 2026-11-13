@@ -436,6 +436,8 @@ async function typeRow(page: Page, description: string, amount: string) {
   await typing.getByLabel('Row amount (IDR)').pressSequentially(amount);
   for (const [label, text] of [['Row paid with', 'jenius'], ['Row category', 'groceries']] as const) {
     const cell = typing.getByLabel(label);
+    // The cell waits (disabled) while the accounts and categories it offers are still loading; typing sooner is lost.
+    await expect(cell).toBeEnabled();
     await cell.pressSequentially(text);
     await cell.press('Enter');
   }
