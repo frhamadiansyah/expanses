@@ -46,17 +46,20 @@ export type BillCover = { card: string } | { member: string | null };
  * its list, the account is another member's own: a bill arrives on a partner's phone naming a placeholder for its payer,
  * never their account (spec §4.4), so whether it is a card cannot be known here — and the payer's phone already
  * reminds them, by its card or on its own row. Left to the payer, then, by the member's name when it is theirs
- * (`memberPayers`, the placeholders by name). So a bill on her own card is out of both phones' Cashflow rows and both
- * plans' totals alike.
+ * (`memberPayers`, the placeholders by member). So a bill on her own card is out of both phones' Cashflow rows and both
+ * plans' totals alike. A placeholder for this phone's own member (a restored or new phone gets its own bills back on
+ * one) is no one else's: such a bill stays this phone's to pay.
  */
 export function billCover(
   accountId: string,
   accounts: readonly { id: string; subtype: string; name: string }[],
-  memberPayers: ReadonlyMap<string, string>,
+  memberPayers: ReadonlyMap<string, { name: string; self: boolean }>,
 ): BillCover | null {
   const payer = accounts.find((a) => a.id === accountId);
   if (payer) return payer.subtype === 'credit_card' ? { card: payer.name } : null;
-  return { member: memberPayers.get(accountId) ?? null };
+  const member = memberPayers.get(accountId);
+  if (member?.self) return null;
+  return { member: member?.name ?? null };
 }
 
 const coverWords = (cover: BillCover): string => ('card' in cover ? `on ${cover.card}` : `paid by ${cover.member ?? 'another member'}`);

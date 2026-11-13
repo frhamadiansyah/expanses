@@ -220,7 +220,7 @@ export function BillPage({ billId }: { billId: string }) {
           }
         />
         {bill.currency ? <ReadOnlyRow label="Currency" value={bill.currency} /> : null}
-        <ReadOnlyRow label="Paid from" value={account ? paidName(account) : (memberPayers?.get(bill.moneyAccountId) ?? '')} />
+        <ReadOnlyRow label="Paid from" value={account ? paidName(account) : (memberPayers?.get(bill.moneyAccountId)?.name ?? '')} />
         <ReadOnlyRow label="Category" value={category?.name ?? ''} />
         {bookName ? <ReadOnlyRow label="Workspace" value={bookName} /> : null}
       </InsetGroup>

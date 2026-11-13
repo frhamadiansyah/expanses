@@ -236,8 +236,11 @@ describe('who answers for a bill (billCover)', () => {
     expect(billCover('bank', accounts, new Map())).toBeNull();
   });
   it("an account this phone does not hold is another member's: by the member's name when it is their placeholder", () => {
-    expect(billCover('ph-1', accounts, new Map([['ph-1', 'Sari']]))).toEqual({ member: 'Sari' });
+    expect(billCover('ph-1', accounts, new Map([['ph-1', { name: 'Sari', self: false }]]))).toEqual({ member: 'Sari' });
     expect(billCover('gone', accounts, new Map())).toEqual({ member: null });
+  });
+  it("a placeholder for this phone's own member (a restored phone's own bill) is this phone's own to pay", () => {
+    expect(billCover('ph-me', accounts, new Map([['ph-me', { name: 'Bima', self: true }]]))).toBeNull();
   });
 });
 
@@ -246,7 +249,7 @@ describe("a bill on one member's own card, seen from both phones", () => {
   const payerPhone = [{ id: 'card-sari', subtype: 'credit_card', name: 'Sari Card' }];
   const partnerPhone = [{ id: 'bank-bima', subtype: 'bank', name: 'Bima Bank' }];
   const onPayer = billCover('card-sari', payerPhone, new Map());
-  const onPartner = billCover('ph-sari', partnerPhone, new Map([['ph-sari', 'Sari']]));
+  const onPartner = billCover('ph-sari', partnerPhone, new Map([['ph-sari', { name: 'Sari', self: false }]]));
   const late = electricity('overdue');
   const row = (cover: ReturnType<typeof billCover>) => ({ bill: { ...late.bill, window: late.window, state: late.state, estimateMinor: late.estimateMinor }, currency: 'IDR', cover });
 
@@ -263,6 +266,14 @@ describe("a bill on one member's own card, seen from both phones", () => {
     expect(theirs.find((i) => i.kind === 'bill')).toMatchObject({ detail: 'Bill · 20 Nov · paid by Sari', inTotals: false });
     expect(monthTotals(theirs, '2026-11')).toEqual(monthTotals(mine, '2026-11'));
     expect(dueRow(theirs, '2026-11-18')).toEqual(dueRow(mine, '2026-11-18'));
+  });
+  it("late on a restored phone's own placeholder, it is asked for, as on the phone it was made on", () => {
+    const own = billCover('ph-me', partnerPhone, new Map([['ph-me', { name: 'Bima', self: true }]]));
+    const items = dueItems({ debts: [], loanFacts: [], bills: [row(own)], today: '2026-12-04' });
+    expect(items).toMatchObject([{ kind: 'bill', status: 'late', title: 'Electricity' }]);
+    expect(items).toEqual(dueItems({ debts: [], loanFacts: [], bills: [row(billCover('bank-bima', partnerPhone, new Map()))], today: '2026-12-04' }));
+    const plan = monthItems({ ...input('2026-11-04'), bills: [{ row: electricity(), currency: 'IDR', cover: own }] });
+    expect(plan.find((i) => i.kind === 'bill')).toMatchObject({ detail: 'Bill · 20 Nov', inTotals: true });
   });
   it('a member not known by name reads as another member', () => {
     const items = monthItems({ ...input('2026-11-04'), bills: [{ row: electricity(), currency: 'IDR', cover: { member: null } }] });
