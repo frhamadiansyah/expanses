@@ -6,14 +6,15 @@ import { useApp } from '../../app/context';
 import { canTradeCashWith } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { ratePreview } from '../../lib/rates';
-import { cx } from '../../ui';
-import { type GroupChild, InsetGroup, InsetRow, PickerRow, ROW_PAD_X, ROW_PAD_Y, rowHeight, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { cx, RowHint } from '../../ui';
+import { type GroupChild, InsetGroup, InsetRow, PickerRow, ROW_PAD_X, ROW_PAD_Y, rowHeight, SelectRow, TextRow } from '../../ui/native';
 import { useGoals } from '../goals/queries';
 import { tradeDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { CategoryOptions } from '../cards/options';
 import { PaymentSheet } from '../transactions/PaymentSheet';
-import { detailsToggleLabel } from '../transactions/tx-form';
+import { FieldRow, FormRows } from '../transactions/FormRow';
+import { DetailsToggle, TradeDetailRows } from '../transactions/TradeRows';
 import { GoalParts } from './GoalParts';
 import { SPLIT } from './goal-parts-form';
 import { emptyTradeDetails, pairRate, type TradeDetailsDraft, withDetails } from './trade-details';
@@ -195,9 +196,6 @@ export function HoldingRow({ icon, name, subtitle, position }: GroupChild & { ic
   return <InsetRow position={position} icon={icon} title={name} subtitle={subtitle} testId="trade-holding" />;
 }
 
-/** The goal select's stand-in for no goal, so the row reads "None" rather than an empty answer. */
-const NO_GOAL = '__none';
-
 /**
  * What the sheet keeps behind "Add more details": the draft, whether it is open, and the day rate the save could not
  * find. Folding it away keeps every value, and the save still sends them. Picking an account in another currency
@@ -254,20 +252,21 @@ export function useTradeDetails(o: { holdingCurrency: string; cashCurrency: stri
 export type TradeDetailsState = ReturnType<typeof useTradeDetails>;
 
 /**
- * The second box, under the first and opened by the plain toggle under it, as Add transaction and a new debt fold
- * theirs: Fee, Tax withheld, the goal, and Rate that day when the money account is in another currency. `emptyWord`
- * is what an empty Fee or Tax withheld means — "None", or a listed share's "Worked out". The first box never moves.
+ * What a short Buy / Sell sheet keeps behind Add more details, drawn as Trade draws it (owner, 13 Nov 2026): Goal (From
+ * goal on a sell), a card's Category for points and MCC, Fee, Tax withheld on a sell, then Past purchase and the rate
+ * rows the money's currency asks for — one group, one line each — and the split between goals under it. Folding it
+ * away keeps every value, and the save still sends them. `problem` is the reason the details cannot be read yet.
  */
-export function TradeDetails({
+export function SheetTradeDetails({
   kind,
   details,
   currency,
-  emptyWord,
   whole,
   byMoney = false,
   unitLabel,
   problem,
   past,
+  points,
 }: {
   /** A trade made before the app: the switch that records it against Opening Balances, no account moving. */
   past?: { on: boolean; set: (on: boolean) => void };
@@ -275,101 +274,87 @@ export function TradeDetails({
   details: TradeDetailsState;
   /** The holding's currency: the fee and tax are in it. */
   currency: string;
-  emptyWord: string;
   /** The trade's own units (or, by money, its amount), as typed: what a split between goals divides. */
   whole: string;
   byMoney?: boolean;
   unitLabel: string;
   problem: string | null;
+  /** A buy on a credit card: its category for points and MCC, kept with the other details. */
+  points?: { accounts: readonly AccountRow[] };
 }) {
   const { ws } = useApp();
   const { draft, change, goals, pair, needsRate } = details;
-  const amountMode = currency === 'IDR' ? 'numeric' : 'decimal';
+  const pickGoal = (goalId: string) =>
+    change(
+      goalId === SPLIT && draft.parts.length === 0
+        ? { goalId, parts: [{ goalId: draft.goalId && draft.goalId !== SPLIT ? draft.goalId : (goals[0]?.id ?? ''), amount: '' }] }
+        : { goalId },
+    );
+  const grouped = (field: 'fee' | 'tax') => ({
+    value: draft[field],
+    onChange: (text: string) => change({ [field]: groupTypedAmount(text, currency) }),
+  });
   return (
     <>
       {details.open && (
         <>
-          <InsetGroup footer={problem ?? undefined}>
-            {past ? (
-              <SwitchRow
-                label={kind === 'buy' ? 'Past purchase' : 'Past sale'}
-                checked={past.on}
-                onChange={past.set}
-                info={kind === 'buy' ? "Bought earlier, so no account's balance moves." : "Sold earlier, so no account's balance moves."}
-              />
-            ) : null}
-            <TypedRow
-              label="Fee"
-              value={draft.fee}
-              onChange={(e) => change({ fee: groupTypedAmount(e.target.value, currency) })}
-              inputMode={amountMode}
-              placeholder={emptyWord}
-            />
-            <TypedRow
-              label="Tax withheld"
-              value={draft.tax}
-              onChange={(e) => change({ tax: groupTypedAmount(e.target.value, currency) })}
-              inputMode={amountMode}
-              placeholder={emptyWord}
-            />
-            {goals.length > 0 ? (
-              <SelectRow
-                label={kind === 'sell' ? 'Sell from goal' : 'For goal'}
-                value={draft.goalId || NO_GOAL}
-                onChange={(e) => {
-                  const goalId = e.target.value === NO_GOAL ? '' : e.target.value;
-                  change(
-                    goalId === SPLIT && draft.parts.length === 0
-                      ? { goalId, parts: [{ goalId: draft.goalId && draft.goalId !== SPLIT ? draft.goalId : (goals[0]?.id ?? ''), amount: '' }] }
-                      : { goalId },
-                  );
-                }}
-              >
-                <option value={NO_GOAL}>None</option>
-                {goals.map((goal) => (
-                  <option key={goal.id} value={goal.id}>
-                    {goal.name}
-                  </option>
-                ))}
-                {goals.length > 1 && <option value={SPLIT}>Split between goals…</option>}
-              </SelectRow>
-            ) : null}
-            {pair ? (
-              <TextRow
-                label="Rate that day"
-                hint={ratePreview(draft.rate, pair.from, pair.to) ?? `${pair.to} per 1 ${pair.from}`}
-                value={draft.rate}
-                onChange={(e) => change({ rate: e.target.value })}
-                inputMode="decimal"
-                placeholder="Rate"
-              />
-            ) : null}
-            {needsRate ? (
-              <TextRow
-                label={details.dayRateLabel}
-                hint={ratePreview(details.dayRate, needsRate, ws.baseCurrency) ?? `${ws.baseCurrency} per 1 ${needsRate}`}
-                value={details.dayRate}
-                onChange={(e) => details.setDayRate(e.target.value)}
-                inputMode="decimal"
-                placeholder="Rate"
-              />
-            ) : null}
-          </InsetGroup>
-          {draft.goalId === SPLIT && (
-            <div style={{ marginBottom: 18 }}>
-              <GoalParts parts={draft.parts} onChange={(parts) => change({ parts })} goals={goals} whole={whole} byMoney={byMoney} currency={currency} unitLabel={unitLabel} />
-            </div>
-          )}
+          <FormRows>
+            <TradeDetailRows
+              kind={kind}
+              goal={{ goals, value: draft.goalId, onPick: pickGoal, split: true }}
+              {...(points
+                ? {
+                    points: {
+                      accounts: points.accounts,
+                      categoryId: draft.spendCategoryId,
+                      mcc: draft.mcc,
+                      onCategory: (spendCategoryId: string) => change({ spendCategoryId }),
+                      onMcc: (mcc: string) => change({ mcc }),
+                    },
+                  }
+                : {})}
+              fee={{ label: 'Fee', ...grouped('fee') }}
+              // A buy's tax is the sell's alone now; one typed on a buy before stays in view so it is never hidden.
+              {...(kind === 'sell' || draft.tax.trim() !== '' ? { tax: { label: 'Tax withheld', ...grouped('tax') } } : {})}
+              {...(past
+                ? {
+                    past: {
+                      label: kind === 'buy' ? 'Past purchase' : 'Past sale',
+                      on: past.on,
+                      set: past.set,
+                      info: kind === 'buy' ? "Bought earlier, so no account's balance moves." : "Sold earlier, so no account's balance moves.",
+                    },
+                  }
+                : {})}
+            >
+              {pair ? (
+                <FieldRow
+                  label="Rate that day"
+                  // Always a line under it, so the field is never redrawn (and its typing lost) as the preview appears.
+                  hint={ratePreview(draft.rate, pair.from, pair.to) ?? `${pair.to} per 1 ${pair.from}`}
+                  value={draft.rate}
+                  onChange={(rate) => change({ rate })}
+                  inputMode="decimal"
+                  placeholder="Rate"
+                />
+              ) : null}
+              {needsRate ? (
+                <FieldRow
+                  label={details.dayRateLabel}
+                  hint={ratePreview(details.dayRate, needsRate, ws.baseCurrency) ?? `${ws.baseCurrency} per 1 ${needsRate}`}
+                  value={details.dayRate}
+                  onChange={details.setDayRate}
+                  inputMode="decimal"
+                  placeholder="Rate"
+                />
+              ) : null}
+            </TradeDetailRows>
+          </FormRows>
+          {problem && <RowHint>{problem}</RowHint>}
+          {draft.goalId === SPLIT && <GoalParts parts={draft.parts} onChange={(parts) => change({ parts })} goals={goals} whole={whole} byMoney={byMoney} currency={currency} unitLabel={unitLabel} />}
         </>
       )}
-      <button
-        type="button"
-        aria-expanded={details.open}
-        onClick={details.toggle}
-        className="ph-focus mb-[18px] flex min-h-11 w-full items-center justify-center rounded-full text-[15px] font-medium text-[var(--ph-ink-2)]"
-      >
-        {detailsToggleLabel(details.open)}
-      </button>
+      <DetailsToggle open={details.open} onToggle={details.toggle} />
     </>
   );
 }

@@ -91,7 +91,10 @@ function MoneyField({
   disabled = false,
   typing = false,
   end = false,
+  invalid = false,
 }: {
+  /** The figure is refused as it stands (a sell of more than is held): said to a screen reader. */
+  invalid?: boolean;
   field: MoneyFieldSpec;
   /** The figure sits at the row's end, as a value on the right of a row does: the fee beside its category. */
   end?: boolean;
@@ -126,7 +129,7 @@ function MoneyField({
        * the most-pressed control on the card. `self-stretch` gives the button its row's height and the inner
        * span keeps the figure exactly where it was, so this changes what receives the tap and not the look.
        */
-      <button type="button" aria-label={label} onClick={onKeypad} disabled={disabled} className={cx(className, 'flex items-center self-stretch', end ? 'justify-end text-right' : 'text-left')}>
+      <button type="button" aria-label={label} aria-invalid={invalid || undefined} onClick={onKeypad} disabled={disabled} className={cx(className, 'flex items-center self-stretch', end ? 'justify-end text-right' : 'text-left')}>
         {/* Nothing typed yet: the cursor stands before the placeholder's first letter, as in any empty field, not after the word. */}
         {typing && !value && <span aria-hidden data-testid="typing-mark" className="ph-caret" style={{ marginLeft: 0, marginRight: -1 }} />}
         <span className="min-w-0 truncate">{value ? amountFace(value, currency, refund, fractional) : <span className="text-[var(--ph-ink-3)]">{placeholder}</span>}</span>
@@ -138,6 +141,7 @@ function MoneyField({
     <input
       ref={inputRef}
       aria-label={label}
+      aria-invalid={invalid || undefined}
       inputMode="decimal"
       value={value}
       disabled={disabled}
@@ -501,6 +505,98 @@ export function FeeRow({
       {keypad && (
         <Keypad value={field.value} currency={field.currency} label={field.label} onChange={onChange} onClose={() => setKeypad(false)} />
       )}
+    </>
+  );
+}
+
+/**
+ * One money figure on a row of its own, drawn exactly as Expense's amount row draws its single figure: the currency's
+ * flag in the lead, the code before the figure ("IDR 3.980.000"), the clear ✕ once there is something to clear, and
+ * on a phone the dock to type it on. The trade forms use it (owner, 13 Nov 2026), where the figure is not
+ * `draft.amount`: it is handed in and handed back as text, which each form reads exactly as it always has.
+ *
+ * The flag is only drawn: a trade's money is in its holding's currency, or its account's, never one chosen here.
+ */
+export function FigureRow({
+  field,
+  flag,
+  onChange,
+  code,
+  placeholder = 'Amount',
+  pill,
+  clearLabel = 'Clear amount',
+  invalid = false,
+}: {
+  /** The figure is refused as it stands: more than is held. */
+  invalid?: boolean;
+  /** Its accessible name, its text and the currency it is read in. */
+  field: MoneyFieldSpec;
+  /** The flag to draw for `field.currency`. */
+  flag: string;
+  onChange: (value: string) => void;
+  /** What is printed before the figure; the field's currency code when left out. */
+  code?: string;
+  placeholder?: string;
+  /** A pill after the figure: a sell's All. Pressing it puts the dock away. */
+  pill?: { label: string; on: boolean; run: () => void };
+  clearLabel?: string;
+}) {
+  const phone = usePhone();
+  const [keypad, setKeypad] = useState(false);
+  return (
+    <>
+      <div className={cx('flex items-center gap-[10px] pl-[10px]', keypad && 'relative z-40 bg-[var(--ph-surface)]')}>
+        <RowLead>
+          <span aria-hidden className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[15px] leading-none">
+            {flag}
+          </span>
+        </RowLead>
+        <span className={cx(ROW_BODY_FLUSH, 'gap-[10px]')}>
+          <span className="flex min-w-0 flex-1 items-center gap-[5px] self-stretch">
+            <span aria-hidden className="shrink-0 text-[12.5px] leading-4 font-semibold tracking-[0.2px] text-[var(--ph-ink-3)]">
+              {code ?? field.currency}
+            </span>
+            <MoneyField
+              field={field}
+              phone={phone}
+              onChange={onChange}
+              onKeypad={() => setKeypad((open) => !open)}
+              typing={keypad}
+              invalid={invalid}
+              placeholder={placeholder}
+              className="min-w-0 flex-1 text-[17px] leading-[22px] md:text-[15px] md:leading-5 text-[var(--ph-ink)] tabular ph-focus-inset"
+            />
+          </span>
+          {pill && (
+            <button
+              type="button"
+              aria-pressed={pill.on}
+              onClick={() => {
+                setKeypad(false);
+                pill.run();
+              }}
+              className={cx(
+                'ph-focus shrink-0 rounded-full px-[10px] py-[3px] text-[13px] leading-[18px] font-semibold',
+                pill.on ? 'bg-[var(--ph-tint)] text-[var(--ph-surface)]' : 'bg-[var(--ph-fill)] text-[var(--ph-tint)]',
+              )}
+            >
+              {pill.label}
+            </button>
+          )}
+          {field.value !== '' && (
+            <button
+              type="button"
+              aria-label={clearLabel}
+              onClick={() => onChange('')}
+              className="ph-focus ph-tap flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink-3)]"
+              style={{ '--ph-tap-y': '12px', '--ph-tap-x': '12px' } as CSSProperties}
+            >
+              <X size={12} aria-hidden />
+            </button>
+          )}
+        </span>
+      </div>
+      {keypad && <Keypad value={field.value} currency={field.currency} onChange={onChange} onClose={() => setKeypad(false)} />}
     </>
   );
 }

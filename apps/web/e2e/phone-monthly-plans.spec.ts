@@ -21,7 +21,8 @@ test('phone: a plan set on the holding is due on Recurring, recorded there, and 
   const row = page.getByTestId('plan-row');
   await expect(row.getByTestId('plan-status')).toHaveText('Due on the 5th · from BCA');
   await page.getByRole('button', { name: `Record ${FUND}` }).click();
-  await expect(sheet.getByLabel('What it cost, before fees (IDR)')).toHaveValue(/500\.000/);
+  // Expense's amount row: on a phone a button that opens the keypad, showing the plan's figure.
+  await expect(sheet.getByLabel('What it cost, before fees (IDR)')).toContainText(/500\.000/);
   await sheet.getByRole('button', { name: 'Record', exact: true }).click();
   await expect(sheet).toHaveCount(0);
   await expect(row.getByTestId('plan-status')).toHaveText('Bought · 12 Oct');

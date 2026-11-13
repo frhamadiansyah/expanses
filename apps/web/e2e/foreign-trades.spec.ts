@@ -3,7 +3,7 @@ import { addPurchase, chooseInvestment, chooseTradeMoney, openBuyOrSell, saveBut
 import { expectBalance } from './deposit-maturity';
 import { addHoldingFlow } from './securities';
 import { addMoneyAccount, goalCard, jeniusWithTwoGoals } from './set-aside';
-import { openTradeForm, openTradeRow, recordTrade, tradeForm } from './trades';
+import { openTradeDetails, openTradeForm, openTradeRow, pickTradeCash, recordTrade, tradeForm } from './trades';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -30,8 +30,8 @@ test('a USD holding’s Sell sells into a rupiah account at exactly the rupiah t
   await addMoneyAccount(page, 'BCA Tahapan', 'bank', '1000000');
   await addUsdStock(page);
   await openTradeForm(page, 'sell', 'AAPL');
-  await page.getByLabel('Money account').selectOption({ label: 'BCA Tahapan' });
-  await page.getByLabel('Units, shares or grams').pressSequentially('3');
+  await pickTradeCash(page, tradeForm(page), 'Received into', 'BCA Tahapan');
+  await page.getByLabel('Shares', { exact: true }).pressSequentially('3');
   await page.getByLabel(/Proceeds, before fees/).pressSequentially('642,90');
   await page.getByLabel('Charged in IDR').pressSequentially('10.447.125');
   await recordTrade(page);
@@ -52,8 +52,8 @@ test('a USD buy from Jenius asks which goal paid for the rupiah that left, not t
   await jeniusWithTwoGoals(page); // Jenius Rp 42.500.000, Rp 37.500.000 promised: Rp 5.000.000 free
   await addUsdStock(page);
   await openTradeForm(page, 'buy', 'AAPL');
-  await page.getByLabel('Money account').selectOption({ label: 'Jenius' });
-  await page.getByLabel('Units, shares or grams').pressSequentially('2');
+  await pickTradeCash(page, tradeForm(page), 'Paid with', 'Jenius');
+  await page.getByLabel('Shares', { exact: true }).pressSequentially('2');
   await page.getByLabel(/What it cost, before fees/).pressSequentially('418,50');
   await page.getByLabel('Charged in IDR').pressSequentially('6.800.000');
   // 6.800.000 − 5.000.000 free. Read off the dollar figure, 41.850 "rupiah" would have fitted and asked nothing.
@@ -73,9 +73,9 @@ test('the Buy / sell tab also asks which goal paid for the rupiah that left, on 
   await addUsdStock(page);
   const form = await openBuyOrSell(page);
   await chooseInvestment(form, 'AAPL · Stockbit');
+  await chooseTradeMoney(form, 'Jenius (IDR)');
   await form.getByLabel(/^What it cost, before fees/).fill('418,50');
   await form.getByLabel('Shares').fill('100'); // no lot size on a hand-named US stock: 100 shares, as before
-  await chooseTradeMoney(form, 'Jenius (IDR)');
   await form.getByLabel(/^Charged in /).pressSequentially('6.800.000');
   // 6.800.000 − 5.000.000 free. Read off the dollar figure, 41.850 "rupiah" would have fitted and asked nothing.
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
@@ -91,8 +91,8 @@ test('editing a sell into a rupiah account opens with what arrived, and saves wi
   await addMoneyAccount(page, 'BCA Tahapan', 'bank', '1000000');
   await addUsdStock(page);
   await openTradeForm(page, 'sell', 'AAPL');
-  await page.getByLabel('Money account').selectOption({ label: 'BCA Tahapan' });
-  await page.getByLabel('Units, shares or grams').pressSequentially('3');
+  await pickTradeCash(page, tradeForm(page), 'Received into', 'BCA Tahapan');
+  await page.getByLabel('Shares', { exact: true }).pressSequentially('3');
   await page.getByLabel(/Proceeds, before fees/).pressSequentially('642,90');
   await page.getByLabel('Charged in IDR').pressSequentially('10.447.125');
   await recordTrade(page);
@@ -102,8 +102,8 @@ test('editing a sell into a rupiah account opens with what arrived, and saves wi
   await sold.getByRole('button', { name: 'Edit', exact: true }).click();
   // Read back from the sell's own transaction: the edit never starts from an empty figure.
   await expect(page.getByLabel('Charged in IDR')).toHaveValue('10.447.125');
-  await page.getByLabel('Units, shares or grams').fill('');
-  await page.getByLabel('Units, shares or grams').pressSequentially('2');
+  await page.getByLabel('Shares', { exact: true }).fill('');
+  await page.getByLabel('Shares', { exact: true }).pressSequentially('2');
   await recordTrade(page, 'Save changes');
   await expectBalance(page, 'BCA Tahapan', '11.447.125'); // the same rupiah arrived: only the units changed
 });
@@ -112,9 +112,11 @@ test('a USD sell whose fee took all of it records with nothing reaching the rupi
   await addMoneyAccount(page, 'BCA Tahapan', 'bank', '1000000');
   await addUsdStock(page);
   await openTradeForm(page, 'sell', 'AAPL');
-  await page.getByLabel('Money account').selectOption({ label: 'BCA Tahapan' });
-  await page.getByLabel('Units, shares or grams').pressSequentially('1');
+  await pickTradeCash(page, tradeForm(page), 'Received into', 'BCA Tahapan');
+  await page.getByLabel('Shares', { exact: true }).pressSequentially('1');
   await page.getByLabel(/Proceeds, before fees/).pressSequentially('1.500,00');
+  // The fee waits under Add more details.
+  await openTradeDetails(tradeForm(page));
   await page.getByLabel('Fee (USD)').fill('');
   await page.getByLabel('Fee (USD)').pressSequentially('1.500,00');
   await expect(page.getByText(/Nothing reaches BCA Tahapan/)).toBeVisible();

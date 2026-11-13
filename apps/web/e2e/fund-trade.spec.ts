@@ -10,8 +10,10 @@ test('Buy a fund by amount: no NAV, no units, and the value grows by the amount'
   await fundByMoney(page);
   await page.getByRole('button', { name: 'Buy', exact: true }).click();
   const sheet = page.getByRole('dialog');
-  await expect(page.getByTestId('trade-holding')).toContainText(FUND);
-  await expect(page.getByTestId('trade-holding')).toContainText('Worth Rp 1.052.000');
+  // The fund, fixed and named alone; a fund bought by money has no units row.
+  await expect(page.getByTestId('trade-holding')).toHaveText(FUND);
+  await expect(sheet.getByLabel('Units', { exact: true })).toHaveCount(0);
+  await expect(sheet.getByRole('button', { name: /^Paid with/ })).toContainText('BCA');
   await expect(page.getByRole('button', { name: 'Record buy' })).toBeDisabled();
   await sheet.getByLabel('Amount', { exact: true }).pressSequentially('500000');
   await expect(page.getByTestId('fund-units')).toHaveCount(0);
@@ -33,7 +35,8 @@ test('a fee typed in the details is put in with the amount: Money in grows by bo
   const sheet = page.getByRole('dialog');
   await sheet.getByLabel('Amount', { exact: true }).pressSequentially('500000');
   await sheet.getByRole('button', { name: 'Add more details' }).click();
-  await expect(sheet.getByLabel('Tax withheld', { exact: true })).toBeVisible();
+  // A buy's details: the Fee; Tax withheld is a sell's.
+  await expect(sheet.getByLabel('Tax withheld', { exact: true })).toHaveCount(0);
   await sheet.getByLabel('Fee', { exact: true }).pressSequentially('5000');
   await page.getByRole('button', { name: 'Record buy' }).click();
   await expect(sheet).toHaveCount(0);
@@ -56,6 +59,7 @@ test('Sell half the value: half the money comes out, the rest is gain; never mor
 
   await amount.fill('2000000');
   await expect(page.getByTestId('fund-worth')).toContainText('Rp 1.552.000');
+  await expect(amount).toHaveAttribute('aria-invalid', 'true');
   await expect(page.getByRole('button', { name: 'Record sell' })).toBeDisabled();
 
   await amount.fill('776000');
@@ -65,8 +69,13 @@ test('Sell half the value: half the money comes out, the rest is gain; never mor
   await expect(page.getByTestId('asset-grid')).toContainText('Rp 750.000');
 
   await page.getByRole('button', { name: 'Sell', exact: true }).click();
-  await sheet.getByRole('button', { name: 'All', exact: true }).click();
+  const all = sheet.getByRole('button', { name: 'All', exact: true });
+  await all.click();
   await expect(amount).toHaveValue('776.000');
+  // Into the row and out again changes nothing: leaving it tidies the figure, and All stays on (fix round 1).
+  await amount.focus();
+  await amount.blur();
+  await expect(all).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Record sell' }).click();
   await expect(sheet).toHaveCount(0);
   await expect(page.getByTestId('asset-grid')).toContainText('Rp 0');

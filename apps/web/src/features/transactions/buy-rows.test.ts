@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { amountRowText, chargedRowText, feeRowText, goalRowText, holdingFace, holdingRowText, payRowText, unitsRowText } from './buy-rows';
+import { amountRowText, chargedRowText, feeRowText, goalRowText, holdingFace, holdingRowText, pastWord, payRowText, unitsRowText, unitWord } from './buy-rows';
 
 /**
  * The Buy / sell tab reads like Expense, Income and Transfer: every row is a glyph, a value on the left and a
@@ -48,9 +48,11 @@ describe('what each Buy / sell row says', () => {
     expect(buy.label).toBe('Paid with');
     expect(buy.caption).toBe('Paid with');
     expect(buy.hint).toBeUndefined();
+    // Received into, as the Income form says it (owner, 13 Nov 2026) — not Proceeds into, To or Money account.
     const sell = payRowText('sell');
-    expect(sell.label).toBe('Proceeds into');
-    expect(sell.caption).toBe('Proceeds into');
+    expect(sell.label).toBe('Received into');
+    expect(sell.caption).toBe('Received into');
+    expect(payRowText('income').label).toBe('Received into');
     // A sell into a card is refused by `purchaseDraftToInput`, so the row does not offer one in words either.
     expect(sell.hint).toBeUndefined();
   });
@@ -64,9 +66,9 @@ describe('what each Buy / sell row says', () => {
   });
 
   it('calls the goal row what the trade does to the goal', () => {
-    expect(goalRowText('buy').label).toBe('For goal');
-    expect(goalRowText('sell').label).toBe('Sell from goal');
-    expect(goalRowText('sell').caption).toBe('Sell from goal');
+    expect(goalRowText('buy').label).toBe('Goal');
+    expect(goalRowText('sell').label).toBe('From goal');
+    expect(goalRowText('sell').caption).toBe('From goal');
   });
 
   it('draws the holding by its own name, with the picker’s group as the caption', () => {
@@ -76,9 +78,25 @@ describe('what each Buy / sell row says', () => {
     // A label with no group at all is still drawn whole rather than blanked.
     expect(holdingFace('Antam')).toBe('Antam');
     expect(holdingFace('')).toBe('');
-    expect(holdingRowText('buy').caption).toBe('Bought');
-    expect(holdingRowText('sell').caption).toBe('Sold');
-    expect(holdingRowText('buy').label).toBe('Investment');
-    expect(holdingRowText('buy').hint).toBeUndefined();
+    // Like Expense's Category row: the name and nothing else — no Bought / Sold caption, no second line.
+    expect(holdingRowText().caption).toBe('');
+    expect(holdingRowText().label).toBe('Investment');
+    expect(holdingRowText().hint).toBeUndefined();
+  });
+
+  it('says what a trade made before the app was, where the account would be', () => {
+    expect(pastWord('buy')).toBe('Past purchase');
+    expect(pastWord('sell')).toBe('Past sale');
+    expect(pastWord('income')).toBe('Past payment');
+  });
+
+  it('names the units row by how the holding is counted', () => {
+    expect(unitWord('grams')).toBe('Grams');
+    expect(unitWord('shares')).toBe('Shares');
+    expect(unitWord('face')).toBe('Par value');
+    expect(unitWord('units')).toBe('Units');
+    // A holding with no profile, or a kind this list does not know, is counted in units.
+    expect(unitWord(null)).toBe('Units');
+    expect(unitWord('lots')).toBe('Units');
   });
 });

@@ -6,6 +6,7 @@ import { openDrawers } from './drawers';
 import { addSetAsideRow, closeSetAsideRows, goalCard, goalRow } from './set-aside';
 import { localIsoDate } from './today';
 import { openShortTrade, openTradeDetails, openTradeRow, recordShortTrade } from './trades';
+import { chooseGoal } from './add-transaction';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -55,7 +56,7 @@ async function buyGold(page: Page, grams: string, cost: string, goalName: string
   await sheet.getByLabel('Grams', { exact: true }).fill(grams);
   await sheet.getByLabel('Total paid', { exact: true }).pressSequentially(cost);
   await openTradeDetails(sheet);
-  await sheet.getByLabel('For goal').selectOption({ label: goalName });
+  await chooseGoal(sheet, goalName);
   await recordShortTrade(page, 'buy');
 }
 
@@ -128,7 +129,7 @@ test('refuses a sell the goal cannot cover', async ({ page }) => {
   await sheet.getByLabel('Grams', { exact: true }).fill('5');
   await sheet.getByLabel('Received', { exact: true }).pressSequentially('9500000');
   await openTradeDetails(sheet);
-  await sheet.getByLabel('Sell from goal').selectOption({ label: 'Hajj for two' });
+  await chooseGoal(sheet, 'Hajj for two');
   await page.getByRole('button', { name: 'Record sell', exact: true }).click();
 
   await expect(page.getByText(/Hajj for two holds/)).toBeVisible();

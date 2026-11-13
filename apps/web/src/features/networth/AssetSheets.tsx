@@ -1,6 +1,6 @@
 import { formatMinor, formatPriceMicro, formatUnits, groupedMajorString, groupTypedAmount, isoDate, parseGroupedMajor, parsePriceMicro, type UnitKind, unitsValueMinor } from '@expanses/core';
 import { editValuation, recordValuation, type TradeRow, upsertPrice, type ValuationWithNote } from '@expanses/db';
-import { useState } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { useApp } from '../../app/context';
 import { canTradeCashWith } from '../../lib/account-types';
@@ -8,7 +8,9 @@ import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, TextRow } from '../../ui/native';
 import { useGoals } from '../goals/queries';
-import { usePositions } from './queries';
+import { assetKindTile } from '../ownables/catalogue-view';
+import { unitWord } from '../transactions/buy-rows';
+import { useAssetProfiles, usePositions } from './queries';
 import { TradeForm } from './TradeForm';
 import type { TradeDraft } from './trade-form';
 
@@ -141,7 +143,8 @@ export function ValueSheet({ accountId, currency, editing, onClose }: { accountI
 
 /**
  * The full trade form, in a sheet over the holding's own page (or its Settings), with the holding already chosen: a
- * buy, a sale, a payment or a change of units, or an edit of one already recorded.
+ * buy, a sale, a payment or a change of units, or an edit of one already recorded. It reads as Trade does (owner,
+ * 13 Nov 2026): ✕ and ✓ at the top, Paid with (Received into) first, the holding fixed, the units in its kind's word.
  */
 export function TradeSheet({
   title,
@@ -152,7 +155,8 @@ export function TradeSheet({
   onClose,
 }: {
   title: string;
-  holding: { accountId: string; name: string; currency: string; byMoney?: boolean };
+  /** `icon` and `unitLabel` default to the holding's kind and how it is counted, read from its profile. */
+  holding: { accountId: string; name: string; currency: string; byMoney?: boolean; icon?: ReactNode; unitLabel?: string };
   initial: Partial<TradeDraft>;
   editing: TradeRow | null;
   /** A monthly plan this buy answers, so the plan stops being due. */
@@ -162,12 +166,25 @@ export function TradeSheet({
   const accounts = useAccounts();
   const positions = usePositions();
   const goals = useGoals();
+  const profiles = useAssetProfiles();
+  const formRef = useRef<HTMLFormElement>(null);
+  const [ready, setReady] = useState(false);
   // The cash side of a trade: a buy is paid from money, a broker's cash included, or a credit card (the form hides the
   // card on a sale); the account an edited trade already names is always kept.
   const cashAccounts = moneyHolders(accounts.data ?? []).filter((account) => canTradeCashWith(account, 'buy') || account.id === editing?.cashAccountId);
+  const Glyph = assetKindTile('invest', (accounts.data ?? []).find((account) => account.id === holding.accountId)?.subtype ?? '');
+  const unitLabel = holding.unitLabel ?? unitWord((profiles.data ?? []).find((profile) => profile.accountId === holding.accountId)?.unitKind);
+  const loaded = accounts.isSuccess && positions.isSuccess;
   return (
-    <Sheet grouped tall expanded title={title} onClose={onClose}>
-      {accounts.isSuccess && positions.isSuccess && (
+    <Sheet
+      grouped
+      tall
+      expanded
+      title={title}
+      onClose={onClose}
+      confirm={{ label: editing ? 'Save changes' : 'Record', disabled: !loaded || !ready, run: () => formRef.current?.requestSubmit() }}
+    >
+      {loaded && (
         <TradeForm
           holdings={[holding]}
           goals={(goals.data ?? []).map((goal) => ({ id: goal.id, name: goal.name }))}
@@ -177,7 +194,10 @@ export function TradeSheet({
           initial={{ accountId: holding.accountId, ...initial }}
           templateId={templateId}
           onSaved={onClose}
-          onCancel={onClose}
+          formRef={formRef}
+          onReady={setReady}
+          glyph={holding.icon ?? <Glyph size={15} />}
+          unitLabel={unitLabel}
         />
       )}
     </Sheet>
