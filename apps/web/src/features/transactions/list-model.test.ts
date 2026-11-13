@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import type { ListRow } from './list-model';
-import { amountExtraParts, amountLook, wholeLeftOut, billTagOf, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory, excludedHere, hasNotCountedPart, outsideEvents, accountsWithTransactions } from './list-model';
+import { categoryButtonLabel, amountExtraParts, amountLook, wholeLeftOut, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory, excludedHere, hasNotCountedPart, outsideEvents, accountsWithTransactions } from './list-model';
 
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], extra: Partial<AccountRow> = {}): AccountRow => ({
   id, workspaceId: 'ws', parentId: null, kind, subtype, name: id, icon: null, currency: kind === 'expense' || kind === 'income' ? null : 'IDR', valuationMode: 'derived', systemKey: null, sortOrder: 0, archivedAt: null, createdAt: '2026-09-01T00:00:00Z', ...extra,
@@ -288,16 +288,6 @@ describe('a purchase marked "not my spending"', () => {
   });
 });
 
-describe('billTagOf', () => {
-  it('names the bill month of a payment made in another month, and nothing else', () => {
-    const food: [string, number][] = [['food', 100], ['bca', -100]];
-    expect(billTagOf(tx('2026-09-03', 'Biznet', food, { billMonth: '2026-08' }))).toBe('Aug bill');
-    expect(billTagOf(tx('2026-09-03', 'Rent', food, { billMonth: '2026-09' }))).toBeNull();
-    expect(billTagOf(tx('2026-09-03', 'Coffee', food, { billMonth: null }))).toBeNull();
-    expect(billTagOf(tx('2026-09-03', 'Coffee', food))).toBeNull();
-  });
-});
-
 describe('money back and rows waiting for a category', () => {
   const uncategorised = account('later', 'expense', 'category', { name: 'Uncategorised', systemKey: 'uncategorised' });
   const laterIn = account('later-in', 'income', 'category', { name: 'Uncategorised', systemKey: 'income.uncategorised' });
@@ -508,8 +498,8 @@ describe('amountExtraParts', () => {
   });
 
   it('reads a transfer’s fee under the amount, muted, before a foreign amount; a row with none says nothing of it', () => {
-    expect(amountExtraParts(plain, undefined, { feeMinor: 10_000, currency: 'IDR' })).toEqual([{ text: '+Rp\u00a010.000', tone: 'foreign' }]);
-    expect(line(amountExtraParts(foreign, { points: 38, unit: 'pts', approximate: false }, { feeMinor: 10_000, currency: 'IDR' }))).toBe('+Rp\u00a010.000 · JP¥1.850 · +38 pts');
+    expect(amountExtraParts(plain, undefined, { feeMinor: 10_000, currency: 'IDR' })).toEqual([{ text: '+ Rp\u00a010.000', label: 'Fee, Rp\u00a010.000', tone: 'foreign' }]);
+    expect(line(amountExtraParts(foreign, { points: 38, unit: 'pts', approximate: false }, { feeMinor: 10_000, currency: 'IDR' }))).toBe('+ Rp\u00a010.000 · JP¥1.850 · +38 pts');
     expect(amountExtraParts(plain, undefined, { currency: 'IDR' })).toEqual([]);
   });
 });
@@ -696,7 +686,7 @@ describe('a split with a line left out of the report (0096)', () => {
     expect(row).toMatchObject({ type: 'transfer', excluded: true, amountMinor: 750_000 });
     expect(wholeLeftOut(row!)).toBe(false);
     expect(amountLook(row!)).toEqual({ sign: 0, plus: false, muted: false });
-    expect(amountExtraParts(move, undefined, row).map((p) => p.text)).toEqual(['+Rp 6.500']);
+    expect(amountExtraParts(move, undefined, row).map((p) => p.text)).toEqual(['+ Rp 6.500']);
   });
 
   it('an excluded refund reads Rp 0 in grey, its ⊘ sum without a minus', () => {
@@ -783,5 +773,13 @@ describe('Paid with lists only accounts with transactions', () => {
   });
   it('keeps the account the filter is on even with none', () => {
     expect(accountsWithTransactions(money, new Set(['bca']), 'cash').map((a) => a.id)).toEqual(['cash', 'bca']);
+  });
+});
+
+describe('categoryButtonLabel', () => {
+  it('names the row, then what the marks on its icon say: workspace, refund, event', () => {
+    expect(categoryButtonLabel('Superindo', {})).toBe('Category for Superindo');
+    expect(categoryButtonLabel('Lakeside lunch', { eventName: 'Lake trip' })).toBe('Category for Lakeside lunch, Lake trip');
+    expect(categoryButtonLabel('Shoes back', { workspace: 'Family', refund: true, eventName: 'Lake trip' })).toBe('Category for Shoes back, Family, refund, Lake trip');
   });
 });

@@ -22,3 +22,26 @@ export function stepsBackToReceipt(transactionId: string, now: number): number |
 export function historyIndex(history: { location: { state: unknown } }): number {
   return (history.location.state as { __TSR_index?: number } | null)?.__TSR_index ?? 0;
 }
+
+/**
+ * Back to the receipt once its purchase is linked: to the receipt's own entry when it is known, so its ‹ goes where it
+ * was opened from. Known nowhere (a page reloaded on the way), the page under this one becomes that place — `origin`,
+ * Cashflow unless the receipt was opened elsewhere — with a fresh receipt on top: ‹ still lands there, never on the
+ * bill list just used.
+ */
+export function returnToReceipt(
+  history: { location: { state: unknown }; go: (steps: number) => void; replace: (href: string) => void; push: (href: string) => void; flush: () => void },
+  transactionId: string,
+  origin: () => string,
+): void {
+  const steps = stepsBackToReceipt(transactionId, historyIndex(history));
+  if (steps !== null) {
+    history.go(steps);
+    return;
+  }
+  history.replace(origin());
+  // The browser history writes its changes a tick later, folding a replace and a push in one tick into a single push:
+  // the replace is written first, or it is lost and ‹ goes back to the bill list after all.
+  history.flush();
+  history.push(`/transactions/${transactionId}`);
+}

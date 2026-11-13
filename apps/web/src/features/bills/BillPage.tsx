@@ -305,7 +305,9 @@ export function BillPage({ billId }: { billId: string }) {
           }}
           onLink={(month) => {
             setPaying(false);
-            void navigate({ to: '/bills/$billId/link', params: { billId }, search: { ...from, month } });
+            // The purchase list steps back here once one is linked. Opened from the Debt-free plan's Pay (`?pay=1`),
+            // it takes this entry's place instead, so stepping back neither opens the sheet again nor stops short of the plan.
+            void navigate({ to: '/bills/$billId/link', params: { billId }, search: { ...from, month }, replace: fromLink.fromSearch });
           }}
         />
       )}

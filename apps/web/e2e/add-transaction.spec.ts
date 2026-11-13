@@ -408,7 +408,7 @@ test('a transfer from a rupiah bank to a dollar account takes a fee in rupiah: t
 
   const row = page.getByTestId('transaction-row').filter({ hasText: 'To Wise' });
   await expect(row).toHaveCount(1);
-  await expect(row.getByTestId('amount-extra')).toHaveText(/^\+Rp\s25\.000$/);
+  await expect(row.getByTestId('amount-extra')).toHaveText(/^\+ Rp\s25\.000$/);
   await page.goto('/wallet');
   // Rp 1.600.000 and the fee left; US$ 100 landed, the fee never converted.
   await expectWalletFigure(page, 'BCA Tahapan', '18.375.000');
@@ -1680,7 +1680,7 @@ test('a transfer with a fee is one transfer, the account paying both and the fee
   await expect(row).toContainText('BCA Tahapan → GoPay');
   await expect(row).not.toContainText('fee');
   await expect(row).toContainText('1.000.000');
-  await expect(row.getByTestId('amount-extra')).toHaveText(/^\+Rp\s10\.000$/);
+  await expect(row.getByTestId('amount-extra')).toHaveText(/^\+ Rp\s10\.000$/);
 
   // Reopened, it is the transfer it was: the amount that landed, and its fee under Fees & charges.
   await row.getByRole('link').first().click();
@@ -1736,7 +1736,7 @@ test('a card purchase under Top-ups grows Into and Fee, and saves as one top-up 
   await expect(row).toHaveCount(1);
   await expect(row).toContainText('BCA Visa → GoPay');
   await expect(row).toContainText('1.000.000');
-  await expect(row.getByTestId('amount-extra')).toHaveText(/^\+Rp\s10\.000$/);
+  await expect(row.getByTestId('amount-extra')).toHaveText(/^\+ Rp\s10\.000$/);
   await page.goto('/wallet');
   await expectWalletFigure(page, 'GoPay', '1.000.000');
 });

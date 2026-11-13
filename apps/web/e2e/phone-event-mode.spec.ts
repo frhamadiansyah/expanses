@@ -95,11 +95,18 @@ test('event mode: on from the event, a dot and a menu row on Cashflow, the Add f
   await expect(row(page, 'Corner shop')).toBeVisible();
   await expect(row(page, 'Corner shop').getByTestId('row-event')).toHaveCount(0);
 
-  // …and every list that shows it names the event first on its grey line: the account's own history.
+  // …and every list that shows it marks it with a plane on its icon, the grey line left as any row's: the account's own history.
   await openWalletAccount(page, 'Lira cash');
   const recent = page.getByTestId('account-recent');
-  await expect(recent.getByRole('button', { name: /Lakeside lunch/ })).toHaveAccessibleName('Groceries Lake trip · Lakeside lunch · Lira cash');
+  await expect(recent.getByRole('button', { name: /Lakeside lunch/ })).toHaveAccessibleName('Groceries Lakeside lunch · Lira cash · Lake trip');
+  await expect(recent.getByTestId('row-event')).toHaveCount(1);
+  await expect(recent.getByTestId('row-event')).toHaveAttribute('title', 'Lake trip');
   await expect(recent.getByRole('button', { name: /Corner shop/ })).toHaveAccessibleName('Groceries Corner shop · Lira cash');
+  // On the trip's own page every row is the trip's: no plane on any of them.
+  await page.goto('/events');
+  await page.getByTestId('event-row').filter({ hasText: 'Lake trip' }).click();
+  await expect(page.getByTestId('event-history').filter({ hasText: 'Lakeside lunch' })).toBeVisible();
+  await expect(page.getByTestId('event-history').getByTestId('row-event')).toHaveCount(0);
 
   // Off by hand, from the event: the light Undo bar puts it back.
   await page.goto('/transactions');
@@ -203,7 +210,8 @@ test('event mode in a shared event: the Add form says who it is shared with, and
   await inject(page, [notice({ id: 'note-coast', capturedAt: await page.evaluate(() => new Date().toISOString()), body: 'Pembayaran Rp38.000 berhasil. Merchant: PANTAI KIOSK' })]);
   await page.goto('/review');
   const draft = page.getByTestId('draft-row').filter({ hasText: 'PANTAI KIOSK' });
-  await expect(draft.getByTestId('row-event')).toHaveText('Coast week · ');
+  await expect(draft.getByTestId('row-event')).toHaveAttribute('title', 'Coast week');
+  await expect(draft).not.toContainText('Coast week · ');
   await draft.click();
   await expect(page.getByTestId('event-chip')).toContainText('Coast week');
   await expect(page.getByTestId('event-chip-shared')).toHaveText('Shared with Budi');

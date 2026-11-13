@@ -11,10 +11,10 @@ import { UndoToast } from '../../ui/UndoToast';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { CategoryPicker } from './CategoryPicker';
 import { isEditable } from './draft';
-import { type AmountExtraPart, amountExtraParts, amountLook, type AmountView, type ListRow, paidWithLook, wholeLeftOut } from './list-model';
+import { type AmountExtraPart, amountExtraParts, amountLook, type AmountView, categoryButtonLabel, type ListRow, paidWithLook, wholeLeftOut } from './list-model';
 import { canRefile, emptyForm, refiledPost } from './tx-form';
 import { ratesForSave } from './tx-save';
-import { RowEventLead } from '../events/EventMode';
+import { RowEventBadge } from '../events/EventMode';
 import { useEvents } from '../events/queries';
 
 /** An event's name by its id, from the one owner-wide read of events; null for none, or one no longer here. */
@@ -46,6 +46,7 @@ export function TransactionRow({
   under,
   iconLabel,
   iconMark,
+  iconMarkLabel,
   amountExtra,
   trailing,
   onOpen,
@@ -65,7 +66,9 @@ export function TransactionRow({
   hideEvent = false,
 }: {
   row: ListRow;
-  /** The event's own page: every row there is in it, so the grey line does not say so again. */
+  /** What `iconMark` says aloud (its workspace's name), for the category button's spoken name. */
+  iconMarkLabel?: string | null;
+  /** The event's own page: every row there is in it, so no row wears the event's plane. */
   hideEvent?: boolean;
   accounts: readonly AccountRow[];
   /** What the amount is written in; the row's own currency unless a screen keeps one column in its own. */
@@ -125,7 +128,7 @@ export function TransactionRow({
   view?: AmountView;
 }) {
   const transfer = row.type !== 'expense' && row.type !== 'income';
-  // A row in an event names it first on its grey line ("<plane> Lake trip · …"), on every list, in event mode or not.
+  // A row in an event wears a small plane on its icon where rows from many places mix — not on the event's own page.
   const eventName = useEventName(hideEvent ? null : (row.eventId ?? row.tx?.eventId ?? row.draft?.eventId ?? null));
   // Money back on a purchase reads as money in: a plus, in green. Money a person paid back has a plus too, muted.
   // Wholly excluded from the report, a row reads as a split with all of it left out: nothing counted on top, in grey,
@@ -136,7 +139,8 @@ export function TransactionRow({
   const money = plus ? `+${formatMinor(Math.abs(shownMinor), currency ?? row.currency)}` : formatMinor(shownMinor, currency ?? row.currency);
 
   // Money back wears a small return arrow on its category's circle, where a shared row wears its workspace: the
-  // category stays the category, and the green plus beside it says the rest. A workspace mark takes the corner first.
+  // category stays the category, and the green plus beside it says the rest. A workspace mark takes the corner first,
+  // then the refund's arrow, then an event's plane.
   const mark =
     iconMark ??
     (row.refund ? (
@@ -147,6 +151,8 @@ export function TransactionRow({
         <Undo2 size={9} strokeWidth={3} aria-hidden />
         <span className="sr-only">Refund</span>
       </span>
+    ) : eventName ? (
+      <RowEventBadge name={eventName} />
     ) : undefined);
   const circle = mark ? (
     <span className="relative inline-flex">
@@ -206,7 +212,7 @@ export function TransactionRow({
       {refile ? (
         <button
           type="button"
-          aria-label={`Category for ${row.description}`}
+          aria-label={categoryButtonLabel(row.description, { workspace: iconMark ? iconMarkLabel : null, refund: row.refund, eventName })}
           title="Change the category"
           onClick={(event) => {
             // The row around it may be clickable too; re-filing is not opening.
@@ -236,13 +242,14 @@ export function TransactionRow({
           {label ?? ((row.categoryName && row.moreCounted ? `${row.categoryName} +${row.moreCounted}` : row.categoryName) || (row.type === 'correction' ? 'Balance correction' : transfer ? 'Transfer' : 'Uncategorised'))}
         </span>
         <span className="block truncate text-xs text-slate-500">
-          {eventName && <RowEventLead name={eventName} />}
           {subtitle ?? (
             <>
               {row.description ? `${row.description}${row.accountLabel || row.last4 ? ' · ' : ''}` : ''}
               <PaidWith row={row} />
             </>
           )}
+          {/* The plane on the icon, said aloud as part of the row: VoiceOver reads the row's face, not its circle. */}
+          {eventName && <span className="sr-only">{` · ${eventName}`}</span>}
         </span>
       </Face>
       {/* Outside the tap target, never inside it: what goes here can itself be a control, and a <button>

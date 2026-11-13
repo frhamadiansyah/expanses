@@ -108,7 +108,7 @@ test('the receipt refuses what every other screen refuses: a trade, and an openi
   await expect(page.getByTestId('net-worth')).toContainText('68.600.000');
 
   await openReceipt(page, 'Bought 2 Antam gold bars');
-  await expect(page.getByRole('link', { name: 'Holding', exact: true })).toHaveAttribute('href', /\/net-worth\/assets\/[^/]+$/);
+  await expect(page.getByRole('button', { name: 'Open holding', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Delete this transaction' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Click again to delete' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);

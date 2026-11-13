@@ -284,7 +284,12 @@ const routeTree = rootRoute.addChildren([
     getParentRoute: () => rootRoute,
     path: '/bills/$billId/link',
     component: LinkPurchaseRoute,
-    validateSearch: (search: Record<string, unknown>) => ({ ...fromSearch(search), month: typeof search.month === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(search.month) ? search.month : '' }),
+    validateSearch: (search: Record<string, unknown>) => ({
+      ...fromSearch(search),
+      month: typeof search.month === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(search.month) ? search.month : '',
+      // Opened from Earlier months: a link steps back past them to the bill.
+      ...(search.earlier === true || search.earlier === 'true' ? { earlier: true as const } : {}),
+    }),
   }),
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId/earlier', component: EarlierMonthsRoute, validateSearch: fromSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events', component: EventsPage }),

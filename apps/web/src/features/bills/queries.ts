@@ -1,4 +1,4 @@
-import { billDetail, billLinkCandidates, billLinkRefusal, billMonthsBefore, billOfPurchase, bookMoneyFor, listExpenseTemplates, monthlyBills, sinkingFundViews, yearlyBills } from '@expanses/db';
+import { billDetail, billLinkCandidates, billLinkMonths, billLinkRefusal, billMonthsBefore, billOfPurchase, bookMoneyFor, listExpenseTemplates, monthlyBills, sinkingFundViews, yearlyBills } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -48,6 +48,19 @@ export function useBillMonthsBefore(billId: string, pages: number) {
 export function useBillLinkRefusal(billId: string, month: string, today: string) {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['bill-link-refusal', ws.workspaceId, ws.bookId ?? null, billId, month, today], queryFn: () => billLinkRefusal(database, ws, { templateId: billId, billMonth: month, today }) });
+}
+
+/**
+ * The month of each bill a purchase dated `purchasedOn` links to when none is picked, whether a tap asks first, and
+ * the day that month comes out (see `billLinkMonth`). Keyed by bill id.
+ */
+export function useBillLinkMonths(billIds: readonly string[], purchasedOn: string | null, today: string) {
+  const { database, ws } = useApp();
+  return useQuery({
+    queryKey: ['bill-link-month', ws.workspaceId, ws.bookId ?? null, [...billIds], purchasedOn, today],
+    queryFn: () => billLinkMonths(database, ws, { templateIds: billIds, purchasedOn: purchasedOn!, today }),
+    enabled: purchasedOn !== null && billIds.length > 0,
+  });
 }
 
 /** The bill a purchase is linked to, if any (see `billOfPurchase`). */

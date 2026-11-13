@@ -100,7 +100,7 @@ test('a purchase split between a shared workspace and a private one reaches the 
 
   // On Fandri's phone, as built: Home counts its part, the receipt the whole charge.
   await expect(rowOf(page, 'Toko Sumber Rejeki')).toContainText('830.000');
-  await expect(rowOf(page, 'Toko Sumber Rejeki')).toContainText('⑂ split');
+  await expect(rowOf(page, 'Toko Sumber Rejeki')).not.toContainText('⑂ split');
   await expect(page.getByTestId('period-total')).toHaveText('Rp 830.000');
 
   // On Dewi's: the Home part alone, paid by Fandri from his account, nothing of Business or of the whole.

@@ -41,5 +41,17 @@ export function wheelYears(purchaseMonth: string, todayMonth: string): string[] 
 export function refusalText(code: string | undefined, month: string, fallback: string): string {
   if (code === 'ALREADY_SETTLED') return `${monthWithYear(month)} is already paid`;
   if (code === 'SKIPPED') return `${monthWithYear(month)} is skipped. Unskip it first.`;
+  if (code === 'PAUSED') return `${monthWithYear(month)} is paused. Resume the bill first.`;
   return fallback;
+}
+
+/**
+ * What a tap on a bill in a receipt's list does. `link`: at once, in its month — only once the purchase is read and is
+ * known to have no link (`settled`), so a tap made while that is still being read never moves a link it has. `months`:
+ * the month page, whose ✓ is what moves a link. `wait`: nothing yet. `none`: a shared event's purchase, changed there.
+ */
+export function billTapAction(at: { settled: boolean; linked: boolean; locked: boolean; hasPurchase: boolean }): 'link' | 'months' | 'wait' | 'none' {
+  if (!at.settled || !at.hasPurchase) return 'wait';
+  if (at.locked) return 'none';
+  return at.linked ? 'months' : 'link';
 }

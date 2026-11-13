@@ -6,6 +6,8 @@ import {
   billWindow,
   type BillWindow,
   currentBillMonth,
+  latestLinkMonth as latestLinkMonthOf,
+  linkChoice,
   nextOccurrenceMonth,
   isOwedMonth,
   expenseLines,
@@ -996,11 +998,14 @@ export interface LinkPurchaseInput {
   today?: string;
 }
 
-/** The newest month a purchase may be linked to: the latest the Pay sheet offers, never before this month. */
+/** A bill's schedule and settled months as the link rules read them on a day. */
+function linkInput(template: ExpenseTemplateRow, facts: BillFacts, today: string) {
+  return { today, startsMonth: template.startsMonth, outDay: template.dayOfMonth, payByDay: template.payByDay, settled: settledOf(template, facts), yearlyMonth: template.repeatMonth, repeatEvery: template.repeatEvery };
+}
+
+/** The newest month a purchase may be linked to (see `latestLinkMonth` in core): a yearly bill's next one can be paid early. */
 function latestLinkMonth(template: ExpenseTemplateRow, facts: BillFacts, today: string): string {
-  const input = { today, startsMonth: template.startsMonth, outDay: template.dayOfMonth, payByDay: template.payByDay, settled: settledOf(template, facts), yearlyMonth: template.repeatMonth, repeatEvery: template.repeatEvery };
-  const payable = payableBillMonths(input);
-  return [monthOf(today), currentBillMonth(input), ...payable].reduce((a, b) => (a > b ? a : b));
+  return latestLinkMonthOf(linkInput(template, facts, today));
 }
 
 async function liveTemplate(database: Database, ws: WorkspaceContext, templateId: string): Promise<ExpenseTemplateRow> {
@@ -1014,7 +1019,7 @@ export async function billLinkRefusal(
   database: Database,
   ws: WorkspaceContext,
   input: { templateId: string; billMonth: string; today?: string },
-): Promise<{ code: 'NOT_OWED' | 'MONTH_AHEAD' | 'SKIPPED' | 'ALREADY_SETTLED'; message: string } | null> {
+): Promise<{ code: 'NOT_OWED' | 'MONTH_AHEAD' | 'SKIPPED' | 'PAUSED' | 'ALREADY_SETTLED'; message: string } | null> {
   if (!BILL_MONTH.test(input.billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
   const template = await liveTemplate(database, ws, input.templateId);
   const facts = await billFacts(database, ws, [template]);
@@ -1024,8 +1029,55 @@ export async function billLinkRefusal(
   }
   if (billMonth > latestLinkMonth(template, facts, input.today ?? isoDate())) return { code: 'MONTH_AHEAD', message: 'That month is not out yet' };
   if ((facts.skips.get(template.id) ?? new Set()).has(billMonth)) return { code: 'SKIPPED', message: 'That month is skipped. Unskip it first.' };
+  // A paused month has no bill to settle, as a skipped one has none: refused alike. Pay may still record one on purpose.
+  if ((facts.pauses.get(template.id) ?? new Set()).has(billMonth)) return { code: 'PAUSED', message: 'That month is paused. Resume the bill first.' };
   if (await isSettled(database.db, ws, template.id, billMonth)) return { code: 'ALREADY_SETTLED', message: `${template.name} is already settled for that month` };
   return null;
+}
+
+/**
+ * The month of a bill a purchase is linked to when none is picked, and `ask`: whether a tap should open the month page
+ * first rather than link (`linkChoice` in core), or a link to that month would be refused as paid, skipped, paused or
+ * not out yet. `opensOn` is the day that month comes out. `billLinkRefusal` is still the word on a link.
+ */
+export async function billLinkMonth(
+  database: Database,
+  ws: WorkspaceContext,
+  input: { templateId: string; purchasedOn: string; today?: string },
+): Promise<BillLinkMonth> {
+  const template = await liveTemplate(database, ws, input.templateId);
+  return (await linkMonthsOf(database, ws, [template], input.purchasedOn, input.today ?? isoDate()))[template.id]!;
+}
+
+export interface BillLinkMonth {
+  month: string;
+  ask: boolean;
+  opensOn: string;
+}
+
+/** `billLinkMonth` for many bills at once, keyed by bill id: one read of the bills and their months for all of them. */
+export async function billLinkMonths(
+  database: Database,
+  ws: WorkspaceContext,
+  input: { templateIds: readonly string[]; purchasedOn: string; today?: string },
+): Promise<Record<string, BillLinkMonth>> {
+  if (input.templateIds.length === 0) return {};
+  const wanted = new Set(input.templateIds);
+  const templates = (await listExpenseTemplates(database, ws)).filter((t) => wanted.has(t.id));
+  return linkMonthsOf(database, ws, templates, input.purchasedOn, input.today ?? isoDate());
+}
+
+async function linkMonthsOf(database: Database, ws: WorkspaceContext, templates: ExpenseTemplateRow[], purchasedOn: string, today: string): Promise<Record<string, BillLinkMonth>> {
+  const facts = await billFacts(database, ws, templates);
+  return Object.fromEntries(
+    templates.map((template) => {
+      const rules = linkInput(template, facts, today);
+      const { month, ask } = linkChoice(purchasedOn, rules);
+      // A month a link would be refused for (paid, skipped, paused, not out yet) is asked about too, so a list says so first.
+      const shut = rules.settled[month] !== undefined || month > latestLinkMonthOf(rules);
+      return [template.id, { month, ask: ask || shut, opensOn: billWindow(month, template.dayOfMonth, template.payByDay).opensOn }];
+    }),
+  );
 }
 
 /** Links a purchase already recorded to one month of a bill, so that month reads as paid with the purchase's own date and amount. */

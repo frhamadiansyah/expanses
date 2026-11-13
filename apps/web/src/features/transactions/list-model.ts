@@ -1,4 +1,4 @@
-import { compareWithinDay, dayNet, formatMinor, isExchangeResultKey, isNotCountedKey, isUncategorisedKey, matchesSearch, monthName, parsePeriod } from '@expanses/core';
+import { compareWithinDay, dayNet, formatMinor, isExchangeResultKey, isNotCountedKey, isUncategorisedKey, matchesSearch, parsePeriod } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, SharedTransferRow, TransactionEntryView, TransactionView } from '@expanses/db';
 import type { PurchasePoints } from '../../lib/purchase-points';
 import { formatPoints } from '../cards/format-points';
@@ -10,11 +10,12 @@ import { classify } from './classify';
  */
 
 /**
- * "Aug bill" on a bill payment made in another month than the bill it settles. The list keeps the day it was paid;
- * the budget and the chart count it in its bill month, and the tag is what says why.
+ * The category button's spoken name: the row, then what the marks on its icon say — its workspace, a refund, the event
+ * it is in. Only one mark is drawn on the corner; all of them are said, since the button's name replaces what it holds.
  */
-export function billTagOf(tx: Pick<TransactionView, 'occurredOn' | 'billMonth'>): string | null {
-  return tx.billMonth && tx.billMonth !== tx.occurredOn.slice(0, 7) ? `${monthName(tx.billMonth, 'short')} bill` : null;
+export function categoryButtonLabel(description: string, marks: { workspace?: string | null; refund?: boolean; eventName?: string | null }): string {
+  const words = [marks.workspace, marks.refund ? 'refund' : null, marks.eventName].filter(Boolean);
+  return [`Category for ${description}`, ...words].join(', ');
 }
 
 /** A split part counted in no workspace ("Not counted"): a line on the Not counted equity account. */
@@ -80,7 +81,7 @@ export interface ListRow {
   last4: string | null;
   /** The digits named in a two-sided label, in its order: what a search by digits finds such a row by. Absent when none. */
   sidesLast4?: string[];
-  /** A transfer's fee in the row's currency, read under its amount ("+Rp 10.000"); absent on anything else. */
+  /** A transfer's fee in the row's currency, read under its amount ("+ Rp 10.000"); absent on anything else. */
   feeMinor?: number;
   /** The currency the fee was charged in, when it is not the row's (a transfer between two currencies). */
   feeCurrency?: string;
@@ -548,7 +549,7 @@ function leftOutOf(row: {
 }
 
 /**
- * The one line under a row's amount: a transfer's fee first ("+Rp 10.000", muted, the figure above it being what
+ * The one line under a row's amount: a transfer's fee first ("+ Rp 10.000", muted, the figure above it being what
  * landed), then the foreign amount, then the points ("¥1.850 · +38 pts"), each alone when only it applies, and
  * nothing when none does. The foreign amount and the points used to stack as lines of their own, which made a
  * foreign purchase on a card that earns three lines tall.
@@ -577,7 +578,11 @@ export function amountExtraParts(
     const sum = formatMinor(Math.abs(off.amountMinor), fee!.currency);
     parts.push({ text: `⊘ ${sum}`, label: `Excluded from report, ${sum}`, tone: 'foreign' });
   }
-  if (fee?.feeMinor) parts.push({ text: `+${formatMinor(fee.feeMinor, fee.feeCurrency ?? fee.currency)}`, tone: 'foreign' });
+  // A fee reads as ⊘ does: its mark, a space, the figure ("+ Rp 2.500"); the word is said aloud, never drawn.
+  if (fee?.feeMinor) {
+    const sum = formatMinor(fee.feeMinor, fee.feeCurrency ?? fee.currency);
+    parts.push({ text: `+ ${sum}`, label: `Fee, ${sum}`, tone: 'foreign' });
+  }
   // The foreign figure is the whole charge: beside a counted part alone it would disagree with the row.
   if (tx.originalCurrency && tx.originalAmountMinor !== null && !off) parts.push({ text: formatMinor(tx.originalAmountMinor, tx.originalCurrency), tone: 'foreign' });
   if (points) {

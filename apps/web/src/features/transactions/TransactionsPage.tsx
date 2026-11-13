@@ -28,7 +28,7 @@ import {
   uncategorisedTransactionIds,
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
+import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { CalendarDays, ChevronDown, CircleAlert, CircleCheck, Home, LayoutGrid, List, Pencil, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -69,7 +69,7 @@ import { AmountExtra, DraftSubtitle, PaidWith, TransactionRow, useRecategorise }
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, keepsReadFigure, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
-import { accountsWithTransactions, amountExtraParts, billTagOf, buildRows, sharedTransferRow, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, hasNotCountedPart, type ListFilters, type ListRow, outsideEvents, type Sort, sortRows, totals } from './list-model';
+import { accountsWithTransactions, amountExtraParts, buildRows, sharedTransferRow, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, type ListFilters, type ListRow, outsideEvents, type Sort, sortRows, totals } from './list-model';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
@@ -1124,7 +1124,6 @@ export function TransactionsPage() {
     const goal = goalName(tradeByTransaction.get(tx.id)?.goalId ?? tx.goalId ?? null);
     const points = purchasePoints.data?.[tx.id];
     const trade = tradeByTransaction.get(tx.id) ?? null;
-    const billTag = billTagOf(tx);
     // Filed in another workspace: it can still be reached and asked about, but it is not dressed as editable.
     // A share that ended here is kept read-only (§8.6): nothing on it is edited, deleted or re-filed.
     const reachable = !trade && isEditable(tx) && !readOnly;
@@ -1178,13 +1177,12 @@ export function TransactionsPage() {
         iconLabel={withDate && grouping === 'category' && singleMonth && row.date ? String(Number(row.date.slice(8, 10))) : undefined}
         // Whose spending this is, when the list holds more than one workspace: its letter on the icon's corner.
         iconMark={badges.mark(tx.id) ? <WorkspaceBadge book={badges.mark(tx.id)} corner /> : undefined}
+        iconMarkLabel={badges.mark(tx.id)?.name ?? null}
         label={
           <>
             {/* Outside a single month the day alone is ambiguous, so the circle's day gains its month here. */}
             {withDate && (!singleMonth || grouping !== 'category') && <span className="tabular mr-2 font-normal text-slate-500">{shortDate(row.date, today)}</span>}
             {label}
-            {/* Paid in one month for another's bill: listed on the day paid, counted in the budget in its bill month. */}
-            {billTag && <span className="ml-2 rounded bg-slate-100 px-1.5 text-xs font-normal text-slate-500">{billTag}</span>}
           </>
         }
         subtitle={
@@ -1196,9 +1194,6 @@ export function TransactionsPage() {
               <PaidWith row={row} />
             )}
             {goal && ` · for ${goal}`}
-            {/* One purchase split across workspaces, or with a part Not counted: narrowed to one workspace, the row is
-                its part; the receipt is the whole. */}
-            {(tx.splitBooks || hasNotCountedPart(tx)) && ' · ⑂ split'}
           </>
         }
         // Asked for by trying to edit it: the row says where it lives, and offers to take you there.
@@ -1208,18 +1203,8 @@ export function TransactionsPage() {
         amountExtra={<AmountExtra parts={amountExtraParts(tx, phone ? undefined : points, row)} />}
         trailing={
           selecting ? undefined : <>
-            {trade ? (
-              <Link
-                to="/net-worth/assets/$accountId"
-                params={{ accountId: trade.accountId }}
-                className="text-sm font-medium text-slate-600 underline"
-                title="Edit this on its holding's page so units stay in step"
-              >
-                Holding
-              </Link>
-            ) : (
-              clickable && <Pencil size={16} className="hidden text-slate-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 md:block" aria-hidden />
-            )}
+            {/* A trade is edited on its holding's page: its receipt's Open holding goes there, the row offers no link. */}
+            {!trade && clickable && <Pencil size={16} className="hidden text-slate-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 md:block" aria-hidden />}
             <ReceiptLink description={row.description} transactionId={tx.id} />
             {/* A wide screen's way to move it: the ≡ handle, and Move up and Move down without dragging. */}
             {dayIds && dayIds.length > 1 && !phone && (

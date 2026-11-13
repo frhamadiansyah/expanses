@@ -251,7 +251,7 @@ test('a card row filed under Top-ups records as the top-up it was: what landed i
   await expect(row).toContainText('Top-up');
   await expect(row.getByTestId('top-up-sides')).toHaveText('BCA Visa 4821 → GoPay');
   await expect(row).toContainText('1.000.000');
-  await expect(row.getByTestId('amount-extra')).toHaveText(/^\+Rp\s10\.000$/);
+  await expect(row.getByTestId('amount-extra')).toHaveText(/^\+ Rp\s10\.000$/);
   await expect(page.getByTestId('record-all')).toHaveText('Record all 1');
   await page.getByTestId('record-all').click();
   await expect(page.getByRole('status').filter({ hasText: 'August statement checked — ✓ Reconciled' })).toBeVisible();
@@ -262,7 +262,7 @@ test('a card row filed under Top-ups records as the top-up it was: what landed i
   await expect(recorded).toHaveCount(1);
   await expect(recorded).toContainText('4821 → GoPay');
   await expect(recorded).toContainText('1.000.000');
-  await expect(recorded.getByTestId('amount-extra')).toHaveText(/^\+Rp\s10\.000$/);
+  await expect(recorded.getByTestId('amount-extra')).toHaveText(/^\+ Rp\s10\.000$/);
   await page.goto('/wallet');
   await expectWalletFigure(page, 'GoPay', '1.000.000');
 });

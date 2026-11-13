@@ -8,6 +8,7 @@ import { InsetGroup, SegmentedControl, SelectRow, TextRow } from '../../ui/nativ
 import { CategoryIcon, UnknownCategoryMark } from '../categories/CategoryIcon';
 import { CategoryPicker } from '../transactions/CategoryPicker';
 import { DayHeader } from '../transactions/DayHeader';
+import { amountExtraParts } from '../transactions/list-model';
 import { topUpWallets } from '../transactions/tx-form';
 import { isTopUpRow, missingByDay, needsCategory, needsWallet, originalLabel, topUpFigures } from './check-model';
 
@@ -197,6 +198,8 @@ function TopUpRow({
   const wallet = row.topUp ? accounts.find((a) => a.id === row.topUp!.walletAccountId) : undefined;
   const walletLabel = wallet ? (walletDigits[wallet.id] ? `${wallet.name} ${walletDigits[wallet.id]}` : wallet.name) : null;
   const { landsMinor, feeMinor } = topUpFigures(row);
+  // The fee in the words every row under an amount uses ("+ Rp 10.000"), from the one place that writes them.
+  const [fee] = amountExtraParts({ originalCurrency: null, originalAmountMinor: null }, undefined, { feeMinor, currency });
   return (
     <li data-testid="missing-row" className="list-none">
       <div className="flex items-center gap-1">
@@ -210,9 +213,9 @@ function TopUpRow({
           </span>
           <span className="shrink-0 text-right">
             <span className="tabular block text-sm font-semibold whitespace-nowrap text-[var(--ph-ink)]">{formatMinor(landsMinor, currency)}</span>
-            {feeMinor > 0 && (
-              <span data-testid="amount-extra" className="tabular block text-[11.5px] leading-[14px] whitespace-nowrap text-[var(--ph-ink-3)]">
-                +{formatMinor(feeMinor, currency)}
+            {feeMinor > 0 && fee && (
+              <span data-testid="amount-extra" aria-label={fee.label} className="tabular block text-[11.5px] leading-[14px] whitespace-nowrap text-[var(--ph-ink-3)]">
+                {fee.text}
               </span>
             )}
           </span>
