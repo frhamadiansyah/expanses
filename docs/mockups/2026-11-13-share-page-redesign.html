@@ -1,0 +1,256 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Share page redesign</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --green:#34c759; --red:#ff3b30; --up:#1a7f37; --amber:#b25e00; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 16px; max-width:1000px; line-height:1.45; }
+  h2 { font-size:18px; margin:34px 0 4px; } .lead { color:#555; margin:0 0 14px; max-width:1000px; line-height:1.45; font-size:14px; }
+  .row { display:flex; gap:22px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:320px; } .cap { font-weight:700; margin:0 0 3px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:54px; }
+  .phone { background:var(--ground); border-radius:28px; padding:14px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .nav { display:flex; justify-content:space-between; align-items:center; margin:0 4px 4px; font-size:15px; } .nav .t { color:var(--tint); } .nav b { font-size:16px; }
+  .title { font-size:28px; font-weight:700; margin:2px 6px 2px; }
+  .status { font-size:13px; margin:0 6px 12px; white-space:nowrap; } .status .chev { color:#c7c7cc; }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:14px; overflow:hidden; }
+  .hdr { font-size:12.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; margin:0 16px 6px; }
+  .foot { font-size:12.5px; color:var(--ink3); margin:-8px 16px 14px; line-height:1.35; }
+  .r { display:flex; gap:10px; align-items:center; padding:10px 14px; white-space:nowrap; min-height:44px; } .r + .r { border-top:.5px solid var(--hair); }
+  .av { width:28px; height:28px; border-radius:50%; color:#fff; font-size:13px; font-weight:600; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .ic { width:28px; height:28px; border-radius:7px; background:#8e8e93; color:#fff; font-size:13px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .g { flex:1; min-width:0; } .a { font-size:15px; overflow:hidden; text-overflow:ellipsis; } .s { font-size:12px; color:var(--ink3); overflow:hidden; text-overflow:ellipsis; }
+  .val { color:var(--ink3); font-size:14px; } .chev { color:#c7c7cc; }
+  .tint { color:var(--tint); } .red { color:var(--red); } .center { justify-content:center; } .ok { color:var(--up); } .am { color:var(--amber); }
+  .warn { background:#fff4e0; } .warn .a { color:#8a5300; font-size:14px; }
+  .sw { width:44px; height:26px; border-radius:13px; background:#e9e9eb; position:relative; flex-shrink:0; }
+  .sw::after { content:""; position:absolute; top:2px; left:2px; width:22px; height:22px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.25); }
+  .sw.on { background:var(--green); } .sw.on::after { left:20px; }
+  .btn { background:var(--tint); color:#fff; text-align:center; padding:11px; border-radius:12px; font-weight:600; margin:0 0 10px; }
+  .mono { font:11px/1.45 ui-monospace, Menlo, monospace; color:#3c3c43; padding:10px 12px; white-space:pre-wrap; }
+  .sheet { background:#fff; border-radius:14px 14px 12px 12px; box-shadow:0 -3px 14px rgba(0,0,0,.14); padding:12px 14px; margin-top:8px; }
+  .sheet .st { display:flex; justify-content:space-between; font-weight:600; margin-bottom:8px; } .sheet .st span:first-child { color:var(--tint); font-weight:400; }
+  .code { font-size:24px; letter-spacing:3px; font-weight:700; text-align:center; padding:8px 0 2px; }
+  .flow { background:#fff; border-radius:12px; padding:14px 18px; max-width:1000px; font-size:14px; line-height:1.7; }
+  .flow b { font-weight:600; } .flow .arrow { color:var(--ink3); }
+  .tag { display:inline-block; font-size:11px; font-weight:700; background:#ff9f0a; color:#fff; border-radius:9px; padding:1px 7px; margin-right:6px; }
+  .badge { display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px; padding:0 6px; border-radius:10px; background:var(--red); color:#fff; font-size:12px; font-weight:600; margin-right:6px; }
+  .cloud { width:30px; height:30px; border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center; font-size:14px; position:relative; }
+  .cloud .dot { position:absolute; right:-1px; top:-1px; width:10px; height:10px; border-radius:50%; background:var(--red); box-shadow:0 0 0 2px var(--ground); }
+  .lock { color:var(--ink3); font-size:13px; }
+  .rec { color:var(--up); font-weight:600; }
+</style></head><body>
+<h1>Family › Share, redesigned</h1>
+<p class="sub">Every part of today's Share page is still here — it is only put in order. Names (Rina, Andi), codes and times invented. The page is drawn for Rina (owner); Andi's phone is the same except the last red row says "Leave Family".</p>
+
+<h2>The flow</h2>
+<div class="flow">
+<span class="tag">A</span><b>Share page</b><br>
+&nbsp;&nbsp;<span class="arrow">├─</span> Members · Shared with Andi · <b>Sync</b> row (a red count when something needs fixing) <span class="arrow">→</span> <span class="tag">B</span><b>Sync details</b> <span class="arrow">→</span> Technical log (the text "Details" shows today) · Copy for support<br>
+&nbsp;&nbsp;<span class="arrow">├─</span> Members: own row <span class="arrow">→</span> rename · Invite someone <span class="arrow">→</span> invite code<br>
+&nbsp;&nbsp;<span class="arrow">├─</span> Shared with Andi <span class="arrow">→</span> <span class="tag">C</span><b>one list</b>: "Always shared" box · accounts &amp; cards · goals · <b>events</b> · assets &amp; debts<br>
+&nbsp;&nbsp;<span class="arrow">│</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="arrow">└─</span> an event's switch <span class="arrow">→</span> <span class="tag">D</span>share sheet with its code (on) / Leave confirm (off)<br>
+&nbsp;&nbsp;<span class="arrow">└─</span> Stop sharing Family (Rina) / Leave Family (Andi) — last, alone
+</div>
+
+<h2><span class="tag">A</span>Share page: where sync status and problems show — three ideas</h2>
+<p class="lead">No line under the title and no orange block. Each idea shows the normal page (left) and the same page when something needs fixing (right). Problems are always listed inside Sync details (B).</p>
+
+<h3 style="font-size:16px;margin:16px 0 8px">A1 · One "Sync" row with a red count <span class="rec">(recommended)</span></h3>
+<div class="row">
+  <div class="col"><p class="cap">All fine</p><p class="note">A normal row above "Stop sharing": "Sync · Up to date ›". Quiet when nothing is wrong.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Family</span></div>
+      <div class="title">Share</div>
+      <div class="hdr">Members</div>
+      <div class="panel">
+        <div class="r"><div class="av" style="background:#0a66c2">R</div><div class="g"><div class="a">Rina</div><div class="s">This phone</div></div><span class="chev">›</span></div>
+        <div class="r"><div class="av" style="background:#af52de">A</div><div class="g"><div class="a">Andi</div><div class="s">Last change 1 h ago</div></div></div>
+        <div class="r"><div class="g"><div class="a tint">Invite someone</div></div></div>
+      </div>
+      <div class="panel"><div class="r"><div class="ic" style="background:#34c759">⇆</div><div class="g"><div class="a">Shared with Andi</div><div class="s">3 accounts · 1 goal · 2 events</div></div><span class="chev">›</span></div></div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Sync</div></div><span class="val">Up to date</span><span class="chev">›</span></div></div>
+      <div class="panel"><div class="r center"><span class="red">Stop sharing Family</span></div></div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">Something to fix</p><p class="note">Same row, a red number like iOS Settings. Tap → Sync details lists the 2 things.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Family</span></div>
+      <div class="title">Share</div>
+      <div class="hdr">Members</div>
+      <div class="panel">
+        <div class="r"><div class="av" style="background:#0a66c2">R</div><div class="g"><div class="a">Rina</div><div class="s">This phone</div></div><span class="chev">›</span></div>
+        <div class="r"><div class="av" style="background:#af52de">A</div><div class="g"><div class="a">Andi</div><div class="s">Last change 3 days ago</div></div></div>
+        <div class="r"><div class="g"><div class="a tint">Invite someone</div></div></div>
+      </div>
+      <div class="panel"><div class="r"><div class="ic" style="background:#34c759">⇆</div><div class="g"><div class="a">Shared with Andi</div><div class="s">3 accounts · 1 goal · 2 events</div></div><span class="chev">›</span></div></div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Sync</div></div><span class="badge">2</span><span class="chev">›</span></div></div>
+      <div class="panel"><div class="r center"><span class="red">Stop sharing Family</span></div></div>
+    </div>
+  </div>
+</div>
+
+<h3 style="font-size:16px;margin:22px 0 8px">A2 · A small cloud in the top corner</h3>
+<div class="row">
+  <div class="col"><p class="cap">All fine</p><p class="note">A small cloud in the title bar; tap → Sync details. No row for sync on the page.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Family</span><span class="cloud"><svg width="18" height="14" viewBox="0 0 18 14" fill="none" stroke="#007aff" stroke-width="1.6"><path d="M5 12.5h8.5a3.5 3.5 0 0 0 .4-7A5 5 0 0 0 4.3 6.6 3 3 0 0 0 5 12.5z"/></svg></span></div>
+      <div class="title">Share</div>
+      <div class="hdr">Members</div>
+      <div class="panel">
+        <div class="r"><div class="av" style="background:#0a66c2">R</div><div class="g"><div class="a">Rina</div><div class="s">This phone</div></div><span class="chev">›</span></div>
+        <div class="r"><div class="av" style="background:#af52de">A</div><div class="g"><div class="a">Andi</div><div class="s">Last change 1 h ago</div></div></div>
+        <div class="r"><div class="g"><div class="a tint">Invite someone</div></div></div>
+      </div>
+      <div class="panel"><div class="r"><div class="ic" style="background:#34c759">⇆</div><div class="g"><div class="a">Shared with Andi</div><div class="s">3 accounts · 1 goal · 2 events</div></div><span class="chev">›</span></div></div>
+
+      <div class="panel"><div class="r center"><span class="red">Stop sharing Family</span></div></div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">Something to fix</p><p class="note">The cloud gets a red dot. Easy to miss if nobody looks up there.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Family</span><span class="cloud"><svg width="18" height="14" viewBox="0 0 18 14" fill="none" stroke="#007aff" stroke-width="1.6"><path d="M5 12.5h8.5a3.5 3.5 0 0 0 .4-7A5 5 0 0 0 4.3 6.6 3 3 0 0 0 5 12.5z"/></svg><span class="dot"></span></span></div>
+      <div class="title">Share</div>
+      <div class="hdr">Members</div>
+      <div class="panel">
+        <div class="r"><div class="av" style="background:#0a66c2">R</div><div class="g"><div class="a">Rina</div><div class="s">This phone</div></div><span class="chev">›</span></div>
+        <div class="r"><div class="av" style="background:#af52de">A</div><div class="g"><div class="a">Andi</div><div class="s">Last change 3 days ago</div></div></div>
+        <div class="r"><div class="g"><div class="a tint">Invite someone</div></div></div>
+      </div>
+      <div class="panel"><div class="r"><div class="ic" style="background:#34c759">⇆</div><div class="g"><div class="a">Shared with Andi</div><div class="s">3 accounts · 1 goal · 2 events</div></div><span class="chev">›</span></div></div>
+
+      <div class="panel"><div class="r center"><span class="red">Stop sharing Family</span></div></div>
+    </div>
+  </div>
+</div>
+
+<h3 style="font-size:16px;margin:22px 0 8px">A3 · Problems on the row they belong to</h3>
+<div class="row">
+  <div class="col"><p class="cap">Something to fix</p><p class="note">Andi's row says his phone is old; "Shared with Andi" says rows need a workspace. A plain "Sync ›" row stays at the bottom.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Family</span></div>
+      <div class="title">Share</div>
+      <div class="hdr">Members</div>
+      <div class="panel">
+        <div class="r"><div class="av" style="background:#0a66c2">R</div><div class="g"><div class="a">Rina</div><div class="s">This phone</div></div><span class="chev">›</span></div>
+        <div class="r"><div class="av" style="background:#af52de">A</div><div class="g"><div class="a">Andi</div><div class="s am">Older app version · update it</div></div><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a tint">Invite someone</div></div></div>
+      </div>
+      <div class="panel"><div class="r"><div class="ic" style="background:#34c759">⇆</div><div class="g"><div class="a">Shared with Andi</div><div class="s am">3 rows need a workspace</div></div><span class="chev">›</span></div></div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Sync</div></div><span class="val">Up to date</span><span class="chev">›</span></div></div>
+      <div class="panel"><div class="r center"><span class="red">Stop sharing Family</span></div></div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">Why not alone</p><p class="note">Some problems belong to no row (no internet for days, a lost share). A3 still needs A1's count for those — so A1 is the simpler single place.</p></div>
+</div>
+
+<h2><span class="tag">B</span>Sync details (today: "Details", a page of technical text)</h2>
+<p class="lead">Plain answers first: is it up to date, which phones are in, is anything waiting. "Sync now" moves here. Today's technical text is kept one tap deeper, with Copy for support.</p>
+<div class="row">
+  <div class="col"><p class="cap">Sync details</p><p class="note">What a person needs; nothing technical on this screen.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Share</span><b>Sync details</b><span style="width:50px"></span></div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Status</div></div><span class="val ok">Up to date</span></div>
+        <div class="r"><div class="g"><div class="a">Last synced</div></div><span class="val">Today 20:41</span></div>
+        <div class="r"><div class="g"><div class="a">Waiting to send</div></div><span class="val">0</span></div>
+      </div>
+      <div class="btn">Sync now</div>
+      <div class="hdr">Phones</div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Rina's iPhone</div><div class="s">This phone · 0.5.2 (126)</div></div></div>
+        <div class="r"><div class="g"><div class="a">Andi's iPhone</div><div class="s">0.5.2 (126) · seen 1 h ago</div></div></div>
+      </div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Technical log</div></div><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a tint">Copy details for support</div></div></div>
+      </div>
+      <div class="foot">The copy has ids, counts, times and errors — no amounts, descriptions or keys.</div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">Technical log</p><p class="note">Exactly today's Details text, moved one tap down.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Sync details</span><b>Technical log</b><span style="width:20px"></span></div>
+      <div class="panel"><div class="mono">Expanses sync details
+Taken 2026-11-13 20:41
+App 0.5.2 (126)
+Workspace 3f9c…
+State active · engine idle
+Relay book 8a21… · epoch 3
+Outbox 0 · cursor 1842
+Members 2 (owners 1) · devices 2
+Log, newest first (40)
+20:41 pulled 4 · applied 4
+20:39 pushed 2
+…</div></div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">When something is wrong</p><p class="note">Opened from the red count: "To fix" lists each problem, each with where to fix it. "Forget this share" appears only for a lost share.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Share</span><b>Sync details</b><span style="width:50px"></span></div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Status</div></div><span class="val am">Not synced 3 days</span></div>
+      </div>
+      <div class="hdr">To fix (2)</div>
+      <div class="panel">
+        <div class="r"><span class="badge">1</span><div class="g"><div class="a">3 rows need a workspace</div></div><span class="chev">›</span></div>
+        <div class="r"><span class="badge">2</span><div class="g"><div class="a">Andi's phone is on 0.5.1</div><div class="s">Update it to 0.5.2</div></div></div>
+      </div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Last error</div><div class="s">No internet when it last tried</div></div></div>
+        <div class="r"><div class="g"><div class="a">Waiting to send</div></div><span class="val">12</span></div>
+      </div>
+      <div class="btn">Sync now</div>
+      <div class="hdr">Phones</div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Andi's iPhone</div><div class="s am">0.5.1 · older version — update it</div></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2><span class="tag">C</span>Shared with Andi — where events now live</h2>
+<p class="lead">Today events sit at the very bottom of the Share page with a blue "Share" / "Leave" word. They move into the same list as accounts and goals, each with the same switch, and a short line saying where it stands.</p>
+<div class="row">
+  <div class="col"><p class="cap">The list (events part)</p><p class="note">Top: what Family always shares (no switch). Then accounts, goals, events — each event says its state.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Share</span><b>Shared with Andi</b><span style="width:40px"></span></div>
+      <div class="hdr">Always shared in Family</div>
+      <div class="panel"><div class="r"><div class="ic" style="background:#8e8e93">🔒</div><div class="g"><div class="a">Family's records</div><div class="s">Budgets, bills and transactions</div></div><span class="lock">Always</span></div></div>
+      <div class="hdr">Accounts &amp; cards</div>
+      <div class="panel"><div class="r"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">Joint 2210</div></div><span class="sw on"></span></div><div class="r"><div class="g"><div class="a" style="color:var(--ink3);font-size:14px">+ 2 more</div></div></div></div>
+      <div class="hdr">Goals</div>
+      <div class="panel"><div class="r"><div class="ic" style="background:#34c759">🕋</div><div class="g"><div class="a">Hajj 2030</div></div><span class="sw on"></span></div></div>
+      <div class="hdr">Events</div>
+      <div class="panel">
+        <div class="r"><div class="ic" style="background:#ff2d55">✈️</div><div class="g"><div class="a">Turkey Trip 2026</div><div class="s ok">Andi is in</div></div><span class="sw on"></span></div>
+        <div class="r"><div class="ic" style="background:#ff9500">🏝</div><div class="g"><div class="a">Bali 2027</div><div class="s am">Waiting for Andi to join ›</div></div><span class="sw on"></span></div>
+        <div class="r"><div class="ic" style="background:#5856d6">🎂</div><div class="g"><div class="a">Kids' party</div></div><span class="sw"></span></div>
+      </div>
+      <div class="hdr" style="text-transform:none">Assets &amp; debts (3) ›</div>
+    </div>
+  </div>
+
+  <div class="col"><p class="cap"><span class="tag">D</span>Switching an event on</p><p class="note">Opens today's share sheet (same name, currency and code as now). Andi joins with "Join with a code" on Events.</p>
+    <div class="phone">
+      <div class="hdr">Events</div>
+      <div class="panel"><div class="r"><div class="ic" style="background:#5856d6">🎂</div><div class="g"><div class="a">Kids' party</div></div><span class="sw on"></span></div></div>
+      <div class="sheet">
+        <div class="st"><span>Cancel</span><span>Share Kids' party</span><span style="width:40px"></span></div>
+        <div class="panel" style="margin-bottom:8px;background:var(--ground)"><div class="r"><div class="g"><div class="a">Name shown</div></div><span class="val">Rina</span></div><div class="r"><div class="g"><div class="a">Currency</div></div><span class="val">IDR</span></div></div>
+        <div class="code">P4M-82K</div><div style="text-align:center;font-size:12px;color:var(--ink3);margin-bottom:10px">Works once, until 20 Nov</div>
+        <div class="btn">Send to Andi</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col"><p class="cap">Switching an event off</p><p class="note">Same as today's Leave: asks first; what was recorded stays with the others. A copy this phone can no longer change offers "Delete this copy".</p>
+    <div class="phone">
+      <div class="hdr">Events</div>
+      <div class="panel"><div class="r"><div class="ic" style="background:#ff2d55">✈️</div><div class="g"><div class="a">Turkey Trip 2026</div><div class="s ok">Andi is in</div></div><span class="sw"></span></div></div>
+      <div class="panel" style="padding:14px 16px;text-align:center">
+        <div style="font-weight:600;margin-bottom:6px">Leave Turkey Trip 2026?</div>
+        <div style="font-size:13px;color:var(--ink2);line-height:1.4">What was recorded stays with the others.</div>
+        <div style="display:flex;border-top:.5px solid var(--hair);margin:12px -16px -14px"><span style="flex:1;padding:11px;color:var(--tint)">Cancel</span><span style="flex:1;padding:11px;color:#ff3b30;border-left:.5px solid var(--hair);font-weight:600">Leave</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>

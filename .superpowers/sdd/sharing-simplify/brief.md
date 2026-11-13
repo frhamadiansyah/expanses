@@ -27,3 +27,12 @@ Mockup: `docs/mockups/2026-11-13-sharing-simplified.html` (sections 1–3, D in 
 
 ## Tests
 Web unit for share-list model (one list incl. goals, Owned together only when Shared, off-confirm, Shared off clears Joint), e2e for setup steps 1–3 and the icon tap + Undo (phone and desktop), update existing sharing e2e (sharing.spec.ts, phone-share-list) to the new words. tsc core/db/web; vitest web sharing/networth/goals/events; db tests if any repo changes. Two-phone check that partner sees the same as before for the same choices.
+
+## Addendum (owner-approved 2026-11-13): Share page redesign, option A1
+Mockup: `docs/mockups/2026-11-13-share-page-redesign.html` (flow at top; A1; B; C; D). Render it first.
+- Share page order: Members (own row "Rina · This phone ›" = rename; partner row with last change; "Invite someone" row opens today's invite card) → "Shared with <name> · 3 accounts · 1 goal · 2 events ›" → **"Sync" row** → red "Stop sharing <workspace>" (owner) / "Leave <workspace>" (member), last and alone.
+- **A1:** the Sync row reads "Up to date" (or "Syncing…") as its value when fine; when anything needs fixing it shows an iOS-style **red count badge** instead. NO status line under the title, NO orange/warning boxes on the Share page. Today's status row, footers (last failure, held, silence), place rows, holder warnings and lost-share row all move into Sync details.
+- **Sync details** (today's "Details" page, renamed): plain rows first — Status, Last synced, Waiting to send, **Sync now** button (moved from today's status row), "To fix (n)" list (each problem, tap → where it's fixed: place rows, holder workspace, discard lost share / Forget, partner phone on an older version), Phones (each device, app version, last seen). Then "Technical log ›" (today's text, unchanged) and "Copy details for support".
+- **Shared with <name>** page: first box "Always shared in <workspace>" with one row "<workspace>'s records · Budgets, bills and transactions · Always" (no switch); then Accounts & cards, Goals, Events, Assets & debts.
+- Events move from the bottom of the Share page into the Shared with list (switch; state line "Andi is in" / "Waiting for Andi to join ›"; on → today's ShareEventSheet; off → today's Leave confirm; read-only copy → "Delete this copy").
+- Remove the separate Net worth row and the bottom Events group from the Share page.
