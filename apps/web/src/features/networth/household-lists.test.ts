@@ -109,9 +109,9 @@ describe('householdAssetGroups (one square per kind, the same on both phones giv
     expect(budi.onlyHere).toEqual([]);
   });
 
-  it('an account with pockets gives the same household total and squares on both phones', () => {
-    // Rina's account with an IDR and a USD pocket: one row at their total on her phone, and the two pockets — each an
-    // item of its own — as two rows on Budi's. The rows differ; what they add up to does not.
+  describe('an account with pockets', () => {
+    // Rina's account with an IDR and a USD pocket. Each pocket is an item of its own, and names the account it sits in
+    // (`pocketOf`), so Budi's phone draws it as Rina's does: one row at the pockets' total, the pockets inside.
     const accounts = [
       { id: 'multi', name: 'Multicurrency', parentId: null, kind: 'asset' as const, subtype: 'bank' as const },
       { id: 'multi-idr', name: 'Multicurrency · IDR', parentId: 'multi', kind: 'asset' as const, subtype: 'bank' as const },
@@ -121,11 +121,41 @@ describe('householdAssetGroups (one square per kind, the same on both phones giv
       value({ accountId: 'multi-idr', name: 'Multicurrency · IDR', valueMinor: 2_500_000 }),
       value({ accountId: 'multi-usd', name: 'Multicurrency · USD', currency: 'USD', valueMinor: 250_00 }),
     ];
-    const rina = assetsOn(RINA, [...rinaValues, ...pockets], budiValues.map((row) => sent(BUDI, row)), { accounts });
-    const budi = assetsOn(BUDI, budiValues, [...rinaValues, ...pockets].map((row) => sent(RINA, row)));
-    expect(rina.total).toEqual(budi.total);
-    expect(rina.segments).toEqual(budi.segments);
-    expect(rina.total.totalMinor).toBe(rinaPhone.total.totalMinor! + 2_500_000 + 4_000_000);
+    const pocketOf = { id: 'item-multi', name: 'Multicurrency' };
+    const rinaSends = [...rinaValues.map((row) => sent(RINA, row)), ...pockets.map((row) => ({ ...sent(RINA, row), pocketOf }))];
+
+    it('is one row on both phones, with the same total, squares and list', () => {
+      const rina = assetsOn(RINA, [...rinaValues, ...pockets], budiValues.map((row) => sent(BUDI, row)), { accounts });
+      const budi = assetsOn(BUDI, budiValues, rinaSends);
+      expect(budi).toEqual(rina);
+      expect(rina.total.totalMinor).toBe(rinaPhone.total.totalMinor! + 2_500_000 + 4_000_000);
+      const bank = (budi.list[0]![2] as [string, number, string[]][]).find(([key]) => key === 'bank')![2];
+      expect(bank).toEqual(['Rina: BCA Tahapan', 'Rina: Multicurrency', 'Budi: Dollar savings', 'Budi: Mandiri Payroll']);
+    });
+
+    it('on the partner’s phone the row is the account, at its pockets’ total in the base currency, opening to them', () => {
+      const household: Household = { me: BUDI, members, names, received: rinaSends, ratesToBase: rates };
+      const { live } = householdAssetPage(budiValues, [], { accounts: [], baseCurrency: 'IDR', ratesToBase: rates }, household, new Set(budiValues.map((row) => row.accountId)));
+      const row = live.flatMap((group) => group.rows).find((each) => each.name === 'Multicurrency')!;
+      expect(row).toMatchObject({ accountId: 'item-multi', valueMinor: 6_500_000, currency: 'IDR', pockets: 2, missing: [], converted: true, received: true, owner: RINA });
+      expect(live.flatMap((group) => group.rows).some((each) => each.name.startsWith('Multicurrency ·'))).toBe(false);
+    });
+
+    it('with no rate for a pocket, the row names it and the totals are blank, as on its owner’s phone', () => {
+      const household: Household = { me: BUDI, members, names, received: rinaSends, ratesToBase: {} };
+      const { live, total } = householdAssetPage(budiValues.filter((row) => row.currency === 'IDR'), [], { accounts: [], baseCurrency: 'IDR', ratesToBase: {} }, household, new Set(budiValues.map((row) => row.accountId)));
+      const row = live.flatMap((group) => group.rows).find((each) => each.name === 'Multicurrency')!;
+      expect(row).toMatchObject({ pockets: 2, missing: ['USD'] });
+      expect(total).toEqual({ totalMinor: null, missing: ['USD'] });
+    });
+
+    it('a peer on an older build sends no pocketOf: its pockets are listed one by one, the total unchanged', () => {
+      const budi = assetsOn(BUDI, budiValues, [...rinaValues, ...pockets].map((row) => sent(RINA, row)));
+      const rina = assetsOn(RINA, [...rinaValues, ...pockets], budiValues.map((row) => sent(BUDI, row)), { accounts });
+      expect(budi.total).toEqual(rina.total);
+      const bank = (budi.list[0]![2] as [string, number, string[]][]).find(([key]) => key === 'bank')![2];
+      expect(bank).toContain('Rina: Multicurrency · USD');
+    });
   });
 
   it('counts both people in the total and in each square, converting a dollar item at the day’s rate', () => {

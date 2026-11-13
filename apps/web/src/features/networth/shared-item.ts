@@ -1,4 +1,4 @@
-import { cardBar, formatMinor } from '@expanses/core';
+import { cardBar, formatMinor, sumToBase } from '@expanses/core';
 import { memberName, type ReceivedItem } from './joint-rows';
 
 /*
@@ -219,4 +219,46 @@ export function shortDay(iso: string, today: string): string {
  */
 export function heroLine(ownerName: string, kindLabel: string, updated: string, today: string): string {
   return `${ownerName}’s · ${kindLabel} · updated ${shortDay(updated, today)}`;
+}
+
+/** The partner's account with pockets, as its own page reads it on this phone: read-only, each pocket opening its own. */
+export interface PocketAccountView {
+  name: string;
+  /** The account's kind, as its pockets say it. */
+  subtype: string;
+  owner: string;
+  ownerName: string;
+  /** Each pocket's own figure, in its own currency, in the order its owner's phone sent them (by currency). */
+  pockets: { itemId: string; name: string; currency: string; balanceMinor: number; asOf: string }[];
+  /** The pockets' total in the base currency; null while any of them has no rate (`missing` names which). */
+  totalMinor: number | null;
+  missing: string[];
+  /** Whether any pocket is held in another currency, so the total was reached at a rate. */
+  converted: boolean;
+}
+
+/**
+ * The page behind the partner's account row on Net worth and Assets (`pocketOf`): `accountId` is no item, but the
+ * account every pocket of it names. Null when no shared pocket names it any more.
+ */
+export function pocketAccountView(
+  shared: { items: readonly ReceivedItem[]; names: Record<string, string> } | null,
+  accountId: string,
+  ratesToBase: Readonly<Record<string, number>>,
+  baseCurrency: string,
+): PocketAccountView | null {
+  const items = (shared?.items ?? []).filter((item) => item.kind === 'asset' && item.pocketOf?.id === accountId).sort((a, b) => a.currency.localeCompare(b.currency));
+  const first = items[0];
+  if (!shared || !first) return null;
+  const total = sumToBase({ amounts: items.map((item) => ({ minor: item.balanceMinor, currency: item.currency })), baseCurrency, ratesToBase });
+  return {
+    name: first.pocketOf!.name,
+    subtype: first.subtype,
+    owner: first.owner,
+    ownerName: memberName(shared.names, first.owner),
+    pockets: items.map((item) => ({ itemId: item.itemId, name: item.name, currency: item.currency, balanceMinor: item.balanceMinor, asOf: item.asOf })),
+    totalMinor: total.missing.length > 0 ? null : total.totalMinor,
+    missing: total.missing,
+    converted: items.some((item) => item.currency !== baseCurrency),
+  };
 }
