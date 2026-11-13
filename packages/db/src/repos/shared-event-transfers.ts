@@ -83,6 +83,24 @@ async function devicesNotInEventTx(tx: Db, bookId: string, eventBookId: string):
 }
 
 /**
+ * Why a transfer with no workspace row stays (review fix round 1, M8): filed in a shared workspace before that workspace
+ * sent its transfers to the household (the partner never had it); filed in no workspace, so it shows in every one; or
+ * filed in a workspace no one shares.
+ */
+async function bareTransferRefusalTx(tx: Db, transactionId: string): Promise<string> {
+  const filed = await tx.values<[string, string | null, number]>(sql`
+    SELECT bt.book_id, b.name, EXISTS (SELECT 1 FROM shared_books s WHERE s.book_id = bt.book_id) FROM book_transactions bt
+    LEFT JOIN books b ON b.id = bt.book_id WHERE bt.transaction_id = ${transactionId} ORDER BY bt.book_id`);
+  const shared = filed.find(([, , isShared]) => Number(isShared) === 1);
+  if (shared) {
+    const name = shared[1] || 'the shared workspace';
+    return `Recorded before ${name} sent its transfers to the household, so the other phones never had it: it stays in ${name}`;
+  }
+  if (filed.length === 0) return 'A transfer filed in no workspace shows in every one: only one in a workspace shared with a household moves into a shared event';
+  return 'Only a transfer in a workspace shared with a household moves into a shared event';
+}
+
+/**
  * What moving a transaction into a shared event does when it is a transfer: 'listed' once its workspace row names the
  * event, the reason it stays when it cannot be listed, or null when it is no transfer (a purchase or a refund, which
  * move as expenses) — or no transaction here at all, which the purchase path reports.
@@ -90,14 +108,16 @@ async function devicesNotInEventTx(tx: Db, bookId: string, eventBookId: string):
 export async function transferIntoEventTx(tx: Db, ws: WorkspaceContext, transactionId: string, book: EventBookRow): Promise<'listed' | string | null> {
   const [head] = await tx.values<[string]>(sql`SELECT status FROM transactions WHERE id = ${transactionId} AND workspace_id = ${ws.workspaceId}`);
   if (!head || head[0] !== 'posted') return null;
+  // A shared event's own posting (a settle-up, a share): the purchase path says so in its own words.
+  if ((await tx.values(sql`SELECT 1 FROM event_postings WHERE transaction_id = ${transactionId}`)).length > 0) return null;
   const row = await liveRowTx(tx, transactionId);
   if (!row) {
     const lines = await tx.values<[number, string, string]>(sql`
       SELECT e.amount_minor, a.kind, a.subtype FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = ${transactionId}`);
     const categories = lines.filter(([, kind]) => kind === 'income' || kind === 'expense');
     if (lines.length === 0) return null;
-    // A transfer filed nowhere shared (no workspace row): nothing would take it off another phone's list.
-    if (categories.length === 0) return 'Only a transfer in a workspace shared with a household moves into a shared event';
+    // A transfer with no workspace row: nothing would take it off another phone's list. Why it has none, in its words.
+    if (categories.length === 0) return bareTransferRefusalTx(tx, transactionId);
     // Money leaving one account and reaching another, with a fee spent beside it: a transfer and a purchase in one row.
     const money = lines.filter(([, kind, subtype]) => (kind === 'asset' || kind === 'liability') && !['receivable', 'payable', 'event_balance'].includes(subtype));
     const fee = categories.length === 1 && categories[0]![1] === 'expense' && money.some(([amount]) => Number(amount) > 0) && money.some(([amount]) => Number(amount) < 0);

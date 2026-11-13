@@ -295,6 +295,30 @@ describe('a Family transfer moved into a shared trip', () => {
     ]);
   });
 
+  it('a settle-up the trip posted, a Family transfer from before Family sent its transfers, and one in every workspace each say why they stay', async () => {
+    const s = await familyAndTrip();
+    const move = (id: string) => moveIntoSharedEvent(s.wife.database, ownerScope(s.wife.ws), s.trip.eventOf(s.wife), [id]);
+    const bare = (description: string, fileTransfer: boolean) =>
+      postTransaction(s.wife.database, inBook(s.wife.ws, s.family), {
+        occurredOn: '2026-10-08',
+        description,
+        fileTransfer,
+        lines: transferLines({ fromAccountId: s.wife.bank, toAccountId: s.wife.cash, amountMinor: 90_000, currency: 'IDR' }),
+      });
+    // A trip's own settle-up in this phone's books (an event posting).
+    const settle = await bare('Settle up', false);
+    await s.wife.database.db.run(sql`INSERT INTO event_postings (book_id, record_id, kind, transaction_id, account_id, account_amount_minor) VALUES (${s.trip.bookId}, 'settlement-1', 'settlement', ${settle}, NULL, NULL)`);
+    expect((await move(settle)).kept[0]!.why).toBe('Already in a shared event');
+    // Filed in Family before Family sent transfers to the household: no redacted row, so the partner never had it.
+    const old = await bare('Old withdrawal', true);
+    await s.wife.database.db.run(sql`DELETE FROM shared_transfers WHERE transaction_id = ${old}`);
+    await s.wife.database.db.run(sql`INSERT INTO book_transactions (transaction_id, workspace_id, book_id) VALUES (${old}, ${s.wife.ws.workspaceId}, ${s.family})`);
+    expect((await move(old)).kept[0]!.why).toBe('Recorded before Personal sent its transfers to the household, so the other phones never had it: it stays in Personal');
+    // Filed in no workspace: it shows in every one.
+    const everywhere = await bare('Pocket money', false);
+    expect((await move(everywhere)).kept[0]!.why).toBe('A transfer filed in no workspace shows in every one: only one in a workspace shared with a household moves into a shared event');
+  });
+
   it('a purchase beside it still moves as a purchase', async () => {
     const s = await familyAndTrip();
     const id = await withdrawal(s);
