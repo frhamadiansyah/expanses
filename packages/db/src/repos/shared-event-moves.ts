@@ -10,7 +10,7 @@ import { listTransactions } from './ledger';
 import { addSharedItemPurchase, setSharedItemDone, saveSharedItem } from './shared-event-plan';
 import { ensureShareAccountTx, postEventRecordTx, rateToBaseTx } from './shared-event-postings';
 import { type EventBookRow, eventRecordsTx, expenseRecordTx, type StoredExpense } from './shared-event-records';
-import { transferIntoEventTx, tripFeeExpenseId } from './shared-event-transfers';
+import { nextTripFeeIdTx, transferIntoEventTx } from './shared-event-transfers';
 import { openSharedEventTx, SharedEventDbError } from './shared-event-writes';
 import { partnerPurchaseRefusalTx, untagSharedRowsTx } from './shared-workspace-rows';
 
@@ -283,7 +283,7 @@ export async function moveIntoSharedEvent(
           // A fee typed on it was split off into a purchase of its own: that moves in as this person's expense, counted
           // on the event once. Kept back, the whole listing is rolled back with it, so the row stays as it was.
           if (transfer.fee) {
-            const feeExpenseId = await tripFeeExpenseId(transfer.transferId, book.bookId);
+            const feeExpenseId = await nextTripFeeIdTx(tx, transfer.transferId, book.bookId);
             const fee = await expenseIntoEventTx(tx, ws, book, transfer.fee, null, async () => feeExpenseId);
             if (!('expenseId' in fee)) throw new KeptBack({ transactionId, why: `Its fee could not move: ${fee.why}` });
           }

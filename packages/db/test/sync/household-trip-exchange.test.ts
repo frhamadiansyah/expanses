@@ -13,6 +13,7 @@ import {
   personalBook,
   postTransaction,
   removeTransferFromSharedEvent,
+  replaceTransaction,
   sharedEventOf,
   sharedEventView,
   voidTransaction,
@@ -289,6 +290,113 @@ describe('a cross-currency withdrawal in Family moved into the shared trip', () 
     }
     expect(pick(await nativeBalances(s.wife.database, s.wife.ws), [s.wife.cash, s.lira, s.exchange])).toEqual(pick(before, [s.wife.cash, s.lira, s.exchange]));
     expect(await projectBook(s.wife.database, s.family)).toEqual(await projectBook(s.husband.database, s.family));
+  });
+});
+
+/** The transfer row a phone's trip lists, on the recorder's phone: the transaction it stands as now. */
+async function listedOn(s: Setup): Promise<string> {
+  return (await sharedEventView(s.wife.database, ownerScope(s.wife.ws), s.trip.eventOf(s.wife)))!.transfers[0]!.transactionId!;
+}
+
+/** Money accounts only: what the move and Remove must leave exactly as they found them. */
+async function money(s: Setup): Promise<Record<string, number>> {
+  return pick(await nativeBalances(s.wife.database, s.wife.ws), [s.wife.cash, s.wife.bank, s.lira, s.exchange]);
+}
+
+describe('a typed fee taken back off the trip (review fix)', () => {
+  it('moved, removed and moved again: listed again, the fee counted once on the trip; removed again, all as before', async () => {
+    const s = await familyAndTrip();
+    const fees = await categoryOf(s.wife.database, s.family, 'Fees & charges');
+    const id = await atm(s.wife, s.family, s.lira, s.exchange, fees);
+    await s.settle();
+    const before = await money(s);
+    expect(await addToTrip(s, [id])).toMatchObject({ kept: [], listed: [{ transactionId: id }] });
+    await s.settle();
+    expect(await removeTransferFromSharedEvent(s.wife.database, inBook(s.wife.ws, s.family), await listedOn(s))).toBe(true);
+    await s.settle();
+    const back = (await listTransactions(s.wife.database, inBook(s.wife.ws, s.family), { from: '2026-10-01', to: '2026-10-31' }))[0]!.id;
+
+    const again = await addToTrip(s, [back]);
+    expect(again).toEqual({ moved: [], kept: [], listed: [{ transactionId: back }] });
+    await s.settle();
+    expect(await skipsOf(s.husband.database)).toEqual([]);
+    for (const d of [s.wife, s.husband]) {
+      const view = (await sharedEventView(d.database, ownerScope(d.ws), s.trip.eventOf(d)))!;
+      expect(view.transfers).toHaveLength(1);
+      // The first move's fee stays voided on the trip; the second is its own record, live.
+      expect(view.expenses.map((e) => [e.note, e.amountMinor, e.currency, e.voided]).sort((a, b) => Number(b[3]) - Number(a[3]))).toEqual([
+        ['Bank Contoh ATM', 25_000, 'IDR', true],
+        ['Bank Contoh ATM', 25_000, 'IDR', false],
+      ]);
+      expect(view.spentMinor).toBe(4_464);
+      expect(await familySpend(s, d)).toBe(0);
+    }
+    expect(await money(s)).toEqual(before);
+
+    expect(await removeTransferFromSharedEvent(s.wife.database, inBook(s.wife.ws, s.family), await listedOn(s))).toBe(true);
+    await s.settle();
+    for (const d of [s.wife, s.husband]) {
+      expect(await familySpend(s, d)).toBe(25_000);
+      expect((await sharedEventView(d.database, ownerScope(d.ws), s.trip.eventOf(d)))!.spentMinor).toBe(0);
+    }
+    expect(await familyRows(s, s.wife)).toEqual(['Bank Contoh ATM']);
+    expect(await money(s)).toEqual(before);
+    expect(await projectBook(s.wife.database, s.family)).toEqual(await projectBook(s.husband.database, s.family));
+  });
+
+  it('edited while listed to come from another account, then removed: the fee is never lost, and Remove moves no money', async () => {
+    const s = await familyAndTrip();
+    const fees = await categoryOf(s.wife.database, s.family, 'Fees & charges');
+    const id = await atm(s.wife, s.family, s.lira, s.exchange, fees);
+    await s.settle();
+    await addToTrip(s, [id]);
+    await s.settle();
+    // The listed transfer now says the rupiah came out of the bank account, not the wallet the fee was paid from.
+    await replaceTransaction(s.wife.database, inBook(s.wife.ws, s.family), await listedOn(s), {
+      occurredOn: '2026-10-06',
+      description: 'Bank Contoh ATM',
+      ratesToBase: { TRY: 560 },
+      lines: exchangeLines({ fromAccountId: s.wife.bank, fromAmountMinor: 1_450_000, fromCurrency: 'IDR', toAccountId: s.lira, toAmountMinor: 250_000, toCurrency: 'TRY', exchangeAccountId: s.exchange }),
+    });
+    await s.settle();
+    const edited = await money(s);
+
+    expect(await removeTransferFromSharedEvent(s.wife.database, inBook(s.wife.ws, s.family), await listedOn(s))).toBe(true);
+    await s.settle();
+    expect(await skipsOf(s.husband.database)).toEqual([]);
+    // Every account as it was the moment before Remove: the fee is back as spending, still paid from the wallet.
+    expect(await money(s)).toEqual(edited);
+    for (const d of [s.wife, s.husband]) {
+      expect(await familySpend(s, d)).toBe(25_000);
+      const view = (await sharedEventView(d.database, ownerScope(d.ws), s.trip.eventOf(d)))!;
+      expect(view.transfers).toEqual([]);
+      expect(view.spentMinor).toBe(0);
+    }
+    expect((await familyRows(s, s.wife)).sort()).toEqual(['Bank Contoh ATM', 'Bank Contoh ATM']);
+    expect(await projectBook(s.wife.database, s.family)).toEqual(await projectBook(s.husband.database, s.family));
+  });
+});
+
+describe('only a transfer’s shape is filed as a transfer when moved (review fix)', () => {
+  it('a no-category row filed in Family that is no transfer (a holding bought) stays, with a reason', async () => {
+    let id = '';
+    const s = await familyAndTrip(async (wife, _lira, _exchange, family) => {
+      const shares = (await createAccount(wife.database, wife.ws, { name: 'Contoh shares', kind: 'asset', subtype: 'investment', currency: 'IDR' })).id;
+      id = await postTransaction(wife.database, inBook(wife.ws, family), {
+        occurredOn: '2026-10-06',
+        description: 'Buy Contoh',
+        fileTransfer: true,
+        lines: [
+          { accountId: wife.bank, amountMinor: -500_000, currency: 'IDR' },
+          { accountId: shares, amountMinor: 500_000, currency: 'IDR' },
+        ],
+      });
+    });
+    const result = await addToTrip(s, [id]);
+    expectAccounted([id], result);
+    expect(result.listed).toEqual([]);
+    expect(result.kept).toEqual([{ transactionId: id, why: 'Only a purchase from one account under one category moves into a shared event' }]);
+    expect(await s.wife.database.db.values(sql`SELECT 1 FROM shared_transfers WHERE transaction_id = ${id}`)).toEqual([]);
   });
 });
 

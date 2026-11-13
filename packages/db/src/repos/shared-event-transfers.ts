@@ -1,6 +1,6 @@
-import { isExchangeResultKey, type PostingLine, transferName } from '@expanses/core';
+import { FX_LOT_SUBTYPES, isExchangeResultKey, type PostingLine, transferName } from '@expanses/core';
 import { sql } from 'drizzle-orm';
-import type { WorkspaceContext } from '../context';
+import { ownerScope, type WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
 import { captureRevaluingTx, localDeviceId, withCapture } from '../sync/capture';
 import { meetsVersion } from '../sync/events/version';
@@ -140,6 +140,17 @@ async function ledgerLinesTx(tx: Db, transactionId: string): Promise<LedgerLine[
   }));
 }
 
+/**
+ * What a transfer is made of: money accounts (cash, bank, wallet, deposit, broker cash, a card) and the app's own
+ * Currency Exchange lines between two currencies, with money leaving one and reaching another. A holding bought, a loan
+ * paid or a debt is no transfer, filed in a workspace or not: it never becomes a redacted row (review fix).
+ */
+function transferShaped(lines: readonly LedgerLine[]): boolean {
+  const money = (l: LedgerLine) => (l.kind === 'asset' && FX_LOT_SUBTYPES.includes(l.subtype)) || (l.kind === 'liability' && l.subtype === 'credit_card');
+  if (!lines.every((l) => money(l) || l.systemKey === 'currency_exchange')) return false;
+  return lines.some((l) => money(l) && l.amountMinor > 0) && lines.some((l) => money(l) && l.amountMinor < 0);
+}
+
 const isMoneyLine = (line: LedgerLine) => (line.kind === 'asset' || line.kind === 'liability') && !['receivable', 'payable', 'event_balance'].includes(line.subtype);
 
 /**
@@ -171,11 +182,35 @@ const postingOf = (line: LedgerLine, amountMinor = line.amountMinor, amountBaseM
 const ratesOf = (lines: readonly LedgerLine[]): Record<string, number> => Object.fromEntries(lines.map((line) => [line.currency, line.fxRateToBase]));
 
 /**
- * The trip expense a transfer's typed fee became, named alike on every phone that could ask: by the transfer's workspace
- * row and the event. Remove from event finds it by this id to take the fee back off the trip.
+ * The trip expense a transfer's typed fee became on its `n`th move into the event (n from 0), named alike on every phone
+ * that could ask: by the transfer's workspace row and the event. A fee taken back off the trip (Remove from event) is
+ * voided there for good; moved in again it takes the next id, never the voided one back, so no phone ever has to read a
+ * record come back from void (review fix).
  */
-export async function tripFeeExpenseId(transferId: string, eventBookId: string): Promise<string> {
-  return uuidv5(await namespaceOf(eventBookId), `trip-fee:${transferId}`);
+async function tripFeeExpenseId(transferId: string, eventBookId: string, n: number): Promise<string> {
+  return uuidv5(await namespaceOf(eventBookId), n === 0 ? `trip-fee:${transferId}` : `trip-fee:${transferId}:${n}`);
+}
+
+/** The ids a transfer's fee has taken on this event so far, oldest first, with whether each is still live. */
+async function tripFeeIdsTx(tx: Db, transferId: string, eventBookId: string): Promise<{ id: string; live: boolean }[]> {
+  const out: { id: string; live: boolean }[] = [];
+  for (let n = 0; n < 1_000; n += 1) {
+    const id = await tripFeeExpenseId(transferId, eventBookId, n);
+    const [row] = await tx.values<[string | null]>(sql`SELECT voided_at FROM event_expenses WHERE book_id = ${eventBookId} AND id = ${id}`);
+    if (!row) return out;
+    out.push({ id, live: row[0] === null });
+  }
+  return out;
+}
+
+/** The id a transfer's fee takes on this move into the event: the first of its ids no record has had. */
+export async function nextTripFeeIdTx(tx: Db, transferId: string, eventBookId: string): Promise<string> {
+  return tripFeeExpenseId(transferId, eventBookId, (await tripFeeIdsTx(tx, transferId, eventBookId)).length);
+}
+
+/** The fee expense a listed transfer has live on the event, or null. */
+async function liveTripFeeIdTx(tx: Db, transferId: string, eventBookId: string): Promise<string | null> {
+  return (await tripFeeIdsTx(tx, transferId, eventBookId)).filter((fee) => fee.live).at(-1)?.id ?? null;
 }
 
 /** A transfer listed on a shared event: the transaction it now is, and the fee purchase split off it to move as an expense. */
@@ -216,7 +251,7 @@ export async function transferIntoEventTx(tx: Tx, ws: WorkspaceContext, transact
   if (row) {
     if (row.eventBookId !== null) return 'Already in a shared event';
     bookId = row.bookId;
-  } else if (categories.length === 0 || fee) {
+  } else if ((categories.length === 0 && transferShaped(lines)) || (fee && transferShaped(lines.filter((l) => l !== fee.fee)))) {
     const filed = await sharedFiledBookTx(tx, transactionId);
     if (!filed) return unsharedTransferRefusalTx(tx, transactionId);
     // A shared workspace's purchase another member paid is theirs to move (D3): only its recorder's phone splits it.
@@ -284,51 +319,91 @@ export async function removeTransferFromSharedEvent(database: Database, ws: Work
     if (!head) return false;
     const row = await liveRowTx(tx, transactionId);
     if (!row || row.eventBookId === null) return false;
+    // Everything the fee's way back needs is read before anything is written.
+    const fee = await feeBackPlanTx(tx, ws, transactionId, row.transferId, row.eventBookId);
     await withCapture(tx, { entity: KEY, id: row.transferId, bookId: row.bookId }, () =>
       tx.run(sql`UPDATE shared_transfers SET event_book_id = NULL WHERE book_id = ${row.bookId} AND transfer_id = ${row.transferId}`),
     );
-    await feeBackFromEventTx(tx, ws, transactionId, row.transferId, row.eventBookId);
+    if (fee) await feeBackTx(tx, ws, transactionId, row.eventBookId, fee);
     return true;
   });
 }
 
+interface FeeBack {
+  expenseId: string;
+  derivedId: string;
+  /** The category the fee was typed under. */
+  categoryId: string;
+  /** What the fee's expense takes from its account now (the derived transaction's money line, below zero). */
+  paid: LedgerLine;
+  /** The transfer's line that money left from, in the same account and currency, when it still has one. */
+  onTransfer: boolean;
+}
+
 /**
- * The fee split off a transfer when it was listed on the event (`transferIntoEventTx`), put back where it was: its
- * expense voided on the event (its derived transaction with it), and its line on the transfer again, from the same
- * account, under the category it was typed in — one row in the workspace, counted there, as before the move. Left on
- * the event when the event can no longer be written to here (done, left, its copy deleted): it is changed there.
+ * How a transfer's fee comes back off the trip, read whole before anything is written; null when there is none to bring
+ * back, or the event can no longer be written to here (done, left, its copy deleted), where it stays and is changed.
  */
-async function feeBackFromEventTx(tx: Tx, ws: WorkspaceContext, transactionId: string, transferId: string, eventBookId: string): Promise<void> {
-  const expenseId = await tripFeeExpenseId(transferId, eventBookId);
-  const [posting] = await tx.values<[string | null]>(sql`
-    SELECT p.transaction_id FROM event_postings p JOIN event_expenses x ON x.book_id = p.book_id AND x.id = p.record_id
-    WHERE p.book_id = ${eventBookId} AND p.record_id = ${expenseId} AND x.voided_at IS NULL`);
-  if (!posting?.[0]) return;
+async function feeBackPlanTx(tx: Db, ws: WorkspaceContext, transactionId: string, transferId: string, eventBookId: string): Promise<FeeBack | null> {
+  const expenseId = await liveTripFeeIdTx(tx, transferId, eventBookId);
+  if (!expenseId) return null;
+  const [posting] = await tx.values<[string | null]>(sql`SELECT transaction_id FROM event_postings WHERE book_id = ${eventBookId} AND record_id = ${expenseId}`);
+  const derivedId = posting?.[0];
+  if (!derivedId) return null;
   const [event] = await tx.values<[string]>(sql`SELECT event_id FROM event_books WHERE book_id = ${eventBookId}`);
   const book = event ? await eventBookOfEventTx(tx, event[0]) : null;
-  if (!book || book.workspaceId !== ws.workspaceId || book.state !== 'active' || book.finishedAt) return;
-  // The fee purchase the expense replaced: its lines are the fee as it was typed (category, account, figures).
-  const [original] = await tx.values<[string | null]>(sql`SELECT replaces_transaction_id FROM transactions WHERE id = ${posting[0]}`);
-  const feeLines = original?.[0] ? await ledgerLinesTx(tx, original[0]) : [];
-  const fee = feeLines.find((l) => l.kind === 'expense');
-  const paid = feeLines.find(isMoneyLine);
-  if (!fee || !paid) return;
-  await withCapture(tx, { entity: 'event_expense', id: expenseId, bookId: eventBookId }, () =>
-    tx.run(sql`UPDATE event_expenses SET voided_at = ${new Date().toISOString()} WHERE book_id = ${eventBookId} AND id = ${expenseId}`),
+  if (!book || book.workspaceId !== ws.workspaceId || book.state !== 'active' || book.finishedAt) return null;
+  // What the expense takes from its account now (an edit on the trip may have changed it): exactly that comes back.
+  const paid = (await ledgerLinesTx(tx, derivedId)).find((l) => isMoneyLine(l) && l.amountMinor < 0);
+  // The category the fee was typed under: the fee purchase the expense first replaced, at the root of its chain.
+  const [root] = await tx.values<[string]>(sql`
+    WITH RECURSIVE chain(id, prev, depth) AS (
+      SELECT id, replaces_transaction_id, 0 FROM transactions WHERE id = ${derivedId}
+      UNION ALL
+      SELECT t.id, t.replaces_transaction_id, c.depth + 1 FROM transactions t JOIN chain c ON t.id = c.prev WHERE c.depth < 50
+    )
+    SELECT id FROM chain ORDER BY depth DESC LIMIT 1`);
+  const category = root ? (await ledgerLinesTx(tx, root[0])).find((l) => l.kind === 'expense') : undefined;
+  if (!paid || !category) return null;
+  const onTransfer = (await ledgerLinesTx(tx, transactionId)).some((l) => l.accountId === paid.accountId && l.currency === paid.currency && l.amountMinor < 0);
+  return { expenseId, derivedId, categoryId: category.accountId, paid, onTransfer };
+}
+
+/**
+ * The fee put back where it was: its expense voided on the event (its derived transaction with it, the money back on
+ * its account), then the same money spent again under the category it was typed in, from the same account — on the
+ * transfer's line when the transfer still leaves that account (one row, as before the move), else as a purchase of its
+ * own (the transfer was edited to another account while listed). Either way every balance ends where it was.
+ */
+async function feeBackTx(tx: Tx, ws: WorkspaceContext, transactionId: string, eventBookId: string, fee: FeeBack): Promise<void> {
+  await withCapture(tx, { entity: 'event_expense', id: fee.expenseId, bookId: eventBookId }, () =>
+    tx.run(sql`UPDATE event_expenses SET voided_at = ${new Date().toISOString()} WHERE book_id = ${eventBookId} AND id = ${fee.expenseId}`),
   );
-  await postEventRecordTx(tx, eventBookId, 'expense', expenseId, null);
-  const [head] = await tx.values<[string, string | null]>(sql`SELECT occurred_on, description FROM transactions WHERE id = ${transactionId}`);
-  const lines = await ledgerLinesTx(tx, transactionId);
-  const from = lines.find((l) => l.accountId === paid.accountId && l.currency === paid.currency && l.amountMinor < 0);
-  if (!head || !from) return;
-  await replaceTransactionTx(tx, ws, transactionId, {
+  await postEventRecordTx(tx, eventBookId, 'expense', fee.expenseId, null);
+  const [derived] = await tx.values<[string]>(sql`SELECT status FROM transactions WHERE id = ${fee.derivedId}`);
+  if (derived?.[0] !== 'void') throw new Error('The fee could not be taken off the event');
+  const amountMinor = -fee.paid.amountMinor;
+  const amountBaseMinor = -fee.paid.amountBaseMinor;
+  const feeLine: PostingLine = { accountId: fee.categoryId, amountMinor, currency: fee.paid.currency, amountBaseMinor };
+  const [head] = await tx.values<[string, string | null, string | null]>(sql`SELECT occurred_on, description, card_id FROM transactions WHERE id = ${transactionId}`);
+  if (!head) throw new Error('The transfer is gone');
+  const rates = { [fee.paid.currency]: fee.paid.fxRateToBase };
+  if (fee.onTransfer) {
+    const lines = await ledgerLinesTx(tx, transactionId);
+    const from = lines.find((l) => l.accountId === fee.paid.accountId && l.currency === fee.paid.currency && l.amountMinor < 0)!;
+    await replaceTransactionTx(tx, ws, transactionId, {
+      occurredOn: head[0],
+      description: head[1] ?? '',
+      lines: [...lines.map((l) => (l === from ? postingOf(l, l.amountMinor - amountMinor, l.amountBaseMinor - amountBaseMinor) : postingOf(l))), feeLine],
+      ratesToBase: { ...ratesOf(lines), ...rates },
+    });
+    return;
+  }
+  await postTransactionTx(tx, ownerScope(ws), {
     occurredOn: head[0],
     description: head[1] ?? '',
-    lines: [
-      ...lines.map((l) => (l === from ? { ...postingOf(l, l.amountMinor + paid.amountMinor, l.amountBaseMinor + paid.amountBaseMinor), ...(paid.spendCategoryId ? { spendCategoryId: paid.spendCategoryId } : {}) } : postingOf(l))),
-      postingOf(fee),
-    ],
-    ratesToBase: { ...ratesOf(lines), ...ratesOf(feeLines) },
+    lines: [feeLine, { accountId: fee.paid.accountId, amountMinor: -amountMinor, currency: fee.paid.currency, amountBaseMinor: -amountBaseMinor }],
+    ratesToBase: rates,
   });
 }
 
