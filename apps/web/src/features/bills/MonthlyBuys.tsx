@@ -55,11 +55,12 @@ export function MonthlyBuys() {
     });
   const open = (template: TradeTemplateRow) =>
     template.kind === 'move' ? setMove(template) : void navigate({ to: '/net-worth/assets/$accountId', params: { accountId: template.accountId } });
-  const glyphOf = (template: TradeTemplateRow) => {
-    if (template.kind === 'move') return <MoveRight size={16} aria-hidden />;
-    const Glyph = ASSET_TILES[assetItemOfCode(valueOf(template.accountId)?.coretaxCode ?? null)?.id ?? ''] ?? ASSET_TILES.fund!;
+  /** A holding's kind, drawn as the Assets list draws it: the plan's row, and the holding row of the Buy sheet it opens. */
+  const holdingGlyph = (accountId: string) => {
+    const Glyph = ASSET_TILES[assetItemOfCode(valueOf(accountId)?.coretaxCode ?? null)?.id ?? ''] ?? ASSET_TILES.fund!;
     return <Glyph size={16} aria-hidden />;
   };
+  const glyphOf = (template: TradeTemplateRow) => (template.kind === 'move' ? <MoveRight size={16} aria-hidden /> : holdingGlyph(template.accountId));
 
   return (
     <section className="md:max-w-2xl" style={{ marginBottom: GROUP_GAP }} data-testid="monthly-buys">
@@ -73,7 +74,7 @@ export function MonthlyBuys() {
       {recording && (
         <TradeSheet
           title="Buy"
-          holding={holdingOf(recording.initial.accountId ?? '')}
+          holding={{ ...holdingOf(recording.initial.accountId ?? ''), icon: holdingGlyph(recording.initial.accountId ?? '') }}
           initial={recording.initial}
           editing={null}
           templateId={recording.templateId}

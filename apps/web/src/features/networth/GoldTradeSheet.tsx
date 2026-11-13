@@ -1,26 +1,21 @@
-import {
-  averagePriceMicro, formatMinor, formatUnits, goldBarSizes, goldGainMinor, goldSellGrams, gramsText, groupTypedAmount, isoDate, type Position, typedGramsMicro,
-} from '@expanses/core';
+import { formatUnits, goldBarSizes, goldGainMinor, goldSellGrams, gramsText, isoDate, type Position, typedGramsMicro } from '@expanses/core';
 import type { RecordTradeInput } from '@expanses/db';
 import { type ReactNode, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
-import { ErrorBox } from '../../ui';
-import { InsetGroup, TextRow } from '../../ui/native';
+import { ErrorBox, RowHint } from '../../ui';
+import { InsetGroup } from '../../ui/native';
 import { KeyboardStrip } from '../../ui/native/KeyboardStrip';
-import { dayLabel } from './asset-page';
-import { CardPointsBox, CashRow, CashSheet, HoldingRow, ResultRow, signedMinor, TradeDetails, TypedRow, typedMinor, useCashSide, useTradeDetails, useTradeSave } from './trade-sheet-parts';
-
-const PAID_INFO =
-  "The receipt's total, with any tax on it. A fee charged on top of it goes under Fee in the details; the cost is the two together, which is what left the account. The sizes above the keyboard are the brand's own bar sizes; any other weight can be typed.";
-const RECEIVED_INFO =
-  'What the sale brought. With no fee or tax in the details, that is what arrived; a fee or tax withheld typed there comes off it before it reaches the account. A buyback price is usually below the selling price, so a quick sale often shows a loss.';
-
-/** A price per gram in whole minor units, as the holding line writes it: Rp 1.950.000/g. */
-const perGram = (priceMicro: number, currency: string) => `${formatMinor(Math.round(priceMicro / 1_000_000), currency)}/g`;
+import { FigureRow } from '../transactions/AmountRow';
+import { pastWord, payRowText } from '../transactions/buy-rows';
+import { DateRow } from '../transactions/CardRows';
+import { FormRows } from '../transactions/FormRow';
+import { TradeHoldingRow, TradeMoneyRow, TradeUnitsRow } from '../transactions/TradeRows';
+import { currencyFlag } from '../transactions/tx-form';
+import { CashSheet, ResultRow, SheetTradeDetails, signedMinor, typedMinor, useCashSide, useTradeDetails, useTradeSave } from './trade-sheet-parts';
 
 /**
- * Buy or Sell of gold bars from their own page, as a dealer's receipt reads: grams, the total paid or received, the
- * account and the day. While Grams is being typed on a phone the brand's bar sizes ride above the keyboard, one tap
+ * Buy or Sell of gold bars from their own page, in Trade's rows (owner, 13 Nov 2026): the account, the receipt's
+ * total, the holding, its grams and the day. While Grams is being typed on a phone the brand's bar sizes ride above the keyboard, one tap
  * each. A sell can take All, every gram, so the holding ends at exactly 0 g, and shows its gain against the average
  * cost. "Add more details" opens a second box under the first, in the same sheet: a fee, tax withheld, the goal, and
  * the rate that day for an account in another currency. Recorded by `recordTrade`, as the full form records it.
@@ -29,13 +24,13 @@ export function GoldTradeSheet({
   kind,
   holding,
   icon,
-  lastPrice,
   position,
   onClose,
 }: {
   kind: 'buy' | 'sell';
   holding: { accountId: string; name: string; currency: string };
   icon: ReactNode;
+  /** The last price saved; the sheet names the holding alone now, so it is not drawn. */
   lastPrice: { priceMicro: number; onDate: string } | null;
   position: Position | undefined;
   onClose: () => void;
@@ -66,19 +61,6 @@ export function GoldTradeSheet({
   // The fee comes off the gain, as the ledger books it; tax withheld is filed as tax, not taken from the gain.
   const gain = kind === 'sell' && position && unitsMicro && moneyMinor ? goldGainMinor(position, unitsMicro, moneyMinor - (input?.feeMinor ?? 0)) : null;
 
-  const average = position ? averagePriceMicro(position) : null;
-  const subtitle = [
-    `${formatUnits(heldMicro)} g`,
-    kind === 'buy'
-      ? lastPrice
-        ? `last ${perGram(lastPrice.priceMicro, currency)} · ${dayLabel(lastPrice.onDate)}`
-        : 'no price yet'
-      : average !== null
-        ? `cost ${perGram(average, currency)}`
-        : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
   const shownGrams = all ? formatUnits(heldMicro) : grams;
   const sizes = goldBarSizes(holding.name);
   const pickSize = (size: number) => {
@@ -95,51 +77,50 @@ export function GoldTradeSheet({
       onClose={onClose}
       confirm={{ label: kind === 'buy' ? 'Record buy' : 'Record sell', disabled: !saving.canSave, run: () => void saving.save() }}
     >
-      <InsetGroup>
-        <HoldingRow icon={icon} name={holding.name} subtitle={subtitle} />
-      </InsetGroup>
+      <div className="mb-[18px] flex flex-col gap-[10px]">
+        {/* Trade's rows (owner, 13 Nov 2026): Paid with, the receipt's total, the holding, Grams, the day. */}
+        <FormRows>
+          <TradeMoneyRow kind={kind} value={side.past ? pastWord(kind) : (side.cashAccount?.name ?? '')} onClick={() => setPicking(true)} />
+          <FigureRow field={{ which: 'amount', label: kind === 'buy' ? 'Total paid' : 'Received', value: money, currency }} flag={currencyFlag(currency)} onChange={setMoney} />
+          <TradeHoldingRow glyph={icon} name={holding.name} />
+          <TradeUnitsRow
+            label="Grams"
+            value={shownGrams}
+            onChange={(text) => {
+              setAll(false);
+              setGrams(text.replace(/[^\d.,]/g, ''));
+            }}
+            onFocus={() => setTypingGrams(true)}
+            onBlur={() => setTypingGrams(false)}
+            invalid={Boolean(sold?.tooMany)}
+            pill={
+              kind === 'sell'
+                ? {
+                    label: 'All',
+                    on: all,
+                    run: () => {
+                      setAll((was) => !was);
+                      setGrams('');
+                    },
+                  }
+                : undefined
+            }
+          />
+          <DateRow on={occurredOn} onChange={setOccurredOn} max={today} />
+        </FormRows>
+        {sold?.tooMany && <RowHint>{`More than the ${formatUnits(heldMicro)} g held`}</RowHint>}
 
-      <InsetGroup footer={sold?.tooMany ? `More than the ${formatUnits(heldMicro)} g held` : undefined}>
-        <TypedRow
-          label="Grams"
-          value={shownGrams}
-          onChange={(e) => {
-            setAll(false);
-            setGrams(e.target.value.replace(/[^\d.,]/g, ''));
-          }}
-          onFocus={() => setTypingGrams(true)}
-          onBlur={() => setTypingGrams(false)}
-          inputMode="decimal"
-          placeholder="Grams"
-          aria-invalid={Boolean(sold?.tooMany)}
-          pill={
-            kind === 'sell'
-              ? {
-                  label: 'All',
-                  on: all,
-                  run: () => {
-                    setAll((was) => !was);
-                    setGrams('');
-                  },
-                }
-              : undefined
-          }
+        <SheetTradeDetails
+          past={{ on: side.past, set: side.setPast }}
+          kind={kind}
+          details={details}
+          currency={currency}
+          whole={unitsMicro ? formatUnits(unitsMicro) : ''}
+          unitLabel="g"
+          problem={problem}
+          {...(side.isCard && kind === 'buy' ? { points: { accounts: side.accounts } } : {})}
         />
-        <TypedRow
-          label={kind === 'buy' ? 'Total paid' : 'Received'}
-          info={kind === 'buy' ? PAID_INFO : RECEIVED_INFO}
-          value={money}
-          onChange={(e) => setMoney(groupTypedAmount(e.target.value, currency))}
-          inputMode={currency === 'IDR' ? 'numeric' : 'decimal'}
-          placeholder="Amount"
-        />
-        <CashRow label={kind === 'buy' ? 'Paid from' : 'To'} side={side} onOpen={() => setPicking(true)} />
-        <TextRow label="Date" type="date" value={occurredOn} max={today} onChange={(e) => setOccurredOn(e.target.value)} />
-      </InsetGroup>
-
-      <CardPointsBox details={details} accounts={side.accounts} show={side.isCard && kind === 'buy'} />
-
-      <TradeDetails past={{ on: side.past, set: side.setPast }} kind={kind} details={details} currency={currency} emptyWord="None" whole={unitsMicro ? formatUnits(unitsMicro) : ''} unitLabel="g" problem={problem} />
+      </div>
 
       {gain !== null && (
         <InsetGroup>
@@ -156,7 +137,7 @@ export function GoldTradeSheet({
           cells={sizes.map((size) => ({ key: String(size), label: `${gramsText(size)} g`, title: gramsText(size), detail: 'g', onPick: () => pickSize(size) }))}
         />
       )}
-      {picking && <CashSheet title={kind === 'buy' ? 'Paid from' : 'To'} side={side} onClose={() => setPicking(false)} />}
+      {picking && <CashSheet title={payRowText(kind).label} side={side} onClose={() => setPicking(false)} />}
     </Sheet>
   );
 }

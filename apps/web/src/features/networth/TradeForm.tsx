@@ -1,28 +1,27 @@
-import { formatPriceMicro, isoDate, type Position, tradeCashMovedMinor, type TradeKind, tradeRateNeeds } from '@expanses/core';
+import { formatPriceMicro, isoDate, type Position, tradeCashMovedMinor, tradeRateNeeds } from '@expanses/core';
 import { type AccountRow, type RecordTradeInput, recordTrade, replaceTrade, type TradeRow } from '@expanses/db';
-import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
+import { type FormEvent, type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { ratePreview } from '../../lib/rates';
-import { ErrorBox, InputRow, Money, RowHint, SelectRow } from '../../ui';
-import { CategoryOptions } from '../cards/options';
+import { ErrorBox, Money, RowHint } from '../../ui';
+import { InsetGroup } from '../../ui/native';
 import { useSetAsideChoiceOf } from '../goals/queries';
 import { tradeDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
-import { FormRows, MoneyFieldRow } from '../transactions/FormRow';
+import { FigureRow } from '../transactions/AmountRow';
+import { pastWord, payRowText, type TradeSide } from '../transactions/buy-rows';
+import { DateRow } from '../transactions/CardRows';
+import { FieldRow, FormRows } from '../transactions/FormRow';
+import { PaymentSheet } from '../transactions/PaymentSheet';
+import { DetailsToggle, TradeDetailRows, TradeHoldingRow, TradeMoneyRow, TradeTaxField, TradeUnitsRow } from '../transactions/TradeRows';
 import { GoalParts } from './GoalParts';
 import { SPLIT } from './goal-parts-form';
 import { currencyFlag } from '../transactions/tx-form';
 import { usePostedTradeMoney } from './queries';
 import { draftToInput, emptyTradeDraft, prefillCharged, pricePreview, sellPreview, tradeFormReady, type TradeDraft, waitingForPostedMoney } from './trade-form';
 import { tradeRatesForSave, withCharged } from './trade-money';
-
-const KINDS: { value: TradeKind; label: string }[] = [
-  { value: 'buy', label: 'Buy' },
-  { value: 'sell', label: 'Sell' },
-  { value: 'income', label: 'Dividend or coupon' },
-  { value: 'unit_change', label: 'Unit change (split or bonus units)' },
-];
+import { ResultRow } from './trade-sheet-parts';
 
 export interface TradeFormProps {
   /** `byMoney`: a fund tracked by money, bought and sold by amount with its units optional. */
@@ -36,15 +35,20 @@ export interface TradeFormProps {
   /** Set when the trade comes from a monthly buy, so the template counts as done this month. */
   templateId?: string | null;
   onSaved: (message: string) => void;
-  onCancel?: () => void;
+  /** The form element, so the sheet's ✓ can submit it: the trade has no Record button of its own any more. */
+  formRef: RefObject<HTMLFormElement | null>;
+  /** Whether the ✓ may be pressed now: told whenever it changes. */
+  onReady: (ready: boolean) => void;
+  /** The holding's kind, drawn in the holding row, and the word its units are counted in (Grams, Par value…). */
+  glyph: ReactNode;
+  unitLabel: string;
 }
 
-export function TradeForm({ holdings, goals, cashAccounts, positions, editing, initial, templateId, onSaved, onCancel }: TradeFormProps) {
+export function TradeForm({ holdings, goals, cashAccounts, positions, editing, initial, templateId, onSaved, formRef, onReady, glyph, unitLabel }: TradeFormProps) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
   const today = isoDate();
-  const hintId = useId();
   const [draft, setDraft] = useState<TradeDraft>({
     ...emptyTradeDraft(holdings[0]?.accountId ?? '', cashAccounts[0]?.id ?? '', today),
     ...initial,
@@ -60,6 +64,15 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
   };
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
+  // Fee, tax on a sell, the goal, a card's facts and a rate wait under Add more details, open from the start when an
+  // edit or a prefill already carries something there, so nothing typed is ever out of sight.
+  const [detailsOpen, setDetailsOpen] = useState(() => {
+    const filled = (text: string | undefined) => !!text && text.trim() !== '' && !/^0([.,]0+)?$/.test(text.trim());
+    return filled(initial?.fee) || (initial?.kind !== 'income' && filled(initial?.tax)) || !!initial?.goalId;
+  });
+  // The account a past trade had before the switch put it on Opening Balances, so switching back restores it.
+  const beforePast = useRef('');
 
   const holding = holdings.find((row) => row.accountId === draft.accountId);
   const currency = holding?.currency ?? ws.baseCurrency;
@@ -157,162 +170,114 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
   const amountLabel =
     draft.kind === 'buy' ? `What it cost, before fees (${currency})` : draft.kind === 'sell' ? `Proceeds, before fees (${currency})` : `Amount before tax (${currency})`;
   const where = cashAccount?.name ?? 'the account';
+  const side: TradeSide = draft.kind === 'buy' ? 'buy' : draft.kind === 'sell' ? 'sell' : 'income';
+  const buyOrSell = draft.kind === 'buy' || draft.kind === 'sell';
+  // What the ✓ answers: the same rule the Record button had, so every refusal still shows when it is pressed.
+  const ready = !busy && tradeFormReady(setAside.ready, waitingForPosted);
+  useEffect(() => onReady(ready), [onReady, ready]);
+  const goPast = (on: boolean) => {
+    if (on) {
+      beforePast.current = draft.cashAccountId;
+      change({ cashAccountId: '' });
+    } else change({ cashAccountId: beforePast.current || (payers[0]?.id ?? '') });
+    setCharged('');
+  };
+  const pickGoal = (goalId: string) =>
+    change(
+      goalId === SPLIT && draft.parts.length === 0
+        ? { goalId: SPLIT, parts: [{ goalId: draft.goalId && draft.goalId !== SPLIT ? draft.goalId : (goals[0]?.id ?? ''), amount: '' }] }
+        : { goalId },
+    );
+  const typedTax = draft.tax.trim() !== '' && !/^0([.,]0+)?$/.test(draft.tax.trim());
+  const rateRow = needsRate ? (
+    <FieldRow
+      label="Rate that day"
+      caption={`${ws.baseCurrency} per 1 ${needsRate}`}
+      hint={ratePreview(manualRate, needsRate, ws.baseCurrency) ?? undefined}
+      value={manualRate}
+      onChange={setManualRate}
+      inputMode="decimal"
+      placeholder="Rate"
+    />
+  ) : null;
+  // Add more details holds something for every kind with money; a change of units has none.
+  const hasDetails = draft.kind !== 'unit_change';
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-[10px]">
-      {/* Option B: one card holding every row of the trade, as the Add Transaction card's Buy / sell tab draws it. */}
+    <form ref={formRef} onSubmit={submit} className="mb-[18px] flex flex-col gap-[10px]">
+      {/*
+        Trade's rows (owner, 13 Nov 2026): Paid with (Received into), the amount, the holding — fixed, it is this
+        page's — the units it is counted in, the day. A payment has its tax on the card; a change of units has only
+        the units and the day.
+      */}
       <FormRows>
-        <SelectRow
-          label="What happened"
-          value={draft.kind}
-          onChange={(e) => {
-            const kind = e.target.value as TradeKind;
-            // Leaving a buy leaves the card: pick the first account that can take the money instead.
-            const leavesCard = kind !== 'buy' && cashAccount?.subtype === 'credit_card';
-            change(leavesCard ? { kind, cashAccountId: cashAccounts.find((account) => account.subtype !== 'credit_card')?.id ?? '' } : { kind });
-            if (leavesCard) setCharged('');
-          }}
-        >
-          {KINDS.map((kind) => (
-            <option key={kind.value} value={kind.value}>
-              {kind.label}
-            </option>
-          ))}
-        </SelectRow>
-        <SelectRow label="Holding" value={draft.accountId} onChange={(e) => change({ accountId: e.target.value })}>
-          {holdings.map((row) => (
-            <option key={row.accountId} value={row.accountId}>
-              {row.name}
-            </option>
-          ))}
-        </SelectRow>
         {draft.kind !== 'unit_change' && (
-          // The row carries no label of its own, as the Add Transaction card's amount row does not: the placeholder says what it is.
-          <MoneyFieldRow
-            label={amountLabel}
-            currency={currency}
-            flag={currencyFlag(currency)}
-            value={draft.gross}
-            onChange={(gross) => change({ gross })}
-            placeholder={amountLabel.replace(/ \(.*\)$/, '')}
-          />
-        )}
-        {draft.kind !== 'income' && (
-          <InputRow
-            label="Units, shares or grams"
-            hint={holding?.byMoney ? undefined : position ? `Held: ${(position.unitsMicro / 1_000_000).toLocaleString('id-ID')}` : undefined}
-            value={draft.units}
-            onChange={(e) => change({ units: e.target.value })}
-            inputMode="decimal"
-            placeholder={holding?.byMoney ? 'Optional' : 'Quantity'}
-          />
-        )}
-        {draft.kind !== 'unit_change' && draft.kind !== 'income' && (
-          <InputRow label={`Fee (${currency})`} value={draft.fee} onChange={(e) => change({ fee: e.target.value })} inputMode="decimal" />
+          <TradeMoneyRow kind={side} value={draft.cashAccountId === '' ? pastWord(side) : (cashAccount?.name ?? '')} onClick={() => setPicking(true)} />
         )}
         {draft.kind !== 'unit_change' && (
-          <InputRow label={`Tax withheld (${currency})`} value={draft.tax} onChange={(e) => change({ tax: e.target.value })} inputMode="decimal" />
+          <FigureRow field={{ which: 'amount', label: amountLabel, value: draft.gross, currency }} flag={currencyFlag(currency)} onChange={(gross) => change({ gross })} />
         )}
-        <SelectRow
-          label="Money account"
-          hint="Opening balance is for holdings owned before using this app."
-          value={draft.cashAccountId}
-          onChange={(e) => {
-            change({ cashAccountId: e.target.value });
-            // What was charged was charged to the account it was typed against.
-            setCharged('');
-          }}
-        >
-          {payers.map((account) => (
-            <option key={account.id} value={account.id}>
-              {account.name}
-            </option>
-          ))}
-          <option value="">Opening balance</option>
-        </SelectRow>
         {asksCharged && (
-          <MoneyFieldRow
-            label={`Charged in ${cashCurrency}`}
-            caption={`Charged in ${cashCurrency}`}
-            currency={cashCurrency}
+          <FigureRow
+            field={{ which: 'charged', label: `Charged in ${cashCurrency}`, value: charged, currency: cashCurrency }}
             flag={currencyFlag(cashCurrency)}
-            value={charged}
+            clearLabel={`Clear charged in ${cashCurrency}`}
             onChange={setCharged}
-            placeholder="Amount"
-            divided
-            hint={
-              draft.kind === 'buy'
-                ? `What left ${where}, in ${cashCurrency}.`
-                : nothingReaches
-                  ? `Nothing reaches ${where}: the fees take all of the sale, so leave this empty.`
-                  : `What reached ${where}, in ${cashCurrency}.`
-            }
           />
         )}
-        <InputRow label="Date" type="date" value={draft.occurredOn} max={today} onChange={(e) => change({ occurredOn: e.target.value })} />
+        <TradeHoldingRow glyph={glyph} name={holding?.name ?? ''} />
+        {draft.kind !== 'income' && (
+          <TradeUnitsRow label={unitLabel} value={draft.units} onChange={(units) => change({ units })} placeholder={holding?.byMoney ? 'Optional' : 'How many'} />
+        )}
+        {draft.kind === 'income' && <TradeTaxField label={`Tax withheld (${currency})`} value={draft.tax} onChange={(tax) => change({ tax })} />}
+        <DateRow on={draft.occurredOn} onChange={(occurredOn) => change({ occurredOn })} max={today} />
       </FormRows>
+      {/* Said only when it matters: a sale whose fees took all of it leaves nothing to type as charged. */}
+      {asksCharged && nothingReaches && <RowHint>{`Nothing reaches ${where}: the fees take all of the sale, so leave this empty.`}</RowHint>}
 
       {(price !== null && draft.kind !== 'income') || sell ? (
-        <RowHint id={hintId}>
-          {price !== null && draft.kind !== 'income' && <>That is {formatPriceMicro(price, currency)} per unit. </>}
-          {sell && (
-            <>
-              Gives up <Money minor={sell.basisMinor} currency={currency} /> of cost, so the gain is <Money minor={sell.realizedMinor} currency={currency} tone="auto" />.
-            </>
-          )}
-        </RowHint>
+        <InsetGroup>
+          {price !== null && draft.kind !== 'income' ? <ResultRow testId="trade-price" label="Price a unit" value={formatPriceMicro(price, currency)} /> : null}
+          {sell ? <ResultRow testId="trade-cost" label="Cost given up" value={<Money minor={sell.basisMinor} currency={currency} />} /> : null}
+          {sell ? <ResultRow testId="trade-gain" label="Gain" value={<Money minor={sell.realizedMinor} currency={currency} tone="auto" />} /> : null}
+        </InsetGroup>
       ) : null}
 
-      {/* The second card, as on the Add Transaction card: the goal, and the rate when the save could not find one. */}
-      {(draft.kind === 'buy' || draft.kind === 'sell' || needsRate || cardPaid) && (
+      {hasDetails && detailsOpen && (
         <FormRows>
-          {(draft.kind === 'buy' || draft.kind === 'sell') && (
-            <SelectRow
-              label={draft.kind === 'sell' ? 'Sell from goal' : 'For goal'}
-              hint={draft.kind === 'sell' ? 'Units come out of this goal only.' : 'Each purchase can fund a different goal.'}
-              value={draft.goalId}
-              onChange={(e) =>
-                change(
-                  e.target.value === SPLIT && draft.parts.length === 0
-                    ? { goalId: SPLIT, parts: [{ goalId: draft.goalId && draft.goalId !== SPLIT ? draft.goalId : (goals[0]?.id ?? ''), amount: '' }] }
-                    : { goalId: e.target.value },
-                )
-              }
-            >
-              <option value="">No goal</option>
-              {goals.map((goal) => (
-                <option key={goal.id} value={goal.id}>
-                  {goal.name}
-                </option>
-              ))}
-              {goals.length > 1 && <option value={SPLIT}>Split between goals…</option>}
-            </SelectRow>
-          )}
-          {cardPaid && (
-            <>
-              <SelectRow
-                label="Category for points"
-                hint="Not spending: it only tells the points engine what the card bought."
-                value={draft.spendCategoryId}
-                onChange={(e) => change({ spendCategoryId: e.target.value })}
-              >
-                <CategoryOptions accounts={allAccounts} kind="expense" parentSuffix="(general)" />
-              </SelectRow>
-              <InputRow label="MCC" hint="Gold and jewellery shops are 5944." value={draft.mcc} onChange={(e) => change({ mcc: e.target.value })} inputMode="numeric" placeholder="Code" />
-            </>
-          )}
-          {needsRate && (
-            <InputRow
-              label="Rate that day"
-              hint={ratePreview(manualRate, needsRate, ws.baseCurrency) ?? `${ws.baseCurrency} per 1 ${needsRate}`}
-              value={manualRate}
-              onChange={(e) => setManualRate(e.target.value)}
-              inputMode="decimal"
-            />
-          )}
+          <TradeDetailRows
+            kind={side}
+            {...(buyOrSell ? { goal: { goals, value: draft.goalId, onPick: pickGoal, split: true } } : {})}
+            {...(cardPaid
+              ? {
+                  points: {
+                    accounts: allAccounts,
+                    categoryId: draft.spendCategoryId,
+                    mcc: draft.mcc,
+                    onCategory: (spendCategoryId: string) => change({ spendCategoryId }),
+                    onMcc: (mcc: string) => change({ mcc }),
+                  },
+                }
+              : {})}
+            {...(buyOrSell ? { fee: { label: `Fee (${currency})`, value: draft.fee, onChange: (fee: string) => change({ fee }) } } : {})}
+            // Tax withheld is a sell's; a buy keeps one typed before in view, so it is never hidden.
+            {...(draft.kind === 'sell' || (draft.kind === 'buy' && typedTax)
+              ? { tax: { label: `Tax withheld (${currency})`, value: draft.tax, onChange: (tax: string) => change({ tax }) } }
+              : {})}
+            past={{
+              label: pastWord(side),
+              on: draft.cashAccountId === '',
+              set: goPast,
+              info: 'Owned before using this app, so no account’s balance moves.',
+            }}
+          >
+            {rateRow}
+          </TradeDetailRows>
         </FormRows>
       )}
-      {(draft.kind === 'buy' || draft.kind === 'sell') && draft.goalId === SPLIT && (
+      {/* A missing rate is asked for in view, whether or not the details are open. */}
+      {(!hasDetails || !detailsOpen) && rateRow && <FormRows>{rateRow}</FormRows>}
+      {buyOrSell && detailsOpen && draft.goalId === SPLIT && (
         <GoalParts
           parts={draft.parts}
           onChange={(parts) => change({ parts })}
@@ -323,31 +288,25 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
           unitLabel="units"
         />
       )}
+      {hasDetails && <DetailsToggle open={detailsOpen} onToggle={() => setDetailsOpen((open) => !open)} />}
 
       {setAside.node}
+      <ErrorBox error={error} />
 
-      {/* The dock: the error, then Cancel beside the pill that saves, as the Add Transaction card ends. */}
-      <div className="flex flex-col gap-2 pt-1">
-        <ErrorBox error={error} />
-        <div className="flex items-center gap-2">
-          {onCancel && (
-            <button
-              type="button"
-              onClick={onCancel}
-              className="ph-focus min-h-11 shrink-0 rounded-full px-4 text-[15px] text-[var(--ph-ink-2)] active:bg-[var(--ph-fill)]"
-            >
-              Cancel
-            </button>
-          )}
-          <button
-            type="submit"
-            disabled={busy || !tradeFormReady(setAside.ready, waitingForPosted)}
-            className="ph-focus min-h-11 flex-1 rounded-full bg-[var(--ph-tint)] text-[15px] font-semibold text-[var(--ph-surface)] disabled:opacity-50"
-          >
-            {editing ? 'Save changes' : 'Record'}
-          </button>
-        </div>
-      </div>
+      {picking && (
+        <PaymentSheet
+          title={payRowText(side).label}
+          options={payers.map((account) => ({ accountId: account.id, cardId: null, accountName: account.name, last4: null, holderName: null }))}
+          accounts={allAccounts}
+          chosenAccountId={draft.cashAccountId}
+          onPick={(option) => {
+            change({ cashAccountId: option.accountId });
+            // What was charged was charged to the account it was typed against.
+            setCharged('');
+          }}
+          onClose={() => setPicking(false)}
+        />
+      )}
     </form>
   );
 }

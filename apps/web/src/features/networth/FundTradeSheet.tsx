@@ -1,12 +1,17 @@
-import { formatMinor, formatUnits, fundBuy, fundNavText, fundSell, fundUnitsText, groupTypedAmount, isoDate, moneySellBasis, type Position, sellBasisMinor } from '@expanses/core';
+import { formatMinor, formatUnits, fundBuy, fundSell, fundUnitsText, isoDate, moneySellBasis, type Position, sellBasisMinor } from '@expanses/core';
 import type { RecordTradeInput } from '@expanses/db';
 import { type ReactNode, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, TextRow } from '../../ui/native';
-import { dayLabel } from './asset-page';
+import { InsetGroup } from '../../ui/native';
+import { FigureRow } from '../transactions/AmountRow';
+import { pastWord, payRowText } from '../transactions/buy-rows';
+import { DateRow } from '../transactions/CardRows';
+import { FormRows } from '../transactions/FormRow';
+import { TradeHoldingRow, TradeMoneyRow } from '../transactions/TradeRows';
+import { currencyFlag } from '../transactions/tx-form';
 import { typedAmount } from './trade-form';
-import { CardPointsBox, CashRow, CashSheet, HoldingRow, ResultRow, signedMinor, TradeDetails, TypedRow, typedMinor, useCashSide, useTradeDetails, useTradeSave } from './trade-sheet-parts';
+import { CashSheet, ResultRow, SheetTradeDetails, signedMinor, typedMinor, useCashSide, useTradeDetails, useTradeSave } from './trade-sheet-parts';
 
 const BUY_INFO =
   "Units = amount ÷ NAV. An order placed before 13:00 WIB gets that day's NAV, published in the evening; after 13:00, the next business day's. If the fund app confirms a slightly different number, correct it on the trade. A fee in the details is added to the cost, not taken from the units.";
@@ -16,8 +21,8 @@ const SELL_INFO =
   "All sells every unit; its value is then units × NAV rather than a typed amount. A money market fund usually pays out within a few business days.";
 
 /**
- * Buy or Sell of a mutual fund (reksadana) from its own page, the way a fund app takes the order: an amount of money,
- * the account it comes from or goes to, and the day; the units it comes to at the last NAV are worked out, to four
+ * Buy or Sell of a mutual fund (reksadana) from its own page, in Trade's rows (owner, 13 Nov 2026): the account it
+ * comes from or goes to, an amount of money, the fund and the day; the units it comes to at the last NAV are worked out, to four
  * places. No fee unless one is typed in the details. A sell can take All, which sells every unit so the holding ends at
  * zero. "Add more details" opens a second box under the first, in the same sheet: a fee, tax withheld, the goal, and the
  * rate that day for an account in another currency. Recorded by `recordTrade`, as the full form records it.
@@ -81,12 +86,6 @@ export function FundTradeSheet({
         (byMoney ? moneySellBasis(position.costMinor, byMoney.valueMinor, sell.grossMinor) : sellBasisMinor(position, sell.unitsMicro))
       : null;
 
-  const subtitle = byMoney
-    ? `Worth ${formatMinor(byMoney.valueMinor, currency)}`
-    : [
-        `${fundUnitsText(heldMicro)} units`,
-        lastPrice ? `NAV ${fundNavText(lastPrice.priceMicro, currency)} · ${dayLabel(lastPrice.onDate)}` : 'No NAV yet',
-      ].join(' · ');
   // All shows what it sells for; typing an amount again turns All off.
   const shownAmount = all && sell ? typedAmount(sell.grossMinor, currency) : amount;
   const worked = buy ?? sell;
@@ -100,49 +99,47 @@ export function FundTradeSheet({
       onClose={onClose}
       confirm={{ label: kind === 'buy' ? 'Record buy' : 'Record sell', disabled: !saving.canSave, run: () => void saving.save() }}
     >
-      <InsetGroup>
-        <HoldingRow icon={icon} name={holding.name} subtitle={subtitle} />
-      </InsetGroup>
+      <div className="mb-[18px] flex flex-col gap-[10px]">
+        {/* Trade's rows (owner, 13 Nov 2026): Paid with, the amount with All on a sell, the fund, the day. A fund is
+            bought by money, so there is no units row: what the amount comes to at the NAV is worked out under it. */}
+        <FormRows>
+          <TradeMoneyRow kind={kind} value={side.past ? pastWord(kind) : (side.cashAccount?.name ?? '')} onClick={() => setPicking(true)} />
+          <FigureRow
+            field={{ which: 'amount', label: 'Amount', value: shownAmount, currency }}
+            flag={currencyFlag(currency)}
+            onChange={(text) => {
+              setAll(false);
+              setAmount(text);
+            }}
+            pill={
+              kind === 'sell'
+                ? {
+                    label: 'All',
+                    on: all,
+                    run: () => {
+                      setAll((was) => !was);
+                      setAmount('');
+                    },
+                  }
+                : undefined
+            }
+          />
+          <TradeHoldingRow glyph={icon} name={holding.name} />
+          <DateRow on={occurredOn} onChange={setOccurredOn} max={today} />
+        </FormRows>
 
-      <InsetGroup>
-        <TypedRow
-          label="Amount"
-          value={shownAmount}
-          onChange={(e) => {
-            setAll(false);
-            setAmount(groupTypedAmount(e.target.value, currency));
-          }}
-          inputMode={currency === 'IDR' ? 'numeric' : 'decimal'}
-          placeholder="Amount"
-          aria-invalid={Boolean(sell?.tooMany)}
-          pill={
-            kind === 'sell'
-              ? {
-                  label: 'All',
-                  on: all,
-                  run: () => {
-                    setAll((was) => !was);
-                    setAmount('');
-                  },
-                }
-              : undefined
-          }
+        <SheetTradeDetails
+          past={{ on: side.past, set: side.setPast }}
+          kind={kind}
+          details={details}
+          currency={currency}
+          whole={byMoney ? (worked ? typedAmount(worked.grossMinor, currency) : '') : worked ? formatUnits(worked.unitsMicro) : ''}
+          byMoney={byMoney !== null}
+          unitLabel="units"
+          problem={problem}
+          {...(side.isCard && kind === 'buy' ? { points: { accounts: side.accounts } } : {})}
         />
-        <CashRow label={kind === 'buy' ? 'Paid from' : 'To'} side={side} onOpen={() => setPicking(true)} />
-        <TextRow label="Date" type="date" value={occurredOn} max={today} onChange={(e) => setOccurredOn(e.target.value)} />
-      </InsetGroup>
-
-      <TradeDetails
-        past={{ on: side.past, set: side.setPast }}
-        kind={kind}
-        details={details}
-        currency={currency}
-        emptyWord="None"
-        whole={byMoney ? (worked ? typedAmount(worked.grossMinor, currency) : '') : worked ? formatUnits(worked.unitsMicro) : ''}
-        byMoney={byMoney !== null}
-        unitLabel="units"
-        problem={problem}
-      />
+      </div>
 
       {worked && byMoney && gain !== null && (
         <InsetGroup>
@@ -182,7 +179,7 @@ export function FundTradeSheet({
 
       {saving.setAside.node}
       <ErrorBox error={saving.error} />
-      {picking && <CashSheet title={kind === 'buy' ? 'Paid from' : 'To'} side={side} onClose={() => setPicking(false)} />}
+      {picking && <CashSheet title={payRowText(kind).label} side={side} onClose={() => setPicking(false)} />}
     </Sheet>
   );
 }

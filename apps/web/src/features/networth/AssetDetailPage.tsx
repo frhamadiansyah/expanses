@@ -726,7 +726,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
         />
       )}
       {sheet?.kind === 'trade' && (
-        <TradeSheet title={sheet.title} holding={holding} initial={sheet.initial} editing={sheet.editing} onClose={() => setSheet(null)} />
+        <TradeSheet title={sheet.title} holding={{ ...holding, icon: <KindGlyph size={16} aria-hidden /> }} initial={sheet.initial} editing={sheet.editing} onClose={() => setSheet(null)} />
       )}
       {sheet?.kind === 'row' && (
         <TradeActionsSheet
