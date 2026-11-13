@@ -770,10 +770,10 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   // Fandri stops sharing his bank account; it leaves Dewi's phone.
   await page.goto('/wallet');
   await walletCard(page, 'Fandri Bank').click();
-  // Share with Household sits in the account's Settings.
+  // Household sharing sits in the account's Settings.
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
-  await page.getByLabel('Share with Household').selectOption({ label: "Don't share" });
-  await expect(page.getByLabel('Share with Household')).toHaveValue('hidden');
+  await page.getByLabel('Household sharing').selectOption({ label: 'Private' });
+  await expect(page.getByLabel('Household sharing')).toHaveValue('hidden');
   await eventually(dewi, async () => {
     await dewi.goto('/wallet');
     await expect(sharedRows.filter({ hasText: 'Fandri Card' })).toHaveCount(1, { timeout: 2_000 });
@@ -871,17 +871,23 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   await reviewAndShare(dewi, info, 'j1-review');
   await reviewAndShare(page, info, 'j1-review');
 
-  // Fandri's account Settings: the Joint account switch sits under Share with Household, off.
+  // Fandri's account Settings: the Joint account switch sits under Household sharing, off.
   await page.goto('/wallet');
   await walletCard(page, 'Fandri Bank').click();
   await expect(page.getByTestId('joint-row')).toHaveCount(0);
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  const householdRow = page.getByTestId('share-with-household');
+  await expect(householdRow).toContainText('Shared');
   const joint = page.getByRole('checkbox', { name: 'Joint account' });
   await expect(joint).not.toBeChecked();
   await joint.scrollIntoViewIfNeeded();
   await joint.click({ force: true });
   await expect(joint).toBeChecked();
   await shot(page, info, 'j2-switch-on');
+  // The Shared row opens Share net worth.
+  await householdRow.click();
+  await expect(page).toHaveURL(/share\/net-worth/);
+  await page.goBack();
   await page.goBack();
 
   // Dewi's Paid with lists it with the Joint tag, and she pays from it.
