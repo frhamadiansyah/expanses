@@ -193,8 +193,8 @@ const listTitle = (linked: boolean) => (linked ? 'Bill' : 'Link to a bill');
  * The bills the purchase could settle: those in its own category first, then the rest. A tap on a bill links the
  * purchase at once, in the month the row names (`billLinkMonth`), and steps back to the receipt; a month that cannot
  * take it opens the month page instead, saying why. A swipe left offers Month, to choose another first. A purchase
- * already linked sees its bill with a ✓ — a tap on it opens its months, another bill moves the link — and, under the
- * list, Open this bill and Unlink.
+ * already linked sees its bill with a ✓, and a tap on any bill opens its month page: the ✓ there moves the link, never
+ * the tap alone. Under the list, Open this bill and Unlink.
  */
 export function LinkToBillPage({ transactionId }: { transactionId: string }) {
   const { database, ws } = useApp();
@@ -289,8 +289,8 @@ export function LinkToBillPage({ transactionId }: { transactionId: string }) {
         valueTone="ink-2"
         chevron={false}
         disabled={(locked && !linked) || (!locked && busy)}
-        onClick={locked ? undefined : linked ? () => openMonths(bill.id) : () => void quickLink(bill.id)}
-        leftActions={locked || linked ? undefined : [{ label: 'Month', name: `Choose the month for ${bill.name}`, icon: CalendarDays, tone: 'primary', onPress: () => openMonths(bill.id) }]}
+        onClick={locked ? undefined : current !== null ? () => openMonths(bill.id) : () => void quickLink(bill.id)}
+        leftActions={locked || current !== null ? undefined : [{ label: 'Month', name: `Choose the month for ${bill.name}`, icon: CalendarDays, tone: 'primary', onPress: () => openMonths(bill.id) }]}
       />
     );
   };

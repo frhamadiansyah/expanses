@@ -157,6 +157,12 @@ test('on a phone: a receipt links its purchase to a bill in one tap, another mon
   await page.getByTestId('receipt-bill').click();
   await expect(page.getByTestId(/^bill-choice-/).filter({ hasText: 'Gym' }).getByTestId('bill-current')).toBeVisible();
   await expect(page.getByTestId(/^bill-choice-/).filter({ hasText: 'Gym' })).toContainText(thisMonth().label);
+  // Linked already: a tap on another bill never moves the link at once — it opens that bill's month page, whose ✓ does.
+  await page.getByTestId(/^bill-choice-/).filter({ hasText: 'Phone' }).click();
+  await expect(page).toHaveURL(/\/transactions\/[^/]+\/bill\/[^/]+$/);
+  await expect(page.getByRole('heading', { name: 'Phone' })).toBeVisible();
+  await page.getByRole('button', { name: 'Bill', exact: true }).click();
+  await expect(page.getByTestId(/^bill-choice-/).filter({ hasText: 'Gym' }).getByTestId('bill-current')).toBeVisible();
   await page.getByTestId('open-bill').click();
   await expect(page.getByTestId('bill-history')).toContainText('Rp 340.000');
   await page.getByRole('button', { name: 'Transaction' }).first().click();
