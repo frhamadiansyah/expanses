@@ -15,7 +15,7 @@ import { sharedSections } from '../accounts/shared-accounts';
 import { billCurrencyOf } from '../bills/bill-view';
 import { useBillsInMonth } from '../debt-plan/queries';
 import { useSetAsideViews } from '../goals/queries';
-import { useOwnerRings, useSharedNetWorth } from '../networth/queries';
+import { useOwnedTogether, useOwnerRings, useSharedNetWorth } from '../networth/queries';
 import { BillsToPaySheet } from './BillsToPaySheet';
 import { useWalletCards } from './useWalletCards';
 import { filteredCards, toggleFilter, walletBox, type WalletFilter, walletFilterSets } from './wallet-balance';
@@ -140,6 +140,7 @@ export function WalletPage() {
   const { accounts, balances, everything, all, book, money, credit, joint, rates, held, today, cards: wallet, ready } = useWalletCards();
   const setAsides = useSetAsideViews();
   const shared = useSharedNetWorth().data;
+  const together = useOwnedTogether();
   const rings = useOwnerRings()?.rings;
   // A joint item is a card above, so it is not listed a second time under "Rina's, shared".
   const carded = new Set(joint.map((card) => card.itemId));
@@ -448,6 +449,8 @@ export function WalletPage() {
                 /* The kind's drawing, ringed in its owner's colour, as the same item wears it on Net worth (D12). */
                 icon={<item.tile size={16} aria-hidden />}
                 iconRing={section.ring ?? undefined}
+                // Owned together (2026-11-13): the two-person mark, as the item wears it on Net worth.
+                iconMark={together(item.itemId)}
                 title={
                   <>
                     {item.name}

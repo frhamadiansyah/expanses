@@ -1,7 +1,7 @@
 import { CreditCard, Landmark, Plus } from 'lucide-react';
 import { useId, useState } from 'react';
 import { cx } from '../../ui';
-import { SearchPill, type Segment, SegmentedControl, TreeLines, TreeStem } from '../../ui/native';
+import { OWNED_TOGETHER, SearchPill, type Segment, SegmentedControl, TreeLines, TreeStem, TwoPersonMark } from '../../ui/native';
 import { currencyInfo, formatMinor, type MoneyAccountSubtype, type PaymentOption } from '@expanses/core';
 import type { AccountRow, CardRow, PaidWithItem } from '@expanses/db';
 import { Sheet, SheetSearchButton } from '../../app/Sheet';
@@ -363,19 +363,17 @@ export function PaymentSheet({
           className="ph-focus-inset flex w-full items-center gap-[10px] pl-[10px] text-left active:bg-[var(--ph-fill)]"
         >
           <span aria-hidden className="flex w-[34px] shrink-0 items-center justify-center text-[var(--ph-ink-2)]">
-            {isPicked ? (
-              <span className="flex size-[30px] items-center justify-center rounded-full bg-[var(--ph-ink)] text-[var(--ph-surface)]">
-                <Glyph size={15} />
-              </span>
-            ) : (
-              <Glyph size={16} />
-            )}
+            {/* Owned together (2026-11-13): the two-person mark on the glyph, in place of a "Joint" pill. */}
+            <span className={cx('relative flex size-[30px] items-center justify-center rounded-full', isPicked && 'bg-[var(--ph-ink)] text-[var(--ph-surface)]')}>
+              <Glyph size={isPicked ? 15 : 16} />
+              {item.joint ? <TwoPersonMark /> : null}
+            </span>
           </span>
           <span className="ph-row-body flex min-h-12 min-w-0 flex-1 items-center gap-2 pr-[13px]">
             <span className="min-w-0 flex-1 truncate text-[15px] text-[var(--ph-ink)]">
               <Marked text={item.name} typed={search} />
             </span>
-            {item.joint ? <span className="shrink-0 rounded-full bg-[var(--ph-ink)] px-[7px] py-[1px] text-[11px] font-bold text-[var(--ph-surface)]">Joint</span> : null}
+            {item.joint ? <span className="sr-only">{OWNED_TOGETHER}</span> : null}
             <span aria-hidden className="shrink-0 text-[12.5px] text-[var(--ph-ink-3)]">
               {item.currency}
             </span>
