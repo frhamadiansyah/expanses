@@ -12,6 +12,7 @@ import {
   moveIntoSharedEvent,
   nativeBalances,
   ownerScope,
+  personalBook,
   postTransaction,
   removeTransferFromSharedEvent,
   replaceTransaction,
@@ -251,7 +252,7 @@ describe('a Family transfer moved into a shared trip', () => {
     await trip.home.join(husband, wife);
     await trip.home.settle();
     // What 0.5.1 does with the seed: takes every field's clock, writes no event (it has no column for it).
-    await husband.database.db.run(sql`UPDATE shared_transfers SET event_book_id = NULL`);
+    await husband.database.execScript('UPDATE shared_transfers SET event_book_id = NULL');
     expect(await familyRows(s, husband)).toEqual(['partner: ATM withdrawal']);
     // While he is on 0.5.1, nothing more goes, however often her phone runs its repairs.
     expect((await runSharedBookRepairs(wife.database, family)).tripTransfers).toBeNull();
@@ -295,7 +296,7 @@ describe('a Family transfer moved into a shared trip', () => {
     ]);
   });
 
-  it('a settle-up the trip posted, a Family transfer from before Family sent its transfers, and one in every workspace each say why they stay', async () => {
+  it('a settle-up the trip posted, and a transfer filed in no workspace, each say why they stay', async () => {
     const s = await familyAndTrip();
     const move = (id: string) => moveIntoSharedEvent(s.wife.database, ownerScope(s.wife.ws), s.trip.eventOf(s.wife), [id]);
     const bare = (description: string, fileTransfer: boolean) =>
@@ -307,16 +308,36 @@ describe('a Family transfer moved into a shared trip', () => {
       });
     // A trip's own settle-up in this phone's books (an event posting).
     const settle = await bare('Settle up', false);
-    await s.wife.database.db.run(sql`INSERT INTO event_postings (book_id, record_id, kind, transaction_id, account_id, account_amount_minor) VALUES (${s.trip.bookId}, 'settlement-1', 'settlement', ${settle}, NULL, NULL)`);
+    await s.wife.database.execScript(`INSERT INTO event_postings (book_id, record_id, kind, transaction_id, account_id, account_amount_minor) VALUES ('${s.trip.bookId}', 'settlement-1', 'settlement', '${settle}', NULL, NULL)`);
     expect((await move(settle)).kept[0]!.why).toBe('Already in a shared event');
-    // Filed in Family before Family sent transfers to the household: no redacted row, so the partner never had it.
-    const old = await bare('Old withdrawal', true);
-    await s.wife.database.db.run(sql`DELETE FROM shared_transfers WHERE transaction_id = ${old}`);
-    await s.wife.database.db.run(sql`INSERT INTO book_transactions (transaction_id, workspace_id, book_id) VALUES (${old}, ${s.wife.ws.workspaceId}, ${s.family})`);
-    expect((await move(old)).kept[0]!.why).toBe('Recorded before Personal sent its transfers to the household, so the other phones never had it: it stays in Personal');
     // Filed in no workspace: it shows in every one.
     const everywhere = await bare('Pocket money', false);
     expect((await move(everywhere)).kept[0]!.why).toBe('A transfer filed in no workspace shows in every one: only one in a workspace shared with a household moves into a shared event');
+  });
+
+  it('a transfer filed in Family before Family was shared (no redacted row: the partner never had it) says so and stays', async () => {
+    const trip = new Trip();
+    const wife = await trip.device('Wife', BUILD);
+    const husband = await trip.device('Husband', BUILD);
+    const personal = await personalBook(wife.database, wife.ws);
+    const old = await postTransaction(wife.database, inBook(wife.ws, personal.id), {
+      occurredOn: '2026-10-08',
+      description: 'Old withdrawal',
+      fileTransfer: true,
+      lines: transferLines({ fromAccountId: wife.bank, toAccountId: wife.cash, amountMinor: 90_000, currency: 'IDR' }),
+    });
+    const family = await trip.home.share(wife);
+    await trip.home.join(husband, wife);
+    await trip.home.settle();
+    await trip.share(wife);
+    await trip.join(husband, wife);
+    await trip.settle([wife, husband]);
+    // Sharing left it as it was: filed in Family, with no redacted row.
+    expect(await wife.database.db.values(sql`SELECT 1 FROM shared_transfers WHERE transaction_id = ${old}`)).toEqual([]);
+    expect(await wife.database.db.values(sql`SELECT book_id FROM book_transactions WHERE transaction_id = ${old}`)).toEqual([[family]]);
+    const { kept, listed } = await moveIntoSharedEvent(wife.database, ownerScope(wife.ws), trip.eventOf(wife), [old]);
+    expect(listed).toEqual([]);
+    expect(kept).toEqual([{ transactionId: old, why: 'Recorded before Personal sent its transfers to the household, so the other phones never had it: it stays in Personal' }]);
   });
 
   it('a purchase beside it still moves as a purchase', async () => {
@@ -370,11 +391,11 @@ describe('who must have the trip, and which phones count (review fix round 1)', 
     const move = () => moveIntoSharedEvent(s.wife.database, ownerScope(s.wife.ws), s.trip.eventOf(s.wife), [id]);
     expect((await move()).kept[0]!.why).toBe('Update cicis on Tablet first: until then it would stay in Personal there');
     // The tablet is removed from the workspace: it no longer counts.
-    await s.wife.database.db.run(sql`UPDATE book_devices SET removed_at = '2026-11-13T00:00:00Z' WHERE book_id = ${s.family} AND device_id = ${tablet.deviceId}`);
+    await s.wife.database.execScript(`UPDATE book_devices SET removed_at = '2026-11-13T00:00:00Z' WHERE book_id = '${s.family}' AND device_id = '${tablet.deviceId}'`);
     // A phone that has never said its version is taken as an older one.
-    await s.wife.database.db.run(sql`UPDATE book_devices SET app_version = NULL WHERE book_id = ${s.family} AND device_id = ${s.husband.deviceId}`);
+    await s.wife.database.execScript(`UPDATE book_devices SET app_version = NULL WHERE book_id = '${s.family}' AND device_id = '${s.husband.deviceId}'`);
     expect((await move()).kept[0]!.why).toBe("Update cicis on Husband's phone first: until then it would stay in Personal there");
-    await s.wife.database.db.run(sql`UPDATE book_devices SET app_version = ${BUILD} WHERE book_id = ${s.family} AND device_id = ${s.husband.deviceId}`);
+    await s.wife.database.execScript(`UPDATE book_devices SET app_version = '${BUILD}' WHERE book_id = '${s.family}' AND device_id = '${s.husband.deviceId}'`);
     expect((await move()).listed).toEqual([{ transactionId: id }]);
   });
 
