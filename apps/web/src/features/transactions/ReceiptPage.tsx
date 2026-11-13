@@ -448,6 +448,13 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
           </div>
         )}
 
+        {/* A transfer listed on a shared event is taken off it whatever workspace is open: it acts on its own workspace's
+            row, and a workspace no longer shared refuses it in words (the error above). */}
+        {onEvent && tx.status === 'posted' && (
+          <InsetGroup>
+            <DestructiveRow calm label="Remove from event" onClick={() => void removeFromEvent()} testId="remove-from-event" />
+          </InsetGroup>
+        )}
         {elsewhere ? (
           <SwitchToEdit book={elsewhere} className="self-center text-center" />
         ) : (
@@ -467,7 +474,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
                  event's transaction is deleted on the event, with its record, never here. */
               (changeable || (isCorrection(tx) && !isTrade && !elsewhere)) && !fromEvent && (
                 <>
-                  {(tx.eventId || onEvent) && (
+                  {tx.eventId && !onEvent && (
                     <InsetGroup>
                       <DestructiveRow calm label="Remove from event" onClick={() => void removeFromEvent()} testId="remove-from-event" />
                     </InsetGroup>

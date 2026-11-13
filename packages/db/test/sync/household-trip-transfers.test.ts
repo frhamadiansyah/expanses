@@ -391,6 +391,24 @@ describe('who must have the trip, and which phones count (review fix round 1)', 
     expect(await projectBook(s.wife.database, s.family)).toEqual(await projectBook(s.husband.database, s.family));
   });
 
+  it('Remove from event in a copy of Family kept read-only (its owner stopped sharing) is refused in words, and changes nothing', async () => {
+    const s = await familyAndTrip();
+    // The husband's withdrawal: he records it, so it is his to move and to take off.
+    const id = await postTransaction(s.husband.database, inBook(s.husband.ws, s.family), {
+      occurredOn: '2026-10-08',
+      description: 'ATM withdrawal',
+      fileTransfer: true,
+      lines: transferLines({ fromAccountId: s.husband.bank, toAccountId: s.husband.cash, amountMinor: 1_120_000, currency: 'IDR' }),
+    });
+    await s.settle();
+    expect((await moveIntoSharedEvent(s.husband.database, ownerScope(s.husband.ws), s.trip.eventOf(s.husband), [id])).listed).toHaveLength(1);
+    await s.settle();
+    await s.wife.engine.stopSharing(s.family);
+    await s.home.settle();
+    await expect(removeTransferFromSharedEvent(s.husband.database, s.husband.ws, id)).rejects.toMatchObject({ message: 'This workspace is no longer shared, and is kept read-only' });
+    expect(await eventTransferOf(s.husband.database, id)).toMatchObject({ eventName: 'Coast week' });
+  });
+
   it('the recorder who left the trip lists it in Family again, and still takes it off the event', async () => {
     const s = await familyAndTrip();
     const id = await withdrawal(s);
