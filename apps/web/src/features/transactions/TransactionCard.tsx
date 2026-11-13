@@ -117,6 +117,11 @@ export interface CardFinish {
   onSubmit: (draft: FormDraft, setAside: SetAsideChoice | null) => Promise<void>;
   /** A condition of the caller's on top of the card's own, for when the ✓ lights. */
   canSubmit?: (draft: FormDraft) => boolean;
+  /**
+   * Why the caller cannot take the form as it stands, or null: shown under the card, in the words a save would show,
+   * and the ✓ stays dim while there is one.
+   */
+  refusal?: (draft: FormDraft) => string | null;
   /** The ✓'s name. */
   saveLabel?: string;
   /**
@@ -866,7 +871,7 @@ function CardBody({
       if (draft.mode === 'transfer' && draft.partner) memberTransferOf(draft, accounts, '', '');
       // A category left for later is answered at Save (Uncategorised); a capture's draft still needs its own.
       else formToPost(withTopUps(finish && !finish.categoryLater ? draft : withCategoryLater(draft, CATEGORY_LATER)), accounts);
-      return finish?.canSubmit?.(draft) ?? true;
+      return (finish?.canSubmit?.(draft) ?? true) && !finish?.refusal?.(draft);
     } catch {
       return false;
     }
@@ -1522,6 +1527,14 @@ function CardBody({
       )}
       </fieldset>
 
+      {(() => {
+        const refusal = finish?.refusal?.(draft);
+        return refusal ? (
+          <p data-testid="finish-refusal" role="alert" className="px-[13px] text-[13px] leading-4 text-[var(--ph-alarm-ink)]">
+            {refusal}
+          </p>
+        ) : null;
+      })()}
       {finish?.footer}
 
       {/* The set-aside question (E2) sits above the dock, in the kit's inset groups, so the dock stays one line. */}

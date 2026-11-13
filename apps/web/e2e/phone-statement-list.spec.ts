@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { expectWalletFigure, openAccount, openWalletAccount } from './accounts';
-import { addTransaction } from './add-transaction';
+import { addTransaction, fillAmount } from './add-transaction';
 import { screenshotFiles, setStatementImages, walletListLines } from './statement';
 
 /*
@@ -78,12 +78,29 @@ test('a wallet list travels from screenshots to recorded rows, and a second run 
   await form.getByRole('tab', { name: 'Transfer' }).or(form.getByRole('radio', { name: 'Transfer' })).click();
   await expect(form.getByText('Fee', { exact: true })).toHaveCount(0);
   await form.getByRole('tab', { name: 'Expense' }).or(form.getByRole('radio', { name: 'Expense' })).click();
+  // A form the row cannot take says why under it, rather than only greying the check mark.
+  await form.getByRole('button', { name: 'Clear amount' }).click();
+  await expect(page.getByTestId('finish-refusal')).toHaveText('Amount must be greater than zero');
+  await form.getByRole('button', { name: 'Amount', exact: true }).click();
+  await fillAmount(page, form, '10500');
+  await expect(page.getByTestId('finish-refusal')).toHaveCount(0);
   await page.screenshot({ path: 'test-results/list-sheet.png' });
   await form.getByLabel('Note').fill('Transfer to Person A, lunch');
   await page.getByRole('button', { name: 'Save row' }).click();
   await expect(form).toHaveCount(0);
   await expect(page.getByTestId('new-row').filter({ hasText: 'Transfer to Person A, lunch' })).toContainText('Choose a category');
   await expect(page.getByTestId('record-new')).toHaveText('Record 2');
+  // Back from a row, the list stands where it was left, not at its top.
+  await page.setViewportSize({ width: 390, height: 520 });
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const left = await page.evaluate(() => window.scrollY);
+  expect(left).toBeGreaterThan(0);
+  await page.getByTestId('new-row').last().click();
+  await expect(page.getByRole('heading', { name: 'Edit row' })).toBeVisible();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.getByTestId('record-new')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(left);
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.getByTestId('record-new').click();
 
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);

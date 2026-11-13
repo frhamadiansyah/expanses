@@ -139,6 +139,9 @@ describe('list model', () => {
       expect(() => editFromForm({ ...base, amount: '' }, 'wallet', 'IDR')).toThrow(/greater than zero/);
       // The figure is the account's own: one read in another currency would be posted as if it were.
       expect(() => editFromForm({ ...base, currency: 'USD' }, 'wallet', 'IDR')).toThrow(/IDR/);
+      // A partner's shared item on a transfer is a household transfer, not a row of this list.
+      const partner = { side: 'to' as const, owner: 'p', itemId: 'item', currency: 'IDR' } as unknown as NonNullable<FormDraft['partner']>;
+      expect(() => editFromForm({ ...base, mode: 'transfer', moneyId: 'wallet', toId: '', partner }, 'wallet', 'IDR')).toThrow(/partner/);
       expect(() => editFromForm({ ...base, mode: 'trade' }, 'wallet', 'IDR')).toThrow();
       // A transfer to an account in another currency would post one figure on both sides.
       expect(() => editFromForm({ ...base, mode: 'transfer', moneyId: 'wallet', toId: 'usd' }, 'wallet', 'IDR', ['bank'])).toThrow(/IDR account/);

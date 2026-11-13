@@ -102,6 +102,7 @@ export function editFromForm(
 ): Partial<Omit<NewRow, 'id' | 'ticked'>> {
   if (form.mode !== 'expense' && form.mode !== 'income' && form.mode !== 'transfer') throw new Error('A row is recorded as an expense, income or a transfer');
   if (form.mode !== 'transfer' && form.currency && form.currency !== currency) throw new Error(`A row of this list is in ${currency}`);
+  if (form.partner) throw new Error('A transfer with a partner is recorded on its own, not as a row of this list');
   const read = evaluateExact(form.amount, currency, { fractional: decimalsDirection(form) ?? undefined });
   if (read === null || read.minor <= 0) throw new Error('Amount must be greater than zero');
   const common = { type: form.mode, amountMinor: read.minor, note: form.description.trim(), occurredOn: form.occurredOn };

@@ -2,7 +2,7 @@ import { type CaptureLine, formatMinor, isoDate, type ListOutcome, type ListRow,
 import { type AccountRow, guessCategoryFromHistory, listTransactions, ownerScope, postTransactions, uncategorisedCategory } from '@expanses/db';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Check, Plus, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { native } from '../../capture/native';
 import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
@@ -109,6 +109,13 @@ function ListBody({ account, accounts, batch }: { account: AccountRow; accounts:
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const started = useRef(false);
+  // Where the list stood when a row was opened on the full screen: back from it, the list is where it was left.
+  const listScroll = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (editing !== null || listScroll.current === null) return;
+    window.scrollTo(0, listScroll.current);
+    listScroll.current = null;
+  }, [editing]);
 
   const shotsRef = useRef(shots);
   shotsRef.current = shots;
@@ -305,6 +312,7 @@ function ListBody({ account, accounts, batch }: { account: AccountRow; accounts:
   }
 
   function open(row: NewRow) {
+    listScroll.current = window.scrollY;
     setEditing(row.id);
     // Opened from partway down the list: the form starts at its top, as a screen of its own does.
     window.scrollTo(0, 0);
@@ -334,12 +342,12 @@ function ListBody({ account, accounts, batch }: { account: AccountRow; accounts:
             saveLabel: 'Save row',
             categoryLater: true,
             rowOnly: true,
-            canSubmit: (form) => {
+            refusal: (form) => {
               try {
                 editFromForm(form, account.id, currency, otherIds);
-                return true;
-              } catch {
-                return false;
+                return null;
+              } catch (e) {
+                return e instanceof Error ? e.message : 'This row cannot be saved as it stands';
               }
             },
             onSubmit: async (form) => {
