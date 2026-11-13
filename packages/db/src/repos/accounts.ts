@@ -513,6 +513,8 @@ export async function renameAccountTx(tx: Db, ws: WorkspaceContext, id: string, 
       .from(accounts)
       .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.parentId, id), eq(accounts.kind, 'asset')));
     for (const pocket of pockets) {
+      // Joint net worth: a shared pocket names its account (`pocketOf`), so each goes out again under the new name.
+      markAccountDirtyTx(tx, pocket.id);
       if (pocket.currency && pocket.name === pocketName(before.name, pocket.currency)) {
         await captureMoneyAccountRenamingTx(tx, pocket.id);
         await tx.update(accounts).set({ name: pocketName(trimmed, pocket.currency) }).where(eq(accounts.id, pocket.id));

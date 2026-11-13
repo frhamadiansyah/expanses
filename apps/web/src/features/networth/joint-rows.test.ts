@@ -1,7 +1,7 @@
 import { balanceSheet, type ItemSummary, resolveRings } from '@expanses/core';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { figureOf, groupItems, jointRows, jointSeries, jointStatus, ownerRing, type ReceivedItem, sheetOwnerOf } from './joint-rows';
+import { figureOf, groupItems, jointRows, jointSeries, jointStatus, ownerRing, type ReceivedItem, receivedPocketAccounts, sheetOwnerOf } from './joint-rows';
 import { foldPockets } from './overview-rows';
 import { rowKindOf, sheetDrawers } from './sheet-drawers';
 
@@ -295,5 +295,41 @@ describe('sheetOwnerOf: every row of the household sheet has an owner to ring', 
     const { owner } = sheetOwnerOf('cash', owners, accounts, RINA);
     expect(ownerRing(rings, owner)).toBe(ownerRing(rings, RINA));
     expect(ownerRing(rings, owner)).not.toBeNull();
+  });
+});
+
+describe('the partner’s account with pockets on the household sheet (owner, 13 Nov: one row on both phones)', () => {
+  const pocketOf = { id: 'i-travel', name: 'Travel wallet' };
+  const pockets = [
+    item({ itemId: 'i-travel-idr', name: 'Travel wallet · IDR', balanceMinor: 3_100_000, pocketOf }),
+    item({ itemId: 'i-travel-usd', name: 'Travel wallet · USD', currency: 'USD', balanceMinor: 120_00, pocketOf }),
+    item({ itemId: 'i-mandiri', name: 'Andi Mandiri', balanceMinor: 7_000_000 }),
+  ];
+  const rates = { USD: 15_900 };
+
+  it('folds the pockets into one row, the account’s, at their total and marked ≈; the totals are unchanged', () => {
+    const joint = jointRows(own, pockets, RINA, rates, 'IDR');
+    const sheet = balanceSheet(joint.assets, joint.liabilities);
+    const { pockets: folds, parents } = receivedPocketAccounts(pockets, joint.rows, 'IDR');
+    const rows = foldPockets(sheet.assetGroups, [], 'IDR', folds).flatMap((group) => group.rows);
+    const usd = 120_00 * 159;
+    expect(rows.filter((row) => row.name.startsWith('Travel wallet'))).toEqual([{ accountId: 'i-travel', name: 'Travel wallet', amountMinor: 3_100_000 + usd, note: null, approx: true }]);
+    expect(rows.some((row) => row.accountId === 'i-mandiri')).toBe(true);
+    expect(sheet.assetsTotalMinor).toBe(50_000_000 + 10_000_000 + 3_100_000 + usd + 7_000_000);
+    // The row is the partner’s: it wears their ring and opens their account’s page.
+    expect(parents.get('i-travel')).toMatchObject({ owner: ANDI, received: true, amountMinor: 3_100_000 + usd, subtype: 'bank' });
+  });
+
+  it('with no rate for a pocket, the pockets stay rows of their own, each in its own currency', () => {
+    const joint = jointRows(own, pockets, RINA, {}, 'IDR');
+    const { pockets: folds, parents } = receivedPocketAccounts(pockets, joint.rows, 'IDR');
+    expect(folds.size).toBe(0);
+    expect(parents.size).toBe(0);
+  });
+
+  it('a pocket from a peer before this release names no account and is folded into nothing', () => {
+    const old = pockets.map(({ pocketOf: _pocketOf, ...rest }) => rest);
+    const joint = jointRows(own, old, RINA, rates, 'IDR');
+    expect(receivedPocketAccounts(old, joint.rows, 'IDR').pockets.size).toBe(0);
   });
 });

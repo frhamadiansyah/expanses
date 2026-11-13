@@ -108,19 +108,67 @@ function receivedAssetRow(item: ReceivedItem): AssetRow & { kind: RowKind } {
   };
 }
 
+type ReceivedAssetRow = AssetRow & { kind: RowKind; pocketOf?: ReceivedItem['pocketOf'] };
+
+/**
+ * A received account with pockets as one row, as its owner's phone draws it (`groupAssets`): each pocket is an item of
+ * its own, and every pocket of one account names it (`pocketOf`), so the pockets of one owner's account filed in one
+ * drawer become one row — the account's name, their total in the base currency (each pocket converted on its own, a
+ * missing rate named), known by the account's one-way id, which opens the pockets read-only. A pocket from an owner on
+ * an older build names no account and stays a row of its own.
+ */
+function foldReceivedPockets(rows: readonly ReceivedAssetRow[], baseCurrency: string, ratesToBase: Readonly<Record<string, number>>): ReceivedAssetRow[] {
+  const keyOf = (row: ReceivedAssetRow) => (row.pocketOf ? `${row.owner}\u0000${row.pocketOf.id}\u0000${row.kind.key}` : null);
+  const pocketsOf = new Map<string, ReceivedAssetRow[]>();
+  for (const row of rows) {
+    const key = keyOf(row);
+    if (key) pocketsOf.set(key, [...(pocketsOf.get(key) ?? []), row]);
+  }
+  const out: ReceivedAssetRow[] = [];
+  const done = new Set<string>();
+  for (const row of rows) {
+    const key = keyOf(row);
+    if (!key) {
+      out.push(row);
+      continue;
+    }
+    if (done.has(key)) continue;
+    done.add(key);
+    const pockets = pocketsOf.get(key)!;
+    const total = sumToBase({ amounts: pockets.map((p) => ({ minor: p.valueMinor, currency: p.currency })), baseCurrency, ratesToBase });
+    out.push({
+      ...row,
+      accountId: row.pocketOf!.id,
+      name: row.pocketOf!.name,
+      valueMinor: total.totalMinor ?? 0,
+      currency: baseCurrency,
+      method: 'Pockets',
+      coretax: 'Each pocket files its own row',
+      pockets: pockets.length,
+      missing: total.missing,
+      converted: pockets.some((pocket) => pocket.currency !== baseCurrency),
+    });
+  }
+  return out;
+}
+
 /**
  * The Assets page's groups for the household: `own` (this phone's live groups, as `groupAssets` read them) with every
  * shared asset of the other members filed into the same sections and drawers. A section or drawer's figure is its own
- * part as before plus the received items in it, converted at `ratesToBase`; a missing rate blanks it and is named.
+ * part as before plus the received items in it, converted at `ratesToBase`; a missing rate blanks it and is named. An
+ * account of theirs with pockets is one row (`foldReceivedPockets`), its figures still added up a pocket at a time.
  */
 export function householdAssetGroups(own: readonly AssetGroup[], household: Household, baseCurrency: string): AssetGroup[] {
-  const received = household.received.filter((item) => item.kind === 'asset' && household.members.includes(item.owner)).map(receivedAssetRow);
+  const received: ReceivedAssetRow[] = household.received
+    .filter((item) => item.kind === 'asset' && household.members.includes(item.owner))
+    .map((item) => ({ ...receivedAssetRow(item), ...(item.pocketOf ? { pocketOf: item.pocketOf } : {}) }));
   const sumOf = (rows: readonly AssetRow[]) => sumToBase({ amounts: rows.map((row) => ({ minor: row.valueMinor, currency: row.currency })), baseCurrency, ratesToBase: household.ratesToBase });
   return SHEET_SECTIONS.flatMap((section): AssetGroup[] => {
     const mine = own.find((group) => group.group === section);
     const theirs = received.filter((row) => row.section === section);
     if (!mine && theirs.length === 0) return [];
-    const rows = byMemberThenName(household.members, [...(mine?.rows ?? []).map((row) => ({ ...row, owner: household.me })), ...theirs]);
+    const shown = foldReceivedPockets(theirs, baseCurrency, household.ratesToBase).map(({ pocketOf: _pocketOf, ...row }) => row);
+    const rows = byMemberThenName(household.members, [...(mine?.rows ?? []).map((row) => ({ ...row, owner: household.me })), ...shown]);
     const drawers = new Map<string, AssetDrawer>();
     for (const row of rows) {
       const drawer = drawers.get(row.kind.key) ?? { key: row.kind.key, label: row.kind.label, rows: [], totalMinor: 0, missing: [] };
@@ -130,7 +178,8 @@ export function householdAssetGroups(own: readonly AssetGroup[], household: Hous
     const nothing = { totalMinor: 0, missing: [] };
     const folded = [...drawers.values()].map((drawer) => {
       const ownPart = mine?.drawers.find((each) => each.key === drawer.key) ?? nothing;
-      return { ...drawer, ...plus(ownPart, sumOf(drawer.rows.filter((row) => row.received))) };
+      // Each received item on its own — a pocket at its own currency, never its account's rounded total.
+      return { ...drawer, ...plus(ownPart, sumOf(theirs.filter((row) => row.kind.key === drawer.key))) };
     });
     return [{ group: section, label: mine?.label ?? SHEET_SECTION_LABELS[section], ...plus(mine ?? nothing, sumOf(theirs)), rows, drawers: folded }];
   });
@@ -199,7 +248,7 @@ export function householdDebtSheet(own: DebtSheet, household: Household, baseCur
 /**
  * The household's Assets page from this phone's own values: the own accounts that were sent, merged with the other's
  * items (`householdAssetGroups`), and — apart, counted in nothing — the own accounts that were not. An account with
- * pockets is one row here and one row a pocket on the other phone (each pocket is an item); the totals are the same.
+ * pockets is one row on both phones: here as `groupAssets` folds it, there as `foldReceivedPockets` does.
  */
 export function householdAssetPage(
   values: readonly AssetValueRow[],

@@ -711,14 +711,16 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const transfer = addForm(page);
   await transfer.getByRole('radio', { name: 'Transfer', exact: true }).click();
-  await transfer.getByRole('button', { name: 'From' }).click();
-  await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'Fandri Bank', exact: true }).click();
-  await openAmount(transfer);
-  await fillAmount(page, transfer, '5000000');
+  // To first, with From still empty (owner's report, build 122/123): Dewi's shared account is listed all the same.
   await transfer.getByRole('button', { name: /^To/ }).click();
   const to = page.getByRole('dialog', { name: 'To', exact: true });
   // To is the same sheet as From and Paid with: a partner's row is named with whose it is, as Paid with names it.
   await to.getByRole('region', { name: 'Dewi’s, shared with Home' }).getByRole('button', { name: 'Dewi Bank, Dewi’s, shared with Home', exact: true }).click();
+  await transfer.getByRole('button', { name: /^From/ }).click();
+  await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'Fandri Bank', exact: true }).click();
+  await expect(transfer.getByRole('button', { name: /^To/ })).toContainText('Dewi Bank');
+  await openAmount(transfer);
+  await fillAmount(page, transfer, '5000000');
   await transfer.getByLabel('Note').fill('For the house');
   await shot(page, info, '18-transfer-to-partner');
   await saveButton(transfer).click();
@@ -976,13 +978,15 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   await dewi.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const withdrawal = addForm(dewi);
   await withdrawal.getByRole('radio', { name: 'Transfer', exact: true }).click();
-  await withdrawal.getByRole('button', { name: 'To' }).click();
-  await dewi.getByRole('dialog', { name: 'To', exact: true }).getByRole('button', { name: 'Dewi Cash' }).first().click();
-  await openAmount(withdrawal);
-  await fillAmount(dewi, withdrawal, '300000');
+  // From first, with To still empty (owner's report, build 122/123): Fandri's joint account is listed all the same.
   await withdrawal.getByRole('button', { name: /^From/ }).click();
   const fromSheet = dewi.getByRole('dialog', { name: 'From', exact: true });
   await fromSheet.getByRole('region', { name: /^Fandri’s, shared with/ }).getByRole('button', { name: /^Fandri Bank, Fandri’s, shared/ }).click();
+  await withdrawal.getByRole('button', { name: /^To/ }).click();
+  await dewi.getByRole('dialog', { name: 'To', exact: true }).getByRole('button', { name: 'Dewi Cash' }).first().click();
+  await expect(withdrawal.getByRole('button', { name: /^From/ })).toContainText('Fandri Bank');
+  await openAmount(withdrawal);
+  await fillAmount(dewi, withdrawal, '300000');
   await withdrawal.getByLabel('Note').fill('Cash withdrawal');
   await saveButton(withdrawal).click();
   await expect(withdrawal).toHaveCount(0);

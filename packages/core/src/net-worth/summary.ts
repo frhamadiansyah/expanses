@@ -22,6 +22,12 @@ export interface ItemFace {
   last4?: string;
 }
 
+/** The account a pocket sits in, as a pocket's summary names it (`ItemSummary.pocketOf`). */
+export interface ItemPocketOf {
+  id: string;
+  name: string;
+}
+
 /** One owner's item, as sent to the group log (spec §5.2). */
 export interface ItemSummary {
   owner: string;
@@ -63,6 +69,13 @@ export interface ItemSummary {
    * is byte-for-byte what it was. A build before this one keeps it in the summary and draws nothing from it.
    */
   face?: ItemFace;
+  /**
+   * Present only on a pocket (one currency of an account with pockets): the account it sits in, known by a one-way id
+   * (`uuidv5(groupBookId, 'item:' + parentId)`, never the local account id — and never an item's id, since a pocket
+   * parent is never an item) and its name, so the partner's phone draws the account as one row, pockets inside, as its
+   * owner's phone does. Absent on every other item, and from a peer before this release (its pockets then list one by one).
+   */
+  pocketOf?: ItemPocketOf;
   /** Only when the group's mode is joint (§8.4): this item's slice of the owner's tax inputs for the latest finished year. */
   tax: ItemTax;
 }

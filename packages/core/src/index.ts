@@ -604,7 +604,7 @@ export {
   type GroupState,
   type Proposal,
 } from './net-worth/group';
-export { cardBar, type ItemFace, type ItemSheetFacts, type ItemSummary, lastMonthEnds, type PeriodMovement, splitPeriod, summaryHash } from './net-worth/summary';
+export { cardBar, type ItemFace, type ItemPocketOf, type ItemSheetFacts, type ItemSummary, lastMonthEnds, type PeriodMovement, splitPeriod, summaryHash } from './net-worth/summary';
 export { type CoretaxRowPart, type ItemTax, jointCoretaxInputs, type JointWaiting, yearEndReached } from './net-worth/joint-tax';
 export { isRingColour, parseRingPick, RING_COLOURS, type RingColour, type RingPick, resolveRings, takenRings } from './net-worth/rings';
 export { closePriceMicro, isIdxListing, type ListedPriceChoice, type ListedPriceSource, listedPriceChoice, priceAgeDays, STALE_PRICE_DAYS } from './prices/listed';

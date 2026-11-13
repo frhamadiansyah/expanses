@@ -2,6 +2,7 @@ import {
   type CoretaxInputs,
   type CoretaxRowPart,
   type ItemFace,
+  type ItemPocketOf,
   type ItemSheetFacts,
   type ItemSummary,
   type ItemTax,
@@ -298,6 +299,25 @@ function sheetOf(sent: unknown): { sheet?: ItemSheetFacts } {
 }
 
 /**
+ * A pocket's `pocketOf` (`ItemSummary.pocketOf`): the account it sits in, by `itemIdOf` of its id — one-way, as every
+ * item id is — and its name. Empty — no key at all — for an account in no other, so its summary is what it was.
+ */
+async function pocketOfTx(tx: Db, ws: WorkspaceContext, accountId: string, groupBookId: string): Promise<{ pocketOf?: ItemPocketOf }> {
+  const [row] = await tx.values<[string, string]>(sql`
+    SELECT p.id, p.name FROM accounts a JOIN accounts p ON p.id = a.parent_id
+    WHERE a.id = ${accountId} AND a.kind = 'asset' AND p.kind = 'asset' AND p.workspace_id = ${ws.workspaceId}`);
+  return row ? { pocketOf: { id: await itemIdOf(groupBookId, row[0]), name: row[1] } } : {};
+}
+
+/** A peer's `pocketOf`, read defensively: a short id and a name of reasonable length, or nothing. */
+function pocketOfSent(sent: unknown): { pocketOf?: ItemPocketOf } {
+  if (sent === null || typeof sent !== 'object' || Array.isArray(sent)) return {};
+  const raw = sent as Record<string, unknown>;
+  if (!isShortText(raw.id) || typeof raw.name !== 'string' || raw.name.length === 0 || raw.name.length > 200) return {};
+  return { pocketOf: { id: raw.id, name: raw.name } };
+}
+
+/**
  * Where an item's tax slice comes from (final review item 7): the workspace's whole `coretaxInputsFor` is built at most
  * once per tax year for one send and sliced per item, instead of once per item. `reuse` gives the tax part last sent for
  * an item when the write being flushed cannot have changed that year (every date it touched is after its 31 December),
@@ -419,7 +439,10 @@ export async function sendSummariesTx(tx: Db, accountIds: readonly string[] | 'a
     if (shared) {
       // The tax row only after this person's Share of the active proposal (task 10 review round 1): a Change to one tax
       // ID must not send it on a mere refresh (`live`) before the review has said what it now carries.
-      const summary = await computeItemSummary(tx, ws, accountId, memberId, workspaceBookId, today, allowance === 'all' ? group : null, taxSource);
+      const summary: ItemSummary = {
+        ...(await computeItemSummary(tx, ws, accountId, memberId, workspaceBookId, today, allowance === 'all' ? group : null, taxSource)),
+        ...(await pocketOfTx(tx, ws, accountId, groupBookId)),
+      };
       const hash = summaryHash(summary);
       const [sent] = await tx.values<[string]>(sql`SELECT summary_hash FROM nw_sent WHERE item_id = ${itemId}`);
       const [live] = await tx.values<[number]>(sql`SELECT removed FROM nw_items WHERE book_id = ${groupBookId} AND item_id = ${itemId}`);
@@ -486,9 +509,9 @@ export async function receivedItems(database: Database, groupBookId: string): Pr
       const summary = JSON.parse(json) as ItemSummary | null;
       // The owner is the row's, which the writer rule vouches for; never what the summary's own text claims.
       if (summary && typeof summary === 'object') {
-        const { joint, sheet, face, ...rest } = summary;
+        const { joint, sheet, face, pocketOf, ...rest } = summary;
         // Only a literal `true` makes an item joint; anything else a peer sends reads as off. A face only on a joint item.
-        out.push({ ...rest, ...transfersOf(summary), ...(joint === true ? { joint: true as const, ...faceOf(face) } : {}), ...sheetOf(sheet), owner, itemId });
+        out.push({ ...rest, ...transfersOf(summary), ...(joint === true ? { joint: true as const, ...faceOf(face) } : {}), ...sheetOf(sheet), ...pocketOfSent(pocketOf), owner, itemId });
       }
     } catch {
       // A summary that does not parse is shown as nothing, not as a wrong number.
@@ -514,13 +537,18 @@ export async function refreshSummariesTx(tx: Db, pending: readonly string[], tod
   } catch {
     return 0; // a database from before migration 0057
   }
+  // A pocket last sent by a build before `pocketOf` goes out again once, naming its account (one row on both phones).
+  const pockets = new Set(
+    (await tx.values<[string]>(sql`SELECT a.id FROM accounts a JOIN accounts p ON p.id = a.parent_id WHERE a.kind = 'asset' AND p.kind = 'asset'`)).map(([id]) => id),
+  );
   for (const [accountId, json] of own) {
     try {
-      const summary = JSON.parse(json) as Pick<ItemSummary, 'period' | 'asOf'> | null;
+      const summary = JSON.parse(json) as Pick<ItemSummary, 'period' | 'asOf' | 'pocketOf'> | null;
       // A period that has ended, or a new year begun: a card's cycle can run over 1 January, and the new year's tax row
       // and December month-end must not wait for the cycle to close (task 10 review round 1).
       if (!summary?.period || summary.period.end < today) ids.add(accountId);
       else if (typeof summary.asOf !== 'string' || summary.asOf.slice(0, 4) !== today.slice(0, 4)) ids.add(accountId);
+      else if (pockets.has(accountId) && !summary.pocketOf) ids.add(accountId);
     } catch {
       ids.add(accountId);
     }
