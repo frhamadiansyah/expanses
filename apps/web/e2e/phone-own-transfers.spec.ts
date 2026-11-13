@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard, openWalletAccount } from './accounts';
-import { addForm, addTransaction, addTransfer, choosePayment, fillAmount, openAmount, saveButton, showTransfers } from './add-transaction';
+import { addForm, addTransaction, addTransfer, choosePayment, chooseTo, saveButton, showTransfers } from './add-transaction';
+import { typeAmount, typeSecondFigure } from './set-aside';
 import { cardPage } from './card-section';
 import { TODAY } from './event-plan';
 
@@ -12,18 +13,28 @@ import { TODAY } from './event-plan';
 
 const row = (page: Page, text: string) => page.getByTestId('transaction-row').filter({ hasText: text });
 
-/** Pays the card from the bank on the Transfer tab: To is the card, on the sheet's Credit cards. */
-async function payCard(page: Page, amount: string, note: string) {
+/** Pays a purchase off from the card's statement, as a person does: tick it, Pay, Pay Rp … from the bank. */
+async function payFromStatement(page: Page, what: string) {
+  await page.goto('/wallet');
+  await page.getByRole('link', { name: 'Contoh Visa' }).first().click();
+  await cardPage(page, 'Statement');
+  await page.getByLabel(`Pay ${what}`).check();
+  await page.getByTestId('statement-select-bar').getByRole('button', { name: 'Pay', exact: true }).click();
+  await page.getByRole('dialog', { name: /^Pay / }).getByRole('button', { name: /^Pay Rp/ }).click();
+  await expect(page.getByTestId('statement-select-bar')).toHaveCount(0);
+}
+
+/** A top-up with a typed fee, on the phone's keypad: the fee is spending beside the move. */
+async function topUpWithFee(page: Page) {
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = addForm(page);
   await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
   await form.getByRole('button', { name: 'From' }).click();
   await choosePayment(page, 'Contoh Payroll', 'From');
-  await openAmount(form);
-  await fillAmount(page, form, amount);
-  await form.getByRole('button', { name: /^To/ }).click();
-  await choosePayment(page, 'Contoh Visa', 'To');
-  await form.getByLabel('Note').fill(note);
+  await chooseTo(form, 'Dompet');
+  await typeAmount(page, form, '50000');
+  await typeSecondFigure(page, form, /^Fee in IDR$/, '2500');
+  await form.getByLabel('Note').fill('Top-up with fee');
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
 }
@@ -35,19 +46,20 @@ test('a card payment and a top-up leave Cashflow, Transfers brings them back, an
 
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Toko Contoh', paidWith: 'Contoh Visa', category: 'Groceries', amount: '320000' });
-  await payCard(page, '320000', 'Visa payment');
+  await payFromStatement(page, 'Toko Contoh');
+  await page.goto('/transactions');
   await addTransfer(page, { from: 'Contoh Payroll', to: 'Dompet', amount: '100000', note: 'Plain top-up' });
-  await addTransfer(page, { from: 'Contoh Payroll', to: 'Dompet', amount: '50000', note: 'Top-up with fee', fee: '2500' });
+  await topUpWithFee(page);
 
   await page.goto('/transactions');
   await expect(row(page, 'Toko Contoh')).toBeVisible();
   // The fee is spending: the transfer it was typed on keeps its row.
   await expect(row(page, 'Top-up with fee')).toBeVisible();
-  await expect(row(page, 'Visa payment')).toHaveCount(0);
+  await expect(row(page, 'Contoh Visa payment')).toHaveCount(0);
   await expect(row(page, 'Plain top-up')).toHaveCount(0);
 
   await showTransfers(page);
-  await expect(row(page, 'Visa payment')).toBeVisible();
+  await expect(row(page, 'Contoh Visa payment')).toBeVisible();
   await expect(row(page, 'Plain top-up')).toBeVisible();
   await expect(page.getByTestId('filter-on')).toBeVisible();
 
@@ -55,9 +67,9 @@ test('a card payment and a top-up leave Cashflow, Transfers brings them back, an
   await page.goto('/wallet');
   await page.getByRole('link', { name: 'Contoh Visa' }).first().click();
   await cardPage(page, 'Statement');
-  await expect(page.getByRole('main')).toContainText('Visa payment');
+  await expect(page.getByRole('main')).toContainText('Contoh Visa payment');
   await openWalletAccount(page, 'Contoh Payroll');
-  await expect(page.getByTestId('account-recent')).toContainText('Visa payment');
+  await expect(page.getByTestId('account-recent')).toContainText('Contoh Visa payment');
   await expect(page.getByTestId('account-recent')).toContainText('Plain top-up');
 });
 
@@ -106,6 +118,9 @@ test('a transfer Transfers shows is ticked and put on a trip like any row; Selec
   await page.getByRole('checkbox', { name: 'Select Trip top-up' }).click();
   await act('Add to event');
   await page.getByRole('dialog', { name: 'Add to event' }).getByRole('button', { name: 'Contoh trip' }).click();
+  await expect(page.getByRole('status').filter({ hasText: /added to Contoh trip/ })).toBeVisible();
+  // On the trip now: Cashflow leaves event rows to the Events page, Transfers on or not.
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Trip top-up' })).toHaveCount(0);
   await page.goto(eventUrl);
   await expect(page.getByTestId('event-history').filter({ hasText: 'Trip top-up' })).toHaveCount(1);
 });

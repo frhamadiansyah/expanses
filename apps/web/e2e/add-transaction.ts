@@ -211,7 +211,11 @@ export async function showTransfers(page: Page) {
     return;
   }
   await menu.click();
-  await page.getByRole('menuitemcheckbox', { name: 'Transfers' }).click();
+  const item = page.getByRole('menuitemcheckbox', { name: 'Transfers' });
+  // Already on (a filter kept from before): the menu is put away as it was.
+  if ((await item.getAttribute('aria-checked')) === 'true') await menu.click();
+  else await item.click();
+  await expect(page.getByRole('menu', { name: 'Sort and filter' })).toHaveCount(0);
 }
 
 /**

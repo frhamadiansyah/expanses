@@ -2,7 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { personRow } from './people';
 import { addPlastic, expectWalletFigure, openAccount, removePlastic } from './accounts';
 import { addCap } from './budget';
-import { addForm, addTransaction, addTransfer, attachPhoto, closeDetails, fillAmount, openAmount, saveButton, shareWith, chooseTo, choosePayment } from './add-transaction';
+import { addForm, addTransaction, addTransfer, attachPhoto, closeDetails, fillAmount, openAmount, saveButton, shareWith, showTransfers, chooseTo, choosePayment } from './add-transaction';
 import { addEvent } from './event-plan';
 import { openGoalForm } from './goals';
 import { cardPage, cardPurchases, saveCardTerms, chooseCatalogueCard } from './card-section';
@@ -342,7 +342,9 @@ test('a transfer offers no currency of its own, and moves the figure its row sho
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 
-  // Rp 100 was typed and Rp 100 moved. The card used to say Rp 1.600.000 on the row that posts.
+  // Rp 100 was typed and Rp 100 moved. The card used to say Rp 1.600.000 on the row that posts. An own transfer is
+  // listed in Cashflow with Transfers on (owner 2026-11-13).
+  await showTransfers(page);
   const moved = page.getByTestId('transaction-row').filter({ hasText: 'To Jago' });
   await expect(moved).toContainText('Rp 100');
   await expect(moved).not.toContainText('1.600.000');
@@ -436,7 +438,9 @@ test('a transfer tagged For goal parks the money against the goal', async ({ pag
   await page.goto('/transactions');
   await addTransfer(page, { from: 'BCA Tahapan', to: 'Jenius (IDR)', amount: '2000000', goal: 'University for Aisyah', note: 'Parking' });
 
-  // `recordTaggedTransfer`, not a plain posting: the row says which goal it was parked for, and the goal has it.
+  // `recordTaggedTransfer`, not a plain posting: the row says which goal it was parked for, and the goal has it. An own
+  // transfer is listed in Cashflow with Transfers on (owner 2026-11-13).
+  await showTransfers(page);
   await expect(page.getByText(/for University for Aisyah/)).toBeVisible();
   await page.goto('/goals');
   await expect(page.getByText(/2\.000\.000/).first()).toBeVisible();
@@ -627,6 +631,7 @@ test('a transfer that crosses currencies can be tagged to a goal', async ({ page
     goal: 'University for Aisyah',
     note: 'Parking in USD',
   });
+  await showTransfers(page);
   await expect(page.getByText(/for University for Aisyah/)).toBeVisible();
 
   // What left and what landed, each in its own account's own money.
