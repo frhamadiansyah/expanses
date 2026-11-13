@@ -101,7 +101,7 @@ describe('Cashflow in the shared workspace (Family)', () => {
   });
 
   it('keeps the partner’s redacted transfers', () => {
-    const redacted = sharedTransferRow({ transferId: 'x1', bookId: 'family', occurredOn: '2026-10-25', amountMinor: 75_000_00, currency: 'IDR', description: 'Savings', recordedBy: 'm2', fromName: null, toName: null });
+    const redacted = sharedTransferRow({ transferId: 'x1', bookId: 'family', occurredOn: '2026-10-25', amountMinor: 75_000_00, currency: 'IDR', description: 'Savings', recordedBy: 'm2', fromName: null, toName: null, name: null });
     expect(filterRows([redacted], EMPTY_FILTERS, accounts, { shared: true, jointIds: joint })).toHaveLength(1);
   });
 });
