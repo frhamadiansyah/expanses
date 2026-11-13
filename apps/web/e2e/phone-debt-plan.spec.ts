@@ -127,18 +127,14 @@ test('late on top: the count, Pay next pays the late instalment and comes back t
   await expect(page.getByTestId('plan-count-late')).toHaveText('0 late');
 });
 
-test('ways in: the corners of Net worth and Liabilities, and Account → Money', async ({ page }) => {
+test('ways in: the corner of Liabilities and Account → Money, never Net worth', async ({ page }) => {
   await page.clock.setSystemTime(at('2026-11-11'));
-  await page.goto('/net-worth');
-  await expect(page.getByRole('heading', { name: 'Net worth' })).toBeVisible();
-  // Nothing owed yet: no plan to open from Net worth.
-  await expect(page.getByRole('link', { name: 'Debt-free plan' })).toHaveCount(0);
-
   await bank(page);
   await owedTo(page, 'Dewi', '850000');
+  // Owner, 13 Nov 2026: the plan opens from Liabilities, not from the main Net worth page.
   await page.goto('/net-worth');
-  await page.getByRole('link', { name: 'Debt-free plan' }).click();
-  await expect(page).toHaveURL(/\/net-worth\/plan$/);
+  await expect(page.getByRole('heading', { name: 'Net worth' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Debt-free plan' })).toHaveCount(0);
 
   await page.goto('/net-worth/loans');
   await expect(page.getByRole('link', { name: 'Add a debt' })).toBeVisible();
