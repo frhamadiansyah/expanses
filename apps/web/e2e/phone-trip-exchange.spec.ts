@@ -2,7 +2,7 @@ import { type Browser, expect, type Page, test, type TestInfo } from '@playwrigh
 import { currencyRow, setCurrency } from './currency-field';
 import { addForm, chooseTo, choosePayment, fillAmount, openAmount, saveButton } from './add-transaction';
 import { mockRates, openWithPockets } from './pockets';
-import { corner, eventually, newEvent, openTrip } from './shared-events';
+import { corner, eventually, newEvent, openTrip, openTripSettings } from './shared-events';
 import { openWorkspaceSharePage, putOffShareList, shareWorkspace, workspaceLine } from './workspace-page';
 
 /*
@@ -102,7 +102,10 @@ async function journey(owner: Page, browser: Browser, info: TestInfo, recordedBe
   await joinTrip.getByRole('button', { name: 'Join', exact: true }).click();
   await expect(husband.getByTestId('shared-event')).toBeVisible({ timeout: 60_000 });
   await openTrip(owner, 'Anatolia Trip');
-  await eventually(owner, () => expect(owner.getByTestId('shared-event')).toContainText('Bima', { timeout: 1_000 }));
+  // Shared with the husband alone, the trip is one pot (no Balances card to name him): his name is on its Settings page.
+  const settings = await openTripSettings(owner);
+  await eventually(owner, () => expect(settings.getByTestId('shared-settings-people')).toContainText('Bima', { timeout: 1_000 }));
+  await expect(settings.getByRole('checkbox', { name: 'Split costs' })).not.toBeChecked();
 
   if (!recordedBeforeSharing) await recordExchange(owner);
   await openWorkspace(owner, 'Family');

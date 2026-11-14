@@ -66,10 +66,11 @@ export function stopSplittingText(view: Pick<SharedEventView, 'payments' | 'curr
   return `${now}With splitting off, nobody owes anything on this trip. The splits are kept; switching back on brings them back.`;
 }
 
-/** The People row's value: everyone still in the event, by name. */
+/** The People row's value: everyone still in the event, by name, this phone's person first. */
 export const peopleValue = (view: Pick<SharedEventView, 'people'>): string =>
   view.people
     .filter((p) => !p.removed)
+    .sort((a, b) => Number(b.isMe) - Number(a.isMe))
     .map((p) => p.name)
     .join(', ');
 

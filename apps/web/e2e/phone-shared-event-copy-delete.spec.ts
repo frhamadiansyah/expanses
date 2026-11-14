@@ -1,7 +1,7 @@
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
 import { currencyRow, setCurrency } from './currency-field';
 import { mockRates } from './pockets';
-import { corner, newEvent, openTrip, showBalances } from './shared-events';
+import { corner, newEvent, openTrip, openTripSettings, showBalances } from './shared-events';
 
 /*
  * Delete this copy (owner report 2026-11-12): Andi leaves "Coast week", his phone keeps it read-only, and Delete this
@@ -44,10 +44,12 @@ test('a left trip is read-only on Andi’s phone, and Delete this copy takes it 
   await expect(andi.getByTestId('shared-event')).toBeVisible({ timeout: 60_000 });
 
   // A live trip offers Leave, never Delete this copy.
-  await andi.getByRole('button', { name: /^More$/ }).click();
-  await expect(andi.getByRole('menuitem', { name: /^Leave/ })).toBeVisible();
-  await expect(andi.getByRole('menuitem', { name: /^Delete this copy/ })).toHaveCount(0);
-  await andi.getByRole('menuitem', { name: /^Leave/ }).click();
+  const settings = await openTripSettings(andi);
+  await expect(settings.getByRole('button', { name: /^Leave/ })).toBeVisible();
+  await expect(settings.getByRole('button', { name: /^Delete this copy/ })).toHaveCount(0);
+  await settings.getByRole('button', { name: /^Leave/ }).click();
+  await expect(settings.getByRole('button', { name: /^Delete this copy/ })).toBeVisible({ timeout: 60_000 });
+  await openTrip(andi);
   await showBalances(andi);
   await expect(andi.getByTestId('shared-event-read-only')).toContainText('Andi is no longer in Coast week', { timeout: 60_000 });
 

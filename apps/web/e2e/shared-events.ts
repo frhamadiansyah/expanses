@@ -17,18 +17,35 @@ export async function eventually(page: Page, check: () => Promise<void>) {
   }).toPass({ timeout: 45_000, intervals: [500, 1_000, 2_000] });
 }
 
-/** A corner action by name, inline or under ⋯. */
+/**
+ * A corner action by name, inline or under ⋯ — or, on a shared trip, a line of its Settings page (the ⚙): People,
+ * Categories, Done (Mark as done or Reopen), Leave, Delete this copy.
+ */
 export async function corner(page: Page, name: string) {
   const inline = page.getByRole('button', { name, exact: true });
   if ((await inline.count()) > 0) return inline.first().click();
-  // A private event keeps its settings behind the ⚙: sharing is a row on that page.
   const settings = page.getByRole('link', { name: 'Settings', exact: true });
-  if (name === 'Share this event' && (await settings.count()) > 0) {
+  const sharedSettings = page.getByTestId('shared-settings');
+  if (name === 'Share this event' && (await sharedSettings.count()) === 0 && (await page.getByTestId('shared-event').count()) === 0 && (await settings.count()) > 0) {
+    // A private event keeps its settings behind the ⚙: sharing is a row on that page.
     await settings.click();
     return page.getByTestId('settings-share').click();
   }
+  if ((await sharedSettings.count()) > 0 || (await page.getByTestId('shared-event').count()) > 0) {
+    if ((await sharedSettings.count()) === 0) await settings.click();
+    await expect(sharedSettings).toBeVisible();
+    const line = name === 'Done' ? /^(Mark as done|Reopen)$/ : new RegExp(`^${name}`);
+    return sharedSettings.getByRole('button', { name: line }).first().click();
+  }
   await page.getByRole('button', { name: /^More$/ }).click();
   await page.getByRole('menuitem', { name: new RegExp(`^${name}`) }).click();
+}
+
+/** A shared trip's Settings page, from the trip page's ⚙. */
+export async function openTripSettings(page: Page) {
+  await page.getByTestId('shared-event').getByRole('link', { name: 'Settings', exact: true }).click();
+  await expect(page.getByTestId('shared-settings')).toBeVisible();
+  return page.getByTestId('shared-settings');
 }
 
 export async function openTrip(page: Page, name = 'Coast week') {

@@ -129,7 +129,9 @@ function SettingsBody({ view }: { view: SharedEventView }) {
                 setAsking(false);
                 void switches({ splitCosts: false });
               }}
-              className={cx(ALERT_ROW, 'font-semibold text-[var(--ph-alarm)]')}
+              className={cx(ALERT_ROW, 'font-semibold')}
+              // The row's own ink is the alert's; this one is the alarm, as a destructive choice is drawn.
+              style={{ color: 'var(--ph-alarm)' }}
             >
               Stop splitting
             </button>

@@ -41,6 +41,9 @@ test('a shared cost: add with category, link and remarks, pay, link, unlink, set
   await page.getByRole('dialog', { name: 'New category' }).getByLabel('Name', { exact: true }).fill('Stay');
   await page.getByRole('dialog', { name: 'New category' }).getByRole('button', { name: 'Save category' }).click();
   await expect(page.getByTestId('event-category')).toHaveCount(1);
+  // Categories is a line of the trip's Settings now: back twice, through Settings, to the trip.
+  await page.goBack();
+  await expect(page.getByTestId('shared-settings')).toBeVisible();
   await page.goBack();
   await expect(page.getByTestId('shared-event')).toBeVisible();
 
