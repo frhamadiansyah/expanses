@@ -1,0 +1,151 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Set aside amount</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --green:#34c759; --up:#1a7f37; --warn:#c93400; --red:#ff3b30; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 10px; max-width:1100px; line-height:1.45; }
+  h2 { font-size:18px; margin:30px 0 4px; } .lead { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; font-size:14px; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; color:#fff; background:var(--tint); border-radius:4px; padding:1px 6px; margin-left:6px; vertical-align:2px; }
+  .row { display:flex; gap:22px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:330px; } .cap { font-weight:700; margin:0 0 3px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:36px; }
+  .phone { background:var(--ground); border-radius:28px; padding:8px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); height:600px; position:relative; overflow:hidden; }
+  .grab { width:36px; height:5px; border-radius:3px; background:#c7c7cc; margin:0 auto 10px; }
+  .nav { display:flex; justify-content:space-between; align-items:center; margin:0 4px 12px; font-size:15px; } .nav .t { color:var(--tint); min-width:58px; } .nav .t:last-child { text-align:right; font-weight:600; } .nav .off { color:#c7c7cc !important; } .nav b { font-size:16px; }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+  .hdr { display:flex; justify-content:space-between; font-size:12.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; margin:0 16px 6px; }
+  .foot { font-size:13px; color:var(--ink3); margin:-6px 16px 12px; line-height:1.35; }
+  .r { display:flex; gap:10px; align-items:center; padding:9px 14px; white-space:nowrap; min-height:44px; } .r + .r, .r + .open, .open + .r { border-top:.5px solid var(--hair); }
+  .ic { width:28px; height:28px; border-radius:7px; color:#fff; font-size:13px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .g { flex:1; min-width:0; } .a { font-size:15px; overflow:hidden; text-overflow:ellipsis; } .s { font-size:12.5px; color:var(--ink3); }
+  .val { font-size:15px; text-align:right; } .chev { color:#c7c7cc; }
+  .tint { color:var(--tint); } .warn { color:var(--warn); } .ok { color:var(--up); } .dim { color:var(--ink3); }
+  .caret { display:inline-block; width:2px; height:1em; background:var(--tint); margin-left:1px; vertical-align:-2px; }
+  .bignum { text-align:center; font-size:36px; font-weight:700; letter-spacing:-.5px; margin:34px 0 6px; }
+  .line { text-align:center; font-size:14px; color:var(--ink3); }
+  .line a { color:var(--tint); text-decoration:none; font-weight:500; }
+  .pad { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; background:#d1d3d9; padding:8px 6px 18px; position:absolute; left:0; right:0; bottom:0; }
+  .pad span { background:#fff; border-radius:6px; text-align:center; padding:9px 0; font-size:19px; box-shadow:0 1px 0 #898a8d; } .pad span.k2 { background:transparent; box-shadow:none; }
+  .field { border:1.5px solid var(--tint); border-radius:8px; padding:5px 8px; min-width:120px; text-align:right; font-size:15px; }
+  .field.bad { border-color:var(--warn); }
+  .open { padding:10px 14px 12px; background:#f7f9ff; }
+  .slider { position:relative; height:28px; margin:14px 18px 2px; } .slider .tr { position:absolute; left:0; right:0; top:12px; height:4px; border-radius:2px; background:#e5e5ea; } .slider .fill { position:absolute; left:0; top:12px; height:4px; border-radius:2px; background:var(--tint); } .slider .knob { position:absolute; top:0; width:28px; height:28px; border-radius:50%; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.3); margin-left:-14px; }
+  .ends { display:flex; justify-content:space-between; font-size:12px; color:var(--ink3); margin:0 18px; }
+</style></head><body>
+<h1>Set aside: the amount step, simpler</h1>
+<p class="sub">Five ways to type the amount after picking an account. All of them: the number pad is up straight away, and <b>Save is blocked</b> (grey) while the amount is more than is free. Invented figures: Mandiri Tabungan, Rp 6.500.000 free, goal "Hajj 2030".</p>
+<p class="sub"><b>Currency:</b> "≈ Rp …" only shows when the account's money differs from the goal's. A USD goal from a USD account shows dollars only.</p>
+
+<h2>1 · Just the number <span class="tag">Recommended</span></h2>
+<p class="lead">One big number and one line under it: what is free, and "All" to fill it. Nothing else.</p>
+<div class="row">
+  <div class="col"><p class="cap">Typing</p><p class="note">Free line grey, "All" tappable.</p>
+    <div class="phone"><div class="grab"></div>
+      <div class="nav"><span class="t">‹ Back</span><b>Mandiri Tabungan</b><span class="t">Save</span></div>
+      <div class="bignum">Rp 5.000.000<span class="caret"></span></div>
+      <div class="line">Rp 6.500.000 free · <a>All</a></div>
+      <div class="pad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span class="k2">,</span><span>0</span><span class="k2">⌫</span></div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">Too much</p><p class="note">Line turns orange, Save grey.</p>
+    <div class="phone"><div class="grab"></div>
+      <div class="nav"><span class="t">‹ Back</span><b>Mandiri Tabungan</b><span class="t off">Save</span></div>
+      <div class="bignum warn">Rp 9.000.000<span class="caret"></span></div>
+      <div class="line warn">Only Rp 6.500.000 free · <a>Use all</a></div>
+      <div class="pad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span class="k2">,</span><span>0</span><span class="k2">⌫</span></div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">USD account, IDR goal</p><p class="note">Only here a small "≈ Rp" appears.</p>
+    <div class="phone"><div class="grab"></div>
+      <div class="nav"><span class="t">‹ Back</span><b>BCA Valas USD</b><span class="t">Save</span></div>
+      <div class="bignum">US$ 200,00<span class="caret"></span></div>
+      <div class="line">≈ Rp 3.180.000 · US$ 340,00 free · <a>All</a></div>
+      <div class="pad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span class="k2">,</span><span>0</span><span class="k2">⌫</span></div>
+    </div>
+  </div>
+</div>
+
+<h2>2 · Opens in the list</h2>
+<p class="lead">No second screen. Tapping an account opens a box right under it in the same list, with the cursor in it. Other accounts stay visible.</p>
+<div class="row">
+  <div class="col"><p class="cap">Typing</p><p class="note">Free and "All" under the name.</p>
+    <div class="phone"><div class="grab"></div>
+      <div class="nav"><span class="t">Cancel</span><b>Set aside</b><span class="t">Save</span></div>
+      <div class="panel">
+        <div class="r"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">Mandiri Tabungan</div></div><span class="field" style="min-width:100px">5.000.000<span class="caret"></span></span></div>
+        <div class="s" style="padding:0 14px 10px 52px;margin-top:-4px;border-bottom:.5px solid var(--hair)">Rp 6.500.000 free · <span class="tint">All</span></div>
+        <div class="r"><div class="ic" style="background:#00a651">💳</div><div class="g"><div class="a">GoPay</div></div><div class="val ok">Rp 420.000</div></div>
+        <div class="r"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">BCA Valas USD</div></div><div class="val ok">US$ 340,00</div></div>
+      </div>
+      <div class="pad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span class="k2">,</span><span>0</span><span class="k2">⌫</span></div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">Too much</p><p class="note">The box and its line turn orange; Save grey.</p>
+    <div class="phone"><div class="grab"></div>
+      <div class="nav"><span class="t">Cancel</span><b>Set aside</b><span class="t off">Save</span></div>
+      <div class="panel">
+        <div class="r"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">Mandiri Tabungan</div></div><span class="field bad warn" style="min-width:100px">9.000.000<span class="caret"></span></span></div>
+        <div class="s warn" style="padding:0 14px 10px 52px;margin-top:-4px;border-bottom:.5px solid var(--hair)">Only Rp 6.500.000 free · <span class="tint">Use all</span></div>
+        <div class="r"><div class="ic" style="background:#00a651">💳</div><div class="g"><div class="a">GoPay</div></div><div class="val ok">Rp 420.000</div></div>
+        <div class="r"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">BCA Valas USD</div></div><div class="val ok">US$ 340,00</div></div>
+      </div>
+      <div class="pad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span class="k2">,</span><span>0</span><span class="k2">⌫</span></div>
+    </div>
+  </div>
+</div>
+
+<h2>3 · Like a form</h2>
+<p class="lead">The plain iOS look of Add transaction: two rows, "From" and "Amount", and a grey line under them.</p>
+<div class="row">
+  <div class="col"><p class="cap">Typing</p><p class="note">"From" can be tapped to switch account.</p>
+    <div class="phone"><div class="grab"></div>
+      <div class="nav"><span class="t">‹ Back</span><b>Set aside</b><span class="t">Save</span></div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">From</div></div><div class="val dim">Mandiri Tabungan</div><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">Amount</div></div><div class="val">Rp 5.000.000<span class="caret"></span></div></div>
+      </div>
+      <div class="foot">Rp 6.500.000 free. <span class="tint">Use all</span></div>
+      <div class="pad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span class="k2">,</span><span>0</span><span class="k2">⌫</span></div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">Too much</p><p class="note">Grey line turns orange; Save grey.</p>
+    <div class="phone"><div class="grab"></div>
+      <div class="nav"><span class="t">‹ Back</span><b>Set aside</b><span class="t off">Save</span></div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">From</div></div><div class="val dim">Mandiri Tabungan</div><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">Amount</div></div><div class="val warn">Rp 9.000.000<span class="caret"></span></div></div>
+      </div>
+      <div class="foot warn">Only Rp 6.500.000 free. <span class="tint">Use all</span></div>
+      <div class="pad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span class="k2">,</span><span>0</span><span class="k2">⌫</span></div>
+    </div>
+  </div>
+</div>
+
+<h2>4 · Slider</h2>
+<p class="lead">Drag from nothing to all that is free; the slider cannot go past free, so too much cannot happen. Tap the number to type it exactly.</p>
+<div class="row">
+  <div class="col"><p class="cap">Dragging</p><p class="note">Right end = all free.</p>
+    <div class="phone"><div class="grab"></div>
+      <div class="nav"><span class="t">‹ Back</span><b>Mandiri Tabungan</b><span class="t">Save</span></div>
+      <div class="bignum">Rp 5.000.000</div>
+      <div class="slider"><div class="tr"></div><div class="fill" style="width:77%"></div><div class="knob" style="left:77%"></div></div>
+      <div class="ends"><span>Rp 0</span><span>Rp 6.500.000 free</span></div>
+    </div>
+  </div>
+</div>
+
+<h2>5 · Amount first, then account</h2>
+<p class="lead">One screen: amount on top, accounts under it. Type, then tap where it comes from. Accounts with less free than the amount are greyed, so too much cannot be picked.</p>
+<div class="row">
+  <div class="col"><p class="cap">Typed Rp 5.000.000</p><p class="note">Only accounts that can cover it are tappable. Save turns on once one is picked.</p>
+    <div class="phone"><div class="grab"></div>
+      <div class="nav"><span class="t">Cancel</span><b>Set aside</b><span class="t off">Save</span></div>
+      <div class="bignum" style="margin-top:14px">Rp 5.000.000<span class="caret"></span></div>
+      <div class="hdr" style="margin-top:14px"><span>From</span><span>Free</span></div>
+      <div class="panel">
+        <div class="r"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">Mandiri Tabungan</div></div><div class="val ok">Rp 6.500.000</div></div>
+        <div class="r"><div class="ic" style="background:#aab">💳</div><div class="g"><div class="a dim">GoPay</div></div><div class="val dim">Rp 420.000</div></div>
+      </div>
+      <div class="pad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span class="k2">,</span><span>0</span><span class="k2">⌫</span></div>
+    </div>
+  </div>
+</div>
+</body></html>
