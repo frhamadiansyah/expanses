@@ -5,7 +5,7 @@ import { ArrowLeftRight, CircleEllipsis, HandCoins, MoreHorizontal, Plus } from 
 import { type ReactNode, useState } from 'react';
 import { ErrorBox, Money } from '../../ui';
 import { ICONS, MarkChip } from '../categories/CategoryIcon';
-import { AmountExtra, RowFace, RowItem } from '../transactions/TransactionRow';
+import { AmountExtra, ROW_LIST, RowFace, RowItem } from '../transactions/TransactionRow';
 import { chartColour, OTHER_COLOUR } from '../transactions/category-colours';
 import { ShareLine } from '../transactions/CategoryLines';
 import { type CornerAction, InsetGroup, InsetRow, Panel, SCREEN, PushedTitle } from '../../ui/native';
@@ -246,7 +246,7 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
                   </span>
                   {day.spentMinor > 0 ? <Money minor={day.spentMinor} currency={view.currency} className="ml-auto text-[13px] font-semibold text-[var(--ph-ink-2)]" /> : null}
                 </div>
-                <ul className="[&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
+                <ul className={ROW_LIST}>
                   {day.items.map((item) => {
                     if (item.kind === 'transfer') {
                       // A household transfer listed here (an ATM withdrawal): grey, not counted, no share. The phone that

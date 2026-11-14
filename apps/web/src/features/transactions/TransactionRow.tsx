@@ -291,6 +291,13 @@ export function TransactionRow({
 }
 
 /**
+ * A list of `RowItem`s with a hairline between each two: a day card's on an event, private or shared. A row that opens
+ * is rounded for its hover tint, so the separated rows' top corners are squared — otherwise the hairline, drawn on that
+ * rounded edge, curves up at both ends like a card's edge.
+ */
+export const ROW_LIST = '[&>*+*]:rounded-t-none [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]';
+
+/**
  * A row's `<li>` when it is not swiped: the whole of it a tap target, tinted on hover, struck through when deleted.
  * `TransactionRow`'s own, and a shared trip's records' (`SharedEventPage`), so the two lists cannot drift apart.
  */
