@@ -71,6 +71,25 @@ describe('typing a row', () => {
     expect(typedText('2.000.', 'IDR')).toBe('2.000');
   });
 
+  it('reads a figure pasted with zero cents into a rupiah row as its whole units', () => {
+    expect(typedText('50.000,00', 'IDR')).toBe('50.000');
+    expect(typedMinor(typedText('50.000,00', 'IDR'), 'IDR')).toBe(50_000);
+    expect(typedText('50.000,00', 'USD')).toBe('50.000,00');
+    expect(typedMinor(typedText('50.000,00', 'USD'), 'USD')).toBe(5_000_000);
+  });
+
+  it('on an account already short (free below nothing), never calls nothing, a take back or a lower figure over', () => {
+    // Holds 15.000.000 for the goal, but the account can now cover only 10.000.000 of it; another goal took more.
+    expect(isOver('0', 10_000_000, 15_000_000, 'IDR')).toBe(false);
+    expect(isOver('', 10_000_000, 15_000_000, 'IDR')).toBe(false);
+    expect(isOver('12.000.000', 10_000_000, 15_000_000, 'IDR')).toBe(false);
+    expect(isOver('15.000.000', 10_000_000, 15_000_000, 'IDR')).toBe(false);
+    expect(isOver('15.000.001', 10_000_000, 15_000_000, 'IDR')).toBe(true);
+    // Free below nothing, nothing held: any figure is over, nothing is not.
+    expect(isOver('1', -500_000, 0, 'IDR')).toBe(true);
+    expect(isOver('0', -500_000, 0, 'IDR')).toBe(false);
+  });
+
   it('counts what is typed once anything is, else what the goal holds; an emptied row is nothing (a take back)', () => {
     expect(amountNow(undefined, 15_000_000, 'IDR')).toBe(15_000_000);
     expect(amountNow('', 15_000_000, 'IDR')).toBe(0);
@@ -78,9 +97,9 @@ describe('typing a row', () => {
   });
 
   it('is over when the figure is more than the row can hold, and Save waits while any row is', () => {
-    expect(isOver('4.000.000', 2_640_000, 'IDR')).toBe(true);
-    expect(isOver('2.640.000', 2_640_000, 'IDR')).toBe(false);
-    expect(isOver(undefined, 0, 'IDR')).toBe(false);
+    expect(isOver('4.000.000', 2_640_000, 0, 'IDR')).toBe(true);
+    expect(isOver('2.640.000', 2_640_000, 0, 'IDR')).toBe(false);
+    expect(isOver(undefined, 0, 0, 'IDR')).toBe(false);
     expect(canSaveSetAside([{ over: false }, { over: true }])).toBe(false);
     expect(canSaveSetAside([{ over: false }])).toBe(true);
   });
@@ -161,6 +180,47 @@ describe('setAsideBar', () => {
   it('over the limit, is one warn slot that puts in the most the row can hold', () => {
     const slots = setAsideBar({ ...base, typed: '4.000.000' });
     expect(slots).toEqual([{ key: 'only', title: 'Only Rp 2.640.000 free', detail: 'tap to use it', label: 'Use the Rp 2.640.000 free', fill: '2.640.000', warn: true }]);
+  });
+});
+
+describe('setAsideBar, edges', () => {
+  const plain = (slots: ReturnType<typeof bar>) => JSON.parse(JSON.stringify(slots).replace(/\u00a0/g, ' ')) as ReturnType<typeof bar>;
+  const base = { currency: 'IDR', goalCurrency: 'IDR', heldMinor: 0, roomMinor: 2_640_000, typed: undefined as string | undefined, neededMinor: 42_100_000 as number | null, inGoal, fromGoal };
+
+  it('offers a row new to a goal already whole nothing to fill: only what is still needed, Rp 0', () => {
+    expect(plain(bar({ ...base, neededMinor: 0 })).map((slot) => [slot.title, slot.detail, slot.fill])).toEqual([['Rp 0', 'still needed', null]]);
+    expect(plain(bar({ ...base, neededMinor: -3_000_000 })).map((slot) => slot.title)).toEqual(['Rp 0']);
+    // Another currency: only what it adds.
+    expect(plain(bar({ ...base, currency: 'USD', roomMinor: 33_000, neededMinor: 0 })).map((slot) => slot.detail)).toEqual(['this adds']);
+  });
+
+  it('takes back from an over-funded goal without a figure still needed', () => {
+    // 5.000.000 more than the goal needs; taking back 3.000.000 of the 15.000.000 held still leaves it whole.
+    const slots = plain(bar({ ...base, heldMinor: 15_000_000, roomMinor: 18_000_000, neededMinor: -5_000_000, typed: '12.000.000' }));
+    expect(slots[2]).toMatchObject({ title: 'Rp 0', detail: 'still needed' });
+    const more = plain(bar({ ...base, heldMinor: 15_000_000, roomMinor: 18_000_000, neededMinor: -5_000_000, typed: '7.000.000' }));
+    expect(more[2]).toMatchObject({ title: 'Rp 3.000.000', detail: 'still needed' });
+  });
+
+  it('on an account already short, the bar of a lowered row is not the warn slot, and the warn slot fills what is free', () => {
+    const lowered = bar({ ...base, heldMinor: 15_000_000, roomMinor: 10_000_000, typed: '12.000.000' });
+    expect(lowered.map((slot) => slot.key)).toEqual(['most', 'back', 'needed']);
+    const over = bar({ ...base, heldMinor: 15_000_000, roomMinor: 10_000_000, typed: '16.000.000' });
+    expect(over).toHaveLength(1);
+    expect(over[0]).toMatchObject({ key: 'only', fill: '10.000.000', warn: true });
+    // What the warn slot puts in is never over.
+    expect(isOver(over[0]!.fill!, 10_000_000, 15_000_000, 'IDR')).toBe(false);
+    const negative = bar({ ...base, roomMinor: -500_000, typed: '1.000' });
+    expect(negative[0]).toMatchObject({ key: 'only', fill: '0' });
+    expect(isOver(negative[0]!.fill!, -500_000, 0, 'IDR')).toBe(false);
+  });
+
+  it('Save stays open for a take back or a lowered figure on an account already short', () => {
+    const rows = [
+      { over: isOver('0', 10_000_000, 15_000_000, 'IDR') },
+      { over: isOver('12.000.000', 10_000_000, 15_000_000, 'IDR') },
+    ];
+    expect(canSaveSetAside(rows)).toBe(true);
   });
 });
 

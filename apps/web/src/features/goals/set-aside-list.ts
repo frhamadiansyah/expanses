@@ -132,11 +132,15 @@ export function amountNow(typed: string | undefined, heldMinor: number, currency
   return typedMinor(typed, currency) ?? 0;
 }
 
-/** True when the row asks for more than the account can hold for this goal: drawn in warn, and the sheet's Save waits. */
-export const isOver = (typed: string | undefined, roomMinor: number, currency: string): boolean => {
+/**
+ * True when the row asks for more than the account can hold for this goal: drawn in warn, and the sheet's Save waits.
+ * Nothing, or no more than the row already holds, is never over: an account already short (what is free below
+ * nothing) can still be taken back from or lowered, since neither adds to what it owes its goals.
+ */
+export const isOver = (typed: string | undefined, roomMinor: number, heldMinor: number, currency: string): boolean => {
   if (typed === undefined) return false;
   const minor = typedMinor(typed, currency);
-  return minor !== null && minor > roomMinor;
+  return minor !== null && minor > 0 && minor > Math.max(roomMinor, heldMinor);
 };
 
 /** Save waits while any row asks for more than it can hold. */
@@ -194,7 +198,7 @@ export function setAsideBar(p: {
 }): BarSlot[] {
   const { currency, goalCurrency } = p;
   const room = Math.max(0, p.roomMinor);
-  if (isOver(p.typed, p.roomMinor, currency)) {
+  if (isOver(p.typed, p.roomMinor, p.heldMinor, currency)) {
     return [{ key: 'only', title: `Only ${formatMinor(room, currency)} free`, detail: 'tap to use it', label: `Use the ${formatMinor(room, currency)} free`, fill: fillText(room, currency), warn: true }];
   }
   const own = amountNow(p.typed, p.heldMinor, currency);
@@ -211,8 +215,17 @@ export function setAsideBar(p: {
     ];
   }
 
+  // Nothing more is needed (the goal is whole, or more than whole, before this row): nothing to fill, only what it says.
+  const adds = p.inGoal(own, currency);
+  const addsSlot: BarSlot =
+    adds === null
+      ? { key: 'adds', title: 'No rate yet', detail: 'this adds', label: `No ${goalCurrency} rate yet`, fill: null }
+      : { key: 'adds', title: `≈ ${formatMinor(adds, goalCurrency)}`, detail: 'this adds', label: `About ${formatMinor(adds, goalCurrency)} this adds`, fill: null };
+  const lastSlot = currency === goalCurrency ? neededSlot : [addsSlot];
+  if (p.neededMinor !== null && p.neededMinor <= 0) return lastSlot;
+
   // Capped by what the goal still needs (before this row's own figure), in the account's money.
-  const need = p.neededMinor !== null && p.neededMinor > 0 ? p.fromGoal(p.neededMinor, currency) : null;
+  const need = p.neededMinor !== null ? p.fromGoal(p.neededMinor, currency) : null;
   const capped = need !== null && need < room;
   const top = capped ? need : room;
   const half = Math.floor(top / 2);
@@ -220,13 +233,7 @@ export function setAsideBar(p: {
     ? { key: 'top', title: formatMinor(top, currency), detail: 'Fills goal', label: `Fills goal, ${formatMinor(top, currency)}`, fill: fillText(top, currency) }
     : { key: 'top', title: formatMinor(top, currency), detail: 'All free', label: `All free, ${formatMinor(top, currency)}`, fill: fillText(top, currency) };
   const halfSlot: BarSlot = { key: 'half', title: formatMinor(half, currency), detail: 'Half', label: `Half, ${formatMinor(half, currency)}`, fill: fillText(half, currency) };
-  if (currency === goalCurrency) return [first, halfSlot, ...neededSlot];
-  const adds = p.inGoal(own, currency);
-  const addsSlot: BarSlot =
-    adds === null
-      ? { key: 'adds', title: 'No rate yet', detail: 'this adds', label: `No ${goalCurrency} rate yet`, fill: null }
-      : { key: 'adds', title: `≈ ${formatMinor(adds, goalCurrency)}`, detail: 'this adds', label: `About ${formatMinor(adds, goalCurrency)} this adds`, fill: null };
-  return [first, halfSlot, addsSlot];
+  return [first, halfSlot, ...lastSlot];
 }
 
 /**

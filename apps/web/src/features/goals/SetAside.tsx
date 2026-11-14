@@ -76,7 +76,7 @@ export function useSetAside(goal: GoalRow | undefined, earmarks: readonly Earmar
     return held > 0 ? fillText(held, currencyOf(account)) : '';
   };
   const amountOf = (account: { id: string; currency: string | null }) => amountNow(typed[account.id], heldOf(account.id), currencyOf(account));
-  const overOf = (account: { id: string; currency: string | null }) => isOver(typed[account.id], roomOf(account.id), currencyOf(account));
+  const overOf = (account: { id: string; currency: string | null }) => isOver(typed[account.id], roomOf(account.id), heldOf(account.id), currencyOf(account));
 
   const parents = new Map(all.map((account) => [account.id, account.name]));
   const listed = eligible.map((account) => ({
