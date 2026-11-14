@@ -1,0 +1,124 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Debt-free redesign</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --green:#34c759; --up:#1a7f37; --warn:#c93400; --red:#d70015; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; }
+  h2 { font-size:18px; margin:30px 0 4px; } .lead { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; font-size:14px; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; color:#fff; background:var(--tint); border-radius:4px; padding:1px 6px; margin-left:6px; vertical-align:2px; }
+  .row { display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:340px; } .cap { font-weight:700; margin:0 0 3px; font-size:16px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:54px; }
+  .shot { width:330px; border-radius:22px; box-shadow:0 1px 3px rgba(0,0,0,.15); display:block; background:var(--ground); }
+  ul.off { margin:8px 0 0; padding-left:18px; font-size:13px; color:#444; line-height:1.45; max-width:330px; } ul.off li { margin-bottom:4px; }
+  .phone { background:var(--ground); border-radius:28px; padding:14px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); position:relative; overflow:hidden; }
+  .nav { display:flex; justify-content:space-between; align-items:center; margin:0 4px 12px; font-size:15px; } .nav .t { color:var(--tint); min-width:60px; } .nav .t:last-child { text-align:right; } .nav b { font-size:16px; }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+  .hdr { display:flex; justify-content:space-between; font-size:12.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; margin:0 16px 6px; }
+  .foot { font-size:12.5px; color:var(--ink3); margin:-6px 16px 12px; line-height:1.35; }
+  .r { display:flex; gap:10px; align-items:center; padding:9px 14px; white-space:nowrap; min-height:46px; } .r + .r { border-top:.5px solid var(--hair); }
+  .g { flex:1; min-width:0; } .a { font-size:15px; overflow:hidden; text-overflow:ellipsis; } .s { font-size:12.5px; color:var(--ink3); overflow:hidden; text-overflow:ellipsis; }
+  .v { font-size:15px; text-align:right; } .v .x { display:block; font-size:12.5px; color:var(--ink3); } .chev { color:#c7c7cc; } .vd { color:var(--ink3); font-size:15px; }
+  .num { width:22px; height:22px; border-radius:50%; background:#e5e5ea; color:var(--ink2); font-size:12px; font-weight:600; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .hero { background:#fff; border-radius:12px; padding:14px; margin-bottom:12px; }
+  .hero .k { font-size:13px; color:var(--ink3); } .hero .big { font-size:26px; font-weight:700; letter-spacing:-.3px; margin:1px 0 8px; }
+  .bar { height:8px; border-radius:4px; background:#e5e5ea; overflow:hidden; } .bar i { display:block; height:100%; background:var(--green); width:3%; }
+  .hl { display:flex; justify-content:space-between; font-size:13px; color:var(--ink3); margin-top:6px; } .hl b { color:var(--ink); font-weight:600; }
+  .pay { background:#1c1c1e; color:#fff; border-radius:15px; font-size:13px; font-weight:600; padding:5px 13px; flex-shrink:0; }
+  .chip { font-size:11.5px; font-weight:600; border-radius:5px; padding:1px 6px; } .chip.due { background:#fff3e0; color:#b25e00; } .chip.late { background:#ffe5e5; color:var(--red); }
+  .seg { display:flex; background:#e3e3e8; border-radius:9px; padding:2px; font-size:13px; } .seg span { flex:1; text-align:center; padding:6px 0; border-radius:7px; } .seg .on { background:#fff; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.1); }
+  .radio { width:22px; height:22px; border-radius:50%; border:1.5px solid #c7c7cc; flex-shrink:0; } .radio.on { border:6px solid var(--tint); }
+  .sug { font-size:11px; font-weight:600; color:var(--up); background:#e8f5ec; border-radius:4px; padding:1px 6px; margin-left:6px; }
+  .sheet { background:var(--ground); border-radius:14px 14px 0 0; margin:150px -12px -16px; padding:12px 12px 20px; box-shadow:0 -1px 8px rgba(0,0,0,.15); }
+  .grab { width:36px; height:5px; border-radius:3px; background:#c7c7cc; margin:0 auto 10px; }
+  .dim { position:absolute; inset:0; background:rgba(0,0,0,.25); }
+  .wrapline { white-space:normal; }
+</style></head><body>
+<h1>Debt-free plan: before and after</h1>
+<p class="sub">Before = screenshots of the app today (test figures). After = one page holding what now takes four: what is left and when it ends, the next payment, the order, extra a month, and the list. Schedule and Report stay as two rows at the bottom. Invented figures.</p>
+
+<h2>Before (today)</h2>
+<div class="row">
+  <div class="col"><p class="cap">Main page</p><img class="shot" src="2026-11-14-debt-before-plan.png">
+    <ul class="off"><li>An empty 0% ring and "repaid Rp 0 of Rp 37.570.000" repeat the big figure.</li><li>"0 late · 0 paid off" counts say nothing most months.</li><li>A full-width black button for one payment.</li><li>Then four rows to four more pages: the plan itself is one tap away.</li></ul></div>
+  <div class="col"><p class="cap">Pay first</p><img class="shot" src="2026-11-14-debt-before-payfirst.png">
+    <ul class="off"><li>A paragraph explaining all three orders, then a blue box.</li><li>Debt-free month repeated from the main page.</li><li>A black Pay button on every row; grey lines cut off ("left …").</li><li>Dewi's row has no amount, so rows don't line up.</li></ul></div>
+  <div class="col"><p class="cap">Schedule · Report</p><img class="shot" src="2026-11-14-debt-before-schedule.png" style="margin-bottom:12px"><img class="shot" src="2026-11-14-debt-before-report.png">
+    <ul class="off"><li>Schedule: three tiles for one payment; "Statem…" cut off; a "B" letter instead of the card.</li><li>Report: "Nothing due" grey pills.</li></ul></div>
+</div>
+
+<h2>After <span class="tag">Proposed</span></h2>
+<p class="lead">One page, top to bottom: when it ends · what to pay next · the order and extra · the debts in that order · Schedule and Report. Pay only where a payment is due; every row one line wide in the same columns.</p>
+<div class="row">
+  <div class="col"><p class="cap">① Debt-free</p><p class="note">The month is the headline. A thin bar replaces the ring. Late appears only when something is late.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Net worth</span><b>Debt-free</b><span class="t"></span></div>
+      <div class="hero"><div class="k">Debt-free in</div><div class="big">February 2031</div>
+        <div class="bar"><i></i></div>
+        <div class="hl"><span><b>Rp 37.570.000</b> left</span><span>0% repaid · 4 debts</span></div></div>
+      <div class="hdr"><span>Next</span></div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">BCA Visa</div><div class="s"><span class="chip due">Due 18 Nov</span></div></div><div class="v">Rp 6.214.300</div><span class="pay">Pay</span></div></div>
+      <div class="hdr"><span>Plan</span></div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Order</div></div><span class="vd">Avalanche</span><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">Extra a month</div></div><span class="vd" style="color:#c7c7cc">Amount</span></div>
+      </div>
+      <div class="foot">Highest interest first: costs the least in total.</div>
+      <div class="hdr"><span>In this order</span><span>A month</span></div>
+      <div class="panel">
+        <div class="r"><span class="num">1</span><div class="g"><div class="a">Akulaku</div><div class="s">2,5% a month · 6 months</div></div><div class="v">Rp 382.290</div><span class="chev">›</span></div>
+        <div class="r"><span class="num">2</span><div class="g"><div class="a">KPR BCA</div><div class="s">7,5% a year · 7 years</div></div><div class="v">Rp 337.113</div><span class="chev">›</span></div>
+        <div class="r"><span class="num">3</span><div class="g"><div class="a">Dewi</div><div class="s">No fixed months</div></div><div class="v dim2" style="color:#8e8e93">—</div><span class="chev">›</span></div>
+        <div class="r"><span class="num">4</span><div class="g"><div class="a">BCA Visa</div><div class="s">Card · statement</div></div><div class="v">Rp 6.214.300</div><span class="chev">›</span></div>
+      </div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Schedule</div></div><span class="vd">1 due this month</span><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">Report</div></div><span class="chev">›</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">② Tap Order</p><p class="note">A short sheet: three choices, one line each, the suggestion as a green tag. By hand lets the list be dragged.</p>
+    <div class="phone" style="height:640px">
+      <div class="nav"><span class="t">‹ Net worth</span><b>Debt-free</b><span class="t"></span></div>
+      <div class="hero"><div class="k">Debt-free in</div><div class="big">February 2031</div><div class="bar"><i></i></div></div>
+      <div class="dim"></div>
+      <div class="sheet" style="position:absolute;left:12px;right:12px;bottom:16px;margin:0 -12px -16px">
+        <div class="grab"></div>
+        <div class="nav"><span class="t">Cancel</span><b>Order</b><span class="t" style="font-weight:600">Done</span></div>
+        <div class="panel">
+          <div class="r"><span class="radio on"></span><div class="g"><div class="a">Avalanche<span class="sug">Suggested</span></div><div class="s">Highest interest first · costs the least</div></div></div>
+          <div class="r"><span class="radio"></span><div class="g"><div class="a">Snowball</div><div class="s">Smallest first · debts close sooner</div></div></div>
+          <div class="r"><span class="radio"></span><div class="g"><div class="a">By hand</div><div class="s">The order dragged in the list</div></div></div>
+        </div>
+        <div class="foot wrapline">Suggested because the rates differ a lot: 2,5% a month vs 7,5% a year.</div>
+      </div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">③ Extra a month typed</p><p class="note">What it changes shows right under it; the headline month stays the plan without extra.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Net worth</span><b>Debt-free</b><span class="t"></span></div>
+      <div class="hdr"><span>Plan</span></div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Order</div></div><span class="vd">Avalanche</span><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">Extra a month</div></div><span class="v">Rp 3.000.000</span></div>
+      </div>
+      <div class="foot">Goes to Akulaku, then KPR BCA. Debt-free <b style="color:var(--up)">December 2028</b>, not Feb 2031 · saves Rp 4.120.000 interest.</div>
+      <div class="hdr" style="margin-top:16px"><span>Something late</span></div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Kredivo</div><div class="s"><span class="chip late">Late 5 days</span></div></div><div class="v">Rp 450.000</div><span class="pay">Pay</span></div></div>
+      <div class="foot">Shown above Next only when something is late.</div>
+    </div>
+  </div>
+</div>
+
+<h2>Schedule, after</h2>
+<p class="lead">One line for the month instead of three tiles; rows show the card's face, nothing cut off.</p>
+<div class="row">
+  <div class="col"><p class="cap">Schedule</p><p class="note">Month switcher, one summary line, then the payments.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Debt-free</span><b>Schedule</b><span class="t"></span></div>
+      <div style="text-align:center;font-weight:600;margin:0 0 10px">‹ &nbsp; November 2026 &nbsp; ›</div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Due Rp 6.214.300</div><div class="s">Paid Rp 0 · Late Rp 0</div></div></div></div>
+      <div class="hdr"><span>Coming up</span></div>
+      <div class="panel"><div class="r"><div style="width:34px;height:22px;border-radius:4px;background:linear-gradient(135deg,#0a4fa3,#1d7be0);flex-shrink:0"></div><div class="g"><div class="a">BCA Visa</div><div class="s">18 Nov</div></div><div class="v">Rp 6.214.300</div><span class="pay">Pay</span></div></div>
+    </div>
+  </div>
+</div>
+</body></html>
