@@ -48,7 +48,8 @@ export async function fundingSheetWalk(page: Page) {
   await expect(funding).toContainText('None');
   await funding.click();
   const sheet = page.getByRole('dialog', { name: 'Funding' });
-  await expect(sheet.getByText('Cash and cash equivalents')).toBeVisible();
+  // A new goal holds no cash yet: the accounts are listed under Can add, with what each has free.
+  await expect(sheet.getByText('Can add', { exact: true })).toBeVisible();
   await expect(sheet.getByText('Bonds, shares and funds')).toBeVisible();
 
   // Tag a purchase lists the earlier buys with their date, size and goal.

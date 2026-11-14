@@ -2,21 +2,9 @@ import { formatMinor } from '@expanses/core';
 import type { GoalEditBase, GoalRow, SaveGoalInput } from '@expanses/db';
 
 /**
- * The goal form's decisions that are not drawing: which accounts can still be added to Money set aside, what the
- * save writes for them, and whether the page may be saved yet.
+ * The goal form's decisions that are not drawing: what the save writes for Money set aside, and whether the page
+ * may be saved yet.
  */
-
-/** The accounts not yet in the group, in the order the book keeps them. */
-export function addableAccounts<T extends { id: string }>(eligible: readonly T[], added: readonly string[]): T[] {
-  const taken = new Set(added);
-  return eligible.filter((account) => !taken.has(account.id));
-}
-
-/** The rows a saved goal opens with: every account it already holds money in, in the order the earmarks came. */
-export function addedFromEarmarks(earmarks: readonly { goalId: string; accountId: string; amountMinor: number }[], goalId: string | undefined): string[] {
-  if (!goalId) return [];
-  return earmarks.filter((earmark) => earmark.goalId === goalId && earmark.amountMinor > 0).map((earmark) => earmark.accountId);
-}
 
 /** True when the typed figure is nothing: empty, or digits that are all noughts. */
 export const isNoAmount = (typed: string) => typed.trim() === '' || Number(typed.replace(/[^\d]/g, '')) === 0;
