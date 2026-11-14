@@ -1,0 +1,100 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Cashflow history header</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --red:#d70015; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; }
+  h2 { font-size:18px; margin:28px 0 4px; } .lead { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; font-size:14px; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; color:#fff; background:var(--tint); border-radius:4px; padding:1px 6px; margin-left:6px; vertical-align:2px; }
+  .row { display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:340px; } .cap { font-weight:700; margin:0 0 3px; font-size:16px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:54px; }
+  .shot { width:330px; border-radius:18px; display:block; }
+  .phone { background:var(--ground); border-radius:28px; padding:14px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); position:relative; overflow:hidden; }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+  .dh { display:flex; align-items:center; gap:12px; padding:8px 13px; border-bottom:.5px solid var(--hair); }
+  .dn { font-size:24px; font-weight:600; width:34px; } .dw { font-size:12.5px; color:var(--ink3); line-height:1.2; } .dw b { color:var(--ink2); font-weight:600; display:block; } .dt { margin-left:auto; font-size:13px; font-weight:600; color:var(--ink2); }
+  .r { display:flex; gap:12px; align-items:center; padding:10px 13px; white-space:nowrap; } .r + .r { border-top:.5px solid var(--hair); }
+  .ic { width:36px; height:36px; border-radius:50%; background:#fde7da; font-size:17px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .g { flex:1; min-width:0; } .t { font-size:14px; font-weight:500; } .s { font-size:12px; color:#64748b; } .v { font-size:14px; font-weight:600; color:var(--red); }
+  /* headers */
+  .h-ios { display:flex; align-items:center; gap:14px; margin:4px 4px 8px; }
+  .h-ios .title { font-size:20px; font-weight:700; margin-right:auto; }
+  .ibtn { color:var(--tint); font-size:19px; line-height:1; }
+  .tbtn { color:var(--tint); font-size:16px; }
+  .circle { width:30px; height:30px; border-radius:50%; background:#e3e3e8; color:var(--tint); display:flex; align-items:center; justify-content:center; font-size:16px; }
+  .seg { display:flex; background:#e3e3e8; border-radius:9px; padding:2px; font-size:13px; margin:0 0 10px; } .seg span { flex:1; text-align:center; padding:6px 0; border-radius:7px; } .seg .on { background:#fff; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.1); }
+  .chips { display:flex; gap:8px; margin:0 2px 10px; flex-wrap:wrap; }
+  .chip { font-size:13px; background:#fff; border:1px solid #d1d1d6; border-radius:15px; padding:4px 10px; color:var(--ink2); }
+  .chip.on { background:#e8f0ff; border-color:#b8d2ff; color:var(--tint); }
+  .menu { position:absolute; right:14px; width:236px; background:rgba(250,250,252,.98); border-radius:13px; box-shadow:0 8px 30px rgba(0,0,0,.22); overflow:hidden; font-size:15px; z-index:3; }
+  .menu .mi { display:flex; justify-content:space-between; align-items:center; padding:10px 14px; } .menu .mi + .mi { border-top:.5px solid var(--hair); }
+  .menu .sep { height:7px; background:#e9e9ee; } .menu .lab { font-size:12px; color:var(--ink3); padding:8px 14px 2px; }
+  .ck { color:var(--tint); width:18px; text-align:center; }
+  .dimbg { position:absolute; inset:0; background:rgba(0,0,0,.08); z-index:2; }
+</style></head><body>
+<h1>Cashflow: the "Transaction history" header</h1>
+<p class="sub">Today the header is a small grey label with three grey boxes (Days/Categories, Select, Sort &amp; Paid with) — web controls rather than iPhone ones. Three native-looking options below. Each keeps every control: Days / Categories, Select, Sort, Paid with, Show transfers. Invented figures.</p>
+
+<h2>Before (today)</h2>
+<div class="row"><div class="col"><img class="shot" src="2026-11-14-cashflow-before-history.png"></div>
+<div class="col" style="width:520px"><p class="note" style="min-height:0">Caps label + a grey two-icon box + a grey ✓ box + a grey ⇅ box. Icons without words; four grey boxes of three sizes in one line.</p></div></div>
+
+<h2>A · Title and one ⋯ menu <span class="tag">Recommended</span></h2>
+<p class="lead">Like Files or Photos: "Transactions" as a section title, "Select" as a word, and a ⋯ that holds everything else. When a filter is on, it shows as a chip under the title, so nothing hides.</p>
+<div class="row">
+  <div class="col"><p class="cap">At rest</p><p class="note">Two things on the right: Select, and ⋯.</p>
+    <div class="phone">
+      <div class="h-ios"><span class="title">Transactions</span><span class="tbtn">Select</span><span class="circle">⋯</span></div>
+      <div class="panel"><div class="dh"><span class="dn">14</span><span class="dw"><b>Saturday</b>November 2026</span><span class="dt">Rp 735.000</span></div>
+        <div class="r"><div class="ic">🍽️</div><div class="g"><div class="t">Food and beverage</div><div class="s">Lunch · BCA Tahapan</div></div><div class="v">Rp 78.000</div></div>
+        <div class="r"><div class="ic">🍽️</div><div class="g"><div class="t">Food and beverage</div><div class="s">Supermarket · BCA Tahapan</div></div><div class="v">Rp 612.000</div></div></div>
+    </div></div>
+  <div class="col"><p class="cap">Tap ⋯</p><p class="note">One iPhone menu: how to group, how to sort, what to show.</p>
+    <div class="phone" style="min-height:430px">
+      <div class="h-ios"><span class="title">Transactions</span><span class="tbtn">Select</span><span class="circle">⋯</span></div>
+      <div class="dimbg"></div>
+      <div class="menu" style="top:54px">
+        <div class="lab">Group by</div>
+        <div class="mi"><span>Days</span><span class="ck">✓</span></div>
+        <div class="mi"><span>Categories</span><span class="ck"></span></div>
+        <div class="sep"></div>
+        <div class="lab">Sort</div>
+        <div class="mi"><span>Newest first</span><span class="ck">✓</span></div>
+        <div class="mi"><span>Largest first</span><span class="ck"></span></div>
+        <div class="sep"></div>
+        <div class="mi"><span>Paid with…</span><span style="color:var(--ink3)">All ›</span></div>
+        <div class="mi"><span>Show transfers</span><span class="ck"></span></div>
+      </div>
+    </div></div>
+  <div class="col"><p class="cap">A filter on</p><p class="note">The filter appears as a chip under the title; ✕ removes it.</p>
+    <div class="phone">
+      <div class="h-ios"><span class="title">Transactions</span><span class="tbtn">Select</span><span class="circle" style="background:#e8f0ff">⋯</span></div>
+      <div class="chips"><span class="chip on">BCA Tahapan ✕</span><span class="chip on">Largest first ✕</span></div>
+      <div class="panel"><div class="dh"><span class="dn">14</span><span class="dw"><b>Saturday</b>November 2026</span><span class="dt">Rp 735.000</span></div>
+        <div class="r"><div class="ic">🍽️</div><div class="g"><div class="t">Food and beverage</div><div class="s">Supermarket · BCA Tahapan</div></div><div class="v">Rp 612.000</div></div></div>
+    </div></div>
+</div>
+
+<h2>B · Days | Categories as a full-width switch</h2>
+<p class="lead">The grouping stays visible as the standard iPhone segmented control, full width under the title; Select and a sort/filter icon sit in the title line.</p>
+<div class="row">
+  <div class="col"><p class="cap">At rest</p><p class="note">Title line: Select, and ⇅ for sort and Paid with.</p>
+    <div class="phone">
+      <div class="h-ios"><span class="title">Transactions</span><span class="tbtn">Select</span><span class="ibtn">⇅</span></div>
+      <div class="seg"><span class="on">Days</span><span>Categories</span></div>
+      <div class="panel"><div class="dh"><span class="dn">14</span><span class="dw"><b>Saturday</b>November 2026</span><span class="dt">Rp 735.000</span></div>
+        <div class="r"><div class="ic">🍽️</div><div class="g"><div class="t">Food and beverage</div><div class="s">Lunch · BCA Tahapan</div></div><div class="v">Rp 78.000</div></div></div>
+    </div></div>
+</div>
+
+<h2>C · Chips row</h2>
+<p class="lead">Like the Mail and App Store filters: a row of chips under the title, each opens its own short menu. Everything is visible at once; takes one more line, and the row scrolls sideways when it is longer than the screen.</p>
+<div class="row">
+  <div class="col"><p class="cap">At rest</p><p class="note">Chips: Days ▾ · Newest ▾ · All accounts ▾ · Transfers. Select in the title line.</p>
+    <div class="phone">
+      <div class="h-ios"><span class="title">Transactions</span><span class="tbtn">Select</span></div>
+      <div class="chips" style="flex-wrap:nowrap;overflow:hidden;margin-right:-12px"><span class="chip" style="flex-shrink:0">Days ▾</span><span class="chip" style="flex-shrink:0">Newest ▾</span><span class="chip" style="flex-shrink:0">All accounts ▾</span><span class="chip" style="flex-shrink:0">Transfers</span></div>
+      <div class="panel"><div class="dh"><span class="dn">14</span><span class="dw"><b>Saturday</b>November 2026</span><span class="dt">Rp 735.000</span></div>
+        <div class="r"><div class="ic">🍽️</div><div class="g"><div class="t">Food and beverage</div><div class="s">Lunch · BCA Tahapan</div></div><div class="v">Rp 78.000</div></div></div>
+    </div></div>
+</div>
+</body></html>
