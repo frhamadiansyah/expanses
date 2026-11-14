@@ -309,7 +309,7 @@ test('money set aside on a foreign account is typed, saved and read back in that
   await editGoal(goal);
   await expect(page.getByRole('button', { name: /^Funding/ })).toContainText('US$100,03');
   await page.getByRole('button', { name: /^Funding/ }).click();
-  await expect(page.getByLabel('Wise USD', { exact: true })).toHaveValue('100.03');
+  await expect(page.getByLabel('Wise USD', { exact: true })).toHaveValue('100,03');
 });
 
 test('a Stages row only reads: marking paid is done in Edit goal, and a goal with every payment paid is Done', async ({ page }) => {
