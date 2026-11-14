@@ -1,0 +1,64 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Shared trip rows</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --slate:#64748b; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; }
+  .row { display:flex; gap:26px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:360px; } .cap { font-weight:700; margin:0 0 3px; font-size:16px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:54px; }
+  .phone { background:var(--ground); border-radius:28px; padding:14px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+  .dh { display:flex; align-items:center; gap:12px; padding:8px 13px; border-bottom:.5px solid var(--hair); }
+  .dn { font-size:24px; font-weight:600; width:34px; } .dw { font-size:12.5px; color:var(--ink3); line-height:1.2; } .dw b { color:var(--ink2); font-weight:600; display:block; } .dt { margin-left:auto; font-size:13px; font-weight:600; color:var(--ink2); }
+  /* BEFORE: the list row (InsetRow): 28px solid icon, 17px title and amount */
+  .b { display:flex; gap:12px; align-items:center; padding:10px 13px; white-space:nowrap; min-height:52px; } .b + .b { border-top:.5px solid var(--hair); }
+  .b .ic { width:28px; height:28px; border-radius:7px; color:#fff; font-size:14px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .b .t { font-size:17px; line-height:22px; font-weight:500; overflow:hidden; text-overflow:ellipsis; } .b .s { font-size:12.5px; color:var(--ink3); overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
+  .b .v { font-size:17px; text-align:right; } .b .v small { display:block; font-size:12.5px; color:var(--ink3); }
+  /* AFTER: the transaction row (TransactionRow): 36px tinted circle, 14px title, 12px grey line, 14px bold amount */
+  .a { display:flex; gap:12px; align-items:center; padding:10px 13px; white-space:nowrap; } .a + .a { border-top:.5px solid var(--hair); }
+  .a .ic { width:36px; height:36px; border-radius:50%; font-size:18px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .a .t { font-size:14px; line-height:20px; font-weight:500; overflow:hidden; text-overflow:ellipsis; } .a .s { font-size:12px; color:var(--slate); overflow:hidden; text-overflow:ellipsis; }
+  .a .v { font-size:14px; font-weight:600; text-align:right; } .a .v small { display:block; font-size:12px; font-weight:400; color:var(--ink3); }
+  .g { flex:1; min-width:0; } .dim { color:var(--ink3) !important; }
+  .why { background:#fff; border-radius:12px; padding:12px 16px; max-width:760px; font-size:14px; line-height:1.5; }
+  .why td { padding:4px 14px 4px 0; vertical-align:top; } .why th { text-align:left; font-size:12.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; padding-right:14px; }
+</style></head><body>
+<h1>Shared trip rows: before and after</h1>
+<p class="sub">Being built (not merged yet). The shared trip's rows are drawn by a general list row; the private trip's by the transaction row. After: the shared trip uses the transaction row's look. Same day, invented figures in the trip's ¥.</p>
+<div class="row">
+  <div class="col"><p class="cap">Private trip (the model)</p><p class="note">Round tinted icon, category as the title, smaller text, bold amount.</p>
+    <div class="phone"><div class="panel">
+      <div class="dh"><span class="dn">13</span><span class="dw"><b>Saturday</b>December 2026</span><span class="dt">Rp 830.000</span></div>
+      <div class="a"><div class="ic" style="background:#ff9f0a26">🍜</div><div class="g"><div class="t">Food</div><div class="s">Ramen shop · BCA 0917</div></div><div class="v">Rp 310.000<small>¥ 3.000</small></div></div>
+      <div class="a"><div class="ic" style="background:#0a84ff26">🚆</div><div class="g"><div class="t">Transport</div><div class="s">Suica · Cash JPY</div></div><div class="v">Rp 520.000<small>¥ 5.000</small></div></div>
+    </div></div>
+  </div>
+  <div class="col"><p class="cap">Shared trip · before (today)</p><p class="note">Square solid icon, bigger 17px text, the place as the title.</p>
+    <div class="phone"><div class="panel">
+      <div class="dh"><span class="dn">13</span><span class="dw"><b>Saturday</b>December 2026</span><span class="dt">¥ 8.000</span></div>
+      <div class="b"><div class="ic" style="background:#ff9f0a">🍜</div><div class="g"><div class="t">Ramen shop</div><div class="s">Rina paid · split equally</div></div><div class="v">¥ 3.000<small>share ¥ 1.500</small></div></div>
+      <div class="b"><div class="ic" style="background:#0a84ff">🚆</div><div class="g"><div class="t">Suica</div><div class="s">Andi paid · split equally</div></div><div class="v">¥ 5.000<small>share ¥ 2.500</small></div></div>
+      <div class="b"><div class="ic" style="background:#007aff">🤝</div><div class="g"><div class="t">Andi paid Rina</div></div><div class="v">¥ 4.000</div></div>
+      <div class="b"><div class="ic" style="background:#8e8e93">⇄</div><div class="g"><div class="t dim">Cash withdrawal</div><div class="s">BCA 0917 → Cash JPY · not counted</div></div><div class="v dim">Rp 2.000.000</div></div>
+    </div></div>
+  </div>
+  <div class="col"><p class="cap">Shared trip · after</p><p class="note">Same look as the private trip. Category is the title; the place moves to the grey line, before who paid.</p>
+    <div class="phone"><div class="panel">
+      <div class="dh"><span class="dn">13</span><span class="dw"><b>Saturday</b>December 2026</span><span class="dt">¥ 8.000</span></div>
+      <div class="a"><div class="ic" style="background:#ff9f0a26">🍜</div><div class="g"><div class="t">Food</div><div class="s">Ramen shop · Rina paid · split equally</div></div><div class="v">¥ 3.000<small>share ¥ 1.500</small></div></div>
+      <div class="a"><div class="ic" style="background:#0a84ff26">🚆</div><div class="g"><div class="t">Transport</div><div class="s">Suica · Andi paid · split equally</div></div><div class="v">¥ 5.000<small>share ¥ 2.500</small></div></div>
+      <div class="a"><div class="ic" style="background:#007aff26">🤝</div><div class="g"><div class="t">Andi paid Rina</div></div><div class="v">¥ 4.000</div></div>
+      <div class="a"><div class="ic" style="background:#8e8e9326">⇄</div><div class="g"><div class="t dim">Cash withdrawal</div><div class="s">BCA 0917 → Cash JPY · not counted</div></div><div class="v dim">Rp 2.000.000</div></div>
+    </div></div>
+  </div>
+</div>
+<div class="why"><table>
+  <tr><th>Part</th><th>Before</th><th>After</th></tr>
+  <tr><td>Icon</td><td>28 px, square, solid colour</td><td>36 px, round, light colour wash (as private)</td></tr>
+  <tr><td>Title</td><td>Place (or category), 17 px</td><td>Category, 14 px (as private)</td></tr>
+  <tr><td>Grey line</td><td>Who paid · split</td><td>Place · who paid · split</td></tr>
+  <tr><td>Amount</td><td>17 px, regular</td><td>14 px, bold (as private)</td></tr>
+  <tr><td>Under the amount</td><td>share ¥ …</td><td>share ¥ … (where private shows the foreign amount)</td></tr>
+  <tr><td>Settle-up, ATM move</td><td>Same row style as above</td><td>Same new style; ATM still grey and not counted</td></tr>
+</table></div>
+</body></html>

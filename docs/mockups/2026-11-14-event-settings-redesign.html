@@ -1,0 +1,131 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Event settings</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --green:#34c759; --red:#ff3b30; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; }
+  h2 { font-size:18px; margin:30px 0 4px; } .lead { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; font-size:14px; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; color:#fff; background:var(--tint); border-radius:4px; padding:1px 6px; margin-left:6px; vertical-align:2px; }
+  .row { display:flex; gap:26px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:340px; } .cap { font-weight:700; margin:0 0 3px; font-size:16px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:54px; }
+  .phone { background:var(--ground); border-radius:28px; padding:14px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .nav { display:flex; justify-content:space-between; align-items:center; margin:0 4px 12px; font-size:15px; } .nav .t { color:var(--tint); min-width:70px; } .nav b { font-size:16px; }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:6px; overflow:hidden; }
+  .gap { height:14px; }
+  .hdr { font-size:12.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; margin:8px 16px 6px; }
+  .foot { font-size:12.5px; color:var(--ink3); margin:2px 16px 14px; line-height:1.35; }
+  .r { display:flex; gap:10px; align-items:center; padding:9px 14px; white-space:nowrap; min-height:44px; } .r + .r { border-top:.5px solid var(--hair); }
+  .g { flex:1; min-width:0; } .a { font-size:16px; overflow:hidden; text-overflow:ellipsis; } .a.m { font-weight:500; }
+  .v { font-size:16px; color:var(--ink3); } .v.ink { color:var(--ink); } .chev { color:#c7c7cc; }
+  .tint { color:var(--tint); } .red { color:var(--red); } .dim { color:var(--ink3); }
+  .sw { width:50px; height:30px; border-radius:15px; background:var(--green); position:relative; flex-shrink:0; } .sw::after { content:''; position:absolute; top:2px; right:2px; width:26px; height:26px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.2); }
+  .sw.off { background:#e5e5ea; } .sw.off::after { right:auto; left:2px; }
+  .btn { text-align:center; padding:11px; font-size:16px; } .btn.p { background:var(--tint); color:#fff; border-radius:12px; font-weight:600; }
+  .bad { outline:2.5px dashed #ff2d55; outline-offset:-2px; border-radius:10px; }
+  ul.list { margin:0 0 6px; padding-left:20px; font-size:13.5px; color:#444; line-height:1.5; max-width:340px; }
+</style></head><body>
+<h1>Private event settings: before and after</h1>
+<p class="sub">Invented event "Tokyo", shared with Andi. Before: the page as it is now. After: grouped by what each part is about, edited in place, Done as an action, Delete last.</p>
+
+<h2>Before (today)</h2>
+<div class="row">
+  <div class="col"><p class="cap">Settings</p><p class="note">Four rows that all open the same edit form; Plan and Done as two switches side by side; back goes to the list, not the event.</p>
+    <div class="phone">
+      <div class="nav"><span class="t bad">‹ Events</span><b>Event settings</b><span style="width:70px"></span></div>
+      <div class="panel bad">
+        <div class="r"><div class="g"><div class="a m">Name</div></div><span class="v">Tokyo</span><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a m">Dates</div></div><span class="v">12–14 Dec</span><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a m">Categories</div></div><span class="v">Holiday</span><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a m">Currency</div></div><span class="v">JPY</span><span class="chev">›</span></div>
+      </div><div class="gap"></div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Plan</div></div><span class="sw"></span></div>
+        <div class="r bad"><div class="g"><div class="a">Done</div></div><span class="sw off"></span></div>
+      </div><div class="gap"></div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Shared with Andi</div></div><span class="sw off"></span></div></div><div class="gap"></div>
+      <div class="panel"><div class="btn red">Delete event</div></div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">Tap any of the four rows</p><p class="note">The whole top turns into a form headed "Edit event", with its own Save and Cancel rows; dates appear as Starts on / Ends on only here.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Events</span><b>Event settings</b><span style="width:70px"></span></div>
+      <div class="hdr">Edit event</div>
+      <div class="panel bad">
+        <div class="r"><div class="g"><div class="a">Name</div></div><span class="v ink">Tokyo</span></div>
+        <div class="r"><div class="g"><div class="a">Categories</div></div><span class="v">Holiday</span><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a m">Currency</div></div><span class="v">Japanese Yen</span><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">Starts on</div></div><span class="v ink">12/12/2026</span></div>
+        <div class="r"><div class="g"><div class="a">Ends on</div></div><span class="v ink">14/12/2026</span></div>
+      </div><div class="gap"></div>
+      <div class="panel bad"><div class="btn tint">Save changes</div></div><div class="gap"></div>
+      <div class="panel"><div class="btn tint">Cancel</div></div><div class="gap"></div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Plan</div></div><span class="sw"></span></div><div class="r"><div class="g"><div class="a">Done</div></div><span class="sw off"></span></div></div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">What is off</p><p class="note">Marked with dashed red on the left.</p>
+    <ul class="list">
+      <li>Back says "Events" and goes to the list; the page came from the event.</li>
+      <li>Name, Dates, Categories, Currency look like separate rows but all open one form that replaces them.</li>
+      <li>The edit form has a different order (Categories before Currency before dates) and a bold Currency.</li>
+      <li>Save and Cancel are two extra boxes.</li>
+      <li>Done is a switch, though it is something done once (and moves the event to Past).</li>
+      <li>No headers: nothing says which group is what.</li>
+    </ul>
+  </div>
+</div>
+
+<h2>After <span class="tag">Proposed</span></h2>
+<p class="lead">One page, no edit mode: each row is changed where it is and saved at once. Grouped: what the event is, how it counts money, what it shows, who sees it, then finishing and deleting. Same order and look as the shared trip's Settings.</p>
+<div class="row">
+  <div class="col"><p class="cap">Settings</p><p class="note">Back goes to the event. Name typed in place; dates are two rows; Currency and Categories open their lists.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Tokyo</span><b>Settings</b><span style="width:70px"></span></div>
+      <div class="hdr">Event</div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Name</div></div><span class="v ink">Tokyo</span></div>
+        <div class="r"><div class="g"><div class="a">Starts on</div></div><span class="v ink">12 Dec 2026</span></div>
+        <div class="r"><div class="g"><div class="a">Ends on</div></div><span class="v ink">14 Dec 2026</span></div>
+      </div>
+      <div class="hdr" style="margin-top:14px">Money</div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Currency</div></div><span class="v ink">Japanese Yen</span><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">Categories</div></div><span class="v ink">Holiday</span><span class="chev">›</span></div>
+      </div>
+      <div class="foot">Categories stay once something is tagged or planned. Currency stays once something is bought.</div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Plan</div></div><span class="sw"></span></div>
+      </div>
+      <div class="foot">A list of what to buy, and the "Against the plan" page.</div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Shared with Andi</div></div><span class="sw off"></span></div></div>
+      <div class="foot">On: Andi sees the event and adds to it.</div>
+      <div class="panel"><div class="btn tint">Mark as done</div></div>
+      <div class="foot">Moves Tokyo to Past. It can be reopened.</div>
+      <div class="panel"><div class="btn red">Delete event</div></div>
+      <div class="foot" style="margin-bottom:0">Its transactions stay where they are.</div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">After · a finished event</p><p class="note">Done turns into Reopen; locked rows lose their ›.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Tokyo</span><b>Settings</b><span style="width:70px"></span></div>
+      <div class="hdr">Event</div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Name</div></div><span class="v ink">Tokyo</span></div>
+        <div class="r"><div class="g"><div class="a">Starts on</div></div><span class="v ink">12 Dec 2026</span></div>
+        <div class="r"><div class="g"><div class="a">Ends on</div></div><span class="v ink">14 Dec 2026</span></div>
+      </div>
+      <div class="hdr" style="margin-top:14px">Money</div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Currency</div></div><span class="v">Japanese Yen</span></div>
+        <div class="r"><div class="g"><div class="a">Categories</div></div><span class="v">Holiday</span></div>
+      </div>
+      <div class="foot">Categories stay once something is tagged or planned. Currency stays once something is bought.</div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Plan</div></div><span class="sw"></span></div></div>
+      <div class="gap"></div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Shared with Andi</div></div><span class="sw off"></span></div></div>
+      <div class="gap"></div>
+      <div class="panel"><div class="btn tint">Reopen</div></div>
+      <div class="foot">Done on 15 Dec. Reopening moves it back to Now and next.</div>
+      <div class="panel"><div class="btn red">Delete event</div></div>
+    </div>
+  </div>
+</div>
+</body></html>

@@ -25,7 +25,7 @@ import { ShareLine } from '../transactions/CategoryLines';
 import { Deck } from '../transactions/Deck';
 import { Donut } from '../transactions/Donut';
 import { amountExtraParts, buildRows } from '../transactions/list-model';
-import { AmountExtra, TransactionRow, useRecategorise } from '../transactions/TransactionRow';
+import { AmountExtra, ROW_LIST, TransactionRow, useRecategorise } from '../transactions/TransactionRow';
 import { EventNameBox } from './EventNameBox';
 import { EventModeGroup } from './EventMode';
 import { eventDates } from './EventsPage';
@@ -562,7 +562,7 @@ function LocalEventPage() {
                   </span>
                   <Money minor={total} currency={ws.baseCurrency} className="ml-auto text-[13px] font-semibold text-[var(--ph-ink-2)]" />
                 </div>
-                <ul className="[&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
+                <ul className={ROW_LIST}>
                   {txs.map((tx) => {
                     const expense = tx.entries.find((entry) => entry.accountKind === 'expense');
                     const paidWith = tx.entries.find((entry) => entry.accountKind === 'asset' || entry.accountKind === 'liability');

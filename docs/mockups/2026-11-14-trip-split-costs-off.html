@@ -1,0 +1,200 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Split costs off</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --green:#34c759; --up:#1a7f37; --warn:#c93400; --fill:#eeeef0; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; }
+  h2 { font-size:18px; margin:32px 0 4px; } .lead { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; font-size:14px; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; color:#fff; background:var(--tint); border-radius:4px; padding:1px 6px; margin-left:6px; vertical-align:2px; }
+  .row { display:flex; gap:26px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:340px; } .cap { font-weight:700; margin:0 0 3px; font-size:16px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:54px; }
+  .phone { background:var(--ground); border-radius:28px; padding:14px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .nav { display:flex; justify-content:space-between; align-items:center; margin:0 4px 12px; font-size:15px; } .nav .t { color:var(--tint); min-width:56px; } .nav .t:last-child { text-align:right; font-weight:600; } .nav b { font-size:16px; }
+  .acts { display:flex; gap:8px; } .acts span { width:32px; height:32px; border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center; font-size:17px; box-shadow:0 1px 2px rgba(0,0,0,.08); }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:12px; overflow:hidden; } .pad { padding:12px 13px; }
+  .hdr { font-size:12.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; margin:0 16px 6px; display:flex; justify-content:space-between; }
+  .foot { font-size:12.5px; color:var(--ink3); margin:-6px 16px 12px; line-height:1.35; }
+  .r { display:flex; gap:10px; align-items:center; padding:9px 13px; white-space:nowrap; min-height:44px; } .r + .r { border-top:.5px solid var(--hair); }
+  .ic { width:30px; height:30px; border-radius:50%; color:#fff; font-size:14px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .g { flex:1; min-width:0; } .a { font-size:15px; overflow:hidden; text-overflow:ellipsis; } .s { font-size:12.5px; color:var(--ink3); overflow:hidden; text-overflow:ellipsis; }
+  .val { font-size:15px; text-align:right; } .val .x { display:block; font-size:12.5px; color:var(--ink3); } .vdim { color:var(--ink3); font-size:15px; } .chev { color:#c7c7cc; }
+  .tint { color:var(--tint); } .warn { color:var(--warn); } .ok { color:var(--up); } .dim { color:var(--ink3); } .gone { text-decoration:line-through; color:#c7c7cc !important; }
+  .pill { display:block; width:max-content; margin:0 auto 10px; background:var(--fill); border-radius:999px; padding:5px 12px; font-size:14px; font-weight:600; }
+  .ring { width:104px; height:104px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:conic-gradient(#bf5af2 0 42%,#0a84ff 42% 70%,#ff9f0a 70% 88%,#30d158 88% 100%); }
+  .ring i { width:80px; height:80px; border-radius:50%; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; font-style:normal; } .ring i b { font-size:20px; } .ring i small { font-size:10.5px; color:var(--ink3); }
+  .dots { text-align:center; font-size:11px; color:var(--ink3); margin-top:8px; } .dots b { color:var(--ink); }
+  .dh { display:flex; align-items:center; gap:12px; padding:8px 13px; border-bottom:.5px solid var(--hair); }
+  .dn { font-size:24px; font-weight:600; width:34px; } .dw { font-size:12.5px; color:var(--ink3); line-height:1.2; } .dw b { color:var(--ink2); font-weight:600; display:block; } .dt { margin-left:auto; font-size:13px; font-weight:600; color:var(--ink2); }
+  .sw { width:50px; height:30px; border-radius:15px; background:var(--green); position:relative; flex-shrink:0; } .sw::after { content:''; position:absolute; top:2px; right:2px; width:26px; height:26px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.2); }
+  .sw.off { background:#e5e5ea; } .sw.off::after { right:auto; left:2px; }
+  .big { font-size:30px; font-weight:700; text-align:center; padding:14px 0 6px; }
+  .sheet { background:#fff; border-radius:14px; padding:16px; margin-top:10px; box-shadow:0 -1px 8px rgba(0,0,0,.12); }
+  .sheet h3 { margin:0 0 6px; font-size:16px; text-align:center; } .sheet p { margin:0 0 12px; font-size:13.5px; color:var(--ink2); text-align:center; line-height:1.4; }
+  .btn { text-align:center; padding:11px; border-radius:12px; font-weight:600; font-size:15px; } .btn.p { background:var(--tint); color:#fff; } .btn.c { color:var(--tint); }
+  .mark { outline:2.5px dashed #ff2d55; outline-offset:-2px; border-radius:10px; }
+  .hl { background:#fff1b8; border-radius:4px; padding:0 3px; margin-left:-3px; }
+</style></head><body>
+<h1>Shared trip: "Split costs" off</h1>
+<p class="sub">For a trip with just the two of you, paid from one pot. Left: today (Split costs on). Right: the same trip with Split costs off. Invented trip "Tokyo", Rina and Andi, figures in the trip's ¥. Rows drawn in the private trip's row look (being built). Yellow and dashed red = what changes.</p>
+
+<h2>1 · The trip page</h2>
+<p class="lead">Off: no "share" under amounts, no Balances card, no settle-up rows. The grey line says who paid and with what card. Swipe goes Spending · Plan.</p>
+<div class="row">
+  <div class="col"><p class="cap">Today · split on</p><p class="note">Every row has a share; a Balances card says who owes whom.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Events</span><b>12–14 Dec</b><span class="acts"><span>⋯</span></span></div>
+      <div class="panel pad"><span class="pill">Tokyo</span>
+        <div style="display:flex;gap:14px;align-items:center"><div class="ring"><i><b>4</b><small>categories</small></i></div>
+          <div class="g"><div class="s">Total spent</div><div style="font-size:20px;font-weight:700">¥ 184.000</div><div class="s" style="margin-top:4px">Hotel ¥ 77.000</div><div class="s">Transport ¥ 51.500</div></div></div>
+        <div class="dots"><b>●</b>○○ &nbsp;Spending · Balances · Plan</div></div>
+      <div class="panel">
+        <div class="dh"><span class="dn">13</span><span class="dw"><b>Saturday</b>December 2026</span><span class="dt">¥ 8.000</span></div>
+        <div class="r"><div class="ic" style="background:#ff9f0a">🍜</div><div class="g"><div class="a">Food</div><div class="s">Ramen shop · Rina paid · split equally</div></div><div class="val">¥ 3.000<span class="x">share ¥ 1.500</span></div></div>
+        <div class="r"><div class="ic" style="background:#0a84ff">🚆</div><div class="g"><div class="a">Transport</div><div class="s">Suica · Andi paid · split equally</div></div><div class="val">¥ 5.000<span class="x">share ¥ 2.500</span></div></div>
+        <div class="r"><div class="ic" style="background:#007aff">🤝</div><div class="g"><div class="a">Andi paid Rina</div></div><div class="val">¥ 4.000</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">Split costs off</p><p class="note">One pot. Rows say who paid and the card; nothing is owed, so there is nothing to settle.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Events</span><b>12–14 Dec</b><span class="acts"><span>⋯</span></span></div>
+      <div class="panel pad"><span class="pill">Tokyo</span>
+        <div style="display:flex;gap:14px;align-items:center"><div class="ring"><i><b>4</b><small>categories</small></i></div>
+          <div class="g"><div class="s">Total spent</div><div style="font-size:20px;font-weight:700">¥ 184.000</div><div class="s" style="margin-top:4px">Hotel ¥ 77.000</div><div class="s">Transport ¥ 51.500</div></div></div>
+        <div class="dots"><span class="hl"><b>●</b>○ &nbsp;Spending · Plan</span></div></div>
+      <div class="panel">
+        <div class="dh"><span class="dn">13</span><span class="dw"><b>Saturday</b>December 2026</span><span class="dt">¥ 8.000</span></div>
+        <div class="r"><div class="ic" style="background:#ff9f0a">🍜</div><div class="g"><div class="a">Food</div><div class="s"><span class="hl">Ramen shop · Rina · BCA 0917</span></div></div><div class="val">¥ 3.000</div></div>
+        <div class="r"><div class="ic" style="background:#0a84ff">🚆</div><div class="g"><div class="a">Transport</div><div class="s"><span class="hl">Suica · Andi · Cash JPY</span></div></div><div class="val">¥ 5.000</div></div>
+      </div>
+      <p class="s" style="margin:0 6px;line-height:1.4">One line per amount: no share under it.</p>
+    </div>
+  </div>
+</div>
+
+<h2>2 · Adding spending</h2>
+<p class="lead">Off: the Split row is gone. "Paid by" stays (it decides which phone's books and which card), so the trip can still say who paid.</p>
+<div class="row">
+  <div class="col"><p class="cap">Today · split on</p><p class="note">Paid by, Paid with, Category, and Split (Equal / By amount, tick people).</p>
+    <div class="phone">
+      <div class="nav"><span class="t">Cancel</span><b>Add spending</b><span class="t">Save</span></div>
+      <div class="big">¥ 3.000</div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Paid by</div></div><span class="vdim">Rina</span><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">Paid with</div></div><span class="vdim">BCA 0917</span><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">Category</div></div><span class="vdim">Food</span><span class="chev">›</span></div>
+      </div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Event</div></div><span class="vdim">Tokyo</span></div>
+        <div class="r"><div class="g"><div class="a">Split</div></div><span class="vdim">Equally · 2 people</span><span class="chev">›</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">Split costs off</p><p class="note">No Split row. Nothing else to choose.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">Cancel</span><b>Add spending</b><span class="t">Save</span></div>
+      <div class="big">¥ 3.000</div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Paid by</div></div><span class="vdim">Rina</span><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">Paid with</div></div><span class="vdim">BCA 0917</span><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">Category</div></div><span class="vdim">Food</span><span class="chev">›</span></div>
+      </div>
+      <div class="panel mark">
+        <div class="r"><div class="g"><div class="a">Event</div></div><span class="vdim">Tokyo</span></div>
+        <div class="r"><div class="g"><div class="a gone">Split</div></div><span class="vdim gone">Equally · 2 people</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>3 · Where it is switched</h2>
+<p class="lead">In the trip's settings (⋯ › Settings). Off is the default when the trip is shared only with the household partner; on when anyone else is in it. Turning it off when someone owes something asks first; the splits are kept, so turning it back on brings them back.</p>
+<div class="row">
+  <div class="col"><p class="cap">Trip settings</p><p class="note">One switch, a grey line under it.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Tokyo</span><b>Settings</b><span class="t"></span></div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Name</div></div><span class="vdim">Tokyo</span><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">Dates</div></div><span class="vdim">12–14 Dec</span><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">Currency</div></div><span class="vdim">JPY</span><span class="chev">›</span></div>
+      </div>
+      <div class="panel mark"><div class="r"><div class="g"><div class="a">Split costs</div></div><span class="sw off"></span></div></div>
+      <div class="foot">Off: one pot. Spending shows who paid, with no shares, balances or settling up.</div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">People</div></div><span class="vdim">Rina, Andi</span><span class="chev">›</span></div></div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">Turning off with money owed</p><p class="note">Only when a balance is not zero.</p>
+    <div class="phone" style="padding-bottom:14px">
+      <div class="nav"><span class="t">‹ Tokyo</span><b>Settings</b><span class="t"></span></div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Split costs</div></div><span class="sw"></span></div></div>
+      <div style="height:150px"></div>
+      <div class="sheet">
+        <h3>Stop splitting costs?</h3>
+        <p>Andi owes Rina ¥ 12.000 now. With splitting off, nobody owes anything on this trip. The splits are kept; switching back on brings them back.</p>
+        <div class="btn p">Stop splitting</div>
+        <div class="btn c">Cancel</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>4 · How many cards to swipe</h2>
+<p class="lead">The top card swipes only through what the trip uses. Split costs off removes Balances; Plan off removes Plan. Both off: one card, no swiping. Both switches sit in the trip's Settings and apply on both phones.</p>
+<div class="row"><div class="col" style="width:300px"><p class="cap">Split on · Plan on</p><p class="note" style="min-height:36px">Today: everything on.</p>
+    <div class="phone"><div class="panel pad"><span class="pill">Tokyo</span>
+      <div style="display:flex;gap:14px;align-items:center"><div class="ring"><i><b>4</b><small>categories</small></i></div>
+      <div class="g"><div class="s">Total spent</div><div style="font-size:20px;font-weight:700">¥ 184.000</div></div></div><div class="dots"><b>●</b>○○ &nbsp;Spending · Balances · Plan</div></div></div></div><div class="col" style="width:300px"><p class="cap">Split off · Plan on</p><p class="note" style="min-height:36px">The couple's trip with a plan.</p>
+    <div class="phone"><div class="panel pad"><span class="pill">Tokyo</span>
+      <div style="display:flex;gap:14px;align-items:center"><div class="ring"><i><b>4</b><small>categories</small></i></div>
+      <div class="g"><div class="s">Total spent</div><div style="font-size:20px;font-weight:700">¥ 184.000</div></div></div><div class="dots"><b>●</b>○ &nbsp;Spending · Plan</div></div></div></div><div class="col" style="width:300px"><p class="cap">Split on · Plan off</p><p class="note" style="min-height:36px">Friends, no plan.</p>
+    <div class="phone"><div class="panel pad"><span class="pill">Tokyo</span>
+      <div style="display:flex;gap:14px;align-items:center"><div class="ring"><i><b>4</b><small>categories</small></i></div>
+      <div class="g"><div class="s">Total spent</div><div style="font-size:20px;font-weight:700">¥ 184.000</div></div></div><div class="dots"><b>●</b>○ &nbsp;Spending · Balances</div></div></div></div><div class="col" style="width:300px"><p class="cap">Split off · Plan off</p><p class="note" style="min-height:36px">The couple's trip, no plan.</p>
+    <div class="phone"><div class="panel pad"><span class="pill">Tokyo</span>
+      <div style="display:flex;gap:14px;align-items:center"><div class="ring"><i><b>4</b><small>categories</small></i></div>
+      <div class="g"><div class="s">Total spent</div><div style="font-size:20px;font-weight:700">¥ 184.000</div></div></div><div class="dots" style="color:#c7c7cc">no dots, nothing to swipe</div></div></div></div></div>
+<div class="row" style="margin-top:14px"><div class="col" style="width:340px"><p class="cap">Trip settings, both switches</p>
+  <div class="phone"><div class="panel"><div class="r"><div class="g"><div class="a">Split costs</div></div><span class="sw off"></span></div><div class="r"><div class="g"><div class="a">Plan</div></div><span class="sw off"></span></div></div>
+  <div class="foot" style="margin-bottom:0">Split costs off: one pot, no shares or settling up. Plan off: no list of what to buy.</div></div></div></div>
+
+<h2>5 · Shared trip gets ＋ and ⚙, like a private trip</h2>
+<p class="lead">Today a shared trip has only ⋯ (Add spending, People, Categories, Done, Leave) and no Settings page. After: ＋ adds spending, ⚙ opens Settings, and everything from ⋯ moves there. The ⋯ goes away.</p>
+<div class="row">
+  <div class="col"><p class="cap">Today</p><p class="note">One ⋯ menu.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Events</span><b>12–14 Dec</b><span class="acts"><span>⋯</span></span></div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Add spending</div></div></div>
+        <div class="r"><div class="g"><div class="a">People</div></div></div>
+        <div class="r"><div class="g"><div class="a">Categories</div></div></div>
+        <div class="r"><div class="g"><div class="a">Done</div></div></div>
+        <div class="r"><div class="g"><div class="a" style="color:#ff3b30">Leave</div></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">After · top of the trip</p><p class="note">Same two buttons as a private trip.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Events</span><b>12–14 Dec</b><span class="acts"><span>＋</span><span>⚙</span></span></div>
+      <div class="panel pad"><span class="pill">Tokyo</span>
+        <div style="display:flex;gap:14px;align-items:center"><div class="ring"><i><b>4</b><small>categories</small></i></div>
+        <div class="g"><div class="s">Total spent</div><div style="font-size:20px;font-weight:700">¥ 184.000</div></div></div>
+        <div class="dots"><b>●</b>○ &nbsp;Spending · Plan</div></div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">After · ⚙ Settings</p><p class="note">The trip's switches, its people and categories, Done, and Leave last in red.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Tokyo</span><b>Settings</b><span class="t"></span></div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Split costs</div></div><span class="sw off"></span></div>
+        <div class="r"><div class="g"><div class="a">Plan</div></div><span class="sw"></span></div>
+      </div>
+      <div class="foot">Split costs off: one pot, no shares or settling up.</div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">People</div></div><span class="vdim">Rina, Andi</span><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">Categories</div></div><span class="vdim">Holiday</span><span class="chev">›</span></div>
+      </div>
+      <div class="panel"><div class="r"><div class="g"><div class="a tint">Mark as done</div></div></div></div>
+      <div class="panel"><div class="r"><div class="g"><div class="a" style="color:#ff3b30">Leave Tokyo</div></div></div></div>
+    </div>
+  </div>
+</div>
+</body></html>
