@@ -59,8 +59,8 @@ describe('shared event words', () => {
 
   it('writes a spending row in its own currency, with who paid, the split, the share and its flags', () => {
     expect(expenseRow(expense, view())).toEqual({
-      title: 'Fish dinner',
-      detail: 'Andi paid · Equal · 3 people',
+      title: 'Dinners',
+      detail: 'Fish dinner · Andi paid · Equal · 3 people',
       amount: formatMinor(9_000, 'EUR'),
       share: `share ${formatMinor(3_000, 'EUR')}`,
       flags: ['Not sent yet', 'Changed by Andi'],
@@ -187,10 +187,19 @@ describe('the ring, the days and the bars of a shared event', () => {
 
   it('writes a refund row as "Refund · item", below zero, with a negative share', () => {
     const row = expenseRow({ ...expense, amountMinor: -3_000, eventAmountMinor: -94_500, myShareMinor: -1_000, note: 'Fish dinner', unsent: false, payerOnly: false }, view());
-    expect(row.title).toBe('Refund · Fish dinner');
+    expect(row.title).toBe('Dinners');
+    expect(row.detail).toBe('Refund · Fish dinner · Andi paid · Equal · 3 people');
     expect(row.amount).toBe(formatMinor(-3_000, 'EUR'));
     expect(row.share).toBe(`share ${formatMinor(-1_000, 'EUR')}`);
-    expect(expenseRow({ ...expense, amountMinor: -3_000, note: 'Refund · Fish dinner' }, view()).title).toBe('Refund · Fish dinner');
+    expect(expenseRow({ ...expense, amountMinor: -3_000, note: 'Refund · Fish dinner' }, view()).detail).toMatch(/^Refund · Fish dinner · /);
+    expect(expenseRow({ ...expense, amountMinor: -3_000, note: null }, view()).detail).toMatch(/^Refund · Andi paid/);
+  });
+
+  it('titles a spending row by its category as the ring names it, Other when it has none', () => {
+    const named = view({ categories: [{ categoryId: 'c', name: 'Meals', icon: 'utensils', archived: false }] });
+    expect(expenseRow(expense, named).title).toBe('Meals');
+    expect(expenseRow({ ...expense, categoryId: null, categoryName: null }, view()).title).toBe('Other');
+    expect(expenseRow({ ...expense, note: null }, view()).detail).toBe('Andi paid · Equal · 3 people');
   });
 
   it('groups records by day, newest first, with the day spending and settle-ups after the spending', () => {

@@ -4,10 +4,11 @@ import { formatMinor } from '@expanses/core';
 import { ArrowLeftRight, CircleEllipsis, HandCoins, MoreHorizontal, Plus } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { ErrorBox, Money } from '../../ui';
-import { ICONS } from '../categories/CategoryIcon';
+import { ICONS, MarkChip } from '../categories/CategoryIcon';
+import { AmountExtra, RowFace, RowItem } from '../transactions/TransactionRow';
 import { chartColour, OTHER_COLOUR } from '../transactions/category-colours';
 import { ShareLine } from '../transactions/CategoryLines';
-import { type CornerAction, InsetGroup, InsetRow, Panel, rowPositions, SCREEN, PushedTitle } from '../../ui/native';
+import { type CornerAction, InsetGroup, InsetRow, Panel, SCREEN, PushedTitle } from '../../ui/native';
 import { addSpendingTarget } from './buy-item';
 import { EventModeGroup } from './EventMode';
 import { eventDates } from './EventsPage';
@@ -233,10 +234,11 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
           ) : null}
           {days.map((day) => {
             const d = new Date(`${day.date}T00:00:00`);
-            const positions = rowPositions(day.items.length);
+            // The day card the private trip's history draws (`EventDetailPage`): its header, then one `RowFace` per record,
+            // so the two trips read alike — the same circle, lines, figures and hairlines.
             return (
-              <Panel key={day.date} pad={false} testId="shared-event-day">
-                <div className="flex items-center gap-3 border-b-[0.5px] border-[var(--ph-hair)] px-[13px] py-2">
+              <Panel key={day.date} testId="shared-event-day">
+                <div className="-mx-[13px] flex items-center gap-3 border-b-[0.5px] border-[var(--ph-hair)] px-[13px] pb-2">
                   <span className="tabular w-9 shrink-0 text-2xl leading-none font-semibold text-[var(--ph-ink)]">{d.getDate()}</span>
                   <span className="flex flex-col text-[12.5px] leading-tight text-[var(--ph-ink-3)]">
                     <b className="font-semibold text-[var(--ph-ink-2)]">{d.toLocaleDateString('en-GB', { weekday: 'long' })}</b>
@@ -244,65 +246,62 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
                   </span>
                   {day.spentMinor > 0 ? <Money minor={day.spentMinor} currency={view.currency} className="ml-auto text-[13px] font-semibold text-[var(--ph-ink-2)]" /> : null}
                 </div>
-                {day.items.map((item, index) => {
-                  if (item.kind === 'transfer') {
-                    // A household transfer listed here (an ATM withdrawal): grey, not counted, no share. The phone that
-                    // recorded it opens its transaction, where Remove from event puts it back in its workspace.
-                    const t = item.transfer;
-                    const row = transferRow(t);
+                <ul className="[&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
+                  {day.items.map((item) => {
+                    if (item.kind === 'transfer') {
+                      // A household transfer listed here (an ATM withdrawal): grey, not counted, no share. The phone that
+                      // recorded it opens its transaction, where Remove from event puts it back in its workspace.
+                      const t = item.transfer;
+                      const row = transferRow(t);
+                      const open = t.transactionId ? () => void navigate({ to: '/transactions/$transactionId', params: { transactionId: t.transactionId! } }) : undefined;
+                      return (
+                        <SharedRow
+                          key={`transfer-${t.transferId}`}
+                          testId="shared-transfer-row"
+                          mark={<MarkChip Glyph={ArrowLeftRight} colour="var(--ph-ink-3)" />}
+                          title={row.title}
+                          subtitle={row.subtitle}
+                          amount={row.amount}
+                          amountClassName="text-[var(--ph-ink-3)]"
+                          onOpen={open}
+                        />
+                      );
+                    }
+                    if (item.kind === 'settlement') {
+                      const s = item.settlement;
+                      const row = settlementRow(s, view);
+                      return (
+                        <SharedRow
+                          key={s.settlementId}
+                          testId="shared-settlement-row"
+                          mark={<MarkChip Glyph={HandCoins} colour="var(--ph-tint)" />}
+                          title={row.title}
+                          subtitle={row.flags.join(' · ')}
+                          amount={row.amount}
+                          onOpen={!locked && settlementDeletable(s, view) ? () => setOpened(s) : undefined}
+                        />
+                      );
+                    }
+                    const e = item.expense;
+                    const row = expenseRow(e, view);
+                    const Glyph = ICONS[view.categories.find((c) => c.categoryId === e.categoryId)?.icon ?? 'circle-ellipsis'] ?? CircleEllipsis;
                     return (
-                      <InsetRow
-                        key={`transfer-${t.transferId}`}
-                        position={{ ...positions[index]!, separator: index > 0 }}
-                        icon={<ArrowLeftRight size={16} strokeWidth={2.2} aria-hidden />}
-                        iconColour="var(--ph-ink-3)"
+                      <SharedRow
+                        key={e.expenseId}
+                        testId="shared-expense-row"
+                        mark={<MarkChip Glyph={Glyph} colour={e.categoryId ? chartColour(e.categoryId) : OTHER_COLOUR} />}
                         title={row.title}
-                        subtitle={row.subtitle}
-                        value={<span className="text-[var(--ph-ink-3)]">{row.amount}</span>}
-                        onClick={t.transactionId ? () => void navigate({ to: '/transactions/$transactionId', params: { transactionId: t.transactionId! } }) : undefined}
-                        testId="shared-transfer-row"
+                        subtitle={[row.detail, ...row.flags].filter(Boolean).join(' · ')}
+                        amount={row.amount}
+                        // Spending in red, as a private row's; money back keeps the ink, its minus already saying so.
+                        amountClassName={e.amountMinor > 0 ? 'text-red-700' : undefined}
+                        // This phone's person's share, in the slot a private row keeps for its foreign figure.
+                        amountExtra={row.share ? <AmountExtra parts={[{ text: row.share, tone: 'foreign' }]} /> : null}
+                        onOpen={e.voided || locked ? undefined : () => void navigate({ to: '/transactions/new', search: { event: view.eventId, expense: e.expenseId } })}
                       />
                     );
-                  }
-                  if (item.kind === 'settlement') {
-                    const s = item.settlement;
-                    const row = settlementRow(s, view);
-                    return (
-                      <InsetRow
-                        key={s.settlementId}
-                        position={{ ...positions[index]!, separator: index > 0 }}
-                        icon={<HandCoins size={16} strokeWidth={2.2} aria-hidden />}
-                        iconColour="var(--ph-tint)"
-                        title={row.title}
-                        subtitle={row.flags.join(' · ') || undefined}
-                        value={row.amount}
-                        onClick={!locked && settlementDeletable(s, view) ? () => setOpened(s) : undefined}
-                        testId="shared-settlement-row"
-                      />
-                    );
-                  }
-                  const e = item.expense;
-                  const row = expenseRow(e, view);
-                  const Glyph = ICONS[view.categories.find((c) => c.categoryId === e.categoryId)?.icon ?? 'circle-ellipsis'] ?? CircleEllipsis;
-                  return (
-                    <InsetRow
-                      key={e.expenseId}
-                      position={{ ...positions[index]!, separator: index > 0 }}
-                      icon={<Glyph size={16} strokeWidth={2.2} aria-hidden />}
-                      iconColour={e.categoryId ? chartColour(e.categoryId) : OTHER_COLOUR}
-                      title={row.title}
-                      subtitle={[row.detail, ...row.flags].filter(Boolean).join(' · ')}
-                      value={
-                        <span className="flex flex-col items-end">
-                          <span>{row.amount}</span>
-                          {row.share ? <span className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{row.share}</span> : null}
-                        </span>
-                      }
-                      onClick={e.voided || locked ? undefined : () => void navigate({ to: '/transactions/new', search: { event: view.eventId, expense: e.expenseId } })}
-                      testId="shared-expense-row"
-                    />
-                  );
-                })}
+                  })}
+                </ul>
               </Panel>
             );
           })}
@@ -333,5 +332,49 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
       {settling ? <SettleUpSheet view={view} payment={settling} onClose={() => setSettling(null)} /> : null}
       {takingOver ? <TakeOverSheet view={view} onClose={() => setTakingOver(false)} /> : null}
     </div>
+  );
+}
+
+/**
+ * One record of a shared trip's day card, drawn as the private trip's `TransactionRow` is — through the same `RowItem`
+ * and `RowFace` — so the circle, the two lines, the figure and the line under it match. A record that may not be opened
+ * is still drawn, with no tap.
+ */
+function SharedRow({
+  testId,
+  mark,
+  title,
+  subtitle,
+  amount,
+  amountClassName,
+  amountExtra,
+  onOpen,
+}: {
+  testId: string;
+  mark: ReactNode;
+  title: string;
+  subtitle: string;
+  amount: string;
+  amountClassName?: string;
+  amountExtra?: ReactNode;
+  onOpen?: () => void;
+}) {
+  return (
+    <RowItem testId={testId} onClick={onOpen}>
+      <RowFace
+        className="py-2.5"
+        lead={<span className="shrink-0">{mark}</span>}
+        label={title}
+        subtitle={subtitle}
+        amount={amount}
+        amountClassName={amountClassName}
+        amountExtra={amountExtra}
+        disabled={!onOpen}
+        onClick={(event) => {
+          event.stopPropagation();
+          onOpen?.();
+        }}
+      />
+    </RowItem>
   );
 }

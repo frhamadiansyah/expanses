@@ -207,41 +207,42 @@ export function TransactionRow({
   const refile = select ? undefined : onRecategorise;
 
   const face = (swiped?: { suppressClick: () => boolean }) => (
-    <div className={cx('flex items-center gap-3 py-2', swiped && 'bg-white', className)}>
-      {tick}
-      {refile ? (
-        <button
-          type="button"
-          aria-label={categoryButtonLabel(row.description, { workspace: iconMark ? iconMarkLabel : null, refund: row.refund, eventName })}
-          title="Change the category"
-          onClick={(event) => {
-            // The row around it may be clickable too; re-filing is not opening.
-            event.stopPropagation();
-            if (swiped?.suppressClick()) return;
-            refile(row);
-          }}
-          className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-slate-900"
-        >
-          {circle}
-        </button>
-      ) : (
-        <span className={cx('shrink-0', row.deleted && 'grayscale')}>{circle}</span>
-      )}
-      <div className="min-w-0 flex-1">
-      <Face
-        still={still}
-        disabled={!faceTap}
-        title={select ? undefined : title}
-        onClick={(event) => {
-          event.stopPropagation();
-          if (swiped?.suppressClick()) return;
-          faceTap?.();
-        }}
-      >
-        <span className="block truncate text-sm font-medium">
-          {label ?? ((row.categoryName && row.moreCounted ? `${row.categoryName} +${row.moreCounted}` : row.categoryName) || (row.type === 'correction' ? 'Balance correction' : transfer ? (row.transferName ?? 'Transfer') : 'Uncategorised'))}
-        </span>
-        <span className="block truncate text-xs text-slate-500">
+    <RowFace
+      className={cx(swiped && 'bg-white', className)}
+      lead={
+        <>
+          {tick}
+          {refile ? (
+            <button
+              type="button"
+              aria-label={categoryButtonLabel(row.description, { workspace: iconMark ? iconMarkLabel : null, refund: row.refund, eventName })}
+              title="Change the category"
+              onClick={(event) => {
+                // The row around it may be clickable too; re-filing is not opening.
+                event.stopPropagation();
+                if (swiped?.suppressClick()) return;
+                refile(row);
+              }}
+              className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-slate-900"
+            >
+              {circle}
+            </button>
+          ) : (
+            <span className={cx('shrink-0', row.deleted && 'grayscale')}>{circle}</span>
+          )}
+        </>
+      }
+      still={still}
+      disabled={!faceTap}
+      title={select ? undefined : title}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (swiped?.suppressClick()) return;
+        faceTap?.();
+      }}
+      label={label ?? ((row.categoryName && row.moreCounted ? `${row.categoryName} +${row.moreCounted}` : row.categoryName) || (row.type === 'correction' ? 'Balance correction' : transfer ? (row.transferName ?? 'Transfer') : 'Uncategorised'))}
+      subtitle={
+        <>
           {subtitle ?? (
             <>
               {/* The default note "Transfer" only repeats a title that already says what the transfer is. */}
@@ -251,29 +252,14 @@ export function TransactionRow({
           )}
           {/* The plane on the icon, said aloud as part of the row: VoiceOver reads the row's face, not its circle. */}
           {eventName && <span className="sr-only">{` · ${eventName}`}</span>}
-        </span>
-      </Face>
-      {/* Outside the tap target, never inside it: what goes here can itself be a control, and a <button>
-          within a <button> is invalid HTML whose name swallows the inner one's. */}
-      {under}
-      </div>
-      {/* At most 40% of the row, so the longest line under an amount — a foreign figure and points in a long unit —
-          never squeezes the category and the note to a sliver at a phone's width; the points give way first. */}
-      <span className="min-w-0 max-w-[40%] shrink-0 text-right">
-        <span
-          className={cx(
-            'tabular block text-sm font-semibold whitespace-nowrap',
-            sign < 0 && 'text-red-700',
-            sign > 0 && 'text-emerald-700',
-            muted && 'text-slate-500',
-          )}
-        >
-          {amount ?? money}
-        </span>
-        {amountExtra ?? (row.leftOut || allOut ? <AmountExtra parts={amountExtraParts(row.tx ?? { originalCurrency: null, originalAmountMinor: null }, undefined, { ...row, view })} /> : null)}
-      </span>
-      {trailing}
-    </div>
+        </>
+      }
+      under={under}
+      amountClassName={cx(sign < 0 && 'text-red-700', sign > 0 && 'text-emerald-700', muted && 'text-slate-500')}
+      amount={amount ?? money}
+      amountExtra={amountExtra ?? (row.leftOut || allOut ? <AmountExtra parts={amountExtraParts(row.tx ?? { originalCurrency: null, originalAmountMinor: null }, undefined, { ...row, view })} /> : null)}
+      trailing={trailing}
+    />
   );
 
   // A phone reaches Edit and Delete by swiping; both stay one gesture away rather than crowding the row. Not while
@@ -298,19 +284,102 @@ export function TransactionRow({
   }
 
   return (
+    <RowItem itemProps={itemProps} testId={testId} title={select ? undefined : title} onClick={faceTap} deleted={row.deleted}>
+      {face()}
+    </RowItem>
+  );
+}
+
+/**
+ * A row's `<li>` when it is not swiped: the whole of it a tap target, tinted on hover, struck through when deleted.
+ * `TransactionRow`'s own, and a shared trip's records' (`SharedEventPage`), so the two lists cannot drift apart.
+ */
+export function RowItem({
+  itemProps,
+  testId,
+  title,
+  onClick,
+  deleted = false,
+  children,
+}: {
+  itemProps?: Record<`data-${string}`, string>;
+  testId?: string;
+  title?: string;
+  onClick?: () => void;
+  deleted?: boolean;
+  children: ReactNode;
+}) {
+  return (
     <li
       {...itemProps}
       data-testid={testId}
-      title={select ? undefined : title}
-      onClick={faceTap}
+      title={title}
+      onClick={onClick}
       className={cx(
         'group',
-        row.deleted && 'opacity-50 line-through',
-        faceTap && '-mx-2 cursor-pointer rounded-lg px-2 hover:bg-slate-50',
+        deleted && 'opacity-50 line-through',
+        onClick && '-mx-2 cursor-pointer rounded-lg px-2 hover:bg-slate-50',
       )}
     >
-      {face()}
+      {children}
     </li>
+  );
+}
+
+/**
+ * A row's look, with nothing of a transaction in it: what leads it (the category circle, a tick), the two lines, the
+ * amount with its line under it, and what trails it. `TransactionRow` draws every transaction with it; a shared trip
+ * draws its spending, settle-ups and transfers with it too, so both trips' histories read alike.
+ */
+export function RowFace({
+  lead,
+  label,
+  subtitle,
+  under,
+  amount,
+  amountClassName,
+  amountExtra,
+  trailing,
+  className,
+  still = false,
+  disabled,
+  title,
+  onClick,
+}: {
+  lead: ReactNode;
+  label: ReactNode;
+  subtitle: ReactNode;
+  under?: ReactNode;
+  amount: ReactNode;
+  amountClassName?: string;
+  amountExtra?: ReactNode;
+  trailing?: ReactNode;
+  className?: string;
+  still?: boolean;
+  disabled: boolean;
+  title?: string;
+  onClick: (event: MouseEvent) => void;
+}) {
+  return (
+    <div className={cx('flex items-center gap-3 py-2', className)}>
+      {lead}
+      <div className="min-w-0 flex-1">
+      <Face still={still} disabled={disabled} title={title} onClick={onClick}>
+        <span className="block truncate text-sm font-medium">{label}</span>
+        <span className="block truncate text-xs text-slate-500">{subtitle}</span>
+      </Face>
+      {/* Outside the tap target, never inside it: what goes here can itself be a control, and a <button>
+          within a <button> is invalid HTML whose name swallows the inner one's. */}
+      {under}
+      </div>
+      {/* At most 40% of the row, so the longest line under an amount — a foreign figure and points in a long unit —
+          never squeezes the category and the note to a sliver at a phone's width; the points give way first. */}
+      <span className="min-w-0 max-w-[40%] shrink-0 text-right">
+        <span className={cx('tabular block text-sm font-semibold whitespace-nowrap', amountClassName)}>{amount}</span>
+        {amountExtra}
+      </span>
+      {trailing}
+    </div>
   );
 }
 

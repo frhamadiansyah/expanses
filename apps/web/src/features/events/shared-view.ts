@@ -146,16 +146,23 @@ function postingFlags(posting: SharedExpenseView['posting'], view: SharedEventVi
 }
 
 /** A refund (money back, below zero) reads "Refund · <what it undoes>" unless its note already says so. */
-function refundTitle(e: SharedExpenseView): string {
-  const name = e.note ?? e.categoryName ?? 'Shared spending';
-  return e.amountMinor < 0 && !/^refund\b/i.test(name) ? `Refund · ${name}` : name;
+function refundNote(e: SharedExpenseView): string | null {
+  const note = e.note?.trim() || null;
+  if (e.amountMinor >= 0) return note;
+  if (!note) return 'Refund';
+  return /^refund\b/i.test(note) ? note : `Refund · ${note}`;
 }
 
+/**
+ * A shared expense as the private trip's history writes a transaction (owner 2026-11-14): the category on top (Other
+ * when none), then the note and who paid and how it was split, the amount at the right and this phone's person's share
+ * under it, where a private row keeps its foreign figure.
+ */
 export function expenseRow(e: SharedExpenseView, view: SharedEventView): { title: string; detail: string; amount: string; share: string | null; flags: string[] } {
   return {
-    title: refundTitle(e),
-    // The category is the row's glyph and the ring's slice, so the words are who paid and how it was split.
-    detail: [`${e.payerName} paid`, e.splitText].filter(Boolean).join(' · '),
+    // Named as the ring's slice names it, so the row and the chart agree.
+    title: e.categoryId ? (view.categories.find((c) => c.categoryId === e.categoryId)?.name ?? e.categoryName ?? 'Other') : 'Other',
+    detail: [refundNote(e), `${e.payerName} paid`, e.splitText].filter(Boolean).join(' · '),
     // An unreadable record counts in no figure, so its amount is not shown either (no ₺0 that reads as a real figure):
     // the row says what is wrong, and a tap opens the card for whoever may fix it (I2).
     amount: e.unreadable ? '' : formatMinor(e.amountMinor, e.currency),
