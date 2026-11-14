@@ -1,7 +1,7 @@
 import { formatMinor, isoDate, parseGroupedMajor, sheetSectionOf } from '@expanses/core';
 import { type AccountRow, type EarmarkRow, type GoalRow, removeEarmark, saveEarmark, viaBaseMinor } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { Fragment, useRef, useState } from 'react';
+import { Fragment, useLayoutEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { MONEY_SUBTYPES } from '../../lib/account-types';
@@ -368,8 +368,35 @@ export function SetAsideGroup({
 }
 
 /** A saved goal's Set aside: the list alone, in a sheet whose Save writes it. The goal itself is not written again. */
-export function SetAsideSheet({ goal, earmarks, neededMinor = null, onDone }: { goal: GoalRow; earmarks: readonly EarmarkRow[]; neededMinor?: number | null; onDone: () => void }) {
+export function SetAsideSheet({
+  goal,
+  earmarks,
+  neededMinor = null,
+  focusAccountId,
+  onDone,
+}: {
+  goal: GoalRow;
+  earmarks: readonly EarmarkRow[];
+  neededMinor?: number | null;
+  /**
+   * Opened from an account's line on Funded by: the caret goes straight into that account's figure, so the keyboard and
+   * the bar come up with the sheet. Focused as the sheet is first drawn, which is inside the tap when the opener
+   * renders it at once (`flushSync`): iOS raises the keyboard only for a focus made while handling the tap itself.
+   */
+  focusAccountId?: string;
+  onDone: () => void;
+}) {
   const state = useSetAside(goal, earmarks);
+  // Once: the line may not be drawn on the first pass while the accounts are still loading, so it is tried again as
+  // the sheet redraws, and left alone for good once the caret is in it.
+  const toFocus = useRef(focusAccountId ?? null);
+  useLayoutEffect(() => {
+    if (toFocus.current === null) return;
+    const field = document.getElementById(rowId(toFocus.current));
+    if (!(field instanceof HTMLInputElement)) return;
+    toFocus.current = null;
+    field.focus();
+  });
   const invalidate = useInvalidateAll();
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);

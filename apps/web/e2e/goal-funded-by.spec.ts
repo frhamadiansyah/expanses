@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { mockRates, openWithPockets } from './pockets';
+import { fundedByTwoTaps } from './funded-by-taps';
 import { addGoal, addMoneyAccount, goalCard, setAside } from './set-aside';
 
 test.beforeEach(({ page }) => {
@@ -53,8 +54,8 @@ test('a multicurrency account is one Funded-by row that opens to its currencies'
   await expect(usd).not.toContainText('Rp');
   await expect(currencies.filter({ hasText: 'IDR' })).toContainText(/Rp.4\.000\.000/);
 
-  // A currency opens that pocket's page, as its row did before.
-  await usd.click();
+  // A currency's › opens that pocket's page (its body opens Set aside: funded-by-taps.ts).
+  await usd.getByRole('link', { name: 'Open Kas Valas · USD', exact: true }).click();
   await expect(page).toHaveURL(/\/net-worth\/assets\/[^/]+$/);
   await page.goBack();
 
@@ -64,4 +65,8 @@ test('a multicurrency account is one Funded-by row that opens to its currencies'
   await expect(hajj.getByTestId('goal-link-currency')).toHaveCount(2);
   await hajj.getByTestId('goal-link-account').click();
   await expect(hajj.getByTestId('goal-link-currency')).toHaveCount(0);
+});
+
+test('a set-aside line opens Set aside from its body and the account from its own ›; the gold row is one target', async ({ page }) => {
+  await fundedByTwoTaps(page);
 });
