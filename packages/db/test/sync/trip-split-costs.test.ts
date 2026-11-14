@@ -1,3 +1,4 @@
+import type { SplitInput } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
@@ -10,7 +11,6 @@ import {
   setSharedEventSwitches,
   sharedEventView,
   type SharedEventView,
-  type SplitInput,
 } from '../../src/index';
 import { SyncEngine } from '../../src/sync/engine';
 import { skipsOf, type Device } from './household';
