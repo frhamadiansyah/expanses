@@ -208,6 +208,8 @@ function AmountLine({
     <div className="relative" data-testid="set-aside-row" data-over={over ? 'true' : undefined}>
       {position?.separator && <Hairline left={left} />}
       <div
+        // A tap anywhere on the line is for its figure, as a form row's is (the Sheet reads this in a medium sheet).
+        data-text-row
         className="flex cursor-text items-center gap-[10px]"
         style={{ minHeight: rowHeight(false), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px ${ROW_PAD_Y}px ${depth > 0 ? nestedPad(depth) : ROW_PAD_X}px` }}
         onClick={(event) => {
