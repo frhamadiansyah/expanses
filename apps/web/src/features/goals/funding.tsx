@@ -44,10 +44,27 @@ function ShortBefore({ link }: { link: GoalLinkRow }) {
   );
 }
 
-/** What funds a goal, as one row of its group, opening that account or holding. Named so the group can hand it its place and a test can name it. */
-export function FundingRow({ link, goalCurrency, icon, position }: GroupChild & { link: GoalLinkRow; goalCurrency?: string; icon?: ReactNode }) {
+/** The page of an account or holding on Funded by: a money account's page is reached through the same address. */
+const ACCOUNT_PAGE = '/net-worth/assets/$accountId';
+
+/**
+ * What funds a goal, as one row of its group. Named so the group can hand it its place and a test can name it.
+ *
+ * This phone's own set-aside (owner C1, 14 Nov) is two targets on one line: the body opens Set aside with the caret in
+ * that account's figure (`onSetAside`), and a › of its own at the right edge opens the account. A tagged purchase or
+ * holding wears the same › so the rows line up, and both its body and its › open its page.
+ */
+export function FundingRow({
+  link,
+  goalCurrency,
+  icon,
+  onSetAside,
+  position,
+}: GroupChild & { link: GoalLinkRow; goalCurrency?: string; icon?: ReactNode; /** This phone's own set-aside line, in an account Set aside lists. */ onSetAside?: () => void }) {
   // Another member's line is read-only here: its account is on their phone, so the row opens nothing.
   const theirs = link.owner !== undefined;
+  const twoTaps = !theirs && link.kind === 'earmark' && onSetAside !== undefined;
+  const page = { to: ACCOUNT_PAGE, params: { accountId: link.accountId } } as const;
   return (
     <div data-testid="goal-link">
       <InsetRow
@@ -62,9 +79,9 @@ export function FundingRow({ link, goalCurrency, icon, position }: GroupChild & 
           </>
         }
         valueTone={linkShort(link) ? 'warn' : 'ink'}
-        // The account or holding's own page: a money account's page is reached through the same address.
-        to={theirs ? undefined : '/net-worth/assets/$accountId'}
-        params={theirs ? undefined : { accountId: link.accountId }}
+        // Every own row wears the same › at its right edge, so Funded by lines up (owner, 14 Nov); on a purchase or
+        // holding, the body and the › both open its page. Another member's line opens nothing and has none.
+        {...(theirs ? {} : { ...(twoTaps ? { onClick: onSetAside } : page), detail: { label: `Open ${link.name}`, ...page } })}
       />
     </div>
   );
@@ -82,6 +99,7 @@ export function FundingAccountRow({
   onToggle,
   position,
 }: GroupChild & { line: Extract<FundingLine, { type: 'account' }>; goalCurrency: string; icon?: ReactNode; open: boolean; onToggle: () => void }) {
+  // The body opens and shuts the currencies, as before; the account's own page is its › (owner C1, 14 Nov).
   return (
     <div data-testid="goal-link-account" data-open={open ? 'true' : 'false'}>
       <InsetRow
@@ -112,16 +130,21 @@ export function FundingAccountRow({
           </>
         }
         valueTone={line.short || line.unconverted > 0 ? 'warn' : 'ink'}
-        chevron={false}
         onClick={onToggle}
+        detail={{ label: `Open ${line.name}`, to: ACCOUNT_PAGE, params: { accountId: line.accountId } }}
       />
     </div>
   );
 }
 
-/** One currency under its open account: the code, and the amount in its own money. Opens that currency as its row always did. */
-export function FundingCurrencyRow({ child, tree, position }: GroupChild & { child: FundingCurrencyLine; tree: TreePlace }) {
+/**
+ * One currency under its open account: the code, and the amount in its own money. A set-aside currency is two targets,
+ * as an account's line is: the body opens Set aside on that pocket, its › the pocket's page.
+ */
+export function FundingCurrencyRow({ child, tree, onSetAside, position }: GroupChild & { child: FundingCurrencyLine; tree: TreePlace; onSetAside?: () => void }) {
   const { link } = child;
+  const page = { to: ACCOUNT_PAGE, params: { accountId: link.accountId } } as const;
+  const twoTaps = link.kind === 'earmark' && link.owner === undefined && onSetAside !== undefined;
   return (
     <div data-testid="goal-link-currency">
       <InsetRow
@@ -136,8 +159,7 @@ export function FundingCurrencyRow({ child, tree, position }: GroupChild & { chi
           </>
         }
         valueTone={child.short ? 'warn' : 'ink'}
-        to="/net-worth/assets/$accountId"
-        params={{ accountId: link.accountId }}
+        {...(twoTaps ? { onClick: onSetAside, detail: { label: `Open ${link.name}`, ...page } } : page)}
       />
     </div>
   );

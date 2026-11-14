@@ -200,6 +200,13 @@ export interface InsetRowProps extends GroupChild {
   leftActions?: readonly SwipeAction[];
   to?: LinkProps['to'];
   /**
+   * A second target at the row's right edge, beside the row rather than inside it: a › of its own, behind a thin
+   * vertical hairline, opening a page while a tap on the row's body does something else (Funded by: the body opens
+   * Set aside on that account, the › its page; owner C1, 14 Nov). The row's own chevron gives way to it. Not for a
+   * row that slides.
+   */
+  detail?: { label: string; to: LinkProps['to']; params?: LinkProps['params'] };
+  /**
    * The route's own parameters and search, handed to the link.
    *
    * A row that points at `/events/$eventId/plan/$itemId` cannot say where it goes with a path alone, and a screen
@@ -274,6 +281,7 @@ export function InsetRow({
   rightHint,
   leftActions,
   to,
+  detail,
   params,
   search,
   destructive = false,
@@ -285,7 +293,7 @@ export function InsetRow({
   className,
   tree,
 }: InsetRowProps) {
-  const points = action ? false : (chevron ?? Boolean(onClick ?? to));
+  const points = action || detail ? false : (chevron ?? Boolean(onClick ?? to));
   const plan = planRow({ icon: Boolean(icon), title: String(title ?? ''), chevron: points });
   const tint = iconColour ? iconTint(iconColour) : null;
 
@@ -319,7 +327,8 @@ export function InsetRow({
       style={{
         gap: icon ? 10 : 8,
         minHeight: rowHeight(Boolean(subtitle)),
-        padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px ${ROW_PAD_Y}px ${nestedPad(depth)}px`,
+        // Beside a › of its own the body stops short of the hairline by the gap its parts keep from each other.
+        padding: `${ROW_PAD_Y}px ${detail ? ROW_ICON_GAP : ROW_PAD_X}px ${ROW_PAD_Y}px ${nestedPad(depth)}px`,
       }}
     >
       {treeLine}
@@ -336,6 +345,8 @@ export function InsetRow({
     />
   ) : null;
   const slides = !disabled && (onSwipeRight !== undefined || (leftActions?.length ?? 0) > 0);
+  // With a › of its own the hairline belongs to the pair, drawn once across both, so the row inside draws none.
+  const ownSeparator = detail && !slides ? null : separator;
 
   /** The row itself. `suppress` answers true when the gesture that just ended was a drag and not a tap. */
   const row = (suppress: () => boolean = () => false, named: string | null = testId ?? null) => {
@@ -359,7 +370,7 @@ export function InsetRow({
             if (disabled || suppress()) event.preventDefault();
           }}
         >
-          {separator}
+          {ownSeparator}
           {inner}
         </Link>
       );
@@ -377,19 +388,38 @@ export function InsetRow({
           data-testid={name}
           className={cx(shell, 'ph-focus-inset text-left')}
         >
-          {separator}
+          {ownSeparator}
           {inner}
         </button>
       );
     }
     return (
       <div className={shell} data-testid={name} style={{ minHeight: TAP }}>
-        {separator}
+        {ownSeparator}
         {inner}
       </div>
     );
   };
 
+  if (detail && !slides) {
+    return (
+      <div className="relative flex w-full items-stretch">
+        {separator}
+        <div className="min-w-0 flex-1">{row()}</div>
+        <Link
+          to={detail.to}
+          params={detail.params}
+          aria-label={detail.label}
+          data-testid="row-detail"
+          className="ph-focus-inset relative flex shrink-0 items-center justify-center"
+          style={{ width: TAP, minHeight: TAP }}
+        >
+          <span aria-hidden className="pointer-events-none absolute inset-y-0 left-0 bg-[var(--ph-hair)]" style={{ width: 0.5 }} />
+          <Chevron />
+        </Link>
+      </div>
+    );
+  }
   if (!slides) return row();
   return (
     /*

@@ -3,6 +3,7 @@ import { type GoalLinkRow, leaveSharedGoal, retagTrade, setStagePaid } from '@ex
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { ArrowRightLeft, CalendarClock, Check, DoorOpen, HandCoins, MoreHorizontal, Pencil, PiggyBank, ShoppingBag, Tag, Undo2 } from 'lucide-react';
 import { Fragment, type ReactNode, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
@@ -27,7 +28,8 @@ import { useDraws, useEarmarks, useGoalDues, useGoalHistory, useGoalPlans, useGo
 import { type DueToast, MonthHistoryGroup } from './GoalDues';
 import { monthlySubtitle } from './goal-due';
 import { UndoToast } from '../../ui/UndoToast';
-import { useAccounts } from '../../lib/queries';
+import { moneyHolders, useAccounts } from '../../lib/queries';
+import { MONEY_SUBTYPES } from '../../lib/account-types';
 
 export function GoalRoute() {
   const { goalId } = useParams({ from: '/goals/$goalId' });
@@ -85,6 +87,8 @@ export function GoalPage({ goalId }: { goalId: string }) {
   // A history line's key is its draw's id, so a borrow can be asked whether the goal was whole when it was taken.
   const wholeBorrows = new Set((useDraws().data ?? []).filter((draw) => draw.intent === 'borrow' && draw.wasWhole).map((draw) => draw.id));
   const [settingAside, setSettingAside] = useState(false);
+  // The account whose figure Set aside opens with the caret in, when it was opened from that account's Funded-by line.
+  const [asideOn, setAsideOn] = useState<string | undefined>(undefined);
   // The one sheet open from the round actions or the ⋯, if any.
   const [open, setOpen] = useState<'use' | 'monthly' | 'take-back' | 'move' | null>(null);
   const hasPurchase = useHasTaggedPurchase(goalId);
@@ -171,7 +175,15 @@ export function GoalPage({ goalId }: { goalId: string }) {
   // so Tag a purchase opens the same list of buys as the form's Funding sheet and tags the pick at once. Use is there
   // only while something is set aside to use.
   const round: RoundAction[] = [
-    { key: 'set-aside', label: 'Set aside', glyph: <PiggyBank size={20} aria-hidden />, run: () => setSettingAside(true) },
+    {
+      key: 'set-aside',
+      label: 'Set aside',
+      glyph: <PiggyBank size={20} aria-hidden />,
+      run: () => {
+        setAsideOn(undefined);
+        setSettingAside(true);
+      },
+    },
     { key: 'tag', label: 'Tag a purchase', glyph: <Tag size={20} aria-hidden />, run: () => setTagging(true) },
     ...(held ? [{ key: 'use', label: 'Use', glyph: <ShoppingBag size={20} aria-hidden />, run: () => setOpen('use') }] : []),
     { key: 'monthly', label: 'Monthly', glyph: <CalendarClock size={20} aria-hidden />, run: () => setOpen('monthly') },
@@ -210,16 +222,31 @@ export function GoalPage({ goalId }: { goalId: string }) {
       else next.add(key);
       return next;
     });
+  /*
+   * A tap on this phone's own set-aside line opens Set aside with the caret in that account's figure (owner C1, 14 Nov).
+   * Drawn at once, inside the tap: iOS raises the keyboard only for a focus made while the tap is being handled, and
+   * the sheet focuses the line as it is first drawn. Only an account Set aside lists can be typed in there; any other
+   * line keeps opening its page.
+   */
+  const settable = new Set(moneyHolders(accountRows).filter((account) => MONEY_SUBTYPES.includes(account.subtype)).map((account) => account.id));
+  const setAsideFrom = (link: GoalLinkRow) =>
+    link.kind === 'earmark' && link.owner === undefined && settable.has(link.accountId)
+      ? () =>
+          flushSync(() => {
+            setAsideOn(link.accountId);
+            setSettingAside(true);
+          })
+      : undefined;
   // One row per account (2026-11-14): a multicurrency account's currencies fold under its own row, opened by a tap.
   const fundingRows = (links: readonly GoalLinkRow[], group: string) =>
     fundingLines(links, accountRows, plan.currency).map((line) => {
-      if (line.type === 'link') return <FundingRow key={line.key} link={line.link} goalCurrency={plan.currency} icon={glyph(line.link.accountId, line.link.kind)} />;
+      if (line.type === 'link') return <FundingRow key={line.key} link={line.link} goalCurrency={plan.currency} icon={glyph(line.link.accountId, line.link.kind)} onSetAside={setAsideFrom(line.link)} />;
       const key = `${group}:${line.key}`;
       const isOpen = openAccounts.has(key);
       return (
         <Fragment key={line.key}>
           <FundingAccountRow line={line} goalCurrency={plan.currency} icon={glyph(line.accountId, 'account')} open={isOpen} onToggle={() => toggleAccount(key)} />
-          {isOpen && line.children.map((child, index) => <FundingCurrencyRow key={child.key} child={child} tree={{ last: index === line.children.length - 1 }} />)}
+          {isOpen && line.children.map((child, index) => <FundingCurrencyRow key={child.key} child={child} tree={{ last: index === line.children.length - 1 }} onSetAside={setAsideFrom(child.link)} />)}
         </Fragment>
       );
     });
@@ -230,7 +257,18 @@ export function GoalPage({ goalId }: { goalId: string }) {
       <ErrorBox error={summary.error ?? error} />
 
       {/* Still needed unclamped: an over-funded goal's take back reads no figure still needed (the bar clamps only for show). */}
-      {settingAside && <SetAsideSheet goal={plan.goal} earmarks={earmarks.data ?? []} neededMinor={card.targetMinor > 0 ? card.targetMinor - card.paidMinor - card.currentMinor : null} onDone={() => setSettingAside(false)} />}
+      {settingAside && (
+        <SetAsideSheet
+          goal={plan.goal}
+          earmarks={earmarks.data ?? []}
+          neededMinor={card.targetMinor > 0 ? card.targetMinor - card.paidMinor - card.currentMinor : null}
+          focusAccountId={asideOn}
+          onDone={() => {
+            setSettingAside(false);
+            setAsideOn(undefined);
+          }}
+        />
+      )}
 
       {tagging && (
         <TagPurchaseSheet
