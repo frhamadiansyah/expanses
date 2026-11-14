@@ -99,9 +99,9 @@ test('an event can be called done, and put back', async ({ page }) => {
   await addEvent(page, 'Lebaran', 'Holiday');
 
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
-  await page.getByRole('checkbox', { name: 'Done' }).click();
-  // The page no longer prints a Done chip: the settings switch says it, and the list below.
-  await expect(page.getByRole('checkbox', { name: 'Done' })).toBeChecked();
+  await page.getByTestId('settings-done').click();
+  // The page no longer prints a Done chip: the settings row says it, and the list below.
+  await expect(page.getByTestId('settings-done')).toHaveText('Reopen');
 
   // Done moves it under Past on the list, not out of the workspace.
   await page.goto('/events');
@@ -112,8 +112,8 @@ test('an event can be called done, and put back', async ({ page }) => {
   // Reopening puts it back among what is still running.
   await past.getByTestId('event-row').click();
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
-  await page.getByRole('checkbox', { name: 'Done' }).click();
-  await expect(page.getByRole('checkbox', { name: 'Done' })).not.toBeChecked();
+  await page.getByTestId('settings-done').click();
+  await expect(page.getByTestId('settings-done')).toHaveText('Mark as done');
   await page.goto('/events');
   const current = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Now and next' }) });
   await expect(current.getByTestId('event-row')).toContainText('Lebaran');

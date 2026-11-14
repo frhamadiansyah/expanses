@@ -820,7 +820,7 @@ test('an event kept without a plan draws the ring alone, and gets its plan back'
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Plan' }).click();
   await expect(page.getByRole('checkbox', { name: 'Plan' })).not.toBeChecked();
-  await page.getByRole('link', { name: 'Back to the event' }).click();
+  await page.getByRole('link', { name: 'Newborn', exact: true }).click();
   await expect(sheet.getByRole('button', { name: 'Against the plan' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'See the whole plan' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Plan what to pay' })).toHaveCount(0);
@@ -830,7 +830,7 @@ test('an event kept without a plan draws the ring alone, and gets its plan back'
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Plan' }).click();
   await expect(page.getByRole('checkbox', { name: 'Plan' })).toBeChecked();
-  await page.getByRole('link', { name: 'Back to the event' }).click();
+  await page.getByRole('link', { name: 'Newborn', exact: true }).click();
   await expect(sheet.getByRole('button', { name: 'Against the plan' })).toHaveCount(1);
 });
 
