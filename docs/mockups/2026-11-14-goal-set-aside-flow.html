@@ -1,0 +1,198 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Set aside flow</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --green:#34c759; --up:#1a7f37; --warn:#c93400; --red:#ff3b30; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 10px; max-width:1100px; line-height:1.45; }
+  ul.pain { margin:0 0 18px; padding-left:20px; color:#555; font-size:14px; line-height:1.5; max-width:1100px; }
+  h2 { font-size:18px; margin:30px 0 4px; } .lead { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; font-size:14px; }
+  .row { display:flex; gap:4px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:330px; } .cap { font-weight:700; margin:0 0 3px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:72px; }
+  .arrow { width:26px; align-self:center; text-align:center; font-size:22px; color:var(--tint); padding-top:60px; }
+  .phone { background:var(--ground); border-radius:28px; padding:14px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); min-height:560px; position:relative; overflow:hidden; }
+  .nav { display:flex; justify-content:space-between; align-items:center; margin:0 4px 10px; font-size:15px; } .nav .t { color:var(--tint); min-width:58px; } .nav .t:last-child { text-align:right; } .nav b { font-size:16px; }
+  .sheet { background:var(--ground); border-radius:14px 14px 0 0; margin:30px -12px -16px; padding:12px 12px 16px; box-shadow:0 -1px 6px rgba(0,0,0,.12); min-height:500px; }
+  .grab { width:36px; height:5px; border-radius:3px; background:#c7c7cc; margin:0 auto 10px; }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+  .hdr { display:flex; justify-content:space-between; font-size:12.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; margin:0 16px 6px; }
+  .r { display:flex; gap:10px; align-items:center; padding:9px 14px; white-space:nowrap; min-height:44px; } .r + .r { border-top:.5px solid var(--hair); }
+  .r.sub2 { padding-left:52px; min-height:40px; }
+  .ic { width:28px; height:28px; border-radius:7px; color:#fff; font-size:13px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .g { flex:1; min-width:0; } .a { font-size:15px; overflow:hidden; text-overflow:ellipsis; } .s { font-size:12px; color:var(--ink3); }
+  .val { font-size:15px; text-align:right; } .chev { color:#c7c7cc; } .chevd { color:#8e8e93; font-size:12px; margin-left:4px; }
+  .tint { color:var(--tint); } .warn { color:var(--warn); } .ok { color:var(--up); } .dim { color:var(--ink3); } .red { color:var(--red); }
+  .hero { background:#fff; border-radius:12px; padding:12px 14px; margin-bottom:12px; } .hero .k { font-size:12.5px; color:var(--ink3); } .hero .v { font-size:24px; font-weight:700; }
+  .meter { height:6px; border-radius:3px; background:#e5e5ea; overflow:hidden; margin:8px 0 4px; } .meter i { display:block; height:100%; background:var(--green); }
+  .big { text-align:center; padding:14px 14px 12px; }
+  .big .k { font-size:13px; color:var(--ink3); } .big .v { font-size:32px; font-weight:700; letter-spacing:-.5px; margin:2px 0; display:inline-flex; align-items:center; }
+  .caret { display:inline-block; width:2px; height:30px; background:var(--tint); margin-left:2px; animation:none; }
+  .big .free { font-size:14px; } .big .x { font-size:13px; color:var(--ink3); }
+  .chips { display:flex; gap:8px; justify-content:center; padding:0 14px 14px; }
+  .chip { white-space:nowrap; font-size:13px; color:var(--tint); border:1px solid #cfe2ff; background:#f0f6ff; border-radius:14px; padding:5px 12px; }
+  .pad { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; background:#d1d3d9; margin:0 -12px -16px; padding:8px 6px 18px; position:absolute; left:12px; right:12px; bottom:16px; }
+  .pad span { background:#fff; border-radius:6px; text-align:center; padding:9px 0; font-size:19px; box-shadow:0 1px 0 #898a8d; } .pad span.k2 { background:transparent; box-shadow:none; }
+  .toast { position:absolute; left:14px; right:14px; bottom:22px; background:#1c1c1e; color:#fff; border-radius:12px; padding:11px 14px; font-size:14px; display:flex; justify-content:space-between; gap:8px; }
+  .toast .u { color:#64d2ff; font-weight:600; }
+  .new { background:#eaf6ec; }
+  .tap { outline:2.5px solid var(--tint); outline-offset:-2.5px; border-radius:8px; }
+  .search { background:#e3e3e8; border-radius:10px; padding:7px 10px; color:var(--ink3); font-size:15px; margin-bottom:12px; }
+  .btnrow { text-align:center; padding:12px; }
+  .callout { font-size:12px; color:var(--tint); margin:-6px 4px 10px; }
+</style></head><body>
+<h1>Set aside, from the goal page: pick, then amount</h1>
+<p class="sub">What is awkward today, and what this flow fixes:</p>
+<ul class="pain">
+  <li>After picking an account, it is added as a row at the bottom of the form: scroll down to find it. <b>After:</b> picking opens the amount screen straight away, nothing to scroll.</li>
+  <li>How much is free hides behind ⓘ. <b>After:</b> free money is on the right of every account in the list, and again right above the amount.</li>
+  <li>Too much can be saved, leaving the account short. <b>After:</b> Save is blocked until the amount fits what is free.</li>
+  <li>The amount box needs a tap first. <b>After:</b> the amount screen opens with the number pad already up.</li>
+</ul>
+<p class="sub">Invented figures. Goal "Hajj 2030", target Rp 120.000.000. Mandiri Tabungan: Rp 6.500.000 free.</p>
+
+<h2>1 · Add money from a new account</h2>
+<p class="lead">Four steps, one sheet. The sheet slides from list to amount (‹ Back returns to the list); Save closes it and lands back on the goal.</p>
+<div class="row">
+  <div class="col"><p class="cap">① Goal page</p><p class="note">Funded by, one line per account. Last row: "＋ Set aside". Tap it.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Goals</span><b>Hajj 2030</b><span class="t">Edit</span></div>
+      <div class="hero"><div class="k">Saved</div><div class="v">Rp 76.740.000</div><div class="meter"><i style="width:64%"></i></div><div class="s">64% of Rp 120.000.000</div></div>
+      <div class="hdr"><span>Funded by</span><span>Rp 76.740.000</span></div>
+      <div class="panel">
+        <div class="r"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">BCA Valas <span class="chevd">▾</span></div></div><div class="val">≈ Rp 47.540.000</div></div>
+        <div class="r"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">Mandiri Tabungan</div></div><div class="val">Rp 15.000.000</div></div>
+        <div class="r"><div class="ic" style="background:#b8860b">🥇</div><div class="g"><div class="a">Gold 10 g</div></div><div class="val">Rp 14.200.000</div></div>
+        <div class="r tap"><div class="g"><div class="a tint">＋ Set aside</div></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="col"><p class="cap">② Pick where from</p><p class="note">Every account, free money on the right. A multicurrency account lists its currencies under it. Nothing free: greyed at the bottom. Tap one.</p>
+    <div class="phone" style="padding-top:8px">
+      <div class="sheet" style="margin-top:0">
+        <div class="grab"></div>
+        <div class="nav"><span class="t">Cancel</span><b>Set aside from</b><span class="t"></span></div>
+        <div class="search">🔍 Search accounts</div>
+        <div class="hdr"><span>Account</span><span>Free</span></div>
+        <div class="panel">
+          <div class="r tap"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">Mandiri Tabungan</div></div><div class="val ok">Rp 6.500.000</div></div>
+          <div class="r"><div class="ic" style="background:#00a651">💳</div><div class="g"><div class="a">GoPay</div></div><div class="val ok">Rp 420.000</div></div>
+          <div class="r"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">BCA Valas</div></div></div>
+          <div class="r sub2"><div class="g"><div class="a">USD</div></div><div class="val ok">US$ 340,00</div></div>
+          <div class="r sub2"><div class="g"><div class="a">IDR</div></div><div class="val ok">Rp 2.100.000</div></div>
+        </div>
+        <div class="hdr"><span>Nothing free</span></div>
+        <div class="panel">
+          <div class="r"><div class="ic" style="background:#aab">🏦</div><div class="g"><div class="a dim">BCA Valas SAR</div></div><div class="val dim">SAR 0</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="col"><p class="cap">③ Amount</p><p class="note">Opens with the pad up, no tap needed. Free is right above. "All free" fills it (never more than the goal still needs). Live: what stays free, what the goal still needs.</p>
+    <div class="phone" style="padding-top:8px">
+      <div class="sheet" style="margin-top:0">
+        <div class="grab"></div>
+        <div class="nav"><span class="t">‹ Back</span><b>Mandiri Tabungan</b><span class="t" style="font-weight:600">Save</span></div>
+        <div class="panel">
+          <div class="big"><div class="k">Set aside for Hajj 2030</div><div class="v">Rp 5.000.000<span class="caret"></span></div><div class="free ok">Rp 6.500.000 free here</div><div class="x">Already in goal: Rp 15.000.000</div></div>
+          <div class="chips"><span class="chip">All free</span><span class="chip">Half</span></div>
+        </div>
+        <div class="panel">
+          <div class="r"><div class="g"><div class="a">Stays free</div></div><div class="val">Rp 1.500.000</div></div>
+          <div class="r"><div class="g"><div class="a">Hajj 2030 still needs</div></div><div class="val">Rp 38.260.000</div></div>
+        </div>
+      </div>
+      <div class="pad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span class="k2">,</span><span>0</span><span class="k2">⌫</span></div>
+    </div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="col"><p class="cap">④ Back on the goal</p><p class="note">Sheet closes. The row is in Funded by (highlighted for a moment), the total and bar move. A bar at the bottom offers Undo.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Goals</span><b>Hajj 2030</b><span class="t">Edit</span></div>
+      <div class="hero"><div class="k">Saved</div><div class="v">Rp 81.740.000</div><div class="meter"><i style="width:68%"></i></div><div class="s">68% of Rp 120.000.000</div></div>
+      <div class="hdr"><span>Funded by</span><span>Rp 81.740.000</span></div>
+      <div class="panel">
+        <div class="r"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">BCA Valas <span class="chevd">▾</span></div></div><div class="val">≈ Rp 47.540.000</div></div>
+        <div class="r new"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">Mandiri Tabungan</div></div><div class="val">Rp 20.000.000</div></div>
+        <div class="r"><div class="ic" style="background:#b8860b">🥇</div><div class="g"><div class="a">Gold 10 g</div></div><div class="val">Rp 14.200.000</div></div>
+        <div class="r"><div class="g"><div class="a tint">＋ Set aside</div></div></div>
+      </div>
+      <div class="toast"><span>Rp 5.000.000 set aside · Mandiri</span><span class="u">Undo</span></div>
+    </div>
+  </div>
+</div>
+<p class="sub" style="margin-top:12px">Mandiri already had Rp 15.000.000 in this goal, so picking it again <b>adds</b> to it: the screen says "Already in goal: Rp 15.000.000" under the free line. A new account simply gets a new row.</p>
+
+<h2>2 · Change or take money back</h2>
+<p class="lead">Tap a set-aside row in Funded by: the same amount screen opens, showing what is in the goal now. Type the new total, or take it all back. (A tagged purchase, like Gold, still opens the purchase.)</p>
+<div class="row">
+  <div class="col"><p class="cap">① Tap the row</p><p class="note">Any set-aside account in Funded by.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Goals</span><b>Hajj 2030</b><span class="t">Edit</span></div>
+      <div class="hdr"><span>Funded by</span><span>Rp 81.740.000</span></div>
+      <div class="panel">
+        <div class="r"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">BCA Valas <span class="chevd">▾</span></div></div><div class="val">≈ Rp 47.540.000</div></div>
+        <div class="r tap"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">Mandiri Tabungan</div></div><div class="val">Rp 20.000.000</div></div>
+        <div class="r"><div class="ic" style="background:#b8860b">🥇</div><div class="g"><div class="a">Gold 10 g</div></div><div class="val">Rp 14.200.000</div></div>
+        <div class="r"><div class="g"><div class="a tint">＋ Set aside</div></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="col"><p class="cap">② Amount, to change</p><p class="note">Same screen, the figure is the total in this goal. Free counts what is already here. "Take all back" (red) empties it; Save then asks once.</p>
+    <div class="phone" style="padding-top:8px">
+      <div class="sheet" style="margin-top:0">
+        <div class="grab"></div>
+        <div class="nav"><span class="t">Cancel</span><b>Mandiri Tabungan</b><span class="t" style="font-weight:600">Save</span></div>
+        <div class="panel">
+          <div class="big"><div class="k">In Hajj 2030</div><div class="v">Rp 20.000.000<span class="caret"></span></div><div class="free ok">Up to Rp 21.500.000 can be here</div></div>
+          <div class="chips"><span class="chip">All free</span><span class="chip">Half</span><span class="chip" style="color:var(--red);border-color:#ffd0cd;background:#fff2f1">Take all back</span></div>
+        </div>
+        <div class="panel">
+          <div class="r"><div class="g"><div class="a">Stays free</div></div><div class="val">Rp 1.500.000</div></div>
+          <div class="r"><div class="g"><div class="a">Hajj 2030 still needs</div></div><div class="val">Rp 38.260.000</div></div>
+        </div>
+      </div>
+      <div class="pad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span class="k2">,</span><span>0</span><span class="k2">⌫</span></div>
+    </div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="col"><p class="cap">Typing too much</p><p class="note"><b>Save is blocked</b> (grey, does nothing) while the amount is more than is free. Line turns orange; one button puts in the most possible.</p>
+    <div class="phone" style="padding-top:8px">
+      <div class="sheet" style="margin-top:0">
+        <div class="grab"></div>
+        <div class="nav"><span class="t">Cancel</span><b>Mandiri Tabungan</b><span class="t" style="font-weight:600;color:#c7c7cc">Save</span></div>
+        <div class="panel">
+          <div class="big"><div class="k">In Hajj 2030</div><div class="v">Rp 25.000.000<span class="caret"></span></div><div class="free warn">Only Rp 21.500.000 can be here</div></div>
+          <div class="chips"><span class="chip">Use 21.500.000</span></div>
+        </div>
+        <div class="panel">
+          <div class="r"><div class="g"><div class="a">Stays free</div></div><div class="val warn">− Rp 3.500.000</div></div>
+        </div>
+      </div>
+      <div class="pad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span class="k2">,</span><span>0</span><span class="k2">⌫</span></div>
+    </div>
+  </div>
+</div>
+
+<h2>3 · Foreign currency</h2>
+<p class="lead">Picking BCA Valas · USD: the amount is typed in dollars, with the rupiah it adds to the goal shown small under it.</p>
+<div class="row">
+  <div class="col"><p class="cap">Amount in US$</p><p class="note">Free in dollars. "≈ Rp" under the number, at today's rate.</p>
+    <div class="phone" style="padding-top:8px">
+      <div class="sheet" style="margin-top:0">
+        <div class="grab"></div>
+        <div class="nav"><span class="t">‹ Back</span><b>BCA Valas USD</b><span class="t" style="font-weight:600">Save</span></div>
+        <div class="panel">
+          <div class="big"><div class="k">Set aside for Hajj 2030</div><div class="v">US$ 200,00<span class="caret"></span></div><div class="x">≈ Rp 3.180.000</div><div class="free ok">US$ 340,00 free here</div></div>
+          <div class="chips"><span class="chip">All free</span><span class="chip">Half</span></div>
+        </div>
+        <div class="panel">
+          <div class="r"><div class="g"><div class="a">Stays free</div></div><div class="val">US$ 140,00</div></div>
+          <div class="r"><div class="g"><div class="a">Hajj 2030 still needs</div></div><div class="val">Rp 40.080.000</div></div>
+        </div>
+      </div>
+      <div class="pad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span class="k2">,</span><span>0</span><span class="k2">⌫</span></div>
+    </div>
+  </div>
+</div>
+</body></html>
