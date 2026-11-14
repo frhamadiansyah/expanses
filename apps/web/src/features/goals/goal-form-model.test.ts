@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formatMinor } from '@expanses/core';
-import { addableAccounts, addedFromEarmarks, assumptionsSummary, canSaveGoal, editBaseOf, isNoAmount, keepsCalculatorWorking, onlyPaymentName, setAsideSummary, setAsideWrites } from './goal-form-model';
+import { assumptionsSummary, canSaveGoal, editBaseOf, isNoAmount, keepsCalculatorWorking, onlyPaymentName, setAsideSummary, setAsideWrites } from './goal-form-model';
 
 describe('onlyPaymentName', () => {
   it('a new goal saves its only payment under the goal name', () => {
@@ -26,30 +26,6 @@ describe('assumptionsSummary', () => {
   it('reads growth then return', () => {
     expect(assumptionsSummary('5', '4')).toBe('Growth 5% · Return 4%');
     expect(assumptionsSummary('', '4,5')).toBe('Growth 0% · Return 4,5%');
-  });
-});
-
-describe('addableAccounts', () => {
-  it('leaves out the accounts already added', () => {
-    const eligible = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
-    expect(addableAccounts(eligible, ['b'])).toEqual([{ id: 'a' }, { id: 'c' }]);
-    expect(addableAccounts(eligible, ['a', 'b', 'c'])).toEqual([]);
-    expect(addableAccounts([], [])).toEqual([]);
-  });
-});
-
-describe('addedFromEarmarks', () => {
-  const earmarks = [
-    { goalId: 'g1', accountId: 'a', amountMinor: 5 },
-    { goalId: 'g2', accountId: 'b', amountMinor: 5 },
-    { goalId: 'g1', accountId: 'c', amountMinor: 0 },
-    { goalId: 'g1', accountId: 'd', amountMinor: 9 },
-  ];
-  it("lists this goal's held accounts only", () => {
-    expect(addedFromEarmarks(earmarks, 'g1')).toEqual(['a', 'd']);
-  });
-  it('is empty for a goal not saved yet', () => {
-    expect(addedFromEarmarks(earmarks, undefined)).toEqual([]);
   });
 });
 

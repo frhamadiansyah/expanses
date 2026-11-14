@@ -76,9 +76,14 @@ export function fundNavText(priceMicro: number, currency: string): string {
 /**
  * A money amount as it is being typed, grouped in id-ID as it goes: digits, a dot every three, and — for a currency
  * with cents — one decimal comma with no more digits after it than the currency has. "1000000" is "1.000.000".
+ * In a currency without cents, a trailing ",00" or ",0" is zero cents and is dropped.
  */
-export function groupTypedAmount(typed: string, currency: string): string {
+export function groupTypedAmount(raw: string, currency: string): string {
   const { exponent } = currencyInfo(currency);
+  // A currency with no cents: a figure pasted with its zero cents ("50.000,00") keeps its whole units, rather than
+  // the noughts joining them (5.000.000). Only noughts, one or two of them, after the last comma: "50,000" pasted
+  // with an English thousands comma is still fifty thousand.
+  const typed = exponent === 0 ? raw.replace(/,0{1,2}$/, '') : raw;
   const comma = exponent > 0 ? typed.indexOf(',') : -1;
   const whole = (comma >= 0 ? typed.slice(0, comma) : typed).replace(/\D/g, '').replace(/^0+(?=\d)/, '');
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, '.');

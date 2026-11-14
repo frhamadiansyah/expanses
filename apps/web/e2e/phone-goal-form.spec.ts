@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { addMoneyAccount, addSetAsideRow, closeSetAsideRows, goalCard, goalRow } from './set-aside';
+import { addMoneyAccount, addSetAsideRow, closeSetAsideRows, goalCard, goalRow, setAsideBar } from './set-aside';
 import { addPayment, openGoalForm } from './goals';
 
 /*
  * The goal form as a page of the kit's own rows: ‹ at the left, ✓ at the right, the kind a row on the page, and
- * Funding only the accounts added.
+ * Funding every account that can hold the goal's money, typed in place.
  */
 
 test('a goal is made from the + on a full page: kind, name, payments, an account row, ✓', async ({ page }) => {
@@ -29,10 +29,11 @@ test('a goal is made from the + on a full page: kind, name, payments, an account
   await expect(page.getByTestId('payment-row').first()).toContainText('Lombok trip');
   await expect(page.getByTestId('payment-row').nth(1)).toContainText('Hotel');
 
-  // Funding is one row on the form; the accounts are behind it, and nothing is listed until one is added.
+  // Funding is one row on the form; the accounts are behind it, each already listed with what it has free.
   await expect(page.getByRole('button', { name: /^Funding/ })).toContainText('None');
   await expect(page.getByTestId('set-aside-row')).toHaveCount(0);
   await addSetAsideRow(page, 'Jenius');
+  await expect(page.getByTestId('set-aside-row')).toHaveCount(1);
   await page.getByLabel('Jenius', { exact: true }).fill('1500000');
   await closeSetAsideRows(page);
   await expect(page.getByRole('button', { name: /^Funding/ })).toContainText('1.500.000');
@@ -45,38 +46,9 @@ test('a goal is made from the + on a full page: kind, name, payments, an account
   await expect(card.getByTestId('goal-link').filter({ hasText: 'Jenius' }).first()).toBeVisible();
 });
 
-test('set aside from a saved goal adds an account through the sheet, and a row can be taken away', async ({ page }) => {
-  await addMoneyAccount(page, 'Jenius', 'savings', '20000000');
+test('set aside from a saved goal: every account one line, typed in place, with the bar over the keyboard', async ({ page }) => {
   await addMoneyAccount(page, 'BCA', 'savings', '10000000');
-  await page.goto('/goals');
-  await openGoalForm(page, 'Wedding');
-  await page.getByLabel(/Cost today/).first().fill('8000000');
-  await page.getByRole('button', { name: 'Save goal' }).click();
-  const card = await goalCard(page, 'Wedding');
-
-  await card.getByRole('button', { name: 'Set aside', exact: true }).click();
-  const sheet = page.getByRole('dialog', { name: 'Set aside' });
-  await sheet.getByRole('button', { name: 'Set aside', exact: true }).click();
-  const chooser = page.getByRole('dialog', { name: 'Add an account' });
-  await chooser.getByRole('button', { name: 'Jenius', exact: true }).click();
-  await sheet.getByLabel('Jenius', { exact: true }).fill('3000000');
-  // An account already added is not offered again.
-  await sheet.getByRole('button', { name: 'Set aside', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'Add an account' }).getByRole('button', { name: 'Jenius', exact: true })).toHaveCount(0);
-  await page.getByRole('dialog', { name: 'Add an account' }).getByRole('button', { name: 'BCA', exact: true }).click();
-  await sheet.getByLabel('BCA', { exact: true }).fill('1000000');
-  await sheet.getByRole('button', { name: 'Remove BCA' }).click();
-  await expect(sheet.getByLabel('BCA', { exact: true })).toHaveCount(0);
-  await sheet.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(sheet).toHaveCount(0);
-
-  await expect(card.getByTestId('goal-link').filter({ hasText: 'Jenius' }).first()).toBeVisible();
-  await expect(card.getByTestId('goal-link').filter({ hasText: 'BCA' })).toHaveCount(0);
-});
-
-test('the Add an account sheet searches, groups by type, shows the room and lists an empty account as not available', async ({ page }) => {
   await addMoneyAccount(page, 'Jenius', 'savings', '20000000');
-  await addMoneyAccount(page, 'Dompet', 'cash', '500000');
   await addMoneyAccount(page, 'Kosong', 'savings', '0');
   await page.goto('/goals');
   await openGoalForm(page, 'Wedding');
@@ -85,24 +57,58 @@ test('the Add an account sheet searches, groups by type, shows the room and list
   const card = await goalCard(page, 'Wedding');
 
   await card.getByRole('button', { name: 'Set aside', exact: true }).click();
-  await page.getByRole('dialog', { name: 'Set aside' }).getByRole('button', { name: 'Set aside', exact: true }).click();
-  const chooser = page.getByRole('dialog', { name: 'Add an account' });
-  // Grouped by type, each row with what can still be set aside from it and no "Free".
-  await expect(chooser.getByText('Savings', { exact: true })).toBeVisible();
-  await expect(chooser.getByText('Cash and e-money', { exact: true })).toBeVisible();
-  await expect(chooser.getByRole('button', { name: 'Jenius', exact: true })).toContainText(/20\.000\.000/);
-  await expect(chooser.getByRole('button', { name: 'Dompet', exact: true })).toContainText(/500\.000/);
-  await expect(chooser).not.toContainText('Free');
-  // Nothing available: last, greyed, not tappable.
-  await expect(chooser.getByText('Not available', { exact: true }).first()).toBeVisible();
-  const empty = chooser.getByTestId('not-available-row');
-  await expect(empty).toHaveCount(1);
-  await expect(empty).toContainText('Kosong');
-  await expect(empty.getByRole('button')).toHaveCount(0);
+  const sheet = page.getByRole('dialog', { name: 'Set aside' });
+  // Nothing in the goal yet: one group, Can add, most free first, each with what it has free in grey. No chooser,
+  // and an account with nothing free is not listed.
+  await expect(sheet.getByText('Can add', { exact: true })).toBeVisible();
+  await expect(sheet.getByText(/^In Wedding$/)).toHaveCount(0);
+  await expect(sheet.getByTestId('set-aside-row')).toHaveCount(2);
+  await expect(sheet.getByTestId('set-aside-row').first()).toContainText('Jenius');
+  const jenius = sheet.getByLabel('Jenius', { exact: true });
+  const bca = sheet.getByLabel('BCA', { exact: true });
+  await expect(jenius).toHaveAttribute('placeholder', /^Rp.20\.000\.000$/);
+  await expect(bca).toHaveAttribute('placeholder', /^Rp.10\.000\.000$/);
+  await expect(sheet.getByLabel('Kosong', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Add an account' })).toHaveCount(0);
 
-  // The search narrows by name, in any case.
-  await chooser.getByRole('searchbox').fill('dom');
-  await expect(chooser.getByRole('button', { name: 'Dompet', exact: true })).toBeVisible();
-  await expect(chooser.getByRole('button', { name: 'Jenius', exact: true })).toHaveCount(0);
-  await expect(empty).toHaveCount(0);
+  // A tap on the line puts the caret in its figure, and the bar offers what fills the goal (less than all that is
+  // free), half of it, and what the goal still needs.
+  await sheet.getByTestId('set-aside-row').filter({ hasText: 'Jenius' }).click();
+  await expect(jenius).toBeFocused();
+  const bar = setAsideBar(page);
+  await expect(bar.getByRole('option')).toHaveCount(3);
+  await expect(bar.getByRole('option').first()).toHaveAccessibleName(/^Fills goal, Rp/);
+  await expect(bar.getByRole('option').nth(1)).toHaveAccessibleName(/^Half, Rp/);
+  await expect(bar.getByRole('option').nth(2)).toHaveAccessibleName(/still needed$/);
+  await jenius.pressSequentially('3000000');
+  await expect(jenius).toHaveValue('3.000.000');
+
+  // Too much on BCA: warn, Save waits, and the bar's one slot puts in what is free.
+  await bca.click();
+  await bca.pressSequentially('12000000');
+  await expect(sheet.getByTestId('set-aside-row').filter({ hasText: 'BCA' })).toHaveAttribute('data-over', 'true');
+  await expect(sheet.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  await bar.getByRole('option', { name: /^Use the Rp.10\.000\.000 free$/ }).click();
+  await expect(bca).toHaveValue('10.000.000');
+  await expect(sheet.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
+  // Emptied, BCA holds nothing.
+  await bca.clear();
+  await sheet.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(sheet).toHaveCount(0);
+
+  await expect(card.getByTestId('goal-link').filter({ hasText: 'Jenius' }).first()).toContainText('3.000.000');
+  await expect(card.getByTestId('goal-link').filter({ hasText: 'BCA' })).toHaveCount(0);
+
+  // Opened again: Jenius is in the goal, in ink, and its bar offers the most possible and taking it back.
+  await card.getByRole('button', { name: 'Set aside', exact: true }).click();
+  const again = page.getByRole('dialog', { name: 'Set aside' });
+  await expect(again.getByText(/^In Wedding$/)).toBeVisible();
+  await expect(again.getByLabel('Jenius', { exact: true })).toHaveValue('3.000.000');
+  await again.getByLabel('Jenius', { exact: true }).click();
+  await expect(setAsideBar(page).getByRole('option').first()).toHaveAccessibleName(/^Most possible, Rp.20\.000\.000$/);
+  await setAsideBar(page).getByRole('option', { name: 'Take back' }).click();
+  await expect(again.getByLabel('Jenius', { exact: true })).toHaveValue('0');
+  await again.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(again).toHaveCount(0);
+  await expect(card.getByTestId('goal-link').filter({ hasText: 'Jenius' })).toHaveCount(0);
 });

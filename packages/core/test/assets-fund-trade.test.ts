@@ -69,4 +69,14 @@ describe('what else a fund’s sheet needs', () => {
     expect(groupTypedAmount('1234,567', 'USD')).toBe('1.234,56');
     expect(groupTypedAmount('1234,', 'USD')).toBe('1.234,');
   });
+
+  it('drops zero cents pasted into a currency without cents, and keeps them in one with cents', () => {
+    expect(groupTypedAmount('50.000,00', 'IDR')).toBe('50.000');
+    expect(groupTypedAmount('50.000,0', 'IDR')).toBe('50.000');
+    expect(groupTypedAmount('50000,00', 'IDR')).toBe('50.000');
+    // An English thousands comma is three digits, not zero cents: still fifty thousand.
+    expect(groupTypedAmount('50,000', 'IDR')).toBe('50.000');
+    expect(groupTypedAmount('50.000,00', 'USD')).toBe('50.000,00');
+    expect(groupTypedAmount('50.000,5', 'USD')).toBe('50.000,5');
+  });
 });

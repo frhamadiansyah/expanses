@@ -229,7 +229,8 @@ export function GoalPage({ goalId }: { goalId: string }) {
       <PushedTitle title={card.name} back="Goals" onBack={goBack} actions={actions} />
       <ErrorBox error={summary.error ?? error} />
 
-      {settingAside && <SetAsideSheet goal={plan.goal} earmarks={earmarks.data ?? []} onDone={() => setSettingAside(false)} />}
+      {/* Still needed unclamped: an over-funded goal's take back reads no figure still needed (the bar clamps only for show). */}
+      {settingAside && <SetAsideSheet goal={plan.goal} earmarks={earmarks.data ?? []} neededMinor={card.targetMinor > 0 ? card.targetMinor - card.paidMinor - card.currentMinor : null} onDone={() => setSettingAside(false)} />}
 
       {tagging && (
         <TagPurchaseSheet
