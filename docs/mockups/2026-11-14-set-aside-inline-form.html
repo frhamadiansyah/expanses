@@ -1,0 +1,156 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Set aside in the list</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --ph:#c7c7cc; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --green:#34c759; --up:#1a7f37; --warn:#c93400; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 10px; max-width:1100px; line-height:1.45; }
+  h2 { font-size:18px; margin:30px 0 4px; } .lead { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; font-size:14px; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; color:#fff; background:var(--tint); border-radius:4px; padding:1px 6px; margin-left:6px; vertical-align:2px; }
+  .row { display:flex; gap:22px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:330px; } .cap { font-weight:700; margin:0 0 3px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:54px; }
+  .phone { background:var(--ground); border-radius:28px; padding:8px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); height:640px; position:relative; overflow:hidden; }
+  .grab { width:36px; height:5px; border-radius:3px; background:#c7c7cc; margin:0 auto 10px; }
+  .nav { display:flex; justify-content:space-between; align-items:center; margin:0 4px 12px; font-size:15px; } .nav .t { color:var(--tint); min-width:58px; } .nav .t:last-child { text-align:right; font-weight:600; } .nav .off { color:#c7c7cc !important; } .nav b { font-size:16px; }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+  .hdr { display:flex; justify-content:space-between; font-size:12.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; margin:0 16px 6px; }
+  .r { display:flex; gap:10px; align-items:center; padding:9px 14px; white-space:nowrap; min-height:44px; } .r + .r { border-top:.5px solid var(--hair); }
+  .r.sub2 { padding-left:52px; min-height:42px; }
+  .ic { width:28px; height:28px; border-radius:7px; color:#fff; font-size:13px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .g { flex:1; min-width:0; } .a { font-size:15px; overflow:hidden; text-overflow:ellipsis; }
+  .v { font-size:15px; text-align:right; } .v.ph { color:var(--ph); }
+  .warn { color:var(--warn) !important; } .tint { color:var(--tint); } .dim { color:var(--ink3); }
+  .caret { display:inline-block; width:2px; height:18px; background:var(--tint); margin-left:1px; vertical-align:-3px; }
+  .kb { position:absolute; left:0; right:0; bottom:0; background:#d1d3d9; }
+  .bar { display:flex; background:#d1d3d9; border-bottom:.5px solid #b9bbc1; height:44px; align-items:stretch; }
+  .bar span { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:14px; color:#000; white-space:nowrap; line-height:1.15; }
+  .bar span + span { border-left:.5px solid #a9abb1; margin:8px 0; }
+  .bar span small { font-size:11px; color:#5c5e66; }
+  .bar2 { display:flex; align-items:center; justify-content:space-between; background:#f7f7f9; border-top:.5px solid #c6c6c8; height:44px; padding:0 12px; font-size:14px; white-space:nowrap; }
+  .bar2 .b { color:var(--tint); font-weight:600; }
+  .pad { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; padding:8px 6px 18px; }
+  .pad span { background:#fff; border-radius:6px; text-align:center; padding:9px 0; font-size:19px; box-shadow:0 1px 0 #898a8d; } .pad span.k2 { background:transparent; box-shadow:none; }
+  .callout { font-size:12px; color:var(--tint); margin:-4px 6px 10px; }
+</style></head><body>
+<h1>Set aside: typed in the list, like a form</h1>
+<p class="sub">One sheet, one line per account, no boxes and no second lines. Each row's right side is its amount field (like "Amount" in Add transaction): empty rows show what is free in light grey, as a hint. Tap a row: cursor goes there, the number pad comes up, and <b>the bar above the number pad shows what is free</b>, tap it to fill. Save is blocked while any amount is more than is free. Invented figures; goal "Hajj 2030", Rp 43.260.000 still needed.</p>
+
+<h2>Flow</h2>
+<div class="row">
+  <div class="col"><p class="cap">① Sheet opens</p><p class="note">Every account, one line. Amount already in the goal: black. Empty: what is free, light grey. Nothing free: not listed.</p>
+    <div class="phone"><div class="grab"></div>
+      <div class="nav"><span class="t">Cancel</span><b>Set aside</b><span class="t">Save</span></div>
+      <div class="hdr"><span>For Hajj 2030</span></div>
+      <div class="panel">
+        <div class="r"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">Mandiri Tabungan</div></div><div class="v">Rp 15.000.000</div></div>
+        <div class="r"><div class="ic" style="background:#00a651">💳</div><div class="g"><div class="a">GoPay</div></div><div class="v ph">420.000 free</div></div>
+        <div class="r"><div class="ic" style="background:#7b3fe4">🏦</div><div class="g"><div class="a">Jago</div></div><div class="v ph">2.750.000 free</div></div>
+        <div class="r"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">BCA Valas</div></div></div>
+        <div class="r sub2"><div class="g"><div class="a">USD</div></div><div class="v ph">US$ 340,00 free</div></div>
+        <div class="r sub2"><div class="g"><div class="a">IDR</div></div><div class="v ph">2.100.000 free</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">② Tap Jago</p><p class="note">The grey hint goes, cursor in its place. Above the pad: what is free (tap = fill all), Half, and what the goal still needs.</p>
+    <div class="phone"><div class="grab"></div>
+      <div class="nav"><span class="t">Cancel</span><b>Set aside</b><span class="t">Save</span></div>
+      <div class="hdr"><span>For Hajj 2030</span></div>
+      <div class="panel">
+        <div class="r"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">Mandiri Tabungan</div></div><div class="v">Rp 15.000.000</div></div>
+        <div class="r"><div class="ic" style="background:#00a651">💳</div><div class="g"><div class="a">GoPay</div></div><div class="v ph">420.000 free</div></div>
+        <div class="r"><div class="ic" style="background:#7b3fe4">🏦</div><div class="g"><div class="a tint">Jago</div></div><div class="v">Rp <span class="caret"></span></div></div>
+        <div class="r"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">BCA Valas</div></div></div>
+        <div class="r sub2"><div class="g"><div class="a">USD</div></div><div class="v ph">US$ 340,00 free</div></div>
+        <div class="r sub2"><div class="g"><div class="a">IDR</div></div><div class="v ph">2.100.000 free</div></div>
+      </div>
+      <div class="kb">
+        <div class="bar"><span>Rp 2.750.000<small>All free</small></span><span>Rp 1.375.000<small>Half</small></span><span class="dim" style="color:#5c5e66">Rp 43.260.000<small>still needed</small></span></div>
+        <div class="pad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span class="k2">,</span><span>0</span><span class="k2">⌫</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">③ Tapped "All free"</p><p class="note">Amount filled. "Still needed" drops as it is typed. Tap another row to go on, or Save.</p>
+    <div class="phone"><div class="grab"></div>
+      <div class="nav"><span class="t">Cancel</span><b>Set aside</b><span class="t">Save</span></div>
+      <div class="hdr"><span>For Hajj 2030</span></div>
+      <div class="panel">
+        <div class="r"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">Mandiri Tabungan</div></div><div class="v">Rp 15.000.000</div></div>
+        <div class="r"><div class="ic" style="background:#00a651">💳</div><div class="g"><div class="a">GoPay</div></div><div class="v ph">420.000 free</div></div>
+        <div class="r"><div class="ic" style="background:#7b3fe4">🏦</div><div class="g"><div class="a tint">Jago</div></div><div class="v">Rp 2.750.000<span class="caret"></span></div></div>
+        <div class="r"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">BCA Valas</div></div></div>
+        <div class="r sub2"><div class="g"><div class="a">USD</div></div><div class="v ph">US$ 340,00 free</div></div>
+        <div class="r sub2"><div class="g"><div class="a">IDR</div></div><div class="v ph">2.100.000 free</div></div>
+      </div>
+      <div class="kb">
+        <div class="bar"><span>Rp 2.750.000<small>All free</small></span><span>Rp 1.375.000<small>Half</small></span><span style="color:#5c5e66">Rp 40.510.000<small>still needed</small></span></div>
+        <div class="pad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span class="k2">,</span><span>0</span><span class="k2">⌫</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>Too much, change, take back</h2>
+<div class="row">
+  <div class="col"><p class="cap">Typing too much</p><p class="note">Amount orange, the bar says so in orange, <b>Save blocked</b>. Tap the bar to put in the most possible.</p>
+    <div class="phone"><div class="grab"></div>
+      <div class="nav"><span class="t">Cancel</span><b>Set aside</b><span class="t off">Save</span></div>
+      <div class="hdr"><span>For Hajj 2030</span></div>
+      <div class="panel">
+        <div class="r"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">Mandiri Tabungan</div></div><div class="v">Rp 15.000.000</div></div>
+        <div class="r"><div class="ic" style="background:#00a651">💳</div><div class="g"><div class="a">GoPay</div></div><div class="v ph">420.000 free</div></div>
+        <div class="r"><div class="ic" style="background:#7b3fe4">🏦</div><div class="g"><div class="a tint">Jago</div></div><div class="v warn">Rp 4.000.000<span class="caret"></span></div></div>
+        <div class="r"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">BCA Valas</div></div></div>
+        <div class="r sub2"><div class="g"><div class="a">USD</div></div><div class="v ph">US$ 340,00 free</div></div>
+        <div class="r sub2"><div class="g"><div class="a">IDR</div></div><div class="v ph">2.100.000 free</div></div>
+      </div>
+      <div class="kb">
+        <div class="bar"><span class="warn">Only Rp 2.750.000 free<small class="warn">tap to use it</small></span></div>
+        <div class="pad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span class="k2">,</span><span>0</span><span class="k2">⌫</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">Change one already in</p><p class="note">Tap Mandiri: its amount is the total in this goal. The bar shows the most it can be (what is in + what is free).</p>
+    <div class="phone"><div class="grab"></div>
+      <div class="nav"><span class="t">Cancel</span><b>Set aside</b><span class="t">Save</span></div>
+      <div class="hdr"><span>For Hajj 2030</span></div>
+      <div class="panel">
+        <div class="r"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a tint">Mandiri Tabungan</div></div><div class="v">Rp 15.000.000<span class="caret"></span></div></div>
+        <div class="r"><div class="ic" style="background:#00a651">💳</div><div class="g"><div class="a">GoPay</div></div><div class="v ph">420.000 free</div></div>
+        <div class="r"><div class="ic" style="background:#7b3fe4">🏦</div><div class="g"><div class="a">Jago</div></div><div class="v ph">2.750.000 free</div></div>
+        <div class="r"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">BCA Valas</div></div></div>
+        <div class="r sub2"><div class="g"><div class="a">USD</div></div><div class="v ph">US$ 340,00 free</div></div>
+        <div class="r sub2"><div class="g"><div class="a">IDR</div></div><div class="v ph">2.100.000 free</div></div>
+      </div>
+      <div class="kb">
+        <div class="bar"><span>Rp 21.500.000<small>Most possible</small></span><span>Rp 0<small>Take back</small></span><span style="color:#5c5e66">Rp 43.260.000<small>still needed</small></span></div>
+        <div class="pad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span class="k2">,</span><span>0</span><span class="k2">⌫</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="col"><p class="cap">Foreign currency</p><p class="note">Typed in the account's money. "≈ Rp" only because this goal is in rupiah; a USD goal would not show it.</p>
+    <div class="phone"><div class="grab"></div>
+      <div class="nav"><span class="t">Cancel</span><b>Set aside</b><span class="t">Save</span></div>
+      <div class="hdr"><span>For Hajj 2030</span></div>
+      <div class="panel">
+        <div class="r"><div class="ic" style="background:#7b3fe4">🏦</div><div class="g"><div class="a">Jago</div></div><div class="v ph">2.750.000 free</div></div>
+        <div class="r"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">BCA Valas</div></div></div>
+        <div class="r sub2"><div class="g"><div class="a tint">USD</div></div><div class="v">US$ 200<span class="caret"></span></div></div>
+        <div class="r sub2"><div class="g"><div class="a">IDR</div></div><div class="v ph">2.100.000 free</div></div>
+      </div>
+      <div class="kb">
+        <div class="bar"><span>US$ 340,00<small>All free</small></span><span>US$ 170,00<small>Half</small></span><span style="color:#5c5e66">≈ Rp 3.180.000<small>this adds</small></span></div>
+        <div class="pad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span class="k2">,</span><span>0</span><span class="k2">⌫</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>Bar style: two looks</h2>
+<p class="lead">Left: three slots like the iPhone's word suggestions (shown above). Right: one plain line with a button.</p>
+<div class="row">
+  <div class="col"><p class="cap">Three slots</p><p class="note">Like word suggestions. Each slot taps to fill (the last one is information only).</p>
+    <div class="bar" style="border-radius:10px"><span>Rp 2.750.000<small>All free</small></span><span>Rp 1.375.000<small>Half</small></span><span style="color:#5c5e66">Rp 43.260.000<small>still needed</small></span></div>
+  </div>
+  <div class="col"><p class="cap">One line</p><p class="note">Free on the left, "Use all" on the right.</p>
+    <div class="bar2" style="border-radius:10px"><span>Rp 2.750.000 free</span><span class="b">Use all</span></div>
+  </div>
+</div>
+</body></html>
