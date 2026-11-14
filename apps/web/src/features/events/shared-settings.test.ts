@@ -16,11 +16,18 @@ const view = (over: Partial<SharedEventView> = {}): SharedEventView => ({
 describe('the shared trip’s Settings', () => {
   it('has both switches, People and Categories, Mark as done, and Leave last', () => {
     const s = sharedSettings(view(), TODAY);
-    expect(s.switches).toEqual({ shown: true, disabled: false });
+    expect(s.switches).toEqual({ shown: true, disabled: false, splitWaits: false, footer: 'Split costs off: one pot, no shares or settling up.' });
     expect(s.categories).toBe(true);
     expect(s.done).toEqual({ label: 'Mark as done', finished: false, footer: 'Moves Seaside to Past. It can be reopened.' });
     expect(s.leave).toEqual({ label: 'Leave Seaside', disabled: false, footer: null });
     expect(s.deleteCopy).toBeNull();
+  });
+
+  it('keeps one pot waiting while a phone in the trip is on an older build; on stays allowed', () => {
+    expect(sharedSettings(view({ phonesBehind: ["Dimas's phone"] }), TODAY).switches).toEqual({
+      shown: true, disabled: false, splitWaits: true, footer: 'Every phone in Seaside needs the latest version first.',
+    });
+    expect(sharedSettings(view({ phonesBehind: ["Dimas's phone"], splitCosts: false }), TODAY).switches).toMatchObject({ splitWaits: false, footer: 'Split costs off: one pot, no shares or settling up.' });
   });
 
   it('a Done trip greys the switches and offers Reopen', () => {

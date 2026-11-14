@@ -91,6 +91,9 @@ async function journey(owner: Page, browser: Browser, info: TestInfo, recordedBe
   const share = owner.getByRole('form', { name: 'Share this event' });
   await share.getByLabel('Name', { exact: true }).fill('Ayu');
   await setCurrency(currencyRow(share, 'Currency'), 'TRY');
+  // "Shared with" the husband: one pot to start with, said on the sheet before sharing.
+  await expect(share.getByRole('checkbox', { name: 'Split costs' })).not.toBeChecked();
+  await expect(share).toContainText('Off: one pot, no shares or settling up.');
   await share.getByRole('button', { name: 'Share', exact: true }).click();
   const link = (await owner.getByTestId('invite-link').textContent({ timeout: 60_000 }))!.trim();
   await husband.goto(`/join#${link.replace('cicis://join/', '')}`);

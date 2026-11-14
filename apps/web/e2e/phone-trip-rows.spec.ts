@@ -178,6 +178,11 @@ test('a shared trip day with a spending, a settle-up and a household transfer: o
   const share = owner.getByRole('form', { name: 'Share this event' });
   await share.getByLabel('Name', { exact: true }).fill('Rina');
   await share.getByLabel('Without the app').fill('Budi');
+  // Shared from "Shared with Andi" the trip would start in one pot; with Budi in it, costs are split.
+  const split = share.getByRole('checkbox', { name: 'Split costs' });
+  await expect(split).not.toBeChecked();
+  await split.click({ force: true });
+  await expect(split).toBeChecked();
   await share.getByRole('button', { name: 'Share', exact: true }).click();
   const link = (await owner.getByTestId('invite-link').textContent({ timeout: 60_000 }))!.trim();
   await partner.goto(`/join#${link.replace('cicis://join/', '')}`);

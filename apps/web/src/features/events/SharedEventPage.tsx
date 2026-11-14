@@ -51,9 +51,12 @@ export function SharedEventPage({ view, error = null }: { view: SharedEventView;
   const cards = heroCards(view);
   // Back from a cost's page lands on the Plan card, which is where the trip was left.
   const { card: arrivedOn } = useSearch({ from: '/events/$eventId' });
-  const [chosen, setCard] = useState(arrivedOn === 'plan' ? Math.max(0, cards.indexOf('plan')) : 0);
-  // A switch turned on another phone can take the card in view away: the page falls back to Spending.
-  const card = chosen < cards.length ? chosen : 0;
+  // The card in view belongs to the list of cards it was picked from: a switch flipped (here or on another phone)
+  // changes the list, and the page goes back to Spending, the hero remounted at its start so the scroll agrees.
+  const cardsKey = cards.join('|');
+  const [chosen, setChosen] = useState({ key: cardsKey, index: arrivedOn === 'plan' ? Math.max(0, cards.indexOf('plan')) : 0 });
+  const card = chosen.key === cardsKey && chosen.index < cards.length ? chosen.index : 0;
+  const setCard = (index: number) => setChosen({ key: cardsKey, index });
   const plan = useSharedEventPlan(view.eventId);
   const [settling, setSettling] = useState<NamedPayment | null>(null);
   const [opened, setOpened] = useState<SharedSettlementView | null>(null);
@@ -202,6 +205,7 @@ export function SharedEventPage({ view, error = null }: { view: SharedEventView;
       {/* Event mode (screen 1): this phone's own, so each person in the event turns it on for themselves. */}
       {locked ? null : <EventModeGroup event={{ id: view.eventId, name: view.name, startsOn: view.startsOn, endsOn: view.endsOn, currency: view.currency }} />}
       <HeroSwipe
+        key={cardsKey}
         label={`${view.name} sections`}
         active={card}
         onActive={setCard}

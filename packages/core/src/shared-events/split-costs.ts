@@ -19,12 +19,10 @@ export function isOnePotSplit(split: SplitInput, payerPersonId: string): boolean
 }
 
 /**
- * Split costs when an event is shared: off when the only others are the household (the partner) — a household with no
- * names without the app beside it, or names that are all the household's — and on when anyone else is named, or when
- * there is no household to share it with. Names match without case or outer spaces.
+ * Split costs when an event is shared, before anyone touches the Share sheet's switch: off (one pot) only on the
+ * household's own way in — "Shared with <partner>", the household's share list — and on everywhere else. Who joins by an
+ * invite is not known when it is shared, and anyone with the app may: one pot is never started for them unasked.
  */
-export function defaultSplitCosts(input: { names: readonly string[]; household: readonly string[] }): boolean {
-  const household = new Set(input.household.map((name) => name.trim().toLowerCase()).filter(Boolean));
-  if (household.size === 0) return true;
-  return input.names.map((name) => name.trim().toLowerCase()).filter(Boolean).some((name) => !household.has(name));
+export function defaultSplitCosts(input: { householdShare: boolean }): boolean {
+  return !input.householdShare;
 }

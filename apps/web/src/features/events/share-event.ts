@@ -4,6 +4,9 @@ import type { CreatedInvite, MoveRefusal } from '@expanses/db';
 export const shareEventFooter = (eventName: string) =>
   `Everyone in ${eventName} sees every expense of it, who paid and how it is split. What is tagged to it moves out of its workspace: in each person's own books only their own share counts.`;
 
+/** What the Share sheet's Split costs switch says off is. */
+export const SPLIT_COSTS_SHARE_FOOTER = 'Off: one pot, no shares or settling up.';
+
 /** How far sharing one event has got, kept by the sheet across taps and retries. */
 export interface ShareProgress {
   /** Set once the event has become a shared one. */

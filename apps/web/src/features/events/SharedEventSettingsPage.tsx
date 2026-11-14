@@ -12,7 +12,7 @@ import { sayError } from '../sharing/sharing-copy';
 import { deleteEventCopyFlow } from './delete-copy';
 import { SettingsActionGroup, SettingsPickerRow } from './EventSettingsRows';
 import { useSharedEventView } from './shared-queries';
-import { askBeforeOnePot, categoriesValue, peopleValue, SPLIT_COSTS_FOOTER, sharedSettings, stopSplittingText } from './shared-settings';
+import { askBeforeOnePot, categoriesValue, peopleValue, sharedSettings, stopSplittingText } from './shared-settings';
 
 /**
  * A shared trip's Settings (owner, 14 Nov 2026): what the ⚙ on its page opens, as a private event's gear opens its own.
@@ -57,11 +57,11 @@ function SettingsBody({ view }: { view: SharedEventView }) {
     <>
       <ErrorBox error={error} />
       {settings.switches.shown ? (
-        <InsetGroup footer={SPLIT_COSTS_FOOTER}>
+        <InsetGroup footer={settings.switches.footer}>
           <SwitchRow
             label="Split costs"
             checked={view.splitCosts}
-            disabled={settings.switches.disabled}
+            disabled={settings.switches.disabled || settings.switches.splitWaits}
             testId="shared-settings-split"
             // Off with someone owing asks first: the splits are kept, only hidden.
             onChange={(on) => (!on && askBeforeOnePot(view) ? setAsking(true) : void switches({ splitCosts: on }))}

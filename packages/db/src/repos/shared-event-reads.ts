@@ -6,6 +6,7 @@ import type { ChangeSet } from '../sync/types';
 import type { EventUnposted } from './shared-event-postings';
 import { type EventBookRow, eventBookOfEventTx, eventRecordsTx, expenseReadIssue } from './shared-event-records';
 import { eventTransfersTx, type SharedEventTransferView } from './shared-event-transfers';
+import { phonesBehindSwitchesTx } from './shared-event-writes';
 
 /*
  * What the screens read of a shared event (shared events §6, §7). Figures are in the event currency unless a field
@@ -119,6 +120,11 @@ export interface SharedEventView {
   splitCosts: boolean;
   /** The trip's Plan switch is off (0116): the shared plan is not shown. */
   planOff: boolean;
+  /**
+   * The other phones in the event on a build that does not read Split costs, by name: one pot waits for them
+   * (`setSharedEventSwitches`). Optional only so a screen's hand-made view need not name it; `sharedEventView` sets it.
+   */
+  phonesBehind?: string[];
   state: string;
   me: string;
   myName: string;
@@ -256,6 +262,7 @@ async function viewOfTx(db: Db, book: EventBookRow): Promise<SharedEventView> {
     finishedAt: book.finishedAt,
     splitCosts: book.splitCosts,
     planOff: book.planOff,
+    phonesBehind: await phonesBehindSwitchesTx(db, book.bookId),
     state: book.state,
     me: book.me,
     myName: names.get(book.me) ?? 'Someone',

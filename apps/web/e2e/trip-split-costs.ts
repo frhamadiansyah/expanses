@@ -16,6 +16,10 @@ export async function splitCostsJourney(page: Page, shots?: string) {
   const share = page.getByRole('form', { name: 'Share this event' });
   await share.getByLabel('Name', { exact: true }).fill('Rina');
   await share.getByLabel('Without the app').fill('Budi');
+  // No household here: the sheet starts with costs split, and says what off would mean.
+  await expect(share.getByRole('checkbox', { name: 'Split costs' })).toBeChecked();
+  await expect(share).toContainText('Off: one pot, no shares or settling up.');
+  if (shots) await page.screenshot({ path: `${shots}/2026-11-14-trip-split-costs-share-sheet.png` });
   await share.getByRole('button', { name: 'Share', exact: true }).click();
   await expect(page.getByTestId('invite-link')).toBeVisible({ timeout: 60_000 });
   await openTrip(page);
@@ -95,6 +99,7 @@ export async function splitCostsJourney(page: Page, shots?: string) {
   await expect(settings.getByRole('checkbox', { name: 'Plan' })).toBeChecked();
   await page.getByRole('link', { name: 'Coast week' }).first().click();
   await expect(page.getByTestId('hero-dots').getByRole('button')).toHaveCount(3);
+  await expect(page.getByTestId('hero-dots').getByRole('button', { name: 'Spending', exact: true })).toHaveAttribute('aria-current', 'true');
   await expect(spendingRow(page, 'Fish dinner')).toContainText(/share Rp\s?240\.000/);
   await expect(spendingRow(page, 'Boat ride')).toContainText(/share Rp\s?150\.000/);
   await showCard(page, 'Balances');

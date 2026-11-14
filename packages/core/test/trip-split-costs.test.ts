@@ -51,16 +51,8 @@ describe('one pot (Split costs off)', () => {
 });
 
 describe('Split costs when an event is shared', () => {
-  it('is off for the household alone: no names beside it, or only the household’s names', () => {
-    expect(defaultSplitCosts({ names: [], household: ['Dimas'] })).toBe(false);
-    expect(defaultSplitCosts({ names: [' dimas '], household: ['Dimas'] })).toBe(false);
-    expect(defaultSplitCosts({ names: ['', '  '], household: ['Dimas'] })).toBe(false);
-  });
-
-  it('is on when anyone else is named, or with no household at all', () => {
-    expect(defaultSplitCosts({ names: ['Wulan'], household: ['Dimas'] })).toBe(true);
-    expect(defaultSplitCosts({ names: ['Dimas', 'Wulan'], household: ['Dimas'] })).toBe(true);
-    expect(defaultSplitCosts({ names: [], household: [] })).toBe(true);
-    expect(defaultSplitCosts({ names: ['Dimas'], household: [] })).toBe(true);
+  it('is off only on the household’s own way in, and on for every other share', () => {
+    expect(defaultSplitCosts({ householdShare: true })).toBe(false);
+    expect(defaultSplitCosts({ householdShare: false })).toBe(true);
   });
 });

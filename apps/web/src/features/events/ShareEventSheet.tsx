@@ -1,13 +1,14 @@
+import { defaultSplitCosts } from '@expanses/core';
 import { type CreatedInvite, type EventRow, type MoveRefusal } from '@expanses/db';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, PickerRow, SubmitRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, PickerRow, SubmitRow, SwitchRow, TextRow } from '../../ui/native';
 import { CurrencySheet } from '../currency/CurrencySheet';
 import { InviteCard } from '../sharing/InviteCard';
-import { freshShare, shareEventFooter } from './share-event';
+import { freshShare, shareEventFooter, SPLIT_COSTS_SHARE_FOOTER } from './share-event';
 import { useShareEventNow } from './share-event-now';
 import { sayError } from '../sharing/sharing-copy';
 
@@ -16,7 +17,7 @@ import { sayError } from '../sharing/sharing-copy';
  * is tagged to it moves out of its workspace and becomes this person's own expenses in it, its category set becomes
  * the event's categories and its plan the shared plan. The rates every move needs are fetched first.
  */
-export function ShareEventSheet({ event, onClose }: { event: EventRow; onClose: () => void }) {
+export function ShareEventSheet({ event, household = false, onClose }: { event: EventRow; /** Opened by "Shared with <partner>": the household's own way in. */ household?: boolean; onClose: () => void }) {
   const { ws } = useApp();
   const invalidate = useInvalidateAll();
   const shareNow = useShareEventNow();
@@ -27,6 +28,8 @@ export function ShareEventSheet({ event, onClose }: { event: EventRow; onClose: 
   const [currency, setCurrency] = useState(ws.baseCurrency);
   const [pickingCurrency, setPickingCurrency] = useState(false);
   const [names, setNames] = useState('');
+  // One pot for the household's own share, splitting for any other (owner, 14 Nov 2026): shown, and changed here.
+  const [splitCosts, setSplitCosts] = useState(() => defaultSplitCosts({ householdShare: household }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [done, setDone] = useState<{ invite: CreatedInvite; kept: MoveRefusal[] } | null>(null);
@@ -40,7 +43,7 @@ export function ShareEventSheet({ event, onClose }: { event: EventRow; onClose: 
     setBusy(true);
     setError(null);
     try {
-      const result = await shareNow({ eventId: event.id, currency, personName: name, names: names.split(',') }, progress.current);
+      const result = await shareNow({ eventId: event.id, currency, personName: name, names: names.split(','), splitCosts }, progress.current);
       if (result) setDone(result);
       await invalidate();
     } catch (failure) {
@@ -72,6 +75,9 @@ export function ShareEventSheet({ event, onClose }: { event: EventRow; onClose: 
             <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="As the others will see it" required />
             <PickerRow label="Currency" value={currency} onOpen={() => setPickingCurrency(true)} />
             <TextRow label="Without the app" value={names} onChange={(e) => setNames(e.target.value)} placeholder="Names, with commas" />
+          </InsetGroup>
+          <InsetGroup footer={SPLIT_COSTS_SHARE_FOOTER}>
+            <SwitchRow label="Split costs" checked={splitCosts} onChange={setSplitCosts} testId="share-split-costs" />
           </InsetGroup>
           <InsetGroup>
             <SubmitRow label={busy ? 'Sharing…' : 'Share'} disabled={busy || !name.trim()} />

@@ -1,5 +1,5 @@
 import { formatMinor } from '@expanses/core';
-import type { SharedEventView } from '@expanses/db';
+import { onePotWaitsFor, type SharedEventView } from '@expanses/db';
 import { DELETE_COPY_LABEL } from './delete-copy';
 import { finishRow } from './event-settings';
 import { pageLocks, possessive, signedBalance } from './shared-view';
@@ -16,8 +16,12 @@ import { pageLocks, possessive, signedBalance } from './shared-view';
 export const SPLIT_COSTS_FOOTER = 'Split costs off: one pot, no shares or settling up.';
 
 export interface SharedSettings {
-  /** The Split costs and Plan switches: shown while this person is in the event; greyed while it is Done. */
-  switches: { shown: boolean; disabled: boolean };
+  /**
+   * The Split costs and Plan switches: shown while this person is in the event; greyed while it is Done. Split costs
+   * cannot go off while a phone in the event is on an older build (`splitWaits`); turning it on is always allowed. The
+   * footer is what off means, or what it waits for.
+   */
+  switches: { shown: boolean; disabled: boolean; splitWaits: boolean; footer: string };
   /** Categories, offered while this person is in the event. */
   categories: boolean;
   /** Mark as done, or Reopen; null on a copy this person is no longer in. */
@@ -37,11 +41,12 @@ export function sharedSettings(view: SharedEventView, today: string): SharedSett
     // Waiting for an invite, the person is still in the event: the copy comes back to life with one (review minor 2).
     const deleteCopy =
       view.state === 'needs_invite' ? null : { label: DELETE_COPY_LABEL, disabled: owes, footer: owes ? `${possessive(view.myName)} balance is ${signedBalance(balance, view.currency)}` : null };
-    return { switches: { shown: false, disabled: true }, categories: false, done: null, leave: null, deleteCopy };
+    return { switches: { shown: false, disabled: true, splitWaits: false, footer: SPLIT_COSTS_FOOTER }, categories: false, done: null, leave: null, deleteCopy };
   }
   const finished = view.finishedAt !== null;
+  const splitWaits = view.splitCosts && (view.phonesBehind ?? []).length > 0;
   return {
-    switches: { shown: true, disabled: locked },
+    switches: { shown: true, disabled: locked, splitWaits, footer: splitWaits ? onePotWaitsFor(view.name) : SPLIT_COSTS_FOOTER },
     categories: true,
     done: { ...(finishRow(view, today) as { label: 'Mark as done' | 'Reopen'; footer: string }), finished },
     leave: {

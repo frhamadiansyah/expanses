@@ -1,4 +1,6 @@
 import type { SplitInput } from '@expanses/core';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
@@ -163,24 +165,86 @@ describe('one pot: the money', () => {
   });
 });
 
+/** What 0.5.2 holds after applying a switch: the field's clock and the log's account of it, no column, so splits show. */
+async function asOldBuildHeldIt(d: Device) {
+  await d.database.execScript('UPDATE shared_events SET split_off = 0, plan_off = 0');
+}
+
+/** Migration 0116 on that phone as it updates, its columns already there: the recovery and the clock drop alone. */
+async function migrateTo0116(d: Device) {
+  const text = readFileSync(fileURLToPath(new URL('../../migrations/0116_trip_split_costs.sql', import.meta.url)), 'utf8');
+  await d.database.execScript(text.replace(/^ALTER TABLE .*$/gm, ''));
+}
+
+/** The phone now runs this build and says so on its next sync. */
+function update(d: Device) {
+  d.engine = new SyncEngine(d.database, d.transport, d.keys, undefined, { appVersion: BUILD, shareRecords: d.records });
+}
+
+const clocksOf = (d: Device) =>
+  d.database.db.values<[string]>(sql`SELECT field FROM sync_field_clocks WHERE entity = 'shared_event' AND field IN ('splitOff', 'planOff') ORDER BY field`);
+
+describe('one pot: a split nobody is in', () => {
+  it('an edit of an expense whose split could not be read makes it the payer’s alone', async () => {
+    const s = await seaside({ splitCosts: false });
+    const id = await s.spend(s.sari, 210_000, 'Snorkels');
+    // As a peer's unreadable split arrives (I2): nobody in it.
+    await s.sari.database.execScript(`UPDATE event_expense_details SET split_mode = 'amounts', split_json = '[]' WHERE id = '${id}'`);
+    expect((await s.view(s.sari)).expenses[0]!.unreadable).toBeTruthy();
+    await editSharedExpense(s.sari.database, ownerScope(s.sari.ws), s.trip.eventOf(s.sari), id, { note: 'Snorkels and fins' });
+    const v = await s.view(s.sari);
+    expect(v.expenses[0]).toMatchObject({ split: { mode: 'equal', people: [v.me] }, unreadable: null, note: 'Snorkels and fins' });
+  });
+});
+
 describe('a phone on an older build', () => {
-  it('shows splits until it updates, then gets the switches again and the phones agree', async () => {
+  it('keeps one pot waiting while it is in the event; switching back on is allowed', async () => {
     const s = await seaside({ dimasVersion: '0.5.2' });
-    await s.switches(s.sari, { splitCosts: false, plan: false });
-    // Her phone's first pass is for itself, crossing to this build.
-    expect((await runSharedBookRepairs(s.sari.database, s.trip.bookId)).tripSwitches).toBe(1);
+    expect((await s.view(s.sari)).phonesBehind).toEqual(["Dimas's phone"]);
+    await expect(s.switches(s.sari, { splitCosts: false })).rejects.toThrow('Every phone in Coast week needs the latest version first.');
+    // Plan has no such wait: an older build goes on showing the plan, and nothing is owed because of it.
+    await s.switches(s.sari, { plan: false });
+    const onePot = await seaside({ dimasVersion: '0.5.2', splitCosts: false });
+    await onePot.switches(onePot.sari, { splitCosts: true });
+    expect((await onePot.view(onePot.sari)).splitCosts).toBe(true);
+  });
+
+  it('once updated, finds the switches its older build saved with their clocks: right from its first open', async () => {
+    const s = await seaside({ dimasVersion: '0.5.2', splitCosts: false });
+    await s.switches(s.sari, { plan: false });
     await s.settle();
-    // What 0.5.2 does with the ops: takes each field's clock, writes neither switch (it has no column for them).
-    await s.dimas.database.execScript('UPDATE shared_events SET split_off = 0, plan_off = 0');
+    await asOldBuildHeldIt(s.dimas);
     expect(await s.view(s.dimas)).toMatchObject({ splitCosts: true, planOff: false });
+
+    await migrateTo0116(s.dimas);
+    expect(await s.view(s.dimas)).toMatchObject({ splitCosts: false, planOff: true });
+    expect(await clocksOf(s.dimas)).toEqual([['planOff'], ['splitOff']]);
+    update(s.dimas);
+    await s.settle();
+    await runSharedBookRepairs(s.sari.database, s.trip.bookId);
+    await s.settle();
+    for (const d of [s.sari, s.dimas]) expect(await s.view(d)).toMatchObject({ splitCosts: false, planOff: true });
+    expect(await skipsOf(s.dimas.database)).toEqual([]);
+  });
+
+  it('a switch whose saved clock is not the field’s is dropped, and the repair sends it again once he says his version', async () => {
+    const s = await seaside({ dimasVersion: '0.5.2', splitCosts: false });
+    await s.switches(s.sari, { plan: false });
+    // Her phone's first pass is for itself, crossing to this build.
+    await runSharedBookRepairs(s.sari.database, s.trip.bookId);
+    await s.settle();
+    await asOldBuildHeldIt(s.dimas);
+    // The log's account no longer matches the clocks (a row the log kept another way): nothing can be recovered.
+    await s.dimas.database.execScript("UPDATE settings SET value = json_set(value, '$.clocks.splitOff', 'x', '$.clocks.planOff', 'x') WHERE key LIKE 'shared-events.log.%|shared_event|%'");
     // While he is on 0.5.2 nothing more goes, however often her phone runs its repairs.
     expect((await runSharedBookRepairs(s.sari.database, s.trip.bookId)).tripSwitches).toBeNull();
 
-    // He updates: 0116 drops the clocks his old build kept, and his phone says its version.
-    await s.dimas.database.execScript("DELETE FROM sync_field_clocks WHERE entity = 'shared_event' AND field IN ('splitOff', 'planOff')");
-    s.dimas.engine = new SyncEngine(s.dimas.database, s.dimas.transport, s.dimas.keys, undefined, { appVersion: BUILD, shareRecords: s.dimas.records });
+    await migrateTo0116(s.dimas);
+    expect(await s.view(s.dimas)).toMatchObject({ splitCosts: true, planOff: false });
+    expect(await clocksOf(s.dimas)).toEqual([]);
+    update(s.dimas);
     await s.settle();
-    // His own pass has nothing to send: he never changed a switch.
+    // His own pass has nothing to send: he holds no clock for either switch.
     expect((await runSharedBookRepairs(s.dimas.database, s.trip.bookId)).tripSwitches).toBe(0);
     expect((await runSharedBookRepairs(s.sari.database, s.trip.bookId)).tripSwitches).toBe(1);
     await s.settle();
@@ -191,11 +255,12 @@ describe('a phone on an older build', () => {
   });
 
   it('a resend never beats a later change made on the updated phone', async () => {
-    const s = await seaside({ dimasVersion: '0.5.2' });
-    await s.switches(s.sari, { splitCosts: false });
+    const s = await seaside({ dimasVersion: '0.5.2', splitCosts: false });
     await s.settle();
-    await s.dimas.database.execScript("UPDATE shared_events SET split_off = 0; DELETE FROM sync_field_clocks WHERE entity = 'shared_event' AND field IN ('splitOff', 'planOff')");
-    s.dimas.engine = new SyncEngine(s.dimas.database, s.dimas.transport, s.dimas.keys, undefined, { appVersion: BUILD, shareRecords: s.dimas.records });
+    await asOldBuildHeldIt(s.dimas);
+    await s.dimas.database.execScript("DELETE FROM settings WHERE key LIKE 'shared-events.log.%|shared_event|%'");
+    await migrateTo0116(s.dimas);
+    update(s.dimas);
     // He turns it off and on again before her repair has run: his change is the later one.
     await s.switches(s.dimas, { splitCosts: false });
     await s.switches(s.dimas, { splitCosts: true });
