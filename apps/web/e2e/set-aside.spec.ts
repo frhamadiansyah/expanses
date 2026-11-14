@@ -2,7 +2,7 @@ import { showBalance } from './accounts';
 import { pickView } from './wallet';
 import { expect, test } from '@playwright/test';
 import { editGoal, expectArchiveNote } from './goals';
-import { addGoal, addMoneyAccount, addSetAsideRow, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, openGoalHistory, setAside, transferOutBorrowingFromUmrah, typeAmount } from './set-aside';
+import { addGoal, addMoneyAccount, addSetAsideRow, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, openGoalHistory, setAside, setAsideBar, transferOutBorrowingFromUmrah, typeAmount } from './set-aside';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -197,21 +197,30 @@ test('an account that promised more than it holds says so on its page, and Net w
   await expect(page.getByRole('link', { name: /^Emergency fund.*Short by Rp.9\.100\.000/ })).toBeVisible();
 });
 
-test('the goal form says what is free for this goal, and how short a bigger figure leaves the account', async ({ page }) => {
+test('the goal form offers the most a row can hold, and a bigger figure turns warn and holds Save until the bar puts in the most', async ({ page }) => {
   await jeniusWithTwoGoals(page);
   await page.goto('/goals');
   const umrah = await goalCard(page, 'Umrah 2027');
   await editGoal(umrah);
-  await page.getByRole('button', { name: /^Funding/ }).click();
-  // 5.000.000 free on Jenius plus Umrah's own 7.500.000 there, which the save replaces: 12.500.000.
-  await page.getByRole('button', { name: 'About Jenius' }).click();
-  await expect(page.getByText(/^Rp.12\.500\.000 free for this goal$/)).toBeVisible();
-  const box = page.getByLabel('Jenius', { exact: true });
+  await addSetAsideRow(page, 'Jenius');
+  const sheet = page.getByRole('dialog', { name: 'Funding' });
+  const box = sheet.getByLabel('Jenius', { exact: true });
+  // Jenius is in the goal: its 7.500.000 reads in ink. 5.000.000 free on Jenius plus Umrah's own 7.500.000 there,
+  // which the save replaces: 12.500.000 the most possible, and Rp 0 takes it back.
+  await expect(box).toHaveValue('7.500.000');
+  const bar = setAsideBar(page);
+  await expect(bar.getByRole('option', { name: /^Most possible, Rp.12\.500\.000$/ })).toBeVisible();
+  await expect(bar.getByRole('option', { name: 'Take back' })).toBeVisible();
   await box.clear();
   await box.pressSequentially('12500001');
-  await expect(page.getByText(/^That leaves Jenius Rp.1 short$/)).toBeVisible();
-  await box.press('Backspace');
-  await expect(page.getByText(/^Rp.12\.500\.000 free for this goal$/)).toBeVisible();
+  await expect(box).toHaveValue('12.500.001');
+  await expect(sheet.getByTestId('set-aside-row').filter({ hasText: 'Jenius' })).toHaveAttribute('data-over', 'true');
+  await expect(sheet.getByRole('button', { name: 'Done' })).toBeDisabled();
+  await expect(bar.getByRole('option')).toHaveCount(1);
+  await bar.getByRole('option', { name: /^Use the Rp.12\.500\.000 free$/ }).click();
+  await expect(box).toHaveValue('12.500.000');
+  await expect(box).toBeFocused();
+  await expect(sheet.getByRole('button', { name: 'Done' })).toBeEnabled();
 });
 
 test('a goal that was whole says when it stood whole and where the money went', async ({ page }) => {
@@ -243,7 +252,7 @@ test('a goal that was whole says when it stood whole and where the money went', 
   await expect(umrah.getByText('Done', { exact: true })).toHaveCount(0);
 });
 
-test('the goal form\'s hint reads today\'s balance, as the question does: money dated next month is not free yet', async ({ page }) => {
+test('the goal form\'s free figure reads today\'s balance, as the question does: money dated next month is not free yet', async ({ page }) => {
   // Nothing is promised on BCA, so the hint falls back to the balance — today's, not one counting a future entry.
   await addMoneyAccount(page, 'BCA', 'savings', '10000000');
   await addGoal(page, 'Umrah 2027', '7500000');
@@ -266,9 +275,9 @@ test('the goal form\'s hint reads today\'s balance, as the question does: money 
   await page.goto('/goals');
   const umrah = await goalCard(page, 'Umrah 2027');
   await editGoal(umrah);
-  await addSetAsideRow(page, 'BCA');
-  await page.getByRole('button', { name: 'About BCA' }).click();
-  // 10.000.000 today; counting the 5.000.000 dated next month would say 15.000.000, a figure the question never uses.
-  await expect(page.getByText(/^Rp.10\.000\.000 free for this goal$/)).toBeVisible();
-  await expect(page.getByText(/15\.000\.000 free for this goal/)).toHaveCount(0);
+  await page.getByRole('button', { name: /^Funding/ }).click();
+  // BCA holds nothing for the goal, so its line shows what it has free in grey: today's balance, as the question reads it.
+  const bca = page.getByRole('dialog', { name: 'Funding' }).getByLabel('BCA', { exact: true });
+  await expect(bca).toHaveAttribute('placeholder', /^Rp.10\.000\.000$/);
+  await expect(bca).toHaveValue('');
 });

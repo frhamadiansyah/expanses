@@ -1,4 +1,4 @@
-import { bandHint, emergencyTargetMinor, type GoalKind, formatMinor, groupedMajorString, groupTypedAmount, isoDate, monthsUntil, parseGroupedMajor, parseMajor, returnBandFor } from '@expanses/core';
+import { bandHint, emergencyTargetMinor, type GoalKind, formatMinor, groupedMajorString, groupTypedAmount, isoDate, monthsUntil, parseGroupedMajor, returnBandFor } from '@expanses/core';
 import { archiveGoal, deleteGoal, type EmergencyInputs, type GoalRow, goalIsFunded, leaveSharedGoal, retagTrade, saveGoal, setEmergencyOwnTarget, shareGoal, stopSharingGoal } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
@@ -179,16 +179,9 @@ export function GoalForm({ goal, startKind, earmarks }: { goal?: GoalRow; startK
   // One payment is the goal itself, so it is saved under the goal's name; with several, each keeps the name it was given.
   const single = stages.length === 1;
   const named = stages.map((stage) => (single ? { ...stage, name: onlyPaymentName(name, stage.name, goal?.name) } : stage));
-  const canSave = !busy && canSaveGoal(name, named);
-  const setAsideEntries = setAside.rows.map((account) => {
-    const currencyOfRow = setAside.currencyOf(account);
-    try {
-      const typed = setAside.textOf(account);
-      return { currency: currencyOfRow, minor: typed.trim() === '' ? 0 : parseMajor(typed, currencyOfRow) };
-    } catch {
-      return { currency: currencyOfRow, minor: 0 };
-    }
-  });
+  // A figure more than its account can hold waits, as the Set aside sheet's Save does.
+  const canSave = !busy && canSaveGoal(name, named) && !setAside.over;
+  const setAsideEntries = setAside.entries;
   const blankPayment: StageDraft = { name: '', amount: '', months: '', dueOn: today, usesMonths: false, paidOn: null };
 
   function savePayment(index: number | 'new', draft: StageDraft) {

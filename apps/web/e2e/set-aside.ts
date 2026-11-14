@@ -89,15 +89,20 @@ export async function addGoal(page: Page, name: string, amount: string, dueOn = 
   await expect(goalRow(page, name)).toBeVisible();
 }
 
-/** Adds an account as a row of the Funding sheet's cash group, through the Set aside row and its sheet; the row's amount is focused. */
+/**
+ * Puts the caret in an account's line of the Funding sheet's cash list, where every account that can hold the goal's
+ * money is listed already: the ones in the goal, then the ones that can add with what each has free.
+ */
 export async function addSetAsideRow(page: Page, account: string) {
-  // On a goal form the set-aside rows are behind the Money set aside row, in a sheet of their own.
   const sheet = page.getByRole('dialog', { name: 'Funding' });
   if ((await sheet.count()) === 0) await page.getByRole('button', { name: /^Funding/ }).click();
-  await page.getByRole('button', { name: 'Set aside', exact: true }).click();
-  await page.getByRole('dialog', { name: 'Add an account' }).getByRole('button', { name: account, exact: true }).click();
-  await expect(page.getByLabel(account, { exact: true })).toBeFocused();
+  const input = sheet.getByLabel(account, { exact: true });
+  await input.click();
+  await expect(input).toBeFocused();
 }
+
+/** The bar of figures offered for the line being typed in: over the keyboard on a phone, under the line on a desktop. */
+export const setAsideBar = (page: Page) => page.getByRole('listbox', { name: 'Set aside figures' }).locator('visible=true');
 
 /** Puts the Funding sheet away (its figures stay on the form until Save goal). */
 export async function closeSetAsideRows(page: Page) {
@@ -108,16 +113,12 @@ export async function closeSetAsideRows(page: Page) {
 /** The account's name without its currency, which the old boxes carried in brackets and a row does not. */
 export const accountOf = (box: string) => box.replace(/ \(.*\)$/, '');
 
-/** Through the goal page's round Set aside, whose sheet holds the goal form's set-aside rows and nothing else. */
+/** Through the goal page's round Set aside, whose sheet lists every account that can hold the goal's money, typed in place. */
 export async function setAside(page: Page, goal: string, box: string, amount: string) {
   const card = await goalCard(page, goal);
   await card.getByRole('button', { name: 'Set aside', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'Set aside' });
   const account = accountOf(box);
-  if ((await sheet.getByLabel(account, { exact: true }).count()) === 0) {
-    await sheet.getByRole('button', { name: 'Set aside', exact: true }).click();
-    await page.getByRole('dialog', { name: 'Add an account' }).getByRole('button', { name: account, exact: true }).click();
-  }
   const input = sheet.getByLabel(account, { exact: true });
   await input.clear();
   await input.pressSequentially(amount);

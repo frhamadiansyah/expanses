@@ -270,8 +270,8 @@ export function FundingSheet({ goalId, setAside, tags, onClose }: { goalId: stri
   const rows = tags.ids.map((id) => trades.find((trade) => trade.id === id)).filter((trade): trade is TradeRow => !!trade);
   return (
     <>
-      <Sheet title="Funding" onClose={onClose} grouped confirm={{ label: 'Done', run: onClose }}>
-        <SetAsideGroup state={setAside} header="Cash and cash equivalents" />
+      <Sheet title="Funding" onClose={onClose} grouped confirm={{ label: 'Done', disabled: setAside.over, run: onClose }}>
+        <SetAsideGroup state={setAside} inHeader="Cash and cash equivalents" />
         <InsetGroup header="Bonds, shares and funds">
           {[
             ...rows.map((trade) => <TaggedRow key={trade.id} trade={trade} onRemove={() => tags.remove(trade.id)} />),

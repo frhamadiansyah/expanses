@@ -229,7 +229,7 @@ export function GoalPage({ goalId }: { goalId: string }) {
       <PushedTitle title={card.name} back="Goals" onBack={goBack} actions={actions} />
       <ErrorBox error={summary.error ?? error} />
 
-      {settingAside && <SetAsideSheet goal={plan.goal} earmarks={earmarks.data ?? []} onDone={() => setSettingAside(false)} />}
+      {settingAside && <SetAsideSheet goal={plan.goal} earmarks={earmarks.data ?? []} neededMinor={card.targetMinor > 0 ? toGoMinor : null} onDone={() => setSettingAside(false)} />}
 
       {tagging && (
         <TagPurchaseSheet
