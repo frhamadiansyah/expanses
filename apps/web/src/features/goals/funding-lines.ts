@@ -24,8 +24,10 @@ export type FundingLine =
       /** The multicurrency account itself, the pockets' parent. */
       accountId: string;
       name: string;
-      /** The currencies that convert, added up in the goal's money. One with no rate is left out (and said under the group). */
+      /** The currencies that convert, added up in the goal's money. One with no rate is left out of it (`unconverted`). */
       goalMinor: number;
+      /** How many of its currencies have no rate for the day, so are missing from `goalMinor`. */
+      unconverted: number;
       /** Any currency other than the goal's, or one with no rate: the figure is converted, so it is drawn with ≈. */
       approx: boolean;
       /** Any of its currencies short. */
@@ -73,15 +75,16 @@ export function fundingLines(
     }
     const child: FundingCurrencyLine = { key: keyOf(link), code: link.currency, link, short };
     const converted = link.currency !== goalCurrency || link.goalMinor === null;
+    const noRate = link.goalMinor === null ? 1 : 0;
     const seen = at.get(parent.id);
     if (seen === undefined) {
       at.set(parent.id, out.length);
-      out.push({ type: 'account', key: `account-${parent.id}`, accountId: parent.id, name: parent.name, goalMinor: link.goalMinor ?? 0, approx: converted, short, children: [child] });
+      out.push({ type: 'account', key: `account-${parent.id}`, accountId: parent.id, name: parent.name, goalMinor: link.goalMinor ?? 0, unconverted: noRate, approx: converted, short, children: [child] });
       continue;
     }
     const row = out[seen]!;
     if (row.type !== 'account') continue;
-    out[seen] = { ...row, goalMinor: row.goalMinor + (link.goalMinor ?? 0), approx: row.approx || converted, short: row.short || short, children: [...row.children, child] };
+    out[seen] = { ...row, goalMinor: row.goalMinor + (link.goalMinor ?? 0), unconverted: row.unconverted + noRate, approx: row.approx || converted, short: row.short || short, children: [...row.children, child] };
   }
   return out;
 }

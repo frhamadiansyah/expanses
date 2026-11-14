@@ -104,7 +104,7 @@ async function expenseBorrowingEf(page: Page, amount: string, over: RegExp, note
  */
 async function expectNotShort(scope: Locator) {
   await expect(scope.getByText(/^Short by (Rp|US\$)/)).toHaveCount(0);
-  await expect(scope.getByTestId('goal-link').getByText(/^short /)).toHaveCount(0);
+  await expect(scope.locator('[data-testid^="goal-link"]').getByText(/^short /)).toHaveCount(0);
 }
 
 export interface Journey {

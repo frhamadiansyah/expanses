@@ -96,13 +96,22 @@ export function FundingAccountRow({
             </span>
           </>
         }
+        // Shut, a short currency is said in words as well as colour, as on every other row; open, its own row says it.
+        // A currency with no rate is missing from the sum, so the figure turns warn; with none converting, there is no figure.
         value={
           <>
-            {line.approx && '≈ '}
-            <Money minor={line.goalMinor} currency={goalCurrency} />
+            {line.short && !open && <span className="text-[12.5px]">short · </span>}
+            {line.unconverted === line.children.length ? (
+              'No rate yet'
+            ) : (
+              <>
+                {line.approx && '≈ '}
+                <Money minor={line.goalMinor} currency={goalCurrency} />
+              </>
+            )}
           </>
         }
-        valueTone={line.short ? 'warn' : 'ink'}
+        valueTone={line.short || line.unconverted > 0 ? 'warn' : 'ink'}
         chevron={false}
         onClick={onToggle}
       />

@@ -77,6 +77,19 @@ describe('fundingLines', () => {
     expect(valas.goalMinor).toBe(13_000_000);
     expect(valas.approx).toBe(true);
     expect(valas.short).toBe(false);
+    // Some currencies missing from the sum: counted, so the row can say its figure is not whole.
+    expect(valas.unconverted).toBe(1);
+  });
+
+  it('counts every currency with no rate, so an account with none converting has no figure to show', () => {
+    const lines = fundingLines([usd, sar], accounts, 'IDR');
+    const valas = lines[0]!;
+    if (valas.type !== 'account') throw new Error('not folded');
+    expect(valas.unconverted).toBe(0);
+    const none = fundingLines([link('valas-usd', { currency: 'USD', valueMinor: 870_00, goalMinor: null }), link('valas-sar', { currency: 'SAR', valueMinor: 1_400_00, goalMinor: null })], accounts, 'IDR')[0]!;
+    if (none.type !== 'account') throw new Error('not folded');
+    expect(none.unconverted).toBe(none.children.length);
+    expect(none.goalMinor).toBe(0);
   });
 
   it('is exact when every currency is the goal\'s own', () => {
