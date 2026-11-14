@@ -1,0 +1,81 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Funded by tap</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --ph:#c7c7cc; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --green:#34c759; --up:#1a7f37; --warn:#c93400; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 10px; max-width:1100px; line-height:1.45; }
+  h2 { font-size:18px; margin:30px 0 4px; } .lead { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; font-size:14px; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; color:#fff; background:var(--tint); border-radius:4px; padding:1px 6px; margin-left:6px; vertical-align:2px; }
+  .row { display:flex; gap:22px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:330px; } .cap { font-weight:700; margin:0 0 3px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:54px; }
+  .phone { background:var(--ground); border-radius:28px; padding:8px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); height:640px; position:relative; overflow:hidden; }
+  .grab { width:36px; height:5px; border-radius:3px; background:#c7c7cc; margin:0 auto 10px; }
+  .nav { display:flex; justify-content:space-between; align-items:center; margin:0 4px 12px; font-size:15px; } .nav .t { color:var(--tint); min-width:58px; } .nav .t:last-child { text-align:right; font-weight:600; } .nav .off { color:#c7c7cc !important; } .nav b { font-size:16px; }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+  .hdr { display:flex; justify-content:space-between; font-size:12.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; margin:0 16px 6px; }
+  .r { display:flex; gap:10px; align-items:center; padding:9px 14px; white-space:nowrap; min-height:44px; } .r + .r { border-top:.5px solid var(--hair); }
+  .r.sub2 { padding-left:52px; min-height:42px; }
+  .ic { width:28px; height:28px; border-radius:7px; color:#fff; font-size:13px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .g { flex:1; min-width:0; } .a { font-size:15px; overflow:hidden; text-overflow:ellipsis; }
+  .v { font-size:15px; text-align:right; } .v.ph { color:var(--ph); }
+  .warn { color:var(--warn) !important; } .tint { color:var(--tint); } .dim { color:var(--ink3); }
+  .caret { display:inline-block; width:2px; height:18px; background:var(--tint); margin-left:1px; vertical-align:-3px; }
+  .kb { position:absolute; left:0; right:0; bottom:0; background:#d1d3d9; }
+  .bar { display:flex; background:#d1d3d9; border-bottom:.5px solid #b9bbc1; height:44px; align-items:stretch; }
+  .bar span { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:14px; color:#000; white-space:nowrap; line-height:1.15; }
+  .bar span + span { border-left:.5px solid #a9abb1; margin:8px 0; }
+  .bar span small { font-size:11px; color:#5c5e66; }
+  .bar2 { display:flex; align-items:center; justify-content:space-between; background:#f7f7f9; border-top:.5px solid #c6c6c8; height:44px; padding:0 12px; font-size:14px; white-space:nowrap; }
+  .bar2 .b { color:var(--tint); font-weight:600; }
+  .pad { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; padding:8px 6px 18px; }
+  .pad span { background:#fff; border-radius:6px; text-align:center; padding:9px 0; font-size:19px; box-shadow:0 1px 0 #898a8d; } .pad span.k2 { background:transparent; box-shadow:none; }
+  .callout { font-size:12px; color:var(--tint); margin:-4px 6px 10px; }
+
+  .hero2 { background:#fff; border-radius:12px; padding:12px 14px; margin-bottom:12px; } .hero2 .k { font-size:12.5px; color:var(--ink3); } .hero2 .vv { font-size:24px; font-weight:700; }
+  .meter { height:6px; border-radius:3px; background:#e5e5ea; overflow:hidden; margin:8px 0 4px; } .meter i { display:block; height:100%; background:var(--green); }
+  .tap { outline:2.5px solid var(--tint); outline-offset:-2.5px; border-radius:8px; }
+  .s2 { font-size:12px; color:var(--ink3); }
+  .arrow { width:26px; align-self:center; text-align:center; font-size:22px; color:var(--tint); }
+  .row { gap:8px !important; }
+</style></head><body>
+<h1>Tapping an account in Funded by: two options</h1>
+<p class="sub">Invented figures. Mandiri Tabungan has Rp 15.000.000 in "Hajj 2030". Tagged purchases (Gold) open their purchase in both options.</p>
+<h2>A · Opens the account (today)</h2>
+<p class="lead">Tap shows the account's page: balance, what is set aside, its transactions. Changing the amount means going back to the goal and opening Set aside.</p>
+<div class="row"><div class="col" style="width:330px"><p class="cap">① Tap Mandiri</p><p class="note">On the goal page.</p><div class="phone"><div class="nav"><span class="t">‹ Goals</span><b>Hajj 2030</b><span class="t"></span></div>
+    <div class="hero2"><div class="k">Saved</div><div class="vv">Rp 76.740.000</div><div class="meter"><i style="width:64%"></i></div><div class="s2">64% of Rp 120.000.000</div></div>
+    <div class="hdr"><span>Funded by</span><span>Rp 76.740.000</span></div>
+    <div class="panel">
+      <div class="r"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">BCA Valas ▾</div></div><div class="v">≈ Rp 47.540.000</div></div>
+      <div class="r tap"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">Mandiri Tabungan</div></div><div class="v">Rp 15.000.000</div></div>
+      <div class="r"><div class="ic" style="background:#b8860b">🥇</div><div class="g"><div class="a">Gold 10 g</div></div><div class="v">Rp 14.200.000</div></div>
+    </div></div></div><div class="arrow">→</div><div class="col" style="width:330px"><p class="cap">② Account page</p><p class="note">Balance, set-aside, transactions. No amount to type here.</p><div class="phone"><div class="nav"><span class="t">‹ Hajj 2030</span><b>Mandiri Tabungan</b><span class="t"></span></div>
+  <div class="hero2"><div class="k">Balance</div><div class="vv">Rp 21.500.000</div><div class="s2">Set aside Rp 15.000.000 · Free Rp 6.500.000</div></div>
+  <div class="hdr"><span>Set aside for</span></div>
+  <div class="panel"><div class="r"><div class="g"><div class="a">Hajj 2030</div></div><div class="v">Rp 15.000.000</div></div></div>
+  <div class="hdr"><span>Transactions</span></div>
+  <div class="panel"><div class="r"><div class="g"><div class="a">Salary</div><div class="s2">1 Nov</div></div><div class="v" style="color:#1a7f37">+Rp 12.000.000</div></div>
+  <div class="r"><div class="g"><div class="a">Groceries</div><div class="s2">3 Nov</div></div><div class="v">Rp 640.000</div></div></div>
+  <p class="s2" style="margin:4px 8px">To change the amount: back to the goal, Set aside, find Mandiri, type.</p></div></div></div>
+<h2>B · Opens Set aside on that account <span class="tag">Recommended</span></h2>
+<p class="lead">Tap opens the Set aside sheet with the cursor already on Mandiri and the bar up: change the amount, Take back, or Save. The account's page stays one tap away from Wallet / Accounts.</p>
+<div class="row"><div class="col" style="width:330px"><p class="cap">① Tap Mandiri</p><p class="note">On the goal page.</p><div class="phone"><div class="nav"><span class="t">‹ Goals</span><b>Hajj 2030</b><span class="t"></span></div>
+    <div class="hero2"><div class="k">Saved</div><div class="vv">Rp 76.740.000</div><div class="meter"><i style="width:64%"></i></div><div class="s2">64% of Rp 120.000.000</div></div>
+    <div class="hdr"><span>Funded by</span><span>Rp 76.740.000</span></div>
+    <div class="panel">
+      <div class="r"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">BCA Valas ▾</div></div><div class="v">≈ Rp 47.540.000</div></div>
+      <div class="r tap"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">Mandiri Tabungan</div></div><div class="v">Rp 15.000.000</div></div>
+      <div class="r"><div class="ic" style="background:#b8860b">🥇</div><div class="g"><div class="a">Gold 10 g</div></div><div class="v">Rp 14.200.000</div></div>
+    </div></div></div><div class="arrow">→</div><div class="col" style="width:330px"><p class="cap">② Set aside, Mandiri ready</p><p class="note">Cursor on Mandiri's amount; bar shows Most possible, Take back, still needed.</p><div class="phone"><div class="grab"></div>
+  <div class="nav"><span class="t">Cancel</span><b>Set aside</b><span class="t">Save</span></div>
+  <div class="hdr"><span>In Hajj 2030</span></div>
+  <div class="panel">
+    <div class="r"><div class="ic" style="background:#f0a500">🏦</div><div class="g"><div class="a">Mandiri Tabungan</div></div><div class="v">Rp 15.000.000<span class="caret"></span></div></div>
+    <div class="r"><div class="ic" style="background:#0a66c2">🏦</div><div class="g"><div class="a">BCA Valas</div></div></div>
+    <div class="r sub2"><div class="g"><div class="a">USD</div></div><div class="v">US$ 1.200,00</div></div>
+  </div>
+  <div class="hdr"><span>Can add</span><span>Free</span></div>
+  <div class="panel"><div class="r"><div class="ic" style="background:#7b3fe4">🏦</div><div class="g"><div class="a">Jago</div></div><div class="v ph">Rp 2.750.000</div></div></div>
+  <div class="kb"><div class="bar"><span>Rp 21.500.000<small>Most possible</small></span><span>Rp 0<small>Take back</small></span><span style="color:#5c5e66">Rp 43.260.000<small>still needed</small></span></div><div class="pad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span class="k2">,</span><span>0</span><span class="k2">⌫</span></div></div></div></div></div>
+<h2>Multicurrency account</h2>
+<p class="lead">In B, tapping the BCA Valas row opens its currencies as now (▾); tapping a currency (USD) opens Set aside with the cursor on USD. In A, a currency opens the account's page.</p>
+</body></html>
