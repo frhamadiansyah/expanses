@@ -49,7 +49,9 @@ test('moving between pockets asks only when it takes promised money, and the pro
 
   await page.goto('/goals');
   const umrah = await goalCard(page, 'Umrah 2027');
-  // US$100,00 over moved at 638 ÷ 500: S$127,60 now promised on the SGD pocket, US$1.900,00 left on USD.
-  await expect(umrah.getByTestId('goal-link').filter({ hasText: 'Valas Plus · SGD' })).toContainText('127,60');
-  await expect(umrah.getByTestId('goal-link').filter({ hasText: 'Valas Plus · USD' })).toContainText('1.900,00');
+  // US$100,00 over moved at 638 ÷ 500: S$127,60 now promised on the SGD pocket, US$1.900,00 left on USD — one row
+  // for the account now that two of its currencies fund the goal, each currency under it once opened.
+  await umrah.getByTestId('goal-link-account').filter({ hasText: 'Valas Plus' }).click();
+  await expect(umrah.getByTestId('goal-link-currency').filter({ hasText: 'SGD' })).toContainText('127,60');
+  await expect(umrah.getByTestId('goal-link-currency').filter({ hasText: 'USD' })).toContainText('1.900,00');
 });

@@ -125,7 +125,15 @@ export async function setAside(page: Page, goal: string, box: string, amount: st
   await expect(page.getByRole('alert')).toHaveCount(0);
   // Saved, not merely pressed: the sheet closes once the save lands. Navigating away before that loses it.
   await expect(sheet).toHaveCount(0);
-  await expect(card.getByTestId('goal-link').filter({ hasText: account }).first()).toBeVisible();
+  // A pocket's line folds into its account's row once a second currency of that account funds the goal: then the
+  // account is opened and the pocket's own currency row is the one looked for.
+  const [parent, code] = account.split(' · ');
+  const single = card.getByTestId('goal-link').filter({ hasText: account });
+  const folded = code ? card.getByTestId('goal-link-account').filter({ hasText: parent! }) : single;
+  await expect(single.or(folded).first()).toBeVisible();
+  if (!code || (await single.count()) > 0) return;
+  if ((await folded.getAttribute('data-open')) !== 'true') await folded.click();
+  await expect(card.getByTestId('goal-link-currency').filter({ has: page.getByText(code, { exact: true }) })).toBeVisible();
 }
 
 /** The record's account: Jenius Rp 42.500.000, Emergency fund Rp 30.000.000 (first), Umrah Rp 7.500.000 — Rp 5.000.000 free. */

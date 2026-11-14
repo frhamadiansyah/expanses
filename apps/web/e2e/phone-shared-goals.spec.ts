@@ -114,8 +114,13 @@ test('a goal shared by two phones: both fund it, each sees the other by name, a 
   await expect(legend(onRina, 'Me')).toContainText('14.000.000');
   await expect(legend(onRina, 'To go')).toContainText('138.000.000');
 
-  // Rina's money on Bima's phone is a name and an amount: each row says "Rina's account" and opens nothing.
-  const rinaRows = onBima.getByTestId('goal-link').filter({ hasText: 'Rina’s account' }).or(onBima.getByTestId('goal-link').filter({ hasText: "Rina's account" }));
+  // Rina's money on Bima's phone is a name and an amount, one line each under her group's header, opening nothing.
+  // Her group alone: Funded by's own section holds both groups, Me's too.
+  const rinaGroup = onBima
+    .locator('section')
+    .filter({ has: bima.getByRole('heading', { name: 'Rina', exact: true }) })
+    .filter({ hasNot: bima.getByRole('heading', { name: 'Me', exact: true }) });
+  const rinaRows = rinaGroup.getByTestId('goal-link');
   await expect(rinaRows).toHaveCount(2);
   await expect(rinaRows.filter({ hasText: 'Partner Savings' })).toContainText('10.000.000');
   await expect(rinaRows.filter({ hasText: 'Cash Fund' })).toContainText('4.000.000');
