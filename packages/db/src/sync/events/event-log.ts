@@ -88,6 +88,11 @@ export interface ShareEventInput {
   deviceName: string;
   /** People without the app, by name (D3). */
   names?: readonly string[];
+  /**
+   * Split costs (0116), as the event starts: off is one pot (`defaultSplitCosts` decides it from who the event is shared
+   * with). Left out, it splits costs, as every event shared before the switch does.
+   */
+  splitCosts?: boolean;
 }
 
 /**
@@ -126,8 +131,11 @@ export async function shareEvent(host: EventLogHost, ws: WorkspaceContext, input
       await tx.run(sql`
         INSERT INTO book_devices (book_id, device_id, member_id, name, sign_jwk, agree_jwk, added_at, removed_at, app_version)
         VALUES (${bookId}, ${host.device.deviceId}, ${memberId}, ${input.deviceName}, ${JSON.stringify(host.device.public.signJwk)}, ${JSON.stringify(host.device.public.agreeJwk)}, ${now}, NULL, ${host.appVersion ?? null})`);
+      // The event's own Plan switch comes with it (0082 on the event, 0116 on the shared one).
       await tx.run(sql`
-        INSERT INTO shared_events (book_id, name, starts_on, ends_on, currency, finished_at) VALUES (${bookId}, ${event.name}, ${event.startsOn}, ${event.endsOn}, ${input.currency}, ${event.finishedAt})`);
+        INSERT INTO shared_events (book_id, name, starts_on, ends_on, currency, finished_at, split_off, plan_off)
+        VALUES (${bookId}, ${event.name}, ${event.startsOn}, ${event.endsOn}, ${input.currency}, ${event.finishedAt}, ${input.splitCosts === false ? 1 : 0},
+                coalesce((SELECT plan_off FROM events WHERE id = ${input.eventId}), 0))`);
       await tx.run(sql`INSERT INTO event_people (book_id, id, name, member_id, removed_at) VALUES (${bookId}, ${memberId}, ${personName}, ${memberId}, NULL)`);
       for (const name of names) await tx.run(sql`INSERT INTO event_people (book_id, id, name, member_id, removed_at) VALUES (${bookId}, ${uuidv7()}, ${name}, NULL, NULL)`);
       const book = { bookId, memberId, epoch: 1 };

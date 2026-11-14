@@ -664,7 +664,7 @@ export class SyncService {
   /* ------------------------------------------------------------- shared events */
 
   /** Share an event as its own relay book (shared events §3); polled from here on like any shared book. */
-  async shareEvent(ws: WorkspaceContext, input: { eventId: string; currency: string; personName: string; deviceName: string; names: string[] }): Promise<{ bookId: string }> {
+  async shareEvent(ws: WorkspaceContext, input: { eventId: string; currency: string; personName: string; deviceName: string; names: string[]; splitCosts?: boolean }): Promise<{ bookId: string }> {
     const { bookId } = await this.logged('share', null, async () => (await this.engine()).shareEvent(ws, input));
     await this.touched(bookId);
     await this.refresh();
@@ -832,9 +832,10 @@ export class SyncService {
     try {
       const fetcher = this.rateFetcher ?? (this.defaultFetcher ??= frankfurterFetcher());
       const report = await this.exclusive(bookId, () => runSharedBookRepairs(this.database, bookId, { fetcher }));
-      // An event's log has nothing to repair: never asked again. A workspace is asked on every sync — a few reads — since
-      // each device crossing to a build that writes links earns the links one more pass (fix round 4).
-      if (!report.workspace) this.repaired.add(bookId);
+      // Anything else is never asked again. A workspace is asked on every sync — a few reads — since each device
+      // crossing to a build that writes links earns the links one more pass (fix round 4); an event's log likewise, for
+      // its trip switches (R5).
+      if (!report.workspace && !report.eventBook) this.repaired.add(bookId);
       // The devices still on an older version, each said once per open.
       for (const device of report.devicesBelow) {
         const key = `${bookId}|${device.deviceId}`;
@@ -843,7 +844,10 @@ export class SyncService {
         await this.note('repair', bookId, { message: `${device.name} (${device.deviceId.slice(0, 8)}) is on an older version (${device.version ?? 'unknown'}): bill links reach it once it updates` });
       }
       const tags = report.eventTags;
-      const changed = (report.billLinks ?? 0) > 0 || (tags !== null && tags.moved + tags.untagged > 0) || (report.tripTransfers ?? 0) > 0 || (report.cardFaces ?? 0) > 0;
+      const changed =
+        (report.billLinks ?? 0) > 0 || (tags !== null && tags.moved + tags.untagged > 0) || (report.tripTransfers ?? 0) > 0 || (report.cardFaces ?? 0) > 0 || (report.tripSwitches ?? 0) > 0;
+      // R5: a shared trip's Split costs and Plan switches, sent again for a phone that updated since it took them.
+      if ((report.tripSwitches ?? 0) > 0) await this.note('repair', bookId, { message: 'Trip switches (Split costs, Plan) sent again for a phone that updated' });
       // R4: this phone's joint accounts sent again with their card faces (bank, tier, digits), once.
       if ((report.cardFaces ?? 0) > 0) await this.note('repair', bookId, { message: `One-time repair: ${report.cardFaces} net-worth items sent again with their card faces` });
       // R3: transfers listed on a shared event, sent again for a device that has updated since it took them.

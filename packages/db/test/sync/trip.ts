@@ -20,9 +20,9 @@ export class Trip {
   }
 
   /** `owner` makes "Coast week" in lira and shares it, with these names for people without the app. */
-  async share(owner: Device, names: string[] = [], currency = 'TRY'): Promise<string> {
+  async share(owner: Device, names: string[] = [], currency = 'TRY', options: { splitCosts?: boolean } = {}): Promise<string> {
     const eventId = await saveEvent(owner.database, ownerScope(owner.ws), { name: 'Coast week', startsOn: '2026-10-05', endsOn: '2026-10-12' });
-    const { bookId } = await owner.engine.shareEvent(owner.ws, { eventId, currency, personName: owner.name, deviceName: `${owner.name}'s phone`, names });
+    const { bookId } = await owner.engine.shareEvent(owner.ws, { eventId, currency, personName: owner.name, deviceName: `${owner.name}'s phone`, names, ...options });
     this.bookId = bookId;
     this.events.set(owner, eventId);
     return bookId;

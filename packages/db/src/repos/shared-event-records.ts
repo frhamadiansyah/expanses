@@ -27,6 +27,10 @@ export interface EventBookRow {
   endsOn: string;
   currency: string;
   finishedAt: string | null;
+  /** Split costs (0116): false is one pot — no shares, balances or settling up shown, new spending all the payer's. */
+  splitCosts: boolean;
+  /** The trip's Plan switch is off (0116): no shared plan shown. */
+  planOff: boolean;
 }
 
 export interface StoredExpense extends ExpenseRecord {
@@ -53,7 +57,7 @@ export interface StoredPerson {
   removedAt: string | null;
 }
 
-type BookRowValues = [string, string, string, string, string, string, string | null, string | null, string | null, string | null, string | null, string];
+type BookRowValues = [string, string, string, string, string, string, string | null, string | null, string | null, string | null, string | null, string, number | null, number | null];
 
 /*
  * The event currency is the log's once the log has locked it (ruling R8): a change this phone made before it heard of
@@ -63,7 +67,7 @@ const bookSelect = sql`
   SELECT e.book_id, e.workspace_id, w.base_currency, e.event_id, e.balance_account_id, s.member_id,
          se.name, se.starts_on, se.ends_on,
          coalesce(CASE WHEN lc.locked = 1 AND lc.currency <> '' THEN lc.currency END, se.currency),
-         se.finished_at, s.state
+         se.finished_at, s.state, se.split_off, se.plan_off
   FROM event_books e
   JOIN workspaces w ON w.id = e.workspace_id
   JOIN shared_books s ON s.book_id = e.book_id
@@ -86,6 +90,8 @@ function bookRowOf(row: BookRowValues | undefined): EventBookRow | null {
     currency: row[9],
     finishedAt: row[10],
     state: row[11],
+    splitCosts: Number(row[12] ?? 0) !== 1,
+    planOff: Number(row[13] ?? 0) === 1,
   };
 }
 

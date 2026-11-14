@@ -45,6 +45,8 @@ export interface RecordPostingView {
   accountCurrency: string | null;
   /** That account, local to this phone (R5): the Add screen opens this person's own payment on it. */
   accountId?: string | null;
+  /** Its name, as this phone knows it: what a one-pot trip's row says it was paid with (0116). */
+  accountName?: string | null;
   /** What that account moved in its own currency, when that is not the record's (R5); null when it is. */
   accountAmountMinor?: number | null;
 }
@@ -110,6 +112,13 @@ export interface SharedEventView {
   endsOn: string;
   currency: string;
   finishedAt: string | null;
+  /**
+   * Split costs (0116), the same on every phone. Off is one pot: the screens show no share, balance or settling up, and
+   * new spending is all its payer's. The figures below are still worked out from every split recorded, only not shown.
+   */
+  splitCosts: boolean;
+  /** The trip's Plan switch is off (0116): the shared plan is not shown. */
+  planOff: boolean;
   state: string;
   me: string;
   myName: string;
@@ -143,11 +152,11 @@ async function unsentIdsTx(db: Db, bookId: string): Promise<Set<string>> {
 }
 
 async function postingsTx(db: Db, bookId: string, names: Map<string, string>): Promise<Map<string, RecordPostingView>> {
-  const rows = await db.values<[string, string | null, string | null, string | null, string | null, string | null, number | null]>(sql`
-    SELECT p.record_id, p.transaction_id, p.unposted, p.changed_by, a.currency, p.account_id, p.account_amount_minor
+  const rows = await db.values<[string, string | null, string | null, string | null, string | null, string | null, number | null, string | null]>(sql`
+    SELECT p.record_id, p.transaction_id, p.unposted, p.changed_by, a.currency, p.account_id, p.account_amount_minor, a.name
     FROM event_postings p LEFT JOIN accounts a ON a.id = p.account_id WHERE p.book_id = ${bookId}`);
   return new Map(
-    rows.map(([id, transactionId, unposted, changedBy, accountCurrency, accountId, accountAmountMinor]) => [
+    rows.map(([id, transactionId, unposted, changedBy, accountCurrency, accountId, accountAmountMinor, accountName]) => [
       id,
       {
         transactionId,
@@ -156,6 +165,7 @@ async function postingsTx(db: Db, bookId: string, names: Map<string, string>): P
         accountCurrency,
         accountId,
         accountAmountMinor: accountAmountMinor === null ? null : Number(accountAmountMinor),
+        accountName,
       },
     ]),
   );
@@ -244,6 +254,8 @@ async function viewOfTx(db: Db, book: EventBookRow): Promise<SharedEventView> {
     endsOn: book.endsOn,
     currency: book.currency,
     finishedAt: book.finishedAt,
+    splitCosts: book.splitCosts,
+    planOff: book.planOff,
     state: book.state,
     me: book.me,
     myName: names.get(book.me) ?? 'Someone',
@@ -302,7 +314,8 @@ export interface EventBalanceRow {
 }
 
 /**
- * The Debts page's trips (spec §5): each shared event with a balance here or a payment this person is in. The balance
+ * The Debts page's trips (spec §5): each shared event with a balance here or a payment this person is in, while it
+ * splits costs. The balance
  * and the payments come from one source, the records, as the event page reads them: the trip-balance account trails
  * them while anything waits (a name claimed late, a rate not fetched yet), and the row would contradict itself ("Budi
  * −₺300 · Andi pays Budi ₺500"). Net worth keeps reading the account. One event that cannot be read is left out, never
@@ -314,7 +327,8 @@ export async function eventBalanceRows(database: Database, ws: WorkspaceContext)
   for (const [eventId] of events) {
     try {
       const book = await eventBookOfEventTx(database.db, eventId);
-      if (!book) continue;
+      // One pot (Split costs off, 0116): nothing is owed on it, and a balance kept from before is hidden, not shown here.
+      if (!book || !book.splitCosts) continue;
       const view = await viewOfTx(database.db, book);
       const payments = view.payments.filter((p) => p.fromPersonId === book.me || p.toPersonId === book.me);
       const balanceMinor = view.people.find((p) => p.isMe)?.balanceMinor ?? 0;
