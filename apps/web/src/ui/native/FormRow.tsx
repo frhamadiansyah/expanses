@@ -202,7 +202,7 @@ export function TextRow({
     return () => document.removeEventListener('click', close);
   }, [explained]);
   return (
-    <div className="relative" ref={wrap}>
+    <div className="relative" ref={wrap} data-text-row>
       <Separator show={Boolean(position?.separator)} />
       <div className="flex items-center gap-3" style={shell(false)}>
         {info ? (
@@ -267,7 +267,9 @@ export function TextRow({
                 id={id}
                 className={cx(
                   'ph-focus absolute inset-0 w-full min-w-0 rounded bg-transparent text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]',
-                  filled ? 'text-right' : 'text-left',
+                  // Left only under a placeholder, so the caret stands before its first letter; with no placeholder the caret
+                  // stands at the right edge, where the typing will appear.
+                  filled || !props.placeholder ? 'text-right' : 'text-left',
                   'placeholder:text-[var(--ph-ink-3)]',
                   className,
                 )}
