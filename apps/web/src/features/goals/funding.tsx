@@ -1,7 +1,9 @@
 import type { GoalLinkRow } from '@expanses/db';
+import type { ReactNode } from 'react';
 import { useApp } from '../../app/context';
 import { Money } from '../../ui';
-import { type GroupChild, InsetRow } from '../../ui/native';
+import { type GroupChild, InsetRow, type TreePlace } from '../../ui/native';
+import { type FundingCurrencyLine, type FundingLine, linkShort } from './funding-lines';
 
 /**
  * What one link is worth, in the money it actually is.
@@ -32,30 +34,101 @@ export function LinkAmount({ link, goalCurrency }: { link: GoalLinkRow; goalCurr
   );
 }
 
+/** A shortfall said on the row's own line, before its figure: every Funded-by row is one line (owner, 14 Nov). */
+function ShortBefore({ link }: { link: GoalLinkRow }) {
+  if (!linkShort(link)) return null;
+  return (
+    <span className="mr-[6px] text-[12.5px]">
+      short <Money minor={link.shortMinor} currency={link.currency} />
+    </span>
+  );
+}
+
 /** What funds a goal, as one row of its group, opening that account or holding. Named so the group can hand it its place and a test can name it. */
-export function FundingRow({ link, goalCurrency, caption, position }: GroupChild & { link: GoalLinkRow; goalCurrency?: string; caption?: string }) {
+export function FundingRow({ link, goalCurrency, icon, position }: GroupChild & { link: GoalLinkRow; goalCurrency?: string; icon?: ReactNode }) {
   // Another member's line is read-only here: its account is on their phone, so the row opens nothing.
   const theirs = link.owner !== undefined;
   return (
     <div data-testid="goal-link">
       <InsetRow
         position={position}
+        icon={icon}
         title={link.name}
-        // Only a shortfall earns a second line; "set aside" and "tagged" are what the group's own name already says.
-        subtitle={
-          caption ? (
-            caption
-          ) : link.kind !== 'tagged' && link.shortMinor > 0 ? (
-            <>
-              short by <Money minor={link.shortMinor} currency={link.currency} />
-            </>
-          ) : undefined
+        // One line: whose a line is, the member group's header says; a shortfall is said beside the figure.
+        value={
+          <>
+            <ShortBefore link={link} />
+            <LinkAmount link={link} goalCurrency={goalCurrency} />
+          </>
         }
-        value={<LinkAmount link={link} goalCurrency={goalCurrency} />}
-        valueTone="ink"
+        valueTone={linkShort(link) ? 'warn' : 'ink'}
         // The account or holding's own page: a money account's page is reached through the same address.
         to={theirs ? undefined : '/net-worth/assets/$accountId'}
         params={theirs ? undefined : { accountId: link.accountId }}
+      />
+    </div>
+  );
+}
+
+/**
+ * A multicurrency account on Funded by: one row at what its currencies come to in the goal's money, and a tap opens
+ * its currencies under it. The figure is converted, so it wears ≈; any currency short turns it the warning colour.
+ */
+export function FundingAccountRow({
+  line,
+  goalCurrency,
+  icon,
+  open,
+  onToggle,
+  position,
+}: GroupChild & { line: Extract<FundingLine, { type: 'account' }>; goalCurrency: string; icon?: ReactNode; open: boolean; onToggle: () => void }) {
+  return (
+    <div data-testid="goal-link-account" data-open={open ? 'true' : 'false'}>
+      <InsetRow
+        position={position}
+        icon={icon}
+        title={
+          <>
+            {line.name}
+            <span className="sr-only">, {line.children.length} currencies</span>
+            <span aria-hidden className="ml-[6px] text-[12px] text-[var(--ph-ink-3)]">
+              {open ? '▴' : '▾'}
+            </span>
+          </>
+        }
+        value={
+          <>
+            {line.approx && '≈ '}
+            <Money minor={line.goalMinor} currency={goalCurrency} />
+          </>
+        }
+        valueTone={line.short ? 'warn' : 'ink'}
+        chevron={false}
+        onClick={onToggle}
+      />
+    </div>
+  );
+}
+
+/** One currency under its open account: the code, and the amount in its own money. Opens that currency as its row always did. */
+export function FundingCurrencyRow({ child, tree, position }: GroupChild & { child: FundingCurrencyLine; tree: TreePlace }) {
+  const { link } = child;
+  return (
+    <div data-testid="goal-link-currency">
+      <InsetRow
+        position={position}
+        depth={1}
+        tree={tree}
+        title={child.code}
+        value={
+          <>
+            <ShortBefore link={link} />
+            <Money minor={link.valueMinor} currency={link.currency} />
+          </>
+        }
+        valueTone={child.short ? 'warn' : 'ink'}
+        to="/net-worth/assets/$accountId"
+        params={{ accountId: link.accountId }}
       />
     </div>
   );

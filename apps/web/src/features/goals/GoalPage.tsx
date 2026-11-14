@@ -1,8 +1,8 @@
-import { formatMinor, isoDate } from '@expanses/core';
-import { leaveSharedGoal, retagTrade, setStagePaid } from '@expanses/db';
+import { formatMinor, isoDate, sheetSectionOf } from '@expanses/core';
+import { type GoalLinkRow, leaveSharedGoal, retagTrade, setStagePaid } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { ArrowRightLeft, CalendarClock, Check, DoorOpen, HandCoins, MoreHorizontal, Pencil, PiggyBank, ShoppingBag, Tag, Undo2 } from 'lucide-react';
-import { useState } from 'react';
+import { Fragment, type ReactNode, useState } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
@@ -10,15 +10,18 @@ import { ErrorBox, Money } from '../../ui';
 import { ActionButtons, type CornerAction, InsetGroup, InsetRow, Panel, PushedTitle, type RoundAction, SCREEN } from '../../ui/native';
 import { UseBar } from '../budget/budget-rows';
 import { KeyItem } from '../bills/RepeatingBills';
-import { useTrades } from '../networth/queries';
-import { FundingRow } from './funding';
+import { useAssetValues, useTrades } from '../networth/queries';
+import { rowKindOf } from '../networth/sheet-drawers';
+import { assetKindTile } from '../ownables/catalogue-view';
+import { FundingAccountRow, FundingCurrencyRow, FundingRow } from './funding';
+import { fundingLines } from './funding-lines';
 import { TagPurchaseSheet } from './FundingSheet';
 import { applyTagChanges } from './goal-tags';
 import { SetAsideSheet } from './SetAside';
 import { MonthlySheet, MoveSheet, TakeBackSheet, useHasTaggedPurchase, UseSheet } from './GoalSheets';
 import { setAsideOf } from './goal-actions';
 import { cardHistory, dayMonth, fundedWindow, type GoalCard, goalCard, historyDay, monthsLeftLabel, stageShares } from './goal-cards';
-import { fundingCaption, fundingGroups, type FundingGroup, GOAL_SHARING_COPY, heroSegments, initialsLine, sharedWithLabel } from './goal-sharing';
+import { fundingGroups, type FundingGroup, GOAL_SHARING_COPY, heroSegments, initialsLine, sharedWithLabel } from './goal-sharing';
 import { InfoHeader } from './InfoHeader';
 import { useDraws, useEarmarks, useGoalDues, useGoalHistory, useGoalPlans, useGoalShare, usePrivateCopy } from './queries';
 import { type DueToast, MonthHistoryGroup } from './GoalDues';
@@ -89,6 +92,9 @@ export function GoalPage({ goalId }: { goalId: string }) {
   const share = useGoalShare(goalId).data ?? null;
   const goalDue = (useGoalDues().data ?? []).find((row) => row.settings.goalId === goalId) ?? null;
   const accountRows = useAccounts().data ?? [];
+  const assetValues = useAssetValues(today).data ?? [];
+  // The multicurrency accounts opened on Funded by, by row key: shut to begin with.
+  const [openAccounts, setOpenAccounts] = useState<ReadonlySet<string>>(new Set());
   const [toast, setToast] = useState<DueToast | null>(null);
 
   const plans = summary.data?.plans ?? [];
@@ -186,6 +192,37 @@ export function GoalPage({ goalId }: { goalId: string }) {
   const colourOf = (key: string, index: number) => (key === 'paid' ? 'var(--ph-ink-3)' : key === 'to-go' ? 'color-mix(in srgb, var(--ph-ink-3) 35%, transparent)' : key === 'me' ? (warn ? 'var(--ph-warn)' : 'var(--ph-up)') : MEMBER_COLOURS[index % MEMBER_COLOURS.length]!);
   const segments = shared ? heroSegments(card.paidMinor, groups, card.targetMinor).filter((segment) => segment.minor > 0) : [];
   const right = card.coverLabel ?? (card.monthsLeft !== null ? monthsLeftLabel(card.monthsLeft) : null);
+
+  // A Funded-by row's circle: the drawing Net worth gives the account or holding, read off its kind. Another member's
+  // line names an account this phone does not have, so it wears the plain drawing of a money account or a holding.
+  const glyph = (accountId: string, kind: GoalLinkRow['kind'] | 'account'): ReactNode => {
+    const value = assetValues.find((row) => row.accountId === accountId);
+    const subtype = value?.subtype ?? accountRows.find((account) => account.id === accountId)?.subtype;
+    const code = value?.coretaxCode ?? null;
+    const section = subtype ? sheetSectionOf({ code, subtype }) : kind === 'tagged' ? '' : 'liquid';
+    const Glyph = assetKindTile(section, subtype ? rowKindOf(section, { accountId, code }, () => subtype).key : '');
+    return <Glyph size={16} aria-hidden />;
+  };
+  const toggleAccount = (key: string) =>
+    setOpenAccounts((was) => {
+      const next = new Set(was);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  // One row per account (2026-11-14): a multicurrency account's currencies fold under its own row, opened by a tap.
+  const fundingRows = (links: readonly GoalLinkRow[], group: string) =>
+    fundingLines(links, accountRows, plan.currency).map((line) => {
+      if (line.type === 'link') return <FundingRow key={line.key} link={line.link} goalCurrency={plan.currency} icon={glyph(line.link.accountId, line.link.kind)} />;
+      const key = `${group}:${line.key}`;
+      const isOpen = openAccounts.has(key);
+      return (
+        <Fragment key={line.key}>
+          <FundingAccountRow line={line} goalCurrency={plan.currency} icon={glyph(line.accountId, 'account')} open={isOpen} onToggle={() => toggleAccount(key)} />
+          {isOpen && line.children.map((child, index) => <FundingCurrencyRow key={child.key} child={child} tree={{ last: index === line.children.length - 1 }} />)}
+        </Fragment>
+      );
+    });
 
   return (
     <div className={SCREEN} data-testid="goal-page">
@@ -331,6 +368,7 @@ export function GoalPage({ goalId }: { goalId: string }) {
       <section className="w-full">
         <InfoHeader
           title="Funded by"
+          trailing={plan.links.length > 0 ? <Money minor={plan.currentMinor} currency={currency} /> : undefined}
           info={
             plan.goal.standingNote ? (
               <>
@@ -342,9 +380,7 @@ export function GoalPage({ goalId }: { goalId: string }) {
         {shared ? (
           sharedGroups.map((group) => (
             <InsetGroup key={group.memberId ?? 'me'} wide header={group.label} trailing={<Money minor={group.subtotalMinor} currency={currency} />}>
-              {group.links.map((link) => (
-                <FundingRow key={`${link.accountId}-${link.kind}-${link.owner ?? 'me'}`} link={link} goalCurrency={plan.currency} caption={fundingCaption(link, group.label, share?.me)} />
-              ))}
+              {fundingRows(group.links, group.memberId ?? 'me')}
               {group.memberId === null && <InsetRow key="set-aside" title={<span className="text-[var(--ph-tint)]">{GOAL_SHARING_COPY.setAsideRow}</span>} chevron={false} onClick={() => setSettingAside(true)} />}
             </InsetGroup>
           ))
@@ -353,7 +389,7 @@ export function GoalPage({ goalId }: { goalId: string }) {
           {plan.links.length === 0 ? (
             <InsetRow title="Nothing yet" subtitle="Tag a purchase or set money aside." chevron={false} />
           ) : (
-            plan.links.map((link) => <FundingRow key={`${link.accountId}-${link.kind}`} link={link} goalCurrency={plan.currency} />)
+            fundingRows(plan.links, 'me')
           )}
         </InsetGroup>
         )}

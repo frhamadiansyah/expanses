@@ -50,7 +50,7 @@ test('the laptop: pick a goal, say it is borrowing, and the goal and the account
   await expect(ef.getByText(/Fully funded/)).toHaveCount(0);
   await expect(ef.getByText(/went to/)).toHaveCount(0);
   // The Funded-by row says it in the account's own terms.
-  await expect(ef.getByTestId('goal-link').filter({ hasText: 'Jenius' })).toContainText(/short by Rp.1\.800\.000/);
+  await expect(ef.getByTestId('goal-link').filter({ hasText: 'Jenius' })).toContainText(/short Rp.1\.800\.000/);
   // And the history keeps the borrow, signed, with what it was for.
   await openGoalHistory(page);
   const borrowed = page.getByTestId('goal-history').filter({ hasText: 'Borrowed' });
@@ -238,7 +238,7 @@ test('a goal that was whole says when it stood whole and where the money went', 
   await expect(umrah.getByText(/^Fully funded (on \d+ \w+|until \d+ \w+|\d+ \w+ – \d+ \w+)$/)).toBeVisible();
   // The borrow is the part over what was free, 4.500.000 — not the whole 38.000.000 payment.
   await expect(umrah.getByText(/^Rp.4\.500\.000 went to Laptop\. Put it back and the fund is complete again\.$/)).toBeVisible();
-  await expect(umrah.getByTestId('goal-link').filter({ hasText: 'Jenius' })).toContainText(/short by Rp.4\.500\.000/);
+  await expect(umrah.getByTestId('goal-link').filter({ hasText: 'Jenius' })).toContainText(/short Rp.4\.500\.000/);
   // A borrow is not a spend: still open.
   await expect(umrah.getByText('Done', { exact: true })).toHaveCount(0);
 });
