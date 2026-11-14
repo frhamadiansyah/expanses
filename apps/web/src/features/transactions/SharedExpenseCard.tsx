@@ -330,16 +330,19 @@ export function SharedExpenseCard({
               disabled
               onClick={() => undefined}
             />
-            <FormRow
-              icon={
-                <RowGlyph>
-                  <Split size={15} />
-                </RowGlyph>
-              }
-              label="Split"
-              value={splitSummary(draft)}
-              onClick={() => setSheet('split')}
-            />
+            {/* Split costs off: one pot, nothing to split — the row is gone, and the whole of it is the payer's. */}
+            {view.splitCosts && (
+              <FormRow
+                icon={
+                  <RowGlyph>
+                    <Split size={15} />
+                  </RowGlyph>
+                }
+                label="Split"
+                value={splitSummary(draft)}
+                onClick={() => setSheet('split')}
+              />
+            )}
           </FormRows>
         </section>
 
@@ -378,7 +381,7 @@ export function SharedExpenseCard({
       {sheet === 'category' && (
         <CategoryPicker kind="expense" value={draft.categoryId} eventCategories={view.categories} onPick={(categoryId) => set({ categoryId })} onClose={() => setSheet(null)} />
       )}
-      {sheet === 'split' && <ShareSplitSheet view={view} draft={draft} set={set} onClose={() => setSheet(null)} />}
+      {sheet === 'split' && view.splitCosts && <ShareSplitSheet view={view} draft={draft} set={set} onClose={() => setSheet(null)} />}
     </>
   );
 }

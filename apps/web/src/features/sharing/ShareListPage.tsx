@@ -1,3 +1,4 @@
+import { defaultSplitCosts } from '@expanses/core';
 import {
   activeNetWorthGroup,
   netWorthMarks,
@@ -347,7 +348,8 @@ function ShareListBody({ bookId, bookName, detail, setup }: { bookId: string; bo
             if (!personName) throw new Error(SHARE_LIST_COPY.noName(event?.name ?? 'This event'));
             const run = progress.current.get(eventId) ?? freshShare();
             progress.current.set(eventId, run);
-            const done = await shareEventNow({ eventId, personName, currency: event?.currency ?? ws.baseCurrency }, run);
+            // The household's own share list: one pot to start with (owner, 14 Nov 2026), switched in the trip's Settings.
+            const done = await shareEventNow({ eventId, personName, currency: event?.currency ?? ws.baseCurrency, splitCosts: defaultSplitCosts({ householdShare: true }) }, run);
             if (!done) throw new Error('Already being shared. Try again in a moment.');
             return done;
           },

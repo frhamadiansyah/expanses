@@ -1,4 +1,4 @@
-import { evaluateExact, formatMinor, isRateString, minorToMajorString, parseMajor, parseRate, rateString, sharesOf, type SplitInput } from '@expanses/core';
+import { evaluateExact, formatMinor, isRateString, minorToMajorString, onePotSplit, parseMajor, parseRate, rateString, sharesOf, type SplitInput } from '@expanses/core';
 import type { AccountRow, SharedEventView, SharedExpenseInput, SharedExpensePatch, SharedExpenseView } from '@expanses/db';
 import { moneyAccounts } from '../events/shared-view';
 
@@ -182,7 +182,8 @@ export function sharedDraftToInput(draft: SharedExpenseDraft, view: SharedEventV
     rateToEvent: rateOf(draft, view),
     payerPersonId: draft.payer,
     paidFrom,
-    split: splitOf(draft, amountMinor),
+    // Split costs off: one pot, the whole of it the payer's (the repository says the same whatever is sent).
+    split: view.splitCosts ? splitOf(draft, amountMinor) : onePotSplit(draft.payer),
     categoryId: draft.categoryId || null,
     note: draft.note.trim() || null,
   };
@@ -196,15 +197,16 @@ export function sharedDraftToPatch(draft: SharedExpenseDraft, view: SharedEventV
   const sign = original.amountMinor < 0 ? -1 : 1;
   const size = figure(draft.amount, draft.currency, 'Amount', true);
   const amountMinor = sign * size;
-  const sized = splitOf(draft, size);
-  const split: SplitInput = sign === 1 || sized.mode === 'equal' ? sized : { mode: 'amounts', shares: sized.shares.map((s) => ({ personId: s.personId, minor: s.minor === 0 ? 0 : -s.minor })) };
+  // Split costs off: the screen has no Split row, so an edit sends no split and the recorded one stays as it is.
+  const sized = view.splitCosts ? splitOf(draft, size) : null;
+  const split: SplitInput | null = sized === null ? null : sign === 1 || sized.mode === 'equal' ? sized : { mode: 'amounts', shares: sized.shares.map((s) => ({ personId: s.personId, minor: s.minor === 0 ? 0 : -s.minor })) };
   const patch: SharedExpensePatch = {};
   if (draft.occurredOn !== original.occurredOn) patch.occurredOn = draft.occurredOn;
   if (amountMinor !== original.amountMinor) patch.amountMinor = amountMinor;
   if (draft.currency !== original.currency) patch.currency = draft.currency;
   const rate = rateOf(draft, view);
   if (rate !== original.rateToEvent) patch.rateToEvent = rate;
-  if (JSON.stringify(split) !== JSON.stringify(original.split)) patch.split = split;
+  if (split !== null && JSON.stringify(split) !== JSON.stringify(original.split)) patch.split = split;
   if ((draft.categoryId || null) !== original.categoryId) patch.categoryId = draft.categoryId || null;
   if ((draft.note.trim() || null) !== original.note) patch.note = draft.note.trim() || null;
   // What this person's own account was charged, in its currency, when that is not the expense's (R5): sent only when

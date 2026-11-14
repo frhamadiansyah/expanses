@@ -15,6 +15,7 @@ import { EditSharedCostRoute, NewSharedCostRoute, SharedCostLinkPage, SharedCost
 import { EventCategoriesPage } from '../features/events/EventCategoriesPage';
 import { PeoplePage } from '../features/events/PeoplePage';
 import { EventSettingsPage } from '../features/events/EventSettingsPage';
+import { SharedEventSettingsPage } from '../features/events/SharedEventSettingsPage';
 import { PlanPage } from '../features/events/PlanPage';
 import { BudgetPage } from '../features/budget/BudgetPage';
 import { budgetSearch } from '../features/budget/budget-search';
@@ -301,6 +302,8 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/people', component: PeoplePage }),
   // A private event's settings: the gear on its page (name, dates, categories, currency, Plan, Done, Share, Delete).
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/settings', component: EventSettingsPage }),
+  // A shared trip's settings: the gear on its page (Split costs, Plan, People, Categories, Done, Leave).
+  createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/shared-settings', component: SharedEventSettingsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/categories', component: EventCategoriesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan', component: PlanPage, validateSearch: planSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan/new', component: NewItemRoute, validateSearch: planSearch }),

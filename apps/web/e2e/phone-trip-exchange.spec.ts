@@ -1,8 +1,8 @@
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
 import { currencyRow, setCurrency } from './currency-field';
-import { addForm, chooseTo, choosePayment, fillAmount, openAmount, saveButton } from './add-transaction';
+import { addForm, chooseTo, choosePayment, fillAmount, openAmount, saveButton, showTransfers } from './add-transaction';
 import { mockRates, openWithPockets } from './pockets';
-import { corner, eventually, newEvent, openTrip } from './shared-events';
+import { corner, eventually, newEvent, openTrip, openTripSettings } from './shared-events';
 import { openWorkspaceSharePage, putOffShareList, shareWorkspace, workspaceLine } from './workspace-page';
 
 /*
@@ -91,6 +91,9 @@ async function journey(owner: Page, browser: Browser, info: TestInfo, recordedBe
   const share = owner.getByRole('form', { name: 'Share this event' });
   await share.getByLabel('Name', { exact: true }).fill('Ayu');
   await setCurrency(currencyRow(share, 'Currency'), 'TRY');
+  // "Shared with" the husband: one pot to start with, said on the sheet before sharing.
+  await expect(share.getByRole('checkbox', { name: 'Split costs' })).not.toBeChecked();
+  await expect(share).toContainText('Off: one pot, no shares or settling up.');
   await share.getByRole('button', { name: 'Share', exact: true }).click();
   const link = (await owner.getByTestId('invite-link').textContent({ timeout: 60_000 }))!.trim();
   await husband.goto(`/join#${link.replace('cicis://join/', '')}`);
@@ -102,11 +105,16 @@ async function journey(owner: Page, browser: Browser, info: TestInfo, recordedBe
   await joinTrip.getByRole('button', { name: 'Join', exact: true }).click();
   await expect(husband.getByTestId('shared-event')).toBeVisible({ timeout: 60_000 });
   await openTrip(owner, 'Anatolia Trip');
-  await eventually(owner, () => expect(owner.getByTestId('shared-event')).toContainText('Bima', { timeout: 1_000 }));
+  // Shared with the husband alone, the trip is one pot (no Balances card to name him): his name is on its Settings page.
+  const settings = await openTripSettings(owner);
+  await eventually(owner, () => expect(settings.getByTestId('shared-settings-people')).toContainText('Bima', { timeout: 1_000 }));
+  await expect(settings.getByRole('checkbox', { name: 'Split costs' })).not.toBeChecked();
 
   if (!recordedBeforeSharing) await recordExchange(owner);
   await openWorkspace(owner, 'Family');
   await owner.goto('/transactions');
+  // An own transfer (cash to cash) is off Cashflow until its filter shows transfers (own transfers off Cashflow).
+  await showTransfers(owner);
 
   const row = owner.getByTestId('transaction-row').filter({ hasText: 'Bank Contoh' });
   await expect(row).toHaveCount(1);

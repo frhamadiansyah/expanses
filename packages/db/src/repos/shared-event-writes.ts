@@ -1,8 +1,9 @@
-import { balances, convertMinor, eventCategoryIcon, expenseInEvent, isRateString, isSupportedCurrency, MoneyError, SharedEventError, sharesOf, splitJsonOf, type SplitInput, uuidv7 } from '@expanses/core';
+import { balances, convertMinor, eventCategoryIcon, expenseInEvent, isRateString, isSupportedCurrency, MoneyError, onePotSplit, SharedEventError, sharesOf, splitJsonOf, type SplitInput, uuidv7 } from '@expanses/core';
 import { type SQL, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
-import { withCapture } from '../sync/capture';
+import { localDeviceId, withCapture } from '../sync/capture';
+import { meetsVersion, TRIP_SWITCHES_MIN_APP_VERSION } from '../sync/events/version';
 import { secondDeviceInTx } from '../sync/authority';
 import { followEventOpTx, postEventRecordTx, rateToBaseTx, recordsReadingTx, setPaidFromTx } from './shared-event-postings';
 import { takeExpenseOffItemsTx } from './shared-item-state';
@@ -135,10 +136,13 @@ const targets = (bookId: string, id: string) => [
   { entity: 'event_expense_detail', id, bookId },
 ];
 
-export async function recordSharedExpense(database: Database, ws: WorkspaceContext, eventId: string, input: SharedExpenseInput): Promise<string> {
+export async function recordSharedExpense(database: Database, ws: WorkspaceContext, eventId: string, given: SharedExpenseInput): Promise<string> {
   const id = uuidv7();
   await database.transaction(async (tx) => {
     const book = await openSharedEventTx(tx, ws, eventId);
+    // Split costs off (0116): one pot, so the whole of it is its payer's and nobody owes anything for it — whatever split
+    // the screen sent, read here from the event as it stands in this transaction.
+    const input = book.splitCosts ? given : { ...given, split: onePotSplit(given.payerPersonId) };
     const people = await peopleTx(tx, book.bookId);
     await checkExpenseTx(tx, book, people, input);
     const mine = input.payerPersonId === book.me;
@@ -192,6 +196,20 @@ function refuseUnlessPayer(record: StoredExpense, book: EventBookRow, people: Ma
   }
 }
 
+/**
+ * The split an edit leaves in place when it sends none. Split costs off (0116) hides a split without rewriting it, so a
+ * recorded split is kept as it is — unless the event is one pot and the new amount no longer fits it (an amounts split
+ * of the old figure): then the expense becomes the payer's alone, as anything recorded in one pot is.
+ */
+function splitKept(book: EventBookRow, record: StoredExpense, amountMinor: number): SplitInput {
+  // A split with nobody in it (one this phone could not read, I2) is no split to keep: the payer's alone.
+  const people = record.split.mode === 'equal' ? record.split.people : record.split.shares;
+  if (people.length === 0) return onePotSplit(record.payerPersonId);
+  // An equal split fits any amount; an amounts split, only the one it was typed for.
+  if (book.splitCosts || amountMinor === record.amountMinor || record.split.mode === 'equal') return record.split;
+  return onePotSplit(record.payerPersonId);
+}
+
 export async function editSharedExpense(database: Database, ws: WorkspaceContext, eventId: string, expenseId: string, patch: SharedExpensePatch): Promise<void> {
   await database.transaction(async (tx) => {
     const book = await openSharedEventTx(tx, ws, eventId);
@@ -203,7 +221,7 @@ export async function editSharedExpense(database: Database, ws: WorkspaceContext
       currency: patch.currency ?? record.currency,
       rateToEvent: patch.rateToEvent ?? record.rateToEvent,
       payerPersonId: record.payerPersonId,
-      split: patch.split ?? record.split,
+      split: patch.split ?? splitKept(book, record, patch.amountMinor ?? record.amountMinor),
       categoryId: patch.categoryId !== undefined ? patch.categoryId : record.categoryId,
       note: patch.note !== undefined ? patch.note?.trim() || null : record.note,
     };
@@ -464,6 +482,42 @@ export async function setSharedEventCurrency(database: Database, ws: WorkspaceCo
     const [shared] = await tx.values(sql`SELECT 1 FROM shared_books WHERE book_id = ${book.bookId} LIMIT 1`);
     if (shared) throw invalid(`${book.name}'s currency is set when it is shared`);
     await writeEventTx(tx, book, sql`currency = ${currency}`);
+  });
+}
+
+/** Why Split costs cannot be turned off yet: a phone in the event is on an older build. */
+export const onePotWaitsFor = (eventName: string) => `Every phone in ${eventName} needs the latest version first.`;
+
+/**
+ * The other phones in the event on a build before `TRIP_SWITCHES_MIN_APP_VERSION`, by name: they would take Split costs
+ * off as nothing and go on splitting. A phone that has never said its version counts as one of them.
+ */
+export async function phonesBehindSwitchesTx(tx: Db, bookId: string): Promise<string[]> {
+  const self = await localDeviceId(tx).catch(() => null);
+  const rows = await tx.values<[string, string, string | null]>(sql`
+    SELECT device_id, name, app_version FROM book_devices WHERE book_id = ${bookId} AND removed_at IS NULL ORDER BY name, device_id`);
+  return rows.filter(([id, , version]) => id !== self && !meetsVersion(version, TRIP_SWITCHES_MIN_APP_VERSION)).map(([, name]) => name || 'another phone');
+}
+
+/**
+ * The trip's two switches (0116): Split costs (off is one pot) and Plan. Each is the event's own field, one value on
+ * every phone, the later write winning. Turning Split costs off rewrites no split: the balances are hidden, and switching
+ * it back on shows them again. Only what is given changes.
+ */
+export async function setSharedEventSwitches(database: Database, ws: WorkspaceContext, eventId: string, switches: { splitCosts?: boolean; plan?: boolean }): Promise<void> {
+  await database.transaction(async (tx) => {
+    const book = await openSharedEventTx(tx, ws, eventId);
+    // One pot is refused while a phone in the event is on a build that would go on splitting (0116): it would show
+    // balances nobody else sees. Turning it back on is always allowed.
+    if (switches.splitCosts === false && book.splitCosts) {
+      const behind = await phonesBehindSwitchesTx(tx, book.bookId);
+      if (behind.length > 0) throw invalid(onePotWaitsFor(book.name));
+    }
+    const sets: SQL[] = [];
+    if (switches.splitCosts !== undefined && switches.splitCosts !== book.splitCosts) sets.push(sql`split_off = ${switches.splitCosts ? 0 : 1}`);
+    if (switches.plan !== undefined && switches.plan === book.planOff) sets.push(sql`plan_off = ${switches.plan ? 0 : 1}`);
+    if (sets.length === 0) return;
+    await writeEventTx(tx, book, sql.join(sets, sql`, `));
   });
 }
 

@@ -11,7 +11,7 @@ export interface HeroSlide {
  * A row of full-width cards that snap under a swipe, with a dot per card below. The active card is the parent's state
  * (`active`), read from the scroll position as it settles, so the list under the hero can follow it. The dots are
  * buttons named for their card, so a card can be reached without swiping. Every card is as tall as the tallest, and
- * none peeks at the edge: each fills the width.
+ * none peeks at the edge: each fills the width. A single card is drawn alone, with no dots.
  */
 export function HeroSwipe({ label, slides, active, onActive }: { label: string; slides: readonly HeroSlide[]; active: number; onActive: (index: number) => void }) {
   const scroller = useRef<HTMLDivElement>(null);
@@ -81,7 +81,12 @@ export function HeroSwipe({ label, slides, active, onActive }: { label: string; 
           </div>
         ))}
       </div>
-      <PageDots names={slides.map((slide) => slide.label)} index={active} onSelect={go} label="Page" testId="hero-dots" className="mt-2 mb-2" />
+      {/* One card has nothing to swipe to: no dots, only the air they took. */}
+      {slides.length > 1 ? (
+        <PageDots names={slides.map((slide) => slide.label)} index={active} onSelect={go} label="Page" testId="hero-dots" className="mt-2 mb-2" />
+      ) : (
+        <div className="mb-3" />
+      )}
     </div>
   );
 }

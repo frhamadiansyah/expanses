@@ -10,7 +10,7 @@ import { draftFromExpense, emptySharedDraft, moneyLocked, payerChoices, sharedDr
  */
 
 const view: SharedEventView = {
-  eventId: 'ev', bookId: 'b', name: 'Coast week', startsOn: '2026-10-05', endsOn: '2026-10-12', currency: 'TRY', finishedAt: null, state: 'active', me: 'p-rina', myName: 'Rina',
+  eventId: 'ev', bookId: 'b', name: 'Coast week', startsOn: '2026-10-05', endsOn: '2026-10-12', currency: 'TRY', finishedAt: null, splitCosts: true, planOff: false, state: 'active', me: 'p-rina', myName: 'Rina',
   people: [
     { personId: 'p-rina', name: 'Rina', initials: 'R', hasApp: true, isMe: true, removed: false, balanceMinor: 0 },
     { personId: 'p-andi', name: 'Andi', initials: 'A', hasApp: true, isMe: false, removed: false, balanceMinor: 0 },
@@ -132,5 +132,25 @@ describe('the shared Add screen', () => {
       amountMinor: -1_500,
       split: { mode: 'amounts', shares: [{ personId: 'p-rina', minor: -500 }, { personId: 'p-andi', minor: -1_000 }] },
     });
+  });
+});
+
+describe('the shared Add screen in one pot (Split costs off)', () => {
+  const onePot: SharedEventView = { ...view, splitCosts: false };
+
+  it('records the whole amount on the payer, whatever the Split sheet last held', () => {
+    const draft = { ...emptySharedDraft(onePot, '2026-10-06'), amount: '90', currency: 'EUR', rate: '31.5', accountId: 'wallet', splitMode: 'amounts' as const, amounts: { 'p-andi': '1' } };
+    expect(sharedDraftToInput(draft, onePot, accounts).split).toEqual({ mode: 'equal', people: ['p-rina'] });
+    expect(sharedDraftToInput({ ...draft, payer: 'p-budi', accountId: '' }, onePot, accounts).split).toEqual({ mode: 'equal', people: ['p-budi'] });
+  });
+
+  it('an edit sends no split: the one recorded stays as it is', () => {
+    const boat: SharedExpenseView = {
+      expenseId: 'e3', occurredOn: '2026-10-08', amountMinor: 60_000, currency: 'TRY', rateToEvent: '1', eventAmountMinor: 60_000, payerPersonId: 'p-rina', payerName: 'Rina', payerHasAccount: true,
+      categoryId: null, categoryName: null, note: 'Boat', split: { mode: 'equal', people: ['p-rina', 'p-andi'] }, splitText: 'Equal · 2 people', myShareMinor: 30_000, myShareEventMinor: 30_000,
+      voided: false, unsent: false, payerOnly: false, posting: null,
+    };
+    const draft = draftFromExpense(onePot, boat);
+    expect(sharedDraftToPatch({ ...draft, note: 'Boat to the island', ticked: ['p-rina'] }, { ...onePot, expenses: [boat] }, 'e3')).toEqual({ note: 'Boat to the island' });
   });
 });

@@ -55,7 +55,7 @@ export function EventCategoriesPage() {
 
   return (
     <div className={SCREEN} data-testid="event-categories">
-      <PushedTitle title="Categories" back={view.name} backTo="/events/$eventId" backParams={{ eventId }} />
+      <PushedTitle title="Categories" back="Settings" backTo="/events/$eventId/shared-settings" backParams={{ eventId }} />
       <ErrorBox error={editing ? null : error} />
       <InsetGroup>
         {open.map((c) => {

@@ -417,7 +417,9 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
     scopeRule: "book_id = bookId (the event's relay book)",
     scope: (bookId) => sql`t.book_id = ${bookId}`,
     keyColumns: ['book_id'],
-    fields: { name: 'name', startsOn: 'starts_on', endsOn: 'ends_on', currency: 'currency', finishedAt: 'finished_at' },
+    // `splitOff` and `planOff` (0116): the trip's Split costs and Plan switches, 1 for off. A build from before them
+    // applies the rest and passes them over; once it updates, the values are sent to it again (sync/repairs.ts).
+    fields: { name: 'name', startsOn: 'starts_on', endsOn: 'ends_on', currency: 'currency', finishedAt: 'finished_at', splitOff: 'split_off', planOff: 'plan_off' },
     localOnInsert: [],
   },
   {

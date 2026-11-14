@@ -186,7 +186,7 @@ function EventSettings({ event }: { event: EventRow }) {
           onClose={() => setPicking(null)}
         />
       )}
-      {sharing ? <ShareEventSheet event={event} onClose={() => setSharing(false)} /> : null}
+      {sharing ? <ShareEventSheet event={event} household={others.length > 0} onClose={() => setSharing(false)} /> : null}
     </>
   );
 }

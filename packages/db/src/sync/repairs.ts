@@ -13,7 +13,7 @@ import { itemsWithStaleFaceTx, sendSummariesTx } from './net-worth/summaries';
 import { decodeHlc } from './hlc';
 import type { Op } from './types';
 import { uuidv5 } from './uuidv5';
-import { meetsVersion } from './events/version';
+import { meetsVersion, TRIP_SWITCHES_MIN_APP_VERSION } from './events/version';
 
 /** Where a repair move's expense id is named from. Fixed for ever: an id worked out under it may already be on a phone. */
 const REPAIR_NAMESPACE = '5f0c9e3a-2b7d-4e61-9a48-c1d2e3f4a5b6';
@@ -43,6 +43,11 @@ export function repairExpenseId(lineageId: string, eventId: string): Promise<str
  * anything else — the partner's purchase, a private event, a move refused — is untagged (the tag never travelled, so
  * nothing is sent), and listed for a one-time notice.
  *
+ * R5 trip switches (0116): a shared event's Split costs and Plan switches are fields an older build takes the clocks of
+ * and drops. Each time a device in the event is first seen at `TRIP_SWITCHES_MIN_APP_VERSION` or later, this phone sends
+ * the two again at the clocks it holds them at — never a newer one, so a later change on another phone still wins — and
+ * the updated phone, whose migration dropped the stale clocks, writes them. Nothing goes for a switch never changed.
+ *
  * R4 card faces (fix/sync-card-tier): a joint account's summary now carries what its card face is drawn from (its bank,
  * its card tier, its number's last four: `ItemFace`). An account given a tier before this build sent none, and its
  * summary would not go again until its period ended or a line moved it. Once now, this phone sends the items whose sent
@@ -71,6 +76,9 @@ async function bookDevicesTx(tx: Db, bookId: string): Promise<{ deviceId: string
 
 /** Where R3 keeps the devices it has already sent for once each reached `TRIP_TRANSFERS_MIN_APP_VERSION`. */
 const tripCrossedKey = (bookId: string) => `repair.trip-transfers-crossed.v1.${bookId}`;
+
+/** Where R5 keeps the devices of an event it has already sent the trip's switches for (`TRIP_SWITCHES_MIN_APP_VERSION`). */
+const switchesCrossedKey = (bookId: string) => `repair.trip-switches-crossed.v1.${bookId}`;
 
 async function crossedTx(tx: Db, bookId: string, key = crossedKey(bookId)): Promise<Set<string>> {
   const [row] = await tx.values<[string]>(sql`SELECT value FROM settings WHERE key = ${key}`);
@@ -133,6 +141,10 @@ export interface RepairReport {
   tripTransfers: number | null;
   /** R4: this phone's net-worth items sent again with their card faces; null when it had run already. */
   cardFaces: number | null;
+  /** True for a shared event's log held here: asked on every sync, since each device crossing earns R5 one more pass. */
+  eventBook?: boolean;
+  /** R5: the trip's switches sent again (1) or nothing to send (0); null when no device had newly crossed. */
+  tripSwitches?: number | null;
 }
 
 /** The shared book here, active and with its members known; null for anything else. */
@@ -328,6 +340,35 @@ async function resendTripTransfersTx(tx: Tx, database: Database, book: SharedBoo
   return ops.length;
 }
 
+/** A shared event's log held here, active and with its members known; null for anything else. */
+async function activeEventBookTx(tx: Db, bookId: string): Promise<SharedBook | null> {
+  const [row] = await tx
+    .values<[string, number]>(sql`
+      SELECT s.member_id, s.epoch FROM shared_books s JOIN event_books e ON e.book_id = s.book_id
+      WHERE s.book_id = ${bookId} AND s.state = 'active' AND EXISTS (SELECT 1 FROM book_members m WHERE m.book_id = s.book_id)`)
+    .catch(() => [] as [string, number][]);
+  return row ? { bookId, memberId: row[0], epoch: Number(row[1]) } : null;
+}
+
+/**
+ * R5: the trip's two switches as this phone holds them, each at the clock it holds it at (none `changed`), so a receiver
+ * takes one only over an older clock or none. A switch with no clock here has never been changed: it is not sent.
+ */
+async function resendTripSwitchesTx(tx: Tx, database: Database, book: SharedBook): Promise<number> {
+  const [row] = await tx.values<[number, number]>(sql`SELECT split_off, plan_off FROM shared_events WHERE book_id = ${book.bookId}`);
+  if (!row) return 0;
+  const clocks = Object.fromEntries(
+    await tx.values<[string, string]>(sql`
+      SELECT field, hlc FROM sync_field_clocks WHERE book_id = ${book.bookId} AND entity = 'shared_event' AND id = ${book.bookId} AND field IN ('splitOff', 'planOff')`),
+  ) as Record<string, string>;
+  const values: Record<string, number> = { splitOff: Number(row[0]), planOff: Number(row[1]) };
+  const fields = Object.fromEntries(Object.keys(clocks).map((field) => [field, values[field]]));
+  if (Object.keys(fields).length === 0) return 0;
+  const op: Op = { entity: 'shared_event', id: book.bookId, op: 'upsert', fields, changed: [], clocks };
+  await writeChangeSetsTx(tx, captureConfigOf(database), book, [op]);
+  return 1;
+}
+
 /**
  * Runs the one-time repairs of a shared book on this phone, each once. Called after a sync that pulled the book to the
  * relay's latest. A repair that throws leaves its marker unwritten (it runs again next time) and is rethrown after the
@@ -400,6 +441,26 @@ export async function runSharedBookRepairs(database: Database, bookId: string, o
       const stale = await itemsWithStaleFaceTx(tx);
       const sent = stale.length > 0 ? await sendSummariesTx(tx, stale, today) : 0;
       await markDoneTx(tx, CARD_FACES, bookId);
+      return sent;
+    });
+  } catch (error) {
+    failures.push(error);
+  }
+  try {
+    report.tripSwitches = await database.transaction(async (tx) => {
+      const book = await activeEventBookTx(tx, bookId);
+      if (!book) return null;
+      report.eventBook = true;
+      if ((await tx.values(sql`SELECT 1 FROM pragma_table_info('shared_events') WHERE name = 'split_off'`)).length === 0) return null;
+      // One pass each time another device in the event is seen at a build that reads the switches: the one that crossed
+      // may have taken them on its older build. A device that never updates holds nothing up.
+      const devices = await bookDevicesTx(tx, bookId);
+      const crossed = await crossedTx(tx, bookId, switchesCrossedKey(bookId));
+      const nowAt = devices.filter((d) => meetsVersion(d.version, TRIP_SWITCHES_MIN_APP_VERSION)).map((d) => d.deviceId);
+      if (nowAt.every((id) => crossed.has(id))) return null;
+      const sent = await resendTripSwitchesTx(tx, database, book);
+      const all = [...new Set([...crossed, ...nowAt])].sort();
+      await tx.run(sql`INSERT INTO settings (key, value) VALUES (${switchesCrossedKey(bookId)}, ${JSON.stringify(all)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
       return sent;
     });
   } catch (error) {

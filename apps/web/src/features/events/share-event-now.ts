@@ -12,6 +12,8 @@ export interface ShareEventNowInput {
   currency: string;
   /** People without the app, by name. */
   names?: readonly string[];
+  /** Split costs as the event starts: off is one pot (`defaultSplitCosts`, or the Share sheet's switch). */
+  splitCosts: boolean;
 }
 
 /**
@@ -24,17 +26,11 @@ export function useShareEventNow(): (input: ShareEventNowInput, progress: ShareP
   const resolveRates = useResolveRates();
   return async (input, progress) => {
     await fetchConversionRates(database, ws, input.eventId, input.currency, resolveRates);
+    const names = (input.names ?? []).map((n) => n.trim()).filter(Boolean);
     return runShare(progress, {
       share: async () =>
-        (
-          await sync.shareEvent(ownerScope(ws), {
-            eventId: input.eventId,
-            currency: input.currency,
-            personName: input.personName,
-            deviceName: thisDeviceName(),
-            names: (input.names ?? []).map((n) => n.trim()).filter(Boolean),
-          })
-        ).bookId,
+        (await sync.shareEvent(ownerScope(ws), { eventId: input.eventId, currency: input.currency, personName: input.personName, deviceName: thisDeviceName(), names, splitCosts: input.splitCosts }))
+          .bookId,
       // Safe to run again (I9): a retry after a conversion cut short part-way never copies the plan twice.
       convert: async () => {
         const kept = await finishConversion(conversionSteps(database, ws, input.eventId));
