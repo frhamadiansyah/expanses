@@ -1,14 +1,16 @@
+import { isoDate } from '@expanses/core';
 import { finishSharedEvent, ownerScope, planEventCopyDelete, setSharedEventSwitches, type SharedEventView } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
-import { DestructiveRow, InsetGroup, InsetRow, PushedTitle, SCREEN, SwitchRow } from '../../ui/native';
+import { InsetGroup, PushedTitle, SCREEN, SwitchRow } from '../../ui/native';
 import { ALERT_ROW, NoticeAlert } from '../../ui/native/NoticeAlert';
 import { useSafetyCopy } from '../workspaces/safety-copy';
 import { sayError } from '../sharing/sharing-copy';
 import { deleteEventCopyFlow } from './delete-copy';
+import { SettingsActionGroup, SettingsPickerRow } from './EventSettingsRows';
 import { useSharedEventView } from './shared-queries';
 import { askBeforeOnePot, categoriesValue, peopleValue, SPLIT_COSTS_FOOTER, sharedSettings, stopSplittingText } from './shared-settings';
 
@@ -37,7 +39,7 @@ function SettingsBody({ view }: { view: SharedEventView }) {
   const safetyCopy = useSafetyCopy('before-delete');
   const [error, setError] = useState<unknown>(null);
   const [asking, setAsking] = useState(false);
-  const settings = sharedSettings(view);
+  const settings = sharedSettings(view, isoDate());
   const params = { eventId: view.eventId };
 
   const run = async (work: () => Promise<unknown>) => {
@@ -68,45 +70,50 @@ function SettingsBody({ view }: { view: SharedEventView }) {
         </InsetGroup>
       ) : null}
       <InsetGroup>
-        <InsetRow title="People" plain value={peopleValue(view)} to="/events/$eventId/people" params={params} testId="shared-settings-people" />
-        {settings.categories ? <InsetRow title="Categories" plain value={categoriesValue(view)} to="/events/$eventId/categories" params={params} testId="shared-settings-categories" /> : null}
+        <SettingsPickerRow title="People" value={peopleValue(view)} locked={false} onOpen={() => void navigate({ to: '/events/$eventId/people', params })} testId="shared-settings-people" />
+        {settings.categories ? (
+          <SettingsPickerRow title="Categories" value={categoriesValue(view)} locked={false} onOpen={() => void navigate({ to: '/events/$eventId/categories', params })} testId="shared-settings-categories" />
+        ) : null}
       </InsetGroup>
       {settings.done ? (
-        <InsetGroup footer={settings.done.footer}>
-          <InsetRow title={settings.done.label} action onClick={() => void run(() => finishSharedEvent(database, ownerScope(ws), view.eventId, !settings.done!.finished))} testId="shared-settings-done" />
-        </InsetGroup>
+        <SettingsActionGroup
+          label={settings.done.label}
+          footer={settings.done.footer}
+          testId="shared-settings-done"
+          onClick={() => void run(() => finishSharedEvent(database, ownerScope(ws), view.eventId, !settings.done!.finished))}
+        />
       ) : null}
       {settings.leave ? (
-        <InsetGroup footer={settings.leave.footer ?? undefined}>
-          <DestructiveRow
-            label={settings.leave.label}
-            disabled={settings.leave.disabled}
-            testId="shared-settings-leave"
-            onClick={() => {
-              if (window.confirm(`Leave ${view.name}? What ${view.myName} recorded stays with the others, and ${view.myName}'s own books keep their share.`)) void run(() => sync.leaveEvent(view.bookId));
-            }}
-          />
-        </InsetGroup>
+        <SettingsActionGroup
+          destructive
+          label={settings.leave.label}
+          disabled={settings.leave.disabled}
+          {...(settings.leave.footer ? { footer: settings.leave.footer } : {})}
+          testId="shared-settings-leave"
+          onClick={() => {
+            if (window.confirm(`Leave ${view.name}? What ${view.myName} recorded stays with the others, and ${view.myName}'s own books keep their share.`)) void run(() => sync.leaveEvent(view.bookId));
+          }}
+        />
       ) : null}
       {settings.deleteCopy ? (
-        <InsetGroup footer={settings.deleteCopy.footer ?? undefined}>
-          <DestructiveRow
-            label={settings.deleteCopy.label}
-            disabled={settings.deleteCopy.disabled}
-            testId="shared-settings-delete-copy"
-            onClick={() =>
-              void run(async () => {
-                const done = await deleteEventCopyFlow(view, {
-                  plan: () => planEventCopyDelete(database, ws, view.bookId),
-                  confirm: (text) => window.confirm(text),
-                  safetyCopy,
-                  remove: () => sync.deleteEventCopy(ws, view.bookId),
-                });
-                if (done === 'deleted') void navigate({ to: '/events', replace: true });
-              })
-            }
-          />
-        </InsetGroup>
+        <SettingsActionGroup
+          destructive
+          label={settings.deleteCopy.label}
+          disabled={settings.deleteCopy.disabled}
+          {...(settings.deleteCopy.footer ? { footer: settings.deleteCopy.footer } : {})}
+          testId="shared-settings-delete-copy"
+          onClick={() =>
+            void run(async () => {
+              const done = await deleteEventCopyFlow(view, {
+                plan: () => planEventCopyDelete(database, ws, view.bookId),
+                confirm: (text) => window.confirm(text),
+                safetyCopy,
+                remove: () => sync.deleteEventCopy(ws, view.bookId),
+              });
+              if (done === 'deleted') void navigate({ to: '/events', replace: true });
+            })
+          }
+        />
       ) : null}
       {asking ? (
         <NoticeAlert

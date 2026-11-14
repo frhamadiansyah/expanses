@@ -1,7 +1,7 @@
 import type { NamedPayment, SharedEventView, SharedSettlementView } from '@expanses/db';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { formatMinor } from '@expanses/core';
-import { ArrowLeftRight, CircleEllipsis, HandCoins, MoreHorizontal, Plus } from 'lucide-react';
+import { ArrowLeftRight, CircleEllipsis, HandCoins, Plus, Settings } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { ErrorBox, Money } from '../../ui';
 import { ICONS, MarkChip } from '../categories/CategoryIcon';
@@ -19,10 +19,8 @@ import { SettleUpSheet } from './SettleUpSheet';
 import { HeroSwipe } from './HeroSwipe';
 import { SharedPlanHero, SharedPlanTab } from './SharedPlanTab';
 import { useFetchEventRates, useSharedEventPlan } from './shared-queries';
-import { balanceBars, dayGroups, expenseRow, mineToSettle, pageLocks, paymentLine, pickedDays, readOnlyLine, settlementDeletable, settlementRow, signedBalance, spendingSlices, transferRow, waitingLine } from './shared-view';
+import { balanceBars, dayGroups, expenseRow, heroCards, listedRecords, mineToSettle, pageLocks, paymentLine, pickedDays, readOnlyLine, settlementDeletable, settlementRow, signedBalance, spendingSlices, transferRow, waitingLine } from './shared-view';
 import { TakeOverSheet } from './TakeOverSheet';
-
-const CARDS = ['spending', 'balances', 'plan'] as const;
 
 const RING = 2 * Math.PI * 42;
 
@@ -39,19 +37,23 @@ function ringArcs(slices: readonly { key: string; totalMinor: number }[], whole:
 }
 
 /**
- * A shared event (shared events §6), laid out as a private one is: the dates as the bar's title, the name in a box at the top of the Spending panel only, the tabs Spending,
- * Balances and Plan above a chart panel — the ring by category with the total in its middle — and
- * the records by day below it. The ⋯ menu (People, Done, Leave) is `menu`'s, so this page reads the same
- * on every phone whatever its person may do.
+ * A shared event (shared events §6), laid out as a private one is: the dates as the bar's title, the name in a box at the
+ * top of the Spending panel only, a hero that swipes between Spending, Balances and Plan above the records by day. The
+ * bar carries ＋ and ⚙ as a private trip's does (owner, 14 Nov 2026): ＋ adds spending (a cost, on the Plan card), and ⚙
+ * opens the trip's Settings, where People, Categories, Done and Leave are.
  *
- * Done locks every write but Reopen; an event this phone's person is no longer in (left, or removed) is kept to read,
- * with a notice at the top of Balances and no action anywhere (I5). `error` is the menu's, drawn under the title as other screens draw it.
+ * Split costs off (one pot) drops the Balances card, the settle-ups and every share; Plan off drops the Plan card and
+ * its ＋. Done locks every write but Reopen; an event this phone's person is no longer in (left, or removed) is kept to
+ * read, with a notice at the top of Balances and no action anywhere (I5).
  */
-export function SharedEventPage({ view, menu = [], error = null }: { view: SharedEventView; menu?: CornerAction[]; error?: unknown }) {
+export function SharedEventPage({ view, error = null }: { view: SharedEventView; error?: unknown }) {
   const navigate = useNavigate();
+  const cards = heroCards(view);
   // Back from a cost's page lands on the Plan card, which is where the trip was left.
   const { card: arrivedOn } = useSearch({ from: '/events/$eventId' });
-  const [card, setCard] = useState(arrivedOn === 'plan' ? CARDS.indexOf('plan') : 0);
+  const [chosen, setCard] = useState(arrivedOn === 'plan' ? Math.max(0, cards.indexOf('plan')) : 0);
+  // A switch turned on another phone can take the card in view away: the page falls back to Spending.
+  const card = chosen < cards.length ? chosen : 0;
   const plan = useSharedEventPlan(view.eventId);
   const [settling, setSettling] = useState<NamedPayment | null>(null);
   const [opened, setOpened] = useState<SharedSettlementView | null>(null);
@@ -62,26 +64,22 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
   const { readOnly, locked } = pageLocks(view);
   useFetchEventRates(view.waiting.some((w) => w.reason === 'no-rate'));
   const waiting = waitingLine(view);
-  // Read-only, there is nothing to add and the menu is People alone: it stays behind a ⋯ rather than becoming a corner
-  // button of its own, which would be a circle with no glyph (a corner button never carries a word).
-  // Everything is one ⋯: a corner button never carries a word, so Add spending (a line of the menu, not a ＋ of its own)
-  // goes inside it rather than standing in the bar as a circle with no glyph.
+  const onCard = cards[card] ?? 'spending';
   const actions: CornerAction[] = [
-    // On the Plan card the bar's ＋ adds a cost, as it does on the private plan.
-    ...(CARDS[card] === 'plan' && !locked
-      ? [{ key: 'add-cost', label: 'Add a cost', glyph: <Plus size={22} aria-hidden />, to: '/events/$eventId/shared-plan/new', params: { eventId: view.eventId } } satisfies CornerAction]
-      : []),
-    {
-      key: 'more',
-      label: 'More',
-      glyph: <MoreHorizontal size={20} aria-hidden />,
-      menu: readOnly ? menu : [{ key: 'add', label: 'Add spending', run: () => void navigate(addSpendingTarget(view.eventId)), disabled: locked }, ...menu],
-    },
+    // On the Plan card ＋ adds a cost, as it does on the private plan; elsewhere it adds spending. Nothing to add read-only.
+    ...(readOnly
+      ? []
+      : [
+          onCard === 'plan'
+            ? ({ key: 'add-cost', label: 'Add a cost', glyph: <Plus size={22} aria-hidden />, to: '/events/$eventId/shared-plan/new', params: { eventId: view.eventId }, disabled: locked } satisfies CornerAction)
+            : ({ key: 'add', label: 'Add spending', glyph: <Plus size={22} aria-hidden />, run: () => void navigate(addSpendingTarget(view.eventId)), disabled: locked } satisfies CornerAction),
+        ]),
+    { key: 'settings', label: 'Settings', glyph: <Settings size={20} aria-hidden />, to: '/events/$eventId/shared-settings', params: { eventId: view.eventId } },
   ];
   // Settle up is offered on a payment this person pays or receives, or one between two people without the app — §3's
   // writer rule for settlements, which the repository enforces again.
   const slices = spendingSlices(view);
-  const days = pickedDays(dayGroups(view), picked);
+  const days = pickedDays(dayGroups(listedRecords(view)), picked);
   const whole = slices.reduce((sum, slice) => sum + slice.totalMinor, 0);
   // The ring is the switch for its own rows: one tap shows them, another folds them and drops any category picked.
   const fold = () => {
@@ -207,13 +205,21 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
         label={`${view.name} sections`}
         active={card}
         onActive={setCard}
-        slides={[
-          { key: 'spending', label: 'Spending', node: spendingCard },
-          { key: 'balances', label: 'Balances', node: balanceCard },
-          { key: 'plan', label: 'Plan', node: <SharedPlanHero view={view} plan={plan.data} /> },
-        ]}
+        slides={cards.map((key) =>
+          key === 'spending'
+            ? { key, label: 'Spending', node: spendingCard }
+            : key === 'balances'
+              ? { key, label: 'Balances', node: balanceCard }
+              : { key, label: 'Plan', node: <SharedPlanHero view={view} plan={plan.data} /> },
+        )}
       />
-      {CARDS[card] === 'spending' ? (
+      {/* Read-only in one pot, there is no Balances card to carry the notice: it sits above the records instead. */}
+      {readOnly && !view.splitCosts ? (
+        <InsetGroup>
+          <InsetRow title={readOnlyLine(view)} chevron={false} testId="shared-event-read-only" />
+        </InsetGroup>
+      ) : null}
+      {onCard === 'spending' ? (
         <>
           {slices.length > 0 && !showRows ? <p className="mb-[10px] text-center text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Tap the card to see all categories</p> : <div className="mb-[6px]" />}
           {showRows && slices.length > 0 ? (
@@ -307,7 +313,7 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
           })}
         </>
       ) : null}
-      {CARDS[card] === 'balances' ? (
+      {onCard === 'balances' ? (
         <>
           {readOnly ? (
             <InsetGroup>
@@ -327,9 +333,9 @@ export function SharedEventPage({ view, menu = [], error = null }: { view: Share
           </InsetGroup>
         </>
       ) : null}
-      {CARDS[card] === 'plan' ? <SharedPlanTab view={view} plan={plan.data} error={plan.error} /> : null}
-      {opened ? <SettlementSheet view={view} settlement={opened} onClose={() => setOpened(null)} /> : null}
-      {settling ? <SettleUpSheet view={view} payment={settling} onClose={() => setSettling(null)} /> : null}
+      {onCard === 'plan' ? <SharedPlanTab view={view} plan={plan.data} error={plan.error} /> : null}
+      {opened && view.splitCosts ? <SettlementSheet view={view} settlement={opened} onClose={() => setOpened(null)} /> : null}
+      {settling && view.splitCosts ? <SettleUpSheet view={view} payment={settling} onClose={() => setSettling(null)} /> : null}
       {takingOver ? <TakeOverSheet view={view} onClose={() => setTakingOver(false)} /> : null}
     </div>
   );

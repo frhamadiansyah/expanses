@@ -83,7 +83,7 @@ export function PeoplePage() {
 
   return (
     <div className={SCREEN}>
-      <PushedTitle title="People" back={view.name} backTo="/events/$eventId" backParams={{ eventId }} />
+      <PushedTitle title="People" back="Settings" backTo="/events/$eventId/shared-settings" backParams={{ eventId }} />
       <ErrorBox error={error} />
       <InsetGroup header="With the app">
         {live.filter((p) => p.hasApp).map((p) => (

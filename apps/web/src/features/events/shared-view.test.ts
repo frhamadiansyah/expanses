@@ -6,6 +6,8 @@ import {
   expenseRow,
   balanceBars,
   dayGroups,
+  heroCards,
+  listedRecords,
   pickedDays,
   signedBalance,
   spendingSlices,
@@ -280,5 +282,28 @@ describe('the ring, the days and the bars of a shared event', () => {
     expect(signedBalance(900, 'THB')).toBe(`+${formatMinor(900, 'THB')}`);
     expect(signedBalance(-900, 'THB')).toBe(`−${formatMinor(900, 'THB')}`);
     expect(signedBalance(0, 'THB')).toBe('Settled');
+  });
+});
+
+describe('Split costs and Plan (owner, 14 Nov 2026)', () => {
+  it('swipes through Spending always, Balances while it splits costs, Plan while the plan is on', () => {
+    expect(heroCards({ splitCosts: true, planOff: false })).toEqual(['spending', 'balances', 'plan']);
+    expect(heroCards({ splitCosts: false, planOff: false })).toEqual(['spending', 'plan']);
+    expect(heroCards({ splitCosts: true, planOff: true })).toEqual(['spending', 'balances']);
+    expect(heroCards({ splitCosts: false, planOff: true })).toEqual(['spending']);
+  });
+
+  it('in one pot a row says the place, who paid and with what, and has no share', () => {
+    const own = { ...expense, payerPersonId: 'p-rina', payerName: 'Rina', posting: { ...expense.posting, accountName: 'Rina Bank' } };
+    expect(expenseRow(own, view({ splitCosts: false }))).toMatchObject({ detail: 'Fish dinner · Rina · Rina Bank', share: null });
+    // The partner's card is not known on this phone: who paid, alone.
+    expect(expenseRow(expense, view({ splitCosts: false }))).toMatchObject({ detail: 'Fish dinner · Andi', share: null });
+    expect(expenseRow(expense, view()).share).not.toBeNull();
+  });
+
+  it('in one pot the settle-ups leave the day cards; switched on, they are back', () => {
+    const settlement = { settlementId: 's1', occurredOn: '2026-10-06', fromPersonId: 'p-andi', fromName: 'Andi', toPersonId: 'p-rina', toName: 'Rina', amountMinor: 100, voided: false, unsent: false, mine: true, posting: null };
+    expect(dayGroups(listedRecords(view({ splitCosts: false, settlements: [settlement] })))).toEqual([]);
+    expect(dayGroups(listedRecords(view({ settlements: [settlement] })))[0]!.items).toHaveLength(1);
   });
 });

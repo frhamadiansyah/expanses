@@ -110,12 +110,15 @@ export function SettingsActionGroup({
   footer,
   onClick,
   destructive = false,
+  disabled = false,
   testId,
 }: {
   label: string;
   footer?: string;
   onClick: () => void;
   destructive?: boolean;
+  /** Cannot be taken yet: greyed, and the footer says why (a shared trip's Leave while a balance is not zero). */
+  disabled?: boolean;
   testId?: string;
 }) {
   return (
@@ -124,9 +127,10 @@ export function SettingsActionGroup({
         action={!destructive}
         destructive={destructive}
         // The action row draws its words in ink; this one is the tint, as iOS draws a row that does something.
-        title={destructive ? label : <span className="text-[var(--ph-tint)]">{label}</span>}
+        title={destructive || disabled ? label : <span className="text-[var(--ph-tint)]">{label}</span>}
         label={label}
         onClick={onClick}
+        disabled={disabled}
         testId={testId}
       />
     </InsetGroup>

@@ -1,6 +1,7 @@
 import { formatMinor } from '@expanses/core';
 import type { SharedEventView } from '@expanses/db';
 import { DELETE_COPY_LABEL } from './delete-copy';
+import { finishRow } from './event-settings';
 import { pageLocks, possessive, signedBalance } from './shared-view';
 
 /*
@@ -27,9 +28,8 @@ export interface SharedSettings {
   deleteCopy: { label: string; disabled: boolean; footer: string | null } | null;
 }
 
-const shortDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-
-export function sharedSettings(view: SharedEventView): SharedSettings {
+/** The page's lines for `view`, on `today` (the private Settings' Mark as done words, `finishRow`). */
+export function sharedSettings(view: SharedEventView, today: string): SharedSettings {
   const { readOnly, locked } = pageLocks(view);
   const balance = view.people.find((p) => p.isMe)?.balanceMinor ?? 0;
   const owes = balance !== 0;
@@ -43,9 +43,7 @@ export function sharedSettings(view: SharedEventView): SharedSettings {
   return {
     switches: { shown: true, disabled: locked },
     categories: true,
-    done: finished
-      ? { label: 'Reopen', finished, footer: `Done on ${shortDate(view.finishedAt!)}. Reopening moves it back to Now and next.` }
-      : { label: 'Mark as done', finished, footer: `Moves ${view.name} to Past. It can be reopened.` },
+    done: { ...(finishRow(view, today) as { label: 'Mark as done' | 'Reopen'; footer: string }), finished },
     leave: {
       label: `Leave ${view.name}`,
       disabled: owes,
