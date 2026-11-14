@@ -1,6 +1,6 @@
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
 import { currencyRow, setCurrency } from './currency-field';
-import { addForm, chooseTo, choosePayment, fillAmount, openAmount, saveButton } from './add-transaction';
+import { addForm, chooseTo, choosePayment, fillAmount, openAmount, saveButton, showTransfers } from './add-transaction';
 import { mockRates, openWithPockets } from './pockets';
 import { corner, eventually, newEvent, openTrip, openTripSettings } from './shared-events';
 import { openWorkspaceSharePage, putOffShareList, shareWorkspace, workspaceLine } from './workspace-page';
@@ -110,6 +110,8 @@ async function journey(owner: Page, browser: Browser, info: TestInfo, recordedBe
   if (!recordedBeforeSharing) await recordExchange(owner);
   await openWorkspace(owner, 'Family');
   await owner.goto('/transactions');
+  // An own transfer (cash to cash) is off Cashflow until its filter shows transfers (own transfers off Cashflow).
+  await showTransfers(owner);
 
   const row = owner.getByTestId('transaction-row').filter({ hasText: 'Bank Contoh' });
   await expect(row).toHaveCount(1);
