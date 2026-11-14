@@ -30,7 +30,7 @@ import {
  */
 
 const view = (over: Partial<SharedEventView> = {}): SharedEventView => ({
-  eventId: 'ev', bookId: 'book', name: 'Coast week', startsOn: '2026-10-05', endsOn: '2026-10-12', currency: 'TRY', finishedAt: null, state: 'active',
+  eventId: 'ev', bookId: 'book', name: 'Coast week', startsOn: '2026-10-05', endsOn: '2026-10-12', currency: 'TRY', finishedAt: null, splitCosts: true, planOff: false, state: 'active',
   me: 'p-rina', myName: 'Rina', people: [], categories: [], expenses: [], settlements: [], spentMinor: 1_260_000, myShareMinor: 420_000,
   payments: [
     { fromPersonId: 'p-andi', fromName: 'Andi', toPersonId: 'p-rina', toName: 'Rina', amountMinor: 290_000 },

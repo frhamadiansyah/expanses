@@ -10,7 +10,7 @@ import { draftFromExpense, emptySharedDraft, moneyLocked, payerChoices, sharedDr
  */
 
 const view: SharedEventView = {
-  eventId: 'ev', bookId: 'b', name: 'Coast week', startsOn: '2026-10-05', endsOn: '2026-10-12', currency: 'TRY', finishedAt: null, state: 'active', me: 'p-rina', myName: 'Rina',
+  eventId: 'ev', bookId: 'b', name: 'Coast week', startsOn: '2026-10-05', endsOn: '2026-10-12', currency: 'TRY', finishedAt: null, splitCosts: true, planOff: false, state: 'active', me: 'p-rina', myName: 'Rina',
   people: [
     { personId: 'p-rina', name: 'Rina', initials: 'R', hasApp: true, isMe: true, removed: false, balanceMinor: 0 },
     { personId: 'p-andi', name: 'Andi', initials: 'A', hasApp: true, isMe: false, removed: false, balanceMinor: 0 },

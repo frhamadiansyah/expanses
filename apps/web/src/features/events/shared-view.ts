@@ -86,6 +86,24 @@ export function pickedDays(days: readonly DayGroup[], picked: string | null): Da
   return out;
 }
 
+/**
+ * The cards the trip page's hero swipes through (owner, 14 Nov 2026): Spending always; Balances only while it splits
+ * costs; Plan only while its Plan switch is on. One card is drawn alone, with nothing to swipe.
+ */
+export type HeroCard = 'spending' | 'balances' | 'plan';
+
+export function heroCards(view: Pick<SharedEventView, 'splitCosts' | 'planOff'>): HeroCard[] {
+  return ['spending', ...(view.splitCosts ? (['balances'] as const) : []), ...(view.planOff ? [] : (['plan'] as const))];
+}
+
+/**
+ * The records a day card lists: everything, while the trip splits costs; in one pot, the settle-ups are left out with
+ * the balances they settled — kept, and back when Split costs is on again.
+ */
+export function listedRecords<V extends Pick<SharedEventView, 'splitCosts' | 'settlements'>>(view: V): V {
+  return view.splitCosts ? view : { ...view, settlements: [] };
+}
+
 export interface BalanceBar {
   personId: string;
   name: string;
@@ -159,14 +177,16 @@ function refundNote(e: SharedExpenseView): string | null {
  * under it, where a private row keeps its foreign figure.
  */
 export function expenseRow(e: SharedExpenseView, view: SharedEventView): { title: string; detail: string; amount: string; share: string | null; flags: string[] } {
+  // One pot (Split costs off): who paid and with what, as far as this phone knows the account; no split, no share.
+  const onePot = !view.splitCosts;
   return {
     // Named as the ring's slice names it, so the row and the chart agree.
     title: e.categoryId ? (view.categories.find((c) => c.categoryId === e.categoryId)?.name ?? e.categoryName ?? 'Other') : 'Other',
-    detail: [refundNote(e), `${e.payerName} paid`, e.splitText].filter(Boolean).join(' · '),
+    detail: (onePot ? [refundNote(e), e.payerName, e.posting?.accountName ?? null] : [refundNote(e), `${e.payerName} paid`, e.splitText]).filter(Boolean).join(' · '),
     // An unreadable record counts in no figure, so its amount is not shown either (no ₺0 that reads as a real figure):
     // the row says what is wrong, and a tap opens the card for whoever may fix it (I2).
     amount: e.unreadable ? '' : formatMinor(e.amountMinor, e.currency),
-    share: e.myShareMinor !== 0 ? `share ${formatMinor(e.myShareMinor, e.currency)}` : null,
+    share: !onePot && e.myShareMinor !== 0 ? `share ${formatMinor(e.myShareMinor, e.currency)}` : null,
     flags: [e.unreadable ? `Needs fixing: ${e.unreadable}` : null, e.voided ? 'Deleted' : null, e.unsent ? 'Not sent yet' : null, ...postingFlags(e.posting, view)].filter((flag): flag is string => flag !== null),
   };
 }

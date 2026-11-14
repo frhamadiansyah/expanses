@@ -1,5 +1,5 @@
 import { formatMinor, isoDate } from '@expanses/core';
-import { finishSharedEvent, ownerScope, planEventCopyDelete, type SharedEventView, tagTransaction } from '@expanses/db';
+import { type SharedEventView, tagTransaction } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Plus, Settings } from 'lucide-react';
 import { type ReactNode, useRef, useState } from 'react';
@@ -33,12 +33,8 @@ import { PlanCard } from './PlanCard';
 import { BACK_WORDS, chartUnder, differenceWords, gaugeFor, PLAN_WORDS, plannedLabel, planTotals, spentLabel, TONE, whereItWentRows } from './plan-view';
 import { editInsteadIn } from '../workspaces/filing';
 import { useCategoryWorkspaces, useWorkspaceBadges } from '../workspaces/queries';
-import { useSafetyCopy } from '../workspaces/safety-copy';
-import { deleteEventCopyFlow } from './delete-copy';
-import { sharedEventMenu } from './shared-menu';
 import { SharedEventPage } from './SharedEventPage';
 import { useSharedEventSummaries, useSharedEventView } from './shared-queries';
-import { sayError } from '../sharing/sharing-copy';
 import { useBooksInEvent, useEventHistory, useEventPlan, useEvents, useEventSuggestions } from './queries';
 
 /**
@@ -89,44 +85,9 @@ function SharedEventWaiting({ name, loading, error }: { name: string; loading: b
   );
 }
 
-/**
- * The shared page with its ⋯ menu wired: People, Categories, Done or Reopen, Leave (shared events §6); on a copy this
- * phone's person is no longer in, Delete this copy — a safety copy first, then back to the Events list.
- */
+/** The shared page. Everything done to the event itself is on its Settings page, one tap from the ⚙ (owner, 14 Nov 2026). */
 function SharedEventScreen({ view }: { view: SharedEventView }) {
-  const { database, ws, sync } = useApp();
-  const invalidate = useInvalidateAll();
-  const navigate = useNavigate();
-  const safetyCopy = useSafetyCopy('before-delete');
-  const [error, setError] = useState<unknown>(null);
-  const run = async (work: () => Promise<unknown>) => {
-    setError(null);
-    try {
-      await work();
-      await invalidate();
-    } catch (failure) {
-      setError(sayError(failure));
-    }
-  };
-  const menu = sharedEventMenu(view, {
-    people: () => void navigate({ to: '/events/$eventId/people', params: { eventId: view.eventId } }),
-    categories: () => void navigate({ to: '/events/$eventId/categories', params: { eventId: view.eventId } }),
-    done: (finished) => void run(() => finishSharedEvent(database, ownerScope(ws), view.eventId, finished)),
-    leave: () => {
-      if (window.confirm(`Leave ${view.name}? What ${view.myName} recorded stays with the others, and ${view.myName}'s own books keep their share.`)) void run(() => sync.leaveEvent(view.bookId));
-    },
-    deleteCopy: () =>
-      void run(async () => {
-        const done = await deleteEventCopyFlow(view, {
-          plan: () => planEventCopyDelete(database, ws, view.bookId),
-          confirm: (text) => window.confirm(text),
-          safetyCopy,
-          remove: () => sync.deleteEventCopy(ws, view.bookId),
-        });
-        if (done === 'deleted') void navigate({ to: '/events', replace: true });
-      }),
-  });
-  return <SharedEventPage view={view} menu={menu} error={error} />;
+  return <SharedEventPage view={view} />;
 }
 
 /** A suggestion, a workspace's own row: wrapped so the group can still hand it its separator. */
