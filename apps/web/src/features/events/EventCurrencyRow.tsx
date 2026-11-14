@@ -24,6 +24,9 @@ export function EventCurrencyRow({
     <InsetRow
       position={position}
       title="Currency"
+      // A row of a form, read as its neighbours are: the label in plain weight, the value in ink.
+      plain
+      valueTone="ink"
       label={`Currency: ${value}`}
       testId="event-currency"
       value={name}

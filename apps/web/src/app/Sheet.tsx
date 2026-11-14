@@ -22,6 +22,16 @@ let open = 0;
 const TEXT_FIELDS = 'input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=date]):not([type=time]):not([type=range]):not([type=file]):not([type=button]):not([type=submit]), textarea';
 
 /** Where iOS pans the page to a focused field: only there are the fields of a medium sheet held back until the sheet has grown. */
+/**
+ * The locked field a tap in a medium sheet was meant for: the field itself, the field a tapped label names, or the field
+ * of the row tapped beside it (a form row's empty stretch focuses its field). Null when the tap was for no locked field.
+ */
+function lockedFieldOf(target: EventTarget | null): HTMLElement | null {
+  if (!(target instanceof Element)) return null;
+  const locked = (element: Element | null | undefined): HTMLElement | null => (element instanceof HTMLElement && element.dataset.sheetLock ? element : null);
+  return locked(target) ?? locked(target.closest('label')?.control) ?? locked(target.closest('[data-text-row]')?.querySelector('[data-sheet-lock]'));
+}
+
 const IOS = typeof navigator !== 'undefined' && (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 
 /** How far a sheet's panel runs on below the keyboard's top, under the keys and their bar. */
@@ -269,12 +279,19 @@ export function Sheet({
         // Focus moving from one field to the next while the keyboard is already up: the next one is revealed too.
         onFocus={(event) => reveal(event.target)}
         onClickCapture={(event) => {
-          const field = event.target;
-          if (!(field instanceof HTMLElement) || !field.dataset.sheetLock) return;
-          // A tap on a field of a medium sheet: the sheet stands up first, the field takes the focus once it has.
+          const field = lockedFieldOf(event.target);
+          if (!field) return;
+          // A tap on a field of a medium sheet: the sheet stands up, and the field is unlocked and focused here, inside the
+          // tap. iOS brings the keyboard only for a focus made while handling the tap itself: a focus from a timer
+          // afterwards (as this once waited for the sheet to stand) left the field without a keyboard, so it could not be
+          // typed in at all. Blurred first, since iOS may already have focused the read-only field, and a focus on an
+          // element already focused does nothing.
           grown.current = true;
           setDetent('large');
-          window.setTimeout(() => field.focus({ preventScroll: true }), 320);
+          if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) field.readOnly = false;
+          delete field.dataset.sheetLock;
+          if (document.activeElement === field) field.blur();
+          field.focus({ preventScroll: true });
         }}
         onBlur={(event) => {
           if (!grown.current) return;
