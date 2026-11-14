@@ -1,0 +1,123 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Trip private vs shared</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --green:#34c759; --up:#1a7f37; --warn:#c93400; --fill:#eeeef0; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; }
+  h2 { font-size:18px; margin:30px 0 8px; }
+  .row { display:flex; gap:26px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:340px; } .cap { font-weight:700; margin:0 0 3px; font-size:17px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:36px; }
+  .phone { background:var(--ground); border-radius:28px; padding:14px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .nav { display:flex; justify-content:space-between; align-items:center; margin:0 4px 12px; font-size:15px; } .nav .t { color:var(--tint); } .nav b { font-size:16px; }
+  .acts { display:flex; gap:8px; } .acts span { width:32px; height:32px; border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center; color:var(--ink); font-size:17px; box-shadow:0 1px 2px rgba(0,0,0,.08); }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+  .pad { padding:12px 13px; }
+  .hdr { font-size:11.5px; font-weight:600; color:var(--ink3); text-transform:uppercase; letter-spacing:.6px; margin:0 6px 6px; display:flex; justify-content:space-between; }
+  .r { display:flex; gap:10px; align-items:center; padding:9px 13px; white-space:nowrap; min-height:44px; } .r + .r { border-top:.5px solid var(--hair); }
+  .ic { width:28px; height:28px; border-radius:50%; color:#fff; font-size:13px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .g { flex:1; min-width:0; } .a { font-size:15px; overflow:hidden; text-overflow:ellipsis; } .s { font-size:12.5px; color:var(--ink3); overflow:hidden; text-overflow:ellipsis; }
+  .val { font-size:15px; text-align:right; } .val .x { display:block; font-size:12.5px; color:var(--ink3); } .chev { color:#c7c7cc; }
+  .tint { color:var(--tint); } .warn { color:var(--warn); } .ok { color:var(--up); } .dim { color:var(--ink3); }
+  .seg { display:flex; background:#e3e3e8; border-radius:9px; padding:2px; margin-bottom:12px; font-size:13px; } .seg span { flex:1; text-align:center; padding:5px 0; border-radius:7px; } .seg .on { background:#fff; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.1); }
+  .pill { display:block; width:max-content; margin:0 auto 10px; background:var(--fill); border-radius:999px; padding:5px 12px; font-size:14px; font-weight:600; }
+  .ring { width:150px; height:150px; border-radius:50%; margin:6px auto 4px; display:flex; align-items:center; justify-content:center; background:conic-gradient(#ff9f0a 0 42%,#0a84ff 42% 70%,#30d158 70% 88%,#bf5af2 88% 100%); }
+  .ring i { width:118px; height:118px; border-radius:50%; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; font-style:normal; }
+  .ring i b { font-size:16px; white-space:nowrap; } .ring i small { font-size:11.5px; color:var(--ink3); }
+  .ring.sm { width:104px; height:104px; margin:0; flex-shrink:0; } .ring.sm i { width:80px; height:80px; } .ring.sm i b { font-size:20px; }
+  .dots { text-align:center; font-size:11px; color:var(--ink3); margin-top:6px; } .dots b { color:var(--ink); }
+  .daycard .dh { display:flex; align-items:center; gap:12px; padding:8px 13px; border-bottom:.5px solid var(--hair); }
+  .daycard .dn { font-size:24px; font-weight:600; width:36px; } .daycard .dw { font-size:12.5px; color:var(--ink3); line-height:1.2; } .daycard .dw b { color:var(--ink2); font-weight:600; display:block; }
+  .daycard .dt { margin-left:auto; font-size:13px; font-weight:600; color:var(--ink2); }
+  .diff { background:#fff8e6; border:1px solid #ffe2a8; border-radius:4px; font-size:10.5px; font-weight:700; color:#8a5a00; padding:0 4px; margin-left:4px; vertical-align:1px; }
+  table { border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden; font-size:14px; max-width:1100px; }
+  th, td { text-align:left; padding:8px 12px; border-bottom:.5px solid var(--hair); vertical-align:top; } th { background:#f7f7f9; font-size:12.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; }
+  td.same { color:var(--ink3); }
+  .bars .b { display:flex; align-items:center; gap:10px; margin-top:10px; font-size:15px; } .bars .b .n { width:70px; } .bars .b .t { flex:1; height:12px; } .bars .b .t i { display:block; height:100%; border-radius:6px; }
+</style></head><body>
+<h1>Trip event: private vs shared — today's layout</h1>
+<p class="sub">Drawn from the app's code as it is now (main), same invented trip "Tokyo", 3 days, Rp 18.400.000 spent. They are <b>two different pages</b>: a private trip uses the event page; a shared trip uses its own page. The table at the bottom lists every difference.</p>
+
+<div class="row">
+  <div class="col"><p class="cap">Private trip</p><p class="note">Only this phone. Spending in its workspaces.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ All events</span><b>12–14 Dec</b><span class="acts"><span>＋</span><span>⚙</span></span></div>
+      <div class="seg"><span class="on">All</span><span>Family</span><span>Business</span></div>
+      <div class="hdr"><span>Event mode</span></div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Add new spending to Tokyo</div></div><span style="width:44px;height:26px;border-radius:13px;background:var(--green);display:inline-block"></span></div></div>
+      <div class="panel pad">
+        <span class="pill">Tokyo</span>
+        <div class="ring"><i><b>Rp 18.400.000</b><small>Total spent</small><small>23 payments</small></i></div>
+        <div class="dots"><b>●</b>○ &nbsp;Where it went · Against the plan</div>
+      </div>
+      <div class="hdr"><span>Was this part of Tokyo?</span></div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Lawson</div><div class="s">13 Dec · Food</div></div><div class="val">Rp 85.000</div></div></div>
+      <div class="hdr"><span>Transaction history</span></div>
+      <div class="panel daycard">
+        <div class="dh"><span class="dn">13</span><span class="dw"><b>Saturday</b>December 2026</span><span class="dt">Rp 2.150.000</span></div>
+        <div class="r"><div class="ic" style="background:#ff9f0a">🍜</div><div class="g"><div class="a">Food</div><div class="s">Ramen shop · BCA 0917</div></div><div class="val">Rp 310.000<span class="x">¥ 3.000</span></div></div>
+        <div class="r"><div class="ic" style="background:#0a84ff">🚆</div><div class="g"><div class="a">Transport</div><div class="s">Suica top-up · Cash JPY</div></div><div class="val">Rp 520.000<span class="x">¥ 5.000</span></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col"><p class="cap">Shared trip</p><p class="note">Planned together; each person pays, balances settle up.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Events</span><b>12–14 Dec</b><span class="acts"><span>⋯</span></span></div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Andi has not joined yet</div><div class="s">Finish sharing</div></div><span class="chev">›</span></div></div>
+      <div class="hdr"><span>Event mode</span></div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Add new spending to Tokyo</div></div><span style="width:44px;height:26px;border-radius:13px;background:var(--green);display:inline-block"></span></div></div>
+      <div class="panel pad">
+        <span class="pill">Tokyo</span>
+        <div style="display:flex;gap:14px;align-items:center">
+          <div class="ring sm"><i><b>4</b><small>categories</small></i></div>
+          <div class="g"><div class="s">Total spent</div><div style="font-size:20px;font-weight:700">Rp 18.400.000</div>
+            <div class="s" style="display:flex;justify-content:space-between;margin-top:5px"><span>Hotel</span><span>Rp 7.700.000</span></div>
+            <div class="s" style="display:flex;justify-content:space-between;margin-top:5px"><span>Transport</span><span>Rp 5.150.000</span></div>
+            <div class="s" style="display:flex;justify-content:space-between;margin-top:5px"><span>Food</span><span>Rp 3.300.000</span></div></div>
+        </div>
+        <div class="dots"><b>●</b>○○ &nbsp;Spending · Balances · Plan</div>
+      </div>
+      <p class="s" style="text-align:center;margin:0 0 10px">Tap the card to see all categories</p>
+      <div class="panel daycard">
+        <div class="dh"><span class="dn">13</span><span class="dw"><b>Saturday</b>December 2026</span><span class="dt">Rp 2.150.000</span></div>
+        <div class="r"><div class="ic" style="background:#ff9f0a">🍜</div><div class="g"><div class="a">Ramen shop</div><div class="s">Rina paid · split 2</div></div><div class="val">Rp 310.000<span class="x">Rina Rp 155.000</span></div></div>
+        <div class="r"><div class="ic" style="background:#8e8e93">⇄</div><div class="g"><div class="a dim">ATM withdrawal</div><div class="s">BCA 0917 → Cash JPY</div></div><div class="val dim">Rp 2.000.000</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col"><p class="cap">Shared · 2nd and 3rd cards</p><p class="note">Swipe the top card: Balances, then Plan. The list below changes with it.</p>
+    <div class="phone">
+      <div class="panel pad bars">
+        <div class="hdr" style="margin:0">Net balance</div>
+        <div class="b"><span class="n">Rina</span><span class="t"><i style="width:60%;background:var(--up)"></i></span><span class="ok">+ Rp 1.200.000</span></div>
+        <div class="b"><span class="n">Andi</span><span class="t"><i style="width:60%;background:var(--warn)"></i></span><span class="warn">− Rp 1.200.000</span></div>
+        <div class="dots">○<b>●</b>○</div>
+      </div>
+      <div class="hdr"><span>To settle up</span></div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Andi pays Rina Rp 1.200.000</div></div><span class="chev">›</span></div></div>
+      <div style="height:16px"></div>
+      <div class="panel pad">
+        <div class="hdr" style="margin:0 0 6px">Plan</div>
+        <div style="font-size:20px;font-weight:700">Rp 14.900.000 <span class="s" style="font-weight:400">of Rp 21.000.000 planned</span></div>
+        <div class="dots">○○<b>●</b></div>
+      </div>
+      <div class="panel"><div class="r"><div class="ic" style="background:#bf5af2">🏨</div><div class="g"><div class="a">Hotel</div><div class="s">1 of 2 paid</div></div><div class="val">Rp 7.700.000</div></div></div>
+    </div>
+  </div>
+</div>
+
+<h2>Side by side, part by part</h2>
+<table>
+  <tr><th>Part</th><th>Private trip</th><th>Shared trip</th></tr>
+  <tr><td>Top-right buttons</td><td>＋ Add spending, ⚙ Settings</td><td>⋯ menu (Add spending, settings, Leave…); ＋ only on the Plan card</td></tr>
+  <tr><td>Back label</td><td>All events</td><td>Events</td></tr>
+  <tr><td>Workspace switch</td><td>All / Family / Business (when spent from more than one)</td><td>None</td></tr>
+  <tr><td>Status rows</td><td>None</td><td>"Not joined yet" / "Choose the account for each" when needed</td></tr>
+  <tr><td>Event mode</td><td class="same">Same</td><td class="same">Same</td></tr>
+  <tr><td>Main card</td><td>Big ring, total in the middle; swipe 2 pages: Where it went · Against the plan</td><td>Small ring with category count + total and top 3 beside it; swipe 3 cards: Spending · Balances · Plan</td></tr>
+  <tr><td>Plan</td><td>Inside the card (Against the plan) or a Plan card under it</td><td>Its own third card, list of categories below</td></tr>
+  <tr><td>Who paid / balances</td><td>—</td><td>Net balance bars, To settle up</td></tr>
+  <tr><td>"Was this part of…?"</td><td>Yes</td><td>No</td></tr>
+  <tr><td>History rows</td><td>Category name; place · paid with; foreign amount under</td><td>Place name; who paid · split; own share under; ATM moves in grey</td></tr>
+</table>
+</body></html>
