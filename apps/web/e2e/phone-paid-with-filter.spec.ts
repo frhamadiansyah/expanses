@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
-import { addTransaction } from './add-transaction';
+import { addTransaction, historyMenu } from './add-transaction';
 
 /*
  * The list's Paid with filter on a phone: a sheet with a search at its top, every account led by its digits with its
@@ -18,7 +18,7 @@ test('Paid with is a sheet with a search; "48" leaves 4821, the pick marks the i
   const rows = page.getByTestId('transaction-row');
   await expect(rows).toHaveCount(2);
 
-  const icon = page.getByRole('button', { name: 'Sort and filter' });
+  const icon = historyMenu(page);
   const openSheet = async () => {
     await icon.click();
     await page.getByRole('menuitem', { name: /^Paid with/ }).click();

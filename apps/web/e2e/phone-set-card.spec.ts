@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { addPlastic, openAccount, openCard } from './accounts';
-import { addTransaction } from './add-transaction';
+import { addTransaction, startSelecting } from './add-transaction';
 import { cardPage } from './card-section';
 
 const row = (page: Page, what: string) => page.getByTestId('transaction-row').filter({ hasText: what });
@@ -35,7 +35,7 @@ test('ticked purchases on one card account are set to one of its cards at once',
   await expect(page.getByTestId('card-on-account')).toHaveCount(2);
 
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Select', exact: true }).click();
+  await startSelecting(page);
   await expect(bar(page)).toBeVisible();
 
   // A row off the card among the ticked ones: nothing to set.

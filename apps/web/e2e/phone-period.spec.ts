@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { addTransaction } from './add-transaction';
+import { addTransaction, historyMenu } from './add-transaction';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -40,7 +40,7 @@ test('the list narrows by what paid, beside the sort, and the menu takes it off 
   await addTransaction(page, { description: 'Lunch', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '30000' });
   // The filter is a control of the list itself now: the icon beside the sort it shares a row with, offering only
   // what can pay — the account's own row is a choice, a locked deposit would not be.
-  await page.getByRole('button', { name: 'Sort and filter' }).click();
+  await historyMenu(page).click();
   await page.getByRole('menuitem', { name: /^Paid with/ }).click();
   await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: /BCA Tahapan/ }).click();
 
@@ -50,7 +50,7 @@ test('the list narrows by what paid, beside the sort, and the menu takes it off 
   // A phone has no row of chips: the button wears a dot while a filter is on, and the menu names it and resets it.
   await expect(page.getByTestId('filter-on')).toBeVisible();
   await expect(page.getByText('Lunch')).toBeVisible();
-  await page.getByRole('button', { name: 'Sort and filter' }).click();
+  await historyMenu(page).click();
   await expect(page.getByRole('menuitem', { name: /^Paid with/ })).toContainText('BCA Tahapan');
   await page.getByRole('menuitem', { name: 'Reset' }).click();
   await expect(page.getByTestId('filter-on')).toHaveCount(0);

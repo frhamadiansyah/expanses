@@ -1,8 +1,8 @@
 import { searchTokens } from '@expanses/core';
-import { ArrowUpDown, Check, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, CircleCheck, Ellipsis } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { cx } from '../../ui';
-import { type ChipOption, chipDot } from './ChipMenu';
+import type { ChipOption } from './ChipMenu';
 
 export const DEFAULT_SORT = 'date:desc';
 
@@ -20,9 +20,9 @@ const ROW = 'flex min-h-11 w-full items-center gap-2 border-t-[0.5px] border-[va
 const HEAD = 'bg-[var(--ph-fill)] px-3.5 py-2 text-[11px] uppercase tracking-[0.05em] text-[var(--ph-ink-3)]';
 
 /**
- * One icon for the list's sort and its Paid with filter, in the grey capsule the other controls on the row wear. It
- * opens one fixed-width menu: the four sorts, then Paid with (a searchable list here, the phone's sheet there),
- * Transfers (Cashflow's own transfers, listed only while it is ticked) and Reset. Dark with a dot while any is off its rest.
+ * The history's one ⋯ square, in the grey capsule the other controls on the row wear (owner 2026-11-15). It opens one
+ * fixed-width menu: Select (where the list can be ticked), the four sorts, then Show: Paid with (a searchable list here,
+ * the phone's sheet there), Transfers (Cashflow's own transfers) and Reset. A small blue dot while any is off its rest.
  */
 export function SortFilterMenu({
   sorts,
@@ -35,6 +35,7 @@ export function SortFilterMenu({
   transfers,
   onTransfers,
   onReset,
+  onSelect,
 }: {
   sorts: readonly { value: string; label: string }[];
   sortValue: string;
@@ -48,6 +49,8 @@ export function SortFilterMenu({
   transfers?: boolean;
   onTransfers?: (on: boolean) => void;
   onReset: () => void;
+  /** Starts select mode. Absent (a read-only workspace, or no list to tick), no Select row is drawn. */
+  onSelect?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<'menu' | 'paid'>('menu');
@@ -57,7 +60,7 @@ export function SortFilterMenu({
   const [above, setAbove] = useState(false);
   const listId = useId();
   const count = sortFilterCount({ sortValue, paid, transfers });
-  const dot = chipDot({ active: count > 0, iconOnly: true, count });
+  const dot = count > 0;
   const paidName = paidOptions.find((option) => option.value === paid && option.value)?.label;
 
   useEffect(() => {
@@ -87,7 +90,7 @@ export function SortFilterMenu({
       <div className="inline-flex items-center rounded-lg bg-slate-200 p-0.5">
         <button
           type="button"
-          aria-label="Sort and filter"
+          aria-label="More"
           aria-haspopup="menu"
           aria-expanded={open}
           onClick={() => {
@@ -96,19 +99,20 @@ export function SortFilterMenu({
             setQuery('');
           }}
           className={cx(
-            'flex h-7 w-8 items-center justify-center rounded-md',
-            dot ? 'relative bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900',
+            'relative flex h-7 w-8 items-center justify-center rounded-md',
+            open ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900',
           )}
         >
-          <ArrowUpDown size={15} aria-hidden />
-          {dot && <span aria-hidden data-testid="filter-on" className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-[var(--ph-tint)] ring-2 ring-slate-200" />}
+          <Ellipsis size={15} aria-hidden />
+          {/* Only a dot: opening the menu shows which sort or filter is on. */}
+          {dot && <span aria-hidden data-testid="filter-on" className="absolute top-[3px] right-[4px] h-[7px] w-[7px] rounded-full bg-[var(--ph-tint)] ring-[1.5px] ring-slate-200" />}
         </button>
       </div>
       {open && (
         <div
           ref={menu}
           role="menu"
-          aria-label="Sort and filter"
+          aria-label="More"
           data-testid="sort-filter-menu"
           className={cx(
             'absolute right-0 z-20 w-[230px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[14px] bg-[var(--ph-surface)] shadow-[0_8px_30px_rgba(0,0,0,0.27)]',
@@ -117,6 +121,20 @@ export function SortFilterMenu({
         >
           {view === 'menu' ? (
             <>
+              {onSelect && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setOpen(false);
+                    onSelect();
+                  }}
+                  className={cx(ROW, 'justify-between')}
+                >
+                  <span>Select</span>
+                  <CircleCheck size={16} aria-hidden className="shrink-0 text-[var(--ph-ink-2)]" />
+                </button>
+              )}
               <p className={HEAD}>Sort</p>
               {sorts.map((sort) => (
                 <button
@@ -134,7 +152,7 @@ export function SortFilterMenu({
                   {sort.value === sortValue && <Check size={16} aria-hidden className="shrink-0" />}
                 </button>
               ))}
-              <p className={HEAD}>Filter</p>
+              <p className={HEAD}>Show</p>
               <button
                 type="button"
                 role="menuitem"

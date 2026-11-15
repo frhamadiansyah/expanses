@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { addPlastic, expectWalletFigure, openAccount, openCard } from './accounts';
-import { addTransaction } from './add-transaction';
+import { addTransaction, historyMenu } from './add-transaction';
 import { cardPage } from './card-section';
 import { screenshotFiles, setStatementImages, statementLines, summaryLines, twoDateLines } from './statement';
 
@@ -101,7 +101,7 @@ test('a statement travels from screenshots to a reconciled month', async ({ page
   await periods.getByRole('button', { name: '2026', exact: true }).click();
   await expect(chart.getByTestId('chart-month')).toContainText('2026');
   // The filter is a sheet on a phone: the card's row, led by its digits, is named with both.
-  await page.getByRole('button', { name: 'Sort and filter' }).click();
+  await historyMenu(page).click();
   await page.getByRole('menuitem', { name: /^Paid with/ }).click();
   await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: /^BCA Visa/ }).click();
   // 85.000 + 126.500 + 45.000 + 60.000 + 10.000: the card's spending, the payments line not among it.

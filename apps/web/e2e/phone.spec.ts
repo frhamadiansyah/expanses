@@ -100,7 +100,7 @@ test('the phone header adds, searches and filters from three round buttons', asy
   await expect(page.getByLabel('Search transactions')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Cashflow' })).toBeVisible();
 
-  // The corner is the workspace, one tap from its switcher; the filters live in the Sort and filter menu.
+  // The corner is the workspace, one tap from its switcher; the filters live in the history's ⋯ menu.
   await expect(page.getByRole('button', { name: /^Workspace, / })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Filters', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^Month/ })).toHaveCount(0);

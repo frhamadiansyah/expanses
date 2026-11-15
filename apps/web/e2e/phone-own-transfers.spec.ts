@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard, openWalletAccount } from './accounts';
-import { addForm, addTransaction, addTransfer, choosePayment, chooseTo, saveButton, showTransfers } from './add-transaction';
+import { addForm, addTransaction, addTransfer, choosePayment, chooseTo, saveButton, showTransfers, startSelecting } from './add-transaction';
 import { typeAmount, typeSecondFigure } from './set-aside';
 import { cardPage } from './card-section';
 import { TODAY } from './event-plan';
@@ -108,13 +108,13 @@ test('a transfer Transfers shows is ticked and put on a trip like any row; Selec
   };
 
   // Hidden, the top-up is not ticked by Select All.
-  await page.getByRole('button', { name: 'Select', exact: true }).click();
+  await startSelecting(page);
   await act('Select All');
   await expect(bar).toContainText('1 selected');
   await bar.getByRole('button', { name: 'Done', exact: true }).click();
 
   await showTransfers(page);
-  await page.getByRole('button', { name: 'Select', exact: true }).click();
+  await startSelecting(page);
   await page.getByRole('checkbox', { name: 'Select Trip top-up' }).click();
   await act('Add to event');
   await page.getByRole('dialog', { name: 'Add to event' }).getByRole('button', { name: 'Contoh trip' }).click();

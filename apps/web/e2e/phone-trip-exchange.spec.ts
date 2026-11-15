@@ -1,6 +1,6 @@
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
 import { currencyRow, setCurrency } from './currency-field';
-import { addForm, chooseTo, choosePayment, fillAmount, openAmount, saveButton, showTransfers } from './add-transaction';
+import { addForm, chooseTo, choosePayment, fillAmount, openAmount, saveButton, showTransfers, startSelecting } from './add-transaction';
 import { mockRates, openWithPockets } from './pockets';
 import { corner, eventually, newEvent, openTrip, openTripSettings } from './shared-events';
 import { openWorkspaceSharePage, putOffShareList, shareWorkspace, workspaceLine } from './workspace-page';
@@ -126,7 +126,7 @@ async function journey(owner: Page, browser: Browser, info: TestInfo, recordedBe
   await expect(row).toHaveCount(1);
 
   // Select → tick it → Add to event → the trip → OK (the confirm is accepted).
-  await owner.getByRole('button', { name: 'Select', exact: true }).click();
+  await startSelecting(owner);
   await expect(bar(owner)).toBeVisible();
   await owner.getByRole('checkbox', { name: /Bank Contoh/ }).click();
   await expect(bar(owner)).toContainText('1 selected');

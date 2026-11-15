@@ -49,7 +49,7 @@ import { useEvents } from '../events/queries';
 import { TravelRows } from '../events/TravelRows';
 import { useSharedEventSummaries } from '../events/shared-queries';
 import { Button, Card, cx, Empty, ErrorBox, Money } from '../../ui';
-import { GROUP_HEADER_CLASS, LargeTitle, SearchPill } from '../../ui/native';
+import { LargeTitle, SearchPill } from '../../ui/native';
 import { SortFilterMenu } from './SortFilterMenu';
 import { ChipMenu, type ChipOption } from './ChipMenu';
 import { type PaidChoice, PaidWithSheet } from './PaidWithSheet';
@@ -1571,8 +1571,8 @@ export function TransactionsPage() {
 
           {shown.length > 0 && (
             <div className="flex items-center justify-end gap-2">
-              {/* Names the list under the chart, and fills the row the two controls would otherwise leave empty. */}
-              <h2 className={cx('mr-auto', GROUP_HEADER_CLASS)}>Transaction history</h2>
+              {/* Names the list under the chart, bold and in its own words, level with the boxes beside it (owner 2026-11-15). */}
+              <h2 className="mr-auto text-[20px] leading-[25px] font-bold tracking-[-0.01em] text-[var(--ph-ink)] md:text-[18px] md:leading-[23px]">Transactions</h2>
               {/* Grouping is the view switcher's twin: the same 28px segment, the same 32px track, the same glyph. */}
               <div role="group" aria-label="Group by" className="inline-flex gap-0.5 rounded-lg bg-slate-200 p-0.5">
                 {(
@@ -1597,22 +1597,22 @@ export function TransactionsPage() {
                   </button>
                 ))}
               </div>
-              {/* Ticking rows, to put a run of them into an event at once: a square button beside the others, dark while it is on.
+              {/* While rows are being ticked the ⋯ square is the dark Select square: one tap stops selecting.
                   The count and the Add to event / Done actions stay in the select bar. */}
-              {view === 'list' && !readOnly && (
+              {selecting ? (
                 <div className="inline-flex items-center rounded-lg bg-slate-200 p-0.5">
                   <button
                     type="button"
                     aria-label="Select"
-                    aria-pressed={selecting}
-                    onClick={() => (selecting ? stopSelecting() : startSelecting())}
-                    className={cx('flex h-7 w-8 items-center justify-center rounded-md', selecting ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900')}
+                    aria-pressed
+                    onClick={stopSelecting}
+                    className="flex h-7 w-8 items-center justify-center rounded-md bg-slate-900 text-white shadow-sm"
                   >
                     <CircleCheck size={15} aria-hidden />
                   </button>
                 </div>
-              )}
-              {/* Sort and what the list was paid with, one icon and one menu. On a phone Paid with opens its sheet. */}
+              ) : (
+              /* Select, the sort and what the list was paid with, one ⋯ and one menu. On a phone Paid with opens its sheet. */
               <SortFilterMenu
                 sorts={SORTS}
                 sortValue={sortValue}
@@ -1631,7 +1631,10 @@ export function TransactionsPage() {
                   setFilter('paid', '');
                   setFilter('showTransfers', false);
                 }}
+                // Ticking rows, to put a run of them into an event at once: never in a read-only workspace.
+                onSelect={view === 'list' && !readOnly ? startSelecting : undefined}
               />
+              )}
               {pickingPaid && <PaidWithSheet choices={paidChoices} value={filters.paid} onPick={(value) => setFilter('paid', value)} onClose={() => setPickingPaid(false)} />}
             </div>
           )}

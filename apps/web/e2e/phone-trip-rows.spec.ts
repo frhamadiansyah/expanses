@@ -1,6 +1,6 @@
 import { type Browser, expect, type Locator, type Page, test, type TestInfo } from '@playwright/test';
 import { openAccount } from './accounts';
-import { addForm, chooseTo, choosePayment, fillAmount, openAmount, saveButton, showTransfers } from './add-transaction';
+import { addForm, chooseTo, choosePayment, fillAmount, openAmount, saveButton, showTransfers, startSelecting } from './add-transaction';
 import { corner, eventually, newEvent, openTrip, recordSharedSpend, showBalances, showCard, spendingRow } from './shared-events';
 import { openWorkspaceSharePage, putOffShareList, shareWorkspace, workspaceLine } from './workspace-page';
 
@@ -222,7 +222,7 @@ test('a shared trip day with a spending, a settle-up and a household transfer: o
   await expect(form).toHaveCount(0);
   await showTransfers(owner);
   await expect(owner.getByTestId('transaction-row').filter({ hasText: 'Harbour ATM' })).toHaveCount(1);
-  await owner.getByRole('button', { name: 'Select', exact: true }).click();
+  await startSelecting(owner);
   const bar = owner.getByRole('toolbar', { name: 'Selected transactions' });
   await owner.getByRole('checkbox', { name: /Harbour ATM/ }).click();
   await bar.getByRole('button', { name: 'Actions' }).click();
