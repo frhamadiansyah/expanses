@@ -207,7 +207,7 @@ test('the chart card keeps its height when the month is read the other way', asy
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Warung Steak', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '500000' });
-  await addTransaction(page, { mode: 'Income', description: 'Gaji', paidWith: 'BCA Tahapan', category: 'Salary', amount: '30000000' });
+  await addTransaction(page, { mode: 'Income', description: 'Gaji', paidWith: 'BCA Tahapan', category: 'Salary, wage, or pay', amount: '30000000' });
 
   // A budget, so the outgoing side really does have a second page to turn to — which is the difference being measured.
   await page.goto('/budget');

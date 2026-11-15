@@ -1,5 +1,5 @@
 export { uuidv7 } from './ids';
-export { DEFAULT_CATEGORIES, DEFAULT_CATEGORY_KEYS, DEFAULT_CATEGORY_MCCS, type DefaultCategory, type DefaultCategoryChild, ON_DEMAND_CATEGORY_KEYS } from './categories/defaults';
+export { DEFAULT_CATEGORIES, DEFAULT_CATEGORY_KEYS, DEFAULT_CATEGORY_MCCS, type DefaultCategory, type DefaultCategoryChild, FORMER_DEFAULT_NAMES, ON_DEMAND_CATEGORY_KEYS } from './categories/defaults';
 export { MCC_NAMES, type MccMatch, mccName, searchMccs } from './mcc/codes';
 export { BUSINESS_CATEGORIES, type BusinessCategory } from './categories/business';
 export { eventCategoryIcon } from './categories/event-icons';

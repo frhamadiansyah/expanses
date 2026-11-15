@@ -23,7 +23,7 @@ test('the box draws the month’s flows, a category opens its list, and › open
   await expect(box).toBeVisible();
   // Left: the one source. Middle: the bank and the card — never the wallet, which only saw a transfer.
   await expect(box.locator('[data-testid^="flow-source-"]')).toHaveCount(1);
-  await expect(box.locator('[data-testid^="flow-source-"]')).toContainText('Salary');
+  await expect(box.locator('[data-testid^="flow-source-"]')).toContainText('Salary, wage, or pay');
   await expect(box.locator('[data-testid^="flow-account-"]')).toHaveCount(2);
   await expect(box.locator('[data-testid^="flow-account-"][aria-label^="BCA Tahapan"]')).toBeVisible();
   await expect(box.locator('[data-testid^="flow-account-"][aria-label^="BCA Visa"]')).toBeVisible();

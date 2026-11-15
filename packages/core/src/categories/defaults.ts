@@ -32,14 +32,26 @@ export const DEFAULT_CATEGORIES: readonly DefaultCategory[] = [
   { kind: 'expense', key: 'miscellaneous', name: 'Miscellaneous', children: children('miscellaneous', [['postal_service', 'Postal service'], ['professional_fee', 'Professional fee'], ['fine_penalty', 'Fine/penalty'], ['documentation', 'Documentation'], ['interest', 'Interest'], ['fees_charges', 'Fees & charges'], ['membership_fee', 'Membership fee'], ['top_ups', 'Top-ups'], ['platform_fee', 'Platform fee']]) },
   { kind: 'expense', key: 'travel', name: 'Travel', children: children('travel', [['flights', 'Flights'], ['hotels', 'Hotels'], ['activities', 'Activities'], ['transport', 'Transport'], ['souvenirs', 'Souvenirs'], ['meals', 'Meals'], ['others', 'Others']]) },
   { kind: 'expense', key: 'business', name: 'Business & Invoices' },
-  { kind: 'income', key: 'income.salary', name: 'Salary' },
-  { kind: 'income', key: 'income.bonus', name: 'Bonus' },
+  { kind: 'income', key: 'income.salary', name: 'Salary, wage, or pay' },
+  { kind: 'income', key: 'income.bonus', name: 'Bonus and benefits' },
   { kind: 'income', key: 'income.investment', name: 'Investment Income' },
   { kind: 'income', key: 'income.realized_gains', name: 'Realized Gains' },
   { kind: 'income', key: 'income.cashback', name: 'Cashback & Rewards' },
-  { kind: 'income', key: 'income.gifts', name: 'Gifts Received' },
+  { kind: 'income', key: 'income.gifts', name: 'Gifts, awards, and grants' },
+  { kind: 'income', key: 'income.side_business', name: 'Side business and selling' },
   { kind: 'income', key: 'income.other', name: 'Other Income' },
 ];
+
+/**
+ * Names a default carried before it was renamed (income, 16 Nov 2026), newest last. Migration 0117 renames a row still
+ * holding one of them; a row the owner renamed keeps its own. Keying an old unkeyed row also matches these, so a
+ * workspace from before keys existed still finds its Salary.
+ */
+export const FORMER_DEFAULT_NAMES: Readonly<Record<string, readonly string[]>> = {
+  'income.salary': ['Salary'],
+  'income.bonus': ['Bonus'],
+  'income.gifts': ['Gifts Received'],
+};
 
 export const DEFAULT_CATEGORY_KEYS: ReadonlySet<string> = new Set(
   DEFAULT_CATEGORIES.flatMap((category) => [category.key, ...(category.children ?? []).map((child) => child.key)]),

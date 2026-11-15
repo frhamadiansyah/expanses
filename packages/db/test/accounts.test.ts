@@ -28,7 +28,7 @@ describe('workspace seed', () => {
     const groceries = all.find((a) => a.name === 'Groceries')!;
     expect(food.kind).toBe('expense');
     expect(groceries.parentId).toBe(all.find((a) => a.name === 'Household')!.id);
-    expect(all.find((a) => a.name === 'Salary')?.kind).toBe('income');
+    expect(all.find((a) => a.name === 'Salary, wage, or pay')?.kind).toBe('income');
   });
 });
 
@@ -67,7 +67,7 @@ describe('createAccount', () => {
     const { database, ws } = await setupDb();
     const all = await listAccounts(database, ws);
     const food = all.find((a) => a.name === 'Food and beverage')!;
-    const salary = all.find((a) => a.name === 'Salary')!;
+    const salary = all.find((a) => a.name === 'Salary, wage, or pay')!;
     await expect(createAccount(database, ws, { name: 'X', kind: 'asset', subtype: 'credit_card', currency: 'IDR' })).rejects.toThrow(AccountError);
     await expect(createAccount(database, ws, { name: 'X', kind: 'asset', subtype: 'bank', currency: null })).rejects.toThrow(AccountError);
     await expect(createAccount(database, ws, { name: 'X', kind: 'expense', subtype: 'category', currency: 'IDR' })).rejects.toThrow(AccountError);
