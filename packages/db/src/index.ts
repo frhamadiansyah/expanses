@@ -148,6 +148,7 @@ export * as healthSchema from './schema-health';
 export * from './repos/health-tables';
 export * from './repos/share-tables';
 export * from './repos/category-needs';
+export * from './repos/essential-split';
 export * as sharingSchema from './schema-sharing';
 // Household sharing: the HTTP transport to the relay and its request signer (spec §9)
 export { DEFAULT_RELAY_URL, RelayTransport, type RelayTransportOptions } from './sync/relay-transport';

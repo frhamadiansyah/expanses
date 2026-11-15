@@ -475,6 +475,22 @@ export { budgetSheet, type BudgetCap, type BudgetLine, type BudgetSheet, type Bu
 export { BUDGET_FREQUENCIES, type BudgetFrequency, perMonthMinor } from './budget/frequency';
 export { type BudgetShare, bpOf, type CapToResolve, formatBp, parsePercentBp, resolveCaps, ShareError, type ShareBasis, shareOfMinor } from './budget/shares';
 export { CATEGORY_NEEDS, type CategoryNeed, type NeedNode, needOf, type ResolvedNeed, resolveNeeds } from './budget/needs';
+export {
+  capsByNeed,
+  type CapPlanNode,
+  DEFAULT_SPENDING_GUIDE,
+  type EssentialSplit,
+  essentialSplit,
+  gradeSplit,
+  guideLeft,
+  isValidGuide,
+  needsPlan,
+  type NeedsPlanRow,
+  readGuide,
+  type SpendingGuide,
+  type EssentialSplitInput,
+  type EssentialSplitParts,
+} from './budget/essential-split';
 export { emergencyMonthsFor, type Household, HOUSEHOLDS, INCOME_STABILITIES, type IncomeStability } from './budget/emergency-months';
 export { COMPULSORY_KINDS, type GoalClass, fundingOrder, goalClass } from './goals/classes';
 export {
