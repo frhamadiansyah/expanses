@@ -80,7 +80,7 @@ test('the queue is rows, and a tap opens the Add form that records one', async (
 
   // The queue's line sits above the transaction history, not under its heading: it is not a transaction.
   await page.goto('/transactions?month=%222026-09%22');
-  const history = page.getByRole('heading', { name: 'Transaction history' });
+  const history = page.getByRole('heading', { name: 'Transactions', exact: true });
   await expect(history).toBeVisible();
   const queue = (await page.getByTestId('not-recorded-card').boundingBox())!;
   expect(queue.y + queue.height).toBeLessThan((await history.boundingBox())!.y);

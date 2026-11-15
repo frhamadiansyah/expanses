@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { addTransaction } from './add-transaction';
+import { addTransaction, startSelecting, historyMenu } from './add-transaction';
 import { TODAY } from './event-plan';
 
 const row = (page: Page, what: string) => page.getByTestId('transaction-row').filter({ hasText: what });
@@ -22,7 +22,7 @@ test('event spending is not listed in Cashflow, by day or by category, nor found
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Sate Rembiga', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '85000' });
   await addTransaction(page, { description: 'Kopi Tuku', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '24000' });
-  await page.getByRole('button', { name: 'Select', exact: true }).click();
+  await startSelecting(page);
   await page.getByRole('checkbox', { name: 'Select Sate Rembiga' }).click();
   await page.getByRole('toolbar', { name: 'Selected transactions' }).getByRole('button', { name: 'Actions' }).click();
   await page.getByRole('menu', { name: 'Actions' }).getByRole('menuitem', { name: 'Add to event' }).click();
@@ -44,16 +44,17 @@ test('event spending is not listed in Cashflow, by day or by category, nor found
   await expect(row(page, 'Sate Rembiga')).toHaveCount(0);
 });
 
-test('the history header is the group header, and Paid with offers only accounts with transactions', async ({ page }) => {
+test('the history header is a bold Transactions title, and Paid with offers only accounts with transactions', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '5000000' });
   await openAccount(page, { subtype: 'cash', name: 'Brankas', balance: '0' });
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Kopi Kenangan', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '38000' });
-  const header = page.getByRole('heading', { name: 'Transaction history' });
-  await expect(header).toHaveCSS('font-size', '11.5px');
-  await expect(header).toHaveCSS('text-transform', 'uppercase');
+  const header = page.getByRole('heading', { name: 'Transactions', exact: true });
+  await expect(header).toHaveCSS('font-size', '20px');
+  await expect(header).toHaveCSS('font-weight', '700');
+  await expect(header).toHaveCSS('text-transform', 'none');
 
-  await page.getByRole('button', { name: 'Sort and filter' }).click();
+  await historyMenu(page).click();
   await page.getByRole('menuitem', { name: /^Paid with/ }).click();
   const sheet = page.getByRole('dialog', { name: 'Paid with' });
   await expect(sheet.getByRole('button', { name: /^BCA Tahapan/ })).toBeVisible();

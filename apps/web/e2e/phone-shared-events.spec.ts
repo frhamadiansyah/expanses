@@ -1,7 +1,7 @@
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
 import { currencyRow, setCurrency } from './currency-field';
 import { openAccount, walletCard } from './accounts';
-import { addTransaction } from './add-transaction';
+import { addTransaction, startSelecting } from './add-transaction';
 import { mockRates } from './pockets';
 import { corner, eventually, newEvent, openTrip, recordSharedSpend, sharedCard, showBalances, showCard, spendingRow } from './shared-events';
 
@@ -169,7 +169,7 @@ test('a trip in lira shared by two phones and a name: euro dinner, payer-only mo
   // A purchase that already exists moves in with Select → Add to event: it leaves Cashflow and joins the trip's spending.
   await rina.goto('/transactions');
   await addTransaction(rina, { description: 'Taxi', paidWith: 'Rina Bank', category: 'Transport', amount: '120000' });
-  await rina.getByRole('button', { name: 'Select', exact: true }).click();
+  await startSelecting(rina);
   const bar = rina.getByRole('toolbar', { name: 'Selected transactions' });
   await expect(bar).toBeVisible();
   await rina.getByRole('checkbox', { name: 'Select Taxi' }).click();

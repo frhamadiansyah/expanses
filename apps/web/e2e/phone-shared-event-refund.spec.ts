@@ -1,7 +1,7 @@
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
 import { currencyRow, setCurrency } from './currency-field';
 import { openAccount } from './accounts';
-import { addForm, choosePayment, openAmount, saveButton } from './add-transaction';
+import { addForm, choosePayment, openAmount, saveButton, startSelecting } from './add-transaction';
 import { mockRates } from './pockets';
 import { corner, eventually, newEvent, openTrip, recordSharedSpend, spendingRow } from './shared-events';
 
@@ -77,7 +77,7 @@ test('a refund moved into a shared event shows on both phones with the same rows
   await expect(form).toHaveCount(0);
 
   // Select the refund, Add to event: it leaves the workspace and joins the event's spending below zero.
-  await rina.getByRole('button', { name: 'Select', exact: true }).click();
+  await startSelecting(rina);
   const bar = rina.getByRole('toolbar', { name: 'Selected transactions' });
   await rina.getByRole('checkbox', { name: 'Select Refund · Fish dinner' }).click();
   await bar.getByRole('button', { name: 'Actions' }).click();

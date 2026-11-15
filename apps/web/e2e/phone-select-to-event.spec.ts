@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { addTransaction } from './add-transaction';
+import { addTransaction, startSelecting as startSelectingFromMenu } from './add-transaction';
 import { TODAY } from './event-plan';
 
 const row = (page: Page, what: string) => page.getByTestId('transaction-row').filter({ hasText: what });
@@ -24,7 +24,7 @@ async function expectActionDisabled(page: Page, action: string) {
 }
 
 async function startSelecting(page: Page) {
-  await page.getByRole('button', { name: 'Select', exact: true }).click();
+  await startSelectingFromMenu(page);
   await expect(bar(page)).toBeVisible();
 }
 

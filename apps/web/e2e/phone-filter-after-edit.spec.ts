@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { addTransaction, saveButton } from './add-transaction';
+import { addTransaction, saveButton, historyMenu } from './add-transaction';
 
 /*
  * The list's Paid with filter is still on after a row is opened, edited and saved: the list the edit returns to is the
@@ -15,7 +15,7 @@ test('Paid with stays on after a transaction is edited and saved', async ({ page
   const rows = page.getByTestId('transaction-row');
   await expect(rows).toHaveCount(2);
 
-  await page.getByRole('button', { name: 'Sort and filter' }).click();
+  await historyMenu(page).click();
   await page.getByRole('menuitem', { name: /^Paid with/ }).click();
   await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Jenius Utama', exact: true }).click();
   await expect(rows).toHaveCount(1);

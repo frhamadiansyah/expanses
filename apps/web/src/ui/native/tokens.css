@@ -128,6 +128,9 @@
    */
   --ph-card-edge: 0 -3px 8px -2px rgb(0 0 0 / 0.28), 0 -0.5px 0 rgb(0 0 0 / 0.12);
 
+  /* A setting off its rest, shown only as a dot on the control that holds it (Cashflow's ⋯): iOS's system blue. */
+  --ph-dot: #007aff;
+
   /*
    * Whose an item is, in a household's Net worth (joint-net-worth §8.2; owner rings, 12 Nov): the ring round a row's
    * icon circle. Each member picks one (`RING_COLOURS`, in this order); one who never picks has the colour of their
@@ -199,6 +202,9 @@
 
     /* On black a shadow alone vanishes, so the edge also catches a hairline of light, as a card does at night. */
     --ph-card-edge: 0 -3px 10px -2px rgb(0 0 0 / 0.7), 0 -0.5px 0 rgb(255 255 255 / 0.14);
+
+    /* The off-its-rest dot, as iOS lifts its blue for a dark ground. */
+    --ph-dot: #0a84ff;
 
     /* The owner rings as iOS lifts the same hues for a dark ground. */
     --owner-blue: #0a84ff;

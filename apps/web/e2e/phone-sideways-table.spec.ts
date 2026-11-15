@@ -50,7 +50,7 @@ test('turning sideways on Cashflow shows the table full screen, and upright retu
   await page.screenshot({ path: test.info().outputPath('sideways-table.png') });
 
   await page.setViewportSize(UPRIGHT);
-  await expect(page.getByRole('heading', { name: 'Transaction history' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Transactions', exact: true })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThanOrEqual(before - 2);
   expect(Math.abs((await page.evaluate(() => window.scrollY)) - before)).toBeLessThanOrEqual(2);
