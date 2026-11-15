@@ -1,0 +1,87 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Income page two</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --need:#0a84ff; --want:#ff9f0a; --save:#30b158; --inc:#0f9d6b; --new:#1a7f37; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; }
+  h2 { font-size:18px; margin:30px 0 4px; } .lead { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; font-size:14px; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; color:#fff; background:var(--tint); border-radius:4px; padding:1px 6px; margin-left:6px; vertical-align:2px; }
+  .row { display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:340px; } .cap { font-weight:700; margin:0 0 3px; font-size:16px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:54px; }
+  .phone { background:var(--ground); border-radius:28px; padding:14px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .large { font-size:28px; font-weight:800; margin:0 4px 10px; letter-spacing:-.5px; }
+  .panel { background:var(--surface); border-radius:14px; overflow:hidden; padding:14px; min-height:430px; display:flex; flex-direction:column; }
+  .month { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; font-size:14px; } .month b { background:#eeeef0; border-radius:16px; padding:5px 14px; }
+  .seg { display:flex; background:#e3e3e8; border-radius:9px; padding:2px; font-size:13px; margin-bottom:12px; } .seg span { flex:1; text-align:center; padding:6px 0; border-radius:7px; } .seg .on { background:#fff; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.1); }
+  .k { font-size:13px; color:var(--ink3); text-align:center; } .big { font-size:22px; font-weight:700; text-align:center; margin:2px 0 12px; }
+  .stack { display:flex; height:18px; border-radius:5px; overflow:hidden; } .stack i { display:block; height:100%; }
+  .marks { position:relative; height:10px; } .marks span { position:absolute; top:0; width:2px; height:8px; background:#3c3c43; opacity:.45; }
+  .lr { display:flex; align-items:center; gap:10px; padding:8px 0; font-size:15px; white-space:nowrap; } .lr + .lr { border-top:.5px solid var(--hair); }
+  .sw { width:11px; height:11px; border-radius:3px; flex-shrink:0; } .g { flex:1; } .pct { font-size:13px; color:var(--ink3); margin-left:6px; }
+  .dots { text-align:center; font-size:11px; color:var(--ink3); margin-top:auto; padding-top:10px; } .dots b { color:var(--ink); }
+  .bars { display:flex; align-items:flex-end; gap:8px; height:170px; padding:0 4px; border-bottom:1px solid var(--hair); }
+  .bars .m { flex:1; display:flex; flex-direction:column-reverse; border-radius:4px 4px 0 0; overflow:hidden; } .bars .m i { display:block; }
+  .mx { display:flex; gap:8px; padding:4px 4px 0; font-size:10.5px; color:var(--ink3); } .mx span { flex:1; text-align:center; } .mx b { color:var(--ink); }
+  .leg { display:flex; justify-content:center; gap:12px; font-size:12px; color:var(--ink2); margin-top:8px; white-space:nowrap; }
+  .leg span::before { content:''; display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:4px; background:var(--c); }
+  .new { outline:3px solid var(--new); outline-offset:3px; border-radius:10px; position:relative; }
+  .new::before { content:'NEW'; position:absolute; top:-12px; right:6px; font-size:10px; font-weight:800; color:#fff; background:var(--new); border-radius:4px; padding:1px 6px; }
+  .same { position:relative; } .same::after { content:"UNCHANGED"; position:absolute; top:6px; right:8px; font-size:10px; font-weight:700; color:#6d6d72; background:#fff; border:1px solid #d1d1d6; border-radius:4px; padding:1px 5px; }
+  .s { font-size:12.5px; color:var(--ink3); }
+</style></head><body>
+<h1>Income page 2: Essential · Lifestyle · Future instead of the income bars</h1>
+<p class="sub">Expense keeps both its pages (ring, bars). Income keeps its ring on page 1; its page 2 — the income bar chart — is replaced by where the income went. Still two pages, no extra swipe. Invented month: income Rp 25.000.000 · Essential 13.000.000 · Lifestyle 7.750.000 · Future 4.250.000.</p>
+
+<h2>Today · Income</h2>
+<div class="row">
+  <div class="col"><p class="cap">Income, page 1</p><p class="note">The income ring.</p>
+    <div class="phone"><div class="large">Cashflow</div><div class="panel same">
+      <div class="month"><span>‹</span><b>November 2026 ▾</b><span>›</span></div>
+      <div class="seg"><span>Expense</span><span class="on">Income</span></div>
+      <div style="width:150px;height:150px;border-radius:50%;margin:8px auto;background:var(--inc);display:flex;align-items:center;justify-content:center"><div style="width:116px;height:116px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;color:#8e8e93">Total earned<b style="font-size:13.5px;color:#000">Rp 25.000.000</b>1 transaction</div></div>
+      <div class="dots"><b>●</b>○</div></div></div></div>
+  <div class="col"><p class="cap">Income, page 2 (today)</p><p class="note">Income per month as bars — the page being replaced.</p>
+    <div class="phone"><div class="large">Cashflow</div><div class="panel">
+      <div class="month"><span>‹</span><b>November 2026 ▾</b><span>›</span></div>
+      <div class="seg"><span>Expense</span><span class="on">Income</span></div>
+      <div class="bars"><div class="m" style="height:88%"><i style="height:100%;background:var(--inc)"></i></div><div class="m" style="height:88%"><i style="height:100%;background:var(--inc)"></i></div><div class="m" style="height:95%"><i style="height:100%;background:var(--inc)"></i></div><div class="m" style="height:88%"><i style="height:100%;background:var(--inc)"></i></div><div class="m" style="height:88%"><i style="height:100%;background:var(--inc)"></i></div><div class="m" style="height:90%"><i style="height:100%;background:var(--inc)"></i></div></div>
+      <div class="mx"><span>Jun</span><span>Jul</span><span>Aug</span><span>Sep</span><span>Oct</span><span><b>Nov</b></span></div>
+      <div class="dots">○<b>●</b></div></div></div></div>
+</div>
+
+<h2>After · Income, page 2 — two ways</h2>
+<div class="row">
+  <div class="col"><p class="cap">A · This month <span class="tag">Recommended</span></p><p class="note">One bar for the month's income split three ways, with amounts. Tap Essential or Lifestyle to filter the list.</p>
+    <div class="phone"><div class="large">Cashflow</div><div class="panel">
+      <div class="month"><span>‹</span><b>November 2026 ▾</b><span>›</span></div>
+      <div class="seg"><span>Expense</span><span class="on">Income</span></div>
+      <div class="new" style="padding:4px 2px">
+        <div class="k">Where Rp 25.000.000 went</div>
+        <div style="height:10px"></div>
+        <div class="stack"><i style="width:52%;background:var(--need)"></i><i style="width:31%;background:var(--want)"></i><i style="width:17%;background:var(--save)"></i></div>
+        <div class="marks"><span style="left:50%"></span><span style="left:80%"></span></div>
+        <div class="lr"><span class="sw" style="background:var(--need)"></span><span class="g">Essential<span class="pct">52%</span></span><span>Rp 13.000.000</span></div>
+        <div class="lr"><span class="sw" style="background:var(--want)"></span><span class="g">Lifestyle<span class="pct">31%</span></span><span>Rp 7.750.000</span></div>
+        <div class="lr"><span class="sw" style="background:var(--save)"></span><span class="g">Future<span class="pct">17%</span></span><span>Rp 4.250.000</span></div>
+        <div class="s">Marks: 50 / 30 / 20</div>
+      </div>
+      <div class="dots">○<b>●</b></div></div></div></div>
+  <div class="col"><p class="cap">B · Six months</p><p class="note">Keeps the bar chart's shape: each month's income bar split three ways, this month's figures under it.</p>
+    <div class="phone"><div class="large">Cashflow</div><div class="panel">
+      <div class="month"><span>‹</span><b>November 2026 ▾</b><span>›</span></div>
+      <div class="seg"><span>Expense</span><span class="on">Income</span></div>
+      <div class="new" style="padding:4px 2px">
+        <div class="bars">
+          <div class="m" style="height:88%"><i style="height:55%;background:var(--need)"></i><i style="height:30%;background:var(--want)"></i><i style="height:15%;background:var(--save)"></i></div>
+          <div class="m" style="height:88%"><i style="height:58%;background:var(--need)"></i><i style="height:27%;background:var(--want)"></i><i style="height:15%;background:var(--save)"></i></div>
+          <div class="m" style="height:95%"><i style="height:50%;background:var(--need)"></i><i style="height:36%;background:var(--want)"></i><i style="height:14%;background:var(--save)"></i></div>
+          <div class="m" style="height:88%"><i style="height:54%;background:var(--need)"></i><i style="height:26%;background:var(--want)"></i><i style="height:20%;background:var(--save)"></i></div>
+          <div class="m" style="height:88%"><i style="height:56%;background:var(--need)"></i><i style="height:29%;background:var(--want)"></i><i style="height:15%;background:var(--save)"></i></div>
+          <div class="m" style="height:90%"><i style="height:52%;background:var(--need)"></i><i style="height:31%;background:var(--want)"></i><i style="height:17%;background:var(--save)"></i></div>
+        </div>
+        <div class="mx"><span>Jun</span><span>Jul</span><span>Aug</span><span>Sep</span><span>Oct</span><span><b>Nov</b></span></div>
+        <div class="leg"><span style="--c:var(--need)">Essential 52%</span><span style="--c:var(--want)">Lifestyle 31%</span><span style="--c:var(--save)">Future 17%</span></div>
+      </div>
+      <div class="dots">○<b>●</b></div></div></div></div>
+</div>
+<p class="sub" style="margin-top:16px">Expense side: unchanged (ring on page 1, spending bars on page 2).</p>
+</body></html>
