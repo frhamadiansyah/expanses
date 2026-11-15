@@ -1,0 +1,132 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Month starts on</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --exp:#e8590c; --new:#1a7f37; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; }
+  h2 { font-size:18px; margin:30px 0 4px; } .lead { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; font-size:14px; }
+  .row { display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:340px; } .cap { font-weight:700; margin:0 0 3px; font-size:16px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:54px; }
+  .phone { background:var(--ground); border-radius:28px; padding:14px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); position:relative; overflow:hidden; }
+  .nav { display:flex; justify-content:space-between; align-items:center; margin:0 4px 12px; font-size:15px; } .nav .t { color:var(--tint); min-width:60px; } .nav .t:last-child { text-align:right; font-weight:600; } .nav b { font-size:16px; }
+  .large { font-size:28px; font-weight:800; margin:0 4px 10px; letter-spacing:-.5px; }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+  .hdr { font-size:12.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; margin:0 16px 6px; }
+  .foot { font-size:12.5px; color:var(--ink3); margin:-6px 16px 12px; line-height:1.35; }
+  .r { display:flex; gap:10px; align-items:center; padding:10px 14px; white-space:nowrap; min-height:44px; } .r + .r { border-top:.5px solid var(--hair); }
+  .g { flex:1; min-width:0; } .a { font-size:15px; } .s { font-size:12.5px; color:var(--ink3); }
+  .vd { color:var(--ink3); } .chev { color:#c7c7cc; } .ck { color:var(--tint); }
+  .card { background:#fff; border-radius:14px; padding:14px; margin-bottom:12px; }
+  .month { display:flex; justify-content:space-between; align-items:center; } .month .mid { text-align:center; } .month b { display:inline-block; background:#eeeef0; border-radius:16px; padding:5px 14px; font-size:14px; }
+  .dates { font-size:12px; color:var(--ink3); margin-top:4px; }
+  .new { outline:3px solid var(--new); outline-offset:3px; border-radius:10px; position:relative; overflow:visible !important; }
+  .newsm { position:relative; display:inline-block; color:var(--new) !important; font-weight:600; border-bottom:2px solid var(--new); }
+  .newsm::after { content:'NEW'; position:absolute; left:100%; margin-left:6px; top:0; font-size:9px; font-weight:800; color:#fff; background:var(--new); border-radius:3px; padding:1px 4px; }
+  .new::before { content:'NEW'; position:absolute; top:-12px; right:6px; font-size:10px; font-weight:800; color:#fff; background:var(--new); border-radius:4px; padding:1px 6px; z-index:2; }
+  .seg { display:flex; background:#e3e3e8; border-radius:9px; padding:2px; font-size:13px; margin:12px 0; } .seg span { flex:1; text-align:center; padding:6px 0; border-radius:7px; } .seg .on { background:#fff; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.1); }
+  .ring { width:130px; height:130px; border-radius:50%; margin:6px auto 0; background:conic-gradient(var(--exp) 0 100%); display:flex; align-items:center; justify-content:center; }
+  .ring i { width:100px; height:100px; border-radius:50%; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; font-style:normal; font-size:11px; color:var(--ink3); } .ring i b { font-size:13px; color:var(--ink); }
+  .grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; padding:12px; }
+  .grid span { text-align:center; padding:8px 0; border-radius:8px; font-size:15px; }
+  .grid .on { background:var(--tint); color:#fff; font-weight:600; }
+  .wide { grid-column:span 7; background:#f2f2f7; }
+  .bar { height:8px; border-radius:4px; background:#e5e5ea; overflow:hidden; margin:8px 0 4px; } .bar i { display:block; height:100%; background:#1c1c1e; }
+  .sheet { background:var(--ground); border-radius:14px 14px 0 0; padding:12px 12px 16px; margin:120px -12px -16px; box-shadow:0 -1px 8px rgba(0,0,0,.15); }
+  .grab { width:36px; height:5px; border-radius:3px; background:#c7c7cc; margin:0 auto 10px; }
+  .dim { position:absolute; inset:0; background:rgba(0,0,0,.2); }
+  .tl { display:flex; gap:0; margin:6px 0 2px; font-size:11px; color:var(--ink3); }
+  .tl div { flex:1; border-top:4px solid #d1d1d6; padding-top:3px; } .tl .on { border-color:#0a84ff; color:var(--ink); font-weight:600; }
+</style></head><body>
+<h1>"Month starts on": a month that begins on payday</h1>
+<p class="sub">Example: salary on the 25th. Every page that shows a month uses the same setting. A period is named after the month most of it falls in: 25 Oct – 24 Nov is "November". Invented figures. Green "NEW" = what is added; the rest of each page stays as it is.</p>
+
+<h2>1 · Where it is set</h2>
+<p class="lead">Account › the workspace's settings (each workspace its own, so Family and a private workspace can differ). One row, "Month starts on".</p>
+<div class="row">
+  <div class="col"><p class="cap">Workspace settings</p><p class="note">The new row under the workspace's currency.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Account</span><b>Family</b><span class="t"></span></div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Name</div></div><span class="vd">Family</span><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">Currency</div></div><span class="vd">IDR</span><span class="chev">›</span></div>
+      </div>
+      <div class="panel new"><div class="r"><div class="g"><div class="a">Month starts on</div></div><span class="vd">25th</span><span class="chev">›</span></div></div>
+      <div class="foot">November is 25 Oct – 24 Nov. Cashflow, Budget, bills and reports all use it.</div>
+    </div></div>
+  <div class="col"><p class="cap">Tap it: pick the day</p><p class="note">Days 1 to 28, or "Last day of the month" (for salary on the 30th or 31st; follows short months).</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Family</span><b>Month starts on</b><span class="t"></span></div>
+      <div class="panel new">
+        <div class="grid">
+          <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span>
+          <span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span>
+          <span>15</span><span>16</span><span>17</span><span>18</span><span>19</span><span>20</span><span>21</span>
+          <span>22</span><span>23</span><span>24</span><span class="on">25</span><span>26</span><span>27</span><span>28</span>
+          <span class="wide">Last day of the month</span>
+        </div>
+      </div>
+      <div class="foot">November = 25 Oct – 24 Nov<br>December = 25 Nov – 24 Dec<br>"1" = the calendar month, as today.</div>
+    </div></div>
+  <div class="col"><p class="cap">"Last day of the month"</p><p class="note">Salary on the 31st: each period starts on the last day of the month before.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Family</span><b>Month starts on</b><span class="t"></span></div>
+      <div class="panel">
+        <div class="grid">
+          <span>22</span><span>23</span><span>24</span><span>25</span><span>26</span><span>27</span><span>28</span>
+          <span class="wide on" style="background:var(--tint);color:#fff;font-weight:600">Last day of the month</span>
+        </div>
+      </div>
+      <div class="foot">November = 31 Oct – 29 Nov<br>December = 30 Nov – 30 Dec<br>March = 28 Feb – 30 Mar</div>
+    </div></div>
+</div>
+
+<h2>2 · Cashflow and Budget with a month starting on the 25th</h2>
+<p class="lead">The month switcher keeps its look; the period's dates are added under the name. Everything inside the page counts that period.</p>
+<div class="row">
+  <div class="col"><p class="cap">Cashflow</p><p class="note">"November 2026", with "25 Oct – 24 Nov" under it.</p>
+    <div class="phone">
+      <div class="large">Cashflow</div>
+      <div class="card">
+        <div class="month"><span>‹</span><div class="mid"><b>November 2026 ▾</b><div class="dates"><span class="newsm">25 Oct – 24 Nov</span></div></div><span>›</span></div>
+        <div class="seg"><span class="on">Expense</span><span>Income</span></div>
+        <div class="ring"><i>Total spent<b>Rp 14.380.000</b>41 transactions</i></div>
+      </div>
+    </div></div>
+  <div class="col"><p class="cap">Budget</p><p class="note">Days left counts to the 24th.</p>
+    <div class="phone">
+      <div class="large">Budget</div>
+      <div class="month" style="margin-bottom:10px"><span>‹</span><div class="mid"><b>November 2026</b><div class="dates"><span class="newsm">25 Oct – 24 Nov</span></div></div><span>›</span></div>
+      <div class="card">
+        <div class="s" style="text-transform:uppercase;letter-spacing:.4px">Left to spend</div>
+        <div style="font-size:26px;font-weight:700">Rp 3.620.000</div>
+        <div class="bar"><i style="width:80%"></i></div>
+        <div style="display:flex;justify-content:space-between" class="s"><span>Spent Rp 14.380.000 of Rp 18.000.000</span><span>8 days left</span></div>
+      </div>
+    </div></div>
+  <div class="col"><p class="cap">Tap the month: pick another</p><p class="note">Each period with its dates, so it is clear which days each one covers.</p>
+    <div class="phone" style="height:470px">
+      <div class="large">Cashflow</div>
+      <div class="dim"></div>
+      <div class="sheet" style="position:absolute;left:12px;right:12px;bottom:16px;margin:0 -12px -16px">
+        <div class="grab"></div>
+        <div class="nav"><span class="t"></span><b>Month</b><span class="t">Done</span></div>
+        <div class="panel">
+          <div class="r"><div class="g"><div class="a">December 2026</div><div class="s">25 Nov – 24 Dec</div></div></div>
+          <div class="r"><div class="g"><div class="a">November 2026</div><div class="s">25 Oct – 24 Nov</div></div><span class="ck">✓</span></div>
+          <div class="r"><div class="g"><div class="a">October 2026</div><div class="s">25 Sep – 24 Oct</div></div></div>
+          <div class="r"><div class="g"><div class="a">September 2026</div><div class="s">25 Aug – 24 Sep</div></div></div>
+        </div>
+      </div>
+    </div></div>
+</div>
+
+<h2>3 · What changes, and what does not</h2>
+<div class="row"><div class="col" style="width:760px">
+  <div class="panel">
+    <div class="r"><div class="g"><div class="a">Cashflow, Budget, Essential · Lifestyle · Debts &amp; savings</div><div class="s">Count the chosen period instead of the calendar month</div></div></div>
+    <div class="r"><div class="g"><div class="a">Recurring bills</div><div class="s">A bill keeps its due day; it counts in the period its date falls in</div></div></div>
+    <div class="r"><div class="g"><div class="a">Financial health, reports, "this month" on other pages</div><div class="s">Use the same periods, so every page agrees</div></div></div>
+    <div class="r"><div class="g"><div class="a">Card statements, loans, goals' due dates</div><div class="s">Unchanged — they follow the bank's or the plan's own dates</div></div></div>
+    <div class="r"><div class="g"><div class="a">Transactions</div><div class="s">Never moved or changed; changing the setting only regroups them</div></div></div>
+  </div>
+</div></div>
+</body></html>
