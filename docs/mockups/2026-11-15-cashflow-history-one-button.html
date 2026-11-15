@@ -3,7 +3,7 @@
   * { box-sizing:border-box; }
   body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
   h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; }
-  h2 { font-size:18px; margin:28px 0 4px; } .lead { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; font-size:14px; }
+  h2 { font-size:18px; margin:28px 0 4px; }
   .row { display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap; }
   .col { width:340px; } .cap { font-weight:700; margin:0 0 3px; font-size:16px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:54px; }
   .shot { width:330px; border-radius:18px; display:block; }
@@ -13,47 +13,41 @@
   .dn { font-size:24px; font-weight:600; width:34px; } .dw { font-size:12.5px; color:var(--ink3); line-height:1.2; } .dw b { color:var(--ink2); font-weight:600; display:block; } .dt { margin-left:auto; font-size:13px; font-weight:600; color:var(--ink2); }
   .r { display:flex; gap:12px; align-items:center; padding:10px 13px; white-space:nowrap; } .r + .r { border-top:.5px solid var(--hair); }
   .ic { width:36px; height:36px; border-radius:50%; background:#fde7da; color:#e8590c; font-size:15px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-  .g { flex:1; min-width:0; } .t { font-size:14px; font-weight:500; } .s { font-size:12px; color:var(--slate5); } .v { font-size:14px; font-weight:600; color:var(--red); }
-  .tick { width:22px; height:22px; border-radius:50%; border:1.5px solid #c7c7cc; flex-shrink:0; } .tick.on { background:#1c1c1e; border-color:#1c1c1e; color:#fff; font-size:13px; display:flex; align-items:center; justify-content:center; }
-  /* today's header kit: caps label, 32px slate track, 28px segments */
+  .g { flex:1; min-width:0; overflow:hidden; } .t { font-size:14px; font-weight:500; overflow:hidden; text-overflow:ellipsis; } .s { font-size:12px; color:var(--slate5); overflow:hidden; text-overflow:ellipsis; } .v { font-size:14px; font-weight:600; color:var(--red); }
+  .tick { width:26px; height:26px; border-radius:50%; border:1.5px solid #c7c7cc; flex-shrink:0; } .tick.on { background:#1c1c1e; border-color:#1c1c1e; color:#fff; font-size:14px; display:flex; align-items:center; justify-content:center; }
   .hh { display:flex; align-items:center; gap:8px; margin:2px 2px 8px; }
-  .lbl { font-size:11.5px; font-weight:600; letter-spacing:.06em; color:var(--ink3); text-transform:uppercase; margin-right:auto; }
+  .prom { font-size:20px; font-weight:700; color:var(--ink); letter-spacing:-.2px; margin-right:auto; }
   .trk { display:inline-flex; gap:2px; background:var(--slate); border-radius:8px; padding:2px; }
   .sq { width:32px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center; color:var(--slate5); font-size:14px; position:relative; }
   .sq.on { background:#fff; color:#0f172a; box-shadow:0 1px 2px rgba(0,0,0,.08); }
   .sq.dark { background:#0f172a; color:#fff; }
   .dot { position:absolute; top:3px; right:4px; width:7px; height:7px; border-radius:50%; background:var(--tint); border:1.5px solid var(--slate); }
-  .chips { display:flex; gap:8px; margin:-2px 2px 10px; }
-  .chip { font-size:12.5px; background:#e8f0ff; border:1px solid #b8d2ff; color:var(--tint); border-radius:14px; padding:3px 9px; white-space:nowrap; }
   .menu { position:absolute; right:12px; width:240px; background:rgba(250,250,252,.98); border-radius:13px; box-shadow:0 8px 30px rgba(0,0,0,.22); overflow:hidden; font-size:15px; z-index:3; }
   .menu .mi { display:flex; justify-content:space-between; align-items:center; padding:10px 14px; gap:10px; } .menu .mi + .mi { border-top:.5px solid var(--hair); }
   .menu .sep { height:7px; background:#e9e9ee; } .menu .lab { font-size:12px; color:var(--ink3); padding:8px 14px 2px; }
   .ck { color:var(--tint); width:18px; text-align:center; } .mic { color:var(--ink2); width:18px; text-align:center; }
   .dimbg { position:absolute; inset:0; background:rgba(0,0,0,.08); z-index:2; }
-  .selbar { display:flex; justify-content:space-between; align-items:center; background:#fff; border-radius:14px; padding:10px 14px; box-shadow:0 2px 10px rgba(0,0,0,.12); font-size:15px; margin-top:8px; }
-  .icons { display:flex; gap:18px; align-items:center; } .icons .lab2 { font-size:12px; color:#555; text-align:center; margin-top:4px; }
-  .prom { font-size:20px; font-weight:700; color:var(--ink); letter-spacing:-.2px; margin-right:auto; }
-  .inset { font-size:13px; font-weight:400; color:#6d6d72; text-transform:uppercase; letter-spacing:0; margin-right:auto; padding-left:14px; }
+  .topbar { display:flex; justify-content:space-between; align-items:center; margin:0 0 12px; }
+  .cbtn { width:36px; height:36px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.1); display:flex; align-items:center; justify-content:center; font-size:16px; }
 </style></head><body>
-<h1>Cashflow history: keep the grey boxes, one button for Select, Sort and Filter</h1>
-<p class="sub">The caps label and the grey Days | Categories box stay as today. The ✓ box and the ⇅ box become one grey square (⋯) that opens one menu: Select, Sort, Paid with, Show transfers. Invented figures. (C in the earlier mockup is replaced by this.)</p>
+<h1>Cashflow history: chosen design</h1>
+<p class="sub">Owner's picks: bold title "Transactions" (H1), the grey Days | Categories box kept, ✓ and ⇅ merged into one grey ⋯ square. A sort or filter on shows only a blue dot on ⋯ (no chips). Selecting looks as it does today. Invented figures.</p>
 
 <h2>Before (today)</h2>
-<div class="row"><div class="col"><img class="shot" src="2026-11-14-cashflow-before-history.png"></div>
-<div class="col" style="width:520px"><p class="note" style="min-height:0">Three separate grey boxes after the label: Days | Categories, ✓ Select, ⇅ Sort &amp; Paid with.</p></div></div>
+<div class="row"><div class="col"><img class="shot" src="2026-11-14-cashflow-before-history.png"></div></div>
 
 <h2>After</h2>
 <div class="row">
-  <div class="col"><p class="cap">① At rest</p><p class="note">Two grey boxes: the same Days | Categories, then one ⋯ square.</p>
+  <div class="col"><p class="cap">① At rest</p><p class="note">"Transactions" in bold; the Days | Categories box; one ⋯ square.</p>
     <div class="phone">
-      <div class="hh"><span class="lbl">Transaction history</span><span class="trk"><span class="sq on">▦</span><span class="sq">⊞</span></span><span class="trk"><span class="sq">⋯</span></span></div>
+      <div class="hh"><span class="prom">Transactions</span><span class="trk"><span class="sq on">▦</span><span class="sq">⊞</span></span><span class="trk"><span class="sq">⋯</span></span></div>
       <div class="panel"><div class="dh"><span class="dn">14</span><span class="dw"><b>Saturday</b>November 2026</span><span class="dt">Rp 735.000</span></div>
         <div class="r"><div class="ic">ψ</div><div class="g"><div class="t">Food and beverage</div><div class="s">Lunch · BCA Tahapan</div></div><div class="v">Rp 78.000</div></div>
         <div class="r"><div class="ic">ψ</div><div class="g"><div class="t">Food and beverage</div><div class="s">Supermarket · BCA Tahapan</div></div><div class="v">Rp 612.000</div></div></div>
     </div></div>
-  <div class="col"><p class="cap">② Tap ⋯</p><p class="note">One menu: Select first, then Sort (✓ on the one in use), then the filters.</p>
+  <div class="col"><p class="cap">② Tap ⋯</p><p class="note">One menu: Select, then Sort (✓ on the one in use), then Paid with and Transfers.</p>
     <div class="phone" style="min-height:440px">
-      <div class="hh"><span class="lbl">Transaction history</span><span class="trk"><span class="sq on">▦</span><span class="sq">⊞</span></span><span class="trk"><span class="sq on">⋯</span></span></div>
+      <div class="hh"><span class="prom">Transactions</span><span class="trk"><span class="sq on">▦</span><span class="sq">⊞</span></span><span class="trk"><span class="sq on">⋯</span></span></div>
       <div class="dimbg"></div>
       <div class="menu" style="top:50px">
         <div class="mi"><span>Select</span><span class="mic">✓</span></div>
@@ -68,48 +62,21 @@
         <div class="mi"><span>Transfers</span><span class="ck"></span></div>
       </div>
     </div></div>
-  <div class="col"><p class="cap">③ A sort or filter on</p><p class="note">A blue dot on ⋯, and a chip under the line for each; ✕ on a chip turns it off.</p>
+  <div class="col"><p class="cap">③ A sort or filter on</p><p class="note">Only a blue dot on ⋯. Opening ⋯ shows which (✓ / "BCA Tahapan" next to Paid with).</p>
     <div class="phone">
-      <div class="hh"><span class="lbl">Transaction history</span><span class="trk"><span class="sq on">▦</span><span class="sq">⊞</span></span><span class="trk"><span class="sq">⋯<span class="dot"></span></span></span></div>
-      <div class="chips"><span class="chip">BCA Tahapan ✕</span><span class="chip">Largest first ✕</span></div>
-      <div class="panel"><div class="dh"><span class="dn">14</span><span class="dw"><b>Saturday</b>November 2026</span><span class="dt">Rp 735.000</span></div>
+      <div class="hh"><span class="prom">Transactions</span><span class="trk"><span class="sq on">▦</span><span class="sq">⊞</span></span><span class="trk"><span class="sq">⋯<span class="dot"></span></span></span></div>
+      <div class="panel"><div class="dh"><span class="dn">14</span><span class="dw"><b>Saturday</b>November 2026</span><span class="dt">Rp 612.000</span></div>
         <div class="r"><div class="ic">ψ</div><div class="g"><div class="t">Food and beverage</div><div class="s">Supermarket · BCA Tahapan</div></div><div class="v">Rp 612.000</div></div></div>
     </div></div>
 </div>
 <div class="row" style="margin-top:18px">
-  <div class="col"><p class="cap">④ Selecting</p><p class="note">The square turns dark with ✕ (as Select's box does today); tap it to stop. The bar at the bottom works as today.</p>
+  <div class="col"><p class="cap">④ Selecting (as today)</p><p class="note">Select from the menu: the ⋯ square turns into today's dark ✓ square (tap it to stop), ticks on the rows, and today's bar on top: ✕ · "1 selected" · ⋯ (Add to event…).</p>
     <div class="phone">
-      <div class="hh"><span class="lbl">Transaction history</span><span class="trk"><span class="sq on">▦</span><span class="sq">⊞</span></span><span class="trk"><span class="sq dark">✕</span></span></div>
+      <div class="topbar"><span class="cbtn">✕</span><b>1 selected</b><span class="cbtn">⋯</span></div>
+      <div class="hh"><span class="prom">Transactions</span><span class="trk"><span class="sq on">▦</span><span class="sq">⊞</span></span><span class="trk"><span class="sq dark">✓</span></span></div>
       <div class="panel"><div class="dh"><span class="dn">14</span><span class="dw"><b>Saturday</b>November 2026</span><span class="dt">Rp 735.000</span></div>
-        <div class="r"><span class="tick on">✓</span><div class="g"><div class="t">Food and beverage</div><div class="s">Lunch · BCA Tahapan</div></div><div class="v">Rp 78.000</div></div>
-        <div class="r"><span class="tick"></span><div class="g"><div class="t">Food and beverage</div><div class="s">Supermarket · BCA Tahapan</div></div><div class="v">Rp 612.000</div></div></div>
-      <div class="selbar"><span>1 selected</span><span style="color:var(--tint);font-weight:600">Add to event</span></div>
-    </div></div>
-  <div class="col" style="width:520px"><p class="cap">Icon for the merged square</p><p class="note">⋯ reads as "more"; the sliders read as "sort and filter" but hide Select. ⋯ suggested.</p>
-    <div class="icons">
-      <div><span class="trk"><span class="sq">⋯</span></span><div class="lab2">⋯ More</div></div>
-      <div><span class="trk"><span class="sq">⚟</span></span><div class="lab2">Sliders</div></div>
-      <div><span class="trk"><span class="sq">⇅</span></span><div class="lab2">⇅ (today's sort)</div></div>
-    </div></div>
-</div>
-
-<h2>The header text: making it look native</h2>
-<p class="lead">The grey boxes stay. What changes is the words on the left. Today: small, bold, widely spaced capitals ("TRANSACTION HISTORY"), which iPhone apps don't use next to buttons.</p>
-<div class="row">
-  <div class="col"><p class="cap">Today</p><p class="note">Bold, widely spaced capitals; reads as a web label.</p><div class="phone">
-      <div class="hh"><span class="lbl">Transaction history</span><span class="trk"><span class="sq on">▦</span><span class="sq">⊞</span></span><span class="trk"><span class="sq">⋯</span></span></div>
-      <div class="panel"><div class="dh"><span class="dn">14</span><span class="dw"><b>Saturday</b>November 2026</span><span class="dt">Rp 735.000</span></div>
-        <div class="r"><div class="ic">ψ</div><div class="g"><div class="t">Food and beverage</div><div class="s">Lunch · BCA Tahapan</div></div><div class="v">Rp 78.000</div></div></div>
-    </div></div>
-  <div class="col"><p class="cap">H1 · Bold title <span class="tag" style="display:inline-block;font-size:11px;font-weight:600;color:#fff;background:var(--tint);border-radius:4px;padding:1px 6px;margin-left:4px">Recommended</span></p><p class="note">As Apple's Wallet writes "Latest Transactions" and Health its sections: 20-pt bold, normal case. Sits level with the boxes.</p><div class="phone">
-      <div class="hh"><span class="prom">Transactions</span><span class="trk"><span class="sq on">▦</span><span class="sq">⊞</span></span><span class="trk"><span class="sq">⋯</span></span></div>
-      <div class="panel"><div class="dh"><span class="dn">14</span><span class="dw"><b>Saturday</b>November 2026</span><span class="dt">Rp 735.000</span></div>
-        <div class="r"><div class="ic">ψ</div><div class="g"><div class="t">Food and beverage</div><div class="s">Lunch · BCA Tahapan</div></div><div class="v">Rp 78.000</div></div></div>
-    </div></div>
-  <div class="col"><p class="cap">H2 · Settings-style header</p><p class="note">As iPhone Settings and forms: 13-pt regular grey capitals, no extra spacing, lined up with the card's text.</p><div class="phone">
-      <div class="hh"><span class="inset">Transactions</span><span class="trk"><span class="sq on">▦</span><span class="sq">⊞</span></span><span class="trk"><span class="sq">⋯</span></span></div>
-      <div class="panel"><div class="dh"><span class="dn">14</span><span class="dw"><b>Saturday</b>November 2026</span><span class="dt">Rp 735.000</span></div>
-        <div class="r"><div class="ic">ψ</div><div class="g"><div class="t">Food and beverage</div><div class="s">Lunch · BCA Tahapan</div></div><div class="v">Rp 78.000</div></div></div>
+        <div class="r"><span class="tick on">✓</span><div class="ic">ψ</div><div class="g"><div class="t">Food and beverage</div><div class="s">Lunch · BCA Tahapan</div></div><div class="v">Rp 78.000</div></div>
+        <div class="r"><span class="tick"></span><div class="ic">ψ</div><div class="g"><div class="t">Food and beverage</div><div class="s">Supermarket · BCA Tahapan</div></div><div class="v">Rp 612.000</div></div></div>
     </div></div>
 </div>
 </body></html>
