@@ -42,6 +42,7 @@ import { isMoneyAccount, moneyHolders, useAccounts, useInOpenBook, useInvalidate
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { offeredCategories } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
+import { useNeedCategoryIds } from '../essential-split/queries';
 import { useAccountNumberLast4, useCards, useCardsWithArchived, useWalletLast4 } from '../cards/card-queries';
 import { useScanReceipt } from '../../capture/use-scan';
 import { useDrafts } from '../review/queries';
@@ -374,7 +375,10 @@ export function TransactionsPage() {
   const scope = search.account ? accounts.find((a) => a.id === search.account) : undefined;
   const inCategory = scope !== undefined && (scope.kind === 'expense' || scope.kind === 'income');
   // A category opened on the chart is on one side of the ledger, and the chart shows that side while it is open.
-  const kind: 'expense' | 'income' = inCategory ? (scope.kind as 'expense' | 'income') : kindChosen;
+  // …and a list filtered to Essential or Lifestyle was filtered from Income's last page, which stays on show.
+  const need = inCategory ? undefined : search.need;
+  const kind: 'expense' | 'income' = inCategory ? (scope.kind as 'expense' | 'income') : need ? 'income' : kindChosen;
+  const needIds = useNeedCategoryIds(need);
   /** A category and everything under it: opening Property must show the rent booked to its child. */
   const scopeIds = (() => {
     if (!scope) return undefined;
@@ -404,7 +408,9 @@ export function TransactionsPage() {
   // Event spending is read from the Events page, not here: the ring leaves it out (unless the workspace counts events in
   // its caps), so the list does too — search included. An account's own history keeps it, as its balance does.
   const eventsInCaps = openBook?.countEventsInBudget ?? false;
-  const recorded = outsideEvents(list.data?.transactions ?? [], ownerWide || eventsInCaps).filter((tx) => !deleting.has(tx.id));
+  // Essential or Lifestyle picked on Income page 2: only what was spent in a category under that mark (nothing until read).
+  const inNeed = (tx: TransactionView) => !need || (needIds !== null && tx.entries.some((entry) => needIds.has(entry.accountId)));
+  const recorded = outsideEvents(list.data?.transactions ?? [], ownerWide || eventsInCaps).filter((tx) => !deleting.has(tx.id) && inNeed(tx));
   // Which workspace each row is filed in, so an account's history says whose spending it is showing.
   const badges = useWorkspaceBadges(recorded.map((tx) => tx.id));
   const badgeOf = badges.of;
@@ -449,7 +455,9 @@ export function TransactionsPage() {
 
   // A page opened for one account or category shows only the drafts that touch it.
   const pending = (drafts.data ?? []).filter(
-    (draft) => !scopeIds || (draft.accountId !== null && scopeIds.includes(draft.accountId)) || (draft.categoryAccountId !== null && scopeIds.includes(draft.categoryAccountId)),
+    (draft) =>
+      (!scopeIds || (draft.accountId !== null && scopeIds.includes(draft.accountId)) || (draft.categoryAccountId !== null && scopeIds.includes(draft.categoryAccountId))) &&
+      (!need || (draft.categoryAccountId !== null && needIds !== null && needIds.has(draft.categoryAccountId))),
   );
   /*
    * A draft is not a transaction yet, so the list — the ledger's view of the month — holds only what was recorded.
@@ -466,7 +474,7 @@ export function TransactionsPage() {
   });
   const rows = [
     ...buildRows(recorded, view === 'table' || sideways || filters.onlyDrafts ? pending : [], accounts, everyCard, walletLast4, listWs.bookId),
-    ...(!shared || scopeIds || filters.onlyDrafts ? [] : (partnerTransfers.data ?? []).map(sharedTransferRow)),
+    ...(!shared || scopeIds || need || filters.onlyDrafts ? [] : (partnerTransfers.data ?? []).map(sharedTransferRow)),
   ];
   /*
    * What still waits under Uncategorised — every one of them, whatever period is on show. Tapping the line lists them
@@ -785,12 +793,12 @@ export function TransactionsPage() {
   const keptSentence = phone ? 'The original is kept' : 'The original stays under Show deleted';
   // The chart carries the month's total and its count, so the line that used to say them is left off.
   const chartShown = view === 'list' && !filters.onlyDrafts;  const sortValue = `${sort.key}:${sort.dir}`;
-  const narrowed = filters.q || filters.paid || filters.cat || filters.needsCategory || filters.type !== 'all' || filters.showDeleted || filters.showTransfers || filters.onlyDrafts || sortValue !== 'date:desc' || search.month || search.account;
+  const narrowed = filters.q || filters.paid || filters.cat || filters.needsCategory || filters.type !== 'all' || filters.showDeleted || filters.showTransfers || filters.onlyDrafts || sortValue !== 'date:desc' || search.month || search.account || search.need;
 
   function clearAll() {
     setFilters(EMPTY_FILTERS);
     setSort({ key: 'date', dir: 'desc' });
-    setSearch({ month: undefined, account: undefined });
+    setSearch({ month: undefined, account: undefined, need: undefined });
   }
 
   async function run(id: string, work: () => Promise<unknown>): Promise<boolean> {
@@ -1526,13 +1534,20 @@ export function TransactionsPage() {
           onKind={(next) => {
             setKind(next);
             if (inCategory && next !== kind) setSearch({ account: undefined });
+            // Expense has no Essential or Lifestyle page, so the filter from Income's goes with it.
+            if (need && next !== kind) setSearch({ need: undefined });
           }}
           categoryId={scope?.kind === 'expense' || scope?.kind === 'income' ? scope.id : undefined}
-          onPick={(id) => setSearch({ account: id })}
+          onPick={(id) => setSearch({ account: id, need: undefined })}
           onBack={() => setSearch({ account: undefined })}
           onMonth={(next) => setSearch({ month: next === monthOf(today) ? undefined : next })}
           alsoMissing={list.data?.missing ?? []}
           paidAccountId={paidAccountId}
+          need={need}
+          onNeed={(next) => {
+            setKind('income');
+            setSearch({ need: next });
+          }}
         />
       )}
       {!chartShown && <Unconverted missing={list.data?.missing ?? []} currency={listCurrency} />}

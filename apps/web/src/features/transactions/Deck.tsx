@@ -34,6 +34,12 @@ export function Deck({
   // A page can go away under the reader — the budget page is not there for money coming in — and the deck is moved to
   // wherever the page it was on now sits, without the slide a tap gets. Only when the pages change: during a swipe the
   // page moves under the finger, and jumping there would fight it.
+  // A deck that opens on a later page (Cashflow coming back to a list filtered from Income page 2) starts there.
+  useLayoutEffect(() => {
+    const box = deck.current;
+    if (page > 0 && box && box.clientWidth > 0) box.scrollTo({ left: page * box.clientWidth });
+    // Only on arrival: afterwards the page follows the reader's swipe, and the effect below follows the pages.
+  }, []);
   const pages = useRef(children.length);
   useLayoutEffect(() => {
     if (pages.current === children.length) return;

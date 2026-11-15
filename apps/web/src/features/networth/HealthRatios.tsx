@@ -4,6 +4,9 @@ import { Panel, type Segment, SegmentedControl } from '../../ui/native';
 import { useGoalCalculators, useGoals } from '../goals/queries';
 import { EMPTY_FLOWS, emergencyGoalBase, periodChoices, periodRange, type RatioPeriod, ratioDisplay, withEmergencyLoading, withJointRatios } from './health-cards';
 import { useHealthSettings } from './health-settings';
+import { useEssentialSplit, useSpendingGuide } from '../essential-split/queries';
+import { SplitBar } from '../essential-split/SplitBar';
+import { splitCard } from '../essential-split/split-view';
 
 /** The status, in the kit's own inks rather than in four tinted pills. */
 const STATUS_INK: Record<RatioStatus, string> = {
@@ -73,6 +76,10 @@ export function HealthRatios({
           goals.isPending || calculators.isPending,
         );
   const choices = periodChoices(today, earliestYear);
+  // Essential · Lifestyle · Debts & savings over the same period, owner-wide as the flows are, graded by the workspace's guide.
+  const range = periodRange(period, today);
+  const split = useEssentialSplit({ from: range.from, to: range.to }, { owner: true });
+  const card = splitCard(split.data?.split, useSpendingGuide());
 
   /*
    * The period switch was a row of little pressed buttons that grew a button a year. It is the kit's segmented
@@ -122,9 +129,9 @@ export function HealthRatios({
        * fund counts and the debt guide are on the Settings page behind the ⚙, beside the choices that change them.
        */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {ratios.map((ratio) => {
+        {ratios.flatMap((ratio) => {
           const display = ratioDisplay(ratio);
-          return (
+          const tile = (
             <Panel key={ratio.key} wide className="space-y-1.5">
               <div className="flex items-start justify-between gap-2">
                 <h3 className="text-[13px] leading-[17px] font-semibold text-[var(--ph-ink)]">{ratio.name}</h3>
@@ -145,6 +152,27 @@ export function HealthRatios({
               <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{ratio.guide}</p>
             </Panel>
           );
+          if (ratio.key !== 'savings_ratio') return [tile];
+          // One card after the savings ratio, in the same parts: its name and grade, the three shares, the guide, the bar.
+          return [
+            tile,
+            <Panel key="essential_split" wide className="space-y-1.5" testId="split-card">
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="text-[13px] leading-[17px] font-semibold text-[var(--ph-ink)]">{card.name}</h3>
+                <span className={`text-[11.5px] font-semibold tracking-[0.06em] whitespace-nowrap uppercase ${STATUS_INK[card.status]}`} data-testid="split-card-status">
+                  {card.statusLabel}
+                </span>
+              </div>
+              <div className="tabular text-[22px] leading-[26px] font-extrabold tracking-[-0.03em] text-[var(--ph-ink)]" data-testid="split-card-value">
+                {card.value}
+              </div>
+              <div className="text-[12.5px] leading-[16px] text-[var(--ph-ink-2)]" data-testid="split-card-guide">
+                Guide: {card.benchmark}
+              </div>
+              {card.bar ? <SplitBar parts={card.bar} marks={card.marks} height={6} /> : <div className="h-1.5 rounded-full bg-[var(--ph-track)]" />}
+              <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{card.explanation}</p>
+            </Panel>,
+          ];
         })}
       </div>
     </section>
