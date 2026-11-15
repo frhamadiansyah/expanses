@@ -45,6 +45,7 @@ test('the header has Transactions, Days/Categories and one ⋯; its menu selects
   await expect(rows.first()).toContainText('Superindo');
   // A sort off its rest: a dot on ⋯, the square itself stays grey, and no chip.
   await expect(page.getByTestId('filter-on')).toBeVisible();
+  await expect(page.getByTestId('filter-on')).toHaveCSS('background-color', 'rgb(0, 122, 255)');
   await expect(historyMenu(page)).not.toHaveClass(/bg-slate-900/);
 
   await historyMenu(page).click();

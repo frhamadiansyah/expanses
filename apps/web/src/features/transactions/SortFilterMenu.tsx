@@ -105,7 +105,7 @@ export function SortFilterMenu({
         >
           <Ellipsis size={15} aria-hidden />
           {/* Only a dot: opening the menu shows which sort or filter is on. */}
-          {dot && <span aria-hidden data-testid="filter-on" className="absolute top-[3px] right-[4px] h-[7px] w-[7px] rounded-full bg-[var(--ph-tint)] ring-[1.5px] ring-slate-200" />}
+          {dot && <span aria-hidden data-testid="filter-on" className="absolute top-[3px] right-[4px] h-[7px] w-[7px] rounded-full bg-[var(--ph-dot)] ring-[1.5px] ring-slate-200" />}
         </button>
       </div>
       {open && (
