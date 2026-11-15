@@ -32,6 +32,8 @@
   .dimbg { position:absolute; inset:0; background:rgba(0,0,0,.08); z-index:2; }
   .selbar { display:flex; justify-content:space-between; align-items:center; background:#fff; border-radius:14px; padding:10px 14px; box-shadow:0 2px 10px rgba(0,0,0,.12); font-size:15px; margin-top:8px; }
   .icons { display:flex; gap:18px; align-items:center; } .icons .lab2 { font-size:12px; color:#555; text-align:center; margin-top:4px; }
+  .prom { font-size:20px; font-weight:700; color:var(--ink); letter-spacing:-.2px; margin-right:auto; }
+  .inset { font-size:13px; font-weight:400; color:#6d6d72; text-transform:uppercase; letter-spacing:0; margin-right:auto; padding-left:14px; }
 </style></head><body>
 <h1>Cashflow history: keep the grey boxes, one button for Select, Sort and Filter</h1>
 <p class="sub">The caps label and the grey Days | Categories box stay as today. The ✓ box and the ⇅ box become one grey square (⋯) that opens one menu: Select, Sort, Paid with, Show transfers. Invented figures. (C in the earlier mockup is replaced by this.)</p>
@@ -88,6 +90,26 @@
       <div><span class="trk"><span class="sq">⋯</span></span><div class="lab2">⋯ More</div></div>
       <div><span class="trk"><span class="sq">⚟</span></span><div class="lab2">Sliders</div></div>
       <div><span class="trk"><span class="sq">⇅</span></span><div class="lab2">⇅ (today's sort)</div></div>
+    </div></div>
+</div>
+
+<h2>The header text: making it look native</h2>
+<p class="lead">The grey boxes stay. What changes is the words on the left. Today: small, bold, widely spaced capitals ("TRANSACTION HISTORY"), which iPhone apps don't use next to buttons.</p>
+<div class="row">
+  <div class="col"><p class="cap">Today</p><p class="note">Bold, widely spaced capitals; reads as a web label.</p><div class="phone">
+      <div class="hh"><span class="lbl">Transaction history</span><span class="trk"><span class="sq on">▦</span><span class="sq">⊞</span></span><span class="trk"><span class="sq">⋯</span></span></div>
+      <div class="panel"><div class="dh"><span class="dn">14</span><span class="dw"><b>Saturday</b>November 2026</span><span class="dt">Rp 735.000</span></div>
+        <div class="r"><div class="ic">ψ</div><div class="g"><div class="t">Food and beverage</div><div class="s">Lunch · BCA Tahapan</div></div><div class="v">Rp 78.000</div></div></div>
+    </div></div>
+  <div class="col"><p class="cap">H1 · Bold title <span class="tag" style="display:inline-block;font-size:11px;font-weight:600;color:#fff;background:var(--tint);border-radius:4px;padding:1px 6px;margin-left:4px">Recommended</span></p><p class="note">As Apple's Wallet writes "Latest Transactions" and Health its sections: 20-pt bold, normal case. Sits level with the boxes.</p><div class="phone">
+      <div class="hh"><span class="prom">Transactions</span><span class="trk"><span class="sq on">▦</span><span class="sq">⊞</span></span><span class="trk"><span class="sq">⋯</span></span></div>
+      <div class="panel"><div class="dh"><span class="dn">14</span><span class="dw"><b>Saturday</b>November 2026</span><span class="dt">Rp 735.000</span></div>
+        <div class="r"><div class="ic">ψ</div><div class="g"><div class="t">Food and beverage</div><div class="s">Lunch · BCA Tahapan</div></div><div class="v">Rp 78.000</div></div></div>
+    </div></div>
+  <div class="col"><p class="cap">H2 · Settings-style header</p><p class="note">As iPhone Settings and forms: 13-pt regular grey capitals, no extra spacing, lined up with the card's text.</p><div class="phone">
+      <div class="hh"><span class="inset">Transactions</span><span class="trk"><span class="sq on">▦</span><span class="sq">⊞</span></span><span class="trk"><span class="sq">⋯</span></span></div>
+      <div class="panel"><div class="dh"><span class="dn">14</span><span class="dw"><b>Saturday</b>November 2026</span><span class="dt">Rp 735.000</span></div>
+        <div class="r"><div class="ic">ψ</div><div class="g"><div class="t">Food and beverage</div><div class="s">Lunch · BCA Tahapan</div></div><div class="v">Rp 78.000</div></div></div>
     </div></div>
 </div>
 </body></html>
