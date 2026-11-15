@@ -1,6 +1,7 @@
 import { billPill, type BillTone, convertMinor, dayMonth, minorToMajorString, monthName, monthYear } from '@expanses/core';
-import type { BookMoney, MonthlyBill } from '@expanses/db';
+import type { BookMoney, MemberPayer, MonthlyBill, PurchasePayer } from '@expanses/db';
 import type { Tone } from '../../ui/native/row';
+import { payerLine } from '../sharing/sharing-copy';
 import type { UnconvertedRow } from '../workspaces/Unconverted';
 
 export const isSettled = (bill: MonthlyBill) => bill.state === 'paid' || bill.state === 'skipped';
@@ -160,6 +161,31 @@ export function chargedEstimate({
 export function owedNow(rows: readonly MonthlyBill[]): { minor: number; approximate: boolean } {
   const out = rows.filter(isOutAndUnpaid);
   return { minor: sum(out), approximate: anyVaries(out) };
+}
+
+/**
+ * The account a bill's row names under its name: the one that paid the month, else the bill's own.
+ *
+ * In a shared workspace a month another member paid from an account of their own is posted here against that member's
+ * placeholder (spec §4.4), which no list of this phone's accounts holds; nor does a bill that member pays by default.
+ * Such a row reads as the same purchase reads on Cashflow (`payerLine`): the label the payer's phone gave the account,
+ * and who paid — "Bayu Kartu ···· 0917 · paid by Bayu" — or, before that label is read, "Paid by Bayu". A month paid
+ * from one of this member's own accounts names that account, as in a private workspace, unless someone else paid it.
+ * An unpaid bill on a placeholder names its member, as the bill's own page does.
+ */
+export function billAccountName(
+  bill: Pick<MonthlyBill, 'moneyAccountId' | 'paidFromAccountId'>,
+  accounts: readonly { id: string; name: string }[],
+  payer: PurchasePayer | null,
+  memberPayers: ReadonlyMap<string, MemberPayer> | undefined,
+): string {
+  const accountId = bill.paidFromAccountId ?? bill.moneyAccountId;
+  const own = accounts.find((account) => account.id === accountId);
+  if (payer && !(payer.mine && own) && (payer.paidLabel || !payer.mine)) return payerLine(payer);
+  if (own) return own.name;
+  const member = memberPayers?.get(accountId);
+  if (!member) return '';
+  return bill.paidFromAccountId !== null && !member.self ? `Paid by ${member.name}` : member.name;
 }
 
 export function sublineOf(bill: MonthlyBill, accountName: string, today: string): string {
