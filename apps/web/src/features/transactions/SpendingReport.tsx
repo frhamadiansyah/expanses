@@ -20,6 +20,10 @@ import { PeriodPicker, yearsSince } from './PeriodPicker';
 import { TrendBars, TrendUnder, useSpendingTrend } from './SpendingTrend';
 import { mergeUnconverted, Unconverted, type UnconvertedRow } from '../workspaces/Unconverted';
 import { useOpenBook } from '../workspaces/queries';
+import { GuideSheet } from '../essential-split/GuideSheet';
+import { IncomeSplit } from '../essential-split/IncomeSplit';
+import { useEssentialSplit, useSpendingGuide } from '../essential-split/queries';
+import { splitView } from '../essential-split/split-view';
 
 
 /** The node for a category anywhere in the tree, so a page showing one can draw it. */
@@ -98,6 +102,7 @@ function Ring({
   extra = [],
   second,
   third,
+  thirdLabel = 'Over time',
   under,
   page = 0,
   onPage,
@@ -127,6 +132,8 @@ function Ring({
   second?: ReactNode;
   /** The spending over time, as the last page. Its own list replaces the categories while it is showing, folded the same way. */
   third?: ReactNode;
+  /** What the last page is called, for its dot. */
+  thirdLabel?: string;
   /** What is listed under the third page. */
   under?: ReactNode;
   /** Which chart is showing. The rows measure themselves against the same thing it does. */
@@ -200,7 +207,7 @@ function Ring({
    * way, so what moved was the pager's own strip. One page keeps the furniture and offers nothing to turn to.
    */
   const pages = [donut, ...(second ? [second] : []), ...(third ? [third] : [])];
-  const labels = [['Where the month went', true], ['Against budget', second !== undefined], ['Over time', third !== undefined]] as const;
+  const labels = [['Where the month went', true], ['Against budget', second !== undefined], [thirdLabel, third !== undefined]] as const;
   const chart = (
     <Deck page={page} onPage={onPage} labels={pages.length > 1 ? labels.filter(([, has]) => has).map(([label]) => label) : []} frame={frame}>
       {pages}
@@ -251,6 +258,8 @@ export function SpendingReport({
   onMonth,
   alsoMissing = [],
   paidAccountId,
+  need,
+  onNeed,
 }: {
   month: string;
   categoryId?: string;
@@ -266,6 +275,9 @@ export function SpendingReport({
   alsoMissing?: readonly UnconvertedRow[];
   /** The list's Paid with filter: the ring, the total and the categories read only what this account paid. */
   paidAccountId?: string;
+  /** Essential or Lifestyle, when the list is filtered to one from Income page 2. */
+  need?: 'essential' | 'lifestyle';
+  onNeed?: (need: 'essential' | 'lifestyle' | undefined) => void;
 }) {
   const { database, ws } = useApp();
   const accounts = useAccounts().data ?? [];
@@ -275,7 +287,9 @@ export function SpendingReport({
   const [showAll, setShowAll] = useState(false);
   // Which chart the card is turned to. The rows follow it, so one denominator is on screen at a time. It is held by name,
   // not position: the budget page comes and goes with the side of the ledger, and the bars must not move when it does.
-  const [pageName, setPageName] = useState<'ring' | 'budget' | 'trend'>('ring');
+  // A list filtered to Essential or Lifestyle opens on the page that filtered it.
+  const [pageName, setPageName] = useState<'ring' | 'budget' | 'trend'>(need ? 'trend' : 'ring');
+  const [guiding, setGuiding] = useState(false);
   const [picking, setPicking] = useState(false);
   // "month" is whatever period the page shows. All time is asked for as the widest possible stretch.
   const period = parsePeriod(month);
@@ -310,6 +324,13 @@ export function SpendingReport({
   const page = Math.max(0, pageNames.indexOf(pageName));
   const onBudgets = pageNames[page] === 'budget';
   const trend = useSpendingTrend(month, kind, !eventsInCaps);
+  /*
+   * Income's last page is where the income went (Essential · Lifestyle · Debts & savings), not income over time: read
+   * through the same totals as the two rings, over the same period and Paid with filter.
+   */
+  const guide = useSpendingGuide();
+  const split = useEssentialSplit({ from, to }, { paidAccountId, enabled: kind === 'income' });
+  const incomeSplit = split.data ? splitView(split.data.split, guide) : null;
   const caps: Record<string, number> = {};
   /** A category's budget, or what its children were budgeted between them: a parent row measures the lot. */
   const readCaps = (line: BudgetLine): number => {
@@ -436,8 +457,11 @@ export function SpendingReport({
               caps={onBudgets ? caps : undefined}
               header={header}
               second={hasBudgets ? <BudgetGauge progress={progress} currency={gaugeCurrency} month={month} today={isoDate()} /> : undefined}
+              thirdLabel={kind === 'income' ? 'Essential, lifestyle, debts and savings' : undefined}
               third={
-                trend ? (
+                kind === 'income' ? (
+                  <IncomeSplit view={incomeSplit} currency={split.data?.currency ?? currency} active={need} onPick={(next) => onNeed?.(next)} onGuide={() => setGuiding(true)} />
+                ) : trend ? (
                   // Keyed by what it draws, so a reading taken on one period or side is not carried onto the next.
                   <TrendBars key={`${month}:${kind}`} bars={trend.bars} unit={trend.unit} currency={trend.currency} open={showAll} onAsk={() => setShowAll(true)} onFold={() => setShowAll(false)} />
                 ) : (
@@ -445,7 +469,7 @@ export function SpendingReport({
                   <div className="aspect-[400/290] w-full" />
                 )
               }
-              under={trend && <TrendUnder bars={trend.bars} unit={trend.unit} comparisons={trend.comparisons} kind={kind} currency={trend.currency} onPeriod={onMonth} />}
+              under={kind === 'expense' && trend && <TrendUnder bars={trend.bars} unit={trend.unit} comparisons={trend.comparisons} kind={kind} currency={trend.currency} onPeriod={onMonth} />}
               page={page}
               onPage={(index) => setPageName(pageNames[index] ?? 'ring')}
               showRows={showAll}
@@ -466,6 +490,7 @@ export function SpendingReport({
               </div>
             </Card>
           ))}
+          {guiding && <GuideSheet guide={guide} onClose={() => setGuiding(false)} />}
           {/* The Money flow box (`MoneyFlowBox`, where the period's money came from and went) is set aside for now: not
               mounted, and nothing leads to its screen, but kept with its tests until its drawing is settled. */}
         </>

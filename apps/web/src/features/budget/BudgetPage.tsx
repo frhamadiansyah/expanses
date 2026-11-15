@@ -8,6 +8,7 @@ import { cx, ErrorBox, Money } from '../../ui';
 import { type CornerAction, Drawer, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN, SegmentedControl, useDrawers } from '../../ui/native';
 import { useBooks, useOpenBook } from '../workspaces/queries';
 import { Unconverted } from '../workspaces/Unconverted';
+import { NeedsBox } from '../essential-split/NeedsBox';
 import { CappedRow, FigureRow, OverRow, UseBar, useCategoryMarks } from './budget-rows';
 import { daysLeft, findLine, noBudgetRows, planSplit, spendingView } from './budget-view';
 import { MonthSheet, SplitSheet, TakeHomeSheet } from './BudgetSheets';
@@ -139,6 +140,9 @@ export function BudgetPage() {
               {days !== null && <span className="shrink-0">{days === 1 ? '1 day left' : `${days} days left`}</span>}
             </div>
           </FigureCard>
+
+          {/* Essential · Lifestyle · Debts & savings: the month's split against what the caps plan for each. */}
+          <NeedsBox sheet={sheet} month={month} />
 
           {view.over.length > 0 && (
             <InsetGroup header="Over the cap">

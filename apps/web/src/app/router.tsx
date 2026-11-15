@@ -155,6 +155,8 @@ export interface TransactionsSearch {
   view?: 'list' | 'table';
   /** Start Scan a receipt on arrival: the hold-＋ menu's and the widget's Receipt. The page drops it once read. */
   scan?: true;
+  /** The list narrowed to Essential or Lifestyle spending, from Cashflow's Income page 2. */
+  need?: 'essential' | 'lifestyle';
 }
 
 export interface LendBorrowSearch {
@@ -231,6 +233,7 @@ const routeTree = rootRoute.addChildren([
       month: typeof search.month === 'string' && parsePeriod(search.month) ? search.month : undefined,
       view: search.view === 'table' || search.view === 'list' ? search.view : undefined,
       scan: search.scan === true || search.scan === 'true' ? true : undefined,
+      need: search.need === 'essential' || search.need === 'lifestyle' ? search.need : undefined,
     }),
   }),
   // The card as a screen. "new" is a static segment, so it beats `$transactionId` below however the two are
