@@ -20,6 +20,7 @@ const MENU_ITEM = 'ph-focus-inset block w-full px-[13px] py-[11px] text-left tex
 export function BillRow({
   bill,
   accounts,
+  accountName,
   today,
   currency,
   onPay,
@@ -31,6 +32,8 @@ export function BillRow({
 }: {
   bill: MonthlyBill;
   accounts: readonly AccountRow[];
+  /** The account its second line names (`billAccountName`): the one that paid the month, else the bill's own. */
+  accountName: string;
   today: string;
   /** The currency the bill's amounts are in: its own, else the paying account's. */
   currency: string;
@@ -44,7 +47,6 @@ export function BillRow({
 }) {
   // A paused month is as done with as a paid one here: nothing to swipe, nothing to tick. Its own page can still pay it.
   const settled = isSettled(bill) || isPaused(bill);
-  const accountName = accounts.find((account) => account.id === (bill.paidFromAccountId ?? bill.moneyAccountId))?.name ?? '';
   const status = statusOf(bill);
   const navigate = useNavigate();
   // Opened from Cashflow, the list says so on to the bill, so the bill's way back keeps Recurring's.

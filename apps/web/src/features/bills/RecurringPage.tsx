@@ -5,7 +5,8 @@ import { ListChecks, Plus } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useBackToCashflow, useFrom } from '../../app/from-search';
-import { useAccounts, useInvalidateAll } from '../../lib/queries';
+import { useAccounts, useInvalidateAll, useIsBookShared, useMemberPayers } from '../../lib/queries';
+import { usePurchasePayers } from '../sharing/queries';
 import { ErrorBox, Money } from '../../ui';
 import { type CornerAction, GROUP_GAP, GROUP_RADIUS, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, PushedTitle, SCREEN } from '../../ui/native';
 import { BillRow } from './BillRow';
@@ -14,7 +15,7 @@ import { instalmentLines } from './instalment-rows';
 import { MonthlyInstalments } from './MonthlyInstalments';
 import { PaySelectedBar } from './PaySelectedBar';
 import { MonthlyBuys } from './MonthlyBuys';
-import { amountOf, billCurrencyOf, billsInReadCurrency, type BillSummary, isToPay, paidText, pausedOf, sectionsOf, settledOf, skippedText, summaryOf } from './bill-view';
+import { amountOf, billAccountName, billCurrencyOf, billsInReadCurrency, type BillSummary, isToPay, paidText, pausedOf, sectionsOf, settledOf, skippedText, summaryOf } from './bill-view';
 import { HeroSlider } from './HeroSlider';
 import { AnnualFees, RepeatingHero, RepeatingList } from './RepeatingBills';
 import { nextDateOf } from './YearlyBillsPage';
@@ -134,6 +135,10 @@ export function RecurringPage() {
   const openFee = (fee: DueFee) => void navigate({ to: '/cards/$cardId/settings/fee-waiver', params: { cardId: fee.cardId } });
   const accounts = useAccounts().data ?? [];
   const rows = bills.data ?? [];
+  // In a shared workspace a month another member paid names an account this phone does not list (`billAccountName`):
+  // the row reads it from the payer's own label, as Cashflow does.
+  const payerOf = usePurchasePayers(rows.flatMap((bill) => (bill.paymentId ? [bill.paymentId] : [])), useIsBookShared());
+  const memberPayers = useMemberPayers().data;
 
   const [page, setPageState] = useState(() => {
     try {
@@ -233,6 +238,7 @@ export function RecurringPage() {
       key={bill.id}
       bill={bill}
       accounts={accounts}
+      accountName={billAccountName(bill, accounts, bill.paymentId ? payerOf(bill.paymentId) : null, memberPayers)}
       today={today}
       currency={currencyOf(bill)}
       onPay={pay}
