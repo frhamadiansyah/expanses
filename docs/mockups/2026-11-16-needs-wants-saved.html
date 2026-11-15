@@ -1,0 +1,133 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Needs, wants, saved</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --need:#0a84ff; --want:#ff9f0a; --save:#30b158; --red:#d70015; --slate:#e2e8f0; --slate5:#64748b; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; }
+  h2 { font-size:18px; margin:30px 0 4px; } .lead { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; font-size:14px; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; color:#fff; background:var(--tint); border-radius:4px; padding:1px 6px; margin-left:6px; vertical-align:2px; }
+  .row { display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:340px; } .cap { font-weight:700; margin:0 0 3px; font-size:16px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:54px; }
+  .phone { background:var(--ground); border-radius:28px; padding:14px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); position:relative; overflow:hidden; }
+  .nav { display:flex; justify-content:space-between; align-items:center; margin:0 4px 12px; font-size:15px; } .nav .t { color:var(--tint); min-width:60px; } .nav b { font-size:16px; }
+  .large { font-size:30px; font-weight:800; margin:0 4px 12px; letter-spacing:-.5px; }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:12px; overflow:hidden; } .pad { padding:14px; }
+  .hdr { display:flex; justify-content:space-between; font-size:12.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; margin:0 16px 6px; }
+  .foot { font-size:12.5px; color:var(--ink3); margin:-6px 16px 12px; line-height:1.35; }
+  .r { display:flex; gap:10px; align-items:center; padding:9px 14px; white-space:nowrap; min-height:44px; } .r + .r { border-top:.5px solid var(--hair); }
+  .g { flex:1; min-width:0; } .a { font-size:15px; } .s { font-size:12.5px; color:var(--ink3); }
+  .v { font-size:15px; text-align:right; } .v .x { display:block; font-size:12.5px; color:var(--ink3); } .chev { color:#c7c7cc; }
+  .month { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; } .month b { background:#eeeef0; border-radius:16px; padding:5px 14px; font-size:14px; }
+  .seg { display:flex; background:#e3e3e8; border-radius:9px; padding:2px; font-size:13px; margin-bottom:14px; } .seg span { flex:1; text-align:center; padding:6px 0; border-radius:7px; } .seg .on { background:#fff; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.1); }
+  .k { font-size:13px; color:var(--ink3); text-align:center; } .big { font-size:24px; font-weight:700; text-align:center; margin:2px 0 12px; }
+  .stack { display:flex; height:22px; border-radius:6px; overflow:hidden; position:relative; } .stack i { display:block; height:100%; }
+  .marks { position:relative; height:12px; } .marks span { position:absolute; top:0; width:2px; height:10px; background:#3c3c43; opacity:.5; }
+  .marks small { position:absolute; top:-1px; font-size:10px; color:var(--ink3); transform:translateX(4px); }
+  .legend .r { min-height:42px; } .sw { width:12px; height:12px; border-radius:3px; flex-shrink:0; }
+  .pct { font-size:13px; color:var(--ink3); margin-left:6px; }
+  .dots { text-align:center; font-size:11px; color:var(--ink3); margin-top:10px; } .dots b { color:var(--ink); }
+  .dh { display:flex; align-items:center; gap:12px; padding:8px 13px; border-bottom:.5px solid var(--hair); }
+  .dn { font-size:24px; font-weight:600; width:34px; } .dw { font-size:12.5px; color:var(--ink3); line-height:1.2; } .dw b { color:var(--ink2); font-weight:600; display:block; } .dt { margin-left:auto; font-size:13px; font-weight:600; color:var(--ink2); }
+  .tr { display:flex; gap:12px; align-items:center; padding:10px 13px; white-space:nowrap; } .tr + .tr { border-top:.5px solid var(--hair); }
+  .ic { width:36px; height:36px; border-radius:50%; font-size:16px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .t { font-size:14px; font-weight:500; } .ts { font-size:12px; color:var(--slate5); } .tv { font-size:14px; font-weight:600; color:var(--red); }
+  .hh { display:flex; align-items:center; gap:8px; margin:2px 2px 8px; } .prom { font-size:20px; font-weight:700; margin-right:auto; }
+  .chip { font-size:12.5px; background:#e8f0ff; border:1px solid #b8d2ff; color:var(--tint); border-radius:14px; padding:3px 9px; }
+  .bar2 { height:8px; border-radius:4px; background:#e5e5ea; overflow:hidden; margin:6px 0 2px; } .bar2 i { display:block; height:100%; }
+  .gauge { display:flex; align-items:center; gap:10px; }
+  .words { display:flex; gap:20px; }
+  .wcard { background:#fff; border-radius:12px; padding:12px 14px; width:320px; font-size:14px; line-height:1.5; }
+</style></head><body>
+<h1>Needs, wants and saved: where to see them</h1>
+<p class="sub">Every category is already marked Essential (a need) or Lifestyle (a want); unmarked counts as a need. Saved = income minus spending, so money moved to savings, goals or investments counts as saved. Invented month: income Rp 25.000.000 · needs Rp 13.000.000 · wants Rp 7.750.000 · saved Rp 4.250.000.</p>
+
+<h2>A · Cashflow: a third page in the top card <span class="tag">Recommended</span></h2>
+<p class="lead">Swipe the ring card once more. The month's income as one bar split three ways, with a faint 50/30/20 marker. Tap a part to filter the list below, as a ring slice does.</p>
+<div class="row">
+  <div class="col"><p class="cap">① The page</p><p class="note">Same month switcher as the ring. The three amounts and their share of income.</p>
+    <div class="phone">
+      <div class="large">Cashflow</div>
+      <div class="panel pad">
+        <div class="month"><span>‹</span><b>November 2026 ▾</b><span>›</span></div>
+        <div class="k">Income</div><div class="big">Rp 25.000.000</div>
+        <div class="stack"><i style="width:52%;background:var(--need)"></i><i style="width:31%;background:var(--want)"></i><i style="width:17%;background:var(--save)"></i></div>
+        <div class="marks"><span style="left:50%"></span><span style="left:80%"></span></div>
+        <div class="legend">
+          <div class="r" style="padding-left:0;padding-right:0"><span class="sw" style="background:var(--need)"></span><div class="g"><div class="a">Needs<span class="pct">52%</span></div></div><div class="v">Rp 13.000.000</div></div>
+          <div class="r" style="padding-left:0;padding-right:0"><span class="sw" style="background:var(--want)"></span><div class="g"><div class="a">Wants<span class="pct">31%</span></div></div><div class="v">Rp 7.750.000</div></div>
+          <div class="r" style="padding-left:0;padding-right:0"><span class="sw" style="background:var(--save)"></span><div class="g"><div class="a">Saved<span class="pct">17%</span></div></div><div class="v">Rp 4.250.000</div></div>
+        </div>
+        <div class="s" style="margin-top:4px">Marks: 50 / 30 / 20</div>
+        <div class="dots">○○<b>●</b> &nbsp;third page, after the ring and the bars</div>
+      </div>
+    </div></div>
+  <div class="col"><p class="cap">② Tap Wants</p><p class="note">The list keeps only want spending; tap again to show all.</p>
+    <div class="phone">
+      <div class="panel pad">
+        <div class="stack"><i style="width:52%;background:var(--need);opacity:.25"></i><i style="width:31%;background:var(--want)"></i><i style="width:17%;background:var(--save);opacity:.25"></i></div>
+        <div class="r" style="padding:10px 0 0;min-height:0"><span class="sw" style="background:var(--want)"></span><div class="g"><div class="a"><b>Wants</b><span class="pct">31% of income</span></div></div><div class="v">Rp 7.750.000</div></div>
+      </div>
+      <div class="hh"><span class="prom">Transactions</span><span class="chip">Wants ✕</span></div>
+      <div class="panel"><div class="dh"><span class="dn">14</span><span class="dw"><b>Saturday</b>November 2026</span><span class="dt">Rp 1.180.000</span></div>
+        <div class="tr"><div class="ic" style="background:#fff1db">🍜</div><div class="g"><div class="t">Eating out</div><div class="ts">Sushi bar · BCA 0917</div></div><div class="tv">Rp 680.000</div></div>
+        <div class="tr"><div class="ic" style="background:#fff1db">🎬</div><div class="g"><div class="t">Entertainment</div><div class="ts">Cinema · GoPay</div></div><div class="tv">Rp 500.000</div></div></div>
+    </div></div>
+  <div class="col"><p class="cap">③ Change the marks</p><p class="note">In Cashflow settings: the target split (or none). Which category is a need or a want stays on each category.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Cashflow</span><b>Needs &amp; wants</b><span style="width:60px"></span></div>
+      <div class="hdr"><span>Target</span></div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Needs</div></div><div class="v">50%</div></div>
+        <div class="r"><div class="g"><div class="a">Wants</div></div><div class="v">30%</div></div>
+        <div class="r"><div class="g"><div class="a">Saved</div></div><div class="v">20%</div></div>
+      </div>
+      <div class="foot">Shown as marks on the bar. Off: no marks.</div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Categories</div><div class="s">Which are needs and which are wants</div></div><span class="chev">›</span></div></div>
+    </div></div>
+</div>
+
+<h2>B · Budget: needs, wants and saved against the plan</h2>
+<p class="lead">On the Budget page, a box above the categories: what each part was planned to take of income and what it has used so far. Good when planning; only seen when budgeting.</p>
+<div class="row">
+  <div class="col"><p class="cap">Budget page</p><p class="note">Three bars: used of planned. Saved fills up as income comes in.</p>
+    <div class="phone">
+      <div class="large">Budget</div>
+      <div class="hdr"><span>November · needs, wants, saved</span></div>
+      <div class="panel pad">
+        <div class="gauge"><div class="g"><div style="display:flex;justify-content:space-between"><span class="a">Needs</span><span class="s">Rp 13.000.000 of 12.500.000</span></div><div class="bar2"><i style="width:100%;background:var(--red)"></i></div></div></div>
+        <div style="height:10px"></div>
+        <div class="gauge"><div class="g"><div style="display:flex;justify-content:space-between"><span class="a">Wants</span><span class="s">Rp 7.750.000 of 7.500.000</span></div><div class="bar2"><i style="width:100%;background:var(--want)"></i></div></div></div>
+        <div style="height:10px"></div>
+        <div class="gauge"><div class="g"><div style="display:flex;justify-content:space-between"><span class="a">Saved</span><span class="s">Rp 4.250.000 of 5.000.000</span></div><div class="bar2"><i style="width:85%;background:var(--save)"></i></div></div></div>
+      </div>
+      <div class="foot">Planned from income Rp 25.000.000 at 50 / 30 / 20.</div>
+      <div class="hdr"><span>Categories</span></div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Food and beverage</div></div><div class="v">Rp 4.100.000</div></div><div class="r"><div class="g"><div class="a">Transport</div></div><div class="v">Rp 1.900.000</div></div></div>
+    </div></div>
+</div>
+
+<h2>C · Net worth › Health: the long view</h2>
+<p class="lead">The average of the last 12 months, next to the other health signs (emergency fund, debt). Shows the habit, not one month; no filtering.</p>
+<div class="row">
+  <div class="col"><p class="cap">Health</p><p class="note">12-month average, with a small line per month under it.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Net worth</span><b>Health</b><span style="width:60px"></span></div>
+      <div class="hdr"><span>Needs · wants · saved</span><span>12 months</span></div>
+      <div class="panel pad">
+        <div class="stack"><i style="width:55%;background:var(--need)"></i><i style="width:29%;background:var(--want)"></i><i style="width:16%;background:var(--save)"></i></div>
+        <div class="s" style="margin-top:8px">Average: needs 55% · wants 29% · saved 16%</div>
+        <div style="display:flex;gap:4px;margin-top:10px;height:40px;align-items:flex-end">
+          <i style="flex:1;height:60%;background:var(--save);opacity:.8"></i><i style="flex:1;height:40%;background:var(--save);opacity:.8"></i><i style="flex:1;height:75%;background:var(--save);opacity:.8"></i><i style="flex:1;height:30%;background:var(--save);opacity:.8"></i><i style="flex:1;height:55%;background:var(--save);opacity:.8"></i><i style="flex:1;height:65%;background:var(--save);opacity:.8"></i><i style="flex:1;height:45%;background:var(--save);opacity:.8"></i><i style="flex:1;height:70%;background:var(--save);opacity:.8"></i><i style="flex:1;height:50%;background:var(--save);opacity:.8"></i><i style="flex:1;height:35%;background:var(--save);opacity:.8"></i><i style="flex:1;height:62%;background:var(--save);opacity:.8"></i><i style="flex:1;height:58%;background:var(--save);opacity:.8"></i>
+        </div>
+        <div class="s" style="margin-top:4px">Saved each month, Dec – Nov</div>
+      </div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Emergency fund</div></div><div class="v">4,2 months</div></div><div class="r"><div class="g"><div class="a">Debt to income</div></div><div class="v">18%</div></div></div>
+    </div></div>
+</div>
+
+<h2>Words</h2>
+<p class="lead">The marks are called Essential / Lifestyle today. Suggested: Needs / Wants everywhere (the category mark, Budget, Health), matching how people say it.</p>
+<div class="words">
+  <div class="wcard"><b>Today</b><br>Category › Spending: <i>Essential</i> / <i>Lifestyle</i><br>Budget › ⋯ › "Essential and lifestyle"</div>
+  <div class="wcard"><b>Suggested</b><br>Category › Spending: <i>Need</i> / <i>Want</i><br>Cashflow: Needs · Wants · Saved</div>
+</div>
+</body></html>
