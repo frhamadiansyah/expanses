@@ -264,7 +264,7 @@ test('the goal form\'s free figure reads today\'s balance, as the question does:
   await form.getByRole('button', { name: /^Received into/ }).click();
   await page.getByRole('dialog', { name: 'Received into' }).getByRole('button', { name: 'BCA', exact: true }).click();
   await form.getByRole('button', { name: /^Category/ }).click();
-  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Salary', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Salary, wage, or pay', exact: true }).click();
   await form.getByLabel('Note').pressSequentially('Bonus');
   const next = new Date();
   next.setMonth(next.getMonth() + 1);

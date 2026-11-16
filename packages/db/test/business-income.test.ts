@@ -107,7 +107,7 @@ describe('businessInputsFor', () => {
     await saveIncomeSource(context.database, context.ws, { name: 'Warung', scheme: 'umkm_final', accountId: context.business.id });
     await sale(context, context.business.id, `${YEAR}-05-02`, 3_000_000);
     // A salary paid into the family wallet is income, but it is not this business's omzet.
-    await sale(context, context.family.id, `${YEAR}-05-02`, 25_000_000, 'Salary');
+    await sale(context, context.family.id, `${YEAR}-05-02`, 25_000_000, 'Salary, wage, or pay');
 
     const report = await businessInputsFor(context.database, context.ws, YEAR);
 

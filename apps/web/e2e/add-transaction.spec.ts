@@ -69,7 +69,7 @@ test('an expense goes in through the card and comes out in the list', async ({ p
 test('income lands in the account it was received into', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank');
   await page.goto('/transactions');
-  await addTransaction(page, { mode: 'Income', description: 'Freelance', paidWith: 'BCA Tahapan', category: 'Salary', amount: '7500000' });
+  await addTransaction(page, { mode: 'Income', description: 'Freelance', paidWith: 'BCA Tahapan', category: 'Salary, wage, or pay', amount: '7500000' });
 
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Freelance' })).toContainText('7.500.000');
   // Received, not spent: the account is 7.500.000 richer, which is what tells income from an expense.
@@ -88,10 +88,10 @@ test('an income category picked on Expense moves the form to Income, and keeps t
   await form.getByLabel('Category', { exact: true }).click();
   const picker = page.getByRole('dialog', { name: 'Select category' });
   await picker.getByRole('radio', { name: 'Income', exact: true }).click();
-  await picker.getByRole('button', { name: 'Salary', exact: true }).click();
+  await picker.getByRole('button', { name: 'Salary, wage, or pay', exact: true }).click();
 
   await expect(form.getByRole('radio', { name: 'Income', exact: true })).toBeChecked();
-  await expect(form.getByLabel('Category', { exact: true })).toContainText('Salary');
+  await expect(form.getByLabel('Category', { exact: true })).toContainText('Salary, wage, or pay');
 
   // And back: an expense category picked on Income goes to Expense.
   await form.getByLabel('Category', { exact: true }).click();

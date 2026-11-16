@@ -25,7 +25,7 @@ describe('categoryTotalsBetween', () => {
     await postTransaction(database, ws, {
       occurredOn: '2026-09-25',
       description: 'Salary',
-      lines: incomeLines({ incomeAccountId: id('Salary'), depositAccountId: checking.id, amountMinor: 10_000_000, currency: 'IDR' }),
+      lines: incomeLines({ incomeAccountId: id('Salary, wage, or pay'), depositAccountId: checking.id, amountMinor: 10_000_000, currency: 'IDR' }),
     });
 
     const spending = await categoryTotalsBetween(database, ws, 'expense', '2026-09-01', '2026-09-30');
@@ -36,7 +36,7 @@ describe('categoryTotalsBetween', () => {
     ]);
 
     expect(await categoryTotalsBetween(database, ws, 'income', '2026-09-01', '2026-09-30')).toEqual([
-      { accountId: id('Salary'), amountBaseMinor: 10_000_000, transactions: 1 },
+      { accountId: id('Salary, wage, or pay'), amountBaseMinor: 10_000_000, transactions: 1 },
     ]);
 
     // A category says how many transactions made it up, and a voided one is not among them.
@@ -112,7 +112,7 @@ describe('firstDayOf', () => {
     await postTransaction(database, ws, {
       occurredOn: '2026-01-25',
       description: 'Salary',
-      lines: incomeLines({ incomeAccountId: id('Salary'), depositAccountId: checking.id, amountMinor: 10_000_000, currency: 'IDR' }),
+      lines: incomeLines({ incomeAccountId: id('Salary, wage, or pay'), depositAccountId: checking.id, amountMinor: 10_000_000, currency: 'IDR' }),
     });
 
     expect(await firstDayOf(database, ws, 'expense')).toBe('2026-01-15');

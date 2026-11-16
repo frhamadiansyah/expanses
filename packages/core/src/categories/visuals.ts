@@ -65,7 +65,7 @@ export const CATEGORY_ICONS: Readonly<Record<string, string>> = {
   'travel.souvenirs': 'shopping-bag', 'travel.meals': 'utensils', 'travel.others': 'luggage',
   business: 'briefcase',
   'income.salary': 'banknote', 'income.bonus': 'trophy', 'income.investment': 'trending-up', 'income.realized_gains': 'chart-line',
-  'income.cashback': 'badge-percent', 'income.gifts': 'gift', 'income.other': 'circle-plus',
+  'income.cashback': 'badge-percent', 'income.gifts': 'gift', 'income.side_business': 'store', 'income.other': 'circle-plus',
   'income.exchange_gain': 'arrow-left-right', 'expense.exchange_loss': 'arrow-left-right',
 };
 

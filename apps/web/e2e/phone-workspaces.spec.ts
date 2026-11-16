@@ -73,7 +73,7 @@ test('a workspace is made from the Account page and starts with none of the othe
   await picker.getByRole('radio', { name: 'Income', exact: true }).click();
   // The same on the income side: Personal's Salary is not here, and the realised gain the app posts into is,
   // once. The other workspace's copy of it would make two.
-  await expect(picker.getByRole('button', { name: 'Salary', exact: true })).toHaveCount(0);
+  await expect(picker.getByRole('button', { name: 'Salary, wage, or pay', exact: true })).toHaveCount(0);
   await expect(picker.getByRole('button', { name: 'Realized Gains', exact: true })).toHaveCount(1);
 });
 

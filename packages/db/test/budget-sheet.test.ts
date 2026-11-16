@@ -20,7 +20,7 @@ async function workspaceWithSpending() {
   const { database, ws } = await setupDb();
   const bca = await createAccount(database, ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' });
   const restaurants = await categoryId(database, ws, 'Restaurants');
-  const salary = await categoryId(database, ws, 'Salary');
+  const salary = await categoryId(database, ws, 'Salary, wage, or pay');
 
   await postTransaction(database, ws, {
     occurredOn: '2026-09-05',

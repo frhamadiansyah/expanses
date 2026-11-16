@@ -163,7 +163,7 @@ test('an income typed with cents posts rounded down', async ({ page }) => {
   await form.getByRole('button', { name: /^Received into/ }).click();
   await choosePayment(page, 'BCA Tahapan');
   await form.getByRole('button', { name: /^Category/ }).click();
-  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Salary', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Salary, wage, or pay', exact: true }).click();
   await form.getByLabel('Note').fill('Bunga');
   await saveButton(form).click();
   await expect(form).toHaveCount(0);

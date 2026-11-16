@@ -1,4 +1,4 @@
-import { DEFAULT_CATEGORIES, UNCATEGORISED, uuidv7 } from '@expanses/core';
+import { DEFAULT_CATEGORIES, FORMER_DEFAULT_NAMES, UNCATEGORISED, uuidv7 } from '@expanses/core';
 import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -6,7 +6,7 @@ import { accounts } from '../schema';
 import { bookCategories, books } from '../schema-books';
 import { NOT_IN_A_SET } from '../schema-category-sets';
 import { hasBooks, isJoinedBookTx, personalBookIdTx } from './books';
-import { withCapture } from '../sync/capture';
+import { withCapture, withCaptureSuspended } from '../sync/capture';
 import { createAccountTx } from './accounts';
 import { uncategorisedIdOf } from './uncategorised';
 import { namespaceOf, uuidv5 } from '../sync/uuidv5';
@@ -31,7 +31,36 @@ export async function ensureCategoryKeys(database: Database, ws: WorkspaceContex
   // and neither the keys above nor the other books are lost with it. Run whatever Personal turned out to be — a joined
   // book standing in for Personal must not keep this device's own books from theirs.
   const added = await ensureAddedChildren(database, ws.workspaceId);
+  try {
+    await database.transaction((tx) => withCaptureSuspended(tx, () => renameSyncedFormerDefaultsTx(tx, ws.workspaceId)));
+  } catch (error) {
+    console.warn('The built-in income names could not be updated; trying again at the next open', error);
+  }
   return { keyed: [...result.keyed, ...added.keyed], created: [...result.created, ...added.created] };
+}
+
+/**
+ * Migration 0117's renames, for a row that reached this phone by sync after the migration ran: a phone that joins a
+ * book (or is handed it again) gets the rows as the book's log holds them, and a log written before the owner's phone
+ * upgraded still says "Salary". Each phone renames its own copy as the migration does — nothing sent, no clock moved —
+ * and only where the name was never written after the row was made: its clock is no later than the row's `kind`,
+ * which never changes. A name anyone typed, "Salary" again included, has a later clock and stays. Only actively shared
+ * books: one whose share is down compares its kept values when it comes back, and the migration saw the rest.
+ */
+async function renameSyncedFormerDefaultsTx(tx: Db, workspaceId: string): Promise<void> {
+  if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'shared_books'`)).length === 0) return;
+  for (const [key, former] of Object.entries(FORMER_DEFAULT_NAMES)) {
+    const name = DEFAULT_BY_KEY.get(key)!.name;
+    await tx.run(sql`
+      UPDATE accounts SET name = ${name}
+       WHERE workspace_id = ${workspaceId} AND subtype = 'category' AND kind = 'income' AND system_key = ${key}
+         AND name IN (${sql.join(former.map((old) => sql`${old}`), sql`, `)})
+         AND EXISTS (
+           SELECT 1 FROM sync_field_clocks n
+             JOIN sync_field_clocks k ON k.book_id = n.book_id AND k.entity = n.entity AND k.id = n.id AND k.field = 'kind'
+             JOIN shared_books s ON s.book_id = n.book_id AND s.state = 'active'
+            WHERE n.entity = 'category' AND n.id = accounts.id AND n.field = 'name' AND n.hlc <= k.hlc)`);
+  }
 }
 
 async function ensurePersonalKeys(database: Database, ws: WorkspaceContext): Promise<{ keyed: string[]; created: string[] }> {
@@ -68,7 +97,9 @@ async function ensurePersonalKeys(database: Database, ws: WorkspaceContext): Pro
     const ensure = async (key: string, name: string, kind: 'expense' | 'income', parentId: string | null, canCreate: boolean) => {
       const existing = byKey.get(key);
       if (existing) return existing;
-      const seeded = rows.find((row) => row.systemKey === null && row.name === name && row.parentId === parentId && row.kind === kind);
+      // A seed name from before a default was renamed counts as that default's, so an old row is still keyed.
+      const names = [name, ...(FORMER_DEFAULT_NAMES[key] ?? [])];
+      const seeded = rows.find((row) => row.systemKey === null && names.includes(row.name) && row.parentId === parentId && row.kind === kind);
       if (seeded) {
         await tx.update(accounts).set({ systemKey: key }).where(eq(accounts.id, seeded.id));
         seeded.systemKey = key;
@@ -126,10 +157,17 @@ async function ensurePersonalKeys(database: Database, ws: WorkspaceContext): Pro
 const ADDED_CHILDREN: readonly string[] = ['travel.transport', 'travel.souvenirs', 'travel.meals', 'travel.others', 'miscellaneous.top_ups', 'miscellaneous.platform_fee', 'education.early_childhood', 'education.development_fees'];
 
 /**
+ * Top-level defaults added after workspaces already held the list, each with the default that stands in for a parent:
+ * a book gets the new one only where that default is open at the top level, so a book started empty or as a business
+ * (whose untouched personal income was archived) is left as it was. Added as `ADDED_CHILDREN` are, in the same pass.
+ */
+const ADDED_TOP_LEVEL: Readonly<Record<string, string>> = { 'income.side_business': 'income.salary' };
+
+/**
  * A child that belongs before a sibling an earlier build already added, where appending it would put it after. It takes
  * that sibling's place and the sibling moves to the end; both values follow from the book's own rows, so phones agree.
  */
-const PLACED_BEFORE: Readonly<Record<string, string>> = { 'travel.meals': 'travel.others' };
+const PLACED_BEFORE: Readonly<Record<string, string>> = { 'travel.meals': 'travel.others', 'income.side_business': 'income.other' };
 
 /**
  * The id a default category added on open has in one book (or, before books, one workspace): the same on every
@@ -157,7 +195,7 @@ async function ownOpenBooksTx(tx: Db, workspaceId: string): Promise<string[]> {
 }
 
 /**
- * Adds `ADDED_CHILDREN` under each book's own keyed parent, once. Idempotent; runs on app open from
+ * Adds `ADDED_CHILDREN` under each book's own keyed parent, and `ADDED_TOP_LEVEL` beside its open anchor, once. Idempotent; runs on app open from
  * `ensureCategoryKeys`, one transaction per book. A book that fails is left as it was, said in the console, and tried
  * again at the next open — the open itself always carries on.
  */
@@ -210,12 +248,18 @@ async function ensureAddedChildrenTx(tx: Db, workspaceId: string, bookId: string
   const byKey = new Map<string, AccountRow>();
   for (const row of rows) if (row.systemKey && !byKey.has(row.systemKey)) byKey.set(row.systemKey, row);
 
-  for (const key of ADDED_CHILDREN) {
+  for (const key of [...ADDED_CHILDREN, ...Object.keys(ADDED_TOP_LEVEL)]) {
     if (byKey.has(key)) continue;
     const spec = DEFAULT_BY_KEY.get(key)!;
-    const parent = spec.parentKey ? byKey.get(spec.parentKey) : undefined;
-    if (!parent || parent.archivedAt !== null || parent.kind !== spec.kind) continue;
-    const own = rows.find((row) => row.systemKey === null && row.parentId === parent.id && row.kind === spec.kind && sameName(row.name, spec.name));
+    // A child hangs under its keyed parent; a top-level default stands beside its anchor, at the top level.
+    const anchorKey = spec.parentKey ?? ADDED_TOP_LEVEL[key]!;
+    const anchor = byKey.get(anchorKey);
+    if (!anchor || anchor.archivedAt !== null || anchor.kind !== spec.kind) continue;
+    if (!spec.parentKey && anchor.parentId !== null) continue;
+    const parentId = spec.parentKey ? anchor.id : null;
+    // Top-level rows of both kinds share the null parent; a top-level default is ordered among its own kind only.
+    const isSibling = (row: AccountRow) => row.parentId === parentId && (parentId !== null || row.kind === spec.kind);
+    const own = rows.find((row) => row.systemKey === null && isSibling(row) && row.kind === spec.kind && sameName(row.name, spec.name));
     if (own) {
       await tx.update(accounts).set({ systemKey: key }).where(eq(accounts.id, own.id));
       own.systemKey = key;
@@ -227,9 +271,9 @@ async function ensureAddedChildrenTx(tx: Db, workspaceId: string, bookId: string
     // Already here under that id but no longer in this book with its key: it was put somewhere on purpose.
     if ((await tx.select({ id: accounts.id }).from(accounts).where(eq(accounts.id, id))).length > 0) continue;
     const before = PLACED_BEFORE[key] ? byKey.get(PLACED_BEFORE[key]!) : undefined;
-    const end = Math.max(-1, ...rows.filter((sibling) => sibling.parentId === parent.id).map((sibling) => sibling.sortOrder)) + 1;
+    const end = Math.max(-1, ...rows.filter(isSibling).map((sibling) => sibling.sortOrder)) + 1;
     let sortOrder = end;
-    if (before && before.parentId === parent.id) {
+    if (before && isSibling(before)) {
       sortOrder = before.sortOrder;
       await tx.update(accounts).set({ sortOrder: end }).where(eq(accounts.id, before.id));
       before.sortOrder = end;
@@ -237,7 +281,7 @@ async function ensureAddedChildrenTx(tx: Db, workspaceId: string, bookId: string
     const row: AccountRow = {
       id,
       workspaceId,
-      parentId: parent.id,
+      parentId,
       kind: spec.kind,
       subtype: 'category',
       name: spec.name,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CATEGORY_ICONS, currencyInfo, DEFAULT_CATEGORIES, DEFAULT_CATEGORY_KEYS, DEFAULT_CATEGORY_MCCS, ON_DEMAND_CATEGORY_KEYS } from '../src/index';
+import { CATEGORY_ICONS, currencyInfo, DEFAULT_CATEGORIES, DEFAULT_CATEGORY_KEYS, DEFAULT_CATEGORY_MCCS, FORMER_DEFAULT_NAMES, ON_DEMAND_CATEGORY_KEYS } from '../src/index';
 
 describe('default categories', () => {
   const allKeys = DEFAULT_CATEGORIES.flatMap((c) => [c.key, ...(c.children ?? []).map((child) => child.key)]);
@@ -37,10 +37,19 @@ describe('default categories', () => {
 
   it('names every default, so a workspace can be matched by name where it has no key', () => {
     const names = DEFAULT_CATEGORIES.flatMap((c) => [c.name, ...(c.children ?? []).map((child) => child.name)]);
-    for (const name of ['Household', 'Groceries', 'Food and beverage', 'Restaurants', 'Utilities', 'Electricity', 'Water & sanitation', 'Donation', 'Charity', 'Miscellaneous', 'Membership fee', 'Salary', 'Other Income']) {
+    for (const name of ['Household', 'Groceries', 'Food and beverage', 'Restaurants', 'Utilities', 'Electricity', 'Water & sanitation', 'Donation', 'Charity', 'Miscellaneous', 'Membership fee', 'Salary, wage, or pay', 'Side business and selling', 'Other Income']) {
       expect(names, name).toContain(name);
     }
     expect(new Set(names).size, 'names are unique, so a match is never ambiguous').toBe(names.length);
+  });
+
+  it('keeps the names renamed defaults had, for defaults only and never one a default carries now', () => {
+    const names = new Set(DEFAULT_CATEGORIES.flatMap((c) => [c.name, ...(c.children ?? []).map((child) => child.name)]));
+    expect(FORMER_DEFAULT_NAMES).toEqual({ 'income.salary': ['Salary'], 'income.bonus': ['Bonus'], 'income.gifts': ['Gifts Received'] });
+    for (const [key, former] of Object.entries(FORMER_DEFAULT_NAMES)) {
+      expect(DEFAULT_CATEGORY_KEYS.has(key), key).toBe(true);
+      for (const name of former) expect(names.has(name), name).toBe(false);
+    }
   });
 
   it('offers Top-ups under Miscellaneous like any other child, with its MCC and an icon of its own', () => {
