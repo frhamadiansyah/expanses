@@ -1,4 +1,5 @@
-import { coverStatement, type Cycle, installmentSchedule, nextStatementStart, type PoolLine, statementCycleFor, transferLines } from '@expanses/core';
+import { coverStatement, type Cycle, installmentSchedule, instalmentsFrom, nextStatementStart, planPurchaseOutcome, type PoolLine, statementCycleFor, transferLines } from '@expanses/core';
+import { cardRecordsFrom } from './instalment-spending';
 import { cardInstallments } from '../schema-loans';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
@@ -45,7 +46,18 @@ export interface StatementLine {
    * For an instalment row: which plan, which of its months, how the plan counts its spending (0120) and the category of
    * the purchase it came from (its largest category line), for the row's icon and name.
    */
-  instalment: { planId: string; number: number; of: number; countMode?: 'at_purchase' | 'each_month'; categoryId?: string | null } | null;
+  instalment: {
+    planId: string;
+    number: number;
+    of: number;
+    countMode?: 'at_purchase' | 'each_month';
+    categoryId?: string | null;
+    /**
+     * A plan with no purchase, bought before the card's records in the app: its row's `transactionId` is the card's
+     * opening balance (or '' when the card has none), not a purchase — nothing to open, assign or mark paid off.
+     */
+    noPurchase?: true;
+  } | null;
   /** For a purchase converted to instalments: the plan it became. */
   convertedTo: { planId: string; months: number } | null;
   /** A purchase or refund, as opposed to money moved onto the card. */
@@ -216,9 +228,78 @@ async function billedLines(db: Db, ws: WorkspaceContext, cardAccountId: string):
       });
     }
   }
+  await beforeRecordsLinesTx(db, ws, cardAccountId, plans, lines, instalments, terms?.statementDay ?? 1);
   return [...lines, ...instalments].sort(
     (a, b) => a.statementOn.localeCompare(b.statementOn) || a.occurredOn.localeCompare(b.occurredOn) || a.key.localeCompare(b.key),
   );
+}
+
+/**
+ * The statement rows of plans with no purchase that were bought before the card's records in the app (TF 136): the bank
+ * still bills each of their months, so the statement must show them — from the records' start only; one billed before
+ * is in no statement the app keeps.
+ *
+ * The rule that keeps nothing counted twice: the card's opening balance is what the bank said was owed on that day,
+ * the plan's unbilled months included (the card's debt splits into billed and unbilled, `installmentTotals`). So on the
+ * statements the opening balance counts less by the instalments billed on or after its day — as a converted purchase
+ * counts nothing — and each of them counts on its own statement, in its month. Over the plan's months they add back to
+ * the opening, so the statements end where the card's balance is, and what a statement asks (closing, due, cover) is
+ * what the bank bills. The balance itself, net worth and the ledger are never touched. A card with no opening balance
+ * (kept from a counted-from day or its first purchase) held none of the debt: its rows simply count, as the bank bills.
+ *
+ * Only for a plan whose purchase window ends before the records start (`planPurchaseOutcome`'s `before-records`): one
+ * whose purchase may be recorded here is left to the owner to tie (the warning), so it is never billed twice.
+ */
+async function beforeRecordsLinesTx(
+  db: Db,
+  ws: WorkspaceContext,
+  cardAccountId: string,
+  plans: Awaited<ReturnType<typeof listInstallmentsTx>>,
+  lines: StatementLine[],
+  instalments: StatementLine[],
+  statementDay: number,
+): Promise<void> {
+  const unlinked = plans.filter((plan) => !plan.transactionId);
+  if (unlinked.length === 0) return;
+  const recordsFrom = await cardRecordsFrom(db, ws, cardAccountId);
+  if (!recordsFrom) return;
+  const before = unlinked.filter((plan) => planPurchaseOutcome([], plan, recordsFrom).kind === 'before-records');
+  if (before.length === 0) return;
+  const [openingRow] = await db.values<[string]>(sql`
+    SELECT t.id FROM transactions t JOIN entries e ON e.transaction_id = t.id AND e.account_id = ${cardAccountId}
+    WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted' AND t.occurred_on = ${recordsFrom}
+      AND EXISTS (SELECT 1 FROM entries o JOIN accounts oa ON oa.id = o.account_id
+                  WHERE o.transaction_id = t.id AND oa.kind = 'equity' AND oa.system_key = 'opening_balance')
+    ORDER BY t.created_at LIMIT 1`);
+  const opening = openingRow ? lines.find((line) => line.transactionId === openingRow[0]) : undefined;
+  let held = 0;
+  for (const plan of before) {
+    for (const bill of instalmentsFrom(installmentSchedule(plan, statementDay), recordsFrom)) {
+      held += bill.amountMinor;
+      instalments.push({
+        key: `${plan.id}#${bill.number}`,
+        transactionId: opening?.transactionId ?? '',
+        occurredOn: bill.statementOn,
+        postedOn: null,
+        statementOn: bill.statementOn,
+        description: plan.description,
+        cardId: null,
+        owedMinor: bill.amountMinor,
+        countedMinor: bill.amountMinor,
+        instalment: { planId: plan.id, number: bill.number, of: plan.months, countMode: plan.countMode, categoryId: plan.categoryAccountId, noPurchase: true },
+        convertedTo: null,
+        spending: true,
+        originalCurrency: null,
+        originalAmountMinor: null,
+        paidBy: null,
+        settles: 0,
+        paidOff: false,
+        balancing: false,
+      });
+    }
+  }
+  // What the opening already held of them, never more than it owed.
+  if (opening && opening.countedMinor > 0) opening.countedMinor -= Math.min(opening.countedMinor, held);
 }
 
 /** Each purchase's largest category line, by transaction: what an instalment row is named and drawn by. */

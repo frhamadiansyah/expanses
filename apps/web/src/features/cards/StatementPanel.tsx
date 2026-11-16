@@ -188,7 +188,8 @@ export function StatementPanel({
   // Whether the fix that moves a purchase to the next statement applies: the phone's icon, the table's and the ⋯ agree.
   const billableNext = (line: StatementLine) => line.spending && line.owedMinor > 0 && !lateOf(line) && !line.instalment && !line.convertedTo;
   // Whether Assign card applies: the account has more than one card, and this purchase names none of them.
-  const assignable = (line: StatementLine) => line.spending && plastic.length > 1 && !plastic.some((piece) => piece.id === line.cardId);
+  // A plan bought before the card's records has no purchase here to set a card on (TF 136).
+  const assignable = (line: StatementLine) => line.spending && !line.instalment?.noPurchase && plastic.length > 1 && !plastic.some((piece) => piece.id === line.cardId);
   const lines = statement.data?.lines ?? [];
   const chosen = lines.filter((line) => selected.has(line.transactionId) && payable(line));
   // One statement, split by card when the account carries more than one, the way the bank prints it.
@@ -716,15 +717,18 @@ export function StatementPanel({
                 }}
               />
             )}
-            <ActionRow
-              label={acting.instalment ? 'Open purchase' : 'Open receipt'}
-              icon={<Receipt size={16} aria-hidden />}
-              onClick={() => {
-                const line = acting;
-                setActing(null);
-                void navigate({ to: '/transactions/$transactionId', params: { transactionId: line.transactionId } });
-              }}
-            />
+            {/* A plan bought before the card's records has no purchase to open (TF 136). */}
+            {!acting.instalment?.noPurchase && (
+              <ActionRow
+                label={acting.instalment ? 'Open purchase' : 'Open receipt'}
+                icon={<Receipt size={16} aria-hidden />}
+                onClick={() => {
+                  const line = acting;
+                  setActing(null);
+                  void navigate({ to: '/transactions/$transactionId', params: { transactionId: line.transactionId } });
+                }}
+              />
+            )}
           </InsetGroup>
         </Sheet>
       )}
