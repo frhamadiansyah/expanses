@@ -8,6 +8,7 @@ import {
   saveInstallment,
   saveLoanTerms,
   scheduleFor,
+  setPlanPaidSoFar,
   sheetInputsAt,
   type WorkspaceContext,
 } from '../src/index';
@@ -148,12 +149,22 @@ describe('which debts count against income', () => {
 // (instalment-spending.test.ts); only one still At purchase there is a debt payment (instalment-spending.test.ts too).
 describe('instalments of a plan with no purchase, At purchase', () => {
   it('are put away as the card bills them, never a debt payment', async () => {
-    // Billed from February: eleven instalments fall inside 2026.
-    await saveInstallment(database, ws, { cardAccountId: card.id, description: 'iBox', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2026-02', countMode: 'at_purchase' });
+    // Billed from February: eleven instalments fall inside 2026. Only the owed ones count (0124): with none paid when it
+    // was added, all eleven do — set explicitly, since the day it is added decides what is paid.
+    const planId = await saveInstallment(database, ws, { cardAccountId: card.id, description: 'iBox', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2026-02', countMode: 'at_purchase' });
+    await setPlanPaidSoFar(database, ws, planId, 0);
 
     const flows = await periodFlows(database, ws, YEAR);
     expect(flows.debtPaymentsMinor).toBe(0);
     expect(flows.putAwayMinor).toBe(11_000_000);
+  });
+
+  it('puts away only the instalments still owed when the plan was added', async () => {
+    const planId = await saveInstallment(database, ws, { cardAccountId: card.id, description: 'iBox', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2026-02', countMode: 'at_purchase' });
+    await setPlanPaidSoFar(database, ws, planId, 8);
+
+    // Instalments 9–11 (October to December) fall inside 2026 and are owed.
+    expect((await periodFlows(database, ws, YEAR)).putAwayMinor).toBe(3_000_000);
   });
 
   it('counts nothing for a plan that starts after the period', async () => {
