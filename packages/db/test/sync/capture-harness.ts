@@ -6,7 +6,7 @@ import type { ChangeLogEntry } from '../../src/sync/seal';
 import { bookSplitsExist, filedInBook } from '../../src/repos/book-splits';
 import { exactForTransactionTx } from '../../src/repos/exact-column';
 import { viewMember } from '../../src/sync/authority';
-import { configureCapture, projectPurchase } from '../../src/sync/capture';
+import { configureCapture, localDeviceId, planSpreadWaitsTx, projectPurchase } from '../../src/sync/capture';
 import { parseOpId, SHARED_ENTITIES, type PurchaseEntity, type RowEntity } from '../../src/sync/shared-entities';
 import type { ChangeSet, Op } from '../../src/sync/types';
 
@@ -332,8 +332,12 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
   // Row entities: one judgement per row, from its first write in this batch.
   const firstWrite = new Map<string, Write>();
   for (const w of writes) if (!purchase.tables.includes(w.table) && !firstWrite.has(`${w.table}\u0000${w.key}`)) firstWrite.set(`${w.table}\u0000${w.key}`, w);
+  // A plan_spread (0123) is held from the log by design while no other phone can read one (`planSpreadWaitsTx`; the
+  // capture run's book has no other phone): its clocks are kept as if sent, and R9 sends it later. Not a miss.
+  const plansHeld = await planSpreadWaitsTx(database.db, bookId, await localDeviceId(database.db)).catch(() => false);
   for (const w of firstWrite.values()) {
     const entity = SHARED_ENTITIES.find((e) => e.kind === 'row' && e.table === w.table) as RowEntity;
+    if (entity.entity === 'plan_spread' && plansHeld) continue;
     const columns = syncedColumns(entity, presentColumns.get(database)?.get(entity.table));
     const key = parseOpId(entity, w.key);
     // The row as it stands in the watched book: a key alone (a member id) may name a row of another shared book too.
