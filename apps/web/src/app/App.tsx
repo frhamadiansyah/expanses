@@ -1,4 +1,4 @@
-import { autoLinkInstalmentPlans, seedShareListAsked, setActiveBook } from '@expanses/db';
+import { autoLinkInstalmentPlans, refreshPlanSpreads, seedShareListAsked, setActiveBook } from '@expanses/db';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -90,6 +90,8 @@ export function App({ app, sync: given }: { app: AppDb; sync?: SyncService }) {
       .then((report) => {
         if (report && report.linked + report.beforeRecords > 0) void queryClient.invalidateQueries();
       })
+      // A plan with no purchase keeps its shared row in step with the card's records (0123): a moved opening balance.
+      .then(() => refreshPlanSpreads(app.database, app.ws))
       .catch((error: unknown) => console.warn('Instalment plans were not linked', error));
   }, [app.database, app.ws, queryClient]);
   // The day's safety copy, queued for the first idle moment after this screen has painted. It never

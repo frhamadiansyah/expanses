@@ -7,6 +7,7 @@ import { cardInstallments } from '../schema-loans';
 import { captureSpreadingTx, withCapture } from '../sync/capture';
 import { hasBooks, personalBookIdTx } from './books';
 import { ensureUncategorisedRowTx, uncategorisedIdOf } from './uncategorised';
+import { refreshPlanSpreadTx } from './plan-spreads';
 
 export class InstallmentDbError extends Error {
   constructor(message: string) {
@@ -176,6 +177,8 @@ export async function saveInstallment(database: Database, ws: WorkspaceContext, 
     await writeCountModeTx(tx, ws, id, input.countMode ?? 'each_month');
     if (input.categoryAccountId) await writeCategoryTx(tx, ws, id, input.categoryAccountId);
     if (await countModeColumnExists(tx)) await ensurePlanCategoryTx(tx, ws, id);
+    // With no purchase and Each month, it travels as a plan_spread (0123).
+    await refreshPlanSpreadTx(tx, ws, id);
   });
   return id;
 }
@@ -230,6 +233,7 @@ export async function updateInstallment(database: Database, ws: WorkspaceContext
     if (input.countMode !== undefined) await writeCountModeTx(tx, ws, input.id, input.countMode);
     if (input.categoryAccountId !== undefined) await writeCategoryTx(tx, ws, input.id, input.categoryAccountId);
     if (await countModeColumnExists(tx)) await ensurePlanCategoryTx(tx, ws, input.id);
+    await refreshPlanSpreadTx(tx, ws, input.id);
   });
 }
 
@@ -247,6 +251,7 @@ export async function setInstallmentCountMode(database: Database, ws: WorkspaceC
     if (found.transactionId) await captureSpreadingTx(tx, found.transactionId);
     await writeCountModeTx(tx, ws, id, countMode);
     if (await countModeColumnExists(tx)) await ensurePlanCategoryTx(tx, ws, id);
+    await refreshPlanSpreadTx(tx, ws, id);
   });
 }
 
@@ -282,6 +287,8 @@ export async function deleteInstallment(database: Database, ws: WorkspaceContext
     // A shared purchase it spread goes out again, counting at purchase.
     if (found?.transactionId) await captureSpreadingTx(tx, found.transactionId);
     await tx.delete(cardInstallments).where(and(eq(cardInstallments.id, id), eq(cardInstallments.workspaceId, ws.workspaceId)));
+    // Gone here, its plan_spread goes from a shared workspace too.
+    await refreshPlanSpreadTx(tx, ws, id);
   });
 }
 
@@ -315,17 +322,17 @@ export async function nonEarningInstallmentTransactionIds(database: Database, ws
 }
 
 /**
- * The categories a plan with no purchase can count in: the owner's Personal workspace's spending categories (0122).
- * A plan with no purchase counts in Personal alone, never in a shared workspace, so no other phone needs it. Parents
- * first, by their order.
+ * The categories a plan with no purchase can count in (0122, 0123): every workspace's spending categories, each with its
+ * workspace's name. The plan counts in that category's workspace; in a shared one it travels as a plan_spread, so the
+ * other phone counts it too. Sorted by workspace, then name.
  */
-export async function planCategoryChoices(database: Database, ws: WorkspaceContext): Promise<{ id: string; name: string; parentId: string | null }[]> {
+export async function planCategoryChoices(database: Database, ws: WorkspaceContext): Promise<{ id: string; name: string; parentId: string | null; bookName: string | null }[]> {
   const db = database.db;
-  const bookId = (await hasBooks(db)) ? await personalBookIdTx(db, ws.workspaceId) : null;
-  const rows = await db.values<[string, string, string | null]>(sql`
-    SELECT a.id, a.name, a.parent_id FROM accounts a
+  const books = await hasBooks(db);
+  const rows = await db.values<[string, string, string | null, string | null]>(sql`
+    SELECT a.id, a.name, a.parent_id, ${books ? sql`(SELECT b.name FROM book_categories bc JOIN books b ON b.id = bc.book_id WHERE bc.category_account_id = a.id AND b.archived_at IS NULL LIMIT 1)` : sql`NULL`}
+    FROM accounts a
     WHERE a.workspace_id = ${ws.workspaceId} AND a.kind = 'expense' AND a.archived_at IS NULL AND (a.system_key IS NULL OR a.system_key <> 'uncategorised')
-      ${bookId ? sql`AND a.id IN (SELECT category_account_id FROM book_categories WHERE book_id = ${bookId})` : sql``}
-    ORDER BY a.parent_id IS NOT NULL, a.sort_order, a.name`);
-  return rows.map(([id, name, parentId]) => ({ id, name, parentId }));
+    ORDER BY a.sort_order, a.name`);
+  return rows.filter(([, , , bookName]) => !books || bookName !== null).map(([id, name, parentId, bookName]) => ({ id, name, parentId, bookName }));
 }

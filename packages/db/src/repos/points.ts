@@ -19,6 +19,7 @@ import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { feeFieldsByCard, type FeeFields, NO_FEE_FIELDS, writeFeeFields } from './fee-columns';
 import { captureSpreadingTx, markAccountDirtyTx } from '../sync/capture';
+import { refreshPlanSpreadTx } from './plan-spreads';
 import { mccSourcesFor } from './mcc';
 import { openOwnProgrammeTx } from './programme-link';
 import { nonEarningInstallmentTransactionIds } from './installments';
@@ -160,6 +161,9 @@ export async function saveCardTerms(
         set: { statementDay: row.statementDay, dueDay: row.dueDay, creditLimitMinor: row.creditLimitMinor, annualFeeMinor: row.annualFeeMinor },
       });
     if (input.annualFeeOn !== undefined) await writeFeeFields(tx, ws, input.accountId, { annualFeeOn: input.annualFeeOn });
+    // …and a plan with no purchase on this card travels with its statement day (0123).
+    for (const [planId] of await tx.values<[string]>(sql`SELECT id FROM card_installments WHERE card_account_id = ${input.accountId} AND workspace_id = ${ws.workspaceId}`).catch(() => [] as [string][]))
+      await refreshPlanSpreadTx(tx, ws, planId);
   });
 }
 

@@ -60,3 +60,13 @@ export function meetsVersion(have: string | null, want: string): boolean {
   }
   return true;
 }
+
+/**
+ * The first app version that knows the plan_spread entity (0123): a card instalment plan with no purchase, counted Each
+ * month in a shared workspace. A build before it has no such entity and stops its pull on one (`entityOf` throws), so a
+ * plan_spread op is never put in a shared book's log until every other phone there says this version or later
+ * (capture.ts, `writeChangeSetsTx`), its clocks kept as if sent; R9 sends it once they do (repairs.ts).
+ *
+ * Ship order: every build that says 0.5.6 must contain migration 0123.
+ */
+export const PLAN_SPREAD_MIN_APP_VERSION = '0.5.6';

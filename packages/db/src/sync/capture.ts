@@ -13,7 +13,7 @@ import { activeNetWorthGroup, NetWorthError } from '../repos/net-worth-sharing';
 import { localDate, sendSummariesTx } from './net-worth/summaries';
 import { sendGoalSummariesTx } from './goals/summaries';
 import { reserveAndSplit } from './split';
-import { INSTALMENT_SPREAD_MIN_APP_VERSION, meetsVersion, NEEDS_THIRD_MARK_MIN_APP_VERSION } from './events/version';
+import { INSTALMENT_SPREAD_MIN_APP_VERSION, meetsVersion, NEEDS_THIRD_MARK_MIN_APP_VERSION, PLAN_SPREAD_MIN_APP_VERSION } from './events/version';
 import { type PurchaseSpread, purchaseSpreadOfTx } from '../repos/instalment-spending';
 import { holderLineageId } from './held';
 import type { ChangeSet, Op } from './types';
@@ -565,13 +565,17 @@ export async function writeChangeSetsTx(
   const holdSpread = ops.some(isSpreadOp) && (await spreadWaitsTx(tx, book.bookId, deviceId));
   // A spread held now was sent to nobody: the record of who R8 has sent spreads to goes, as R7's does for the marks.
   if (holdSpread) await tx.run(sql`DELETE FROM settings WHERE key = ${spreadsCrossedKey(book.bookId)}`);
+  // A plan_spread (0123) is an entity an older build does not know at all: held back whole, as the marks are.
+  const holdPlans = ops.some(isPlanSpreadOp) && (await planSpreadWaitsTx(tx, book.bookId, deviceId));
+  if (holdPlans) await tx.run(sql`DELETE FROM settings WHERE key = ${planSpreadsCrossedKey(book.bookId)}`);
   // A mark held now was sent to nobody, whoever R7 has sent to before — a phone that left and comes back under the
   // same device id among them: the record of who was sent the marks goes, so the next all-clear sends every one again.
   if (hold) await tx.run(sql`DELETE FROM settings WHERE key = ${thirdMarksCrossedKey(book.bookId)}`);
   let written = 0;
   for (const changeSet of changeSets) {
     const marksOut = hold ? { ...changeSet, ops: changeSet.ops.filter((op) => !isThirdMark(op)) } : changeSet;
-    const sent = holdSpread ? { ...marksOut, ops: marksOut.ops.flatMap(withoutSpread) } : marksOut;
+    const spreadsOut = holdSpread ? { ...marksOut, ops: marksOut.ops.flatMap(withoutSpread) } : marksOut;
+    const sent = holdPlans ? { ...spreadsOut, ops: spreadsOut.ops.filter((op) => !isPlanSpreadOp(op)) } : spreadsOut;
     if (sent.ops.length > 0 || sent.invite) {
       // Plaintext: the engine seals it when it drains (§6.3, §6.6).
       await tx.run(
@@ -584,6 +588,24 @@ export async function writeChangeSetsTx(
     for (const op of changeSet.ops) await recordClocks(tx, book.bookId, op, changeSet.hlc);
   }
   return written;
+}
+
+/** Where repair R9 keeps the devices it has sent the book's plan spreads to; cleared whenever one is held. */
+export const planSpreadsCrossedKey = (bookId: string) => `repair.plan-spreads-crossed.v1.${bookId}`;
+
+/** A plan with no purchase as it travels (0123): an entity a build before `PLAN_SPREAD_MIN_APP_VERSION` does not know. */
+export const isPlanSpreadOp = (op: Op): boolean => op.entity === 'plan_spread';
+
+/**
+ * Whether a plan_spread must wait before going into this book's log: some other phone says a build before
+ * `PLAN_SPREAD_MIN_APP_VERSION` (or none), or no other phone is in the book yet. Such a build's apply has no such entity
+ * and would stop its pull at that entry.
+ */
+export async function planSpreadWaitsTx(tx: Db, bookId: string, selfDeviceId: string): Promise<boolean> {
+  const others = await tx
+    .values<[string, string | null]>(sql`SELECT device_id, app_version FROM book_devices WHERE book_id = ${bookId} AND removed_at IS NULL AND device_id <> ${selfDeviceId}`)
+    .catch(() => [] as [string, string | null][]);
+  return others.length === 0 || others.some(([, version]) => !meetsVersion(version, PLAN_SPREAD_MIN_APP_VERSION));
 }
 
 /** Where repair R8 keeps the devices it has sent the book's instalment spreads to; cleared whenever a spread is held. */

@@ -25,12 +25,16 @@ export function NoPurchaseWarning({ text }: { text: string | null }) {
   );
 }
 
-/** "Food & drink › Restaurants": a category's name with its parent's, for a flat list of choices. */
-export function categoryLabel(id: string, all: readonly { id: string; name: string; parentId: string | null }[]): string {
+/**
+ * "Family · Food & drink › Restaurants": a category's workspace, its parent's name and its own, for a flat list of
+ * choices across workspaces (0123: the plan counts in that workspace).
+ */
+export function categoryLabel(id: string, all: readonly { id: string; name: string; parentId: string | null; bookName?: string | null }[]): string {
   const row = all.find((c) => c.id === id);
   if (!row) return '';
   const parent = row.parentId ? all.find((c) => c.id === row.parentId) : undefined;
-  return parent ? `${parent.name} › ${row.name}` : row.name;
+  const name = parent ? `${parent.name} › ${row.name}` : row.name;
+  return row.bookName ? `${row.bookName} · ${name}` : name;
 }
 
 /** The Count spending control in a row of its own, with the hairline a row above it draws. */
@@ -203,7 +207,7 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
               {/* With no purchase there is no category to take: the plan's own, in Personal (0122). */}
               {!purchase && (
                 <SelectRow label="Category" value={form.categoryAccountId ?? ''} onChange={(e) => patch({ categoryAccountId: e.target.value || null })}>
-                  <option value="">Uncategorised</option>
+                  <option value="">Personal · Uncategorised</option>
                   {categories
                     .map((category) => ({ id: category.id, label: categoryLabel(category.id, categories) }))
                     .sort((a, b) => a.label.localeCompare(b.label))

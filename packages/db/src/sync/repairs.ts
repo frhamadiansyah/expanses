@@ -7,7 +7,7 @@ import { eventBookOfEventTx } from '../repos/shared-event-records';
 import { moveIntoSharedEvent, refundMatchedByName } from '../repos/shared-event-moves';
 import { TRIP_TRANSFERS_MIN_APP_VERSION } from '../repos/shared-event-transfers';
 import { partnerPurchaseRefusalTx, sharedRowTx, untagSharedRowsTx } from '../repos/shared-workspace-rows';
-import { captureConfigOf, isThirdMark, lineageOfTransaction, localDeviceId, projectPurchase, rowUpsertsTx, type SharedBook, spreadsCrossedKey, spreadWaitsTx, thirdMarksCrossedKey, thirdMarkWaitsTx, writeChangeSetsTx } from './capture';
+import { captureConfigOf, isThirdMark, lineageOfTransaction, localDeviceId, projectPurchase, rowUpsertsTx, type SharedBook, planSpreadsCrossedKey, planSpreadWaitsTx, spreadsCrossedKey, spreadWaitsTx, thirdMarksCrossedKey, thirdMarkWaitsTx, writeChangeSetsTx } from './capture';
 import { purchaseSpreadOfTx } from '../repos/instalment-spending';
 import { memberOfDeviceTx } from './apply';
 import { itemsWithStaleFaceTx, sendSummariesTx } from './net-worth/summaries';
@@ -66,6 +66,12 @@ export function repairExpenseId(lineageId: string, eventId: string): Promise<str
  * `INSTALMENT_SPREAD_MIN_APP_VERSION` (`spreadWaitsTx`), its clock kept here as if sent. As R7 does for the marks, each
  * time every other phone is first seen at that version or later — and again for each phone that joins at it — this
  * phone sends every spread of its own plans at the clock it holds it at (none `changed`), so a later word still wins.
+ *
+ * R9 plan spreads (0123): a card instalment plan with no purchase, counted Each month in a shared workspace, is a
+ * plan_spread row, held back from the log while any other phone in the book is on a build before
+ * `PLAN_SPREAD_MIN_APP_VERSION` (`planSpreadWaitsTx`), its clocks kept here as if sent. As R7, each time every other
+ * phone is first seen at that version or later — and for each phone that joins at it — this phone sends every plan
+ * spread of its own plans in the book at the clocks it holds them at.
  *
  * R4 card faces (fix/sync-card-tier): a joint account's summary now carries what its card face is drawn from (its bank,
  * its card tier, its number's last four: `ItemFace`). An account given a tier before this build sent none, and its
@@ -173,6 +179,8 @@ export interface RepairReport {
   thirdMarks?: number | null;
   /** R8: instalment spreads sent; null while a phone in the book cannot read one, or none had newly crossed. */
   instalmentSpreads?: number | null;
+  /** R9: plan spreads sent; null while a phone in the book cannot read one, or none had newly crossed. */
+  planSpreads?: number | null;
 }
 
 /** The shared book here, active and with its members known; null for anything else. */
@@ -440,6 +448,25 @@ async function resendSpreadsTx(tx: Tx, database: Database, book: SharedBook): Pr
   return ops.length;
 }
 
+/** R9's sending: every plan spread of this phone's own plans in the book, at the clocks each field is held at. */
+async function resendPlanSpreadsTx(tx: Tx, database: Database, book: SharedBook): Promise<number> {
+  const own = new Set((await tx.values<[string]>(sql`SELECT id FROM card_installments`).catch(() => [] as [string][])).map(([id]) => id));
+  const rows = (await rowUpsertsTx(tx, book, 'plan_spread')).filter((op) => own.has(op.id));
+  const ops: Op[] = [];
+  for (const row of rows) {
+    if (row.op !== 'upsert') continue;
+    const clocks: Record<string, string> = {};
+    for (const field of Object.keys(row.fields)) {
+      const [clock] = await tx.values<[string]>(sql`
+        SELECT hlc FROM sync_field_clocks WHERE book_id = ${book.bookId} AND entity = 'plan_spread' AND id = ${row.id} AND field = ${field}`);
+      if (clock) clocks[field] = clock[0];
+    }
+    ops.push(Object.keys(clocks).length === Object.keys(row.fields).length ? { ...row, changed: [], clocks } : row);
+  }
+  await writeChangeSetsTx(tx, captureConfigOf(database), book, ops);
+  return ops.length;
+}
+
 /**
  * Runs the one-time repairs of a shared book on this phone, each once. Called after a sync that pulled the book to the
  * relay's latest. A repair that throws leaves its marker unwritten (it runs again next time) and is rethrown after the
@@ -589,6 +616,24 @@ export async function runSharedBookRepairs(database: Database, bookId: string, o
       const sent = await resendSpreadsTx(tx, database, book);
       const all = [...new Set([...crossed, ...others])].sort();
       await tx.run(sql`INSERT INTO settings (key, value) VALUES (${spreadsCrossedKey(bookId)}, ${JSON.stringify(all)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
+      return sent;
+    });
+  } catch (error) {
+    failures.push(error);
+  }
+  try {
+    report.planSpreads = await database.transaction(async (tx) => {
+      const book = await activeBookTx(tx, bookId);
+      if (!book) return null;
+      if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'plan_spreads'`)).length === 0) return null;
+      const self = await localDeviceId(tx);
+      if (await planSpreadWaitsTx(tx, bookId, self)) return null;
+      const others = (await bookDevicesTx(tx, bookId)).filter((d) => d.deviceId !== self).map((d) => d.deviceId);
+      const crossed = await crossedTx(tx, bookId, planSpreadsCrossedKey(bookId));
+      if (others.every((id) => crossed.has(id))) return null;
+      const sent = await resendPlanSpreadsTx(tx, database, book);
+      const all = [...new Set([...crossed, ...others])].sort();
+      await tx.run(sql`INSERT INTO settings (key, value) VALUES (${planSpreadsCrossedKey(bookId)}, ${JSON.stringify(all)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
       return sent;
     });
   } catch (error) {

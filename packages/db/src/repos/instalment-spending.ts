@@ -195,7 +195,41 @@ export async function plansWithStatementDays(db: Db, ws: WorkspaceContext): Prom
   for (const cardId of cardIds) recordsOf.set(cardId, await cardRecordsFrom(db, ws, cardId));
   const own = plans.map((plan) => ({ plan, statementDay: dayOf.get(plan.cardAccountId) ?? 1, recordsFrom: recordsOf.get(plan.cardAccountId) ?? null }));
   const received = await receivedPlansTx(db, ws, new Set(plans.flatMap((plan) => (plan.transactionId ? [plan.transactionId] : []))));
-  return [...own, ...received];
+  return [...own, ...received, ...(await receivedPlanSpreadsTx(db, ws, new Set(plans.map((plan) => plan.id))))];
+}
+
+/**
+ * The plans with no purchase another phone sent (plan_spreads, 0123), as plans counting Each month in their own
+ * category, from the day the payer's card's records start. A row of this phone's own plan is its plan's.
+ */
+async function receivedPlanSpreadsTx(db: Db, ws: WorkspaceContext, own: ReadonlySet<string>): Promise<PlanWithDay[]> {
+  if ((await db.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'plan_spreads'`)).length === 0) return [];
+  const rows = await db.values<[string, string, number, number, number, string, number, string | null, string]>(sql`
+    SELECT id, description, total_minor, monthly_minor, months, first_billed_month, statement_day, records_from, category_account_id
+    FROM plan_spreads WHERE workspace_id = ${ws.workspaceId}`);
+  return rows
+    .filter(([id]) => !own.has(id))
+    .map(([id, description, totalMinor, monthlyMinor, months, firstBilledMonth, statementDay, recordsFrom, categoryAccountId]) => ({
+      plan: {
+        id: `plan-spread:${id}`,
+        cardAccountId: '',
+        transactionId: null,
+        description,
+        createdAt: '',
+        totalMinor: Number(totalMinor),
+        months: Number(months),
+        monthlyMinor: Number(monthlyMinor),
+        firstBilledMonth,
+        rateBps: 0,
+        conversionFeeMinor: 0,
+        earnsPoints: true,
+        countMode: 'each_month' as const,
+        categoryAccountId,
+      },
+      statementDay: Number(statementDay),
+      recordsFrom,
+      received: true,
+    }));
 }
 
 export const countsEachMonth = (plan: { countMode: InstalmentCountMode }) => plan.countMode === 'each_month';
@@ -279,7 +313,7 @@ export async function spreadLinesIn(
     }
     if (parts.length === 0) continue;
     // Billed before the card's records start: inside its opening balance, in months the app was not kept — nowhere.
-    const lines = instalmentsFrom(instalmentSpendingLines(plan, statementDay, parts, whole), received ? null : (recordsFrom ?? null));
+    const lines = instalmentsFrom(instalmentSpendingLines(plan, statementDay, parts, whole), recordsFrom ?? null);
     for (const line of instalmentsCountedIn(lines, from, to)) {
       out.push({
         planId: plan.id,
