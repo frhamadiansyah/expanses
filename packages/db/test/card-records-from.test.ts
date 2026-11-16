@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   cardRecordsFrom,
   cardStatementLines,
+  planInstalmentStatuses,
   createAccount,
   createBook,
   inBook,
@@ -12,6 +13,7 @@ import {
   saveCardTerms,
   saveInstallment,
 } from '../src/index';
+import { sql } from 'drizzle-orm';
 import { setupDb, type TestDb } from './helpers';
 
 /*
@@ -73,5 +75,26 @@ describe('the day a card’s records start', () => {
     // Billed from 13 Oct 2026: instalments 20–24.
     expect(rows).toEqual([20, 21, 22, 23, 24]);
     void inBook;
+  });
+
+  // TF 139, owner's phone: the card holds nothing in the app (no opening balance, no purchase) — the plan is all there
+  // is. Its start is then the last statement before the plan was added: the bill being paid when it was entered.
+  it('with nothing on the card, starts at the last statement before the plan was added', async () => {
+    const o = await owner(null);
+    const planId = await o.plan();
+    await o.database.db.run(sql`UPDATE card_installments SET created_at = '2026-11-15T09:00:00.000Z' WHERE id = ${planId}`);
+    expect(await cardRecordsFrom(o.database.db, o.ws, o.card)).toBe('2026-11-13');
+    const rows = (await cardStatementLines(o.database, o.ws, o.card)).filter((line) => line.instalment).map((line) => line.instalment!.number);
+    expect(rows).toEqual([21, 22, 23, 24]);
+  });
+
+  it('counts the instalments billed before the card’s start as paid on the plan', async () => {
+    const o = await owner(null);
+    const planId = await o.plan();
+    await o.database.db.run(sql`UPDATE card_installments SET created_at = '2026-11-15T09:00:00.000Z' WHERE id = ${planId}`);
+    const statuses = await planInstalmentStatuses(o.database, o.ws, planId, '2026-11-16');
+    expect(statuses.filter((s) => s.status === 'paid').map((s) => s.number)).toEqual(Array.from({ length: 20 }, (_, i) => i + 1));
+    expect(statuses.find((s) => s.number === 21)!.status).toBe('billed');
+    expect(statuses.filter((s) => s.status === 'upcoming').map((s) => s.number)).toEqual([22, 23, 24]);
   });
 });

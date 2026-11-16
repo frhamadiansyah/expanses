@@ -446,7 +446,7 @@ export interface PlanInstalmentStatus {
 /**
  * Each instalment of one plan and where it stands on a day: upcoming until its statement date, billed from then, and
  * paid once the card's payments cover it on that statement (`statementCoverOf`, oldest first — what the statement's own
- * ✓ says). A plan tied to no purchase on the card is on no statement, so its instalments are billed or upcoming only.
+ * ✓ says). One billed before the card's records start was paid before the app.
  */
 export async function planInstalmentStatuses(database: Database, ws: WorkspaceContext, planId: string, today: string): Promise<PlanInstalmentStatus[]> {
   const db = database.db;
@@ -462,7 +462,10 @@ export async function planInstalmentStatuses(database: Database, ws: WorkspaceCo
   const onStatement = all.some((line) => line.instalment?.planId === planId);
   const pool = onStatement ? poolLinesOf(all) : [];
   const covers = new Map<string, Record<string, StatementCover>>();
+  // Billed before the card's records start: paid before the app (inside its opening balance, or with nothing kept).
+  const recordsFrom = await cardRecordsFrom(db, ws, plan.cardAccountId);
   return installmentSchedule(plan, statementDay).map((bill) => {
+    if (recordsFrom && bill.statementOn < recordsFrom) return { number: bill.number, of: plan.months, statementOn: bill.statementOn, amountMinor: bill.amountMinor, status: 'paid' as const };
     let status: PlanInstalmentStatus['status'] = bill.statementOn > today ? 'upcoming' : 'billed';
     if (status === 'billed' && onStatement) {
       const cycle = statementCycleFor(bill.statementOn, statementDay);

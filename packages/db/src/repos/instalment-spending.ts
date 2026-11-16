@@ -1,4 +1,4 @@
-import { type InstalmentCountMode, instalmentsFrom, instalmentSpendingLines, instalmentsCountedIn, type PartWeight } from '@expanses/core';
+import { type InstalmentCountMode, instalmentsFrom, instalmentSpendingLines, instalmentsCountedIn, type PartWeight, statementCycleFor } from '@expanses/core';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Db } from '../database';
@@ -64,7 +64,19 @@ export async function cardRecordsFrom(db: Db, given: WorkspaceContext, cardAccou
       AND t.id NOT IN (
         SELECT substr(s.external_ref, ${BEFORE_APP.length + 1}) FROM transactions s
         WHERE s.workspace_id = ${workspaceId} AND s.status = 'posted' AND s.external_ref LIKE ${BEFORE_APP + '%'})`);
-  return first?.[0] ?? null;
+  if (first?.[0]) return first[0];
+  // Nothing on the card at all (owner, TF 139): its plans are all the app knows of it. It starts at the last statement
+  // before its first plan was added — the bill being paid when the plan was entered — so that bill and the ones after
+  // show; the instalments billed before it were paid before the app.
+  const [added] = await db.values<[string | null]>(sql`
+    SELECT MIN(created_at) FROM card_installments WHERE workspace_id = ${workspaceId} AND card_account_id = ${cardAccountId}`);
+  if (!added?.[0]) return null;
+  const [terms] = await db.select({ statementDay: cardTerms.statementDay }).from(cardTerms).where(and(eq(cardTerms.accountId, cardAccountId), eq(cardTerms.workspaceId, workspaceId)));
+  const statementDay = terms?.statementDay ?? 1;
+  const day = added[0].slice(0, 10);
+  const dayBefore = new Date(`${statementCycleFor(day, statementDay).start}T00:00:00Z`);
+  dayBefore.setUTCDate(dayBefore.getUTCDate() - 1);
+  return statementCycleFor(dayBefore.toISOString().slice(0, 10), statementDay).end;
 }
 
 /**
