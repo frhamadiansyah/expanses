@@ -80,6 +80,7 @@ export * as loansSchema from './schema-loans';
 export * from './repos/loans';
 export * from './repos/installments';
 export * from './repos/instalment-spending';
+export * from './repos/instalment-autolink';
 export * as taxSchema from './schema-tax';
 export * as recurringSchema from './schema-recurring';
 export * as eventsSchema from './schema-events';

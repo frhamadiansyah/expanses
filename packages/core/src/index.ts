@@ -437,7 +437,13 @@ export {
   installmentSchedule,
   type InstallmentSplit,
   installmentSplit,
+  instalmentsFrom,
+  matchPlanPurchase,
   type PartWeight,
+  type PlanPurchaseLine,
+  planPurchaseOutcome,
+  planPurchaseWindow,
+  purchaseCandidates,
   splitByParts,
 } from './loans/installments';
 export {

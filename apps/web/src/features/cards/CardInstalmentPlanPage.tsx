@@ -8,9 +8,9 @@ import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, ProgressBar, ReadOnlyRow } from '../../ui/native';
-import { CountSpendingRow, usePlanEditor } from '../loans/InstallmentList';
-import { countSpendingFooter, planProgress } from '../loans/plan-view';
-import { useCardLines, useInstallments, usePlanInstalments, useStatementDay } from '../loans/queries';
+import { categoryLabel, CountSpendingRow, NoPurchaseWarning, usePlanEditor } from '../loans/InstallmentList';
+import { countSpendingFooter, noPurchaseWarning, planProgress, purchaseStateOf } from '../loans/plan-view';
+import { useCardLines, useCardRecordsFrom, useInstallments, usePlanCategoryChoices, usePlanInstalments, useStatementDay } from '../loans/queries';
 import { useMonthStart } from '../workspaces/queries';
 import { CardScreen, useCardPage } from './card-page';
 import { Line, SUBTITLE, TextLine, TITLE } from './rows';
@@ -36,7 +36,9 @@ export function CardInstalmentPlanPage() {
   const statuses = usePlanInstalments(planId, today);
   const statementDay = useStatementDay(cardId).data ?? 1;
   const monthStart = useMonthStart();
-  const lines = useCardLines(cardId, !!plan?.transactionId);
+  const lines = useCardLines(cardId);
+  const recordsFrom = useCardRecordsFrom(cardId).data ?? null;
+  const categories = usePlanCategoryChoices(!!plan && !plan.transactionId).data ?? [];
   const fallback = `/cards/${cardId}/settings/instalments` as const;
   // Removed from its own page, the plan has no page left: back to where it was opened from.
   const goBack = useBack(fallback);
@@ -54,7 +56,10 @@ export function CardInstalmentPlanPage() {
   const currency = page.currency;
   const progress = planProgress(plan.totalMinor, statuses.data ?? []);
   const purchase = plan.transactionId ? (lines.data ?? []).find((line) => line.transactionId === plan.transactionId && !line.instalment) : undefined;
-  const footer = countSpendingFooter(plan, installmentSchedule(plan, statementDay), currency, monthStart);
+  const categoryName = plan.categoryAccountId ? categoryLabel(plan.categoryAccountId, categories) || null : null;
+  const footer = countSpendingFooter(plan, installmentSchedule(plan, statementDay), currency, monthStart, { categoryName, recordsFrom });
+  // A plan left with no purchase though one may be recorded (auto-link found none, or several): said until it is chosen.
+  const warning = noPurchaseWarning(purchaseStateOf(plan, lines.data ?? [], recordsFrom), plan.countMode, categoryName, true);
 
   async function setMode(countMode: 'at_purchase' | 'each_month') {
     if (!plan || countMode === plan.countMode) return;
@@ -99,12 +104,14 @@ export function CardInstalmentPlanPage() {
           <ReadOnlyRow label="Months" value={String(plan.months)} />
           <ReadOnlyRow label="Each month" value={formatMinor(plan.monthlyMinor, currency)} />
           <ReadOnlyRow label="Purchase" value={purchase ? `${purchase.description} · ${dayMonthYear(purchase.occurredOn)}` : plan.transactionId ? 'Chosen' : 'None'} />
+          {!plan.transactionId && <ReadOnlyRow label="Category" value={categoryName ?? 'Uncategorised'} />}
         </InsetGroup>
 
         <InsetGroup header="Count spending" footer={footer}>
           <CountSpendingRow value={plan.countMode} onChange={(mode) => void setMode(mode)} disabled={busy} />
         </InsetGroup>
         <ErrorBox error={error} />
+        <NoPurchaseWarning text={warning} />
 
         <InsetGroup header="Instalments">
           {progress.rows.length === 0 && <TextLine tone="ink-3">None yet</TextLine>}

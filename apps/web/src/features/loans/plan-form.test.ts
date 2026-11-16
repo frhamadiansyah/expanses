@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { blankPlanForm, planFields, planFormOf, purchaseChoices } from './plan-form';
+import { blankPlanForm, planFields, planFormOf, purchaseChoices, shownPurchase } from './plan-form';
 
 describe('the instalment plan form', () => {
   it('starts blank at twelve months from this month', () => {
-    expect(blankPlanForm('2026-10-27')).toEqual({ description: '', total: '', months: '12', firstBilledMonth: '2026-10', earnsPoints: false, transactionId: null, countMode: 'each_month' });
+    expect(blankPlanForm('2026-10-27')).toEqual({ description: '', total: '', months: '12', firstBilledMonth: '2026-10', earnsPoints: false, transactionId: null, countMode: 'each_month', categoryAccountId: null });
   });
 
   it('fills from a plan and reads back as the same figures', () => {
-    const plan = { description: 'iBox', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2026-09', earnsPoints: true, transactionId: 't1', countMode: 'at_purchase' as const };
+    const plan = { description: 'iBox', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2026-09', earnsPoints: true, transactionId: 't1', countMode: 'at_purchase' as const, categoryAccountId: null };
     expect(planFields(planFormOf(plan, 'IDR'), 'IDR')).toEqual(plan);
   });
 
   it('turns typed fields into numbers, drops dots from the total and names a blank plan', () => {
-    expect(planFields({ description: '  ', total: '9.000.000', months: '6', firstBilledMonth: '2026-10', earnsPoints: false, transactionId: null, countMode: 'each_month' }, 'IDR')).toEqual({
+    expect(planFields({ description: '  ', total: '9.000.000', months: '6', firstBilledMonth: '2026-10', earnsPoints: false, transactionId: null, countMode: 'each_month', categoryAccountId: 'c1' }, 'IDR')).toEqual({
       description: 'Instalment plan',
       totalMinor: 9_000_000,
       months: 6,
@@ -20,6 +20,7 @@ describe('the instalment plan form', () => {
       earnsPoints: false,
       transactionId: null,
       countMode: 'each_month',
+      categoryAccountId: 'c1',
     });
   });
 
@@ -49,5 +50,22 @@ describe('the instalment plan form', () => {
       12_000_000,
     );
     expect(choices.map((c) => c.transactionId)).toEqual(['laptop', 'kopi', 'tv']);
+  });
+
+  it('shows the one purchase of the typed total until the Purchase row is touched, then what was chosen', () => {
+    const line = (transactionId: string, occurredOn: string, owedMinor: number) => ({ transactionId, occurredOn, owedMinor, spending: true, instalment: null, balancing: false, convertedTo: null });
+    const lines = [line('phone', '2026-11-14', 6_000_000), line('kopi', '2026-11-12', 50_000)];
+    const form = { transactionId: null, firstBilledMonth: '2026-12' };
+    expect(shownPurchase(form, 6_000_000, lines, false)).toBe('phone');
+    expect(shownPurchase(form, 7_000_000, lines, false)).toBeNull();
+    // None chosen on purpose stays None.
+    expect(shownPurchase(form, 6_000_000, lines, true)).toBeNull();
+    expect(shownPurchase({ ...form, transactionId: 'kopi' }, 6_000_000, lines, true)).toBe('kopi');
+  });
+
+  it('keeps a category only while no purchase is chosen', () => {
+    const typed = { ...blankPlanForm('2026-11-16'), total: '6.000.000', categoryAccountId: 'c1' };
+    expect(planFields(typed, 'IDR').categoryAccountId).toBe('c1');
+    expect(planFields({ ...typed, transactionId: 't1' }, 'IDR').categoryAccountId).toBeNull();
   });
 });

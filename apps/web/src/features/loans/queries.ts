@@ -1,5 +1,5 @@
 import { isoDate } from '@expanses/core';
-import { cardStatement, cardStatementLines, installmentTotals, listCards, listCardTerms, listInstallments, listLoanItems, listLoans, loanFor, nextPaymentDue, planInstalmentStatuses, scheduledAsks, scheduledPayments, scheduleFor } from '@expanses/db';
+import { cardRecordsFrom, cardStatement, cardStatementLines, planCategoryChoices, installmentTotals, listCards, listCardTerms, listInstallments, listLoanItems, listLoans, loanFor, nextPaymentDue, planInstalmentStatuses, scheduledAsks, scheduledPayments, scheduleFor } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { cycleBack, dueDateAfter } from '../cards/statement-dates';
@@ -80,6 +80,18 @@ export function useStatementDay(cardAccountId: string) {
 export function useCardLines(cardAccountId: string, enabled = true) {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['card-statement-lines', ws.workspaceId, cardAccountId], enabled, queryFn: () => cardStatementLines(database, ws, cardAccountId) });
+}
+
+/** The day a card's records start in the app (its opening balance, else its counted-from day, else its first line). */
+export function useCardRecordsFrom(cardAccountId: string) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['card-records-from', ws.workspaceId, cardAccountId], queryFn: async () => (await cardRecordsFrom(database.db, ws, cardAccountId)) ?? null });
+}
+
+/** The Personal workspace's spending categories, which a plan with no purchase can count in. */
+export function usePlanCategoryChoices(enabled = true) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['plan-category-choices', ws.workspaceId], enabled, queryFn: () => planCategoryChoices(database, ws) });
 }
 
 /** Each instalment of one plan, paid, billed or still to come, on a day. */

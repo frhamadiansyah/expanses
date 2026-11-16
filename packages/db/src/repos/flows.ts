@@ -324,10 +324,13 @@ export async function periodFlows(
 
   // At purchase: an instalment billed in the period is a debt payment, though the purchase was spending once, on the day
   // it happened. The card balance carries the debt in between.
-  for (const { plan } of plans) {
+  for (const { plan, statementDay, recordsFrom } of plans) {
     if (plan.countMode === 'each_month') continue;
     for (let index = 0; index < plan.months; index += 1) {
       const month = addMonths(plan.firstBilledMonth, index);
+      // Billed before the card's records start: inside its opening balance, in months the app was not kept — nowhere.
+      const statementOn = `${month}-${String(Math.min(statementDay, new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate())).padStart(2, '0')}`;
+      if (recordsFrom && statementOn < recordsFrom) continue;
       const bucket = byMonth.get(month);
       if (!bucket) continue;
       const billed = intoRead(plan.monthlyMinor, `${month}-01`);

@@ -1,4 +1,4 @@
-import { formatMinor, type InstalmentCountMode, monthName, periodMonthOf } from '@expanses/core';
+import { formatMinor, type InstalmentCountMode, instalmentsFrom, monthName, periodMonthOf, type PlanPurchaseLine, planPurchaseOutcome } from '@expanses/core';
 import type { PlanInstalmentStatus } from '@expanses/db';
 
 /** The two ways a plan's spending counts, as the plan's control names them. */
@@ -19,18 +19,47 @@ export function countSpendingFooter(
   schedule: readonly { statementOn: string }[],
   currency: string,
   monthStart = 1,
+  opts: { categoryName?: string | null; recordsFrom?: string | null } = {},
 ): string {
   if (plan.countMode === 'at_purchase') {
     return plan.transactionId
       ? `At purchase: the whole ${formatMinor(plan.totalMinor, currency)} counts on the day of the purchase; each instalment repays the card.`
       : 'At purchase: no purchase is chosen, so nothing counts as spending.';
   }
-  const first = schedule[0] ? periodMonthOf(schedule[0].statementOn, monthStart) : null;
-  const last = schedule.at(-1) ? periodMonthOf(schedule.at(-1)!.statementOn, monthStart) : null;
-  if (!first || !last) return '';
-  const span = first === last ? `in ${monthWords(first, true)}` : `in each month from ${monthWords(first, first.slice(0, 4) !== last.slice(0, 4) && plan.months > 12)} to ${monthWords(last, true)}`;
-  const where = plan.transactionId ? '' : ' Under Uncategorised, as no purchase is chosen.';
+  // With no purchase, what was billed before the card's records start counts nowhere (`instalmentsFrom`).
+  const counted = plan.transactionId ? schedule : instalmentsFrom(schedule, opts.recordsFrom ?? null);
+  const first = counted[0] ? periodMonthOf(counted[0].statementOn, monthStart) : null;
+  const last = counted.at(-1) ? periodMonthOf(counted.at(-1)!.statementOn, monthStart) : null;
+  if (!first || !last) return plan.transactionId ? '' : 'Each month: every instalment was billed before this card’s records in the app, so nothing counts.';
+  const span = first === last ? `in ${monthWords(first, true)}` : `in each month from ${monthWords(first, first.slice(0, 4) !== last.slice(0, 4) && counted.length > 12)} to ${monthWords(last, true)}`;
+  const where = plan.transactionId ? '' : ` Under ${opts.categoryName ?? 'Uncategorised'}, as no purchase is chosen.`;
   return `Each month: ${formatMinor(plan.monthlyMinor, currency)} counts ${span}.${where}`;
+}
+
+/**
+ * Where a plan's purchase stands (owner, 16 Nov 2026): tied to one; bought before the card's records in the app, so there
+ * is none to tie and nothing to count twice; or left with none chosen though its purchase may be recorded.
+ */
+export type PurchaseState = 'linked' | 'before-records' | 'unlinked';
+
+export function purchaseStateOf(
+  plan: { id: string | null; transactionId: string | null; totalMinor: number; firstBilledMonth: string },
+  lines: readonly PlanPurchaseLine[],
+  recordsFrom: string | null,
+): PurchaseState {
+  if (plan.transactionId) return 'linked';
+  return planPurchaseOutcome(lines, plan, recordsFrom).kind === 'before-records' ? 'before-records' : 'unlinked';
+}
+
+/**
+ * The line a plan with no purchase chosen shows (mockup "warning if none"): under Each month its instalments would count
+ * on top of the purchase recorded on its day. Under At purchase, on the plan's page, what choosing it would do. Nothing
+ * for a plan tied to its purchase, or one bought before the card's records (no purchase is recorded to count twice).
+ */
+export function noPurchaseWarning(state: PurchaseState, countMode: InstalmentCountMode, categoryName?: string | null, onPage = false): string | null {
+  if (state !== 'unlinked') return null;
+  if (countMode === 'each_month') return `No purchase chosen: each instalment counts as ${categoryName ?? 'Uncategorised'} spending, on top of the purchase.`;
+  return onPage ? 'No purchase chosen: choose the purchase it came from to count it each month.' : null;
 }
 
 /** The plan's own page (mockup "after"): how far it is, what is left, when it ends, and its instalments. */

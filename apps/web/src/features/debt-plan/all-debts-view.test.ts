@@ -88,7 +88,7 @@ describe('the sort kept on the device', () => {
 
 describe('debtGroups (card instalments, option C)', () => {
   // Invented: a Rp 3.000.000 laptop on the BCA Visa over 6 × Rp 500.000 from October; on 4 Nov two are billed.
-  const laptop = { id: 'p1', cardAccountId: 'C1', transactionId: 't1', description: 'Laptop', createdAt: '2026-10-01', totalMinor: 3_000_000, months: 6, monthlyMinor: 500_000, firstBilledMonth: '2026-10', rateBps: 0, conversionFeeMinor: 0, earnsPoints: true, countMode: 'each_month' as const };
+  const laptop = { id: 'p1', cardAccountId: 'C1', transactionId: 't1', description: 'Laptop', createdAt: '2026-10-01', totalMinor: 3_000_000, months: 6, monthlyMinor: 500_000, firstBilledMonth: '2026-10', rateBps: 0, conversionFeeMinor: 0, earnsPoints: true, countMode: 'each_month' as const, categoryAccountId: null };
 
   it('puts scheduled loans and each running plan under Fixed each month, the rest under No fixed amount', () => {
     const groups = debtGroups(sortDebts(debts, 'mostLeft'), [laptop], TODAY);

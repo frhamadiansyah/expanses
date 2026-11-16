@@ -1,4 +1,4 @@
-import { seedShareListAsked, setActiveBook } from '@expanses/db';
+import { autoLinkInstalmentPlans, seedShareListAsked, setActiveBook } from '@expanses/db';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -80,6 +80,18 @@ export function App({ app, sync: given }: { app: AppDb; sync?: SyncService }) {
     () => watchCaptures(app.database, app.ws, () => void queryClient.invalidateQueries()),
     [app.database, app.ws, queryClient],
   );
+  /*
+   * Card instalments (owner, 16 Nov 2026: "I don't want to pick manually"): the plans saved before a plan could name its
+   * purchase are tied to it once, on this device, when the app opens (`autoLinkInstalmentPlans`). A plan the owner sets
+   * back to None afterwards is left alone; only figures it changed are read again.
+   */
+  useEffect(() => {
+    void autoLinkInstalmentPlans(app.database, app.ws)
+      .then((report) => {
+        if (report && report.linked + report.beforeRecords > 0) void queryClient.invalidateQueries();
+      })
+      .catch((error: unknown) => console.warn('Instalment plans were not linked', error));
+  }, [app.database, app.ws, queryClient]);
   // The day's safety copy, queued for the first idle moment after this screen has painted. It never
   // blocks a paint, and it is what stands behind "Restore the last good copy" on a device that has not
   // had an update in months.

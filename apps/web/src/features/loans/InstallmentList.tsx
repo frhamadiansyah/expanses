@@ -11,9 +11,27 @@ import { type GroupChild, InsetGroup, InsetRow, ProgressBar, ReadOnlyRow, ROW_PA
 import { useMonthStart } from '../workspaces/queries';
 import { ALERT_ROW, NoticeAlert } from '../../ui/native/NoticeAlert';
 import { Line, SUBTITLE, TextLine, TITLE } from '../cards/rows';
-import { blankPlanForm, type PlanForm, planFields, planFormOf, purchaseChoices } from './plan-form';
-import { COUNT_SEGMENTS, countSpendingFooter } from './plan-view';
-import { useCardLines, useInstallments, useStatementDay } from './queries';
+import { blankPlanForm, type PlanForm, planFields, planFormOf, purchaseChoices, shownPurchase } from './plan-form';
+import { COUNT_SEGMENTS, countSpendingFooter, noPurchaseWarning, purchaseStateOf } from './plan-view';
+import { useCardLines, useCardRecordsFrom, useInstallments, usePlanCategoryChoices, useStatementDay } from './queries';
+
+/** The line a plan with no purchase chosen shows, above Save and on its page (`noPurchaseWarning`). */
+export function NoPurchaseWarning({ text }: { text: string | null }) {
+  if (!text) return null;
+  return (
+    <p data-testid="no-purchase-warning" className="mx-[4px] mb-[14px] rounded-[9px] bg-[var(--ph-warn-panel)] px-[12px] py-[9px] text-[13px] leading-[18px] text-[var(--ph-warn-ink)]">
+      {text}
+    </p>
+  );
+}
+
+/** "Food & drink › Restaurants": a category's name with its parent's, for a flat list of choices. */
+export function categoryLabel(id: string, all: readonly { id: string; name: string; parentId: string | null }[]): string {
+  const row = all.find((c) => c.id === id);
+  if (!row) return '';
+  const parent = row.parentId ? all.find((c) => c.id === row.parentId) : undefined;
+  return parent ? `${parent.name} › ${row.name}` : row.name;
+}
 
 /** The Count spending control in a row of its own, with the hairline a row above it draws. */
 export function CountSpendingRow({ position, value, onChange, disabled }: GroupChild & { value: string; onChange: (mode: 'at_purchase' | 'each_month') => void; disabled?: boolean }) {
@@ -75,6 +93,10 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
   /** The sheet: closed, a new plan, or the plan being edited. */
   const [sheet, setSheet] = useState<'new' | CardInstallmentRow | null>(null);
   const lines = useCardLines(cardAccountId, sheet !== null);
+  const recordsFrom = useCardRecordsFrom(cardAccountId).data ?? null;
+  const categories = usePlanCategoryChoices(sheet !== null).data ?? [];
+  // A new plan's Purchase follows the typed total until the owner touches it; an existing plan's is its own.
+  const [purchaseTouched, setPurchaseTouched] = useState(false);
   const [form, setForm] = useState<PlanForm>(() => blankPlanForm(today));
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -84,6 +106,7 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
   const open = (target: 'new' | CardInstallmentRow) => {
     setError(null);
     setForm(target === 'new' ? blankPlanForm(today) : planFormOf(target, currency));
+    setPurchaseTouched(target !== 'new');
     setSheet(target);
   };
   const close = () => {
@@ -97,8 +120,9 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
     setError(null);
     setBusy(true);
     try {
-      if (sheet === 'new') await saveInstallment(database, ws, { cardAccountId, ...planFields(form, currency) });
-      else await updateInstallment(database, ws, { id: sheet.id, ...planFields(form, currency) });
+      const fields = planFields({ ...form, transactionId: purchase }, currency);
+      if (sheet === 'new') await saveInstallment(database, ws, { cardAccountId, ...fields });
+      else await updateInstallment(database, ws, { id: sheet.id, ...fields });
       await invalidate();
       close();
     } catch (e) {
@@ -132,13 +156,21 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
       return 0;
     }
   })();
-  const choices = purchaseChoices(lines.data ?? [], sheet && sheet !== 'new' ? sheet.id : null, typedTotal);
+  const planId = sheet && sheet !== 'new' ? sheet.id : null;
+  const choices = purchaseChoices(lines.data ?? [], planId, typedTotal);
+  const purchase = shownPurchase(form, typedTotal, lines.data ?? [], purchaseTouched);
+  const categoryName = form.categoryAccountId ? categoryLabel(form.categoryAccountId, categories) || null : null;
+  const warning = noPurchaseWarning(
+    purchaseStateOf({ id: planId, transactionId: purchase, totalMinor: typedTotal, firstBilledMonth: form.firstBilledMonth }, lines.data ?? [], recordsFrom),
+    form.countMode,
+    categoryName,
+  );
   // What the footer reads for the plan as typed: its months follow the card's statement day and the workspace's months.
   const footer = (() => {
     const months = Number(form.months);
     if (!Number.isInteger(months) || months < 1 || !(typedTotal > 0) || !/^\d{4}-\d{2}$/.test(form.firstBilledMonth)) return undefined;
     const typed = { totalMinor: typedTotal, months, monthlyMinor: Math.round(typedTotal / months), firstBilledMonth: form.firstBilledMonth, rateBps: 0, conversionFeeMinor: 0, earnsPoints: form.earnsPoints };
-    return countSpendingFooter({ ...typed, countMode: form.countMode, transactionId: form.transactionId }, installmentSchedule(typed, statementDay), currency, monthStart);
+    return countSpendingFooter({ ...typed, countMode: form.countMode, transactionId: purchase }, installmentSchedule(typed, statementDay), currency, monthStart, { categoryName, recordsFrom });
   })();
   const node = (
     <>
@@ -151,16 +183,37 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
               <TextRow label="Months" value={form.months} inputMode="numeric" onChange={(e) => patch({ months: e.target.value })} />
               <TextRow label="First billed" type="month" value={form.firstBilledMonth} onChange={(e) => patch({ firstBilledMonth: e.target.value })} />
               <SwitchRow label="Earns points" checked={form.earnsPoints} onChange={(earnsPoints) => patch({ earnsPoints })} />
-              <SelectRow label="Purchase" value={form.transactionId ?? ''} onChange={(e) => patch({ transactionId: e.target.value || null })}>
+              <SelectRow
+                label="Purchase"
+                value={purchase ?? ''}
+                onChange={(e) => {
+                  setPurchaseTouched(true);
+                  patch({ transactionId: e.target.value || null });
+                }}
+              >
                 <option value="">None</option>
                 {/* A purchase no longer offered (deleted since) still shows while it is the plan's. */}
-                {form.transactionId && !choices.some((choice) => choice.transactionId === form.transactionId) && <option value={form.transactionId}>The purchase it came from</option>}
+                {purchase && !choices.some((choice) => choice.transactionId === purchase) && <option value={purchase}>The purchase it came from</option>}
                 {choices.map((choice) => (
                   <option key={choice.transactionId} value={choice.transactionId}>
                     {`${choice.description} · ${choice.occurredOn} · ${formatMinor(choice.amountMinor, currency)}`}
                   </option>
                 ))}
               </SelectRow>
+              {/* With no purchase there is no category to take: the plan's own, in Personal (0122). */}
+              {!purchase && (
+                <SelectRow label="Category" value={form.categoryAccountId ?? ''} onChange={(e) => patch({ categoryAccountId: e.target.value || null })}>
+                  <option value="">Uncategorised</option>
+                  {categories
+                    .map((category) => ({ id: category.id, label: categoryLabel(category.id, categories) }))
+                    .sort((a, b) => a.label.localeCompare(b.label))
+                    .map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.label}
+                      </option>
+                    ))}
+                </SelectRow>
+              )}
             </InsetGroup>
             <InsetGroup header="Count spending" footer={footer}>
               <CountSpendingRow value={form.countMode} onChange={(countMode) => patch({ countMode })} />
@@ -174,6 +227,7 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
               </InsetGroup>
             )}
             <ErrorBox error={error} />
+            <NoPurchaseWarning text={warning} />
             <input type="submit" hidden disabled={busy} />
             <InsetGroup>
               <InsetRow action title={editing ? 'Save' : 'Save plan'} disabled={busy} onClick={() => formEl.current?.requestSubmit()} />

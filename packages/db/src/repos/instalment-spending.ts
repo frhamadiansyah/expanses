@@ -1,4 +1,4 @@
-import { type InstalmentCountMode, instalmentSpendingLines, instalmentsCountedIn, type PartWeight } from '@expanses/core';
+import { type InstalmentCountMode, instalmentsFrom, instalmentSpendingLines, instalmentsCountedIn, type PartWeight } from '@expanses/core';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Db } from '../database';
@@ -30,6 +30,34 @@ export interface PlanWithDay {
   wholeBaseMinor?: number;
   /** True for such a spread: there is no plan here to open, nor any debt of this phone's. */
   received?: boolean;
+  /**
+   * The day the card's records start in the app (`cardRecordsFrom`): an instalment billed before it is inside the
+   * card's opening balance, in months the app was not kept, and counts nowhere. Null for none known (and for a spread
+   * from another phone, whose purchase is recorded, so it has none of its instalments before the records anyway).
+   */
+  recordsFrom?: string | null;
+}
+
+/**
+ * The day a card's records start in the app: its opening balance's date, else the day it is counted from (0107), else
+ * its first transaction. Null for a card with nothing on it yet.
+ */
+export async function cardRecordsFrom(db: Db, ws: WorkspaceContext, cardAccountId: string): Promise<string | null> {
+  const [opening] = await db.values<[string | null]>(sql`
+    SELECT MIN(t.occurred_on) FROM transactions t
+    JOIN entries e ON e.transaction_id = t.id AND e.account_id = ${cardAccountId}
+    WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted'
+      AND EXISTS (SELECT 1 FROM entries o JOIN accounts oa ON oa.id = o.account_id
+                  WHERE o.transaction_id = t.id AND oa.kind = 'equity' AND oa.system_key = 'opening_balance')`);
+  if (opening?.[0]) return opening[0];
+  if ((await db.values(sql`SELECT 1 FROM pragma_table_info('accounts') WHERE name = 'counted_from'`)).length > 0) {
+    const [row] = await db.values<[string | null]>(sql`SELECT counted_from FROM accounts WHERE id = ${cardAccountId} AND workspace_id = ${ws.workspaceId}`);
+    if (row?.[0]) return row[0];
+  }
+  const [first] = await db.values<[string | null]>(sql`
+    SELECT MIN(t.occurred_on) FROM transactions t JOIN entries e ON e.transaction_id = t.id AND e.account_id = ${cardAccountId}
+    WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted'`);
+  return first?.[0] ?? null;
 }
 
 /**
@@ -141,6 +169,7 @@ async function receivedPlansTx(db: Db, ws: WorkspaceContext, own: ReadonlySet<st
         conversionFeeMinor: 0,
         earnsPoints: true,
         countMode: 'each_month' as const,
+        categoryAccountId: null,
       },
       statementDay: Number(statementDay),
       wholeBaseMinor: Number(wholeBaseMinor),
@@ -162,7 +191,9 @@ export async function plansWithStatementDays(db: Db, ws: WorkspaceContext): Prom
         .where(and(eq(cardTerms.workspaceId, ws.workspaceId), inArray(cardTerms.accountId, cardIds)))
     : [];
   const dayOf = new Map(terms.map((term) => [term.accountId, term.statementDay ?? 1]));
-  const own = plans.map((plan) => ({ plan, statementDay: dayOf.get(plan.cardAccountId) ?? 1 }));
+  const recordsOf = new Map<string, string | null>();
+  for (const cardId of cardIds) recordsOf.set(cardId, await cardRecordsFrom(db, ws, cardId));
+  const own = plans.map((plan) => ({ plan, statementDay: dayOf.get(plan.cardAccountId) ?? 1, recordsFrom: recordsOf.get(plan.cardAccountId) ?? null }));
   const received = await receivedPlansTx(db, ws, new Set(plans.flatMap((plan) => (plan.transactionId ? [plan.transactionId] : []))));
   return [...own, ...received];
 }
@@ -227,10 +258,10 @@ export async function spreadLinesIn(
 ): Promise<SpreadLine[]> {
   const spreading = plans.filter(({ plan }) => countsEachMonth(plan));
   if (spreading.length === 0) return [];
-  const needsUncategorised = spreading.some(({ plan }) => !plan.transactionId);
+  const needsUncategorised = spreading.some(({ plan }) => !plan.transactionId && !plan.categoryAccountId);
   const unfiled = needsUncategorised ? await uncategorisedForPlans(db, ws) : null;
   const out: SpreadLine[] = [];
-  for (const { plan, statementDay, wholeBaseMinor, received } of spreading) {
+  for (const { plan, statementDay, wholeBaseMinor, received, recordsFrom } of spreading) {
     let parts: readonly PartWeight[];
     let whole: number | undefined;
     if (plan.transactionId) {
@@ -238,13 +269,18 @@ export async function spreadLinesIn(
       // A spread from the payer's phone carries the whole it was worked out against: this phone may hold only a part.
       whole = wholeBaseMinor ?? purchaseWhole.get(plan.transactionId);
     } else {
-      // No purchase: the card paid all of it, so a Paid with filter on another account leaves it out.
-      if (!unfiled || (opts.paidAccountId && opts.paidAccountId !== plan.cardAccountId)) continue;
-      parts = [{ key: unfiled, weight: 1 }];
+      // No purchase: the card paid all of it, so a Paid with filter on another account leaves it out. It counts in the
+      // plan's own category (0122), else Uncategorised — in the workspace that category is in, and nowhere else.
+      if (opts.paidAccountId && opts.paidAccountId !== plan.cardAccountId) continue;
+      const category = plan.categoryAccountId ?? unfiled;
+      if (!category || (plan.categoryAccountId && !(await categoryIsReadTx(db, ws, plan.categoryAccountId)))) continue;
+      parts = [{ key: category, weight: 1 }];
       whole = 1;
     }
     if (parts.length === 0) continue;
-    for (const line of instalmentsCountedIn(instalmentSpendingLines(plan, statementDay, parts, whole), from, to)) {
+    // Billed before the card's records start: inside its opening balance, in months the app was not kept — nowhere.
+    const lines = instalmentsFrom(instalmentSpendingLines(plan, statementDay, parts, whole), received ? null : (recordsFrom ?? null));
+    for (const line of instalmentsCountedIn(lines, from, to)) {
       out.push({
         planId: plan.id,
         cardAccountId: plan.cardAccountId,
@@ -260,6 +296,13 @@ export async function spreadLinesIn(
     }
   }
   return out;
+}
+
+/** Whether a category counts in the reading: the open workspace's own, or any when none is open. */
+async function categoryIsReadTx(db: Db, ws: WorkspaceContext, categoryAccountId: string): Promise<boolean> {
+  if (!ws.bookId || !(await hasBooks(db))) return true;
+  const rows = await db.values(sql`SELECT 1 FROM book_categories WHERE book_id = ${ws.bookId} AND category_account_id = ${categoryAccountId}`);
+  return rows.length > 0;
 }
 
 /** What every category line of each purchase comes to, in the owner's currency: the whole a part is a share of. */

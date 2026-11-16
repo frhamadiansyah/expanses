@@ -1,6 +1,6 @@
 import { installmentSchedule } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { countSpendingFooter, planProgress } from './plan-view';
+import { countSpendingFooter, noPurchaseWarning, planProgress, purchaseStateOf } from './plan-view';
 
 // Invented: a laptop of Rp 12.000.000, 12 × Rp 1.000.000 from December 2026, statement day the 18th.
 const plan = { totalMinor: 12_000_000, months: 12, monthlyMinor: 1_000_000, firstBilledMonth: '2026-12', rateBps: 0, conversionFeeMinor: 0, earnsPoints: true };
@@ -46,5 +46,34 @@ describe('planProgress', () => {
     const progress = planProgress(12_000_000, statuses.map((row) => ({ ...row, status: 'upcoming' as const })));
     expect(progress.rows.map((row) => row.number)).toEqual([1]);
     expect(progress.leftMinor).toBe(12_000_000);
+  });
+});
+
+describe('a plan with no purchase (owner, 16 Nov 2026)', () => {
+  const line = (transactionId: string, occurredOn: string, owedMinor: number) => ({ transactionId, occurredOn, owedMinor, spending: true, instalment: null, balancing: false, convertedTo: null });
+  const unlinked = { id: 'p1', transactionId: null, totalMinor: 12_000_000, firstBilledMonth: '2026-12' };
+
+  it('reads linked, before the records, or unlinked', () => {
+    expect(purchaseStateOf({ ...unlinked, transactionId: 't1' }, [], null)).toBe('linked');
+    expect(purchaseStateOf(unlinked, [], '2027-03-01')).toBe('before-records');
+    expect(purchaseStateOf(unlinked, [], '2026-01-01')).toBe('unlinked');
+    expect(purchaseStateOf(unlinked, [line('t1', '2026-11-10', 12_000_000)], '2026-01-01')).toBe('unlinked');
+  });
+
+  it('warns under Each month when the purchase may be recorded, never for one bought before the records', () => {
+    expect(noPurchaseWarning('unlinked', 'each_month')).toBe('No purchase chosen: each instalment counts as Uncategorised spending, on top of the purchase.');
+    expect(noPurchaseWarning('unlinked', 'each_month', 'Electronics')).toBe('No purchase chosen: each instalment counts as Electronics spending, on top of the purchase.');
+    expect(noPurchaseWarning('before-records', 'each_month')).toBeNull();
+    expect(noPurchaseWarning('linked', 'each_month')).toBeNull();
+    expect(noPurchaseWarning('unlinked', 'at_purchase')).toBeNull();
+    expect(noPurchaseWarning('unlinked', 'at_purchase', null, true)).toBe('No purchase chosen: choose the purchase it came from to count it each month.');
+  });
+
+  it('counts from the card’s records start, in its own category', () => {
+    // 24 × Rp 1.000.000 from May 2024; records from 1 Oct 2025: instalments 18–24 count, Oct 2025 – Apr 2026.
+    const phone = { totalMinor: 24_000_000, months: 24, monthlyMinor: 1_000_000, firstBilledMonth: '2024-05', rateBps: 0, conversionFeeMinor: 0, earnsPoints: true };
+    expect(rp(countSpendingFooter({ ...phone, countMode: 'each_month', transactionId: null }, installmentSchedule(phone, 18), 'IDR', 1, { recordsFrom: '2025-10-01', categoryName: 'Gadgets' }))).toBe(
+      'Each month: Rp 1.000.000 counts in each month from October to April 2026. Under Gadgets, as no purchase is chosen.',
+    );
   });
 });

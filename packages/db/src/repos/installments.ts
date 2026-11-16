@@ -4,7 +4,9 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { cardInstallments } from '../schema-loans';
-import { captureSpreadingTx } from '../sync/capture';
+import { captureSpreadingTx, withCapture } from '../sync/capture';
+import { hasBooks, personalBookIdTx } from './books';
+import { ensureUncategorisedRowTx, uncategorisedIdOf } from './uncategorised';
 
 export class InstallmentDbError extends Error {
   constructor(message: string) {
@@ -25,6 +27,21 @@ export interface CardInstallmentRow extends CardInstallment {
    * counting nothing, or the purchase in full on its day. Before 0120 every plan counted at purchase.
    */
   countMode: InstalmentCountMode;
+  /**
+   * For a plan with no purchase: the category its instalments count in Each month (0122). Null is Uncategorised. A plan
+   * tied to a purchase counts in the purchase's categories and never reads this.
+   */
+  categoryAccountId: string | null;
+}
+
+const categoryColumn = new WeakMap<Db, boolean>();
+
+/** Whether 0122 is here: before it no plan has a category of its own. */
+export async function planCategoryColumnExists(db: Db): Promise<boolean> {
+  if (categoryColumn.get(db)) return true;
+  const rows = await db.values(sql`SELECT 1 FROM pragma_table_info('card_installments') WHERE name = 'category_account_id'`);
+  if (rows.length > 0) categoryColumn.set(db, true);
+  return rows.length > 0;
 }
 
 /*
@@ -56,6 +73,8 @@ export interface SaveInstallmentInput {
   earnsPoints?: boolean;
   /** Each month unless said: the owner's choice for new plans. */
   countMode?: InstalmentCountMode;
+  /** With no purchase: the category it counts in; Uncategorised when left out (0122). */
+  categoryAccountId?: string | null;
 }
 
 async function cardAccountTx(tx: Db, ws: WorkspaceContext, accountId: string): Promise<void> {
@@ -67,7 +86,7 @@ async function cardAccountTx(tx: Db, ws: WorkspaceContext, accountId: string): P
   if (row.subtype !== 'credit_card') throw new InstallmentDbError('Only a credit card carries instalment plans');
 }
 
-const toRow = (row: typeof cardInstallments.$inferSelect, countMode: InstalmentCountMode = 'at_purchase'): CardInstallmentRow => ({
+const toRow = (row: typeof cardInstallments.$inferSelect, countMode: InstalmentCountMode = 'at_purchase', categoryAccountId: string | null = null): CardInstallmentRow => ({
   id: row.id,
   cardAccountId: row.cardAccountId,
   transactionId: row.transactionId,
@@ -81,7 +100,30 @@ const toRow = (row: typeof cardInstallments.$inferSelect, countMode: InstalmentC
   earnsPoints: row.earnsPoints === 1,
   createdAt: row.createdAt,
   countMode,
+  categoryAccountId,
 });
+
+/**
+ * A plan with no purchase and no category of its own counts Each month under Uncategorised of the owner's Personal
+ * workspace (`spreadLinesIn`): the row is made here when it is not there yet, so the figures have a category to name.
+ */
+async function ensurePlanCategoryTx(tx: Db, ws: WorkspaceContext, id: string): Promise<void> {
+  const [row] = await tx.values<[string | null, string, string | null]>(sql`
+    SELECT transaction_id, count_mode, ${(await planCategoryColumnExists(tx)) ? sql`category_account_id` : sql`NULL`} FROM card_installments WHERE id = ${id}`);
+  if (!row || row[0] !== null || row[1] !== 'each_month' || row[2] !== null) return;
+  const bookId = (await hasBooks(tx)) ? await personalBookIdTx(tx, ws.workspaceId) : null;
+  const category = await uncategorisedIdOf(bookId ?? ws.workspaceId, 'expense');
+  await withCapture(tx, { entity: 'category', id: category }, () => ensureUncategorisedRowTx(tx, ws.workspaceId, bookId, 'expense'));
+}
+
+async function writeCategoryTx(tx: Db, ws: WorkspaceContext, id: string, categoryAccountId: string | null): Promise<void> {
+  if (!(await planCategoryColumnExists(tx))) return;
+  if (categoryAccountId) {
+    const [found] = await tx.values<[string]>(sql`SELECT kind FROM accounts WHERE id = ${categoryAccountId} AND workspace_id = ${ws.workspaceId}`);
+    if (found?.[0] !== 'expense') throw new InstallmentDbError('A plan counts in a spending category');
+  }
+  await tx.run(sql`UPDATE card_installments SET category_account_id = ${categoryAccountId} WHERE id = ${id} AND workspace_id = ${ws.workspaceId}`);
+}
 
 /**
  * The purchase a plan is tied to must be a posted transaction on the same card, and no other plan's: two plans spreading
@@ -132,6 +174,8 @@ export async function saveInstallment(database: Database, ws: WorkspaceContext, 
       createdAt: new Date().toISOString(),
     });
     await writeCountModeTx(tx, ws, id, input.countMode ?? 'each_month');
+    if (input.categoryAccountId) await writeCategoryTx(tx, ws, id, input.categoryAccountId);
+    if (await countModeColumnExists(tx)) await ensurePlanCategoryTx(tx, ws, id);
   });
   return id;
 }
@@ -148,6 +192,8 @@ export interface UpdateInstallmentInput {
   transactionId?: string | null;
   /** Left out, the plan keeps counting as it does. */
   countMode?: InstalmentCountMode;
+  /** Left out, the plan keeps its category; null is Uncategorised (0122). */
+  categoryAccountId?: string | null;
 }
 
 /**
@@ -182,6 +228,8 @@ export async function updateInstallment(database: Database, ws: WorkspaceContext
       })
       .where(and(eq(cardInstallments.id, input.id), eq(cardInstallments.workspaceId, ws.workspaceId)));
     if (input.countMode !== undefined) await writeCountModeTx(tx, ws, input.id, input.countMode);
+    if (input.categoryAccountId !== undefined) await writeCategoryTx(tx, ws, input.id, input.categoryAccountId);
+    if (await countModeColumnExists(tx)) await ensurePlanCategoryTx(tx, ws, input.id);
   });
 }
 
@@ -198,6 +246,7 @@ export async function setInstallmentCountMode(database: Database, ws: WorkspaceC
     if (!found) throw new InstallmentDbError('Plan not found in this workspace');
     if (found.transactionId) await captureSpreadingTx(tx, found.transactionId);
     await writeCountModeTx(tx, ws, id, countMode);
+    if (await countModeColumnExists(tx)) await ensurePlanCategoryTx(tx, ws, id);
   });
 }
 
@@ -212,12 +261,17 @@ export async function listInstallmentsTx(db: Db, ws: WorkspaceContext, cardAccou
     : eq(cardInstallments.workspaceId, ws.workspaceId);
   const rows = await db.select().from(cardInstallments).where(where).orderBy(asc(cardInstallments.createdAt));
   if (rows.length === 0 || !(await countModeColumnExists(db))) return rows.map((row) => toRow(row));
+  const withCategory = await planCategoryColumnExists(db);
   const modes = new Map(
-    (await db.values<[string, string]>(sql`SELECT id, count_mode FROM card_installments WHERE workspace_id = ${ws.workspaceId}`)).map(([id, mode]) => [id, mode]),
+    (
+      await db.values<[string, string, string | null]>(
+        sql`SELECT id, count_mode, ${withCategory ? sql`category_account_id` : sql`NULL`} FROM card_installments WHERE workspace_id = ${ws.workspaceId}`,
+      )
+    ).map(([id, mode, category]) => [id, { mode, category }]),
   );
   return rows.map((row) => {
-    const mode = modes.get(row.id);
-    return toRow(row, isCountMode(mode) ? mode : 'at_purchase');
+    const read = modes.get(row.id);
+    return toRow(row, isCountMode(read?.mode) ? read.mode : 'at_purchase', read?.category ?? null);
   });
 }
 
@@ -258,4 +312,20 @@ export async function nonEarningInstallmentTransactionIds(database: Database, ws
     .from(cardInstallments)
     .where(eq(cardInstallments.workspaceId, ws.workspaceId));
   return new Set(rows.filter((row) => row.earnsPoints === 0 && row.transactionId !== null).map((row) => row.transactionId!));
+}
+
+/**
+ * The categories a plan with no purchase can count in: the owner's Personal workspace's spending categories (0122).
+ * A plan with no purchase counts in Personal alone, never in a shared workspace, so no other phone needs it. Parents
+ * first, by their order.
+ */
+export async function planCategoryChoices(database: Database, ws: WorkspaceContext): Promise<{ id: string; name: string; parentId: string | null }[]> {
+  const db = database.db;
+  const bookId = (await hasBooks(db)) ? await personalBookIdTx(db, ws.workspaceId) : null;
+  const rows = await db.values<[string, string, string | null]>(sql`
+    SELECT a.id, a.name, a.parent_id FROM accounts a
+    WHERE a.workspace_id = ${ws.workspaceId} AND a.kind = 'expense' AND a.archived_at IS NULL AND (a.system_key IS NULL OR a.system_key <> 'uncategorised')
+      ${bookId ? sql`AND a.id IN (SELECT category_account_id FROM book_categories WHERE book_id = ${bookId})` : sql``}
+    ORDER BY a.parent_id IS NOT NULL, a.sort_order, a.name`);
+  return rows.map(([id, name, parentId]) => ({ id, name, parentId }));
 }
