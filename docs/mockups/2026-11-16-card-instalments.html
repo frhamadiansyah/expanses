@@ -1,0 +1,110 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Card instalments</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --red:#d70015; --slate:#64748b; --new:#1a7f37; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 14px; max-width:1150px; line-height:1.45; }
+  h2 { font-size:19px; margin:34px 0 4px; } .lead { color:#555; margin:0 0 14px; max-width:1150px; line-height:1.45; font-size:14px; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; color:#fff; background:var(--tint); border-radius:4px; padding:1px 6px; margin-left:6px; vertical-align:2px; }
+  .row { display:flex; gap:22px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:320px; } .cap { font-weight:700; margin:0 0 3px; font-size:15px; } .note { font-size:12.5px; color:#555; margin:0 0 10px; line-height:1.4; min-height:52px; }
+  .phone { background:var(--ground); border-radius:26px; padding:12px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .nav { display:flex; justify-content:space-between; align-items:center; margin:0 4px 10px; font-size:14px; } .nav .t { color:var(--tint); min-width:56px; } .nav b { font-size:15px; }
+  .hd { font-size:12px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; margin:4px 12px 6px; display:flex; justify-content:space-between; }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:10px; overflow:visible; }
+  .dh { display:flex; align-items:center; gap:10px; padding:7px 12px; border-bottom:.5px solid var(--hair); }
+  .dn { font-size:21px; font-weight:600; width:30px; } .dw { font-size:11.5px; color:var(--ink3); line-height:1.2; } .dw b { color:var(--ink2); font-weight:600; display:block; } .dt { margin-left:auto; font-size:12px; font-weight:600; color:var(--ink2); }
+  .tr { display:flex; gap:10px; align-items:center; padding:9px 12px; white-space:nowrap; } .tr + .tr { border-top:.5px solid var(--hair); }
+  .ic { width:32px; height:32px; border-radius:50%; font-size:15px; display:flex; align-items:center; justify-content:center; flex-shrink:0; background:#e3eefc; }
+  .ic.grey { background:#ececf0; color:#8e8e93; }
+  .g { flex:1; min-width:0; } .t { font-size:14px; font-weight:500; overflow:hidden; text-overflow:ellipsis; } .s { font-size:11.5px; color:var(--slate); overflow:hidden; text-overflow:ellipsis; }
+  .v { font-size:14px; font-weight:600; text-align:right; } .v.red { color:var(--red); } .v.dim { color:var(--ink3); font-weight:500; } .v .x { display:block; font-size:11.5px; font-weight:400; color:var(--ink3); }
+  .virtual { color:var(--ink3); font-style:italic; }
+  .new { outline:3px solid var(--new); outline-offset:-1px; border-radius:10px; position:relative; }
+  .new::after { content:'NEW'; position:absolute; top:-9px; right:8px; font-size:9.5px; font-weight:800; color:#fff; background:var(--new); border-radius:4px; padding:1px 5px; }
+  .chip { font-size:10.5px; font-weight:600; border-radius:4px; padding:0 5px; background:#eef2ff; color:#3b5bdb; margin-left:5px; vertical-align:1px; }
+  .seg { display:flex; background:#e3e3e8; border-radius:8px; padding:2px; font-size:12.5px; } .seg span { flex:1; text-align:center; padding:5px 0; border-radius:6px; } .seg .on { background:#fff; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.1); }
+  .r { display:flex; gap:10px; align-items:center; padding:9px 12px; font-size:14px; } .r + .r { border-top:.5px solid var(--hair); } .vd { color:var(--ink3); }
+  .foot { font-size:11.5px; color:var(--ink3); margin:-4px 12px 10px; line-height:1.35; }
+  .tot { display:flex; justify-content:space-between; padding:9px 12px; font-size:13px; } .tot b { font-size:15px; }
+  table.cmp { border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden; font-size:13.5px; } .cmp th, .cmp td { padding:8px 12px; border-bottom:.5px solid var(--hair); text-align:left; vertical-align:top; } .cmp th { background:#f7f7f9; font-size:12px; color:var(--ink3); text-transform:uppercase; }
+</style></head><body>
+<h1>Card instalments: real transactions and/or spreading the spending</h1>
+<p class="sub">Invented example: a laptop bought on the BCA Visa card on 10 Nov for Rp 12.000.000, converted to 12 monthly instalments of Rp 1.000.000 (0%). Statement day 18th. Three screens per option: the card's December statement, Cashflow November, Cashflow December. Green "NEW" = what changes.</p>
+
+<h2>Today</h2>
+<p class="lead">The statement shows each month's instalment as a line worked out from the plan — grey, not a transaction (can't be tapped, matched by statement check, or seen in the card's list). Cashflow counts the laptop once, in November.</p>
+<div class="row">
+  <div class="col"><p class="cap">Card · Dec statement</p><p class="note">Instalment 1 of 12 is a worked-out line.</p>
+    <div class="phone"><div class="nav"><span class="t">‹ BCA Visa</span><b>Statement 18 Dec</b><span style="width:56px"></span></div>
+      <div class="panel"><div class="tr"><div class="ic grey">⧉</div><div class="g"><div class="t virtual">Laptop · 1 of 12</div><div class="s">Instalment plan</div></div><div class="v dim">Rp 1.000.000</div></div>
+      <div class="tr"><div class="ic">🛒</div><div class="g"><div class="t">Groceries</div><div class="s">Supermarket</div></div><div class="v">Rp 640.000</div></div></div>
+      <div class="panel"><div class="tot"><span>Statement total</span><b>Rp 1.640.000</b></div></div></div></div>
+  <div class="col"><p class="cap">Cashflow · November</p><p class="note">The whole laptop counts as November spending.</p>
+    <div class="phone"><div class="panel"><div class="dh"><span class="dn">10</span><span class="dw"><b>Tuesday</b>November 2026</span><span class="dt">Rp 12.000.000</span></div>
+      <div class="tr"><div class="ic">💻</div><div class="g"><div class="t">Electronics</div><div class="s">Laptop · BCA Visa · 12 months</div></div><div class="v red">Rp 12.000.000</div></div></div></div></div>
+  <div class="col"><p class="cap">Cashflow · December</p><p class="note">Nothing for the laptop.</p>
+    <div class="phone"><div class="panel"><div class="dh"><span class="dn">18</span><span class="dw"><b>Friday</b>December 2026</span><span class="dt">Rp 640.000</span></div>
+      <div class="tr"><div class="ic">🛒</div><div class="g"><div class="t">Groceries</div><div class="s">Supermarket · BCA Visa</div></div><div class="v red">Rp 640.000</div></div></div></div></div>
+</div>
+
+<h2>A · Real instalment transactions <span class="tag">Recommended</span></h2>
+<p class="lead">On each statement day the app adds a real transaction on the card: "Laptop · instalment 1 of 12". It can be tapped, statement check can match it, and paying the card covers it. It is the repayment, not new spending — the laptop still counts once, in November. In Cashflow it is listed with the card's repayments (shown with the Transfers filter), not in spending.</p>
+<div class="row">
+  <div class="col"><p class="cap">Card · Dec statement</p><p class="note">A real row, tappable, with "1 of 12".</p>
+    <div class="phone"><div class="nav"><span class="t">‹ BCA Visa</span><b>Statement 18 Dec</b><span style="width:56px"></span></div>
+      <div class="panel"><div class="tr new"><div class="ic">⧉</div><div class="g"><div class="t">Laptop <span class="chip">1 of 12</span></div><div class="s">Instalment · 18 Dec</div></div><div class="v">Rp 1.000.000</div><span style="color:#c7c7cc">›</span></div>
+      <div class="tr"><div class="ic">🛒</div><div class="g"><div class="t">Groceries</div><div class="s">Supermarket</div></div><div class="v">Rp 640.000</div></div></div>
+      <div class="panel"><div class="tot"><span>Statement total</span><b>Rp 1.640.000</b></div></div></div></div>
+  <div class="col"><p class="cap">Cashflow · November</p><p class="note">Unchanged: Rp 12.000.000 spending.</p>
+    <div class="phone"><div class="panel"><div class="dh"><span class="dn">10</span><span class="dw"><b>Tuesday</b>November 2026</span><span class="dt">Rp 12.000.000</span></div>
+      <div class="tr"><div class="ic">💻</div><div class="g"><div class="t">Electronics</div><div class="s">Laptop · BCA Visa · 12 months</div></div><div class="v red">Rp 12.000.000</div></div></div></div></div>
+  <div class="col"><p class="cap">Cashflow · December (Transfers filter on)</p><p class="note">The instalment shows as a grey repayment, not counted in spending.</p>
+    <div class="phone"><div class="panel"><div class="dh"><span class="dn">18</span><span class="dw"><b>Friday</b>December 2026</span><span class="dt">Rp 640.000</span></div>
+      <div class="tr new"><div class="ic grey">⧉</div><div class="g"><div class="t" style="color:#8e8e93">Laptop · 1 of 12</div><div class="s">Instalment · BCA Visa · not counted</div></div><div class="v dim">Rp 1.000.000</div></div>
+      <div class="tr"><div class="ic">🛒</div><div class="g"><div class="t">Groceries</div><div class="s">Supermarket · BCA Visa</div></div><div class="v red">Rp 640.000</div></div></div></div></div>
+</div>
+
+<h2>B · Spread the spending (per plan)</h2>
+<p class="lead">A choice on the instalment plan: "Count spending: At purchase | Each month". With Each month, Cashflow counts Rp 1.000.000 in each of the 12 months instead of Rp 12.000.000 in November. The statement stays as today (worked-out lines).</p>
+<div class="row">
+  <div class="col"><p class="cap">Instalment plan</p><p class="note">The new choice on the plan's page.</p>
+    <div class="phone"><div class="nav"><span class="t">‹ BCA Visa</span><b>Laptop</b><span style="width:56px"></span></div>
+      <div class="panel"><div class="r"><span style="flex:1">Amount</span><span class="vd">Rp 12.000.000</span></div><div class="r"><span style="flex:1">Months</span><span class="vd">12</span></div><div class="r"><span style="flex:1">Each month</span><span class="vd">Rp 1.000.000</span></div></div>
+      <div class="hd">Count spending</div>
+      <div class="new" style="padding:8px;background:#fff;border-radius:12px"><div class="seg"><span>At purchase</span><span class="on">Each month</span></div></div>
+      <div class="foot" style="margin-top:8px">Each month: Rp 1.000.000 counts in each month from December to November 2027.</div></div></div>
+  <div class="col"><p class="cap">Cashflow · November</p><p class="note">The purchase stays in the list, but counts nothing this month.</p>
+    <div class="phone"><div class="panel"><div class="dh"><span class="dn">10</span><span class="dw"><b>Tuesday</b>November 2026</span><span class="dt">Rp 0</span></div>
+      <div class="tr new"><div class="ic">💻</div><div class="g"><div class="t">Electronics</div><div class="s">Laptop · spread over 12 months</div></div><div class="v dim">Rp 12.000.000<span class="x">counts Rp 0 now</span></div></div></div></div></div>
+  <div class="col"><p class="cap">Cashflow · December</p><p class="note">Rp 1.000.000 of the laptop counts as December spending (a worked-out row, like today's statement line).</p>
+    <div class="phone"><div class="panel"><div class="dh"><span class="dn">18</span><span class="dw"><b>Friday</b>December 2026</span><span class="dt">Rp 1.640.000</span></div>
+      <div class="tr new"><div class="ic">💻</div><div class="g"><div class="t">Electronics <span class="chip">1 of 12</span></div><div class="s virtual">Laptop · spread from 10 Nov</div></div><div class="v red">Rp 1.000.000</div></div>
+      <div class="tr"><div class="ic">🛒</div><div class="g"><div class="t">Groceries</div><div class="s">Supermarket · BCA Visa</div></div><div class="v red">Rp 640.000</div></div></div></div></div>
+</div>
+
+<h2>C · Both</h2>
+<p class="lead">Real instalment transactions every statement day (A), and the plan's choice decides how they count (B). At purchase: the instalment is a grey repayment (as A). Each month: the instalment IS that month's spending, in the purchase's category, and the purchase counts nothing.</p>
+<div class="row">
+  <div class="col"><p class="cap">Card · Dec statement</p><p class="note">Real row, as in A.</p>
+    <div class="phone"><div class="nav"><span class="t">‹ BCA Visa</span><b>Statement 18 Dec</b><span style="width:56px"></span></div>
+      <div class="panel"><div class="tr new"><div class="ic">💻</div><div class="g"><div class="t">Laptop <span class="chip">1 of 12</span></div><div class="s">Electronics · instalment</div></div><div class="v">Rp 1.000.000</div><span style="color:#c7c7cc">›</span></div>
+      <div class="tr"><div class="ic">🛒</div><div class="g"><div class="t">Groceries</div><div class="s">Supermarket</div></div><div class="v">Rp 640.000</div></div></div></div></div>
+  <div class="col"><p class="cap">Cashflow · November (Each month)</p><p class="note">Purchase listed, counts nothing.</p>
+    <div class="phone"><div class="panel"><div class="dh"><span class="dn">10</span><span class="dw"><b>Tuesday</b>November 2026</span><span class="dt">Rp 0</span></div>
+      <div class="tr new"><div class="ic">💻</div><div class="g"><div class="t">Electronics</div><div class="s">Laptop · spread over 12 months</div></div><div class="v dim">Rp 12.000.000<span class="x">counts Rp 0 now</span></div></div></div></div></div>
+  <div class="col"><p class="cap">Cashflow · December (Each month)</p><p class="note">The real instalment transaction is the spending — tappable, not a worked-out row.</p>
+    <div class="phone"><div class="panel"><div class="dh"><span class="dn">18</span><span class="dw"><b>Friday</b>December 2026</span><span class="dt">Rp 1.640.000</span></div>
+      <div class="tr new"><div class="ic">💻</div><div class="g"><div class="t">Electronics <span class="chip">1 of 12</span></div><div class="s">Laptop · BCA Visa</div></div><div class="v red">Rp 1.000.000</div></div>
+      <div class="tr"><div class="ic">🛒</div><div class="g"><div class="t">Groceries</div><div class="s">Supermarket · BCA Visa</div></div><div class="v red">Rp 640.000</div></div></div></div></div>
+</div>
+
+<h2>Side by side</h2>
+<table class="cmp">
+  <tr><th></th><th>Today</th><th>A · Real transactions</th><th>B · Spread spending</th><th>C · Both</th></tr>
+  <tr><td>Statement row</td><td>Worked-out, grey</td><td>Real, tappable</td><td>Worked-out, grey</td><td>Real, tappable</td></tr>
+  <tr><td>Statement check can match it</td><td>No</td><td>Yes</td><td>No</td><td>Yes</td></tr>
+  <tr><td>In the card's transaction list</td><td>No</td><td>Yes</td><td>No</td><td>Yes</td></tr>
+  <tr><td>When the laptop counts as spending</td><td>All in Nov</td><td>All in Nov</td><td>Rp 1 jt a month (or all in Nov — choice)</td><td>Rp 1 jt a month (or all in Nov — choice)</td></tr>
+  <tr><td>Budget feels like</td><td>One big month</td><td>One big month</td><td>Even months</td><td>Even months</td></tr>
+</table>
+</body></html>
