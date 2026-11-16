@@ -1,6 +1,7 @@
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
 import { currencyRow, setCurrency } from './currency-field';
-import { addForm, chooseTo, choosePayment, fillAmount, openAmount, saveButton, showTransfers, startSelecting } from './add-transaction';
+import { openAccountHistory } from './accounts';
+import { addForm, chooseTo, choosePayment, fillAmount, openAmount, saveButton, startSelecting } from './add-transaction';
 import { mockRates, openWithPockets } from './pockets';
 import { corner, eventually, newEvent, openTrip, openTripSettings } from './shared-events';
 import { openWorkspaceSharePage, putOffShareList, shareWorkspace, workspaceLine } from './workspace-page';
@@ -112,9 +113,9 @@ async function journey(owner: Page, browser: Browser, info: TestInfo, recordedBe
 
   if (!recordedBeforeSharing) await recordExchange(owner);
   await openWorkspace(owner, 'Family');
-  await owner.goto('/transactions');
-  // An own transfer (cash to cash) is off Cashflow until its filter shows transfers (own transfers off Cashflow).
-  await showTransfers(owner);
+  // A transfer (cash to cash) is not in Cashflow, which lists only money in and out (owner 2026-11-16): the cash
+  // wallet's own history lists it, and ticks it.
+  await openAccountHistory(owner, 'Cash');
 
   const row = owner.getByTestId('transaction-row').filter({ hasText: 'Bank Contoh' });
   await expect(row).toHaveCount(1);
@@ -134,9 +135,9 @@ async function journey(owner: Page, browser: Browser, info: TestInfo, recordedBe
   await owner.getByRole('menu', { name: 'Actions' }).getByRole('menuitem', { name: 'Add to event' }).click();
   await owner.getByRole('dialog', { name: 'Add to event' }).getByRole('button', { name: 'Anatolia Trip' }).click();
 
-  // Either it left Family, or the bar says why it stayed.
+  // Either it moved (select mode ends), or the bar says why it stayed.
   await expect(async () => {
-    const gone = (await row.count()) === 0;
+    const gone = (await bar(owner).count()) === 0;
     const said = (await bar(owner).getByRole('alert').count()) + (await owner.getByText(/stayed where/).count()) > 0;
     expect(gone || said).toBe(true);
   }).toPass({ timeout: 20_000 });
@@ -145,8 +146,8 @@ async function journey(owner: Page, browser: Browser, info: TestInfo, recordedBe
 }
 
 test('a lira exchange in a shared Family workspace, Add to event into the shared trip: it leaves Family and is listed on the trip', async ({ page: owner, browser }, info) => {
-  const row = await journey(owner, browser, info, false);
-  await expect(row).toHaveCount(0);
+  await journey(owner, browser, info, false);
+  await expect(bar(owner)).toHaveCount(0);
   await openTrip(owner, 'Anatolia Trip');
   await expect(owner.getByTestId('shared-event')).toContainText('Bank Contoh');
 });
@@ -157,8 +158,7 @@ test('a lira exchange in a shared Family workspace, Add to event into the shared
  * it in Family ("Recorded before Family sent its transfers …"); now it is filed as a transfer and listed on the trip.
  */
 test('the owner’s row, filed in Family as a purchase before Family sent its transfers: Add to event lists it on the trip', async ({ page: owner, browser }, info) => {
-  const row = await journey(owner, browser, info, true);
-  await expect(row).toHaveCount(0);
+  await journey(owner, browser, info, true);
   await expect(bar(owner)).toHaveCount(0);
   await openTrip(owner, 'Anatolia Trip');
   await expect(owner.getByTestId('shared-event')).toContainText('Bank Contoh');

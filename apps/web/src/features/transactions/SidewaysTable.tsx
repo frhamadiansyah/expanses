@@ -12,15 +12,12 @@ export function SidewaysTable({
   onMonth,
   spentMinor,
   currency,
-  transfers,
   children,
 }: {
   month: string;
   onMonth: (next: string) => void;
   spentMinor: number;
   currency: string;
-  /** Cashflow's Transfers filter (own transfers listed only while on), the same state the upright list's menu sets. */
-  transfers?: { on: boolean; onChange: (on: boolean) => void } | undefined;
   children: ReactNode;
 }) {
   // Arrows step by whatever the period is; All time and two chosen dates have no neighbours.
@@ -41,17 +38,7 @@ export function SidewaysTable({
         <button type="button" aria-label="Next month" disabled={!after} onClick={() => after && onMonth(after)} className={arrow}>
           <span aria-hidden>›</span>
         </button>
-        {transfers && (
-          <button
-            type="button"
-            aria-pressed={transfers.on}
-            onClick={() => transfers.onChange(!transfers.on)}
-            className={`ml-auto h-8 rounded-full px-3 text-sm font-semibold ${transfers.on ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-700'}`}
-          >
-            Transfers
-          </button>
-        )}
-        <span className={`${transfers ? '' : 'ml-auto '}text-sm text-slate-500`}>
+        <span className="ml-auto text-sm text-slate-500">
           <b className="tabular font-semibold text-slate-900">{formatMinor(spentMinor, currency)}</b> spent
         </span>
       </div>

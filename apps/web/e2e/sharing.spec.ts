@@ -3,9 +3,9 @@ import { dirname, join } from 'node:path';
 import { type Browser, expect, type Locator, type Page, test, type TestInfo } from '@playwright/test';
 import { currencyRow, setCurrency } from './currency-field';
 import BetterSqlite3 from 'better-sqlite3';
-import { openAccount, openCard, walletCard } from './accounts';
+import { openAccount, openAccountHistory, openCard, walletCard } from './accounts';
 import { fillDay, openNewAsset, pastPurchase } from './add-asset';
-import { addForm, addTransaction, addTransfer, fillAmount, openAmount, saveButton, showTransfers } from './add-transaction';
+import { addForm, addTransaction, addTransfer, fillAmount, openAmount, saveButton } from './add-transaction';
 import { cardPage, saveCardTerms } from './card-section';
 import { openDrawers } from './drawers';
 import { openWithPockets } from './pockets';
@@ -839,7 +839,7 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
 });
 
 
-test('a transfer in a shared workspace shows on the partner’s list as "Transfer · …" with no account names, and goes when deleted', async ({ page, browser }, info) => {
+test('a transfer in a shared workspace is in neither Cashflow, never names its accounts to the partner, and is deleted from its account', async ({ page, browser }, info) => {
   const phone = phoneProject(info);
   page.on('dialog', (dialog) => void dialog.accept());
   const dewi = await secondDevice(browser, info);
@@ -863,38 +863,31 @@ test('a transfer in a shared workspace shows on the partner’s list as "Transfe
   await expect(join).toHaveCount(0, { timeout: 60_000 });
   await putOffShareList(page);
 
-  // Fandri moves money between his own accounts in the shared workspace.
+  // Fandri moves money between his own accounts in the shared workspace, then buys something: the purchase is the sign
+  // that his changes have reached Dewi.
   await page.goto('/transactions');
   await addTransfer(page, { from: 'Fandri Bank', to: 'Fandri Pocket', amount: '250000', note: 'Pocket money' });
-  // Between his own accounts: his own Cashflow lists it only with Transfers on (owner 2026-11-13), even in the shared
-  // workspace; the partner's redacted row is the household's and stays on hers.
-  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Pocket money' })).toHaveCount(0);
-  await showTransfers(page);
-  await expect(page.getByText('Pocket money').first()).toBeVisible();
-  const shadow = dewi.getByTestId('shared-transfer-row');
+  await addTransaction(page, { description: 'Fandri snack', paidWith: 'Fandri Bank', category: 'Groceries', amount: '15000' });
+  // Cashflow lists only money in and out (owner 2026-11-16): not on his own list, even in the shared workspace.
+  await expect(rowOf(page, 'Fandri snack')).toBeVisible();
+  await expect(rowOf(page, 'Pocket money')).toHaveCount(0);
+  await expect(page.getByTestId('shared-transfer-row')).toHaveCount(0);
+  // Nor on Dewi's, as a redacted row or any other way; and no name of the pocket reaches her.
   await eventually(dewi, async () => {
     await dewi.goto('/transactions');
-    await expect(shadow).toHaveCount(1, { timeout: 1_000 });
+    await expect(rowOf(dewi, 'Fandri snack')).toHaveCount(1, { timeout: 1_000 });
   });
-  await expect(shadow).toContainText('Transfer · Pocket money');
-  await expect(shadow).toContainText('250.000');
-  // No account name reaches the partner, in the row or anywhere on the page.
+  await expect(dewi.getByTestId('shared-transfer-row')).toHaveCount(0);
+  await expect(dewi.locator('main')).not.toContainText('Pocket money');
   await expect(dewi.locator('main')).not.toContainText('Fandri Pocket');
-  await expect(dewi.locator('main')).not.toContainText('Fandri Bank');
-  // The recorder sees its own transfer once, and no redacted copy.
-  await expect(page.getByTestId('shared-transfer-row')).toHaveCount(0);
 
-  // Deleted by its recorder, it goes from the partner's list.
-  await page.goto('/transactions');
-  await showTransfers(page);
+  // His bank's history lists it, and deletes it.
+  await openAccountHistory(page, 'Fandri Bank');
   await page.locator('li', { hasText: /Pocket money/ }).first().click();
   await page.getByRole('button', { name: 'Delete this transaction' }).click();
   await page.getByRole('button', { name: 'Click again to delete' }).click();
   await expect(page.getByRole('button', { name: 'Click again to delete' })).toHaveCount(0);
-  await eventually(dewi, async () => {
-    await dewi.goto('/transactions');
-    await expect(shadow).toHaveCount(0, { timeout: 1_000 });
-  });
+  await expect(page.locator('li', { hasText: /Pocket money/ })).toHaveCount(0);
 });
 
 /*

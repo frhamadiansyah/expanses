@@ -1,14 +1,14 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount, openCard, openWalletAccount } from './accounts';
-import { addForm, addTransaction, addTransfer, choosePayment, chooseTo, saveButton, showTransfers, startSelecting } from './add-transaction';
+import { openAccount, openAccountHistory, openCard, openWalletAccount } from './accounts';
+import { addForm, addTransaction, addTransfer, choosePayment, chooseTo, historyMenu, saveButton, startSelecting } from './add-transaction';
 import { typeAmount, typeSecondFigure } from './set-aside';
 import { cardPage } from './card-section';
 import { TODAY } from './event-plan';
 
 /*
- * Own transfers off Cashflow (owner, 2026-11-13, option C). A card paid from the bank and a wallet topped up are listed
- * in no workspace's Cashflow; the Transfers filter brings them back; the card's statement and the bank's own page keep
- * them; a transfer with a typed fee keeps its row, the fee being spending. Every name and figure is invented.
+ * Cashflow lists only money in and money out (owner, 2026-11-16). A card paid from the bank and a wallet topped up are
+ * listed in no workspace's Cashflow, and nothing brings them back there; the card's statement and the bank's own page
+ * keep them; a transfer with a typed fee keeps its row, the fee being spending. Every name and figure is invented.
  */
 
 const row = (page: Page, text: string) => page.getByTestId('transaction-row').filter({ hasText: text });
@@ -39,7 +39,7 @@ async function topUpWithFee(page: Page) {
   await expect(form).toHaveCount(0);
 }
 
-test('a card payment and a top-up leave Cashflow, Transfers brings them back, and the statement and the bank page keep them', async ({ page }) => {
+test('a card payment and a top-up are not in Cashflow, which has no Transfers switch; the statement and the bank keep them', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Contoh Payroll', balance: '20000000' });
   await openAccount(page, { subtype: 'ewallet', name: 'Dompet', balance: '0' });
   await openCard(page, { name: 'Contoh Visa', statementDay: '31', dueDay: '15' });
@@ -58,10 +58,12 @@ test('a card payment and a top-up leave Cashflow, Transfers brings them back, an
   await expect(row(page, 'Contoh Visa payment')).toHaveCount(0);
   await expect(row(page, 'Plain top-up')).toHaveCount(0);
 
-  await showTransfers(page);
-  await expect(row(page, 'Contoh Visa payment')).toBeVisible();
-  await expect(row(page, 'Plain top-up')).toBeVisible();
-  await expect(page.getByTestId('filter-on')).toBeVisible();
+  // No switch brings them back: the menu is Select, Sort, Paid with and Reset.
+  await historyMenu(page).click();
+  const menu = page.getByTestId('sort-filter-menu');
+  await expect(menu.getByRole('menuitemcheckbox')).toHaveCount(0);
+  await expect(menu).not.toContainText('Transfers');
+  await historyMenu(page).click();
 
   // The card's statement and the bank's own page list them whatever Cashflow does.
   await page.goto('/wallet');
@@ -71,20 +73,25 @@ test('a card payment and a top-up leave Cashflow, Transfers brings them back, an
   await openWalletAccount(page, 'Contoh Payroll');
   await expect(page.getByTestId('account-recent')).toContainText('Contoh Visa payment');
   await expect(page.getByTestId('account-recent')).toContainText('Plain top-up');
+  // And the bank's whole history, behind See all.
+  await openAccountHistory(page, 'Contoh Payroll');
+  await expect(row(page, 'Contoh Visa payment')).toBeVisible();
+  await expect(row(page, 'Plain top-up')).toBeVisible();
+  await expect(row(page, 'Top-up with fee')).toBeVisible();
 });
 
-test('with nothing but own transfers in the month, the empty list offers them', async ({ page }) => {
+test('with nothing but transfers in the month, Cashflow reads as an empty period', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Contoh Payroll', balance: '20000000' });
   await openAccount(page, { subtype: 'ewallet', name: 'Dompet', balance: '0' });
   await page.goto('/transactions');
   await addTransfer(page, { from: 'Contoh Payroll', to: 'Dompet', amount: '100000', note: 'Plain top-up' });
   await page.goto('/transactions');
-  await expect(page.getByText('Only transfers in this period.')).toBeVisible();
-  await page.getByRole('button', { name: 'Show transfers', exact: true }).click();
-  await expect(row(page, 'Plain top-up')).toBeVisible();
+  await expect(page.getByText('No transactions in this period.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Show transfers', exact: true })).toHaveCount(0);
+  await expect(row(page, 'Plain top-up')).toHaveCount(0);
 });
 
-test('a transfer Transfers shows is ticked and put on a trip like any row; Select All leaves the hidden ones alone', async ({ page }) => {
+test('a transfer is ticked and put on a trip from its account’s page; Cashflow’s Select All ticks only what it lists', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Contoh Payroll', balance: '20000000' });
   await openAccount(page, { subtype: 'ewallet', name: 'Dompet', balance: '0' });
   await page.goto('/events');
@@ -107,25 +114,24 @@ test('a transfer Transfers shows is ticked and put on a trip like any row; Selec
     await page.getByRole('menu', { name: 'Actions' }).getByRole('menuitem', { name: action }).click();
   };
 
-  // Hidden, the top-up is not ticked by Select All.
+  // Not listed, the top-up is not ticked by Select All.
   await startSelecting(page);
   await act('Select All');
   await expect(bar).toContainText('1 selected');
   await bar.getByRole('button', { name: 'Done', exact: true }).click();
 
-  await showTransfers(page);
+  // The bank's own history lists it, and ticks it like any row.
+  await openAccountHistory(page, 'Contoh Payroll');
   await startSelecting(page);
   await page.getByRole('checkbox', { name: 'Select Trip top-up' }).click();
   await act('Add to event');
   await page.getByRole('dialog', { name: 'Add to event' }).getByRole('button', { name: 'Contoh trip' }).click();
   await expect(page.getByRole('status').filter({ hasText: /added to Contoh trip/ })).toBeVisible();
-  // On the trip now: Cashflow leaves event rows to the Events page, Transfers on or not.
-  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Trip top-up' })).toHaveCount(0);
   await page.goto(eventUrl);
   await expect(page.getByTestId('event-history').filter({ hasText: 'Trip top-up' })).toHaveCount(1);
 });
 
-test('sideways, the table has its own Transfers switch, the same filter as upright', async ({ page }) => {
+test('sideways, the table lists only money in and out too, with no Transfers switch', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Contoh Payroll', balance: '20000000' });
   await openAccount(page, { subtype: 'ewallet', name: 'Dompet', balance: '0' });
   await page.goto('/transactions');
@@ -137,12 +143,9 @@ test('sideways, the table has its own Transfers switch, the same filter as uprig
   const receipt = (what: string) => table.getByRole('link', { name: `Receipt for ${what}` });
   await expect(receipt('Warung Contoh')).toBeVisible();
   await expect(receipt('Sideways top-up')).toHaveCount(0);
-  const toggle = page.getByTestId('sideways-bar').getByRole('button', { name: 'Transfers' });
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-  await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-  await expect(receipt('Sideways top-up')).toBeVisible();
-  // Upright again, the list keeps the filter: one state, two controls.
+  await expect(page.getByTestId('sideways-bar').getByRole('button', { name: 'Transfers' })).toHaveCount(0);
+  // Upright again, the list leaves it out as well.
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(row(page, 'Sideways top-up')).toBeVisible();
+  await expect(row(page, 'Warung Contoh')).toBeVisible();
+  await expect(row(page, 'Sideways top-up')).toHaveCount(0);
 });

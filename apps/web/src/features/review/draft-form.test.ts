@@ -309,7 +309,7 @@ describe('recording a foreign draft without opening the form', () => {
   });
 });
 
-describe('savedWhere: where a confirmed own transfer can be found (Cashflow lists it nowhere, owner 2026-11-13)', () => {
+describe('savedWhere: where a confirmed transfer can be found (Cashflow lists only money in and out, owner 2026-11-16)', () => {
   const cards = [
     { id: 'plastic', accountId: 'visa-account', last4: '4821', holderName: null, isPrimary: true },
     { id: 'second', accountId: 'visa-account', last4: '7300', holderName: 'Partner', isPrimary: false },
@@ -334,13 +334,18 @@ describe('savedWhere: where a confirmed own transfer can be found (Cashflow list
     expect(savedWhere({ ...payment, toAccountId: null }, ACCOUNTS, cards)).toBeNull();
   });
 
-  it('says nothing for a transfer Cashflow still lists: a joint account, a fee, a loan', () => {
+  it('a joint account or a loan is on both pages too: Cashflow lists no transfer of any reach (owner 2026-11-16)', () => {
     const accounts = [...ACCOUNTS, { id: 'joint', name: 'Joint bank', kind: 'asset', subtype: 'bank', currency: 'IDR' }, { id: 'loan', name: 'Car loan', kind: 'liability', subtype: 'loan', currency: 'IDR' }] as AccountRow[];
-    expect(savedWhere({ ...payment, toAccountId: 'joint' }, accounts, cards, new Set(['joint']))).toBeNull();
-    expect(savedWhere(payment, accounts, cards, new Set(), { fee: true })).toBeNull();
-    expect(savedWhere({ ...payment, toAccountId: 'loan' }, accounts, cards)).toBeNull();
-    // A side this phone does not hold (the partner's) is the household's, listed in the shared workspace.
-    expect(savedWhere({ ...payment, toAccountId: 'partner-item' }, accounts, cards)).toBeNull();
+    expect(savedWhere({ ...payment, toAccountId: 'joint' }, accounts, cards)).toBe('Saved on both accounts’ pages');
+    expect(savedWhere({ ...payment, toAccountId: 'loan' }, accounts, cards)).toBe('Saved on both accounts’ pages');
+  });
+
+  it('a side this phone does not hold (the partner’s) names the side it does', () => {
+    expect(savedWhere({ ...payment, accountId: 'wallet', toAccountId: 'partner-item' }, ACCOUNTS, cards)).toBe(`Saved on ${ACCOUNTS.find((a) => a.id === 'wallet')!.name}’s page`);
+  });
+
+  it('says nothing for a transfer with a fee, which Cashflow lists', () => {
+    expect(savedWhere(payment, ACCOUNTS, cards, { fee: true })).toBeNull();
   });
 
   it('says nothing for spending or income, which Cashflow lists', () => {

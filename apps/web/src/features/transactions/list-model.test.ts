@@ -136,9 +136,9 @@ describe('filterRows', () => {
     expect(ids({ paid: 'acct:octo' })).toEqual(expect.arrayContaining(['d1', superindo.id, pay.id]));
   });
 
-  it('files lending with transfers', () => {
-    expect(ids({ type: 'transfer' })).toEqual(expect.arrayContaining([pay.id, lend.id]));
+  it('narrows to income alone; an account’s page still lists lending and card payments with every type', () => {
     expect(ids({ type: 'income' })).toEqual([salary.id]);
+    expect(ids({})).toEqual(expect.arrayContaining([pay.id, lend.id]));
   });
 
   it('searches words, parents, card digits and amounts', () => {
@@ -876,14 +876,12 @@ describe('card instalments (option C)', () => {
     expect(filterRows([row!], { ...EMPTY_FILTERS, type: 'expense' }, accounts)).toHaveLength(1);
   });
 
-  it('lists an investment’s instalment as Saving, never spending, shown only with Transfers on', () => {
+  it('reads an investment’s instalment as Saving, never spending, and Cashflow leaves it to the card’s statement', () => {
     const { categoryId: _c, amountBaseMinor: amountMinor, ...rest } = line;
     const [row] = instalmentRows({ lines: [], repayments: [{ ...rest, amountMinor, investment: true }] }, accounts, 'IDR');
     expect(row).toMatchObject({ type: 'transfer', spentMinor: 0, amountMinor: 1_000_000, transferName: 'Saving' });
     expect(row!.instalment).toMatchObject({ investment: true });
-    const cashflow = { shared: false, jointIds: new Set<string>() };
-    expect(filterRows([row!], EMPTY_FILTERS, accounts, cashflow)).toEqual([]);
-    expect(filterRows([row!], { ...EMPTY_FILTERS, showTransfers: true }, accounts, cashflow)).toHaveLength(1);
+    expect(filterRows([row!], EMPTY_FILTERS, accounts, true)).toEqual([]);
     expect(dayTotal([row!])).toBe(0);
   });
 });

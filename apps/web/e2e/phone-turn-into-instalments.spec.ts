@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openCard, walletCard } from './accounts';
-import { addTransaction, choosePayment, showTransfers } from './add-transaction';
+import { addTransaction, choosePayment } from './add-transaction';
 import { openNewAsset } from './add-asset';
 import { cardPage, saveCardTerms } from './card-section';
 
@@ -97,10 +97,12 @@ test('a bond bought with the card turned into 6: the statement bills 1 of 6, Cas
   await page.getByRole('button', { name: 'Add asset' }).last().click();
   await expect(page).toHaveURL(/\/net-worth\/assets$/);
 
-  // The buy's receipt: the Instalments row, None, beside Open holding.
-  await page.goto('/transactions');
-  await showTransfers(page);
-  await page.getByTestId('transaction-row').filter({ hasText: 'ORI031' }).first().click();
+  // The buy's receipt, opened from the card's statement (Cashflow lists no buy): the Instalments row, None, beside Open holding.
+  await page.goto('/wallet');
+  await walletCard(page, 'Mitra Visa').click();
+  await cardPage(page, 'Statement');
+  await page.getByRole('button', { name: /^Actions for .*ORI031/ }).first().click();
+  await page.getByRole('button', { name: 'Open receipt' }).click();
   const row = page.getByTestId('receipt-instalments');
   await expect(row).toContainText('None');
   await row.click();
@@ -126,11 +128,8 @@ test('a bond bought with the card turned into 6: the statement bills 1 of 6, Cas
   await cardPage(page, 'Statement');
   await expect(page.getByTestId('statement-line').filter({ hasText: 'ORI031' }).getByTestId('instalment-pill')).toContainText('1 of 6');
 
-  // Cashflow: no spending row for it; with Transfers on, a grey Saving row.
+  // Cashflow: no row for it at all — saving is neither money in nor out (owner 2026-11-16); the statement lists it.
   await page.goto('/transactions');
+  await expect(page.getByTestId('transaction-row').first().or(page.getByText('No transactions in this period.'))).toBeVisible();
   await expect(page.getByTestId('instalment-row')).toHaveCount(0);
-  await showTransfers(page);
-  const repayment = page.getByTestId('instalment-row').filter({ hasText: 'ORI031' });
-  await expect(repayment).toContainText('Saving');
-  await expect(repayment).toContainText('not counted');
 });

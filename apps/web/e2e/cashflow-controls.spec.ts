@@ -4,7 +4,8 @@ import { addTransaction, historyMenu, startSelecting } from './add-transaction';
 
 /*
  * Cashflow's history header on a wide screen (owner 2026-11-15): the bold "Transactions" title and one ⋯ square whose
- * menu holds Select, the sorts and Show, where Paid with is a searchable list. A sort or filter on is only a dot.
+ * menu is one group (owner 2026-11-16): Select, Sort (a grey word cycling on each tap), Paid with — a searchable list
+ * here — and Reset. A sort or filter on is only a dot.
  */
 test('one ⋯ in the header selects, sorts, filters by Paid with and resets, with a dot while anything is on', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '5000000' });
@@ -35,12 +36,17 @@ test('one ⋯ in the header selects, sorts, filters by Paid with and resets, wit
   const menu = page.getByTestId('sort-filter-menu');
   await historyMenu(page).click();
   await expect(menu.getByRole('menuitem', { name: 'Select', exact: true })).toBeVisible();
-  await expect(menu.getByRole('menuitemcheckbox', { name: 'Transfers' })).toBeVisible();
-  await page.getByRole('menuitemradio', { name: 'Largest first' }).click();
+  await expect(menu.getByRole('menuitemcheckbox')).toHaveCount(0);
+  await expect(menu).not.toContainText('Transfers');
+  const sort = menu.getByTestId('sort-cycle');
+  await expect(sort).toHaveText(/^Sort\s*Newest$/);
+  await sort.click();
+  await sort.click();
+  await expect(sort).toHaveText(/^Sort\s*Largest$/);
   await expect(rows.first()).toContainText('Superindo');
   await expect(page.getByTestId('filter-on')).toBeVisible();
 
-  await historyMenu(page).click();
+  // Sort leaves the menu open, so Paid with is the next tap.
   await page.getByRole('menuitem', { name: /^Paid with/ }).click();
   await page.getByLabel('Find in paid with').fill('bca');
   await page.getByRole('option', { name: /BCA Tahapan/ }).click();
@@ -51,4 +57,14 @@ test('one ⋯ in the header selects, sorts, filters by Paid with and resets, wit
   await page.getByRole('menuitem', { name: 'Reset' }).click();
   await expect(rows).toHaveCount(2);
   await expect(page.getByTestId('filter-on')).toHaveCount(0);
+  await historyMenu(page).click();
+  await expect(sort).toHaveText(/^Sort\s*Newest$/);
+});
+
+test('Type offers Everything, Spending and Income, and no Transfers & lending', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '5000000' });
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Kopi Kenangan', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '38000' });
+  await page.getByRole('button', { name: 'Type', exact: true }).click();
+  await expect(page.getByRole('listbox').getByRole('option')).toHaveText([/Everything$/, /Spending$/, /Income$/]);
 });

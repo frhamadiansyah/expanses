@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount, openCard } from './accounts';
+import { openAccount, openAccountHistory, openCard } from './accounts';
 import BetterSqlite3 from 'better-sqlite3';
 import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { addTransaction, closeDetails, shareWith, choosePayment, chooseTradeMoney, openBuyOrSell, saveButton } from './add-transaction';
@@ -21,8 +21,10 @@ async function spend(page: Page, description: string, amount: string, card = 'BC
 }
 
 /** The receipt behind a row's ⓘ, which is the only way a desktop reaches one. */
-async function openReceipt(page: Page, description: string) {
-  await page.goto('/transactions');
+/** From Cashflow, or — a buy, an opening balance, which Cashflow does not list (owner 2026-11-16) — `from`'s history. */
+async function openReceipt(page: Page, description: string, from?: string) {
+  if (from) await openAccountHistory(page, from);
+  else await page.goto('/transactions');
   await page.getByRole('link', { name: `Receipt for ${description}` }).click();
   await expect(page).toHaveURL(/\/transactions\/[0-9a-zA-Z-]{20,}$/);
 }
@@ -79,7 +81,7 @@ test('the receipt refuses what every other screen refuses: a trade, and an openi
   page.on('dialog', (dialog) => void dialog.accept());
 
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
-  // Opening balances are out of the list unless asked for; this test opens one, so it asks.
+  // Opening balances are out of an account's list unless asked for (and never on Cashflow); this test opens one, so it asks.
   await page.evaluate(() => localStorage.setItem('transactions-show-opening', '1'));
 
   await openNewAsset(page, 'Gold bullion');
@@ -99,15 +101,15 @@ test('the receipt refuses what every other screen refuses: a trade, and an openi
   await chooseTradeMoney(form, 'BCA Tahapan (IDR)');
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
-  // Trade goes back to Net worth, where it was opened; the list is read on Cashflow.
-  await page.goto('/transactions');
+  // Trade goes back to Net worth, where it was opened; the bank's history lists it (not Cashflow, owner 2026-11-16).
+  await openAccountHistory(page, 'BCA Tahapan');
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
 
   // Cash down 3,98 M, gold up 3,98 M: buying something changes nothing about what you are worth.
   await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('68.600.000');
 
-  await openReceipt(page, 'Bought 2 Antam gold bars');
+  await openReceipt(page, 'Bought 2 Antam gold bars', 'BCA Tahapan');
   await expect(page.getByRole('button', { name: 'Open holding', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Delete this transaction' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Click again to delete' })).toHaveCount(0);
@@ -118,7 +120,7 @@ test('the receipt refuses what every other screen refuses: a trade, and an openi
   await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('68.600.000');
 
-  await openReceipt(page, 'Opening balance: BCA Tahapan');
+  await openReceipt(page, 'Opening balance: BCA Tahapan', 'BCA Tahapan');
   await expect(page.getByRole('button', { name: 'Delete this transaction' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Edit this transaction' })).toHaveCount(0);

@@ -1,6 +1,6 @@
 import { type Browser, expect, type Locator, type Page, test, type TestInfo } from '@playwright/test';
-import { openAccount } from './accounts';
-import { addForm, chooseTo, choosePayment, fillAmount, openAmount, saveButton, showTransfers, startSelecting } from './add-transaction';
+import { openAccount, openAccountHistory } from './accounts';
+import { addForm, chooseTo, choosePayment, fillAmount, openAmount, saveButton, startSelecting } from './add-transaction';
 import { corner, eventually, newEvent, openTrip, recordSharedSpend, showBalances, showCard, spendingRow } from './shared-events';
 import { openWorkspaceSharePage, putOffShareList, shareWorkspace, workspaceLine } from './workspace-page';
 
@@ -220,7 +220,8 @@ test('a shared trip day with a spending, a settle-up and a household transfer: o
   await form.getByLabel('Note').fill('Harbour ATM');
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
-  await showTransfers(owner);
+  // Cashflow lists only money in and out (owner 2026-11-16): the cash wallet's own history lists the withdrawal.
+  await openAccountHistory(owner, 'Rina Cash');
   await expect(owner.getByTestId('transaction-row').filter({ hasText: 'Harbour ATM' })).toHaveCount(1);
   await startSelecting(owner);
   const bar = owner.getByRole('toolbar', { name: 'Selected transactions' });
@@ -228,7 +229,8 @@ test('a shared trip day with a spending, a settle-up and a household transfer: o
   await bar.getByRole('button', { name: 'Actions' }).click();
   await owner.getByRole('menu', { name: 'Actions' }).getByRole('menuitem', { name: 'Add to event' }).click();
   await owner.getByRole('dialog', { name: 'Add to event' }).getByRole('button', { name: 'Coast week' }).click();
-  await expect(owner.getByTestId('transaction-row').filter({ hasText: 'Harbour ATM' })).toHaveCount(0, { timeout: 20_000 });
+  // Moved into the trip: select mode ends.
+  await expect(bar).toHaveCount(0, { timeout: 20_000 });
 
   await openTrip(owner);
   const transfer = owner.getByTestId('shared-transfer-row');

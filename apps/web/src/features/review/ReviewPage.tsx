@@ -44,7 +44,6 @@ import { DraftSheet } from './DraftSheet';
 import { keepsPicture } from './keep-picture';
 import { corrections, draftPatch, foreignPair, quickCharge, recordsOnForm, savedWhere } from './draft-form';
 import { useCards } from '../cards/card-queries';
-import { useJointAccountIds } from '../sharing/net-worth-queries';
 import { chargedFigure, type FormDraft } from '../transactions/tx-form';
 import { useCaptureSources, useDraftCategoryGuesses, useDrafts } from './queries';
 import { SkippedList } from './SkippedList';
@@ -80,7 +79,6 @@ export function ReviewPage() {
   const guesses = useDraftCategoryGuesses(drafts.data ?? []).data;
   const accounts = useAccounts().data ?? [];
   const cards = useCards().data ?? [];
-  const jointIds = useJointAccountIds();
   const sources = useCaptureSources().data ?? [];
   const sharedSummaries = useSharedEventSummaries().data ?? {};
   const openBook = useOpenBook();
@@ -149,14 +147,14 @@ export function ReviewPage() {
   /**
    * Says what the phone just did, with the way back on the toast. A charge worked out from the day's rate is said
    * with it: nobody saw that figure before it posted. A transfer recorded says where it went (`savedWhere`): Cashflow
-   * lists a transfer between own accounts in no workspace, so the toast names the statement or page that does.
+   * lists only money in and out, so the toast names the statement or page that lists it.
    */
   function resolved(draft: DraftRow, what: 'recorded' | 'discarded', transactionId: string | null, expire?: () => Promise<void>, charged?: Charged | null, fee = false) {
     setEditing(null);
     void expiring.current?.();
     expiring.current = expire ?? null;
-    // Only a transfer Cashflow leaves to the accounts' pages says where it went (`savedWhere`); any other keeps its words.
-    const where = what === 'recorded' ? savedWhere(draft, accounts, cards, jointIds, { fee }) : null;
+    // Only a transfer Cashflow does not list says where it went (`savedWhere`); any other keeps its words.
+    const where = what === 'recorded' ? savedWhere(draft, accounts, cards, { fee }) : null;
     setToast({
       icon: what === 'recorded' ? 'recorded' : 'discarded',
       text: `${what === 'recorded' ? 'Recorded' : 'Discarded'} ${draft.description}${charged ? ` · ${formatMinor(charged.amountMinor, charged.currency)}` : ''}`,
@@ -238,8 +236,8 @@ export function ReviewPage() {
       const { transactionId, keptImage } = await confirmDraft(database, ws, draft.id, { setAside: null, keepPhoto, charged });
       await settlePicture(draft, transactionId, keptImage);
       // A charge nobody saw before it posted is always said, with the way back, whichever button recorded it — and so is
-      // where an own transfer went, since Cashflow does not list it. Any other transfer is recorded as it always was.
-      if (opts.undoable || charged || savedWhere(draft, accounts, cards, jointIds) !== null) resolved(draft, 'recorded', transactionId, undefined, charged);
+      // where a transfer went, since Cashflow does not list it. A transfer with a fee is listed, and recorded as it always was.
+      if (opts.undoable || charged || savedWhere(draft, accounts, cards) !== null) resolved(draft, 'recorded', transactionId, undefined, charged);
     });
   }
 
