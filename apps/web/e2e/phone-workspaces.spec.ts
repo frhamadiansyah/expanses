@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount } from './accounts';
-import { addForm, addTransaction, saveButton, chooseTo, showTransfers, startSelecting } from './add-transaction';
+import { openAccount, openAccountHistory } from './accounts';
+import { addForm, addTransaction, saveButton, chooseTo, startSelecting } from './add-transaction';
 import { openWorkspacePage, workspaceLine } from './workspace-page';
 
 /**
@@ -137,10 +137,12 @@ test('a transfer is filed in the workspace it was recorded in, listed there only
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
 
-  // Personal: the transfer is on the list with Transfers on (owner 2026-11-13), and the month's chart has nothing to draw.
-  await showTransfers(page);
-  await expect(page.getByText('Top up').first()).toBeVisible();
+  // Personal: Cashflow lists no transfer (owner 2026-11-16) and the month's chart has nothing to draw; the bank's
+  // history lists it.
   await expect(page.getByTestId('spending-report')).toContainText('Nothing recorded for');
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Top up' })).toHaveCount(0);
+  await openAccountHistory(page, 'BCA Tahapan');
+  await expect(page.getByText('Top up').first()).toBeVisible();
 
   await page.goto('/account');
   await page.getByTestId('add-workspace').click();

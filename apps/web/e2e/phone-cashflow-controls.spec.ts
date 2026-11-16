@@ -4,7 +4,8 @@ import { addTransaction, historyMenu, startSelecting } from './add-transaction';
 
 /*
  * Cashflow's history header on a phone (owner 2026-11-15): a bold "Transactions" title, the grey Days | Categories box,
- * and one grey ⋯ square whose menu holds Select, the sorts, Paid with and Transfers. A sort or filter on is only a dot.
+ * and one grey ⋯ square whose menu is one group (owner 2026-11-16): Select, Sort (a grey word that cycles on each tap),
+ * Paid with and Reset. A sort or filter on is only a dot.
  * Lend & borrow is on the Account page; the corner keeps the workspace.
  */
 test('the header has Transactions, Days/Categories and one ⋯; its menu selects, sorts, filters and resets', async ({ page }) => {
@@ -26,49 +27,56 @@ test('the header has Transactions, Days/Categories and one ⋯; its menu selects
 
   await historyMenu(page).click();
   const menu = page.getByTestId('sort-filter-menu');
-  // Every item, in order: Select, then Sort, then Show.
+  // Every item, in order, one group with no headings: Select, Sort, Paid with, Reset.
   await expect(menu.getByRole('menuitem').or(menu.getByRole('menuitemradio')).or(menu.getByRole('menuitemcheckbox'))).toHaveText([
     'Select',
-    'Newest first',
-    'Oldest first',
-    'Largest first',
-    'Smallest first',
+    /^Sort\s*Newest$/,
     /^Paid with\s*All$/,
-    'Transfers',
     'Reset',
   ]);
-  await expect(menu.getByText('Sort', { exact: true })).toBeVisible();
-  await expect(menu.getByText('Show', { exact: true })).toBeVisible();
-  await expect(menu.getByRole('menuitemradio', { name: 'Newest first' })).toHaveAttribute('aria-checked', 'true');
+  await expect(menu.getByText('Show', { exact: true })).toHaveCount(0);
+  await expect(menu.getByRole('menuitemradio')).toHaveCount(0);
   await expect(menu.getByRole('menuitem', { name: 'Reset' })).toBeDisabled();
-  await menu.getByRole('menuitemradio', { name: 'Largest first' }).click();
+  // Sort's order is a plain grey word, like Paid with's All: no icon, not blue.
+  const sort = menu.getByTestId('sort-cycle');
+  const word = sort.locator('span').last();
+  await expect(sort.locator('svg')).toHaveCount(0);
+  await expect(word).toHaveCSS('color', await menu.getByRole('menuitem', { name: /^Paid with/ }).locator('span').nth(1).evaluate((el) => getComputedStyle(el).color));
+  // Each tap is the next order, the menu left open: Newest → Oldest → Largest.
+  await sort.click();
+  await expect(sort).toHaveText(/^Sort\s*Oldest$/);
+  await sort.click();
+  await expect(sort).toHaveText(/^Sort\s*Largest$/);
   await expect(rows.first()).toContainText('Superindo');
   // A sort off its rest: a dot on ⋯, the square itself stays grey, and no chip.
   await expect(page.getByTestId('filter-on')).toBeVisible();
   await expect(page.getByTestId('filter-on')).toHaveCSS('background-color', 'rgb(0, 122, 255)');
   await expect(historyMenu(page)).not.toHaveClass(/bg-slate-900/);
+  // Two more: Smallest, then round to Newest.
+  await sort.click();
+  await expect(sort).toHaveText(/^Sort\s*Smallest$/);
+  await sort.click();
+  await expect(sort).toHaveText(/^Sort\s*Newest$/);
+  await expect(page.getByTestId('filter-on')).toHaveCount(0);
+  await sort.click();
+  await sort.click();
+  await expect(sort).toHaveText(/^Sort\s*Largest$/);
 
-  await historyMenu(page).click();
   await page.getByRole('menuitem', { name: /^Paid with/ }).click();
   await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: /^BCA Tahapan/ }).click();
   await expect(rows).toHaveCount(1);
   await expect(rows).toContainText('Kopi Kenangan');
 
+  // Reset puts Sort back to Newest and Paid with back to All.
   await historyMenu(page).click();
-  await expect(menu.getByRole('menuitemradio', { name: 'Largest first' })).toHaveAttribute('aria-checked', 'true');
+  await expect(sort).toHaveText(/^Sort\s*Largest$/);
   await expect(menu.getByRole('menuitem', { name: /^Paid with/ })).toContainText('BCA Tahapan');
   await page.getByRole('menuitem', { name: 'Reset' }).click();
   await expect(rows).toHaveCount(2);
   await expect(page.getByTestId('filter-on')).toHaveCount(0);
-
-  // Transfers alone puts the dot on too, and taking it off takes the dot away.
   await historyMenu(page).click();
-  await menu.getByRole('menuitemcheckbox', { name: 'Transfers' }).click();
-  await expect(page.getByTestId('filter-on')).toBeVisible();
-  await historyMenu(page).click();
-  await expect(menu.getByRole('menuitemcheckbox', { name: 'Transfers' })).toHaveAttribute('aria-checked', 'true');
-  await menu.getByRole('menuitemcheckbox', { name: 'Transfers' }).click();
-  await expect(page.getByTestId('filter-on')).toHaveCount(0);
+  await expect(sort).toHaveText(/^Sort\s*Newest$/);
+  await expect(menu.getByRole('menuitem', { name: /^Paid with/ })).toHaveText(/^Paid with\s*All$/);
 });
 
 test('Select from the ⋯ menu turns ⋯ into the dark Select square, which stops selecting', async ({ page }) => {

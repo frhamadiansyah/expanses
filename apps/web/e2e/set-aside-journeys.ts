@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import { openAccountHistory } from './accounts';
 import { openAmount, addForm, saveButton, chooseGoal, chooseTo } from './add-transaction';
 import { editGoal, expectArchiveNote, openGoalForm } from './goals';
 import { addBill, addGoal, addMoneyAccount, goalCard, goalRow, jeniusWithTwoGoals, openAccountPage, openExpense, openGoalHistory, setAside, transferOutBorrowingFromUmrah, typeAmount, typeSecondFigure } from './set-aside';
@@ -33,9 +34,13 @@ async function pickCategory(page: Page, form: Locator) {
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
 }
 
-/** A transaction's receipt: the ⓘ link on a desktop, the row itself on a phone. */
-async function openReceipt(page: Page, what: string) {
-  await page.goto('/transactions');
+/**
+ * A transaction's receipt: the ⓘ link on a desktop, the row itself on a phone. Found on Cashflow, or — a transfer, which
+ * Cashflow does not list (owner 2026-11-16) — on the history of the account `from` names.
+ */
+async function openReceipt(page: Page, what: string, from?: string) {
+  if (from) await openAccountHistory(page, from);
+  else await page.goto('/transactions');
   const row = page.getByTestId('transaction-row').filter({ hasText: what }).first();
   await expect(row).toBeVisible();
   if (isPhone(page)) await row.getByRole('button').filter({ hasNotText: /^$/ }).first().click();
@@ -52,8 +57,8 @@ async function openEdit(page: Page, what: string) {
   return form;
 }
 
-async function deleteFromReceipt(page: Page, what: string) {
-  await openReceipt(page, what);
+async function deleteFromReceipt(page: Page, what: string, from?: string) {
+  await openReceipt(page, what, from);
   await page.getByRole('button', { name: 'Delete this transaction' }).click();
   await page.getByRole('button', { name: 'Click again to delete' }).click();
   await expect(page).toHaveURL(/\/transactions(\?|$)/);
@@ -175,7 +180,7 @@ export const JOURNEYS: Journey[] = [
       await expectNotShort(await goalCard(page, 'Emergency fund'));
       await expectNotShort(await goalCard(page, 'Umrah 2027'));
 
-      await deleteFromReceipt(page, 'To BCA');
+      await deleteFromReceipt(page, 'To BCA', 'Jenius');
       await expectFree(page, 'Jenius', 'Rp.5\\.000\\.000');
       await expect(promiseRow(page, 'Emergency fund', 'Covered.*30\\.000\\.000')).toBeVisible();
       await openAccountPage(page, 'BCA');

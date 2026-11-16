@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { openAccount } from './accounts';
+import { openAccount, openAccountHistory } from './accounts';
 
 async function setUp(page: Page) {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
@@ -118,10 +118,11 @@ test('the ⓘ opens a receipt from the table, on an editable row and on a locked
   await expect(page.getByTestId('receipt-hero')).toContainText('450.000');
 
   // The locked row — an opening balance has no "Open in form", and used to have no way to a receipt either.
-  // The view is remembered, so coming back to the list comes back to the table. Opening balances are shown only when
-  // asked for; asked for here.
+  // The account's history has the table too. Opening balances are shown only when
+  // asked for, and only on the account's own history (Cashflow lists only money in and out, owner 2026-11-16).
   await page.evaluate(() => localStorage.setItem('transactions-show-opening', '1'));
-  await page.goto('/transactions');
+  await openAccountHistory(page, 'BCA Tahapan');
+  await page.getByRole('button', { name: 'Table' }).click();
   await expect(page.getByRole('button', { name: 'Table' })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('link', { name: 'Receipt for Opening balance: BCA Tahapan' }).click();
   await expect(page.getByRole('heading', { name: 'Opening balance: BCA Tahapan' })).toBeVisible();

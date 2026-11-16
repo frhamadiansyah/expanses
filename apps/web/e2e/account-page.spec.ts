@@ -262,9 +262,10 @@ test('a current account adjusted as just a correction moves its balance and noth
   await expect(page.getByTestId('balance-card')).toContainText('12.480.000');
   await expect(page.getByTestId('account-recent').getByTestId('account-recent-row').first()).toContainText('Balance correction');
 
+  // Cashflow lists only money in and out (owner 2026-11-16): the correction is on the account's page alone.
   await page.goto('/transactions');
-  await expect(page.getByText('Balance adjusted').first()).toBeVisible();
   await expect(page.getByTestId('period-total')).toHaveText('Rp 0');
+  await expect(page.getByText('Balance adjusted')).toHaveCount(0);
 });
 
 test('a wallet is topped up from a card, with a fee; the ordinary transfer still names no card', async ({ page }) => {

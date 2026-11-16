@@ -198,27 +198,7 @@ export async function addTransfer(
   await expect(form).toHaveCount(0);
 }
 
-/**
- * Cashflow lists a transfer between own accounts only with Transfers on (owner 2026-11-13): ticked in the history's ⋯ menu,
- * or — when nothing but such transfers is in the period — from the empty list's own Show transfers.
- */
-export async function showTransfers(page: Page) {
-  const empty = page.getByRole('button', { name: 'Show transfers', exact: true });
-  const menu = historyMenu(page);
-  await expect(empty.or(menu).first()).toBeVisible();
-  if (await empty.isVisible()) {
-    await empty.click();
-    return;
-  }
-  await menu.click();
-  const item = page.getByRole('menuitemcheckbox', { name: 'Transfers' });
-  // Already on (a filter kept from before): the menu is put away as it was.
-  if ((await item.getAttribute('aria-checked')) === 'true') await menu.click();
-  else await item.click();
-  await expect(page.getByTestId('sort-filter-menu')).toHaveCount(0);
-}
-
-/** The history's one ⋯ square (owner 2026-11-15): Select, the sorts, Paid with and Transfers are all in its menu. */
+/** The history's one ⋯ square (owner 2026-11-15): Select, Sort, Paid with and Reset are all in its menu. */
 export function historyMenu(page: Page): Locator {
   return page.getByRole('button', { name: 'More', exact: true });
 }

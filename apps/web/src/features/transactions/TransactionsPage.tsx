@@ -9,7 +9,6 @@ import {
   guessCategoryFromHistory,
   inBook as workspaceInBook,
   instalmentSpendingIn,
-  listSharedTransfers,
   listTransactionsIn,
   moveIntoSharedEvent,
   moveTransactionInDay,
@@ -52,7 +51,7 @@ import { TravelRows } from '../events/TravelRows';
 import { useSharedEventSummaries } from '../events/shared-queries';
 import { Button, Card, cx, Empty, ErrorBox, Money } from '../../ui';
 import { LargeTitle, SearchPill } from '../../ui/native';
-import { SortFilterMenu } from './SortFilterMenu';
+import { MENU_REST, SortFilterMenu } from './SortFilterMenu';
 import { ChipMenu, type ChipOption } from './ChipMenu';
 import { type PaidChoice, PaidWithSheet } from './PaidWithSheet';
 import { ConvertForm } from './ConvertForm';
@@ -71,7 +70,7 @@ import { AmountExtra, DraftSubtitle, PaidWith, TransactionRow, useRecategorise }
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, keepsReadFigure, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
-import { accountsWithTransactions, amountExtraParts, buildRows, type CashflowContext, sharedTransferRow, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, instalmentRows, type ListFilters, type ListRow, markSpread, outsideEvents, type Sort, sortRows, totals } from './list-model';
+import { accountsWithTransactions, amountExtraParts, buildRows, countsInOrOut, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, instalmentRows, type ListFilters, type ListRow, markSpread, outsideEvents, type Sort, sortRows, totals } from './list-model';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
@@ -102,7 +101,6 @@ import { setCardAccount, sharedCard } from './set-card';
 import { draftIn } from './move-workspace';
 import { formFromTransaction, formToPost } from './tx-form';
 import { ratesForSave } from './tx-save';
-import { useJointAccountIds } from '../sharing/net-worth-queries';
 import { useOpenBookReadOnly, usePurchasePayers } from '../sharing/queries';
 import { payerLine, payerToShow, postedAgainstPlaceholder } from '../sharing/sharing-copy';
 
@@ -126,18 +124,10 @@ const monthLabel = (month: string) => `${MONTHS[Number(month.slice(5, 7)) - 1]} 
 /** All time reads a longer stretch than one month does; past this many the oldest are left out. */
 const ALL_TIME_LIMIT = 5000;
 
-const SORTS: { value: string; label: string; short: string }[] = [
-  { value: 'date:desc', label: 'Newest first', short: 'Newest' },
-  { value: 'date:asc', label: 'Oldest first', short: 'Oldest' },
-  { value: 'amount:desc', label: 'Largest first', short: 'Largest' },
-  { value: 'amount:asc', label: 'Smallest first', short: 'Smallest' },
-];
-
 const TYPES: { value: ListFilters['type']; label: string }[] = [
   { value: 'all', label: 'Everything' },
   { value: 'expense', label: 'Spending' },
   { value: 'income', label: 'Income' },
-  { value: 'transfer', label: 'Transfers & lending' },
 ];
 
 /** The last two years of months, newest first, plus whichever month the address asked for. This month is the workspace's. */
@@ -469,18 +459,12 @@ export function TransactionsPage() {
    * the work in progress that editor exists for.
    */
   // Narrowed to a workspace, a purchase split across workspaces reads as that workspace's part (`listWs.bookId`).
-  // The other member's transfers in a shared workspace (0094): redacted rows, read only, beside this phone's own.
-  const partnerTransfers = useQuery({
-    queryKey: ['shared-transfers', ws.workspaceId, ws.bookId ?? null, month, monthStart],
-    queryFn: () => listSharedTransfers(database, ws.bookId!, range),
-    enabled: shared && ws.bookId !== undefined && !scopeIds,
-  });
   /*
    * Card instalments (option C, 0120): a plan counting Each month is spending a month at a time, on each statement date,
    * in the purchase's category — worked out from the plan, never stored — and the purchase it spreads counts nothing on
-   * its own day; a plan counting At purchase lists its instalments as repayments, with the transfers. Read through the
-   * very filters the rings read (`instalmentSpendingIn`), so the list adds up to them. An account's own history keeps
-   * what moved its balance, so it lists none.
+   * its own day; a plan counting At purchase reads its instalments as repayments, which Cashflow leaves to the card's
+   * statement (`countsInOrOut`). Read through the very filters the rings read (`instalmentSpendingIn`), so the list
+   * adds up to them. An account's own history keeps what moved its balance, so it lists none.
    */
   const instalments = useQuery({
     queryKey: ['instalment-rows', ws.workspaceId, ws.bookId ?? null, month, monthStart, eventsInCaps],
@@ -497,7 +481,6 @@ export function TransactionsPage() {
   })();
   const rows = [
     ...markSpread(buildRows(recorded, view === 'table' || sideways || filters.onlyDrafts ? pending : [], accounts, everyCard, walletLast4, listWs.bookId), spreadOver),
-    ...(!shared || scopeIds || need || filters.onlyDrafts ? [] : (partnerTransfers.data ?? []).map(sharedTransferRow)),
     ...instalmentList,
   ];
   /*
@@ -525,17 +508,15 @@ export function TransactionsPage() {
     // `hideNeedsCategory` is rebuilt every render; what decides is the count reaching nought while the filter is on.
   }, [needsCategoryShown, needCategoryCount]);
   /*
-   * Own transfers off Cashflow (owner, 2026-11-13, option C): a transfer between this person's own accounts is listed in
-   * no workspace, one touching a joint account or the partner's in the shared workspace alone, until Transfers is on
-   * (`transferReach`). A page opened for one account — its own history, archived or not — lists them all, as its
-   * statement does; one opened for a category holds no bare transfer anyway.
+   * Cashflow lists only money in and money out (owner, 2026-11-16, `countsInOrOut`): transfers, card payments, lending
+   * with no fee, corrections and the like are on their account's, card's or person's page. A page opened for one
+   * account — its own history, archived or not, a loan's or a person's — lists every row, as its statement does.
    */
-  const jointIds = useJointAccountIds();
-  const cashflow: CashflowContext | undefined = search.account ? undefined : { shared, jointIds };
+  const inCashflow = !search.account;
   const listed = { ...filters, month, monthStart, showOpening };
-  const shown = sortRows(filterRows(rows, listed, accounts, cashflow), sort);
-  // Nothing on show but transfers left to the accounts' pages: the empty list offers them rather than "Clear filters".
-  const onlyTransfersHidden = shown.length === 0 && !!cashflow && !filters.showTransfers && filterRows(rows, { ...listed, showTransfers: true }, accounts, cashflow).length > 0;
+  const shown = sortRows(filterRows(rows, listed, accounts, inCashflow), sort);
+  // Nothing Cashflow could list in the period at all — only transfers, say — reads as an empty period, not as a filter.
+  const listable = inCashflow ? rows.filter(countsInOrOut) : rows;
   const sum = totals(shown);
   /*
    * Rows put in order by hand within their day: only in the day-by-day list sorted by date, where a day is a group, and
@@ -569,8 +550,8 @@ export function TransactionsPage() {
    */
   const taggable = (row: ListRow) =>
     row.kind === 'tx' && !row.deleted && !!row.tx && isEditable(row.tx) && !tradeByTransaction.has(row.tx.id) && !readOnly && filingKnown && !elsewhereOf(row.tx.id);
-  // Only what is still on the list and still taggable is acted on, whatever was ticked before a filter moved — a
-  // transfer Cashflow leaves to the accounts' pages included: it is put on a trip only once Transfers shows it.
+  // Only what is still on the list and still taggable is acted on, whatever was ticked before a filter moved. A transfer
+  // (an ATM withdrawal, an exchange) is put on a trip from its account's page, where Select ticks it.
   const chosen = shown.filter((row) => selected.has(row.id) && taggable(row));
   // Select All ticks what can be ticked on the list as it is shown, filters and all.
   const selectable = shown.filter(taggable);
@@ -817,7 +798,7 @@ export function TransactionsPage() {
   const keptSentence = phone ? 'The original is kept' : 'The original stays under Show deleted';
   // The chart carries the month's total and its count, so the line that used to say them is left off.
   const chartShown = view === 'list' && !filters.onlyDrafts;  const sortValue = `${sort.key}:${sort.dir}`;
-  const narrowed = filters.q || filters.paid || filters.cat || filters.needsCategory || filters.type !== 'all' || filters.showDeleted || filters.showTransfers || filters.onlyDrafts || sortValue !== 'date:desc' || search.month || search.account || search.need;
+  const narrowed = filters.q || filters.paid || filters.cat || filters.needsCategory || filters.type !== 'all' || filters.showDeleted || filters.onlyDrafts || sortValue !== 'date:desc' || search.month || search.account || search.need;
 
   function clearAll() {
     setFilters(EMPTY_FILTERS);
@@ -1354,7 +1335,7 @@ export function TransactionsPage() {
   /**
    * One month of a card's instalment plan: a row like any other, named by the purchase's category with "1 of 12" beside
    * the note, which opens the plan. Nothing on it is edited, deleted or re-filed here: it follows the plan. At purchase,
-   * it is the card's repayment, listed with the transfers and counted nowhere.
+   * it is the card's repayment, counted nowhere — the card's statement lists it, Cashflow does not (`countsInOrOut`).
    */
   function instalmentView(row: ListRow, withDate: boolean) {
     const plan = row.instalment!;
@@ -1417,7 +1398,7 @@ export function TransactionsPage() {
       today={today}
       baseCurrency={ws.baseCurrency}
       handlers={tableHandlers}
-      empty={rows.length === 0 ? 'No transactions in this period yet. Type the first one above.' : 'Nothing matches the search and filters.'}
+      empty={listable.length === 0 ? 'No transactions in this period yet. Type the first one above.' : 'Nothing matches the search and filters.'}
     />
   );
 
@@ -1637,15 +1618,8 @@ export function TransactionsPage() {
       ) : (
         <>
           {list.isSuccess && shown.length === 0 &&
-            (rows.length === 0 ? (
+            (listable.length === 0 ? (
               <Empty>No transactions in this period.</Empty>
-            ) : onlyTransfersHidden ? (
-              <Empty>
-                Only transfers in this period.{' '}
-                <button type="button" onClick={() => setFilter('showTransfers', true)} className="underline">
-                  Show transfers
-                </button>
-              </Empty>
             ) : (
               <Empty>
                 Nothing matches{filters.q && ` “${filters.q}”`}.{' '}
@@ -1700,7 +1674,6 @@ export function TransactionsPage() {
               ) : (
               /* Select, the sort and what the list was paid with, one ⋯ and one menu. On a phone Paid with opens its sheet. */
               <SortFilterMenu
-                sorts={SORTS}
                 sortValue={sortValue}
                 onSort={(value) => {
                   const [key, dir] = value.split(':') as [Sort['key'], Sort['dir']];
@@ -1710,12 +1683,10 @@ export function TransactionsPage() {
                 paidOptions={paidOptions}
                 onPaid={(value) => setFilter('paid', value)}
                 onOpenPaid={phone ? () => setPickingPaid(true) : undefined}
-                transfers={!!filters.showTransfers}
-                onTransfers={cashflow ? (on) => setFilter('showTransfers', on) : undefined}
                 onReset={() => {
-                  setSort({ key: 'date', dir: 'desc' });
-                  setFilter('paid', '');
-                  setFilter('showTransfers', false);
+                  const [key, dir] = MENU_REST.sortValue.split(':') as [Sort['key'], Sort['dir']];
+                  setSort({ key, dir });
+                  setFilter('paid', MENU_REST.paid);
                 }}
                 // Ticking rows, to put a run of them into an event at once: never in a read-only workspace.
                 onSelect={view === 'list' && !readOnly ? startSelecting : undefined}
@@ -1887,7 +1858,6 @@ export function TransactionsPage() {
         onMonth={(next) => setSearch({ month: next === thisMonth ? undefined : next })}
         spentMinor={sum.spentMinor}
         currency={listCurrency}
-        transfers={cashflow ? { on: !!filters.showTransfers, onChange: (on) => setFilter('showTransfers', on) } : undefined}
       >
         {/* The hidden page's own error line cannot be seen from here, so the table carries one too. */}
         <div className="space-y-2">

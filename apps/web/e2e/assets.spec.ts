@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount, openSettings as openSettingsMenu } from './accounts';
+import { openAccount, openSettings as openSettingsMenu, openAccountHistory } from './accounts';
 import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { addTransfer } from './add-transaction';
 import { addPriced, openAsset } from './asset-page';
@@ -147,7 +147,8 @@ test('sends trade edits to the holding’s page instead of the transaction form'
   await page.getByRole('button', { name: 'Record buy', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
-  await page.goto('/transactions');
+  // A buy is not spending: the bank's history lists it, Cashflow does not (owner 2026-11-16).
+  await openAccountHistory(page, 'BCA Tahapan');
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
   const row = page.locator('li', { hasText: 'Bought 2 Antam gold bars' }).last();
   await expect(row.getByRole('button', { name: 'Edit' })).toHaveCount(0);

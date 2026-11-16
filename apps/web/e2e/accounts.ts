@@ -98,6 +98,21 @@ export async function openWalletAccount(page: Page, name: string) {
 }
 
 /**
+ * An account's whole history: its card on Wallet, its page, then See all. Cashflow lists only money in and out (owner
+ * 2026-11-16), so a transfer, a card payment or lending with no fee is found, opened, ticked or deleted from here.
+ */
+export async function openAccountHistory(page: Page, name: string) {
+  await page.goto('/wallet');
+  await walletCard(page, name).click();
+  await expect(page).toHaveURL(/\/(accounts|cards)\/[^/]+$/);
+  // A credit card's See all is its statement; its whole history is the same list an account's See all opens.
+  const card = /\/cards\/([^/?#]+)$/.exec(page.url());
+  if (card) await page.goto(`/transactions?account=${card[1]}`);
+  else await page.getByRole('link', { name: 'See all' }).first().click();
+  await expect(page).toHaveURL(/\/transactions\?account=/);
+}
+
+/**
  * The balance of an account opened from Wallet is on the back of its raised card: a tap turns the card over. Turns it
  * to the balance when it is not there already, so a journey that reads the balance can call this wherever it is.
  */

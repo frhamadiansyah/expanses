@@ -244,15 +244,16 @@ test('Add a holding shows every row from the start, and what was typed stays whe
   await expect(page.getByLabel('Lots', { exact: true })).toBeVisible();
 });
 
-test('a share owned before the app reads as a past purchase in the transaction list, not as an opening balance', async ({ page }) => {
+test('a share owned before the app is a starting balance: Cashflow lists it nowhere, even with openings asked for', async ({ page }) => {
   await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '1', price: '8.750', date: await todayIn(page) });
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
-  // Out of the list unless asked for, as every opening is; asked for here.
+  // Cashflow lists only money in and out (owner 2026-11-16): a starting balance is not, whatever the device asks for.
+  // How the row reads where it is listed ("Past purchase", never "Opening balance") is `buy-rows.test.ts`'s.
   await page.evaluate(() => localStorage.setItem('transactions-show-opening', '1'));
   await page.goto('/transactions');
-  await expect(page.getByText('Past purchase').first()).toBeVisible();
-  await expect(page.getByText('Opening balance', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('No transactions in this period.')).toBeVisible();
+  await expect(page.getByText('Past purchase')).toHaveCount(0);
 });
 
 test('a share’s Settings carry its derived name, ticker and broker; the ticker is fixed once it has a trade', async ({ page }) => {

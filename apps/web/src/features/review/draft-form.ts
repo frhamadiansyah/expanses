@@ -10,7 +10,6 @@
 import { evaluateExact } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, NewDraft } from '@expanses/db';
 import { chargedFigure, DECIMALS_REFUSAL, decimalsDirection, estimatedChargeMinor, type FormDraft, suggestedRate, typedCurrency } from '../transactions/tx-form';
-import { reachOfSides } from '../transactions/list-model';
 import { majorText } from './capture-view';
 
 /**
@@ -24,24 +23,20 @@ export type DraftPatch = Required<
   Pick<NewDraft, 'exactHundredths'>;
 
 /**
- * Where a recorded transfer can be found, for the toast that says it was recorded: Cashflow lists a transfer between
- * own accounts in no workspace (owner, 2026-11-13), so the toast names the place that does — a card's statement, by the
- * card's digits ("Saved on card 4821’s statement"), else the accounts' own pages. Null — the toast as it always read —
- * for anything Cashflow still lists (`reachOfSides` not own): spending, income, a transfer with a fee, one touching a
- * joint account (`jointIds`, pockets read in) or an account this phone does not hold, one to a loan or a holding.
+ * Where a recorded transfer can be found, for the toast that says it was recorded: Cashflow lists only money in and
+ * out (owner, 2026-11-16), so the toast names the place that lists it — a card's statement, by the card's digits
+ * ("Saved on card 4821’s statement"), else the accounts' own pages. Null — the toast as it always read — for anything
+ * Cashflow lists: spending, income, a transfer with a fee; and for a transfer that names fewer than two accounts.
  */
 export function savedWhere(
   draft: Pick<DraftRow, 'kind' | 'accountId' | 'toAccountId' | 'cardId'>,
   accounts: readonly Pick<AccountRow, 'id' | 'name' | 'subtype'>[],
   cards: readonly Pick<CardRow, 'id' | 'accountId' | 'last4' | 'isPrimary' | 'archived'>[],
-  jointIds: ReadonlySet<string> = new Set(),
   opts: { fee?: boolean } = {},
 ): string | null {
   if (draft.kind !== 'transfer' || opts.fee) return null;
-  const known = new Set(accounts.map((account) => account.id));
-  const named = [draft.accountId, draft.toAccountId].filter((id): id is string => !!id);
-  const reach = reachOfSides(named.map((id) => ({ accountId: id, accountSubtype: accounts.find((account) => account.id === id)?.subtype ?? null })), known, jointIds);
-  if (reach !== 'own') return null;
+  const named = [...new Set([draft.accountId, draft.toAccountId].filter((id): id is string => !!id))];
+  if (named.length < 2) return null;
   const sides = named.flatMap((id) => accounts.filter((account) => account.id === id));
   const card = sides.find((side) => side.subtype === 'credit_card');
   if (card) {
@@ -49,7 +44,9 @@ export function savedWhere(
     const digits = (own.find((each) => each.id === draft.cardId) ?? own.find((each) => each.isPrimary) ?? own[0])?.last4;
     return digits ? `Saved on card ${digits}\u2019s statement` : `Saved on ${card.name}\u2019s statement`;
   }
-  return 'Saved on both accounts\u2019 pages';
+  // A side this phone does not hold (the partner's): the one it holds is where it is listed.
+  if (sides.length === 1) return `Saved on ${sides[0]!.name}\u2019s page`;
+  return sides.length === 2 ? 'Saved on both accounts\u2019 pages' : null;
 }
 
 /**

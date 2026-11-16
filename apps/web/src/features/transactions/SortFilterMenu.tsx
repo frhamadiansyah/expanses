@@ -6,9 +6,28 @@ import type { ChipOption } from './ChipMenu';
 
 export const DEFAULT_SORT = 'date:desc';
 
-/** How many of the menu's controls are off their rest: the sort, the paid-with filter and Transfers. Zero means nothing to reset. */
-export function sortFilterCount(p: { sortValue: string; paid: string; transfers?: boolean }): number {
-  return (p.sortValue !== DEFAULT_SORT ? 1 : 0) + (p.paid ? 1 : 0) + (p.transfers ? 1 : 0);
+/** The four orders, in the order a tap on Sort steps through them; `word` is what the row shows in grey. */
+export const SORTS: readonly { value: string; label: string; word: string }[] = [
+  { value: 'date:desc', label: 'Newest first', word: 'Newest' },
+  { value: 'date:asc', label: 'Oldest first', word: 'Oldest' },
+  { value: 'amount:desc', label: 'Largest first', word: 'Largest' },
+  { value: 'amount:asc', label: 'Smallest first', word: 'Smallest' },
+];
+
+const sortAt = (value: string) => Math.max(0, SORTS.findIndex((sort) => sort.value === value));
+
+/** The order a tap on Sort moves to: Newest → Oldest → Largest → Smallest → Newest; from an order it does not know, Newest. */
+export const nextSort = (value: string): string => SORTS[(SORTS.findIndex((sort) => sort.value === value) + 1) % SORTS.length]!.value;
+
+/** The grey word on the Sort row ("Newest"). */
+export const sortWord = (value: string): string => SORTS[sortAt(value)]!.word;
+
+/** What Reset puts back: Sort to Newest, Paid with to All. */
+export const MENU_REST = { sortValue: DEFAULT_SORT, paid: '' } as const;
+
+/** How many of the menu's controls are off their rest: the sort and the paid-with filter. Zero means nothing to reset. */
+export function sortFilterCount(p: { sortValue: string; paid: string }): number {
+  return (p.sortValue !== DEFAULT_SORT ? 1 : 0) + (p.paid ? 1 : 0);
 }
 
 /** What a phone's tab bar and home indicator take off the foot of the screen. */
@@ -16,28 +35,22 @@ const BAR_ROOM = 96;
 
 /** The phone's list look: 15px ink rows, 44 tall, a hairline between each. No hover fill, so a touch leaves nothing lit. */
 const ROW = 'flex min-h-11 w-full items-center gap-2 border-t-[0.5px] border-[var(--ph-hair)] px-3.5 py-3 text-left text-[15px] text-[var(--ph-ink)] first:border-t-0 disabled:text-[var(--ph-ink-3)]';
-/** A tinted strip over a run of rows, edge to edge; the row under it needs no line of its own. */
-const HEAD = 'bg-[var(--ph-fill)] px-3.5 py-2 text-[11px] uppercase tracking-[0.05em] text-[var(--ph-ink-3)]';
-
 /**
  * The history's one ⋯ square, in the grey capsule the other controls on the row wear (owner 2026-11-15). It opens one
- * fixed-width menu: Select (where the list can be ticked), the four sorts, then Show: Paid with (a searchable list here,
- * the phone's sheet there), Transfers (Cashflow's own transfers) and Reset. A small blue dot while any is off its rest.
+ * fixed-width menu, one group with no headings (owner 2026-11-16): Select (where the list can be ticked), Sort — its order
+ * a grey word, each tap the next order, the menu left open — Paid with (a searchable list here, the phone's sheet there)
+ * and Reset. A small blue dot while either is off its rest.
  */
 export function SortFilterMenu({
-  sorts,
   sortValue,
   onSort,
   paid,
   paidOptions,
   onPaid,
   onOpenPaid,
-  transfers,
-  onTransfers,
   onReset,
   onSelect,
 }: {
-  sorts: readonly { value: string; label: string }[];
   sortValue: string;
   onSort: (value: string) => void;
   paid: string;
@@ -45,9 +58,6 @@ export function SortFilterMenu({
   onPaid: (value: string) => void;
   /** A phone picks the account in its own sheet: the menu closes and this opens it. */
   onOpenPaid?: () => void;
-  /** The Transfers filter: Cashflow lists the own transfers it leaves to the accounts' pages. Absent, no row is drawn. */
-  transfers?: boolean;
-  onTransfers?: (on: boolean) => void;
   onReset: () => void;
   /** Starts select mode. Absent (a read-only workspace, or no list to tick), no Select row is drawn. */
   onSelect?: () => void;
@@ -59,7 +69,7 @@ export function SortFilterMenu({
   const menu = useRef<HTMLDivElement>(null);
   const [above, setAbove] = useState(false);
   const listId = useId();
-  const count = sortFilterCount({ sortValue, paid, transfers });
+  const count = sortFilterCount({ sortValue, paid });
   const dot = count > 0;
   const paidName = paidOptions.find((option) => option.value === paid && option.value)?.label;
 
@@ -135,24 +145,17 @@ export function SortFilterMenu({
                   <CircleCheck size={16} aria-hidden className="shrink-0 text-[var(--ph-ink-2)]" />
                 </button>
               )}
-              <p className={HEAD}>Sort</p>
-              {sorts.map((sort) => (
-                <button
-                  key={sort.value}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={sort.value === sortValue}
-                  onClick={() => {
-                    onSort(sort.value);
-                    setOpen(false);
-                  }}
-                  className={cx(ROW, 'justify-between', sort.value === sortValue && 'font-semibold')}
-                >
-                  <span className="min-w-0 flex-1 truncate">{sort.label}</span>
-                  {sort.value === sortValue && <Check size={16} aria-hidden className="shrink-0" />}
-                </button>
-              ))}
-              <p className={HEAD}>Show</p>
+              <button
+                type="button"
+                role="menuitem"
+                aria-label={`Sort, ${SORTS[sortAt(sortValue)]!.label}`}
+                data-testid="sort-cycle"
+                onClick={() => onSort(nextSort(sortValue))}
+                className={cx(ROW, 'justify-between')}
+              >
+                <span>Sort</span>
+                <span className="text-[var(--ph-ink-3)]">{sortWord(sortValue)}</span>
+              </button>
               <button
                 type="button"
                 role="menuitem"
@@ -173,22 +176,6 @@ export function SortFilterMenu({
                   <ChevronRight size={14} aria-hidden />
                 </span>
               </button>
-              {onTransfers && (
-                <button
-                  type="button"
-                  role="menuitemcheckbox"
-                  aria-checked={!!transfers}
-                  data-testid="transfers-filter"
-                  onClick={() => {
-                    onTransfers(!transfers);
-                    setOpen(false);
-                  }}
-                  className={cx(ROW, 'justify-between', transfers && 'font-semibold')}
-                >
-                  <span>Transfers</span>
-                  {transfers && <Check size={16} aria-hidden className="shrink-0" />}
-                </button>
-              )}
               <button
                 type="button"
                 role="menuitem"
