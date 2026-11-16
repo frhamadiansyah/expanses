@@ -273,8 +273,9 @@ test('an instalment plan opens its own page from its row, to be changed or remov
 
   const held = page.getByTestId('card-instalments');
   const plan = held.getByTestId('card-instalment');
-  await expect(plan).toContainText(/\d+ of 12 paid/);
-  await expect(plan).toContainText(/Rp\s1\.000\.000 a month/);
+  // Paid as the plan reads it, and what is left (0124): not the calendar.
+  await expect(plan).toContainText(/\d+ of 12 paid · ends/);
+  await expect(plan).toContainText(/Rp\s[\d.]+ left/);
   await expect(plan.getByRole('button', { name: 'Remove Sofa' })).toHaveCount(0);
   // The row opens the plan's own page; ✎ there opens the plan's sheet, which says the end month.
   await plan.getByRole('button', { name: 'Open Sofa' }).click();
