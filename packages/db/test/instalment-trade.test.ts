@@ -127,9 +127,11 @@ describe('a plan with no purchase from before the card’s records, At purchase 
     const ws = inBook(current.ws, (await personalBook(database, current.ws)).id);
     const card = await createAccount(database, ws, { name: 'Visa Kencana', kind: 'liability', subtype: 'credit_card', currency: 'IDR', openingBalanceMinor: 8_000_000, openedOn: '2026-09-01' });
     await saveCardTerms(database, ws, { accountId: card.id, statementDay: 13, dueDay: 2, creditLimitMinor: null, annualFeeMinor: null });
-    await saveInstallment(database, ws, { cardAccountId: card.id, description: 'Bond', totalMinor: 24_000_000, months: 24, firstBilledMonth: '2025-02', countMode: 'at_purchase' });
+    // Added 5 Sep 2026: 1–19 were due by 2 Sep, so 20–24 are owed (0124); every month is on its statement.
+    await saveInstallment(database, ws, { cardAccountId: card.id, description: 'Bond', totalMinor: 24_000_000, months: 24, firstBilledMonth: '2025-02', countMode: 'at_purchase', addedAt: '2026-09-05T05:00:00.000Z' });
     const lines = (await cardStatementLines(database, ws, card.id)).filter((line) => line.instalment);
-    expect(lines.map((line) => line.instalment!.number)).toEqual([20, 21, 22, 23, 24]);
+    expect(lines).toHaveLength(24);
+    expect(lines.filter((line) => !line.paidOff).map((line) => line.instalment!.number)).toEqual([20, 21, 22, 23, 24]);
     expect((await categoryTotalsIn(database, ws, 'expense', '2026-09-01', '2027-01-31')).rows).toEqual([]);
   });
 });

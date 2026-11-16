@@ -21,8 +21,11 @@ import { setupDb, type TestDb } from './helpers';
 
 /*
  * Plans saved before a plan could name its purchase (owner, 16 Nov 2026: "I don't want to pick manually"). Invented
- * figures: a card the app has kept since 1 Oct 2025 (its opening balance), statement day the 18th.
+ * figures: a card the app has kept since 1 Oct 2025 (its opening balance), statement day the 18th, due the 5th. The
+ * plans are added on 10 Oct 2025: a plan with no purchase has paid what was due before then (0124).
  */
+
+const ADDED = '2025-10-10T05:00:00.000Z';
 
 let current: TestDb | undefined;
 afterEach(() => {
@@ -43,7 +46,7 @@ async function card(openedOn = '2025-10-01') {
     postTransaction(database, ws, { occurredOn, description, lines: expenseLines({ categoryAccountId: electronics, paymentAccountId: visa.id, amountMinor, currency: 'IDR' }) });
   // As the old sheet saved them: no purchase, At purchase (0120 left them so).
   const plan = async (description: string, totalMinor: number, months: number, firstBilledMonth: string) => {
-    const id = await saveInstallment(database, ws, { cardAccountId: visa.id, description, totalMinor, months, firstBilledMonth, countMode: 'at_purchase' });
+    const id = await saveInstallment(database, ws, { cardAccountId: visa.id, description, totalMinor, months, firstBilledMonth, countMode: 'at_purchase', addedAt: ADDED });
     return id;
   };
   const planOf = async (id: string) => (await listInstallments(database, ws)).find((p) => p.id === id)!;
@@ -79,8 +82,8 @@ describe('auto-linking the plans saved before a plan named its purchase', () => 
     expect(await c.spent('2026-11-01', '2026-11-30')).toBe(1_000_000);
   });
 
-  it('leaves a plan whose purchase is not in the app as it is; Each month, it counts from the card’s start only', async () => {
-    // Kept since 1 Oct 2025; a 24-month plan first billed May 2024: instalments 18–24 (Oct 2025 – Apr 2026) are the app's.
+  it('leaves a plan whose purchase is not in the app as it is; Each month, it counts what is owed only', async () => {
+    // Added 10 Oct 2025; a 24-month plan first billed May 2024: 1–17 were due by 5 Oct, so 18–24 (Oct 2025 – Apr 2026) are owed.
     const c = await card('2025-10-01');
     const id = await c.plan('Phone', 24_000_000, 24, '2024-05');
     expect(await autoLinkInstalmentPlans(c.database, c.ws)).toEqual({ linked: 0, left: 1 });
@@ -120,7 +123,7 @@ describe('auto-linking the plans saved before a plan named its purchase', () => 
 describe('a plan with no purchase in a category of its own (0122)', () => {
   it('counts Each month in that category', async () => {
     const c = await card('2025-10-01');
-    const id = await saveInstallment(c.database, c.ws, { cardAccountId: c.visa, description: 'Phone', totalMinor: 6_000_000, months: 6, firstBilledMonth: '2025-11', categoryAccountId: c.electronics });
+    const id = await saveInstallment(c.database, c.ws, { cardAccountId: c.visa, description: 'Phone', totalMinor: 6_000_000, months: 6, firstBilledMonth: '2025-11', categoryAccountId: c.electronics, addedAt: ADDED });
     expect((await c.planOf(id)).categoryAccountId).toBe(c.electronics);
     expect((await categoryTotalsIn(c.database, c.ws, 'expense', '2025-11-01', '2025-11-30')).rows).toEqual([{ accountId: c.electronics, amountBaseMinor: 1_000_000, transactions: 1 }]);
   });
@@ -131,8 +134,8 @@ describe('a plan with no purchase in a category of its own (0122)', () => {
   });
 });
 
-describe('instalments before the card’s records start count nowhere', () => {
-  it('an investment plan with no purchase is put away only from the card’s start', async () => {
+describe('instalments paid before the plan was added count nowhere', () => {
+  it('an investment plan with no purchase is put away only for what is owed', async () => {
     const c = await card('2025-10-01');
     await c.plan('Phone', 24_000_000, 24, '2024-05');
     const flows = await periodFlows(c.database, c.ws, { from: '2024-05-01', to: '2026-04-30' });

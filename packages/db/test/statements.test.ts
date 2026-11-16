@@ -352,9 +352,12 @@ describe('a purchase converted to instalments', () => {
     expect((await cardStatement(h.database, h.ws, h.card.id, AUGUST, '2026-09-01')).lines).toEqual([]);
   });
 
-  it('leaves a plan with no purchase on this card out of the statement', async () => {
+  // 0124: a plan with no purchase puts what it owes on the card once, and the statements bill it a month at a time.
+  it('bills a plan with no purchase out of its owed line, a month at a time', async () => {
     const h = await household();
-    await saveInstallment(h.database, h.ws, { cardAccountId: h.card.id, description: 'Old plan', totalMinor: 6_000_000, months: 6, firstBilledMonth: '2026-08' });
-    expect((await cardStatement(h.database, h.ws, h.card.id, AUGUST, '2026-09-01')).lines).toEqual([]);
+    await saveInstallment(h.database, h.ws, { cardAccountId: h.card.id, description: 'Old plan', totalMinor: 6_000_000, months: 6, firstBilledMonth: '2026-08', addedAt: '2026-07-25T05:00:00.000Z' });
+    const august = await cardStatement(h.database, h.ws, h.card.id, AUGUST, '2026-09-01');
+    expect(august.lines).toEqual([expect.objectContaining({ statementOn: '2026-08-20', countedMinor: 1_000_000, instalment: expect.objectContaining({ number: 1, of: 6, noPurchase: true }) })]);
+    expect(august).toMatchObject({ openingMinor: 0, chargesMinor: 1_000_000, closingMinor: 1_000_000 });
   });
 });

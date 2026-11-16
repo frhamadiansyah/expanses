@@ -1,9 +1,9 @@
+import { countedFromOf, installmentSchedule } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { ownerScope, type WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { BookReadOnlyError, withCapture } from '../sync/capture';
 import { hasBooks, personalBookIdTx } from './books';
-import { cardRecordsFrom } from './instalment-spending';
 import { uncategorisedIdOf } from './uncategorised';
 
 /*
@@ -12,6 +12,9 @@ import { uncategorisedIdOf } from './uncategorised';
  * plan_spreads row is kept in step with it here, and goes to a shared workspace when the category it counts in is one of
  * that workspace's (the plan_spread entity's scope). Another phone counts it from that row, by the same function and
  * figures. A plan with a purchase travels with the purchase instead (its `spread`), and has no row here.
+ *
+ * `records_from` is the statement date of the plan's first instalment not paid (`countedFromOf`, 0124): another phone
+ * counts the same instalments as this one, with no change to what travels.
  */
 
 export async function planSpreadsExist(db: Db): Promise<boolean> {
@@ -23,24 +26,28 @@ type Row = [string, number, number, number, string, number, string | null, strin
 /** What this phone's plan should read as in plan_spreads, or null when it has no row there. */
 async function wantedRowTx(db: Db, ws: WorkspaceContext, planId: string): Promise<Row | null> {
   const withCategory = (await db.values(sql`SELECT 1 FROM pragma_table_info('card_installments') WHERE name = 'category_account_id'`)).length > 0;
-  const [plan] = await db.values<[string, string | null, string, string, number, number, number, string, string | null]>(sql`
+  const withPaid = (await db.values(sql`SELECT 1 FROM pragma_table_info('card_installments') WHERE name = 'paid_so_far'`)).length > 0;
+  const [plan] = await db.values<[string, string | null, string, string, number, number, number, string, string | null, number]>(sql`
     SELECT card_account_id, transaction_id, count_mode, description, total_minor, monthly_minor, months, first_billed_month,
-      ${withCategory ? sql`category_account_id` : sql`NULL`}
+      ${withCategory ? sql`category_account_id` : sql`NULL`}, ${withPaid ? sql`paid_so_far` : sql`0`}
     FROM card_installments WHERE id = ${planId} AND workspace_id = ${ws.workspaceId}`);
   if (!plan) return null;
-  const [cardAccountId, transactionId, countMode, description, totalMinor, monthlyMinor, months, firstBilledMonth, categoryId] = plan;
+  const [cardAccountId, transactionId, countMode, description, totalMinor, monthlyMinor, months, firstBilledMonth, categoryId, paidSoFar] = plan;
   if (transactionId !== null || countMode !== 'each_month') return null;
   const [terms] = await db.values<[number | null]>(sql`SELECT statement_day FROM card_terms WHERE account_id = ${cardAccountId}`);
   const personal = (await hasBooks(db)) ? await personalBookIdTx(db, ws.workspaceId) : null;
   // Left without a category, it counts under Uncategorised of Personal — an id every phone of that workspace shares.
   const category = categoryId ?? (await uncategorisedIdOf(personal ?? ws.workspaceId, 'expense'));
-  return [description, Number(totalMinor), Number(monthlyMinor), Number(months), firstBilledMonth, Number(terms?.[0] ?? 1), await cardRecordsFrom(db, ws, cardAccountId), category];
+  const statementDay = Number(terms?.[0] ?? 1);
+  // Another phone counts what this one does: the instalments after those paid (0124), from the first one's statement date.
+  const schedule = installmentSchedule({ totalMinor: Number(totalMinor), months: Number(months), monthlyMinor: Number(monthlyMinor), firstBilledMonth, rateBps: 0, conversionFeeMinor: 0, earnsPoints: false }, statementDay);
+  return [description, Number(totalMinor), Number(monthlyMinor), Number(months), firstBilledMonth, statementDay, countedFromOf(schedule, Number(paidSoFar)), category];
 }
 
 /**
  * Keeps one of this phone's own plans' plan_spreads row in step with it: written, changed or taken away, captured so a
- * shared workspace gets the change. Called after any write to the plan, its card's statement day or (on opening the
- * app) what the card's records start on. A row of a workspace whose share has ended stays as it was.
+ * shared workspace gets the change. Called after any write to the plan (what is paid included) or its card's statement day,
+ * and on opening the app. A row of a workspace whose share has ended stays as it was.
  */
 export async function refreshPlanSpreadTx(db: Db, given: WorkspaceContext, planId: string): Promise<void> {
   if (!(await planSpreadsExist(db))) return;

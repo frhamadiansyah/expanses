@@ -13,7 +13,6 @@ import {
   saveCardTerms,
   saveInstallment,
 } from '../src/index';
-import { sql } from 'drizzle-orm';
 import { setupDb, type TestDb } from './helpers';
 
 /*
@@ -41,7 +40,7 @@ async function owner(opening: { openingBalanceMinor: number; openedOn: string } 
   const groceries = (await listAccounts(database, ws)).find((a) => a.systemKey === 'household.groceries')!.id;
   const buy = (occurredOn: string, amountMinor: number, extra: { settledBeforeApp?: boolean; pastPurchase?: boolean } = {}) =>
     postTransaction(database, ws, { occurredOn, description: 'Purchase', lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: card.id, amountMinor, currency: 'IDR' }), ...extra });
-  const plan = () => saveInstallment(database, ws, { cardAccountId: card.id, description: 'Bond', totalMinor: 24_000_000, months: 24, firstBilledMonth: '2025-03', countMode: 'at_purchase' });
+  const plan = () => saveInstallment(database, ws, { cardAccountId: card.id, description: 'Bond', totalMinor: 24_000_000, months: 24, firstBilledMonth: '2025-03', countMode: 'at_purchase', addedAt: '2026-11-16T05:00:00.000Z' });
   const familyWs = inBook(current.ws, family);
   return { database, ws, familyWs, card: card.id, buy, plan };
 }
@@ -67,34 +66,24 @@ describe('the day a card’s records start', () => {
     expect(await cardRecordsFrom(o.database.db, o.familyWs, o.card)).toBe('2026-10-01');
   });
 
-  it('lets the owner’s plan from before the records bill its months on the statements', async () => {
+  // A plan with no purchase never reads the records start (0124): every instalment is on its statement, those paid by
+  // the day it was added marked paid.
+  it('leaves the owner’s plan from before the records on every statement, paid by the day it was added', async () => {
     const o = await owner({ openingBalanceMinor: 6_000_000, openedOn: '2026-10-01' });
     await o.buy('2024-12-05', 450_000, { settledBeforeApp: true });
-    await o.plan();
-    const rows = (await cardStatementLines(o.database, o.ws, o.card)).filter((line) => line.instalment).map((line) => line.instalment!.number);
-    // Billed from 13 Oct 2026: instalments 20–24.
-    expect(rows).toEqual([20, 21, 22, 23, 24]);
+    const planId = await o.plan();
+    const rows = (await cardStatementLines(o.database, o.ws, o.card)).filter((line) => line.instalment);
+    expect(rows.map((line) => line.instalment!.number)).toEqual(Array.from({ length: 24 }, (_, i) => i + 1));
+    expect(rows.filter((line) => line.paidOff).map((line) => line.instalment!.number)).toEqual(Array.from({ length: 20 }, (_, i) => i + 1));
+    const statuses = await planInstalmentStatuses(o.database, o.ws, planId, '2026-11-16');
+    expect(statuses.filter((s) => s.status === 'paid')).toHaveLength(20);
     void inBook;
   });
 
-  // TF 139, owner's phone: the card holds nothing in the app (no opening balance, no purchase) — the plan is all there
-  // is. Its start is then the last statement before the plan was added: the bill being paid when it was entered.
-  it('with nothing on the card, starts at the last statement before the plan was added', async () => {
+  // TF 139, owner's phone: the card holds nothing but the plan. Its owed line is no record of the card's own.
+  it('is none for a card holding only a plan’s owed line', async () => {
     const o = await owner(null);
-    const planId = await o.plan();
-    await o.database.db.run(sql`UPDATE card_installments SET created_at = '2026-11-15T09:00:00.000Z' WHERE id = ${planId}`);
-    expect(await cardRecordsFrom(o.database.db, o.ws, o.card)).toBe('2026-11-13');
-    const rows = (await cardStatementLines(o.database, o.ws, o.card)).filter((line) => line.instalment).map((line) => line.instalment!.number);
-    expect(rows).toEqual([21, 22, 23, 24]);
-  });
-
-  it('counts the instalments billed before the card’s start as paid on the plan', async () => {
-    const o = await owner(null);
-    const planId = await o.plan();
-    await o.database.db.run(sql`UPDATE card_installments SET created_at = '2026-11-15T09:00:00.000Z' WHERE id = ${planId}`);
-    const statuses = await planInstalmentStatuses(o.database, o.ws, planId, '2026-11-16');
-    expect(statuses.filter((s) => s.status === 'paid').map((s) => s.number)).toEqual(Array.from({ length: 20 }, (_, i) => i + 1));
-    expect(statuses.find((s) => s.number === 21)!.status).toBe('billed');
-    expect(statuses.filter((s) => s.status === 'upcoming').map((s) => s.number)).toEqual([22, 23, 24]);
+    await o.plan();
+    expect(await cardRecordsFrom(o.database.db, o.ws, o.card)).toBeNull();
   });
 });

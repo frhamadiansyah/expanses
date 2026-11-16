@@ -1,5 +1,5 @@
-import { coverStatement, type Cycle, installmentSchedule, instalmentsFrom, nextStatementStart, type PoolLine, statementCycleFor, transferLines } from '@expanses/core';
-import { cardRecordsFrom } from './instalment-spending';
+import { coverStatement, type Cycle, installmentSchedule, nextStatementStart, type PoolLine, statementCycleFor, transferLines } from '@expanses/core';
+import { cardOpeningOfTx, PLAN_OWED_REF } from './plan-owed';
 import { cardInstallments } from '../schema-loans';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
@@ -53,10 +53,13 @@ export interface StatementLine {
     countMode?: 'at_purchase' | 'each_month';
     categoryId?: string | null;
     /**
-     * A plan with no purchase (its purchase is not in the app): its row's `transactionId` is the card's opening balance
-     * (or '' when the card has none), not a purchase — nothing to open, assign or mark paid off.
+     * A plan with no purchase (its purchase is not in the app): its row's `transactionId` is the line it is billed out
+     * of — the plan's owed line, or the card's opening balance — not a purchase: nothing to open or assign. Its ✓ is the
+     * plan's list's: ticked, it and every one before it are paid (`setPlanPaidSoFar`).
      */
     noPurchase?: true;
+    /** For such a row: how many of the plan's instalments are paid, so the latest ticked one can be unticked. */
+    paidSoFar?: number;
   } | null;
   /** For a purchase converted to instalments: the plan it became. */
   convertedTo: { planId: string; months: number } | null;
@@ -78,6 +81,11 @@ export interface StatementLine {
    * does not draw it: the purchase carries the mark instead.
    */
   balancing: boolean;
+  /**
+   * A plan's owed line (0124): the plan it holds the owed rest of. Not drawn, like a balancing settlement: the plan's
+   * instalment rows bill it a month at a time.
+   */
+  owedOf?: string;
   /**
    * A purchase split across workspaces (0084) is one line, the whole charge as the bank prints it; these are its parts'
    * categories, largest first, for the line to name ("Groceries · Office supplies"). Absent on any other line.
@@ -182,7 +190,8 @@ async function cardLines(db: Db, ws: WorkspaceContext, cardAccountId: string): P
       paidBy: paymentId && paidOn ? { transactionId: paymentId, paidOn } : null,
       settles: Number(settles),
       paidOff: settled.has(transactionId),
-      balancing: ref?.startsWith(BEFORE_APP) ?? false,
+      balancing: (ref?.startsWith(BEFORE_APP) || ref?.startsWith(PLAN_OWED_REF)) ?? false,
+      ...(ref?.startsWith(PLAN_OWED_REF) ? { owedOf: ref.slice(PLAN_OWED_REF.length) } : {}),
       ...(partNames.has(transactionId) ? { splitCategories: partNames.get(transactionId)! } : {}),
       ...(Number(trade) === 1 ? { trade: true as const } : {}),
     }))
@@ -191,8 +200,8 @@ async function cardLines(db: Db, ws: WorkspaceContext, cardAccountId: string): P
 
 /**
  * The card's lines as the bank bills them: a purchase converted to a plan stays in its place but counts nothing,
- * and each instalment is a row on the statement it is billed on. Plans not tied to a purchase on this card are
- * left out, since there is no purchase here for them to replace.
+ * and each instalment is a row on the statement it is billed on. A plan tied to a purchase no longer on the card has
+ * no rows; one with no purchase bills its months out of its owed line (`noPurchaseLinesTx`).
  */
 async function billedLines(db: Db, ws: WorkspaceContext, cardAccountId: string): Promise<StatementLine[]> {
   const lines = await cardLines(db, ws, cardAccountId);
@@ -239,17 +248,17 @@ async function billedLines(db: Db, ws: WorkspaceContext, cardAccountId: string):
 }
 
 /**
- * The statement rows of plans with no purchase (owner, 16 Nov 2026, simplified): such a plan's purchase is not in the
- * app, but the bank bills each of its months, so the statement shows them — from the day the card starts in the app
- * (its opening balance, else its first line); one billed before is in no statement the app keeps. In either Count
- * spending mode: what the bank bills does not change with how it counts.
+ * The statement rows of plans with no purchase (owner, 17 Nov 2026: one plain rule): such a plan's purchase is not in the
+ * app, but the bank bills each of its months, so every instalment is a row on its own statement. Those paid
+ * (`paidSoFar`) say so and add nothing to what is due; the rest are billed and due like any line, and paid as the card's
+ * payments cover them. In either Count spending mode: what the bank bills does not change with how it counts.
  *
- * The rule that keeps nothing counted twice: the card's opening balance is what the bank said was owed on that day,
- * the plan's unbilled months included (the card's debt splits into billed and unbilled, `installmentTotals`). So on the
- * statements the opening balance counts less by the instalments billed on or after its day (never more than it owed),
- * and each of them counts on its own statement. Over the plan's months they add back to the opening, so the statements
- * end where the card's balance is, and what a statement asks (closing, due, cover) is what the bank bills. The balance,
- * net worth and the ledger are never touched. A card with no opening balance held none of the debt: its rows just count.
+ * What keeps nothing counted twice: the owed rest is already on the card's balance, in the plan's owed line — or, on a
+ * card with an opening balance of its own, inside that opening (what the bank said was owed, the plan's unbilled months
+ * included). That line counts less on the statements by the instalments still owed (never more than it holds), and each
+ * counts on its own statement instead. Over the plan's months they add back to it, so the statements end where the
+ * card's balance is, and what a statement asks (closing, due, cover) is what the bank bills. The balance, net worth and
+ * the ledger are never touched by this.
  */
 async function noPurchaseLinesTx(
   db: Db,
@@ -262,43 +271,38 @@ async function noPurchaseLinesTx(
 ): Promise<void> {
   const unlinked = plans.filter((plan) => !plan.transactionId);
   if (unlinked.length === 0) return;
-  const recordsFrom = await cardRecordsFrom(db, ws, cardAccountId);
-  if (!recordsFrom) return;
-  const [openingRow] = await db.values<[string]>(sql`
-    SELECT t.id FROM transactions t JOIN entries e ON e.transaction_id = t.id AND e.account_id = ${cardAccountId}
-    WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted' AND t.occurred_on = ${recordsFrom}
-      AND EXISTS (SELECT 1 FROM entries o JOIN accounts oa ON oa.id = o.account_id
-                  WHERE o.transaction_id = t.id AND oa.kind = 'equity' AND oa.system_key = 'opening_balance')
-    ORDER BY t.created_at LIMIT 1`);
-  const opening = openingRow ? lines.find((line) => line.transactionId === openingRow[0]) : undefined;
-  let held = 0;
+  const openingRow = await cardOpeningOfTx(db, ws, cardAccountId);
+  const opening = openingRow ? lines.find((line) => line.transactionId === openingRow.id) : undefined;
   for (const plan of unlinked) {
-    for (const bill of instalmentsFrom(installmentSchedule(plan, statementDay), recordsFrom)) {
-      held += bill.amountMinor;
+    // What the owed instalments are billed out of: the plan's owed line, else the card's own opening balance.
+    const holder = lines.find((line) => line.owedOf === plan.id) ?? opening;
+    let owed = 0;
+    for (const bill of installmentSchedule(plan, statementDay)) {
+      const paid = bill.number <= plan.paidSoFar;
+      if (!paid) owed += bill.amountMinor;
       instalments.push({
         key: `${plan.id}#${bill.number}`,
-        transactionId: opening?.transactionId ?? '',
+        transactionId: holder?.transactionId ?? '',
         occurredOn: bill.statementOn,
         postedOn: null,
         statementOn: bill.statementOn,
         description: plan.description,
         cardId: null,
         owedMinor: bill.amountMinor,
-        countedMinor: bill.amountMinor,
-        instalment: { planId: plan.id, number: bill.number, of: plan.months, countMode: plan.countMode, categoryId: plan.categoryAccountId, noPurchase: true },
+        countedMinor: paid ? 0 : bill.amountMinor,
+        instalment: { planId: plan.id, number: bill.number, of: plan.months, countMode: plan.countMode, categoryId: plan.categoryAccountId, noPurchase: true, paidSoFar: plan.paidSoFar },
         convertedTo: null,
         spending: true,
         originalCurrency: null,
         originalAmountMinor: null,
         paidBy: null,
         settles: 0,
-        paidOff: false,
+        paidOff: paid,
         balancing: false,
       });
     }
+    if (holder && holder.countedMinor > 0) holder.countedMinor -= Math.min(holder.countedMinor, owed);
   }
-  // What the opening already held of them, never more than it owed.
-  if (opening && opening.countedMinor > 0) opening.countedMinor -= Math.min(opening.countedMinor, held);
 }
 
 /** Each purchase's largest category line, by transaction: what an instalment row is named and drawn by. */
@@ -441,39 +445,60 @@ export interface PlanInstalmentStatus {
   statementOn: string;
   amountMinor: number;
   status: 'paid' | 'billed' | 'upcoming';
+  /** Paid because the plan's list says so (a plan with no purchase), not because a payment covers it: it can be unticked. */
+  ticked?: true;
 }
 
 /**
- * Each instalment of one plan and where it stands on a day: upcoming until its statement date, billed from then, and
- * paid once the card's payments cover it on that statement (`statementCoverOf`, oldest first — what the statement's own
- * ✓ says). One billed before the card's records start was paid before the app.
+ * Each instalment of one plan and where it stands on a day — the one answer the plan's page, the card's Instalments
+ * box, Debt-free and Recurring read: upcoming until its statement date, billed from then, and paid once ticked (a plan
+ * with no purchase, `paidSoFar`) or once the card's payments cover it on that statement (`statementCoverOf`, oldest
+ * first — what the statement's own ✓ says).
  */
 export async function planInstalmentStatuses(database: Database, ws: WorkspaceContext, planId: string, today: string): Promise<PlanInstalmentStatus[]> {
-  const db = database.db;
-  const [found] = await db.select({ cardAccountId: cardInstallments.cardAccountId }).from(cardInstallments).where(and(eq(cardInstallments.id, planId), eq(cardInstallments.workspaceId, ws.workspaceId)));
+  const [found] = await database.db.select({ cardAccountId: cardInstallments.cardAccountId }).from(cardInstallments).where(and(eq(cardInstallments.id, planId), eq(cardInstallments.workspaceId, ws.workspaceId)));
   if (!found) throw new StatementError('NOT_FOUND', 'That plan is not in this workspace');
-  const plan = (await listInstallmentsTx(db, ws, found.cardAccountId)).find((row) => row.id === planId)!;
+  return (await cardPlanStatuses(database.db, ws, found.cardAccountId, today)).get(planId) ?? [];
+}
+
+/** `planInstalmentStatuses` for every plan in the workspace, by plan id: each card's lines read once. */
+export async function allPlanInstalmentStatuses(database: Database, ws: WorkspaceContext, today: string): Promise<Record<string, PlanInstalmentStatus[]>> {
+  const cards = [...new Set((await listInstallmentsTx(database.db, ws)).map((plan) => plan.cardAccountId))];
+  const out: Record<string, PlanInstalmentStatus[]> = {};
+  for (const cardAccountId of cards) for (const [planId, statuses] of await cardPlanStatuses(database.db, ws, cardAccountId, today)) out[planId] = statuses;
+  return out;
+}
+
+async function cardPlanStatuses(db: Db, ws: WorkspaceContext, cardAccountId: string, today: string): Promise<Map<string, PlanInstalmentStatus[]>> {
+  const plans = await listInstallmentsTx(db, ws, cardAccountId);
   const [terms] = await db
     .select({ statementDay: cardTerms.statementDay })
     .from(cardTerms)
-    .where(and(eq(cardTerms.accountId, plan.cardAccountId), eq(cardTerms.workspaceId, ws.workspaceId)));
+    .where(and(eq(cardTerms.accountId, cardAccountId), eq(cardTerms.workspaceId, ws.workspaceId)));
   const statementDay = terms?.statementDay ?? 1;
-  const all = await billedLines(db, ws, plan.cardAccountId);
-  const onStatement = all.some((line) => line.instalment?.planId === planId);
-  const pool = onStatement ? poolLinesOf(all) : [];
+  const all = await billedLines(db, ws, cardAccountId);
+  const keys = new Set(all.map((line) => line.key));
+  const pool = poolLinesOf(all);
   const covers = new Map<string, Record<string, StatementCover>>();
-  // Billed before the card's records start: paid before the app (inside its opening balance, or with nothing kept).
-  const recordsFrom = await cardRecordsFrom(db, ws, plan.cardAccountId);
-  return installmentSchedule(plan, statementDay).map((bill) => {
-    if (recordsFrom && bill.statementOn < recordsFrom) return { number: bill.number, of: plan.months, statementOn: bill.statementOn, amountMinor: bill.amountMinor, status: 'paid' as const };
-    let status: PlanInstalmentStatus['status'] = bill.statementOn > today ? 'upcoming' : 'billed';
-    if (status === 'billed' && onStatement) {
-      const cycle = statementCycleFor(bill.statementOn, statementDay);
-      if (!covers.has(cycle.start)) covers.set(cycle.start, statementCoverOf(pool, cycle, today));
-      if (covers.get(cycle.start)![`${planId}#${bill.number}`]?.whole) status = 'paid';
-    }
-    return { number: bill.number, of: plan.months, statementOn: bill.statementOn, amountMinor: bill.amountMinor, status };
-  });
+  const out = new Map<string, PlanInstalmentStatus[]>();
+  for (const plan of plans) {
+    out.set(
+      plan.id,
+      installmentSchedule(plan, statementDay).map((bill) => {
+        const row = { number: bill.number, of: plan.months, statementOn: bill.statementOn, amountMinor: bill.amountMinor };
+        if (!plan.transactionId && bill.number <= plan.paidSoFar) return { ...row, status: 'paid' as const, ticked: true as const };
+        let status: PlanInstalmentStatus['status'] = bill.statementOn > today ? 'upcoming' : 'billed';
+        const key = `${plan.id}#${bill.number}`;
+        if (status === 'billed' && keys.has(key)) {
+          const cycle = statementCycleFor(bill.statementOn, statementDay);
+          if (!covers.has(cycle.start)) covers.set(cycle.start, statementCoverOf(pool, cycle, today));
+          if (covers.get(cycle.start)![key]?.whole) status = 'paid';
+        }
+        return { ...row, status };
+      }),
+    );
+  }
+  return out;
 }
 
 /** Sets or clears the date the bank posted a card transaction. A purchase cannot be posted before it was made. */

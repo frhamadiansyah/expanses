@@ -121,6 +121,7 @@ import instalmentCountMode from '../migrations/0120_instalment_count_mode.sql?ra
 import purchaseSpreads from '../migrations/0121_purchase_spreads.sql?raw';
 import instalmentCategory from '../migrations/0122_instalment_category.sql?raw';
 import planSpreads from '../migrations/0123_plan_spreads.sql?raw';
+import planPaidSoFar from '../migrations/0124_plan_paid_so_far.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -252,6 +253,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 121, name: 'purchase_spreads', sql: purchaseSpreads },
   { version: 122, name: 'instalment_category', sql: instalmentCategory },
   { version: 123, name: 'plan_spreads', sql: planSpreads },
+  { version: 124, name: 'plan_paid_so_far', sql: planPaidSoFar },
 ];
 
 /** The highest version this build of the app knows how to produce. */

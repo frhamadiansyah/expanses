@@ -215,12 +215,66 @@ export function unlinkedPurchaseOfTotal(lines: readonly PlanPurchaseLine[], plan
 }
 
 /**
- * The instalments billed on or after the day the card starts in the app (its opening balance, else its first line): one
- * billed before is inside the opening balance, in months the app was not kept, so it counts nowhere — no spending, no
- * debt payment, no statement row. Every instalment with no start.
+ * The instalments billed on or after a day: for a plan tied to a purchase, the day the card starts in the app (one billed
+ * before is inside its opening balance); for a plan with no purchase, the statement date of its first instalment not
+ * paid (`countedFromOf`). Every instalment with no day.
  */
 export function instalmentsFrom<T extends { statementOn: string }>(bills: readonly T[], recordsFrom: string | null): T[] {
   return recordsFrom === null ? [...bills] : bills.filter((bill) => bill.statementOn >= recordsFrom);
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+const lastDayOf = (year: number, month: number) => new Date(Date.UTC(year, month, 0)).getUTCDate();
+
+/** The first due day after a statement date (the month's last day when that day does not exist). */
+export function dueDateAfter(statementOn: string, dueDay: number): string {
+  let [y, m] = statementOn.split('-').map(Number) as [number, number];
+  for (let i = 0; i < 2; i += 1) {
+    const candidate = `${y}-${pad2(m)}-${pad2(Math.min(dueDay, lastDayOf(y, m)))}`;
+    if (candidate > statementOn) return candidate;
+    [y, m] = m === 12 ? [y + 1, 1] : [y, m + 1];
+  }
+  return `${y}-${pad2(m)}-${pad2(Math.min(dueDay, lastDayOf(y, m)))}`;
+}
+
+/** When an instalment's payment is due: the card's due day after its statement date, or that date with no due day. */
+export const instalmentDueOn = (statementOn: string, dueDay: number | null): string => (dueDay === null ? statementOn : dueDateAfter(statementOn, dueDay));
+
+/*
+ * A plan with no purchase in the app (owner, 17 Nov 2026) keeps how many of its instalments are paid, `paid_so_far`: set
+ * when it is added — every instalment whose payment was due before that day — and changed only by ticking its list.
+ * The rest is what the card still owes of it. One rule; nothing else is guessed.
+ */
+
+/** How many of a plan's instalments were paid by `addedOn`: those whose payment was due before that day. */
+export function paidSoFarOn(plan: CardInstallment, statementDay: number, dueDay: number | null, addedOn: string): number {
+  return installmentSchedule(plan, statementDay).filter((bill) => instalmentDueOn(bill.statementOn, dueDay) < addedOn).length;
+}
+
+/** What is still owed of a plan with `paidSoFar` instalments paid: the instalments after them, the last carrying the rounding. */
+export function owedAfter(plan: CardInstallment, paidSoFar: number): number {
+  if (paidSoFar >= plan.months) return 0;
+  return plan.totalMinor - plan.monthlyMinor * Math.max(0, paidSoFar);
+}
+
+/** Ticking instalment `number` in the plan's list: it and every one before it are paid. Unticking a paid one leaves those before it. */
+export const tickedPaidSoFar = (paidSoFar: number, number: number): number => (number > paidSoFar ? number : number - 1);
+
+/** A count of paid instalments that can stand: a whole number from none to all of them. */
+export const clampPaidSoFar = (paidSoFar: number, months: number): number => (Number.isInteger(paidSoFar) ? Math.min(Math.max(paidSoFar, 0), months) : 0);
+
+/**
+ * The day a plan with no purchase counts from, in every reading of spending and on another phone (plan_spreads'
+ * `records_from`): the statement date of its first instalment not paid. Null with none paid (all count); the day after
+ * its last with all paid (none counts).
+ */
+export function countedFromOf(schedule: readonly InstallmentBilling[], paidSoFar: number): string | null {
+  if (paidSoFar <= 0 || schedule.length === 0) return null;
+  const next = schedule[paidSoFar];
+  if (next) return next.statementOn;
+  const after = new Date(`${schedule.at(-1)!.statementOn}T00:00:00Z`);
+  after.setUTCDate(after.getUTCDate() + 1);
+  return after.toISOString().slice(0, 10);
 }
 
 /**

@@ -16,6 +16,7 @@ import {
   saveInstallment,
   setBookMonthStart,
   setInstallmentCountMode,
+  setPlanPaidSoFar,
   updateInstallment,
 } from '../../src/index';
 import { SyncEngine } from '../../src/sync/engine';
@@ -25,10 +26,12 @@ import { categoryOf, type Device, Household, skipsOf } from './household';
  * A card instalment plan with no purchase, counted Each month in a Family category (0123, design
  * docs/sdd/card-instalments-c-no-purchase-family.md option a). Invented, after the owner's TF 136 plan: 24 ×
  * Rp 1.000.000 first billed February 2025, statement day the 13th, the card kept since its opening balance on
- * 1 Sep 2026 — so instalments 20–24 (Sep 2026 – Jan 2027) are the app's. Fandri's plan; Dewi shares Family.
+ * 1 Sep 2026; the plan added on 5 Sep 2026, so 1–19 were paid (the 13 Aug bill was due 2 Sep) and instalments 20–24
+ * (Sep 2026 – Jan 2027) are owed (0124). Fandri's plan; Dewi shares Family.
  */
 
 const BUILD = '0.5.6';
+const ADDED = '2026-09-05T05:00:00.000Z';
 const OLDER = '0.5.5';
 const MONTHS = Array.from({ length: 8 }, (_, i) => addMonths('2026-07', i)); // Jul 2026 – Feb 2027
 
@@ -67,6 +70,7 @@ async function household(options: { dewi?: string } = {}) {
     firstBilledMonth: '2025-02',
     countMode: 'each_month',
     categoryAccountId: electronics,
+    addedAt: ADDED,
   });
   await home.settle();
   const fam = (d: Device) => inBook(d.ws, family);
@@ -95,7 +99,7 @@ async function familyFigures(h: H, d: Device, startDay = 1) {
 const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
 
 describe('a plan with no purchase in a Family category, on both phones', () => {
-  it('counts each month from the card’s records start, the same on both phones, and nothing before', async () => {
+  it('counts each month from the first instalment owed, the same on both phones, and nothing before', async () => {
     const h = await household();
     const mine = await familyFigures(h, h.fandri);
     expect(await familyFigures(h, h.dewi)).toEqual(mine);
@@ -111,6 +115,39 @@ describe('a plan with no purchase in a Family category, on both phones', () => {
     // Neither phone counts it in Personal.
     const personal = inBook(h.fandri.ws, (await personalBook(h.fandri.database, h.fandri.ws)).id);
     expect((await categoryTotalsIn(h.fandri.database, personal, 'expense', '2026-11-01', '2026-11-30')).rows).toEqual([]);
+  });
+
+  // The tick list (0124): what Fandri marks paid moves where both phones count from, with no change to what travels.
+  it('ticked or unticked on his phone, both phones count the same instalments', async () => {
+    const h = await household();
+    expect(await h.fandri.database.db.values(sql`SELECT records_from FROM plan_spreads`)).toEqual([['2026-09-13']]);
+    await setPlanPaidSoFar(h.fandri.database, h.fandri.ws, h.planId, 21);
+    await h.home.settle();
+    expect(await h.dewi.database.db.values(sql`SELECT records_from FROM plan_spreads`)).toEqual([['2026-11-13']]);
+    const mine = await familyFigures(h, h.fandri);
+    expect(await familyFigures(h, h.dewi)).toEqual(mine);
+    expect(mine['2026-09']).toMatchObject({ cashflow: 0 });
+    expect(mine['2026-10']).toMatchObject({ cashflow: 0 });
+    expect(mine['2026-11']).toMatchObject({ cashflow: 1_000_000 });
+    await setPlanPaidSoFar(h.fandri.database, h.fandri.ws, h.planId, 18);
+    await h.home.settle();
+    expect(await familyFigures(h, h.dewi)).toEqual(await familyFigures(h, h.fandri));
+    expect((await familyFigures(h, h.dewi))['2026-08']).toMatchObject({ cashflow: 1_000_000 });
+    expect(await skipsOf(h.dewi.database)).toEqual([]);
+  });
+
+  // On a card with nothing else, the owed rest is a balance line on his card, like an opening balance: it belongs to no
+  // workspace, so it is in no shared log; her phone has no copy of his card's balance.
+  it('the owed line stays on his phone, like an opening balance', async () => {
+    const h = await household();
+    const bare = await createAccount(h.fandri.database, h.fandri.ws, { name: 'Visa Biru', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    await saveCardTerms(h.fandri.database, h.fandri.ws, { accountId: bare.id, statementDay: 13, dueDay: 2, creditLimitMinor: null, annualFeeMinor: null });
+    await saveInstallment(h.fandri.database, h.fandri.ws, { cardAccountId: bare.id, description: 'Bond', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2026-06', countMode: 'each_month', categoryAccountId: h.electronics, addedAt: ADDED });
+    await h.home.settle();
+    expect(await h.fandri.database.db.values(sql`SELECT description FROM transactions WHERE external_ref LIKE 'plan-owed:%' AND status = 'posted'`)).toEqual([['Bond · instalments 4–12 owed']]);
+    expect(await h.dewi.database.db.values(sql`SELECT description FROM transactions WHERE description LIKE 'Bond%'`)).toEqual([]);
+    expect(await familyFigures(h, h.dewi)).toEqual(await familyFigures(h, h.fandri));
+    expect(await skipsOf(h.dewi.database)).toEqual([]);
   });
 
   it('when months start on the 25th', async () => {
@@ -174,7 +211,7 @@ describe('while her phone is on 0.5.5', () => {
     const family = await createBook(fandri.database, fandri.ws, { name: 'Family', kind: 'family', baseCurrency: 'IDR', copyCategoriesFrom: personal });
     const card = await createAccount(fandri.database, fandri.ws, { name: 'Visa Kencana', kind: 'liability', subtype: 'credit_card', currency: 'IDR', openingBalanceMinor: 8_000_000, openedOn: '2026-09-01' });
     const electronics = await categoryOf(fandri.database, family, 'Electronics');
-    await saveInstallment(fandri.database, fandri.ws, { cardAccountId: card.id, description: 'Phone', totalMinor: 24_000_000, months: 24, firstBilledMonth: '2025-02', countMode: 'each_month', categoryAccountId: electronics });
+    await saveInstallment(fandri.database, fandri.ws, { cardAccountId: card.id, description: 'Phone', totalMinor: 24_000_000, months: 24, firstBilledMonth: '2025-02', countMode: 'each_month', categoryAccountId: electronics, addedAt: ADDED });
     const { relayBookId } = await fandri.engine.shareBook(family, { memberId: fandri.memberId, memberName: 'Fandri', deviceName: 'Fandri’s phone' });
     home.bookId = family;
     home.relayBookId = relayBookId;

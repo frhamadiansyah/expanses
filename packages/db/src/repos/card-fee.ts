@@ -427,12 +427,13 @@ function feeDateIn(chargedOn: string, year: number): string {
   return `${String(year).padStart(4, '0')}-${day}`;
 }
 
-/** The day the card is counted from: its opening entry's, else its As of day (0107); null with neither. */
+/** The day the card is counted from: its opening entry's (a plan's owed line aside, 0124), else its As of day (0107); null with neither. */
 async function cardStartsOn(tx: Db, ws: WorkspaceContext, cardId: string): Promise<string | null> {
   const [opening] = await tx.values<[string | null]>(sql`
     SELECT MIN(t.occurred_on) FROM transactions t
     JOIN entries e ON e.transaction_id = t.id AND e.account_id = ${cardId}
     WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted'
+      AND (t.external_ref IS NULL OR t.external_ref NOT LIKE 'plan-owed:%')
       AND EXISTS (SELECT 1 FROM entries o JOIN accounts oa ON oa.id = o.account_id
                   WHERE o.transaction_id = t.id AND oa.kind = 'equity' AND oa.system_key = 'opening_balance')`);
   if (opening?.[0]) return opening[0];

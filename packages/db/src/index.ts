@@ -82,6 +82,7 @@ export * from './repos/installments';
 export * from './repos/instalment-spending';
 export * from './repos/instalment-autolink';
 export * from './repos/plan-spreads';
+export * from './repos/plan-owed';
 export * as taxSchema from './schema-tax';
 export * as recurringSchema from './schema-recurring';
 export * as eventsSchema from './schema-events';

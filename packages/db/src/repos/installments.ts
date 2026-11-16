@@ -1,4 +1,4 @@
-import { type CardInstallment, INSTALMENT_COUNT_MODES, type InstalmentCountMode, type InstallmentSplit, installmentSplit, roundHalfAwayFromZero, uuidv7 } from '@expanses/core';
+import { type CardInstallment, clampPaidSoFar, INSTALMENT_COUNT_MODES, type InstalmentCountMode, type InstallmentSplit, installmentSplit, roundHalfAwayFromZero, uuidv7 } from '@expanses/core';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -8,6 +8,7 @@ import { captureSpreadingTx, withCapture } from '../sync/capture';
 import { hasBooks, personalBookIdTx } from './books';
 import { ensureUncategorisedRowTx, uncategorisedIdOf } from './uncategorised';
 import { refreshPlanSpreadTx } from './plan-spreads';
+import { addedOnOf, paidSoFarColumnExists, paidSoFarWhenAddedTx, refreshPlanOwedTx } from './plan-owed';
 
 export class InstallmentDbError extends Error {
   constructor(message: string) {
@@ -38,6 +39,12 @@ export interface CardInstallmentRow extends CardInstallment {
    * purchase — each instalment a card repayment (`tradeRefusal`).
    */
   linkedToTrade: boolean;
+  /**
+   * With no purchase: how many of its instalments are paid (0124) — set when it was added, changed by ticking its list.
+   * The rest is owed: on the card's balance and statements, and all that counts as spending. 0 for a plan tied to a
+   * purchase, whose instalments the card's payments mark paid.
+   */
+  paidSoFar: number;
 }
 
 /** Whether a transaction is an investment trade: buying a holding is not spending. */
@@ -94,6 +101,13 @@ export interface SaveInstallmentInput {
   countMode?: InstalmentCountMode;
   /** With no purchase: the category it counts in; Uncategorised when left out (0122). */
   categoryAccountId?: string | null;
+  /**
+   * With no purchase: how many of its instalments are paid, as its list was ticked. Left out, every instalment whose
+   * payment was due before the day it is added (`paidSoFarOn`). Ignored with a purchase.
+   */
+  paidSoFar?: number;
+  /** When it is added, as an ISO timestamp: now unless said (a test's fixed day). */
+  addedAt?: string;
 }
 
 async function cardAccountTx(tx: Db, ws: WorkspaceContext, accountId: string): Promise<void> {
@@ -105,7 +119,13 @@ async function cardAccountTx(tx: Db, ws: WorkspaceContext, accountId: string): P
   if (row.subtype !== 'credit_card') throw new InstallmentDbError('Only a credit card carries instalment plans');
 }
 
-const toRow = (row: typeof cardInstallments.$inferSelect, countMode: InstalmentCountMode = 'at_purchase', categoryAccountId: string | null = null, linkedToTrade = false): CardInstallmentRow => ({
+const toRow = (
+  row: typeof cardInstallments.$inferSelect,
+  countMode: InstalmentCountMode = 'at_purchase',
+  categoryAccountId: string | null = null,
+  linkedToTrade = false,
+  paidSoFar = 0,
+): CardInstallmentRow => ({
   id: row.id,
   cardAccountId: row.cardAccountId,
   transactionId: row.transactionId,
@@ -121,7 +141,24 @@ const toRow = (row: typeof cardInstallments.$inferSelect, countMode: InstalmentC
   countMode,
   categoryAccountId,
   linkedToTrade,
+  paidSoFar: row.transactionId ? 0 : clampPaidSoFar(paidSoFar, row.months),
 });
+
+/**
+ * Writes how many of a plan's instalments are paid (0124): none with a purchase; with none, `paidSoFar` as given, else
+ * what was paid when it was added (`paidSoFarWhenAddedTx`). Then its owed line follows (`refreshPlanOwedTx`).
+ */
+async function writePaidSoFarTx(tx: Db, ws: WorkspaceContext, id: string, paidSoFar: number | undefined): Promise<void> {
+  if (!(await paidSoFarColumnExists(tx))) return;
+  const [row] = await tx.values<[string, string | null, number, number, number, string, string]>(sql`
+    SELECT card_account_id, transaction_id, total_minor, months, monthly_minor, first_billed_month, created_at FROM card_installments WHERE id = ${id}`);
+  if (!row) return;
+  const [cardAccountId, transactionId, totalMinor, months, monthlyMinor, firstBilledMonth, createdAt] = row;
+  const plan: CardInstallment = { totalMinor: Number(totalMinor), months: Number(months), monthlyMinor: Number(monthlyMinor), firstBilledMonth, rateBps: 0, conversionFeeMinor: 0, earnsPoints: false };
+  const paid = transactionId !== null ? 0 : paidSoFar !== undefined ? clampPaidSoFar(paidSoFar, plan.months) : await paidSoFarWhenAddedTx(tx, cardAccountId, plan, addedOnOf(createdAt));
+  await tx.run(sql`UPDATE card_installments SET paid_so_far = ${paid} WHERE id = ${id} AND workspace_id = ${ws.workspaceId}`);
+  await refreshPlanOwedTx(tx, ws, id);
+}
 
 /**
  * A plan with no purchase and no category of its own counts Each month under Uncategorised of the owner's Personal
@@ -194,11 +231,13 @@ export async function saveInstallment(database: Database, ws: WorkspaceContext, 
       rateBps: input.rateBps ?? 0,
       conversionFeeMinor: input.conversionFeeMinor ?? 0,
       earnsPoints: (input.earnsPoints ?? true) ? 1 : 0,
-      createdAt: new Date().toISOString(),
+      createdAt: input.addedAt ?? new Date().toISOString(),
     });
     await writeCountModeTx(tx, ws, id, countMode);
     if (input.categoryAccountId) await writeCategoryTx(tx, ws, id, input.categoryAccountId);
     if (await countModeColumnExists(tx)) await ensurePlanCategoryTx(tx, ws, id);
+    // With no purchase: what is paid, and the rest owed on the card.
+    await writePaidSoFarTx(tx, ws, id, input.paidSoFar);
     // With no purchase and Each month, it travels as a plan_spread (0123).
     await refreshPlanSpreadTx(tx, ws, id);
   });
@@ -219,6 +258,8 @@ export interface UpdateInstallmentInput {
   countMode?: InstalmentCountMode;
   /** Left out, the plan keeps its category; null is Uncategorised (0122). */
   categoryAccountId?: string | null;
+  /** With no purchase: how many are paid. Left out, it keeps what it has (or, untied from a purchase now, what was paid when it was added). */
+  paidSoFar?: number;
 }
 
 /**
@@ -236,6 +277,7 @@ export async function updateInstallment(database: Database, ws: WorkspaceContext
       .from(cardInstallments)
       .where(and(eq(cardInstallments.id, input.id), eq(cardInstallments.workspaceId, ws.workspaceId)));
     if (found.length === 0) throw new InstallmentDbError('Plan not found in this workspace');
+    const [kept] = (await paidSoFarColumnExists(tx)) ? await tx.values<[number]>(sql`SELECT paid_so_far FROM card_installments WHERE id = ${input.id}`) : [];
     if (input.transactionId) await purchaseForPlanTx(tx, ws, found[0]!.cardAccountId, input.transactionId, input.id);
     {
       const linked = input.transactionId === undefined ? found[0]!.transactionId : input.transactionId;
@@ -260,6 +302,9 @@ export async function updateInstallment(database: Database, ws: WorkspaceContext
     if (input.countMode !== undefined) await writeCountModeTx(tx, ws, input.id, input.countMode);
     if (input.categoryAccountId !== undefined) await writeCategoryTx(tx, ws, input.id, input.categoryAccountId);
     if (await countModeColumnExists(tx)) await ensurePlanCategoryTx(tx, ws, input.id);
+    // What is paid stays as ticked (within its months); a plan untied from its purchase now reads what was paid when added.
+    const untied = found[0]!.transactionId !== null && input.transactionId === null;
+    await writePaidSoFarTx(tx, ws, input.id, input.paidSoFar ?? (untied || kept === undefined ? undefined : Number(kept[0])));
     await refreshPlanSpreadTx(tx, ws, input.id);
   });
 }
@@ -301,16 +346,17 @@ export async function listInstallmentsTx(db: Db, ws: WorkspaceContext, cardAccou
   const onTrade = (row: (typeof rows)[number]) => row.transactionId !== null && linked.has(row.transactionId);
   if (rows.length === 0 || !(await countModeColumnExists(db))) return rows.map((row) => toRow(row, 'at_purchase', null, onTrade(row)));
   const withCategory = await planCategoryColumnExists(db);
+  const withPaid = await paidSoFarColumnExists(db);
   const modes = new Map(
     (
-      await db.values<[string, string, string | null]>(
-        sql`SELECT id, count_mode, ${withCategory ? sql`category_account_id` : sql`NULL`} FROM card_installments WHERE workspace_id = ${ws.workspaceId}`,
+      await db.values<[string, string, string | null, number]>(
+        sql`SELECT id, count_mode, ${withCategory ? sql`category_account_id` : sql`NULL`}, ${withPaid ? sql`paid_so_far` : sql`0`} FROM card_installments WHERE workspace_id = ${ws.workspaceId}`,
       )
-    ).map(([id, mode, category]) => [id, { mode, category }]),
+    ).map(([id, mode, category, paid]) => [id, { mode, category, paid: Number(paid) }]),
   );
   return rows.map((row) => {
     const read = modes.get(row.id);
-    return toRow(row, isCountMode(read?.mode) ? read.mode : 'at_purchase', read?.category ?? null, onTrade(row));
+    return toRow(row, isCountMode(read?.mode) ? read.mode : 'at_purchase', read?.category ?? null, onTrade(row), read?.paid ?? 0);
   });
 }
 
@@ -321,7 +367,8 @@ export async function deleteInstallment(database: Database, ws: WorkspaceContext
     // A shared purchase it spread goes out again, counting at purchase.
     if (found?.transactionId) await captureSpreadingTx(tx, found.transactionId);
     await tx.delete(cardInstallments).where(and(eq(cardInstallments.id, id), eq(cardInstallments.workspaceId, ws.workspaceId)));
-    // Gone here, its plan_spread goes from a shared workspace too.
+    // Gone here, its owed line goes from the card, and its plan_spread from a shared workspace.
+    await refreshPlanOwedTx(tx, ws, id);
     await refreshPlanSpreadTx(tx, ws, id);
   });
 }

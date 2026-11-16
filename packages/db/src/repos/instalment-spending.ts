@@ -1,10 +1,11 @@
-import { type InstalmentCountMode, instalmentsFrom, instalmentSpendingLines, instalmentsCountedIn, type PartWeight, statementCycleFor } from '@expanses/core';
+import { countedFromOf, type InstalmentCountMode, installmentSchedule, instalmentsFrom, instalmentSpendingLines, instalmentsCountedIn, type PartWeight } from '@expanses/core';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Db } from '../database';
 import { cardTerms } from '../schema-points';
 import { hasBooks, personalBookIdTx } from './books';
 import { type CardInstallmentRow, listInstallmentsTx } from './installments';
+import { balanceLineRef } from './plan-owed';
 import { uncategorisedIdOf } from './uncategorised';
 
 /*
@@ -31,9 +32,10 @@ export interface PlanWithDay {
   /** True for such a spread: there is no plan here to open, nor any debt of this phone's. */
   received?: boolean;
   /**
-   * The day the card's records start in the app (`cardRecordsFrom`): an instalment billed before it is inside the
-   * card's opening balance, in months the app was not kept, and counts nowhere. Null for none known (and for a spread
-   * from another phone, whose purchase is recorded, so it has none of its instalments before the records anyway).
+   * The day its instalments count from; one billed before counts nowhere. For a plan with no purchase, the statement date
+   * of its first instalment not paid (`countedFromOf`, 0124) — on this phone and, through plan_spreads, on another. For a
+   * plan tied to a purchase, the day the card's records start in the app (`cardRecordsFrom`): one billed before is inside
+   * the card's opening balance. Null for every instalment.
    */
   recordsFrom?: string | null;
 }
@@ -42,10 +44,11 @@ export interface PlanWithDay {
 const BEFORE_APP = 'before-app:';
 
 /**
- * The day a card starts in the app (owner, 16 Nov 2026): its opening balance's date, else its earliest posted line, read
- * owner-wide whatever workspace is open. A purchase recorded as already paid off before the app (or a past purchase)
- * and its balancing settlement are left out: the settlement is posted against Opening Balances on the purchase's own,
- * older day, and was taken for the card's opening (TF 138). Null for a card with nothing on it yet.
+ * The day a card starts in the app (owner, 16 Nov 2026), for its plans tied to a purchase: its opening balance's date,
+ * else its earliest posted line, read owner-wide whatever workspace is open. A purchase recorded as already paid off
+ * before the app (or a past purchase) and its balancing settlement are left out: the settlement is posted against Opening
+ * Balances on the purchase's own, older day, and was taken for the card's opening (TF 138). So is a plan's owed line
+ * (0124). Null for a card with nothing on it yet. A plan with no purchase never reads this: it counts what is not paid.
  */
 export async function cardRecordsFrom(db: Db, given: WorkspaceContext, cardAccountId: string): Promise<string | null> {
   const workspaceId = given.workspaceId;
@@ -53,30 +56,18 @@ export async function cardRecordsFrom(db: Db, given: WorkspaceContext, cardAccou
     SELECT MIN(t.occurred_on) FROM transactions t
     JOIN entries e ON e.transaction_id = t.id AND e.account_id = ${cardAccountId}
     WHERE t.workspace_id = ${workspaceId} AND t.status = 'posted'
-      AND (t.external_ref IS NULL OR t.external_ref NOT LIKE ${BEFORE_APP + '%'})
+      AND (t.external_ref IS NULL OR NOT ${balanceLineRef})
       AND EXISTS (SELECT 1 FROM entries o JOIN accounts oa ON oa.id = o.account_id
                   WHERE o.transaction_id = t.id AND oa.kind = 'equity' AND oa.system_key = 'opening_balance')`);
   if (opening?.[0]) return opening[0];
   const [first] = await db.values<[string | null]>(sql`
     SELECT MIN(t.occurred_on) FROM transactions t JOIN entries e ON e.transaction_id = t.id AND e.account_id = ${cardAccountId}
     WHERE t.workspace_id = ${workspaceId} AND t.status = 'posted'
-      AND (t.external_ref IS NULL OR t.external_ref NOT LIKE ${BEFORE_APP + '%'})
+      AND (t.external_ref IS NULL OR NOT ${balanceLineRef})
       AND t.id NOT IN (
         SELECT substr(s.external_ref, ${BEFORE_APP.length + 1}) FROM transactions s
         WHERE s.workspace_id = ${workspaceId} AND s.status = 'posted' AND s.external_ref LIKE ${BEFORE_APP + '%'})`);
-  if (first?.[0]) return first[0];
-  // Nothing on the card at all (owner, TF 139): its plans are all the app knows of it. It starts at the last statement
-  // before its first plan was added — the bill being paid when the plan was entered — so that bill and the ones after
-  // show; the instalments billed before it were paid before the app.
-  const [added] = await db.values<[string | null]>(sql`
-    SELECT MIN(created_at) FROM card_installments WHERE workspace_id = ${workspaceId} AND card_account_id = ${cardAccountId}`);
-  if (!added?.[0]) return null;
-  const [terms] = await db.select({ statementDay: cardTerms.statementDay }).from(cardTerms).where(and(eq(cardTerms.accountId, cardAccountId), eq(cardTerms.workspaceId, workspaceId)));
-  const statementDay = terms?.statementDay ?? 1;
-  const day = added[0].slice(0, 10);
-  const dayBefore = new Date(`${statementCycleFor(day, statementDay).start}T00:00:00Z`);
-  dayBefore.setUTCDate(dayBefore.getUTCDate() - 1);
-  return statementCycleFor(dayBefore.toISOString().slice(0, 10), statementDay).end;
+  return first?.[0] ?? null;
 }
 
 /**
@@ -190,6 +181,7 @@ async function receivedPlansTx(db: Db, ws: WorkspaceContext, own: ReadonlySet<st
         countMode: 'each_month' as const,
         categoryAccountId: null,
         linkedToTrade: false,
+        paidSoFar: 0,
       },
       statementDay: Number(statementDay),
       wholeBaseMinor: Number(wholeBaseMinor),
@@ -211,16 +203,21 @@ export async function plansWithStatementDays(db: Db, ws: WorkspaceContext): Prom
         .where(and(eq(cardTerms.workspaceId, ws.workspaceId), inArray(cardTerms.accountId, cardIds)))
     : [];
   const dayOf = new Map(terms.map((term) => [term.accountId, term.statementDay ?? 1]));
+  // A plan tied to a purchase counts from the card's records; one with no purchase, from its first instalment not paid.
   const recordsOf = new Map<string, string | null>();
-  for (const cardId of cardIds) recordsOf.set(cardId, await cardRecordsFrom(db, ws, cardId));
-  const own = plans.map((plan) => ({ plan, statementDay: dayOf.get(plan.cardAccountId) ?? 1, recordsFrom: recordsOf.get(plan.cardAccountId) ?? null }));
+  for (const cardId of new Set(plans.filter((plan) => plan.transactionId).map((plan) => plan.cardAccountId))) recordsOf.set(cardId, await cardRecordsFrom(db, ws, cardId));
+  const own = plans.map((plan) => {
+    const statementDay = dayOf.get(plan.cardAccountId) ?? 1;
+    const recordsFrom = plan.transactionId ? (recordsOf.get(plan.cardAccountId) ?? null) : countedFromOf(installmentSchedule(plan, statementDay), plan.paidSoFar);
+    return { plan, statementDay, recordsFrom };
+  });
   const received = await receivedPlansTx(db, ws, new Set(plans.flatMap((plan) => (plan.transactionId ? [plan.transactionId] : []))));
   return [...own, ...received, ...(await receivedPlanSpreadsTx(db, ws, new Set(plans.map((plan) => plan.id))))];
 }
 
 /**
  * The plans with no purchase another phone sent (plan_spreads, 0123), as plans counting Each month in their own
- * category, from the day the payer's card's records start. A row of this phone's own plan is its plan's.
+ * category, from the day the payer's phone counts them from: its first instalment not paid (0124). A row of this phone's own plan is its plan's.
  */
 async function receivedPlanSpreadsTx(db: Db, ws: WorkspaceContext, own: ReadonlySet<string>): Promise<PlanWithDay[]> {
   if ((await db.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'plan_spreads'`)).length === 0) return [];
@@ -246,6 +243,7 @@ async function receivedPlanSpreadsTx(db: Db, ws: WorkspaceContext, own: Readonly
         countMode: 'each_month' as const,
         categoryAccountId,
         linkedToTrade: false,
+        paidSoFar: 0,
       },
       statementDay: Number(statementDay),
       recordsFrom,
@@ -340,7 +338,7 @@ export async function spreadLinesIn(
       whole = 1;
     }
     if (parts.length === 0) continue;
-    // Billed before the card's records start: inside its opening balance, in months the app was not kept — nowhere.
+    // Billed before the day it counts from (paid before it was added, or inside the card's opening balance): nowhere.
     const lines = instalmentsFrom(instalmentSpendingLines(plan, statementDay, parts, whole), recordsFrom ?? null);
     for (const line of instalmentsCountedIn(lines, from, to)) {
       out.push({

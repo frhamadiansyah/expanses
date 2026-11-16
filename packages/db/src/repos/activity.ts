@@ -342,7 +342,8 @@ async function lineOf(db: Db, ws: WorkspaceContext, event: AuditEvent, undone: R
   }
   const now = await versionOf(db, ws, txId);
   if (!now) return NO_LINE;
-  if (now.externalRef?.startsWith('before-app:')) return NO_LINE;
+  // A balancing line the app keeps beside something else: a purchase's before-the-app settlement, a plan's owed line.
+  if (now.externalRef?.startsWith('before-app:') || now.externalRef?.startsWith('plan-owed:')) return NO_LINE;
   const who = await whoOf(db, event, now.books);
   const gone = now.status !== 'posted';
   const tail = async (): Promise<boolean> => gone || (await hasReplacement(db, txId));

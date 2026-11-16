@@ -197,7 +197,7 @@ export const isInstalmentCandidate = (candidateId: string): boolean => candidate
 /** A row is recorded under a category: a missing purchase, fee or refund. A card payment needs none. */
 const needsCategory = (outcome: RowOutcome): boolean => outcome.status === 'missing' && outcome.as !== 'payment';
 
-/** The card's opening: the earliest posting between it and the opening-balance equity that no check posted. */
+/** The card's opening: the earliest posting between it and the opening-balance equity that no check posted, nor a plan's owed line (0124). */
 async function openingOfCard(db: Db, ws: WorkspaceContext, cardAccountId: string): Promise<{ id: string; occurredOn: string } | null> {
   const equityId = await systemAccountId(db, ws, 'opening_balance');
   const rows = await db.values<[string, string]>(sql`
@@ -206,6 +206,7 @@ async function openingOfCard(db: Db, ws: WorkspaceContext, cardAccountId: string
       AND EXISTS (SELECT 1 FROM entries e WHERE e.transaction_id = t.id AND e.account_id = ${cardAccountId})
       AND EXISTS (SELECT 1 FROM entries e WHERE e.transaction_id = t.id AND e.account_id = ${equityId})
       AND t.id NOT IN (SELECT transaction_id FROM statement_links)
+      AND (t.external_ref IS NULL OR t.external_ref NOT LIKE 'plan-owed:%')
     ORDER BY t.occurred_on, t.created_at LIMIT 1
   `);
   const [row] = rows;
