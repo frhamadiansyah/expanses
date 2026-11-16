@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openLoan, personRow } from './people';
-import { openAccount, openCard, walletCard } from './accounts';
+import { openAccount, openAccountHistory, openCard, walletCard } from './accounts';
 import { cardPage, saveCardTerms } from './card-section';
 import { addForm, choosePayment, saveButton, chooseGoal } from './add-transaction';
 import { openNewAsset, fillDay, pastPurchase } from './add-asset';
@@ -119,8 +119,10 @@ async function enterWaitsForTheQuestion(page: Page, field: Locator) {
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
 }
 
-async function expectRecordedOnce(page: Page, text: RegExp) {
-  await page.goto('/transactions');
+/** Exactly one row on Cashflow — or, for lending, which Cashflow does not list (owner 2026-11-16), on `from`'s history. */
+async function expectRecordedOnce(page: Page, text: RegExp, from?: string) {
+  if (from) await openAccountHistory(page, from);
+  else await page.goto('/transactions');
   await expect(page.locator('li').filter({ hasText: text }).first()).toBeVisible();
   await expect(page.locator('li').filter({ hasText: text })).toHaveCount(1);
 }
@@ -289,7 +291,7 @@ test('lending Andi 6.800.000 from Jenius asks', async ({ page }) => {
   await expect(personRow(page, 'Andi')).toBeVisible();
 
   await expectShort(page, 'Emergency fund', /short by Rp.1\.800\.000/i);
-  await expectRecordedOnce(page, /Andi/);
+  await expectRecordedOnce(page, /Andi/, 'Jenius');
 });
 
 test('paying Budi back from Jenius asks; the loan came into another account', async ({ page }) => {

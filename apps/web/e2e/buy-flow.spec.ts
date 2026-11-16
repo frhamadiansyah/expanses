@@ -1,8 +1,8 @@
 import { closePurchase, openPurchase, purchaseRowOf } from './purchases';
 import { expect, type Page, test } from '@playwright/test';
-import { expectWalletFigure, openAccount, openSettings } from './accounts';
+import { expectWalletFigure, openAccount, openSettings, openAccountHistory } from './accounts';
 import { openNewAsset, fillDay, pastPurchase } from './add-asset';
-import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal, chooseInvestment, chooseTradeMoney, openBuyOrSell, openTradeMore, saveButton, showTransfers } from './add-transaction';
+import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal, chooseInvestment, chooseTradeMoney, openBuyOrSell, openTradeMore, saveButton } from './add-transaction';
 import { cardPage, cardPointsPage, saveCardTerms, chooseCatalogueCard } from './card-section';
 import { openAssets, openDrawers } from './drawers';
 import { openGoalForm } from './goals';
@@ -49,10 +49,9 @@ test('records a purchase from the transaction window, and it never counts as spe
   await chooseTradeMoney(form, 'BCA Tahapan (IDR)');
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
-  // Trade goes back to Net worth, where it was opened; the list is read on Cashflow.
-  await page.goto('/transactions');
-
-  // The purchase shows as a purchase, not as spending.
+  // Trade goes back to Net worth, where it was opened. Never spending, it is not on Cashflow (owner 2026-11-16): the
+  // paying account's history lists it, as a purchase.
+  await openAccountHistory(page, 'BCA Tahapan');
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
   const row = page.locator('li', { hasText: 'Bought 2 Antam gold bars' }).last();
   // No Holding link on the row: the receipt's Open holding is the way to it.
@@ -83,8 +82,8 @@ test('pays for a purchase with the credit card, so the card owes more and the po
   await form.getByLabel('MCC').fill('5944');
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
-  // Trade goes back to Net worth, where it was opened; the list is read on Cashflow.
-  await page.goto('/transactions');
+  // Trade goes back to Net worth, where it was opened; the card's history lists it (Cashflow does not, owner 2026-11-16).
+  await openAccountHistory(page, 'BCA KrisFlyer');
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
 
   // The card now owes the purchase, and the bank was never touched.
@@ -124,6 +123,11 @@ test('turns an expense already recorded into the purchase it really was', async 
   await page.getByLabel('Units, shares or grams').fill('2');
   await page.getByRole('button', { name: 'Save as a purchase' }).click();
 
+  // A purchase is not spending: it leaves Cashflow (owner 2026-11-16) for the bank's history. Waited for, so the
+  // save lands before the page is left.
+  await expect(page.getByRole('button', { name: 'Save as a purchase' })).toHaveCount(0);
+  await expect(page.getByText('No transactions in this period.')).toBeVisible();
+  await openAccountHistory(page, 'BCA Tahapan');
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
   // Held is read on the holding's own page: Income keeps the holdings table for a wide screen only.
   await openAsset(page, 'Antam gold bars');
@@ -162,9 +166,9 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
   await chooseGoal(form, 'University for Aisyah');
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
-  // The row carries the goal once the write has landed, so the next page cannot read a stale database. An own transfer
-  // is listed in Cashflow with Transfers on (owner 2026-11-13).
-  await showTransfers(page);
+  // The row carries the goal once the write has landed, so the next page cannot read a stale database. Cashflow lists
+  // no transfer (owner 2026-11-16): the bank's history does.
+  await openAccountHistory(page, 'BCA Tahapan');
   await expect(page.getByText(/for University for Aisyah/)).toBeVisible();
 
   // Parked money is set aside for the goal straight away.
@@ -181,8 +185,8 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
   await chooseGoal(buying, 'University for Aisyah');
   await saveButton(buying).click();
   await expect(buying).toHaveCount(0);
-  // Trade goes back to Net worth, where it was opened; the list is read on Cashflow.
-  await page.goto('/transactions');
+  // Trade goes back to Net worth, where it was opened; the broker cash's history lists it (not Cashflow, owner 2026-11-16).
+  await openAccountHistory(page, 'RDN Stockbit');
   await expect(page.getByText('Bought 100 BBRI')).toBeVisible();
 
   // The leftover Rp 1.011.019 is still set aside for University, so none of it is idle: RDN holds 1.011.019 and promises
@@ -236,7 +240,8 @@ test('a card purchase with a fee, tagged to a goal, moves the units, the goal an
     mcc: '5944',
   });
 
-  // Units first: 10 g were already held, so 2 more make 12.
+  // Units first: 10 g were already held, so 2 more make 12. The card's history lists the buy (not Cashflow, owner 2026-11-16).
+  await openAccountHistory(page, 'BCA KrisFlyer');
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
   // Held is read on the holding's own page: Income keeps the holdings table for a wide screen only.
   await openAsset(page, 'Antam gold bars');
@@ -256,7 +261,7 @@ test('a card purchase with a fee, tagged to a goal, moves the units, the goal an
   // And the refusals come with it: a trade's money half is corrected on its holding's page or not at all. The receipt is
   // reached by the ⓘ at the end of the row — clicking the row itself edits in place on a desktop and opens
   // nothing here, which would make every assertion below it pass without ever loading the page they are about.
-  await page.goto('/transactions');
+  await openAccountHistory(page, 'BCA KrisFlyer');
   await page.getByRole('link', { name: 'Receipt for Bought 2 Antam gold bars' }).click();
   await expect(page).toHaveURL(/\/transactions\/[0-9a-zA-Z-]{20,}$/);
   // The two assertions above are the anchor the three below need: a `toHaveCount(0)` run the instant after a
@@ -345,8 +350,8 @@ test('a purchase can keep its contract note and be left out of the report', asyn
   await more.getByRole('switch', { name: 'Exclude from report' }).click();
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
-  // Trade goes back to Net worth, where it was opened; the list is read on Cashflow.
-  await page.goto('/transactions');
+  // Trade goes back to Net worth, where it was opened; the bank's history lists it (not Cashflow, owner 2026-11-16).
+  await openAccountHistory(page, 'BCA Tahapan');
 
   await page.getByRole('link', { name: 'Receipt for Bought 2 Antam gold bars' }).click();
   await expect(page.getByTestId('receipt-hero')).toBeVisible();
