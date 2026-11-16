@@ -21,7 +21,7 @@ import { categoryMark } from '../categories/CategoryIcon';
 import { CardFace } from './CardFace';
 import { cycleBack, dueDateAfter, dueIn } from './statement-dates';
 import { limitUsage } from './limit-usage';
-import { useInstallments } from '../loans/queries';
+import { useCardLines, useInstallments } from '../loans/queries';
 import { spendingDoor } from '../goals/set-aside-question';
 import { creditLine } from '../networth/debt-rows';
 import { useSetAside } from '../goals/SetAsideQuestion';
@@ -33,6 +33,8 @@ import { useOpenFromSearch } from '../../lib/open-once';
  * a last row that opens the whole statement — or, for a debit card, every transaction of its account.
  */
 function LatestTransactions({
+  cardAccountId,
+  today,
   lines,
   accounts,
   currency,
@@ -40,6 +42,9 @@ function LatestTransactions({
   unit,
   seeAll,
 }: {
+  /** The card account, whose instalment rows (option C) are listed with its purchases on their statement day. */
+  cardAccountId?: string;
+  today?: string;
   lines: readonly SpendLine[];
   accounts: readonly AccountRow[];
   currency: string;
@@ -51,11 +56,26 @@ function LatestTransactions({
 }) {
   const chosen = useCategoryColours().data;
   // One row per purchase, however many lines its split made, newest first.
-  const purchases = new Map<string, { id: string; on: string; description: string; categoryId: string; amountMinor: number }>();
+  const purchases = new Map<string, { id: string; on: string; description: string; categoryId: string; amountMinor: number; plan?: { planId: string; number: number; of: number } }>();
   for (const line of lines) {
     const seen = purchases.get(line.transactionId);
     if (seen) seen.amountMinor += line.amountMinor;
     else purchases.set(line.transactionId, { id: line.transactionId, on: line.occurredOn, description: line.description, categoryId: line.categoryId, amountMinor: line.amountMinor });
+  }
+  // Each month's instalment of a plan is a row of the card's on its statement day, from the oldest purchase shown up to
+  // today: worked out from the plan, it opens the plan rather than a receipt.
+  const billed = useCardLines(cardAccountId ?? '', !!cardAccountId);
+  const since = [...purchases.values()].reduce((first, purchase) => (purchase.on < first ? purchase.on : first), today ?? '9999-12-31');
+  for (const line of billed.data ?? []) {
+    if (!line.instalment || !today || line.statementOn > today || line.statementOn < since) continue;
+    purchases.set(line.key, {
+      id: line.key,
+      on: line.statementOn,
+      description: line.description,
+      categoryId: line.instalment.categoryId ?? '',
+      amountMinor: line.owedMinor,
+      plan: { planId: line.instalment.planId, number: line.instalment.number, of: line.instalment.of },
+    });
   }
   const latest = [...purchases.values()].sort((a, b) => (a.on < b.on ? 1 : a.on > b.on ? -1 : 0)).slice(0, 5);
   return (
@@ -72,7 +92,7 @@ function LatestTransactions({
               iconColour={mark.colour}
               // The category is the first line, as on Cashflow; the note and the day are the second; the points sit under the amount.
               title={mark.name || purchase.description || 'Purchase'}
-              subtitle={[purchase.description, shortDate(purchase.on)].filter(Boolean).join(' · ')}
+              subtitle={[purchase.description, purchase.plan ? `${purchase.plan.number} of ${purchase.plan.of}` : null, shortDate(purchase.on)].filter(Boolean).join(' · ')}
               value={
                 <span className="flex flex-col items-end">
                   <span>{formatMinor(purchase.amountMinor, currency)}</span>
@@ -80,8 +100,9 @@ function LatestTransactions({
                 </span>
               }
               valueTone="ink"
-              to="/transactions/$transactionId"
-              params={{ transactionId: purchase.id }}
+              {...(purchase.plan && cardAccountId
+                ? { to: '/cards/$cardId/settings/instalments/$planId' as const, params: { cardId: cardAccountId, planId: purchase.plan.planId } }
+                : { to: '/transactions/$transactionId' as const, params: { transactionId: purchase.id } })}
             />
           );
         })}
@@ -292,7 +313,9 @@ export function CardHero({
   const seeAll = debit ? { to: '/transactions' as const, search: { account: card.id } } : toStatement;
   // Recent follows the plastic card shown; a purchase naming no card, or a removed one, is the primary's.
   const recentLines = purchasesForPlastic(lines, cards, shown?.id);
-  const recent = <LatestTransactions lines={recentLines} accounts={accounts} currency={currency} pointsOf={pointsOf} unit={unit} seeAll={seeAll} />;
+  const recent = (
+    <LatestTransactions cardAccountId={debit ? undefined : card.id} today={today} lines={recentLines} accounts={accounts} currency={currency} pointsOf={pointsOf} unit={unit} seeAll={seeAll} />
+  );
 
   const dueOn = lastCycle && cp.terms ? dueDateAfter(lastCycle.end, cp.terms.dueDay) : null;
   // The statement already bills instalment plans a month at a time, so this is what the bank asks for.

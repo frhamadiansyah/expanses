@@ -11,6 +11,7 @@ import {
   inBook,
   listAccounts,
   listCategorySets,
+  listInstallments,
   listPrograms,
   listTransactions,
   MIGRATIONS,
@@ -19,6 +20,7 @@ import {
   nativeBalances,
   personalBook,
   programBalance,
+  setInstallmentCountMode,
   type WorkspaceContext,
 } from '../src/index';
 import { createNodeExecutor } from '../src/node';
@@ -80,6 +82,9 @@ describe('migration 0042 on a realistic v41 database', () => {
       const before = await snapshot(database, ws, today);
 
       expect(await migrate(database)).toEqual(expect.arrayContaining([42, 43]));
+      // 0120 moves a plan tied to its purchase to Each month on purpose (the owner's choice), which regroups the phone's
+      // spending by month. That is read in instalment-spending.test.ts; here the sample's plan is put back as it counted.
+      for (const plan of await listInstallments(database, ws)) await setInstallmentCountMode(database, ws, plan.id, 'at_purchase');
 
       const personal = await personalBook(database, ws);
       const book = inBook(ws, personal.id);

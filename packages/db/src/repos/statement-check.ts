@@ -47,7 +47,7 @@ import { cardTopsUpWallet, TOP_UP_KEY } from './money-in';
 import { confirmDraftTx, listDrafts } from './drafts';
 import { guessCategoryFromHistory } from './entry';
 import { listTransactions, nativeBalancesTx, postTransactionTx, replaceTransactionTx, type TransactionView, voidTransactionTx } from './ledger';
-import { cardStatement, postingDates } from './statements';
+import { cardStatement, cardStatementLines, postingDates } from './statements';
 import { eventPostingOfTx } from './event-only';
 import { postEventRecordTx, setPaidFromTx } from './shared-event-postings';
 
@@ -124,6 +124,12 @@ export interface PreparedCheck {
   trackPayments: boolean;
   /** The day the check was prepared for: what recording reads the card's balance on, unless told otherwise. */
   today: string;
+  /**
+   * The card's instalment rows (worked out from its plans, never stored) the check could match a statement row with, by
+   * candidate id (`instalment:` and the line's key). A row matched to one is linked to nothing: there is no transaction
+   * to link, and nothing is recorded for it.
+   */
+  instalments: { id: string; on: string; description: string; amountMinor: number }[];
 }
 
 export interface CheckDecisions {
@@ -184,6 +190,9 @@ function within(database: Database, tx: Tx): Database {
 
 const DRAFT_PREFIX = 'draft:';
 const draftIdOf = (candidateId: string): string | null => (candidateId.startsWith(DRAFT_PREFIX) ? candidateId.slice(DRAFT_PREFIX.length) : null);
+/** A candidate that is an instalment row of a plan: matched, it stands for the bank's line, and nothing is written for it. */
+export const INSTALMENT_CANDIDATE_PREFIX = 'instalment:';
+export const isInstalmentCandidate = (candidateId: string): boolean => candidateId.startsWith(INSTALMENT_CANDIDATE_PREFIX);
 
 /** A row is recorded under a category: a missing purchase, fee or refund. A card payment needs none. */
 const needsCategory = (outcome: RowOutcome): boolean => outcome.status === 'missing' && outcome.as !== 'payment';
@@ -379,6 +388,17 @@ export async function prepareStatementCheck(
     else if (d.kind === 'expense' && d.accountId === cardAccountId) candidates.push({ ...base, direction: 'out', kind: 'purchase' });
     else if (d.kind === 'income' && d.accountId === cardAccountId) candidates.push({ ...base, direction: 'in', kind: 'refund' });
   }
+  // Each month's instalment of a plan is a charge the bank prints ("CICILAN 01/12"): a row it matches is no missing
+  // purchase, so nothing is recorded twice. The instalments are worked out from the plans, on their statement dates.
+  const instalments = (await cardStatementLines(database, ws, cardAccountId))
+    .filter((line) => line.instalment && line.statementOn >= lo && line.statementOn <= hi && line.owedMinor > 0)
+    .map((line) => ({
+      id: `${INSTALMENT_CANDIDATE_PREFIX}${line.key}`,
+      on: line.statementOn,
+      description: `${line.description} ${line.instalment!.number}/${line.instalment!.of}`,
+      amountMinor: line.owedMinor,
+    }));
+  for (const line of instalments) candidates.push({ ...line, direction: 'out', kind: 'purchase', isDraft: false });
 
   const purchases = candidates.filter((c) => c.kind === 'purchase');
   const refundHints = new Map<number, boolean>();
@@ -422,7 +442,8 @@ export async function prepareStatementCheck(
     if (outcome.status === 'missing' && row.direction === 'in' && inPaymentsLine.has(keys[i]!)) return { row: i, status: 'payment-untracked' };
     return outcome;
   });
-  const flagged = result.flagged;
+  // An instalment row the statement does not show is no transaction to keep or delete: it is left out of the list.
+  const flagged = result.flagged.filter((id) => !isInstalmentCandidate(id));
 
   // Fees & charges and Refunds are made on first use, here, only when a row needs them.
   const made = new Map<string, string>();
@@ -503,6 +524,7 @@ export async function prepareStatementCheck(
     alreadyChecked: existing !== undefined,
     trackPayments,
     today: input.today,
+    instalments,
   };
 }
 
@@ -819,16 +841,19 @@ export async function recordStatementCheck(
         if (already) await link(already, 'recorded');
         else untracked.push(row);
       } else if (outcome.status === 'matched') {
-        for (const id of outcome.candidateIds) await link(await resolve(id, row), 'matched');
+        // An instalment row is worked out from its plan: matched, there is nothing to link or record.
+        for (const id of outcome.candidateIds) if (!isInstalmentCandidate(id)) await link(await resolve(id, row), 'matched');
       } else if (outcome.status === 'ask') {
         for (const id of outcome.candidateIds) tied.add(id);
         const pick = decisions.ask[row.index]!;
         if (!chosen.has(pick)) {
           chosen.add(pick);
-          await link(await resolve(pick, row), 'matched');
+          if (!isInstalmentCandidate(pick)) await link(await resolve(pick, row), 'matched');
         }
       } else if (outcome.status === 'differs') {
         const useStatement = decisions.differs[row.index] === 'statement';
+        // An instalment's figure is the plan's: the plan is changed on its own page, never by a check.
+        if (isInstalmentCandidate(outcome.candidateId)) continue;
         if (draftIdOf(outcome.candidateId) !== null) {
           const id = await resolve(outcome.candidateId, row, useStatement ? outcome.statementMinor : undefined);
           await link(id, useStatement ? 'differs-updated' : 'differs-kept');
@@ -921,7 +946,7 @@ export async function recordStatementCheck(
 
     // What the statement does not show: the owner's answer for each, and nothing for one unanswered. A tied
     // candidate no row took counts as one of these.
-    const answerable = new Set([...prepared.flagged.map((f) => f.transactionId), ...[...tied].filter((id) => !chosen.has(id))]);
+    const answerable = new Set([...prepared.flagged.map((f) => f.transactionId), ...[...tied].filter((id) => !chosen.has(id) && !isInstalmentCandidate(id))]);
     for (const [id, answer] of Object.entries(decisions.flagged)) {
       if (!answerable.has(id) || answer === 'keep') continue;
       const draftId = draftIdOf(id);

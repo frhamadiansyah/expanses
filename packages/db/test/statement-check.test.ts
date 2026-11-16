@@ -28,6 +28,7 @@ import {
   prepareStatementCheck,
   recordStatementCheck,
   saveCardTerms,
+  saveInstallment,
   setCreditKind,
   setTrackPayments,
   withRows,
@@ -771,5 +772,26 @@ describe('the Fee waiver page’s fee rows', () => {
     await addFeeCharge(h.database, h.ws, { cardId: h.card.id, today: TODAY, amountMinor: 750_000, on: '2026-05-01' });
     const prepared = await h.prepare([image([['28MAY', 'ANNUAL FEE', '825,000']], { previous: '0', closing: '825,000' })]);
     expect(prepared.rows[0]!.outcome.status).toBe('missing');
+  });
+});
+
+describe('an instalment plan’s monthly line', () => {
+  it('matches the bank’s instalment row, records nothing for it, and never flags a month the statement does not show', async () => {
+    const h = await household();
+    // Invented: a laptop bought on 20 Apr for Rp 3.000.000, turned into 3 × Rp 1.000.000 from May (statement 10 Jun).
+    const laptop = await h.buy('2026-04-20', 'TOKO LAPTOP', 3_000_000, h.books);
+    await saveInstallment(h.database, h.ws, { cardAccountId: h.card.id, description: 'Laptop', totalMinor: 3_000_000, months: 3, firstBilledMonth: '2026-06', transactionId: laptop });
+    await h.buy('2026-05-15', 'KOPI SATU', 50_000);
+    const before = await h.posted();
+    const prepared = await h.prepare([image([['15MAY', 'KOPI SATU', '50,000'], ['10JUN', 'CICILAN LAPTOP 01/03', '1,000,000']], { closing: '1,050,000' })]);
+    expect(prepared.rows.map((r) => r.outcome.status)).toEqual(['matched', 'matched']);
+    expect(prepared.rows[1]!.outcome).toMatchObject({ candidateIds: [prepared.instalments[0]!.id] });
+    expect(prepared.instalments[0]).toMatchObject({ on: '2026-06-10', amountMinor: 1_000_000, description: 'Laptop 1/3' });
+    expect(prepared.flagged).toEqual([]);
+    const result = await recordStatementCheck(h.database, h.ws, prepared, NO_DECISIONS);
+    expect(result.status).toBe('reconciled');
+    expect(await h.posted()).toBe(before);
+    const [check] = await listStatementChecks(h.database, h.ws, h.card.id);
+    expect((await listStatementLinks(h.database, check!.id)).map((l) => l.kind)).toEqual(['matched']);
   });
 });

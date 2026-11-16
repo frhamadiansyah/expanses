@@ -1,5 +1,5 @@
-import { addMonths, displayAmount, type MonthStartDay, type PeriodFlows, periodMonthOf, type PlanGroup } from '@expanses/core';
-import { and, eq, gte, lte, sql } from 'drizzle-orm';
+import { addMonths, displayAmount, type MonthStartDay, type PartWeight, type PeriodFlows, periodMonthOf, type PlanGroup } from '@expanses/core';
+import { and, eq, gte, lte, type SQL, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
@@ -10,7 +10,7 @@ import { categoryIdsOfBook, hasBooks } from './books';
 import { monthStartFor } from './month-start';
 import { categoryIdsByKeyAll } from './categories';
 import { resolvedCategoryNeeds } from './category-needs';
-import { listInstallments } from './installments';
+import { plansWithStatementDays, purchaseWholes, spreadLinesIn, spreadPurchaseIds } from './instalment-spending';
 import { homeLoanAccountIds } from './loans';
 import { extrasTablesExist } from './transaction-extras';
 import { lineExclusionExists, splitExclusionExists } from './book-splits';
@@ -138,45 +138,61 @@ export async function periodFlows(
   const byMonth = new Map(monthsBetween(range.from, range.to, startDay).map((month) => [month, { month, incomeMinor: 0, spendingMinor: 0, debtPaymentsMinor: 0 }]));
   const perTransaction = new Map<string, TransactionRoll>();
 
-  // What was marked "not my spending". Narrowed the same two ways `rows` above is: this workspace, this period.
-  const excludedIds = new Set<string>(
-    (await extrasTablesExist(database.db))
-      ? (
-          await database.db.values<[string]>(sql`
-            SELECT tf.transaction_id FROM transaction_flags tf
-            JOIN transactions t ON t.id = tf.transaction_id
-            WHERE tf.excluded = 1
-              AND tf.workspace_id = ${ws.workspaceId}
-              AND t.workspace_id = ${ws.workspaceId}
-              AND t.occurred_on BETWEEN ${range.from} AND ${range.to}`)
-        ).map((row) => String(row[0]))
-      : [],
-  );
+  // What was marked "not my spending". Narrowed the same two ways `rows` above is: this workspace, this period — or,
+  // for the purchases a plan spreads each month, those purchases whatever their date.
+  const extras = await extrasTablesExist(database.db);
+  const excludedWhere = async (which: SQL) =>
+    new Set<string>(
+      extras
+        ? (
+            await database.db.values<[string]>(sql`
+              SELECT tf.transaction_id FROM transaction_flags tf
+              JOIN transactions t ON t.id = tf.transaction_id
+              WHERE tf.excluded = 1
+                AND tf.workspace_id = ${ws.workspaceId}
+                AND t.workspace_id = ${ws.workspaceId}
+                AND ${which}`)
+          ).map((row) => String(row[0]))
+        : [],
+    );
+  const inRange = sql`t.occurred_on BETWEEN ${range.from} AND ${range.to}`;
+  const excludedIds = await excludedWhere(inRange);
 
   // One workspace's part of a purchase split across workspaces, marked out of its reports on its own (0090), and a single
   // line marked out on its own (0096): their category lines, by transaction. The other lines count; balances, debt and
   // savings below never read this.
-  const excludedParts = new Set<string>(
-    (await splitExclusionExists(database.db))
-      ? (
-          await database.db.values<[string, string]>(sql`
-            SELECT s.transaction_id, c.category_account_id FROM book_transaction_splits s
-            JOIN book_categories c ON c.book_id = s.book_id
-            JOIN transactions t ON t.id = s.transaction_id
-            WHERE s.excluded = 1
-              AND t.workspace_id = ${ws.workspaceId}
-              AND t.occurred_on BETWEEN ${range.from} AND ${range.to}`)
-        ).map(([transactionId, accountId]) => `${transactionId}:${accountId}`)
-      : [],
-  );
-  if (await lineExclusionExists(database.db)) {
-    const lines = await database.db.values<[string, string]>(sql`
-      SELECT l.transaction_id, l.account_id FROM transaction_line_excluded l
-      JOIN transactions t ON t.id = l.transaction_id
-      WHERE t.workspace_id = ${ws.workspaceId}
-        AND t.occurred_on BETWEEN ${range.from} AND ${range.to}`);
-    for (const [transactionId, accountId] of lines) excludedParts.add(`${transactionId}:${accountId}`);
-  }
+  const splitExclusion = await splitExclusionExists(database.db);
+  const lineExclusion = await lineExclusionExists(database.db);
+  const excludedPartsWhere = async (which: SQL) => {
+    const parts = new Set<string>(
+      splitExclusion
+        ? (
+            await database.db.values<[string, string]>(sql`
+              SELECT s.transaction_id, c.category_account_id FROM book_transaction_splits s
+              JOIN book_categories c ON c.book_id = s.book_id
+              JOIN transactions t ON t.id = s.transaction_id
+              WHERE s.excluded = 1
+                AND t.workspace_id = ${ws.workspaceId}
+                AND ${which}`)
+          ).map(([transactionId, accountId]) => `${transactionId}:${accountId}`)
+        : [],
+    );
+    if (lineExclusion) {
+      const lines = await database.db.values<[string, string]>(sql`
+        SELECT l.transaction_id, l.account_id FROM transaction_line_excluded l
+        JOIN transactions t ON t.id = l.transaction_id
+        WHERE t.workspace_id = ${ws.workspaceId}
+          AND ${which}`);
+      for (const [transactionId, accountId] of lines) parts.add(`${transactionId}:${accountId}`);
+    }
+    return parts;
+  };
+  const excludedParts = await excludedPartsWhere(inRange);
+
+  // Card instalments counting each month (0120): the purchase they spread counts nothing on its own day; its
+  // instalments count instead, below. The purchase still moves the card's balance as ever.
+  const plans = await plansWithStatementDays(database.db, ws);
+  const spread = new Set(spreadPurchaseIds(plans));
 
   for (const row of rows) {
     const month = periodMonthOf(row.occurredOn, startDay);
@@ -186,7 +202,9 @@ export async function periodFlows(
     // missing rate never turns a loan payment into something else.
     const read = (money.converts ? money.convert(row.amountMinor, row.currency, row.occurredOn) : row.amountBaseMinor) ?? 0;
     const counted = !excludedIds.has(row.transactionId) && !excludedParts.has(`${row.transactionId}:${row.accountId}`);
-    if (counted && row.kind === 'income' && !realizedGains.has(row.accountId) && counts(row.accountId)) {
+    if (row.kind === 'expense' && spread.has(row.transactionId)) {
+      // spread over its plan's months: counted below, one instalment at a time
+    } else if (counted && row.kind === 'income' && !realizedGains.has(row.accountId) && counts(row.accountId)) {
       if (bucket) bucket.incomeMinor += displayAmount('income', read);
     } else if (counted && row.kind === 'expense' && !finalTax.has(row.accountId) && counts(row.accountId)) {
       if (bucket) {
@@ -267,9 +285,47 @@ export async function periodFlows(
     putAwayMinor += intoRead(trade.grossMinor + trade.feeMinor + trade.taxMinor, trade.occurredOn);
   }
 
-  // An instalment billed in the period is a debt payment, though the purchase was spending once,
-  // on the day it happened. The card balance carries the debt in between.
-  for (const plan of await listInstallments(database, ws)) {
+  // Each month (0120): each instalment is that month's spending, on its statement date, in the purchase's categories —
+  // read through the same filters as any spending row here (this workspace's categories, nothing excluded, no final
+  // tax), whatever day the purchase was made. It is not also a debt payment: that would count the money twice.
+  if (plans.some(({ plan }) => plan.countMode === 'each_month')) {
+    const ids = [...spread];
+    const parts = new Map<string, PartWeight[]>();
+    if (ids.length > 0) {
+      const which = sql`t.id IN ${ids}`;
+      const [excludedSpread, excludedSpreadParts] = [await excludedWhere(which), await excludedPartsWhere(which)];
+      const lines = await database.db.values<[string, string, number]>(sql`
+        SELECT e.transaction_id, e.account_id, SUM(e.amount_base_minor) FROM entries e
+        JOIN accounts a ON a.id = e.account_id JOIN transactions t ON t.id = e.transaction_id
+        WHERE a.kind = 'expense' AND t.status = 'posted' AND e.workspace_id = ${ws.workspaceId} AND ${which}
+        GROUP BY e.transaction_id, e.account_id`);
+      for (const [transactionId, accountId, total] of lines) {
+        if (excludedSpread.has(transactionId) || excludedSpreadParts.has(`${transactionId}:${accountId}`)) continue;
+        if (finalTax.has(accountId) || !counts(accountId)) continue;
+        const weight = displayAmount('expense', Number(total));
+        if (weight > 0) parts.set(transactionId, [...(parts.get(transactionId) ?? []), { key: accountId, weight }]);
+      }
+      if (eventOnly) {
+        // What a shared event put in this phone's books is in no workspace's Cashflow (shared events §5.1).
+        const onlyEvent = await database.db.values<[string]>(sql`SELECT t.id FROM transactions t WHERE ${which} AND NOT (${notEventOnly(sql`t.id`)})`);
+        for (const [id] of onlyEvent) parts.delete(id);
+      }
+    }
+    const wholes = await purchaseWholes(database.db, ids);
+    for (const line of await spreadLinesIn(database.db, ws, plans, range.from, range.to, parts, wholes)) {
+      if (!counts(line.categoryId)) continue;
+      const bucket = byMonth.get(periodMonthOf(line.statementOn, startDay));
+      if (!bucket) continue;
+      const spent = intoRead(line.amountBaseMinor, line.statementOn);
+      bucket.spendingMinor += spent;
+      if (lifestyle.has(line.categoryId)) lifestyleSpendingMinor += spent;
+    }
+  }
+
+  // At purchase: an instalment billed in the period is a debt payment, though the purchase was spending once, on the day
+  // it happened. The card balance carries the debt in between.
+  for (const { plan } of plans) {
+    if (plan.countMode === 'each_month') continue;
     for (let index = 0; index < plan.months; index += 1) {
       const month = addMonths(plan.firstBilledMonth, index);
       const bucket = byMonth.get(month);

@@ -59,4 +59,6 @@ export const cardInstallments = sqliteTable('card_installments', {
   /** 1 when the converted purchase still earns points; many issuers pay none. */
   earnsPoints: integer('earns_points').notNull(),
   createdAt: text('created_at').notNull(),
+  // count_mode (0120) is read and written by name in repos/installments.ts, never through this table, so a database
+  // stopped before 0120 still reads its plans.
 });

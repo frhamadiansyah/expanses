@@ -143,10 +143,12 @@ describe('which debts count against income', () => {
   });
 });
 
+// A plan counting At purchase (0120): the purchase was the spending, so each instalment is a debt payment. One counting
+// Each month is spending instead, never also a debt payment (instalment-spending.test.ts).
 describe('instalments as debt payments', () => {
   it('counts what the card billed during the period', async () => {
     // Billed from February: eleven instalments fall inside 2026.
-    await saveInstallment(database, ws, { cardAccountId: card.id, description: 'iBox', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2026-02' });
+    await saveInstallment(database, ws, { cardAccountId: card.id, description: 'iBox', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2026-02', countMode: 'at_purchase' });
 
     const flows = await periodFlows(database, ws, YEAR);
     expect(flows.debtPaymentsMinor).toBe(11_000_000);
@@ -154,7 +156,7 @@ describe('instalments as debt payments', () => {
   });
 
   it('counts nothing for a plan that starts after the period', async () => {
-    await saveInstallment(database, ws, { cardAccountId: card.id, description: 'iBox', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2027-01' });
+    await saveInstallment(database, ws, { cardAccountId: card.id, description: 'iBox', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2027-01', countMode: 'at_purchase' });
 
     const flows = await periodFlows(database, ws, YEAR);
     expect(flows.debtPaymentsMinor).toBe(0);
@@ -163,7 +165,7 @@ describe('instalments as debt payments', () => {
   it('adds instalments to the loan payments, not instead of them', async () => {
     await kprTerms();
     await recordLoanPayment(database, ws, { accountId: kpr.id, occurredOn: '2026-01-25', moneyAccountId: bca.id, principalMinor: 1_849_866, interestMinor: 5_250_000 });
-    await saveInstallment(database, ws, { cardAccountId: card.id, description: 'iBox', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2026-02' });
+    await saveInstallment(database, ws, { cardAccountId: card.id, description: 'iBox', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2026-02', countMode: 'at_purchase' });
 
     const flows = await periodFlows(database, ws, YEAR);
     expect(flows.debtPaymentsMinor).toBe(7_099_866 + 11_000_000);

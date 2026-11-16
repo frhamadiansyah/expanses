@@ -1,20 +1,35 @@
-import { formatMinor, groupTypedAmount, installmentSplit, isoDate, monthYear } from '@expanses/core';
+import { formatMinor, groupTypedAmount, installmentSchedule, installmentSplit, isoDate, monthYear } from '@expanses/core';
 import { type CardInstallmentRow, deleteInstallment, saveInstallment, updateInstallment } from '@expanses/db';
+import { useNavigate } from '@tanstack/react-router';
 import { ChevronRight } from 'lucide-react';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { type GroupChild, InsetGroup, InsetRow, ProgressBar, ReadOnlyRow, SwitchRow, TextRow } from '../../ui/native';
+import { type GroupChild, InsetGroup, InsetRow, ProgressBar, ReadOnlyRow, ROW_PAD_X, SegmentedControl, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { useMonthStart } from '../workspaces/queries';
 import { ALERT_ROW, NoticeAlert } from '../../ui/native/NoticeAlert';
 import { Line, SUBTITLE, TextLine, TITLE } from '../cards/rows';
-import { blankPlanForm, type PlanForm, planFields, planFormOf } from './plan-form';
-import { useInstallments } from './queries';
+import { blankPlanForm, type PlanForm, planFields, planFormOf, purchaseChoices } from './plan-form';
+import { COUNT_SEGMENTS, countSpendingFooter } from './plan-view';
+import { useCardLines, useInstallments, useStatementDay } from './queries';
+
+/** The Count spending control in a row of its own, with the hairline a row above it draws. */
+export function CountSpendingRow({ position, value, onChange, disabled }: GroupChild & { value: string; onChange: (mode: 'at_purchase' | 'each_month') => void; disabled?: boolean }) {
+  return (
+    <div className="relative" style={{ padding: `8px ${ROW_PAD_X}px` }} data-testid="count-spending">
+      {position?.separator && <span aria-hidden className="pointer-events-none absolute top-0 right-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X }} />}
+      <fieldset disabled={disabled} className="contents">
+        <SegmentedControl segments={COUNT_SEGMENTS} value={value} onChange={(key) => onChange(key as 'at_purchase' | 'each_month')} label="Count spending" className="w-full" />
+      </fieldset>
+    </div>
+  );
+}
 
 /**
  * One plan on the card page: its name and what it still holds on the top line, then how far through its months it is and
- * what it bills a month, and the bar under them across the whole row. The whole row is the tap target; it opens the plan to edit.
+ * what it bills a month, and the bar under them across the whole row. The whole row is the tap target; it opens the plan's own page.
  */
 export function InstallmentRow({ plan, currency, today, position, onOpen }: GroupChild & { plan: CardInstallmentRow; currency: string; today: string; onOpen: () => void }) {
   const split = installmentSplit(plan, today);
@@ -25,7 +40,7 @@ export function InstallmentRow({ plan, currency, today, position, onOpen }: Grou
       <button
         type="button"
         onClick={onOpen}
-        aria-label={`Edit ${plan.description}`}
+        aria-label={`Open ${plan.description}`}
         className="ph-focus-inset block w-full bg-transparent text-left"
         style={{ padding: '11px 12px 11px 13px' }}
       >
@@ -50,13 +65,16 @@ export function InstallmentRow({ plan, currency, today, position, onOpen }: Grou
  * The sheet that adds, edits and removes a card's instalment plans, shared by the card page's box and the Instalments
  * page: `open` shows it for a new plan or an existing one, `node` is what to draw once, anywhere in the page.
  */
-export function usePlanEditor(cardAccountId: string, currency: string) {
+export function usePlanEditor(cardAccountId: string, currency: string, opts: { onRemoved?: () => void } = {}) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const today = isoDate();
   const formEl = useRef<HTMLFormElement>(null);
+  const monthStart = useMonthStart();
+  const statementDay = useStatementDay(cardAccountId).data ?? 1;
   /** The sheet: closed, a new plan, or the plan being edited. */
   const [sheet, setSheet] = useState<'new' | CardInstallmentRow | null>(null);
+  const lines = useCardLines(cardAccountId, sheet !== null);
   const [form, setForm] = useState<PlanForm>(() => blankPlanForm(today));
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -97,6 +115,7 @@ export function usePlanEditor(cardAccountId: string, currency: string) {
       await deleteInstallment(database, ws, sheet.id);
       await invalidate();
       close();
+      opts.onRemoved?.();
     } catch (e) {
       setRemoving(false);
       setError(e);
@@ -105,6 +124,22 @@ export function usePlanEditor(cardAccountId: string, currency: string) {
 
   const editing = sheet !== null && sheet !== 'new';
   const editSplit = sheet !== null && sheet !== 'new' ? installmentSplit(sheet, today) : null;
+  // The purchase the plan came from: the card's own charges, the one charging the plan's total first.
+  const typedTotal = (() => {
+    try {
+      return planFields(form, currency).totalMinor;
+    } catch {
+      return 0;
+    }
+  })();
+  const choices = purchaseChoices(lines.data ?? [], sheet && sheet !== 'new' ? sheet.id : null, typedTotal);
+  // What the footer reads for the plan as typed: its months follow the card's statement day and the workspace's months.
+  const footer = (() => {
+    const months = Number(form.months);
+    if (!Number.isInteger(months) || months < 1 || !(typedTotal > 0) || !/^\d{4}-\d{2}$/.test(form.firstBilledMonth)) return undefined;
+    const typed = { totalMinor: typedTotal, months, monthlyMinor: Math.round(typedTotal / months), firstBilledMonth: form.firstBilledMonth, rateBps: 0, conversionFeeMinor: 0, earnsPoints: form.earnsPoints };
+    return countSpendingFooter({ ...typed, countMode: form.countMode, transactionId: form.transactionId }, installmentSchedule(typed, statementDay), currency, monthStart);
+  })();
   const node = (
     <>
       {sheet && (
@@ -116,6 +151,19 @@ export function usePlanEditor(cardAccountId: string, currency: string) {
               <TextRow label="Months" value={form.months} inputMode="numeric" onChange={(e) => patch({ months: e.target.value })} />
               <TextRow label="First billed" type="month" value={form.firstBilledMonth} onChange={(e) => patch({ firstBilledMonth: e.target.value })} />
               <SwitchRow label="Earns points" checked={form.earnsPoints} onChange={(earnsPoints) => patch({ earnsPoints })} />
+              <SelectRow label="Purchase" value={form.transactionId ?? ''} onChange={(e) => patch({ transactionId: e.target.value || null })}>
+                <option value="">None</option>
+                {/* A purchase no longer offered (deleted since) still shows while it is the plan's. */}
+                {form.transactionId && !choices.some((choice) => choice.transactionId === form.transactionId) && <option value={form.transactionId}>The purchase it came from</option>}
+                {choices.map((choice) => (
+                  <option key={choice.transactionId} value={choice.transactionId}>
+                    {`${choice.description} · ${choice.occurredOn} · ${formatMinor(choice.amountMinor, currency)}`}
+                  </option>
+                ))}
+              </SelectRow>
+            </InsetGroup>
+            <InsetGroup header="Count spending" footer={footer}>
+              <CountSpendingRow value={form.countMode} onChange={(countMode) => patch({ countMode })} />
             </InsetGroup>
             {editSplit && (
               // What the row no longer spells out: how much is billed, what is still held and when it ends.
@@ -165,6 +213,7 @@ export function usePlanEditor(cardAccountId: string, currency: string) {
 export function InstallmentList({ cardAccountId, currency }: { cardAccountId: string; currency: string }) {
   const plans = useInstallments(cardAccountId);
   const today = isoDate();
+  const navigate = useNavigate();
   const editor = usePlanEditor(cardAccountId, currency);
   const list = plans.data ?? [];
   return (
@@ -174,7 +223,13 @@ export function InstallmentList({ cardAccountId, currency }: { cardAccountId: st
           <TextLine tone="ink-3">None yet. A purchase the issuer turns into cicilan is recorded here, so the card's debt splits into billed and unbilled.</TextLine>
         )}
         {list.map((plan) => (
-          <InstallmentRow key={plan.id} plan={plan} currency={currency} today={today} onOpen={() => editor.open(plan)} />
+          <InstallmentRow
+            key={plan.id}
+            plan={plan}
+            currency={currency}
+            today={today}
+            onOpen={() => void navigate({ to: '/cards/$cardId/settings/instalments/$planId', params: { cardId: cardAccountId, planId: plan.id } })}
+          />
         ))}
       </InsetGroup>
       {editor.node}

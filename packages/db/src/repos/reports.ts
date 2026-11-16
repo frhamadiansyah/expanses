@@ -1,5 +1,5 @@
-import { type DayTotal, displayAmount } from '@expanses/core';
-import { and, eq, gte, isNotNull, isNull, lte, type SQL, sql } from 'drizzle-orm';
+import { type DayTotal, displayAmount, installmentSchedule, type PartWeight } from '@expanses/core';
+import { and, eq, gte, inArray, isNotNull, isNull, lte, notInArray, type SQL, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
@@ -9,6 +9,7 @@ import { bookMoneyFor, type Unconverted } from './book-currency';
 import { partCountedWhere } from './book-splits';
 import { eventOnlyExists, notEventOnly } from './event-only';
 import { extrasTablesExist, notExcluded } from './transaction-extras';
+import { type PlanWithDay, plansWithStatementDays, purchaseWholes, type SpreadLine, spreadLinesIn, spreadPurchaseIds } from './instalment-spending';
 
 /** What narrows a category total beyond its kind and its dates. */
 export interface CategoryTotalsOptions {
@@ -40,6 +41,11 @@ async function categoryRows(
   from: string,
   to: string,
   opts: CategoryTotalsOptions,
+  /**
+   * The purchases a plan spreads each month (`spreadPurchaseIds`), left out here: their instalments count instead
+   * (`spreadIn`). Null reads them as any other row — what working out a spread purchase's parts asks for.
+   */
+  spread: readonly string[] | null = [],
 ): Promise<{ where: SQL; onDate: SQL<string>; share: SQL<number> }> {
   // The budget and Cashflow ask for bills in the month they came out; every other reader keeps the day paid.
   const byBillMonth = opts.billMonths === true && (await billTablesExist(database.db));
@@ -74,6 +80,7 @@ async function categoryRows(
       // What a shared event put in this phone's books is no workspace's spending (shared events §5.1), owner-wide too.
       ...((await eventOnlyExists(database.db)) ? [notEventOnly(transactions.id)] : []),
       ...(paid ? [sql`${transactions.id} IN (SELECT transaction_id FROM entries WHERE account_id = ${paid})`] : []),
+      ...(kind === 'expense' && spread && spread.length > 0 ? [notInArray(transactions.id, [...spread])] : []),
     )!,
     // The day an amount is converted on is the day it is counted on. Under billMonths that is the out day of the
     // month whose bill it settles, not the day the payment was made — so August's internet paid on 3 September is
@@ -88,6 +95,95 @@ async function categoryRows(
       ? sql<number>`abs(${ownSum}) * 1.0 / NULLIF((SELECT sum(abs(side.amount_base_minor)) FROM entries side INNER JOIN accounts side_account ON side_account.id = side.account_id WHERE side.transaction_id = ${transactions.id} AND side_account.kind NOT IN ('expense', 'income') AND side.amount_base_minor * ${ownSum} > 0), 0)`
       : sql<number>`1`,
   };
+}
+
+/** The plans of the workspace and the purchases those counting each month spread, read once per reading. */
+async function spreadPlans(database: Database, ws: WorkspaceContext, kind: 'expense' | 'income'): Promise<{ plans: PlanWithDay[]; ids: string[] }> {
+  if (kind !== 'expense') return { plans: [], ids: [] };
+  const plans = await plansWithStatementDays(database.db, ws);
+  return { plans, ids: spreadPurchaseIds(plans) };
+}
+
+/**
+ * The instalments of plans counting each month whose statement date falls in [from, to], in the purchase's categories,
+ * as far as the reading's own filters let the purchase count: each purchase's category lines are read through the same
+ * where clause as every other row (book, excluded, events held out, a part split off, Paid with), whatever its date, and
+ * each instalment counts that share of itself. In the owner's currency.
+ */
+async function spreadIn(
+  database: Database,
+  ws: WorkspaceContext,
+  kind: 'expense' | 'income',
+  from: string,
+  to: string,
+  opts: CategoryTotalsOptions,
+  spread: { plans: PlanWithDay[]; ids: string[] },
+): Promise<SpreadLine[]> {
+  if (kind !== 'expense' || !spread.plans.some(({ plan }) => plan.countMode === 'each_month')) return [];
+  const parts = new Map<string, PartWeight[]>();
+  if (spread.ids.length > 0) {
+    const { where, share } = await categoryRows(database, ws, kind, '0000-01-01', '9999-12-31', opts, null);
+    const rows = await database.db
+      .select({ transactionId: transactions.id, accountId: entries.accountId, total: sql<number>`sum(${entries.amountBaseMinor} * ${share})` })
+      .from(entries)
+      .innerJoin(transactions, eq(entries.transactionId, transactions.id))
+      .innerJoin(accounts, eq(entries.accountId, accounts.id))
+      .where(and(where, inArray(transactions.id, spread.ids)))
+      .groupBy(transactions.id, entries.accountId);
+    for (const row of rows) {
+      const weight = displayAmount(kind, Number(row.total));
+      if (!(weight > 0)) continue;
+      parts.set(row.transactionId, [...(parts.get(row.transactionId) ?? []), { key: row.accountId, weight }]);
+    }
+  }
+  const wholes = await purchaseWholes(database.db, spread.ids);
+  return spreadLinesIn(database.db, ws, spread.plans, from, to, parts, wholes, { paidAccountId: opts.paidAccountId });
+}
+
+/** An instalment of a plan counting At purchase: a repayment of the card, never spending (option C). */
+export interface InstalmentRepayment {
+  planId: string;
+  cardAccountId: string;
+  transactionId: string | null;
+  description: string;
+  number: number;
+  of: number;
+  statementOn: string;
+  amountMinor: number;
+}
+
+/**
+ * The instalments of the card plans in [from, to], as Cashflow lists them (option C): those of plans counting each month
+ * are spending, in the categories and through the filters a category total reads them by, so the list adds up to the
+ * rings (`lines`); those of plans counting at purchase are repayments of the card, listed with the transfers
+ * (`repayments`). `spreadPurchaseIds` are the purchases that count nothing on their own day.
+ */
+export async function instalmentSpendingIn(
+  database: Database,
+  ws: WorkspaceContext,
+  from: string,
+  to: string,
+  opts: CategoryTotalsOptions = {},
+): Promise<{ lines: SpreadLine[]; repayments: InstalmentRepayment[]; spreadPurchaseIds: string[] }> {
+  const spread = await spreadPlans(database, ws, 'expense');
+  const repayments: InstalmentRepayment[] = [];
+  for (const { plan, statementDay } of spread.plans) {
+    if (plan.countMode === 'each_month') continue;
+    for (const bill of installmentSchedule(plan, statementDay)) {
+      if (bill.statementOn < from || bill.statementOn > to) continue;
+      repayments.push({
+        planId: plan.id,
+        cardAccountId: plan.cardAccountId,
+        transactionId: plan.transactionId,
+        description: plan.description,
+        number: bill.number,
+        of: plan.months,
+        statementOn: bill.statementOn,
+        amountMinor: bill.amountMinor,
+      });
+    }
+  }
+  return { lines: await spreadIn(database, ws, 'expense', from, to, opts, spread), repayments, spreadPurchaseIds: spread.ids };
 }
 
 /**
@@ -108,7 +204,8 @@ export async function categoryTotalsBetween(
   to: string,
   opts: CategoryTotalsOptions = {},
 ): Promise<CategoryTotal[]> {
-  const { where, share } = await categoryRows(database, ws, kind, from, to, opts);
+  const spread = await spreadPlans(database, ws, kind);
+  const { where, share } = await categoryRows(database, ws, kind, from, to, opts, spread.ids);
   const rows = await database.db
     .select({
       accountId: entries.accountId,
@@ -121,8 +218,16 @@ export async function categoryTotalsBetween(
     .innerJoin(accounts, eq(entries.accountId, accounts.id))
     .where(where)
     .groupBy(entries.accountId);
-  return rows
-    .map((r) => ({ accountId: r.accountId, amountBaseMinor: displayAmount(kind, Math.round(Number(r.total))), transactions: Number(r.count) }))
+  const totals = new Map(rows.map((r) => [r.accountId, { amountBaseMinor: displayAmount(kind, Math.round(Number(r.total))), transactions: Number(r.count) }]));
+  // Each instalment of a plan counting each month is spending in its purchase's category, one transaction of its own.
+  for (const line of await spreadIn(database, ws, kind, from, to, opts, spread)) {
+    const held = totals.get(line.categoryId) ?? { amountBaseMinor: 0, transactions: 0 };
+    held.amountBaseMinor += line.amountBaseMinor;
+    held.transactions += 1;
+    totals.set(line.categoryId, held);
+  }
+  return [...totals]
+    .map(([accountId, held]) => ({ accountId, ...held }))
     .filter((r) => r.amountBaseMinor !== 0);
 }
 
@@ -144,7 +249,8 @@ export async function categoryTotalsIn(
   const money = await bookMoneyFor(database, ws);
   if (!money.converts) return { rows: await categoryTotalsBetween(database, ws, kind, from, to, opts), currency: money.currency, missing: [] };
 
-  const { where, onDate, share } = await categoryRows(database, ws, kind, from, to, opts);
+  const spread = await spreadPlans(database, ws, kind);
+  const { where, onDate, share } = await categoryRows(database, ws, kind, from, to, opts, spread.ids);
   const rows = await database.db
     .select({
       accountId: entries.accountId,
@@ -167,6 +273,15 @@ export async function categoryTotalsIn(
     held.amountBaseMinor += converted * Number(row.share ?? 0);
     held.transactions.add(row.transactionId);
     totals.set(row.accountId, held);
+  }
+  // An instalment is kept in the owner's currency and read on its statement date.
+  for (const line of await spreadIn(database, ws, kind, from, to, opts, spread)) {
+    const converted = money.convert(line.amountBaseMinor, ws.baseCurrency, line.statementOn);
+    if (converted === null) continue;
+    const held = totals.get(line.categoryId) ?? { amountBaseMinor: 0, transactions: new Set<string>() };
+    held.amountBaseMinor += converted;
+    held.transactions.add(`${line.planId}#${line.number}`);
+    totals.set(line.categoryId, held);
   }
   return {
     rows: [...totals]
@@ -192,7 +307,8 @@ export async function dailyTotalsIn(
   opts: { excludeEvents?: boolean; billMonths?: boolean } = {},
 ): Promise<{ days: DayTotal[]; currency: string; missing: Unconverted[] }> {
   const money = await bookMoneyFor(database, ws);
-  const { where, onDate } = await categoryRows(database, ws, kind, from, to, opts);
+  const spread = await spreadPlans(database, ws, kind);
+  const { where, onDate } = await categoryRows(database, ws, kind, from, to, opts, spread.ids);
 
   const byDay = new Map<string, number>();
   if (!money.converts) {
@@ -218,6 +334,12 @@ export async function dailyTotalsIn(
       byDay.set(row.onDate, (byDay.get(row.onDate) ?? 0) + converted);
     }
   }
+  // Each instalment of a plan counting each month falls on its statement date.
+  for (const line of await spreadIn(database, ws, kind, from, to, opts, spread)) {
+    const amountMinor = money.converts ? money.convert(line.amountBaseMinor, ws.baseCurrency, line.statementOn) : line.amountBaseMinor;
+    if (amountMinor === null) continue;
+    byDay.set(line.statementOn, (byDay.get(line.statementOn) ?? 0) + amountMinor);
+  }
   return {
     days: [...byDay]
       .filter(([, amountMinor]) => amountMinor !== 0)
@@ -240,14 +362,20 @@ export async function firstDayOf(
   kind: 'expense' | 'income',
   opts: { excludeEvents?: boolean; billMonths?: boolean } = {},
 ): Promise<string | null> {
-  const { where, onDate } = await categoryRows(database, ws, kind, '0000-01-01', '9999-12-31', opts);
+  const spread = await spreadPlans(database, ws, kind);
+  const { where, onDate } = await categoryRows(database, ws, kind, '0000-01-01', '9999-12-31', opts, spread.ids);
   const [row] = await database.db
     .select({ first: sql<string | null>`min(${onDate})` })
     .from(entries)
     .innerJoin(transactions, eq(entries.transactionId, transactions.id))
     .innerJoin(accounts, eq(entries.accountId, accounts.id))
     .where(where);
-  return row?.first ?? null;
+  const firstSpread = (await spreadIn(database, ws, kind, '0000-01-01', '9999-12-31', opts, spread)).reduce<string | null>(
+    (first, line) => (first === null || line.statementOn < first ? line.statementOn : first),
+    null,
+  );
+  const first = row?.first ?? null;
+  return first === null ? firstSpread : firstSpread !== null && firstSpread < first ? firstSpread : first;
 }
 
 /**

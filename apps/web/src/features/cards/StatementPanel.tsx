@@ -2,7 +2,7 @@ import { formatMinor, matchesSearch, statementCycleFor } from '@expanses/core';
 import { type AccountRow, billOnNextStatement, cardStatement, cardStatementLines, type CardRow, carriesPaidOffMark, payCardPurchases, setPostedOn, setSettledBeforeApp, setTransactionsCard, type StatementLine } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { CalendarArrowUp, Check, CircleCheck, CircleX, CreditCard, Ellipsis, Receipt, Undo2, X } from 'lucide-react';
+import { CalendarArrowUp, CalendarRange, Check, CircleCheck, CircleX, CreditCard, Ellipsis, Receipt, Undo2, X } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { usePhone } from '../../app/use-phone';
@@ -332,12 +332,26 @@ export function StatementPanel({
     </label>
     );
 
+  const categoryNameOf = (id: string | null | undefined) => (id ? (accounts.find((account) => account.id === id)?.name ?? null) : null);
+  /** The plan an instalment row belongs to, on its own page: the row is tapped to get there. */
+  const openPlan = (line: StatementLine) => {
+    if (line.instalment) void navigate({ to: '/cards/$cardId/settings/instalments/$planId', params: { cardId: card.id, planId: line.instalment.planId } });
+  };
+  /** "1 of 12" beside an instalment row's name. */
+  const pill = (line: StatementLine) =>
+    line.instalment ? (
+      <span data-testid="instalment-pill" className="tabular ml-[6px] rounded-full bg-[var(--ph-fill)] px-[6px] py-[1px] align-[1px] text-[12px] leading-[16px] font-medium text-[var(--ph-ink-2)]">
+        {line.instalment.number} of {line.instalment.of}
+      </span>
+    ) : null;
+
   /** What else the statement says about a line, after its description: plan, conversion, payment, card, tag. */
   const notes = (line: StatementLine): ReactNode[] => {
     const out: ReactNode[] = [];
     // One purchase split across workspaces is one charge here, as the bank prints it: its line names every part.
     if (line.splitCategories) out.push(line.splitCategories.join(' · '));
-    if (line.instalment) out.push(`instalment ${line.instalment.number} of ${line.instalment.of}`);
+    // An instalment row names the purchase's category, as a purchase row on Cashflow does; its "1 of 12" is a pill.
+    if (line.instalment) out.push([categoryNameOf(line.instalment.categoryId), 'instalment'].filter(Boolean).join(' · '));
     if (line.convertedTo) out.push(`converted to ${line.convertedTo.months} months, billed monthly`);
     // Which purchases have been settled one by one, kept apart from what the bank has billed.
     if (line.paidBy) out.push(`${s?.closed ? 'paid' : 'paid ahead'} ${day(line.paidBy.paidOn)}`);
@@ -411,9 +425,16 @@ export function StatementPanel({
         }
       >
         {tick(line)}
-        <span className="min-w-0 flex-1 py-[10px]">
+        <span
+          className={cx('min-w-0 flex-1 py-[10px]', line.instalment && 'ph-focus-inset cursor-pointer')}
+          // An instalment row opens its plan, where its months, what is paid and how it counts are.
+          {...(line.instalment
+            ? { role: 'link', tabIndex: 0, 'aria-label': `Open the plan for ${line.description}`, onClick: () => openPlan(line), onKeyDown: (e: { key: string }) => e.key === 'Enter' && openPlan(line) }
+            : {})}
+        >
           <span className={cx('block truncate', TITLE)}>
             {line.description}
+            {pill(line)}
             {/* Whose spending this is, when the card has been used from more than one workspace. */}
             <WorkspaceBadge book={badgeOf(line.transactionId)} />
           </span>
@@ -467,7 +488,14 @@ export function StatementPanel({
               <td className="tabular px-[8px] align-middle whitespace-nowrap text-[var(--ph-ink-3)]">{day(line.occurredOn)}</td>
               <td className="px-[8px] py-[8px] align-middle">
                 <span className="block text-[15px] leading-[20px] text-[var(--ph-ink)]">
-                  {line.description}
+                  {line.instalment ? (
+                    <button type="button" className="ph-focus text-left text-[var(--ph-ink)] hover:underline" onClick={() => openPlan(line)}>
+                      {line.description}
+                    </button>
+                  ) : (
+                    line.description
+                  )}
+                  {pill(line)}
                   <WorkspaceBadge book={badgeOf(line.transactionId)} />
                 </span>
                 {extra.length > 0 && (
@@ -677,8 +705,19 @@ export function StatementPanel({
                 }}
               />
             )}
+            {acting.instalment && (
+              <ActionRow
+                label="Open plan"
+                icon={<CalendarRange size={16} aria-hidden />}
+                onClick={() => {
+                  const line = acting;
+                  setActing(null);
+                  openPlan(line);
+                }}
+              />
+            )}
             <ActionRow
-              label="Open receipt"
+              label={acting.instalment ? 'Open purchase' : 'Open receipt'}
               icon={<Receipt size={16} aria-hidden />}
               onClick={() => {
                 const line = acting;

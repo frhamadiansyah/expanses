@@ -138,6 +138,8 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
         map.set(view.id, { on: view.occurredOn, description: view.description, amountMinor: Math.abs(onCard) });
       }
       for (const draft of await listDrafts(database, ws)) map.set(`draft:${draft.id}`, { on: draft.occurredOn, description: draft.description, amountMinor: Math.abs(draft.amountMinor) });
+      // A plan's instalment rows the check matched: "linked to Laptop 1/12".
+      for (const instalment of prepared!.instalments ?? []) map.set(instalment.id, { on: instalment.on, description: instalment.description, amountMinor: instalment.amountMinor });
       return map;
     },
   });

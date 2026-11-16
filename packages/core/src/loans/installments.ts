@@ -88,3 +88,77 @@ export function installmentSchedule(installment: CardInstallment, statementDay: 
     };
   });
 }
+
+/**
+ * How a plan's spending counts (0120): the whole purchase on its own day (`at_purchase`, each instalment then only a
+ * repayment of the card), or each instalment as that month's spending on its statement date (`each_month`, the
+ * purchase it came from then counting nothing).
+ */
+export type InstalmentCountMode = 'at_purchase' | 'each_month';
+
+export const INSTALMENT_COUNT_MODES: readonly InstalmentCountMode[] = ['at_purchase', 'each_month'];
+
+/** One share of an amount to hand out: a key (a category) and how much of the whole it stands for. */
+export interface PartWeight {
+  key: string;
+  weight: number;
+}
+
+/**
+ * An amount shared out by weight, the remainder going to the largest fractions so the parts add back exactly.
+ * `whole`, when given, is what all the weights would come to: weights adding up to less (a purchase only partly in the
+ * workspace being read) hand out that share of the amount, not all of it. Parts of no weight are left out.
+ */
+export function splitByParts(amountMinor: number, parts: readonly PartWeight[], whole?: number): { key: string; amountMinor: number }[] {
+  const weighted = parts.filter((part) => part.weight > 0);
+  const given = weighted.reduce((sum, part) => sum + part.weight, 0);
+  if (given <= 0) return [];
+  const of = whole && whole > given ? whole : given;
+  const target = Math.round((amountMinor * given) / of);
+  const exact = weighted.map((part) => (target * part.weight) / given);
+  const floors = exact.map(Math.floor);
+  let left = target - floors.reduce((sum, n) => sum + n, 0);
+  const order = exact.map((value, index) => ({ index, rest: value - floors[index]! })).sort((a, b) => b.rest - a.rest || a.index - b.index);
+  for (const { index } of order) {
+    if (left <= 0) break;
+    floors[index]! += 1;
+    left -= 1;
+  }
+  return weighted.map((part, index) => ({ key: part.key, amountMinor: floors[index]! }));
+}
+
+/** One instalment of a plan counted as spending: on its statement date, in one of the purchase's categories. */
+export interface InstalmentSpendingLine {
+  number: number;
+  of: number;
+  statementOn: string;
+  categoryKey: string;
+  amountMinor: number;
+}
+
+/**
+ * A plan's instalments as spending lines: each on the statement date it is billed on (`installmentSchedule`), shared
+ * across the purchase's categories by their weight. The last instalment carries the rounding, so a single-category plan
+ * adds back to its total. No category, no lines.
+ */
+export function instalmentSpendingLines(
+  installment: CardInstallment,
+  statementDay: number,
+  parts: readonly PartWeight[],
+  whole?: number,
+): InstalmentSpendingLine[] {
+  return installmentSchedule(installment, statementDay).flatMap((bill) =>
+    splitByParts(bill.amountMinor, parts, whole).map((part) => ({
+      number: bill.number,
+      of: installment.months,
+      statementOn: bill.statementOn,
+      categoryKey: part.key,
+      amountMinor: part.amountMinor,
+    })),
+  );
+}
+
+/** The lines whose statement date falls in [from, to]: a period's months already follow Month starts on. */
+export function instalmentsCountedIn<T extends { statementOn: string }>(lines: readonly T[], from: string, to: string): T[] {
+  return lines.filter((line) => line.statementOn >= from && line.statementOn <= to);
+}

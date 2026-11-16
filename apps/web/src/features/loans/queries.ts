@@ -1,5 +1,5 @@
 import { isoDate } from '@expanses/core';
-import { cardStatement, installmentTotals, listCards, listCardTerms, listInstallments, listLoanItems, listLoans, loanFor, nextPaymentDue, scheduledAsks, scheduledPayments, scheduleFor } from '@expanses/db';
+import { cardStatement, cardStatementLines, installmentTotals, listCards, listCardTerms, listInstallments, listLoanItems, listLoans, loanFor, nextPaymentDue, scheduledAsks, scheduledPayments, scheduleFor } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { cycleBack, dueDateAfter } from '../cards/statement-dates';
@@ -65,6 +65,21 @@ export function useScheduledAsks(date?: string) {
 export function useInstallments(cardAccountId?: string) {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['installments', ws.workspaceId, cardAccountId ?? 'all'], queryFn: () => listInstallments(database, ws, cardAccountId) });
+}
+
+/** The card's statement day, the 1st when none was set: the day each instalment is billed on, as statements read it. */
+export function useStatementDay(cardAccountId: string) {
+  const { database, ws } = useApp();
+  return useQuery({
+    queryKey: ['card-terms', ws.workspaceId, 'statement-day', cardAccountId],
+    queryFn: async () => (await listCardTerms(database, ws)).find((terms) => terms.accountId === cardAccountId)?.statementDay ?? 1,
+  });
+}
+
+/** Every line the card has had, as statements bill them: what a plan's Purchase row offers. Read only when asked for. */
+export function useCardLines(cardAccountId: string, enabled = true) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['card-statement-lines', ws.workspaceId, cardAccountId], enabled, queryFn: () => cardStatementLines(database, ws, cardAccountId) });
 }
 
 export function useInstallmentTotals(date?: string) {

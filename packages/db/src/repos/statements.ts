@@ -40,8 +40,11 @@ export interface StatementLine {
    * count instead, one a month, the way the bank bills it. Everything else counts what it added to the balance.
    */
   countedMinor: number;
-  /** For an instalment row: which plan, and which of its months. */
-  instalment: { planId: string; number: number; of: number } | null;
+  /**
+   * For an instalment row: which plan, which of its months, how the plan counts its spending (0120) and the category of
+   * the purchase it came from (its largest category line), for the row's icon and name.
+   */
+  instalment: { planId: string; number: number; of: number; countMode?: 'at_purchase' | 'each_month'; categoryId?: string | null } | null;
   /** For a purchase converted to instalments: the plan it became. */
   convertedTo: { planId: string; months: number } | null;
   /** A purchase or refund, as opposed to money moved onto the card. */
@@ -182,7 +185,9 @@ async function billedLines(db: Db, ws: WorkspaceContext, cardAccountId: string):
     .where(and(eq(cardTerms.accountId, cardAccountId), eq(cardTerms.workspaceId, ws.workspaceId)));
   const byTransaction = new Map(lines.map((line) => [line.transactionId, line]));
   const instalments: StatementLine[] = [];
-  for (const plan of await listInstallmentsTx(db, ws, cardAccountId)) {
+  const plans = await listInstallmentsTx(db, ws, cardAccountId);
+  const categoryOf = await largestCategoryOf(db, plans.flatMap((plan) => (plan.transactionId && byTransaction.has(plan.transactionId) ? [plan.transactionId] : [])));
+  for (const plan of plans) {
     const purchase = plan.transactionId ? byTransaction.get(plan.transactionId) : undefined;
     if (!purchase) continue;
     purchase.convertedTo = { planId: plan.id, months: plan.months };
@@ -198,7 +203,7 @@ async function billedLines(db: Db, ws: WorkspaceContext, cardAccountId: string):
         cardId: purchase.cardId,
         owedMinor: bill.amountMinor,
         countedMinor: bill.amountMinor,
-        instalment: { planId: plan.id, number: bill.number, of: plan.months },
+        instalment: { planId: plan.id, number: bill.number, of: plan.months, countMode: plan.countMode, categoryId: categoryOf.get(purchase.transactionId) ?? null },
         convertedTo: null,
         spending: true,
         originalCurrency: null,
@@ -213,6 +218,18 @@ async function billedLines(db: Db, ws: WorkspaceContext, cardAccountId: string):
   return [...lines, ...instalments].sort(
     (a, b) => a.statementOn.localeCompare(b.statementOn) || a.occurredOn.localeCompare(b.occurredOn) || a.key.localeCompare(b.key),
   );
+}
+
+/** Each purchase's largest category line, by transaction: what an instalment row is named and drawn by. */
+async function largestCategoryOf(db: Db, transactionIds: readonly string[]): Promise<Map<string, string>> {
+  if (transactionIds.length === 0) return new Map();
+  const rows = await db.values<[string, string]>(sql`
+    SELECT e.transaction_id, e.account_id FROM entries e JOIN accounts a ON a.id = e.account_id
+    WHERE a.kind = 'expense' AND e.transaction_id IN ${[...transactionIds]}
+    ORDER BY ABS(e.amount_minor) DESC, e.rowid`);
+  const out = new Map<string, string>();
+  for (const [transactionId, accountId] of rows) if (!out.has(transactionId)) out.set(transactionId, accountId);
+  return out;
 }
 
 /** Every line the card has ever had, as statements bill them, for searching across statements. */

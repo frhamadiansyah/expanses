@@ -1,5 +1,5 @@
 import { compareWithinDay, dayNet, formatMinor, isExchangeResultKey, isNotCountedKey, isUncategorisedKey, matchesSearch, parsePeriod, transferName } from '@expanses/core';
-import type { AccountRow, CardRow, DraftRow, SharedTransferRow, TransactionEntryView, TransactionView } from '@expanses/db';
+import type { AccountRow, CardRow, DraftRow, InstalmentRepayment, SharedTransferRow, SpreadLine, TransactionEntryView, TransactionView } from '@expanses/db';
 import type { PurchasePoints } from '../../lib/purchase-points';
 import { formatPoints } from '../cards/format-points';
 import { classify } from './classify';
@@ -122,6 +122,14 @@ export interface ListRow {
   eventId?: string | null;
   /** A transfer the other member recorded in this shared workspace: date, amount and label only, read only. */
   sharedTransfer?: true;
+  /**
+   * One month of a card's instalment plan (option C, 0120), worked out from the plan, never stored: under Each month it is
+   * that month's spending, in the purchase's category; under At purchase a repayment of the card, listed with the
+   * transfers. Tapping it opens the plan. Absent on anything else.
+   */
+  instalment?: { planId: string; cardAccountId: string; number: number; of: number; countMode: 'at_purchase' | 'each_month'; purchaseId: string | null };
+  /** A purchase its plan spreads each month: listed on its day, counting nothing there; the months it is spread over. */
+  spreadOver?: number;
 }
 
 /**
@@ -179,6 +187,69 @@ export function sharedTransferRow(transfer: SharedTransferRow): ListRow {
     // Named by its two accounts where both are ones the recorder shares (`partnerTransferNameTx`), as on the recorder's phone.
     ...(transfer.name ? { transferName: transfer.name } : {}),
   };
+}
+
+/**
+ * The instalment rows of a period (option C): Each month's as spending in each of the purchase's categories (one row a
+ * category, so a category's drill-in adds up to its ring), At purchase's as repayments of the card. Figures are in the
+ * owner's currency, as plans are kept.
+ */
+export function instalmentRows(
+  read: { lines: readonly SpreadLine[]; repayments: readonly InstalmentRepayment[] },
+  accounts: readonly AccountRow[],
+  currency: string,
+): ListRow[] {
+  const byId = new Map(accounts.map((account) => [account.id, account]));
+  const base = (cardAccountId: string, description: string, statementOn: string, amountMinor: number) => ({
+    kind: 'tx' as const,
+    date: statementOn,
+    description,
+    amountMinor,
+    currency,
+    accountIds: [cardAccountId],
+    accountLabel: byId.get(cardAccountId)?.name ?? '',
+    cardId: null,
+    last4: null,
+    holderName: null,
+    deleted: false,
+    excluded: false,
+    needs: [],
+  });
+  const spending = read.lines.map((line): ListRow => ({
+    ...base(line.cardAccountId, line.description, line.statementOn, line.amountBaseMinor),
+    id: `instalment:${line.planId}#${line.number}:${line.categoryId}`,
+    baseMinor: line.amountBaseMinor,
+    spentMinor: line.amountBaseMinor,
+    earnedMinor: 0,
+    type: 'expense',
+    categoryId: line.categoryId,
+    categoryName: byId.get(line.categoryId)?.name ?? null,
+    parentName: parentNameOf(line.categoryId, byId),
+    instalment: { planId: line.planId, cardAccountId: line.cardAccountId, number: line.number, of: line.of, countMode: 'each_month', purchaseId: line.transactionId },
+  }));
+  const repaying = read.repayments.map((line): ListRow => ({
+    ...base(line.cardAccountId, line.description, line.statementOn, line.amountMinor),
+    id: `instalment:${line.planId}#${line.number}`,
+    baseMinor: 0,
+    spentMinor: 0,
+    earnedMinor: 0,
+    type: 'transfer',
+    categoryId: null,
+    categoryName: null,
+    parentName: null,
+    transferName: 'Instalment',
+    instalment: { planId: line.planId, cardAccountId: line.cardAccountId, number: line.number, of: line.of, countMode: 'at_purchase', purchaseId: line.transactionId },
+  }));
+  return [...spending, ...repaying];
+}
+
+/**
+ * Purchases spread each month by their plan: still listed on their day, but counting nothing there — their figure moves
+ * to the plan's instalment rows. Whatever else they are (a split, an excluded row) is left as it was.
+ */
+export function markSpread(rows: readonly ListRow[], spreadOver: ReadonlyMap<string, number>): ListRow[] {
+  if (spreadOver.size === 0) return [...rows];
+  return rows.map((row) => (row.kind === 'tx' && row.tx && spreadOver.has(row.id) && row.type === 'expense' ? { ...row, baseMinor: 0, spentMinor: 0, spreadOver: spreadOver.get(row.id)! } : row));
 }
 
 export interface ListFilters {
@@ -244,6 +315,8 @@ const MOVES_BETWEEN = new Set(['bank', 'cash', 'savings', 'ewallet', 'emoney', '
 export function transferReach(row: ListRow, known: ReadonlySet<string> | ReadonlyMap<string, unknown>, jointIds: ReadonlySet<string>): 'own' | 'household' | null {
   if (row.kind !== 'tx' || row.type !== 'transfer') return null;
   if (row.sharedTransfer) return 'household';
+  // An instalment counted at purchase repays the card, as a card payment does: an own transfer.
+  if (row.instalment) return 'own';
   if (!row.tx || row.feeMinor || row.spentMinor !== 0 || row.earnedMinor !== 0) return null;
   const money = row.tx.entries.filter((e) => e.accountKind === 'asset' || e.accountKind === 'liability');
   return reachOfSides(money, known, jointIds);

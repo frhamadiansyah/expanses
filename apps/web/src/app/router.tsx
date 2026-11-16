@@ -40,6 +40,7 @@ import { EarnRulesPage, SpendBonusesPage } from '../features/cards/CardRulesPage
 import { FeeWaiverPage, SpendBonusListPage, SpendBonusPage } from '../features/cards/SpendBonusPages';
 import { FeeYearPage } from '../features/cards/FeeYearGroups';
 import { CardInstalmentsPage } from '../features/cards/CardInstalmentsPage';
+import { CardInstalmentPlanPage } from '../features/cards/CardInstalmentPlanPage';
 import { CardProductPage, CardSettingsPage } from '../features/cards/CardSettingsPage';
 import { CardByHandPage, CardCatalogPreviewPage } from '../features/cards/CardProductPages';
 import { CardStatementPage } from '../features/cards/CardStatementPage';
@@ -391,6 +392,8 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/product/listed/$entryId', component: CardCatalogPreviewPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/product/by-hand', component: CardByHandPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/instalments', component: CardInstalmentsPage }),
+  // One plan: its progress, Count spending (At purchase | Each month) and its instalments; the instalment rows open it.
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/instalments/$planId', component: CardInstalmentPlanPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/rules', component: EarnRulesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/bonuses', component: SpendBonusesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/settings/fee-waiver', component: FeeWaiverPage }),

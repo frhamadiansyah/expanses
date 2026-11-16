@@ -58,6 +58,7 @@ function prepared(patch: Partial<PreparedCheck>): PreparedCheck {
     alreadyChecked: false,
     trackPayments: false,
     today: '2026-06-15',
+    instalments: [],
     ...patch,
   };
 }
@@ -156,6 +157,9 @@ describe('asks', () => {
   it('lists the tied candidates nobody chose', () => {
     expect(unchosenTied([a, b], { 20: 't1', 21: 't3' })).toEqual(['t2']);
     expect(unchosenTied([a, b], {})).toEqual(['t1', 't2', 't3']);
+    // An instalment row is worked out from its plan: never a recorded transaction to keep or delete.
+    const c = row({ index: 22, outcome: { row: 22, status: 'ask', candidateIds: ['t4', 'instalment:p1#2'] } });
+    expect(unchosenTied([c], { 22: 't4' })).toEqual([]);
   });
 });
 

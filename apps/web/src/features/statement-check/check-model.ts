@@ -123,7 +123,8 @@ export function unchosenTied(rows: readonly CheckDraftRow[], ask: Readonly<Recor
   const out: string[] = [];
   for (const r of rows) {
     if (r.outcome.status !== 'ask') continue;
-    for (const id of r.outcome.candidateIds) if (!chosen.has(id) && !out.includes(id)) out.push(id);
+    // An instalment row of a plan is no recorded transaction: left out, it is simply not on this statement.
+    for (const id of r.outcome.candidateIds) if (!chosen.has(id) && !out.includes(id) && !id.startsWith('instalment:')) out.push(id);
   }
   return out;
 }

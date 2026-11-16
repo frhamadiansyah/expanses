@@ -426,7 +426,20 @@ export {
   payoffQuote,
   type SettlementFee,
 } from './loans/effects';
-export { type CardInstallment, type InstallmentBilling, installmentSchedule, type InstallmentSplit, installmentSplit } from './loans/installments';
+export {
+  type CardInstallment,
+  INSTALMENT_COUNT_MODES,
+  type InstalmentCountMode,
+  instalmentSpendingLines,
+  type InstalmentSpendingLine,
+  instalmentsCountedIn,
+  type InstallmentBilling,
+  installmentSchedule,
+  type InstallmentSplit,
+  installmentSplit,
+  type PartWeight,
+  splitByParts,
+} from './loans/installments';
 export {
   type CoretaxCode,
   coretaxCodeFor,

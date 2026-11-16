@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { AccountRow, CardRow, DraftRow, SharedTransferRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import type { ListRow } from './list-model';
-import { categoryButtonLabel, amountExtraParts, amountLook, wholeLeftOut, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory, excludedHere, hasNotCountedPart, outsideEvents, accountsWithTransactions, sharedTransferRow } from './list-model';
+import { categoryButtonLabel, amountExtraParts, amountLook, wholeLeftOut, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory, excludedHere, hasNotCountedPart, outsideEvents, accountsWithTransactions, sharedTransferRow, instalmentRows, markSpread } from './list-model';
 
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], extra: Partial<AccountRow> = {}): AccountRow => ({
   id, workspaceId: 'ws', parentId: null, kind, subtype, name: id, icon: null, currency: kind === 'expense' || kind === 'income' ? null : 'IDR', valuationMode: 'derived', systemKey: null, sortOrder: 0, archivedAt: null, createdAt: '2026-09-01T00:00:00Z', ...extra,
@@ -851,5 +851,38 @@ describe('a partner’s transfer row', () => {
   it('carries the name its two shared accounts make it, and none without one', () => {
     expect(sharedTransferRow(shared({ name: 'Cash withdrawal' })).transferName).toBe('Cash withdrawal');
     expect(sharedTransferRow(shared()).transferName).toBeUndefined();
+  });
+});
+
+describe('card instalments (option C)', () => {
+  // Invented: a laptop of Rp 12.000.000 on the CIMB Octo card, 12 × Rp 1.000.000 from December, statement day the 18th.
+  const laptop = tx('2026-11-10', 'Laptop', [['electronics', 12_000_000], ['octo', -12_000_000]]);
+  const line = { planId: 'p1', cardAccountId: 'octo', transactionId: laptop.id, description: 'Laptop', number: 1, of: 12, statementOn: '2026-12-18', categoryId: 'electronics', amountBaseMinor: 1_000_000 };
+
+  it('counts the purchase nothing on its day when its plan spreads it each month', () => {
+    const [row] = markSpread(buildRows([laptop], [], accounts, cards), new Map([[laptop.id, 12]]));
+    expect(row).toMatchObject({ amountMinor: 12_000_000, spentMinor: 0, baseMinor: 0, spreadOver: 12 });
+    expect(dayTotal([row!])).toBe(0);
+    expect(totals([row!]).spentMinor).toBe(0);
+  });
+
+  it('lists each month’s instalment as spending in the purchase’s category, on its statement day', () => {
+    const [row] = instalmentRows({ lines: [line], repayments: [] }, accounts, 'IDR');
+    expect(row).toMatchObject({ date: '2026-12-18', type: 'expense', categoryId: 'electronics', categoryName: 'Electronics', spentMinor: 1_000_000, accountIds: ['octo'] });
+    expect(row!.instalment).toEqual({ planId: 'p1', cardAccountId: 'octo', number: 1, of: 12, countMode: 'each_month', purchaseId: laptop.id });
+    expect(dayTotal([row!])).toBe(-1_000_000);
+    expect(filterRows([row!], { ...EMPTY_FILTERS, cat: 'electronics' }, accounts)).toHaveLength(1);
+    expect(filterRows([row!], { ...EMPTY_FILTERS, paid: 'acct:octo' }, accounts)).toHaveLength(1);
+    expect(filterRows([row!], { ...EMPTY_FILTERS, type: 'expense' }, accounts)).toHaveLength(1);
+  });
+
+  it('lists an At purchase instalment as a repayment, shown only with Transfers on', () => {
+    const { categoryId: _c, amountBaseMinor: amountMinor, ...rest } = line;
+    const [row] = instalmentRows({ lines: [], repayments: [{ ...rest, amountMinor }] }, accounts, 'IDR');
+    expect(row).toMatchObject({ type: 'transfer', spentMinor: 0, amountMinor: 1_000_000 });
+    const cashflow = { shared: false, jointIds: new Set<string>() };
+    expect(filterRows([row!], EMPTY_FILTERS, accounts, cashflow)).toEqual([]);
+    expect(filterRows([row!], { ...EMPTY_FILTERS, showTransfers: true }, accounts, cashflow)).toHaveLength(1);
+    expect(dayTotal([row!])).toBe(0);
   });
 });

@@ -8,6 +8,7 @@ import {
   editDraft,
   guessCategoryFromHistory,
   inBook as workspaceInBook,
+  instalmentSpendingIn,
   listSharedTransfers,
   listTransactionsIn,
   moveIntoSharedEvent,
@@ -70,7 +71,8 @@ import { AmountExtra, DraftSubtitle, PaidWith, TransactionRow, useRecategorise }
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, keepsReadFigure, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
-import { accountsWithTransactions, amountExtraParts, buildRows, type CashflowContext, sharedTransferRow, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, type ListFilters, type ListRow, outsideEvents, type Sort, sortRows, totals } from './list-model';
+import { accountsWithTransactions, amountExtraParts, buildRows, type CashflowContext, sharedTransferRow, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, instalmentRows, type ListFilters, type ListRow, markSpread, outsideEvents, type Sort, sortRows, totals } from './list-model';
+import { useInstallments } from '../loans/queries';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
@@ -474,9 +476,32 @@ export function TransactionsPage() {
     queryFn: () => listSharedTransfers(database, ws.bookId!, range),
     enabled: shared && ws.bookId !== undefined && !scopeIds,
   });
+  /*
+   * Card instalments (option C, 0120): a plan counting Each month is spending a month at a time, on each statement date,
+   * in the purchase's category — worked out from the plan, never stored — and the purchase it spreads counts nothing on
+   * its own day; a plan counting At purchase lists its instalments as repayments, with the transfers. Read through the
+   * very filters the rings read (`instalmentSpendingIn`), so the list adds up to them. An account's own history keeps
+   * what moved its balance, so it lists none.
+   */
+  const instalments = useQuery({
+    queryKey: ['instalment-rows', ws.workspaceId, ws.bookId ?? null, month, monthStart, eventsInCaps],
+    enabled: !ownerWide,
+    queryFn: () => instalmentSpendingIn(database, listWs, range.from ?? '0000-01-01', range.to ?? today, { excludeEvents: !eventsInCaps, billMonths: true }),
+  });
+  const plans = useInstallments();
+  const spreadOver = new Map(
+    (plans.data ?? []).filter((plan) => plan.countMode === 'each_month' && plan.transactionId && (instalments.data?.spreadPurchaseIds ?? []).includes(plan.transactionId)).map((plan) => [plan.transactionId!, plan.months]),
+  );
+  const instalmentList = (() => {
+    if (ownerWide || filters.onlyDrafts || !instalments.data) return [];
+    const read = instalments.data;
+    const lines = read.lines.filter((line) => (!scopeIds || scopeIds.includes(line.categoryId)) && (!need || (needIds !== null && needIds.has(line.categoryId))));
+    return instalmentRows({ lines, repayments: scopeIds || need ? [] : read.repayments }, accounts, ws.baseCurrency);
+  })();
   const rows = [
-    ...buildRows(recorded, view === 'table' || sideways || filters.onlyDrafts ? pending : [], accounts, everyCard, walletLast4, listWs.bookId),
+    ...markSpread(buildRows(recorded, view === 'table' || sideways || filters.onlyDrafts ? pending : [], accounts, everyCard, walletLast4, listWs.bookId), spreadOver),
     ...(!shared || scopeIds || need || filters.onlyDrafts ? [] : (partnerTransfers.data ?? []).map(sharedTransferRow)),
+    ...instalmentList,
   ];
   /*
    * What still waits under Uncategorised — every one of them, whatever period is on show. Tapping the line lists them
@@ -1225,13 +1250,22 @@ export function TransactionsPage() {
               <PaidWith row={row} />
             )}
             {goal && ` · for ${goal}`}
+            {row.spreadOver && ` · spread over ${row.spreadOver} months`}
           </>
         }
         // Asked for by trying to edit it: the row says where it lives, and offers to take you there.
         under={elsewhere && elsewhereId === tx.id ? <SwitchToEdit book={elsewhere} className="mt-0.5 block" /> : undefined}
         // One line under the amount, never two: a transfer's fee, the foreign amount, then — on a wide screen only —
         // the points ("JP¥1.850 · +38 pts").
-        amountExtra={<AmountExtra parts={amountExtraParts(tx, phone ? undefined : points, row)} />}
+        amountExtra={
+          <AmountExtra
+            parts={[
+              // Spread each month by its plan: the purchase stays here, its figure counted a month at a time instead.
+              ...(row.spreadOver ? [{ text: `counts ${formatMinor(0, row.currency)} now`, tone: 'foreign' as const }] : []),
+              ...amountExtraParts(tx, phone ? undefined : points, row),
+            ]}
+          />
+        }
         trailing={
           selecting ? undefined : <>
             {/* A trade is edited on its holding's page: its receipt's Open holding goes there, the row offers no link. */}
@@ -1320,7 +1354,43 @@ export function TransactionsPage() {
       </li>
     );
   }
-  const rowView = (row: ListRow, withDate = false) => (row.sharedTransfer ? sharedTransferView(row, withDate) : row.kind === 'draft' ? draftRow(row) : recordedRow(row, withDate));
+  /**
+   * One month of a card's instalment plan: a row like any other, named by the purchase's category with "1 of 12" beside
+   * the note, which opens the plan. Nothing on it is edited, deleted or re-filed here: it follows the plan. At purchase,
+   * it is the card's repayment, listed with the transfers and counted nowhere.
+   */
+  function instalmentView(row: ListRow, withDate: boolean) {
+    const plan = row.instalment!;
+    const repayment = plan.countMode === 'at_purchase';
+    return (
+      <TransactionRow
+        key={row.id}
+        row={row}
+        accounts={accounts}
+        phone={phone}
+        testId="instalment-row"
+        onOpen={() => void navigate({ to: '/cards/$cardId/settings/instalments/$planId', params: { cardId: plan.cardAccountId, planId: plan.planId } })}
+        label={
+          <>
+            {withDate && <span className="tabular mr-2 font-normal text-slate-500">{shortDate(row.date, today)}</span>}
+            {repayment ? 'Instalment' : (row.categoryName ?? 'Uncategorised')}
+          </>
+        }
+        subtitle={
+          <>
+            {row.description}{' '}
+            <span data-testid="instalment-pill" className="tabular rounded-full bg-[var(--ph-fill)] px-[6px] text-[12px] text-[var(--ph-ink-2)]">
+              {plan.number} of {plan.of}
+            </span>
+            {row.accountLabel ? ` · ${row.accountLabel}` : ''}
+            {repayment ? ' · not counted' : ''}
+          </>
+        }
+      />
+    );
+  }
+  const rowView = (row: ListRow, withDate = false) =>
+    row.sharedTransfer ? sharedTransferView(row, withDate) : row.instalment ? instalmentView(row, withDate) : row.kind === 'draft' ? draftRow(row) : recordedRow(row, withDate);
 
   /**
    * Searching, on a phone: the kit's own pill, drawn in the title's row by `LargeTitle`'s `field` — a corner's 44 px
@@ -1342,7 +1412,8 @@ export function TransactionsPage() {
   /* baseCurrency is what a row typed into the table is parsed and recorded in, so it stays the owner's. */
   const table = (
     <TransactionsTable
-      rows={shown}
+      // The table edits what is recorded: an instalment row is the plan's, changed on the plan's page.
+      rows={shown.filter((row) => !row.instalment)}
       options={rowOptions}
       accounts={accounts}
       today={today}
