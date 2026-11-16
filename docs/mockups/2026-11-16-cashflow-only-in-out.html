@@ -1,0 +1,139 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Cashflow in and out</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --new:#1a7f37; --exp:#d70015; --inc:#0f9d6b; --gone:#ff3b30; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; }
+  h2 { font-size:18px; margin:30px 0 4px; } .lead { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; font-size:14px; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; color:#fff; background:var(--tint); border-radius:4px; padding:1px 6px; margin-left:6px; vertical-align:2px; }
+  .row { display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:320px; } .cap { font-weight:700; margin:0 0 3px; font-size:16px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:36px; }
+  .phone { background:var(--ground); border-radius:28px; padding:14px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .nav { display:flex; justify-content:space-between; align-items:center; margin:0 4px 12px; font-size:15px; } .nav .t { color:var(--tint); min-width:60px; } .nav .t:last-child { text-align:right; font-weight:600; } .nav b { font-size:15px; white-space:nowrap; }
+  .large { font-size:26px; font-weight:800; margin:0 4px 10px; letter-spacing:-.5px; }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+  .hdr { font-size:12.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; margin:0 16px 6px; }
+  .foot { font-size:12.5px; color:var(--ink3); margin:-6px 16px 12px; line-height:1.35; }
+  .day { display:flex; align-items:center; gap:10px; padding:8px 14px; border-bottom:.5px solid var(--hair); } .day b { font-size:20px; } .day .d { flex:1; font-size:12px; color:var(--ink3); line-height:1.25; } .day .d strong { color:var(--ink); font-weight:600; }
+  .tx { display:flex; align-items:center; gap:10px; padding:8px 14px; white-space:nowrap; position:relative; } .tx + .tx { border-top:.5px solid var(--hair); }
+  .ic { width:30px; height:30px; border-radius:50%; background:#e8eefc; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }
+  .g { flex:1 1 0; min-width:0; overflow:hidden; } .a { font-size:15px; overflow:hidden; text-overflow:ellipsis; } .s { font-size:12px; color:var(--ink3); overflow:hidden; text-overflow:ellipsis; }
+  .red { color:var(--exp); font-weight:600; } .grn { color:var(--inc); font-weight:600; } .grey { color:var(--ink3); }
+  .pill { font-size:10.5px; color:var(--tint); background:#e5f0ff; border-radius:4px; padding:0 4px; margin-right:4px; font-weight:600; }
+  .todo { font-size:10.5px; color:#b25e00; background:#fff3e0; border-radius:4px; padding:0 4px; margin-right:4px; font-weight:600; }
+  .out { background:#fff0f0; } .out::after { content:'OFF CASHFLOW'; position:absolute; right:6px; top:2px; font-size:8.5px; font-weight:800; color:#fff; background:var(--gone); border-radius:3px; padding:0 4px; }
+  .out .a, .out .s, .out span { text-decoration:line-through; text-decoration-color:rgba(255,59,48,.6); }
+  .r { display:flex; gap:10px; align-items:center; padding:10px 14px; white-space:nowrap; min-height:44px; } .r + .r { border-top:.5px solid var(--hair); }
+  .seg { display:flex; background:#e3e3e8; border-radius:9px; padding:2px; font-size:13px; margin:10px 12px; } .seg span { flex:1; text-align:center; padding:6px 0; border-radius:7px; } .seg .on { background:#fff; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.1); }
+  .sw { width:42px; height:25px; border-radius:13px; background:#e5e5ea; position:relative; flex-shrink:0; } .sw::after { content:''; position:absolute; left:2px; top:2px; width:21px; height:21px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.2); }
+  .strike { text-decoration:line-through; color:var(--gone); }
+  .new { outline:3px solid var(--new); outline-offset:-3px; border-radius:12px; position:relative; overflow:visible !important; }
+  .new::before { content:'NEW'; position:absolute; top:-9px; right:8px; font-size:9.5px; font-weight:800; color:#fff; background:var(--new); border-radius:4px; padding:1px 5px; z-index:2; }
+  table.rules { border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden; font-size:14px; max-width:900px; }
+  table.rules td, table.rules th { padding:8px 14px; border-bottom:.5px solid #e5e5ea; text-align:left; } table.rules th { font-size:12px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; }
+  .y { color:var(--inc); font-weight:600; } .n { color:var(--ink3); }
+</style></head><body>
+<h1>Cashflow lists only money in and money out</h1>
+<p class="sub">One rule, the same in Personal and Family: Cashflow lists what counts as spending or income. Everything else (transfers, card payments, balance corrections, lending, starting balances, saving instalments) lives on the account, card or person page it belongs to — never deleted, just not in Cashflow. Invented figures; Family workspace shown.</p>
+
+<h2>1 · The Cashflow list, Family, 13–18 November</h2>
+<div class="row">
+  <div class="col"><p class="cap">Today</p><p class="note">Red "OFF CASHFLOW" = rows that leave the list after the change.</p>
+    <div class="phone">
+      <div class="large">Cashflow</div>
+      <div class="panel">
+        <div class="day"><b>18</b><div class="d"><strong>Wednesday</strong><br>November 2026</div><span>− Rp 640.000</span></div>
+        <div class="tx"><div class="ic">🛒</div><div class="g"><div class="a">Groceries</div><div class="s">Supermarket · BCA Visa</div></div><span class="red">Rp 640.000</span></div>
+        <div class="tx out"><div class="ic" style="background:#eee">⇄</div><div class="g"><div class="a">To Partner's GoPay</div><div class="s">Transfer · Mandiri</div></div><span class="grey">Rp 300.000</span></div>
+        <div class="tx out"><div class="ic" style="background:#eee">⇄</div><div class="g"><div class="a">Transfer</div><div class="s">Partner · details hidden</div></div><span class="grey">Rp 1.000.000</span></div>
+      </div>
+      <div class="panel">
+        <div class="day"><b>15</b><div class="d"><strong>Sunday</strong><br>November 2026</div><span>+ Rp 25.000.000</span></div>
+        <div class="tx"><div class="ic" style="background:#e3f6ee">💼</div><div class="g"><div class="a">Salary, wage, or pay</div><div class="s">Mandiri</div></div><span class="grn">Rp 25.000.000</span></div>
+        <div class="tx out"><div class="ic" style="background:#eee">±</div><div class="g"><div class="a">Balance correction</div><div class="s">BCA</div></div><span class="grey">− Rp 35.000</span></div>
+        <div class="tx out"><div class="ic" style="background:#eee">🤝</div><div class="g"><div class="a">Lent to Dewi</div><div class="s">Lending · Mandiri</div></div><span class="grey">Rp 500.000</span></div>
+      </div>
+      <div class="panel">
+        <div class="day"><b>13</b><div class="d"><strong>Friday</strong><br>November 2026</div><span>− Rp 1.000.000</span></div>
+        <div class="tx"><div class="ic">💻</div><div class="g"><div class="a">Electronics</div><div class="s"><span class="pill">21 of 24</span>Laptop · BCA Visa</div></div><span class="red">Rp 1.000.000</span></div>
+        <div class="tx"><div class="ic" style="background:#fff3e0">✎</div><div class="g"><div class="a">Grab</div><div class="s"><span class="todo">To review</span>BCA Visa</div></div><span>Rp 54.000</span></div>
+        <div class="tx"><div class="ic" style="background:#eee">🎁</div><div class="g"><div class="a grey">Gift giving</div><div class="s">Excluded · BCA Visa</div></div><span class="grey">Rp 200.000</span></div>
+      </div>
+    </div></div>
+  <div class="col"><p class="cap">After</p><p class="note">Only spending and income, plus the two kinds kept on purpose (to review, excluded).</p>
+    <div class="phone">
+      <div class="large">Cashflow</div>
+      <div class="panel">
+        <div class="day"><b>18</b><div class="d"><strong>Wednesday</strong><br>November 2026</div><span>− Rp 640.000</span></div>
+        <div class="tx"><div class="ic">🛒</div><div class="g"><div class="a">Groceries</div><div class="s">Supermarket · BCA Visa</div></div><span class="red">Rp 640.000</span></div>
+      </div>
+      <div class="panel">
+        <div class="day"><b>15</b><div class="d"><strong>Sunday</strong><br>November 2026</div><span>+ Rp 25.000.000</span></div>
+        <div class="tx"><div class="ic" style="background:#e3f6ee">💼</div><div class="g"><div class="a">Salary, wage, or pay</div><div class="s">Mandiri</div></div><span class="grn">Rp 25.000.000</span></div>
+      </div>
+      <div class="panel">
+        <div class="day"><b>13</b><div class="d"><strong>Friday</strong><br>November 2026</div><span>− Rp 1.000.000</span></div>
+        <div class="tx"><div class="ic">💻</div><div class="g"><div class="a">Electronics</div><div class="s"><span class="pill">21 of 24</span>Laptop · BCA Visa</div></div><span class="red">Rp 1.000.000</span></div>
+        <div class="tx"><div class="ic" style="background:#fff3e0">✎</div><div class="g"><div class="a">Grab</div><div class="s"><span class="todo">To review</span>BCA Visa</div></div><span>Rp 54.000</span></div>
+        <div class="tx"><div class="ic" style="background:#eee">🎁</div><div class="g"><div class="a grey">Gift giving</div><div class="s">Excluded · BCA Visa</div></div><span class="grey">Rp 200.000</span></div>
+      </div>
+      <div class="foot">"To review" stays: it is a to-do. "Excluded" stays grey: so it can be found and counted again.</div>
+    </div></div>
+  <div class="col"><p class="cap">Filter: today → after</p><p class="note">Two transfer controls go. Type is just three choices.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">Clear</span><b>Filter</b><span class="t">Done</span></div>
+      <div class="hdr">Type · today</div>
+      <div class="panel"><div class="seg" style="font-size:11.5px"><span class="on">Everything</span><span>Spending</span><span>Income</span><span class="strike">Transfers &amp; lending</span></div></div>
+      <div class="panel"><div class="r"><div class="g"><div class="a strike">Transfers</div></div><span class="sw"></span></div><div class="r"><div class="g"><div class="a">Show deleted</div></div><span class="sw"></span></div></div>
+      <div class="hdr">Type · after</div>
+      <div class="panel new"><div class="seg"><span class="on">All</span><span>Spending</span><span>Income</span></div></div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Show deleted</div></div><span class="sw"></span></div></div>
+    </div></div>
+</div>
+
+<h2>2 · Where the other rows are</h2>
+<p class="lead">Nothing is deleted or changed. Each row stays on the page of the account, card or person it belongs to, as today.</p>
+<div class="row">
+  <div class="col"><p class="cap">Mandiri (bank account)</p><p class="note">Transfers out, lending, corrections, salary — everything that moved this account.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Wallet</span><b>Mandiri</b><span class="t"></span></div>
+      <div class="panel">
+        <div class="tx"><div class="ic" style="background:#eee">⇄</div><div class="g"><div class="a">To Partner's GoPay</div><div class="s">18 Nov · Transfer</div></div><span>− Rp 300.000</span></div>
+        <div class="tx"><div class="ic" style="background:#eee">🤝</div><div class="g"><div class="a">Lent to Dewi</div><div class="s">15 Nov · Lending</div></div><span>− Rp 500.000</span></div>
+        <div class="tx"><div class="ic" style="background:#e3f6ee">💼</div><div class="g"><div class="a">Salary, wage, or pay</div><div class="s">15 Nov</div></div><span>+ Rp 25.000.000</span></div>
+        <div class="tx"><div class="ic" style="background:#eee">⇄</div><div class="g"><div class="a">BCA Visa payment</div><div class="s">2 Nov · Card payment</div></div><span>− Rp 6.214.300</span></div>
+      </div>
+    </div></div>
+  <div class="col"><p class="cap">BCA Visa (card statement)</p><p class="note">Card payments and instalments, laptop and bond alike.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ BCA Visa</span><b>Statement 13 Nov</b><span class="t"></span></div>
+      <div class="panel">
+        <div class="tx"><div class="g"><div class="a"><span class="pill">21 of 24</span>Laptop</div><div class="s">Instalment · 13 Nov</div></div><span>Rp 1.000.000</span></div>
+        <div class="tx"><div class="g"><div class="a"><span class="pill">1 of 6</span>ORI030</div><div class="s">Instalment · saving · 13 Nov</div></div><span>Rp 1.000.000</span></div>
+        <div class="tx"><div class="g"><div class="a">Groceries</div><div class="s">Supermarket · 9 Nov</div></div><span>Rp 640.000</span></div>
+        <div class="tx"><div class="g"><div class="a">Payment, thank you</div><div class="s">2 Nov</div></div><span class="grn">− Rp 6.214.300</span></div>
+      </div>
+    </div></div>
+  <div class="col"><p class="cap">Debts › Dewi</p><p class="note">Lending lives with the person.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Debts</span><b>Dewi</b><span class="t"></span></div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Owes</div></div><span>Rp 3.500.000</span></div></div>
+      <div class="panel">
+        <div class="tx"><div class="g"><div class="a">Lent</div><div class="s">15 Nov · from Mandiri</div></div><span>Rp 500.000</span></div>
+        <div class="tx"><div class="g"><div class="a">Lent</div><div class="s">2 Oct · from Mandiri</div></div><span>Rp 3.000.000</span></div>
+      </div>
+    </div></div>
+</div>
+
+<h2>3 · The whole rule</h2>
+<table class="rules">
+  <tr><th>Row</th><th>Cashflow (Personal and Family)</th><th>Where else</th></tr>
+  <tr><td>Spending, incl. a purchase's monthly instalment</td><td class="y">Shown</td><td>Card or account page</td></tr>
+  <tr><td>Income, incl. refunds</td><td class="y">Shown</td><td>Account page</td></tr>
+  <tr><td>To review (not recorded yet)</td><td class="y">Shown, on top</td><td>—</td></tr>
+  <tr><td>Excluded purchase</td><td class="y">Shown, grey</td><td>Card or account page</td></tr>
+  <tr><td>Transfer, card payment, top-up — own, joint or partner's</td><td class="n">Not shown</td><td>Both accounts' pages, card statement</td></tr>
+  <tr><td>Balance correction, starting balance</td><td class="n">Not shown</td><td>The account's page</td></tr>
+  <tr><td>Lending and borrowing</td><td class="n">Not shown</td><td>Debts › the person, account page</td></tr>
+  <tr><td>Bond or other saving instalment</td><td class="n">Not shown (counted as saving in Financial health)</td><td>Card statement</td></tr>
+</table>
+</body></html>
