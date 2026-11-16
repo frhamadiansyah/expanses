@@ -4,11 +4,13 @@ import { useState } from 'react';
 import { type GroupChild, ROW_PAD_X, ROW_PAD_Y, TAP } from '../../ui/native';
 
 const NEED_EXPLAINED =
-  'Sets the emergency fund size and the Budget split. Left unset, it follows its parent, or is essential.';
+  'Sets the emergency fund size and the Budget split. Debts & savings is for insurance, donations and loan interest: it counts with what was kept, and the emergency fund still covers it. Left unset, it follows its parent, then the built-in mark, or is essential.';
+
+const NEED_LABELS: Record<CategoryNeed, string> = { essential: 'Essential', lifestyle: 'Lifestyle', debts_savings: 'Debts & savings' };
 
 /**
- * "Spending" (essential or lifestyle), answered by the native pop-up menu: the answer is always one of two, and the row shows which even when
- * it is inherited. Choosing either makes the mark the category's own.
+ * "Spending" (essential, lifestyle or debts & savings), answered by the native pop-up menu: the answer is always one of
+ * three, and the row shows which even when it is inherited or built in. Choosing one makes the mark the category's own.
  */
 export function NeedRow({ name, need, caption, onChoose, position }: GroupChild & { name: string; need: ResolvedNeed; caption?: string; onChoose: (need: CategoryNeed) => void }) {
   const [explained, setExplained] = useState(false);
@@ -38,7 +40,7 @@ export function NeedRow({ name, need, caption, onChoose, position }: GroupChild 
         </span>
         {/* The answer and ›, drawn as every other row's, over a real select so the phone opens its own native menu. */}
         <span className="ph-focus-within relative flex shrink-0 items-center gap-[4px] text-[16px] leading-[20px] text-[var(--ph-ink-2)] md:text-[15px]">
-          <span aria-hidden>{need.need === 'lifestyle' ? 'Lifestyle' : 'Essential'}</span>
+          <span aria-hidden>{NEED_LABELS[need.need]}</span>
           <span aria-hidden className="text-[17px] leading-none text-[var(--ph-chevron)]">{'›'}</span>
           <select
             aria-label={`Spending for ${name}`}
@@ -51,6 +53,7 @@ export function NeedRow({ name, need, caption, onChoose, position }: GroupChild 
           >
             <option value="essential">Essential</option>
             <option value="lifestyle">Lifestyle</option>
+            <option value="debts_savings">Debts &amp; savings</option>
           </select>
         </span>
       </div>

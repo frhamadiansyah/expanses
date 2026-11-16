@@ -7,6 +7,12 @@ describe('needCaption', () => {
     expect(needCaption('parent', 'Food and beverage')).toBe('Follows Food and beverage');
     expect(needCaption('parent', null)).toBe('Follows its parent');
     expect(needCaption(null, null)).toBeUndefined();
+    expect(needCaption('default', 'Protection')).toBe('Built in');
+  });
+
+  it('says a Debts & savings mark of its own waits for a phone on an older build', () => {
+    expect(needCaption('yours', null, ["Dewi's phone"])).toBe("Custom · reaches Dewi's phone after an update");
+    expect(needCaption('yours', null, [])).toBe('Custom');
   });
 });
 

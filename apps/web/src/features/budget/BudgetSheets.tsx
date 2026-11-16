@@ -9,6 +9,7 @@ import { InsetGroup, InsetRow, SwitchRow, TextRow } from '../../ui/native';
 import type { BudgetSheetResult } from '@expanses/db';
 import { bareFigure } from '../networth/debt-rows';
 import { FigureRow } from './budget-rows';
+import { SPLIT_COLOURS } from '../essential-split/split-view';
 
 /** The expected take-home: the usual figure, or this month's alone. */
 export function TakeHomeSheet({
@@ -86,18 +87,23 @@ export function TakeHomeSheet({
 
 const percentOf = (part: number, whole: number) => (whole > 0 ? `${Math.round((part / whole) * 100)}%` : '—');
 
-/** What the month went on, split into essential and lifestyle. */
+/** What the month went on, split into essential, lifestyle and debts & savings. */
 export function SplitSheet({ sheet, currency, onClose }: { sheet: BudgetSheetResult; currency: string; onClose: () => void }) {
   const spent = sheet.spendingActualMinor;
-  const essentialShare = spent > 0 ? Math.max(0, Math.min(1, sheet.essentialActualMinor / spent)) : 0;
+  const share = (part: number) => (spent > 0 ? Math.max(0, Math.min(1, part / spent)) : 0);
+  const essentialShare = share(sheet.essentialActualMinor);
+  const debtsShare = Math.min(1 - essentialShare, share(sheet.debtsSavingsActualMinor));
+  const lifestyleShare = Math.max(0, 1 - essentialShare - debtsShare);
   return (
     <Sheet grouped title="Essential and lifestyle" onClose={onClose}>
       <div className="mb-[18px] px-[4px]">
         <span aria-hidden className="flex h-[6px] w-full overflow-hidden rounded-full bg-[var(--ph-track)]">
           {spent > 0 && (
             <>
-              <span className="block h-full bg-[var(--ph-up)]" style={{ width: `${essentialShare * 100}%` }} />
-              <span className="block h-full bg-[var(--ph-ink-3)]" style={{ width: `${(1 - essentialShare) * 100}%` }} />
+              {/* The three parts in the colours Cashflow's Income page and the Budget box draw them in. */}
+              <span className="block h-full" style={{ width: `${essentialShare * 100}%`, background: SPLIT_COLOURS.essential }} />
+              <span className="block h-full" style={{ width: `${lifestyleShare * 100}%`, background: SPLIT_COLOURS.lifestyle }} />
+              <span className="block h-full" style={{ width: `${debtsShare * 100}%`, background: SPLIT_COLOURS.debtsSavings }} />
             </>
           )}
         </span>
@@ -124,6 +130,17 @@ export function SplitSheet({ sheet, currency, onClose }: { sheet: BudgetSheetRes
             </>
           }
           testId="lifestyle-spent"
+        />
+        <FigureRow
+          label="Debts & savings"
+          info="Spending in categories marked debts & savings, such as insurance, donations and loan interest."
+          value={
+            <>
+              <span className="text-[var(--ph-ink-3)]">{percentOf(sheet.debtsSavingsActualMinor, spent)} · </span>
+              <Money minor={sheet.debtsSavingsActualMinor} currency={currency} />
+            </>
+          }
+          testId="debts-savings-spent"
         />
       </InsetGroup>
       <InsetGroup>

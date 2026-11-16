@@ -26,7 +26,7 @@ export function useEssentialSplit(range: { from: string; to: string }, opts: { p
   });
 }
 
-/** Every spending category's resolved mark: its own, an ancestor's, or essential. */
+/** Every spending category's resolved mark: its own, an ancestor's, the built-in one for its key, or essential. */
 export function useResolvedNeeds(enabled = true) {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['resolved-needs', ws.workspaceId], enabled, queryFn: () => resolvedCategoryNeeds(database.db, ws) });

@@ -12,7 +12,7 @@ import { CategoryIcon, categoryKeys, categoryMark, ICONS } from './CategoryIcon'
 import { ColourSheet, IconSheet, ParentSheet } from './CategoryLookSheets';
 import { MccSheet } from './MccSheet';
 import { useCategoryMccs, useCategoryUsage } from './mcc-queries';
-import { useCategoryNeeds } from './need-queries';
+import { useCategoryNeeds, usePhonesBehindThirdMark } from './need-queries';
 import { NeedRow } from './NeedRow';
 import { useCategorySetMembership, useCategorySets } from './set-queries';
 import { useCategoryActions } from './use-category-actions';
@@ -78,6 +78,7 @@ export function CategoryPage() {
   const sets = useCategorySets().data ?? [];
   const overrides = useCategoryMccs().data ?? {};
   const needs = useCategoryNeeds().data ?? {};
+  const behind = usePhonesBehindThirdMark().data ?? [];
   const actions = useCategoryActions();
   const chosen = useCategoryColours().data ?? {};
   const [sheet, setSheet] = useState<'icon' | 'colour' | 'parent' | 'mcc' | null>(null);
@@ -230,7 +231,12 @@ export function CategoryPage() {
       {card && (
         <InsetGroup>
           {need && (
-            <NeedRow name={c.name} need={need} caption={needCaption(need.source, parent?.name ?? null)} onChoose={(chosen) => actions.markNeed(c, chosen)} />
+            <NeedRow
+              name={c.name}
+              need={need}
+              caption={needCaption(need.source, parent?.name ?? null, need.need === 'debts_savings' ? behind : [])}
+              onChoose={(chosen) => actions.markNeed(c, chosen)}
+            />
           )}
           {need?.source === 'yours' && (
             <InsetRow title={parent ? 'Follow parent' : 'Clear mark'} label={`Clear the mark on ${c.name}`} action onClick={() => actions.clearNeed(c)} />
