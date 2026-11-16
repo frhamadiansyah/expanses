@@ -116,7 +116,7 @@ describe('the budget box', () => {
   const marks = { home: 'essential', rent: 'essential', fun: 'lifestyle', dining: 'lifestyle', hobbies: 'lifestyle' } as const;
 
   it('adds up only the outermost caps, by their mark', () => {
-    expect(capsByNeed(lines, marks)).toEqual({ essentialMinor: 9_500_000, lifestyleMinor: 3_800_000, debtsSavingsMinor: 0, any: true });
+    expect(capsByNeed(lines, marks)).toEqual({ essentialMinor: 9_500_000, lifestyleMinor: 3_800_000, debtsSavingsMinor: 0, any: true, capped: { essential: true, lifestyle: true, debtsSavings: false } });
     expect(capsByNeed([{ id: 'x', capMinor: null, children: [] }], marks).any).toBe(false);
   });
 
@@ -150,7 +150,7 @@ describe('the budget box', () => {
     const withCover = [...lines, { id: 'cover', capMinor: 1_200_000, children: [] }];
     const both = { ...marks, cover: 'debts_savings' } as const;
     const caps = capsByNeed(withCover, both);
-    expect(caps).toEqual({ essentialMinor: 9_500_000, lifestyleMinor: 3_800_000, debtsSavingsMinor: 1_200_000, any: true });
+    expect(caps).toEqual({ essentialMinor: 9_500_000, lifestyleMinor: 3_800_000, debtsSavingsMinor: 1_200_000, any: true, capped: { essential: true, lifestyle: true, debtsSavings: true } });
     const split = essentialSplit({
       incomeMinor: 12_000_000,
       spending: [
@@ -203,5 +203,46 @@ describe('the third mark', () => {
     });
     expect(split.debtsSavingsMinor).toBe(1_000_000);
     expect(split.overspentMinor).toBe(300_000);
+    // The bar is what went out: the premium's Rp 1,3 jt on the Debts & savings part, not the Rp 1 jt left of income.
+    expect(split.bar!.essential).toBeCloseTo(4_000_000 / 5_300_000);
+    expect(split.bar!.debtsSavings).toBeCloseTo(1_300_000 / 5_300_000);
+  });
+
+  it('keeps the bar on the income while what was kept covers the Debts & savings spending', () => {
+    const split = essentialSplit({
+      incomeMinor: 10_000_000,
+      spending: [
+        { accountId: 'rent', amountBaseMinor: 6_000_000 },
+        { accountId: 'cover', amountBaseMinor: 1_000_000 },
+      ],
+      needs: { ...needs, cover: 'debts_savings' },
+    });
+    expect(split.bar).toEqual({ essential: 0.6, lifestyle: 0, debtsSavings: 0.4 });
+  });
+
+  it('plans neither Essential nor Lifestyle at nought when only Debts & savings categories have caps', () => {
+    const split = essentialSplit({
+      incomeMinor: 12_000_000,
+      spending: [
+        { accountId: 'rent', amountBaseMinor: 7_000_000 },
+        { accountId: 'dining', amountBaseMinor: 1_500_000 },
+        { accountId: 'cover', amountBaseMinor: 900_000 },
+      ],
+      needs: { ...needs, cover: 'debts_savings' },
+    });
+    const caps = capsByNeed([{ id: 'cover', capMinor: 1_000_000, children: [] }], { ...needs, cover: 'debts_savings' });
+    const rows = needsPlan(split, caps, 0);
+    expect(rows.map((row) => [row.key, row.plannedMinor, row.warn])).toEqual([
+      ['essential', null, false],
+      ['lifestyle', null, false],
+      ['debtsSavings', 12_000_000, false],
+    ]);
+    // Caps on lifestyle only: Essential is unplanned too, rather than planned at nought and flagged.
+    const lifestyleOnly = needsPlan(split, capsByNeed([{ id: 'dining', capMinor: 2_000_000, children: [] }], needs), 0);
+    expect(lifestyleOnly.map((row) => [row.key, row.plannedMinor, row.warn])).toEqual([
+      ['essential', null, false],
+      ['lifestyle', 2_000_000, false],
+      ['debtsSavings', 10_000_000, false],
+    ]);
   });
 });

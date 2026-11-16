@@ -477,6 +477,7 @@ export { type BudgetShare, bpOf, type CapToResolve, formatBp, parsePercentBp, re
 export { CATEGORY_NEEDS, type CategoryNeed, DEFAULT_CATEGORY_NEEDS, defaultNeedOfKey, type NeedNode, needOf, readNeed, type ResolvedNeed, resolveNeeds } from './budget/needs';
 export {
   capsByNeed,
+  type CappedSides,
   type CapPlanNode,
   DEFAULT_SPENDING_GUIDE,
   type EssentialSplit,
