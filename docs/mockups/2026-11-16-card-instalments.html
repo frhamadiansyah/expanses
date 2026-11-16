@@ -101,7 +101,7 @@
 
 
 <h2>How instalments connect to other pages (with A or C)</h2>
-<p class="lead">Today the laptop is hidden inside the card's balance on Debt-free, and the card's bill shows one amount with no hint of why it is higher. Proposed: each plan is its own row under its card, and the card's bill names what is inside it. Nothing is counted twice — the card's own row shows only the rest of the card balance.</p>
+<p class="lead">Today the laptop is hidden inside the card's balance on Debt-free, and the card's bill shows one amount with no hint of why it is higher. Proposed: on Debt-free, debts are grouped into fixed-each-month and no-fixed-amount, with each instalment plan its own fixed row; on Recurring, the instalment is its own recurring row. Nothing is counted twice — the card's own row shows only the rest of the card balance.</p>
 <div class="row">
   <div class="col"><p class="cap">Debt-free plan · today</p><p class="note">One BCA Visa row; the laptop inside its balance.</p>
     <div class="phone"><div class="nav"><span class="t">‹ Net worth</span><b>Debt-free</b><span style="width:56px"></span></div>
@@ -110,13 +110,17 @@
         <div class="tr"><div class="ic">💳</div><div class="g"><div class="t">BCA Visa</div><div class="s">Card · Rp 12.640.000 owed</div></div><div class="v">Rp 1.640.000</div></div>
         <div class="tr"><div class="ic">🏠</div><div class="g"><div class="t">KPR BCA</div><div class="s">7,5% a year</div></div><div class="v">Rp 3.370.000</div></div>
       </div></div></div>
-  <div class="col"><p class="cap">Debt-free plan · after</p><p class="note">The laptop is its own row under the card: left, months, end. The card row shows the rest.</p>
+  <div class="col"><p class="cap">Debt-free plan · after</p><p class="note">Two groups: debts with a fixed amount each month (they end on a known month), and debts without (the card's own balance, a loan from family).</p>
     <div class="phone"><div class="nav"><span class="t">‹ Net worth</span><b>Debt-free</b><span style="width:56px"></span></div>
-      <div class="hd"><span>In this order</span><span>A month</span></div>
+      <div class="hd"><span>Fixed each month</span><span>A month</span></div>
       <div class="panel">
-        <div class="tr"><div class="ic">💳</div><div class="g"><div class="t">BCA Visa</div><div class="s">Card · Rp 640.000 owed</div></div><div class="v">Rp 640.000</div></div>
-        <div class="tr new" style="padding-left:36px"><div class="ic">💻</div><div class="g"><div class="t">Laptop <span class="chip">1 of 12</span></div><div class="s">Rp 11 jt left · ends Nov 2027</div></div><div class="v">Rp 1.000.000</div></div>
-        <div class="tr"><div class="ic">🏠</div><div class="g"><div class="t">KPR BCA</div><div class="s">7,5% a year</div></div><div class="v">Rp 3.370.000</div></div>
+        <div class="tr"><div class="ic">🏠</div><div class="g"><div class="t">KPR BCA</div><div class="s">ends Mar 2041</div></div><div class="v">Rp 3.370.000</div></div>
+        <div class="tr new"><div class="ic">💻</div><div class="g"><div class="t">Laptop <span class="chip">1 of 12</span></div><div class="s">ends Nov 2027</div></div><div class="v">Rp 1.000.000</div></div>
+      </div>
+      <div class="hd"><span>No fixed amount</span><span>Owed</span></div>
+      <div class="panel">
+        <div class="tr"><div class="ic">💳</div><div class="g"><div class="t">BCA Visa</div><div class="s">Card · statement 18 Dec</div></div><div class="v">Rp 640.000</div></div>
+        <div class="tr"><div class="ic">👤</div><div class="g"><div class="t">Dewi</div><div class="s">Family loan</div></div><div class="v">Rp 3.000.000</div></div>
       </div></div></div>
   <div class="col"><p class="cap">Debt-free › Schedule · after</p><p class="note">The card's statement row says what is inside it (green text = new).</p>
     <div class="phone"><div class="nav"><span class="t">‹ Debt-free</span><b>Schedule</b><span style="width:56px"></span></div>
@@ -125,11 +129,15 @@
       <div class="tr"><div class="ic">🏠</div><div class="g"><div class="t">KPR BCA</div><div class="s">5 Dec</div></div><div class="v">Rp 3.370.000</div></div></div></div></div>
 </div>
 <div class="row" style="margin-top:16px">
-  <div class="col"><p class="cap">Recurring bills · after</p><p class="note">The card's bill names the instalment inside it — no separate bill, it is paid with the card.</p>
+  <div class="col"><p class="cap">Recurring bills · after</p><p class="note">The instalment is the recurring part — the same amount every month until it ends — so it gets its own row. The rest of the card's bill changes every month, so it stays off Recurring (it is on Debt-free).</p>
     <div class="phone"><div class="nav"><span class="t"></span><b>Recurring</b><span style="width:56px"></span></div>
       <div class="hd"><span>December</span></div>
-      <div class="panel"><div class="tr"><div class="ic">💳</div><div class="g"><div class="t">BCA Visa bill</div><div class="s">Due 4 Jan · <span class="hl">incl. Laptop 1/12</span></div></div><div class="v">Rp 1.640.000</div></div>
-      <div class="tr"><div class="ic">⚡</div><div class="g"><div class="t">Electricity</div><div class="s">Due 20 Dec</div></div><div class="v">Rp 850.000</div></div></div></div></div>
+      <div class="panel">
+        <div class="tr new"><div class="ic">💻</div><div class="g"><div class="t">Laptop <span class="chip">1 of 12</span></div><div class="s">On BCA Visa bill</div></div><div class="v">Rp 1.000.000</div></div>
+        <div class="tr"><div class="ic">🏠</div><div class="g"><div class="t">KPR BCA</div><div class="s">Due 5 Dec</div></div><div class="v">Rp 3.370.000</div></div>
+        <div class="tr"><div class="ic">⚡</div><div class="g"><div class="t">Electricity</div><div class="s">Due 20 Dec</div></div><div class="v">Rp 850.000</div></div>
+      </div>
+      <div class="foot">Paid when the BCA Visa bill is paid; nothing to pay separately.</div></div></div>
   <div class="col"><p class="cap">The plan's own page · after</p><p class="note">Progress, what is left, the end, and each month's real transaction (with A or C).</p>
     <div class="phone"><div class="nav"><span class="t">‹ BCA Visa</span><b>Laptop</b><span style="width:56px"></span></div>
       <div class="panel" style="padding:12px"><div class="s">3 of 12 paid</div><div style="font-size:22px;font-weight:700;margin:2px 0">Rp 9.000.000 left</div>
