@@ -3,16 +3,21 @@ import { blankPlanForm, planFields, planFormOf, purchaseChoices, shownPurchase }
 
 describe('the instalment plan form', () => {
   it('starts blank at twelve months from this month', () => {
-    expect(blankPlanForm('2026-10-27')).toEqual({ description: '', total: '', months: '12', firstBilledMonth: '2026-10', earnsPoints: false, transactionId: null, countMode: 'each_month', categoryAccountId: null });
+    expect(blankPlanForm('2026-10-27')).toEqual({ description: '', total: '', months: '12', firstBilledMonth: '2026-10', earnsPoints: false, transactionId: null, categoryAccountId: null, investment: false });
   });
 
   it('fills from a plan and reads back as the same figures', () => {
-    const plan = { description: 'iBox', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2026-09', earnsPoints: true, transactionId: 't1', countMode: 'at_purchase' as const, categoryAccountId: null };
+    const plan = { description: 'iBox', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2026-09', earnsPoints: true, transactionId: 't1', countMode: 'each_month' as const, categoryAccountId: null };
     expect(planFields(planFormOf(plan, 'IDR'), 'IDR')).toEqual(plan);
+    // Tied to an investment buy, the app counts it At purchase; Investment chosen with no purchase too.
+    expect(planFields(planFormOf(plan, 'IDR'), 'IDR', { trade: true }).countMode).toBe('at_purchase');
+    const bond = planFormOf({ ...plan, transactionId: null, countMode: 'at_purchase' }, 'IDR');
+    expect(bond.investment).toBe(true);
+    expect(planFields(bond, 'IDR')).toMatchObject({ countMode: 'at_purchase', categoryAccountId: null });
   });
 
   it('turns typed fields into numbers, drops dots from the total and names a blank plan', () => {
-    expect(planFields({ description: '  ', total: '9.000.000', months: '6', firstBilledMonth: '2026-10', earnsPoints: false, transactionId: null, countMode: 'each_month', categoryAccountId: 'c1' }, 'IDR')).toEqual({
+    expect(planFields({ description: '  ', total: '9.000.000', months: '6', firstBilledMonth: '2026-10', earnsPoints: false, transactionId: null, categoryAccountId: 'c1', investment: false }, 'IDR')).toEqual({
       description: 'Instalment plan',
       totalMinor: 9_000_000,
       months: 6,

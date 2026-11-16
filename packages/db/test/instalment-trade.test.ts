@@ -90,7 +90,7 @@ describe('a plan tied to an investment bought with the card', () => {
     expect(jan).toMatchObject({ chargesMinor: 1_000_000, creditsMinor: 1_000_000, closingMinor: 1_000_000 });
   });
 
-  it('is never spending, in any month; Health puts the buy away once and counts each instalment a debt repayment', async () => {
+  it('is never spending, in any month; Health puts it away a month at a time — the buy, once — never a debt payment', async () => {
     const b = await bond();
     await turn(b);
     for (const [from, to] of [
@@ -100,11 +100,16 @@ describe('a plan tied to an investment bought with the card', () => {
     ]) {
       expect((await categoryTotalsIn(b.database, b.ws, 'expense', from!, to!, { billMonths: true })).rows).toEqual([]);
     }
+    // November, the buy's month: nothing put away on its day; December to May, Rp 1.000.000 each.
+    expect((await periodFlows(b.database, b.ws, { from: '2026-11-01', to: '2026-11-30' })).putAwayMinor).toBe(0);
+    for (const month of ['2026-12', '2027-01', '2027-02', '2027-03', '2027-04', '2027-05']) {
+      const days = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
+      expect((await periodFlows(b.database, b.ws, { from: `${month}-01`, to: `${month}-${days}` })).putAwayMinor).toBe(1_000_000);
+    }
     const flows = await periodFlows(b.database, b.ws, { from: '2026-11-01', to: '2027-05-31' });
     expect(flows.spendingMinor).toBe(0);
-    // The buy, once: its instalments are repayments of the card, not a second putting away.
     expect(flows.putAwayMinor).toBe(6_000_000);
-    expect(flows.debtPaymentsMinor).toBe(6_000_000);
+    expect(flows.debtPaymentsMinor).toBe(0);
   });
 
   it('the app opening ties an old plan of its total to the buy, At purchase', async () => {

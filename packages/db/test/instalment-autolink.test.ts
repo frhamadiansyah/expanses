@@ -14,6 +14,7 @@ import {
   postTransaction,
   saveCardTerms,
   saveInstallment,
+  setInstallmentCountMode,
   updateInstallment,
 } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
@@ -56,7 +57,7 @@ describe('auto-linking the plans saved before a plan named its purchase', () => 
     const laptop = await c.buy('2026-11-10', 12_000_000, 'Laptop');
     await c.buy('2026-11-12', 50_000);
     const id = await c.plan('Laptop', 12_000_000, 12, '2026-12');
-    expect(await autoLinkInstalmentPlans(c.database, c.ws)).toEqual({ linked: 1, beforeRecords: 0, left: 0 });
+    expect(await autoLinkInstalmentPlans(c.database, c.ws)).toEqual({ linked: 1, left: 0 });
     expect(await c.planOf(id)).toMatchObject({ transactionId: laptop, countMode: 'each_month' });
     const [key] = await c.database.db.values<[string]>(sql`SELECT key FROM settings WHERE key = ${instalmentAutoLinkKey(c.ws.workspaceId)}`);
     expect(key).toBeDefined();
@@ -78,20 +79,19 @@ describe('auto-linking the plans saved before a plan named its purchase', () => 
     expect(await c.spent('2026-11-01', '2026-11-30')).toBe(1_000_000);
   });
 
-  it('counts a plan bought before the card’s records Each month with no purchase, from the records’ start only', async () => {
+  it('leaves a plan whose purchase is not in the app as it is; Each month, it counts from the card’s start only', async () => {
     // Kept since 1 Oct 2025; a 24-month plan first billed May 2024: instalments 18–24 (Oct 2025 – Apr 2026) are the app's.
     const c = await card('2025-10-01');
     const id = await c.plan('Phone', 24_000_000, 24, '2024-05');
-    expect(await autoLinkInstalmentPlans(c.database, c.ws)).toEqual({ linked: 0, beforeRecords: 1, left: 0 });
-    expect(await c.planOf(id)).toMatchObject({ transactionId: null, countMode: 'each_month', categoryAccountId: null });
-    expect(await c.spent('2025-09-01', '2025-09-30')).toBe(0);
+    expect(await autoLinkInstalmentPlans(c.database, c.ws)).toEqual({ linked: 0, left: 1 });
+    expect(await c.planOf(id)).toMatchObject({ transactionId: null, countMode: 'at_purchase' });
+    await setInstallmentCountMode(c.database, c.ws, id, 'each_month');
     expect(await c.spent('2024-05-01', '2025-09-30')).toBe(0);
     expect(await c.spent('2025-10-01', '2025-10-31')).toBe(1_000_000);
     expect(await c.spent('2025-10-01', '2026-12-31')).toBe(7_000_000);
     // Under Uncategorised, which is made for it.
     const unfiled = (await listAccounts(c.database, c.ws)).find((a) => a.systemKey === 'uncategorised')!;
     expect((await categoryTotalsIn(c.database, c.ws, 'expense', '2025-10-01', '2025-10-31')).rows).toEqual([{ accountId: unfiled.id, amountBaseMinor: 1_000_000, transactions: 1 }]);
-    // Never a debt payment, before the records or after.
     const flows = await periodFlows(c.database, c.ws, { from: '2024-05-01', to: '2026-04-30' });
     expect(flows.debtPaymentsMinor).toBe(0);
     expect(flows.byMonth.filter((m) => m.month < '2025-10').every((m) => m.spendingMinor === 0)).toBe(true);
@@ -103,7 +103,7 @@ describe('auto-linking the plans saved before a plan named its purchase', () => 
     await c.buy('2026-11-11', 12_000_000, 'Laptop B');
     const twice = await c.plan('Laptop', 12_000_000, 12, '2026-12');
     const none = await c.plan('Bike', 6_000_000, 6, '2026-12');
-    expect(await autoLinkInstalmentPlans(c.database, c.ws)).toEqual({ linked: 0, beforeRecords: 0, left: 2 });
+    expect(await autoLinkInstalmentPlans(c.database, c.ws)).toEqual({ linked: 0, left: 2 });
     for (const id of [twice, none]) expect(await c.planOf(id)).toMatchObject({ transactionId: null, countMode: 'at_purchase' });
   });
 
@@ -112,7 +112,7 @@ describe('auto-linking the plans saved before a plan named its purchase', () => 
     await c.buy('2026-11-10', 12_000_000, 'Laptop');
     const a = await c.plan('Laptop', 12_000_000, 12, '2026-12');
     const b = await c.plan('Laptop again', 12_000_000, 6, '2026-12');
-    expect(await autoLinkInstalmentPlans(c.database, c.ws)).toEqual({ linked: 0, beforeRecords: 0, left: 2 });
+    expect(await autoLinkInstalmentPlans(c.database, c.ws)).toEqual({ linked: 0, left: 2 });
     for (const id of [a, b]) expect((await c.planOf(id)).transactionId).toBeNull();
   });
 });
@@ -132,11 +132,27 @@ describe('a plan with no purchase in a category of its own (0122)', () => {
 });
 
 describe('instalments before the card’s records start count nowhere', () => {
-  it('an At purchase plan is no debt payment before the records start', async () => {
+  it('an investment plan with no purchase is put away only from the card’s start', async () => {
     const c = await card('2025-10-01');
     await c.plan('Phone', 24_000_000, 24, '2024-05');
     const flows = await periodFlows(c.database, c.ws, { from: '2024-05-01', to: '2026-04-30' });
-    // Only instalments 18–24, billed from 18 Oct 2025.
-    expect(flows.debtPaymentsMinor).toBe(7_000_000);
+    // Only instalments 18–24, billed from 18 Oct 2025; saving, never a debt payment.
+    expect(flows.putAwayMinor).toBe(7_000_000);
+    expect(flows.debtPaymentsMinor).toBe(0);
+    expect((await periodFlows(c.database, c.ws, { from: '2024-05-01', to: '2025-09-30' })).putAwayMinor).toBe(0);
+  });
+});
+
+describe('the app decides how a plan counts (TF 139)', () => {
+  it('moves a plan tied to a spending purchase to Each month once; one with no purchase keeps At purchase, an investment', async () => {
+    const { repairInstalmentCounting } = await import('../src/index');
+    const c = await card('2025-01-01');
+    const laptop = await c.buy('2026-11-10', 12_000_000, 'Laptop');
+    const tied = await saveInstallment(c.database, c.ws, { cardAccountId: c.visa, description: 'Laptop', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2026-12', transactionId: laptop, countMode: 'at_purchase' });
+    const bond = await c.plan('Bond', 24_000_000, 24, '2025-03');
+    expect(await repairInstalmentCounting(c.database, c.ws)).toEqual({ moved: 1 });
+    expect((await c.planOf(tied)).countMode).toBe('each_month');
+    expect((await c.planOf(bond)).countMode).toBe('at_purchase');
+    expect(await repairInstalmentCounting(c.database, c.ws)).toBeNull();
   });
 });

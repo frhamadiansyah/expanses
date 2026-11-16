@@ -71,7 +71,7 @@ const monthYearWords = (month: string) => `${monthName(month, 'long')} ${month.s
 
 /**
  * "Rp 2.000.000 counts as spending in each month from December 2026 to May 2027." — or, for an investment, "An
- * investment, not spending: each instalment is a card repayment, December 2026 to May 2027."
+ * investment: Rp 1.000.000 a month counts as saving, not spending, December 2026 to May 2027."
  */
 export function turnFooter(amountMinor: number, months: number | null, firstBilledMonth: string, statementDay: number, currency: string, investment = false): string | undefined {
   if (months === null || !(amountMinor > 0) || !/^\d{4}-\d{2}$/.test(firstBilledMonth)) return undefined;
@@ -79,7 +79,7 @@ export function turnFooter(amountMinor: number, months: number | null, firstBill
   const schedule = installmentSchedule(plan, statementDay);
   const first = schedule[0]!.statementOn.slice(0, 7);
   const last = schedule.at(-1)!.statementOn.slice(0, 7);
-  if (investment) return `An investment, not spending: each instalment is a card repayment, ${first === last ? monthYearWords(first) : `${monthYearWords(first)} to ${monthYearWords(last)}`}.`;
+  if (investment) return `An investment: ${formatMinor(plan.monthlyMinor, currency)} a month counts as saving, not spending, ${first === last ? monthYearWords(first) : `${monthYearWords(first)} to ${monthYearWords(last)}`}.`;
   const span = first === last ? `in ${monthYearWords(first)}` : `in each month from ${monthYearWords(first)} to ${monthYearWords(last)}`;
   return `${formatMinor(plan.monthlyMinor, currency)} counts as spending ${span}.`;
 }

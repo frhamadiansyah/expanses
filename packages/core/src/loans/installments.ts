@@ -206,29 +206,18 @@ export function matchPlanPurchase(lines: readonly PlanPurchaseLine[], plan: { id
 }
 
 /**
- * What linking a plan left with no purchase comes to (owner, 16 Nov 2026):
- * - `link`: the one purchase it was converted from is in the app — tie it, and count Each month.
- * - `before-records`: none is, and its window ends before the card's records start (`recordsFrom`: its opening balance,
- *   else the day it is counted from, else its first transaction) — the purchase was never recorded, so nothing would
- *   count twice: count Each month with no purchase, from the records' start only (`instalmentsFrom`).
- * - `unlinked`: none or several inside the records — left for the owner, at purchase, with the warning.
+ * Whether a plan with no purchase may be counted twice (owner, 16 Nov 2026, simplified): the card holds a purchase of the
+ * plan's total that no plan is tied to — very likely the one it was converted from, then billed both whole and a month
+ * at a time. Nothing else is guessed: a plan with no purchase is one whose purchase is not in the app.
  */
-export function planPurchaseOutcome(
-  lines: readonly PlanPurchaseLine[],
-  plan: { id: string | null; totalMinor: number; firstBilledMonth: string },
-  recordsFrom: string | null,
-): { kind: 'link'; transactionId: string } | { kind: 'before-records' } | { kind: 'unlinked' } {
-  const match = matchPlanPurchase(lines, plan);
-  if (match) return { kind: 'link', transactionId: match };
-  const { from, to } = planPurchaseWindow(plan.firstBilledMonth);
-  const inWindow = purchaseCandidates(lines, plan.id).some((line) => line.owedMinor === plan.totalMinor && line.occurredOn >= from && line.occurredOn <= to);
-  if (!inWindow && recordsFrom !== null && to < recordsFrom) return { kind: 'before-records' };
-  return { kind: 'unlinked' };
+export function unlinkedPurchaseOfTotal(lines: readonly PlanPurchaseLine[], plan: { id: string | null; totalMinor: number }): boolean {
+  return purchaseCandidates(lines, plan.id).some((line) => line.owedMinor === plan.totalMinor && !line.convertedTo);
 }
 
 /**
- * The instalments billed on or after the day the card's records start: one billed before is inside its opening balance,
- * in months the app was not kept, so it counts nowhere — no spending, no debt payment. Every instalment with no start.
+ * The instalments billed on or after the day the card starts in the app (its opening balance, else its first line): one
+ * billed before is inside the opening balance, in months the app was not kept, so it counts nowhere — no spending, no
+ * debt payment, no statement row. Every instalment with no start.
  */
 export function instalmentsFrom<T extends { statementOn: string }>(bills: readonly T[], recordsFrom: string | null): T[] {
   return recordsFrom === null ? [...bills] : bills.filter((bill) => bill.statementOn >= recordsFrom);

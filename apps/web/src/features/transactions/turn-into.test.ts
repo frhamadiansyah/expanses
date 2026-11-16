@@ -85,6 +85,6 @@ describe('an investment bought with the card (TF 139)', () => {
   it('saves At purchase, and says it is not spending', () => {
     const input = turnIntoInput({ transactionId: 'b1', description: 'Buy ORI030', amountMinor: 6_000_000 }, 'visa', { ...blankTurnForm('2026-11-10', 18), months: 6 }, { investment: true });
     expect(input).toMatchObject({ countMode: 'at_purchase', transactionId: 'b1', totalMinor: 6_000_000, months: 6 });
-    expect(turnFooter(6_000_000, 6, '2026-12', 18, 'IDR', true)).toBe('An investment, not spending: each instalment is a card repayment, December 2026 to May 2027.');
+    expect(rp(turnFooter(6_000_000, 6, '2026-12', 18, 'IDR', true))).toBe('An investment: Rp 1.000.000 a month counts as saving, not spending, December 2026 to May 2027.');
   });
 });

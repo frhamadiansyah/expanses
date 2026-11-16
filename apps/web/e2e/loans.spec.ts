@@ -229,17 +229,14 @@ test('a card purchase turned into instalments splits into billed and unbilled', 
   // The bin is gone: the row is the way in, and it carries a chevron.
   await expect(plan.getByRole('button', { name: 'Remove iBox Grand Indonesia' })).toHaveCount(0);
 
-  // Tapping the row opens the plan's own page (card instalments, option C): its progress, Count spending, its months.
+  // Tapping the row opens the plan's own page: its progress, how it counts (the app decides), its months.
   await plan.getByRole('button', { name: 'Open iBox Grand Indonesia' }).click();
   const planPage = page.getByTestId('instalment-plan-page');
   await expect(planPage).toBeVisible();
   await expect(planPage.getByTestId('instalment-progress')).toContainText(/\d+ of 12 paid/);
-  // A new plan counts each month; with no purchase chosen the footer says where.
-  await expect(planPage.getByRole('radio', { name: 'Each month' })).toHaveAttribute('aria-checked', 'true');
-  await expect(planPage).toContainText('Under Uncategorised, as no purchase is chosen.');
-  await planPage.getByRole('radio', { name: 'At purchase' }).click();
-  await expect(planPage.getByRole('radio', { name: 'At purchase' })).toHaveAttribute('aria-checked', 'true');
-  await expect(planPage).toContainText('At purchase: no purchase is chosen, so nothing counts as spending.');
+  // No choice to make: with no purchase and no category it counts as Uncategorised spending.
+  await expect(planPage.getByRole('radiogroup', { name: 'Count spending' })).toHaveCount(0);
+  await expect(planPage.getByTestId('plan-counting')).toContainText(/Counts Rp\s1\.000\.000 a month as Uncategorised spending/);
 
   // ✎ opens the plan to change; a new total and fewer months change its monthly figure and its last month.
   await page.getByRole('button', { name: 'Edit plan' }).click();
@@ -261,7 +258,12 @@ test('a card purchase turned into instalments splits into billed and unbilled', 
   await expect(planPage.getByTestId('instalment-progress')).toContainText(/Rp\s1\.500\.000 a month/);
   await page.getByRole('button', { name: 'Edit plan' }).click();
   expect((await edit.textContent())!.match(/Ends\s*([A-Z][a-z]+ \d{4})/)![1]).not.toBe(endsBefore);
-  await edit.getByRole('button', { name: 'Close' }).click();
+  // Investment (not spending), the Category row's first choice: saving, never spending.
+  await edit.getByLabel('Category').selectOption({ label: 'Investment (not spending)' });
+  await expect(edit.getByTestId('plan-counting')).toContainText('counts as saving, not spending');
+  await edit.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(edit).toHaveCount(0);
+  await expect(planPage.getByTestId('plan-counting')).toContainText(/Investment: Rp\s1\.500\.000 a month counts as saving, not spending\./);
 
   // Removing asks first, in an alert; Not now keeps it, Remove plan takes it away and leaves the purchase alone.
   await page.getByRole('button', { name: 'Edit plan' }).click();

@@ -64,12 +64,13 @@ test('a card purchase turned into 6 months: 1 of 6 in Cashflow the next month, R
   await expect(instalment).toContainText('1 of 6');
   await expect(instalment).toContainText(/2\.000\.000/);
 
-  // The row opens the plan's page, which keeps the Count spending switch.
+  // The row opens the plan's page, which says how it counts — the app decides it, there is no switch.
   await page.goto(`/transactions?month=${bought.month}`);
   await page.getByTestId('transaction-row').filter({ hasText: 'Laptop' }).click();
   await page.getByTestId('receipt-instalments').click();
   await expect(page.getByTestId('instalment-plan-page')).toBeVisible();
-  await expect(page.getByRole('radiogroup', { name: 'Count spending' })).toBeVisible();
+  await expect(page.getByRole('radiogroup', { name: 'Count spending' })).toHaveCount(0);
+  await expect(page.getByTestId('plan-counting')).toContainText(/Counts Rp\s2\.000\.000 a month as Groceries spending/);
 });
 
 /*
@@ -107,16 +108,16 @@ test('a bond bought with the card turned into 6: the statement bills 1 of 6, Cas
   await sheet.getByRole('radio', { name: '6', exact: true }).click();
   const month = new Date().toISOString().slice(0, 7);
   await sheet.getByLabel('First billed').fill(month);
-  await expect(sheet).toContainText('An investment, not spending: each instalment is a card repayment');
+  await expect(sheet).toContainText(/An investment: Rp\s1\.000\.000 a month counts as saving, not spending/);
   await sheet.getByTestId('turn-into-save').click();
   await expect(sheet).toHaveCount(0);
   await expect(row).toContainText(/6 × Rp\s1\.000\.000/);
   // Never spread: no "counts Rp 0" on it.
   await expect(page.getByTestId('spread-caption')).toHaveCount(0);
 
-  // The plan's page offers no Count spending: an investment is never spending.
+  // The plan's page says it is saving: an investment is never spending.
   await row.click();
-  await expect(page.getByTestId('investment-plan-note')).toContainText('An investment: instalments are card repayments, not spending.');
+  await expect(page.getByTestId('plan-counting')).toContainText(/Investment: Rp\s1\.000\.000 a month counts as saving, not spending\./);
   await expect(page.getByRole('radiogroup', { name: 'Count spending' })).toHaveCount(0);
 
   // The statement bills it like any instalment.
@@ -125,11 +126,11 @@ test('a bond bought with the card turned into 6: the statement bills 1 of 6, Cas
   await cardPage(page, 'Statement');
   await expect(page.getByTestId('statement-line').filter({ hasText: 'ORI031' }).getByTestId('instalment-pill')).toContainText('1 of 6');
 
-  // Cashflow: no spending row for it; with Transfers on, a grey Repayment.
+  // Cashflow: no spending row for it; with Transfers on, a grey Saving row.
   await page.goto('/transactions');
   await expect(page.getByTestId('instalment-row')).toHaveCount(0);
   await showTransfers(page);
   const repayment = page.getByTestId('instalment-row').filter({ hasText: 'ORI031' });
-  await expect(repayment).toContainText('Repayment');
+  await expect(repayment).toContainText('Saving');
   await expect(repayment).toContainText('not counted');
 });

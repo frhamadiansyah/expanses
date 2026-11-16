@@ -1,4 +1,4 @@
-import { type DayTotal, displayAmount, installmentSchedule, type PartWeight } from '@expanses/core';
+import { type DayTotal, displayAmount, installmentSchedule, instalmentsFrom, type PartWeight } from '@expanses/core';
 import { and, eq, gte, inArray, isNotNull, isNull, lte, notInArray, type SQL, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
@@ -9,7 +9,7 @@ import { bookMoneyFor, type Unconverted } from './book-currency';
 import { partCountedWhere } from './book-splits';
 import { eventOnlyExists, notEventOnly } from './event-only';
 import { extrasTablesExist, notExcluded } from './transaction-extras';
-import { type PlanWithDay, plansWithStatementDays, purchaseWholes, type SpreadLine, spreadLinesIn, spreadPurchaseIds } from './instalment-spending';
+import { isInvestmentPlan, type PlanWithDay, plansWithStatementDays, purchaseWholes, type SpreadLine, spreadLinesIn, spreadPurchaseIds } from './instalment-spending';
 
 /** What narrows a category total beyond its kind and its dates. */
 export interface CategoryTotalsOptions {
@@ -142,6 +142,8 @@ async function spreadIn(
 
 /** An instalment of a plan counting At purchase: a repayment of the card, never spending (option C). */
 export interface InstalmentRepayment {
+  /** An investment's (TF 139): saving, never spending — a "Saving" row. Otherwise a repayment of the card. */
+  investment: boolean;
   planId: string;
   cardAccountId: string;
   transactionId: string | null;
@@ -167,11 +169,13 @@ export async function instalmentSpendingIn(
 ): Promise<{ lines: SpreadLine[]; repayments: InstalmentRepayment[]; spreadPurchaseIds: string[]; spreadMonths: Record<string, number> }> {
   const spread = await spreadPlans(database, ws, 'expense');
   const repayments: InstalmentRepayment[] = [];
-  for (const { plan, statementDay } of spread.plans) {
+  for (const { plan, statementDay, recordsFrom } of spread.plans) {
     if (plan.countMode === 'each_month') continue;
-    for (const bill of installmentSchedule(plan, statementDay)) {
+    // With no purchase, only what the card bills from its start in the app.
+    for (const bill of instalmentsFrom(installmentSchedule(plan, statementDay), plan.transactionId ? null : (recordsFrom ?? null))) {
       if (bill.statementOn < from || bill.statementOn > to) continue;
       repayments.push({
+        investment: isInvestmentPlan(plan),
         planId: plan.id,
         cardAccountId: plan.cardAccountId,
         transactionId: plan.transactionId,

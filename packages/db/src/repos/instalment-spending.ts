@@ -38,25 +38,32 @@ export interface PlanWithDay {
   recordsFrom?: string | null;
 }
 
+/** The ref a purchase's paid-off-before-the-app settlement carries (ledger's `beforeAppRef`). */
+const BEFORE_APP = 'before-app:';
+
 /**
- * The day a card's records start in the app: its opening balance's date, else the day it is counted from (0107), else
- * its first transaction. Null for a card with nothing on it yet.
+ * The day a card starts in the app (owner, 16 Nov 2026): its opening balance's date, else its earliest posted line, read
+ * owner-wide whatever workspace is open. A purchase recorded as already paid off before the app (or a past purchase)
+ * and its balancing settlement are left out: the settlement is posted against Opening Balances on the purchase's own,
+ * older day, and was taken for the card's opening (TF 138). Null for a card with nothing on it yet.
  */
-export async function cardRecordsFrom(db: Db, ws: WorkspaceContext, cardAccountId: string): Promise<string | null> {
+export async function cardRecordsFrom(db: Db, given: WorkspaceContext, cardAccountId: string): Promise<string | null> {
+  const workspaceId = given.workspaceId;
   const [opening] = await db.values<[string | null]>(sql`
     SELECT MIN(t.occurred_on) FROM transactions t
     JOIN entries e ON e.transaction_id = t.id AND e.account_id = ${cardAccountId}
-    WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted'
+    WHERE t.workspace_id = ${workspaceId} AND t.status = 'posted'
+      AND (t.external_ref IS NULL OR t.external_ref NOT LIKE ${BEFORE_APP + '%'})
       AND EXISTS (SELECT 1 FROM entries o JOIN accounts oa ON oa.id = o.account_id
                   WHERE o.transaction_id = t.id AND oa.kind = 'equity' AND oa.system_key = 'opening_balance')`);
   if (opening?.[0]) return opening[0];
-  if ((await db.values(sql`SELECT 1 FROM pragma_table_info('accounts') WHERE name = 'counted_from'`)).length > 0) {
-    const [row] = await db.values<[string | null]>(sql`SELECT counted_from FROM accounts WHERE id = ${cardAccountId} AND workspace_id = ${ws.workspaceId}`);
-    if (row?.[0]) return row[0];
-  }
   const [first] = await db.values<[string | null]>(sql`
     SELECT MIN(t.occurred_on) FROM transactions t JOIN entries e ON e.transaction_id = t.id AND e.account_id = ${cardAccountId}
-    WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted'`);
+    WHERE t.workspace_id = ${workspaceId} AND t.status = 'posted'
+      AND (t.external_ref IS NULL OR t.external_ref NOT LIKE ${BEFORE_APP + '%'})
+      AND t.id NOT IN (
+        SELECT substr(s.external_ref, ${BEFORE_APP.length + 1}) FROM transactions s
+        WHERE s.workspace_id = ${workspaceId} AND s.status = 'posted' AND s.external_ref LIKE ${BEFORE_APP + '%'})`);
   return first?.[0] ?? null;
 }
 
@@ -235,6 +242,13 @@ async function receivedPlanSpreadsTx(db: Db, ws: WorkspaceContext, own: Readonly
 }
 
 export const countsEachMonth = (plan: { countMode: InstalmentCountMode }) => plan.countMode === 'each_month';
+
+/**
+ * An investment's plan (TF 139): tied to a buy (a bond, a stock, a fund bought with the card), or with no purchase and
+ * Investment chosen — kept as At purchase. Its instalments are saving, never spending: money put away a month at a time.
+ */
+export const isInvestmentPlan = (plan: { countMode: InstalmentCountMode; transactionId: string | null; linkedToTrade?: boolean }) =>
+  plan.countMode === 'at_purchase' && (plan.linkedToTrade === true || plan.transactionId === null);
 
 /**
  * The purchases whose plan counts each month: what every spending reading leaves out on the purchase's own day. A plan

@@ -18,7 +18,7 @@ const shortDate = (iso: string) => {
 /**
  * Turn into instalments (owner, 16 Nov 2026, option A): from the purchase itself, only what the bank decided — the months,
  * the month it is first billed, the interest. Everything else is the purchase's, and the plan always counts Each month,
- * tied to it; the plan's own page keeps the Count spending switch. Saved through the plans' own door, so a purchase in a
+ * tied to it (an investment buy At purchase: saving). Saved through the plans' own door, so a purchase in a
  * shared workspace goes out with its spread.
  */
 export function TurnIntoSheet({

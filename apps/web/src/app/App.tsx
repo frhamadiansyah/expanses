@@ -1,4 +1,4 @@
-import { autoLinkInstalmentPlans, refreshPlanSpreads, seedShareListAsked, setActiveBook } from '@expanses/db';
+import { autoLinkInstalmentPlans, refreshPlanSpreads, repairInstalmentCounting, seedShareListAsked, setActiveBook } from '@expanses/db';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -87,8 +87,10 @@ export function App({ app, sync: given }: { app: AppDb; sync?: SyncService }) {
    */
   useEffect(() => {
     void autoLinkInstalmentPlans(app.database, app.ws)
-      .then((report) => {
-        if (report && report.linked + report.beforeRecords > 0) void queryClient.invalidateQueries();
+      // The app decides how a plan counts (TF 139): a plan tied to a spending purchase is moved to Each month, once.
+      .then(async (report) => {
+        const repaired = await repairInstalmentCounting(app.database, app.ws);
+        if ((report && report.linked > 0) || (repaired && repaired.moved > 0)) void queryClient.invalidateQueries();
       })
       // A plan with no purchase keeps its shared row in step with the card's records (0123): a moved opening balance.
       .then(() => refreshPlanSpreads(app.database, app.ws))
