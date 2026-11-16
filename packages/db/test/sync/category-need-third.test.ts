@@ -190,3 +190,26 @@ describe('sharing or joining with a Debts & savings mark already set', () => {
     expect(await projectBook(h.dewi.database, h.bookId)).toEqual(await projectBook(h.fandri.database, h.bookId));
   });
 });
+
+describe('a phone that leaves and comes back under the same device id', () => {
+  it('gets every mark held while it was gone, though R7 had sent to it before', async () => {
+    const h = await household({ dewi: BUILD });
+    // R7's first pass for her: nothing held yet, but she is recorded as sent to.
+    expect((await runSharedBookRepairs(h.fandri.database, h.bookId)).thirdMarks).toBe(0);
+    expect((await runSharedBookRepairs(h.fandri.database, h.bookId)).thirdMarks).toBeNull();
+
+    // Her phone leaves the book as his phone sees it: no other phone is in it, so a new mark waits.
+    const gone = (at: string | null) => h.fandri.database.db.run(sql`UPDATE book_devices SET removed_at = ${at} WHERE book_id = ${h.bookId} AND device_id = ${h.dewi.deviceId}`);
+    await gone('2026-11-16T09:00:00.000Z');
+    await saveCategoryNeed(h.fandri.database, h.ws(h.fandri), h.cover, 'debts_savings');
+    expect(anyThirdMark(await h.logged(h.fandri))).toBe(false);
+    expect((await runSharedBookRepairs(h.fandri.database, h.bookId)).thirdMarks).toBeNull();
+
+    // She comes back as the same device (a rejoin clears removed_at on her row): the held mark goes to her.
+    await gone(null);
+    expect((await runSharedBookRepairs(h.fandri.database, h.bookId)).thirdMarks).toBe(1);
+    await h.home.settle();
+    expect(await h.marks(h.dewi)).toEqual({ [h.cover]: 'debts_savings' });
+    expect(await skipsOf(h.dewi.database)).toEqual([]);
+  });
+});

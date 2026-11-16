@@ -554,6 +554,9 @@ export async function writeChangeSetsTx(
   // An introduction's invite terms ride on its first change-set, beside the device op they vouch for (§8.2).
   if (attach && changeSets[0]) changeSets[0] = { ...changeSets[0], ...attach };
   const hold = ops.some(isThirdMark) && (await thirdMarkWaitsTx(tx, book.bookId, deviceId));
+  // A mark held now was sent to nobody, whoever R7 has sent to before — a phone that left and comes back under the
+  // same device id among them: the record of who was sent the marks goes, so the next all-clear sends every one again.
+  if (hold) await tx.run(sql`DELETE FROM settings WHERE key = ${thirdMarksCrossedKey(book.bookId)}`);
   let written = 0;
   for (const changeSet of changeSets) {
     const sent = hold ? { ...changeSet, ops: changeSet.ops.filter((op) => !isThirdMark(op)) } : changeSet;
@@ -570,6 +573,9 @@ export async function writeChangeSetsTx(
   }
   return written;
 }
+
+/** Where repair R7 keeps the devices it has sent the book's Debts & savings marks to; cleared whenever a mark is held. */
+export const thirdMarksCrossedKey = (bookId: string) => `repair.third-marks-crossed.v1.${bookId}`;
 
 /** A Debts & savings mark (0119): what a build before `NEEDS_THIRD_MARK_MIN_APP_VERSION` cannot store. */
 export const isThirdMark = (op: Op): boolean => op.entity === 'category_need' && op.op === 'upsert' && op.fields.need === 'debts_savings';

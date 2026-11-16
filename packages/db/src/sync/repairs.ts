@@ -7,7 +7,7 @@ import { eventBookOfEventTx } from '../repos/shared-event-records';
 import { moveIntoSharedEvent, refundMatchedByName } from '../repos/shared-event-moves';
 import { TRIP_TRANSFERS_MIN_APP_VERSION } from '../repos/shared-event-transfers';
 import { partnerPurchaseRefusalTx, sharedRowTx, untagSharedRowsTx } from '../repos/shared-workspace-rows';
-import { captureConfigOf, isThirdMark, lineageOfTransaction, localDeviceId, projectPurchase, rowUpsertsTx, type SharedBook, thirdMarkWaitsTx, writeChangeSetsTx } from './capture';
+import { captureConfigOf, isThirdMark, lineageOfTransaction, localDeviceId, projectPurchase, rowUpsertsTx, type SharedBook, thirdMarksCrossedKey, thirdMarkWaitsTx, writeChangeSetsTx } from './capture';
 import { memberOfDeviceTx } from './apply';
 import { itemsWithStaleFaceTx, sendSummariesTx } from './net-worth/summaries';
 import { decodeHlc } from './hlc';
@@ -82,9 +82,6 @@ async function bookDevicesTx(tx: Db, bookId: string): Promise<{ deviceId: string
 
 /** Where R3 keeps the devices it has already sent for once each reached `TRIP_TRANSFERS_MIN_APP_VERSION`. */
 const tripCrossedKey = (bookId: string) => `repair.trip-transfers-crossed.v1.${bookId}`;
-
-/** Where R7 keeps the devices it has already sent the book's Debts & savings marks for. */
-const thirdMarksCrossedKey = (bookId: string) => `repair.third-marks-crossed.v1.${bookId}`;
 
 /** Where R5 keeps the devices of an event it has already sent the trip's switches for (`TRIP_SWITCHES_MIN_APP_VERSION`). */
 const switchesCrossedKey = (bookId: string) => `repair.trip-switches-crossed.v1.${bookId}`;
@@ -380,7 +377,14 @@ async function resendTripSwitchesTx(tx: Tx, database: Database, book: SharedBook
   return 1;
 }
 
-/** R7: every Debts & savings mark of the book this phone holds, each at the clock it holds it at. Returns how many. */
+/**
+ * R7: every Debts & savings mark of the book this phone holds, each at the clock it holds it at. Returns how many.
+ *
+ * The `need` field travels at its own clock; the row's existence clock (`@row`) is taken by the receiver at this
+ * change-set's hlc, as for every resend (R5's too): carrying the original would mean a change to apply for every
+ * revivable entity, which is not worth it here. What it allows: a phone that cleared the mark after it was made, in the
+ * moment between this phone's pull and this resend, sees it come back.
+ */
 async function resendThirdMarksTx(tx: Tx, database: Database, book: SharedBook): Promise<number> {
   const marks = (await rowUpsertsTx(tx, book, 'category_need')).filter(isThirdMark);
   const ops: Op[] = [];
