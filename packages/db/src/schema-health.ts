@@ -3,7 +3,7 @@ import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 export const categoryNeeds = sqliteTable('category_needs', {
   categoryAccountId: text('category_account_id').primaryKey(),
   workspaceId: text('workspace_id').notNull(),
-  need: text('need', { enum: ['essential', 'lifestyle'] }).notNull(),
+  need: text('need', { enum: ['essential', 'lifestyle', 'debts_savings'] }).notNull(),
 });
 
 export const budgetFrequencies = sqliteTable('budget_frequencies', {

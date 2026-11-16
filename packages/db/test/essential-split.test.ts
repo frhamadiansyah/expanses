@@ -73,6 +73,18 @@ describe('essentialSplitIn', () => {
     expect(split.debtsSavingsMinor).toBe(18_600_000 - 1_100_000 - 2_340_000);
     expect(split.percents).toEqual({ essential: 13, lifestyle: 6, debtsSavings: 81 });
   });
+
+  it('moves a category marked Debts & savings out of Essential and into what is kept', async () => {
+    const { database, ws, groceries } = await month();
+    const before = (await essentialSplitIn(database, ws, '2026-08-01', '2026-08-31', { excludeEvents: true })).split;
+    await saveCategoryNeed(database, ws, groceries, 'debts_savings');
+    const { split } = await essentialSplitIn(database, ws, '2026-08-01', '2026-08-31', { excludeEvents: true });
+    expect(split.essentialMinor).toBe(before.essentialMinor - 2_340_000);
+    expect(split.lifestyleMinor).toBe(before.lifestyleMinor);
+    expect(split.debtsSavingsMinor).toBe(before.debtsSavingsMinor + 2_340_000);
+    expect(split.debtsSavingsSpentMinor).toBe(2_340_000);
+    expect(split.spendingMinor).toBe(before.spendingMinor);
+  });
 });
 
 describe('the spending guide', () => {

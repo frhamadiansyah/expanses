@@ -7,7 +7,7 @@ import { eventBookOfEventTx } from '../repos/shared-event-records';
 import { moveIntoSharedEvent, refundMatchedByName } from '../repos/shared-event-moves';
 import { TRIP_TRANSFERS_MIN_APP_VERSION } from '../repos/shared-event-transfers';
 import { partnerPurchaseRefusalTx, sharedRowTx, untagSharedRowsTx } from '../repos/shared-workspace-rows';
-import { captureConfigOf, lineageOfTransaction, projectPurchase, rowUpsertsTx, type SharedBook, writeChangeSetsTx } from './capture';
+import { captureConfigOf, isThirdMark, lineageOfTransaction, localDeviceId, projectPurchase, rowUpsertsTx, type SharedBook, thirdMarkWaitsTx, writeChangeSetsTx } from './capture';
 import { memberOfDeviceTx } from './apply';
 import { itemsWithStaleFaceTx, sendSummariesTx } from './net-worth/summaries';
 import { decodeHlc } from './hlc';
@@ -48,6 +48,12 @@ export function repairExpenseId(lineageId: string, eventId: string): Promise<str
  * the two again at the clocks it holds them at — never a newer one, so a later change on another phone still wins — and
  * the updated phone, whose migration dropped the stale clocks, writes them. Nothing goes for a switch never changed.
  *
+ * R7 Debts & savings marks (0119): a category marked Debts & savings is held back from the book's log while any other
+ * phone in it is on a build whose table refuses the value (`thirdMarkWaitsTx`), its clocks kept here as if sent. Each
+ * time every other phone is first seen at `NEEDS_THIRD_MARK_MIN_APP_VERSION` or later — and again for each phone that
+ * joins at it — this phone sends every Debts & savings mark it holds at the clock it holds it at (none `changed`), so a
+ * later word from another phone still wins. A mark with no clock here never went anywhere: it goes at a fresh one.
+ *
  * R4 card faces (fix/sync-card-tier): a joint account's summary now carries what its card face is drawn from (its bank,
  * its card tier, its number's last four: `ItemFace`). An account given a tier before this build sent none, and its
  * summary would not go again until its period ended or a line moved it. Once now, this phone sends the items whose sent
@@ -76,6 +82,9 @@ async function bookDevicesTx(tx: Db, bookId: string): Promise<{ deviceId: string
 
 /** Where R3 keeps the devices it has already sent for once each reached `TRIP_TRANSFERS_MIN_APP_VERSION`. */
 const tripCrossedKey = (bookId: string) => `repair.trip-transfers-crossed.v1.${bookId}`;
+
+/** Where R7 keeps the devices it has already sent the book's Debts & savings marks for. */
+const thirdMarksCrossedKey = (bookId: string) => `repair.third-marks-crossed.v1.${bookId}`;
 
 /** Where R5 keeps the devices of an event it has already sent the trip's switches for (`TRIP_SWITCHES_MIN_APP_VERSION`). */
 const switchesCrossedKey = (bookId: string) => `repair.trip-switches-crossed.v1.${bookId}`;
@@ -145,6 +154,8 @@ export interface RepairReport {
   eventBook?: boolean;
   /** R5: the trip's switches sent again (1) or nothing to send (0); null when no device had newly crossed. */
   tripSwitches?: number | null;
+  /** R7: Debts & savings marks sent; null while a phone in the book cannot store one, or none had newly crossed. */
+  thirdMarks?: number | null;
 }
 
 /** The shared book here, active and with its members known; null for anything else. */
@@ -369,6 +380,20 @@ async function resendTripSwitchesTx(tx: Tx, database: Database, book: SharedBook
   return 1;
 }
 
+/** R7: every Debts & savings mark of the book this phone holds, each at the clock it holds it at. Returns how many. */
+async function resendThirdMarksTx(tx: Tx, database: Database, book: SharedBook): Promise<number> {
+  const marks = (await rowUpsertsTx(tx, book, 'category_need')).filter(isThirdMark);
+  const ops: Op[] = [];
+  for (const mark of marks) {
+    const [clock] = await tx.values<[string]>(sql`
+      SELECT hlc FROM sync_field_clocks WHERE book_id = ${book.bookId} AND entity = 'category_need' AND id = ${mark.id} AND field = 'need'`);
+    const fields = { need: 'debts_savings' };
+    ops.push(clock ? { entity: 'category_need', id: mark.id, op: 'upsert', fields, changed: [], clocks: { need: clock[0] } } : { entity: 'category_need', id: mark.id, op: 'upsert', fields });
+  }
+  await writeChangeSetsTx(tx, captureConfigOf(database), book, ops);
+  return ops.length;
+}
+
 /**
  * Runs the one-time repairs of a shared book on this phone, each once. Called after a sync that pulled the book to the
  * relay's latest. A repair that throws leaves its marker unwritten (it runs again next time) and is rethrown after the
@@ -461,6 +486,26 @@ export async function runSharedBookRepairs(database: Database, bookId: string, o
       const sent = await resendTripSwitchesTx(tx, database, book);
       const all = [...new Set([...crossed, ...nowAt])].sort();
       await tx.run(sql`INSERT INTO settings (key, value) VALUES (${switchesCrossedKey(bookId)}, ${JSON.stringify(all)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
+      return sent;
+    });
+  } catch (error) {
+    failures.push(error);
+  }
+  try {
+    report.thirdMarks = await database.transaction(async (tx) => {
+      const book = await activeBookTx(tx, bookId);
+      if (!book) return null;
+      if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'category_needs'`)).length === 0) return null;
+      // Only once every other phone can store the mark — the same test that held it back — and then once per phone
+      // newly seen there: one that joins later took none of the marks held before it came.
+      const self = await localDeviceId(tx);
+      if (await thirdMarkWaitsTx(tx, bookId, self)) return null;
+      const others = (await bookDevicesTx(tx, bookId)).filter((d) => d.deviceId !== self).map((d) => d.deviceId);
+      const crossed = await crossedTx(tx, bookId, thirdMarksCrossedKey(bookId));
+      if (others.every((id) => crossed.has(id))) return null;
+      const sent = await resendThirdMarksTx(tx, database, book);
+      const all = [...new Set([...crossed, ...others])].sort();
+      await tx.run(sql`INSERT INTO settings (key, value) VALUES (${thirdMarksCrossedKey(bookId)}, ${JSON.stringify(all)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
       return sent;
     });
   } catch (error) {

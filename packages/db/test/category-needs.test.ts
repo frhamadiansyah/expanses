@@ -12,6 +12,7 @@ import {
   listCategoryNeeds,
   migrate,
   MIGRATIONS,
+  renameAccount,
   resolvedCategoryNeeds,
   saveCategoryNeed,
 } from '../src/index';
@@ -45,6 +46,33 @@ describe('marking a category', () => {
 
     await clearCategoryNeed(database, ws, keys['food_beverage.school_catering']!);
     expect((await resolvedCategoryNeeds(database.db, ws))[keys['food_beverage.school_catering']!]).toBe('lifestyle');
+  });
+
+  it('reads the built-in marks by key with nothing stored, and the owner’s mark wins over them', async () => {
+    const { database, ws } = await setupDb();
+    const keys = await categoryIdsByKey(database, ws);
+    const resolved = await resolvedCategoryNeeds(database.db, ws);
+    expect(resolved[keys['shopping.clothing']!]).toBe('lifestyle');
+    expect(resolved[keys['food_beverage.cafe_dessert']!]).toBe('lifestyle');
+    expect(resolved[keys['food_beverage.home_catering']!]).toBe('essential');
+    expect(resolved[keys['protection.health_insurance']!]).toBe('debts_savings');
+    expect(resolved[keys['donation']!]).toBe('debts_savings');
+    expect(resolved[keys['miscellaneous.interest']!]).toBe('debts_savings');
+    expect(resolved[keys['miscellaneous.fees_charges']!]).toBe('essential');
+    // Nothing is written for a default.
+    expect(await listCategoryNeeds(database, ws)).toEqual({});
+
+    await saveCategoryNeed(database, ws, keys['shopping']!, 'essential');
+    await saveCategoryNeed(database, ws, keys['miscellaneous.fees_charges']!, 'debts_savings');
+    const after = await resolvedCategoryNeeds(database.db, ws);
+    expect(after[keys['shopping.clothing']!]).toBe('essential');
+    expect(after[keys['miscellaneous.fees_charges']!]).toBe('debts_savings');
+    // An own category under a built-in Lifestyle one follows its key's default.
+    const own = await createAccount(database, ws, { name: 'Sneakers', kind: 'expense', subtype: 'category', currency: null, parentId: keys['entertainment']! });
+    expect((await resolvedCategoryNeeds(database.db, ws))[own.id]).toBe('lifestyle');
+    // Renamed, a built-in category keeps its key and so its default.
+    await renameAccount(database, ws, keys['donation']!, 'Zakat & sedekah');
+    expect((await resolvedCategoryNeeds(database.db, ws))[keys['donation']!]).toBe('debts_savings');
   });
 
   it('refuses what is not a spending category', async () => {

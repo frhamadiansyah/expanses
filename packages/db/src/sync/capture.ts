@@ -13,6 +13,7 @@ import { activeNetWorthGroup, NetWorthError } from '../repos/net-worth-sharing';
 import { localDate, sendSummariesTx } from './net-worth/summaries';
 import { sendGoalSummariesTx } from './goals/summaries';
 import { reserveAndSplit } from './split';
+import { meetsVersion, NEEDS_THIRD_MARK_MIN_APP_VERSION } from './events/version';
 import { holderLineageId } from './held';
 import type { ChangeSet, Op } from './types';
 
@@ -552,14 +553,37 @@ export async function writeChangeSetsTx(
   const changeSets = await reserveAndSplit(tx, deviceId, book.memberId, ops, config.now?.());
   // An introduction's invite terms ride on its first change-set, beside the device op they vouch for (§8.2).
   if (attach && changeSets[0]) changeSets[0] = { ...changeSets[0], ...attach };
+  const hold = ops.some(isThirdMark) && (await thirdMarkWaitsTx(tx, book.bookId, deviceId));
+  let written = 0;
   for (const changeSet of changeSets) {
-    // Plaintext: the engine seals it when it drains (§6.3, §6.6).
-    await tx.run(
-      sql`INSERT INTO sync_outbox (id, book_id, hlc, entry_json, created_at) VALUES (${uuidv7()}, ${book.bookId}, ${changeSet.hlc}, ${JSON.stringify(changeSet)}, ${createdAt})`,
-    );
+    const sent = hold ? { ...changeSet, ops: changeSet.ops.filter((op) => !isThirdMark(op)) } : changeSet;
+    if (sent.ops.length > 0 || sent.invite) {
+      // Plaintext: the engine seals it when it drains (§6.3, §6.6).
+      await tx.run(
+        sql`INSERT INTO sync_outbox (id, book_id, hlc, entry_json, created_at) VALUES (${uuidv7()}, ${book.bookId}, ${changeSet.hlc}, ${JSON.stringify(sent)}, ${createdAt})`,
+      );
+      written += 1;
+    }
+    // A held mark's clocks too, as if it went: a partner's older word arriving meanwhile does not overwrite it here, and
+    // R7 sends it at exactly these clocks once every phone can store it.
     for (const op of changeSet.ops) await recordClocks(tx, book.bookId, op, changeSet.hlc);
   }
-  return changeSets.length;
+  return written;
+}
+
+/** A Debts & savings mark (0119): what a build before `NEEDS_THIRD_MARK_MIN_APP_VERSION` cannot store. */
+export const isThirdMark = (op: Op): boolean => op.entity === 'category_need' && op.op === 'upsert' && op.fields.need === 'debts_savings';
+
+/**
+ * Whether a Debts & savings mark must wait before going into this book's log: some other phone still in the book says
+ * an older build (or none), or no other phone is in it yet — one joining later may be on an older build, and an entry
+ * in the log cannot be taken back. Its table would refuse the mark, and on a phone that refusal stops the pull there.
+ */
+export async function thirdMarkWaitsTx(tx: Db, bookId: string, selfDeviceId: string): Promise<boolean> {
+  const others = await tx
+    .values<[string, string | null]>(sql`SELECT device_id, app_version FROM book_devices WHERE book_id = ${bookId} AND removed_at IS NULL AND device_id <> ${selfDeviceId}`)
+    .catch(() => [] as [string, string | null][]);
+  return others.length === 0 || others.some(([, version]) => !meetsVersion(version, NEEDS_THIRD_MARK_MIN_APP_VERSION));
 }
 
 /** The capture config a database was made with (`createDatabase` registers it). */
