@@ -7,7 +7,8 @@ import {
   type HealthRatio,
   type RatioKey,
   householdEmergencyMonths,
-  monthOf,
+  monthPeriod,
+  periodMonthOf,
   type PeriodFlows,
   type RatioStatus,
   type SheetAsset,
@@ -31,12 +32,16 @@ export interface PeriodRange {
   label: string;
 }
 
-/** The last 12 months end today; a calendar year runs 1 Jan to 31 Dec with balances at its end. */
-export function periodRange(period: RatioPeriod, today: string): PeriodRange {
+/**
+ * The last 12 months end today, starting on the first day of the month eleven before this one — the workspace's
+ * months ("Month starts on"), the calendar's until it is set. A calendar year runs 1 Jan to 31 Dec with balances at
+ * its end.
+ */
+export function periodRange(period: RatioPeriod, today: string, monthStart = 1): PeriodRange {
   if (period.key === 'year') {
     return { from: `${period.year}-01-01`, to: `${period.year}-12-31`, balanceDate: `${period.year}-12-31`, label: String(period.year) };
   }
-  return { from: `${addMonths(monthOf(today), -11)}-01`, to: today, balanceDate: today, label: 'Last 12 months' };
+  return { from: monthPeriod(addMonths(periodMonthOf(today, monthStart), -11), monthStart).from, to: today, balanceDate: today, label: 'Last 12 months' };
 }
 
 /** Years worth offering in the period switch: this year back to the first year with data. */

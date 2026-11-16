@@ -1,7 +1,8 @@
-import { capsByNeed, monthRange, needsPlan } from '@expanses/core';
+import { capsByNeed, monthPeriod, needsPlan } from '@expanses/core';
 import type { BudgetSheetResult } from '@expanses/db';
 import { cx, Money } from '../../ui';
 import { type GroupChild, InsetGroup } from '../../ui/native';
+import { useMonthStart } from '../workspaces/queries';
 import { useEssentialSplit, useResolvedNeeds } from './queries';
 import { type NeedsBoxRow, needsBoxRows, SPLIT_TITLE } from './split-view';
 
@@ -39,7 +40,8 @@ function Rows({ rows, currency }: GroupChild & { rows: readonly NeedsBoxRow[]; c
  * Debts & savings the take-home (or the income so far) less both.
  */
 export function NeedsBox({ sheet, month }: { sheet: BudgetSheetResult; month: string }) {
-  const range = monthRange(month);
+  // The budget's own month: the workspace's ("Month starts on"), so the box and the caps above it count the same days.
+  const range = monthPeriod(month, useMonthStart());
   const split = useEssentialSplit(range);
   const needs = useResolvedNeeds();
   if (!split.data || !needs.data) return null;

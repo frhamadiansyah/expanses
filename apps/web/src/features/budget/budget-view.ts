@@ -1,18 +1,19 @@
-import { type BudgetLine, roundUpToMajor } from '@expanses/core';
+import { type BudgetLine, daysFrom, monthPeriod, roundUpToMajor } from '@expanses/core';
 
 /*
  * What the Budget page draws, worked out from the sheet: which lines are over, which are capped and how they fold,
  * what no cap covers, and how the take-home divides. Pure, so the arithmetic is tested apart from the page.
  */
 
-/** Days left in the month, today counted; null for a month already past. A month still to come has all of its days. */
-export function daysLeft(month: string, today: string): number | null {
-  const current = today.slice(0, 7);
-  if (month < current) return null;
-  const [year, monthNo] = month.split('-').map(Number);
-  const length = new Date(Date.UTC(year!, monthNo!, 0)).getUTCDate();
-  if (month > current) return length;
-  return length - Number(today.slice(8, 10)) + 1;
+/**
+ * Days left in the month, today counted; null for a month already past. A month still to come has all of its days.
+ * The month is the workspace's ("Month starts on"): from the 25th, November's days run out on 24 Nov.
+ */
+export function daysLeft(month: string, today: string, monthStart = 1): number | null {
+  const { from, to } = monthPeriod(month, monthStart);
+  if (to < today) return null;
+  if (from > today) return daysFrom(from, to) + 1;
+  return daysFrom(today, to) + 1;
 }
 
 /** Every line of the tree, parents before their children. */

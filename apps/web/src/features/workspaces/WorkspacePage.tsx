@@ -1,8 +1,8 @@
-import { isoDate } from '@expanses/core';
+import { isoDate, monthStartLabel } from '@expanses/core';
 import { applyCategoryStart, archiveBook, BookError, type BookDeletePlan, type BookKind, type BookRow, findRate, planBookDelete, renameBook, restoreBook, setBookBaseCurrency, setBookEventsInBudget, setBookKind } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { Check, Coins, Layers, Pencil, PiggyBank } from 'lucide-react';
+import { CalendarDays, Check, Coins, Layers, Pencil, PiggyBank } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -14,6 +14,7 @@ import { ShareRow } from '../sharing/SharingSection';
 import { BusinessListAlert } from './BusinessListAlert';
 import { DeleteWorkspaceSheet, LeaveAndDeleteSheet } from './DeleteWorkspaceSheet';
 import { CurrencySheet } from '../currency/CurrencySheet';
+import { monthStartFooter } from './MonthStartPage';
 import { useArchivedBooks, useBooks } from './queries';
 
 export const KIND_LABEL: Record<string, string> = { personal: 'Personal', business: 'Business', family: 'Family', shared: 'Shared' };
@@ -280,6 +281,18 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
               ) : (
                 <InsetRow testId="ws-currency-row" icon={<Coins size={15} aria-hidden />} title="Currency" plain value={currency} onClick={() => setChoosingCurrency(true)} />
               )}
+            </InsetGroup>
+
+            {/* Month starts on (0118): the day this workspace's months begin; every page that counts a month follows it. */}
+            <InsetGroup wide footer={<span data-testid="month-start-footer">{monthStartFooter(book.monthStartDay)}</span>}>
+              <InsetRow
+                testId="ws-month-start-row"
+                icon={<CalendarDays size={15} aria-hidden />}
+                title="Month starts on"
+                plain
+                value={monthStartLabel(book.monthStartDay)}
+                onClick={() => void navigate({ to: '/account/workspaces/$bookId/month-start', params: { bookId: book.id } })}
+              />
             </InsetGroup>
 
             {!shared && currency !== book.baseCurrency && (

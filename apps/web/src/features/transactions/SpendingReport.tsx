@@ -19,7 +19,7 @@ import { Donut, type DonutSlice } from './Donut';
 import { PeriodPicker, yearsSince } from './PeriodPicker';
 import { TrendBars, TrendUnder, useSpendingTrend } from './SpendingTrend';
 import { mergeUnconverted, Unconverted, type UnconvertedRow } from '../workspaces/Unconverted';
-import { useOpenBook } from '../workspaces/queries';
+import { useMonthStart, useOpenBook } from '../workspaces/queries';
 import { GuideSheet } from '../essential-split/GuideSheet';
 import { IncomeSplit } from '../essential-split/IncomeSplit';
 import { useEssentialSplit, useSpendingGuide } from '../essential-split/queries';
@@ -292,7 +292,8 @@ export function SpendingReport({
   const [guiding, setGuiding] = useState(false);
   const [picking, setPicking] = useState(false);
   // "month" is whatever period the page shows. All time is asked for as the widest possible stretch.
-  const period = parsePeriod(month);
+  const monthStart = useMonthStart();
+  const period = parsePeriod(month, monthStart);
   const from = period?.from ?? '0000-01-01';
   const to = period?.to ?? '9999-12-31';
   // Budgets are monthly, so the budget page only exists when a single month is showing.
@@ -304,7 +305,7 @@ export function SpendingReport({
   // swallow the shape of an ordinary month.
   const eventsInCaps = useOpenBook()?.countEventsInBudget ?? false;
   const totals = useQuery({
-    queryKey: ['category-totals', ws.workspaceId, ws.bookId ?? null, kind, month, eventsInCaps ? 'with-events' : 'without-events', paidAccountId ?? null],
+    queryKey: ['category-totals', ws.workspaceId, ws.bookId ?? null, kind, month, monthStart, eventsInCaps ? 'with-events' : 'without-events', paidAccountId ?? null],
     queryFn: () => categoryTotalsIn(database, ws, kind, from, to, { excludeEvents: !eventsInCaps, billMonths: true, paidAccountId }),
   });
   const budgets = useQuery({
@@ -456,7 +457,7 @@ export function SpendingReport({
               transactions={transactions}
               caps={onBudgets ? caps : undefined}
               header={header}
-              second={hasBudgets ? <BudgetGauge progress={progress} currency={gaugeCurrency} month={month} today={isoDate()} /> : undefined}
+              second={hasBudgets ? <BudgetGauge progress={progress} currency={gaugeCurrency} month={month} today={isoDate()} monthStart={monthStart} /> : undefined}
               thirdLabel={kind === 'income' ? 'Essential, lifestyle, debts and savings' : undefined}
               third={
                 kind === 'income' ? (
