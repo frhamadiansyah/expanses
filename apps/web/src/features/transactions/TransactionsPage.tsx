@@ -1,4 +1,4 @@
-import { categoryPath, formatMinor, isoDate, monthOf, outflowFrom, parseLooseAmount, parseLooseDate, parsePeriod, periodLabel } from '@expanses/core';
+import { addMonths, categoryPath, formatMinor, isoDate, outflowFrom, parseLooseAmount, parseLooseDate, parsePeriod, periodLabel, periodMonthOf } from '@expanses/core';
 import {
   accountIdsInUse,
   cardTopsUpWallet,
@@ -94,7 +94,7 @@ import { WorkspaceMenu } from '../workspaces/WorkspaceMenu';
 import { EventModeDot, useShownEventMode } from '../events/EventMode';
 import { addInCurrency, eventModeApplies } from '../events/event-mode';
 import { recordsOnForm } from '../review/draft-form';
-import { useBooks, useCategoryBooks, useOpenBook, useWorkspaceBadges } from '../workspaces/queries';
+import { useBooks, useCategoryBooks, useMonthStart, useOpenBook, useWorkspaceBadges } from '../workspaces/queries';
 import { ChoiceSheet } from './ChoiceSheet';
 import { CardSheet } from '../cards/CardSheet';
 import { setCardAccount, sharedCard } from './set-card';
@@ -139,11 +139,10 @@ const TYPES: { value: ListFilters['type']; label: string }[] = [
   { value: 'transfer', label: 'Transfers & lending' },
 ];
 
-/** The last two years of months, newest first, plus whichever month the address asked for. */
-function monthOptions(current: string): ChipOption[] {
-  const today = new Date();
+/** The last two years of months, newest first, plus whichever month the address asked for. This month is the workspace's. */
+function monthOptions(current: string, thisMonth: string): ChipOption[] {
   const months: string[] = [];
-  for (let i = 0; i < 24; i += 1) months.push(monthOf(isoDate(new Date(today.getFullYear(), today.getMonth() - i, 1))));
+  for (let i = 0; i < 24; i += 1) months.push(addMonths(thisMonth, -i));
   if (current !== 'all' && !months.includes(current)) months.push(current);
   // Any period chosen from the chart's picker stays on the list, under its own name.
   return [{ value: 'all', label: 'All time' }, ...months.map((month) => ({ value: month, label: periodLabel(month) }))];
@@ -185,7 +184,10 @@ export function TransactionsPage() {
   const invalidate = useInvalidateAll();
   const navigate = useNavigate({ from: '/transactions' });
   const search = route.useSearch();
-  const month = search.month ?? monthOf(isoDate());
+  // "Month starts on" (0118): the workspace's months, the calendar's until it is set. Today's month is the one holding today.
+  const monthStart = useMonthStart();
+  const thisMonth = periodMonthOf(isoDate(), monthStart);
+  const month = search.month ?? thisMonth;
   const accountsQuery = useAccounts();
   const accounts = accountsQuery.data ?? [];
   // Category pickers and filters on this page read the open book; money accounts are every book's.
@@ -368,7 +370,7 @@ export function TransactionsPage() {
   const setFilter = <K extends keyof typeof filters>(key: K, value: (typeof filters)[K]) => setFilters((f) => ({ ...f, [key]: value }));
   const setSearch = (patch: Partial<TransactionsSearch>) => void navigate({ search: (s: TransactionsSearch) => ({ ...s, ...patch }) });
 
-  const period = parsePeriod(month);
+  const period = parsePeriod(month, monthStart);
   const range = period?.from ? { from: period.from, to: period.to! } : {};
   // A day on its own only names a date when a single month is showing.
   const singleMonth = period?.kind === 'month';
@@ -393,7 +395,7 @@ export function TransactionsPage() {
   const ownerWide = scope !== undefined && isMoneyAccount(scope);
   const listWs = ownerWide ? ownerScope(ws) : ws;
   const list = useQuery({
-    queryKey: ['transactions', ws.workspaceId, ws.bookId ?? null, ownerWide, scopeIds?.join(',') ?? 'all', month, filters.showDeleted],
+    queryKey: ['transactions', ws.workspaceId, ws.bookId ?? null, ownerWide, scopeIds?.join(',') ?? 'all', month, monthStart, filters.showDeleted],
     queryFn: () => listTransactionsIn(database, listWs, { accountIds: scopeIds, ...range, includeVoid: filters.showDeleted, limit: month === 'all' ? ALL_TIME_LIMIT : undefined }),
   });
   // A workspace reads its list in its own currency: the day's total and the month's line say so too. An account's
@@ -468,7 +470,7 @@ export function TransactionsPage() {
   // Narrowed to a workspace, a purchase split across workspaces reads as that workspace's part (`listWs.bookId`).
   // The other member's transfers in a shared workspace (0094): redacted rows, read only, beside this phone's own.
   const partnerTransfers = useQuery({
-    queryKey: ['shared-transfers', ws.workspaceId, ws.bookId ?? null, month],
+    queryKey: ['shared-transfers', ws.workspaceId, ws.bookId ?? null, month, monthStart],
     queryFn: () => listSharedTransfers(database, ws.bookId!, range),
     enabled: shared && ws.bookId !== undefined && !scopeIds,
   });
@@ -508,7 +510,7 @@ export function TransactionsPage() {
    */
   const jointIds = useJointAccountIds();
   const cashflow: CashflowContext | undefined = search.account ? undefined : { shared, jointIds };
-  const listed = { ...filters, month, showOpening };
+  const listed = { ...filters, month, monthStart, showOpening };
   const shown = sortRows(filterRows(rows, listed, accounts, cashflow), sort);
   // Nothing on show but transfers left to the accounts' pages: the empty list offers them rather than "Clear filters".
   const onlyTransfersHidden = shown.length === 0 && !!cashflow && !filters.showTransfers && filterRows(rows, { ...listed, showTransfers: true }, accounts, cashflow).length > 0;
@@ -1466,8 +1468,8 @@ export function TransactionsPage() {
               name="Month"
               value={month}
               active={false}
-              options={monthOptions(month)}
-              onPick={(value) => setSearch({ month: value === monthOf(isoDate()) ? undefined : value })}
+              options={monthOptions(month, thisMonth)}
+              onPick={(value) => setSearch({ month: value === thisMonth ? undefined : value })}
               shown={
                 <>
                   Month <b className="font-semibold text-slate-900">{periodLabel(month)}</b>
@@ -1540,7 +1542,7 @@ export function TransactionsPage() {
           categoryId={scope?.kind === 'expense' || scope?.kind === 'income' ? scope.id : undefined}
           onPick={(id) => setSearch({ account: id, need: undefined })}
           onBack={() => setSearch({ account: undefined })}
-          onMonth={(next) => setSearch({ month: next === monthOf(today) ? undefined : next })}
+          onMonth={(next) => setSearch({ month: next === thisMonth ? undefined : next })}
           alsoMissing={list.data?.missing ?? []}
           paidAccountId={paidAccountId}
           need={need}
@@ -1813,7 +1815,7 @@ export function TransactionsPage() {
     {sideways && (
       <SidewaysTable
         month={month}
-        onMonth={(next) => setSearch({ month: next === monthOf(today) ? undefined : next })}
+        onMonth={(next) => setSearch({ month: next === thisMonth ? undefined : next })}
         spentMinor={sum.spentMinor}
         currency={listCurrency}
         transfers={cashflow ? { on: !!filters.showTransfers, onChange: (on) => setFilter('showTransfers', on) } : undefined}

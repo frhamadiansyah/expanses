@@ -845,7 +845,9 @@ export class SyncService {
       }
       const tags = report.eventTags;
       const changed =
-        (report.billLinks ?? 0) > 0 || (tags !== null && tags.moved + tags.untagged > 0) || (report.tripTransfers ?? 0) > 0 || (report.cardFaces ?? 0) > 0 || (report.tripSwitches ?? 0) > 0;
+        (report.billLinks ?? 0) > 0 || (tags !== null && tags.moved + tags.untagged > 0) || (report.tripTransfers ?? 0) > 0 || (report.cardFaces ?? 0) > 0 || (report.tripSwitches ?? 0) > 0 || (report.monthStart ?? 0) > 0;
+      // R6: the workspace's "Month starts on", sent again for a phone that updated since it took it.
+      if ((report.monthStart ?? 0) > 0) await this.note('repair', bookId, { message: 'Month starts on sent again for a phone that updated' });
       // R5: a shared trip's Split costs and Plan switches, sent again for a phone that updated since it took them.
       if ((report.tripSwitches ?? 0) > 0) await this.note('repair', bookId, { message: 'Trip switches (Split costs, Plan) sent again for a phone that updated' });
       // R4: this phone's joint accounts sent again with their card faces (bank, tier, digits), once.

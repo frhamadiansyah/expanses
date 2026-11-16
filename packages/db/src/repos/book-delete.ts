@@ -237,6 +237,7 @@ export async function planBookDelete(database: Database, ws: WorkspaceContext, b
     kind: row.kind,
     baseCurrency: row.baseCurrency,
     countEventsInBudget: row.countEventsInBudget === 1,
+    monthStartDay: 1,
     archivedAt: row.archivedAt,
   }, options);
 }
@@ -264,6 +265,8 @@ export async function deleteBook(
       kind: row.kind,
       baseCurrency: row.baseCurrency,
       countEventsInBudget: row.countEventsInBudget === 1,
+      // Not read by a delete: what is erased or voided does not depend on how its months are grouped.
+      monthStartDay: 1,
       archivedAt: row.archivedAt,
     };
     // As if left only once no share is active here (Delete here only, after its forget): a live copy still refuses.

@@ -206,13 +206,15 @@ export function useCardMonths(months: readonly (string | null)[]) {
 }
 
 /** The open book's bills owed in a month (keyed by the book: bills are per book). Null asks for nothing. */
-export function useBillsInMonth(month: string | null) {
+/** `workspaceMonth`: `month` is one of the workspace's own months ("Month starts on"), each bill read for the bill month inside it. */
+export function useBillsInMonth(month: string | null, opts: { workspaceMonth?: boolean } = {}) {
   const { database, ws } = useApp();
   const today = isoDate();
+  const workspaceMonth = opts.workspaceMonth === true;
   return useQuery({
-    queryKey: ['bills-in-month', ws.workspaceId, ws.bookId ?? '', month ?? '', today],
+    queryKey: ['bills-in-month', ws.workspaceId, ws.bookId ?? '', month ?? '', today, workspaceMonth],
     enabled: month !== null,
-    queryFn: (): Promise<BillMonthRow[]> => billsInMonth(database, ws, month!, today),
+    queryFn: (): Promise<BillMonthRow[]> => billsInMonth(database, ws, month!, today, { workspaceMonth }),
   });
 }
 

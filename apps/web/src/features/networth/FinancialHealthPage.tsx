@@ -6,6 +6,7 @@ import { type CornerAction, PushedTitle, SCREEN } from '../../ui/native';
 import { HealthRatios } from './HealthRatios';
 import { periodRange, type RatioPeriod, ratioInputs, ratioTotals } from './health-cards';
 import { useJointSheet, useNetWorthSeries, usePeriodFlows, useSheet } from './queries';
+import { useMonthStart } from '../workspaces/queries';
 
 /**
  * The ratios on a screen of their own, one tap from Net worth's top corner.
@@ -26,8 +27,10 @@ export function FinancialHealthPage() {
   const months = lastNMonths(monthOf(today), 12);
   const series = useNetWorthSeries(months);
   const [period, setPeriod] = useState<RatioPeriod>({ key: 'ttm' });
-  const range = periodRange(period, today);
-  const flows = usePeriodFlows({ from: range.from, to: range.to });
+  // The workspace's months ("Month starts on"), as Cashflow and Budget count them.
+  const monthStart = useMonthStart();
+  const range = periodRange(period, today, monthStart);
+  const flows = usePeriodFlows({ from: range.from, to: range.to }, monthStart);
   const periodSheetInputs = useSheet(range.balanceDate);
   // With one tax ID the ratios read the household's balance sheet on the same date (§8.2).
   const joint = useJointSheet(range.balanceDate);

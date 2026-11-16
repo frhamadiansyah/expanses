@@ -1,4 +1,4 @@
-import { formatMinor } from '@expanses/core';
+import { daysFrom, formatMinor, monthPeriod } from '@expanses/core';
 import type { BudgetProgress } from './budget-progress';
 
 /** Where a point sits on a circle, measured clockwise from twelve. */
@@ -12,12 +12,11 @@ function arc(cx: number, cy: number, r: number, from: number, to: number): strin
   return `M ${x1} ${y1} A ${r} ${r} 0 ${to - from > Math.PI ? 1 : 0} 1 ${x2} ${y2}`;
 }
 
-/** Days left in the month the page is showing, counted from today when today is in it. */
-function daysLeft(month: string, today: string): number {
-  const [year, index] = month.split('-').map(Number);
-  const last = new Date(year!, index!, 0).getDate();
-  if (today.slice(0, 7) !== month) return 0;
-  return Math.max(0, last - Number(today.slice(8, 10)));
+/** Days left in the month the page is showing, after today, when today is in it: the workspace's month ("Month starts on"). */
+function daysLeft(month: string, today: string, monthStart = 1): number {
+  const { from, to } = monthPeriod(month, monthStart);
+  if (today < from || today > to) return 0;
+  return Math.max(0, daysFrom(today, to));
 }
 
 export interface GaugeWords {
@@ -52,6 +51,7 @@ export function BudgetGauge({
   today,
   words = MONTH_WORDS,
   last,
+  monthStart = 1,
 }: {
   progress: BudgetProgress;
   /** The money the figures are in: the workspace's own on a month, the owner's on an event. */
@@ -62,6 +62,8 @@ export function BudgetGauge({
   words?: GaugeWords;
   /** The third figure under the arc. Left out, it is the days left in the month. */
   last?: { label: string; value: string };
+  /** The day the workspace's months start on; the days left count to that month's last day. */
+  monthStart?: number;
 }) {
   const size = 320;
   const height = 182;
@@ -77,7 +79,7 @@ export function BudgetGauge({
   // Red is for the month as a whole being over, not for one category: a single overspend is said in its own row.
   const tone = left < 0 ? '#b91c1c' : '#16a34a';
   const [knobX, knobY] = point(centre, middle, radius, from + used * span);
-  const days = daysLeft(month, today);
+  const days = daysLeft(month, today, monthStart);
 
   return (
     <div>

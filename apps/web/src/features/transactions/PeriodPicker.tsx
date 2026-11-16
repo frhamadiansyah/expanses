@@ -1,8 +1,9 @@
-import { addMonths, isoDate, monthOf, parsePeriod, type PeriodKind, weeksOfMonth } from '@expanses/core';
+import { addMonths, isoDate, monthOf, parsePeriod, type PeriodKind, periodMonthOf, weeksOfMonth } from '@expanses/core';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { Button, cx, Field, Input } from '../../ui';
+import { useMonthStart } from '../workspaces/queries';
 
 const TABS: { kind: PeriodKind; label: string }[] = [
   { kind: 'week', label: 'Week' },
@@ -60,10 +61,14 @@ function Stepper({ label, onPrevious, onNext, nextDisabled }: { label: string; o
  */
 export function PeriodPicker({ value, years, onPick, onClose }: { value: string; years: readonly number[]; onPick: (value: string) => void; onClose: () => void }) {
   const today = isoDate();
-  const current = parsePeriod(value);
+  const monthStart = useMonthStart();
+  // The workspace's month that holds today ("Month starts on"): from the 25th, 26 Dec is already January's.
+  const thisMonth = periodMonthOf(today, monthStart);
+  const current = parsePeriod(value, monthStart);
   const [kind, setKind] = useState<PeriodKind>(current?.kind ?? 'month');
-  // The year a month, quarter or week grid is showing, and the month a week list is showing.
-  const [year, setYear] = useState(Number((current?.from ?? today).slice(0, 4)));
+  // The year a month, quarter or week grid is showing, and the month a week list is showing. A month is in its own
+  // name's year, though from the 25th January's first days are December's.
+  const [year, setYear] = useState(Number((current?.kind === 'month' ? value : (current?.from ?? today)).slice(0, 4)));
   const [weekMonth, setWeekMonth] = useState(monthOf(current?.kind === 'week' ? current.to! : (current?.from ?? today)));
   const [from, setFrom] = useState(current?.kind === 'custom' ? current.from! : `${today.slice(0, 7)}-01`);
   const [to, setTo] = useState(current?.kind === 'custom' ? current.to! : today);
@@ -94,12 +99,12 @@ export function PeriodPicker({ value, years, onPick, onClose }: { value: string;
 
         {kind === 'month' && (
           <>
-            <Stepper label={String(year)} onPrevious={() => setYear(year - 1)} onNext={() => setYear(year + 1)} nextDisabled={year >= thisYear} />
+            <Stepper label={String(year)} onPrevious={() => setYear(year - 1)} onNext={() => setYear(year + 1)} nextDisabled={year >= Number(thisMonth.slice(0, 4))} />
             <div className="grid grid-cols-3 gap-2">
               {MONTHS.map((name, index) => {
                 const month = `${year}-${String(index + 1).padStart(2, '0')}`;
                 return (
-                  <Choice key={month} on={month === value} future={month > monthOf(today)} onClick={() => pick(month)}>
+                  <Choice key={month} on={month === value} future={month > thisMonth} onClick={() => pick(month)}>
                     {name}
                   </Choice>
                 );
@@ -140,7 +145,7 @@ export function PeriodPicker({ value, years, onPick, onClose }: { value: string;
 
         {kind === 'quarter' && (
           <>
-            <Stepper label={String(year)} onPrevious={() => setYear(year - 1)} onNext={() => setYear(year + 1)} nextDisabled={year >= thisYear} />
+            <Stepper label={String(year)} onPrevious={() => setYear(year - 1)} onNext={() => setYear(year + 1)} nextDisabled={year >= Number(thisMonth.slice(0, 4))} />
             <div className="grid grid-cols-2 gap-2">
               {[1, 2, 3, 4].map((q) => {
                 const quarter = `${year}-Q${q}`;

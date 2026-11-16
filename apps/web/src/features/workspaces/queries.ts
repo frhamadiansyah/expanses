@@ -1,4 +1,4 @@
-import { isoDate, monthOf, monthRange } from '@expanses/core';
+import { isoDate, monthOf, monthRange, type MonthStartDay } from '@expanses/core';
 import { bookMoneyFor, bookNamesByCategory, bookNamesOf, listArchivedBooks, listBooks, spentThisMonthByBook } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
@@ -22,15 +22,26 @@ export function useOpenBook() {
 }
 
 /**
- * What every workspace spent this calendar month, keyed by workspace id — what the switcher shows beside each
- * name, so choosing one is a decision made with a figure rather than only a word.
+ * The day the open workspace's months start on ("Month starts on", 0118): 1, the calendar month, until it is set —
+ * and while the workspace list is still being read. Every page that groups by month reads its months through this
+ * (`monthPeriod`, `periodMonthOf`, `parsePeriod(…, startDay)` in core), so they all agree.
+ */
+export function useMonthStart(): MonthStartDay {
+  return useOpenBook()?.monthStartDay ?? 1;
+}
+
+/**
+ * What every workspace spent this month, keyed by workspace id — what the switcher shows beside each name, so
+ * choosing one is a decision made with a figure rather than only a word. Each workspace's own month: one starting on
+ * the 25th counts from the 25th.
  */
 export function useSpentThisMonth() {
   const { database, ws } = useApp();
-  const month = monthOf(isoDate());
+  const today = isoDate();
+  const month = monthOf(today);
   const { from, to } = monthRange(month);
   // Not narrowed by the open workspace: this is every workspace's figure at once, asked for once.
-  return useQuery({ queryKey: ['book-spent', ws.workspaceId, month], queryFn: () => spentThisMonthByBook(database, ws, from, to) });
+  return useQuery({ queryKey: ['book-spent', ws.workspaceId, today], queryFn: () => spentThisMonthByBook(database, ws, from, to, today) });
 }
 
 /**

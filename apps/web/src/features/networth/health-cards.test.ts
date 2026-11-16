@@ -23,6 +23,9 @@ const ratio = (partial: Partial<HealthRatio> = {}): HealthRatio => ({
 describe('periodRange', () => {
   it('ends the rolling year today and starts twelve months back', () => {
     expect(periodRange({ key: 'ttm' }, TODAY)).toEqual({ from: '2025-10-01', to: TODAY, balanceDate: TODAY, label: 'Last 12 months' });
+    // From the 25th the twelve months start on the 25th, eleven of the workspace's months before this one.
+    expect(periodRange({ key: 'ttm' }, '2026-11-16', 25)).toMatchObject({ from: '2025-11-25', to: '2026-11-16' });
+    expect(periodRange({ key: 'ttm' }, TODAY, 1)).toEqual(periodRange({ key: 'ttm' }, TODAY));
   });
 
   it('runs a calendar year from January to December with balances at the end', () => {

@@ -1,4 +1,5 @@
-import { formatMinor, parsePeriod, periodLabel } from '@expanses/core';
+import { formatMinor, isoDate, parsePeriod, periodLabel, periodMonthOf } from '@expanses/core';
+import { useMonthStart } from '../workspaces/queries';
 import { listTransactionsIn } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
@@ -25,10 +26,11 @@ const TOP_ON_WIDE = 8;
 export function useMoneyFlow(month: string, topCategories: number): { flow: MoneyFlow | null; currency: string } {
   const { database, ws } = useApp();
   const accounts = useAccounts().data ?? [];
-  const period = parsePeriod(month);
+  const monthStart = useMonthStart();
+  const period = parsePeriod(month, monthStart);
   const range = period?.from ? { from: period.from, to: period.to! } : {};
   const list = useQuery({
-    queryKey: ['money-flow', ws.workspaceId, ws.bookId ?? null, month],
+    queryKey: ['money-flow', ws.workspaceId, ws.bookId ?? null, month, monthStart],
     enabled: period !== null,
     queryFn: () => listTransactionsIn(database, ws, range),
   });
@@ -40,7 +42,7 @@ export function useMoneyFlow(month: string, topCategories: number): { flow: Mone
     if (top.id !== account.id) roots[account.id] = { id: top.id, name: top.name };
   }
   return {
-    flow: list.data ? moneyFlow(list.data.transactions, month, { topCategories, roots }) : null,
+    flow: list.data ? moneyFlow(list.data.transactions, month, { topCategories, roots, monthStart }) : null,
     currency: list.data?.currency ?? ws.baseCurrency,
   };
 }
@@ -324,7 +326,8 @@ export const moneyFlowSearch = (search: Record<string, unknown>): MoneyFlowSearc
  */
 export function MoneyFlowPage() {
   const search = useSearch({ strict: false }) as MoneyFlowSearch;
-  const month = search.month ?? new Date().toISOString().slice(0, 7);
+  const monthStart = useMonthStart();
+  const month = search.month ?? periodMonthOf(isoDate(), monthStart);
   const phone = usePhone();
   const navigate = useNavigate();
   const { flow, currency } = useMoneyFlow(month, Number.POSITIVE_INFINITY);

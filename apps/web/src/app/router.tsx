@@ -110,6 +110,7 @@ import { SecurityPage } from '../features/investments/SecurityPage';
 import { SecurityPricePage } from '../features/investments/SecurityPricePage';
 import { DeveloperSettingsPage } from '../features/workspaces/DeveloperSettingsPage';
 import { WorkspacePage } from '../features/workspaces/WorkspacePage';
+import { MonthStartPage } from '../features/workspaces/MonthStartPage';
 import { MemberPage } from '../features/sharing/MemberPage';
 import { NetWorthMoved } from '../features/sharing/NetWorthMoved';
 import { SharePage } from '../features/sharing/SharePage';
@@ -561,6 +562,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/backup/icloud', component: ICloudRestorePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account', component: AccountMenuPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId', component: WorkspacePage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/month-start', component: MonthStartPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share', component: SharePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/details', component: SyncDetailsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share/details/log', component: SyncLogPage }),

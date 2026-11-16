@@ -53,6 +53,8 @@ export interface MoneyFlowOptions {
    * under its parent, as the ring draws it. A category not named here stands as itself.
    */
   roots?: Readonly<Record<string, { id: string; name: string }>>;
+  /** The day the workspace's months start on ("Month starts on"); absent, the 1st. */
+  monthStart?: number;
 }
 
 const isMoney = (entry: TransactionEntryView) => entry.accountKind === 'asset' || entry.accountKind === 'liability';
@@ -82,7 +84,7 @@ function splitAcross(amountMinor: number, weights: readonly number[]): number[] 
  * ended the period with more in them than went out, in proportion, so the bands still meet the bars they leave.
  */
 export function moneyFlow(rows: readonly TransactionView[], month: string, options: MoneyFlowOptions): MoneyFlow {
-  const period = parsePeriod(month);
+  const period = parsePeriod(month, options.monthStart);
   const inPeriod = (tx: TransactionView) => period !== null && (period.from === null || tx.occurredOn >= period.from) && (period.to === null || tx.occurredOn <= period.to);
   const rootOf = (entry: TransactionEntryView) => options.roots?.[entry.accountId] ?? { id: entry.accountId, name: entry.accountName };
 

@@ -1,4 +1,4 @@
-import { addMonths, formatMinor, isoDate, monthOf } from '@expanses/core';
+import { addMonths, formatMinor, isoDate, periodMonthOf } from '@expanses/core';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { CalendarDays, ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Scale, Target } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
@@ -6,7 +6,7 @@ import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
 import { cx, ErrorBox, Money } from '../../ui';
 import { type CornerAction, Drawer, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN, SegmentedControl, useDrawers } from '../../ui/native';
-import { useBooks, useOpenBook } from '../workspaces/queries';
+import { useBooks, useMonthStart, useOpenBook } from '../workspaces/queries';
 import { Unconverted } from '../workspaces/Unconverted';
 import { NeedsBox } from '../essential-split/NeedsBox';
 import { CappedRow, FigureRow, OverRow, UseBar, useCategoryMarks } from './budget-rows';
@@ -72,7 +72,11 @@ export function BudgetPage() {
   const today = isoDate();
   // Edit budgets sends the reader back to the month they left from.
   const asked = useSearch({ strict: false }) as { month?: string };
-  const [month, setMonth] = useState(asked.month ?? monthOf(today));
+  // The workspace's months ("Month starts on"): until one is picked, the one holding today — from the 25th, on 26 Nov
+  // that is December. Read on every render, so it follows the setting once the workspace's row has been read.
+  const monthStart = useMonthStart();
+  const [picked, setMonth] = useState<string | null>(asked.month ?? null);
+  const month = picked ?? periodMonthOf(today, monthStart);
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('spending');
   const [open, setOpen] = useState<Open>(null);
@@ -108,7 +112,7 @@ export function BudgetPage() {
   const unbudgeted = view ? noBudgetRows(view.noBudget) : [];
 
   const left = sheet && view ? sheet.capsTotalMinor - view.spentMinor : 0;
-  const days = daysLeft(month, today);
+  const days = daysLeft(month, today, monthStart);
 
   return (
     <div className={SCREEN} data-testid="budget-page">

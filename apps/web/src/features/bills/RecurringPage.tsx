@@ -1,4 +1,5 @@
-import { isoDate } from '@expanses/core';
+import { isoDate, thisBillMonth } from '@expanses/core';
+import { useMonthStart } from '../workspaces/queries';
 import { type MonthlyBill, skipBill, undoBillPayments, unskipBill } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { ListChecks, Plus } from 'lucide-react';
@@ -126,6 +127,8 @@ export function RecurringPage() {
   const from = useFrom();
   const backToCashflow = useBackToCashflow();
   const bills = useMonthlyBills(today);
+  // "Month starts on": which of a bill's months is this month's, and the month the summary names.
+  const monthStart = useMonthStart();
   const yearly = useYearlyBills(today);
   const funds = useSinkingFunds(today);
   const fees = useUpcomingFees(today);
@@ -196,7 +199,7 @@ export function RecurringPage() {
     try {
       await skipBill(database, ws, bill.id, month);
       await invalidate();
-      setToast({ icon: 'skipped', text: skippedText(bill.name, month, today), undo: () => unskipBill(database, ws, bill.id, month) });
+      setToast({ icon: 'skipped', text: skippedText(bill.name, month, today, thisBillMonth(today, bill.dayOfMonth, monthStart)), undo: () => unskipBill(database, ws, bill.id, month) });
     } catch (e) {
       setError(e);
     }
@@ -220,7 +223,7 @@ export function RecurringPage() {
     await invalidate();
   }
 
-  const summary = summaryOf(readRows, today);
+  const summary = summaryOf(readRows, today, monthStart);
   const convertFund = money?.converts ? money.convert : money?.convertForeign;
   const needs = repeatingNeeds(
     (yearly.data ?? []).map((bill) => ({ id: bill.id, amountMinor: bill.amountMinor, estimateMinor: bill.estimateMinor, currency: currencyOf(bill), dueOn: nextDateOf(bill) })),
@@ -398,7 +401,7 @@ export function RecurringPage() {
           onSkipped={(month) => {
             const b = paying;
             setPaying(null);
-            setToast({ icon: 'skipped', text: skippedText(b.name, month, today), undo: () => unskipBill(database, ws, b.id, month) });
+            setToast({ icon: 'skipped', text: skippedText(b.name, month, today, thisBillMonth(today, b.dayOfMonth, monthStart)), undo: () => unskipBill(database, ws, b.id, month) });
           }}
           onSeeBill={() => navigate({ to: '/bills/$billId', params: { billId: paying.id }, search: from })}
           onLink={(month) => navigate({ to: '/bills/$billId/link', params: { billId: paying.id }, search: { ...from, month } })}

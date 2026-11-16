@@ -1,4 +1,5 @@
 import { monthName } from '@expanses/core';
+import { useMonthStart } from '../workspaces/queries';
 import type { AccountRow, MonthlyBill } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { useFrom } from '../../app/from-search';
@@ -45,6 +46,7 @@ export function BillRow({
   /** A hairline above this row, inset to the text as the kit's are; the group's first row has none. */
   separator?: boolean;
 }) {
+  const monthStart = useMonthStart();
   // A paused month is as done with as a paid one here: nothing to swipe, nothing to tick. Its own page can still pay it.
   const settled = isSettled(bill) || isPaused(bill);
   const status = statusOf(bill);
@@ -112,7 +114,7 @@ export function BillRow({
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{bill.name}</span>
-              <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{sublineOf(bill, accountName, today)}</span>
+              <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{sublineOf(bill, accountName, today, monthStart)}</span>
             </span>
             <span className="tabular flex shrink-0 flex-col items-end text-[15px] leading-[20px] text-[var(--ph-ink)]">
               {bill.state === 'paid' ? (

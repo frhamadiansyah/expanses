@@ -1,4 +1,5 @@
-import { explainTransaction, formatMinor, monthOf, type Suggestion } from '@expanses/core';
+import { explainTransaction, formatMinor, periodMonthOf, type Suggestion } from '@expanses/core';
+import { useMonthStart } from '../workspaces/queries';
 import { clearTransactionPointActual, recordTransactionPointActual, saveMerchantMcc, setTransactionMcc } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, type ReactNode, useMemo, useState } from 'react';
@@ -26,6 +27,8 @@ const sameTenths = (a: number, b: number) => Math.round(a * 10) === Math.round(b
  */
 export function SuggestionFixes({ suggestion, description, occurredOn, run }: { suggestion: Suggestion; description: string; occurredOn?: string; run: Run }) {
   const { database, ws } = useApp();
+  // Cashflow's month that holds the purchase ("Month starts on").
+  const monthStart = useMonthStart();
   if (suggestion.kind !== 'mcc') return null;
   const pattern = suggestPattern(description);
   return (
@@ -39,7 +42,7 @@ export function SuggestionFixes({ suggestion, description, occurredOn, run }: { 
       {occurredOn && (
         <Link
           to="/transactions"
-          search={{ month: monthOf(occurredOn) }}
+          search={{ month: periodMonthOf(occurredOn, monthStart) }}
           className="ph-focus rounded-full bg-[var(--ph-fill)] px-[10px] py-[4px] text-[13px] leading-[18px] font-medium text-[var(--ph-tint)]"
         >
           Change category

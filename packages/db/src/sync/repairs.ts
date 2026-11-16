@@ -14,6 +14,7 @@ import { decodeHlc } from './hlc';
 import type { Op } from './types';
 import { uuidv5 } from './uuidv5';
 import { meetsVersion, TRIP_SWITCHES_MIN_APP_VERSION } from './events/version';
+import { MONTH_START_MIN_APP_VERSION, monthStartColumnTx, resendMonthStartTx } from './month-start';
 
 /** Where a repair move's expense id is named from. Fixed for ever: an id worked out under it may already be on a phone. */
 const REPAIR_NAMESPACE = '5f0c9e3a-2b7d-4e61-9a48-c1d2e3f4a5b6';
@@ -48,6 +49,11 @@ export function repairExpenseId(lineageId: string, eventId: string): Promise<str
  * the two again at the clocks it holds them at — never a newer one, so a later change on another phone still wins — and
  * the updated phone, whose migration dropped the stale clocks, writes them. Nothing goes for a switch never changed.
  *
+ * R6 month start (0118): a shared workspace's "Month starts on" is a book field an older build takes the clock of and
+ * drops. As R5 does for a trip's switches, each time a device in the book is first seen at `MONTH_START_MIN_APP_VERSION`
+ * or later, this phone sends the value again at the clock it holds it at, and the updated phone, whose migration dropped
+ * the stale clock, writes it. Nothing goes for a value never changed.
+ *
  * R4 card faces (fix/sync-card-tier): a joint account's summary now carries what its card face is drawn from (its bank,
  * its card tier, its number's last four: `ItemFace`). An account given a tier before this build sent none, and its
  * summary would not go again until its period ended or a line moved it. Once now, this phone sends the items whose sent
@@ -76,6 +82,9 @@ async function bookDevicesTx(tx: Db, bookId: string): Promise<{ deviceId: string
 
 /** Where R3 keeps the devices it has already sent for once each reached `TRIP_TRANSFERS_MIN_APP_VERSION`. */
 const tripCrossedKey = (bookId: string) => `repair.trip-transfers-crossed.v1.${bookId}`;
+
+/** Where R6 keeps the devices of a workspace it has already sent the month start for (`MONTH_START_MIN_APP_VERSION`). */
+const monthStartCrossedKey = (bookId: string) => `repair.month-start-crossed.v1.${bookId}`;
 
 /** Where R5 keeps the devices of an event it has already sent the trip's switches for (`TRIP_SWITCHES_MIN_APP_VERSION`). */
 const switchesCrossedKey = (bookId: string) => `repair.trip-switches-crossed.v1.${bookId}`;
@@ -145,6 +154,8 @@ export interface RepairReport {
   eventBook?: boolean;
   /** R5: the trip's switches sent again (1) or nothing to send (0); null when no device had newly crossed. */
   tripSwitches?: number | null;
+  /** R6: the workspace's month start sent again (1) or nothing to send (0); null when no device had newly crossed. */
+  monthStart?: number | null;
 }
 
 /** The shared book here, active and with its members known; null for anything else. */
@@ -441,6 +452,24 @@ export async function runSharedBookRepairs(database: Database, bookId: string, o
       const stale = await itemsWithStaleFaceTx(tx);
       const sent = stale.length > 0 ? await sendSummariesTx(tx, stale, today) : 0;
       await markDoneTx(tx, CARD_FACES, bookId);
+      return sent;
+    });
+  } catch (error) {
+    failures.push(error);
+  }
+  try {
+    report.monthStart = await database.transaction(async (tx) => {
+      const book = await activeBookTx(tx, bookId);
+      if (!book || !(await monthStartColumnTx(tx))) return null;
+      // One pass each time another device in the book is seen at a build that reads the month start: the one that
+      // crossed may have taken it on its older build. A device that never updates holds nothing up.
+      const devices = await bookDevicesTx(tx, bookId);
+      const crossed = await crossedTx(tx, bookId, monthStartCrossedKey(bookId));
+      const nowAt = devices.filter((d) => meetsVersion(d.version, MONTH_START_MIN_APP_VERSION)).map((d) => d.deviceId);
+      if (nowAt.every((id) => crossed.has(id))) return null;
+      const sent = await resendMonthStartTx(tx, database, book);
+      const all = [...new Set([...crossed, ...nowAt])].sort();
+      await tx.run(sql`INSERT INTO settings (key, value) VALUES (${monthStartCrossedKey(bookId)}, ${JSON.stringify(all)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
       return sent;
     });
   } catch (error) {

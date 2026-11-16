@@ -87,7 +87,9 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
     scopeRule: 'id = bookId',
     scope: (bookId) => sql`t.id = ${bookId}`,
     keyColumns: ['id'],
-    fields: { name: 'name', baseCurrency: 'base_currency', countEventsInBudget: 'count_events_in_budget', archivedAt: 'archived_at' },
+    // monthStartDay (0118): the day the workspace's months start on, one value on every phone. A build before
+    // MONTH_START_MIN_APP_VERSION drops it and keeps its clock; repair R6 sends it again once that phone updates.
+    fields: { name: 'name', baseCurrency: 'base_currency', countEventsInBudget: 'count_events_in_budget', archivedAt: 'archived_at', monthStartDay: 'month_start_day' },
     // `kind` is the owner's label and never travels; a joiner inserts 'shared' (spec §4.2).
     localOnInsert: ['kind', 'created_at'],
   },

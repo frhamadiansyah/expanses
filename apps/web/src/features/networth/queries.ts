@@ -191,12 +191,16 @@ export function useSheet(date?: string) {
   });
 }
 
-export function usePeriodFlows(range: { from: string; to: string }) {
+/**
+ * `monthStart` names the day the months of `byMonth` start on: Financial health passes the open workspace's ("Month
+ * starts on"), so its months are Cashflow's and Budget's. Left out, calendar months, as the calculators read them.
+ */
+export function usePeriodFlows(range: { from: string; to: string }, monthStart = 1) {
   const { database, ws } = useApp();
   return useQuery({
-    queryKey: ['period-flows', ws.workspaceId, range.from, range.to],
+    queryKey: ['period-flows', ws.workspaceId, range.from, range.to, monthStart],
     // Net worth is the owner's whole picture: every workspace, in the owner's own currency.
-    queryFn: () => periodFlows(database, ownerScope(ws), range),
+    queryFn: () => periodFlows(database, ownerScope(ws), range, { monthStart }),
   });
 }
 

@@ -1,4 +1,4 @@
-import { goalShares, isoDate, monthRange, movedAmount, UNTAGGED, uuidv7 } from '@expanses/core';
+import { goalShares, isoDate, monthPeriod, movedAmount, UNTAGGED, uuidv7 } from '@expanses/core';
 import { and, eq, gte, inArray, isNotNull, isNull, lte, type SQL, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -6,6 +6,7 @@ import { accounts, entries, transactions } from '../schema';
 import { investmentTrades } from '../schema-assets';
 import { goalContributions } from '../schema-budget';
 import { goalDraws } from '../schema-goals';
+import { monthStartFor } from './month-start';
 import { setAsideTablesExist } from './set-aside-tx';
 import { goalPartsByTradeTx } from './goal-parts';
 
@@ -156,7 +157,8 @@ export async function goalContributionEvents(database: Database, ws: WorkspaceCo
  * there was the saving — the same rule the put-away figure follows.
  */
 export async function goalContributionsFor(database: Database, ws: WorkspaceContext, month: string): Promise<Record<string, number>> {
-  const { from, to } = monthRange(month);
+  // The workspace's month, as the budget sheet it is part of reads it ("Month starts on", 0118).
+  const { from, to } = monthPeriod(month, await monthStartFor(database, ws));
   const total: Record<string, number> = {};
   for (const event of await goalContributionEvents(database, ws, { from, to })) total[event.goalId] = (total[event.goalId] ?? 0) + event.amountMinor;
   return total;

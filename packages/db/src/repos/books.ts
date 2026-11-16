@@ -1,4 +1,4 @@
-import { convertMinor, isoDate, isSupportedCurrency, perMonthMinor, uuidv7 } from '@expanses/core';
+import { convertMinor, isMonthStartDay, isoDate, isSupportedCurrency, monthPeriod, type MonthStartDay, perMonthMinor, periodMonthOf, uuidv7 } from '@expanses/core';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { inBook, type WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -17,6 +17,9 @@ import { ensureBookCategoryKeysTx } from './categories';
 import { categoryTotalsIn } from './reports';
 import { withCapture } from '../sync/capture';
 import { bookSplitsExist } from './book-splits';
+import { monthStartColumnExists, monthStartsOf } from './month-start';
+
+export { monthStartFor } from './month-start';
 import { isBookShared } from '../sync/placeholder';
 
 export type BookKind = 'personal' | 'business' | 'family' | 'shared';
@@ -27,6 +30,8 @@ export interface BookRow {
   kind: BookKind;
   baseCurrency: string;
   countEventsInBudget: boolean;
+  /** The day its months start on (0118): 1 for the calendar month, 2–28, or 31 for the last day (`month-start.ts`). */
+  monthStartDay: MonthStartDay;
   archivedAt: string | null;
 }
 
@@ -42,14 +47,30 @@ export class BookError extends Error {
 
 const KINDS: readonly BookKind[] = ['personal', 'business', 'family', 'shared'];
 
-const toRow = (row: typeof books.$inferSelect): BookRow => ({
+const toRow = (row: typeof books.$inferSelect, starts: ReadonlyMap<string, MonthStartDay> = new Map()): BookRow => ({
   id: row.id,
   name: row.name,
   kind: row.kind,
   baseCurrency: row.baseCurrency,
   countEventsInBudget: row.countEventsInBudget === 1,
+  monthStartDay: starts.get(row.id) ?? 1,
   archivedAt: row.archivedAt,
 });
+
+/**
+ * Sets the day a workspace's months start on. It only regroups: no transaction, bill, statement or loan is touched.
+ * In a shared workspace it is the book's own field, so every phone in it counts the same months.
+ */
+export async function setBookMonthStart(database: Database, ws: WorkspaceContext, bookId: string, day: MonthStartDay): Promise<void> {
+  if (!isMonthStartDay(day)) throw new BookError('BAD_MONTH_START', 'A month starts on a day from the 1st to the 28th, or on the last day');
+  await bookOf(database, ws, bookId);
+  if (!(await monthStartColumnExists(database.db))) throw new BookError('NO_COLUMN', 'This database is too old to keep the setting; reopen the app to update it');
+  await database.transaction((tx) =>
+    withCapture(tx, { entity: 'book', id: bookId }, () =>
+      tx.run(sql`UPDATE books SET month_start_day = ${day} WHERE id = ${bookId} AND workspace_id = ${ws.workspaceId}`),
+    ),
+  );
+}
 
 /*
  * A database still stopped before migration 0042 has no book tables at all. Every write below is skipped in that
@@ -73,7 +94,8 @@ export async function listBooks(database: Database, ws: WorkspaceContext): Promi
     .from(books)
     .where(and(eq(books.workspaceId, ws.workspaceId), isNull(books.archivedAt)))
     .orderBy(asc(books.sortOrder), asc(books.createdAt));
-  return rows.map(toRow);
+  const starts = await monthStartsOf(database.db, ws.workspaceId);
+  return rows.map((row) => toRow(row, starts));
 }
 
 /**
@@ -86,7 +108,8 @@ export async function listArchivedBooks(database: Database, ws: WorkspaceContext
     .from(books)
     .where(and(eq(books.workspaceId, ws.workspaceId), isNotNull(books.archivedAt)))
     .orderBy(desc(books.archivedAt), asc(books.createdAt));
-  return rows.map(toRow);
+  const starts = await monthStartsOf(database.db, ws.workspaceId);
+  return rows.map((row) => toRow(row, starts));
 }
 
 /**
@@ -512,11 +535,17 @@ export async function spentThisMonthByBook(
   ws: WorkspaceContext,
   from: string,
   to: string,
+  /**
+   * When given, each workspace reads its own "this month" on this day: from its "Month starts on" (0118), so one
+   * starting on the 25th says what it spent since the 25th. `from` and `to` then stand only for calendar-month ones.
+   */
+  today?: string,
 ): Promise<Record<string, { amountMinor: number; currency: string }>> {
   if (!(await hasBooks(database.db))) return {};
   const spent: Record<string, { amountMinor: number; currency: string }> = {};
   for (const book of await listBooks(database, ws)) {
-    const totals = await categoryTotalsIn(database, inBook(ws, book.id), 'expense', from, to);
+    const range = today && book.monthStartDay !== 1 ? monthPeriod(periodMonthOf(today, book.monthStartDay), book.monthStartDay) : { from, to };
+    const totals = await categoryTotalsIn(database, inBook(ws, book.id), 'expense', range.from, range.to);
     spent[book.id] = { amountMinor: totals.rows.reduce((sum, row) => sum + row.amountBaseMinor, 0), currency: totals.currency };
   }
   return spent;
@@ -542,7 +571,8 @@ export async function booksInEvent(database: Database, ws: WorkspaceContext, eve
       ),
     )
     .orderBy(asc(books.sortOrder), asc(books.createdAt));
-  return rows.map(toRow);
+  const starts = await monthStartsOf(database.db, ws.workspaceId);
+  return rows.map((row) => toRow(row, starts));
 }
 
 /**

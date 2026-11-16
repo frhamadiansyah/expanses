@@ -1,4 +1,5 @@
-import { formatMinor } from '@expanses/core';
+import { formatMinor, periodMonthOf } from '@expanses/core';
+import { useMonthStart } from '../workspaces/queries';
 import { listTransactionsIn } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Outlet, useNavigate, useParams, useRouter } from '@tanstack/react-router';
@@ -160,14 +161,16 @@ export function WalletPage() {
    * on Net worth's Liabilities, not as this month's claim on the money in a pocket. A rate short and there is no
    * figure; the missing currency is named instead.
    */
-  const month = today.slice(0, 7);
-  // This month's bills, as the Recurring page reads them; read only while the box is on screen.
-  const monthBills = useBillsInMonth(boxed ? month : null);
+  // This month's bills, as the Recurring page reads them — the workspace's month ("Month starts on"), each bill by the
+  // bill month whose day falls inside it; read only while the box is on screen.
+  const month = periodMonthOf(today, useMonthStart());
+  const monthBills = useBillsInMonth(boxed ? month : null, { workspaceMonth: true });
   const billRows = (monthBills.data ?? []).map((row) => ({
     id: row.bill.id,
     name: row.bill.name,
     categoryAccountId: row.bill.categoryAccountId,
-    month: row.month,
+    // Each row is this month's occurrence by construction (its bill month may be the calendar month before).
+    month,
     state: row.state,
     payBy: row.window.payBy,
     amountMinor: row.bill.amountMinor,

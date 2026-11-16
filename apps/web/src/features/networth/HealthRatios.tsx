@@ -7,6 +7,7 @@ import { useHealthSettings } from './health-settings';
 import { useEssentialSplit, useSpendingGuide } from '../essential-split/queries';
 import { SplitBar } from '../essential-split/SplitBar';
 import { splitCard } from '../essential-split/split-view';
+import { useMonthStart } from '../workspaces/queries';
 
 /** The status, in the kit's own inks rather than in four tinted pills. */
 const STATUS_INK: Record<RatioStatus, string> = {
@@ -77,7 +78,7 @@ export function HealthRatios({
         );
   const choices = periodChoices(today, earliestYear);
   // Essential · Lifestyle · Debts & savings over the same period, owner-wide as the flows are, graded by the workspace's guide.
-  const range = periodRange(period, today);
+  const range = periodRange(period, today, useMonthStart());
   const split = useEssentialSplit({ from: range.from, to: range.to }, { owner: true });
   const card = splitCard(split.data?.split, useSpendingGuide());
 

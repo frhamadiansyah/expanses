@@ -1,4 +1,4 @@
-import { BUDGET_FREQUENCIES, type BudgetFrequency, formatMinor, groupTypedAmount, isoDate, monthOf } from '@expanses/core';
+import { BUDGET_FREQUENCIES, type BudgetFrequency, formatMinor, groupTypedAmount, isoDate, periodMonthOf } from '@expanses/core';
 import { BudgetError, type BudgetRow, saveBudgets } from '@expanses/db';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Check, RotateCcw } from 'lucide-react';
@@ -8,7 +8,7 @@ import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { type GroupChild, InsetGroup, LargeTitle, Panel, SCREEN } from '../../ui/native';
 import { bareFigure } from '../networth/debt-rows';
-import { useBooks, useOpenBook } from '../workspaces/queries';
+import { useBooks, useMonthStart, useOpenBook } from '../workspaces/queries';
 import { useCategoryMarks } from './budget-rows';
 import type { SpendHistory } from './budget-view';
 import { basisOfRow, changesOf, editGroups, type EditRow, type EditState, fillFromLastMonth, initialState, isDirty, keptOf, liveCapsTotal, type RowState, rowStateOf, switchRow, typedCaps } from './edit-budgets-model';
@@ -24,7 +24,8 @@ export function EditBudgetsPage() {
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
   const asked = useSearch({ strict: false }) as { month?: string };
-  const month = asked.month ?? monthOf(isoDate());
+  const monthStart = useMonthStart();
+  const month = asked.month ?? periodMonthOf(isoDate(), monthStart);
 
   // Typed and parsed in the workspace's own money, and not until its row has been read: nothing is parsed in a guess.
   const openBook = useOpenBook();

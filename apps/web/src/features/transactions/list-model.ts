@@ -190,6 +190,8 @@ export interface ListFilters {
   type: 'all' | 'expense' | 'income' | 'transfer';
   /** The period on show: 'all', YYYY-MM, or any other period. Recorded rows are already loaded for it; drafts are filtered here. */
   month: string;
+  /** The day the workspace's months start on ("Month starts on"); absent, the 1st. */
+  monthStart?: number;
   showDeleted: boolean;
   onlyDrafts: boolean;
   /** Only what was saved under Uncategorised and still waits for a category. */
@@ -488,7 +490,7 @@ export function filterRows(rows: readonly ListRow[], f: ListFilters, accounts: r
     // A draft with no date yet is never hidden by the month it cannot be placed in, and asking for
     // what is not recorded shows all of it, whichever month it belongs to.
     if (f.month !== 'all' && !f.onlyDrafts && row.date) {
-      const period = parsePeriod(f.month);
+      const period = parsePeriod(f.month, f.monthStart);
       if (period?.from && (row.date < period.from || row.date > period.to!)) return false;
     }
     if (f.type === 'expense' && row.type !== 'expense') return false;

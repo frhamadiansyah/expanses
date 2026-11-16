@@ -3,6 +3,7 @@ import { dailyTotalsIn, firstDayOf } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
+import { useMonthStart } from '../workspaces/queries';
 import { cx, Money } from '../../ui';
 import { ChartAnnouncement, ChartReading, READING_ROOM, useChartReading } from '../networth/chart-reading';
 import { type ChartPoint, nearestIndex } from '../networth/value-chart';
@@ -26,7 +27,8 @@ export function useSpendingTrend(month: string, kind: 'expense' | 'income', excl
     queryKey: ['first-day', ws.workspaceId, ws.bookId ?? null, kind, events],
     queryFn: () => firstDayOf(database, ws, kind, { excludeEvents, billMonths: true }),
   });
-  const period = parsePeriod(month);
+  // A month is the workspace's ("Month starts on"): its bars run over its own days, and it is compared with its own.
+  const period = parsePeriod(month, useMonthStart());
   const ctx = { today, first: first.data ?? null };
   const window = period && first.isSuccess ? trendWindow(period, ctx) : null;
   const daily = useQuery({

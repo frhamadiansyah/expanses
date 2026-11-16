@@ -17,6 +17,16 @@ describe('days left', () => {
     expect(daysLeft('2026-09', '2026-10-01')).toBeNull();
     expect(daysLeft('2027-02', '2026-10-01')).toBe(28);
   });
+
+  it('counts to the 24th in a workspace whose months start on the 25th', () => {
+    // November is 25 Oct – 24 Nov: on 16 Nov, nine days with today.
+    expect(daysLeft('2026-11', '2026-11-16', 25)).toBe(9);
+    expect(daysLeft('2026-11', '2026-11-25', 25)).toBeNull();
+    expect(daysLeft('2026-12', '2026-11-16', 25)).toBe(30);
+    expect(daysLeft('2026-11', '2026-10-25', 25)).toBe(31);
+    // Starting on the 1st is the calendar month, as before.
+    expect(daysLeft('2026-10', '2026-10-01', 1)).toBe(31);
+  });
 });
 
 describe('the Spending tab', () => {

@@ -1,10 +1,11 @@
-import { isoDate, monthOf } from '@expanses/core';
+import { isoDate, periodMonthOf } from '@expanses/core';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { hasWidget, onWidgetSummaryErased, summaryKey, summaryOf, WidgetSummary } from '../../native/widget-summary';
 import { useBudgetSheet } from '../budget/queries';
 import { useOpenBookReadOnly } from '../sharing/queries';
+import { useMonthStart } from '../workspaces/queries';
 
 /** What `written` holds once a read-only workspace's summary has been erased rather than written. */
 const ERASED = 'erased';
@@ -22,7 +23,8 @@ export function useWidgetSummaryWriter(): void {
   const enabled = useQuery({ queryKey: ['widget-enabled'], queryFn: () => WidgetSummary.getEnabled(), enabled: native });
   const on = native && enabled.data?.enabled === true;
   const readOnly = useOpenBookReadOnly();
-  const month = monthOf(isoDate());
+  // This month is the workspace's ("Month starts on"): the widget shows what the Budget page shows today.
+  const month = periodMonthOf(isoDate(), useMonthStart());
   const sheet = useBudgetSheet(month, on && !readOnly);
   const written = useRef<string | null>(null);
   const [erasures, setErasures] = useState(0);
@@ -52,7 +54,9 @@ export function useWidgetSummaryWriter(): void {
       return;
     }
     if (!sheet.data) return;
-    const summary = summaryOf(sheet.data, { bookId, month, now: new Date() });
+    // The widget keeps a summary only for the calendar month it is read in (WidgetSummaryStore.swift), so it is stamped
+    // with that one; the figure is the workspace's own month's, which from the 25th runs on into the next.
+    const summary = summaryOf(sheet.data, { bookId, month: isoDate().slice(0, 7), now: new Date() });
     const key = summaryKey(summary);
     if (key === written.current) return;
     written.current = key;

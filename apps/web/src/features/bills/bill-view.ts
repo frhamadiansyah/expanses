@@ -1,4 +1,4 @@
-import { billPill, type BillTone, convertMinor, dayMonth, minorToMajorString, monthName, monthYear } from '@expanses/core';
+import { billPill, type BillTone, convertMinor, dayMonth, minorToMajorString, monthName, monthYear, periodMonthOf, thisBillMonth } from '@expanses/core';
 import type { BookMoney, MemberPayer, MonthlyBill, PurchasePayer } from '@expanses/db';
 import type { Tone } from '../../ui/native/row';
 import { payerLine } from '../sharing/sharing-copy';
@@ -59,7 +59,8 @@ export interface BillSummary {
   allPaused: boolean;
 }
 
-export function summaryOf(rows: readonly MonthlyBill[], today: string): BillSummary {
+/** `monthStart` is the workspace's "Month starts on": the summary names the workspace's month that holds today. */
+export function summaryOf(rows: readonly MonthlyBill[], today: string, monthStart = 1): BillSummary {
   const open = rows.filter(isToPay);
   const varying = open.filter((b) => b.amountMinor === null).length;
   const groups = [
@@ -67,7 +68,7 @@ export function summaryOf(rows: readonly MonthlyBill[], today: string): BillSumm
     { key: 'dueSoon' as const, label: 'Due soon', rows: open.filter((b) => b.state === 'dueSoon' || b.state === 'open' || b.state === 'upcoming') },
   ];
   return {
-    monthLabel: monthName(today.slice(0, 7), 'long'),
+    monthLabel: monthName(periodMonthOf(today, monthStart), 'long'),
     totalMinor: sum(open),
     approximate: varying > 0,
     variesText: varying > 0 ? variesWords(varying) : null,
@@ -188,8 +189,9 @@ export function billAccountName(
   return bill.paidFromAccountId !== null && !member.self ? `Paid by ${member.name}` : member.name;
 }
 
-export function sublineOf(bill: MonthlyBill, accountName: string, today: string): string {
-  return bill.billMonth < today.slice(0, 7) ? `${monthName(bill.billMonth, 'short')} bill · ${accountName}` : accountName;
+/** An older month's bill still owed is named by its month: older than this month's bill (`thisBillMonth`, "Month starts on"). */
+export function sublineOf(bill: MonthlyBill, accountName: string, today: string, monthStart = 1): string {
+  return bill.billMonth < thisBillMonth(today, bill.dayOfMonth, monthStart) ? `${monthName(bill.billMonth, 'short')} bill · ${accountName}` : accountName;
 }
 
 /** Each tone as a capsule on its own tinted ground, from the kit's panel tokens so a dark screen gets a dark pill. */
@@ -273,6 +275,6 @@ export function paidText(names: readonly string[]): string {
 }
 
 /** The toast after a skip. Last month's or next month's bill is named, so the skip is not mistaken for this month's. */
-export function skippedText(name: string, month: string, today: string): string {
-  return month === today.slice(0, 7) ? `Skipped ${name} this month` : `Skipped ${name}’s ${monthName(month, 'long')} bill`;
+export function skippedText(name: string, month: string, today: string, thisMonth: string = today.slice(0, 7)): string {
+  return month === thisMonth ? `Skipped ${name} this month` : `Skipped ${name}’s ${monthName(month, 'long')} bill`;
 }
